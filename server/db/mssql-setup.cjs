@@ -1416,6 +1416,65 @@ const TABLES = [
       )`,
   },
   {
+    // BNV Hub (2026-11-08): ekibin acik isleri (otomasyon talepleri). Yalniz Admin.
+    // Acan ve sahiplenen kisi AD kullanici adi + gorunen adla tutulur (ad degisse de kim
+    // oldugu kaybolmaz). Kurallar: shared/bnvHub.cjs; API: server/bnv-hub/index.cjs.
+    name: 'bnv_hub_isler',
+    sql: `
+      CREATE TABLE bnv_hub_isler (
+        id              NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        baslik          NVARCHAR(300) NOT NULL,
+        aciklama        NVARCHAR(MAX),
+        durum           NVARCHAR(20)  NOT NULL DEFAULT 'acik',
+        oncelik         NVARCHAR(20)  NOT NULL DEFAULT 'orta',
+        kategori        NVARCHAR(100) NOT NULL DEFAULT 'Otomasyon',
+        sahip           NVARCHAR(200),
+        beklenen        NVARCHAR(500),
+        son_tarih       DATE,
+        acan_kullanici  NVARCHAR(255) NOT NULL,
+        acan_ad         NVARCHAR(255),
+        guncelleyen_ad  NVARCHAR(255),
+        olusturma       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        guncelleme      DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        kapanis         DATETIME2
+      )`,
+  },
+  {
+    // Uygulama Hub (2026-11-08): OpenShift canli okumalarinin son hali (server/app-hub/canli.cjs).
+    // Okuma paylasilir: sonraki ziyaretci yeni AWX isi acmadan son okumayi ve zamanini gorur.
+    // JVM env degerleri betikte ve Portal'da iki kez maskelenmis olarak yazilir.
+    name: 'app_hub_ocp_canli',
+    sql: `
+      CREATE TABLE app_hub_ocp_canli (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        uygulama        NVARCHAR(128) NOT NULL,
+        cluster         NVARCHAR(128) NOT NULL,
+        namespace       NVARCHAR(256) NOT NULL,
+        sonuc_json      NVARCHAR(MAX),
+        ok              BIT NOT NULL DEFAULT 0,
+        hata            NVARCHAR(2000),
+        alan_kullanici  NVARCHAR(255) NOT NULL,
+        alan_ad         NVARCHAR(255),
+        awx_server_id   INT,
+        awx_job_id      INT,
+        alinma          DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // BNV Hub is gecmisi: notlar + otomatik kayitlar (olusturma, durum/sahip/tarih degisimi).
+    name: 'bnv_hub_notlar',
+    sql: `
+      CREATE TABLE bnv_hub_notlar (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        is_id           NVARCHAR(64)  NOT NULL,
+        tur             NVARCHAR(20)  NOT NULL DEFAULT 'not',
+        metin           NVARCHAR(MAX) NOT NULL,
+        yazan_kullanici NVARCHAR(255) NOT NULL,
+        yazan_ad        NVARCHAR(255),
+        olusturma       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Self-service agacinin kok seviyesi (eskiden server/data/selfservice.json).
     name: 'selfservice_tabs',
     sql: `
@@ -2403,6 +2462,8 @@ const PAGE_VISIBILITY_SEED = [
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'CryptoHub', roles: 'Admin' },
+  { page_name: 'BnvHub', roles: 'Admin' },
+  { page_name: 'AppHub', roles: 'Admin' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -2467,6 +2528,20 @@ const ELEMENT_SEED = [
     element_key: 'navgroup:cryptohub',
     element_type: 'nav_group',
     label: 'Crypto Hub',
+    sort_order: 3,
+  },
+  // Uygulama Hub (2026-11-08): uygulama adiyla JBoss / WAS / OpenShift birlesik gorunum
+  {
+    element_key: 'navgroup:apphub',
+    element_type: 'nav_group',
+    label: 'Uygulama Hub',
+    sort_order: 2,
+  },
+  // BNV Hub (2026-11-08): ekibin acik isleri, yalniz Admin
+  {
+    element_key: 'navgroup:bnvhub',
+    element_type: 'nav_group',
+    label: 'BNV Hub',
     sort_order: 3,
   },
   // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin tek liste; ekipler
@@ -2565,6 +2640,31 @@ const ELEMENT_SEED = [
     // her seyi yapabiliyor olsun"). Sayfa yine HERKESE KAPALI - `roles: ['Admin']`
     // default_visible=0 yaziyor, yani acik kurali olmayan normal kullanici goremez.
     // Degisen tek sey: yoneticiler kapida kalmiyor.
+  },
+  {
+    // Uygulama Hub (2026-11-08). Kullanici: "baglanan kisi sadece uygulamasinin ismini yazip
+    // bu uygulamaya dair her sey gozuksun". FAZ 1 yalniz Admin: Server Hub verisi (JVM, vhost,
+    // maskeli jvm_args) bugun yalniz Admin'e acik; uygulama ekiplerine acmak icin sunucuya
+    // legacy_app / ocp_namespace / env kisit suzgecleri eklenmeli (server/app-hub/index.cjs).
+    element_key: 'AppHub',
+    element_type: 'page',
+    parent_key: 'navgroup:apphub',
+    label: 'Uygulama Hub',
+    route: '/uygulama-hub',
+    sort_order: 1,
+    roles: ['Admin'],
+  },
+  {
+    // BNV Hub (2026-11-08): acik isler / otomasyon talepleri. Kullanici: "sadece adminlerin
+    // goruntuleyebilecegi bir sayfa olsun". Sunucu ayrica her uca Admin kapisi koyar: bir
+    // gorunurluk kurali sayfayi baskasina acsa bile veri yalniz Admin'e doner.
+    element_key: 'BnvHub',
+    element_type: 'page',
+    parent_key: 'navgroup:bnvhub',
+    label: 'BNV Hub',
+    route: '/bnv-hub',
+    sort_order: 1,
+    roles: ['Admin'],
   },
   // CRYPTO HUB UYGULAMA AYRIMI (kullanici, 2026-10-01): "Metaco ve Wyden tarafini farkli
   // ekiplere gosterecegiz." Sayfanin TAMAMI yerine uygulama bazinda yetki verilir; bu
@@ -3808,6 +3908,19 @@ const PLAYBOOK_REGISTRY_SEED = [
       'bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/), durdur ve araclar kipi (k6 + wrk /sw\'ye; yalniz Admin). Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
     playbook_path: null,
     env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
+  },
+  {
+    // Uygulama Hub (2026-11-08): tek uygulamanin OpenShift canli durumu - tur (Deployment /
+    // Argo Rollout / DC / StatefulSet), replika, imaj, kaynak, MASKELI JVM env'leri, pod -> node.
+    // SALT OKUNUR (oc get).
+    key_name: 'app_hub_ocp_canli',
+    display_name: 'Uygulama Hub — OpenShift Canlı Okuma',
+    category: 'openshift',
+    handler: 'app_hub_ocp_canli',
+    description:
+      'bmw_portal/app_hub/app_hub_ocp.yml - app_hub_app + app_hub_targets [{cluster, namespace}] (en cok 20) icin bastion basina oc login + oc get (deployment, deploymentconfig, statefulset, rollouts.argoproj.io, pods, hpa). Sonuc set_stats app_hub_ocp_result.',
+    playbook_path: null,
+    env_var_name: 'APP_HUB_OCP_TEMPLATE_ID',
   },
   {
     key_name: 'opsx_openshift_pods',
@@ -5507,6 +5620,12 @@ async function setupTables() {
     { name: 'IX_eew_kosu_host', table: 'ear_envanter_warlari', cols: 'kosu_id, host, uyg_no' },
     { name: 'IX_eew_set', table: 'ear_envanter_warlari', cols: 'kutuphane_seti' },
     { name: 'IX_eesk_ad', table: 'ear_envanter_set_kutuphaneleri', cols: 'ad, surum' },
+    // BNV Hub: liste durum + son tarihe gore, gecmis ise gore okunur.
+    { name: 'IX_bnvis_durum', table: 'bnv_hub_isler', cols: 'durum, son_tarih' },
+    { name: 'IX_bnvnot_is', table: 'bnv_hub_notlar', cols: 'is_id, olusturma' },
+    // Uygulama Hub: son okuma uygulamaya gore, kaydin tekrari is numarasina gore aranir.
+    { name: 'IX_ahoc_app', table: 'app_hub_ocp_canli', cols: 'uygulama, alinma DESC' },
+    { name: 'IX_ahoc_job', table: 'app_hub_ocp_canli', cols: 'awx_server_id, awx_job_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {

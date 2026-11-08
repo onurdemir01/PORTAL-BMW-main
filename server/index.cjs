@@ -181,6 +181,8 @@ async function main() {
       init: () => require('./crypto-hub/index.cjs').initCryptoHub(app),
       optional: true,
     },
+    { name: 'bnvHub', init: () => require('./bnv-hub/index.cjs').initBnvHub(app), optional: true },
+    { name: 'appHub', init: () => require('./app-hub/index.cjs').initAppHub(app), optional: true },
     { name: 'oco', init: () => require('./oco/index.cjs').initOco(app), optional: true },
     {
       name: 'spa-report',

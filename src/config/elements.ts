@@ -32,6 +32,10 @@ export const PAGES: PageElement[] = [
   { id: 'NginxConsole', label: 'Nginx Hub', route: '/nginx-console' },
   { id: 'ServerHub', label: 'Server Hub', route: '/server-hub' },
   { id: 'CryptoHub', label: 'Crypto Hub', route: '/crypto-hub' },
+  // Uygulama Hub (2026-11-08): uygulama adiyla JBoss / WAS / OpenShift birlesik gorunum
+  { id: 'AppHub', label: 'Uygulama Hub', route: '/uygulama-hub' },
+  // BNV Hub (2026-11-08): ekibin acik isleri, yalniz Admin
+  { id: 'BnvHub', label: 'BNV Hub', route: '/bnv-hub' },
   { id: 'LogX', label: 'LogX', route: '/logx' },
   { id: 'OpsX', label: 'OpsX', route: '/opsx' },
   { id: 'FileX', label: 'FileX', route: '/filex' },
@@ -70,12 +74,16 @@ export const PAGES: PageElement[] = [
 export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'genel', label: 'Genel', itemIds: ['Dashboard'] },
   { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim'] },
+  // Uygulama Hub (2026-11-08): kendi girisi
+  { id: 'apphub', label: 'Uygulama Hub', itemIds: ['AppHub'] },
   // Nginx Hub tek basina bir sekme (2026-09-19)
   { id: 'nginxhub', label: 'Nginx Hub', itemIds: ['NginxConsole'] },
   // Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu, kendi girisi
   { id: 'serverhub', label: 'Server Hub', itemIds: ['ServerHub'] },
   // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
+  // BNV Hub (2026-11-08): acik isler / otomasyon talepleri, kendi girisi
+  { id: 'bnvhub', label: 'BNV Hub', itemIds: ['BnvHub'] },
   // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
   { id: 'arkspa', label: 'Nginx ARK SPA', itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },

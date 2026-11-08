@@ -6,7 +6,7 @@
 // Degisen tek sey sunum: ust yatay menu yerine koyu dikey nav + acilir bolumler.
 import React, { useContext, useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
 // Hub girisleri kendi markalariyla ayrisir (kullanici, 2026-09-26): Nginx, Tux, Bitcoin.
 import { NginxIcon, TuxIcon, BitcoinIcon } from "@/components/common/BrandIcons";
 import { AuthContext } from "@/contexts/AuthContext";
@@ -83,17 +83,23 @@ export default function PageNav({ onNavigate }: Props) {
               const isServerHub = item.id === "ServerHub";
               // Crypto Hub (2026-09-25): ayni "hub" cercevesi (bkz. index.css .crypto-hub-link)
               const isCryptoHub = item.id === "CryptoHub";
+              // BNV Hub (2026-11-08): ayni "hub" cercevesi, camgobegi (bkz. index.css .bnv-hub-link)
+              const isBnvHub = item.id === "BnvHub";
+              // Uygulama Hub (2026-11-08): ayni "hub" cercevesi, kehribar (bkz. index.css .app-hub-link)
+              const isAppHub = item.id === "AppHub";
               return (
                 <li key={group.id}>
                   <NavLink
                     to={item.to}
-                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}`}
+                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}${isBnvHub ? " nginx-hub-link bnv-hub-link" : ""}${isAppHub ? " nginx-hub-link app-hub-link" : ""}`}
                     style={{ paddingLeft: "1rem" }}
                     onClick={onNavigate}
                   >
                     {isHub ? <span className="nginx-hub-label"><NginxIcon className="h-4 w-4 shrink-0" /><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>
                       : isServerHub ? <span className="nginx-hub-label"><TuxIcon className="h-4 w-4 shrink-0" /><span>Server</span> <span className="nginx-hub-word">Hub</span></span>
                       : isCryptoHub ? <span className="nginx-hub-label"><BitcoinIcon className="h-4 w-4 shrink-0" /><span>Crypto</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isAppHub ? <span className="nginx-hub-label"><Squares2X2Icon className="h-4 w-4 shrink-0" /><span>Uygulama</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isBnvHub ? <span className="nginx-hub-label"><ClipboardDocumentCheckIcon className="h-4 w-4 shrink-0" /><span>BNV</span> <span className="nginx-hub-word">Hub</span></span>
                       : group.label}
                   </NavLink>
                 </li>

@@ -2,24 +2,40 @@
 // uygulama seçimi. DB erişilemezse (fallbackMode) otomatik olarak son bilinen snapshot'a
 // düşer ve kullanıcıya bunu açıkça bildirir (plan dosyası karar §2 — sayfa-geneli otomatik
 // fallback).
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   MagnifyingGlassIcon,
   ExclamationTriangleIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
 import { logxV2Api } from '@/api/logxV2Api';
+import { tekTamEslesme } from '@/utils/derinBaglanti';
 
 // Sunucudaki `SAFE_MANUAL_APP_RE` ile AYNI (server/logx/v2/legacy.cjs). Eskiden
 // istemci yalnizca uzunluga bakiyordu; kotu bicimli bir ad (bosluk iceren gibi)
 // kullanici sunuculari da sectikten SONRA, kesif aninda reddediliyordu.
 const SAFE_MANUAL_APP_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
-const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean }> = ({
-  onSelect,
-  busy,
-}) => {
-  const [search, setSearch] = useState('');
+// ÖN-DOLUM (Uygulama Hub derin bağlantısı, 2026-11-08): `initialSearch` kutuyu doldurur;
+// `autoSelectExact` açıksa İLK aramada liste tek satırsa ve o satır aranan adın kendisiyse
+// uygulama kendiliğinden seçilir. Taban ad + -D/-T/-Q varyantlarında seçim YAPILMAZ, kullanıcı
+// seçer (OpsX AppSearchStep ile aynı kural). Listede hiç yoksa Enter / "adıyla devam et" yolu açık.
+const AppSearchStep: React.FC<{
+  onSelect: (app: string) => void;
+  busy?: boolean;
+  initialSearch?: string;
+  autoSelectExact?: boolean;
+}> = ({ onSelect, busy, initialSearch, autoSelectExact }) => {
+  const [search, setSearch] = useState(initialSearch ?? '');
+  const [onDolumNotu, setOnDolumNotu] = useState<string | null>(null);
+  // Otomatik seçim YALNIZ ilk aramada denenir; kullanıcı yazmaya başladıysa bir daha asla.
+  const otomatikRef = useRef<string | null>(
+    autoSelectExact && initialSearch ? initialSearch : null,
+  );
+  const onSelectRef = useRef(onSelect);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
   const [apps, setApps] = useState<string[]>([]);
   const [fallbackMode, setFallbackMode] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -34,6 +50,20 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
         .then((r) => {
           setApps(r.apps);
           setFallbackMode(r.fallbackMode);
+          const hedef = otomatikRef.current;
+          if (hedef === null) return;
+          otomatikRef.current = null;
+          if (search !== hedef) return;
+          const tam = tekTamEslesme(r.apps, hedef);
+          if (tam) {
+            onSelectRef.current(tam);
+            return;
+          }
+          setOnDolumNotu(
+            r.apps.length === 0
+              ? `“${hedef}” envanterde bulunamadı — adıyla devam edebilir ya da başka uygulama arayabilirsiniz.`
+              : `“${hedef}” için ${r.apps.length} eşleşme var — log alınacak uygulamayı seçin.`,
+          );
         })
         .catch((err) => setError(err instanceof Error ? err.message : String(err)))
         .finally(() => setLoading(false));
@@ -51,6 +81,15 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
 
   return (
     <div className="space-y-3">
+      {onDolumNotu && (
+        <div
+          data-testid="logx-app-ondolum-notu"
+          className="flex items-start gap-2 rounded-xl border border-[var(--status-warning)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-text)]"
+        >
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{onDolumNotu}</span>
+        </div>
+      )}
       {fallbackMode && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -65,7 +104,10 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
         <input
           autoFocus
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            otomatikRef.current = null;
+            setSearch(e.target.value);
+          }}
           // ENTER: tam eslesme varsa onu, listede yoksa yazilan adi, tek sonuc varsa
           // onu secer; fareye gerek kalmadan ilerlenir.
           onKeyDown={(e) => {

@@ -21,21 +21,37 @@
 // sonra ayrıca soluk bir "Listeye Ekle" düğmesine basmak gerekiyordu; basılmazsa "Devam Et"
 // sebebi yazılmadan kapalı kalıyordu. Artık uygulamaya tıklamak onu ekler; namespace açık kalır
 // (aynı namespace'ten başka uygulama da seçilebilir), eklenenler listeden düşer.
-import React, { useEffect, useState } from "react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+//
+// ÖN-SEÇİM (Uygulama Hub derin bağlantısı, 2026-11-08): `initial` verilirse ortam/cluster grubu,
+// namespace ve uygulama zincirdeki her yükleme bittiğinde SIRAYLA uygulanır (env → namespace →
+// uygulama). Her aşama yalnız BİR KEZ denenir (`onSecimRef.asama`); geçersiz bir değer görünür
+// bir uyarıyla düşer, kalan seçim elle yapılır. "Devam Et" yine kullanıcıya bırakılır.
+import React, { useEffect, useRef, useState } from "react";
+import { XMarkIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
 import FilterableList from "@/components/common/FilterableList";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import type { OcpHedef } from "@/utils/derinBaglanti";
+
+type OnSecimAsamasi = OcpHedef & { asama: "env" | "ns" | "app" };
+
+// Büyük/küçük harf farkı bağlantıyı düşürmesin: anahtarın envanterdeki yazımı döner.
+function anahtarBul(keys: string[], aranan: string): string | null {
+  return keys.find((k) => k === aranan) ?? keys.find((k) => k.toLowerCase() === aranan.toLowerCase()) ?? null;
+}
 
 const OcpTargetStep: React.FC<{
   busy?: boolean;
+  initial?: OcpHedef | null;
   onSubmit: (v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) => void;
-}> = ({ busy, onSubmit }) => {
+}> = ({ busy, initial, onSubmit }) => {
   const [tree, setTree] = useState<Record<string, Record<string, string[]>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [env, setEnv] = useState("");
   const [tenant, setTenant] = useState("");
+  const onSecimRef = useRef<OnSecimAsamasi | null>(initial ? { ...initial, asama: "env" } : null);
+  const [onSecimUyari, setOnSecimUyari] = useState<string | null>(null);
 
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
   const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
@@ -63,7 +79,25 @@ const OcpTargetStep: React.FC<{
 
   useEffect(() => {
     opsxApi.getClusters()
-      .then((r) => setTree(r.tree))
+      .then((r) => {
+        setTree(r.tree);
+        const os = onSecimRef.current;
+        if (!os || os.asama !== "env") return;
+        const e = anahtarBul(Object.keys(r.tree || {}), os.env);
+        const t = e ? anahtarBul(Object.keys(r.tree[e] || {}), os.tenant) : null;
+        if (!e || !t) {
+          onSecimRef.current = null;
+          setOnSecimUyari(
+            !e
+              ? `Bağlantıdaki ortam “${os.env}” tanımlı değil — hedefi elle seçin.`
+              : `Bağlantıdaki cluster grubu “${os.tenant}” ${e} ortamında yok — hedefi elle seçin.`,
+          );
+          return;
+        }
+        onSecimRef.current = { ...os, env: e, tenant: t, asama: "ns" };
+        setEnv(e);
+        setTenant(t);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, []);
@@ -81,9 +115,32 @@ const OcpTargetStep: React.FC<{
     setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
     setNamespaceOptions([]); setAppOptions([]);
     if (!env || !tenant) return;
+    // Ön-seçimli namespace: listede varsa listeden seçilmiş gibi kilitlenir; listede yoksa
+    // (ya da liste okunamadıysa) "Yaz" kipine düşer — serbest yazım zaten meşru kaçış yolu —
+    // ve liste DOLUYKEN bunun bir sapma olduğu söylenir.
+    const onSecimNamespace = (liste: string[]) => {
+      const os = onSecimRef.current;
+      if (!os || os.asama !== "ns" || os.env !== env || os.tenant !== tenant) return;
+      const ns = anahtarBul(liste, os.namespace);
+      if (ns) {
+        onSecimRef.current = { ...os, namespace: ns, asama: "app" };
+        setNamespaceMode("list");
+        setNamespace(ns);
+        setSettledNamespace(ns);
+        setNamespaceLocked(true);
+        return;
+      }
+      onSecimRef.current = { ...os, asama: "app" };
+      setNamespaceMode("free");
+      setNamespace(os.namespace);
+      setSettledNamespace(os.namespace);
+      if (liste.length > 0) {
+        setOnSecimUyari(`“${os.namespace}” bu cluster grubunun namespace envanterinde yok — yazılı olarak dolduruldu; doğrulayın.`);
+      }
+    };
     opsxApi.getOcpNamespaces(env, tenant)
-      .then((r) => setNamespaceOptions(r.namespaces || []))
-      .catch(() => setNamespaceOptions([]));
+      .then((r) => { setNamespaceOptions(r.namespaces || []); onSecimNamespace(r.namespaces || []); })
+      .catch(() => { setNamespaceOptions([]); onSecimNamespace([]); });
   }, [env, tenant]);
 
   // namespace listeden seçilince (tıklama, anında) YA DA serbest yazımda kısa bir süre
@@ -98,9 +155,24 @@ const OcpTargetStep: React.FC<{
     setAppOptions([]);
     if (!env || !tenant || !settledNamespace) return;
     setAppsLoading(true);
+    // Ön-seçimli uygulama: listede varsa çift DOĞRUDAN eklenir (tıklamayla aynı sonuç);
+    // listede yoksa SESSİZCE DÜŞMEZ — kullanıcı neyin eklenmediğini görür.
+    const onSecimUygulama = (liste: string[]) => {
+      const os = onSecimRef.current;
+      if (!os || os.asama !== "app" || os.env !== env || os.tenant !== tenant || os.namespace !== settledNamespace) return;
+      onSecimRef.current = null;
+      const a = anahtarBul(liste, os.app);
+      if (!a) {
+        setOnSecimUyari(`“${os.app}” bu namespace'in uygulama listesinde yok — listeden seçin.`);
+        return;
+      }
+      const ns = settledNamespace;
+      setPairs((prev) => (prev.some((p) => p.namespace === ns && p.application === a) ? prev : [...prev, { namespace: ns, application: a }]));
+      setSonEklenen(`${ns}-${a}`);
+    };
     opsxApi.getOcpApps(env, tenant, settledNamespace)
-      .then((r) => setAppOptions(r.apps || []))
-      .catch(() => setAppOptions([]))
+      .then((r) => { setAppOptions(r.apps || []); onSecimUygulama(r.apps || []); })
+      .catch(() => { setAppOptions([]); onSecimUygulama([]); })
       .finally(() => setAppsLoading(false));
   }, [env, tenant, settledNamespace]);
 
@@ -140,13 +212,22 @@ const OcpTargetStep: React.FC<{
 
   return (
     <div className="space-y-4">
+      {onSecimUyari && (
+        <div
+          data-testid="opsx-ocp-ondolum-uyari"
+          className="flex items-start gap-2 rounded-xl border border-[var(--status-warning)] bg-[var(--status-warning-bg)] p-3 text-xs text-[var(--status-warning-text)]"
+        >
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>{onSecimUyari}</span>
+        </div>
+      )}
       <div>
         <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Ortam</label>
         <div className="flex flex-wrap gap-1.5">
           {envs.map((e) => (
             <button
               key={e}
-              onClick={() => { setEnv(e); setTenant(""); }}
+              onClick={() => { onSecimRef.current = null; setEnv(e); setTenant(""); }}
               className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${env === e ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
             >
               {e}
@@ -162,7 +243,7 @@ const OcpTargetStep: React.FC<{
             {tenants.map((t) => (
               <button
                 key={t}
-                onClick={() => setTenant(t)}
+                onClick={() => { onSecimRef.current = null; setTenant(t); }}
                 className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${tenant === t ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]"}`}
               >
                 {t}
