@@ -45,6 +45,7 @@ const KULLANIM = Object.freeze({
   nginx_loadtest_run: 'Nginx Hub > Yük Testi',
   crypto_hub_ops: 'Crypto Hub',
   crypto_hub_inventory: 'Crypto Hub (envanter)',
+  app_hub_ocp_canli: 'Application Hub (OpenShift canlı okuma)',
   server_hub_scan: 'Server Hub (tarama) ve App Retirement',
   server_hub_fix: 'Server Hub (düzeltme) ve App Retirement',
   reboot_check: 'Server Hub > Reboot Kontrolü',
