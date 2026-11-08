@@ -1,4 +1,4 @@
-// src/components/app_hub/WasGorunum.tsx — Uygulama Hub: WebSphere (WAS) application server'ı.
+// src/components/app_hub/WasGorunum.tsx — Application Hub: WebSphere (WAS) application server'ı.
 import React from 'react';
 import type { WasDetay } from '@/api/appHubApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';

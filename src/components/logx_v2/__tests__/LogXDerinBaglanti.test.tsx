@@ -1,4 +1,4 @@
-// src/components/logx_v2/__tests__/LogXDerinBaglanti.test.tsx — Uygulama Hub'dan ön-seçimli LogX (2026-11-08).
+// src/components/logx_v2/__tests__/LogXDerinBaglanti.test.tsx — Application Hub'dan ön-seçimli LogX (2026-11-08).
 //
 // Sözleşme: src/utils/derinBaglanti.ts. LogX her adımı sunucudaki logx_v2_requests kaydına yazar;
 // bu yüzden ön-seçimin EN ÖNEMLİ kuralı: bağlantı BİR KEZ uygulanır, URL'den silinir ve sayfa
@@ -72,7 +72,7 @@ beforeEach(() => {
   });
 });
 
-describe('LogX derin bağlantı (Uygulama Hub ön-seçimi)', () => {
+describe('LogX derin bağlantı (Application Hub ön-seçimi)', () => {
   it('LD1 legacy: tek istek, URL temizlenir, uygulama seçili; yenileme ikinci istek açmaz', async () => {
     m.getRequest.mockResolvedValue(istek('legacy'));
     m.searchLegacyApps.mockResolvedValue({ ok: true, apps: ['FOO-APP'], fallbackMode: false });

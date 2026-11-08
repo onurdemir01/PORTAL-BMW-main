@@ -1,4 +1,4 @@
-// server/app-hub/canli.cjs - Uygulama Hub: OpenShift canli detay (2026-11-08).
+// server/app-hub/canli.cjs - Application Hub: OpenShift canli detay (2026-11-08).
 //
 // Envanter (Openshift_Inventory) yalniz cluster / namespace / ad tutar; tur (Deployment mi
 // Argo Rollout mu), replika, imaj, kaynak, JVM env'leri ve pod -> node bilgisi yalniz canli
@@ -156,7 +156,7 @@ async function hedefleriKur(ad, yerler, secim) {
     for (const t of ev.terminal_hosts) if (t) terminal.add(t);
   }
   if (eksik.length && !ocpClusters.length) {
-    throw Object.assign(new Error(`Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${eksik.join(', ')}. Admin > LogX Yapılandırma ekranından girilmeli.`), { status: 400 });
+    throw Object.assign(new Error(`Şu cluster'lar için Jump Server (bastion) tanımlı değil: ${eksik.join(', ')}. Admin > OCP Yapılandırma ekranından cluster satırına Jump Server girin.`), { status: 400 });
   }
   const varOlan = new Set(ocpClusters.map((c) => L(c.cluster_name)));
   const runtime = ocp.buildOcpRuntimeVars(await require('../logx/v2/ocp-runtime-config.cjs').getConfig().catch(() => ({})));

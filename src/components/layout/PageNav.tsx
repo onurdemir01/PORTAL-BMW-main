@@ -83,23 +83,23 @@ export default function PageNav({ onNavigate }: Props) {
               const isServerHub = item.id === "ServerHub";
               // Crypto Hub (2026-09-25): ayni "hub" cercevesi (bkz. index.css .crypto-hub-link)
               const isCryptoHub = item.id === "CryptoHub";
-              // BNV Hub (2026-11-08): ayni "hub" cercevesi, camgobegi (bkz. index.css .bnv-hub-link)
-              const isBnvHub = item.id === "BnvHub";
-              // Uygulama Hub (2026-11-08): ayni "hub" cercevesi, kehribar (bkz. index.css .app-hub-link)
+              // BMW Hub (2026-11-08): ayni "hub" cercevesi, camgobegi (bkz. index.css .bmw-hub-link)
+              const isBmwHub = item.id === "BmwHub";
+              // Application Hub (2026-11-08): ayni "hub" cercevesi, kehribar (bkz. index.css .app-hub-link)
               const isAppHub = item.id === "AppHub";
               return (
                 <li key={group.id}>
                   <NavLink
                     to={item.to}
-                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}${isBnvHub ? " nginx-hub-link bnv-hub-link" : ""}${isAppHub ? " nginx-hub-link app-hub-link" : ""}`}
+                    className={({ isActive }) => `${linkClass({ isActive })}${isHub ? " nginx-hub-link" : ""}${isServerHub ? " nginx-hub-link server-hub-link" : ""}${isCryptoHub ? " nginx-hub-link crypto-hub-link" : ""}${isBmwHub ? " nginx-hub-link bmw-hub-link" : ""}${isAppHub ? " nginx-hub-link app-hub-link" : ""}`}
                     style={{ paddingLeft: "1rem" }}
                     onClick={onNavigate}
                   >
                     {isHub ? <span className="nginx-hub-label"><NginxIcon className="h-4 w-4 shrink-0" /><span>Nginx</span> <span className="nginx-hub-word">Hub</span></span>
                       : isServerHub ? <span className="nginx-hub-label"><TuxIcon className="h-4 w-4 shrink-0" /><span>Server</span> <span className="nginx-hub-word">Hub</span></span>
                       : isCryptoHub ? <span className="nginx-hub-label"><BitcoinIcon className="h-4 w-4 shrink-0" /><span>Crypto</span> <span className="nginx-hub-word">Hub</span></span>
-                      : isAppHub ? <span className="nginx-hub-label"><Squares2X2Icon className="h-4 w-4 shrink-0" /><span>Uygulama</span> <span className="nginx-hub-word">Hub</span></span>
-                      : isBnvHub ? <span className="nginx-hub-label"><ClipboardDocumentCheckIcon className="h-4 w-4 shrink-0" /><span>BNV</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isAppHub ? <span className="nginx-hub-label"><Squares2X2Icon className="h-4 w-4 shrink-0" /><span>Application</span> <span className="nginx-hub-word">Hub</span></span>
+                      : isBmwHub ? <span className="nginx-hub-label"><ClipboardDocumentCheckIcon className="h-4 w-4 shrink-0" /><span>BMW</span> <span className="nginx-hub-word">Hub</span></span>
                       : group.label}
                   </NavLink>
                 </li>

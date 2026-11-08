@@ -29,7 +29,7 @@ const OpsXWizardPage = lazyWithRetry(() => import('@/components/opsx/OpsXWizardP
 const NginxConsolePage = lazyWithRetry(() => import('@/components/nginx_console/NginxConsolePage'));
 const ServerHubPage = lazyWithRetry(() => import('@/components/server_hub/ServerHubPage'));
 const CryptoHubPage = lazyWithRetry(() => import('@/components/crypto_hub/CryptoHubPage'));
-const BnvHubPage = lazyWithRetry(() => import('@/components/bnv_hub/BnvHubPage'));
+const BmwHubPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubPage'));
 const AppHubPage = lazyWithRetry(() => import('@/components/app_hub/AppHubPage'));
 const ScaleXPage = lazyWithRetry(() => import('@/components/scalex/ScaleXPage'));
 const FileXWizardPage = lazyWithRetry(() => import('@/components/filex/FileXWizardPage'));
@@ -130,10 +130,10 @@ export default function App() {
               <Route path="/crypto-hub" element={<CryptoHubPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="AppHub" />}>
-              <Route path="/uygulama-hub" element={<AppHubPage />} />
+              <Route path="/application-hub" element={<AppHubPage />} />
             </Route>
-            <Route element={<PageVisibilityRoute pageId="BnvHub" />}>
-              <Route path="/bnv-hub" element={<BnvHubPage />} />
+            <Route element={<PageVisibilityRoute pageId="BmwHub" />}>
+              <Route path="/bmw-hub" element={<BmwHubPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="FileX" />}>
               <Route path="/filex" element={<FileXWizardPage />} />

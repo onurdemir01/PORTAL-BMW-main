@@ -1,9 +1,9 @@
 // src/utils/derinBaglanti.ts — OpsX / LogX sihirbazlarına uygulaması ÖN-SEÇİLİ gelen bağlantılar.
 //
-// Kullanıcı (Uygulama Hub): "Tıkladığı an OpsX'e yönlendiresin ve otomatik olarak OpsX JBoss
+// Kullanıcı (Application Hub): "Tıkladığı an OpsX'e yönlendiresin ve otomatik olarak OpsX JBoss
 // sayfasında uygulaması girili halde işlemler başlasın."
 //
-// SÖZLEŞME (değiştirmeyin; Uygulama Hub bu biçimde bağlantı kurar):
+// SÖZLEŞME (değiştirmeyin; Application Hub bu biçimde bağlantı kurar):
 //   /opsx?platform=jboss&app=<JBoss uygulama adı ya da taban ad>
 //   /opsx?platform=was&app=<WASAppsInventory.app>
 //   /opsx?platform=ocp&app=<ad>&env=<env>&tenant=<tenant>&namespace=<ns>[&cluster=<c>]
@@ -140,7 +140,7 @@ function sorgu(v: Record<string, string | undefined>): string {
   return p.toString();
 }
 
-/** Uygulama Hub gibi çağıranlar için: sözleşmeye uygun OpsX bağlantısı. */
+/** Application Hub gibi çağıranlar için: sözleşmeye uygun OpsX bağlantısı. */
 export function opsxDerinBaglanti(v: OpsxOnSecim): string {
   if (v.platform === 'ocp') {
     const { platform, app, env, tenant, namespace, cluster } = v;
@@ -149,7 +149,7 @@ export function opsxDerinBaglanti(v: OpsxOnSecim): string {
   return `/opsx?${sorgu({ platform: v.platform, app: v.app })}`;
 }
 
-/** Uygulama Hub gibi çağıranlar için: sözleşmeye uygun LogX bağlantısı. */
+/** Application Hub gibi çağıranlar için: sözleşmeye uygun LogX bağlantısı. */
 export function logxDerinBaglanti(v: LogxOnSecim): string {
   if (v.platform === 'openshift') {
     const { platform, app, env, tenant, namespace, cluster } = v;

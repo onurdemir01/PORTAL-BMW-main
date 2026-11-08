@@ -1,4 +1,4 @@
-// src/components/app_hub/OcpGorunum.tsx — Uygulama Hub: OpenShift uygulaması.
+// src/components/app_hub/OcpGorunum.tsx — Application Hub: OpenShift uygulaması.
 //
 // Envanter yalnız cluster / namespace / ad tutar. Tür (Deployment mı Argo Rollout mu), replika,
 // imaj, kaynak, JVM env'leri ve pod'ların node'ları "Canlı oku" ile gelir: tek bir salt okunur

@@ -1,17 +1,17 @@
-// server/bnv-hub/index.cjs - BNV Hub: ekibin acik isleri (2026-11-08).
+// server/bmw-hub/index.cjs - BMW Hub: ekibin acik isleri (2026-11-08).
 //
-// Kullanici: "otomasyon tasklari icin bir BNV Hub ve acik isler sayfasi olsun; is girebileyim,
+// Kullanici: "otomasyon tasklari icin bir BMW Hub ve acik isler sayfasi olsun; is girebileyim,
 // acik isleri, statulerini, deadline tarihlerini, isi kimin sahiplendigini goreyim. Sadece
 // adminler goruntulesin. Talebi acanin ismi de gozuksun."
 //
-// YETKI: her uc Admin ister (requireAdmin). Sayfa gorunurlugu (BnvHub, roles Admin) ekrani
+// YETKI: her uc Admin ister (requireAdmin). Sayfa gorunurlugu (BmwHub, roles Admin) ekrani
 // gizler; burasi VERIYI korur - bir gorunurluk kurali sayfayi bir kullaniciya acsa bile veri
 // yalniz Admin'e doner.
 //
 // KIM ACTI: istemciden gelen ad KULLANILMAZ; acan / not yazan / guncelleyen her zaman
 // oturumdaki kullanicidir (aksi halde baskasi adina is acilabilirdi).
 //
-// GECMIS: olusturma ve durum / sahip / son tarih / oncelik degisimi bnv_hub_notlar'a otomatik
+// GECMIS: olusturma ve durum / sahip / son tarih / oncelik degisimi bmw_hub_notlar'a otomatik
 // satir yazar. "Kim ne zaman tamamladi" sorusu boylece kayitsiz kalmaz.
 'use strict';
 
@@ -19,7 +19,7 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../db/index.cjs');
 const { requireAdmin, getRequestUser } = require('../auth/index.cjs');
-const K = require('../../shared/bnvHub.cjs');
+const K = require('../../shared/bmwHub.cjs');
 
 const LISTE_TAVAN = 2000;
 
@@ -97,7 +97,7 @@ const kapaliMi = (durum) => !(K.DURUMLAR.find((d) => d.key === durum) || {}).aci
 
 async function notYaz(isId, tur, metin, k) {
   await db.query(
-    `INSERT INTO bnv_hub_notlar (is_id, tur, metin, yazan_kullanici, yazan_ad) VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO bmw_hub_notlar (is_id, tur, metin, yazan_kullanici, yazan_ad) VALUES ($1, $2, $3, $4, $5)`,
     [isId, tur, metin, k.kullanici, k.ad],
   );
 }
@@ -105,7 +105,7 @@ async function notYaz(isId, tur, metin, k) {
 async function isEkle(v, k) {
   const id = randomUUID();
   await db.query(
-    `INSERT INTO bnv_hub_isler (id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen, son_tarih,
+    `INSERT INTO bmw_hub_isler (id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen, son_tarih,
        acan_kullanici, acan_ad, guncelleyen_ad, kapanis)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, ${kapaliMi(v.durum) ? 'GETUTCDATE()' : 'NULL'})`,
     [
@@ -128,7 +128,7 @@ async function isEkle(v, k) {
 }
 
 async function isOku(id) {
-  const { rows } = await db.query(`SELECT * FROM bnv_hub_isler WHERE id = $1`, [id]);
+  const { rows } = await db.query(`SELECT * FROM bmw_hub_isler WHERE id = $1`, [id]);
   return rows.length ? satirdanIs(rows[0]) : null;
 }
 
@@ -158,7 +158,7 @@ const KOLON = {
 };
 
 const dbHatasi = (res, e, ne) => {
-  console.warn(`[BnvHub] ${ne}: ${e && e.message}`);
+  console.warn(`[BmwHub] ${ne}: ${e && e.message}`);
   return res.status(500).json({ ok: false, error: `${ne}. Portal veritabanına ulaşılamıyor olabilir.` });
 };
 
@@ -166,18 +166,18 @@ function createRouter() {
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
   try {
-    router.use(require('../util/nginx-red.cjs').nginxRedCevirici({ onek: 'bnv' }));
+    router.use(require('../util/nginx-red.cjs').nginxRedCevirici({ onek: 'bmw' }));
   } catch {
     /* yoksay */
   }
   router.use(requireAdmin);
   try {
-    router.use(require('../auth/visibility.cjs').requireVisiblePrefix('BnvHub'));
+    router.use(require('../auth/visibility.cjs').requireVisiblePrefix('BmwHub'));
   } catch {
     /* motor yoksa yoksay */
   }
   try {
-    router.use(require('../audit/index.cjs').auditMutations('bnv_hub'));
+    router.use(require('../audit/index.cjs').auditMutations('bmw_hub'));
   } catch {
     /* yoksay */
   }
@@ -185,7 +185,7 @@ function createRouter() {
   router.get('/isler', async (_req, res) => {
     try {
       const { rows } = await db.query(
-        `SELECT TOP ${LISTE_TAVAN} * FROM bnv_hub_isler ORDER BY guncelleme DESC`,
+        `SELECT TOP ${LISTE_TAVAN} * FROM bmw_hub_isler ORDER BY guncelleme DESC`,
       );
       const isler = rows.map(satirdanIs);
       const bugun = K.bugunIst();
@@ -200,7 +200,7 @@ function createRouter() {
       const is = await isOku(req.params.id);
       if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       const { rows } = await db.query(
-        `SELECT * FROM bnv_hub_notlar WHERE is_id = $1 ORDER BY olusturma DESC, id DESC`,
+        `SELECT * FROM bmw_hub_notlar WHERE is_id = $1 ORDER BY olusturma DESC, id DESC`,
         [req.params.id],
       );
       res.json({ ok: true, is, notlar: rows.map(satirdanNot) });
@@ -243,13 +243,13 @@ function createRouter() {
       // Yarim kalan toplu ekleme geri alinir: "hepsi ya hicbiri" sozu DB hatasinda da gecerli.
       for (const id of eklenen) {
         try {
-          await db.query(`DELETE FROM bnv_hub_notlar WHERE is_id = $1`, [id]);
-          await db.query(`DELETE FROM bnv_hub_isler WHERE id = $1`, [id]);
+          await db.query(`DELETE FROM bmw_hub_notlar WHERE is_id = $1`, [id]);
+          await db.query(`DELETE FROM bmw_hub_isler WHERE id = $1`, [id]);
         } catch {
           /* geri alma da dustuyse asagidaki mesaj sayiyi soyler */
         }
       }
-      console.warn(`[BnvHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e && e.message}`);
+      console.warn(`[BmwHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e && e.message}`);
       return res.status(500).json({ ok: false, error: 'Toplu ekleme yarıda kaldı ve geri alındı. Portal veritabanını kontrol edip tekrar deneyin.' });
     }
     res.json({ ok: true, eklenen: eklenen.length });
@@ -270,7 +270,7 @@ function createRouter() {
       if (body.beklenenGuncelleme && body.beklenenGuncelleme !== eski.guncelleme) {
         return res.status(409).json({
           ok: false,
-          code: 'bnv_cakisma',
+          code: 'bmw_cakisma',
           error: `Bu iş siz düzenlerken ${eski.guncelleyenAd || 'başka biri'} tarafından değiştirildi. Sayfayı yenileyip tekrar deneyin.`,
           is: eski,
         });
@@ -289,7 +289,7 @@ function createRouter() {
       set.push(`guncelleyen_ad = $${params.length}`);
       set.push('guncelleme = GETUTCDATE()');
       params.push(req.params.id);
-      await db.query(`UPDATE bnv_hub_isler SET ${set.join(', ')} WHERE id = $${params.length}`, params);
+      await db.query(`UPDATE bmw_hub_isler SET ${set.join(', ')} WHERE id = $${params.length}`, params);
       for (const [tur, metin] of degisimMetinleri(eski, deger)) await notYaz(req.params.id, tur, metin, k);
       res.json({ ok: true, is: await isOku(req.params.id) });
     } catch (e) {
@@ -307,7 +307,7 @@ function createRouter() {
       if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
       const k = kim(req);
       await notYaz(req.params.id, 'not', metin, k);
-      await db.query(`UPDATE bnv_hub_isler SET guncelleme = GETUTCDATE(), guncelleyen_ad = $1 WHERE id = $2`, [
+      await db.query(`UPDATE bmw_hub_isler SET guncelleme = GETUTCDATE(), guncelleyen_ad = $1 WHERE id = $2`, [
         k.ad,
         req.params.id,
       ]);
@@ -321,9 +321,9 @@ function createRouter() {
     try {
       const is = await isOku(req.params.id);
       if (!is) return res.status(404).json({ ok: false, error: 'İş bulunamadı (silinmiş olabilir).' });
-      await db.query(`DELETE FROM bnv_hub_notlar WHERE is_id = $1`, [req.params.id]);
-      await db.query(`DELETE FROM bnv_hub_isler WHERE id = $1`, [req.params.id]);
-      console.log(`[BnvHub] is silindi: ${req.params.id} (${kim(req).kullanici})`);
+      await db.query(`DELETE FROM bmw_hub_notlar WHERE is_id = $1`, [req.params.id]);
+      await db.query(`DELETE FROM bmw_hub_isler WHERE id = $1`, [req.params.id]);
+      console.log(`[BmwHub] is silindi: ${req.params.id} (${kim(req).kullanici})`);
       res.json({ ok: true });
     } catch (e) {
       return dbHatasi(res, e, 'İş silinemedi');
@@ -333,9 +333,9 @@ function createRouter() {
   return router;
 }
 
-function initBnvHub(app) {
-  app.use('/api/bnv-hub', createRouter());
-  console.log('[BnvHub] module mounted at /api/bnv-hub');
+function initBmwHub(app) {
+  app.use('/api/bmw-hub', createRouter());
+  console.log('[BmwHub] module mounted at /api/bmw-hub');
 }
 
-module.exports = { initBnvHub, createRouter, _ic: { satirdanIs, ozetle, degisimMetinleri } };
+module.exports = { initBmwHub, createRouter, _ic: { satirdanIs, ozetle, degisimMetinleri } };

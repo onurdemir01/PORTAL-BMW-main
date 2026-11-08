@@ -16,7 +16,7 @@ import { tekTamEslesme } from '@/utils/derinBaglanti';
 // kullanici sunuculari da sectikten SONRA, kesif aninda reddediliyordu.
 const SAFE_MANUAL_APP_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
-// ÖN-DOLUM (Uygulama Hub derin bağlantısı, 2026-11-08): `initialSearch` kutuyu doldurur;
+// ÖN-DOLUM (Application Hub derin bağlantısı, 2026-11-08): `initialSearch` kutuyu doldurur;
 // `autoSelectExact` açıksa İLK aramada liste tek satırsa ve o satır aranan adın kendisiyse
 // uygulama kendiliğinden seçilir. Taban ad + -D/-T/-Q varyantlarında seçim YAPILMAZ, kullanıcı
 // seçer (OpsX AppSearchStep ile aynı kural). Listede hiç yoksa Enter / "adıyla devam et" yolu açık.

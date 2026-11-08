@@ -1,10 +1,10 @@
-// src/components/bnv_hub/BnvHubPage.tsx — BNV Hub: ekibin açık işleri (2026-11-08).
+// src/components/bmw_hub/BmwHubPage.tsx — BMW Hub: ekibin açık işleri (2026-11-08).
 //
-// Kullanıcı: "otomasyon taskları için bir BNV Hub ve açık işler sayfası olsun; iş girebileyim,
+// Kullanıcı: "otomasyon taskları için bir BMW Hub ve açık işler sayfası olsun; iş girebileyim,
 // açık işleri, statülerini, deadline tarihlerini, işi kimin sahiplendiğini göreyim. Sadece
 // adminler görsün. Talebi açanın ismi de gözüksün."
 //
-// Kurallar (durum, öncelik, tarih, toplu satır biçimi) shared/bnvHub.cjs'te: ekrandaki toplu
+// Kurallar (durum, öncelik, tarih, toplu satır biçimi) shared/bmwHub.cjs'te: ekrandaki toplu
 // ekleme önizlemesi sunucunun kaydedeceğiyle birebir aynı ayrıştırıcıyı kullanır.
 import React, { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -21,8 +21,8 @@ import {
   ExclamationTriangleIcon,
   UserIcon,
 } from '@heroicons/react/24/outline';
-import { bnvHubApi, type BnvIs, type BnvIsGirdi, type BnvNot, type BnvOzet, type BnvDurum, type BnvOncelik } from '@/api/bnvHubApi';
-import { DURUMLAR, ONCELIKLER, SINIR, VARSAYILAN_KATEGORI, topluAyristir, gecikmisMi } from '../../../shared/bnvHub.cjs';
+import { bmwHubApi, type BmwIs, type BmwIsGirdi, type BmwNot, type BmwOzet, type BmwDurum, type BmwOncelik } from '@/api/bmwHubApi';
+import { DURUMLAR, ONCELIKLER, SINIR, VARSAYILAN_KATEGORI, topluAyristir, gecikmisMi } from '../../../shared/bmwHub.cjs';
 import SectionHeader from '@/components/common/SectionHeader';
 import Button from '@/components/common/Button';
 import LoadError from '@/components/common/LoadError';
@@ -100,7 +100,7 @@ function trGun(sonTarih: string): string {
   return `${g}.${a}.${y}`;
 }
 
-function SonTarih({ is, bugun }: { is: BnvIs; bugun: string }) {
+function SonTarih({ is, bugun }: { is: BmwIs; bugun: string }) {
   if (!is.sonTarih) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
   const gec = gecikmisMi(is, bugun);
   const acik = ACIK_DURUMLAR.has(is.durum);
@@ -135,7 +135,7 @@ function OzetKutu({ label, value, aktif, ton, onClick }: { label: string; value:
   );
 }
 
-const BOS_GIRDI: BnvIsGirdi = { baslik: '', aciklama: '', durum: 'acik', oncelik: 'orta', kategori: VARSAYILAN_KATEGORI, sahip: '', beklenen: '', sonTarih: '' };
+const BOS_GIRDI: BmwIsGirdi = { baslik: '', aciklama: '', durum: 'acik', oncelik: 'orta', kategori: VARSAYILAN_KATEGORI, sahip: '', beklenen: '', sonTarih: '' };
 
 function IsFormu({
   deger,
@@ -143,72 +143,72 @@ function IsFormu({
   kisiler,
   benimAdim,
 }: {
-  deger: BnvIsGirdi;
-  setDeger: (f: (d: BnvIsGirdi) => BnvIsGirdi) => void;
+  deger: BmwIsGirdi;
+  setDeger: (f: (d: BmwIsGirdi) => BmwIsGirdi) => void;
   kisiler: string[];
   benimAdim: string;
 }) {
-  const alan = (k: keyof BnvIsGirdi) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const alan = (k: keyof BmwIsGirdi) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const v = e.target.value;
     setDeger((d) => ({ ...d, [k]: v }));
   };
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <Field label="Başlık" htmlFor="bnv-baslik" required className="md:col-span-2">
-        <TextInput id="bnv-baslik" value={deger.baslik || ''} onChange={alan('baslik')} maxLength={SINIR.baslik} placeholder="Örn. JBoss restart playbook'una prod onayı eklensin" autoFocus />
+      <Field label="Başlık" htmlFor="bmw-baslik" required className="md:col-span-2">
+        <TextInput id="bmw-baslik" value={deger.baslik || ''} onChange={alan('baslik')} maxLength={SINIR.baslik} placeholder="Örn. JBoss restart playbook'una prod onayı eklensin" autoFocus />
       </Field>
-      <Field label="Durum" htmlFor="bnv-durum">
-        <Select id="bnv-durum" value={deger.durum || 'acik'} onChange={alan('durum')}>
+      <Field label="Durum" htmlFor="bmw-durum">
+        <Select id="bmw-durum" value={deger.durum || 'acik'} onChange={alan('durum')}>
           {DURUMLAR.map((d: { key: string; label: string }) => (
             <option key={d.key} value={d.key}>{d.label}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Öncelik" htmlFor="bnv-oncelik">
-        <Select id="bnv-oncelik" value={deger.oncelik || 'orta'} onChange={alan('oncelik')}>
+      <Field label="Öncelik" htmlFor="bmw-oncelik">
+        <Select id="bmw-oncelik" value={deger.oncelik || 'orta'} onChange={alan('oncelik')}>
           {ONCELIKLER.map((o: { key: string; label: string }) => (
             <option key={o.key} value={o.key}>{o.label}</option>
           ))}
         </Select>
       </Field>
-      <Field label="Sahip" htmlFor="bnv-sahip" hint="İşi üstlenen kişi. Boş bırakılırsa iş 'sahipsiz' görünür.">
+      <Field label="Sahip" htmlFor="bmw-sahip" hint="İşi üstlenen kişi. Boş bırakılırsa iş 'sahipsiz' görünür.">
         <div className="flex gap-2">
-          <TextInput id="bnv-sahip" list="bnv-kisiler" value={deger.sahip || ''} onChange={alan('sahip')} maxLength={SINIR.kisi} placeholder="Ad Soyad" />
+          <TextInput id="bmw-sahip" list="bmw-kisiler" value={deger.sahip || ''} onChange={alan('sahip')} maxLength={SINIR.kisi} placeholder="Ad Soyad" />
           {benimAdim && deger.sahip !== benimAdim && (
             <Button type="button" size="sm" variant="secondary" onClick={() => setDeger((d) => ({ ...d, sahip: benimAdim }))}>
               Ben üstleneyim
             </Button>
           )}
         </div>
-        <datalist id="bnv-kisiler">
+        <datalist id="bmw-kisiler">
           {kisiler.map((k) => (
             <option key={k} value={k} />
           ))}
         </datalist>
       </Field>
-      <Field label="Son tarih" htmlFor="bnv-tarih">
-        <TextInput id="bnv-tarih" type="date" value={deger.sonTarih || ''} onChange={alan('sonTarih')} />
+      <Field label="Son tarih" htmlFor="bmw-tarih">
+        <TextInput id="bmw-tarih" type="date" value={deger.sonTarih || ''} onChange={alan('sonTarih')} />
       </Field>
-      <Field label="Kategori" htmlFor="bnv-kategori">
-        <TextInput id="bnv-kategori" list="bnv-kategoriler" value={deger.kategori || ''} onChange={alan('kategori')} maxLength={SINIR.kategori} placeholder={VARSAYILAN_KATEGORI} />
-        <datalist id="bnv-kategoriler">
+      <Field label="Kategori" htmlFor="bmw-kategori">
+        <TextInput id="bmw-kategori" list="bmw-kategoriler" value={deger.kategori || ''} onChange={alan('kategori')} maxLength={SINIR.kategori} placeholder={VARSAYILAN_KATEGORI} />
+        <datalist id="bmw-kategoriler">
           {['Otomasyon', 'Portal', 'Ansible / AWX', 'OpenShift', 'JBoss', 'WebSphere', 'Nginx', 'Diğer'].map((k) => (
             <option key={k} value={k} />
           ))}
         </datalist>
       </Field>
-      <Field label="Ne bekleniyor" htmlFor="bnv-beklenen" hint="Kimden ya da neyin gelmesi bekleniyor (örn. 'DBA'den log yedeği', 'Smart onayı').">
-        <TextInput id="bnv-beklenen" value={deger.beklenen || ''} onChange={alan('beklenen')} maxLength={SINIR.beklenen} />
+      <Field label="Ne bekleniyor" htmlFor="bmw-beklenen" hint="Kimden ya da neyin gelmesi bekleniyor (örn. 'DBA'den log yedeği', 'Smart onayı').">
+        <TextInput id="bmw-beklenen" value={deger.beklenen || ''} onChange={alan('beklenen')} maxLength={SINIR.beklenen} />
       </Field>
-      <Field label="Açıklama" htmlFor="bnv-aciklama" className="md:col-span-2">
-        <Textarea id="bnv-aciklama" rows={5} value={deger.aciklama || ''} onChange={alan('aciklama')} maxLength={SINIR.aciklama} />
+      <Field label="Açıklama" htmlFor="bmw-aciklama" className="md:col-span-2">
+        <Textarea id="bmw-aciklama" rows={5} value={deger.aciklama || ''} onChange={alan('aciklama')} maxLength={SINIR.aciklama} />
       </Field>
     </div>
   );
 }
 
 function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open: boolean; onClose: () => void; onKaydedildi: () => void; kisiler: string[]; benimAdim: string }) {
-  const [deger, setDeger] = useState<BnvIsGirdi>(BOS_GIRDI);
+  const [deger, setDeger] = useState<BmwIsGirdi>(BOS_GIRDI);
   const [kaydediyor, setKaydediyor] = useState(false);
   const kaydet = async () => {
     if (kaydediyor) return;
@@ -218,7 +218,7 @@ function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open
     }
     setKaydediyor(true);
     try {
-      await bnvHubApi.ekle(deger);
+      await bmwHubApi.ekle(deger);
       toast.success('İş eklendi.');
       onKaydedildi();
       onClose();
@@ -252,21 +252,21 @@ function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open
 const TOPLU_ORNEK = [
   '# Her satır bir iş. Alanlar | ile ayrılır; yalnız başlık zorunlu, sondakiler atlanabilir.',
   '# Başlık | Sahip | Son tarih | Öncelik | Durum | Ne bekleniyor | Açıklama',
-  'Uygulama Hub: JVM parametre toplama playbook\'u | Onur Demir | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak',
+  'Application Hub: JVM parametre toplama playbook\'u | Onur Demir | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak',
   'TBMWANS parolası vault\'a taşınsın | | 2026-12-01 | orta | beklemede | DBA onayı',
 ].join('\n');
 
 function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: () => void; onKaydedildi: () => void }) {
   const [metin, setMetin] = useState('');
   const [kaydediyor, setKaydediyor] = useState(false);
-  const sonuc = useMemo(() => topluAyristir(metin) as { satir: number; deger: BnvIsGirdi; hatalar: string[] }[], [metin]);
+  const sonuc = useMemo(() => topluAyristir(metin) as { satir: number; deger: BmwIsGirdi; hatalar: string[] }[], [metin]);
   const hatali = sonuc.filter((s) => s.hatalar.length).length;
   const fazla = sonuc.length > SINIR.toplu;
   const ekle = async () => {
     if (kaydediyor || !sonuc.length || hatali || fazla) return;
     setKaydediyor(true);
     try {
-      const n = await bnvHubApi.toplu(metin);
+      const n = await bmwHubApi.toplu(metin);
       toast.success(`${n} iş eklendi.`);
       onKaydedildi();
       onClose();
@@ -370,9 +370,9 @@ function IsDetayModal({
   benimAdim: string;
   bugun: string;
 }) {
-  const [is, setIs] = useState<BnvIs | null>(null);
-  const [notlar, setNotlar] = useState<BnvNot[]>([]);
-  const [deger, setDeger] = useState<BnvIsGirdi>(BOS_GIRDI);
+  const [is, setIs] = useState<BmwIs | null>(null);
+  const [notlar, setNotlar] = useState<BmwNot[]>([]);
+  const [deger, setDeger] = useState<BmwIsGirdi>(BOS_GIRDI);
   const [hata, setHata] = useState('');
   const [yukleniyor, setYukleniyor] = useState(false);
   const [kaydediyor, setKaydediyor] = useState(false);
@@ -384,7 +384,7 @@ function IsDetayModal({
     setYukleniyor(true);
     setHata('');
     try {
-      const r = await bnvHubApi.detay(id);
+      const r = await bmwHubApi.detay(id);
       setIs(r.is);
       setNotlar(r.notlar);
       setDeger({
@@ -410,9 +410,9 @@ function IsDetayModal({
   }, [isId, yukle]);
 
   const degisenler = useMemo(() => {
-    if (!is) return {} as BnvIsGirdi;
-    const d: BnvIsGirdi = {};
-    (Object.keys(deger) as (keyof BnvIsGirdi)[]).forEach((k) => {
+    if (!is) return {} as BmwIsGirdi;
+    const d: BmwIsGirdi = {};
+    (Object.keys(deger) as (keyof BmwIsGirdi)[]).forEach((k) => {
       if ((deger[k] ?? '') !== ((is as unknown as Record<string, string>)[k] ?? '')) (d as Record<string, unknown>)[k] = deger[k];
     });
     return d;
@@ -423,14 +423,14 @@ function IsDetayModal({
     if (!is || kaydediyor || !kirli) return;
     setKaydediyor(true);
     try {
-      await bnvHubApi.guncelle(is.id, degisenler, is.guncelleme);
+      await bmwHubApi.guncelle(is.id, degisenler, is.guncelleme);
       toast.success('Kaydedildi.');
       onDegisti();
       await yukle(is.id);
     } catch (e) {
       const err = e as Error & { code?: string };
-      toast.error(err.message, err.code === 'bnv_cakisma' ? 9000 : 5000);
-      if (err.code === 'bnv_cakisma') await yukle(is.id);
+      toast.error(err.message, err.code === 'bmw_cakisma' ? 9000 : 5000);
+      if (err.code === 'bmw_cakisma') await yukle(is.id);
     } finally {
       setKaydediyor(false);
     }
@@ -440,7 +440,7 @@ function IsDetayModal({
     if (!is || notYaziyor || !notMetni.trim()) return;
     setNotYaziyor(true);
     try {
-      await bnvHubApi.notEkle(is.id, notMetni.trim());
+      await bmwHubApi.notEkle(is.id, notMetni.trim());
       setNotMetni('');
       onDegisti();
       await yukle(is.id);
@@ -454,7 +454,7 @@ function IsDetayModal({
   const sil = async () => {
     if (!is) return;
     try {
-      await bnvHubApi.sil(is.id);
+      await bmwHubApi.sil(is.id);
       toast.success('İş silindi.');
       onDegisti();
       onClose();
@@ -547,9 +547,9 @@ function IsDetayModal({
 }
 
 // Panoda "Açık işler" görünümü Tamamlandı sütununu boş bırakmasın: son 14 günde bitenler de gelir.
-const yeniBitti = (i: BnvIs) => i.durum === 'tamam' && !!i.kapanis && Date.now() - Date.parse(i.kapanis) < 14 * 86400000;
+const yeniBitti = (i: BmwIs) => i.durum === 'tamam' && !!i.kapanis && Date.now() - Date.parse(i.kapanis) < 14 * 86400000;
 
-function PanoKart({ is, bugun, onAc }: { is: BnvIs; bugun: string; onAc: () => void }) {
+function PanoKart({ is, bugun, onAc }: { is: BmwIs; bugun: string; onAc: () => void }) {
   const gec = gecikmisMi(is, bugun);
   return (
     <button
@@ -579,7 +579,7 @@ function PanoKart({ is, bugun, onAc }: { is: BnvIs; bugun: string; onAc: () => v
   );
 }
 
-export default function BnvHubPage() {
+export default function BmwHubPage() {
   const { user } = useAuth();
   const benimAdim = (user?.displayName || user?.username || '').trim();
   const [params, setParams] = useSearchParams();
@@ -587,8 +587,8 @@ export default function BnvHubPage() {
   const duzen = (params.get('duzen') === 'pano' ? 'pano' : 'liste') as Duzen;
   const seciliId = params.get('is');
 
-  const [isler, setIsler] = useState<BnvIs[]>([]);
-  const [ozet, setOzet] = useState<BnvOzet | null>(null);
+  const [isler, setIsler] = useState<BmwIs[]>([]);
+  const [ozet, setOzet] = useState<BmwOzet | null>(null);
   const [bugun, setBugun] = useState('');
   const [tavan, setTavan] = useState<number | null>(null);
   const [hata, setHata] = useState('');
@@ -613,7 +613,7 @@ export default function BnvHubPage() {
   const yukle = useCallback(async () => {
     setYukleniyor(true);
     try {
-      const r = await bnvHubApi.liste();
+      const r = await bmwHubApi.liste();
       setIsler(r.isler);
       setOzet(r.ozet);
       setBugun(r.bugun);
@@ -646,7 +646,7 @@ export default function BnvHubPage() {
   const sahipler = useMemo(() => [...new Set(isler.map((i) => i.sahip).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')), [isler]);
 
   const benimMi = useCallback(
-    (i: BnvIs) => {
+    (i: BmwIs) => {
       const ad = benimAdim.toLocaleLowerCase('tr');
       return !!ad && i.sahip.toLocaleLowerCase('tr') === ad;
     },
@@ -686,12 +686,12 @@ export default function BnvHubPage() {
       });
   }, [isler, gorunum, duzen, sahipSuz, oncelikSuz, ara, bugun, benimMi]);
 
-  const hizliDurum = async (i: BnvIs, durum: BnvDurum) => {
+  const hizliDurum = async (i: BmwIs, durum: BmwDurum) => {
     if (durum === i.durum) return;
     const eski = isler;
     setIsler((l) => l.map((x) => (x.id === i.id ? { ...x, durum } : x)));
     try {
-      await bnvHubApi.guncelle(i.id, { durum }, i.guncelleme);
+      await bmwHubApi.guncelle(i.id, { durum }, i.guncelleme);
       toast.success(`Durum: ${DURUM_AD[durum]}`);
       yukle();
     } catch (e) {
@@ -703,12 +703,12 @@ export default function BnvHubPage() {
 
   const benimSayi = useMemo(() => isler.filter((i) => ACIK_DURUMLAR.has(i.durum) && benimMi(i)).length, [isler, benimMi]);
 
-  const panoKolonlari = DURUMLAR.filter((d: { key: string }) => d.key !== "iptal") as { key: BnvDurum; label: string }[];
+  const panoKolonlari = DURUMLAR.filter((d: { key: string }) => d.key !== "iptal") as { key: BmwDurum; label: string }[];
 
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="BNV Hub"
+        title="BMW Hub"
         subtitle="Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor."
         actions={
           <>
@@ -726,7 +726,7 @@ export default function BnvHubPage() {
       />
 
       {hata && !isler.length ? (
-        <LoadError title="BNV Hub yüklenemedi" message={hata} onRetry={yukle} retrying={yukleniyor} />
+        <LoadError title="BMW Hub yüklenemedi" message={hata} onRetry={yukle} retrying={yukleniyor} />
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -871,11 +871,11 @@ export default function BnvHubPage() {
                         </div>
                       </td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <label className="sr-only" htmlFor={`bnv-d-${i.id}`}>Durum</label>
+                        <label className="sr-only" htmlFor={`bmw-d-${i.id}`}>Durum</label>
                         <select
-                          id={`bnv-d-${i.id}`}
+                          id={`bmw-d-${i.id}`}
                           value={i.durum}
-                          onChange={(e) => hizliDurum(i, e.target.value as BnvDurum)}
+                          onChange={(e) => hizliDurum(i, e.target.value as BmwDurum)}
                           className="rounded-full px-2 py-0.5 text-[11px] font-semibold cursor-pointer focus-visible:outline focus-visible:outline-2"
                           style={{ color: (DURUM_TON[i.durum] || DURUM_TON.acik).fg, background: (DURUM_TON[i.durum] || DURUM_TON.acik).bg, border: `1px solid ${(DURUM_TON[i.durum] || DURUM_TON.acik).fg}` }}
                         >
@@ -884,7 +884,7 @@ export default function BnvHubPage() {
                           ))}
                         </select>
                       </td>
-                      <td className="px-3 py-2.5"><OncelikIsaret oncelik={i.oncelik as BnvOncelik} /></td>
+                      <td className="px-3 py-2.5"><OncelikIsaret oncelik={i.oncelik as BmwOncelik} /></td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: i.sahip ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {i.sahip || <em>sahipsiz</em>}
                       </td>

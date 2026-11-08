@@ -6,7 +6,7 @@ import { MagnifyingGlassIcon, ExclamationTriangleIcon } from "@heroicons/react/2
 import { opsxApi } from "@/api/opsxApi";
 import { tekTamEslesme } from "@/utils/derinBaglanti";
 
-// ÖN-DOLUM (Uygulama Hub derin bağlantısı, 2026-11-08): `initialSearch` arama kutusunu doldurur.
+// ÖN-DOLUM (Application Hub derin bağlantısı, 2026-11-08): `initialSearch` arama kutusunu doldurur.
 // `autoSelectExact` açıksa İLK arama sonucunda liste TEK satırsa ve o satır aranan adın KENDİSİYSE
 // (büyük/küçük harf duyarsız) uygulama kendiliğinden seçilir. Taban ad verilip envanterde
 // -D/-T/-Q varyantları varsa (arama LIKE %ad% — birden çok satır döner) seçim YAPILMAZ:

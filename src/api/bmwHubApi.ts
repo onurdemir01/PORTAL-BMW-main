@@ -1,18 +1,18 @@
-// src/api/bnvHubApi.ts — BNV Hub (2026-11-08): ekibin açık işleri.
-// Sunucu karşılığı: server/bnv-hub/index.cjs · Kurallar: shared/bnvHub.cjs
+// src/api/bmwHubApi.ts — BMW Hub (2026-11-08): ekibin açık işleri.
+// Sunucu karşılığı: server/bmw-hub/index.cjs · Kurallar: shared/bmwHub.cjs
 import { okJson } from './http';
 
-const BASE = '/api/bnv-hub';
+const BASE = '/api/bmw-hub';
 
-export type BnvDurum = 'acik' | 'devam' | 'bekliyor' | 'tamam' | 'iptal';
-export type BnvOncelik = 'yuksek' | 'orta' | 'dusuk';
+export type BmwDurum = 'acik' | 'devam' | 'bekliyor' | 'tamam' | 'iptal';
+export type BmwOncelik = 'yuksek' | 'orta' | 'dusuk';
 
-export interface BnvIs {
+export interface BmwIs {
   id: string;
   baslik: string;
   aciklama: string;
-  durum: BnvDurum;
-  oncelik: BnvOncelik;
+  durum: BmwDurum;
+  oncelik: BmwOncelik;
   kategori: string;
   sahip: string;
   /** Ne / kimden bekleniyor (serbest metin). */
@@ -27,7 +27,7 @@ export interface BnvIs {
   kapanis: string | null;
 }
 
-export interface BnvNot {
+export interface BmwNot {
   id: number;
   /** not | olusturma | durum | sahip | tarih | oncelik */
   tur: string;
@@ -37,7 +37,7 @@ export interface BnvNot {
   olusturma: string | null;
 }
 
-export interface BnvOzet {
+export interface BmwOzet {
   acik: number;
   gecikmis: number;
   sahipsiz: number;
@@ -45,27 +45,27 @@ export interface BnvOzet {
   tamamlanan30: number;
 }
 
-export type BnvIsGirdi = Partial<Pick<BnvIs, 'baslik' | 'aciklama' | 'durum' | 'oncelik' | 'kategori' | 'sahip' | 'beklenen' | 'sonTarih'>>;
+export type BmwIsGirdi = Partial<Pick<BmwIs, 'baslik' | 'aciklama' | 'durum' | 'oncelik' | 'kategori' | 'sahip' | 'beklenen' | 'sonTarih'>>;
 
 const JSON_HDR = { 'Content-Type': 'application/json' };
 
-export const bnvHubApi = {
-  async liste(): Promise<{ isler: BnvIs[]; ozet: BnvOzet; bugun: string; tavan: number | null }> {
+export const bmwHubApi = {
+  async liste(): Promise<{ isler: BmwIs[]; ozet: BmwOzet; bugun: string; tavan: number | null }> {
     const j = await okJson(await fetch(`${BASE}/isler`));
     if (j.ok === false) throw new Error(j.error || 'İşler okunamadı.');
     return j;
   },
-  async detay(id: string): Promise<{ is: BnvIs; notlar: BnvNot[] }> {
+  async detay(id: string): Promise<{ is: BmwIs; notlar: BmwNot[] }> {
     const j = await okJson(await fetch(`${BASE}/isler/${encodeURIComponent(id)}`));
     if (j.ok === false) throw new Error(j.error || 'İş okunamadı.');
     return j;
   },
-  async ekle(girdi: BnvIsGirdi): Promise<BnvIs> {
+  async ekle(girdi: BmwIsGirdi): Promise<BmwIs> {
     const j = await okJson(await fetch(`${BASE}/isler`, { method: 'POST', headers: JSON_HDR, body: JSON.stringify(girdi) }));
     if (j.ok === false) throw new Error(j.error || 'İş kaydedilemedi.');
     return j.is;
   },
-  async guncelle(id: string, girdi: BnvIsGirdi, beklenenGuncelleme?: string | null): Promise<BnvIs> {
+  async guncelle(id: string, girdi: BmwIsGirdi, beklenenGuncelleme?: string | null): Promise<BmwIs> {
     const body = beklenenGuncelleme ? { ...girdi, beklenenGuncelleme } : girdi;
     const j = await okJson(
       await fetch(`${BASE}/isler/${encodeURIComponent(id)}`, { method: 'PATCH', headers: JSON_HDR, body: JSON.stringify(body) }),

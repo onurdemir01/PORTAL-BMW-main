@@ -1,6 +1,6 @@
-// shared/bnvHub.cjs - BNV Hub (acik isler) kurallari: sunucu ve ekran AYNI kurali kullanir.
+// shared/bmwHub.cjs - BMW Hub (acik isler) kurallari: sunucu ve ekran AYNI kurali kullanir.
 //
-// Kullanici (2026-11-08): "otomasyon tasklari icin bir BNV Hub ve acik isler sayfasi olsun;
+// Kullanici (2026-11-08): "otomasyon tasklari icin bir BMW Hub ve acik isler sayfasi olsun;
 // is girebileyim, hangi acik islerin oldugunu, statulerini, deadline tarihlerini, isi kimin
 // sahiplendigini goreyim. Sadece adminler gorsun. Talebi acanin ismi de gozuksun."
 //

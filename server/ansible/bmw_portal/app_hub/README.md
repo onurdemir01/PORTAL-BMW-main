@@ -1,6 +1,6 @@
-# app_hub — Uygulama Hub OpenShift canlı okuma
+# app_hub — Application Hub OpenShift canlı okuma
 
-Portal'daki **Uygulama Hub** ekranı (`/uygulama-hub`) bir OpenShift uygulaması için envanterde olmayan bilgiyi bu işle okur:
+Portal'daki **Application Hub** ekranı (`/application-hub`) bir OpenShift uygulaması için envanterde olmayan bilgiyi bu işle okur:
 
 - tür: Deployment, DeploymentConfig, StatefulSet ya da Argo Rollout
 - replika (istenen / hazır / güncel / kullanılabilir), strateji, Argo CD izi

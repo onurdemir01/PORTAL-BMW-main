@@ -111,7 +111,7 @@
      basiyordu — `--nav-text`in basina gelenin aynisi. Acik tema degeri degismedi. */
   --ch-hue:             #7c5cff;
   --ch-hue-soft:        rgba(124, 92, 255, 0.16);
-  /* BNV Hub (acik isler) camgobegi, Uygulama Hub kehribar tonu - .crypto-hub-link ile ayni kalip. */
+  /* BMW Hub (acik isler) camgobegi, Application Hub kehribar tonu - .crypto-hub-link ile ayni kalip. */
   --bh-hue:             #0f8a7e;
   --bh-hue-soft:        rgba(15, 138, 126, 0.16);
   --ah-hue:             #b45309;
@@ -943,13 +943,13 @@ thead th {
   from { text-shadow: 0 0 2px var(--ch-hue-soft); color: var(--ch-hue); }
   to { text-shadow: 0 0 10px var(--ch-hue-soft), 0 0 18px var(--ch-hue-soft); color: var(--ch-hue); }
 }
-/* BNV Hub ve Uygulama Hub: Crypto Hub kalibi, kendi tonlari (--bh-* / --ah-* :root ve dark altinda). */
-.bnv-hub-link::before {
+/* BMW Hub ve Application Hub: Crypto Hub kalibi, kendi tonlari (--bh-* / --ah-* :root ve dark altinda). */
+.bmw-hub-link::before {
   background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--bh-hue-soft) 74%, var(--bh-hue) 86%, var(--bh-hue) 93%, transparent 100%);
 }
-.bnv-hub-link::after { border-color: var(--bh-hue); }
-.bnv-hub-link.is-current { background: var(--bh-hue-soft); }
-.bnv-hub-link .nginx-hub-word { color: var(--bh-hue); text-shadow: 0 0 6px var(--bh-hue-soft); animation-name: bh-glow; }
+.bmw-hub-link::after { border-color: var(--bh-hue); }
+.bmw-hub-link.is-current { background: var(--bh-hue-soft); }
+.bmw-hub-link .nginx-hub-word { color: var(--bh-hue); text-shadow: 0 0 6px var(--bh-hue-soft); animation-name: bh-glow; }
 @keyframes bh-glow {
   from { text-shadow: 0 0 2px var(--bh-hue-soft); color: var(--bh-hue); }
   to { text-shadow: 0 0 10px var(--bh-hue-soft), 0 0 18px var(--bh-hue-soft); color: var(--bh-hue); }

@@ -19,7 +19,7 @@ const OcpClusterPickStep: React.FC<{
   env: string;
   tenant: string;
   busy?: boolean;
-  // Uygulama Hub derin bağlantısından gelen cluster: grupta VARSA önceden işaretlenir (yalnız
+  // Application Hub derin bağlantısından gelen cluster: grupta VARSA önceden işaretlenir (yalnız
   // işaret — tetikleme yine kullanıcının düğmesiyle). Grupta yoksa yok sayılır.
   initialCluster?: string | null;
   // Belirli bir cluster adı YA DA "" (tüm grup — bkz. dosya başı notu).

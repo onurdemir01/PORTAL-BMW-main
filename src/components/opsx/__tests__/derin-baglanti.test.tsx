@@ -1,4 +1,4 @@
-// src/components/opsx/__tests__/derin-baglanti.test.tsx — Uygulama Hub'dan ön-seçimli OpsX (2026-11-08).
+// src/components/opsx/__tests__/derin-baglanti.test.tsx — Application Hub'dan ön-seçimli OpsX (2026-11-08).
 //
 // Kullanıcı: "Tıkladığı an OpsX'e yönlendiresin ve otomatik olarak OpsX JBoss sayfasında
 // uygulaması girili halde işlemler başlasın." Sözleşme: src/utils/derinBaglanti.ts.
@@ -53,7 +53,7 @@ beforeEach(() => {
   m.getOcpApps.mockResolvedValue({ ok: true, apps: ['app-1', 'app-2'] });
 });
 
-describe('OpsX derin bağlantı (Uygulama Hub ön-seçimi)', () => {
+describe('OpsX derin bağlantı (Application Hub ön-seçimi)', () => {
   it('DB1 JBoss tek tam eşleşme: JBoss Sürümü adımına gelinir, URL temizlenir', async () => {
     m.searchApps.mockResolvedValue({ apps: ['FOO-APP'], fallbackMode: false });
     ac('/opsx?platform=jboss&app=foo-app');

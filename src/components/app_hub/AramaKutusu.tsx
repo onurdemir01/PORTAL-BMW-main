@@ -1,5 +1,5 @@
 // src/components/app_hub/AramaKutusu.tsx — Uygulama adıyla JBoss / WebSphere / OpenShift araması.
-// Uygulama Hub sayfası ve Dashboard (ana karşılama) aynı kutuyu kullanır.
+// Application Hub sayfası ve Dashboard (ana karşılama) aynı kutuyu kullanır.
 import React, { useEffect, useRef, useState } from 'react';
 import { MagnifyingGlassIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { appHubApi, type AppAramaSonucu, type AppTip } from '@/api/appHubApi';

@@ -170,7 +170,7 @@ const WasHostPicker: React.FC<{
   );
 };
 
-// `initialApp` (Uygulama Hub derin bağlantısı): uygulama ÖN-SEÇİLİ gelir, doğrudan sunucu
+// `initialApp` (Application Hub derin bağlantısı): uygulama ÖN-SEÇİLİ gelir, doğrudan sunucu
 // listesi (WasHostPicker) açılır. Ad envanterde yoksa sunucu listesi boş/hatalı döner ve picker
 // bunu görünür biçimde söyler; "Başka uygulama" her zaman arama listesine döndürür.
 const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit: (v: WasAppSelection) => void }> = ({ busy, initialApp, onSubmit }) => {

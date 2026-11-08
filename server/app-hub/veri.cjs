@@ -1,4 +1,4 @@
-// server/app-hub/veri.cjs - Uygulama Hub veri okuyuculari (2026-11-08).
+// server/app-hub/veri.cjs - Application Hub veri okuyuculari (2026-11-08).
 //
 // Kullanici: "baglanan kisi sadece uygulamasinin ismini yazip bu uygulamaya dair her sey
 // gozuksun: JBoss ise hangi versiyonlarda, hangi sunucularda, hangi JVM parametreleriyle

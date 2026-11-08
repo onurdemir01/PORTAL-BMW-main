@@ -260,7 +260,7 @@ const LogXWizardPage: React.FC = () => {
     return r;
   }, []);
 
-  // ÖN-SEÇİM (Uygulama Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
+  // ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
   // `legacyOnSecim` legacy AppSearchStep'i doldurur (`otomatik`: ilk girişte tek tam eşleşmeyi
   // seçer); `ocpOnArama` AppNameStep aramasını doldurur. İkisi de ilk kullanımda TÜKETİLİR:
   // "← Geri" ile dönen kullanıcı aynı otomatik seçimle tekrar ileri itilmez.

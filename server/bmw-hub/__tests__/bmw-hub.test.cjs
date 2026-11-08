@@ -1,4 +1,4 @@
-// server/bnv-hub/__tests__/bnv-hub.test.cjs - BN1..BN9 (2026-11-08).
+// server/bmw-hub/__tests__/bmw-hub.test.cjs - BN1..BN9 (2026-11-08).
 //
 // Kullanici: "sadece adminlerin goruntuleyebilecegi bir sayfa olsun; talebi acan kisinin ismi de
 // gozuksun." Kilitler: Admin disi hicbir uca ulasamaz; acan / yazan kisi ISTEMCIDEN degil
@@ -10,7 +10,7 @@ const assert = require('node:assert/strict');
 const Module = require('node:module');
 const express = require('express');
 
-const K = require('../../../shared/bnvHub.cjs');
+const K = require('../../../shared/bmwHub.cjs');
 
 // ── Sahte modul yardimcisi ─────────────────────────────────────────────────────
 function sahte(yol, exp) {
@@ -20,14 +20,14 @@ function sahte(yol, exp) {
   require.cache[yol] = m;
 }
 
-// Bellek ici "veritabani": bnv-hub'in kullandigi SQL kaliplarini taniyan kucuk bir sahte.
+// Bellek ici "veritabani": bmw-hub'in kullandigi SQL kaliplarini taniyan kucuk bir sahte.
 const DB = { isler: new Map(), notlar: [], sorgular: [], dusur: null };
 const simdi = () => new Date('2026-11-08T09:00:00Z');
 async function sahteQuery(sql, params = []) {
   DB.sorgular.push(sql);
   if (DB.dusur && DB.dusur(sql)) throw new Error('sahte db hatasi');
   const s = sql.replace(/\s+/g, ' ').trim();
-  if (s.startsWith('INSERT INTO bnv_hub_isler')) {
+  if (s.startsWith('INSERT INTO bmw_hub_isler')) {
     const [id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen, son, ak, aa, ga] = params;
     DB.isler.set(id, {
       id, baslik, aciklama, durum, oncelik, kategori, sahip, beklenen,
@@ -37,22 +37,22 @@ async function sahteQuery(sql, params = []) {
     });
     return { rows: [], rowCount: 1 };
   }
-  if (s.startsWith('INSERT INTO bnv_hub_notlar')) {
+  if (s.startsWith('INSERT INTO bmw_hub_notlar')) {
     const [is_id, tur, metin, yk, ya] = params;
     DB.notlar.push({ id: DB.notlar.length + 1, is_id, tur, metin, yazan_kullanici: yk, yazan_ad: ya, olusturma: simdi() });
     return { rows: [], rowCount: 1 };
   }
-  if (s.startsWith('SELECT * FROM bnv_hub_isler WHERE id')) {
+  if (s.startsWith('SELECT * FROM bmw_hub_isler WHERE id')) {
     const r = DB.isler.get(params[0]);
     return { rows: r ? [{ ...r }] : [] };
   }
-  if (s.includes('FROM bnv_hub_isler ORDER BY')) return { rows: [...DB.isler.values()].map((r) => ({ ...r })) };
-  if (s.startsWith('SELECT * FROM bnv_hub_notlar')) return { rows: DB.notlar.filter((n) => n.is_id === params[0]) };
-  if (s.startsWith('UPDATE bnv_hub_isler SET')) {
+  if (s.includes('FROM bmw_hub_isler ORDER BY')) return { rows: [...DB.isler.values()].map((r) => ({ ...r })) };
+  if (s.startsWith('SELECT * FROM bmw_hub_notlar')) return { rows: DB.notlar.filter((n) => n.is_id === params[0]) };
+  if (s.startsWith('UPDATE bmw_hub_isler SET')) {
     const id = params[params.length - 1];
     const r = DB.isler.get(id);
     if (!r) return { rows: [], rowCount: 0 };
-    const set = s.slice('UPDATE bnv_hub_isler SET '.length, s.lastIndexOf(' WHERE '));
+    const set = s.slice('UPDATE bmw_hub_isler SET '.length, s.lastIndexOf(' WHERE '));
     for (const parca of set.split(', ')) {
       const m = parca.match(/^(\w+) = (.+)$/);
       if (!m) continue;
@@ -66,11 +66,11 @@ async function sahteQuery(sql, params = []) {
     }
     return { rows: [], rowCount: 1 };
   }
-  if (s.startsWith('DELETE FROM bnv_hub_notlar')) {
+  if (s.startsWith('DELETE FROM bmw_hub_notlar')) {
     DB.notlar = DB.notlar.filter((n) => n.is_id !== params[0]);
     return { rows: [], rowCount: 1 };
   }
-  if (s.startsWith('DELETE FROM bnv_hub_isler')) {
+  if (s.startsWith('DELETE FROM bmw_hub_isler')) {
     DB.isler.delete(params[0]);
     return { rows: [], rowCount: 1 };
   }
@@ -99,7 +99,7 @@ function uygulama() {
     req.session = kimlik ? { user: kimlik } : {};
     next();
   });
-  app.use('/api/bnv-hub', createRouter());
+  app.use('/api/bmw-hub', createRouter());
   return app;
 }
 
@@ -107,7 +107,7 @@ async function istek(method, yol, body) {
   const srv = uygulama().listen(0);
   try {
     const port = srv.address().port;
-    const r = await fetch(`http://127.0.0.1:${port}/api/bnv-hub${yol}`, {
+    const r = await fetch(`http://127.0.0.1:${port}/api/bmw-hub${yol}`, {
       method,
       headers: body ? { 'Content-Type': 'application/json' } : {},
       body: body ? JSON.stringify(body) : undefined,
@@ -212,7 +212,7 @@ test('BN6 toplu: hatali satir varsa HICBIRI eklenmez; temizse hepsi eklenir', as
 test('BN7 toplu: DB yarida duserse eklenenler geri alinir (ya hepsi ya hicbiri)', async () => {
   sifirla();
   let n = 0;
-  DB.dusur = (sql) => sql.includes('INSERT INTO bnv_hub_isler') && ++n === 3;
+  DB.dusur = (sql) => sql.includes('INSERT INTO bmw_hub_isler') && ++n === 3;
   const r = await istek('POST', '/toplu', { metin: 'A\nB\nC\nD' });
   assert.equal(r.status, 500);
   assert.equal(DB.isler.size, 0, 'yarim kalan toplu ekleme geri alinmadi');
@@ -238,13 +238,13 @@ test('BN8 durum degisimi gecmise yazilir, kapanis tamamlaninca dolar, yeniden ac
   assert.equal((await istek('PATCH', `/isler/${id}`, {})).status, 400);
 });
 
-test('BN9 cakisma: eski damga ile kayit 409 + bnv_cakisma; liste ozeti gecikmeyi sayar', async () => {
+test('BN9 cakisma: eski damga ile kayit 409 + bmw_cakisma; liste ozeti gecikmeyi sayar', async () => {
   sifirla();
   const { body } = await istek('POST', '/isler', { baslik: 'Is', sonTarih: '2020-01-01' });
   const id = body.is.id;
   const r = await istek('PATCH', `/isler/${id}`, { baslik: 'Yeni', beklenenGuncelleme: '2000-01-01T00:00:00.000Z' });
   assert.equal(r.status, 409);
-  assert.equal(r.body.code, 'bnv_cakisma');
+  assert.equal(r.body.code, 'bmw_cakisma');
   assert.equal(DB.isler.get(id).baslik, 'Is', 'cakismada kayit ezildi');
   const ok = await istek('PATCH', `/isler/${id}`, { baslik: 'Yeni', beklenenGuncelleme: body.is.guncelleme });
   assert.equal(ok.status, 200);

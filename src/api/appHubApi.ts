@@ -1,4 +1,4 @@
-// src/api/appHubApi.ts — Uygulama Hub (2026-11-08): uygulama adıyla JBoss / WAS / OpenShift görünümü.
+// src/api/appHubApi.ts — Application Hub (2026-11-08): uygulama adıyla JBoss / WAS / OpenShift görünümü.
 // Sunucu karşılığı: server/app-hub/index.cjs, veri.cjs, canli.cjs
 import { okJson } from './http';
 

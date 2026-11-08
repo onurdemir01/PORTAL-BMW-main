@@ -1,4 +1,4 @@
-// src/components/app_hub/ortak.tsx — Uygulama Hub ortak parçaları: bölüm çerçevesi, JVM
+// src/components/app_hub/ortak.tsx — Application Hub ortak parçaları: bölüm çerçevesi, JVM
 // parametre görüntüleyici, kapasite hücresi, kaynak notu, durum hapı.
 import React, { useState } from 'react';
 import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';

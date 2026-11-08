@@ -22,7 +22,7 @@
 // sebebi yazılmadan kapalı kalıyordu. Artık uygulamaya tıklamak onu ekler; namespace açık kalır
 // (aynı namespace'ten başka uygulama da seçilebilir), eklenenler listeden düşer.
 //
-// ÖN-SEÇİM (Uygulama Hub derin bağlantısı, 2026-11-08): `initial` verilirse ortam/cluster grubu,
+// ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08): `initial` verilirse ortam/cluster grubu,
 // namespace ve uygulama zincirdeki her yükleme bittiğinde SIRAYLA uygulanır (env → namespace →
 // uygulama). Her aşama yalnız BİR KEZ denenir (`onSecimRef.asama`); geçersiz bir değer görünür
 // bir uyarıyla düşer, kalan seçim elle yapılır. "Devam Et" yine kullanıcıya bırakılır.

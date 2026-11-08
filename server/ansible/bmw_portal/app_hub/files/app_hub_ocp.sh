@@ -1,5 +1,5 @@
 #!/bin/bash
-# app_hub_ocp.sh - Uygulama Hub: tek uygulamanin bir (cluster, namespace)'teki canli durumu.
+# app_hub_ocp.sh - Application Hub: tek uygulamanin bir (cluster, namespace)'teki canli durumu.
 #
 # SALT OKUNUR: yalniz `oc login` + `oc get`. Hicbir nesneye yazmaz, scale / rollout yapmaz.
 #

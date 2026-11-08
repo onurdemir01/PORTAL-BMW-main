@@ -303,18 +303,18 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Uygulama Hub aramasi (2026-11-08): uygulama adini yaz, birlesik gorunume git ── */}
+      {/* ── Application Hub aramasi (2026-11-08): uygulama adini yaz, birlesik gorunume git ── */}
       {canViewPage('AppHub') && (
         <section className="card px-5 py-5 space-y-3" style={{ borderTop: '3px solid var(--ah-hue)' }} aria-label="Uygulama ara">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-              Uygulama <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
+              Application <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
             </h2>
             <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
               JBoss, WebSphere ya da OpenShift: sunucular, sürümler, JVM parametreleri, yük ve web katmanı tek ekranda
             </span>
           </div>
-          <AramaKutusu ilk="" buyuk={false} onSec={(s) => navigate(`/uygulama-hub?tip=${s.tip}&ad=${encodeURIComponent(s.ad)}`)} />
+          <AramaKutusu ilk="" buyuk={false} onSec={(s) => navigate(`/application-hub?tip=${s.tip}&ad=${encodeURIComponent(s.ad)}`)} />
         </section>
       )}
 

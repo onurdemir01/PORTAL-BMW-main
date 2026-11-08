@@ -1,5 +1,5 @@
 ---
-- name: "Uygulama Hub OCP - girdi kapisi ve bastion'lar"
+- name: "Application Hub OCP - girdi kapisi ve bastion'lar"
   hosts: localhost
   connection: local
   gather_facts: false
@@ -48,7 +48,7 @@
       loop: "{{ terminal_hosts }}"
       changed_when: false
 
-- name: "Uygulama Hub OCP - bastion basina salt okunur okuma"
+- name: "Application Hub OCP - bastion basina salt okunur okuma"
   hosts: app_hub_terminal
   ignore_unreachable: true
   any_errors_fatal: false
@@ -267,7 +267,7 @@
           ansible.builtin.set_fact:
             host_blocked_reason: "{{ ansible_failed_result.msg | default('Bu bastion uzerinde okuma tamamlanamadi.') | string | truncate(300) }}"
 
-- name: "Uygulama Hub OCP - sonuclari topla ve yayinla"
+- name: "Application Hub OCP - sonuclari topla ve yayinla"
   hosts: localhost
   connection: local
   gather_facts: false

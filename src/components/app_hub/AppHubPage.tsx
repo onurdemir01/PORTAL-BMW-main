@@ -1,4 +1,4 @@
-// src/components/app_hub/AppHubPage.tsx — Uygulama Hub (2026-11-08).
+// src/components/app_hub/AppHubPage.tsx — Application Hub (2026-11-08).
 //
 // Kullanıcı: "Bağlanan kişi sadece uygulamasının ismini yazıp bu uygulamaya dair her şey
 // gözüksün. JBoss ise hangi versiyonlarda, hangi sunucularda, hangi JVM parametreleriyle
@@ -6,7 +6,7 @@
 // olduğu; OpenShift ise namespace, cluster, replika, Deployment mı Argo Rollout mu, JVM
 // parametreleri, node'lar, root adres. Buradan OpsX'e, LogX'e uygulaması girili gitsin."
 //
-// Adres: /uygulama-hub?tip=jboss|was|ocp&ad=<ad> (Dashboard araması buraya getirir).
+// Adres: /application-hub?tip=jboss|was|ocp&ad=<ad> (Dashboard araması buraya getirir).
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
@@ -99,7 +99,7 @@ export default function AppHubPage() {
           <div className="inline-flex items-center gap-3" style={{ color: 'var(--text-primary)' }}>
             <Squares2X2Icon className="w-9 h-9" style={{ color: 'var(--ah-hue)' }} />
             <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 500 }}>
-              Uygulama <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
+              Application <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
             </h1>
           </div>
           <p className="max-w-xl text-[14px]" style={{ color: 'var(--text-muted)', textWrap: 'balance' as React.CSSProperties['textWrap'] }}>
@@ -115,7 +115,7 @@ export default function AppHubPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <AramaKutusu key={`${tip}-${ad}`} ilk={ad} onSec={sec} buyuk={false} />
-        <Button variant="ghost" size="sm" onClick={() => navigate('/uygulama-hub')}>Yeni arama</Button>
+        <Button variant="ghost" size="sm" onClick={() => navigate('/application-hub')}>Yeni arama</Button>
       </div>
 
       <header className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4" style={{ borderTop: '3px solid var(--ah-hue)' }}>

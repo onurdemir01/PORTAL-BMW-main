@@ -90,7 +90,7 @@ const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
 // Pod silme de dump ile AYNI kesif/secim adimini kullanir (2026-09-18)
 const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
 
-// ÖN-SEÇİM (Uygulama Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
+// ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
 // Parametreler İLK render'da bir kez okunur (lazy useState) ve mount effect'inde URL'den silinir —
 // yenilemede tekrar uygulanmaz. Adım durumu zaten client'ta (dosya başı notu) olduğu için ön-seçim
 // yalnızca BAŞLANGIÇ durumunu kurar; hiçbir kapı atlanmaz: JBoss uygulaması sunucuda

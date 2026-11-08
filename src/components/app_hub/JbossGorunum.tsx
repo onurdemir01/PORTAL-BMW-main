@@ -1,4 +1,4 @@
-// src/components/app_hub/JbossGorunum.tsx — Uygulama Hub: JBoss uygulamasının sunucuları,
+// src/components/app_hub/JbossGorunum.tsx — Application Hub: JBoss uygulamasının sunucuları,
 // JVM'leri (maskeli parametreleriyle), web katmanı, yükü ve sunucu kapasitesi.
 import React, { useMemo, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';

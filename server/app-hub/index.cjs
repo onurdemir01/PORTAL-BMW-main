@@ -1,4 +1,4 @@
-// server/app-hub/index.cjs - Uygulama Hub API (2026-11-08).
+// server/app-hub/index.cjs - Application Hub API (2026-11-08).
 //
 // GET  /api/app-hub/ara?q=                      uc tipte ad aramasi (JBoss taban ad, WAS, OCP)
 // GET  /api/app-hub/uygulama/:tip/:ad           tek uygulamanin birlesik gorunumu (tip: jboss|was|ocp)
@@ -133,7 +133,7 @@ function createRouter() {
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [u.username || 'unknown', serverId, templateId, 'Uygulama Hub: OpenShift canlı okuma', job && job.jobId, (job && job.status) || 'pending', JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: ad, app_hub_targets: kur.extraVars.app_hub_targets })],
+          [u.username || 'unknown', serverId, templateId, 'Application Hub: OpenShift canlı okuma', job && job.jobId, (job && job.status) || 'pending', JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: ad, app_hub_targets: kur.extraVars.app_hub_targets })],
         );
       } catch (e) {
         console.warn('[AppHub] is gecmisi yazilamadi:', e.message);

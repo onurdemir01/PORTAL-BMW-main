@@ -45,7 +45,7 @@ interface Props {
    *  yani bileşen içi bir ref her turda sıfırlanıp korumayı ETKİSİZ bırakıyordu.
    *  Anahtar `<clusterKey>|<namespace>`, değer tarama zamanı. */
   autoScanMemo?: Map<string, number>;
-  /** Arama kutusunun ilk değeri (Uygulama Hub derin bağlantısı). Yalnız doldurur; seçim
+  /** Arama kutusunun ilk değeri (Application Hub derin bağlantısı). Yalnız doldurur; seçim
    *  ve sepete ekleme yine kullanıcının elindedir. */
   initialSearch?: string;
   busy?: boolean;
