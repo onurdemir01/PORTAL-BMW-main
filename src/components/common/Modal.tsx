@@ -105,7 +105,10 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[1000] overflow-y-auto p-4"
+      /* ACILIS HAREKETI (2026-11-08): ortu solarak, panel hafif buyuyerek gelir (animations.css,
+         0.18 / 0.22 sn). Pencere eskiden aniden beliriyordu. Hareket azaltma tercihinde index.css'teki
+         genel kural sureyi sifirlar. Kapanis animasyonsuz (kapanan pencere beklemez). */
+      className="fixed inset-0 z-[1000] overflow-y-auto p-4 animate-fade-in"
       style={{ background: "rgba(3,3,3,0.62)" }}
       role="dialog"
       aria-modal="true"
@@ -118,7 +121,7 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
         <div
           ref={panelRef}
           tabIndex={-1}
-          className={`relative w-full ${SIZE_MAP[size]} flex flex-col max-h-[calc(100dvh-2rem)] my-4 outline-none`}
+          className={`relative w-full ${SIZE_MAP[size]} flex flex-col max-h-[calc(100dvh-2rem)] my-4 outline-none animate-scale-in`}
           style={{ background: "var(--bg-surface)", boxShadow: "var(--shadow-lg)", borderRadius: "var(--radius-md)" }}
         >
           <div className="flex items-start gap-3 px-6 pt-6 pb-4 flex-shrink-0">
