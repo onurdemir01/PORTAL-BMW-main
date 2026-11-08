@@ -332,29 +332,30 @@ async function wasOzetleri(hostlar) {
   }
 }
 
-/** was_ozeti icinden bu sunucu (JVM) adina dusen kayitlar; sema surume gore esnek okunur. */
+/**
+ * was_ozeti (ear-envanter-alim.cjs wasOzeti: { kokler, dosyalar, sunucular[] }) icinden bu sunucu
+ * (WASAppsInventory.app = application server adi) kaydi. `jvm` yoksa eski tarayici: OLCULMEDI.
+ * jvm.durum OKUNDU degilse yalniz durum doner (server.xml okunamadi; "parametre yok" DEGIL).
+ */
 function wasSunucuBilgisi(oz, ad) {
   if (!oz || typeof oz !== 'object') return null;
-  const profiller = Array.isArray(oz.profiller) ? oz.profiller : Array.isArray(oz) ? oz : [oz];
-  for (const pr of profiller) {
-    const sunucular = Array.isArray(pr && pr.sunucular) ? pr.sunucular : [];
-    const s = sunucular.find((x) => L(x && (x.ad || x.name)) === L(ad));
-    if (s) {
-      const jvm = s.jvm || s.jvmEntries || null;
-      return {
-        profil: pr.profil || pr.ad || null,
-        hucre: pr.hucre || null,
-        dugum: pr.dugum || null,
-        uygulamalar: Array.isArray(s.uygulamalar) ? s.uygulamalar : [],
-        uclar: Array.isArray(s.uclar) ? s.uclar : [],
-        minHeap: jvm ? nz(jvm.initialHeapSize || jvm.minHeap) : null,
-        maxHeap: jvm ? nz(jvm.maximumHeapSize || jvm.maxHeap) : null,
-        jvmArgs: jvm ? nz(jvm.genericJvmArguments || jvm.jvmArgs) : null,
-        sistemOzellikleri: jvm && Array.isArray(jvm.sistemOzellikleri || jvm.systemProperties) ? jvm.sistemOzellikleri || jvm.systemProperties : [],
-      };
-    }
-  }
-  return null;
+  const sunucular = Array.isArray(oz.sunucular) ? oz.sunucular : [];
+  const s = sunucular.find((x) => L(x && x.ad) === L(ad));
+  if (!s) return null;
+  const j = s.jvm && typeof s.jvm === 'object' ? s.jvm : null;
+  const okundu = !!j && j.durum === 'OKUNDU';
+  return {
+    profil: nz(s.profil),
+    hucre: nz(s.hucre),
+    dugum: nz(s.dugum),
+    uygulamalar: Array.isArray(s.uygulamalar) ? s.uygulamalar : [],
+    jvmDurumu: j ? j.durum || null : null,
+    minHeap: okundu && j.ilk_heap_mb != null ? String(j.ilk_heap_mb) : null,
+    maxHeap: okundu && j.en_cok_heap_mb != null ? String(j.en_cok_heap_mb) : null,
+    jvmArgs: okundu ? nz(j.jvm_argumanlari) : null,
+    sistemOzellikleri: okundu && Array.isArray(j.sistem_ozellikleri) ? j.sistem_ozellikleri : [],
+    ozellikKesildi: okundu && j.ozellik_kesildi === true,
+  };
 }
 
 async function wasDetay(ad) {
@@ -410,7 +411,7 @@ async function wasDetay(ad) {
               taranma: e.taranma,
             }
           : null,
-        jvmToplandi: !!(bilgi && (bilgi.jvmArgs || bilgi.maxHeap || bilgi.minHeap)),
+        jvmToplandi: !!(bilgi && bilgi.jvmDurumu === 'OKUNDU'),
         web: m && Array.isArray(m.web) ? m.web.map((w) => ({ host: U(w.host), serverName: w.serverName || null, product: w.product || null, port: w.port || null, kaynak: w.kaynak || null })) : [],
         tier: m ? m.tier || null : null,
       };

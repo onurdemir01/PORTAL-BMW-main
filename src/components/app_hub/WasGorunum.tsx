@@ -70,8 +70,29 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
                         <JvmArglari
                           baslik="genericJvmArguments"
                           args={s.jvm?.jvmArgs}
-                          bosMetin={s.jvm ? 'server.xml okundu ama genericJvmArguments boş.' : 'WAS JVM ayarları henüz toplanmadı: Uygulama Envanteri taraması bu sunucuyu tarayınca (server.xml) burada görünür.'}
+                          bosMetin={
+                            !s.jvm || !s.jvm.jvmDurumu
+                              ? 'WAS JVM ayarları henüz toplanmadı: Uygulama Envanteri taraması bu sunucuyu yeni tarayıcıyla taradığında (server.xml) burada görünür.'
+                              : s.jvm.jvmDurumu === 'OKUNDU'
+                                ? 'server.xml okundu, genericJvmArguments boş.'
+                                : `server.xml okunamadı (${s.jvm.jvmDurumu}); JVM ayarları ölçülemedi.`
+                          }
                         />
+                        {s.jvm && s.jvm.sistemOzellikleri.length > 0 && (
+                          <details className="text-[12px]">
+                            <summary className="cursor-pointer" style={{ color: 'var(--text-secondary)' }}>
+                              Sistem özellikleri ({s.jvm.sistemOzellikleri.length}{s.jvm.ozellikKesildi ? '+, kesildi' : ''})
+                            </summary>
+                            <ul className="mt-1 space-y-0.5" style={{ fontFamily: 'var(--font-mono)' }}>
+                              {s.jvm.sistemOzellikleri.map((o) => (
+                                <li key={o.ad} className="break-all">
+                                  {o.ad}
+                                  {o.deger != null && <span style={{ color: o.deger === '***' ? 'var(--text-muted)' : 'var(--text-primary)' }}>={o.deger}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
                       </div>
                     </td>
                   </tr>

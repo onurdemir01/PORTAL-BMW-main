@@ -327,3 +327,24 @@ test('AH10 onbellek: ayni anahtar tek ucus, hata onbellege yazilmaz', async () =
   await assert.rejects(_ic.onbellekli('k2', false, () => Promise.reject(new Error('x'))));
   assert.equal(await _ic.onbellekli('k2', false, () => Promise.resolve('tamam')), 'tamam');
 });
+
+test('AH11 WAS: was_ozeti sunucular[].jvm okunur; okunamayan durum "parametre yok" sayilmaz; eski tarayici null', () => {
+  const oz = {
+    sunucular: [
+      { profil: 'AppSrv01', dugum: 'n1', ad: 'srv1', jvm: { yol: '/x/server.xml', durum: 'OKUNDU', ilk_heap_mb: 512, en_cok_heap_mb: 2048, jvm_argumanlari: '-Xquickstart -Dapp.ortam=***', sistem_ozellikleri: [{ ad: 'java.security.policy', deger: '/opt/p' }], ozellik_kesildi: false } },
+      { ad: 'srv2', jvm: { yol: '/y/server.xml', durum: 'IZIN' } },
+      { ad: 'srv3' },
+    ],
+  };
+  const a = V.wasSunucuBilgisi(oz, 'SRV1');
+  assert.equal(a.jvmDurumu, 'OKUNDU');
+  assert.equal(a.maxHeap, '2048');
+  assert.equal(a.jvmArgs, '-Xquickstart -Dapp.ortam=***');
+  assert.equal(a.sistemOzellikleri.length, 1);
+  const b = V.wasSunucuBilgisi(oz, 'srv2');
+  assert.equal(b.jvmDurumu, 'IZIN');
+  assert.equal(b.jvmArgs, null);
+  assert.equal(b.maxHeap, null);
+  assert.equal(V.wasSunucuBilgisi(oz, 'srv3').jvmDurumu, null, 'eski tarayici olculmedi olmali');
+  assert.equal(V.wasSunucuBilgisi(oz, 'yok'), null);
+});

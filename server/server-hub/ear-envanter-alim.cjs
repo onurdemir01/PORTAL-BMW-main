@@ -24,7 +24,8 @@
 // FAZ A (2026-11-07, tarayici surum 3): xml_ozeti'ne profil (mod_cluster proxies / proxy-list / balancer,
 // AJP / HTTP dinleyici soketleri), socket-binding-group (portlar, outbound hedefleri), grup profil / port
 // grubu / ofset, sunucu ofseti ve deployment yolunun diskte olup olmadigi eklenir. WebSphere serverindex.xml
-// -> host.was_ozeti; istege bagli baglanti goruntusu (EAR_BAGLANTI) -> host.baglanti_ozeti. Eski tarayicinin
+// -> host.was_ozeti (2026-11-08: sunucu basina server.xml JVM ozeti 'jvm', maskeli; bkz. wasJvm);
+// istege bagli baglanti goruntusu (EAR_BAGLANTI) -> host.baglanti_ozeti. Eski tarayicinin
 // paketinde bu alanlar yoktur: NULL / eksik alan = OLCULMEDI.
 //
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
@@ -40,6 +41,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { maskJvmArgs, degerAcik } = require('./mask.cjs');
 
 const BASLA = Buffer.from('@@EAR_ENVANTER_BASLA@@');
 const BITTI = Buffer.from('@@EAR_ENVANTER_BITTI@@');
@@ -202,6 +204,32 @@ function paketCoz(buf) {
   return p;
 }
 
+// WAS JVM (2026-11-08): sunucunun server.xml jvmEntries ozeti. durum OKUNDU degilse yalniz yol + durum
+// (olculemedi; 'parametre yok' DEGIL). Maske IKINCI katman (ilki ear_tara.py jvm_maskele): argumanlar
+// mask.cjs maskJvmArgs'tan, sistem ozelligi degeri degerAcik() degilse '***'. ONCE maske SONRA kirpma.
+const WAS_JVM_DURUMLARI = Object.freeze([...XML_DURUMLARI, 'JVM_YOK']);
+const SINIR_WAS_JVM_ARG = 2100;
+const SINIR_WAS_OZELLIK = 100;
+function wasJvm(v) {
+  const j = nesne(v);
+  const out = { yol: M(j.yol, 400), durum: D(j.durum, WAS_JVM_DURUMLARI, 'HATA') };
+  if (out.durum !== 'OKUNDU') return out;
+  const ozellikler = dizi(j.sistem_ozellikleri);
+  return {
+    ...out,
+    jvm_girisi: N(j.jvm_girisi),
+    ilk_heap_mb: tamsayi(j.ilk_heap_mb),
+    en_cok_heap_mb: tamsayi(j.en_cok_heap_mb),
+    jvm_argumanlari: M(maskJvmArgs(M(j.jvm_argumanlari, 8192).replace(/[\t\r\n]/g, ' ')), SINIR_WAS_JVM_ARG),
+    sistem_ozellikleri: ozellikler.slice(0, SINIR_WAS_OZELLIK).map((o) => {
+      const ad = M(nesne(o).ad, 256);
+      const d = nesne(o).deger;
+      return { ad, deger: d == null ? null : degerAcik(ad) ? M(d, 512) : '***' };
+    }),
+    ozellik_kesildi: j.ozellik_kesildi === true || ozellikler.length > SINIR_WAS_OZELLIK,
+  };
+}
+
 /** WebSphere serverindex.xml ozeti -> JSON (Faz A). Pakette yoksa null = olculmedi. */
 function wasOzeti(p) {
   if (!p.was || typeof p.was !== 'object') return null;
@@ -221,6 +249,8 @@ function wasOzeti(p) {
           tur: M(s.tur, 64),
           uclar: dizi(s.uclar).slice(0, 20).map((u) => ({ ad: M(nesne(u).ad, 64), host: M(nesne(u).host, 256), port: tamsayi(nesne(u).port) })),
           uygulamalar: dizi(s.uygulamalar).slice(0, 200).map((v) => M(v, 256)),
+          // eski tarayicinin paketinde 'jvm' yok -> ozette de yok (olculmedi)
+          ...(s.jvm !== undefined ? { jvm: wasJvm(s.jvm) } : {}),
         };
       }),
     kesildi: w.kesildi === true || dizi(w.sunucular).length > SINIR_XML_KAYIT,
@@ -1197,6 +1227,8 @@ module.exports = {
   webCoz,
   WEB_DURUMLARI,
   wasOzeti,
+  wasJvm,
+  WAS_JVM_DURUMLARI,
   baglantiOzeti,
   WEB_OZET_SINIR,
   hostKaydi,

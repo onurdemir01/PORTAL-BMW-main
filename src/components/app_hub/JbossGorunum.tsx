@@ -117,18 +117,30 @@ function SunucuSatiri({ s, acik, onToggle }: { s: JbossSunucu; acik: boolean; on
                     baslik="Çalışma anı JVM parametreleri"
                     args={j.jvmArgs}
                     bosMetin={
-                      j.jvmArgDurumu
-                        ? `JVM parametreleri ölçülemedi (${j.jvmArgDurumu}).`
+                      j.jvmArgDurumu && j.jvmArgDurumu !== 'NOT_COLLECTED'
+                        ? `JVM parametreleri ölçülemedi (${j.jvmArgDurumu}${j.jvmArgFarki && j.jvmArgFarki.startsWith('reason=') ? `: ${j.jvmArgFarki.slice(7)}` : ''}).`
                         : `JVM parametreleri henüz toplanmıyor: Server Hub taraması bu alanı güncellendiğinde dolduracak.${heapMetni(s) ? ` Envanterdeki heap (min / max): ${heapMetni(s)}.` : ''}`
                     }
                   />
                   {j.yapilandirilanJvmArgs && j.yapilandirilanJvmArgs !== j.jvmArgs && (
                     <JvmArglari baslik="Yapılandırmadaki parametreler" args={j.yapilandirilanJvmArgs} bosMetin="—" />
                   )}
-                  {j.jvmArgFarki && (
-                    <p className="text-[12px]" style={{ color: 'var(--status-warning-text)' }}>
-                      Çalışan ile yapılandırılan arasında fark: <code style={{ fontFamily: 'var(--font-mono)' }}>{j.jvmArgFarki}</code>
-                    </p>
+                  {j.jvmArgFarki && !j.jvmArgFarki.startsWith('reason=') && (
+                    <div className="text-[12px] space-y-0.5" style={{ color: 'var(--status-warning-text)' }}>
+                      <p className="font-semibold">Çalışan JVM ile yapılandırma farklı (yeniden başlatmada değişecek):</p>
+                      <ul className="list-disc pl-5" style={{ fontFamily: 'var(--font-mono)' }}>
+                        {j.jvmArgFarki
+                          .split('; ')
+                          .filter((x) => x && x !== 'partial')
+                          .map((x) => (
+                            <li key={x} className="break-all">{x}</li>
+                          ))}
+                      </ul>
+                      {j.jvmArgFarki.startsWith('partial') && <p style={{ color: 'var(--text-muted)' }}>İfade içeren (${'{…}'}) seçenekler karşılaştırılmadı.</p>}
+                    </div>
+                  )}
+                  {j.jvmArgFarki && j.jvmArgFarki.startsWith('reason=') && j.jvmArgs && (
+                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Yapılandırma ile karşılaştırılamadı ({j.jvmArgFarki.slice(7)}).</p>
                   )}
                 </div>
               ))}

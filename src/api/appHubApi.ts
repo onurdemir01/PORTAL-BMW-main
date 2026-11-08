@@ -129,6 +129,10 @@ export interface WasSunucu {
     minHeap: string | null;
     maxHeap: string | null;
     jvmArgs: string | null;
+    /** server.xml okuma durumu: OKUNDU | YOK | IZIN | BOZUK | JVM_YOK …; null = eski tarayıcı (ölçülmedi) */
+    jvmDurumu: string | null;
+    sistemOzellikleri: { ad: string; deger: string | null }[];
+    ozellikKesildi: boolean;
     taranma: string | null;
   } | null;
   jvmToplandi: boolean;
