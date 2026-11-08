@@ -840,6 +840,22 @@ export interface ShVarlik {
   bilesen: { boyut: number; kesildi: boolean };
   dogrulamalar: Record<string, { kod: string; durum: 'UYUM' | 'CELISKI' | 'OLCULMEDI'; kaynaklar: string[]; metin: string }[]>;
 }
+/** GET /notlar?arsiv=1: bütün notlar (arşiv dahil); grafik okunamazsa yetim null. */
+export interface ShNotlarSonuc {
+  ok: boolean;
+  okunamadi: boolean;
+  hata: string;
+  grafikYok: boolean;
+  siniflar: ShSinif[];
+  notlar: (ShNot & { yetim: boolean | null; veriDegisti: boolean })[];
+}
+export interface ShNotGecmis {
+  islem: 'EKLE' | 'GUNCELLE' | 'ARSIV' | 'GERI_AL' | 'SIL' | string;
+  onceki: Partial<ShNot> | null;
+  kim: string | null;
+  zaman: string | null;
+}
+export type ShSinifGovde = Omit<ShSinif, 'varsayilan'>;
 export interface ShNotGovde {
   konu: string;
   supheli_kod?: string | null;
@@ -943,6 +959,17 @@ export const serverHubApi = {
     fetch(`${BASE}/notlar/${id}`, { method: 'DELETE' }).then((r) => okJson(r)),
   notGeriAl: (id: number): Promise<{ ok: boolean }> =>
     fetch(`${BASE}/notlar/${id}/geri-al`, json({})).then((r) => okJson(r)),
+  // NOT / SINIF YONETIMI (2026-11-08): liste, gecmis, kalici silme (yalniz acik onayla), taksonomi
+  notlarListe: (): Promise<ShNotlarSonuc> =>
+    fetch(`${BASE}/notlar?arsiv=1`).then((r) => okJson<ShNotlarSonuc>(r)),
+  notGecmisi: (id: number): Promise<{ ok: boolean; gecmis: ShNotGecmis[] }> =>
+    fetch(`${BASE}/notlar/${id}/gecmis`).then((r) => okJson(r)),
+  notKaliciSil: (id: number): Promise<{ ok: boolean }> =>
+    fetch(`${BASE}/notlar/${id}?kalici=1&onay=1`, { method: 'DELETE' }).then((r) => okJson(r)),
+  sinifKaydet: (s: ShSinifGovde): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
+    fetch(`${BASE}/siniflar`, put(s)).then((r) => okJson(r)),
+  sinifSil: (ad: string): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
+    fetch(`${BASE}/siniflar/${encodeURIComponent(ad)}`, { method: 'DELETE' }).then((r) => okJson(r)),
   // UYGULAMA 360 (2026-11-07)
   uygulamalar360: (fresh = false): Promise<Sh360Sonuc> =>
     fetch(`${BASE}/uygulamalar-360${fresh ? '?fresh=1' : ''}`).then(safeJson),

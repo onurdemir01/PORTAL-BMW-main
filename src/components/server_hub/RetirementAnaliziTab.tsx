@@ -34,8 +34,8 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { EarTablo, type EarKolon } from './EarTablo';
 import { BTN, btnStil } from './RetireEtiketleri';
-import { TON } from './retirementStil';
 import Rozet, { type DurumTon } from './DurumRozeti';
+import NotYonetimi, { SinifRozeti, type NotSuzgeci } from './NotYonetimi';
 
 const MUTED: React.CSSProperties = { color: 'var(--text-muted)' };
 const hataMetni = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -88,20 +88,6 @@ export function anaSupheOf(maddeler: ShMadde[]): ShMadde | null {
     acik.find((m) => m.etki === 'DESTEKLER') ||
     acik.find((m) => m.etki === 'EKSIK') ||
     null
-  );
-}
-
-function SinifRozeti({ ad, siniflar }: { ad: string; siniflar: ShSinif[] }) {
-  const s = siniflar.find((x) => x.ad === ad);
-  const t = TON[s ? s.renk : 'notr'];
-  return (
-    <span
-      className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border"
-      style={{ background: t.zemin, color: t.metin, borderColor: t.kenar }}
-      title={s ? s.aciklama : ad}
-    >
-      {s ? s.baslik : ad}
-    </span>
   );
 }
 
@@ -1056,6 +1042,9 @@ export default function RetirementAnaliziTab({
     setSecili(baslangic.anahtar);
   }
   const [kararSuzgec, setKararSuzgec] = useState<ShKarar | null>(null);
+  // Not / sinif yonetimi penceresi; yazim olduysa kararlar ve acik kart tazelenir.
+  const [yonetim, setYonetim] = useState<NotSuzgeci | 'SINIFLAR' | null>(null);
+  const [kartNo, setKartNo] = useState(0);
   const yukle = useCallback(async (fresh = false) => {
     setYukleniyor(true);
     try {
@@ -1099,9 +1088,26 @@ export default function RetirementAnaliziTab({
         >
           <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
         </button>
+        <button type="button" className={BTN} style={btnStil()} onClick={() => setYonetim('AKTIF')}>
+          Notlar ve sınıflar
+        </button>
       </div>
+      {yonetim && (
+        <NotYonetimi
+          baslangic={yonetim}
+          onKapat={(degisti) => {
+            setYonetim(null);
+            if (degisti) {
+              void yukle(false);
+              setKartNo((n) => n + 1);
+            }
+          }}
+          onAc={setSecili}
+        />
+      )}
       {secili && (
         <KararKarti
+          key={`${secili}-${kartNo}`}
           anahtar={secili}
           onSec={setSecili}
           onKapat={() => setSecili(null)}
@@ -1200,7 +1206,15 @@ export default function RetirementAnaliziTab({
           )}
           {liste.yetimNotSayisi > 0 && (
             <div className="text-xs" style={MUTED}>
-              Konusu artık bulunamayan {liste.yetimNotSayisi} not var (silinmedi).
+              Konusu artık bulunamayan {liste.yetimNotSayisi} not var (silinmedi).{' '}
+              <button
+                type="button"
+                className="underline"
+                style={{ color: 'var(--accent)' }}
+                onClick={() => setYonetim('YETIM')}
+              >
+                Göster
+              </button>
             </div>
           )}
         </>
