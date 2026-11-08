@@ -14,12 +14,11 @@ import { KARAR_KISA, KARAR_SIRA, KARAR_TON } from './RetirementAnaliziTab';
 /** ServerHubPage verir: anahtar -> Retirement Analizi sekmesi o kayıt seçili. Verilmezse düğme yok. */
 export const AnalizAcContext = createContext<((anahtar: string) => void) | null>(null);
 
-// Grafik anahtarlarıyla birebir (iliski-grafigi.cjs `A`): sunucu kısa ad, ikisi de büyük harf.
-export const sunucuAnahtari = (host: string) =>
-  `sunucu:${String(host || '')
-    .split('.')[0]
-    .trim()
-    .toUpperCase()}`;
+// Grafik anahtarlarıyla birebir (iliski-grafigi.cjs `A`): sunucu kısa ad (IPv4 adı kısaltılmaz), büyük harf.
+export const sunucuAnahtari = (host: string) => {
+  const s = String(host || '').trim();
+  return `sunucu:${/^\d+\.\d+\.\d+\.\d+$/.test(s) ? s : s.split('.')[0].toUpperCase()}`;
+};
 export const uygulamaAnahtari = (ad: string) =>
   `app:${String(ad || '')
     .trim()

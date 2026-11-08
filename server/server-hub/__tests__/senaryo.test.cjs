@@ -4,7 +4,9 @@
 //   SN2 DEGISMEZLER (tohumlu rastgele 400 senaryo): olculemeyen engelleyici girdi -> RETIRE_ADAYI degil;
 //       gercek trafik ya da web disi cagiran -> KULLANIMDA; celiski + kullanim yok -> KARAR_VERILEMEZ
 //   SN3 uygulama toplamasi ve yapilabilecekler (en cok 3; yalniz yonlendir / elle / bilgi; calistiran yok)
-//   SN4 uclar: /iliski/kararlar ve /iliski/karar (app / sunucu / kopya), 400 / 409
+//   SN4 uclar: /iliski/kararlar ve /iliski/karar (app / sunucu / kopya), 400 / 409; uc saati motora verir; hata 424
+//   SN5 tazelik her kanitin kendi sunucusundan (web sunucusu Server Hub / UE taramasi, baglanti UE taramasi):
+//       bayat sifir "olculemedi", aday olamaz; kullanim kaniti bayat da olsa kazanir
 'use strict';
 
 const { test } = require('node:test');
@@ -17,6 +19,8 @@ const { kararla, KARARLAR } = require('../senaryo.cjs');
 
 const APP = 'APPSRV01';
 const WEB = 'WEBSRV01';
+// Sabit saat: fikstur taramalari 2026-11-06; tazelik (UE_TAZE_GUN) duvar saatine bagli kalmasin.
+const SIMDI = () => Date.parse('2026-11-07T12:00:00Z');
 
 /**
  * Tek uygulama kopyasi (JVM APP1, APPSRV01) + 3-tier web (WEBSRV01). Bayraklar:
@@ -221,7 +225,7 @@ function karar(bayrak) {
   const { hosts, veri } = filo(bayrak);
   const g = grafikKur({ hosts, veri });
   const dogrulamalar = dogrula(g, { veri });
-  const r = kararla({ g, dogrulamalar, hosts });
+  const r = kararla({ g, dogrulamalar, hosts, simdi: SIMDI });
   return { k: r.kopyalar.get(A.jvm(APP, 8, bayrak.ad || 'APP1')), r, g };
 }
 const kodlar = (k) => k.maddeler.map((m) => m.kod);
@@ -395,7 +399,7 @@ test('SN3 uygulama toplamasi ve yapilabilecekler', () => {
   });
   const veri = { hostlar: hv, ipEnvanteri: { okunamadi: false, satirlar: [] } };
   const g = grafikKur({ hosts, veri });
-  const r = kararla({ g, dogrulamalar: dogrula(g, { veri }), hosts });
+  const r = kararla({ g, dogrulamalar: dogrula(g, { veri }), hosts, simdi: SIMDI });
   const u = r.uygulamalar.get('app:APP9');
   assert.equal(u.karar, 'KULLANIMDA', u.ozet);
   assert.match(u.ozet, /2 kopya: 1 kopya kullanımda, 1 kopya retire adayı/);
@@ -420,6 +424,7 @@ test('SN4 uclar: /iliski/kararlar ve /iliski/karar', async () => {
   require('../iliski-uclar.cjs').mount(router, {
     getAssessment: async () => ({ tableMissing: false, hosts }),
     iliskiVerisi: async () => veri,
+    simdi: SIMDI,
   });
   app.use('/api/server-hub', router);
   const srv = app.listen(0);
@@ -448,4 +453,107 @@ test('SN4 uclar: /iliski/kararlar ve /iliski/karar', async () => {
   } finally {
     srv.close();
   }
+  // Uc saati karar motoruna verir: ayni fikstur iki ay sonra (Faz W / baglanti bayat) aday DEGIL.
+  // Hesap hatasi 424 (5xx degil: nginx govdeyi HTML yapar, ekran "okunamadi" diyemez).
+  const ikinci = express();
+  const r2 = express.Router();
+  require('../iliski-uclar.cjs').mount(r2, {
+    getAssessment: async () => ({ tableMissing: false, hosts }),
+    iliskiVerisi: async () => veri,
+    simdi: () => Date.parse('2027-01-07T12:00:00Z'),
+  });
+  const r3 = express.Router();
+  require('../iliski-uclar.cjs').mount(r3, {
+    getAssessment: async () => {
+      throw new Error('assess patladi');
+    },
+    iliskiVerisi: async () => veri,
+  });
+  ikinci.use('/a', r2);
+  ikinci.use('/b', r3);
+  const srv2 = ikinci.listen(0);
+  const k2 = `http://127.0.0.1:${srv2.address().port}`;
+  try {
+    const kk = await J(`${k2}/a/iliski/karar?anahtar=${encodeURIComponent('jvm:APPSRV01|8|APP1')}`);
+    assert.notEqual(kk.body.kopya.karar, 'RETIRE_ADAYI', 'bayat kanit aday yapmaz');
+    for (const u of [
+      '/iliski/durum',
+      '/iliski/ara?q=app',
+      '/iliski/kararlar',
+      '/iliski/karar?anahtar=app:APP1',
+    ]) {
+      const r = await J(`${k2}/b${u}`);
+      assert.deepEqual([r.status, r.body.ok, r.body.message], [424, false, 'assess patladi'], u);
+    }
+    const v = await J(`${k2}/b/iliski/varlik?anahtar=app:APP1`);
+    assert.equal(v.status, 424);
+  } finally {
+    srv2.close();
+  }
+});
+
+test('SN5 tazelik her kanitin kendi sunucusundan: bayat sifir "olculemedi", aday olamaz', () => {
+  const kopya = (f, simdi = SIMDI) => {
+    const g = grafikKur(f);
+    const r = kararla({ g, dogrulamalar: dogrula(g, { veri: f.veri }), hosts: f.hosts, simdi });
+    return r.kopyalar.get(A.jvm(APP, 8, 'APP1'));
+  };
+  // (a) 3-tier: sifir yalniz web sunucusunun access log'undan; o tarama 23 gun once -> aday degil.
+  const a = filo({});
+  assert.equal(kopya(a).karar, 'RETIRE_ADAYI', 'taze taban');
+  a.veri.hostlar.get(WEB).taranma = '2026-10-15T00:00:00.000Z';
+  const ka = kopya(a);
+  assert.notEqual(ka.karar, 'RETIRE_ADAYI', kodlar(ka).join(', '));
+  const m = ka.maddeler.find((x) => x.kod === 'WEB_TRAFIK_OLCULEMEDI');
+  assert.ok(m && /bayat/.test(m.metin) && /2026-10-15/.test(m.metin), m && m.metin);
+  assert.ok(ka.eksikler.some((e) => /taze ölçüm/.test(e.ne) && /WEBSRV01/.test(e.nasil)));
+  assert.ok(!kodlar(ka).includes('WEB_TRAFIK_YOK'), 'bayat sifir destek sayilmaz');
+
+  // (b) sifir yalniz Server Hub req_7d'den (Faz W logu yok): web sunucusunun Server Hub taramasi bayatsa aday degil.
+  const sh = () => {
+    const f = filo({ log: 'YOK' });
+    const web = f.hosts.find((h) => h.host === WEB);
+    const v = {
+      product: 'IHS',
+      listen: '*:80',
+      serverName: 'app1.ornek.local',
+      aliases: '',
+      req7d: 0,
+      hc24h: 0,
+      trafficState: 'NO_RECENT_TRAFFIC',
+    };
+    web.vhosts = [v];
+    f.hosts[0].jvms[0].vhosts = [{ host: WEB, v, kind: 'EXACT_JVM' }];
+    return f;
+  };
+  assert.equal(kopya(sh()).karar, 'RETIRE_ADAYI', 'Server Hub taze sifir yeterli');
+  const b = sh();
+  b.hosts.find((h) => h.host === WEB).fresh = false;
+  const kb = kopya(b);
+  assert.notEqual(kb.karar, 'RETIRE_ADAYI', kodlar(kb).join(', '));
+  assert.ok(kb.maddeler.some((x) => x.kod === 'WEB_TRAFIK_OLCULEMEDI' && /bayat/.test(x.metin)));
+
+  // (c) baglanti goruntusu uygulama sunucusunun UE taramasindan: 9.5 gun once (TAZELIK farki 7 gun, UYUM)
+  //     -> calisan JVM icin "web disi cagiran yok" kurulmaz; kapali JVM icin baglanti gerekmez.
+  const simdi2 = () => Date.parse('2026-11-09T12:00:00Z');
+  const c = filo({});
+  c.veri.hostlar.get(APP).taranma = '2026-10-31T00:00:00.000Z';
+  const kc = kopya(c, simdi2);
+  assert.notEqual(kc.karar, 'RETIRE_ADAYI', kodlar(kc).join(', '));
+  assert.ok(
+    kc.maddeler.some((x) => x.kod === 'BAYAT' && /bağlantı görüntüsü 2026-10-31/.test(x.metin)),
+  );
+  assert.ok(kc.eksikler.some((e) => e.ne === 'taze bağlantı görüntüsü'));
+  const d = filo({ calisiyor: false });
+  d.veri.hostlar.get(APP).taranma = '2026-10-31T00:00:00.000Z';
+  assert.equal(
+    kopya(d, simdi2).karar,
+    'RETIRE_ADAYI',
+    'kapali JVM: baglanti bayatligi engel degil',
+  );
+
+  // (d) kullanim kaniti bayat da olsa kazanir (guvenli taraf).
+  const e = filo({ gercek: 9 });
+  e.veri.hostlar.get(WEB).taranma = '2026-09-01T00:00:00.000Z';
+  assert.equal(kopya(e).karar, 'KULLANIMDA');
 });

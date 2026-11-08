@@ -8,7 +8,7 @@
 // GET /iliski/karar?anahtar=     app: | sunucu: | jvm: | was: icin karar ayrintisi (maddeler, eksikler,
 //                                celiskiler, yapilabilecekler); senaryo.cjs
 // Router zaten yalniz Admin ve gorunurluk kapisinin arkasinda (index.cjs). Kodlar proxy-guvenli: 400 gecersiz,
-// 409 varlik artik grafikte yok, 424 degerlendirme okunamadi.
+// 409 varlik artik grafikte yok, 424 degerlendirme okunamadi ya da hesaplanamadi (5xx yok: nginx govdeyi HTML yapar).
 //
 // ONBELLEK: grafik, degerlendirme nesnesi degisince ya da Uygulama Envanteri verisi VERI_MS'den eskiyse
 // yeniden kurulur (tek ucus). Okunamayan kaynak grafigi dusurmez; /durum bunu soyler.
@@ -39,7 +39,7 @@ function iliskiHesabiKur({
       const veri = veriBayat ? await iliskiVerisi() : durum.veri;
       const grafik = grafikKur({ hosts: a.hosts, veri });
       const dogrulamalar = dogrula(grafik, { veri });
-      const kararlar = kararla({ g: grafik, dogrulamalar, hosts: a.hosts });
+      const kararlar = kararla({ g: grafik, dogrulamalar, hosts: a.hosts, simdi });
       durum = {
         a,
         veri,
@@ -61,9 +61,13 @@ function iliskiHesabiKur({
 
 function mount(
   router,
-  { getAssessment, iliskiVerisi, notDurumu = () => require('./notlar.cjs').notDurumu() },
+  { getAssessment, iliskiVerisi, simdi, notDurumu = () => require('./notlar.cjs').notDurumu() },
 ) {
-  const hesap = iliskiHesabiKur({ getAssessment, ...(iliskiVerisi ? { iliskiVerisi } : {}) });
+  const hesap = iliskiHesabiKur({
+    getAssessment,
+    ...(iliskiVerisi ? { iliskiVerisi } : {}),
+    ...(simdi ? { simdi } : {}),
+  });
   // Kalici notlar (notlar.cjs): kararlari zenginlestirir; okunamazsa notsuz devam (notOkunamadi: true).
   const notBaglami = async (h) => {
     const nd = await notDurumu().catch(() => ({ okunamadi: true, notlar: [], siniflar: [] }));
@@ -139,7 +143,7 @@ function mount(
         },
       });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message || 'İlişki grafiği kurulamadı.' });
+      res.status(424).json({ ok: false, message: e.message || 'İlişki grafiği kurulamadı.' });
     }
   });
 
@@ -152,7 +156,7 @@ function mount(
       if (!h.grafik) return okunamadi(res);
       res.json({ ok: true, sonuclar: ara(h.grafik, q) });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message || 'Arama yapılamadı.' });
+      res.status(424).json({ ok: false, message: e.message || 'Arama yapılamadı.' });
     }
   });
 
@@ -178,7 +182,7 @@ function mount(
       }
       res.json({ ok: true, ...v, dogrulamalar });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message || 'Varlık okunamadı.' });
+      res.status(424).json({ ok: false, message: e.message || 'Varlık okunamadı.' });
     }
   });
 
@@ -219,7 +223,7 @@ function mount(
         uygulamalar: liste,
       });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message || 'Kararlar hesaplanamadı.' });
+      res.status(424).json({ ok: false, message: e.message || 'Kararlar hesaplanamadı.' });
     }
   });
 
@@ -288,7 +292,7 @@ function mount(
         .map((e) => e.kaynak);
       res.json({ ok: true, tur: 'kopya', ...ek, kopya: { ...notlu(k, ctx), uygulamalar: sahipler } });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message || 'Karar okunamadı.' });
+      res.status(424).json({ ok: false, message: e.message || 'Karar okunamadı.' });
     }
   });
   return hesap;

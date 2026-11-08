@@ -846,6 +846,8 @@ export interface ShNotlarSonuc {
   okunamadi: boolean;
   hata: string;
   grafikYok: boolean;
+  /** Sınıf tablosu okunamadı: liste yalnız varsayılanlar (Admin sınıfları silinmiş değil). */
+  siniflarOkunamadi?: boolean;
   siniflar: ShSinif[];
   notlar: (ShNot & { yetim: boolean | null; veriDegisti: boolean })[];
 }

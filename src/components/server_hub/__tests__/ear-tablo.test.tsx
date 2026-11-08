@@ -462,6 +462,43 @@ describe('EarTablo', () => {
     expect(screen.getByRole('button', { name: 'satır A1 ayrıntısı' })).toHaveAttribute('aria-expanded', 'true');
   });
 
+  it('ET14b açılır alan kapsayıcının görünen genişliğinde ve solda sabit (dar ekranda yatay taşmaz)', () => {
+    // jsdom'da ResizeObserver yok: ilk gözlem bildirimini veren sahte (tarayıcı observe() sonrası kendisi verir).
+    const gozlenen: Element[] = [];
+    class SahteRO {
+      cb: () => void;
+      constructor(cb: () => void) {
+        this.cb = cb;
+      }
+      observe(e: Element) {
+        gozlenen.push(e);
+        Object.defineProperty(e, 'clientWidth', { configurable: true, value: 358 });
+        this.cb();
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', SahteRO);
+    try {
+      render(
+        <EarTablo<Satir>
+          kimlik="acg"
+          kolonlar={KOLONLAR}
+          satirlar={[satir(1)]}
+          satirAnahtari={(r) => String(r.id)}
+          acilir={(r) => <div>ayrıntı {r.ad}</div>}
+        />,
+      );
+      fireEvent.click(screen.getByText('A1'));
+      const a = screen.getByTestId('ear-tablo-acilir');
+      expect(a).toHaveTextContent('ayrıntı A1');
+      expect(a).toHaveClass('sticky', 'left-0');
+      expect(a.style.width).toBe('358px');
+      expect(gozlenen[0]).toHaveClass('overflow-auto');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('ET15 ortak görünümler', async () => {
     const kaydet = vi.fn(async () => {});
     const sil = vi.fn(async () => {

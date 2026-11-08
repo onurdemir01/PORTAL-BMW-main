@@ -753,6 +753,13 @@ export default function NotYonetimi({
                 message={veri.hata || 'Portal DB okunamadı; liste boş görünüyor olabilir.'}
               />
             )}
+            {veri.siniflarOkunamadi && (
+              <LoadError
+                compact
+                title="Sınıf tablosu okunamadı"
+                message="Yalnız varsayılan sınıflar görünüyor; eklenen sınıflar silinmiş değil, okunamadı."
+              />
+            )}
             {bolum === 'notlar' ? (
               <NotlarBolumu
                 veri={veri}

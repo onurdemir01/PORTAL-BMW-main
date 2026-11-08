@@ -14,6 +14,9 @@
 //   3. RETIRE_ADAYI    BUTUN kosullar: en az bir KESIN ya da DOGRULANDI esleme, esli her vhost'ta trafik
 //                      olculmus ve sifir (kismi log degil), Server Hub taze, baglanti goruntusu olculmus ve web
 //                      disi cagiran yok YA DA JVM kapali.
+//                      TAZELIK her kanitin KENDI sunucusundan okunur: vhost'un sifir trafigi web sunucusunun
+//                      Server Hub taramasi (taze) ya da Uygulama Envanteri taramasi (UE_TAZE_GUN) ile; baglanti
+//                      goruntusu uygulama sunucusunun Uygulama Envanteri taramasiyla. Bayat sifir "olculemedi"dir.
 //   4. SUPHELI         destekleyen kanit var (kapali, trafik yok ama eksik olcum, yalniz saglik kontrolu, EAR /
 //                      deployment sorunu, OpenShift'e tasinmis) ama 3'un bir kosulu eksik.
 //   5. KARAR_VERILEMEZ calisiyor ve web eslemesi / trafik olcumu yok (ic servis / batch olabilir).
@@ -25,6 +28,10 @@
 const { A, GUVEN } = require('./iliski-grafigi.cjs');
 const { deploymentOf, earlerOf } = require('./uygulama-360.cjs');
 const { tabanAd } = require('./capraz.cjs');
+
+const UE_TAZE_GUN = 7;
+const GUN_MS = 86400000;
+const TAZE = Object.freeze({ sh: true, ue: true, shTarih: null, ueTarih: null });
 
 const KARARLAR = Object.freeze([
   'KULLANIMDA',
@@ -170,8 +177,12 @@ const madde = (kod, metin, kanit = null, ek = {}) => ({
   ...ek,
 });
 
-/** Bir vhost'un trafik durumu: { olcum: VAR | YOK | OLCULEMEDI, kismi, hc, kaynak, metin }. */
-function vhostTrafigi(d) {
+/**
+ * Bir vhost'un trafik durumu: { olcum: VAR | YOK | OLCULEMEDI, bayat?, hc, metin }. `t`: web sunucusunun
+ * kaynak tazeligi (sh: Server Hub taramasi taze, ue: Uygulama Envanteri taramasi UE_TAZE_GUN icinde).
+ * Kullanim kaniti bayat da olsa sayilir (guvenli taraf); SIFIR yalniz taze kaynaktan.
+ */
+function vhostTrafigi(d, t = TAZE) {
   const l = d.veri.fazWLog;
   const sh = d.veri.shReq7g;
   const shOlcul =
@@ -186,12 +197,19 @@ function vhostTrafigi(d) {
       metin: `${d.ad}: ${shOlcul && sh > 0 ? `Server Hub 7 gün ${sh}` : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? `access log ${wSayi}` : ''} gerçek istek`,
     };
   const wTam = l && l.durum === 'OLCULDU' && wSayi === 0;
-  if (wTam || (shOlcul && sh === 0 && !(l && l.durum === 'KISMI')))
+  const shSifir = shOlcul && sh === 0 && !(l && l.durum === 'KISMI');
+  if ((wTam && t.ue) || (shSifir && t.sh))
     return {
       olcum: 'YOK',
       hc: (l && l.hc_7g) || d.veri.shHc24s || 0,
       hcIstemci: (l && l.hc_istemcileri) || [],
       metin: `${d.ad}: 7 gündür gerçek istek yok${l && l.hc_7g ? ` (yalnız ${l.hc_7g} sağlık kontrolü)` : ''}`,
+    };
+  if (wTam || shSifir)
+    return {
+      olcum: 'OLCULEMEDI',
+      bayat: true,
+      metin: `${d.ad}: sıfır trafik ölçümü bayat (${[wTam ? `access log ${t.ueTarih || '?'}` : '', shSifir ? `Server Hub ${t.shTarih || '?'}` : ''].filter(Boolean).join(', ')} taraması)`,
     };
   return {
     olcum: 'OLCULEMEDI',
@@ -200,15 +218,28 @@ function vhostTrafigi(d) {
 }
 
 /**
- * @param {{ g: object, dogrulamalar: Map, hosts: object[] }} girdi
+ * @param {{ g: object, dogrulamalar: Map, hosts: object[], simdi?: () => number }} girdi
  * @returns {{ kopyalar: Map<string, object>, uygulamalar: Map<string, object> }}
  */
-function kararla({ g, dogrulamalar, hosts = [] }) {
+function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
   const jvmAssess = new Map();
   for (const h of hosts)
     for (const j of h.jvms || [])
       jvmAssess.set(A.jvm(h.host, Number.isFinite(j.gen) ? j.gen : null, j.name), { h, j });
   const celiskiOf = (k) => (dogrulamalar.get(k) || []).filter((x) => x.durum === 'CELISKI');
+  const an = simdi();
+  /** Sunucunun kaynak tazeligi: Server Hub (assess fresh) ve Uygulama Envanteri tarama ani. */
+  const tazelikOf = (host) => {
+    const s = g.dugumler.get(`sunucu:${host}`);
+    const v = (s && s.veri) || {};
+    const ueMs = v.ueTaranma ? Date.parse(v.ueTaranma) : NaN;
+    return {
+      sh: !!s && s.kaynaklar.includes('server_hub') && v.taze !== false,
+      ue: Number.isFinite(ueMs) && an - ueMs <= UE_TAZE_GUN * GUN_MS,
+      shTarih: v.tarama ? String(v.tarama).slice(0, 10) : null,
+      ueTarih: v.ueTaranma ? String(v.ueTaranma).slice(0, 10) : null,
+    };
+  };
   const kopyalar = new Map();
 
   for (const d of g.dugumler.values()) {
@@ -225,7 +256,7 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
     const vhostlar = [...new Set(guclu.map((e) => e.kaynak))]
       .map((k) => g.dugumler.get(k))
       .filter((x) => x && x.tur === 'vhost');
-    const trafikler = vhostlar.map((v) => ({ v, t: vhostTrafigi(v) }));
+    const trafikler = vhostlar.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) }));
     // KULLANIM KANITI celiskili eslemeden de toplanir: eslemesi tartismali olsa da gercek istek alan bir
     // vhost'un arkasindaki kopya "kullanilmiyor" sayilamaz (guvenli taraf). Retire kosullari celiskisiz kenarla.
     const celiskiliVhost = gelen
@@ -238,7 +269,7 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
     // ── kullanim kanitlari ──
     const trafikVar = [
       ...trafikler,
-      ...celiskiliVhost.map((v) => ({ v, t: vhostTrafigi(v) })),
+      ...celiskiliVhost.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
     ].filter((x) => x.t.olcum === 'VAR');
     for (const x of trafikVar) maddeler.push(madde('WEB_TRAFIK_VAR', x.t.metin, x.v.anahtar));
     if (trafikVar.length && calisiyor === false)
@@ -272,6 +303,9 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
         ),
       );
     const baglantiOlculdu = d.veri.dinleniyor != null || kenarlar.some((e) => e.tur === 'cagirir');
+    // Baglanti goruntusu Uygulama Envanteri taramasindan: bayatsa "web disi cagiran yok" iddiasi kurulmaz.
+    const jt = tazelikOf(host);
+    const baglantiTaze = baglantiOlculdu && jt.ue;
 
     // ── celiski ──
     const celiski = [
@@ -312,10 +346,17 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
     }
     for (const x of olcmedi) {
       maddeler.push(madde('WEB_TRAFIK_OLCULEMEDI', x.t.metin, x.v.anahtar));
-      eksikler.push({
-        ne: `${x.v.ad} trafiği`,
-        nasil: 'Uygulama Envanteri › Ayarlar › Web kontrolü (Faz W) ve log okuma kimliği',
-      });
+      eksikler.push(
+        x.t.bayat
+          ? {
+              ne: `${x.v.ad} trafiği (taze ölçüm)`,
+              nasil: `Web sunucusunu (${x.v.veri.host}) yeniden tarayın: Server Hub › Şimdi tara ya da Uygulama Envanteri`,
+            }
+          : {
+              ne: `${x.v.ad} trafiği`,
+              nasil: 'Uygulama Envanteri › Ayarlar › Web kontrolü (Faz W) ve log okuma kimliği',
+            },
+      );
     }
     if (!gelen.length) {
       maddeler.push(
@@ -362,6 +403,15 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
       (x) => x.kod === 'TAZELIK' && x.durum === 'CELISKI',
     );
     if (tazelik) maddeler.push(madde('BAYAT', tazelik.metin, `sunucu:${host}`));
+    if (baglantiOlculdu && !jt.ue && calisiyor !== false && !cagiranlar.length) {
+      maddeler.push(
+        madde('BAYAT', `bağlantı görüntüsü ${jt.ueTarih || '?'} taramasından`, `sunucu:${host}`),
+      );
+      eksikler.push({
+        ne: 'taze bağlantı görüntüsü',
+        nasil: `${host} için Uygulama Envanteri taraması (Bağlantı görüntüsü açık)`,
+      });
+    }
     if (!baglantiOlculdu && calisiyor !== false)
       maddeler.push(madde('BAGLANTI_OLCULMEDI', null, d.anahtar));
 
@@ -376,7 +426,7 @@ function kararla({ g, dogrulamalar, hosts = [] }) {
       trafikler.length &&
       yok.length === trafikler.length &&
       !bayat &&
-      (calisiyor === false || (baglantiOlculdu && !cagiranlar.length))
+      (calisiyor === false || (baglantiTaze && !cagiranlar.length))
     )
       karar = 'RETIRE_ADAYI';
     else if (maddeler.some((m) => m.etki === 'DESTEKLER')) karar = 'SUPHELI';
@@ -470,4 +520,12 @@ function yapilabilecekler(karar, kk) {
   return out.slice(0, 3);
 }
 
-module.exports = { kararla, vhostTrafigi, SENARYOLAR, KARARLAR, KARAR_METNI, tabanAd };
+module.exports = {
+  kararla,
+  vhostTrafigi,
+  SENARYOLAR,
+  KARARLAR,
+  KARAR_METNI,
+  UE_TAZE_GUN,
+  tabanAd,
+};

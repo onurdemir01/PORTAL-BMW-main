@@ -17,6 +17,12 @@ const U = (s) =>
   String(s == null ? '' : s)
     .trim()
     .toUpperCase();
+// Grafik anahtari kisa ad (iliski-grafigi kisa): Uygulama Envanteri hedef listesinde FQDN de olabilir.
+// Kisaltilmazsa dogrulama `vh.get(kisa ad)` ile sunucuyu bulamaz, TAZELIK / LISTEN_IP sessizce yazilmaz.
+const kisaAd = (h) => {
+  const s = String(h == null ? '' : h).trim();
+  return /^\d+\.\d+\.\d+\.\d+$/.test(s) ? s : U(s.split('.')[0]);
+};
 const dizi = (v) => (Array.isArray(v) ? v : []);
 const sayi = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 const iso = (t) => {
@@ -191,11 +197,15 @@ async function iliskiVerisi() {
          FROM ear_envanter_hostlari h JOIN son ON son.host = h.host AND son.kosu_id = h.kosu_id`,
     );
     for (const r of rows || []) {
-      const host = U(r.host);
+      const host = kisaAd(r.host);
       if (!host) continue;
+      // Ayni sunucu iki adla (FQDN / kisa) taranmissa en yeni tarama kalir.
+      const taranma = iso(r.taranma_utc);
+      const onceki = out.hostlar.get(host);
+      if (onceki && String(onceki.taranma || '') >= String(taranma || '')) continue;
       out.hostlar.set(host, {
         host,
-        taranma: iso(r.taranma_utc),
+        taranma,
         // Faz A/W kolonu NULL = olculmedi (kontrol kapali / eski kosu / eski tarayici).
         jboss: r.xml_ozeti == null ? null : xmlProjeksiyon(jsonOku(r.xml_ozeti)),
         web: webProjeksiyon(jsonOku(r.web_ozeti)),
@@ -211,7 +221,7 @@ async function iliskiVerisi() {
     const { query } = require('../inventory/mssql.cjs');
     const r = await query(`SELECT host, ip FROM dbo.IPInventory`);
     out.ipEnvanteri.satirlar = (r.recordset || [])
-      .map((x) => ({ host: U(String(x.host || '').split('.')[0]), ip: String(x.ip || '').trim() }))
+      .map((x) => ({ host: kisaAd(x.host), ip: String(x.ip || '').trim() }))
       .filter((x) => x.host && x.ip);
   } catch (e) {
     out.ipEnvanteri = { okunamadi: true, hata: (e && e.message) || 'okunamadı', satirlar: [] };
@@ -221,6 +231,7 @@ async function iliskiVerisi() {
 
 module.exports = {
   iliskiVerisi,
+  kisaAd,
   xmlProjeksiyon,
   webProjeksiyon,
   baglantiProjeksiyon,

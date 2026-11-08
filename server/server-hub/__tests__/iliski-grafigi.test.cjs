@@ -14,6 +14,8 @@
 //        TAZELIK, IP_ENVANTERI; UYUM / CELISKI / OLCULMEDI
 //   IG10 HIZ: 3000 sunucu + Faz A / W verisi <= 1,5 sn (grafik + dogrulama)
 //   IG11 onbellek: ayni degerlendirmede yeniden kurulmaz; tek ucus; veri bayatlayinca yeniden okunur
+//   IG14 sunucu adi: UE FQDN / kisa ad ayni sunucu (en yeni tarama), IPv4 adi kisaltilmaz, IP tek sahip;
+//        UE sunucusu dugum + tarama ani (senaryo motorunun tazelik girdisi)
 'use strict';
 
 const { test } = require('node:test');
@@ -771,4 +773,78 @@ test('IG13 IP sahipligi yalniz Faz W ip addr listesinden de kurulur', () => {
     kenarlar(g, A.vhost('WEBX', 'IHS', 'x.ornek.local', 80)).map((e) => e.hedef),
     [A.jvm('APPX', 7, 'APPX1')],
   );
+});
+
+test('IG14 sunucu adi: UE FQDN / kisa ayni sunucu; IPv4 adi kisaltilmaz; UE sunucusu dugum ve tarama ani', async () => {
+  // IPv4 adli sunucular tek "sunucu:10" dugumune cokmez (assess shortHost ile ayni kural).
+  assert.equal(A.sunucu('10.1.1.5'), 'sunucu:10.1.1.5');
+  assert.notEqual(A.sunucu('10.1.1.5'), A.sunucu('10.1.1.6'));
+  assert.equal(A.sunucu('appsrv01.ornek.local'), 'sunucu:APPSRV01');
+
+  // Uygulama Envanteri satirlari: ayni sunucu FQDN ve kisa adla (en yeni kalir, sira fark etmez), IP adli iki sunucu.
+  const path = require('node:path');
+  const DB = path.join(__dirname, '..', '..', 'db', 'index.cjs');
+  const INV = path.join(__dirname, '..', '..', 'inventory', 'mssql.cjs');
+  const satir = (host, taranma_utc, ip = '10.0.1.1') => ({
+    host,
+    taranma_utc,
+    xml_ozeti: null,
+    web_ozeti: JSON.stringify({
+      durum: 'WEB_YOK',
+      ipler: { durum: 'OLCULDU', liste: [{ ip }] },
+      kurulumlar: [],
+    }),
+    baglanti_ozeti: null,
+    was_ozeti: null,
+  });
+  const oku = async (rows) => {
+    require.cache[DB] = {
+      id: DB,
+      filename: DB,
+      loaded: true,
+      exports: { query: async () => ({ rows }) },
+    };
+    require.cache[INV] = {
+      id: INV,
+      filename: INV,
+      loaded: true,
+      exports: {
+        query: async () => ({ recordset: [{ host: 'appsrv01.ornek.local', ip: '10.0.1.1' }] }),
+      },
+    };
+    delete require.cache[require.resolve('../iliski-verisi.cjs')];
+    try {
+      return await require('../iliski-verisi.cjs').iliskiVerisi();
+    } finally {
+      delete require.cache[DB];
+      delete require.cache[INV];
+    }
+  };
+  const eskiOnce = [
+    satir('appsrv01.ornek.local', '2026-11-05 01:00:00'),
+    satir('APPSRV01', '2026-11-07 01:00:00'),
+    satir('10.1.1.5', '2026-11-07 01:00:00', '10.1.1.5'),
+    satir('10.1.1.6', '2026-11-07 01:00:00', '10.1.1.6'),
+  ];
+  for (const rows of [eskiOnce, [...eskiOnce].reverse()]) {
+    const v = await oku(rows);
+    assert.deepEqual([...v.hostlar.keys()].sort(), ['10.1.1.5', '10.1.1.6', 'APPSRV01']);
+    assert.equal(v.hostlar.get('APPSRV01').taranma, '2026-11-07T01:00:00.000Z', 'en yeni tarama');
+    assert.deepEqual(v.ipEnvanteri.satirlar, [{ host: 'APPSRV01', ip: '10.0.1.1' }]);
+  }
+
+  // Server Hub FQDN, UE kisa ad, ayni IP: tek sahip (kayan degil); TAZELIK ve IP_ENVANTERI yazilir.
+  const v = await oku(eskiOnce);
+  const hosts = [sunucu('appsrv01.ornek.local', { ips: [{ ip: '10.0.1.1' }] })];
+  const g = grafikKur({ hosts, veri: v });
+  const ip = g.dugumler.get('ip:10.0.1.1');
+  assert.deepEqual([ip.veri.sahipSayisi, ip.veri.kayan], [1, false]);
+  const d = dogrula(g, { veri: v });
+  assert.equal((d.get('sunucu:APPSRV01') || []).find((x) => x.kod === 'TAZELIK').durum, 'UYUM');
+  assert.equal((d.get('ip:10.0.1.1') || []).find((x) => x.kod === 'IP_ENVANTERI').durum, 'UYUM');
+  // Server Hub'da olmayan UE sunucusu da dugum; tarama ani senaryo motorunun tazelik girdisi.
+  const ipAdli = g.dugumler.get('sunucu:10.1.1.5');
+  assert.ok(ipAdli && ipAdli.kaynaklar.includes('uygulama_envanteri'));
+  assert.equal(ipAdli.veri.ueTaranma, '2026-11-07T01:00:00.000Z');
+  assert.equal(g.dugumler.get('sunucu:APPSRV01').veri.ueTaranma, '2026-11-07T01:00:00.000Z');
 });
