@@ -24,6 +24,7 @@ import {
   LockClosedIcon,
 } from '@heroicons/react/24/outline';
 import { LdapUserPicker } from '../LdapUserPicker';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 interface Editable {
   enabled: boolean;
@@ -59,6 +60,7 @@ function deriveEditable(el: PortalElement, rules: ElementRule[]): Editable {
 }
 
 export default function PageVisibilityTab() {
+  const { onayla, onayPenceresi } = useOnay();
   const { toast } = useToast();
   const { refreshVisibility } = useAuth();
   const [elements, setElements] = useState<PortalElement[]>([]);
@@ -202,7 +204,7 @@ export default function PageVisibilityTab() {
   }
 
   async function removeElement(key: string) {
-    if (!window.confirm(`"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`))
+    if (!(await onayla({ baslik: 'Öğeyi sil', metin: `"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`, onayMetni: 'Sil', tehlikeli: true })))
       return;
     try {
       await elementsApi.remove(key);
@@ -354,6 +356,7 @@ export default function PageVisibilityTab() {
 
   return (
     <div className="space-y-5">
+      {onayPenceresi}
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-800 mb-1">Görünürlük & Modüller</h3>

@@ -24,6 +24,7 @@ import { ansibleApi, type AdminOcoSchedule } from '@/api/ansibleApi';
 import { Select } from '@/components/ui/Form';
 import { fmtDateTime as fmt } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 const PAGE_SIZE = 50;
 
@@ -66,6 +67,7 @@ function relative(iso: string) {
 }
 
 export default function OcoSchedulesPanel() {
+  const { onayla, onayPenceresi } = useOnay();
   const [rows, setRows] = useState<AdminOcoSchedule[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -114,7 +116,7 @@ export default function OcoSchedulesPanel() {
     ]
       .filter(Boolean)
       .join('\n\n');
-    if (!window.confirm(msg)) return;
+    if (!(await onayla({ baslik: 'Zamanlamayı iptal et', metin: msg, onayMetni: 'Zamanlamayı iptal et', iptalMetni: 'Zamanlamayı koru', tehlikeli: true }))) return;
 
     setCancelling(r.id);
     try {
@@ -138,6 +140,7 @@ export default function OcoSchedulesPanel() {
 
   return (
     <div className="space-y-4">
+      {onayPenceresi}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3">
         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
           OCO kesinti saatine zamanlanmış işler (Self Service, ScaleX…). <b>AWX'e zamanlandı</b>{' '}

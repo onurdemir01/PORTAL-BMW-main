@@ -12,7 +12,6 @@ import {
   BookmarkIcon,
   FunnelIcon,
   XMarkIcon,
-  QuestionMarkCircleIcon,
   TableCellsIcon,
   ShieldCheckIcon,
   ClockIcon,
@@ -36,6 +35,7 @@ import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtNumber } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { downloadCsv as csvIndir } from '@/utils/csv';
+import YardimDugmesi from '@/components/common/YardimDugmesi';
 
 const ENVANTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -423,13 +423,7 @@ const EnvanterPage: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHelp(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-          >
-            <QuestionMarkCircleIcon className="w-4 h-4" />
-            Yardım
-          </button>
+          <YardimDugmesi onClick={() => setShowHelp(true)} />
           <select
             value={limit}
             onChange={(e) => {

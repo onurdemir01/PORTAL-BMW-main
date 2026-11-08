@@ -11,8 +11,10 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ArrowPathIcon, ExclamationTriangleIcon, NoSymbolIcon, PowerIcon } from '@heroicons/react/24/outline';
 import { ansibleApi, type AwxSunucuKaydi, type AwxBagimlilikOzeti } from '@/api/ansibleApi';
 import { toast } from '@/hooks/useToast';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 export default function AwxSunucuYonetimi({ onDegisti }: { onDegisti?: () => void }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [sunucular, setSunucular] = useState<AwxSunucuKaydi[] | null>(null);
   const [hata, setHata] = useState('');
   const [inceleme, setInceleme] = useState<{ no: number; ozet: AwxBagimlilikOzeti | null; hata: string } | null>(null);
@@ -69,6 +71,7 @@ export default function AwxSunucuYonetimi({ onDegisti }: { onDegisti?: () => voi
 
   return (
     <section data-testid="awx-sunucu-yonetimi">
+      {onayPenceresi}
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-semibold text-gray-700">AWX Sunucuları</h3>
         <button
@@ -129,8 +132,8 @@ export default function AwxSunucuYonetimi({ onDegisti }: { onDegisti?: () => voi
                       </button>
                     ) : (
                       <button
-                        onClick={() => {
-                          if (window.confirm(`#${s.no} ${s.name} yeniden etkinleştirilsin mi? Portal bu sunucuya tekrar istek göndermeye başlar.`))
+                        onClick={async () => {
+                          if (await onayla({ baslik: 'Sunucuyu etkinleştir', metin: `#${s.no} ${s.name} yeniden etkinleştirilsin mi? Portal bu sunucuya tekrar istek göndermeye başlar.`, onayMetni: 'Etkinleştir' }))
                             void durumYaz(s, true);
                         }}
                         disabled={mesgul !== null}

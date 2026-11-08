@@ -58,6 +58,7 @@ import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
 import * as shOnbellek from './shOnbellek';
 import RetireEtiketleriGorunum from './RetireEtiketleri';
 import SunucuPaneli from './SunucuPaneli';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -2718,6 +2719,7 @@ function HostModal({
   ) => void;
   reload: () => void;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   // v3 alanlari (runningKnown, runningSrc) yerel tipte ve istege bagli; API tipi aynen atanir.
   const [d, setD] = useState<ShHostDetailV3 | null>(null);
   const [err, setErr] = useState('');
@@ -2755,7 +2757,7 @@ function HostModal({
   const jvmAutoStart = async (j: ShJvmV3) => {
     const ac = j.autoStart !== 'true';
     const k = `${j.gen}|${j.name}`;
-    if (!window.confirm(autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true))) return;
+    if (!(await onayla({ baslik: 'Auto-start', metin: autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true), onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat' }))) return;
     setAsBusy(k);
     try {
       const r = await serverHubApi.jvmAutoStart({ host, gen: j.gen, jvm: j.name, enable: ac });
@@ -2885,6 +2887,7 @@ function HostModal({
         </div>
       }
     >
+      {onayPenceresi}
       {err && (
         <div
           className="text-sm px-3 py-2 rounded-xl border"
@@ -3844,6 +3847,7 @@ export function FindingsTab({
   /** KESIN + DOGRULANDI retirement etiketinden Retirement sekmesinde kayit acar (2026-11-06). */
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   const gorunur = useSekmeGorunur();
   // Admin'in kaydettigi ortak gorunumler (Gorunumler menusu).
   const ortakBulgu = useOrtakGorunumler('server-hub-bulgular', gorunur);
@@ -3893,10 +3897,13 @@ export function FindingsTab({
     const ac = fix.action === 'jboss_autostart_on';
     const k = `${f.host}|${fix.gen}|${fix.jvm}`;
     if (
-      !window.confirm(
-        `${f.host} üzerinde ${fix.jvm} (JBoss ${fix.gen}) için auto-start ` +
+      !(await onayla({
+        baslik: 'Auto-start',
+        metin:
+          `${f.host} üzerinde ${fix.jvm} (JBoss ${fix.gen}) için auto-start ` +
           `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\nYalnız bu JVM etkilenir. Devam edilsin mi?`,
-      )
+        onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat',
+      }))
     )
       return;
     setAsBusy(k);
@@ -3917,7 +3924,7 @@ export function FindingsTab({
     } finally {
       setAsBusy(null);
     }
-  }, []);
+  }, [onayla]);
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -3977,6 +3984,7 @@ export function FindingsTab({
   };
   return (
     <div className="space-y-3">
+      {onayPenceresi}
       <BayatFiloBandi sf={data?.staleFleet} />
       <TaramadanDusenBandi td={data?.taramadanDusen} />
       <SemaBandi su={data?.schemaUnknown} />

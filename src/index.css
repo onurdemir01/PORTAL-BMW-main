@@ -428,29 +428,36 @@ a.btn-primary:hover, a.btn-secondary:hover, a.btn-danger:hover { text-decoration
 }
 .pf-btn-tertiary:hover:not(:disabled) { border-color: var(--text-primary); }
 
-/* ── Form controls (PF Form Control — alt cizgi vurgulu) ───────────────────── */
-.input-modern,
-.pf-input {
-  width: 100%;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid var(--border);
-  border-bottom: 1px solid var(--border-strong);
-  border-radius: 0;
-  outline: none;
-  transition: border-color 0.1s ease;
+/* ── Form controls (PF6 Form Control) ─────────────────────────────────────────
+   2026-11-08: PF5 donemi koseli, alt cizgi vurgulu gorunumden PF6'ya: tam kenarlik, 6 px kose,
+   odakta aksan kenar + yumusak halka. Portalin geri kalani (`ui/Form.tsx`, 24 dosya) zaten bu
+   dildeydi; giris ekrani dahil 6 dosya eski gorunumde kaliyordu.
+   `@layer components` ICINDE (bilerek): katmansiz kural ayni ogedeki Tailwind utility'sini
+   EZER. `pf-input pr-10` (giris parolasinin goz dugmesi) ve `pf-input pl-9` (arama ikonu)
+   yazilmisti ama dolgu hic uygulanmiyordu; metin ikonun altina giriyordu. Katmanda utility
+   kazanir; varsayilan dolgu yalniz utility yoksa gecerlidir. */
+@layer components {
+  .input-modern,
+  .pf-input {
+    width: 100%;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    outline: none;
+    transition: border-color 0.1s ease, box-shadow 0.1s ease;
+  }
+  .input-modern::placeholder, .pf-input::placeholder { color: var(--text-muted); }
+  .input-modern:hover:not(:disabled), .pf-input:hover:not(:disabled) { border-color: var(--border-strong); }
+  .input-modern:focus, .pf-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+  .input-modern:disabled, .pf-input:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; }
 }
-.input-modern::placeholder, .pf-input::placeholder { color: var(--text-muted); }
-.input-modern:hover:not(:disabled), .pf-input:hover:not(:disabled) { border-bottom-color: var(--accent); }
-.input-modern:focus, .pf-input:focus {
-  border-bottom: 2px solid var(--accent);
-  padding-bottom: calc(0.375rem - 1px);
-  box-shadow: none;
-}
-.input-modern:disabled, .pf-input:disabled { background: var(--bg-elevated); color: var(--text-muted); border-bottom-style: solid; cursor: not-allowed; }
 
 .pf-label-text {
   display: block;

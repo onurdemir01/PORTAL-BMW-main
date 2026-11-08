@@ -27,6 +27,14 @@ const SIZE_MAP = {
   wide: "max-w-[min(90rem,95vw)]",
 };
 
+// UST USTE PENCERE YIGINI (2026-11-08). Her acik Modal `window`a kendi keydown dinleyicisini
+// ekler. Bir pencerenin ICINDEN ikincisi acildiginda (or. FieldOverridesModal icinde surum geri
+// yukleme onayi) ESC IKISINI BIRDEN kapatiyordu ve alttaki pencerenin Tab tuzagi odagi ustteki
+// pencereden "disari kacti" sanip geri cekiyordu. Tuslara yalniz EN USTTEKI pencere yanit verir.
+// Sayfa kaydirma kilidi de sayacla: ustteki kapaninca alttaki acikken sayfa kaymaya baslamasin.
+const acikPencereler: object[] = [];
+let kaydirmaKilidi = 0;
+
 // PatternFly Modal: duz beyaz kutu (3px kose), 20px Red Hat Display baslik,
 // sag ustte kapat butonu, altta SOLA hizali aksiyon barı (PF konvansiyonu).
 export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size = "md", dismissOnBackdrop = true, children }: Props) {
@@ -67,7 +75,11 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
     const first = focusables()[0];
     (first ?? panelRef.current)?.focus();
 
+    const kimlik = {};
+    acikPencereler.push(kimlik);
+
     function onKey(e: KeyboardEvent) {
+      if (acikPencereler[acikPencereler.length - 1] !== kimlik) return;
       if (e.key === "Escape") { onCloseRef.current(); return; }
       if (e.key !== "Tab") return;
       const list = focusables();
@@ -88,6 +100,8 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
+      const i = acikPencereler.indexOf(kimlik);
+      if (i >= 0) acikPencereler.splice(i, 1);
       // Odagi TETIKLEYEN ogeye geri ver. Oge bu arada DOM'dan kalktiysa (or. silme
       // onayindan sonra satir gitti) sessizce gec — hataya donusturme.
       const target = returnFocusRef.current;
@@ -96,9 +110,13 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
   }, [open]);
 
   useEffect(() => {
-    if (open) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "";
-    return () => { document.body.style.overflow = ""; };
+    if (!open) return;
+    kaydirmaKilidi += 1;
+    document.body.style.overflow = "hidden";
+    return () => {
+      kaydirmaKilidi -= 1;
+      if (kaydirmaKilidi === 0) document.body.style.overflow = "";
+    };
   }, [open]);
 
   if (!open) return null;

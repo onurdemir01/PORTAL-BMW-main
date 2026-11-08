@@ -42,5 +42,7 @@ test('SH3 ekran: ayarlar okunamadiysa Kaydet KILITLI; gecmis paneli + geri yukle
   assert.match(modal, /disabled=\{saving \|\| loadFailed\}/, 'Kaydet okuma hatasinda kilitlenmiyor (bos halle ezme yolu acik)');
   assert.match(modal, /ansibleApi\.customizationHistory\(/, 'gecmis listesi cekilmiyor');
   assert.match(modal, /ansibleApi\.restoreCustomization\(/, 'geri yukleme yok');
-  assert.match(modal, /window\.confirm\(/, 'geri yukleme onaysiz');
+  // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
+  assert.match(modal, /await onayla\(\{ baslik: 'Sürümü geri yükle'/, 'geri yukleme onaysiz');
+  assert.doesNotMatch(modal, /window\.confirm\(/, 'tarayici onayi geri gelmis');
 });

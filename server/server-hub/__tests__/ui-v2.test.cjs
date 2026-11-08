@@ -758,12 +758,16 @@ test("D1-U07 auto-start onay metni olculemeyende 'calisma durumu olculemedi' der
   const s = om('GBAPPT01', { ...j, runningSrc: null }, false, true);
   assert.match(s, /çalışma durumu ölçülemedi \(Server Hub şeması okunamadı\)/);
   assert.ok(!/süreç görünmüyor/.test(s), 'sema bilinmiyorken hidepid sebebi');
-  // BAGLANTI (AST): onay metni yardimcidan ve sema bayragiyla
-  assert.deepEqual(
-    cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'window.confirm'),
-    [['autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true)']],
+  // BAGLANTI (AST): onay metni yardimcidan ve sema bayragiyla. Onay 2026-11-08'den beri portal
+  // ici pencereden (useOnay, eskiden window.confirm); tek cagri, metni yardimcidan.
+  const onaylar = cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'onayla');
+  assert.equal(onaylar.length, 1, 'HostModal auto-start icin tek onay sormuyor');
+  assert.match(
+    onaylar[0][0],
+    /\bmetin: autoStartOnayMetni\(host, j, ac, d\?\.schemaUnknown === true\)/,
     'onay metni yardimcidan (sema bayragiyla) gelmiyor',
   );
+  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'window.confirm'), [], 'tarayici onayi geri gelmis');
   // Kural 7: olculemeyen satirda dugme admine KAPANMAZ - disabled yalniz is suruyorken.
   assert.ok(
     PAGE.includes('onClick={() => jvmAutoStart(j)} disabled={asBusy === `${j.gen}|${j.name}`}'),
