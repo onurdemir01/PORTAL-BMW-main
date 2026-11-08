@@ -137,7 +137,19 @@ function CardShell({
   return (
     <div className="card flex flex-col">
       <div className="flex items-center justify-between gap-2 px-6 pt-5 pb-3">
-        <h2 className="pf-card-title p-0">{title}</h2>
+        {/* `pf-card-title p-0` IDI (2026-11-08): katmansiz `.pf-card-title` padding'i (index.css)
+            Tailwind'in `p-0`'ini eziyordu; baslik icerikten 24 px iceride ve 16 px asagida
+            ciziliyordu. Ayni yazi stili, padding'siz. */}
+        <h2
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '1rem',
+            fontWeight: 500,
+            color: 'var(--text-primary)',
+          }}
+        >
+          {title}
+        </h2>
         {action}
       </div>
       <div className="px-6 pb-5 flex-1">{children}</div>

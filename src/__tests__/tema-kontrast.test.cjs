@@ -274,6 +274,22 @@ test('TK7 aksan zemini (satir-ici) ustunde sabit beyaz metin yok (koyu temada 1.
   assert.deepEqual(ihlal, []);
 });
 
+// TK7 KORLUGU (2026-11-08): TK7 yalniz DUZ degeri (`background: 'var(--accent)'`) goruyordu.
+// common/Tabs.tsx aktif sekme sayacinda deger KOSULLUYDU
+// (`background: secili ? "var(--accent)" : ...`, `color: secili ? "#fff" : ...`) ve koyu temada
+// 1.45:1 ile gecti. Kosullu dal da ayni kurala tabidir.
+test('TK7b kosullu stil degerinde de aksan zemini + sabit beyaz metin yok', () => {
+  const ZEMIN = /background(Color)?:[^,}]*['"]var\(--accent\)['"]/;
+  const BEYAZ = /(?<![A-Za-z-])color:[^,}]*['"](#fff|#ffffff|white)['"]/i;
+  const ihlal = [];
+  for (const [f, s] of KAPSAM_ICI) {
+    for (const m of acilisEtiketleri(s)) {
+      if (ZEMIN.test(m[0]) && BEYAZ.test(m[0])) ihlal.push(`${f}:${satirNo(s, m.index)}`);
+    }
+  }
+  assert.deepEqual(ihlal, []);
+});
+
 // `--status-warning` IKON ve DOLGU tonudur; METIN icin `--status-warning-text` kullanilir.
 // Kapsam ici dosyalarda bugun kalan kullanimlarin HEPSI ikondur. Sayilar artamaz; yeni bir
 // dosya ancak bu listeye bilerek eklenerek (yani "bu bir ikon" denerek) gecebilir.

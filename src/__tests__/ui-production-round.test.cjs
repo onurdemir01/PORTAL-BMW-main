@@ -191,6 +191,14 @@ test('G21: satir hover CSS’te, JS’te DEGIL', () => {
   }
 });
 
+// G21 deseni yalniz `style.background` ariyordu; Modal kapat dugmesi `style.color`u JS ile
+// degistiriyordu (2026-11-08). Ortak bilesende hover dinleyicisi hic olmamali.
+test('G21b: ortak Modal`da JS hover yok (kapat dugmesi CSS hover)', () => {
+  const src = stripComments(read('components/common/Modal.tsx'));
+  assert.ok(!/onMouse(Enter|Leave)=/.test(src), 'Modal.tsx: JS hover duruyor');
+  assert.match(src, /hover:text-\[var\(--text-primary\)\]/);
+});
+
 test('G22: hover rengi token’dan', () => {
   assert.match(CSS, /background-color: rgb\(var\(--accent-rgb\) \/ 0\.06\)/);
 });
@@ -234,4 +242,44 @@ test('G29: ayni eylem icin tek fiil ("Vazgeç" kalmadi)', () => {
 // ── G8: segment kontrol ─────────────────────────────────────────────────────
 test('G8: aktif segment KENARLIK da tasiyor (renk tek basina yetmiyordu)', () => {
   assert.match(CSS, /\.pf-segment\.is-active \{[\s\S]*?border-color: var\(--border\);/);
+});
+
+// ── G27/G28 (2026-11-08) ────────────────────────────────────────────────────
+// Katmansiz bilesen sinifi (index.css) ayni ogedeki Tailwind utility'sini EZER: `@layer` disi
+// kural her zaman kazanir. Dashboard kart basligi `pf-card-title p-0` yaziyordu; p-0 hic
+// uygulanmadi, baslik icerikten 24 px iceride cizildi.
+test('G27: pf-card-title ile padding utility ayni ogede degil (p-0 sessizce eziliyor)', () => {
+  const bad = [];
+  for (const f of SRC_FILES) {
+    const src = stripComments(fs.readFileSync(f, 'utf8'));
+    for (const m of src.matchAll(/className=["'`{][^>]*?\bpf-card-title\b[^>]*?>/g)) {
+      if (/\bp[xytblr]?-\d/.test(m[0])) bad.push(path.relative(ROOT, f));
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+// Ozet kutusu izgarasi: sabit sutun sayisi kutu sayisini bolmuyorsa son kutu(lar) alt satirda
+// yetim kalir (Denetim OpenShift ozeti: 5 kutu, md:grid-cols-4).
+test('G28: sabit sutunlu ozet kutusu izgarasinda yetim kutu yok', () => {
+  const bad = [];
+  for (const f of SRC_FILES) {
+    const src = fs.readFileSync(f, 'utf8');
+    const satirlar = src.split('\n');
+    satirlar.forEach((l, i) => {
+      const m = /^(\s*)<div className="grid [^"]*">\s*$/.exec(l);
+      if (!m) return;
+      const sutun = [...l.matchAll(/grid-cols-(\d+)\b/g)].map((x) => Number(x[1]));
+      if (!sutun.length) return;
+      const ic = m[1] + '  ';
+      let kutu = 0;
+      for (let j = i + 1; j < satirlar.length && !satirlar[j].startsWith(m[1] + '</div>'); j++) {
+        if (satirlar[j].includes('.map(')) return;
+        if (satirlar[j].startsWith(ic + '<') && /^<Stat\b/.test(satirlar[j].slice(ic.length))) kutu++;
+      }
+      const en = Math.max(...sutun);
+      if (kutu > en && kutu % en !== 0) bad.push(`${path.relative(ROOT, f)}:${i + 1} (${kutu} kutu, ${en} sutun)`);
+    });
+  }
+  assert.deepEqual(bad, []);
 });
