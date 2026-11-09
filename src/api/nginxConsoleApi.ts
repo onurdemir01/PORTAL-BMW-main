@@ -849,7 +849,7 @@ export interface NginxRateLimitHost {
   fileLoaded: boolean;
   /** nginx.conf'taki rate_limits.conf include satırı (nginx_audit, ham dosyadan);
    *  null = ölçülmedi (eski analiz sürümü). */
-  rateLimitInclude?: 'acik' | 'kapali' | 'yok' | null;
+  rateLimitInclude?: 'enabled' | 'disabled' | 'missing' | null;
   /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
   mismatch: number;
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */

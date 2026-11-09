@@ -32,15 +32,19 @@ const ZONE_CATALOG = Object.freeze([
 
 const DIRECTIVES = ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn', 'limit_req_status', 'limit_conn_status'];
 
-// BILEREK KAPALI (2026-11-09, rate_limits_aktif). Kurulum / configuration_delivery / upgrade
+// BILEREK KAPALI (2026-11-09, rate_limit_enabled). Kurulum / configuration_delivery / upgrade
 // nginx.conf'taki `include /usr/nginx/conf/rate_limits.conf;` satirini yoruma alabilir. nginx -T
 // yorumlu satiri GOSTERMEZ; "dosya kaybolmus" ile "bilerek kapatilmis" ancak ham nginx.conf'tan
 // ayrilir. nginx_audit_analyze.py bunu her sunucu icin Nginx_Audit_Settings'e tek satir yazar
 // (bmw_nginx/nginx_audit/README.md "Rate limit include durumu"):
 //   conf_file=/usr/nginx/nginx.conf, context=http, directive=rate_limits_include,
-//   value = acik | kapali | yok. Satir yoksa = olculmedi (eski analiz surumu), "yok" DEGIL.
+//   value = enabled | disabled | missing. Satir yoksa = olculmedi (eski analiz surumu), "missing" DEGIL.
+// Bunlar analizcinin HAM degerleridir; Portal'in kendi durum kodu (durum: 'kapali' ...) ayridir.
 const INCLUDE_SIGNAL = 'rate_limits_include';
-const INCLUDE_VALUES = new Set(['acik', 'kapali', 'yok']);
+const INCLUDE_VALUES = new Set(['enabled', 'disabled', 'missing']);
+// Eski analizci (b8f8148e9) degerleri: acik/kapali/yok. AWX'e eski zip gittiyse ya da eski tarihli
+// tarama secilirse DB'de bu degerler olabilir; yenilerine cevrilir (yoksa kapali sunucu "eksik" gorunur).
+const INCLUDE_ALIASES = Object.freeze({ acik: 'enabled', kapali: 'disabled', yok: 'missing' });
 const SORGU_DIREKTIFLERI = [...DIRECTIVES, INCLUDE_SIGNAL];
 
 const rx = {
@@ -104,7 +108,7 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   // "include yorumlu" tek basina yetmez (zone'lar baska dosyadan gelebilir, o zaman olculur).
   const zones = h.zones || {};
   const applied = h.applied || {};
-  if (h.include === 'kapali'
+  if (h.include === 'disabled'
       && ZONE_CATALOG.every((z) => !zones[z.key] && !applied[z.key])) {
     return { durum: 'kapali', eksikler: [], farklar: [] };
   }
@@ -125,7 +129,7 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
     }
   }
   // Satir HIC yoksa sebep yazilir: toggle satiri eklemez, elle duzeltilmesi gerekir.
-  if (eksikler.length && h.include === 'yok') eksikler.unshift('nginx.conf\'ta rate_limits.conf include satırı yok');
+  if (eksikler.length && h.include === 'missing') eksikler.unshift('nginx.conf\'ta rate_limits.conf include satırı yok');
   const durum = eksikler.length ? 'eksik' : farklar.length ? 'farkli' : 'standart';
   return { durum, eksikler, farklar };
 }
@@ -171,7 +175,8 @@ async function loadRateLimits({ scanDate } = {}) {
     // Include sinyali bir nginx -T direktifi DEGIL: zone ayristirmasina, dosya listesine ve
     // "nginx -T ciktisindaki limit direktifleri" detayina girmez. Sapma sayisi audit ile ayni.
     if (r.directive === INCLUDE_SIGNAL) {
-      const iv = String(r.value || '').trim().toLowerCase();
+      const ham = String(r.value || '').trim().toLowerCase();
+      const iv = Object.prototype.hasOwnProperty.call(INCLUDE_ALIASES, ham) ? INCLUDE_ALIASES[ham] : ham;
       h.include = INCLUDE_VALUES.has(iv) ? iv : null;
       if (r.matches === false || r.matches === 0) h.mismatch += 1;
       continue;
@@ -262,7 +267,7 @@ async function loadRateLimits({ scanDate } = {}) {
       zoneCount: Object.keys(h.zones).length,
       // rate_limits.conf gercekten yuklenmis mi (nginx -T dokumu bu dosyayi gosteriyor mu)
       fileLoaded: [...h.files].some((f) => String(f || '').includes('rate_limits.conf')),
-      // nginx.conf'taki include satiri: acik | kapali | yok; null = olculmedi (eski analiz).
+      // nginx.conf'taki include satiri (ham): enabled | disabled | missing; null = olculmedi (eski analiz).
       rateLimitInclude: h.include,
       mismatch: h.mismatch,
       durum: st.durum,
@@ -326,7 +331,7 @@ function kapaliMesaji(s) {
   const hepsi = s.kapali === s.hosts;
   return `${hepsi ? 'Tüm sunucularda' : `${s.kapali} sunucuda`} rate limit bilerek kapatılmış: `
     + 'nginx.conf\'ta rate_limits.conf include satırı yorumlu (#include). Bu sunucular eksik sayılmaz. '
-    + 'Yeniden açmak için configuration_delivery\'de rate_limits_aktif = true.';
+    + 'Yeniden açmak için configuration_delivery\'de rate_limit_enabled = true.';
 }
 
 function summarize(hosts) {

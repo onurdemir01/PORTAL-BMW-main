@@ -88,7 +88,7 @@ const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string;
   standart: { label: 'standart', color: 'var(--status-success)', bg: 'var(--status-success-bg)' },
   farkli: { label: 'farklı', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
   eksik: { label: 'eksik', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
-  // BILEREK KAPALI (2026-11-09): nginx.conf'ta include yorumlu (rate_limits_aktif = false).
+  // BILEREK KAPALI (2026-11-09): nginx.conf'ta include yorumlu (rate_limit_enabled = false).
   // Bulgu degil secim; kirmizi/sari degil notr bilgi tonu.
   kapali: { label: 'Kapalı (bilerek)', color: 'var(--status-info)', bg: 'var(--status-info-bg)' },
   bilinmiyor: { label: 'ölçülmedi', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' },
@@ -363,7 +363,7 @@ export function RateLimitTab() {
                             <div className="mb-2 text-[12px]" style={{ color: 'var(--status-info)' }}>
                               nginx.conf'ta <code>#include {data?.catalog?.file || '/usr/nginx/conf/rate_limits.conf'};</code> satırı yorumlu:
                               rate limit bu sunucuda bilerek kapatılmış, eksik sayılmaz. Yeniden açmak için
-                              configuration_delivery'de <code>rate_limits_aktif = true</code>.
+                              configuration_delivery'de <code>rate_limit_enabled = true</code>.
                             </div>
                           )}
                           {(h.eksikler.length > 0 || h.farklar.length > 0) && (
