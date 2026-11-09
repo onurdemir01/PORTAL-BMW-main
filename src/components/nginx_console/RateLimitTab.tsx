@@ -12,9 +12,10 @@
 //    Bu sürüm SUNUCU BAŞINA tek satır gösterir (~300). Ham direktifler yalnızca bir
 //    sunucu AÇILDIĞINDA görünür ve sunucu başına 20 satırla sınırlıdır.
 //
-// ÜÇ DURUM AYRI: "standart" · "farklı" (değer estate'ten başka) · "eksik" (zone yok YA DA
-// tanımlı ama uygulanmıyor). Sonuncusu sessiz ve tehlikelidir: zone bellekte durur ama
-// hiçbir isteği sınırlamaz — bu yüzden ayrı bir durum.
+// DÖRT DURUM AYRI: "standart" · "farklı" (değer estate'ten başka) · "eksik" (zone yok YA DA
+// tanımlı ama uygulanmıyor) · "kapalı (bilerek)" (nginx.conf'ta include yorumlu, 2026-11-09).
+// "Eksik" sessiz ve tehlikelidir: zone bellekte durur ama hiçbir isteği sınırlamaz. "Kapalı"
+// ise bir seçimdir; kırmızıya boyanmaz, "dosya yüklü değil" sayacına da girmez.
 import React, { useMemo, useState } from 'react';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import {
@@ -45,7 +46,9 @@ const DURUM_AGIRLIK: Record<NginxRateLimitHost['durum'], number> = {
   eksik: 3,
   bilinmiyor: 4,
   farkli: 5,
-  standart: 6,
+  // Bilerek kapali bir bulgu degil, bir secim: standarttan once ama farkli'dan sonra.
+  kapali: 6,
+  standart: 7,
 };
 
 type Sira = 'sorun' | 'sunucu' | 'ortam' | 'ipLimit' | 'baglanti';
@@ -85,6 +88,9 @@ const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string;
   standart: { label: 'standart', color: 'var(--status-success)', bg: 'var(--status-success-bg)' },
   farkli: { label: 'farklı', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
   eksik: { label: 'eksik', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
+  // BILEREK KAPALI (2026-11-09): nginx.conf'ta include yorumlu (rate_limits_aktif = false).
+  // Bulgu degil secim; kirmizi/sari degil notr bilgi tonu.
+  kapali: { label: 'Kapalı (bilerek)', color: 'var(--status-info)', bg: 'var(--status-info-bg)' },
   bilinmiyor: { label: 'ölçülmedi', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' },
   // SUNUCUNUN KENDI DURUMU (2026-09-26): bunlar bir limit bulgusu DEGIL, olcumun
   // neden yapilamadiginin sebebidir. 'eksik' ile ayni renkte gosterilmezler.
@@ -101,7 +107,7 @@ export function RateLimitTab() {
   const [scanDate, setScanDate] = useState('');
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
-  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk'>('all');
+  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'kapali' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk'>('all');
   const [sira, setSira] = useState<Sira>('sorun');
   const [acik, setAcik] = useState<string | null>(null);
 
@@ -174,6 +180,13 @@ export function RateLimitTab() {
           <span>{data.message}</span>
         </div>
       )}
+      {data?.kapaliMessage && (
+        <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+          style={{ color: 'var(--status-info)', background: 'var(--status-info-bg)', borderColor: 'var(--status-info)' }}>
+          <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{data.kapaliMessage}</span>
+        </div>
+      )}
       {data?.tableMissing && (
         <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
           style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
@@ -210,6 +223,7 @@ export function RateLimitTab() {
           <Kpi title="Standart" value={s.standart} tone="ok" />
           <Kpi title="Farklı" value={s.farkli} tone={s.farkli > 0 ? 'warn' : undefined} />
           <Kpi title="Eksik" value={s.eksik} tone={s.eksik > 0 ? 'danger' : undefined} />
+          {s.kapali > 0 && <Kpi title="Kapalı (bilerek)" value={s.kapali} tone="info" />}
           {s.bilinmiyor > 0 && <Kpi title="Ölçülmedi" value={s.bilinmiyor} />}
           {s.kurulumyok > 0 && <Kpi title="nginx kurulu değil" value={s.kurulumyok} tone="danger" />}
           {s.calismiyor > 0 && <Kpi title="nginx çalışmıyor" value={s.calismiyor} tone="warn" />}
@@ -254,6 +268,7 @@ export function RateLimitTab() {
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
           <option value="all">tüm durumlar</option>
           <option value="eksik">yalnız eksik</option>
+          <option value="kapali">yalnız bilerek kapalı</option>
           <option value="farkli">yalnız farklı</option>
           <option value="standart">yalnız standart</option>
           <option value="bilinmiyor">yalnız ölçülmeyenler</option>
@@ -320,7 +335,7 @@ export function RateLimitTab() {
                             durdurulmus
                           </span>
                         )}
-                        {!h.fileLoaded && h.durum !== 'kurulumyok' && (
+                        {!h.fileLoaded && h.durum !== 'kurulumyok' && h.durum !== 'kapali' && (
                           <span className="ml-2 text-[10px]" style={{ color: 'var(--status-danger)' }}
                             title="nginx -T çıktısında rate_limits.conf görünmüyor — dosya yüklenmemiş olabilir">
                             rate_limits.conf yok
@@ -334,7 +349,9 @@ export function RateLimitTab() {
                       <td className="px-3 py-1.5">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
                           style={{ color: d.color, background: d.bg, border: `1px solid ${d.color}` }}>
-                          {h.durum === 'standart' ? <CheckCircleIcon className="h-3.5 w-3.5" /> : <ShieldExclamationIcon className="h-3.5 w-3.5" />}
+                          {h.durum === 'standart' ? <CheckCircleIcon className="h-3.5 w-3.5" />
+                            : h.durum === 'kapali' ? <InformationCircleIcon className="h-3.5 w-3.5" />
+                            : <ShieldExclamationIcon className="h-3.5 w-3.5" />}
                           {d.label}
                         </span>
                       </td>
@@ -342,6 +359,13 @@ export function RateLimitTab() {
                     {open && (
                       <tr style={{ background: 'var(--bg-elevated)' }}>
                         <td colSpan={7} className="px-4 py-3">
+                          {h.durum === 'kapali' && (
+                            <div className="mb-2 text-[12px]" style={{ color: 'var(--status-info)' }}>
+                              nginx.conf'ta <code>#include {data?.catalog?.file || '/usr/nginx/conf/rate_limits.conf'};</code> satırı yorumlu:
+                              rate limit bu sunucuda bilerek kapatılmış, eksik sayılmaz. Yeniden açmak için
+                              configuration_delivery'de <code>rate_limits_aktif = true</code>.
+                            </div>
+                          )}
                           {(h.eksikler.length > 0 || h.farklar.length > 0) && (
                             <ul className="mb-2 space-y-0.5 text-[12px]">
                               {h.eksikler.map((x, i) => <li key={`e${i}`} style={{ color: 'var(--status-danger)' }}>• {x}</li>)}
@@ -370,15 +394,17 @@ export function RateLimitTab() {
         Kaynak: <code>dbo.Nginx_Audit_Settings</code> — <b>nginx_audit</b> job'ı her sunucuda <code>nginx -T</code> koşar,
         yani burada gördüğünüz <b>çalışan</b> konfigürasyondur, diskteki dosya değil.
         <b> Eksik</b> = zone hiç yok <i>ya da</i> tanımlı ama <code>limit_req</code>/<code>limit_conn</code> ile uygulanmıyor.
+        <b> Kapalı (bilerek)</b> = nginx.conf'ta <code>rate_limits.conf</code> include satırı yorumlu ve hiçbir estate zone'u yok; bir seçimdir, bulgu değil.
         <GuncellemeRozeti etiket="tarama" tarih={data?.scanDate || '—'} />
       </p>
     </div>
   );
 }
 
-function Kpi({ title, value, tone }: { title: string; value: number; tone?: 'ok' | 'danger' | 'warn' }) {
+function Kpi({ title, value, tone }: { title: string; value: number; tone?: 'ok' | 'danger' | 'warn' | 'info' }) {
   const color = tone === 'danger' ? 'var(--status-danger)'
     : tone === 'warn' ? 'var(--status-warning)'
+    : tone === 'info' ? 'var(--status-info)'
     : tone === 'ok' ? 'var(--status-success)' : 'var(--text-primary)';
   return (
     <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>

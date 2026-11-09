@@ -32,6 +32,17 @@ const ZONE_CATALOG = Object.freeze([
 
 const DIRECTIVES = ['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn', 'limit_req_status', 'limit_conn_status'];
 
+// BILEREK KAPALI (2026-11-09, rate_limits_aktif). Kurulum / configuration_delivery / upgrade
+// nginx.conf'taki `include /usr/nginx/conf/rate_limits.conf;` satirini yoruma alabilir. nginx -T
+// yorumlu satiri GOSTERMEZ; "dosya kaybolmus" ile "bilerek kapatilmis" ancak ham nginx.conf'tan
+// ayrilir. nginx_audit_analyze.py bunu her sunucu icin Nginx_Audit_Settings'e tek satir yazar
+// (bmw_nginx/nginx_audit/README.md "Rate limit include durumu"):
+//   conf_file=/usr/nginx/nginx.conf, context=http, directive=rate_limits_include,
+//   value = acik | kapali | yok. Satir yoksa = olculmedi (eski analiz surumu), "yok" DEGIL.
+const INCLUDE_SIGNAL = 'rate_limits_include';
+const INCLUDE_VALUES = new Set(['acik', 'kapali', 'yok']);
+const SORGU_DIREKTIFLERI = [...DIRECTIVES, INCLUDE_SIGNAL];
+
 const rx = {
   zone: /zone=([A-Za-z0-9_.\-]+)(?::([0-9]+[kmg]?))?/i,
   rate: /rate=([0-9]+r\/[sm])/i,
@@ -88,13 +99,22 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   // limit_conn_zone / limit_req / limit_conn YOKTU; tabloda hic satir olmadigi icin ilk
   // surum TUM FILOYU "eksik" diye kirmiziya boyadi - oysa sunucularda limitler duruyordu.
   // Direktifler henuz taranmamissa hicbir iddiada BULUNMAYIZ.
+  // KAPALI != EKSIK (2026-11-09): include yorumlu VE estate zone'larinin hicbiri ne tanimli ne
+  // uygulaniyor -> bilincli secim. "Uc zone yok" tek basina yetmez (dosya kaybolmus olabilir);
+  // "include yorumlu" tek basina yetmez (zone'lar baska dosyadan gelebilir, o zaman olculur).
+  const zones = h.zones || {};
+  const applied = h.applied || {};
+  if (h.include === 'kapali'
+      && ZONE_CATALOG.every((z) => !zones[z.key] && !applied[z.key])) {
+    return { durum: 'kapali', eksikler: [], farklar: [] };
+  }
   if (!olculdu) return { durum: 'bilinmiyor', eksikler: [], farklar: [] };
   const eksikler = [];
   const farklar = [];
   for (const z of ZONE_CATALOG) {
-    const tanim = h.zones[z.key];
+    const tanim = zones[z.key];
     if (!tanim) { eksikler.push(`${z.key} tanımlı değil`); continue; }
-    const uyg = h.applied[z.key];
+    const uyg = applied[z.key];
     if (!uyg) { eksikler.push(`${z.key} tanımlı ama UYGULANMIYOR`); continue; }
     if (z.kind === 'req') {
       if (z.rate && tanim.rate && tanim.rate !== z.rate) farklar.push(`${z.key} rate=${tanim.rate} (standart ${z.rate})`);
@@ -104,6 +124,8 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
       farklar.push(`${z.key} ${uyg.conn} bağlantı (standart ${z.conn})`);
     }
   }
+  // Satir HIC yoksa sebep yazilir: toggle satiri eklemez, elle duzeltilmesi gerekir.
+  if (eksikler.length && h.include === 'yok') eksikler.unshift('nginx.conf\'ta rate_limits.conf include satırı yok');
   const durum = eksikler.length ? 'eksik' : farklar.length ? 'farkli' : 'standart';
   return { durum, eksikler, farklar };
 }
@@ -126,11 +148,11 @@ async function loadRateLimits({ scanDate } = {}) {
     query(
       `SELECT host, conf_file, context, directive, value, reference_value, matches
          FROM ${TABLE}
-        WHERE scan_date = @d AND directive IN (${DIRECTIVES.map((_, i) => `@x${i}`).join(',')})
+        WHERE scan_date = @d AND directive IN (${SORGU_DIREKTIFLERI.map((_, i) => `@x${i}`).join(',')})
         ORDER BY host, directive`,
       [
         { name: 'd', type: sql.NVarChar(10), value: effectiveDate },
-        ...DIRECTIVES.map((v, i) => ({ name: `x${i}`, type: sql.NVarChar(64), value: v })),
+        ...SORGU_DIREKTIFLERI.map((v, i) => ({ name: `x${i}`, type: sql.NVarChar(64), value: v })),
       ],
     ),
     query(`SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${TABLE} ORDER BY d DESC`),
@@ -139,13 +161,21 @@ async function loadRateLimits({ scanDate } = {}) {
   const byHost = new Map();
   const al = (host) => {
     if (!byHost.has(host)) {
-      byHost.set(host, { host, zones: {}, applied: {}, files: new Set(), status: null, mismatch: 0, raw: [] });
+      byHost.set(host, { host, zones: {}, applied: {}, files: new Set(), status: null, mismatch: 0, raw: [], include: null });
     }
     return byHost.get(host);
   };
 
   for (const r of setRes.recordset || []) {
     const h = al(r.host);
+    // Include sinyali bir nginx -T direktifi DEGIL: zone ayristirmasina, dosya listesine ve
+    // "nginx -T ciktisindaki limit direktifleri" detayina girmez. Sapma sayisi audit ile ayni.
+    if (r.directive === INCLUDE_SIGNAL) {
+      const iv = String(r.value || '').trim().toLowerCase();
+      h.include = INCLUDE_VALUES.has(iv) ? iv : null;
+      if (r.matches === false || r.matches === 0) h.mismatch += 1;
+      continue;
+    }
     if (r.conf_file) h.files.add(r.conf_file);
     if (r.matches === false || r.matches === 0) h.mismatch += 1;
     const v = r.value || '';
@@ -193,7 +223,11 @@ async function loadRateLimits({ scanDate } = {}) {
 
   // Filodaki HICBIR sunucuda zone/uygulama satiri yoksa: direktifler taranmamis demektir
   // (eski nginx_audit surumu). Tek tek sunucularda eksiklik ARAMAYIZ.
-  const olculdu = [...byHost.values()].some((h) => Object.keys(h.zones).length > 0 || Object.keys(h.applied).length > 0);
+  // Include sinyali de OLCUM sayilir: sinyali yazan analiz surumu limit direktiflerini de
+  // tarar. Tum filoda include kapaliyken zone satiri hic olmaz; sinyal sayilmasaydi ekran
+  // "nginx_audit surumu henuz kosmamis" derdi (yanlis).
+  const olculdu = [...byHost.values()].some((h) => Object.keys(h.zones).length > 0
+    || Object.keys(h.applied).length > 0 || h.include != null);
 
   // SUNUCU DURUMLARI: nginx kurulu degilse o sunucunun HIC ayar satiri olmaz ve eski
   // surumde listeden TAMAMEN dusuyordu - "sorun yok" gibi gorunuyordu. Artik host
@@ -228,6 +262,8 @@ async function loadRateLimits({ scanDate } = {}) {
       zoneCount: Object.keys(h.zones).length,
       // rate_limits.conf gercekten yuklenmis mi (nginx -T dokumu bu dosyayi gosteriyor mu)
       fileLoaded: [...h.files].some((f) => String(f || '').includes('rate_limits.conf')),
+      // nginx.conf'taki include satiri: acik | kapali | yok; null = olculmedi (eski analiz).
+      rateLimitInclude: h.include,
       mismatch: h.mismatch,
       durum: st.durum,
       eksikler: st.eksikler,
@@ -236,12 +272,15 @@ async function loadRateLimits({ scanDate } = {}) {
     };
   }).sort((a, b) => a.host.localeCompare(b.host));
 
+  const ozet = summarize(hosts);
   return {
     ok: true,
     scanDate: effectiveDate,
     availableDates: (datesRes.recordset || []).map((x) => x.d),
     hosts,
     summary: summarize(hosts),
+    // Bilgi (uyari degil): kac sunucuda rate limit bilerek kapali.
+    kapaliMessage: kapaliMesaji(ozet),
     catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG },
     // Ekran bunu gorursa "eksik" DEMEZ, "henuz olculmedi" der.
     directivesMissing: !olculdu && hosts.length > 0,
@@ -278,7 +317,16 @@ function envOfHost(host) {
 }
 
 function emptySummary() {
-  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+  return { hosts: 0, standart: 0, farkli: 0, eksik: 0, kapali: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0, dosyaYuklenmemis: 0, byEnv: {}, rates: [] };
+}
+
+/** Bilerek kapali sunucu varsa bilgi metni (uyari degil); yoksa undefined. */
+function kapaliMesaji(s) {
+  if (!s || !s.kapali) return undefined;
+  const hepsi = s.kapali === s.hosts;
+  return `${hepsi ? 'Tüm sunucularda' : `${s.kapali} sunucuda`} rate limit bilerek kapatılmış: `
+    + 'nginx.conf\'ta rate_limits.conf include satırı yorumlu (#include). Bu sunucular eksik sayılmaz. '
+    + 'Yeniden açmak için configuration_delivery\'de rate_limits_aktif = true.';
 }
 
 function summarize(hosts) {
@@ -287,8 +335,10 @@ function summarize(hosts) {
   const rate = new Map();
   for (const h of hosts) {
     s[h.durum] += 1;
-    if (!h.fileLoaded) s.dosyaYuklenmemis += 1;
-    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0 });
+    // Bilerek kapali sunucuda rate_limits.conf'un yuklenmemesi beklenen sonuctur; "dosya
+    // yuklu degil" (kaybolmus) sayacina girmez, kendi sayacinda (kapali) sayilir.
+    if (!h.fileLoaded && h.durum !== 'kapali') s.dosyaYuklenmemis += 1;
+    const e = (s.byEnv[h.env] = s.byEnv[h.env] || { hosts: 0, standart: 0, farkli: 0, eksik: 0, kapali: 0, bilinmiyor: 0, kurulumyok: 0, calismiyor: 0, configbozuk: 0 });
     // "Calismiyor" bir DURUM degil bir BAYRAK: limit degerleri yine olculmustur, ama
     // su an uygulanmiyor. Ayri sayilir ki ozet "her sey standart" demesin.
     if (h.calisiyor === false && h.durum !== 'kurulumyok') s.calismiyor += 1;
@@ -315,8 +365,8 @@ function toCsv(hosts, scanDate) {
   for (const h of hosts) {
     lines.push([
       scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
-      h.applied.length, h.fileLoaded ? 'evet' : 'HAYIR',
-      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', bilinmiyor: 'ölçülmedi',
+      h.applied.length, h.fileLoaded ? 'evet' : h.durum === 'kapali' ? 'hayır (bilerek kapalı)' : 'HAYIR',
+      { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', kapali: 'Kapalı (bilerek)', bilinmiyor: 'ölçülmedi',
       kurulumyok: 'NGINX KURULU DEĞİL', calismiyor: 'nginx ÇALIŞMIYOR', configbozuk: 'KONFİGÜRASYON GEÇERSİZ' }[h.durum]
       + (h.calisiyor === false && h.durum !== 'kurulumyok' ? ' (nginx çalışmıyor)' : ''),
       h.eksikler.join(' | '), h.farklar.join(' | '),
@@ -328,7 +378,7 @@ function toCsv(hosts, scanDate) {
 }
 
 module.exports = {
-  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus, ENV_HARF,
+  loadRateLimits, summarize, toCsv, csvField, envOfHost, hostStatus, ENV_HARF, kapaliMesaji,
   parseReqZone, parseReqApply, parseConnApply,
-  ZONE_CATALOG, LIMIT_FILE, DIRECTIVES, TABLE,
+  ZONE_CATALOG, LIMIT_FILE, DIRECTIVES, TABLE, INCLUDE_SIGNAL, SORGU_DIREKTIFLERI,
 };

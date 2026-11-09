@@ -847,13 +847,17 @@ export interface NginxRateLimitHost {
   zoneCount: number;
   /** nginx -T çıktısında rate_limits.conf görünüyor mu */
   fileLoaded: boolean;
+  /** nginx.conf'taki rate_limits.conf include satırı (nginx_audit, ham dosyadan);
+   *  null = ölçülmedi (eski analiz sürümü). */
+  rateLimitInclude?: 'acik' | 'kapali' | 'yok' | null;
   /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
   mismatch: number;
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
   /** bilinmiyor = ölçülmedi; kurulumyok/calismiyor/configbozuk = sunucunun kendi durumu.
-   *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür. */
+   *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür.
+   *  kapali = include bilerek yorumlu ve hiçbir estate zone'u yok (bulgu değil, seçim). */
   durum:
-    'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
+    'standart' | 'farkli' | 'eksik' | 'kapali' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
   /** null = ölçülmedi */
   kurulu: boolean | null;
   /** null = ölçülmedi. false iken değerler DOSYADA yazandır, şu an uygulanmıyor. */
@@ -872,6 +876,8 @@ export interface NginxRateLimitSummary {
   standart: number;
   farkli: number;
   eksik: number;
+  /** bilerek kapalı sunucu sayısı (dosyaYuklenmemis'e girmez) */
+  kapali: number;
   bilinmiyor: number;
   kurulumyok: number;
   calismiyor: number;
@@ -888,6 +894,8 @@ export interface NginxRateLimitResult {
   tableMissing?: boolean;
   /** true = bu taramada limit direktifleri yok (eski nginx_audit sürümü) */
   directivesMissing?: boolean;
+  /** bilgi: kaç sunucuda rate limit bilerek kapalı (uyarı değil) */
+  kapaliMessage?: string;
   scanDate: string | null;
   availableDates: string[];
   hosts: NginxRateLimitHost[];
