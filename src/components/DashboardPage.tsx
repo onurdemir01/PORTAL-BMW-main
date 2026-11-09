@@ -311,7 +311,7 @@ const DashboardPage: React.FC = () => {
               Application <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
             </h2>
             <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-              JBoss, WebSphere ya da OpenShift: sunucular, sürümler, JVM parametreleri, yük ve web katmanı tek ekranda
+              Uygulamanız ne ve nerede olursa olsun tüm bilgilerine ulaşın
             </span>
           </div>
           <AramaKutusu ilk="" buyuk={false} onSec={(s) => navigate(`/application-hub?tip=${s.tip}&ad=${encodeURIComponent(s.ad)}`)} />
