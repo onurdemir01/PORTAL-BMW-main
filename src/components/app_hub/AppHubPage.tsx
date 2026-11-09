@@ -103,7 +103,7 @@ export default function AppHubPage() {
             </h1>
           </div>
           <p className="max-w-xl text-[14px]" style={{ color: 'var(--text-muted)', textWrap: 'balance' as React.CSSProperties['textWrap'] }}>
-            Uygulamanın adını yazın: JBoss, WebSphere ve OpenShift'te nerede, hangi sürüm ve JVM parametreleriyle, ne kadar yükle çalıştığını tek ekranda görün; OpsX ve LogX'e uygulaması seçili geçin.
+            Uygulamanız ne ve nerede olursa olsun tüm bilgilerine ulaşın
           </p>
         </div>
         <AramaKutusu ilk="" onSec={sec} buyuk />
