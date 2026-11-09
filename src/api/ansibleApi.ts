@@ -1012,6 +1012,8 @@ export interface AnsibleSsItem {
   accessGroups?: string[];
   /** Kayıtlı grup listesi sunucuda okunamadı (servis kimseye açık değil). */
   accessGroupsBozuk?: boolean;
+  /** Self Servis Taşıma: kartın önceki (sunucu, template) bağları — Geçmiş sekmesi eski işleri de gösterir. */
+  oncekiBaglar?: { awxServerId: number; awxTemplateId: number }[];
 }
 
 export interface SurveyField {

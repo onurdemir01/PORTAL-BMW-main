@@ -184,7 +184,7 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
     'Bu sunucuya bağlı Self Servis servisi',
     `SELECT title FROM ansible_ss_items WHERE awx_server_id = $1 ORDER BY title`,
     'title',
-    'Kapatınca "Başlat" hata verir. Servisi diğer sunucudaki template ile yeniden ekleyin (template numarası sunucuya özgüdür).',
+    'Kapatınca "Başlat" hata verir. Admin > Self Servis Taşıma ekranından hedef sunucuya taşıyın (kart, erişim ve ayarlar korunur; template numarası sunucuya özgüdür).',
   );
   await liste(
     'kayit',

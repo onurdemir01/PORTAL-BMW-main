@@ -45,6 +45,7 @@ vi.mock('@/components/admin/tabs/LogXAdminTab', () => yerTutucu('logx'));
 vi.mock('@/components/admin/tabs/BrandingTab', () => yerTutucu('branding'));
 vi.mock('@/components/admin/tabs/DbBackupTab', () => yerTutucu('dbbackup'));
 vi.mock('@/components/admin/tabs/SmartTicketsTab', () => yerTutucu('smarttickets'));
+vi.mock('@/components/admin/tabs/SelfServisTasima', () => yerTutucu('sstasima'));
 vi.mock('@/api/prefsApi', () => ({ prefsApi: { getAll: m.getAll, set: m.set } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ canSee: () => true }) }));
 

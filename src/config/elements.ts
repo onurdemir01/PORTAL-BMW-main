@@ -125,6 +125,7 @@ export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:dbbackup', label: 'DB Yedekleme' },
   { id: 'admintab:ansible', label: 'Ansible Info' },
   { id: 'admintab:playbooks', label: 'Playbook Kayıtları' },
+  { id: 'admintab:sstasima', label: 'Self Servis Taşıma' },
   { id: 'admintab:system', label: 'Sistem' },
   { id: 'admintab:users', label: 'Kullanıcılar' },
   { id: 'admintab:visibility', label: 'Sayfa Erişimi' },

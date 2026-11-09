@@ -881,6 +881,44 @@ const TABLES = [
       )`,
   },
   {
+    // SELF SERVIS TASIMA (2026-11-10, maestro2 -> maestro3): servis karti (ansible_ss_items) bir
+    // AWX sunucusundan digerine tasinirken hazirlik / tasima / geri alma kaydi. Kart yerinde
+    // UPDATE edilir (id, baslik, erisim degismez); kaynak ayar satiri kopyalanir, SILINMEZ.
+    // Kart basina tek ACIK kayit (HAZIRLIK | TASINDI) filtreli tekil indeksle garanti edilir
+    // (UX_ss_migrations_acik, asagida). Sir tutmaz: parola varsayilani yalniz $encrypted$ olarak gelir.
+    name: 'ansible_ss_migrations',
+    sql: `
+      CREATE TABLE ansible_ss_migrations (
+        id                       INT IDENTITY(1,1) PRIMARY KEY,
+        item_id                  NVARCHAR(64)  NOT NULL,
+        from_server              INT           NOT NULL,
+        from_template            INT           NOT NULL,
+        from_template_name       NVARCHAR(512) NULL,
+        to_server                INT           NOT NULL,
+        to_template              INT           NOT NULL,
+        to_template_name         NVARCHAR(512) NULL,
+        status                   NVARCHAR(16)  NOT NULL,
+        eslesme                  NVARCHAR(8)   NOT NULL,
+        onceki_json              NVARCHAR(MAX) NULL,
+        uygulanan_json           NVARCHAR(MAX) NULL,
+        hedef_survey_onceki_json NVARCHAR(MAX) NULL,
+        survey_yazildi           BIT           NOT NULL DEFAULT 0,
+        hedef_survey_hash        NVARCHAR(64)  NULL,
+        deneme_job_id            INT           NULL,
+        deneme_at                DATETIME2     NULL,
+        deneme_kaynak_hash       NVARCHAR(64)  NULL,
+        deneme_hedef_survey_hash NVARCHAR(64)  NULL,
+        denemesiz_gerekce        NVARCHAR(500) NULL,
+        created_by               NVARCHAR(128) NOT NULL,
+        created_at               DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+        tasiyan                  NVARCHAR(128) NULL,
+        tasindi_at               DATETIME2     NULL,
+        geri_alan                NVARCHAR(128) NULL,
+        geri_alindi_at           DATETIME2     NULL,
+        geri_alma_notu           NVARCHAR(MAX) NULL
+      )`,
+  },
+  {
     // 2026-09-23 (kullanici): "tasinan uygulamalar icin bir daha tanim olusturma dugmesi
     // aktif olmasin". nginx_migration_tracking uygulama basina TEK satir tutar ve son
     // olusturulan yolu ezer; oysa bir uygulamada birden fazla (servis, location) olabilir.
@@ -2971,6 +3009,14 @@ const ELEMENT_SEED = [
     element_type: 'admin_tab',
     parent_key: 'Admin',
     label: 'Playbook Kayıtları',
+    sort_order: 7,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:sstasima',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Self Servis Taşıma',
     sort_order: 7,
     default_visible: 1,
   },
@@ -5744,6 +5790,29 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_nls_ad):', err.message);
+  }
+
+  // -- Self Servis Tasima: kart basina TEK acik kayit (FILTRELI TEKIL, 2026-11-10) --
+  // Iki admin ayni servisi ayni anda hazirlar/tasirsa ikincisi UNIQUE ihlali alir ve 409 doner
+  // (server/ansible/ss-tasima.cjs tasimaHatasi). IX_ss_migrations_item: kart gecmisi listesi.
+  for (const [ad, ddl] of [
+    [
+      'UX_ss_migrations_acik',
+      `CREATE UNIQUE INDEX UX_ss_migrations_acik ON ansible_ss_migrations (item_id) WHERE status IN ('HAZIRLIK','TASINDI')`,
+    ],
+    ['IX_ss_migrations_item', `CREATE INDEX IX_ss_migrations_item ON ansible_ss_migrations (item_id, id DESC)`],
+  ]) {
+    try {
+      const exists = await pool
+        .request()
+        .query(`SELECT 1 FROM sys.indexes WHERE name = '${ad}' AND object_id = OBJECT_ID('ansible_ss_migrations')`);
+      if (!exists.recordset.length) {
+        await pool.request().query(ddl);
+        console.log(`[DB] Index olusturuldu: ${ad}`);
+      }
+    } catch (err) {
+      console.warn(`[DB] Index olusturulamadi (${ad}):`, err.message);
+    }
   }
 
   // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────
