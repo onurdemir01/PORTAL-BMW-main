@@ -80,7 +80,7 @@ const HUB_TABS = [
 // `tab:nginx:spa` GORUNURLUK ANAHTARI YASIYOR: yalniz ona yetkisi olan kullanici
 // erisimini kaybetmesin diye alt sekme bazinda okunuyor.
 const HUB_AUDIT_TABS = [
-  { id: 'spadiscovery', label: 'SPA Keşfi & Kapsam' },
+  { id: 'spadiscovery', label: 'SPA Uygulamaları' },
   { id: 'api', label: 'API Envanteri' },
   { id: 'envanter', label: 'Envanter' },
   { id: 'audit', label: 'Audit' },

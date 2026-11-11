@@ -719,7 +719,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
               <th className={th} style={hl('internet')} title="İnternete açık (route tipi passthrough) SPA’lar: kaçı internet nginx’lerine deploy edilmiş (H+A), kaçı servise tanımlı (location/include), kaçı ikisi birden (yük alıyor)">
                 İnternet · deploy / tanım / çalışıyor
               </th>
-              <th className={th} style={hl('intranet')} title="İntranet SPA’ların (Gerçek SPA Keşfi: pod’da nginx + reencrypt route — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap) kaçı ortamın taranan her intranet nginx’ine TAM kurulu (hysdeploy + applications + conf)">
+              <th className={th} style={hl('intranet')} title="İntranet SPA’ların (SPA Uygulamaları: pod’da nginx + reencrypt route — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap) kaçı ortamın taranan her intranet nginx’ine TAM kurulu (hysdeploy + applications + conf)">
                 İntranet · nginx’e kurulu
               </th>
               <th className={th} title="Ortamdaki route sayısı, kaçı SPA uygulamasına ait ve payı">Route’lar</th>
@@ -743,7 +743,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           internete açık {fmtNumber(c.internetTotal)} ·{' '}
                           {/* AD KALIBI (2026-10-19): bu sutun ad kalibi + route envanteri sayar; intranet kurulum
                               sutunu ise Gercek SPA Kesfi'ni (Intranet SPA sayfasi) - iki sayi farkli olabilir. */}
-                          <span title={c.intranetKaynak === 'intranet-spa' ? `Ad kalıbına (-app-v / -app-emb-v) ve route envanterine göre iç ağ (reencrypt) SPA’ları. İntranet kurulum sütunu ise Gerçek SPA Keşfi’nin listesini sayar (${fmtNumber(c.intranetKurulumToplam || 0)} uygulama); bu yüzden iki sayı farklı olabilir.` : undefined}>
+                          <span title={c.intranetKaynak === 'intranet-spa' ? `Ad kalıbına (-app-v / -app-emb-v) ve route envanterine göre iç ağ (reencrypt) SPA’ları. İntranet kurulum sütunu ise SPA Uygulamaları listesini sayar (${fmtNumber(c.intranetKurulumToplam || 0)} uygulama); bu yüzden iki sayı farklı olabilir.` : undefined}>
                             iç ağda {fmtNumber(c.intranetTotal)}{c.intranetKaynak === 'intranet-spa' ? ' (ad kalıbı)' : ''}
                           </span>
                           {c.unknownTotal ? <> · <NoRouteLink c={c} env={env} onOpen={setOpen} /></> : null}
@@ -858,7 +858,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           </div>
                         )}
                         {c.intranetKaynak === 'intranet-spa' && (
-                          <Where>Kaynak: Gerçek SPA Keşfi — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.</Where>
+                          <Where>Kaynak: SPA Uygulamaları — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.</Where>
                         )}
                       </div>
                     ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -928,7 +928,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
       <div className="px-4 py-2 border-t text-[11px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). {cov.intranetKaynak === 'intranet-spa'
-          ? <><b>İntranet</b> = Gerçek SPA Keşfi’nin intranet SPA’ları (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
+          ? <><b>İntranet</b> = SPA Uygulamaları listesindeki intranet SPA’lar (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
           : <><b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. </>}
         <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
         {!!cov.intranetRapor?.ortamsiz && (

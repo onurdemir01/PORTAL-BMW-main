@@ -68,7 +68,7 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     expect(await tamamKutusu()).toBe('1/ 5kurulumu tamam olan uygulama');
     expect(screen.getByText('yarım kurulu: 2')).toBeTruthy();
     expect(screen.getByText('hiç kurulmamış: 2')).toBeTruthy();
-    expect(screen.getByText('Kaynak: Gerçek SPA Keşfi — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.')).toBeTruthy();
+    expect(screen.getByText('Kaynak: SPA Uygulamaları — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.')).toBeTruthy();
     expect(screen.getByText(/iç ağda 1 \(ad kalıbı\)/)).toBeTruthy();
     // çubuk da ortak paydayla (1 / 5 = %20; ad kalıbı paydasıyla %100 olurdu)
     expect(screen.getByTitle(/Ortamın taranan her intranet nginx’inde/).textContent).toMatch(/20/);
@@ -105,7 +105,7 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     const { unmount } = render(<NginxSpaSummary tier="intranet" />);
     expect(await tamamKutusu()).toBe('1/ 4kurulumu tamam olan uygulama');
     expect(screen.queryByText(/\(ad kalıbı\)/)).toBeNull();
-    expect(screen.queryByText(/^Kaynak: Gerçek SPA Keşfi/)).toBeNull();
+    expect(screen.queryByText(/^Kaynak: SPA Uygulamaları/)).toBeNull();
     unmount();
     mockCov.mockResolvedValue(cov(satir(), {
       intranetRapor: { kesifTarihi: null, dizinTarihi: null, dizinDurum: 'var', taranmayanSunucu: ['GBNGXAP50'], ortamsiz: 2 },

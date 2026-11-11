@@ -1784,6 +1784,40 @@ function ozetAcikYaz(v: boolean) {
   }
 }
 
+// ORTAM SUZGECI (kullanici, 2026-11-11: "Prod QA Test gibi sadece o ortamda olan uygulamalari
+// goruntulemek istiyorum"). Ortam namespace ekinden (-dev/-test/-qa/-edu/-prod) gelir; eki olmayan
+// satir 'belirsiz' kovasindadir, gizlenmez. Secim bu tarayicida hatirlanir (gorunum kurali).
+// Diger suzgeclerin sayilari ve namespace/cluster listeleri SECILI ORTAMA gore hesaplanir.
+const ORTAM_SIRASI = ['prod', 'qa', 'test', 'dev', 'edu'] as const;
+const ORTAM_ETIKET: Record<string, string> = {
+  prod: 'Prod',
+  qa: 'QA',
+  test: 'Test',
+  dev: 'Dev',
+  edu: 'Edu',
+  belirsiz: 'Belirsiz',
+};
+const ortamOf = (a: NgSpaApp) => {
+  const e = String(a.env || '').toLowerCase();
+  return e && e in ORTAM_ETIKET ? e : 'belirsiz';
+};
+const ORTAM_ANAHTARI = 'nginx-hub:spa-kesfi:ortam';
+function ortamOku(): string {
+  try {
+    const v = window.localStorage.getItem(ORTAM_ANAHTARI) || 'tumu';
+    return v === 'tumu' || v in ORTAM_ETIKET ? v : 'tumu';
+  } catch {
+    return 'tumu';
+  }
+}
+function ortamYaz(v: string) {
+  try {
+    window.localStorage.setItem(ORTAM_ANAHTARI, v);
+  } catch {
+    // Yazilamazsa secim yalniz bu sayfa acikken gecerli kalir.
+  }
+}
+
 type SpaSecim = 'tumu' | NgSpaApp['spa'];
 type KalipSecim = 'tumu' | NgSpaApp['pattern'];
 type IstekSecim = 'tumu' | NgSpaApp['istek'];
@@ -2023,6 +2057,11 @@ export default function NginxSpaDiscovery() {
   const [rp, setRp] = useState<RpSecim>('tumu');
   const [rpIstek, setRpIstek] = useState<RpIstekSecim>('tumu');
   const [cluster, setCluster] = useState('tumu');
+  const [ortam, setOrtamHam] = useState<string>(ortamOku);
+  const setOrtam = (v: string) => {
+    setOrtamHam(v);
+    ortamYaz(v);
+  };
   // AYRINTI: tıklanan satırın altında RP tanımları paneli (tek satır açık). onSec SABİT
   // (useCallback, anahtarı parametre alır): memo'lu satırlar tıklamada yeniden çizilmez.
   const [secili, setSecili] = useState<string | null>(null);
@@ -2079,21 +2118,56 @@ export default function NginxSpaDiscovery() {
   }, [yukle]);
 
   const apps = useMemo(() => data?.apps || [], [data]);
+  const ortamSay = useMemo(() => sayac(apps, ortamOf), [apps]);
+  // Yalniz veride GORULEN ortamlar dugme olur (bos "Edu (0)" gurultu); secili ortam veride
+  // yoksa (eski tercih) yine gosterilir ki secim gorunmez kalip listeyi bosaltmasin.
+  const ortamlar = useMemo(
+    () =>
+      [...ORTAM_SIRASI, 'belirsiz'].filter((e) => (ortamSay[e] || 0) > 0 || e === ortam),
+    [ortamSay, ortam],
+  );
+  const ortamApps = useMemo(
+    () => (ortam === 'tumu' ? apps : apps.filter((a) => ortamOf(a) === ortam)),
+    [apps, ortam],
+  );
+  const ortamNs = useMemo(
+    () =>
+      ortam === 'tumu'
+        ? data?.namespaces || []
+        : [...new Set(ortamApps.map((a) => a.namespace))].sort(),
+    [data, ortam, ortamApps],
+  );
+  const ortamCl = useMemo(
+    () =>
+      ortam === 'tumu'
+        ? data?.clusters || []
+        : [...new Set(ortamApps.flatMap((a) => a.clusters))].sort(),
+    [data, ortam, ortamApps],
+  );
+  const ortamSec = (v: string) => {
+    setOrtam(v);
+    // Baska ortamin namespace/cluster secimi kalirsa liste sessizce bosalirdi.
+    if (v !== 'tumu') {
+      const yeni = apps.filter((a) => ortamOf(a) === v);
+      if (ns !== 'tumu' && !yeni.some((a) => a.namespace === ns)) setNs('tumu');
+      if (cluster !== 'tumu' && !yeni.some((a) => a.clusters.includes(cluster))) setCluster('tumu');
+    }
+  };
   const say = useMemo(
     () => ({
-      spa: sayac(apps, (a) => a.spa),
-      kalip: sayac(apps, (a) => a.pattern),
-      istek: sayac(apps, (a) => a.istek),
-      ag: sayac(apps, (a) => a.ag),
-      rp: sayac(apps, (a) => a.rp),
-      rpIstek: sayac(apps, (a) => a.rpIstek),
+      spa: sayac(ortamApps, (a) => a.spa),
+      kalip: sayac(ortamApps, (a) => a.pattern),
+      istek: sayac(ortamApps, (a) => a.istek),
+      ag: sayac(ortamApps, (a) => a.ag),
+      rp: sayac(ortamApps, (a) => a.rp),
+      rpIstek: sayac(ortamApps, (a) => a.rpIstek),
     }),
-    [apps],
+    [ortamApps],
   );
 
   const satirlar = useMemo(() => {
     const ara = q.trim().toLowerCase();
-    return apps.filter((a) => {
+    return ortamApps.filter((a) => {
       if (ns !== 'tumu' && a.namespace !== ns) return false;
       if (spa !== 'tumu' && a.spa !== spa) return false;
       if (kalip !== 'tumu' && a.pattern !== kalip) return false;
@@ -2110,7 +2184,7 @@ export default function NginxSpaDiscovery() {
         a.routes.some((r) => r.toLowerCase().includes(ara))
       );
     });
-  }, [apps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster]);
+  }, [ortamApps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster]);
 
   const suzgecVar =
     !!q ||
@@ -2121,8 +2195,10 @@ export default function NginxSpaDiscovery() {
     ag !== 'tumu' ||
     rp !== 'tumu' ||
     rpIstek !== 'tumu' ||
-    cluster !== 'tumu';
+    cluster !== 'tumu' ||
+    ortam !== 'tumu';
   const temizle = () => {
+    setOrtam('tumu');
     setQ('');
     setNs('tumu');
     setSpa('tumu');
@@ -2136,7 +2212,7 @@ export default function NginxSpaDiscovery() {
 
   const csv = useCallback(() => {
     downloadCsv(
-      'gercek_spa_kesfi',
+      ortam === 'tumu' ? 'spa_uygulamalari' : `spa_uygulamalari_${ortam}`,
       [
         'uygulama',
         'namespace',
@@ -2203,7 +2279,7 @@ export default function NginxSpaDiscovery() {
         a.notes.join(' | '),
       ]),
     );
-  }, [satirlar]);
+  }, [satirlar, ortam]);
 
   const s = data?.appSummary;
   const rs = data?.summary;
@@ -2404,6 +2480,45 @@ export default function NginxSpaDiscovery() {
         </div>
       </details>
 
+      <div
+        role="radiogroup"
+        aria-label="Ortam"
+        className="flex flex-wrap items-center gap-1 p-1 rounded-lg w-fit"
+        style={{ background: 'var(--bg-elevated)' }}
+        data-testid="ortam-secimi"
+      >
+        {['tumu', ...ortamlar].map((e) => {
+          const secili = ortam === e;
+          const n = e === 'tumu' ? apps.length : ortamSay[e] || 0;
+          return (
+            <button
+              key={e}
+              type="button"
+              role="radio"
+              aria-checked={secili}
+              onClick={() => ortamSec(e)}
+              title={
+                e === 'belirsiz'
+                  ? "Namespace'ten ortam çıkmayan uygulamalar (-dev/-test/-qa/-edu/-prod eki yok)"
+                  : e === 'tumu'
+                    ? 'Tüm ortamlar'
+                    : `Yalnız ${ORTAM_ETIKET[e]} ortamındaki uygulamalar`
+              }
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${secili ? 'shadow-sm' : ''}`}
+              style={{
+                background: secili ? 'var(--bg-surface)' : 'transparent',
+                color: secili ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {e === 'tumu' ? 'Tüm ortamlar' : ORTAM_ETIKET[e]}
+              <span className="ml-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {nf(n)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <MagnifyingGlassIcon
@@ -2427,7 +2542,7 @@ export default function NginxSpaDiscovery() {
           title="Namespace"
         >
           <option value="tumu">tüm namespace'ler</option>
-          {(data?.namespaces || []).map((n) => (
+          {ortamNs.map((n) => (
             <option key={n} value={n}>
               {n}
             </option>
@@ -2526,7 +2641,7 @@ export default function NginxSpaDiscovery() {
           title="Cluster"
         >
           <option value="tumu">tüm cluster'lar</option>
-          {(data?.clusters || []).map((c) => (
+          {ortamCl.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
@@ -2584,7 +2699,7 @@ export default function NginxSpaDiscovery() {
             yayilip tabloyu seyreltmez. */}
         <table className="ng-spa-tablo w-max min-w-full" data-yogunluk={gorunum.yogunluk}>
           <caption className="sr-only">
-            Gerçek SPA keşfi: uygulama başına tek satır. Satırdaki düğme ayrıntıyı açar.
+            SPA uygulamaları: uygulama başına tek satır. Satırdaki düğme ayrıntıyı açar.
           </caption>
           {kolonParcalari(gorunur).map((p) => (
             <colgroup key={p.idler[0]} data-grup={p.grup}>
@@ -2627,7 +2742,10 @@ export default function NginxSpaDiscovery() {
                     </span>
                   ) : apps.length ? (
                     <>
-                      Bu süzgeçlerle uygulama yok; toplam {nf(apps.length)} uygulama var.{' '}
+                      {ortam !== 'tumu' && !ortamApps.length
+                        ? `${ORTAM_ETIKET[ortam]} ortamında uygulama yok; `
+                        : 'Bu süzgeçlerle uygulama yok; '}
+                      toplam {nf(apps.length)} uygulama var.{' '}
                       <button
                         onClick={temizle}
                         className="ml-1 px-1.5 py-0.5 text-[11px] border rounded"
