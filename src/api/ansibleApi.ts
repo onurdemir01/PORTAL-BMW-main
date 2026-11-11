@@ -599,6 +599,37 @@ export const ansibleApi = {
       body: JSON.stringify({ note }),
     }).then(safeJson),
 
+  // ADMIN YENIDEN TETIKLEME (2026-11-11): zaman asimina dusmus talep. Kurallar
+  // server/smart/yeniden-tetikle.cjs basinda. Check hicbir seyi degistirmez.
+  smartTicketRetriggerCheck: (ticketId: number): Promise<SmartRetriggerCheck> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/retrigger-check`).then(safeJson),
+
+  smartTicketRetrigger: (
+    ticketId: number,
+    body: {
+      note: string;
+      mode?: 'oco' | 'pencereDisi';
+      ocoNumber?: string;
+      outsideWindowConfirm?: boolean;
+    },
+  ): Promise<{
+    ok: boolean;
+    status?: string;
+    jobId?: number | null;
+    scheduled?: boolean;
+    runAtText?: string;
+    awxScheduleId?: number | null;
+    /** İş AWX'te başladı/zamanlandı ama talep kaydı yazılamadı */
+    warning?: boolean;
+    message?: string;
+    smart?: SmartRetriggerKarari;
+  }> =>
+    fetch(`${BASE}/ss/smart-ticket/${ticketId}/retrigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+
   // Admin > Test Senaryoları — dry-run: hicbir job/Smart bileti tetiklenmez, yalnizca
   // survey/custom-survey dogrulamasi + AWX template-preflight kontrolu calisir.
   ssTestValidate: (
@@ -644,6 +675,27 @@ export const ansibleApi = {
       body: JSON.stringify({ extraVars, templateName, scenarioName, confirm: true }),
     }).then(safeJson),
 };
+
+export interface SmartRetriggerKarari {
+  durum: 'onayli' | 'bekliyor' | 'bilinmiyor' | 'reddedildi' | 'okunamadi';
+  engel: boolean;
+  stateName: string | null;
+  statusCode?: string | null;
+  message: string;
+}
+
+export interface SmartRetriggerCheck {
+  ok: boolean;
+  message?: string;
+  smart?: SmartRetriggerKarari;
+  oco?: {
+    kapsamli: boolean;
+    ocoNumber: string | null;
+    windowStartIso: string | null;
+    windowEndIso: string | null;
+  };
+  notEnAz?: number;
+}
 
 export interface AdminSmartTicket {
   id: number;

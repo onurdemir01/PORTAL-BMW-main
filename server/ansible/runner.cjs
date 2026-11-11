@@ -5452,6 +5452,266 @@ function initAnsibleRunner(app) {
     }
   });
 
+  // ADMIN YENIDEN TETIKLEME (2026-11-11): zaman asimina dusmus (TIMEOUT) talebi admin destek
+  // amaciyla kosturur. Kurallar ve gerekceleri server/smart/yeniden-tetikle.cjs basinda.
+  // SCALEX BILETI REDDEDILIR (2026-11-11 inceleme): scalex_operations satiri bilet TIMEOUT olunca
+  // uzlastiricida CANCELLED olur (geri yukleme kilidi de birakilir) ve yalniz PENDING_APPROVAL
+  // satiri benimsenir; buradan kosturmak ScaleX aynasini / kilidini isten habersiz birakirdi.
+  const RETRIGGER_SCALEX_MESAJI = 'Bu talep bir ScaleX işlemine bağlı; buradan tetiklenmez (ScaleX ayna ve kilit kaydı güncellenmezdi). İşlemi ScaleX ekranından yeniden başlatın.';
+  async function retriggerScalexBagliMi(ticketId) {
+    const { rows } = await require('../db/index.cjs').query(
+      'SELECT TOP 1 id FROM scalex_operations WHERE smart_ticket_id = $1',
+      [ticketId],
+    );
+    return rows.length > 0;
+  }
+  // Zamanlanan isin AWX extra_data'sina gidecek talep sahibi kimligi (performSsLaunch ile ayni kaynak).
+  async function retriggerTalepSahibi(username) {
+    if (!username) return null;
+    try {
+      const ident = await require('../auth/users.cjs').getUserIdentity(username);
+      return ident ? { username: ident.username || username, displayName: ident.displayName, mail: ident.mail } : { username };
+    } catch (e) {
+      console.warn('[Smart] yeniden tetikleme: talep sahibi kimligi cozulemedi:', e.message);
+      return { username };
+    }
+  }
+  // Is AWX'te baslatildiktan sonraki bilet yazimi: gecici DB hatasinda bilet LAUNCHING'de asili
+  // kalmasin diye birkac kez denenir; yine olmazsa hata firlatilir (cagiran uyari doner).
+  async function retriggerBiletiYaz(smartStore, ticketId, alanlar) {
+    let son;
+    for (let deneme = 0; deneme < 3; deneme += 1) {
+      try {
+        return await smartStore.markState(ticketId, { ...alanlar, resolved: true, expected: 'LAUNCHING' });
+      } catch (e) {
+        son = e;
+        await new Promise((r) => setTimeout(r, 300 * (deneme + 1)));
+      }
+    }
+    throw son;
+  }
+
+  // GET .../retrigger-check: modal acilinca Smart durumu + OCO baglami (hicbir sey degismez).
+  app.get('/api/ansible/ss/smart-ticket/:id/retrigger-check', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rt = require('../smart/yeniden-tetikle.cjs');
+      const ticket = await require('../smart/store.cjs').getTicket(Number(req.params.id));
+      const u = rt.uygunluk(ticket);
+      if (!u.ok) return res.status(u.status).json({ ok: false, message: u.message });
+      if (await retriggerScalexBagliMi(ticket.id)) return res.status(409).json({ ok: false, message: RETRIGGER_SCALEX_MESAJI });
+      let smart;
+      try {
+        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
+      } catch (e) {
+        smart = rt.smartKarari({ hata: e.message });
+      }
+      const pl = ticket.pendingLaunch || {};
+      res.json({
+        ok: true,
+        smart,
+        oco: {
+          kapsamli: rt.ocoKapsamli(ticket),
+          ocoNumber: String(pl.extraVars?.oco_number ?? '') || null,
+          windowStartIso: pl.ocoWindowStartIso || null,
+          windowEndIso: pl.ocoWindowEndIso || null,
+        },
+        notEnAz: rt.NOT_EN_AZ,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST .../retrigger { note, mode: 'oco'|'pencereDisi', ocoNumber, outsideWindowConfirm }
+  // DENETIM: her ret 'selfservice_smart_ticket_retrigger_denied', her sonuc (basari / AWX hatasi /
+  // bilet yazilamadi) 'selfservice_smart_ticket_retrigger'. Basari denetimi bilet yazimindan ONCE.
+  app.post('/api/ansible/ss/smart-ticket/:id/retrigger', requireAuth, requireAdmin, async (req, res) => {
+    const rt = require('../smart/yeniden-tetikle.cjs');
+    const smartStore = require('../smart/store.cjs');
+    const audit = require('../audit/index.cjs');
+    const admin = req.session?.user?.username || 'admin';
+    const denetim = { ticketId: Number(req.params.id), admin };
+    const denetle = (eylem, ek) => {
+      try {
+        audit.auditPortal(req, eylem, { detail: JSON.stringify({ ...denetim, ...ek }) });
+      } catch (e) {
+        console.warn('[Smart] yeniden tetikleme denetimi yazilamadi:', e.message);
+      }
+    };
+    const reddet = (status, message, ek = {}) => {
+      denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'RED', status, message, ...ek });
+      return res.status(status).json({ ok: false, message, ...ek });
+    };
+    let claimed = null;
+    // Is AWX'te baslatildi/zamanlandi mi? Sonraki DB yazimi patlarsa bilet ERROR'a CEKILMEZ
+    // (is kosuyor; ERROR "baslamadi" anlamina gelirdi).
+    let basladi = false;
+    const sonuc = { status: null, jobId: null, awxScheduleId: null, runAtText: null };
+    try {
+      const ticket = await smartStore.getTicket(denetim.ticketId);
+      const u = rt.uygunluk(ticket);
+      if (!u.ok) return reddet(u.status, u.message);
+      Object.assign(denetim, { owner: ticket.username, externalTicketId: ticket.externalTicketId });
+      if (await retriggerScalexBagliMi(ticket.id)) return reddet(409, RETRIGGER_SCALEX_MESAJI);
+      const istek = rt.istekDogrula(req.body, ticket);
+      if (!istek.ok) return reddet(400, istek.message);
+      const pl = ticket.pendingLaunch;
+      Object.assign(denetim, {
+        mod: istek.mod, ocoNumber: istek.ocoNumber || null,
+        eskiOcoNumber: pl.extraVars?.oco_number || null, note: istek.not,
+      });
+      const server = getServerById(ticket.awxServerId);
+      if (!server) return reddet(409, sunucuYokHatasi(ticket.awxServerId).message);
+
+      // 1) SMART: reddedildiyse ya da okunamadiysa tetiklenmez (fail-closed).
+      let smart;
+      try {
+        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
+      } catch (e) {
+        smart = rt.smartKarari({ hata: e.message });
+      }
+      Object.assign(denetim, { smartDurum: smart.durum, smartStatusCode: smart.statusCode, smartStateName: smart.stateName });
+      if (smart.engel) return reddet(409, smart.message, { smart });
+
+      // 2) OCO: yeni numara verildiyse pencere AYNI kurallarla (change-gates) degerlendirilir.
+      let extraVars = { ...(pl.extraVars || {}) };
+      let pencere = null;
+      let order = null;
+      if (istek.mod === 'oco') {
+        const ocoClient = require('../oco/client.cjs');
+        const ocoWindow = require('../oco/window.cjs');
+        try {
+          order = await ocoClient.getChangeOrder(istek.ocoNumber);
+        } catch (e) {
+          return reddet(ocoClient.httpStatus(e), e.message);
+        }
+        const pi = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!pi || !pi.startDate) {
+          return reddet(400, `OCO ${istek.ocoNumber} kaydında planlanan kesinti tarihi yok; işlem yapılmadı.`);
+        }
+        pencere = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+        if (!pencere.ok) return reddet(400, pencere.message);
+        if (pencere.phase === 'expired') {
+          return reddet(400, `OCO ${istek.ocoNumber} kesinti penceresi (${pencere.windowEndText}) kapanmış; başka bir OCO girin.`);
+        }
+        extraVars = rt.yeniOcoDegiskenleri(extraVars, istek.ocoNumber, pencere);
+      }
+
+      // 3) SAHIPLEN: TIMEOUT -> LAUNCHING. Kaybeden (cift tik / ikinci admin) hicbir sey yapmaz.
+      claimed = await smartStore.claimTimeoutForRetrigger(ticket.id);
+      if (!claimed) {
+        return reddet(409, 'Talep bu sırada durum değiştirdi (başka biri tetiklemiş olabilir); sayfayı yenileyin.');
+      }
+      if (smart.durum !== 'onayli') {
+        require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'smart_talep_yeniden_tetikle', { ticketId: ticket.id, mod: istek.mod, smartStatusCode: smart.statusCode });
+      }
+      const ocoStore = require('../oco/store.cjs');
+      const ocoRecordId = pl.ocoRecordId ?? null;
+
+      // 4a) YENI OCO PENCERESI HENUZ ACILMADI: pencere basina AWX zamanlamasi. Portal'da da
+      // OCO kaydi olur (ekranda gorunur, iptal edilince AWX schedule'i silinir): bagli kayit varsa
+      // o guncellenir, yoksa / guncellenemezse yeni AWX_SCHEDULED kaydi acilir.
+      if (pencere && pencere.phase === 'before') {
+        const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not, zamanlandi: pencere.windowStartText });
+        const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, pl.detail, {
+          name: `PORTAL_OCO_${istek.ocoNumber}_${ticket.awxTemplateId}_${Date.now()}`,
+          runAt: pencere.windowStart,
+          extraVars,
+          resolvedLaunchOptions: pl.resolvedLaunchOptions,
+          requester: await retriggerTalepSahibi(pl.username),
+        });
+        basladi = true;
+        Object.assign(sonuc, { status: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAtText: pencere.windowStartText });
+        let ocoKayit = null;
+        try {
+          const kayitAlanlari = {
+            status: 'AWX_SCHEDULED', awxScheduleId: sched.scheduleId, ocoNumber: istek.ocoNumber,
+            runAt: pencere.windowStart, windowEnd: pencere.windowEnd, message: metin,
+          };
+          if (ocoRecordId && (await ocoStore.markRetriggered(ocoRecordId, kayitAlanlari))) {
+            ocoKayit = ocoRecordId;
+          } else {
+            const rec = await ocoStore.createAwxScheduled({
+              username: ticket.username, awxServerId: server.id, awxTemplateId: ticket.awxTemplateId,
+              ocoNumber: istek.ocoNumber, ocoSubject: order?.result?.OcoWfIdSubject || order?.result?.Subject || null,
+              runAt: pencere.windowStart, windowEnd: pencere.windowEnd, awxScheduleId: sched.scheduleId,
+              pendingLaunch: {
+                ...pl, ocoRecordId: undefined, extraVars, ocoNumber: istek.ocoNumber,
+                ocoWindowStartIso: pencere.windowStart.toISOString(), ocoWindowEndIso: pencere.windowEnd.toISOString(),
+              },
+              ownerGroups: null,
+            });
+            ocoKayit = rec.id;
+          }
+        } catch (e) {
+          console.warn(`[Smart] ticket #${ticket.id} yeniden tetikleme: OCO kaydi yazilamadi (AWX schedule ${sched.scheduleId} KURULDU):`, e.message);
+        }
+        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAt: pencere.windowStartText, ocoKayit });
+        await retriggerBiletiYaz(smartStore, ticket.id, {
+          status: 'SCHEDULED', smartStateName: smart.stateName || ticket.smartStateName, errorMessage: metin,
+        });
+        return res.json({ ok: true, status: 'SCHEDULED', scheduled: true, runAtText: pencere.windowStartText, awxScheduleId: sched.scheduleId, ocoKayit, message: metin });
+      }
+
+      // 4b) HEMEN CALISTIR (OCO'suz talep, yeni OCO penceresi acik ya da pencere disi).
+      const outcome = await performSsLaunch(server, ticket.awxTemplateId, {
+        detail: pl.detail,
+        extraVars,
+        resolvedLaunchOptions: pl.resolvedLaunchOptions,
+        specFields: pl.specFields,
+        overrides: pl.overrides,
+        username: pl.username,
+        templateName: pl.templateName,
+        req: null,
+        yutmaKorumasi: pl.yutmaKorumasi === true,
+      });
+      basladi = true;
+      const jobId = outcome?.jobId ?? null;
+      Object.assign(sonuc, { status: 'LAUNCHED', jobId });
+      const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not });
+      let ocoKayit = null;
+      if (ocoRecordId) {
+        try {
+          const yazildi = await ocoStore.markRetriggered(ocoRecordId, {
+            status: 'LAUNCHED', awxJobId: jobId, ocoNumber: istek.ocoNumber || null,
+            windowEnd: pencere ? pencere.windowEnd : null, message: metin,
+          });
+          ocoKayit = yazildi ? ocoRecordId : null;
+          if (!yazildi) console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilmadi (kayit FAILED degil).`);
+        } catch (e) {
+          console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilamadi:`, e.message);
+        }
+      }
+      denetle('selfservice_smart_ticket_retrigger', { sonuc: 'LAUNCHED', jobId, ocoKayit });
+      await retriggerBiletiYaz(smartStore, ticket.id, {
+        status: 'LAUNCHED', smartStateName: smart.stateName || ticket.smartStateName, awxJobId: jobId, errorMessage: metin,
+      });
+      return res.json({ ok: true, status: 'LAUNCHED', jobId, awxServerId: ticket.awxServerId, ocoKayit, message: metin });
+    } catch (err) {
+      if (basladi) {
+        // Is AWX'te kosuyor / zamanli; yalniz bilet kaydi yazilamadi. Gercek sonuc + uyari doner.
+        console.warn(`[Smart] ticket #${denetim.ticketId} yeniden tetiklendi ama bilet yazilamadi:`, err.message);
+        denetle('selfservice_smart_ticket_retrigger', { ...sonuc, sonuc: sonuc.status, biletYazilamadi: true, hata: String(err.message).slice(0, 500) });
+        return res.json({
+          ok: true, warning: true, ...sonuc, scheduled: sonuc.status === 'SCHEDULED',
+          message: `İş AWX'te ${sonuc.status === 'SCHEDULED' ? `${sonuc.runAtText} tarihine zamanlandı` : `başlatıldı (job #${sonuc.jobId})`} ancak talep kaydı güncellenemedi (${err.message}); kayıt "başlatılıyor" durumunda kalabilir.`,
+        });
+      }
+      if (claimed) {
+        // Sahiplenildi ama AWX cagrisi hata verdi: bilet LAUNCHING'de asili kalmasin.
+        await smartStore.markState(claimed.id, {
+          status: 'ERROR', smartStateName: claimed.smartStateName,
+          errorMessage: `Admin ${admin} yeniden tetikledi ama AWX çağrısı başarısız: ${err.message}`.slice(0, 2000),
+          resolved: true, expected: 'LAUNCHING',
+        }).catch((e) => console.warn('[Smart] yeniden tetikleme ERROR yazilamadi:', e.message));
+        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'ERROR', hata: String(err.message).slice(0, 500) });
+      } else {
+        denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'HATA', hata: String(err.message).slice(0, 500) });
+      }
+      res.status(err.status && err.status >= 400 && err.status < 600 ? err.status : 500).json({ ok: false, message: err.message });
+    }
+  });
+
   // GET /api/ansible/ss/job-status/:serverId/:jobId — Job durumu (tum kullanicilar)
   app.get('/api/ansible/ss/job-status/:serverId/:jobId', requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
