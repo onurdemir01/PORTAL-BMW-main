@@ -601,3 +601,23 @@ test('SN6c nesli bilinmeyen kopya aday olamaz', () => {
   assert.notEqual(k.karar, 'RETIRE_ADAYI');
   assert.ok(kodlar(k).includes('NESIL_BILINMIYOR'));
 });
+
+// FAZ 2 (2026-11-11): grup karari = uygulama + ORTAM + NESIL. Elle kontrol ve Retirement kapisi bu birime baglanir.
+test('SN7 grup karari: uygulama|ortam|nesil; kullanim kazanir; ortami bilinmeyen grup aday olamaz', () => {
+  const { r } = karar({});
+  const app = [...r.uygulamalar.values()].find((u) => u.ad === 'APP1');
+  assert.ok(app, 'uygulama yok');
+  const gk = 'grup:APP1|PROD|8';
+  assert.ok(app.gruplar.includes(gk), `gruplar: ${app.gruplar.join(',')}`);
+  const g = r.gruplar.get(gk);
+  assert.deepEqual([g.karar, g.ortam, g.nesil, g.kopyalar], ['RETIRE_ADAYI', 'PROD', '8', [A.jvm(APP, 8, 'APP1')]]);
+  assert.equal(karar({ gercek: 3 }).r.gruplar.get(gk).karar, 'KULLANIMDA');
+  // Ortam bilinmiyor: kopya aday olsa da grup KARAR_VERILEMEZ.
+  const { hosts, veri } = filo({});
+  hosts[0].env = null;
+  const g2 = grafikKur({ hosts, veri });
+  const r2 = kararla({ g: g2, dogrulamalar: dogrula(g2, { veri }), hosts, simdi: SIMDI });
+  const bilinmeyen = [...r2.gruplar.values()].find((x) => x.ad === 'APP1');
+  assert.equal(bilinmeyen.ortam, null);
+  assert.notEqual(bilinmeyen.karar, 'RETIRE_ADAYI');
+});

@@ -487,6 +487,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
 
   // ── uygulama basina ──
   const uygulamalar = new Map();
+  const gruplar = new Map();
   for (const d of g.dugumler.values()) {
     if (d.tur !== 'app') continue;
     const kk = g
@@ -498,19 +499,36 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const say = Object.fromEntries(
       KARARLAR.map((k) => [k, kk.filter((x) => x.karar === k).length]),
     );
-    const karar =
-      say.RETIRE_ADAYI === kk.length
-        ? 'RETIRE_ADAYI'
-        : say.KULLANIMDA
-          ? 'KULLANIMDA'
-          : say.KARAR_VERILEMEZ
-            ? 'KARAR_VERILEMEZ'
-            : say.SUPHELI
-              ? 'SUPHELI'
-              : say.RETIRE_ADAYI
-                ? 'SUPHELI'
-                : 'SORUN_YOK';
+    const karar = topluKarar(say, kk.length);
+    // GRUP KARARI (Faz 2, 2026-11-11): uygulama + ORTAM + NESIL. Elle kontrol ve Retirement kapisi bu
+    // birime baglanir (app: birimi PROD / TEST / nesilleri karistirir; kapi ona baglanamaz).
+    const grupKk = new Map();
+    for (const x of kk) {
+      const nesil = x.tur === 'jvm' ? x.anahtar.split('|')[1] || '?' : 'WAS';
+      const gk = `grup:${String(d.ad).toUpperCase()}|${x.env || '?'}|${nesil}`;
+      if (!grupKk.has(gk)) grupKk.set(gk, { ortam: x.env || null, nesil, kk: [] });
+      grupKk.get(gk).kk.push(x);
+    }
+    for (const [gk, gr] of grupKk) {
+      const gs = Object.fromEntries(KARARLAR.map((k) => [k, gr.kk.filter((x) => x.karar === k).length]));
+      // Ortami ya da nesli bilinmeyen grup RETIRE_ADAYI olamaz (hangi kurulum / ortam oldugu belirsiz).
+      let gKarar = topluKarar(gs, gr.kk.length);
+      if (gKarar === 'RETIRE_ADAYI' && (!gr.ortam || gr.nesil === '?')) gKarar = 'KARAR_VERILEMEZ';
+      gruplar.set(gk, {
+        anahtar: gk,
+        uygulama: d.anahtar,
+        ad: d.ad,
+        ortam: gr.ortam,
+        nesil: gr.nesil,
+        karar: gKarar,
+        kararMetni: KARAR_METNI[gKarar],
+        ozet: uygulamaOzeti(gKarar, gs, gr.kk.length),
+        sayilar: gs,
+        kopyalar: gr.kk.map((x) => x.anahtar).sort(),
+      });
+    }
     uygulamalar.set(d.anahtar, {
+      gruplar: [...grupKk.keys()].sort(),
       anahtar: d.anahtar,
       ad: d.ad,
       karar,
@@ -521,7 +539,22 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       yapilabilecekler: yapilabilecekler(karar, kk),
     });
   }
-  return { kopyalar, uygulamalar };
+  return { kopyalar, uygulamalar, gruplar };
+}
+
+/** Kopya kararlarindan toplu karar: hepsi aday ise aday; kullanim kanit her zaman kazanir. */
+function topluKarar(say, n) {
+  return say.RETIRE_ADAYI === n
+    ? 'RETIRE_ADAYI'
+    : say.KULLANIMDA
+      ? 'KULLANIMDA'
+      : say.KARAR_VERILEMEZ
+        ? 'KARAR_VERILEMEZ'
+        : say.SUPHELI
+          ? 'SUPHELI'
+          : say.RETIRE_ADAYI
+            ? 'SUPHELI'
+            : 'SORUN_YOK';
 }
 
 function uygulamaOzeti(karar, say, n) {
@@ -562,6 +595,7 @@ function yapilabilecekler(karar, kk) {
 
 module.exports = {
   kararla,
+  topluKarar,
   vhostTrafigi,
   SENARYOLAR,
   KARARLAR,
