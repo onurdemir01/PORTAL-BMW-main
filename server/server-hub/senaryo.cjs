@@ -525,6 +525,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
         ozet: uygulamaOzeti(gKarar, gs, gr.kk.length),
         sayilar: gs,
         kopyalar: gr.kk.map((x) => x.anahtar).sort(),
+        imza: grupImzasi(gk, gKarar, gr.kk),
       });
     }
     uygulamalar.set(d.anahtar, {
@@ -540,6 +541,21 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     });
   }
   return { kopyalar, uygulamalar, gruplar };
+}
+
+/**
+ * GRUP KANIT IMZASI (Faz 2b): elle kontrol bu imzaya baglanir; kanit degisirse kontrol VERI_DEGISTI olur.
+ * Sayi ve tarih GIRMEZ (her gece gecersizlesmesin): grup + karar + kopya basina karar ve SIRALI madde kodlari.
+ */
+function grupImzasi(gk, karar, kk) {
+  const govde = JSON.stringify({
+    gk,
+    karar,
+    k: kk
+      .map((x) => ({ a: x.anahtar, k: x.karar, m: [...new Set(x.maddeler.map((m) => m.kod))].sort() }))
+      .sort((a, b) => a.a.localeCompare(b.a)),
+  });
+  return require('node:crypto').createHash('sha256').update(govde).digest('hex').slice(0, 32);
 }
 
 /** Kopya kararlarindan toplu karar: hepsi aday ise aday; kullanim kanit her zaman kazanir. */
@@ -579,7 +595,7 @@ function yapilabilecekler(karar, kk) {
     out.push({
       tur: 'elle',
       metin:
-        'Retirement kaydı için önce elle doğrulayın: Retirement etiketleri listesinde “doğrulandı” işaretleyin ya da uygulama sahibinin Smart silme talebiyle BMW Hub › Retirement’tan açın.',
+        'Retirement kaydı için önce elle doğrulayın: aşağıdaki ortam / kurulum grubunda “Doğrulandı olarak işaretle”; doğrulanan gruptan kayıt açılır. Uygulama sahibinin Smart silme talebi varsa BMW Hub › Retirement.',
     });
   const celiski = tum.find((m) => m.kod === 'CELISKI');
   if (celiski) out.push({ tur: 'elle', metin: `Çelişkiyi inceleyin: ${celiski.metin}` });
@@ -596,6 +612,7 @@ function yapilabilecekler(karar, kk) {
 module.exports = {
   kararla,
   topluKarar,
+  grupImzasi,
   vhostTrafigi,
   SENARYOLAR,
   KARARLAR,

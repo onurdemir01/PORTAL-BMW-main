@@ -34,6 +34,7 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { EarTablo, type EarKolon } from './EarTablo';
 import { BTN, btnStil } from './RetireEtiketleri';
+import GrupKontrolu from './GrupKontrolu';
 import Rozet, { type DurumTon } from './DurumRozeti';
 import NotYonetimi, { SinifRozeti, type NotSuzgeci } from './NotYonetimi';
 
@@ -895,6 +896,14 @@ function KararKarti({
             ))}
           </ol>
         </div>
+      )}
+      {veri.tur === 'app' && veri.gruplar && veri.gruplar.length > 0 && (
+        <GrupKontrolu
+          key={veri.gruplar.map((g) => `${g.anahtar}:${g.imza}:${g.durum}`).join('|')}
+          gruplar={veri.gruplar}
+          okunamadi={veri.kontrolOkunamadi}
+          onRetirementAc={onRetirementAc}
+        />
       )}
       {veri.tur === 'sunucu' && (
         <div className="space-y-1">

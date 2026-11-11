@@ -822,6 +822,25 @@ export interface ShKararAyrinti {
   sunucu?: { anahtar: string; ad: string; veri: { env?: string | null; tarama?: string | null } };
   web?: { anahtar: string; ad: string; vhost: number }[];
   notlar?: ShNot[];
+  /** Faz 2b (2026-11-11): uygulama + ortam + nesil grup kararlari ve elle kontrol durumu. */
+  gruplar?: ShGrupKarar[];
+  kontrolOkunamadi?: boolean;
+}
+export type ShGrupKontrolDurum = 'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
+export interface ShGrupKarar {
+  anahtar: string;
+  ad: string;
+  ortam: string | null;
+  nesil: string;
+  karar: ShKarar;
+  kararMetni: string;
+  ozet: string;
+  kopyalar: string[];
+  imza: string;
+  durum: ShGrupKontrolDurum;
+  kontrol: { sonuc: string; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
+  /** Yalniz RETIRE_ADAYI + DOGRULANDI + guncel imza. */
+  kayitHazir: boolean;
 }
 export interface ShAraSonuc {
   anahtar: string;
@@ -959,6 +978,9 @@ export const serverHubApi = {
     fetch(`${BASE}/iliski/kararlar${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKararlarSonuc>(r)),
   iliskiKarar: (anahtar: string): Promise<ShKararAyrinti> =>
     fetch(`${BASE}/iliski/karar?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShKararAyrinti>(r)),
+  /** Faz 2b: grup elle kontrolu (DOGRULANDI yalniz RETIRE_ADAYI grupta, guncel imzayla). */
+  iliskiGrupKontrol: (b: { anahtar: string; sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL'; aciklama: string; imza: string }): Promise<{ ok: boolean; grup: ShGrupKarar }> =>
+    fetch(`${BASE}/iliski/kontrol`, put(b)).then((r) => okJson(r)),
   iliskiAra: (q: string): Promise<{ ok: boolean; sonuclar: ShAraSonuc[] }> =>
     fetch(`${BASE}/iliski/ara?q=${encodeURIComponent(q)}`).then((r) => okJson(r)),
   iliskiVarlik: (anahtar: string): Promise<ShVarlik> =>

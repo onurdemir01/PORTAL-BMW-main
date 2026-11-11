@@ -977,6 +977,13 @@ function initServerHub(app) {
   // ── ILISKI GRAFIGI (2026-11-07) ── varlik indeksi, kanitli kenarlar, capraz dogrulama (iliski-uclar.cjs).
   const iliskiHesabi = require('./iliski-uclar.cjs').mount(router, {
     getAssessment: (fresh) => getAssessment(fresh === true),
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        /* best-effort */
+      }
+    },
   });
   _iliskiHesabi = iliskiHesabi;
   // ── KALICI NOTLAR (2026-11-07) ── Admin notu / etiket / sinif; tarama silmez (notlar-uclar.cjs).

@@ -621,3 +621,71 @@ test('SN7 grup karari: uygulama|ortam|nesil; kullanim kazanir; ortami bilinmeyen
   assert.equal(bilinmeyen.ortam, null);
   assert.notEqual(bilinmeyen.karar, 'RETIRE_ADAYI');
 });
+
+// FAZ 2b (2026-11-11): grup elle kontrolu. DOGRULANDI yalniz RETIRE_ADAYI grupta + guncel imzayla;
+// kanit degisince VERI_DEGISTI; depo okunamazsa BILINMIYOR (kayitHazir hicbir zaman true degil).
+test('SN8 grup kontrolu: imza, yalniz aday dogrulanir, VERI_DEGISTI, okunamadi', async () => {
+  const depo = new Map();
+  let okunamaz = false;
+  const kontrol = {
+    kontrolleriOku: async () => (okunamaz ? null : new Map(depo)),
+    kontrolYaz: async ({ anahtar, sonuc, aciklama, imza, seviye, kim }) => {
+      if (sonuc === 'GERI_AL') depo.delete(anahtar);
+      else depo.set(anahtar, { sonuc, aciklama, imza, seviye, isaretleyen: kim, zaman: '2026-11-11T00:00:00Z' });
+    },
+  };
+  const denetim = [];
+  const bayrak = { gercek: 0 };
+  const app = express();
+  app.use(express.json());
+  app.use((req, _r, n) => ((req.session = { user: { username: 'onur', role: 'Admin' } }), n()));
+  const router = express.Router();
+  require('../iliski-uclar.cjs').mount(router, {
+    getAssessment: async () => ({ tableMissing: false, hosts: filo(bayrak).hosts }),
+    iliskiVerisi: async () => filo(bayrak).veri,
+    simdi: SIMDI,
+    kontrol,
+    audit: (_req, d) => denetim.push(d),
+  });
+  app.use('/api/server-hub', router);
+  const srv = app.listen(0);
+  const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
+  const J = async (u, o) => {
+    const r = await fetch(u, o);
+    return { status: r.status, body: await r.json() };
+  };
+  const put = (b) => J(`${kok}/iliski/kontrol`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+  const grup = async () => (await J(`${kok}/iliski/karar?anahtar=${encodeURIComponent('app:APP1')}`)).body.gruplar.find((x) => x.anahtar === 'grup:APP1|PROD|8');
+  try {
+    let g = await grup();
+    assert.deepEqual([g.karar, g.durum, g.kayitHazir], ['RETIRE_ADAYI', 'BEKLIYOR', false]);
+    assert.match(g.imza, /^[0-9a-f]{32}$/);
+    assert.equal((await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: 'f'.repeat(32) })).status, 409, 'eski imza kabul edildi');
+    const ok = await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: g.imza });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual([ok.body.grup.durum, ok.body.grup.kayitHazir], ['DOGRULANDI', true]);
+    assert.equal(denetim.at(-1).op, 'analiz_grup_kontrol');
+    // Kanit degisti (trafik geldi): karar KULLANIMDA, imza farkli -> VERI_DEGISTI, kayit hazir DEGIL; DOGRULANDI yazilamaz.
+    bayrak.gercek = 5;
+    g = (await J(`${kok}/iliski/karar?anahtar=${encodeURIComponent('app:APP1')}`)).body.gruplar.find((x) => x.anahtar === 'grup:APP1|PROD|8');
+    if (!g) {
+      // Onbellek (VERI_MS) icinde eski grafik donebilir; taze hesap icin kararlar?fresh=1
+      await J(`${kok}/iliski/kararlar?fresh=1`);
+      g = await grup();
+    } else if (g.karar !== 'KULLANIMDA') {
+      await J(`${kok}/iliski/kararlar?fresh=1`);
+      g = await grup();
+    }
+    assert.deepEqual([g.karar, g.durum, g.kayitHazir], ['KULLANIMDA', 'VERI_DEGISTI', false]);
+    const red = await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: g.imza });
+    assert.equal(red.status, 409);
+    assert.match(red.body.message, /Retire adayı/);
+    // Depo okunamazsa BILINMIYOR
+    okunamaz = true;
+    g = await grup();
+    assert.deepEqual([g.durum, g.kayitHazir], ['BILINMIYOR', false]);
+    assert.equal((await put({ anahtar: 'app:APP1', sonuc: 'DOGRULANDI', aciklama: 'x', imza: 'a' })).status, 400);
+  } finally {
+    srv.close();
+  }
+});
