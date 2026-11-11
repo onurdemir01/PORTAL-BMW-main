@@ -117,3 +117,42 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     expect(screen.getByText(/satırı olmayan sunucular: GBNGXAP50/)).toBeTruthy();
   });
 });
+
+// ORTAM SUZGECI (kullanici, 2026-11-11: "Ortamlar ve Tasima sekmesine de ortam filtresi ekle").
+//   KO1 ortam seciliyse tablo yalniz o ortamin satiri; toplam o ortamin SPA sayisi
+//   KO2 "Sahiplerine ulas" yalniz secili ortamin eksikleri; secilen ortamda kayit yoksa bunu soyler
+describe('Ortamlar ve Taşıma — ortam süzgeci', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const ikiOrtam = () => cov(satir(), {
+    rows: [
+      satir(),
+      satir({ env: 'TEST', spaTotal: 7, missingDetail: { internet: [], intranet: [D('test-ui', 'missing')] } }),
+    ],
+  });
+  const ortamHucreleri = () => [...document.querySelectorAll('tbody tr > td:first-child')].map((td) => td.textContent?.trim().slice(0, 4));
+
+  it('KO1 tüm ortamlar iki satır; TEST seçiliyken yalnız TEST satırı ve TEST toplamı', async () => {
+    mockCov.mockResolvedValue(ikiOrtam());
+    const { unmount } = render(<NginxSpaSummary tier="intranet" />);
+    expect(await screen.findByText(/Toplam/)).toBeTruthy();
+    expect(ortamHucreleri()).toEqual(['TEST', 'PROD']);
+    expect(document.body.textContent).toMatch(/Toplam 10 SPA \(uygulama × ortam\)/);
+    unmount();
+    render(<NginxSpaSummary tier="intranet" ortam="TEST" />);
+    expect(await screen.findByText(/TEST ortamında/)).toBeTruthy();
+    expect(ortamHucreleri()).toEqual(['TEST']);
+    expect(document.body.textContent).toMatch(/TEST ortamında 7 SPA,/);
+  });
+
+  it('KO2 "Sahiplerine ulaş" yalnız seçili ortamın eksikleri; kaydı olmayan ortam açıkça söylenir', async () => {
+    mockCov.mockResolvedValue(ikiOrtam());
+    const { unmount } = render(<NginxSpaSummary tier="intranet" ortam="TEST" />);
+    fireEvent.click(await screen.findByText(/Sahiplerine ulaş · 1$/));
+    expect(await screen.findByText(/^yalnız TEST · internet/)).toBeTruthy();
+    expect(screen.getAllByText('test-ui').length).toBeGreaterThan(0);
+    expect(screen.queryByText('yok-ui')).toBeNull();
+    unmount();
+    render(<NginxSpaSummary tier="intranet" ortam="QA" />);
+    expect(await screen.findByText('QA ortamı için veri yok.')).toBeTruthy();
+  });
+});

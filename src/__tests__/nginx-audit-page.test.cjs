@@ -216,7 +216,7 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   const den = read('components/DenetimPage.tsx');
   const sum = read('components/denetim/NginxSpaSummary.tsx');
   assert.ok(
-    den.includes("{tier !== 'tasima' && <NginxSpaSummary tier={tier} />}"),
+    den.includes("{tier !== 'tasima' && <NginxSpaSummary tier={tier} ortam={ortam} />}"),
     'ortam ozeti internet/intranet katmaninda yok',
   );
   // 2026-09-17 (ikinci tur): "Ayrinti" katlanir kapsam paneli de kaldirildi (kafa karistiriyordu)

@@ -326,6 +326,30 @@ export default function DenetimPage() {
 // Kapsam yuzdesi YALNIZCA internet kumesi uzerinden hesaplanir; intranet uygulamalarini
 // paydaya katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
 // Grafik CSS ile cizilir - projede grafik kutuphanesi yok.
+// ORTAM SUZGECI (kullanici, 2026-11-11: "Ortamlar ve Tasima sekmesine de ortam filtresi ekle").
+// Ortam ozeti tablosu, internet matrisi (sutunlar + satirlar + servis sayilari + CSV) ve
+// "Sahiplerine ulas" listesi secili ortama daralir. Production Tasimalari zaten yalniz PROD:
+// orada suzgec gosterilmez. Secim bu tarayicida hatirlanir (Uygulamalar sekmesinden AYRI anahtar:
+// orada 'belirsiz' kovasi var, burada yok).
+const KAPSAM_ORTAM_SIRASI = ['PROD', 'QA', 'TEST', 'DEV', 'EDU'];
+const KAPSAM_ORTAM_ETIKET: Record<string, string> = { PROD: 'Prod', QA: 'QA', TEST: 'Test', DEV: 'Dev', EDU: 'Edu' };
+const KAPSAM_ORTAM_ANAHTARI = 'nginx-hub:spa-kapsam:ortam';
+function kapsamOrtamOku(): string {
+  try {
+    const v = window.localStorage.getItem(KAPSAM_ORTAM_ANAHTARI) || 'tumu';
+    return v === 'tumu' || KAPSAM_ORTAM_SIRASI.includes(v) ? v : 'tumu';
+  } catch {
+    return 'tumu';
+  }
+}
+function kapsamOrtamYaz(v: string) {
+  try {
+    window.localStorage.setItem(KAPSAM_ORTAM_ANAHTARI, v);
+  } catch {
+    // Yazilamazsa secim yalniz bu sayfa acikken gecerli kalir.
+  }
+}
+
 /** Bar renklerinin ne anlama geldigini gosteren kucuk kare + etiket. */
 export function NginxSpaAudit() {
   // KATMAN BURADA TUTULUYOR, ozet bileseninin icinde DEGIL. Icerideyken yalnizca kapsam
@@ -349,6 +373,11 @@ export function NginxSpaAudit() {
   const [q, setQ] = useState('');
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [gapFilter, setGapFilter] = useState<'all' | 'prod-only' | 'no-prod'>('all');
+  const [ortam, setOrtamHam] = useState<string>(kapsamOrtamOku);
+  const setOrtam = (v: string) => {
+    setOrtamHam(v);
+    kapsamOrtamYaz(v);
+  };
 
   const load = useCallback(async (d?: string, fresh = false) => {
     setLoading(true);
@@ -371,25 +400,57 @@ export function NginxSpaAudit() {
     await load();
   }, [load]);
 
-  const envs = data?.envs || ['DEV', 'TEST', 'QA', 'PROD'];
+  const tumEnvs = useMemo(() => data?.envs || ['DEV', 'TEST', 'QA', 'PROD'], [data]);
+  // Matriste gorunen ortam sutunlari: secili ortam varsa YALNIZ o (veride sutunu olmasa da -
+  // bos sutun "o ortamda kayit yok"u soyler, secimi sessizce yok saymaz).
+  const envs = useMemo(() => (ortam === 'tumu' ? tumEnvs : [ortam]), [ortam, tumEnvs]);
+  // Dugmeler: sabit sira, yalniz matriste ya da secimde olan ortamlar.
+  // TUM LISTE (dogrulama bulgusu): matrisin env listesi EDU'yu tasimaz (EDU'nun internet RP'si
+  // yok) ama ortam ozeti EDU satirini gosterir; dugme veriye bagli olsaydi o satir secilemezdi.
+  const ortamSecenekleri = KAPSAM_ORTAM_SIRASI;
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = q.trim().toLowerCase();
     return data.rows.filter((r) => {
       if (service && r.service !== service) return false;
+      // Secili ortamda tanimi (hucresi) olmayan uygulama gosterilmez.
+      if (ortam !== 'tumu' && !r.envs[ortam]) return false;
       // Ekip adiyla da aranabilir (2026-09-14): "hangi uygulamalar X ekibinin" sorusu.
       if (needle && !r.application.toLowerCase().includes(needle) && !ownerText(r.owner).includes(needle)) return false;
       if (onlyProblems) {
         // "Sorunlu" (kullanici, 2026-09-17: "kalan tanimlar neden sorunlu?"): PROXY normal
         // PROD durumudur, sorun DEGILDIR. Sorun = OK/PROXY disi durum, eski sunucularda eksik
         // proxy, ya da herhangi bir sunucuda H/A/C'den birinin eksik olmasi.
-        const bad = Object.values(r.envs).some((c) => cellHasProblem(c));
+        // Ortam seciliyse yalniz o ortamin hucresi sorulur (baska ortamin sorunu bu listeyi
+        // doldurmasin).
+        const bad = envs.some((e) => r.envs[e] && cellHasProblem(r.envs[e]));
         if (!bad) return false;
       }
-      if (gapFilter !== 'all' && envGapOf(r) !== gapFilter) return false;
+      // Ortam farki (PROD <-> non-prod) TEK ortam seciliyken anlamsiz: suzgec gizlenir ve uygulanmaz.
+      if (ortam === 'tumu' && gapFilter !== 'all' && envGapOf(r) !== gapFilter) return false;
       return true;
     });
-  }, [data, service, q, onlyProblems, gapFilter]);
+  }, [data, service, q, onlyProblems, gapFilter, ortam, envs]);
+
+  // YUK OZETI ORTAMA GORE (dogrulama bulgusu): sunucunun trafficStats'i tum ortamlarin hucrelerini
+  // sayar; ortam seciliyse ayni kural (server/audit/denetim.cjs trafficStats) yalniz o ortamin
+  // hucrelerine istemcide uygulanir. ready bayragi sunucudan.
+  const yukOzeti = useMemo(() => {
+    const ts = data?.trafficStats;
+    if (!ts || ortam === 'tumu') return ts;
+    const t = { ready: ts.ready, active: 0, idle: 0, unknown: 0, kismi: 0 };
+    for (const r of data?.rows || []) {
+      const tr = r.envs[ortam]?.traffic;
+      if (!tr) continue;
+      if (tr.state === 'active') t.active += 1;
+      else if (tr.state === 'idle') t.idle += 1;
+      else {
+        t.unknown += 1;
+        if (tr.hosts > 0) t.kismi += 1;
+      }
+    }
+    return t;
+  }, [data, ortam]);
 
   const tierTabs = (
     <div className="flex flex-wrap items-center gap-2">
@@ -414,6 +475,32 @@ export function NginxSpaAudit() {
           </button>
         ))}
       </div>
+      {tier !== 'tasima' && (
+        <div
+          role="radiogroup"
+          aria-label="Ortam"
+          className="flex gap-1 rounded-lg p-0.5 bg-[var(--bg-elevated)] w-fit"
+          data-testid="kapsam-ortam-secimi"
+        >
+          {['tumu', ...ortamSecenekleri].map((e) => (
+            <button
+              key={e}
+              type="button"
+              role="radio"
+              aria-checked={ortam === e}
+              onClick={() => setOrtam(e)}
+              title={e === 'tumu' ? 'Tüm ortamlar' : `Yalnız ${KAPSAM_ORTAM_ETIKET[e]} ortamı`}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                ortam === e
+                  ? 'bg-[var(--bg-surface)] shadow-sm text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {e === 'tumu' ? 'Tüm ortamlar' : KAPSAM_ORTAM_ETIKET[e]}
+            </button>
+          ))}
+        </div>
+      )}
       <details className="ml-auto group">
         <summary className="text-[11px] text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-secondary)] select-none">
           Terimler ne demek?
@@ -505,7 +592,7 @@ export function NginxSpaAudit() {
     return (
       <div className="space-y-3">
         {tierTabs}
-        {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
+        {tier !== 'tasima' && <NginxSpaSummary tier={tier} ortam={ortam} />}
         {tier === 'tasima' && <NginxProdMigration />}
         {/* Bu uyari INTERNET taramasi hakkinda: intranet olcumu ayri bir tablodan gelir
             ve kendi eksik-veri mesajini kendisi gosterir. */}
@@ -528,36 +615,36 @@ export function NginxSpaAudit() {
           route'lar; eksik uygulamalar + sahiplik hucreye tiklayinca pencerede.
           Kapsam cubuklari ("Ayrinti"), "Location Detayi" ve "Proxy Tanimlari (PROD)"
           gorunumleri kaldirildi (kafa karistiriyordu). */}
-      {tier !== 'tasima' && <NginxSpaSummary tier={tier} />}
+      {tier !== 'tasima' && <NginxSpaSummary tier={tier} ortam={ortam} />}
 
       {/* ENV TESHISI: bir ortam bos gorunuyorsa NEDENI burada gorulur. env degeri vhost
           DOSYA ADINDAN turer (<SERVIS>-<ORTAM>.conf), taranan SUNUCUDAN degil - bu ayrim
           "PROD nicin bos" sorusunun cevabi. */}
       {/* YUK OZETI (kullanici, 2026-09-24): kac location yuk aliyor / almiyor / olculemedi.
           Tablo yoksa (job henuz kosmadi) hic gorunmez - bos rakam gostermek yaniltirdi. */}
-      {data.trafficStats?.ready && (
+      {yukOzeti?.ready && (
         <div className="flex flex-wrap items-center gap-2 text-[11px] rounded-xl border px-3 py-2"
              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <span className="font-semibold">Yük (access log, son 7 gün)</span>
-          <span className="px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">yük var: {fmtNumber(data.trafficStats.active)}</span>
-          <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">yük yok: {fmtNumber(data.trafficStats.idle)}</span>
-          {!!data.trafficStats.unknown && (
+          <span className="font-semibold">Yük (access log, son 7 gün){ortam === 'tumu' ? '' : ` · ${ortam}`}</span>
+          <span className="px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">yük var: {fmtNumber(yukOzeti.active)}</span>
+          <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">yük yok: {fmtNumber(yukOzeti.idle)}</span>
+          {!!yukOzeti.unknown && (
             <span className="px-1.5 py-0.5 rounded border" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
                   title="Log okunamadı ya da okunan log 7 günü / tanımın her sunucusunu kapsamıyor (günlük rotasyonlu sunucularda okunan süre 1-4 gün kalabilir) — “yük yok” demek DEĞİLDİR.">
-              ölçülemedi: {fmtNumber(data.trafficStats.unknown)}
-              {!!data.trafficStats.kismi && ` · istek yok ama 7 gün / her sunucu ölçülemedi: ${fmtNumber(data.trafficStats.kismi)}`}
+              ölçülemedi: {fmtNumber(yukOzeti.unknown)}
+              {!!yukOzeti.kismi && ` · istek yok ama 7 gün / her sunucu ölçülemedi: ${fmtNumber(yukOzeti.kismi)}`}
             </span>
           )}
           <span style={{ color: 'var(--text-muted)' }}>hc.jsp / hc.html sayılmaz</span>
         </div>
       )}
 
-      {tier === 'internet' && data.envStats && data.envStats.some((e) => e.rows === 0) && (
+      {tier === 'internet' && data.envStats && data.envStats.some((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam)) && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
           <div className="font-semibold mb-1">
             Bazı ortamlarda hiç kayıt yok:{' '}
             {data.envStats
-              .filter((e) => e.rows === 0)
+              .filter((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam))
               .map((e) => e.env)
               .join(', ')}
           </div>
@@ -635,6 +722,7 @@ export function NginxSpaAudit() {
               />
               Sadece sorunlular
             </label>
+            {ortam === 'tumu' && (
             <select
               value={gapFilter}
               onChange={(e) => setGapFilter(e.target.value as 'all' | 'prod-only' | 'no-prod')}
@@ -645,6 +733,7 @@ export function NginxSpaAudit() {
               <option value="prod-only">yalnız PROD'da var (non-prod'da yok)</option>
               <option value="no-prod">non-prod'da var, PROD'da yok</option>
             </select>
+            )}
             <span className="text-xs text-[var(--text-muted)] tabular-nums">
               {rows.length} uygulama
             </span>
@@ -652,7 +741,7 @@ export function NginxSpaAudit() {
               <button
                 onClick={() =>
                   csvDownload(
-                    `nginx_spa_audit_${service || 'tum'}`,
+                    `nginx_spa_audit_${service || 'tum'}${ortam === 'tumu' ? '' : `_${ortam.toLowerCase()}`}`,
                     ['service', 'application', 'ekip', 'ekip_eposta', ...envs],
                     rows.map((r) => [
                       r.service,
@@ -692,7 +781,7 @@ export function NginxSpaAudit() {
                 {(() => {
                   const st = data.serviceStats?.find((x) => x.service === s);
                   if (!st) return null;
-                  const total = Object.values(st.envs).reduce((a, n) => a + n, 0);
+                  const total = envs.reduce((a, e) => a + (st.envs[e] || 0), 0);
                   return (
                     <span className="ml-1 text-[10px] font-normal text-[var(--text-muted)]" title={`location tanımı: ${envs.map((e) => `${e} ${st.envs[e] || 0}`).join(' · ')}`}>
                       {total}
