@@ -960,10 +960,14 @@ export default function BmwHubPage() {
   // (yenileme / geri tusu formu tekrar acmasin).
   const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
   const gelen = (location.state as { retireOneri?: { uygulama: string; not: string } } | null)?.retireOneri;
-  useEffect(() => {
-    if (!gelen?.uygulama) return;
+  // Render sirasinda ayar (effect'te setState yok): her yeni gecis (location.key) bir kez islenir.
+  const [islenenKey, setIslenenKey] = useState<string | null>(null);
+  if (gelen?.uygulama && location.key !== islenenKey) {
+    setIslenenKey(location.key);
     setRetireOneri((o) => ({ uygulama: gelen.uygulama, not: gelen.not || '', no: (o ? o.no : 0) + 1 }));
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }
+  useEffect(() => {
+    if (gelen?.uygulama) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [gelen, location.pathname, location.search, navigate]);
 
   const sekmeSec = (id: SekmeId) =>

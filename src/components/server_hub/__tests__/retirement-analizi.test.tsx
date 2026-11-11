@@ -434,7 +434,7 @@ describe('Retirement Analizi', () => {
     const s = readFileSync(join(__dirname, '..', 'ServerHubPage.tsx'), 'utf8');
     expect(s).toContain("{ id: 'analiz', label: 'Retirement Analizi' }");
     expect(s).toMatch(
-      /<SekmeKabi id="analiz" etkin=\{tab\}>\s*<RetirementAnaliziTab onRetirementAc=\{retirementAc\} baslangic=\{analizOneri\} \/>/,
+      /<SekmeKabi id="analiz" etkin=\{tab\}>\s*<RetirementAnaliziSekmesi onRetirementAc=\{retirementAc\} baslangic=\{analizOneri\} \/>/,
     );
   });
 });
