@@ -47,7 +47,7 @@ const KULLANIM = Object.freeze({
   crypto_hub_inventory: 'Crypto Hub (envanter)',
   app_hub_ocp_canli: 'Application Hub (OpenShift canlı okuma)',
   server_hub_scan: 'Server Hub (tarama) ve App Retirement',
-  server_hub_fix: 'Server Hub (düzeltme) ve App Retirement',
+  server_hub_fix: 'Server Hub (düzeltme), App Retirement ve Application Hub (JVM parametresi)',
   reboot_check: 'BMW Hub > Reboot Kontrolü',
   server_hub_ear_envanter: 'Server Hub > Uygulama Envanteri',
   app_retirement_stop: 'BMW Hub > Retirement (durdurma)',

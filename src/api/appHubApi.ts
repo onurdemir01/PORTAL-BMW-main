@@ -216,6 +216,26 @@ export interface OcpDetay {
 
 export type AppDetay = JbossDetay | WasDetay | OcpDetay;
 
+export interface JvmParamYaniti {
+  ok?: boolean;
+  serverId?: number;
+  jobId?: number | null;
+  plan?: boolean;
+  parametre?: string;
+  /** Production: Smart talebi açıldı, iş onaydan sonra başlar. */
+  pendingApproval?: boolean;
+  externalTicketId?: string;
+  message?: string;
+}
+export interface JvmParamDurum {
+  status: string;
+  finished: boolean;
+  /** OK | PLAN | SKIP | FAIL | BILINMIYOR */
+  sonuc?: string;
+  mesaj?: string;
+  plan?: boolean | null;
+}
+
 export const appHubApi = {
   async ara(q: string): Promise<{ sonuclar: AppAramaSonucu[]; okunamayan: { tip: AppTip; hata: string }[]; mesaj?: string; kesildi?: boolean }> {
     return okJson(await fetch(`${BASE}/ara?q=${encodeURIComponent(q)}`));
@@ -231,6 +251,19 @@ export const appHubApi = {
         body: JSON.stringify(hedefler ? { hedefler } : {}),
       }),
     );
+  },
+  /** JBoss JVM parametresi (2026-11-11): apply=false plan (hiçbir şey değişmez), apply=true uygula (prod: Smart onayı). */
+  async jvmParam(g: { host: string; gen: number; jvm: string; parametre: string; uygulama: string; apply?: boolean; onayMetni?: string }): Promise<JvmParamYaniti> {
+    return okJson(
+      await fetch(`${BASE}/jboss/jvm-param`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(g),
+      }),
+    );
+  },
+  async jvmParamDurum(serverId: number, jobId: number): Promise<JvmParamDurum> {
+    return okJson(await fetch(`${BASE}/jboss/jvm-param/${serverId}/${jobId}`));
   },
   async ocpCanliDurum(serverId: number, jobId: number, ad: string): Promise<{ status: string; finished: boolean; error?: string; genel?: string; okumalar?: OcpCanliOkuma[] }> {
     return okJson(await fetch(`${BASE}/ocp/canli/${serverId}/${jobId}?ad=${encodeURIComponent(ad)}`));

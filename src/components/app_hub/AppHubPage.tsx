@@ -179,7 +179,7 @@ export default function AppHubPage() {
           <div className="h-64 card skeleton" />
         </div>
       ) : detay.tip === 'jboss' ? (
-        <JbossGorunum key={`${detay.ad}-${okundu}`} d={detay} />
+        <JbossGorunum key={`${detay.ad}-${okundu}`} d={detay} onYenile={yenile} />
       ) : detay.tip === 'was' ? (
         <WasGorunum d={detay} />
       ) : (

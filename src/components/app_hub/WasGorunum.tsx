@@ -70,6 +70,7 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
                         <JvmArglari
                           baslik="genericJvmArguments"
                           args={s.jvm?.jvmArgs}
+                          aciklama="WAS parametreleri Portal’dan değiştirilemez: değişiklik DMGR üzerinden (wsadmin + node senkronu) yapılmalı; güvenli bir otomasyonu henüz yok."
                           bosMetin={
                             !s.jvm || !s.jvm.jvmDurumu
                               ? 'WAS JVM ayarları henüz toplanmadı: Uygulama Envanteri taraması bu sunucuyu yeni tarayıcıyla taradığında (server.xml) burada görünür.'

@@ -75,7 +75,8 @@ function createRouter() {
     /* motor yoksa yoksay */
   }
   try {
-    router.use(require('../audit/index.cjs').auditMutations('app_hub'));
+    // JVM parametresi ucu KENDI denetimini MASKELI yazar (jvm-param.cjs): genel katman govdeyi acik yazardi.
+    router.use(require('../audit/index.cjs').auditMutations('app_hub', { exclude: ['/jboss/jvm-param'] }));
   } catch {
     /* yoksay */
   }
@@ -179,6 +180,9 @@ function createRouter() {
       res.status(502).json({ ok: false, error: `İş durumu okunamadı: ${(e && e.message) || e}` });
     }
   });
+
+  // JBoss JVM parametresi degistir / ekle (2026-11-11): server_hub_fix hatti, plan -> onay -> (prod: Smart).
+  require('./jvm-param.cjs').mount(router, { resolveByKey });
 
   return router;
 }

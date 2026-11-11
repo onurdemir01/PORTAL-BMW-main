@@ -135,7 +135,7 @@ function Kopyala({ metin }: { metin: string }) {
  * Maskeli JVM argümanlarını gruplayarak gösterir. Değer "***" ise maskelendiği yazılır.
  * `bosMetin`: argüman yoksa ne söyleneceği (ölçülmedi ile toplanmadı farklıdır).
  */
-export function JvmArglari({ args, bosMetin, baslik }: { args: string | null | undefined; bosMetin: React.ReactNode; baslik?: string }) {
+export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string | null | undefined; bosMetin: React.ReactNode; baslik?: string; aciklama?: string }) {
   const tok = argBol(args);
   if (!tok.length) {
     return (
@@ -160,6 +160,11 @@ export function JvmArglari({ args, bosMetin, baslik }: { args: string | null | u
         </span>
         <Kopyala metin={tok.join(' ')} />
       </div>
+      {aciklama && (
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {aciklama}
+        </p>
+      )}
       {GRUP_SIRA.filter((g) => gruplar.has(g)).map((g) => (
         <div key={g} className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-2 items-start">
           <span className="text-[11px] uppercase tracking-wide pt-1" style={{ color: 'var(--text-muted)' }}>{g}</span>

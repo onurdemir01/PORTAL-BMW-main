@@ -5,6 +5,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import type { JbossDetay, JbossSunucu } from '@/api/appHubApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
+import JvmParamDuzenle from './JvmParamDuzenle';
 import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, OzetKutusu, Sayi, TD, TH } from './ortak';
 
 const KAYNAK_AD: Record<string, string> = {
@@ -19,7 +20,7 @@ function heapMetni(s: JbossSunucu) {
   return `${s.minHeap || '?'} / ${s.maxHeap || '?'}`;
 }
 
-function SunucuSatiri({ s, acik, onToggle }: { s: JbossSunucu; acik: boolean; onToggle: () => void }) {
+function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunucu; acik: boolean; onToggle: () => void; uygulama: string; onYenile?: () => void }) {
   const calisan = s.jvmler.filter((j) => j.calisiyor === true).length;
   const olculemeyen = s.jvmler.filter((j) => j.calisiyor == null).length;
   const portlar = [...new Set(s.jvmler.flatMap((j) => j.portlar || []))];
@@ -112,6 +113,18 @@ function SunucuSatiri({ s, acik, onToggle }: { s: JbossSunucu; acik: boolean; on
                     {j.istek7g != null && <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>7 gün {fmtNumber(j.istek7g)} istek</span>}
                     {!j.taze && <Hap ton="uyari" title="Server Hub taraması 2 günden eski">bayat tarama</Hap>}
                     {j.taramaTarihi && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>tarama {fmtDate(j.taramaTarihi)}</span>}
+                    {j.nesil != null && (
+                      <span className="ml-auto">
+                        <JvmParamDuzenle
+                          host={j.host || s.host}
+                          gen={j.nesil}
+                          jvm={j.ad}
+                          uygulama={uygulama}
+                          mevcut={j.yapilandirilanJvmArgs || j.jvmArgs}
+                          onDegisti={() => onYenile && onYenile()}
+                        />
+                      </span>
+                    )}
                   </div>
                   <JvmArglari
                     baslik="Çalışma anı JVM parametreleri"
@@ -185,7 +198,7 @@ function SunucuSatiri({ s, acik, onToggle }: { s: JbossSunucu; acik: boolean; on
   );
 }
 
-export default function JbossGorunum({ d }: { d: JbossDetay }) {
+export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?: () => void }) {
   const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? d.sunucular.map((s) => `${s.host}|${s.uygulama}`) : []));
   const [ortam, setOrtam] = useState('');
   const liste = useMemo(() => d.sunucular.filter((s) => !ortam || s.ortam === ortam), [d.sunucular, ortam]);
@@ -256,7 +269,7 @@ export default function JbossGorunum({ d }: { d: JbossDetay }) {
               {!liste.length && <TableEmptyRow colSpan={8} title="Bu ortamda sunucu yok." />}
               {liste.map((s) => {
                 const k = `${s.host}|${s.uygulama}`;
-                return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} />;
+                return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} uygulama={d.ad} onYenile={onYenile} />;
               })}
             </tbody>
           </table>
