@@ -559,3 +559,45 @@ test('SN5 tazelik her kanitin kendi sunucusundan: bayat sifir "olculemedi", aday
   e.veri.hostlar.get(WEB).taranma = '2026-09-01T00:00:00.000Z';
   assert.equal(kopya(e).karar, 'KULLANIMDA');
 });
+
+// FAZ 1 (2026-11-11, docs/RETIREMENT-MOTOR-BIRLESTIRME.md): Analiz aciklari.
+//   SN6a ZAYIF (yalniz ada dayanan) eslemeli vhost'un gercek trafigi KULLANIMDA (G6)
+//   SN6b Server Hub retire engeli (STALE / WEB_TIER / MAPPING ...) varken RETIRE_ADAYI yok (G7)
+//   SN6c JBoss nesli bilinmeyen kopya RETIRE_ADAYI olamaz (G7)
+function kararHosts(bayrak, degistir) {
+  const { hosts, veri } = filo(bayrak);
+  degistir(hosts);
+  const g = grafikKur({ hosts, veri });
+  const r = kararla({ g, dogrulamalar: dogrula(g, { veri }), hosts, simdi: SIMDI });
+  return { r, g };
+}
+test('SN6a zayif eslemeli vhost trafigi kullanimdir', () => {
+  const sifir = karar({ esleme: 'ZAYIF', gercek: 0 }).k;
+  assert.notEqual(sifir.karar, 'RETIRE_ADAYI', 'zayif esleme retire adayi yapti');
+  const { k } = karar({ esleme: 'ZAYIF', gercek: 40 });
+  assert.equal(k.karar, 'KULLANIMDA', `zayif eslemeli trafik kullanim sayilmadi: ${kodlar(k).join(',')}`);
+  assert.ok(kodlar(k).includes('WEB_TRAFIK_VAR'));
+});
+test('SN6b retire engeli adayi kapatir (KARAR_VERILEMEZ, sorun yok DEGIL)', () => {
+  assert.equal(karar({}).k.karar, 'RETIRE_ADAYI', 'fikstur on kosulu');
+  const { r } = kararHosts({}, (hosts) => {
+    hosts[0].jvms[0].retireEngeli = { kod: 'WEB_TIER', metin: 'web katmaninda olculemeyen host var: X' };
+  });
+  const k = r.kopyalar.get(A.jvm(APP, 8, 'APP1'));
+  assert.equal(k.karar, 'KARAR_VERILEMEZ');
+  assert.ok(kodlar(k).includes('RETIRE_ENGELI'));
+  // Kullanim kaniti engelden once gelir.
+  const { r: r2 } = kararHosts({ gercek: 5 }, (hosts) => {
+    hosts[0].jvms[0].retireEngeli = { kod: 'STALE', metin: 'bayat' };
+  });
+  assert.equal(r2.kopyalar.get(A.jvm(APP, 8, 'APP1')).karar, 'KULLANIMDA');
+});
+test('SN6c nesli bilinmeyen kopya aday olamaz', () => {
+  const { r } = kararHosts({}, (hosts) => {
+    hosts[0].jvms[0].gen = null;
+  });
+  const k = [...r.kopyalar.values()].find((x) => x.anahtar.startsWith(`jvm:${APP}|?|APP1`));
+  assert.ok(k, 'nesilsiz kopya grafikte yok');
+  assert.notEqual(k.karar, 'RETIRE_ADAYI');
+  assert.ok(kodlar(k).includes('NESIL_BILINMIYOR'));
+});

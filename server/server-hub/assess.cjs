@@ -1666,6 +1666,8 @@ function assess(data, opts = {}) {
         // turu + v2 trafik + atfedilemeyen proxy yok). Aksi halde bulgu KALIR, eylem
         // onerilmez ve metin ILK engeli soyler.
         const engel = retireEngeli(h, j);
+        // FAZ 1 (2026-11-11): Retirement Analizi de ayni engeli okur (senaryo.cjs RETIRE_ENGELI).
+        j.retireEngeli = engel ? { kod: engel.kod, metin: engel.metin } : null;
         add(
           'warning',
           'jvm',

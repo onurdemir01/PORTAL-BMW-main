@@ -136,6 +136,10 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
   // v2-guvenlik.test.cjs D1-C04'te sinanir.
   assert.equal(codes.RETIRE_CANDIDATE.fix, null);
   assert.equal(codes.RETIRE_CANDIDATE.retireBlock, 'LEGACY');
+  // FAZ 1 (2026-11-11): ayni engel JVM'e yazilir; Retirement Analizi (senaryo RETIRE_ENGELI) onu okur.
+  const eskiJvm = app.jvms.find((j) => j.retireEngeli);
+  assert.ok(eskiJvm, 'retire engeli JVM uzerinde yok (Analiz goremez)');
+  assert.equal(eskiJvm.retireEngeli.kod, 'LEGACY');
   assert.equal(codes.RESTART_REQUIRED.severity, 'warning');
   // OLCUT YALNIZ start.sh (2026-10-06): fixture'daki fark functions.sh'ta, yani olcut
   // disinda -> warning INIT_DIFF degil info INIT_DIFF_OLCUT_DISI. Olcut dosyasinin kendi

@@ -167,7 +167,28 @@ const SENARYOLAR = Object.freeze({
     baslik: 'Web dışı çağrılar ölçülmedi',
     elle: 'Bağlantı görüntüsünü açın ya da ss -tn ile JVM portuna gelen bağlantılara bakın.',
   },
+  // FAZ 1 (2026-11-11, docs/RETIREMENT-MOTOR-BIRLESTIRME.md): RETIRE_ADAYI'yi KAPATAN eksikler.
+  RETIRE_ENGELI: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'Server Hub retire kanıtı eksik',
+    elle: 'Engelin söylediği kaynağı tazeleyin (tarama / web katmanı / eşleme) ve yeniden bakın.',
+  },
+  NESIL_BILINMIYOR: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'JBoss nesli (7 / 8) bilinmiyor',
+    elle: 'Sunucuyu yeniden tarayın; aynı JVM iki kurulumda olabilir, hangisinin retire edileceği belirsiz.',
+  },
+  WAS_DEGERLENDIRILMEDI: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'WAS sunucusu Server Hub değerlendirmesine bağlı değil',
+    elle: 'WAS için çalışma durumu, auto-start ve deployment kanıtı yok; retire kararı elle verilmeli.',
+  },
 });
+/** Bu eksiklerden biri varken kopya RETIRE_ADAYI olamaz (Faz 1). */
+const ADAY_KAPATAN = new Set(['RETIRE_ENGELI', 'NESIL_BILINMIYOR', 'WAS_DEGERLENDIRILMEDI']);
 
 const madde = (kod, metin, kanit = null, ek = {}) => ({
   kod,
@@ -267,9 +288,15 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const host = d.veri.host;
 
     // ── kullanim kanitlari ──
+    // FAZ 1 (2026-11-11): ZAYIF (yalniz ada dayanan) eslemeli vhost'un gercek trafigi de kullanim
+    // kanitidir: zayif esleme retire'i DESTEKLEYEMEZ ama kullanimi gostermeye yeter (guvenli taraf).
+    const zayifVhost = gelen
+      .filter((e) => GUVEN[e.guven] < GUVEN.GUCLU)
+      .map((e) => g.dugumler.get(e.kaynak))
+      .filter((x) => x && x.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x));
     const trafikVar = [
       ...trafikler,
-      ...celiskiliVhost.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
+      ...[...celiskiliVhost, ...new Set(zayifVhost)].map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
     ].filter((x) => x.t.olcum === 'VAR');
     for (const x of trafikVar) maddeler.push(madde('WEB_TRAFIK_VAR', x.t.metin, x.v.anahtar));
     if (trafikVar.length && calisiyor === false)
@@ -394,6 +421,10 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
             d.anahtar,
           ),
         );
+      if (ax.j.retireEngeli)
+        maddeler.push(
+          madde('RETIRE_ENGELI', `${ax.j.retireEngeli.kod}: ${ax.j.retireEngeli.metin}`, d.anahtar),
+        );
       if (ax.h.fresh === false) {
         maddeler.push(madde('BAYAT', `son tarama ${ax.h.scanDate || '?'}`, `sunucu:${host}`));
         eksikler.push({ ne: 'taze tarama', nasil: 'Server Hub › Şimdi tara' });
@@ -415,8 +446,14 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     if (!baglantiOlculdu && calisiyor !== false)
       maddeler.push(madde('BAGLANTI_OLCULMEDI', null, d.anahtar));
 
+    // Nesil anahtarda: jvm:<host>|<nesil>|<AD>; bilinmiyorsa '?' (iliski-grafigi A.jvm).
+    if (d.tur === 'jvm' && d.anahtar.split('|')[1] === '?')
+      maddeler.push(madde('NESIL_BILINMIYOR', `${d.ad}: JBoss nesli bilinmiyor`, d.anahtar));
+    if (d.tur === 'was') maddeler.push(madde('WAS_DEGERLENDIRILMEDI', null, d.anahtar));
+
     // ── karar ──
     const kullanim = trafikVar.length > 0 || cagiranlar.length > 0;
+    const adayKapali = maddeler.some((m) => ADAY_KAPATAN.has(m.kod));
     const bayat = maddeler.some((m) => m.kod === 'BAYAT');
     let karar;
     if (kullanim) karar = 'KULLANIMDA';
@@ -428,7 +465,8 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       !bayat &&
       (calisiyor === false || (baglantiTaze && !cagiranlar.length))
     )
-      karar = 'RETIRE_ADAYI';
+      // Aday kosullari tamam ama kapatan bir eksik var: "sorun yok" DEGIL, karar verilemez.
+      karar = adayKapali ? 'KARAR_VERILEMEZ' : 'RETIRE_ADAYI';
     else if (maddeler.some((m) => m.etki === 'DESTEKLER')) karar = 'SUPHELI';
     else if (calisiyor !== false && (!guclu.length || olcmedi.length)) karar = 'KARAR_VERILEMEZ';
     else karar = 'SORUN_YOK';
