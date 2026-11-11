@@ -1012,6 +1012,25 @@ function initServerHub(app) {
     },
   });
 
+  // ── KARSILASTIRMA (Faz 4, 2026-11-11) ── etiket motoru (A) ile Analiz grup karari (B) nerede ayrisiyor.
+  // Gozlem raporu; hicbir sey degistirmez. Iki hesap da kendi onbellegini kullanir.
+  const etiketHesabi = require('./retire-uclar.cjs').etiketHesabiKur({
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    ayarlar,
+    kontrol: require('./retire-kontrol.cjs'),
+  });
+  router.get('/iliski/karsilastirma', async (req, res) => {
+    try {
+      const fresh = req.query.fresh === '1';
+      const [et, h] = await Promise.all([etiketHesabi(fresh), iliskiHesabi(fresh)]);
+      if (!h.grafik || !h.kararlar) return res.status(424).json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
+      const { karsilastir } = require('./karsilastirma.cjs');
+      res.json({ ok: true, latestScan: h.a && h.a.latestScan ? h.a.latestScan : null, ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }) });
+    } catch (e) {
+      res.status(424).json({ ok: false, message: e.message || 'Karşılaştırma yapılamadı.' });
+    }
+  });
+
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
     const serverId = Number(req.params.serverId);
     const jobId = Number(req.params.jobId);

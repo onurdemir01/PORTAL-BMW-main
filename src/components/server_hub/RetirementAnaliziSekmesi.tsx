@@ -13,9 +13,10 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtNumber } from '@/utils/datetime';
 import RetirementAnaliziTab from './RetirementAnaliziTab';
 import RetireEtiketleriGorunum from './RetireEtiketleri';
+import KarsilastirmaRaporu from './KarsilastirmaRaporu';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 
-type Gorunum = 'analiz' | 'etiketler';
+type Gorunum = 'analiz' | 'etiketler' | 'karsilastirma';
 
 export default function RetirementAnaliziSekmesi({
   onRetirementAc,
@@ -58,6 +59,7 @@ export default function RetirementAnaliziSekmesi({
           [
             ['analiz', 'Karar analizi'],
             ['etiketler', `Retirement etiketleri${retire ? ` (${fmtNumber(retire.ozet.toplam)})` : ''}`],
+            ['karsilastirma', 'Karşılaştırma'],
           ] as const
         ).map(([id, ad]) => (
           <button
@@ -79,12 +81,15 @@ export default function RetirementAnaliziSekmesi({
         <span className="ml-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {gorunum === 'analiz'
             ? 'Tek uygulama / sunucu / IP için app + web + IP katmanlarını birlikte okuyan karar.'
-            : 'R1–R12 kurallarıyla işaretlenen adaylar; elle kontrol ve Retirement kaydı buradan.'}
+            : gorunum === 'etiketler'
+              ? 'R1–R12 kurallarıyla işaretlenen adaylar; elle kontrol ve Retirement kaydı buradan.'
+              : 'İki motor nerede ayrışıyor (birleştirme gözlem raporu).'}
         </span>
       </div>
       <div hidden={gorunum !== 'analiz'}>
         <RetirementAnaliziTab onRetirementAc={onRetirementAc} baslangic={baslangic} />
       </div>
+      {gorunum === 'karsilastirma' && <KarsilastirmaRaporu />}
       {gorunum === 'etiketler' && (
         <RetireEtiketleriGorunum veri={retire} yukleniyor={retireYuk} onYenile={retireYukle} onRetirementAc={onRetirementAc} />
       )}
