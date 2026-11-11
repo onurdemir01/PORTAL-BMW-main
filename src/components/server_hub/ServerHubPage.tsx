@@ -1234,6 +1234,26 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
             envanter eksik olabilir.{' '}
           </>
         )}
+        {/* JVM FAZLASI (2026-11-11): "veri cekilen" artik envanteri asamaz (%108 sorusu); taramanin
+            envanterde karsiligi olmayan JVM'leri burada yazilir - envanter eksik sayiyor demektir. */}
+        {(c.jvm.scannedOverInventory || 0) + (c.jvm.scannedNotInInventory || 0) > 0 && (
+          <>
+            Taramada toplam {fmtNumber(c.jvm.scannedTotal ?? 0)} JVM çıktı;{' '}
+            {(c.jvm.scannedOverInventory || 0) > 0 && (
+              <>
+                {fmtNumber(c.jvm.scannedOverInventory || 0)}’i envanterin o sunucu için yazdığı sayıdan <b>fazla</b>
+                {(c.jvm.scannedNotInInventory || 0) > 0 ? ', ' : ''}
+              </>
+            )}
+            {(c.jvm.scannedNotInInventory || 0) > 0 && (
+              <>
+                {fmtNumber(c.jvm.scannedNotInInventory || 0)}’i envanterde JBoss olarak <b>görünmeyen</b>{' '}
+                {fmtNumber(c.jvm.scannedNotInInventoryHosts || 0)} sunucuda
+              </>
+            )}{' '}
+            — “veri çekilen”e sayılmadı; JVM envanteri eksik olabilir.{' '}
+          </>
+        )}
         {c.jvm.fromInventory > 0 && (
           <>
             {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b>{' '}

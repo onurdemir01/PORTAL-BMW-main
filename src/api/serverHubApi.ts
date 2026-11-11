@@ -302,7 +302,17 @@ export interface ShSummary {
         missingHosts: string[];
       }
     >;
-    jvm: { inventory: number; scanned: number; fromInventory: number };
+    jvm: {
+      inventory: number;
+      /** Envanterdeki JVM'lerden verisi cekilen (sunucu basina min(taranan, envanter)); <= inventory. */
+      scanned: number;
+      fromInventory: number;
+      /** Taramanin getirdigi butun JVM satirlari = scanned + scannedOverInventory + scannedNotInInventory. */
+      scannedTotal?: number;
+      scannedOverInventory?: number;
+      scannedNotInInventory?: number;
+      scannedNotInInventoryHosts?: number;
+    };
   };
 }
 /** EK-2: son basarili yukleme FRESH_MAX_DAYS'ten eskiyse /overview ve /findings bunu tasir. */
