@@ -577,6 +577,31 @@ async function launch(req, keyName, templateName, extraVars, detail) {
 
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 
+// ── RETIREMENT KAPISI ICIN ANALIZ KARARI (Faz 3 golge, 2026-11-11) ──────────────────────────────
+// docs/RETIREMENT-MOTOR-BIRLESTIRME.md: Retirement kaydi acilirken her hedefin Analiz kopya karari.
+// Router kurulduysa AYNI hesap (onbellek + tek ucus) kullanilir; kurulmadiysa (test / router'siz) yenisi.
+let _iliskiHesabi = null;
+async function retirementAnalizi(hedefler) {
+  if (!_iliskiHesabi) {
+    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({ getAssessment: (f) => getAssessment(f === true) });
+  }
+  const h = await _iliskiHesabi(false);
+  if (!h.grafik || !h.kararlar) return { okunamadi: true, hedefler: [] };
+  const { A } = require('./iliski-grafigi.cjs');
+  const out = (hedefler || []).map((t) => {
+    const gen = t.gen == null || t.gen === '' ? null : Number(t.gen);
+    const k = h.kararlar.kopyalar.get(A.jvm(t.host, gen, t.appName));
+    return {
+      host: String(t.host || '').toUpperCase(),
+      appName: t.appName,
+      gen,
+      karar: k ? k.karar : 'BULUNAMADI',
+      ana: k ? (k.maddeler.find((m) => m.etki === 'ENGELLER') || k.maddeler.find((m) => m.etki === 'EKSIK') || {}).kod || null : null,
+    };
+  });
+  return { okunamadi: false, hedefler: out };
+}
+
 function initServerHub(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
@@ -953,6 +978,7 @@ function initServerHub(app) {
   const iliskiHesabi = require('./iliski-uclar.cjs').mount(router, {
     getAssessment: (fresh) => getAssessment(fresh === true),
   });
+  _iliskiHesabi = iliskiHesabi;
   // ── KALICI NOTLAR (2026-11-07) ── Admin notu / etiket / sinif; tarama silmez (notlar-uclar.cjs).
   require('./notlar-uclar.cjs').mount(router, {
     iliskiHesabi,
@@ -1012,6 +1038,7 @@ function initServerHub(app) {
 
 module.exports = {
   initServerHub,
+  retirementAnalizi,
   REGISTRY_KEYS,
   FIX_ACTIONS,
   HOST_RE,

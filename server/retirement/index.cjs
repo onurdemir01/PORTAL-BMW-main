@@ -456,6 +456,30 @@ function initRetirement(app) {
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
+  /** Golge kapi: Analiz kararlarini toplar, zorunlu kipte ne olacagini yazar. Hata kaydi DURDURMAZ. */
+  async function golgeKapi(targets, hedefSecildi) {
+    let a;
+    try {
+      a = await Promise.race([
+        require('../server-hub/index.cjs').retirementAnalizi(targets),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('20 sn içinde hesaplanamadı')), 20000).unref?.()),
+      ]);
+    } catch (e) {
+      a = { okunamadi: true, hata: e.message, hedefler: [] };
+    }
+    const say = {};
+    for (const h of a.hedefler || []) say[h.karar] = (say[h.karar] || 0) + 1;
+    const kullanimda = (a.hedefler || []).filter((h) => h.karar === 'KULLANIMDA');
+    const engellenirdi = a.okunamadi || kullanimda.length > 0 || !hedefSecildi;
+    const sebepler = [];
+    if (a.okunamadi) sebepler.push(`Analiz okunamadı${a.hata ? ` (${a.hata})` : ''}`);
+    if (kullanimda.length) sebepler.push(`KULLANIMDA: ${kullanimda.slice(0, 5).map((h) => `${h.appName} @ ${h.host}`).join(', ')}${kullanimda.length > 5 ? ` +${kullanimda.length - 5}` : ''}`);
+    if (!hedefSecildi) sebepler.push('hedef seçilmeden (bütün ortamlar) açıldı');
+    const dagilim = Object.entries(say).map(([k, n]) => `${n} ${k}`).join(', ') || 'karar yok';
+    const metin = `Retirement Analizi (gölge kapı, engellemez): ${dagilim}. ${engellenirdi ? `Zorunlu kipte bu kayıt AÇILMAZDI: ${sebepler.join('; ')}.` : 'Zorunlu kipte de açılırdı.'}`;
+    return { metin: metin.slice(0, 1000), ozet: { engellenirdi, okunamadi: !!a.okunamadi, dagilim: say, hedefSecildi, kullanimda: kullanimda.length } };
+  }
+
   // Kayit ac: kesif snapshot'i hedef olarak yazilir (kullanici hedef secebilir: targets[] host|appName)
   router.post('/', async (req, res) => {
     const b = req.body || {};
@@ -485,6 +509,10 @@ function initRetirement(app) {
       }
       if (!targets.length) return res.status(400).json({ ok: false, message: 'Envanterde bu uygulama için hedef bulunamadı (MWAppsInventory).' });
       if (targets.some((t) => t.env === 'PROD') && !ocoNo) return res.status(400).json({ ok: false, message: 'PROD hedef var: altyapı OCO numarası zorunlu (kayıtla birlikte açılmalı).' });
+      // GOLGE KAPI (Faz 3, 2026-11-11; docs/RETIREMENT-MOTOR-BIRLESTIRME.md): her hedefin Retirement Analizi
+      // karari kayda ve denetime yazilir, HICBIR SEY ENGELLENMEZ. Zorunlu kipte KULLANIMDA hedefi olan ya da
+      // hedef secilmeden ("butun ortamlar") acilan kayit reddedilecek; golge kayitlar o gecisin olcusudur.
+      const golge = await golgeKapi(targets, Array.isArray(b.targets) && b.targets.length > 0);
       const user = req.session?.user?.username || 'unknown';
       const ins = await db().query(
         `INSERT INTO retirement_records (app, smart_no, oco_no, owner_email, requested_by, delete_after_days, planned_delete_at, dns_reuse, lb_reuse, notes)
@@ -504,8 +532,9 @@ function initRetirement(app) {
         (inPlace.length > 5 ? ` +${inPlace.length - 5} hedef daha (hedef satırlarında)` : '');
       await addEvent(id, user, 'created', `Kayıt açıldı: ${targets.length} hedef (${disc.summary.bySite.Pendik} Pendik, ${disc.summary.bySite.Ankara} Ankara); Smart ${smartNo}${ocoNo ? ', OCO ' + ocoNo : ''}; silme ${planned || days + ' gün sonra'}` +
         (inPlace.length ? ` · IN-PLACE: ${ipMetni}` : ''));
-      try { require('../audit/index.cjs').auditPortal(req, 'retirement', { detail: JSON.stringify({ op: 'create', id, app, targets: targets.length }) }); } catch { /* */ }
-      res.json({ ok: true, id, record: await loadRecord(id) });
+      await addEvent(id, user, 'kapi_golge', golge.metin).catch((e) => console.warn('[Retirement] golge kapi olayi yazilamadi:', e.message));
+      try { require('../audit/index.cjs').auditPortal(req, 'retirement', { detail: JSON.stringify({ op: 'create', id, app, targets: targets.length, kapiGolge: golge.ozet }) }); } catch { /* */ }
+      res.json({ ok: true, id, record: await loadRecord(id), kapiGolge: golge.ozet });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
 
