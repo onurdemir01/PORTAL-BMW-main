@@ -43,8 +43,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
-import RebootKontroluTab from './RebootKontroluTab';
-import RetirementTab from './RetirementTab';
+import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
@@ -1458,14 +1457,15 @@ type SekmeId =
   | 'uygulama360'
   | 'analiz'
   | 'readiness'
-  | 'reboot'
-  | 'retirement'
   | 'envanter'
   | 'kurallar';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
-  // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
+  // Sekmeler: Server Hub envanter + goruntuleme. OPERASYON AKISLARI (Reboot Kontrolu, Retirement)
+  // 2026-11-11'de BMW Hub'a tasindi (kullanici: "Server Hub'i sadece envanterleme ve goruntuleme
+  // amacli kullaniyoruz"); Retirement'a gecis BMW Hub'in retirement sekmesine yonlendirir.
+  const navigate = useNavigate();
   const [tab, setTab] = useState<SekmeId>('hosts');
   // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
   // indirme yok). Gizli sekme yoklama yapmaz ve pencere acmaz (useSekmeGorunur).
@@ -1483,12 +1483,11 @@ export default function ServerHubPage() {
     product?: string;
     envGroup?: string;
   } | null>(null);
-  // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement sekmesinde kayit
-  // formunu uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir).
-  const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
+  // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement kayit formunu
+  // uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir). Retirement artik
+  // BMW Hub'da: oneri yonlendirme durumu (location.state) ile tasinir, URL'e uygulama adi yazilmaz.
   const retirementAc = (uygulama: string, not: string) => {
-    setRetireOneri((o) => ({ uygulama, not, no: (o ? o.no : 0) + 1 }));
-    sekmeAc('retirement');
+    navigate('/bmw-hub?sekme=retirement', { state: { retireOneri: { uygulama, not } } });
   };
   // RETIREMENT ANALIZI ROZETI (2026-11-07): Uygulama 360 / sunucu paneli "Analizde ac" -> analiz sekmesi
   // o kayit secili (tek kaynak, iki giris). Context: rozet panelin icinde, prop zinciri gerekmez.
@@ -1530,7 +1529,7 @@ export default function ServerHubPage() {
                 ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
                 : tab === 'analiz'
                 ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Ekran hiçbir şey çalıştırmaz.'
-                : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
+                : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1541,8 +1540,6 @@ export default function ServerHubPage() {
               { id: 'uygulama360', label: 'Uygulama 360' },
               { id: 'analiz', label: 'Retirement Analizi' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
-              { id: 'reboot', label: 'Reboot Kontrolü' },
-              { id: 'retirement', label: 'Retirement' },
               { id: 'envanter', label: 'Uygulama Envanteri' },
               { id: 'kurallar', label: 'Kurallar & Limitler' },
             ] as const
@@ -1585,16 +1582,6 @@ export default function ServerHubPage() {
       {acilan.has('readiness') && (
         <SekmeKabi id="readiness" etkin={tab}>
           <ReadinessTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('reboot') && (
-        <SekmeKabi id="reboot" etkin={tab}>
-          <RebootKontroluTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('retirement') && (
-        <SekmeKabi id="retirement" etkin={tab}>
-          <RetirementTab oneri={retireOneri} />
         </SekmeKabi>
       )}
       {acilan.has('envanter') && (

@@ -506,7 +506,7 @@ function yapilabilecekler(karar, kk) {
     out.push({
       tur: 'yonlendir',
       metin: 'Retirement kaydı açılabilir',
-      hedef: 'server-hub?tab=retirement',
+      hedef: 'bmw-hub?sekme=retirement',
     });
   const celiski = tum.find((m) => m.kod === 'CELISKI');
   if (celiski) out.push({ tur: 'elle', metin: `Çelişkiyi inceleyin: ${celiski.metin}` });

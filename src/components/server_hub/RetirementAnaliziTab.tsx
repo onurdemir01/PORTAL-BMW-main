@@ -890,7 +890,7 @@ function KararKarti({
             {yap.map((y, i) => (
               <li key={i}>
                 {y.tur === 'yonlendir' &&
-                y.hedef === 'server-hub?tab=retirement' &&
+                y.hedef === 'bmw-hub?sekme=retirement' &&
                 onRetirementAc &&
                 veri.uygulama ? (
                   <button
