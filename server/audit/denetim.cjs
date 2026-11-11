@@ -205,6 +205,10 @@ function initDenetim(app) {
       let prodProxyStats = null;
       if (await hasProxyColumns()) {
         try {
+          // YALNIZ ARK (2026-11-11): proxy hedefi ARK disi bir route'a cozulmesin.
+          const arkC = PLATFORM_CLUSTERS.ark;
+          const arkYer = arkC.map((_, i) => `@a${i}`).join(', ');
+          const arkPar = () => arkC.map((c, i) => ({ name: `a${i}`, type: sql.NVarChar(200), value: c }));
           const [prx, routes, ocp] = await Promise.all([
             query(
               `SELECT service, env, host, vhost, location_path, upstream_name, target_url
@@ -213,9 +217,10 @@ function initDenetim(app) {
               [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
             ),
             query(
-              `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
+              `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkYer})`,
+              arkPar(),
             ).catch(() => ({ recordset: [] })),
-            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`).catch(
+            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkYer})`, arkPar()).catch(
               () => ({ recordset: [] }),
             ),
           ]);
@@ -700,9 +705,8 @@ function initDenetim(app) {
   router.get('/route-stats', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
       const r = await query(
@@ -740,9 +744,8 @@ function initDenetim(app) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { routesOfCluster } = require('./route-stats.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const cluster = String(req.query.cluster || '').trim();
       const esles = clusters.find((c) => String(c).toLowerCase() === cluster.toLowerCase());
@@ -779,9 +782,8 @@ function initDenetim(app) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { routesOfIp } = require('./route-stats.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const ip = String(req.query.ip || '').trim();
       if (!/^[0-9a-f.:]{3,45}$/i.test(ip))
@@ -818,9 +820,8 @@ function initDenetim(app) {
   router.get('/nginx-spa-coverage', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
 
       const dateRes = await query(
@@ -1137,20 +1138,18 @@ function initDenetim(app) {
       // INTRANET KURULUMU = Nginx ARK SPA > Intranet SPA ile AYNI hesap (kullanici, 2026-10-19:
       // "farkli sayfada farkli veri gozukmesi bizim yanlis raporlama yapmamiza sebep oluyor").
       // Hucre ve tikla-listesi o raporun satirlarindan (ayni onbellek); bkz. intranet-kapsam.cjs.
-      // Rapor yalniz ARK icin var: baska platformda eski ad kalibi hesabi, kaynagi yazilarak.
-      // Rapor okunamazsa intranet hucresi OLCULEMEDI - ad kalibi hesabina donulmez.
+      // Rapor okunamazsa intranet hucresi OLCULEMEDI - ad kalibi hesabina donulmez. (Platform her zaman
+      // ARK: eski "baska platformda ad kalibi" dali 2026-11-11'de kalkti.)
       let ortakIntranet = null;
       let ortakIntranetHata = '';
-      if (platform === 'ark') {
-        try {
-          const r = await require('../spa-report/index.cjs').intranetOzeti(
-            String(req.query.fresh || '') === '1',
-          );
-          if (intranetKapsam.raporHazir(r)) ortakIntranet = r;
-          else ortakIntranetHata = intranetKapsam.raporHatasi(r);
-        } catch (err) {
-          ortakIntranetHata = intranetKapsam.raporHatasi(null, err.message);
-        }
+      try {
+        const r = await require('../spa-report/index.cjs').intranetOzeti(
+          String(req.query.fresh || '') === '1',
+        );
+        if (intranetKapsam.raporHazir(r)) ortakIntranet = r;
+        else ortakIntranetHata = intranetKapsam.raporHatasi(r);
+      } catch (err) {
+        ortakIntranetHata = intranetKapsam.raporHatasi(null, err.message);
       }
 
       const ENV_LIST = [
@@ -1216,17 +1215,9 @@ function initDenetim(app) {
         // INTRANET KAPSAMI: uygulama uc dizinin UCUNDE de var mi? Hesap ayri modulde
         // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
         const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
-        const ortak =
-          platform !== 'ark'
-            ? null
-            : ortakIntranet
-              ? intranetKapsam.intranetHucresi(
-                  ortakIntranet,
-                  e,
-                  (nss, app) => ownersForApp(owners, app, nss),
-                  CAP,
-                )
-              : intranetKapsam.olculemediHucre(ortakIntranetHata);
+        const ortak = ortakIntranet
+          ? intranetKapsam.intranetHucresi(ortakIntranet, e, (nss, app) => ownersForApp(owners, app, nss), CAP)
+          : intranetKapsam.olculemediHucre(ortakIntranetHata);
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
@@ -1352,7 +1343,6 @@ function initDenetim(app) {
       res.json({
         ok: true,
         platform,
-        platforms: Object.keys(PLATFORM_CLUSTERS),
         clusters,
         scanDate,
         spaPatternLabel: SPA_LABEL,
@@ -1364,7 +1354,7 @@ function initDenetim(app) {
         // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
         intranetVhostRows,
         // Intranet kurulum hucresinin kaynagi ve Intranet SPA raporunun kapsami (ekranda yazilir).
-        intranetKaynak: platform === 'ark' ? 'intranet-spa' : 'ad-kalibi',
+        intranetKaynak: 'intranet-spa',
         intranetKaynakHata: ortakIntranetHata,
         intranetRapor: ortakIntranet
           ? {
@@ -1372,7 +1362,6 @@ function initDenetim(app) {
               dizinTarihi: ortakIntranet.dizinTarihi || null,
               dizinDurum: ortakIntranet.dizinDurum,
               taranmayanSunucu: ortakIntranet.taranmayanSunucu,
-              platformDisi: ortakIntranet.platformDisi,
               ortamsiz: ortakIntranet.rows.filter((r) => r.env === 'BILINMIYOR').length,
             }
           : null,

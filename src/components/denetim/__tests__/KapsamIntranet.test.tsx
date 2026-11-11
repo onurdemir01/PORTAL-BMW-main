@@ -108,11 +108,12 @@ describe('Kapsam & Taşıma — intranet kurulumu Intranet SPA ile aynı hesap',
     expect(screen.queryByText(/^Kaynak: Gerçek SPA Keşfi/)).toBeNull();
     unmount();
     mockCov.mockResolvedValue(cov(satir(), {
-      intranetRapor: { kesifTarihi: null, dizinTarihi: null, dizinDurum: 'var', taranmayanSunucu: ['GBNGXAP50'], platformDisi: [{ platform: 'wyden', uygulama: 3, clusters: ['giocp3rdwyprod1'] }], ortamsiz: 2 },
+      intranetRapor: { kesifTarihi: null, dizinTarihi: null, dizinDurum: 'var', taranmayanSunucu: ['GBNGXAP50'], ortamsiz: 2 },
     }));
     render(<NginxSpaSummary tier="intranet" />);
-    expect(await screen.findByText(/ARK dışı cluster’lardaki intranet SPA’lar iki ekranda da sayılmaz: wyden 3\./)).toBeTruthy();
-    expect(screen.getByText(/Namespace’i ortam eki taşımayan 2 intranet SPA/)).toBeTruthy();
+    expect(await screen.findByText(/Namespace’i ortam eki taşımayan 2 intranet SPA/)).toBeTruthy();
+    // YALNIZ ARK (2026-11-11): ARK disi cluster notu yok.
+    expect(screen.queryByText(/ARK dışı cluster/)).toBeNull();
     expect(screen.getByText(/satırı olmayan sunucular: GBNGXAP50/)).toBeTruthy();
   });
 });

@@ -508,8 +508,8 @@ export interface RouteStatsResult {
 
 export interface SpaCoverageResult {
   ok: boolean;
+  /** Her zaman 'ark' (2026-11-11: SPA'ler yalniz ARK cluster'larinda). */
   platform: string;
-  platforms: string[];
   clusters: string[];
   scanDate: string | null;
   spaPatternLabel: string;
@@ -538,7 +538,6 @@ export interface SpaCoverageResult {
     dizinTarihi: string | null;
     dizinDurum: 'var' | 'okunamadi';
     taranmayanSunucu: string[];
-    platformDisi: { platform: string; uygulama: number; clusters: string[] }[];
     ortamsiz: number;
   } | null;
   rows: SpaCoverageRow[];

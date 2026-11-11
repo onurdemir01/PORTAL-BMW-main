@@ -581,7 +581,7 @@ async function spaKesfiHesapla() {
   const trfIn = inList('t', [...RP.all]);
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
-  const [disc, inv, usage, runs, cfg, dir, ups, trf, katalog] = await Promise.all([
+  const [discHam, invHam, usageHam, runsHam, cfg, dir, ups, trf, katalogHam] = await Promise.all([
     // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
     // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
     // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
@@ -723,6 +723,21 @@ async function spaKesfiHesapla() {
       })
       .catch(() => null),
   ]);
+  // YALNIZ ARK (kullanici, 2026-11-11): "SPA'ler sadece ve sadece ARK OpenShift cluster'larinda bulunuyor;
+  // diger cluster'larla bir iliskisi, gosterimi vb. hicbir seyin olmasina gerek yok." Kesif isi butun jump
+  // server'lari taradigi icin tablolarda hosting / wyden / metaco / ark_ai / cicd satirlari da var: hepsi
+  // BURADA, hesaba girmeden atilir (uygulama satirlari, kapsam paneli, cluster suzgeci, k/n paydasi, kullanim
+  // ve route eslemesi). ARK = ocp-platforms.cjs PLATFORM_CLUSTERS.ark (kullanicinin resmi listesi). Katalogda
+  // tenant='ark' altinda lab / edu da var; payda yalniz bu listeyle (eskiden env bazli payda hosting /
+  // wyden prod cluster'larini da sayiyordu: 4/4 Tam uygulama 4/9 Kismi gorunebiliyordu).
+  const { platformOfCluster } = require('../audit/ocp-platforms.cjs');
+  const arkMi = (c) => platformOfCluster(c) === 'ark';
+  const arkSuz = (rows, alan) => (rows == null ? rows : rows.filter((r) => arkMi(r[alan])));
+  const disc = arkSuz(discHam, 'cluster');
+  const inv = arkSuz(invHam, 'cluster_name');
+  const usage = arkSuz(usageHam, 'cluster');
+  const runs = arkSuz(runsHam, 'cluster');
+  const katalog = arkSuz(katalogHam, 'cluster_name');
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
   const durum = (varMi, rows) =>
     sema === null ? 'okunamadi' : !varMi ? 'yok' : rows === null ? 'okunamadi' : 'var';

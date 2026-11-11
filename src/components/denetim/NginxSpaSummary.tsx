@@ -931,9 +931,6 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           ? <><b>İntranet</b> = Gerçek SPA Keşfi’nin intranet SPA’ları (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
           : <><b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. </>}
         <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
-        {!!cov.intranetRapor?.platformDisi.length && (
-          <span> ARK dışı cluster’lardaki intranet SPA’lar iki ekranda da sayılmaz: {cov.intranetRapor.platformDisi.map((d) => `${d.platform} ${fmtNumber(d.uygulama)}`).join(', ')}.</span>
-        )}
         {!!cov.intranetRapor?.ortamsiz && (
           <span> Namespace’i ortam eki taşımayan {fmtNumber(cov.intranetRapor.ortamsiz)} intranet SPA bir ortama yerleştirilemedi (Intranet SPA sayfasında “BILINMIYOR”).</span>
         )}

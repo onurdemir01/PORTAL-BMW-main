@@ -1738,6 +1738,7 @@ function sahteDb(ayar = {}) {
         { mb: 1, run: null, cfg: 1, dir: 1, trf: 1, ups: 1, prx: 4, fs: 40, ...ayar.sema },
       ]);
     }
+    if (t.includes('FROM dbo.BMW_Spa_Discovery_Run')) return ver(ayar.runs || []);
     if (t.includes('FROM dbo.BMW_Spa_Discovery d')) return ver(ayar.disc || T_DISC);
     if (t.includes('FROM dbo.BMW_Openshift_Route_Inventory')) return (dus('envanter'), ver([]));
     if (t.includes('FROM dbo.BMW_Application_Usage')) return (dus('dynatrace'), ver([]));
@@ -1835,6 +1836,52 @@ test('SR25 uc nokta: sema sorgusu dusunce tablolar "okunamadi" (yok DEGIL); tabl
   assert.ok(
     sorgusu(sq, 'Nginx_Spa_Traffic').t.includes('CAST(NULL AS NVARCHAR(20)) AS first_seen'),
   );
+});
+
+// YALNIZ ARK (kullanici, 2026-11-11): "SPA'ler sadece ve sadece ARK OpenShift cluster'larinda bulunuyor;
+// diger cluster'larla hicbir iliski / gosterim gerekmez." Kesif isi butun jump server'lari tarar; ARK disi
+// satirlar uc noktada hesaba girmeden atilir. k/n paydasi da yalniz ARK (eskiden env bazli payda hosting /
+// wyden prod cluster'larini sayiyordu: 4/4 Tam uygulama 4/9 Kismi gorunebilirdi).
+test('SR26a yalniz ARK: ARK disi uygulama / cluster / kapsam / payda yok', async () => {
+  const ADMIN = require.resolve('../../logx/v2/admin.cjs');
+  const once = require.cache[ADMIN];
+  const am = new Module(ADMIN);
+  am.filename = ADMIN;
+  am.loaded = true;
+  am.exports = {
+    getClusterTree: async () => ({
+      prod: { ark: ['gbocpprod1', 'gbocpprod2'], hosting: ['gbocp3rdprod1'], wyden: ['giocp3rdwyprod1'] },
+    }),
+  };
+  require.cache[ADMIN] = am;
+  try {
+    const disc = [
+      A('kart-ui', 'kart-prod'),
+      A('kart-ui', 'kart-prod', { cluster: 'gbocpprod2' }),
+      A('hosting-ui', 'host-prod', { cluster: 'gbocp3rdprod1' }),
+      A('wyden-ui', 'wy-prod', { cluster: 'giocp3rdwyprod1' }),
+    ];
+    const runs = ['gbocpprod1', 'gbocpprod2', 'gbocp3rdprod1', 'giocp3rdwyprod1', 'daocpprod1'].map((cluster) => ({
+      cluster,
+      durum: cluster === 'daocpprod1' ? 'login' : 'ok',
+      routes: 1,
+      spa: 1,
+      scan_date: GUN,
+    }));
+    sahteDb({ disc, runs, sema: { run: 1 } });
+    const r = await hesapla();
+    const b = by(r);
+    assert.ok(b['kart-ui'], 'ARK uygulamasi kayboldu');
+    assert.equal(b['hosting-ui'], undefined, 'hosting uygulamasi listede');
+    assert.equal(b['wyden-ui'], undefined, 'wyden uygulamasi listede');
+    assert.deepEqual(r.clusters, ['gbocpprod1', 'gbocpprod2'], 'cluster suzgecinde ARK disi cluster');
+    assert.equal(r.coverage.total, 2, `kapsam ARK disi cluster sayiyor: ${JSON.stringify(r.coverage)}`);
+    assert.equal(r.coverage.failed, 0, 'ARK disi cluster login hatasi kapsam panelini kirmizi yapti');
+    assert.deepEqual([b['kart-ui'].kapsamVar, b['kart-ui'].kapsamToplam, b['kart-ui'].kapsamDurum], [2, 2, 'tam'], 'payda ARK disi prod cluster sayiyor');
+  } finally {
+    if (once) require.cache[ADMIN] = once;
+    else delete require.cache[ADMIN];
+  }
 });
 
 // UC ISLEYICILERI: sahte req/res (onbellek ara katmani haric; o response-cache testlerinde).
