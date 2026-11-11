@@ -889,26 +889,8 @@ function KararKarti({
           <ol className="list-decimal ml-5 text-sm space-y-0.5" data-testid="yapilabilecekler">
             {yap.map((y, i) => (
               <li key={i}>
-                {y.tur === 'yonlendir' &&
-                y.hedef === 'bmw-hub?sekme=retirement' &&
-                onRetirementAc &&
-                veri.uygulama ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    style={{ color: 'var(--accent)' }}
-                    onClick={() =>
-                      onRetirementAc(
-                        veri.uygulama!.ad,
-                        `Retirement Analizi: ${veri.uygulama!.kararMetni} — ${veri.uygulama!.ozet}`,
-                      )
-                    }
-                  >
-                    {y.metin}
-                  </button>
-                ) : (
-                  y.metin
-                )}
+                {/* FAZ 0 (2026-11-11): dogrulamasiz "Retirement kaydi ac" dugmesi kaldirildi; yalniz metin. */}
+                {y.metin}
               </li>
             ))}
           </ol>

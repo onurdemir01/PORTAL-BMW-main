@@ -258,11 +258,10 @@ describe('Retirement Analizi', () => {
     expect(within(kart).getByTestId('ana-suphe')).toHaveTextContent('Şüphe: WEB_TRAFIK_YOK metin');
     const yap = within(kart).getByTestId('yapilabilecekler');
     expect(within(yap).getAllByRole('listitem').length).toBeLessThanOrEqual(3);
-    fireEvent.click(within(yap).getByRole('button', { name: 'Retirement kaydı açılabilir' }));
-    expect(onRetirementAc).toHaveBeenCalledWith(
-      'APP1',
-      expect.stringContaining('Retirement Analizi'),
-    );
+    // FAZ 0 (2026-11-11): eski sunucu yaniti yonlendirme tasisa bile karttan kayit acilamaz.
+    expect(within(yap).queryByRole('button', { name: 'Retirement kaydı açılabilir' })).toBeNull();
+    expect(within(yap).getByText('Retirement kaydı açılabilir')).toBeInTheDocument();
+    expect(onRetirementAc).not.toHaveBeenCalled();
   });
 
   it('RN3 Ayrıntı modalı: yalnız ilk bölüm açık; Bilinen ayrı; çelişki ve eksik', async () => {

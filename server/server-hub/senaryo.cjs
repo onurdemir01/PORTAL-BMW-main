@@ -503,10 +503,12 @@ function yapilabilecekler(karar, kk) {
   if (karar === 'KULLANIMDA')
     out.push({ tur: 'bilgi', metin: 'Retire etmeyin: trafik ya da doğrudan çağrı var.' });
   if (karar === 'RETIRE_ADAYI')
+    // FAZ 0 (2026-11-11): Analiz'den DOGRULAMASIZ kayit acma yolu kapandi. Karar elle dogrulanmadan
+    // kayit acilmaz (docs/RETIREMENT-MOTOR-BIRLESTIRME.md); yonlendirme yerine ne yapilacagi yazilir.
     out.push({
-      tur: 'yonlendir',
-      metin: 'Retirement kaydı açılabilir',
-      hedef: 'bmw-hub?sekme=retirement',
+      tur: 'elle',
+      metin:
+        'Retirement kaydı için önce elle doğrulayın: Retirement etiketleri listesinde “doğrulandı” işaretleyin ya da uygulama sahibinin Smart silme talebiyle BMW Hub › Retirement’tan açın.',
     });
   const celiski = tum.find((m) => m.kod === 'CELISKI');
   if (celiski) out.push({ tur: 'elle', metin: `Çelişkiyi inceleyin: ${celiski.metin}` });

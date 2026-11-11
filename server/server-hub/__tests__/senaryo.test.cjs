@@ -405,11 +405,13 @@ test('SN3 uygulama toplamasi ve yapilabilecekler', () => {
   assert.match(u.ozet, /2 kopya: 1 kopya kullanımda, 1 kopya retire adayı/);
   assert.ok(u.yapilabilecekler.length <= 3);
   assert.ok(u.yapilabilecekler.every((x) => ['yonlendir', 'elle', 'bilgi'].includes(x.tur)));
-  // Tek kopya retire adayi -> uygulama RETIRE_ADAYI + Retirement kaydina yonlendirme
+  // Tek kopya retire adayi -> uygulama RETIRE_ADAYI; FAZ 0 (2026-11-11): Retirement'a DOGRUDAN
+  // yonlendirme YOK (dogrulamasiz kayit yolu), yalniz "once elle dogrulayin" maddesi.
   const { r: r2 } = karar({});
   const u2 = r2.uygulamalar.get('app:APP1');
   assert.equal(u2.karar, 'RETIRE_ADAYI');
-  assert.ok(u2.yapilabilecekler.some((x) => x.tur === 'yonlendir' && /Retirement/.test(x.metin)));
+  assert.ok(!u2.yapilabilecekler.some((x) => x.tur === 'yonlendir' && /Retirement/.test(x.metin)), 'dogrulamasiz Retirement yonlendirmesi geri geldi');
+  assert.ok(u2.yapilabilecekler.some((x) => x.tur === 'elle' && /elle doğrulayın/.test(x.metin)));
   // Karar verilemeyen: eksik veri yonlendirmesi
   const { r: r3 } = karar({ log: 'YOK' });
   assert.ok(
