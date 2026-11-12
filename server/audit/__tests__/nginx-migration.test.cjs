@@ -57,9 +57,9 @@ test('gruplar kullanicinin verdigi sunucularla BIREBIR', () => {
     'GBNGXP45',
     'GBNGXP58',
     'GBNGXP59',
-    'GBNGXAP32',
-    'GBNGXAP33',
   ]);
+  // GBNGXAP32/33 kapatildi (kullanici, 2026-11-12): hicbir grupta yok.
+  assert.ok(![...g.glomo.newHosts, ...g.other.newHosts].some((h) => /^GBNGXAP3[23]$/.test(h)));
 });
 
 test('hedef cozumu: route adresi KESIN; tireli ns/app belirsizligi dogmaz; yedek envanter; belirsiz/cozulemedi ayri', () => {
