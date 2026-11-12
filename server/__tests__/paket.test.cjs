@@ -109,13 +109,13 @@ test('PK4 gelistirme paketi sizintisi', () => {
   const dosyalar = [
     {
       goreli: 'server/a.cjs',
-      metin: "require('node:fs'); require('express'); require('@azure/identity/x');",
+      metin: "require('node:fs'); require('express'); require('mssql/lib/x');",
     },
     { goreli: 'server/b.cjs', metin: "const v = require('vite');\nimport('vitest/config');" },
     { goreli: 'server/ansible/x/files/k.js', metin: "import http from 'k6/http';" },
     { goreli: 'server/c.mjs', metin: "import x from 'fs';\nimport 'eslint';" },
   ];
-  const s = P.devSizintisi(dosyalar, ['express', '@azure/identity']);
+  const s = P.devSizintisi(dosyalar, ['express', 'mssql']);
   assert.deepEqual(s, ['server/b.cjs: vite', 'server/b.cjs: vitest', 'server/c.mjs: eslint']);
   assert.equal(P.paketAdi('@azure/identity/lib/x'), '@azure/identity');
   assert.equal(P.paketAdi('qs/lib'), 'qs');
