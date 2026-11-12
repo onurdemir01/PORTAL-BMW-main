@@ -1460,13 +1460,9 @@ describe('NginxSpaDiscovery — ikinci satır ve kolon içerikleri (2026-10-03)'
       ['bil-ui', 'bilinmiyor'],
     ] as const)
       expect(ilkSatir(app, 'ag'), app).toBe(t);
-    // Zayıf kanıt (SPA kolonu kalktı, 2026-11-12): Uygulama hücresinde uyarı rozeti; ad kalıbı
-    // tabloda yok (süzgeç yerinde), kalıba uymayan SPA satırı rozetsiz.
-    const zayif = hucre(satirOf(container, 'zayif-ui'), 'uygulama').querySelector(
-      '[data-testid="spa-durum"]',
-    );
-    expect(zayif?.textContent).toBe('zayıf kanıt');
-    expect(zayif?.classList.contains('pf-label--gold')).toBe(true);
+    // Zayıf kanıt satırda YOK (kullanıcı, 2026-11-12); ayrıntı panelinde 'SPA kanıtı'nda yazar.
+    expect(hucre(satirOf(container, 'zayif-ui'), 'uygulama').querySelector('[data-testid="spa-durum"]')).toBeNull();
+    expect(satirOf(container, 'zayif-ui').textContent).not.toContain('zayıf kanıt');
     expect(hucre(satirOf(container, 'miss-ui'), 'uygulama').querySelector('[data-testid="spa-durum"]')).toBeNull();
     expect(container.textContent).not.toContain('kalıba uymuyor');
     expect(hucre(satirOf(container, 'kap-ui'), 'rp').textContent).toBe('kapsam dışı RP listesi yok');

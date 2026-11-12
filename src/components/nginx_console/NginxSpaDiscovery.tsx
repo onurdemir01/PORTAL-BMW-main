@@ -632,16 +632,10 @@ function Hucre({
  * ölçülemedi", kesik çerçeve — "değil" DEĞİL) satır işaretlenir; zayıf kanıtlı SPA da.
  */
 function SpaDurumRozeti({ a }: { a: NgSpaApp }) {
-  if (a.spa === 'evet')
-    return a.weakEvidence ? (
-      <Rozet
-        ton="uyari"
-        testId="spa-durum"
-        ipucu="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
-      >
-        zayıf kanıt
-      </Rozet>
-    ) : null;
+  // ZAYIF KANIT SATIRDA YOK (kullanici, 2026-11-12: "zayif kanit ibaresini kaldiralim ya da baska yerde
+  // gosterelim"): satira tiklayinca acilan ayrinti panelinde 'SPA kaniti' satirinda yazar; toplam oran
+  // "Tarama kapsami ve veri notlari"nda.
+  if (a.spa === 'evet') return null;
   if (a.spa === 'hayir')
     return (
       <Rozet ton="notr" testId="spa-durum" ipucu="Route'un ardındaki iş yükünde nginx bulunamadı.">
@@ -1368,7 +1362,7 @@ function UygulamaHucre({ a, acik }: { a: NgSpaApp; acik: boolean }) {
               </span>
             </>
           )}
-          {(a.spa !== 'evet' || a.weakEvidence) && (
+          {a.spa !== 'evet' && (
             <>
               {' '}
               <span className="shrink-0">
@@ -2364,32 +2358,6 @@ export default function NginxSpaDiscovery() {
         </div>
       )}
 
-      {/* KANIT ZEMINI: 'ad' esleşmesi baskınsa bunu ozette SOYLE. Uygulama basina rozet
-          vardi ama toplam oran gorunmuyordu; "12.458 SPA" ile "12.458 SPA, cogu ad
-          benzerligine dayali" ayni guven duzeyinde okunuyordu. */}
-      {bmAdYuzde != null && bmAd > 0 && (
-        <div
-          className="text-[12px] rounded-lg px-3 py-2 border"
-          style={
-            bmAdYuzde >= 50
-              ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }
-              : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }
-          }
-        >
-          <b>Eşleşme kanıtı:</b> {nf(bmSelector)} satır servis <b>selector</b>’ü ile (kesin),{' '}
-          {nf(bmAd)} satır yalnız <b>ad benzerliği</b> ile (zayıf — %{bmAdYuzde})
-          {bm[''] ? `, ${nf(bm[''])} satır hiç eşleşmedi` : ''}.
-          {bmAdYuzde >= 50 && (
-            <>
-              {' '}
-              Servis okunamadığı için route’lar servisle aynı adı taşıyan iş yüküne bağlandı;
-              ad ile iş yükü adı ayrıştığı yerde <b>yanlış iş yüküne</b> bakılmış olabilir.
-              Düzeltmesi kod değil <b>yetki</b>: <code>services</code> (get/list) okuma izni.
-            </>
-          )}
-        </div>
-      )}
-
       {hepsiEslesmesiz && (
         <div
           className="text-[12px] rounded-lg px-3 py-2 border"
@@ -2451,6 +2419,7 @@ export default function NginxSpaDiscovery() {
             Tarama kapsamı ve veri notları · {nf(s.apps)} uygulama tarandı
             {data?.scanDate && <> · <GuncellemeRozeti etiket="keşif" tarih={data.scanDate} /></>}
             {eksikTarama ? ` · eksik: ${eksikTarama}` : ''}
+            {bmAdYuzde != null && bmAd > 0 ? ` · eşleşme: %${bmAdYuzde} ad benzerliğiyle` : ''}
           </summary>
           <div className="mt-2 space-y-1">
             {!!data?.platformHidden?.routes && (
@@ -2460,6 +2429,31 @@ export default function NginxSpaDiscovery() {
                 gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama değil).
               </div>
             )}
+            {/* KANIT ZEMINI (2026-11-12: sayfa ustunden veri notlarina tasindi). 'ad' esleşmesi baskınsa bunu SOYLE. Uygulama basina rozet
+          vardi ama toplam oran gorunmuyordu; "12.458 SPA" ile "12.458 SPA, cogu ad
+          benzerligine dayali" ayni guven duzeyinde okunuyordu. */}
+      {bmAdYuzde != null && bmAd > 0 && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={
+            bmAdYuzde >= 50
+              ? { color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }
+              : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle)' }
+          }
+        >
+          <b>Eşleşme kanıtı:</b> {nf(bmSelector)} satır servis <b>selector</b>’ü ile (kesin),{' '}
+          {nf(bmAd)} satır yalnız <b>ad benzerliği</b> ile (zayıf — %{bmAdYuzde})
+          {bm[''] ? `, ${nf(bm[''])} satır hiç eşleşmedi` : ''}.
+          {bmAdYuzde >= 50 && (
+            <>
+              {' '}
+              Servis okunamadığı için route’lar servisle aynı adı taşıyan iş yüküne bağlandı;
+              ad ile iş yükü adı ayrıştığı yerde <b>yanlış iş yüküne</b> bakılmış olabilir.
+              Düzeltmesi kod değil <b>yetki</b>: <code>services</code> (get/list) okuma izni.
+            </>
+          )}
+        </div>
+      )}
             {data?.coverage && <Kapsam k={data.coverage} />}
             {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
           </div>

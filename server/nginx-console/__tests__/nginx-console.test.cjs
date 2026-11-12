@@ -557,8 +557,9 @@ test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   assert.match(ui, /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/, 'bos gorunum sebebini soylemiyor');
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
   // 2026-11-12: SPA kolonu kalkti; zayif kanit rozeti Uygulama hucresindeki SpaDurumRozeti'nde.
-  assert.match(ui, /a\.weakEvidence \?\s*\(\s*<Rozet[\s\S]{0,300}?zayıf kanıt/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
-  assert.match(ui, /\(a\.spa !== 'evet' \|\| a\.weakEvidence\) &&[\s\S]{0,200}?<SpaDurumRozeti a=\{a\} \/>/, 'SPA durum rozeti Uygulama hucresine baglanmiyor');
+  // 2026-11-12: zayif kanit satirda degil, ayrinti panelinde (SPA kaniti satiri).
+  assert.match(ui, /a\.weakEvidence \? ' \(zayıf kanıt: route servis yerine ad eşleşmesiyle bağlandı\)'/, 'zayif kanit ayrinti panelinde yazmiyor');
+  assert.match(ui, /\{a\.spa !== 'evet' && \([\s\S]{0,200}?<SpaDurumRozeti a=\{a\} \/>/, 'SPA durum rozeti Uygulama hucresine baglanmiyor');
 });
 
 test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc vermeyen ise TARANAMADI', () => {
