@@ -579,6 +579,13 @@ async function spaKesfiHesapla() {
   // kipinde ('@' satirlari; nginx_spa_traffic.sh SPA_HOST_MODE). Eskiden yalniz non-prod +
   // eski PROD okunuyor, yeni PROD tanimlari 'kaynak-yok' kaliyordu.
   const trfIn = inList('t', [...RP.all]);
+  const arkInv = (() => {
+    const arkC = require('../audit/ocp-platforms.cjs').PLATFORM_CLUSTERS.ark;
+    return {
+      sqlText: arkC.map((_, i) => `@k${i}`).join(', '),
+      params: arkC.map((c, i) => ({ name: `k${i}`, type: sql.NVarChar(200), value: c })),
+    };
+  })();
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
   const [discHam, invHam, usageHam, runsHam, cfg, dir, ups, trf, katalogHam] = await Promise.all([
@@ -599,10 +606,14 @@ async function spaKesfiHesapla() {
     ).then((r) => r.recordset || []),
     // ROUTE ENVANTERI + termination_type (Ag capraz kontrolu). OKUNAMADI ile KAYITLI DEGIL
     // AYRI: eskiden hata [] olup TUM uygulamalar 'kayitli degil' gorunuyordu.
+    // YALNIZ ARK DB'DE (2026-11-12): ARK disi route'lar hic tasinmaz; asagidaki arkSuz JS
+    // suzgeci bekci olarak kalir (sonuc ayni). Kosul ayri dizgede: SR22 metin bekcisi sorgu
+    // govdesini birebir arar.
     yoksaNull(
       query(
         `SELECT cluster_name, namespace_name, route_name, route_address, termination_type
-           FROM dbo.BMW_Openshift_Route_Inventory`,
+           FROM dbo.BMW_Openshift_Route_Inventory` + ` WHERE cluster_name IN (${arkInv.sqlText})`,
+        arkInv.params,
       ),
     ),
     // OLCUM: CLUSTER BASINA EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
