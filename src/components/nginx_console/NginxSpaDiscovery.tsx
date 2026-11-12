@@ -2057,6 +2057,10 @@ export default function NginxSpaDiscovery() {
   const [rp, setRp] = useState<RpSecim>('tumu');
   const [rpIstek, setRpIstek] = useState<RpIstekSecim>('tumu');
   const [cluster, setCluster] = useState('tumu');
+  // SERVIS SUZGECI (kullanici, 2026-11-12: "Uygulamalar listesine servis filtresini de ekle"):
+  // reverse proxy servisi (GLOMO, SAKLAMA...; kendi ortaminin RP tanimlarindan). 'yok' = RP
+  // servisi olmayanlar (intranet, tanimsiz, olculemedi ya da SPA degil).
+  const [servis, setServis] = useState('tumu');
   const [ortam, setOrtamHam] = useState<string>(ortamOku);
   const setOrtam = (v: string) => {
     setOrtamHam(v);
@@ -2151,8 +2155,21 @@ export default function NginxSpaDiscovery() {
       const yeni = apps.filter((a) => ortamOf(a) === v);
       if (ns !== 'tumu' && !yeni.some((a) => a.namespace === ns)) setNs('tumu');
       if (cluster !== 'tumu' && !yeni.some((a) => a.clusters.includes(cluster))) setCluster('tumu');
+      if (servis !== 'tumu' && servis !== 'yok' && !yeni.some((a) => a.rpServis?.includes(servis))) setServis('tumu');
     }
   };
+  const servisSay = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const a of ortamApps) {
+      if (!a.rpServis?.length) m[''] = (m[''] || 0) + 1;
+      for (const s of a.rpServis || []) m[s] = (m[s] || 0) + 1;
+    }
+    return m;
+  }, [ortamApps]);
+  const servisler = useMemo(
+    () => Object.keys(servisSay).filter(Boolean).sort((x, y) => x.localeCompare(y, 'tr')),
+    [servisSay],
+  );
   const say = useMemo(
     () => ({
       spa: sayac(ortamApps, (a) => a.spa),
@@ -2176,6 +2193,8 @@ export default function NginxSpaDiscovery() {
       if (rp !== 'tumu' && a.rp !== rp) return false;
       if (rpIstek !== 'tumu' && a.rpIstek !== rpIstek) return false;
       if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;
+      if (servis === 'yok' ? !!a.rpServis?.length : servis !== 'tumu' && !a.rpServis?.includes(servis))
+        return false;
       if (!ara) return true;
       return (
         a.application.toLowerCase().includes(ara) ||
@@ -2184,7 +2203,7 @@ export default function NginxSpaDiscovery() {
         a.routes.some((r) => r.toLowerCase().includes(ara))
       );
     });
-  }, [ortamApps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster]);
+  }, [ortamApps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster, servis]);
 
   const suzgecVar =
     !!q ||
@@ -2196,6 +2215,7 @@ export default function NginxSpaDiscovery() {
     rp !== 'tumu' ||
     rpIstek !== 'tumu' ||
     cluster !== 'tumu' ||
+    servis !== 'tumu' ||
     ortam !== 'tumu';
   const temizle = () => {
     setOrtam('tumu');
@@ -2208,6 +2228,7 @@ export default function NginxSpaDiscovery() {
     setRp('tumu');
     setRpIstek('tumu');
     setCluster('tumu');
+    setServis('tumu');
   };
 
   const csv = useCallback(() => {
@@ -2547,6 +2568,26 @@ export default function NginxSpaDiscovery() {
               {n}
             </option>
           ))}
+        </select>
+        <select
+          value={servis}
+          onChange={(e) => setServis(e.target.value)}
+          className={SELECT}
+          style={selStyle}
+          title="Servis (reverse proxy servisi: GLOMO, SAKLAMA…; kendi ortamının RP tanımlarından)"
+        >
+          <option value="tumu">tüm servisler</option>
+          {servisler.map((s) => (
+            <option key={s} value={s}>
+              {s}
+              {sec(servisSay[s])}
+            </option>
+          ))}
+          {/* Secili servis bu ortamda yoksa da secenek kalir (secim gorunmez olup listeyi bosaltmasin). */}
+          {servis !== 'tumu' && servis !== 'yok' && !servisler.includes(servis) && (
+            <option value={servis}>{servis} (0)</option>
+          )}
+          <option value="yok">RP servisi yok{sec(servisSay[''] || 0)}</option>
         </select>
         <select
           value={spa}

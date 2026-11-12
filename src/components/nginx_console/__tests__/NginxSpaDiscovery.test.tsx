@@ -1585,3 +1585,24 @@ describe('NginxSpaDiscovery — ortam süzgeci (2026-11-11)', () => {
     expect(satir.map((r) => r[1])).toEqual(['kart-test']);
   });
 });
+
+// SERVIS SUZGECI (kullanici, 2026-11-12: "Uygulamalar listesine servis filtresini de ekle").
+describe('NginxSpaDiscovery — servis süzgeci (2026-11-12)', () => {
+  it('RP servisine göre süzer; "RP servisi yok" kovası; temizle sıfırlar', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBeGreaterThan(2));
+    const toplam = satirlar(container).length;
+    const sel = container.querySelector('select[title^="Servis"]') as HTMLSelectElement;
+    const secenekler = [...sel.options].map((o) => o.textContent);
+    expect(secenekler[0]).toBe('tüm servisler');
+    expect(secenekler).toContain('KART (1)');
+    expect(secenekler[secenekler.length - 1]).toBe(`RP servisi yok (${toplam - 1})`);
+    fireEvent.change(sel, { target: { value: 'KART' } });
+    expect(satirlar(container).map((tr) => hucre(tr, 'uygulama').textContent?.includes('kart-ui'))).toEqual([true]);
+    fireEvent.change(sel, { target: { value: 'yok' } });
+    expect(satirlar(container).length).toBe(toplam - 1);
+    expect(satirlar(container).some((tr) => hucre(tr, 'uygulama').textContent?.includes('kart-ui'))).toBe(false);
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'süzgeçleri temizle') as HTMLButtonElement);
+    expect(satirlar(container).length).toBe(toplam);
+  });
+});
