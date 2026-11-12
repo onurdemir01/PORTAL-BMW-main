@@ -69,6 +69,7 @@ import {
   type NgSpaRpKapsam,
   type NgSpaRpTanim,
 } from '@/api/nginxConsoleApi';
+import SpaOzetMatrisi, { eslenikDurumu, type Eslenik, type OzetSuzgec } from './SpaOzetMatrisi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
 import { fmtDateTime, fmtNumber } from '@/utils/datetime';
@@ -1765,25 +1766,6 @@ function gorunumYaz(g: Gorunum) {
   }
 }
 
-// OZET KUTUSU KATLANIR (kullanici, 2026-10-14: "en basta hangi uygulamalar tarandi, kac tanesi
-// gercekten SPA diye gozuken alani pencere gibi acip kapatabilmek istiyorum"). Tercih yalniz bu
-// tarayicida (gorunum tercihiyle ayni kural); okunamazsa acik baslar.
-const OZET_ANAHTARI = 'nginx-hub:spa-kesfi:ozet-acik';
-function ozetAcikOku(): boolean {
-  try {
-    return window.localStorage.getItem(OZET_ANAHTARI) !== '0';
-  } catch {
-    return true;
-  }
-}
-function ozetAcikYaz(v: boolean) {
-  try {
-    window.localStorage.setItem(OZET_ANAHTARI, v ? '1' : '0');
-  } catch {
-    // Yazilamazsa tercih yalniz bu sayfa acikken gecerli kalir.
-  }
-}
-
 // ORTAM SUZGECI (kullanici, 2026-11-11: "Prod QA Test gibi sadece o ortamda olan uygulamalari
 // goruntulemek istiyorum"). Ortam namespace ekinden (-dev/-test/-qa/-edu/-prod) gelir; eki olmayan
 // satir 'belirsiz' kovasindadir, gizlenmez. Secim bu tarayicida hatirlanir (gorunum kurali).
@@ -2061,6 +2043,9 @@ export default function NginxSpaDiscovery() {
   // reverse proxy servisi (GLOMO, SAKLAMA...; kendi ortaminin RP tanimlarindan). 'yok' = RP
   // servisi olmayanlar (intranet, tanimsiz, olculemedi ya da SPA degil).
   const [servis, setServis] = useState('tumu');
+  // RP ESLENIK (2026-11-12, ozet matrisinin 6. sorusu): tanim ortamin tum eslenik RP sunucularinda var
+  // ve hatasiz mi ('tam') ya da bazisinda yok / hatali mi ('eksik'). Yalniz rp = tanimli satirlar.
+  const [eslenik, setEslenik] = useState<'tumu' | Eslenik>('tumu');
   const [ortam, setOrtamHam] = useState<string>(ortamOku);
   const setOrtam = (v: string) => {
     setOrtamHam(v);
@@ -2079,12 +2064,6 @@ export default function NginxSpaDiscovery() {
   const gorunumDegis = (g: Gorunum) => {
     setGorunum(g);
     gorunumYaz(g);
-  };
-  const [ozetAcik, setOzetAcik] = useState<boolean>(ozetAcikOku);
-  const ozetDegis = () => {
-    const v = !ozetAcik;
-    setOzetAcik(v);
-    ozetAcikYaz(v);
   };
   // SABIT referans: memo'lu satirlar yalniz kolon menusu degisince yeniden cizilir.
   const gorunur = useMemo(
@@ -2195,6 +2174,7 @@ export default function NginxSpaDiscovery() {
       if (cluster !== 'tumu' && !a.clusters.includes(cluster)) return false;
       if (servis === 'yok' ? !!a.rpServis?.length : servis !== 'tumu' && !a.rpServis?.includes(servis))
         return false;
+      if (eslenik !== 'tumu' && eslenikDurumu(a) !== eslenik) return false;
       if (!ara) return true;
       return (
         a.application.toLowerCase().includes(ara) ||
@@ -2203,7 +2183,7 @@ export default function NginxSpaDiscovery() {
         a.routes.some((r) => r.toLowerCase().includes(ara))
       );
     });
-  }, [ortamApps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster, servis]);
+  }, [ortamApps, q, ns, spa, kalip, istek, ag, rp, rpIstek, cluster, servis, eslenik]);
 
   const suzgecVar =
     !!q ||
@@ -2216,6 +2196,7 @@ export default function NginxSpaDiscovery() {
     rpIstek !== 'tumu' ||
     cluster !== 'tumu' ||
     servis !== 'tumu' ||
+    eslenik !== 'tumu' ||
     ortam !== 'tumu';
   const temizle = () => {
     setOrtam('tumu');
@@ -2229,6 +2210,24 @@ export default function NginxSpaDiscovery() {
     setRpIstek('tumu');
     setCluster('tumu');
     setServis('tumu');
+    setEslenik('tumu');
+  };
+  // OZET MATRISINDEN SUZ: o ortam + o kirilim; diger suzgecler sifirlanir (sayi ile liste ayni olsun).
+  const tabloRef = useRef<HTMLDivElement | null>(null);
+  const ozettenSuz = (x: OzetSuzgec) => {
+    setQ('');
+    setNs('tumu');
+    setCluster('tumu');
+    setServis('tumu');
+    setIstek('tumu');
+    setOrtam(x.ortam);
+    setSpa('evet');
+    setAg(x.ag || 'tumu');
+    setKalip(x.kalip || 'tumu');
+    setRp(x.rp || 'tumu');
+    setRpIstek(x.rpIstek || 'tumu');
+    setEslenik(x.eslenik || 'tumu');
+    tabloRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
 
   const csv = useCallback(() => {
@@ -2399,84 +2398,29 @@ export default function NginxSpaDiscovery() {
         </div>
       )}
 
+      {/* OZET MATRISI (kullanici, 2026-11-12: "Kesif ozeti okumasi zor; komple kaldiralim"). Alti soru:
+          ortam basina SPA, tip, ad kalibi, RP, RP yuku, RP eslenik sunucular. Tarama kapsami ve veri
+          notlari katlanir bolumde (gizlenmez). */}
+      {s && <SpaOzetMatrisi apps={apps} onSuz={ozettenSuz} eksikTarama={eksikTarama} />}
       {s && (
-        <div
-          className="rounded-xl border p-3 space-y-1"
-          style={{ borderColor: 'var(--border-subtle)' }}
-          data-testid="spa-ozet"
-        >
-          <button
-            type="button"
-            onClick={ozetDegis}
-            aria-expanded={ozetAcik}
-            className="w-full flex items-center gap-1.5 text-left text-xs font-semibold"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            {ozetAcik ? (
-              <ChevronDownIcon className="w-3.5 h-3.5 flex-shrink-0" />
-            ) : (
-              <ChevronRightIcon className="w-3.5 h-3.5 flex-shrink-0" />
-            )}
-            Keşif özeti
-            {!ozetAcik && (
-              <span className="font-normal" style={{ color: 'var(--text-muted)' }}>
-                · {nf(s.apps)} uygulama tarandı · {nf(s.spa)} SPA
-                {s.patternMiss > 0 ? ` · ${nf(s.patternMiss)} adı kurala uymuyor` : ''}
-              </span>
-            )}
-            <span className="ml-auto font-normal text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              {ozetAcik ? 'gizle' : 'göster'}
-            </span>
-          </button>
-          {ozetAcik && (
-          <>
-          <div className="text-sm">
-            <b>{nf(s.apps)}</b> uygulama tarandı; <b>{nf(s.spa)}</b> tanesi gerçekten SPA (kabinde
-            nginx çalışıyor).{' '}
-            {s.patternMiss > 0 ? (
-              <b style={{ color: 'var(--status-danger)' }}>
-                Bunların {nf(s.patternMiss)} tanesinin adı -app-v / -app-emb-v kuralına uymuyor —
-                eski yöntem bunları SPA saymıyordu.
-              </b>
-            ) : hepsiEslesmesiz ? null : s.apps === 0 ? (
-              // VERI YOKKEN "KACIRILAN YOK" DENMEZ: olculmemis sey yok diye sunulmaz.
-              <>Keşif verisi yok.</>
-            ) : eksikTarama ? (
-              <>Taranabilen kısımda adı kurala uymayan SPA yok ({eksikTarama}).</>
-            ) : (
-              <>Adı kurala uymayan SPA yok.</>
-            )}
-          </div>
-          <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-            SPA'lardan {nf(s.spaRequestActive)} tanesi istek alıyor · {nf(s.spaRequestIdle)} istek
-            almıyor
-            {!!s.spaRequestNoService && (
-              <> · {nf(s.spaRequestNoService)} Dynatrace servisi yok</>
-            )} · {nf(s.spaRequestUnknown)} ölçülemedi/ölçüm yok
-            {s.spaNotInInventory > 0 && (
-              <> · {nf(s.spaNotInInventory)} SPA route envanterinde tam kayıtlı değil</>
-            )}
-            {s.unknown > 0 && <> · {nf(s.unknown)} uygulamada SPA olup olmadığı ölçülemedi</>}
+        <details className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }} data-testid="veri-notlari">
+          <summary className="cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
+            Tarama kapsamı ve veri notları · {nf(s.apps)} uygulama tarandı
             {data?.scanDate && <> · <GuncellemeRozeti etiket="keşif" tarih={data.scanDate} /></>}
+            {eksikTarama ? ` · eksik: ${eksikTarama}` : ''}
+          </summary>
+          <div className="mt-2 space-y-1">
+            {!!data?.platformHidden?.routes && (
+              <div style={{ color: 'var(--text-muted)' }}>
+                OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı:{' '}
+                {nf(data.platformHidden.namespaces)} namespace, {nf(data.platformHidden.routes)} route
+                gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama değil).
+              </div>
+            )}
+            {data?.coverage && <Kapsam k={data.coverage} />}
+            {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
           </div>
-          {s.spa > 0 && s.spaAg && (
-            <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              SPA'ların ağı: {kirilim(s.spaAg, AG_ETIKET)} · reverse proxy:{' '}
-              {kirilim(s.spaRp, RP_ETIKET)} · RP isteği: {kirilim(s.spaRpIstek, RPI_ETIKET)}
-            </div>
-          )}
-          {!!data?.platformHidden?.routes && (
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              OpenShift platform namespace'leri (openshift-*, kube-*, default) kapsam dışı:{' '}
-              {nf(data.platformHidden.namespaces)} namespace, {nf(data.platformHidden.routes)} route
-              gösterilmiyor (konsol, oauth, monitoring gibi platform route'ları; uygulama değil).
-            </div>
-          )}
-          {data?.coverage && <Kapsam k={data.coverage} />}
-          {data?.rpKapsam && <RpKapsamBand k={data.rpKapsam} />}
-          </>
-          )}
-        </div>
+        </details>
       )}
 
       {/* KOLON AÇIKLAMASI katlanır (2026-10-03): tablonun üstündeki uzun gri paragraf her açılışta
@@ -2588,6 +2532,17 @@ export default function NginxSpaDiscovery() {
             <option value={servis}>{servis} (0)</option>
           )}
           <option value="yok">RP servisi yok{sec(servisSay[''] || 0)}</option>
+        </select>
+        <select
+          value={eslenik}
+          onChange={(e) => setEslenik(e.target.value as 'tumu' | Eslenik)}
+          className={SELECT}
+          style={selStyle}
+          title="RP eşlenik sunucular: tanım ortamın tüm eşlenik reverse proxy sunucularında var ve hatasız mı"
+        >
+          <option value="tumu">RP eşlenik: tümü</option>
+          <option value="tam">RP: tüm sunucularda tam</option>
+          <option value="eksik">RP: eksik / hatalı sunucu var</option>
         </select>
         <select
           value={spa}
@@ -2733,7 +2688,7 @@ export default function NginxSpaDiscovery() {
           sayfa kayarken HIC yapismiyordu (tarayicida olculdu). Kap dikeyde de kayinca baslik
           ve ilk kolon (uygulama) yerinde kalir. Yukseklik siniri ve klavye odagi icin
           scroll-padding index.css `.ng-spa-kap`ta (bekci: nginx-console.test.cjs GS28). */}
-      <div className="ng-spa-kap overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div ref={tabloRef} className="ng-spa-kap overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         {/* GENISLIK: tablo icerigi kadar (w-max), en az kap kadar (min-w-full). Esneyen kolon
             (Adresler; gizliyse son kolon) disindakiler <col> ile icerige sikisir (1px =
             "icerik kadar"); kalan bosluk YALNIZ esneyen kolona gider, kolonlar arasina
