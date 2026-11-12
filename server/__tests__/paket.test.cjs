@@ -138,6 +138,9 @@ test('PK4b gercek sunucu / paylasilan / betik kodu calisma zamani disinda paket 
 test('PK5 haric listesi', () => {
   for (const g of [
     'server/__tests__/x.test.cjs',
+    // __tests__ altindaki yardimci / ornek veri (adinda .test. yok) de girmez.
+    'server/__tests__/fixtures/ornek.json',
+    'server/x/__tests__/yardimci.cjs',
     'src/components/a/__tests__/b.test.tsx',
     'server/x.test.cjs',
     '.env',
