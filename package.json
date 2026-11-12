@@ -34,7 +34,8 @@
     "dev:log": "bash scripts/devlog.sh",
     "dev:log:win": "powershell -ExecutionPolicy Bypass -File scripts\\devlog.ps1",
     "dev:win:log": "powershell -ExecutionPolicy Bypass -File scripts\\devlog.ps1",
-    "playbook:rev": "node scripts/playbook-rev.cjs"
+    "playbook:rev": "node scripts/playbook-rev.cjs",
+    "tls:dene": "node scripts/test-tls.cjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

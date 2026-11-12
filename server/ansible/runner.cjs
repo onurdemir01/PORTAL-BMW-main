@@ -3,6 +3,7 @@
 
 const https = require('https');
 const http = require('http');
+const { tlsSecenekleri, tlsHatasiAcikla } = require('../util/tls-guven.cjs');
 const path = require('path');
 const fs = require('fs');
 const { readResponseLimited } = require('../util/bounded-read.cjs');
@@ -427,7 +428,7 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
         Accept: 'application/json',
         ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 15000,
     };
     // BAYT KAPISI — URETIMDEKI UCUNCU OOM'UN YOLU TAM BURASI (2026-09-19 21:02).
@@ -512,7 +513,7 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
     // Kirpma sonrasi `req.destroy()` kendi ECONNRESET'ini uretir; zaten reddettik.
     req.on('error', (err) => {
       if (jsonKirpildi) return;
-      reject(err);
+      reject(tlsHatasiAcikla(err, 'awx', parsed.hostname));
     });
     req.on('timeout', () => {
       req.destroy();
@@ -585,7 +586,7 @@ function fetchTokenOAuth2AtPath(
         'Content-Length': bodyBuf.length,
         Accept: 'application/json',
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 10000,
     };
 
@@ -639,7 +640,7 @@ function fetchTokenOAuth2AtPath(
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX OAuth2 token zaman aşımı.'));
@@ -683,7 +684,7 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
         Accept: 'application/json',
         'Content-Length': Buffer.byteLength(bodyStr),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 10000,
     };
 
@@ -745,7 +746,7 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX v2/tokens zaman aşımı.'));
@@ -810,7 +811,7 @@ async function awxRequest(method, pathname, body = null) {
         Accept: 'application/json',
         ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 15000,
     };
 
@@ -879,7 +880,7 @@ async function awxRequest(method, pathname, body = null) {
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX isteği zaman aşımına uğradı.'));
@@ -1014,7 +1015,7 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
         Authorization: `Bearer ${token}`,
         Accept: 'text/plain',
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 30000,
     };
 
@@ -1079,7 +1080,7 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
     // uretir; promise zaten cozulmus olsa da bunu reject etmek log gurultusu yaratir.
     req.on('error', (err) => {
       if (kirpildi) return;
-      reject(err);
+      reject(tlsHatasiAcikla(err, 'awx', parsed.hostname));
     });
     req.on('timeout', () => {
       req.destroy();
@@ -1919,13 +1920,21 @@ function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = 
       settled = true;
       resolve(result);
     };
+    // TLS DOGRULAMASI ACIK: sertifika dogrulanamazsa el sikisma biter ve token HIC gonderilmez.
+    let tlsAlanlari;
+    try {
+      tlsAlanlari = tlsSecenekleri('ocp', parsed);
+    } catch (e) {
+      finish({ ok: false, message: e.message });
+      return;
+    }
     const options = {
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname,
       method: 'GET',
       headers: cluster.token ? { Authorization: `Bearer ${cluster.token}` } : {},
-      rejectUnauthorized: false,
+      ...tlsAlanlari,
       timeout: 5000,
     };
     const httpReq = lib.request(options, (httpRes) => {
@@ -1958,7 +1967,7 @@ function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = 
     });
     httpReq.on('error', (err) => {
       if (bodyLimitAbort) return;
-      finish({ ok: false, message: err.message });
+      finish({ ok: false, message: tlsHatasiAcikla(err, 'ocp', parsed.hostname).message });
     });
     httpReq.on('timeout', () => {
       finish({ ok: false, message: 'Bağlantı zaman aşımına uğradı.' });

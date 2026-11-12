@@ -41,8 +41,9 @@ test('PK1 calisma zamani package.json', () => {
   );
   assert.equal(p.scripts.build, 'node scripts/dist-dogrula.cjs');
   assert.equal(p.scripts.test, 'node scripts/paket-duman.cjs');
-  for (const ad of ['start', 'prod', 'qa', 'migrate'])
+  for (const ad of ['start', 'prod', 'qa', 'migrate', 'tls:dene'])
     assert.equal(p.scripts[ad], PKG.scripts[ad], ad);
+  assert.ok(p.scripts['tls:dene'], 'deploy oncesi TLS teshisi pakette yok');
   for (const ad of ['dev', 'lint', 'test:ui', 'preview', 'ui:tarama', 'paket', 'guvenlik']) {
     assert.equal(p.scripts[ad], undefined, `${ad} gelistirme araci ister`);
   }
