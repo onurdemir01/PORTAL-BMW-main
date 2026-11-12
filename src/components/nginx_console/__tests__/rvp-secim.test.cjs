@@ -97,7 +97,8 @@ test('RVP-4 ARK + internet + Non-Glomo: non-prod nprAcik ile DEGISIR, prod sabit
   assert.deepEqual(adlar(kapali.nonProd), T14_21.slice().sort());
   assert.match(kapali.nonProd.not, /internete açılmayacak/i, 'T14-21 kutusunun sebebi yazili degil');
   // production ikisinde de AYNI ve kullanicinin verdigi liste
-  const bekl = ['GBNGXAP28', 'GBNGXAP29', 'GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59'];
+  // GBNGXAP28/29 kapatildi (kullanici, 2026-11-12)
+  const bekl = ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59'];
   assert.deepEqual(adlar(acik.prod), bekl);
   assert.deepEqual(adlar(kapali.prod), bekl);
 });

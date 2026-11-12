@@ -74,8 +74,7 @@ const MIGRATION_GROUPS = [
     id: 'other',
     label: 'Openbanking / Saklama / Webforms vb.',
     oldHosts: ['GBRVPP01', 'GBRVPP02', 'GBRVPAP01', 'GBRVPAP02'],
-    // GBNGXAP32/33 KAPATILDI (kullanici, 2026-11-12): listeden cikarildi.
-    newHosts: ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59'],
+    newHosts: ['GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33'],
   },
 ];
 
