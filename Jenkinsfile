@@ -73,6 +73,11 @@ pipeline {
     // kosmuyordu: `npm test` node:test kosucusudur ve `src/**/__tests__/*.tsx`
     // dosyalarini gormez. Yani bilesen testleri de tam olarak `npm test`in bir
     // zamanlar dustugu duruma dusmustu — yazilmis, yesil sanilan, kosmayan testler.
+    // GUVENLIK KAPISI (2026-11-12, docs/GUVENLIK-0-ZAFIYET.md): calisma zamani bagimliliginda HER
+    // seviyede, gelistirmede duzeltmesi yayimlanmis her zafiyet build'i durdurur.
+    stage('Güvenlik') {
+      steps { sh 'npm run guvenlik' }
+    }
     stage('Testler') {
       steps {
         sh 'npm test'
@@ -120,12 +125,12 @@ pipeline {
         // ciktisi + backend + bagimlilik manifestleri + deploy scriptleri. .env.* dosyalari
         // DAHIL DEGIL — sunucuda mevcut .env.<env> dosyalari release.sh otomatik korur.
         sh '''
-          rm -rf PORTAL-BMW-main
-          mkdir -p PORTAL-BMW-main
-          cp -r dist server scripts deploy PORTAL-BMW-main/
-          cp package.json package-lock.json .env.example PORTAL-BMW-main/
-          zip -rq "$ARTIFACT" PORTAL-BMW-main
-          rm -rf PORTAL-BMW-main
+          # CALISMA ZAMANI PAKETI (2026-11-12): devDependencies yok, dist onceden derlenmis ve
+          # manifestli; release.sh bunu `npm ci --omit=dev` + dist dogrulamasiyla kurar. Ayni icerik
+          # kurumsal depoya giden kaynak dizinidir (scripts/paket.cjs, docs/KURULUM-PAKET.md).
+          rm -rf "$WORKSPACE/../paket-cikti"
+          npm run paket -- --cikti "$WORKSPACE/../paket-cikti" --zip "$WORKSPACE/$ARTIFACT" --derleme-yok
+          rm -rf "$WORKSPACE/../paket-cikti"
           ls -lh "$ARTIFACT"
         '''
         archiveArtifacts artifacts: "${ARTIFACT}", fingerprint: true
