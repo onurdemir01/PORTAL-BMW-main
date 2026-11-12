@@ -2509,7 +2509,8 @@ export default function NginxSpaDiscovery() {
         >
           <option value="tumu">RP eşlenik: tümü</option>
           <option value="tam">RP: tüm sunucularda tam</option>
-          <option value="eksik">RP: eksik / hatalı sunucu var</option>
+          <option value="eksik">RP: aynı servisin bazı sunucularında yok</option>
+          <option value="hatali">RP: bir sunucuda tanım hatalı</option>
         </select>
         <select
           value={spa}

@@ -14,15 +14,16 @@ describe('SPA özet — reverse proxy akışı', () => {
     render(
       <SpaOzetMatrisi
         onSuz={onSuz}
-        apps={[app({ rpServis: ['GLOMO'] }), app({ rpIstek: 'yok', rpHost: '3/4', rpServis: ['SAKLAMA'] }), app({ rp: 'tanimsiz', rpIstek: 'uygulanamaz' }), app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' })]}
+        apps={[app({ rpServis: ['GLOMO'] }), app({ rpIstek: 'yok', rpEslenik: 'eksik', rpServis: ['SAKLAMA'] }), app({ rpIstek: 'var', rpSorun: ['NOT_DEPLOYED'], rpServis: ['GLOMO'] }), app({ rp: 'tanimsiz', rpIstek: 'uygulanamaz' }), app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz' })]}
       />,
     );
     const akis = screen.getByTestId('rp-akisi');
     const metin = (id: string) => within(akis).getByTestId(id).textContent;
-    expect(metin('rp-yayinda')).toBe("2RP'de yayında");
-    expect(metin('rp-trafik-var')).toBe('└1son 7 günde trafik aldı');
+    expect(metin('rp-yayinda')).toBe("3RP'de yayında");
+    expect(metin('rp-trafik-var')).toBe('└2son 7 günde trafik aldı');
     expect(metin('rp-trafik-yok')).toBe('└1trafik almadı');
-    expect(metin('rp-eksik-sunucu')).toBe('└1bazı RP sunucularında eksik / hatalı');
+    expect(metin('rp-eksik-sunucu')).toBe('└1aynı servisin bazı RP sunucularında tanımı yok');
+    expect(metin('rp-hatali')).toBe('└1bir RP sunucusunda tanım hatalı');
     expect(metin('rp-tanimsiz')).toBe("1RP'de tanımı yok");
     expect(screen.queryByText(/RP eşlenik sunucular/)).toBeNull();
     expect(screen.getByTestId('rp-sozluk').textContent).toMatch(/birbirinin kopyasıdır/);
@@ -30,7 +31,7 @@ describe('SPA özet — reverse proxy akışı', () => {
     expect(onSuz).toHaveBeenCalledWith({ ortam: 'prod', rp: 'tanimsiz' });
     // hangi RP servisi: GLOMO / SAKLAMA ayri, tiklamak servise suzer
     const sv = within(akis).getByTestId('rp-servisler');
-    expect([...sv.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['GLOMO1', 'SAKLAMA1']);
+    expect([...sv.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['GLOMO2', 'SAKLAMA1']);
     fireEvent.click(within(sv).getByText('GLOMO'));
     expect(onSuz).toHaveBeenLastCalledWith({ ortam: 'prod', rp: 'tanimli', servis: 'GLOMO' });
   });

@@ -773,6 +773,22 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     return { rp: 'tanimsiz' };
   };
 
+  // ESLENIK SUNUCULAR (kullanici, 2026-11-12: "RP eslenik sunucular" 194/194 eksik gorunuyordu).
+  // Eslenik = AYNI servisi (vhost grubu: GLOMO, SAKLAMA ...) AYNI kurulumda (PROD eski GBRVP / yeni
+  // GBNGX ayri; non-prod tek) TASIYAN sunucular. Eskiden payda ortamin TUM RP sunuculariydi: QA'da
+  // Q01 (Glomo) ve Q02 (Glomo disi) es degil; PROD'da eski + yeni filo birlikte sayiliyordu. Servisin
+  // sunucu kumesi o gun taranmis tanimlardan cikar (hicbir uygulamasi olmayan sunucu servise ait
+  // sayilmaz); taranmayan sunucu "eksik" sayilmaz.
+  const kurulumOf = (h) => (RP.prodOld.has(h) ? 'eski' : RP.prodNew.has(h) ? 'yeni' : 'np');
+  const esKey = (d) => `${d.env || '?'}|${d.servis || '?'}|${kurulumOf(d.host)}`;
+  const servisHostlari = new Map();
+  for (const m of detay.values())
+    for (const d of m.values()) {
+      const k = esKey(d);
+      if (!servisHostlari.has(k)) servisHostlari.set(k, new Set());
+      servisHostlari.get(k).add(d.host);
+    }
+
   for (const a of apps || []) {
     const key = `${L(a.namespace)}|${L(a.application)}`;
     const m = detay.get(key);
@@ -840,6 +856,19 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     a.rpHost = beklenen.length
       ? `${beklenen.filter((h) => bulunan.has(h)).length}/${beklenen.length}`
       : String(bulunan.size);
+    // Eslenik: uygulamanin tanimli oldugu her servis+kurulum icin o servisi tasiyan taranmis sunucularin
+    // hepsinde tanim var mi.
+    const sahip = new Map();
+    for (const d of kendi) {
+      const k = esKey(d);
+      if (!sahip.has(k)) sahip.set(k, new Set());
+      sahip.get(k).add(d.host);
+    }
+    const esEksik = [];
+    for (const [k, var_] of sahip)
+      for (const h of servisHostlari.get(k) || []) if (!var_.has(h) && taranan.has(h)) esEksik.push(h);
+    a.rpEslenik = esEksik.length ? 'eksik' : 'tam';
+    if (esEksik.length) a.rpEslenikEksik = [...new Set(esEksik)].sort();
     const enZayif = kendi.reduce((z, d) => Math.max(z, ESLES_SIRA.indexOf(d.esles)), 0);
     if (enZayif > 0) a.rpEsles = ESLES_SIRA[enZayif];
     const sorun = new Set(kendi.map((d) => d.status).filter((s) => SORUNLU.has(s)));

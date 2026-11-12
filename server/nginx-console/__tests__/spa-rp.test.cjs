@@ -2375,3 +2375,25 @@ test('SR-ESKI uc nokta: eski sunucunun RP tanim satirlari hesaptan dusurulur, es
   assert.equal(by(r2)['kart-ui'].rp, 'tanimli');
   assert.equal(r2.eskiGizli.sayi, 0);
 });
+
+// SR-ES (kullanici, 2026-11-12): "RP eslenik sunucular" QA'da 194/194 eksik gorunuyordu. Eslenik =
+// AYNI servisi tasiyan sunucular; baska servisin sunucusu (QA Q01 Glomo / Q02 Glomo disi) ve taranmayan
+// sunucu eksik sayilmaz.
+test('SR-ES eslenik servis bazli: baska servisin sunucusu eksik sayilmaz; ayni servisin eksigi yazilir', () => {
+  const disc = [A('kart-ui', 'kart-test'), A('pos-ui', 'kart-test'), A('tek-ui', 'kart-test')];
+  const cfg = [
+    // KART servisi T33 + T34'te (kart-ui iki sunucuda)
+    LOC('GBNGXT33', 'kart-test', 'kart-ui'),
+    LOC('GBNGXT34', 'kart-test', 'kart-ui'),
+    // tek-ui KART servisinde yalniz T33'te -> eksik T34
+    LOC('GBNGXT33', 'kart-test', 'tek-ui'),
+    // pos-ui BASKA servis (POS) ve yalniz T33'te; POS'u tasiyan tek sunucu T33 -> tam
+    LOC('GBNGXT33', 'kart-test', 'pos-ui', { service: 'POS', vhost: 'POS-TEST' }),
+  ];
+  const b = by(run(disc, K({ cfg })));
+  assert.equal(b['kart-ui'].rpEslenik, 'tam');
+  assert.equal(b['pos-ui'].rpEslenik, 'tam', 'baska servisin sunucusu (T34) eksik sayildi');
+  assert.equal(b['pos-ui'].rpHost, '1/2', 'bilgi alani (ortamin tum RP leri) ayni kaldi');
+  assert.equal(b['tek-ui'].rpEslenik, 'eksik');
+  assert.deepEqual(b['tek-ui'].rpEslenikEksik, ['GBNGXT34']);
+});

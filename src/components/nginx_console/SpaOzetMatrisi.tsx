@@ -14,15 +14,21 @@ import React from 'react';
 import type { NgSpaApp } from '@/api/nginxConsoleApi';
 import { fmtNumber } from '@/utils/datetime';
 
-export type Eslenik = 'tam' | 'eksik';
+export type Eslenik = 'tam' | 'eksik' | 'hatali';
 
-/** RP tanımı ortamın tüm eşlenik sunucularında var mı ve hatasız mı (yalnız rp = tanımlı). */
+/**
+ * Tanım eşlenik RP sunucularında sağlam mı (yalnız rp = tanımlı). 2026-11-12 düzeltmesi: eşlenik =
+ * AYNI servisi aynı kurulumda taşıyan sunucular (sunucu hesaplar: rpEslenik). Eskiden payda ortamın
+ * TÜM RP sunucularıydı (QA'da Glomo ve Glomo dışı sunucular, PROD'da eski + yeni filo) ve neredeyse
+ * her uygulama "eksik" görünüyordu.
+ *   'hatali' : bir sunucudaki tanımda sorun kodu (dizin eksik, include bozuk, uygulama yok, prod'da
+ *              non-prod hedef). Ortam dışı uyarısı hata sayılmaz.
+ *   'eksik'  : aynı servisi taşıyan sunuculardan en az birinde tanım yok.
+ */
 export function eslenikDurumu(a: NgSpaApp): Eslenik | null {
   if (a.rp !== 'tanimli') return null;
-  const m = /^(\d+)\/(\d+)$/.exec(a.rpHost || '');
-  const eksikSunucu = m ? Number(m[1]) < Number(m[2]) : false;
-  const hata = (a.rpSorun || []).some((s) => s !== 'ORTAM_DISI');
-  return eksikSunucu || hata ? 'eksik' : 'tam';
+  if ((a.rpSorun || []).some((s) => s !== 'ORTAM_DISI')) return 'hatali';
+  return a.rpEslenik === 'eksik' ? 'eksik' : 'tam';
 }
 
 export interface OzetSuzgec {
@@ -53,6 +59,7 @@ interface Satir {
   yukOlculemedi: number;
   esTam: number;
   esEksik: number;
+  esHatali: number;
   /** RP'de yayinda olanlarin servis kirilimi (bir uygulama birden cok serviste olabilir). */
   servisler: Record<string, number>;
 }
@@ -67,7 +74,7 @@ export function ortamAnahtari(a: NgSpaApp) {
 
 const bos = (ortam: string): Satir => ({
   ortam, spa: 0, bilinmiyor: 0, internet: 0, intranet: 0, digerAg: 0, kalipUyuyor: 0, kalipUymuyor: 0,
-  rpTanimli: 0, rpTanimsiz: 0, rpOlculemedi: 0, yukVar: 0, yukYok: 0, yukOlculemedi: 0, esTam: 0, esEksik: 0,
+  rpTanimli: 0, rpTanimsiz: 0, rpOlculemedi: 0, yukVar: 0, yukYok: 0, yukOlculemedi: 0, esTam: 0, esEksik: 0, esHatali: 0,
   servisler: {},
 });
 
@@ -93,8 +100,10 @@ export function spaOzeti(apps: NgSpaApp[]): { satirlar: Satir[]; toplam: Satir }
         if (a.rpIstek === 'var') s.yukVar += 1;
         else if (a.rpIstek === 'yok') s.yukYok += 1;
         else s.yukOlculemedi += 1;
-        if (eslenikDurumu(a) === 'tam') s.esTam += 1;
-        else s.esEksik += 1;
+        const es = eslenikDurumu(a);
+        if (es === 'tam') s.esTam += 1;
+        else if (es === 'eksik') s.esEksik += 1;
+        else s.esHatali += 1;
         const sv = a.rpServis && a.rpServis.length ? a.rpServis : [''];
         for (const x of sv) s.servisler[x] = (s.servisler[x] || 0) + 1;
       }
@@ -194,7 +203,8 @@ function RpAkisi({ s, suz }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => 
       <RpSatiri n={s.yukVar} metin="son 7 günde trafik aldı" ton="iyi" onClick={suz({ rp: 'tanimli', rpIstek: 'var' })} girinti={1} testId="rp-trafik-var" />
       <RpSatiri n={s.yukYok} metin="trafik almadı" ton="kritik" onClick={suz({ rp: 'tanimli', rpIstek: 'yok' })} girinti={1} testId="rp-trafik-yok" />
       <RpSatiri n={s.yukOlculemedi} metin="trafik ölçülemedi" ton="soluk" girinti={1} />
-      <RpSatiri n={s.esEksik} metin="bazı RP sunucularında eksik / hatalı" ton="uyari" onClick={suz({ eslenik: 'eksik' })} girinti={1} testId="rp-eksik-sunucu" />
+      <RpSatiri n={s.esEksik} metin="aynı servisin bazı RP sunucularında tanımı yok" ton="uyari" onClick={suz({ eslenik: 'eksik' })} girinti={1} testId="rp-eksik-sunucu" />
+      <RpSatiri n={s.esHatali} metin="bir RP sunucusunda tanım hatalı" ton="kritik" onClick={suz({ eslenik: 'hatali' })} girinti={1} testId="rp-hatali" />
       <RpSatiri n={s.rpTanimsiz} metin="RP'de tanımı yok" ton="kritik" onClick={suz({ rp: 'tanimsiz' })} testId="rp-tanimsiz" />
       <RpSatiri n={s.rpOlculemedi} metin="RP'de var mı ölçülemedi" ton="soluk" onClick={suz({ rp: 'olculemedi' })} />
     </ul>
@@ -281,8 +291,10 @@ export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgS
         <dd>Uygulama internete açık tipte (route passthrough) ama kendi ortamının reverse proxy sunucularında tanımı bulunamadı; dışarıdan erişilemiyor olabilir.</dd>
         <dt className="font-semibold">Trafik aldı / almadı</dt>
         <dd>Reverse proxy access log'larında son 7 günde bu uygulamaya istek geldi mi (sağlık kontrolü hc.jsp / hc.html sayılmaz). "Ölçülemedi": log 7 günü kapsamıyor ya da okunamadı — "almadı" demek değildir.</dd>
-        <dt className="font-semibold">Bazı RP sunucularında eksik</dt>
-        <dd>Bir ortamın reverse proxy sunucuları birbirinin kopyasıdır (ör. Pendik + Ankara); uygulamanın tanımı hepsinde olmalı. Bu sayı, tanımı sunuculardan en az birinde olmayan ya da bir sunucuda hatalı (dizin eksik, 404) olan uygulamalardır.</dd>
+        <dt className="font-semibold">Aynı servisin bazı sunucularında tanımı yok</dt>
+        <dd>Aynı servisi (ör. GLOMO) aynı kurulumda taşıyan reverse proxy sunucuları birbirinin kopyasıdır (ör. Pendik + Ankara); uygulamanın tanımı hepsinde olmalı. Bu sayı, o sunuculardan en az birinde tanımı olmayan uygulamalardır. Başka servisin sunucusu ve taranmayan sunucu sayılmaz.</dd>
+        <dt className="font-semibold">Bir sunucuda tanım hatalı</dt>
+        <dd>Tanım var ama bir sunucuda sorunlu: uygulama dosyaları yok (404), include bozuk ya da prod'da non-prod hedefe yönleniyor.</dd>
       </dl>
     </section>
   );

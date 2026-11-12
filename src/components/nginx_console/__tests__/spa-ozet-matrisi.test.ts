@@ -7,10 +7,12 @@ const app = (o: Partial<NgSpaApp>): NgSpaApp =>
   ({ application: 'a', namespace: 'n-prod', env: 'prod', spa: 'evet', ag: 'internet', pattern: 'uyuyor', rp: 'tanimli', rpIstek: 'var', rpHost: '4/4', ...o }) as NgSpaApp;
 
 describe('SPA özet matrisi', () => {
-  it('RP eşlenik: tüm sunucular + hatasız = tam; eksik sunucu ya da sorun kodu = eksik; ortam dışı uyarısı eksik saymaz', () => {
+  it('RP eşlenik: sunucunun servis bazlı kararı (rpEslenik); sorun kodu = hatalı; rpHost paydası kullanılmaz', () => {
     expect(eslenikDurumu(app({}))).toBe('tam');
-    expect(eslenikDurumu(app({ rpHost: '3/4' }))).toBe('eksik');
-    expect(eslenikDurumu(app({ rpSorun: ['NOT_DEPLOYED'] }))).toBe('eksik');
+    // 2026-11-12: rpHost '1/2' (ortamin TUM RP'leri) artik eksik DEMEK DEGIL (QA Q01/Q02 farkli servis)
+    expect(eslenikDurumu(app({ rpHost: '1/2' }))).toBe('tam');
+    expect(eslenikDurumu(app({ rpEslenik: 'eksik', rpEslenikEksik: ['GBNGXAP34'] }))).toBe('eksik');
+    expect(eslenikDurumu(app({ rpSorun: ['NOT_DEPLOYED'] }))).toBe('hatali');
     expect(eslenikDurumu(app({ rpSorun: ['ORTAM_DISI'] }))).toBe('tam');
     expect(eslenikDurumu(app({ rp: 'tanimsiz' }))).toBeNull();
   });
@@ -19,7 +21,7 @@ describe('SPA özet matrisi', () => {
     const { satirlar, toplam } = spaOzeti([
       app({}),
       app({ ag: 'intranet', rp: 'kapsam-disi', rpIstek: 'uygulanamaz', pattern: 'uymuyor' }),
-      app({ env: 'test', rp: 'tanimli', rpIstek: 'yok', rpHost: '1/2' }),
+      app({ env: 'test', rp: 'tanimli', rpIstek: 'yok', rpEslenik: 'eksik' }),
       app({ env: 'test', spa: 'hayir' }),
       app({ env: 'test', spa: 'bilinmiyor' }),
     ]);

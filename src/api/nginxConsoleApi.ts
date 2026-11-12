@@ -370,6 +370,11 @@ export interface NgSpaApp {
   rpServis?: string[];
   /** rpServis'te sunucu grubundan gelen ve birden çok servisi kapsayan bir ad var (yeni PROD dizin). */
   rpServisGrup?: boolean;
+  /** Eşlenik (2026-11-12): tanım, AYNI servisi aynı kurulumda taşıyan taranmış RP sunucularının hepsinde
+   *  var mı ('tam') yoksa bazısında yok mu ('eksik'). Yalnız rp = tanımlı. */
+  rpEslenik?: 'tam' | 'eksik';
+  /** 'eksik' iken tanımın olmadığı sunucular. */
+  rpEslenikEksik?: string[];
   /**
    * En zayıf eşleşme yolu (yoksa kesin). `paylasimli`: hedef adresi farklı route'lar paylaşıyor;
    * `belirsiz`: ad birden çok uygulamaya çözülüyor — ikisinde de tanımın trafiği bu uygulamaya
