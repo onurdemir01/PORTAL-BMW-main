@@ -100,6 +100,8 @@ stage_bagimlilik_ve_build() {
       npm ci --no-audit --no-fund || exit 1
       npm run build || exit 1
       npm prune --omit=dev --no-audit --no-fund || exit 1
+      # prune silinen paketlerin bos @kapsam dizinlerini birakir; temizlik.
+      find node_modules -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null || true
     fi
   )
 }
