@@ -47,3 +47,29 @@ describe('OCO Takvimi — açtığımız + bize açılan', () => {
     expect((await screen.findByTestId('oco-eksik')).textContent).toMatch(/açtığımız OCO'lar alınamadı: zaman aşımı/);
   });
 });
+
+// OG1 (kullanici, 2026-11-12): gecmis OCO'lar 2024'e kadar birden aciliyordu; her tiklama 7 gun geri.
+describe('OCO Takvimi — geçmiş 7 günlük adımlarla', () => {
+  const gunOnce = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    d.setHours(10, 0, 0, 0);
+    return d.toISOString();
+  };
+  const r = (oco: number, gun: number) => ({ ...satir(oco, ['sorumlu']), plannedStart: gunOnce(gun) });
+  it('OG1 ilk tıklama son 7 gün, sonraki her tıklama 7 gün daha; gizle sıfırlar', async () => {
+    yanit({ ok: true, rows: [r(1, 3), r(2, 10), r(3, 400)], total: 3, fetched: 3, truncated: false, eksik: [] });
+    render(<OcoTakvimiPage />);
+    const ilk = await screen.findByText('Geçen haftanın OCO’larını göster');
+    expect(screen.queryByText('konu 1')).toBeNull();
+    fireEvent.click(ilk);
+    expect(screen.getByText('konu 1')).toBeTruthy();
+    expect(screen.queryByText('konu 2')).toBeNull();
+    expect(screen.getByText(/son 7 gün · 1 geçmiş OCO · daha eski 2/)).toBeTruthy();
+    fireEvent.click(screen.getByText('7 gün daha geriye git'));
+    expect(screen.getByText('konu 2')).toBeTruthy();
+    expect(screen.queryByText('konu 3')).toBeNull();
+    fireEvent.click(screen.getByText('Geçmişi gizle'));
+    expect(screen.queryByText('konu 1')).toBeNull();
+  });
+});

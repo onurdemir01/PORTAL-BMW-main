@@ -123,7 +123,9 @@ function saat(iso: string | null): string {
 export default function OcoTakvimiPage() {
   const [data, setData] = useState<Sonuc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [gecmisAcik, setGecmisAcik] = useState(false);
+  // GECMIS 7'SER GUN (kullanici, 2026-11-12: "gecmisi ac deyince 2024'e kadar her sey aciliyor; her
+  // tiklamada 7 gun geri atsin"). 0 = kapali; her tiklama 7 gun daha eskiye uzanir.
+  const [gecmisGun, setGecmisGun] = useState(0);
   const [sorgu, setSorgu] = useState('');
   const [acik, setAcik] = useState<number | null>(null);
   // ILISKI SUZGECI (kullanici, 2026-11-12): "hem bizim actigimiz hem bize acilan OCO'lar ayni
@@ -173,6 +175,17 @@ export default function OcoTakvimiPage() {
       suzulmus.filter((r) => gunAnahtari(r.plannedStart) && gunAnahtari(r.plannedStart) < bugun),
     [suzulmus, bugun],
   );
+  // Gosterilen gecmis: bugunden gecmisGun gun oncesine kadar (yerel gun anahtari, ISO karsilastirma).
+  const gecmisSinir = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - gecmisGun);
+    return gunAnahtari(d.toISOString());
+  }, [gecmisGun]);
+  const gecmisGorunen = useMemo(
+    () => (gecmisGun ? gecmis.filter((r) => gunAnahtari(r.plannedStart) >= gecmisSinir) : []),
+    [gecmis, gecmisGun, gecmisSinir],
+  );
+  const dahaEski = gecmis.length - gecmisGorunen.length;
   const gelecek = useMemo(
     () =>
       suzulmus.filter((r) => !gunAnahtari(r.plannedStart) || gunAnahtari(r.plannedStart) >= bugun),
@@ -454,16 +467,31 @@ export default function OcoTakvimiPage() {
       ) : (
         <>
           {gecmis.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setGecmisAcik((x) => !x)}
-              className="text-[11px] underline"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {gecmisAcik ? 'Geçmişi gizle' : `Geçmiş ${gecmis.length} OCO'yu göster`}
-            </button>
+            <div className="flex flex-wrap items-center gap-3 text-[11px]" data-testid="oco-gecmis">
+              {dahaEski > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setGecmisGun((g) => g + 7)}
+                  className="underline"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {gecmisGun ? `7 gün daha geriye git` : 'Geçen haftanın OCO’larını göster'}
+                </button>
+              )}
+              {gecmisGun > 0 && (
+                <>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    son {gecmisGun} gün · {gecmisGorunen.length} geçmiş OCO
+                    {dahaEski > 0 ? ` · daha eski ${dahaEski}` : ''}
+                  </span>
+                  <button type="button" onClick={() => setGecmisGun(0)} className="underline" style={{ color: 'var(--text-muted)' }}>
+                    Geçmişi gizle
+                  </button>
+                </>
+              )}
+            </div>
           )}
-          {gecmisAcik && gunlereBol(gecmis).map(gunBlogu)}
+          {gecmisGun > 0 && gunlereBol(gecmisGorunen).map(gunBlogu)}
 
           {gelecek.length === 0 && gecmis.length === 0 ? (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
