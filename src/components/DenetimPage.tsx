@@ -57,6 +57,7 @@ import CodeChip from '@/components/common/CodeChip';
 import { fmtNumber } from '@/utils/datetime';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import YardimDugmesi from '@/components/common/YardimDugmesi';
+import { ogeyeKaydir } from '@/components/admin/tabs/sistem/kaydir';
 
 // NGINX BOLUMLERI NGINX HUB'A TASINDI (kullanici, 2026-09-22): sekmeler ve yardim metinleri
 // Nginx Hub'da; bilesenler yerinde. Bu dizi oradan import edilir.
@@ -1353,7 +1354,8 @@ function OcpCoverage() {
                       onClick={() => {
                         envFiltreKur(e, secili ? '' : hedef);
                         if (!secili) setOnlyPartial(false);
-                        if (!secili) tabloRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+                        // scrollIntoView DEGIL: AppLayout kok kabini da kaydirip ust cubugu ekrandan cikariyordu.
+                        if (!secili && tabloRef.current) ogeyeKaydir(tabloRef.current, null, false);
                       }}
                       className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${hedef ? 'cursor-pointer hover:underline' : 'cursor-default'} ${secili ? 'ring-2 ring-[var(--accent)]' : ''} ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
                       style={c.beklenmeyen ? undefined : {

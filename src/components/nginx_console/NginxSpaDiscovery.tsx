@@ -72,6 +72,7 @@ import {
   type NgSpaRpKapsam,
   type NgSpaRpTanim,
 } from '@/api/nginxConsoleApi';
+import { ogeyeKaydir } from '@/components/admin/tabs/sistem/kaydir';
 import SpaOzetMatrisi, { eslenikDurumu, type Eslenik, type OzetSuzgec } from './SpaOzetMatrisi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { downloadCsv } from '@/utils/csv';
@@ -2187,7 +2188,13 @@ export default function NginxSpaDiscovery() {
     setRp(x.rp || 'tumu');
     setRpIstek(x.rpIstek || 'tumu');
     setEslenik(x.eslenik || 'tumu');
-    tabloRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    // scrollIntoView DEGIL (kullanici, 2026-11-12: Glomo'ya tiklayinca Portal'in ust kismi ekrandan cikti):
+    // scrollIntoView AppLayout'un h-screen overflow-hidden kok kabini da kaydiriyordu. Yalniz en yakin
+    // kaydirilabilir ata (main) kaydirilir (bkz. admin/tabs/sistem/kaydir.ts).
+    if (tabloRef.current) {
+      const azalt = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      ogeyeKaydir(tabloRef.current, null, azalt);
+    }
   };
 
   const csv = useCallback(() => {
