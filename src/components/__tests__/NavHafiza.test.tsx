@@ -63,13 +63,14 @@ describe('sol menu bolum hafizasi', () => {
   });
 
   it('NH2 etkin bolum kayitli daraltmaya ragmen acik; bu sayfadayken kapatilirsa kapanir', () => {
-    window.localStorage.setItem(NAV_DARALTMA_ANAHTARI, JSON.stringify({ envanter: true }));
+    // Denetim 2026-11-08'den beri BMW Hub grubunda (eskiden ayri 'Envanter' grubu).
+    window.localStorage.setItem(NAV_DARALTMA_ANAHTARI, JSON.stringify({ bmwhub: true }));
     ciz('/denetim');
     expect(screen.getByRole('link', { name: 'Denetim' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Envanter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'BMW Hub' }));
     expect(screen.queryByRole('link', { name: 'Denetim' })).toBeNull();
-    expect(kayit()).toEqual({ envanter: true });
+    expect(kayit()).toEqual({ bmwhub: true });
 
     // Baska bir sayfada (bolum etkin degil) kayit gecerli: kapali.
     cleanup();
