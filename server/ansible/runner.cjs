@@ -3,6 +3,7 @@
 
 const https = require('https');
 const http = require('http');
+const { tlsSecenekleri, tlsHatasiAcikla } = require('../util/tls-guven.cjs');
 const path = require('path');
 const fs = require('fs');
 const { readResponseLimited } = require('../util/bounded-read.cjs');
@@ -427,7 +428,7 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
         Accept: 'application/json',
         ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 15000,
     };
     // BAYT KAPISI — URETIMDEKI UCUNCU OOM'UN YOLU TAM BURASI (2026-09-19 21:02).
@@ -512,7 +513,7 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
     // Kirpma sonrasi `req.destroy()` kendi ECONNRESET'ini uretir; zaten reddettik.
     req.on('error', (err) => {
       if (jsonKirpildi) return;
-      reject(err);
+      reject(tlsHatasiAcikla(err, 'awx', parsed.hostname));
     });
     req.on('timeout', () => {
       req.destroy();
@@ -585,7 +586,7 @@ function fetchTokenOAuth2AtPath(
         'Content-Length': bodyBuf.length,
         Accept: 'application/json',
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 10000,
     };
 
@@ -639,7 +640,7 @@ function fetchTokenOAuth2AtPath(
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX OAuth2 token zaman aşımı.'));
@@ -683,7 +684,7 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
         Accept: 'application/json',
         'Content-Length': Buffer.byteLength(bodyStr),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 10000,
     };
 
@@ -745,7 +746,7 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX v2/tokens zaman aşımı.'));
@@ -810,7 +811,7 @@ async function awxRequest(method, pathname, body = null) {
         Accept: 'application/json',
         ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 15000,
     };
 
@@ -879,7 +880,7 @@ async function awxRequest(method, pathname, body = null) {
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => reject(tlsHatasiAcikla(err, 'awx', parsed.hostname)));
     req.on('timeout', () => {
       req.destroy();
       reject(new Error('AWX isteği zaman aşımına uğradı.'));
@@ -1014,7 +1015,7 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
         Authorization: `Bearer ${token}`,
         Accept: 'text/plain',
       },
-      rejectUnauthorized: false,
+      ...tlsSecenekleri('awx', parsed),
       timeout: 30000,
     };
 
@@ -1079,7 +1080,7 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
     // uretir; promise zaten cozulmus olsa da bunu reject etmek log gurultusu yaratir.
     req.on('error', (err) => {
       if (kirpildi) return;
-      reject(err);
+      reject(tlsHatasiAcikla(err, 'awx', parsed.hostname));
     });
     req.on('timeout', () => {
       req.destroy();
@@ -1919,13 +1920,21 @@ function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = 
       settled = true;
       resolve(result);
     };
+    // TLS DOGRULAMASI ACIK: sertifika dogrulanamazsa el sikisma biter ve token HIC gonderilmez.
+    let tlsAlanlari;
+    try {
+      tlsAlanlari = tlsSecenekleri('ocp', parsed);
+    } catch (e) {
+      finish({ ok: false, message: e.message });
+      return;
+    }
     const options = {
       hostname: parsed.hostname,
       port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path: parsed.pathname,
       method: 'GET',
       headers: cluster.token ? { Authorization: `Bearer ${cluster.token}` } : {},
-      rejectUnauthorized: false,
+      ...tlsAlanlari,
       timeout: 5000,
     };
     const httpReq = lib.request(options, (httpRes) => {
@@ -1958,7 +1967,7 @@ function probeClusterApiVersion(cluster, { httpLib = http, httpsLib = https } = 
     });
     httpReq.on('error', (err) => {
       if (bodyLimitAbort) return;
-      finish({ ok: false, message: err.message });
+      finish({ ok: false, message: tlsHatasiAcikla(err, 'ocp', parsed.hostname).message });
     });
     httpReq.on('timeout', () => {
       finish({ ok: false, message: 'Bağlantı zaman aşımına uğradı.' });
@@ -2690,6 +2699,7 @@ function initAnsibleRunner(app) {
   const dbx = require('../db/index.cjs');
 
   let _ssItems = null; // null → DB henuz yuklenmedi (fallback: eski dosya)
+  let _ssItemsKirli = false; // tasima/geri alma sonrasi tazeleme dustu: liste yazimi kilitli
   let _ssCustom = null; // Map: `${serverId}_${templateId}` → override objesi
 
   function ssItemsFileFallback() {
@@ -2724,7 +2734,23 @@ function initAnsibleRunner(app) {
 
   async function reloadSsItemsCache() {
     const { rows } = await dbx.query(`SELECT * FROM ansible_ss_items ORDER BY sort_order, id`);
-    _ssItems = rows.map(ssRowToItem);
+    const items = rows.map(ssRowToItem);
+    // SELF SERVIS TASIMA (2026-11-10): tasinan kartin onceki (sunucu, template) baglari - servisin
+    // Gecmis sekmesi eski sunucudaki isleri de gostersin. Yalniz gosterim; yetkiye etkisi yok.
+    // Okunamazsa liste bos kalir (kart listesi yine yuklenir).
+    let gocler = [];
+    try {
+      gocler = (
+        await dbx.query(
+          `SELECT item_id, status, from_server, from_template, to_server, to_template
+             FROM ansible_ss_migrations WHERE status IN ('TASINDI','GERI_ALINDI')`,
+        )
+      ).rows;
+    } catch (e) {
+      console.warn('[AnsibleSS] tasima kayitlari okunamadi (onceki baglar bos):', e.message);
+    }
+    _ssItems = require('./ss-tasima.cjs').oncekiBaglariEkle(items, gocler);
+    _ssItemsKirli = false;
   }
 
   // Yazma: delete-all + re-insert (kucuk, admin-only liste) — sonra cache tazele.
@@ -2733,9 +2759,45 @@ function initAnsibleRunner(app) {
   // satirlarda yasadigi icin yarim yazim bir servisin ekip kisitini sessizce silebilirdi.
   // Simdi ya hepsi yazilir ya hicbiri (TRY/CATCH + ROLLBACK).
   const SS_YAZIM_TAVAN = 200; // satir basina 9 parametre; MSSQL tek istekte 2100 parametre alir
-  async function writeSsItems(items) {
+  // SELF SERVIS TASIMA korumasi (2026-11-10): liste yazimi DELETE ALL + INSERT oldugu icin bayat
+  // bir liste (onbellek tazelenemedi / DB okunamadi, dosya yedegi) tasinmis kartlari sessizce
+  // eski sunucuya geri yazabilirdi. Uc kural:
+  //   - _ssItems null (DB'den hic yuklenmedi, eski dosya yedegi) iken yalniz ilk goc yazar;
+  //   - tasima / geri alma sonrasi onbellek tazelenemediyse (kirli) yazim reddedilir;
+  //   - TASINDI kaydi olan kartin bagi degisiyorsa reddedilir (once Self Servis Tasima'dan geri al).
+  function ssItemsKirliIsaretle() {
+    _ssItemsKirli = true;
+  }
+  function yazimHatasi(message) {
+    return Object.assign(new Error(message), { status: 409 });
+  }
+  async function writeSsItems(items, { ilkGoc = false } = {}) {
     if (items.length > SS_YAZIM_TAVAN) {
       throw new Error(`Self Service listesi en fazla ${SS_YAZIM_TAVAN} servis tutabilir.`);
+    }
+    if (!ilkGoc && _ssItems === null) {
+      throw yazimHatasi("Self Servis listesi DB'den yüklenemedi; eski dosya yedeğinden yazım yapılmaz. Portal'ı yeniden başlatın.");
+    }
+    if (_ssItemsKirli) {
+      try {
+        await reloadSsItemsCache();
+      } catch {
+        /* hala tazelenemiyor: asagidaki hata yeterli */
+      }
+      throw yazimHatasi('Self Servis listesi önbelleği güncel değildi; liste yenilendi. Sayfayı yenileyip işlemi tekrar yapın.');
+    }
+    let tasinanlar;
+    try {
+      tasinanlar = (await dbx.query(`SELECT item_id, to_server, to_template FROM ansible_ss_migrations WHERE status = 'TASINDI'`)).rows;
+    } catch (e) {
+      if (!ilkGoc) throw yazimHatasi(`Taşıma kayıtları okunamadı (${e.message}); liste yazımı reddedildi.`);
+      tasinanlar = [];
+    }
+    const ihlal = require('./ss-tasima.cjs').kartBagIhlalleri(items, tasinanlar);
+    if (ihlal.length) {
+      throw yazimHatasi(
+        `Taşınmış servisin bağlantısı değiştirilemez: ${ihlal.map((x) => `"${x.title}" (${x.beklenen} bekleniyor, ${x.gelen} geldi)`).join(', ')}. Önce Admin > Self Servis Taşıma'dan geri alın.`,
+      );
     }
     const params = [];
     const ekle = items.map((i) => {
@@ -2877,7 +2939,7 @@ function initAnsibleRunner(app) {
       const legacy = ssItemsFileFallback();
       if (legacy.length) {
         try {
-          await writeSsItems(legacy);
+          await writeSsItems(legacy, { ilkGoc: true });
           console.log(`[DB] migrated ansible-ss-items (${legacy.length} satir)`);
         } catch (e) {
           console.warn('[Ansible] SS items import hata:', e.message);
@@ -3840,7 +3902,7 @@ function initAnsibleRunner(app) {
         try {
           await writeSsItems(items);
         } catch (e) {
-          return res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+          return res.status(e.status || 500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
         }
         return res.json({ ok: true, item: items[idx], items });
       }
@@ -3860,7 +3922,7 @@ function initAnsibleRunner(app) {
     try {
       await writeSsItems(items);
     } catch (e) {
-      return res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+      return res.status(e.status || 500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
     }
     res.json({ ok: true, item: newItem, items });
   });
@@ -3897,7 +3959,7 @@ function initAnsibleRunner(app) {
     try {
       await writeSsItems(items);
     } catch (e) {
-      return res.status(500).json({ ok: false, message: `Silinemedi: ${e.message}` });
+      return res.status(e.status || 500).json({ ok: false, message: `Silinemedi: ${e.message}` });
     }
     res.json({ ok: true, items });
   });
@@ -4134,7 +4196,6 @@ function initAnsibleRunner(app) {
       const server = getServerById(req.params.serverId);
       if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
       const data = req.body || {};
-      const overrides = Array.isArray(data.fieldOverrides) ? data.fieldOverrides : [];
 
       try {
         const token = await getTokenForServer(server);
@@ -4151,172 +4212,14 @@ function initAnsibleRunner(app) {
           if (specErr.status !== 404) throw specErr;
         }
 
-        // Kural: HANGI ALAN OLURSA OLSUN (zorunlu dahil) gizlenebilir — YETER KI cozumlenen
-        // varsayilan deger bos olmasin. Bu, hassas/credential niteligindeki zorunlu alanlarin
-        // admin tarafindan bilinen bir degerle kullanicidan saklanabilmesini saglar; zorunlu
-        // olmayi hâlâ "gizlemeyi engelleyen" bir kural olarak KULLANMIYORUZ.
-        // Secenek kaynagi: kaynak tanimli mi, parametreleri var olan bir alana bagli mi.
-        // Yalnizca metin tipli survey alanlari kaynaga baglanabilir — AWX'in kendi secim
-        // listesi olan bir alani envanterle ezmek iki listeyi celistirir.
-        const specNames = specFields.map((f) => f.variable);
-        for (const ov of overrides) {
-          if (!ov.choicesSource) continue;
-          if (!ov.choicesSource.source) {
-            delete ov.choicesSource;
-            continue;
-          }
-          const field = specFields.find((f) => f.variable === ov.fieldName);
-          if (field && !['text', 'textarea', 'multiselect'].includes(field.type)) {
-            return res.status(400).json({
-              ok: false,
-              message: `"${field.question_name || field.variable}" metin/çoklu seçim alanı değil (${field.type}); seçenek kaynağı yalnızca bunlara bağlanabilir.`,
-            });
-          }
-          const problem = choiceSources.validateChoicesSource(ov.choicesSource, specNames);
-          if (problem) {
-            return res.status(400).json({
-              ok: false,
-              message: `"${field?.question_name || ov.fieldName}" seçenek kaynağı: ${problem}`,
-            });
-          }
-        }
-
-        for (const ov of overrides) {
-          if (!ov.hidden) continue;
-          const field = specFields.find((f) => f.variable === ov.fieldName);
-          if (!field) continue; // survey'de olmayan (extra_vars fallback) pseudo-alan — serbest
-          const resolvedDefault =
-            ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
-          if (!resolvedDefault) {
-            return res.status(400).json({
-              ok: false,
-              message: `"${field.question_name || field.variable}" alanının varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-            });
-          }
-        }
-
-        // Ayni kural built-in launch secenekleri (limit/forks/job_tags/skip_tags/verbosity/
-        // job_type) icin de gecerli: "kullaniciya gosterme" isaretlenmis bir secenegin
-        // bos olmayan bir varsayilan degeri olmali — aksi halde launch sessizce bos gecerdi.
-        const LAUNCH_OPTION_LABELS = {
-          limit: 'Limit',
-          forks: 'Forks',
-          jobTags: 'Job Tags',
-          skipTags: 'Skip Tags',
-          verbosity: 'Verbosity',
-          jobType: 'Job Type',
-        };
-        for (const [key, ov] of Object.entries(data.launchOptionOverrides || {})) {
-          if (!ov?.hidden) continue;
-          if (ov.default === undefined || ov.default === null || String(ov.default).trim() === '') {
-            return res.status(400).json({
-              ok: false,
-              message: `"${LAUNCH_OPTION_LABELS[key] || key}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-            });
-          }
-        }
-
-        // Cikti filtresi: enabled=true ise "contains" bos birakilamaz — aksi halde admin
-        // "filtrele" isaretledigini saniyor ama fiilen HICBIR satir kalmiyor (bos needle
-        // her satirla eslesir degil, split/filter ile ANLAMSIZ bir goruntu uretir).
-        const outputFilter = data.outputFilter;
-        if (outputFilter?.enabled && !String(outputFilter.contains || '').trim()) {
-          return res.status(400).json({
-            ok: false,
-            message:
-              'Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.',
-          });
-        }
-
-        // Survey Tasarimcisi (customSurveyFields): AWX survey KAPALIYKEN admin'in portaldan
-        // bastan tanimladigi sahte survey alanlari — client'e guvenilmez, kayittan once
-        // burada da dogrulanir (isim benzersiz + guvenli degisken-adi deseni, gizli alanin
-        // varsayilan degeri olmasi, coktan-secmeli alanlarin en az bir secenegi olmasi).
-        const customSurveyFields = Array.isArray(data.customSurveyFields)
-          ? data.customSurveyFields
-          : [];
-        const seenNames = new Set();
-        for (const f of customSurveyFields) {
-          const name = String(f?.name || '').trim();
-          if (!name)
-            return res
-              .status(400)
-              .json({ ok: false, message: 'Her özel alanın bir değişken adı olmalı.' });
-          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-            return res.status(400).json({
-              ok: false,
-              message: `Geçersiz değişken adı: "${name}" — yalnızca harf, rakam, alt çizgi içerebilir ve rakamla başlayamaz.`,
-            });
-          }
-          if (seenNames.has(name)) {
-            return res
-              .status(400)
-              .json({ ok: false, message: `Değişken adı tekrar ediyor: "${name}"` });
-          }
-          seenNames.add(name);
-          if (!String(f?.label || '').trim()) {
-            return res
-              .status(400)
-              .json({ ok: false, message: `"${name}" alanının bir görünen adı (label) olmalı.` });
-          }
-          if (f?.hidden && !String(f?.defaultValue || '').trim()) {
-            return res.status(400).json({
-              ok: false,
-              message: `"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
-            });
-          }
-          if (f?.choicesSource && !f.choicesSource.source) delete f.choicesSource;
-          if (f?.choicesSource) {
-            const problem = choiceSources.validateChoicesSource(
-              f.choicesSource,
-              customSurveyFields.map((o) => String(o?.name || '').trim()),
-            );
-            if (problem) {
-              return res
-                .status(400)
-                .json({ ok: false, message: `"${f.label}" seçenek kaynağı: ${problem}` });
-            }
-          }
-          if (
-            (f?.type === 'multiplechoice' || f?.type === 'multiselect') &&
-            !f?.choicesSource &&
-            (!Array.isArray(f.choices) ||
-              f.choices.filter((c) => String(c || '').trim()).length === 0)
-          ) {
-            return res
-              .status(400)
-              .json({ ok: false, message: `"${f.label}" bir seçim alanı ama hiç seçeneği yok.` });
-          }
-          if (f?.dependsOn) {
-            // Duz liste + gruplarin tamami: bos bir grup tek basina "kosul var" saymaz.
-            const conditions = surveyConditions.allConditions(f.dependsOn);
-            if (conditions.length === 0) {
-              return res
-                .status(400)
-                .json({ ok: false, message: `"${f.label}" koşullu işaretli ama hiç koşulu yok.` });
-            }
-            for (const c of conditions) {
-              const condField = String(c?.field || '').trim();
-              if (!condField) {
-                return res
-                  .status(400)
-                  .json({ ok: false, message: `"${f.label}" için bir koşul alanı seçilmemiş.` });
-              }
-              if (condField === name) {
-                return res
-                  .status(400)
-                  .json({ ok: false, message: `"${f.label}" kendi kendine bağlı olamaz.` });
-              }
-              if (
-                !customSurveyFields.some((other) => String(other?.name || '').trim() === condField)
-              ) {
-                return res.status(400).json({
-                  ok: false,
-                  message: `"${f.label}" tanımsız bir alana bağlı: "${condField}"`,
-                });
-              }
-            }
-          }
+        // Kural: HANGI ALAN OLURSA OLSUN (zorunlu dahil) gizlenebilir - YETER KI cozumlenen
+        // varsayilan deger bos olmasin. Kurallarin tamami (secenek kaynagi, gizli alan / gizli
+        // launch secenegi varsayilani, cikti filtresi, Survey Tasarimcisi) 2026-11-10'da
+        // ss-ozellestirme-dogrulama.cjs'e cikarildi: Self Servis Tasima ekrani AYNI kurallari
+        // hedef template'e karsi kuru calistirir. Ilk hata eskiden donen 400 mesajinin aynisidir.
+        const dogrulamaHatalari = require('./ss-ozellestirme-dogrulama.cjs').dogrula(specFields, data);
+        if (dogrulamaHatalari.length) {
+          return res.status(400).json({ ok: false, message: dogrulamaHatalari[0] });
         }
 
         const by = req.session?.user?.username || null;
@@ -4820,6 +4723,124 @@ function initAnsibleRunner(app) {
   // arac-kutusundaki "Gercekten Calistir" butonu. GERCEK bir AWX job'i / Smart talebi
   // olusturur, bu yuzden istemcinin ACIKCA confirm:true gondermesi ZORUNLU (savunma
   // katmani — UI'da zaten ayri bir onay adimi var, burasi onun ikinci bir garantisi).
+  // Govde 2026-11-10'da ssTestKosusuBaslat'a cikarildi: Self Servis Tasima ekraninin "Deneme
+  // kosusu" (hedef template'te, kart baglanmadan) AYNI yolu kullanir (ikinci kopya yok).
+  // Donus: { status, body } - cagiran res.status(status).json(body) yazar.
+  async function ssTestKosusuBaslat(req, server, templateId, govde = {}) {
+    const username = req.session?.user?.username || 'anonymous';
+    const {
+      extraVars: submittedExtraVars = {},
+      templateName = '',
+      scenarioName = '',
+      limit = '',
+      forks,
+      jobTags,
+      skipTags,
+      verbosity,
+      jobType,
+    } = govde || {};
+
+    try {
+      const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions } =
+        await resolveSsLaunchPlan(server, templateId, {
+          submittedExtraVars,
+          templateName,
+          limit,
+          forks,
+          jobTags,
+          skipTags,
+          verbosity,
+          jobType,
+          req,
+        });
+
+      require('../audit/index.cjs').auditPortal(req, 'selfservice_test_scenario_run', {
+        // Gizli / parola alanlari denetime duz metin yazilmaz (tasima denemesi her servis icin
+        // bu yoldan gecer; gizli varsayilanlar da cozulmus extraVars'ta olur).
+        detail: JSON.stringify({
+          awxServerId: server.id,
+          templateId,
+          scenarioName,
+          extraVars: redactExtraVarsForHistory(extraVars, specFields, overrides),
+        }),
+      });
+
+      // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
+      // NOT: burada OCO kapisi BILEREK yok — bu uc admin arac-kutusudur ve test
+      // senaryosunu OCO penceresine bagli kilmak aracin amacini bozardi. Smart onayi
+      // ise aynen gecerli: gercek bir job tetiklenecegi icin iz birakmali.
+      const gates = require('./change-gates.cjs');
+      // Admin KENDI tetiklemesinde Smart onayini atlamis olabilir (admin-smart-atla.cjs; denetime yazilir).
+      const smartGerekli = gates.isSmartRequired(overrides.smartApproval, gateVars);
+      const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+      if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'selfservice_test_scenario_run', { templateId, templateName });
+      if (smartGerekli && !adminAtladi) {
+        let opened;
+        try {
+          opened = await gates.openSmartTicket({
+            server,
+            templateId,
+            username,
+            email: req.session?.user?.mail || '',
+            templateName,
+            overrides,
+            extraVars,
+            detail,
+            resolvedLaunchOptions,
+            specFields,
+            buildSmartMetadata,
+          });
+        } catch (smartErr) {
+          if (smartErr.code === 'smart_flow_key_missing') {
+            return {
+              status: 400,
+              body: { ok: false, message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.' },
+            };
+          }
+          // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
+          // kullanici yetim bir Smart kaydiyla kalmasin, numarasini gorsun.
+          if (smartErr.code === 'smart_ticket_store_failed') {
+            return {
+              status: smartErr.status || 500,
+              body: { ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId },
+            };
+          }
+          return {
+            status: smartErr.status || 502,
+            body: { ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` },
+          };
+        }
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            pendingApproval: true,
+            ticketId: opened.ticketId,
+            externalTicketId: opened.externalTicketId,
+          },
+        };
+      }
+
+      const result = await performSsLaunch(server, templateId, {
+        detail,
+        extraVars,
+        resolvedLaunchOptions,
+        specFields,
+        overrides,
+        username,
+        templateName,
+        req,
+      });
+      return { status: 200, body: { ok: true, jobId: result.jobId, status: result.status } };
+    } catch (err) {
+      if (err.field) {
+        return { status: err.status || 500, body: { ok: false, message: err.message, field: err.field } };
+      }
+      const { status, message } = friendlyAwxError(err);
+      return { status, body: { ok: false, message } };
+    }
+  }
+
   app.post(
     '/api/ansible/ss/test/run/:serverId/:templateId',
     requireAuth,
@@ -4835,113 +4856,45 @@ function initAnsibleRunner(app) {
           .status(400)
           .json({ ok: false, message: 'confirm:true gönderilmeden gerçek tetikleme yapılmaz.' });
       }
-
-      const username = req.session?.user?.username || 'anonymous';
-      const {
-        extraVars: submittedExtraVars = {},
-        templateName = '',
-        scenarioName = '',
-        limit = '',
-        forks,
-        jobTags,
-        skipTags,
-        verbosity,
-        jobType,
-      } = req.body || {};
-
-      try {
-        const { detail, overrides, extraVars, gateVars, specFields, resolvedLaunchOptions } =
-          await resolveSsLaunchPlan(server, templateId, {
-            submittedExtraVars,
-            templateName,
-            limit,
-            forks,
-            jobTags,
-            skipTags,
-            verbosity,
-            jobType,
-            req,
-          });
-
-        require('../audit/index.cjs').auditPortal(req, 'selfservice_test_scenario_run', {
-          detail: JSON.stringify({ awxServerId: server.id, templateId, scenarioName, extraVars }),
-        });
-
-        // Alan degerine gore atlama: bkz. server/ansible/smart-gate.cjs
-        // NOT: burada OCO kapisi BILEREK yok — bu uc admin arac-kutusudur ve test
-        // senaryosunu OCO penceresine bagli kilmak aracin amacini bozardi. Smart onayi
-        // ise aynen gecerli: gercek bir job tetiklenecegi icin iz birakmali.
-        const gates = require('./change-gates.cjs');
-        // Admin KENDI tetiklemesinde Smart onayini atlamis olabilir (admin-smart-atla.cjs; denetime yazilir).
-        const smartGerekli = gates.isSmartRequired(overrides.smartApproval, gateVars);
-        const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
-        if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'selfservice_test_scenario_run', { templateId, templateName });
-        if (smartGerekli && !adminAtladi) {
-          let opened;
-          try {
-            opened = await gates.openSmartTicket({
-              server,
-              templateId,
-              username,
-              email: req.session?.user?.mail || '',
-              templateName,
-              overrides,
-              extraVars,
-              detail,
-              resolvedLaunchOptions,
-              specFields,
-              buildSmartMetadata,
-            });
-          } catch (smartErr) {
-            if (smartErr.code === 'smart_flow_key_missing') {
-              return res.status(400).json({
-                ok: false,
-                message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.',
-              });
-            }
-            // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
-            // kullanici yetim bir Smart kaydiyla kalmasin, numarasini gorsun.
-            if (smartErr.code === 'smart_ticket_store_failed') {
-              return res.status(smartErr.status || 500).json({
-                ok: false,
-                message: smartErr.message,
-                externalTicketId: smartErr.externalTicketId,
-              });
-            }
-            return res
-              .status(smartErr.status || 502)
-              .json({ ok: false, message: `Smart talebi açılamadı: ${smartErr.message}` });
-          }
-          return res.json({
-            ok: true,
-            pendingApproval: true,
-            ticketId: opened.ticketId,
-            externalTicketId: opened.externalTicketId,
-          });
-        }
-
-        const result = await performSsLaunch(server, templateId, {
-          detail,
-          extraVars,
-          resolvedLaunchOptions,
-          specFields,
-          overrides,
-          username,
-          templateName,
-          req,
-        });
-        res.json({ ok: true, jobId: result.jobId, status: result.status });
-      } catch (err) {
-        if (err.field) {
-          return res
-            .status(err.status || 500)
-            .json({ ok: false, message: err.message, field: err.field });
-        }
-        const { status, message } = friendlyAwxError(err);
-        res.status(status).json({ ok: false, message });
-      }
+      const { status, body } = await ssTestKosusuBaslat(req, server, templateId, req.body || {});
+      res.status(status).json(body);
     },
   );
+
+  // SELF SERVIS TASIMA (2026-11-10, maestro2 -> maestro3): Admin > Self Servis Tasima uclari.
+  // Ayri modul (sahte app / sahte DB ile test edilir); kapanis icindeki onbellek ve kapi
+  // fonksiyonlari disaridan enjekte edilir. Bkz. server/ansible/ss-tasima-rotalari.cjs.
+  require('./ss-tasima-rotalari.cjs').kaydet(app, {
+    requireAuth,
+    requireAdmin,
+    dbx,
+    getServerById,
+    readSsItems,
+    reloadSsItemsCache,
+    reloadSsCustomCache,
+    readCustom,
+    writeCustom,
+    // null / bos: hedef girdisi SILINIR (tasimada kaynakta ayar yoksa hedef satir da silinir).
+    setCustomCache: (serverId, templateId, data) => {
+      if (!_ssCustom) return;
+      if (data && typeof data === 'object' && Object.keys(data).length) _ssCustom.set(customKey(serverId, templateId), data);
+      else _ssCustom.delete(customKey(serverId, templateId));
+    },
+    ssItemsKirliIsaretle,
+    listTemplatesForServer,
+    getTemplateDetailOnServer,
+    getSurveySpecOnServer,
+    writeSurveySpecOnServer,
+    setSurveyEnabledOnServer,
+    getJobOnServer,
+    listTemplateSchedulesOnServer,
+    resolveSsLaunchPlan,
+    ssTestKosusuBaslat,
+    sonTarihli,
+    sonTarihMs: AWX_SUNUCU_SON_TARIH_MS,
+    friendlyAwxError,
+    redactSecrets: redactAwxSecrets,
+  });
 
   // POST /api/ansible/ss/oco/validate — OCO numarasini SORGULAR ve kesinti penceresini
   // hesaplar. HICBIR SEY TETIKLEMEZ, hicbir kayit olusturmaz: arayuz kullaniciya
@@ -5505,6 +5458,266 @@ function initAnsibleRunner(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ADMIN YENIDEN TETIKLEME (2026-11-11): zaman asimina dusmus (TIMEOUT) talebi admin destek
+  // amaciyla kosturur. Kurallar ve gerekceleri server/smart/yeniden-tetikle.cjs basinda.
+  // SCALEX BILETI REDDEDILIR (2026-11-11 inceleme): scalex_operations satiri bilet TIMEOUT olunca
+  // uzlastiricida CANCELLED olur (geri yukleme kilidi de birakilir) ve yalniz PENDING_APPROVAL
+  // satiri benimsenir; buradan kosturmak ScaleX aynasini / kilidini isten habersiz birakirdi.
+  const RETRIGGER_SCALEX_MESAJI = 'Bu talep bir ScaleX işlemine bağlı; buradan tetiklenmez (ScaleX ayna ve kilit kaydı güncellenmezdi). İşlemi ScaleX ekranından yeniden başlatın.';
+  async function retriggerScalexBagliMi(ticketId) {
+    const { rows } = await require('../db/index.cjs').query(
+      'SELECT TOP 1 id FROM scalex_operations WHERE smart_ticket_id = $1',
+      [ticketId],
+    );
+    return rows.length > 0;
+  }
+  // Zamanlanan isin AWX extra_data'sina gidecek talep sahibi kimligi (performSsLaunch ile ayni kaynak).
+  async function retriggerTalepSahibi(username) {
+    if (!username) return null;
+    try {
+      const ident = await require('../auth/users.cjs').getUserIdentity(username);
+      return ident ? { username: ident.username || username, displayName: ident.displayName, mail: ident.mail } : { username };
+    } catch (e) {
+      console.warn('[Smart] yeniden tetikleme: talep sahibi kimligi cozulemedi:', e.message);
+      return { username };
+    }
+  }
+  // Is AWX'te baslatildiktan sonraki bilet yazimi: gecici DB hatasinda bilet LAUNCHING'de asili
+  // kalmasin diye birkac kez denenir; yine olmazsa hata firlatilir (cagiran uyari doner).
+  async function retriggerBiletiYaz(smartStore, ticketId, alanlar) {
+    let son;
+    for (let deneme = 0; deneme < 3; deneme += 1) {
+      try {
+        return await smartStore.markState(ticketId, { ...alanlar, resolved: true, expected: 'LAUNCHING' });
+      } catch (e) {
+        son = e;
+        await new Promise((r) => setTimeout(r, 300 * (deneme + 1)));
+      }
+    }
+    throw son;
+  }
+
+  // GET .../retrigger-check: modal acilinca Smart durumu + OCO baglami (hicbir sey degismez).
+  app.get('/api/ansible/ss/smart-ticket/:id/retrigger-check', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rt = require('../smart/yeniden-tetikle.cjs');
+      const ticket = await require('../smart/store.cjs').getTicket(Number(req.params.id));
+      const u = rt.uygunluk(ticket);
+      if (!u.ok) return res.status(u.status).json({ ok: false, message: u.message });
+      if (await retriggerScalexBagliMi(ticket.id)) return res.status(409).json({ ok: false, message: RETRIGGER_SCALEX_MESAJI });
+      let smart;
+      try {
+        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
+      } catch (e) {
+        smart = rt.smartKarari({ hata: e.message });
+      }
+      const pl = ticket.pendingLaunch || {};
+      res.json({
+        ok: true,
+        smart,
+        oco: {
+          kapsamli: rt.ocoKapsamli(ticket),
+          ocoNumber: String(pl.extraVars?.oco_number ?? '') || null,
+          windowStartIso: pl.ocoWindowStartIso || null,
+          windowEndIso: pl.ocoWindowEndIso || null,
+        },
+        notEnAz: rt.NOT_EN_AZ,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // POST .../retrigger { note, mode: 'oco'|'pencereDisi', ocoNumber, outsideWindowConfirm }
+  // DENETIM: her ret 'selfservice_smart_ticket_retrigger_denied', her sonuc (basari / AWX hatasi /
+  // bilet yazilamadi) 'selfservice_smart_ticket_retrigger'. Basari denetimi bilet yazimindan ONCE.
+  app.post('/api/ansible/ss/smart-ticket/:id/retrigger', requireAuth, requireAdmin, async (req, res) => {
+    const rt = require('../smart/yeniden-tetikle.cjs');
+    const smartStore = require('../smart/store.cjs');
+    const audit = require('../audit/index.cjs');
+    const admin = req.session?.user?.username || 'admin';
+    const denetim = { ticketId: Number(req.params.id), admin };
+    const denetle = (eylem, ek) => {
+      try {
+        audit.auditPortal(req, eylem, { detail: JSON.stringify({ ...denetim, ...ek }) });
+      } catch (e) {
+        console.warn('[Smart] yeniden tetikleme denetimi yazilamadi:', e.message);
+      }
+    };
+    const reddet = (status, message, ek = {}) => {
+      denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'RED', status, message, ...ek });
+      return res.status(status).json({ ok: false, message, ...ek });
+    };
+    let claimed = null;
+    // Is AWX'te baslatildi/zamanlandi mi? Sonraki DB yazimi patlarsa bilet ERROR'a CEKILMEZ
+    // (is kosuyor; ERROR "baslamadi" anlamina gelirdi).
+    let basladi = false;
+    const sonuc = { status: null, jobId: null, awxScheduleId: null, runAtText: null };
+    try {
+      const ticket = await smartStore.getTicket(denetim.ticketId);
+      const u = rt.uygunluk(ticket);
+      if (!u.ok) return reddet(u.status, u.message);
+      Object.assign(denetim, { owner: ticket.username, externalTicketId: ticket.externalTicketId });
+      if (await retriggerScalexBagliMi(ticket.id)) return reddet(409, RETRIGGER_SCALEX_MESAJI);
+      const istek = rt.istekDogrula(req.body, ticket);
+      if (!istek.ok) return reddet(400, istek.message);
+      const pl = ticket.pendingLaunch;
+      Object.assign(denetim, {
+        mod: istek.mod, ocoNumber: istek.ocoNumber || null,
+        eskiOcoNumber: pl.extraVars?.oco_number || null, note: istek.not,
+      });
+      const server = getServerById(ticket.awxServerId);
+      if (!server) return reddet(409, sunucuYokHatasi(ticket.awxServerId).message);
+
+      // 1) SMART: reddedildiyse ya da okunamadiysa tetiklenmez (fail-closed).
+      let smart;
+      try {
+        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
+      } catch (e) {
+        smart = rt.smartKarari({ hata: e.message });
+      }
+      Object.assign(denetim, { smartDurum: smart.durum, smartStatusCode: smart.statusCode, smartStateName: smart.stateName });
+      if (smart.engel) return reddet(409, smart.message, { smart });
+
+      // 2) OCO: yeni numara verildiyse pencere AYNI kurallarla (change-gates) degerlendirilir.
+      let extraVars = { ...(pl.extraVars || {}) };
+      let pencere = null;
+      let order = null;
+      if (istek.mod === 'oco') {
+        const ocoClient = require('../oco/client.cjs');
+        const ocoWindow = require('../oco/window.cjs');
+        try {
+          order = await ocoClient.getChangeOrder(istek.ocoNumber);
+        } catch (e) {
+          return reddet(ocoClient.httpStatus(e), e.message);
+        }
+        const pi = ocoWindow.extractPlannedInterruption(order.payload);
+        if (!pi || !pi.startDate) {
+          return reddet(400, `OCO ${istek.ocoNumber} kaydında planlanan kesinti tarihi yok; işlem yapılmadı.`);
+        }
+        pencere = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+        if (!pencere.ok) return reddet(400, pencere.message);
+        if (pencere.phase === 'expired') {
+          return reddet(400, `OCO ${istek.ocoNumber} kesinti penceresi (${pencere.windowEndText}) kapanmış; başka bir OCO girin.`);
+        }
+        extraVars = rt.yeniOcoDegiskenleri(extraVars, istek.ocoNumber, pencere);
+      }
+
+      // 3) SAHIPLEN: TIMEOUT -> LAUNCHING. Kaybeden (cift tik / ikinci admin) hicbir sey yapmaz.
+      claimed = await smartStore.claimTimeoutForRetrigger(ticket.id);
+      if (!claimed) {
+        return reddet(409, 'Talep bu sırada durum değiştirdi (başka biri tetiklemiş olabilir); sayfayı yenileyin.');
+      }
+      if (smart.durum !== 'onayli') {
+        require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'smart_talep_yeniden_tetikle', { ticketId: ticket.id, mod: istek.mod, smartStatusCode: smart.statusCode });
+      }
+      const ocoStore = require('../oco/store.cjs');
+      const ocoRecordId = pl.ocoRecordId ?? null;
+
+      // 4a) YENI OCO PENCERESI HENUZ ACILMADI: pencere basina AWX zamanlamasi. Portal'da da
+      // OCO kaydi olur (ekranda gorunur, iptal edilince AWX schedule'i silinir): bagli kayit varsa
+      // o guncellenir, yoksa / guncellenemezse yeni AWX_SCHEDULED kaydi acilir.
+      if (pencere && pencere.phase === 'before') {
+        const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not, zamanlandi: pencere.windowStartText });
+        const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, pl.detail, {
+          name: `PORTAL_OCO_${istek.ocoNumber}_${ticket.awxTemplateId}_${Date.now()}`,
+          runAt: pencere.windowStart,
+          extraVars,
+          resolvedLaunchOptions: pl.resolvedLaunchOptions,
+          requester: await retriggerTalepSahibi(pl.username),
+        });
+        basladi = true;
+        Object.assign(sonuc, { status: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAtText: pencere.windowStartText });
+        let ocoKayit = null;
+        try {
+          const kayitAlanlari = {
+            status: 'AWX_SCHEDULED', awxScheduleId: sched.scheduleId, ocoNumber: istek.ocoNumber,
+            runAt: pencere.windowStart, windowEnd: pencere.windowEnd, message: metin,
+          };
+          if (ocoRecordId && (await ocoStore.markRetriggered(ocoRecordId, kayitAlanlari))) {
+            ocoKayit = ocoRecordId;
+          } else {
+            const rec = await ocoStore.createAwxScheduled({
+              username: ticket.username, awxServerId: server.id, awxTemplateId: ticket.awxTemplateId,
+              ocoNumber: istek.ocoNumber, ocoSubject: order?.result?.OcoWfIdSubject || order?.result?.Subject || null,
+              runAt: pencere.windowStart, windowEnd: pencere.windowEnd, awxScheduleId: sched.scheduleId,
+              pendingLaunch: {
+                ...pl, ocoRecordId: undefined, extraVars, ocoNumber: istek.ocoNumber,
+                ocoWindowStartIso: pencere.windowStart.toISOString(), ocoWindowEndIso: pencere.windowEnd.toISOString(),
+              },
+              ownerGroups: null,
+            });
+            ocoKayit = rec.id;
+          }
+        } catch (e) {
+          console.warn(`[Smart] ticket #${ticket.id} yeniden tetikleme: OCO kaydi yazilamadi (AWX schedule ${sched.scheduleId} KURULDU):`, e.message);
+        }
+        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAt: pencere.windowStartText, ocoKayit });
+        await retriggerBiletiYaz(smartStore, ticket.id, {
+          status: 'SCHEDULED', smartStateName: smart.stateName || ticket.smartStateName, errorMessage: metin,
+        });
+        return res.json({ ok: true, status: 'SCHEDULED', scheduled: true, runAtText: pencere.windowStartText, awxScheduleId: sched.scheduleId, ocoKayit, message: metin });
+      }
+
+      // 4b) HEMEN CALISTIR (OCO'suz talep, yeni OCO penceresi acik ya da pencere disi).
+      const outcome = await performSsLaunch(server, ticket.awxTemplateId, {
+        detail: pl.detail,
+        extraVars,
+        resolvedLaunchOptions: pl.resolvedLaunchOptions,
+        specFields: pl.specFields,
+        overrides: pl.overrides,
+        username: pl.username,
+        templateName: pl.templateName,
+        req: null,
+        yutmaKorumasi: pl.yutmaKorumasi === true,
+      });
+      basladi = true;
+      const jobId = outcome?.jobId ?? null;
+      Object.assign(sonuc, { status: 'LAUNCHED', jobId });
+      const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not });
+      let ocoKayit = null;
+      if (ocoRecordId) {
+        try {
+          const yazildi = await ocoStore.markRetriggered(ocoRecordId, {
+            status: 'LAUNCHED', awxJobId: jobId, ocoNumber: istek.ocoNumber || null,
+            windowEnd: pencere ? pencere.windowEnd : null, message: metin,
+          });
+          ocoKayit = yazildi ? ocoRecordId : null;
+          if (!yazildi) console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilmadi (kayit FAILED degil).`);
+        } catch (e) {
+          console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilamadi:`, e.message);
+        }
+      }
+      denetle('selfservice_smart_ticket_retrigger', { sonuc: 'LAUNCHED', jobId, ocoKayit });
+      await retriggerBiletiYaz(smartStore, ticket.id, {
+        status: 'LAUNCHED', smartStateName: smart.stateName || ticket.smartStateName, awxJobId: jobId, errorMessage: metin,
+      });
+      return res.json({ ok: true, status: 'LAUNCHED', jobId, awxServerId: ticket.awxServerId, ocoKayit, message: metin });
+    } catch (err) {
+      if (basladi) {
+        // Is AWX'te kosuyor / zamanli; yalniz bilet kaydi yazilamadi. Gercek sonuc + uyari doner.
+        console.warn(`[Smart] ticket #${denetim.ticketId} yeniden tetiklendi ama bilet yazilamadi:`, err.message);
+        denetle('selfservice_smart_ticket_retrigger', { ...sonuc, sonuc: sonuc.status, biletYazilamadi: true, hata: String(err.message).slice(0, 500) });
+        return res.json({
+          ok: true, warning: true, ...sonuc, scheduled: sonuc.status === 'SCHEDULED',
+          message: `İş AWX'te ${sonuc.status === 'SCHEDULED' ? `${sonuc.runAtText} tarihine zamanlandı` : `başlatıldı (job #${sonuc.jobId})`} ancak talep kaydı güncellenemedi (${err.message}); kayıt "başlatılıyor" durumunda kalabilir.`,
+        });
+      }
+      if (claimed) {
+        // Sahiplenildi ama AWX cagrisi hata verdi: bilet LAUNCHING'de asili kalmasin.
+        await smartStore.markState(claimed.id, {
+          status: 'ERROR', smartStateName: claimed.smartStateName,
+          errorMessage: `Admin ${admin} yeniden tetikledi ama AWX çağrısı başarısız: ${err.message}`.slice(0, 2000),
+          resolved: true, expected: 'LAUNCHING',
+        }).catch((e) => console.warn('[Smart] yeniden tetikleme ERROR yazilamadi:', e.message));
+        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'ERROR', hata: String(err.message).slice(0, 500) });
+      } else {
+        denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'HATA', hata: String(err.message).slice(0, 500) });
+      }
+      res.status(err.status && err.status >= 400 && err.status < 600 ? err.status : 500).json({ ok: false, message: err.message });
     }
   });
 
@@ -6186,9 +6399,84 @@ async function getSurveySpecOnServer(serverId, templateId) {
   const token = await getTokenForServer(server);
   const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/survey_spec/`);
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('AWX survey_spec yanıtı nesne değil.');
-  if (data.spec === undefined) return { spec: [] };
+  // name / description: Self Servis Tasima survey yazimi kaynagin kendi degerlerini korur.
+  const ek = { name: typeof data.name === 'string' ? data.name : '', description: typeof data.description === 'string' ? data.description : '' };
+  if (data.spec === undefined) return { spec: [], ...ek };
   if (!Array.isArray(data.spec)) throw new Error('AWX survey_spec.spec alanı liste değil.');
-  return { spec: data.spec };
+  return { spec: data.spec, ...ek };
+}
+
+// ---------------------------------------------------------------------------
+// SELF SERVIS TASIMA (2026-11-10, maestro2 -> maestro3) icin dar sarmalayicilar.
+// awxRequestToServer DISARI ACILMAZ; tasima modulu yalniz bunlari kullanir. Hepsi hata
+// FIRLATIR (cagiran "olculemedi" der). Yazicilar YALNIZ verilen sunucuya yazar.
+// ---------------------------------------------------------------------------
+
+/** Ham job template detayi (GET /api/v2/job_templates/<id>/). */
+async function getTemplateDetailOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
+  if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
+  return t;
+}
+
+/**
+ * Survey spec'ini hedef template'e yazar: POST survey_spec -> PATCH survey_enabled -> GERI OKU.
+ * Parola varsayilanlari bos yazilir. Donus { ok, fark, surveyEnabled, hash } (ss-tasima.cjs surveyYaz).
+ */
+async function writeSurveySpecOnServer(serverId, templateId, spec, opts = {}) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const token = await getTokenForServer(server);
+  const istek = (method, pathname, body) => awxRequestToServer(server, token, method, pathname, body);
+  return require('./ss-tasima.cjs').surveyYaz(istek, templateId, spec, opts);
+}
+
+/** Yalniz KAPATMA desteklenir (Survey Tasarimcisi kullanan servis icin); geri okuyup dogrular. */
+async function setSurveyEnabledOnServer(serverId, templateId, enabled) {
+  if (enabled !== false) throw Object.assign(new Error('Yalnız survey kapatma desteklenir.'), { status: 400 });
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const token = await getTokenForServer(server);
+  const istek = (method, pathname, body) => awxRequestToServer(server, token, method, pathname, body);
+  return require('./ss-tasima.cjs').surveyKapat(istek, templateId);
+}
+
+/** Tek is: { id, status, jobTemplate, finished }. 404 -> status 'missing'. */
+async function getJobOnServer(serverId, jobId) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(jobId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  try {
+    const j = await awxRequestToServer(server, token, 'GET', `/api/v2/jobs/${id}/`);
+    return {
+      id,
+      status: String((j && j.status) || ''),
+      jobTemplate: j && j.job_template != null ? Number(j.job_template) : null,
+      finished: (j && j.finished) || null,
+    };
+  } catch (err) {
+    if (err && err.status === 404) return { id, status: 'missing', jobTemplate: null, finished: null };
+    throw err;
+  }
+}
+
+/** Template'in ETKIN AWX zamanlamalari (ilk 100): [{ id, name }]. */
+async function listTemplateSchedulesOnServer(serverId, templateId) {
+  const server = getServerById(serverId);
+  if (!server) throw sunucuYokHatasi(serverId);
+  const id = Number(templateId);
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  const token = await getTokenForServer(server);
+  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/schedules/?enabled=true&page_size=100`);
+  const liste = data && Array.isArray(data.results) ? data.results : [];
+  return liste.map((x) => ({ id: Number(x.id), name: String(x.name || '') }));
 }
 
 /**
@@ -6267,6 +6555,12 @@ module.exports = {
   getTemplateDefaultLimitOnServer,
   listTemplateJobsOnServer,
   getSurveySpecOnServer,
+  // Self Servis Tasima (2026-11-10): dar okuyucu/yazicilar.
+  getTemplateDetailOnServer,
+  writeSurveySpecOnServer,
+  setSurveyEnabledOnServer,
+  getJobOnServer,
+  listTemplateSchedulesOnServer,
   // OpsX production onay akisi (2026-10-06): bilet acilmadan ONCE zorunlu survey
   // varsayilanlarini doldurur; onay sonrasi replay yolu bunu yapmaz.
   prefillSurveyDefaultsOnServer,

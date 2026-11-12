@@ -75,6 +75,48 @@ deposunun tamamı). `build-ca-bundle.cjs` bu TAM seti + kurumsal zincirlerinizi 
 ve sayıyı raporlar. Daha fazla "kök" diye bir şey yoktur — geri kalan tüm sertifikalar bu
 köklerin altındaki intermediate'lerdir; ihtiyaç duyulanlar fetch-ca ile zaten toplanır.
 
+## İç servisler: AWX, OCP API, Nöbetçi (2026-11-12)
+
+Bu üç entegrasyon eskiden sertifika doğrulaması **kapalı** (`rejectUnauthorized: false`) bağlanıyordu. AWX'e her istekte kimlik bilgisi, OCP API'ye cluster token'ı gidiyordu.
+
+Artık doğrulama **her zaman açık**. Ortak yardımcı `server/util/tls-guven.cjs`'tir. Güven deposu üç katmanın birleşimidir:
+
+| Katman | Kaynak |
+|---|---|
+| 1 | Node'un varsayılan deposu + `NODE_EXTRA_CA_CERTS`. `run.sh`, `release*.sh` ve systemd birimi bunu sunucunun sistem CA paketine ayarlar; kurum içi CA genelde buradadır. |
+| 2 | `CORP_CA_CERT_PATH` (yukarıdaki birleşik paket). Okunamazsa uyarı loglanır ve atlanır. |
+| 3 | Entegrasyona özel ek CA: `AWX_TLS_CA`, `OCP_TLS_CA`, `NOBETCI_TLS_CA`. Yol yanlışsa istek **gitmez** ve hata yolu söyler. |
+
+Notlar:
+
+- **Sertifika doğrulanamazsa** el sıkışma biter ve kimlik bilgisi / token **hiç gönderilmez**. Hata mesajı çözüm yolunu söyler.
+- OCP "Bağlantı Testi" bu durumda "erişilemedi" der ve `OCP_TLS_CA`'yı önerir.
+- Nöbetçi `NOBETCI_API_HOST` ile başka bir adrese bağlansa da sertifika URL'deki **gerçek ada** göre doğrulanır.
+- Ayarlar Admin › Sistem Ayarları › TLS / Sertifika altındadır. Kayıt anında geçerlidir; CA dosyası değişince yeniden okunur.
+
+### Deploy öncesi (sunucuda, bir kez)
+
+```bash
+npm run tls:dene -- --ortam prod          # AWX_URL / AWX_<n>_URL, Nöbetçi, AI, MCP
+npm run tls:dene -- --url https://<ocp-api>:6443 --entegrasyon ocp
+npm run tls:dene -- --url https://<ek-awx> --entegrasyon awx   # Admin'den eklenen AWX sunucuları
+```
+
+Betik sunucuyla aynı ortam dosyalarını ve sistem CA paketini kullanır. Admin ekranından kaydedilen değerleri görmez.
+
+- **✗ ve `UNABLE_TO_*` / `SELF_SIGNED_*`:** CA eksik. `bash scripts/fetch-ca.sh <host>` ile zinciri alın ve kök CA'yı `<ONEK>_TLS_CA` dosyasına koyun.
+- **`ERR_TLS_CERT_ALTNAME_INVALID`:** adres sertifikadaki adla yazılmamış.
+
+### Acil çıkış (kalıcı çözüm değil)
+
+`AWX_TLS_DOGRULAMA=kapali` (ya da `OCP_` / `NOBETCI_`) **yalnız o entegrasyonda** doğrulamayı kapatır.
+
+- Yalnız tam `kapali` değeri kapatır.
+- Restart gerekmez.
+- Log'a `[TLS] ... KAPALI` uyarısı düşer.
+
+CA'yı tanımlayıp ayarı geri alın.
+
 ## Sorun giderme matrisi
 
 | Hata | Anlamı | Çözüm |

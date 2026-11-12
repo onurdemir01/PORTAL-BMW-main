@@ -74,9 +74,15 @@ function buildDispatcher(targetUrl, name) {
     corporateFileCount,
   } = buildCombinedCa();
 
+  // Guvensiz TLS modu yalnizca kurumsal CA hic yuklenmemisse, gecici teshis amaciyla
+  // kullanilabilir. Deger HESAPLANIR; kaynakta sabit `false` bulunmaz
+  // (server/__tests__/tls-dogrulama.test.cjs bekcisi).
+  const guvensizIstendi = process.env.MCP_TLS_INSECURE === '1';
+  const dogrula = !(guvensizIstendi && corporateFileCount === 0);
+
   const tlsOpts = {
     ca,
-    rejectUnauthorized: true,
+    rejectUnauthorized: dogrula,
     servername: target.hostname,
   };
 
@@ -87,23 +93,14 @@ function buildDispatcher(targetUrl, name) {
     corporatePemBlocks: corporateFileCount,
     addedCorporateCertificates: corporateCount,
     totalCertificates: ca.length,
-    rejectUnauthorized: true,
+    rejectUnauthorized: dogrula,
   });
 
-  /*
-   * Guvensiz TLS modu yalnizca kurumsal CA hic yuklenmemisse,
-   * gecici teshis amaciyla kullanilabilir.
-   */
-  if (
-    process.env.MCP_TLS_INSECURE === '1' &&
-    corporateFileCount === 0
-  ) {
-    tlsOpts.rejectUnauthorized = false;
-
+  if (!dogrula) {
     console.warn(
       `[MCP:${name}] TLS dogrulamasi KAPALI. Bu ayar yalnizca gecici teshis icin kullanilmalidir.`
     );
-  } else if (process.env.MCP_TLS_INSECURE === '1') {
+  } else if (guvensizIstendi) {
     console.warn(
       `[MCP:${name}] Kurumsal CA mevcut; MCP_TLS_INSECURE yok sayildi.`
     );

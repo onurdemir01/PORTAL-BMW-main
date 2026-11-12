@@ -101,7 +101,7 @@ test('OC3: sayfalama - toplam kadar ceker, bos sayfada durur, sinirda TRUNCATED 
     { SearchChangeOrderWithOffsetResult: { TotalCount: 3, Result: [kayit(1), kayit(2)] } },
     { SearchChangeOrderWithOffsetResult: { TotalCount: 3, Result: [kayit(3)] } },
   ]);
-  const r = await searchChangeOrders({ groupId: '6203', fetchPage: iki });
+  const r = await searchChangeOrders({ groupId: '6203', fetchPage: iki, roller: ['sorumlu'] });
   assert.equal(r.fetched, 3, 'ikinci sayfa alinmamis - kayitlar SESSIZCE kayboluyor');
   assert.equal(r.total, 3);
   assert.equal(r.truncated, false);
@@ -111,7 +111,7 @@ test('OC3: sayfalama - toplam kadar ceker, bos sayfada durur, sinirda TRUNCATED 
     { SearchChangeOrderWithOffsetResult: { TotalCount: 999, Result: [kayit(1)] } },
     { SearchChangeOrderWithOffsetResult: { TotalCount: 999, Result: [] } },
   ]);
-  const r2 = await searchChangeOrders({ groupId: '6203', fetchPage: bos });
+  const r2 = await searchChangeOrders({ groupId: '6203', fetchPage: bos, roller: ['sorumlu'] });
   assert.equal(r2.fetched, 1);
   assert.equal(r2.truncated, false, 'bos sayfa "kirpildi" sayilmamali');
 
@@ -119,7 +119,7 @@ test('OC3: sayfalama - toplam kadar ceker, bos sayfada durur, sinirda TRUNCATED 
   const sonsuz = sahifa([
     { SearchChangeOrderWithOffsetResult: { TotalCount: 100000, Result: [kayit(1)] } },
   ]);
-  const r3 = await searchChangeOrders({ groupId: '6203', fetchPage: sonsuz });
+  const r3 = await searchChangeOrders({ groupId: '6203', fetchPage: sonsuz, roller: ['sorumlu'] });
   assert.equal(r3.truncated, true, 'eksik liste "tam liste" gibi donuyor');
   assert.ok(sonsuz.cagriSayisi() <= MAX_PAGES, 'sayfa ust siniri uygulanmiyor (sonsuz dongu)');
 });
@@ -197,7 +197,7 @@ test('OC6: sayfa ofseti HAM kayit sayisidir, ekrana cikan satir sayisi degil', a
     i += 1;
     return s;
   };
-  const r = await searchChangeOrders({ groupId: '6203', fetchPage: cek });
+  const r = await searchChangeOrders({ groupId: '6203', fetchPage: cek, roller: ['sorumlu'] });
   // Ofset `rows.length` olsaydi ikinci istek 1'den baslar, 2 numarali kayit ATLANIRDI.
   assert.deepEqual(ofsetler.slice(0, 2), [0, 2], 'ofset dusurulen kayitlari saymamis');
   assert.deepEqual(
@@ -237,8 +237,8 @@ test('OC7: 400 mesaji OCO NUMARASINI degil, cagrilan ADRESI gosterir', () => {
 test('OC8: arama adresi ayarin YOL/SORGU kismindan bagimsiz kurulur', () => {
   const BEKLENEN =
     'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc' +
-    '/Change/SearchChangeOrderWithOffset/0/?count=100&pcabRequired=-1&isAgentPatch=-1' +
-    '&changeEnvironment=-1&parameterChange=-1&openningGroupId=6203';
+    '/Change/SearchChangeOrderWithOffset/0/?count=100&isAgentPatch=-1' +
+    '&changeEnvironment=-1&parameterChange=-1&responsibleGroupId=6203';
   const ayarlar = [
     // URETIMDEKI GERCEK DEGER.
     'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/?wfInstanceId=',
@@ -291,4 +291,50 @@ test('OC9: OCO numarasi KOPYALANABILIR ve kopyalama satiri acmaz', () => {
   );
   // Klavye erisimi KAYBOLMAMALI: div'in Enter/Space ile calismasi sart.
   assert.match(kod, /e\.key === 'Enter' \|\| e\.key === ' '/, 'satir klavyeyle acilamiyor');
+});
+
+// OC10 (kullanici, 2026-11-12): "bizim actigimiz OCO'lar kayboldu, hem bizim actigimiz hem bize
+// acilan OCO'lari ayni anda gosteremez miyiz?" -> iki sorgu (openningGroupId + responsibleGroupId)
+// birlesik; her satir hangi sorgudan geldigini tasir; biri duserse digeri gosterilir ve SOYLENIR.
+test('OC10: acan + sorumlu sorgulari birlesir; ortak OCO bir kez, iki iliskiyle; biri duserse eksik', async () => {
+  const BAS =
+    'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc' +
+    '/Change/SearchChangeOrderWithOffset/0/?count=100';
+  assert.equal(
+    sayfaUrl({ baseUrl: 'https://servicerepository' }, 0, '6203', 'acan'),
+    `${BAS}&pcabRequired=-1&isAgentPatch=-1&changeEnvironment=-1&parameterChange=-1&openningGroupId=6203`,
+  );
+  const kayit = (id) => ({ ...ORNEK, OcoWfInstanceId: id });
+  const sayfa = (ids) => ({ SearchChangeOrderWithOffsetResult: { TotalCount: ids.length, Result: ids.map(kayit) } });
+  const roller = [];
+  const r = await searchChangeOrders({
+    groupId: '6203',
+    fetchPage: async (skip, rol) => {
+      roller.push(rol);
+      if (skip > 0) return sayfa([]);
+      return rol === 'acan' ? sayfa([1, 2]) : sayfa([2, 3]);
+    },
+  });
+  assert.deepEqual([...new Set(roller)].sort(), ['acan', 'sorumlu'], 'iki sorgu da cagrilmali');
+  assert.deepEqual(r.rows.map((x) => x.oco), [1, 2, 3]);
+  const iliski = Object.fromEntries(r.rows.map((x) => [x.oco, [...x.iliski].sort()]));
+  assert.deepEqual(iliski, { 1: ['acan'], 2: ['acan', 'sorumlu'], 3: ['sorumlu'] });
+  assert.equal(r.total, 3, 'ortak OCO iki kez sayilmis');
+  assert.deepEqual(r.eksik, []);
+
+  const yarim = await searchChangeOrders({
+    groupId: '6203',
+    fetchPage: async (skip, rol) => {
+      if (rol === 'acan') throw new Error('zaman asimi');
+      return skip > 0 ? sayfa([]) : sayfa([3]);
+    },
+  });
+  assert.deepEqual(yarim.rows.map((x) => x.oco), [3], 'bir sorgu dustu diye liste bosalmamali');
+  assert.equal(yarim.eksik.length, 1);
+  assert.match(yarim.eksik[0].message, /açtığımız OCO'lar alınamadı: zaman asimi/);
+
+  await assert.rejects(
+    searchChangeOrders({ groupId: '6203', fetchPage: async () => { throw new Error('kapali'); } }),
+    /kapali/,
+  );
 });

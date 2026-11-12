@@ -284,6 +284,72 @@ export const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'server/ai/ca.cjs (buildCombinedCa)',
   },
   {
+    key: 'AWX_TLS_CA',
+    label: 'AWX Ek CA Dosyası',
+    group: 'TLS / Sertifika',
+    description:
+      "AWX isteklerinde (her istekte kimlik bilgisi gider) sertifika doğrulanırken sistem CA paketine (NODE_EXTRA_CA_CERTS) ve CORP_CA_CERT_PATH'e EK olarak güvenilecek PEM dosyası. Sunucunun sertifikası iç bir CA ile imzalıysa ve o CA sistem paketinde yoksa doldurun. Önce sunucuda deneyin: npm run tls:dene. Kayıt anında geçerlidir; dosya değişince yeniden okunur.",
+    required: false,
+    example: '/etc/pki/tls/certs/awx-ca.pem',
+    usedIn: 'server/util/tls-guven.cjs (server/ansible/runner.cjs)',
+  },
+  {
+    key: 'AWX_TLS_DOGRULAMA',
+    label: 'AWX TLS Doğrulaması',
+    group: 'TLS / Sertifika',
+    description:
+      "Boş / acik = sertifika doğrulanır (varsayılan). kapali = ACİL ÇIKIŞ: doğrulama kapanır, kimlik bilgileri doğrulanmamış bağlantıdan gider ve log'a uyarı düşer. Kalıcı çözüm değildir; CA'yı AWX_TLS_CA ile verip bu ayarı geri alın. Kayıt anında geçerlidir.",
+    required: false,
+    example: 'acik',
+    usedIn: 'server/util/tls-guven.cjs (server/ansible/runner.cjs)',
+    secenekler: ['acik', 'kapali'],
+    kritik: true,
+  },
+  {
+    key: 'OCP_TLS_CA',
+    label: 'OCP API Ek CA Dosyası',
+    group: 'TLS / Sertifika',
+    description:
+      "OCP cluster API bağlantı testinde (katalogdaki token gider) sertifika doğrulanırken sistem CA paketine (NODE_EXTRA_CA_CERTS) ve CORP_CA_CERT_PATH'e EK olarak güvenilecek PEM dosyası. Sunucunun sertifikası iç bir CA ile imzalıysa ve o CA sistem paketinde yoksa doldurun. Önce sunucuda deneyin: npm run tls:dene. Kayıt anında geçerlidir; dosya değişince yeniden okunur.",
+    required: false,
+    example: '/etc/pki/tls/certs/ocp-ca.pem',
+    usedIn: 'server/util/tls-guven.cjs (server/logx/v2/ocp-health.cjs, server/ansible/runner.cjs)',
+  },
+  {
+    key: 'OCP_TLS_DOGRULAMA',
+    label: 'OCP API TLS Doğrulaması',
+    group: 'TLS / Sertifika',
+    description:
+      "Boş / acik = sertifika doğrulanır (varsayılan). kapali = ACİL ÇIKIŞ: doğrulama kapanır, kimlik bilgileri doğrulanmamış bağlantıdan gider ve log'a uyarı düşer. Kalıcı çözüm değildir; CA'yı OCP_TLS_CA ile verip bu ayarı geri alın. Kayıt anında geçerlidir.",
+    required: false,
+    example: 'acik',
+    usedIn: 'server/util/tls-guven.cjs (server/logx/v2/ocp-health.cjs, server/ansible/runner.cjs)',
+    secenekler: ['acik', 'kapali'],
+    kritik: true,
+  },
+  {
+    key: 'NOBETCI_TLS_CA',
+    label: 'Nöbetçi API Ek CA Dosyası',
+    group: 'TLS / Sertifika',
+    description:
+      "Nöbetçi API isteklerinde sertifika doğrulanırken sistem CA paketine (NODE_EXTRA_CA_CERTS) ve CORP_CA_CERT_PATH'e EK olarak güvenilecek PEM dosyası. Sunucunun sertifikası iç bir CA ile imzalıysa ve o CA sistem paketinde yoksa doldurun. Önce sunucuda deneyin: npm run tls:dene. Kayıt anında geçerlidir; dosya değişince yeniden okunur.",
+    required: false,
+    example: '/etc/pki/tls/certs/nobetci-ca.pem',
+    usedIn: 'server/util/tls-guven.cjs (server/nobetci/index.cjs)',
+  },
+  {
+    key: 'NOBETCI_TLS_DOGRULAMA',
+    label: 'Nöbetçi API TLS Doğrulaması',
+    group: 'TLS / Sertifika',
+    description:
+      "Boş / acik = sertifika doğrulanır (varsayılan). kapali = ACİL ÇIKIŞ: doğrulama kapanır, kimlik bilgileri doğrulanmamış bağlantıdan gider ve log'a uyarı düşer. Kalıcı çözüm değildir; CA'yı NOBETCI_TLS_CA ile verip bu ayarı geri alın. Kayıt anında geçerlidir.",
+    required: false,
+    example: 'acik',
+    usedIn: 'server/util/tls-guven.cjs (server/nobetci/index.cjs)',
+    secenekler: ['acik', 'kapali'],
+    kritik: true,
+  },
+  {
     key: 'AI_PROVIDER',
     label: 'AI Sağlayıcı',
     group: 'Yapay zekâ',
@@ -905,7 +971,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     label: 'OCO Takvimi Grup Kimliği',
     group: 'OCO',
     description:
-      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki openningGroupId). Boş bırakılırsa 6203 kullanılır.',
+      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki responsibleGroupId: değişikliği yapacak sorumlu ekip). Boş bırakılırsa 6203 kullanılır.',
     required: false,
     example: '6203',
     usedIn: 'server/oco/search.cjs',

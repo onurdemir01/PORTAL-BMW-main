@@ -12,6 +12,7 @@ import {
   ArrowDownTrayIcon,
   XCircleIcon,
   ExclamationTriangleIcon,
+  PlayIcon,
 } from '@heroicons/react/24/outline';
 import { ansibleApi, type AdminSmartTicket } from '@/api/ansibleApi';
 import { toast } from '@/hooks/useToast';
@@ -21,6 +22,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDateTime as fmt } from '@/utils/datetime';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
+import SmartRetriggerModal from './SmartRetriggerModal';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -35,6 +37,7 @@ const STATUS_META: Record<string, { label: string; className: string }> = {
     className: 'bg-green-50 text-green-700 border-green-200',
   },
   REJECTED: { label: 'Reddedildi', className: 'bg-red-50 text-red-700 border-red-200' },
+  SCHEDULED: { label: 'Zamanlandı', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   TIMEOUT: { label: 'Zaman Aşımı', className: 'bg-gray-100 text-gray-600 border-gray-200' },
   ERROR: { label: 'Hata', className: 'bg-red-50 text-red-700 border-red-200' },
   CANCELLED: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-gray-200' },
@@ -84,6 +87,8 @@ export default function SmartTicketsTab() {
   const [cancelTarget, setCancelTarget] = useState<AdminSmartTicket | null>(null);
   const [cancelNote, setCancelNote] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  // Zaman asimina dusmus talebi admin yeniden tetikler (2026-11-11); null ise modal kapali.
+  const [retriggerTarget, setRetriggerTarget] = useState<AdminSmartTicket | null>(null);
 
   const load = useCallback(
     async (nextOffset = offset) => {
@@ -414,6 +419,19 @@ export default function SmartTicketsTab() {
                               İptal
                             </button>
                           )}
+                          {t.status === 'TIMEOUT' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRetriggerTarget(t);
+                              }}
+                              title="Zaman aşımına uğrayan talebi admin olarak tetikle"
+                              className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                              <PlayIcon className="w-3.5 h-3.5" />
+                              Tetikle
+                            </button>
+                          )}
                         </td>
                       </tr>
                       {open && (
@@ -516,6 +534,17 @@ export default function SmartTicketsTab() {
               </button>
             </div>
           </div>
+
+          {retriggerTarget && (
+            <SmartRetriggerModal
+              ticket={retriggerTarget}
+              onClose={() => setRetriggerTarget(null)}
+              onDone={() => {
+                setRetriggerTarget(null);
+                load(offset);
+              }}
+            />
+          )}
 
           {cancelTarget && (
             <div

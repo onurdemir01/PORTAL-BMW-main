@@ -6,8 +6,16 @@
 //
 // Uç (kullanıcının verdiği):
 //   GET {OCO_API_URL}/ChangeManagement/ChangeManagementServiceRepository.svc/Change/
-//       SearchChangeOrderWithOffset/{skip}/?count=100&pcabRequired=-1&isAgentPatch=-1
-//       &changeEnvironment=-1&parameterChange=-1&openningGroupId={grup}
+//       SearchChangeOrderWithOffset/{skip}/?count=100&isAgentPatch=-1
+//       &changeEnvironment=-1&parameterChange=-1&responsibleGroupId={grup}
+//
+// IKI SORGU BIRLESIK (kullanici, 2026-11-12): `openningGroupId` yalniz ekibin ACTIGI OCO'lari,
+// `responsibleGroupId` degisikligi YAPACAK ekip biz olan OCO'lari getiriyor. Yalniz ikincisine
+// gecilince acilanlar kayboldu ("hem bizim actigimiz hem bize acilan ayni anda"). Iki sorgu
+// paralel cekilir, OCO numarasina gore birlestirilir; her satir hangi sorgudan geldigini
+// (`iliski`: 'acan' | 'sorumlu') tasir. Her sorgu kullanicinin verdigi parametrelerle birebir:
+// 'acan' pcabRequired=-1 tasir, 'sorumlu' tasimaz. Bir sorgu duserse digeri yine gosterilir ve
+// eksik olan SOYLENIR (`eksik`); ikisi de duserse hata.
 //
 // İSTEK DESENİ client.cjs İLE AYNI: undici dispatcher + kurumsal CA + boyut sınırı.
 // İkinci bir istek yolu açmak, TLS/proxy/timeout kurallarının bir gün ayrışması demekti.
@@ -123,15 +131,18 @@ function aramaKoku(baseUrl) {
   return `${u.origin}${SEARCH_PATH}`;
 }
 
-function sayfaUrl(cfg, skip, groupId) {
+const ROLLER = ['acan', 'sorumlu'];
+const ROL_ADI = { acan: 'açtığımız', sorumlu: 'bize açılan (sorumlu ekip)' };
+
+function sayfaUrl(cfg, skip, groupId, rol = 'sorumlu') {
   const u = new URL(`${aramaKoku(cfg.baseUrl)}${Number(skip) || 0}/`);
   u.searchParams.set('count', String(PAGE_SIZE));
-  // Kullanıcının verdiği çağrıdaki süzgeçler: -1 = "hepsi".
-  u.searchParams.set('pcabRequired', '-1');
+  // Kullanıcının verdiği çağrılardaki süzgeçler: -1 = "hepsi".
+  if (rol === 'acan') u.searchParams.set('pcabRequired', '-1');
   u.searchParams.set('isAgentPatch', '-1');
   u.searchParams.set('changeEnvironment', '-1');
   u.searchParams.set('parameterChange', '-1');
-  u.searchParams.set('openningGroupId', String(groupId));
+  u.searchParams.set(rol === 'acan' ? 'openningGroupId' : 'responsibleGroupId', String(groupId));
   return u.toString();
 }
 
@@ -196,10 +207,12 @@ function aramaHatasi(statusCode, text, url, grup) {
 }
 
 /**
- * Grubun TÜM OCO'larını çeker (sayfalayarak) ve kronolojik döndürür.
- * @returns {{ rows: object[], total: number, fetched: number, truncated: boolean }}
+ * Grubun actigi VE sorumlu oldugu TUM OCO'lari ceker (iki sorgu, sayfalayarak), OCO numarasina
+ * gore birlestirir ve kronolojik dondurur. fetchPage(skip, rol) testler icindir.
+ * @returns {{ rows: object[], total: number, fetched: number, truncated: boolean,
+ *   kaynak: object, eksik: {rol: string, message: string}[] }}
  */
-async function searchChangeOrders({ groupId, fetchPage } = {}) {
+async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) {
   const cfg = getConfig();
   if (!cfg.baseUrl) {
     throw fail('OCO servisi yapılandırılmamış (Admin > Sistem > OCO_API_URL).', 503);
@@ -209,8 +222,42 @@ async function searchChangeOrders({ groupId, fetchPage } = {}) {
     throw fail('OCO arama grubu tanımlı değil (OCO_SEARCH_GROUP_ID).', 503);
   }
 
-  const cek = fetchPage || ((skip) => httpPage(cfg, skip, grup));
+  const sonuclar = await Promise.allSettled(
+    roller.map((rol) =>
+      tekSorgu(fetchPage ? (skip) => fetchPage(skip, rol) : (skip) => httpPage(cfg, skip, grup, rol)),
+    ),
+  );
+  const basarili = sonuclar.filter((s) => s.status === 'fulfilled');
+  if (!basarili.length) throw sonuclar[0].reason;
 
+  const birlesik = new Map();
+  const kaynak = {};
+  const eksik = [];
+  let truncated = false;
+  sonuclar.forEach((s, i) => {
+    const rol = roller[i];
+    if (s.status !== 'fulfilled') {
+      eksik.push({ rol, message: `${ROL_ADI[rol] || rol} OCO'lar alınamadı: ${s.reason?.message || s.reason}` });
+      return;
+    }
+    const r = s.value;
+    kaynak[rol] = { total: r.total, fetched: r.fetched, truncated: r.truncated };
+    if (r.truncated) truncated = true;
+    for (const row of r.rows) {
+      const var_ = birlesik.get(row.oco);
+      if (var_) {
+        if (!var_.iliski.includes(rol)) var_.iliski.push(rol);
+      } else birlesik.set(row.oco, { ...row, iliski: [rol] });
+    }
+  });
+  const rows = sortChronological([...birlesik.values()]);
+  // total: birlesik benzersiz OCO sayisi (iki sorguda da gelen OCO bir kez). Kirpma varsa
+  // servisin sayilari kaynak[rol].total'da.
+  return { rows, total: rows.length, fetched: rows.length, truncated, kaynak, eksik };
+}
+
+/** Tek sorgunun TUM sayfalari. */
+async function tekSorgu(cek) {
   const rows = [];
   // OFSET HAM KAYIT SAYISIDIR, ekrana çıkan satır sayısı DEĞİL. `rows.length` kullanmak
   // sinsi bir hataydı: normalizeOrder numarasız bir kaydı düşürürse ofset geride kalır,
@@ -247,8 +294,8 @@ async function searchChangeOrders({ groupId, fetchPage } = {}) {
   return { rows: sortChronological(rows), total, fetched: rows.length, truncated };
 }
 
-async function httpPage(cfg, skip, grup) {
-  const url = sayfaUrl(cfg, skip, grup);
+async function httpPage(cfg, skip, grup, rol) {
+  const url = sayfaUrl(cfg, skip, grup, rol);
   const { request } = require('undici');
   let dispatcher = null;
   let statusCode;
@@ -287,6 +334,7 @@ module.exports = {
   sayfaUrl,
   normalizeOrder,
   sortChronological,
+  ROLLER,
   SEARCH_PATH,
   PAGE_SIZE,
   MAX_PAGES,

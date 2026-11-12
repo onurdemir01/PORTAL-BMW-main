@@ -13,6 +13,7 @@ const http = require('http');
 const https = require('https');
 
 const db = require('../../db/index.cjs');
+const { tlsSecenekleri, tlsHatasiAcikla } = require('../../util/tls-guven.cjs');
 const { readResponseLimited } = require('../../util/bounded-read.cjs');
 
 /** Saglik yoklamasi yanit tavani. Yanittan yalnizca 150 karakter kullaniliyor. */
@@ -33,8 +34,10 @@ async function getClusterRow(id) {
 // TOKENSIZ CALISIR ve bu BILEREK boyledir: portal katalogunda cluster token'i tutulmasi
 // ZORUNLU degil (parola/token portalda tutulmama ilkesi). Token yoksa OCP 401/403 doner —
 // bu da "adres ayakta ve TLS el sikismasi tamam" demektir, yani ERISILEBILIR sayilir.
-// Sertifika dogrulamasi kapali: kurumsal cluster'lar ic CA kullaniyor ve bu test bir
-// guvenlik kontrolu degil, bir erisilebilirlik kontroludur.
+// Sertifika DOGRULANIR (2026-11-12; eskiden kapaliydi ve katalogdaki token dogrulanmamis
+// baglantidan gidiyordu). Kurumsal cluster'lar ic CA kullaniyorsa CA sistem paketinde ya da
+// OCP_TLS_CA'da olmali (server/util/tls-guven.cjs). Dogrulanamazsa el sikisma biter, token HIC
+// gonderilmez ve sonuc cozum yoluyla birlikte "erisilemedi" olur.
 function probeApiUrl(apiUrl, token) {
   return new Promise((resolve) => {
     let parsed;
@@ -45,6 +48,13 @@ function probeApiUrl(apiUrl, token) {
       return;
     }
     const lib = parsed.protocol === 'https:' ? https : http;
+    let tlsAlanlari;
+    try {
+      tlsAlanlari = tlsSecenekleri('ocp', parsed);
+    } catch (err) {
+      resolve({ ok: false, message: err.message });
+      return;
+    }
     const request = lib.request(
       {
         hostname: parsed.hostname,
@@ -52,7 +62,7 @@ function probeApiUrl(apiUrl, token) {
         path: parsed.pathname,
         method: 'GET',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
-        rejectUnauthorized: false,
+        ...tlsAlanlari,
         timeout: 5000,
       },
       (response) => {
@@ -85,7 +95,9 @@ function probeApiUrl(apiUrl, token) {
           .catch((err) => resolve({ ok: false, message: err.message }));
       },
     );
-    request.on('error', (err) => resolve({ ok: false, message: err.message }));
+    request.on('error', (err) =>
+      resolve({ ok: false, message: tlsHatasiAcikla(err, 'ocp', parsed.hostname).message }),
+    );
     request.on('timeout', () => {
       request.destroy();
       resolve({ ok: false, message: 'Bağlantı zaman aşımına uğradı.' });
@@ -188,4 +200,4 @@ async function podStatus(id, { namespace = '', labelSelector = '' } = {}) {
   return { ok: true, output: output.output, jobId: launch.jobId, jumpHost };
 }
 
-module.exports = { testConnection, podStatus, getClusterRow };
+module.exports = { testConnection, podStatus, getClusterRow, _probeApiUrl: probeApiUrl };

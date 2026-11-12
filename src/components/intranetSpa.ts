@@ -54,7 +54,7 @@ export const DEGERLENDIRME: Record<IntranetDegerlendirme, { label: string; tone:
   'zayif-kanit': {
     label: 'SPA kanıtı zayıf',
     tone: 'neutral',
-    hint: 'Pod’da nginx yalnız ad eşleşmesiyle bulundu (servis okunamadı); SPA Keşfi’nde ayrıntı.',
+    hint: 'Pod’da nginx yalnız ad eşleşmesiyle bulundu (servis okunamadı); Nginx Hub › SPA Uygulamaları’nda ayrıntı.',
   },
   'eski-veri': {
     label: 'eski veri',

@@ -202,7 +202,7 @@ test('T4 tablo yoksa ekran calisir: trafik sessizce gosterilmez', async () => {
   const j = await getir({ config: [CFG('H1')], trafik: [], trfYok: true });
   assert.equal(hucre(j).traffic, null, 'tablo yokken olcum uyduruldu');
   assert.equal(j.trafficStats.ready, false);
-  assert.match(PAGE, /data\.trafficStats\?\.ready &&/, 'veri yoksa ozet seridi hic cizilmemeli');
+  assert.match(PAGE, /yukOzeti\?\.ready &&/, 'veri yoksa ozet seridi hic cizilmemeli');
 });
 
 test('T5 kisa pencere (gunluk rotasyon) ve first_seen yok -> idle DEGIL', async () => {

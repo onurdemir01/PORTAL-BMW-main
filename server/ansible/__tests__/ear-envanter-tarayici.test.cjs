@@ -1294,3 +1294,90 @@ test('ET18 Faz A WebSphere serverindex.xml: sunucu, WC uc noktalari, uygulamalar
   assert.deepEqual(y2.was.sunucular, []);
 });
 
+
+test('ET19 WAS JVM: server.xml jvmEntries heap / argumanlar / sistem ozellikleri; deger maskesi; olculemedi ayrimi', { skip: SKIP }, () => {
+  const kok = geciciKok('et19');
+  const was = path.join(kok, 'WebSphere', 'AppServer');
+  const dugum = path.join(was, 'profiles', 'AppSrv01', 'config', 'cells', 'hucre1', 'nodes', 'dugum1');
+  const sunucuDizini = (ad) => path.join(dugum, 'servers', ad);
+  fs.mkdirSync(sunucuDizini('srv1'), { recursive: true });
+  fs.mkdirSync(sunucuDizini('srv3'), { recursive: true });
+  fs.mkdirSync(sunucuDizini('srv4'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dugum, 'serverindex.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<serverindex:ServerIndex xmlns:serverindex="http://www.ibm.com/websphere/appserver/schemas/5.0/serverindex.xmi" hostName="wassrv01">
+  <serverEntries serverName="srv1" serverType="APPLICATION_SERVER"/>
+  <serverEntries serverName="srv2" serverType="APPLICATION_SERVER"/>
+  <serverEntries serverName="srv3" serverType="APPLICATION_SERVER"/>
+  <serverEntries serverName="srv4" serverType="APPLICATION_SERVER"/>
+  <serverEntries serverName="../srv1" serverType="APPLICATION_SERVER"/>
+</serverindex:ServerIndex>`,
+  );
+  const argumanlar = [
+    '-Xquickstart', '-XX:MaxMetaspaceSize=512m', '-Djava.awt.headless=true', '-Dapp.ortam=PROD_ACIK_A',
+    '-Djavax.net.ssl.keyStorePassword=GIZLI_B', '--password=GIZLI_C', '-javaagent:/opt/a.jar=token=GIZLI_D',
+    '-Dbayrak',
+  ].join(' ');
+  fs.writeFileSync(
+    path.join(sunucuDizini('srv1'), 'server.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<process:Server xmlns:process="http://www.ibm.com/websphere/appserver/schemas/5.0/process.xmi" xmlns:xmi="http://www.omg.org/XMI" name="srv1">
+  <processDefinitions xmi:type="processexec:JavaProcessDef" executableName="\${JAVA_HOME}/bin/java">
+    <jvmEntries initialHeapSize="512" maximumHeapSize="2048" debugArgs="-agentlib:jdwp=GIZLI_H" genericJvmArguments="${argumanlar}&#10;-Duser.timezone=Europe/Istanbul">
+      <systemProperties name="java.security.policy" value="/opt/policy"/>
+      <systemProperties name="com.ibm.ozel" value="ACIK_E"/>
+      <systemProperties name="javax.net.ssl.trustStorePassword" value="GIZLI_F"/>
+      <systemProperties name="jboss.AP&#304;_KEY" value="GIZLI_G"/>
+      <systemProperties name="degersiz"/>
+    </jvmEntries>
+  </processDefinitions>
+</process:Server>`,
+  );
+  fs.writeFileSync(path.join(sunucuDizini('srv3'), 'server.xml'), '<?xml version="1.0"?><!DOCTYPE a [<!ENTITY x "y">]><a/>');
+  fs.writeFileSync(path.join(sunucuDizini('srv4'), 'server.xml'), '<?xml version="1.0"?><process:Server xmlns:process="p" name="srv4"/>');
+  const y = tara(kokler2(kok), { EAR_JBOSS: path.join(kok, 'yok'), EAR_WAS: was });
+  const s = (ad) => y.was.sunucular.find((x) => x.ad === ad);
+  const j1 = s('srv1').jvm;
+  assert.equal(j1.durum, 'OKUNDU');
+  assert.deepEqual([j1.ilk_heap_mb, j1.en_cok_heap_mb, j1.jvm_girisi], [512, 2048, 1]);
+  // MASKE KARARI (e97b2a6a, kullanici): yalniz ADI sir desenine uyan deger gizlenir. app.ortam ve
+  // com.ibm.ozel sir degil, acik kalir; GIZLI_* yalniz gercek sirlarda (asagidaki sizinti kontrolu).
+  assert.equal(
+    j1.jvm_argumanlari,
+    '-Xquickstart -XX:MaxMetaspaceSize=512m -Djava.awt.headless=true -Dapp.ortam=PROD_ACIK_A ' +
+      '-Djavax.net.ssl.keyStorePassword=*** --password=*** -javaagent:/opt/a.jar=token=*** -Dbayrak ' +
+      '-Duser.timezone=Europe/Istanbul',
+  );
+  assert.deepEqual(j1.sistem_ozellikleri, [
+    { ad: 'java.security.policy', deger: '/opt/policy' },
+    { ad: 'com.ibm.ozel', deger: 'ACIK_E' },
+    { ad: 'javax.net.ssl.trustStorePassword', deger: '***' },
+    { ad: 'jboss.APİ_KEY', deger: '***' },
+    { ad: 'degersiz', deger: null },
+  ]);
+  assert.equal(j1.ozellik_kesildi, false);
+  // olculemedi ayrimi: dosya yok / DOCTYPE reddi / jvmEntries yok / agac disina cikan ad okunmaz
+  assert.equal(s('srv2').jvm.durum, 'YOK');
+  assert.equal(s('srv3').jvm.durum, 'REDDEDILDI');
+  assert.equal(s('srv4').jvm.durum, 'JVM_YOK');
+  assert.deepEqual(s('../srv1').jvm, { yol: '', durum: 'HATA' });
+  for (const x of ['srv2', 'srv3', 'srv4']) assert.equal(s(x).jvm.jvm_argumanlari, undefined, `${x} olculemedi ama arguman var`);
+  assert.ok(!JSON.stringify(y).includes('GIZLI'), `sir pakete girdi: ${JSON.stringify(y.was).match(/.{0,40}GIZLI.{0,10}/)}`);
+
+  // Sinirlar: 2000 karakteri asan arguman belirtec sinirinda ' ...+N'; 100'den cok ozellik -> ozellik_kesildi
+  const uzun = Array.from({ length: 400 }, (_, i) => `-Djava.x${i}=v${i}`).join(' ');
+  const cok = Array.from({ length: 120 }, (_, i) => `<systemProperties name="java.p${i}" value="${i}"/>`).join('');
+  fs.writeFileSync(
+    path.join(sunucuDizini('srv1'), 'server.xml'),
+    `<?xml version="1.0"?><process:Server xmlns:process="p"><processDefinitions><jvmEntries genericJvmArguments="${uzun}">${cok}</jvmEntries></processDefinitions></process:Server>`,
+  );
+  const j2 = tara(kokler2(kok), { EAR_JBOSS: path.join(kok, 'yok'), EAR_WAS: was }).was.sunucular.find((x) => x.ad === 'srv1').jvm;
+  assert.ok(j2.jvm_argumanlari.length <= 2000, `arguman siniri asildi: ${j2.jvm_argumanlari.length}`);
+  const m = j2.jvm_argumanlari.match(/ \.\.\.\+(\d+)$/);
+  assert.ok(m, 'kesilme isareti yok');
+  assert.equal(j2.jvm_argumanlari.split(' ').length - 1 + Number(m[1]), 400, 'kesilen sayisi tutmuyor');
+  assert.deepEqual([j2.ilk_heap_mb, j2.en_cok_heap_mb], [null, null], 'heap yoksa null (0 DEGIL)');
+  assert.equal(j2.sistem_ozellikleri.length, 100);
+  assert.equal(j2.ozellik_kesildi, true);
+});

@@ -32,21 +32,37 @@ function getConfig() {
 // DB gercekten ulasilamazken her cagrinin hemen yeniden baglanmayi denemesini onler
 // (baglanti-firtinasi riski, yuk altinda event-loop'u dolduran yavas denemeler biriktirir —
 // kurumsal AI kod incelemesi, review.md #18). Cooldown penceresinde sessizce null doner.
-async function getPool() {
-  if (_pool) return _pool;
-  if (Date.now() - _lastErrorAt < RETRY_COOLDOWN_MS) return null;
-  const cfg = getConfig();
-  if (!cfg.server || !cfg.database || !cfg.user || !cfg.password) {
-    console.warn('[PortalDB] Baglanti env vars eksik — portal DB devre disi.');
-    return null;
-  }
+//
+// Tek-ucus (single-flight): baglanti kurulurken gelen eszamanli cagrilar AYNI connect
+// sozunu (_connecting) bekler; her biri kendi ConnectionPool'unu acip ilkini sizdirmaz.
+// Hata olursa _connecting temizlenir (cooldown korunur). Hata veren eski havuz, yerine
+// yenisi kuruldugunda kapatilir (_superseded).
+let _connecting = null;
+let _superseded = null;
+
+function closeQuietly(pool) {
   try {
-    _pool = await new sql.ConnectionPool(cfg).connect();
-    _pool.on('error', (err) => {
+    if (pool && typeof pool.close === 'function') {
+      const r = pool.close();
+      if (r && typeof r.catch === 'function') r.catch(() => {});
+    }
+  } catch { /* yoksay */ }
+}
+
+async function connectOnce(cfg) {
+  try {
+    const pool = await new sql.ConnectionPool(cfg).connect();
+    pool.on('error', (err) => {
       console.error('[PortalDB] Pool hatasi — yeniden baglanilacak:', err.message);
-      _pool = null;
+      if (_pool === pool) {
+        _pool = null;
+        _superseded = pool;
+      }
       _lastErrorAt = Date.now();
     });
+    if (_superseded && _superseded !== pool) closeQuietly(_superseded);
+    _superseded = null;
+    _pool = pool;
     console.log('[PortalDB] Baglanti kuruldu:', cfg.server, '/', cfg.database);
   } catch (err) {
     console.error('[PortalDB] Baglanti hatasi:', err.message);
@@ -54,6 +70,19 @@ async function getPool() {
     _lastErrorAt = Date.now();
   }
   return _pool;
+}
+
+async function getPool() {
+  if (_pool) return _pool;
+  if (_connecting) return _connecting;
+  if (Date.now() - _lastErrorAt < RETRY_COOLDOWN_MS) return null;
+  const cfg = getConfig();
+  if (!cfg.server || !cfg.database || !cfg.user || !cfg.password) {
+    console.warn('[PortalDB] Baglanti env vars eksik — portal DB devre disi.');
+    return null;
+  }
+  _connecting = connectOnce(cfg).finally(() => { _connecting = null; });
+  return _connecting;
 }
 
 // Izleme icin havuz dolulugu (metrics-lite). mssql, altta tarn havuzu (_pool.pool) kullanir.

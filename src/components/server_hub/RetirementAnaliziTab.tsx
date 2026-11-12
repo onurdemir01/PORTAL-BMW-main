@@ -34,6 +34,7 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { EarTablo, type EarKolon } from './EarTablo';
 import { BTN, btnStil } from './RetireEtiketleri';
+import GrupKontrolu from './GrupKontrolu';
 import Rozet, { type DurumTon } from './DurumRozeti';
 import NotYonetimi, { SinifRozeti, type NotSuzgeci } from './NotYonetimi';
 
@@ -889,30 +890,20 @@ function KararKarti({
           <ol className="list-decimal ml-5 text-sm space-y-0.5" data-testid="yapilabilecekler">
             {yap.map((y, i) => (
               <li key={i}>
-                {y.tur === 'yonlendir' &&
-                y.hedef === 'server-hub?tab=retirement' &&
-                onRetirementAc &&
-                veri.uygulama ? (
-                  <button
-                    type="button"
-                    className="underline"
-                    style={{ color: 'var(--accent)' }}
-                    onClick={() =>
-                      onRetirementAc(
-                        veri.uygulama!.ad,
-                        `Retirement Analizi: ${veri.uygulama!.kararMetni} — ${veri.uygulama!.ozet}`,
-                      )
-                    }
-                  >
-                    {y.metin}
-                  </button>
-                ) : (
-                  y.metin
-                )}
+                {/* FAZ 0 (2026-11-11): dogrulamasiz "Retirement kaydi ac" dugmesi kaldirildi; yalniz metin. */}
+                {y.metin}
               </li>
             ))}
           </ol>
         </div>
+      )}
+      {veri.tur === 'app' && veri.gruplar && veri.gruplar.length > 0 && (
+        <GrupKontrolu
+          key={veri.gruplar.map((g) => `${g.anahtar}:${g.imza}:${g.durum}`).join('|')}
+          gruplar={veri.gruplar}
+          okunamadi={veri.kontrolOkunamadi}
+          onRetirementAc={onRetirementAc}
+        />
       )}
       {veri.tur === 'sunucu' && (
         <div className="space-y-1">

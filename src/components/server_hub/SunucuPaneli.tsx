@@ -23,6 +23,7 @@ import LoadError from '@/components/common/LoadError';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SeviyeRozeti } from './KurallarTab';
 import { BTN, btnStil, EtiketAyrinti, EtiketRozeti, KomutSatiri } from './RetireEtiketleri';
+import { useKodAdi, useKodGorunur } from './kodGorunurlugu';
 import {
   ETIKET_SEVIYE,
   KONTROL_DURUM,
@@ -74,8 +75,14 @@ function Bolum({
 }
 
 /** "R1 · Kapalı + auto-start açık + trafik yok" — kod tek başına anlamsız; adıyla birlikte. */
-const kurallarMetni = (kodlar: string[], kurallar: ShEtiketKurali[]) =>
-  kodlar.map((k) => `${k} · ${kurallar.find((x) => x.kural === k)?.ad || ''}`.trim()).join(' + ');
+// Kodlar kapaliyken (Bulgular > "Kodlari goster", 2026-11-11) yalniz ad; adi bilinmiyorsa kod kalir.
+const kurallarMetni = (kodlar: string[], kurallar: ShEtiketKurali[], kodGoster = true) =>
+  kodlar
+    .map((k) => {
+      const ad = kurallar.find((x) => x.kural === k)?.ad || '';
+      return kodGoster || !ad ? `${k} · ${ad}`.replace(/ · $/, '') : ad;
+    })
+    .join(' + ');
 
 /** Etiket satiri: ayrinti (eslenik kopyalar) YALNIZ acilinca cizilir ve indirilir. */
 function AcilirEtiket({
@@ -90,6 +97,7 @@ function AcilirEtiket({
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const [acik, setAcik] = useState(false);
+  const kodGoster = useKodGorunur();
   return (
     <details
       className="rounded border px-2 py-1"
@@ -100,7 +108,7 @@ function AcilirEtiket({
         <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
         <span className="font-mono text-[11px]">{konuMetni(e)}</span>
         <span style={{ color: 'var(--text-muted)' }}>
-          {kurallarMetni(e.kurallar, kurallar)} · {e.ortam} · {e.hostlar.length} sunucu
+          {kurallarMetni(e.kurallar, kurallar, kodGoster)} · {e.ortam} · {e.hostlar.length} sunucu
         </span>
         <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
       </summary>
@@ -139,6 +147,10 @@ export default function SunucuPaneli({
   /** "Yeniden tara" düğmesi (verilmezse düğme yok). */
   onTara?: (host: string) => void;
 }) {
+  const kodGoster = useKodGorunur();
+  const kodAdi = useKodAdi();
+  // Dogrulama adimi basligi: bulgu kodu ya da "R1 · ad"; kodlar kapaliyken okunur ad.
+  const adimBasligi = (b: string) => (kodGoster ? b : /^R\d+ · /.test(b) ? b.replace(/^R\d+ · /, '') : kodAdi(b));
   const [yuklenen, setD] = useState<ShHostDetail | null>(null);
   const [hata, setHata] = useState('');
   const [tazele, setTazele] = useState(0);
@@ -290,7 +302,7 @@ export default function SunucuPaneli({
               <EtiketRozeti b={ETIKET_SEVIYE[e.seviye]} kucuk />
               <span className="font-mono text-[11px]">{konuMetni(e)}</span>
               <span style={{ color: 'var(--text-muted)' }}>
-                {kurallarMetni(e.kurallar, retire?.kurallar || [])}
+                {kurallarMetni(e.kurallar, retire?.kurallar || [], kodGoster)}
               </span>
               <EtiketRozeti b={KONTROL_DURUM[e.durum]} kucuk />
               {e.retirementHazir && uyg && onRetirementAc ? (
@@ -428,7 +440,7 @@ export default function SunucuPaneli({
           >
             <summary className="cursor-pointer flex flex-wrap items-center gap-2">
               <SeviyeRozeti s={f.severity} kucuk />
-              <span className="font-mono text-[11px]">{f.code}</span>
+              {kodGoster && <span className="font-mono text-[11px]">{f.code}</span>}
               <span>{f.text}</span>
             </summary>
             {f.dogrulama ? (
@@ -467,7 +479,7 @@ export default function SunucuPaneli({
         {adimlar.length === 0 && <div>Elle kontrol gerektiren bulgu yok.</div>}
         {adimlar.map((a) => (
           <div key={a.baslik} className="space-y-1">
-            <div className="font-semibold">{a.baslik}</div>
+            <div className="font-semibold">{adimBasligi(a.baslik)}</div>
             <div style={{ color: 'var(--text-secondary)' }}>
               Ne eksik olabilir: {a.dogrulama.eksik}
             </div>

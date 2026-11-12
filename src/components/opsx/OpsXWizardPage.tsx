@@ -40,6 +40,7 @@ import WasAppSearchStep, { type WasAppSelection } from "./steps/WasAppSearchStep
 import WasJvmSelectStep, { type WasDiscoveryRef } from "./steps/WasJvmSelectStep";
 import WasConfirmStep from "./steps/WasConfirmStep";
 import WasResultPanel from "./steps/WasResultPanel";
+import { opsxOnSecimOku, derinBaglantiTemizle, type OcpHedef } from "@/utils/derinBaglanti";
 
 // WAS (WebSphere) akışı JBoss'tan AYRI adımlardan geçer (2026-10-02):
 //   legacy_product → was_app (uygulama + keşif sunucuları) → was_jvm (canlı keşif, TEK JVM,
@@ -89,15 +90,52 @@ const DUMP_OPERATIONS = new Set(["threaddump", "heapdump"]);
 // Pod silme de dump ile AYNI kesif/secim adimini kullanir (2026-09-18)
 const POD_SELECT_OPERATIONS = new Set(["threaddump", "heapdump", "poddelete"]);
 
+// ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
+// Parametreler İLK render'da bir kez okunur (lazy useState) ve mount effect'inde URL'den silinir —
+// yenilemede tekrar uygulanmaz. Adım durumu zaten client'ta (dosya başı notu) olduğu için ön-seçim
+// yalnızca BAŞLANGIÇ durumunu kurar; hiçbir kapı atlanmaz: JBoss uygulaması sunucuda
+// GET /api/opsx/hosts?app= ile, WAS uygulaması assertAppAllowed ile, OCP hedefi ve prod Smart onayı
+// POST /api/opsx/run'da yeniden doğrulanır. Her ön-dolum alanı ilk kullanımda TÜKETİLİR: kullanıcı
+// "← Geri" ile döndüğünde aynı otomatik seçim tekrar devreye girip onu ileri itmez.
+function ilkAdim(os: ReturnType<typeof opsxOnSecimOku>["onSecim"]): Step {
+  if (!os) return "platform";
+  if (os.platform === "jboss") return "legacy_app";
+  if (os.platform === "was") return "was_app";
+  return "ocp_target";
+}
+
 const OpsXWizardPage: React.FC = () => {
   const { user } = useAuth();
+  const [ilkOnSecim] = useState(() => opsxOnSecimOku(window.location.search));
+  useEffect(() => {
+    derinBaglantiTemizle();
+  }, []);
+  const [onSecimUyari, setOnSecimUyari] = useState<string | null>(ilkOnSecim.uyari);
+  // JBoss: arama kutusu bu adla dolu gelir; `otomatik` yalnız İLK girişte tek tam eşleşmeyi seçer.
+  const [jbossOnSecim, setJbossOnSecim] = useState<{ app: string; otomatik: boolean } | null>(() =>
+    ilkOnSecim.onSecim?.platform === "jboss" ? { app: ilkOnSecim.onSecim.app, otomatik: true } : null,
+  );
+  const [wasOnApp, setWasOnApp] = useState<string | null>(() =>
+    ilkOnSecim.onSecim?.platform === "was" ? ilkOnSecim.onSecim.app : null,
+  );
+  const [ocpOnSecim, setOcpOnSecim] = useState<OcpHedef | null>(() => {
+    const os = ilkOnSecim.onSecim;
+    if (os?.platform !== "ocp") return null;
+    const { app, env, tenant, namespace } = os;
+    return { app, env, tenant, namespace };
+  });
+  const [ocpOnCluster, setOcpOnCluster] = useState<string | null>(() =>
+    ilkOnSecim.onSecim?.platform === "ocp" ? ilkOnSecim.onSecim.cluster || null : null,
+  );
   // Yapilandirma dugmesi YALNIZCA adminlere gorunur. Bu KOZMETIK bir kapi:
   // /api/opsx/smart-config uclari ayrica requireAdmin tasir (bkz. server/opsx/index.cjs),
   // yani dugmeyi gizlemek tek basina bir guvenlik siniri degildir.
   const admin = user?.role === "Admin";
   const [smartConfigOpen, setSmartConfigOpen] = useState(false);
-  const [step, setStep] = useState<Step>("platform");
-  const [platform, setPlatform] = useState<OpsxPlatform | null>(null);
+  const [step, setStep] = useState<Step>(() => ilkAdim(ilkOnSecim.onSecim));
+  const [platform, setPlatform] = useState<OpsxPlatform | null>(() =>
+    !ilkOnSecim.onSecim ? null : ilkOnSecim.onSecim.platform === "ocp" ? "openshift" : "legacy",
+  );
   const [app, setApp] = useState("");
   const [jbossVersions, setJbossVersions] = useState<string[]>([]);
   const [hosts, setHosts] = useState<string[]>([]);
@@ -202,6 +240,11 @@ const OpsXWizardPage: React.FC = () => {
     setWasOperation(null);
     setWasDiscovery(null);
     setWasRun(null);
+    setOnSecimUyari(null);
+    setJbossOnSecim(null);
+    setWasOnApp(null);
+    setOcpOnSecim(null);
+    setOcpOnCluster(null);
   }
 
   // ONAY SONRASI ANA PENCERE (2026-10-14, kullanici: "Smart kaydini onayladigim halde ... ana
@@ -438,6 +481,7 @@ const OpsXWizardPage: React.FC = () => {
 
   function submitOcpTarget(v: { env: string; tenant: string; pairs: OpsxOcpPair[] }) {
     setEnv(v.env); setTenant(v.tenant); setPairs(v.pairs);
+    setOcpOnSecim(null);
     setStep("ocp_operation");
   }
 
@@ -609,6 +653,23 @@ const OpsXWizardPage: React.FC = () => {
         </div>
       )}
 
+      {onSecimUyari && (
+        <div
+          data-testid="opsx-ondolum-uyari"
+          className="flex items-start gap-2 rounded-xl border border-[var(--status-warning)] bg-[var(--status-warning-bg)] p-3 text-sm text-[var(--status-warning-text)]"
+        >
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span className="flex-1">{onSecimUyari}</span>
+          <button
+            type="button"
+            onClick={() => setOnSecimUyari(null)}
+            className="text-xs underline underline-offset-2 flex-shrink-0"
+          >
+            Kapat
+          </button>
+        </div>
+      )}
+
       <div key={step} className="card p-5 animate-slide-up">
         {step === "platform" && (
           <PlatformStep
@@ -627,8 +688,10 @@ const OpsXWizardPage: React.FC = () => {
         {step === "was_app" && (
           <WasAppSearchStep
             busy={busy}
+            initialApp={wasOnApp || undefined}
             onSubmit={(v) => {
               setError(null);
+              setWasOnApp(null);
               setWasSel(v);
               setWasTarget(null);
               setWasOperation(null);
@@ -685,7 +748,12 @@ const OpsXWizardPage: React.FC = () => {
         {step === "legacy_app" && (
           <AppSearchStep
             busy={busy}
-            onSelect={(a) => { setApp(a); setJbossVersions([]); setHosts([]); setStep("legacy_jboss_version"); }}
+            initialSearch={jbossOnSecim?.app}
+            autoSelectExact={jbossOnSecim?.otomatik}
+            onSelect={(a) => {
+              setJbossOnSecim((o) => (o ? { ...o, otomatik: false } : o));
+              setApp(a); setJbossVersions([]); setHosts([]); setStep("legacy_jboss_version");
+            }}
           />
         )}
 
@@ -707,7 +775,7 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "ocp_target" && (
-          <OcpTargetStep busy={busy} onSubmit={submitOcpTarget} />
+          <OcpTargetStep busy={busy} initial={ocpOnSecim} onSubmit={submitOcpTarget} />
         )}
 
         {step === "operation" && (
@@ -740,7 +808,7 @@ const OpsXWizardPage: React.FC = () => {
         )}
 
         {step === "ocp_cluster" && (
-          <OcpClusterPickStep env={env} tenant={tenant} busy={busy} onSubmit={submitOcpCluster} />
+          <OcpClusterPickStep env={env} tenant={tenant} busy={busy} initialCluster={ocpOnCluster} onSubmit={submitOcpCluster} />
         )}
 
         {step === "ocp_pods" && dumpType && pairs.length > 0 && (

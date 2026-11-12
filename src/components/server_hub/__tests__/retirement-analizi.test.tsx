@@ -127,7 +127,7 @@ const ayrinti = (): ShKararAyrinti => ({
       {
         tur: 'yonlendir',
         metin: 'Retirement kaydı açılabilir',
-        hedef: 'server-hub?tab=retirement',
+        hedef: 'bmw-hub?sekme=retirement',
       },
       { tur: 'elle', metin: 'Uygulama sahibine doğrulatın.' },
     ],
@@ -258,11 +258,10 @@ describe('Retirement Analizi', () => {
     expect(within(kart).getByTestId('ana-suphe')).toHaveTextContent('Şüphe: WEB_TRAFIK_YOK metin');
     const yap = within(kart).getByTestId('yapilabilecekler');
     expect(within(yap).getAllByRole('listitem').length).toBeLessThanOrEqual(3);
-    fireEvent.click(within(yap).getByRole('button', { name: 'Retirement kaydı açılabilir' }));
-    expect(onRetirementAc).toHaveBeenCalledWith(
-      'APP1',
-      expect.stringContaining('Retirement Analizi'),
-    );
+    // FAZ 0 (2026-11-11): eski sunucu yaniti yonlendirme tasisa bile karttan kayit acilamaz.
+    expect(within(yap).queryByRole('button', { name: 'Retirement kaydı açılabilir' })).toBeNull();
+    expect(within(yap).getByText('Retirement kaydı açılabilir')).toBeInTheDocument();
+    expect(onRetirementAc).not.toHaveBeenCalled();
   });
 
   it('RN3 Ayrıntı modalı: yalnız ilk bölüm açık; Bilinen ayrı; çelişki ve eksik', async () => {
@@ -434,7 +433,7 @@ describe('Retirement Analizi', () => {
     const s = readFileSync(join(__dirname, '..', 'ServerHubPage.tsx'), 'utf8');
     expect(s).toContain("{ id: 'analiz', label: 'Retirement Analizi' }");
     expect(s).toMatch(
-      /<SekmeKabi id="analiz" etkin=\{tab\}>\s*<RetirementAnaliziTab onRetirementAc=\{retirementAc\} baslangic=\{analizOneri\} \/>/,
+      /<SekmeKabi id="analiz" etkin=\{tab\}>\s*<RetirementAnaliziSekmesi onRetirementAc=\{retirementAc\} baslangic=\{analizOneri\} \/>/,
     );
   });
 });

@@ -191,14 +191,21 @@ ensure_dependencies_and_build() {
   command -v npm  >/dev/null 2>&1 || { echo "HATA: npm bulunamadi." >&2; exit 1; }
   echo "[$ENV_NAME] node: $(command -v node) $(node -v 2>/dev/null) · ek CA: ${NODE_EXTRA_CA_CERTS:-yok}"
 
-  if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
-    echo "[$ENV_NAME] node_modules yok → npm ci calistiriliyor (ilk kurulum)…"
-    (cd "$ROOT_DIR" && npm ci --no-audit --no-fund) || { echo "HATA: npm ci basarisiz." >&2; exit 1; }
-  fi
-
-  if [[ ! -f "$ROOT_DIR/dist/index.html" ]]; then
-    echo "[$ENV_NAME] dist/index.html yok → npm run build calistiriliyor (ilk kurulum)…"
-    (cd "$ROOT_DIR" && npm run build) || { echo "HATA: npm run build basarisiz." >&2; exit 1; }
+  # ILK KURULUM (2026-11-12): calisma zamani paketi (devDependencies yok, dist hazir) icin yalniz
+  # calisma zamani kurulur ve dist dogrulanir; kaynak agacta build sonrasi gelistirme paketleri
+  # silinir. Sunucuda gelistirme paketi KALMAZ (bkz. stage-lib.sh stage_bagimlilik_ve_build).
+  if [[ ! -d "$ROOT_DIR/node_modules" || ! -f "$ROOT_DIR/dist/index.html" ]]; then
+    if [[ -f "$ROOT_DIR/deploy/stage-lib.sh" ]]; then
+      # shellcheck source=/dev/null
+      source "$ROOT_DIR/deploy/stage-lib.sh"
+    fi
+    if declare -F stage_bagimlilik_ve_build >/dev/null; then
+      echo "[$ENV_NAME] node_modules ya da dist/index.html yok → kurulum (ilk kurulum)…"
+      stage_bagimlilik_ve_build "$ROOT_DIR" || { echo "HATA: kurulum basarisiz." >&2; exit 1; }
+    else
+      [[ -d "$ROOT_DIR/node_modules" ]] || (cd "$ROOT_DIR" && npm ci --no-audit --no-fund) || { echo "HATA: npm ci basarisiz." >&2; exit 1; }
+      [[ -f "$ROOT_DIR/dist/index.html" ]] || (cd "$ROOT_DIR" && npm run build) || { echo "HATA: npm run build basarisiz." >&2; exit 1; }
+    fi
   fi
 }
 

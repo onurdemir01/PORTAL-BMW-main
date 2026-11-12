@@ -34,6 +34,7 @@ import {
   TableCellsIcon,
   BookOpenIcon,
   DocumentMagnifyingGlassIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import AuditLogTab from './tabs/AuditLogTab';
 import AnsibleConfigTab from './tabs/AnsibleConfigTab';
@@ -51,6 +52,7 @@ import LogXAdminTab from './tabs/LogXAdminTab';
 import BrandingTab from './tabs/BrandingTab';
 import DbBackupTab from './tabs/DbBackupTab';
 import SmartTicketsTab from './tabs/SmartTicketsTab';
+import SelfServisTasima from './tabs/SelfServisTasima';
 
 // Sekme tanimlari. `id` = gorunurluk anahtari (`admintab:<id>`) — DEGISTIRME.
 // (Bicim `{ id: '...', label: '...' }` bekciler tarafindan okunur: scalex-validation S3/S4,
@@ -66,6 +68,7 @@ const DEFAULT_TABS = [
   { id: 'dbbackup', label: 'DB Yedekleme', icon: CircleStackIcon, hint: 'Günlük tam yedek, veritabanı doluluğu ve gece temizliği.' },
   { id: 'ansible', label: 'Ansible Info', icon: CommandLineIcon, hint: 'AWX sunucuları ve bağlantı bilgileri.' },
   { id: 'playbooks', label: 'Playbook Kayıtları', icon: BookOpenIcon, hint: 'Portal işlerinin hangi AWX job template ile koştuğu.' },
+  { id: 'sstasima', label: 'Self Servis Taşıma', icon: ArrowsRightLeftIcon, hint: 'Self Servis servislerini bir AWX sunucusundan diğerine taşır.' },
   { id: 'system', label: 'Sistem', icon: CogIcon, hint: 'Ortam değişkenleri ve çalışma zamanı ayarları.' },
   { id: 'users', label: 'Kullanıcılar', icon: UsersIcon, hint: 'Yerel kullanıcılar, roller ve LDAP eşleşmeleri.' },
   { id: 'visibility', label: 'Sayfa Erişimi', icon: EyeIcon, hint: 'Hangi sayfa/sekme kime görünür — rol, kullanıcı ve grup kuralları.' },
@@ -84,7 +87,7 @@ const TAB_BY_ID = new Map<TabId, (typeof DEFAULT_TABS)[number]>(DEFAULT_TABS.map
 // duser; bolum bosalirsa basligi da gizlenir.
 const SECTIONS: { title: string; icon: React.ElementType; ids: TabId[] }[] = [
   { title: 'Erişim', icon: KeyIcon, ids: ['users', 'visibility', 'denetimaccess', 'nginxaccess', 'cryptoaccess', 'inventoryvis'] },
-  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'ansible', 'logxv2', 'logx', 'scalex'] },
+  { title: 'Otomasyon', icon: CommandLineIcon, ids: ['playbooks', 'sstasima', 'ansible', 'logxv2', 'logx', 'scalex'] },
   { title: 'Kayıtlar', icon: ArchiveBoxIcon, ids: ['audit', 'smarttickets', 'dbbackup'] },
   { title: 'Sistem', icon: CogIcon, ids: ['system', 'branding'] },
 ];
@@ -226,6 +229,7 @@ const AdminPage: React.FC = () => {
               {activeTab === 'dbbackup' && <DbBackupTab />}
               {activeTab === 'ansible' && <AnsibleConfigTab />}
               {activeTab === 'playbooks' && <PlaybookRegistryTab />}
+              {activeTab === 'sstasima' && <SelfServisTasima />}
               {activeTab === 'system' && <SystemConfigTab />}
               {activeTab === 'users' && <UserManagementTab />}
               {activeTab === 'visibility' && <PageVisibilityTab />}

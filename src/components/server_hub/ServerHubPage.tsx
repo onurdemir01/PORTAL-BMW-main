@@ -17,6 +17,7 @@ import {
   CheckCircleIcon,
   ShieldExclamationIcon,
   ArrowDownTrayIcon,
+  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 import {
   serverHubApi,
@@ -43,12 +44,11 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
-import RebootKontroluTab from './RebootKontroluTab';
-import RetirementTab from './RetirementTab';
+import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
-import RetirementAnaliziTab from './RetirementAnaliziTab';
+import RetirementAnaliziSekmesi from './RetirementAnaliziSekmesi';
 import { AnalizAcContext } from './AnalizRozeti';
 import { EarTablo, type EarGorunum, type EarKolon } from './EarTablo';
 import { useOrtakGorunumler } from './ortakGorunumler';
@@ -56,7 +56,8 @@ import { useSunucuLimiti, LimitNotu, sunucuAdlari, limitAsildi } from './sunucuL
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { SekmeKabi, useSekmeGorunur } from './sekmeGorunurlugu';
 import * as shOnbellek from './shOnbellek';
-import RetireEtiketleriGorunum from './RetireEtiketleri';
+import KodRehberi from './KodRehberi';
+import { KodGorunurSaglayici, useKodGorunur, useKodGosterSecimi } from './kodGorunurlugu';
 import SunucuPaneli from './SunucuPaneli';
 
 const SM_BTN =
@@ -631,6 +632,9 @@ const KOD_ETIKET: Record<string, string> = {
   SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
   SCAN_COST: "tarama 10 sn'den fazla CPU harcadı",
 };
+
+/** Kodun yalniz okunur adi (kodlar kapaliyken); etiketsiz kod oldugu gibi. */
+const kodAdi = (code: string): string => KOD_ETIKET[code] || code;
 
 /** "KOD — anlami"; etiketsiz kod oldugu gibi. */
 function kodEtiketi(code: string): string {
@@ -1235,6 +1239,26 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
             envanter eksik olabilir.{' '}
           </>
         )}
+        {/* JVM FAZLASI (2026-11-11): "veri cekilen" artik envanteri asamaz (%108 sorusu); taramanin
+            envanterde karsiligi olmayan JVM'leri burada yazilir - envanter eksik sayiyor demektir. */}
+        {(c.jvm.scannedOverInventory || 0) + (c.jvm.scannedNotInInventory || 0) > 0 && (
+          <>
+            Taramada toplam {fmtNumber(c.jvm.scannedTotal ?? 0)} JVM çıktı;{' '}
+            {(c.jvm.scannedOverInventory || 0) > 0 && (
+              <>
+                {fmtNumber(c.jvm.scannedOverInventory || 0)}’i envanterin o sunucu için yazdığı sayıdan <b>fazla</b>
+                {(c.jvm.scannedNotInInventory || 0) > 0 ? ', ' : ''}
+              </>
+            )}
+            {(c.jvm.scannedNotInInventory || 0) > 0 && (
+              <>
+                {fmtNumber(c.jvm.scannedNotInInventory || 0)}’i envanterde JBoss olarak <b>görünmeyen</b>{' '}
+                {fmtNumber(c.jvm.scannedNotInInventoryHosts || 0)} sunucuda
+              </>
+            )}{' '}
+            — “veri çekilen”e sayılmadı; JVM envanteri eksik olabilir.{' '}
+          </>
+        )}
         {c.jvm.fromInventory > 0 && (
           <>
             {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b>{' '}
@@ -1458,14 +1482,15 @@ type SekmeId =
   | 'uygulama360'
   | 'analiz'
   | 'readiness'
-  | 'reboot'
-  | 'retirement'
   | 'envanter'
   | 'kurallar';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
-  // Sekmeler: Sunucular (tarama raporu) | Retirement (uygulama emeklilik akisi, 2026-09-21)
+  // Sekmeler: Server Hub envanter + goruntuleme. OPERASYON AKISLARI (Reboot Kontrolu, Retirement)
+  // 2026-11-11'de BMW Hub'a tasindi (kullanici: "Server Hub'i sadece envanterleme ve goruntuleme
+  // amacli kullaniyoruz"); Retirement'a gecis BMW Hub'in retirement sekmesine yonlendirir.
+  const navigate = useNavigate();
   const [tab, setTab] = useState<SekmeId>('hosts');
   // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
   // indirme yok). Gizli sekme yoklama yapmaz ve pencere acmaz (useSekmeGorunur).
@@ -1483,12 +1508,11 @@ export default function ServerHubPage() {
     product?: string;
     envGroup?: string;
   } | null>(null);
-  // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement sekmesinde kayit
-  // formunu uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir).
-  const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
+  // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement kayit formunu
+  // uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir). Retirement artik
+  // BMW Hub'da: oneri yonlendirme durumu (location.state) ile tasinir, URL'e uygulama adi yazilmaz.
   const retirementAc = (uygulama: string, not: string) => {
-    setRetireOneri((o) => ({ uygulama, not, no: (o ? o.no : 0) + 1 }));
-    sekmeAc('retirement');
+    navigate('/bmw-hub?sekme=retirement', { state: { retireOneri: { uygulama, not } } });
   };
   // RETIREMENT ANALIZI ROZETI (2026-11-07): Uygulama 360 / sunucu paneli "Analizde ac" -> analiz sekmesi
   // o kayit secili (tek kaynak, iki giris). Context: rozet panelin icinde, prop zinciri gerekmez.
@@ -1529,8 +1553,8 @@ export default function ServerHubPage() {
                 : tab === 'uygulama360'
                 ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
                 : tab === 'analiz'
-                ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Ekran hiçbir şey çalıştırmaz.'
-                : 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.'}
+                ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1541,8 +1565,6 @@ export default function ServerHubPage() {
               { id: 'uygulama360', label: 'Uygulama 360' },
               { id: 'analiz', label: 'Retirement Analizi' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
-              { id: 'reboot', label: 'Reboot Kontrolü' },
-              { id: 'retirement', label: 'Retirement' },
               { id: 'envanter', label: 'Uygulama Envanteri' },
               { id: 'kurallar', label: 'Kurallar & Limitler' },
             ] as const
@@ -1579,22 +1601,12 @@ export default function ServerHubPage() {
       )}
       {acilan.has('analiz') && (
         <SekmeKabi id="analiz" etkin={tab}>
-          <RetirementAnaliziTab onRetirementAc={retirementAc} baslangic={analizOneri} />
+          <RetirementAnaliziSekmesi onRetirementAc={retirementAc} baslangic={analizOneri} />
         </SekmeKabi>
       )}
       {acilan.has('readiness') && (
         <SekmeKabi id="readiness" etkin={tab}>
           <ReadinessTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('reboot') && (
-        <SekmeKabi id="reboot" etkin={tab}>
-          <RebootKontroluTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('retirement') && (
-        <SekmeKabi id="retirement" etkin={tab}>
-          <RetirementTab oneri={retireOneri} />
         </SekmeKabi>
       )}
       {acilan.has('envanter') && (
@@ -3640,6 +3652,7 @@ const autoStartFix = (f: ShFindingRow) =>
 function bulguKolonlari(
   autoStartDuzelt: (f: { host: string; fix?: ShFix | null }) => void,
   asBusy: string | null,
+  kodGoster = true,
 ): EarKolon<ShFindingRow>[] {
   const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
   return [
@@ -3699,21 +3712,13 @@ function bulguKolonlari(
     },
     {
       anahtar: 'kod',
-      baslik: 'Kod',
-      aciklama: 'Bulgu kodu ve okunur adı.',
+      // Kodlar kapaliyken (2026-11-11) baslik, siralama, kolon suzgeci ve arama okunur ada gore.
+      baslik: kodGoster ? 'Kod' : 'Bulgu türü',
+      aciklama: kodGoster ? 'Bulgu kodu ve okunur adı.' : 'Bulgunun türü (kodlar “Kodları göster” ile açılır).',
       suzgec: 'secim',
       sirala: true,
-      deger: (f) => f.code,
-      hucre: (f) => (
-        <span className="font-mono text-[11px]" title={kodEtiketi(f.code)}>
-          {f.code}
-          {KOD_ETIKET[f.code] ? (
-            <span className="block font-sans text-[10px]" style={soluk}>
-              {KOD_ETIKET[f.code]}
-            </span>
-          ) : null}
-        </span>
-      ),
+      deger: (f) => (kodGoster ? f.code : kodAdi(f.code)),
+      hucre: (f) => <KodHucresi kod={f.code} soluk={soluk} />,
     },
     {
       anahtar: 'bulgu',
@@ -3857,9 +3862,13 @@ export function FindingsTab({
   const [product, setProduct] = useState<string>(initial?.product || 'all');
   const [envGroup, setEnvGroup] = useState<string>(initial?.envGroup || 'all');
   const [fCls, setFCls] = useState<'genel' | 'ozel' | 'all'>('genel');
-  // RETIREMENT ETIKETLERI (2026-11-06, kullanici: "retiere etiketi ayri olsun bulgular ayri olsun"):
-  // ayri gorunum; sunucuya tiklayinca acilan panel de ayni veriyi kullanir. Yalniz gerekince indirilir.
-  const [gorunum, setGorunum] = useState<'bulgular' | 'etiketler'>('bulgular');
+  // RETIREMENT ETIKETLERI: 2026-11-06'da burada ayri bir alt gorunumdu; 2026-11-11'de Retirement
+  // Analizi sekmesine tasindi (kullanici: "Bulgular sayfasi tek basina olsun"). Sunucu paneli etiketleri
+  // gostermeye devam eder: veri yalniz bir satirin paneli acilinca indirilir.
+  // KODLAR (2026-11-11): ham kodlar kullaniciya kapatilabilir; kapaliyken okunur ad yazilir.
+  const [kodGoster, setKodGoster] = useKodGosterSecimi();
+  const [rehberAcik, setRehberAcik] = useState(false);
+  const rehberKapat = useCallback(() => setRehberAcik(false), []);
   // Bir satirin sunucu paneli acildi mi: etiket verisi yalniz o zaman indirilir (satir acilimi EarTablo'da).
   const [panelAcildi, setPanelAcildi] = useState(false);
   const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
@@ -3876,7 +3885,7 @@ export function FindingsTab({
       setRetireYuk(false);
     }
   }, []);
-  const retireGerek = gorunum === 'etiketler' || panelAcildi;
+  const retireGerek = panelAcildi;
   useAsyncEffect(async () => {
     if (gorunur && retireGerek && !retire) await retireYukle();
   }, [gorunur, retireGerek, retire, retireYukle]);
@@ -3936,7 +3945,9 @@ export function FindingsTab({
   useAsyncEffect(async () => {
     if (gorunur && shOnbellek.yas('findings') > shOnbellek.TAZE_MS) await load();
   }, [gorunur, load]);
-  const all = data?.findings || [];
+  // useMemo: `|| []` her render'da YENI dizi uretiyordu; asagidaki dort useMemo her seferinde
+  // yeniden hesaplaniyordu (react-hooks/exhaustive-deps).
+  const all = useMemo(() => data?.findings || [], [data?.findings]);
   const codes = useMemo(
     () =>
       [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort(),
@@ -3963,12 +3974,28 @@ export function FindingsTab({
     () => new Map((data?.findings || []).map((f, i) => [f, `${f.host}|${f.code}|${i}`])),
     [data],
   );
-  const kolonlar = useMemo(() => bulguKolonlari(autoStartDuzelt, asBusy), [autoStartDuzelt, asBusy]);
+  const kolonlar = useMemo(() => bulguKolonlari(autoStartDuzelt, asBusy, kodGoster), [autoStartDuzelt, asBusy, kodGoster]);
   const byCode = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
+  // Rehber sayaci kod suzgeci HARIC: bir kod secildikten sonra rehber yine listedeki tum turleri gosterir.
+  const kodSayaci = useMemo(() => {
+    const m = new Map<string, number>();
+    const n = qErtelenmis.trim().toLowerCase();
+    for (const f of all)
+      if (
+        (area === 'all' || f.area === area) &&
+        (sev === 'all' || f.severity === sev) &&
+        (product === 'all' || f.products.includes(product)) &&
+        (envGroup === 'all' || (f.envGroup || 'Bilinmiyor') === envGroup) &&
+        (fCls === 'all' || (f.hostClass || 'genel') === fCls) &&
+        (!n || f.host.toLowerCase().includes(n) || f.text.toLowerCase().includes(n))
+      )
+        m.set(f.code, (m.get(f.code) || 0) + 1);
+    return m;
+  }, [all, qErtelenmis, area, sev, product, envGroup, fCls]);
   const sel = 'h-8 px-2 text-xs border rounded-lg';
   const selStyle: React.CSSProperties = {
     borderColor: 'var(--border)',
@@ -3980,34 +4007,7 @@ export function FindingsTab({
       <BayatFiloBandi sf={data?.staleFleet} />
       <TaramadanDusenBandi td={data?.taramadanDusen} />
       <SemaBandi su={data?.schemaUnknown} />
-      <div className="flex items-center gap-1" role="tablist" aria-label="Bulgular görünümü">
-        {(
-          [
-            ['bulgular', 'Bulgular'],
-            ['etiketler', `Retirement etiketleri${retire ? ` (${fmtNumber(retire.ozet.toplam)})` : ''}`],
-          ] as const
-        ).map(([id, ad]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={gorunum === id}
-            onClick={() => setGorunum(id)}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg border"
-            style={{
-              borderColor: gorunum === id ? 'var(--accent)' : 'var(--border-subtle)',
-              background: gorunum === id ? 'var(--bg-elevated)' : 'var(--bg-surface)',
-              color: gorunum === id ? 'var(--text-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {ad}
-          </button>
-        ))}
-      </div>
-      {gorunum === 'etiketler' ? (
-        <RetireEtiketleriGorunum veri={retire} yukleniyor={retireYuk} onYenile={retireYukle} onRetirementAc={onRetirementAc} />
-      ) : (
-      <>
+      <KodGorunurSaglayici goster={kodGoster} ad={kodAdi}>
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={q}
@@ -4039,12 +4039,12 @@ export function FindingsTab({
           onChange={(e) => setCode(e.target.value)}
           className={sel}
           style={selStyle}
-          aria-label="bulgu kodu"
+          aria-label="bulgu türü"
         >
-          <option value="all">tüm kodlar</option>
-          {codes.map((c) => (
+          <option value="all">tüm bulgu türleri</option>
+          {(code !== 'all' && !codes.includes(code) ? [...codes, code] : codes).map((c) => (
             <option key={c} value={c}>
-              {kodEtiketi(c)}
+              {kodGoster ? kodEtiketi(c) : kodAdi(c)}
             </option>
           ))}
         </select>
@@ -4102,7 +4102,20 @@ export function FindingsTab({
           {fmtNumber(rows.length)} bulgu · {fmtNumber(new Set(rows.map((f) => f.host)).size)} sunucu
           {data?.latestScan ? ` · son tarama ${data.latestScan}` : ''}
         </span>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
+          <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
+            <input type="checkbox" checked={kodGoster} onChange={(e) => setKodGoster(e.target.checked)} />
+            Kodları göster
+          </label>
+          <button
+            type="button"
+            onClick={() => setRehberAcik(true)}
+            className="px-2.5 py-1.5 text-xs border rounded-lg inline-flex items-center gap-1"
+            style={{ borderColor: 'var(--border)' }}
+            aria-haspopup="dialog"
+          >
+            <BookOpenIcon className="w-3.5 h-3.5" /> Kod rehberi
+          </button>
           <button
             onClick={() => load(true)}
             className="px-2.5 py-1.5 text-xs border rounded-lg"
@@ -4119,7 +4132,8 @@ export function FindingsTab({
             <button
               key={c}
               onClick={() => setCode(code === c ? 'all' : c)}
-              title={kodEtiketi(c)}
+              title={kodGoster ? kodEtiketi(c) : c}
+              aria-pressed={code === c}
               className="px-2 py-0.5 rounded-full border text-[11px]"
               style={{
                 borderColor: code === c ? 'var(--accent)' : 'var(--border-subtle)',
@@ -4127,7 +4141,7 @@ export function FindingsTab({
                 color: 'var(--text-secondary)',
               }}
             >
-              {c} <b className="tabular-nums">{fmtNumber(n)}</b>
+              {kodGoster ? c : kodAdi(c)} <b className="tabular-nums">{fmtNumber(n)}</b>
             </button>
           ))}
         </div>
@@ -4146,7 +4160,7 @@ export function FindingsTab({
           ortak={ortakBulgu}
           yerelCsv={`server_hub_bulgular_${new Date().toISOString().slice(0, 10)}`}
           csvAdi="server_hub_bulgular_secili"
-          araEtiketi="tabloda ara (sunucu, kod, bulgu)"
+          araEtiketi={kodGoster ? 'tabloda ara (sunucu, kod, bulgu)' : 'tabloda ara (sunucu, bulgu türü, bulgu)'}
           bosMetin={
             all.length
               ? 'Süzgeçle eşleşen bulgu yok.'
@@ -4170,8 +4184,34 @@ export function FindingsTab({
           )}
         />
       </div>
-      </>
-      )}
+      <KodRehberi
+        acik={rehberAcik}
+        onKapat={rehberKapat}
+        ad={kodAdi}
+        listede={kodSayaci}
+        seciliKod={code}
+        onSec={(c) => {
+          setCode(c);
+          setRehberAcik(false);
+        }}
+      />
+      </KodGorunurSaglayici>
     </div>
+  );
+}
+
+/** Bulgu tablosundaki kod hucresi: kodlar kapaliyken yalniz okunur ad (2026-11-11). */
+function KodHucresi({ kod, soluk }: { kod: string; soluk: React.CSSProperties }) {
+  const goster = useKodGorunur();
+  if (!goster) return <span className="text-[12px]" title={kod}>{KOD_ETIKET[kod] || kod}</span>;
+  return (
+    <span className="font-mono text-[11px]" title={kodEtiketi(kod)}>
+      {kod}
+      {KOD_ETIKET[kod] ? (
+        <span className="block font-sans text-[10px]" style={soluk}>
+          {KOD_ETIKET[kod]}
+        </span>
+      ) : null}
+    </span>
   );
 }
