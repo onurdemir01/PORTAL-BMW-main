@@ -41,7 +41,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
-const { maskJvmArgs, degerAcik } = require('./mask.cjs');
+const { maskJvmArgs, maskText, degerAcik } = require('./mask.cjs');
 
 const BASLA = Buffer.from('@@EAR_ENVANTER_BASLA@@');
 const BITTI = Buffer.from('@@EAR_ENVANTER_BITTI@@');
@@ -206,7 +206,8 @@ function paketCoz(buf) {
 
 // WAS JVM (2026-11-08): sunucunun server.xml jvmEntries ozeti. durum OKUNDU degilse yalniz yol + durum
 // (olculemedi; 'parametre yok' DEGIL). Maske IKINCI katman (ilki ear_tara.py jvm_maskele): argumanlar
-// mask.cjs maskJvmArgs'tan, sistem ozelligi degeri degerAcik() degilse '***'. ONCE maske SONRA kirpma.
+// mask.cjs maskJvmArgs'tan, sistem ozelligi degeri sir adliysa '***', degilse serbest metin maskesi
+// (2026-11-12: yalniz parolalar gizli). ONCE maske SONRA kirpma.
 const WAS_JVM_DURUMLARI = Object.freeze([...XML_DURUMLARI, 'JVM_YOK']);
 const SINIR_WAS_JVM_ARG = 2100;
 const SINIR_WAS_OZELLIK = 100;
@@ -224,7 +225,8 @@ function wasJvm(v) {
     sistem_ozellikleri: ozellikler.slice(0, SINIR_WAS_OZELLIK).map((o) => {
       const ad = M(nesne(o).ad, 256);
       const d = nesne(o).deger;
-      return { ad, deger: d == null ? null : degerAcik(ad) ? M(d, 512) : '***' };
+      // Acik (sir adli olmayan) deger de serbest metin maskesinden gecer: URL / kullanici/parola@ (2026-11-12).
+      return { ad, deger: d == null ? null : degerAcik(ad) ? M(maskText(M(d, 1024)), 512) : '***' };
     }),
     ozellik_kesildi: j.ozellik_kesildi === true || ozellikler.length > SINIR_WAS_OZELLIK,
   };

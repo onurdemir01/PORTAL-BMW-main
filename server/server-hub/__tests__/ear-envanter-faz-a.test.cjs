@@ -246,7 +246,7 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
     jvm_argumanlari: '-Xmx2g\t-Dapp.secret=SIR_1 -Djava.awt.headless=true --password=SIR_2 -Ddb.url=jdbc://u:SIR_3@h',
     sistem_ozellikleri: [
       { ad: 'java.security.policy', deger: '/p', gizli: 1 },
-      { ad: 'com.ibm.ozel', deger: 'SIR_4' },
+      { ad: 'com.ibm.ozel', deger: 'jdbc://u:SIR_4@h' },
       { ad: 'javax.net.ssl.keyStorePassword', deger: 'SIR_5' },
       { ad: 'degersiz', deger: null },
     ],
@@ -258,10 +258,10 @@ test('FA2b was_ozeti sunucu jvm: beyaz liste, IKINCI maske katmani, olculemedi a
     jvm_girisi: 1,
     ilk_heap_mb: 512,
     en_cok_heap_mb: 2048,
-    jvm_argumanlari: '-Xmx2g -Dapp.secret=*** -Djava.awt.headless=true --password=*** -Ddb.url=***',
+    jvm_argumanlari: '-Xmx2g -Dapp.secret=*** -Djava.awt.headless=true --password=*** -Ddb.url=jdbc://u:***@h',
     sistem_ozellikleri: [
       { ad: 'java.security.policy', deger: '/p' },
-      { ad: 'com.ibm.ozel', deger: '***' },
+      { ad: 'com.ibm.ozel', deger: 'jdbc://u:***@h' },
       { ad: 'javax.net.ssl.keyStorePassword', deger: '***' },
       { ad: 'degersiz', deger: null },
     ],

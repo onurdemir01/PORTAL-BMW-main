@@ -91,17 +91,6 @@ export function KapasiteHucresi({ k }: { k: Kapasite | null }) {
 
 // ── JVM parametreleri ─────────────────────────────────────────────────────────
 
-type Grup = 'Bellek' | 'GC' | 'Sistem özellikleri' | 'Ajan / tanılama' | 'Diğer';
-const GRUP_SIRA: Grup[] = ['Bellek', 'GC', 'Sistem özellikleri', 'Ajan / tanılama', 'Diğer'];
-
-export function argGrubu(tok: string): Grup {
-  if (/^-X(ms|mx|ss|mn)/.test(tok) || /^-XX:[+-]?(Max|Initial|Min)?(RAM|Metaspace|MetaspaceSize|HeapSize|NewSize|DirectMemorySize|RAMPercentage|PermSize|MaxPermSize)/i.test(tok) || /^-XX:(Max|Initial|Min)RAMPercentage/.test(tok)) return 'Bellek';
-  if (/^-XX:[+-]?Use\w*GC|^-XX:[+-]?(G1|CMS|Parallel|ZGC|Shenandoah|GC|MaxGCPause|InitiatingHeap|ParallelGCThreads|ConcGCThreads)|^-Xlog:gc|^-verbose:gc/i.test(tok)) return 'GC';
-  if (tok.startsWith('-D')) return 'Sistem özellikleri';
-  if (/^-javaagent|^-agentlib|^-agentpath|^-XX:[+-]?HeapDump|^-XX:HeapDumpPath|^-XX:ErrorFile|^-XX:[+-]?FlightRecorder|^-XX:StartFlightRecording/i.test(tok)) return 'Ajan / tanılama';
-  return 'Diğer';
-}
-
 export function argBol(s: string | null | undefined): string[] {
   return String(s || '')
     .split(/\s+/)
@@ -132,7 +121,8 @@ function Kopyala({ metin }: { metin: string }) {
 }
 
 /**
- * Maskeli JVM argümanlarını gruplayarak gösterir. Değer "***" ise maskelendiği yazılır.
+ * JVM argümanlarını YAZILDIKLARI SIRADA, kategorisiz gösterir (kullanıcı, 2026-11-12: "Bellek vs
+ * diye kategorilendirme istemiyorum"). Yalnız parola / anahtar adlı -D değerleri "***" gelir.
  * `bosMetin`: argüman yoksa ne söyleneceği (ölçülmedi ile toplanmadı farklıdır).
  */
 export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string | null | undefined; bosMetin: React.ReactNode; baslik?: string; aciklama?: string }) {
@@ -144,19 +134,13 @@ export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string 
       </p>
     );
   }
-  const gruplar = new Map<Grup, string[]>();
-  for (const t of tok) {
-    const g = argGrubu(t);
-    if (!gruplar.has(g)) gruplar.set(g, []);
-    gruplar.get(g)!.push(t);
-  }
-  const maskeli = tok.filter((t) => t.includes('***')).length;
+  const gizli = tok.filter((t) => t.includes('***')).length;
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {baslik && <span className="text-[12px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{baslik}</span>}
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {tok.length} parametre{maskeli ? ` · ${maskeli} değer maskelendi` : ''}
+          {tok.length} parametre{gizli ? ` · ${gizli} parola değeri gizli` : ''}
         </span>
         <Kopyala metin={tok.join(' ')} />
       </div>
@@ -165,28 +149,23 @@ export function JvmArglari({ args, bosMetin, baslik, aciklama }: { args: string 
           {aciklama}
         </p>
       )}
-      {GRUP_SIRA.filter((g) => gruplar.has(g)).map((g) => (
-        <div key={g} className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-2 items-start">
-          <span className="text-[11px] uppercase tracking-wide pt-1" style={{ color: 'var(--text-muted)' }}>{g}</span>
-          <div className="flex flex-wrap gap-1">
-            {gruplar.get(g)!.map((t, i) => (
-              <code
-                key={`${t}-${i}`}
-                title={t.includes('***') ? 'Değer gizli bilgi taşıyabileceği için maskelendi' : undefined}
-                className="px-1.5 py-0.5 rounded text-[11.5px] break-all"
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  background: 'var(--bg-inset)',
-                  color: t.includes('***') ? 'var(--text-muted)' : 'var(--text-primary)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                {t}
-              </code>
-            ))}
-          </div>
-        </div>
-      ))}
+      <div className="flex flex-wrap gap-1" data-testid="jvm-arglari">
+        {tok.map((t, i) => (
+          <code
+            key={`${t}-${i}`}
+            title={t.includes('***') ? 'Parola / anahtar değeri gösterilmez' : undefined}
+            className="px-1.5 py-0.5 rounded text-[11.5px] break-all"
+            style={{
+              fontFamily: 'var(--font-mono)',
+              background: 'var(--bg-inset)',
+              color: t.includes('***') ? 'var(--text-muted)' : 'var(--text-primary)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            {t}
+          </code>
+        ))}
+      </div>
     </div>
   );
 }

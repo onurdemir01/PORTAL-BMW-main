@@ -1,12 +1,13 @@
 // src/components/app_hub/JbossGorunum.tsx — Application Hub: JBoss uygulamasının sunucuları,
-// JVM'leri (maskeli parametreleriyle), web katmanı, yükü ve sunucu kapasitesi.
+// JVM'leri (parametreleriyle; yalnız parola değerleri gizli), web katmanı, yükü ve sunucu kapasitesi.
 import React, { useMemo, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import type { JbossDetay, JbossSunucu } from '@/api/appHubApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import JvmParamDuzenle from './JvmParamDuzenle';
-import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, OzetKutusu, Sayi, TD, TH } from './ortak';
+import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH } from './ortak';
+import { OrtamOzeti, satirAnahtarlari } from './OrtamOzeti';
 
 const KAYNAK_AD: Record<string, string> = {
   envanter: 'JBoss uygulama envanteri (MWAppsInventory)',
@@ -20,13 +21,53 @@ function heapMetni(s: JbossSunucu) {
   return `${s.minHeap || '?'} / ${s.maxHeap || '?'}`;
 }
 
+const KAYNAK_METNI: Record<string, string> = {
+  PS: 'Sunucudaki süreç listesinde (ps) JVM süreci görüldü.',
+  CLI_STATUS: "JBoss CLI'dan server-state okundu.",
+  PS_ABSENT: 'Sunucudaki süreç listesinde (ps) bu JVM için süreç yok.',
+  UNMEASURED: 'Tarama çalışma durumunu ölçemedi (ör. süreç listesi okunamadı).',
+  ENVANTER: 'Server Hub taramasında bu JVM görülmedi; durum yalnız JBoss uygulama envanterinden (MWAppsInventory).',
+};
+
+/**
+ * DURUM KANITI (kullanici, 2026-11-12: "1 calisiyor 1 kapali gozukuyor, dogru olup olmadigini nasil
+ * anlayacagim"): durumun NEREDEN geldigi, ne zaman olculdugu, envanterle celisip celismedigi ve
+ * elle dogrulama komutu.
+ */
+function DurumKaniti({ j }: { j: JbossSunucu['jvmler'][number] }) {
+  const kaynak = j.durumKaynagi || null;
+  const celiski = (j.uyumsuzluk || []).filter((x) => x.startsWith('durum:'));
+  return (
+    <div className="text-[11px] rounded px-2.5 py-1.5 space-y-0.5" style={{ background: 'var(--bg-inset)', color: 'var(--text-secondary)' }} data-testid="durum-kaniti">
+      <div>
+        <b>Durum nereden:</b> {kaynak ? KAYNAK_METNI[kaynak] || kaynak : 'Server Hub taraması (ölçüm yöntemi kayıtlı değil).'}
+        {j.durum && j.durum !== 'unknown' ? ` server-state: ${j.durum}.` : ''}
+        {j.taramaTarihi ? ` Ölçüm: ${fmtDate(j.taramaTarihi)}${j.taze ? '' : ' (2 günden eski)'}.` : ''}
+      </div>
+      {j.envanterDurumu && (
+        <div>
+          <b>Envanterde:</b> {j.envanterDurumu}
+          {celiski.length ? (
+            <span style={{ color: 'var(--status-warning-text)' }}> — tarama ile çelişiyor ({celiski.map((c) => c.replace(/^durum: /, '')).join('; ')})</span>
+          ) : (
+            ' (tarama ile aynı)'
+          )}
+        </div>
+      )}
+      <div style={{ color: 'var(--text-muted)' }}>
+        Elle doğrulamak için sunucuda: <code style={{ fontFamily: 'var(--font-mono)' }}>ps -ef | grep [j]boss | grep {j.ad}</code>
+      </div>
+    </div>
+  );
+}
+
 function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunucu; acik: boolean; onToggle: () => void; uygulama: string; onYenile?: () => void }) {
   const calisan = s.jvmler.filter((j) => j.calisiyor === true).length;
   const olculemeyen = s.jvmler.filter((j) => j.calisiyor == null).length;
   const portlar = [...new Set(s.jvmler.flatMap((j) => j.portlar || []))];
   return (
     <>
-      <tr className="cursor-pointer hover:bg-[var(--bg-inset)]" style={{ borderTop: '1px solid var(--border-subtle)' }} onClick={onToggle}>
+      <tr className="cursor-pointer hover:bg-[var(--bg-inset)]" style={{ borderTop: '1px solid var(--border-subtle)' }} onClick={onToggle} data-testid="sunucu-satiri">
         <td className={TD}>
           <button
             type="button"
@@ -45,6 +86,7 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
             {s.uygulama}
             {s.site ? ` · ${s.site}` : ''}
             {s.tier ? ` · ${s.tier}` : ''}
+            {s.domainler && s.domainler.length > 1 ? ` · ${s.domainler.length} domain` : ''}
           </div>
         </td>
         <td className={TD}>{s.ortam || '—'}</td>
@@ -113,6 +155,7 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
                     {j.istek7g != null && <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>7 gün {fmtNumber(j.istek7g)} istek</span>}
                     {!j.taze && <Hap ton="uyari" title="Server Hub taraması 2 günden eski">bayat tarama</Hap>}
                     {j.taramaTarihi && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>tarama {fmtDate(j.taramaTarihi)}</span>}
+                    {j.domain && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>domain {j.domain}</span>}
                     {j.nesil != null && (
                       <span className="ml-auto">
                         <JvmParamDuzenle
@@ -126,6 +169,7 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
                       </span>
                     )}
                   </div>
+                  <DurumKaniti j={j} />
                   <JvmArglari
                     baslik="Çalışma anı JVM parametreleri"
                     args={j.jvmArgs}
@@ -199,9 +243,13 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
 }
 
 export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?: () => void }) {
-  const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? d.sunucular.map((s) => `${s.host}|${s.uygulama}`) : []));
+  const tumAnahtarlar = useMemo(() => satirAnahtarlari(d.sunucular.map((s) => `${s.host}|${s.uygulama}`)), [d.sunucular]);
+  const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? tumAnahtarlar : []));
   const [ortam, setOrtam] = useState('');
-  const liste = useMemo(() => d.sunucular.filter((s) => !ortam || s.ortam === ortam), [d.sunucular, ortam]);
+  const { liste, anahtarlar } = useMemo(() => {
+    const idx = d.sunucular.map((_, i) => i).filter((i) => !ortam || (d.sunucular[i].ortam || '') === ortam);
+    return { liste: idx.map((i) => d.sunucular[i]), anahtarlar: idx.map((i) => tumAnahtarlar[i]) };
+  }, [d.sunucular, ortam, tumAnahtarlar]);
   const yuk = d.ozet.yuk;
   const toggle = (k: string) =>
     setAcik((a) => {
@@ -213,22 +261,31 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
   return (
     <div className="space-y-4">
       <KaynakUyarisi kaynaklar={d.kaynaklar} adlar={KAYNAK_AD} />
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <OzetKutusu etiket="Sunucu" deger={d.ozet.sunucuSayisi} alt={d.ozet.ortamlar.join(' · ') || undefined} />
-        <OzetKutusu etiket="JBoss sürümü" deger={d.ozet.surumler.length ? d.ozet.surumler.join(', ') : '—'} />
-        <OzetKutusu etiket="JVM" deger={`${d.ozet.calisanJvm} / ${d.ozet.jvmSayisi}`} alt="çalışan / toplam (Server Hub)" />
-        <OzetKutusu etiket="Web sunucusu" deger={d.ozet.webSunucuSayisi} />
-        <OzetKutusu
-          etiket="Yük (7 gün)"
-          deger={yuk && yuk.var + yuk.yok > 0 ? <Sayi v={yuk.req7Toplam} /> : '—'}
-          alt={yuk ? `${yuk.var} vhost trafikli · ${yuk.olculemedi} ölçülemedi${yuk.altSinir ? ' · örneklem (en az)' : ''}` : 'ölçülemedi'}
-        />
-        <OzetKutusu
-          etiket="Toplam kapasite"
-          deger={d.ozet.toplamCpu ? `${d.ozet.toplamCpu} vCPU` : '—'}
-          alt={d.ozet.toplamBellekGb ? `${fmtNumber(d.ozet.toplamBellekGb)} GB bellek (toplam, kullanım değil)` : undefined}
-        />
-      </div>
+      {/* ORTAM OZETI (kullanici, 2026-11-12: kartlar "dip dibe surumler, kafa karistiriyor";
+          "hangi ortam hangi JBoss surumunde ayri ayri"). Satira tiklamak asagidaki tabloyu o
+          ortama suzer. */}
+      <OrtamOzeti
+        satirlar={d.sunucular.map((s) => ({
+          host: s.host,
+          ortam: s.ortam,
+          surum: s.jbossSurum,
+          java: s.jre,
+          jvmler: s.jvmler,
+          kapasite: s.kapasite,
+        }))}
+        surumBasligi="JBoss sürümü"
+        secili={ortam}
+        onSec={setOrtam}
+        altBilgi={
+          <>
+            {fmtNumber(d.ozet.webSunucuSayisi)} web sunucusu
+            {' · '}
+            {yuk && yuk.var + yuk.yok > 0
+              ? `son 7 günde ${fmtNumber(yuk.req7Toplam)} istek${yuk.altSinir ? ' (en az)' : ''} · ${yuk.var} vhost trafikli${yuk.olculemedi ? `, ${yuk.olculemedi} ölçülemedi` : ''}`
+              : 'yük ölçülemedi'}
+          </>
+        }
+      />
 
       <Bolum
         baslik="Sunucular ve JVM'ler"
@@ -267,8 +324,11 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
             </thead>
             <tbody>
               {!liste.length && <TableEmptyRow colSpan={8} title="Bu ortamda sunucu yok." />}
-              {liste.map((s) => {
-                const k = `${s.host}|${s.uygulama}`;
+              {liste.map((s, i) => {
+                // ANAHTAR BENZERSIZ (kullanici, 2026-11-12: "sunucu sekmeleri ya acilmiyor ya
+                // kapanmiyor"): ayni host + uygulama icin birden cok satir gelebiliyordu; ayni
+                // anahtar iki satiri birden acip kapatiyor, React satirlari karistiriyordu.
+                const k = anahtarlar[i];
                 return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} uygulama={d.ad} onYenile={onYenile} />;
               })}
             </tbody>

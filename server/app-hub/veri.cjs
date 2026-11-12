@@ -29,6 +29,25 @@ const sayi = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : N
 const AD_RE = /^[A-Za-z0-9._-]{1,128}$/;
 const ARA_RE = /^[A-Za-z0-9._-]{2,64}$/;
 const HOST_TAVAN = 60;
+const JVM_AGIR_ESZAMAN = 6;
+
+/**
+ * fn(oge, i) cagrilarini en cok `limit` eszamanli kosturur; sonuc dizisi GIRDI SIRASINDADIR
+ * (bitis sirasinda degil). fn reddederse tumu reddeder; cagiran hatayi kendisi yakalar.
+ */
+async function sinirliParalel(ogeler, limit, fn) {
+  const out = new Array(ogeler.length);
+  let sira = 0;
+  const isci = async () => {
+    while (sira < ogeler.length) {
+      const k = sira++;
+      out[k] = await fn(ogeler[k], k);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, ogeler.length));
+  await Promise.all(Array.from({ length: n }, isci));
+  return out;
+}
 
 function mssql() {
   return require('../inventory/mssql.cjs');
@@ -186,8 +205,19 @@ async function jbossDetay(adHam) {
     if (a.tableMissing) hub.hata = 'Server Hub tablolari bulunamadi.';
     const hedef = new Set(hostlar);
     const eslesen = (a.hosts || []).filter((h) => hedef.has(U(h.host)) || hedef.has(U(String(h.host).split('.')[0])));
-    for (const h of eslesen.slice(0, HOST_TAVAN)) {
-      const agir = await sh.loadJvmAgir(h.host).catch(() => new Map());
+    const hedefHostlar = eslesen.slice(0, HOST_TAVAN);
+    // N+1 yerine: kolon semasi istek basina bir kez, sunucu basina agir okuma SINIRLI paralel
+    // (JVM_AGIR_ESZAMAN). Sonuc dizisi girdi sirasini korur; birlestirme asagida eski sirayla.
+    const semaOku = hedefHostlar.length && sh.loadJvmAgir && sh.loadJvmAgir.semaOku;
+    const kolP = typeof semaOku === 'function' ? Promise.resolve().then(semaOku).catch(() => null) : null;
+    const agirlar = await sinirliParalel(hedefHostlar, JVM_AGIR_ESZAMAN, (h) =>
+      Promise.resolve()
+        .then(() => (kolP ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
+        .catch(() => new Map()),
+    );
+    for (let i = 0; i < hedefHostlar.length; i++) {
+      const h = hedefHostlar[i];
+      const agir = agirlar[i];
       const d = sh.hostDetail(h, agir);
       for (const j of d.jvms || []) {
         if (U(tabanAd(j.name)) !== U(base)) continue;
@@ -209,6 +239,13 @@ async function jbossDetay(adHam) {
           istek7g: j.req7d == null ? null : Number(j.req7d),
           taze: h.fresh !== false,
           taramaTarihi: h.scanDate || null,
+          // DURUM KANITI (kullanici, 2026-11-12: "1 calisiyor 1 kapali, dogru mu nasil anlarim"):
+          // olcum yontemi (PS / CLI_STATUS / PS_ABSENT / UNMEASURED); taramada gorulmeyen,
+          // yalniz MWAppsInventory'den eklenen JVM (gen 0) 'ENVANTER'.
+          durumKaynagi: Number(j.gen) === 0 && !j.runningSrc ? 'ENVANTER' : j.runningSrc || null,
+          envanterDurumu: j.invStatus || null,
+          uyumsuzluk: Array.isArray(j.mismatch) ? j.mismatch : [],
+          domain: j.domain || null,
         });
       }
     }
@@ -225,8 +262,18 @@ async function jbossDetay(adHam) {
   const hedefIx = new Map();
   for (const tg of (disc.d && disc.d.targets) || []) hedefIx.set(`${U(tg.host)}|${L(tg.appName)}`, tg);
 
-  const sunucular = mw.rows
-    .map((r) => {
+  // TEKILLESTIRME (kullanici, 2026-11-12: "sunucu sekmeleri ya acilmiyor ya kapanmiyor"):
+  // MWAppsInventory ayni host + uygulama icin domain basina ayri satir tasiyabiliyor; her satir
+  // ayni JVM listesini tekrar gosteriyor ve ekranda ayni anahtarla iki satir olusuyordu. Host +
+  // uygulama basina TEK satir: ilk satirin alanlari, domain'ler listelenir.
+  const tekil = new Map();
+  for (const r of mw.rows) {
+    const k = `${U(r.host)}|${L(r.app)}`;
+    if (!tekil.has(k)) tekil.set(k, { r, domainler: new Set() });
+    if (nz(r.domain)) tekil.get(k).domainler.add(String(r.domain));
+  }
+  const sunucular = [...tekil.values()]
+    .map(({ r, domainler }) => {
       const host = U(r.host);
       const hedefK = `${host}|${L(r.app)}`;
       const tg = hedefIx.get(hedefK) || null;
@@ -248,6 +295,7 @@ async function jbossDetay(adHam) {
         maxHeap: heap(r.max_heap),
         autoStartEnvanter: nz(r.autostarts),
         jvmler: jvms,
+        domainler: [...domainler].sort(),
         web: (tg && tg.web) || [],
         webUyari: (tg && tg.webUyari) || null,
         kapasite: kap.harita.get(host) || null,
@@ -555,4 +603,4 @@ async function ocpDetay(ad) {
   };
 }
 
-module.exports = { AD_RE, ARA_RE, ara, jbossDetay, wasDetay, ocpDetay, kapasiteOku, wasSunucuBilgisi, clusterIndeksi, _ic: { heap } };
+module.exports = { AD_RE, ARA_RE, ara, jbossDetay, wasDetay, ocpDetay, kapasiteOku, wasSunucuBilgisi, clusterIndeksi, _ic: { heap, sinirliParalel, JVM_AGIR_ESZAMAN } };

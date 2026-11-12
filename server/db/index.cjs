@@ -12,6 +12,7 @@
 // (asagidaki handleReturning gibi) test kapsamiyla sertlestirilir.
 const mssql = require('mssql');
 const { getPool } = require('./portal-mssql.cjs');
+const { timeQuery } = require('../metrics.cjs');
 
 // ── SQL translation ───────────────────────────────────────────────────────────
 
@@ -110,8 +111,12 @@ function coerce(val) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-async function _execQuery(pgSql, params) {
+// Yavas sorgu gunlugu: getPool bekleme ve request.query suresi AYRI olculur
+// (server/metrics.cjs timeQuery; parametre degerleri ASLA gunluge yazilmaz).
+async function _execQuery(pgSql, params, opts = {}) {
+  const w0 = process.hrtime.bigint();
   const pool = await getPool().catch(() => null);
+  const waitNs = process.hrtime.bigint() - w0;
   if (!pool) throw new Error('Database not available. MSSQL bağlantısı yok.');
 
   const request = pool.request();
@@ -120,7 +125,7 @@ async function _execQuery(pgSql, params) {
   });
 
   const sql = adaptSql(pgSql);
-  const result = await request.query(sql);
+  const result = await timeQuery('portal', waitNs, sql, () => request.query(sql), { retry: !!opts.retry });
 
   const rows = result.recordset || [];
   const rowCount = result.rowsAffected?.[0] ?? rows.length;
@@ -139,7 +144,7 @@ async function query(pgSql, params = [], opts = {}) {
     if (isTransient && !(opts && opts.tekrar === false)) {
       console.warn('[db] Transient connection error, retrying once:', err.message);
       await new Promise(r => setTimeout(r, 300));
-      return _execQuery(pgSql, params);
+      return _execQuery(pgSql, params, { retry: true });
     }
     throw err;
   }
