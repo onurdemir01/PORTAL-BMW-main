@@ -6,8 +6,12 @@
 //
 // Uç (kullanıcının verdiği):
 //   GET {OCO_API_URL}/ChangeManagement/ChangeManagementServiceRepository.svc/Change/
-//       SearchChangeOrderWithOffset/{skip}/?count=100&pcabRequired=-1&isAgentPatch=-1
-//       &changeEnvironment=-1&parameterChange=-1&openningGroupId={grup}
+//       SearchChangeOrderWithOffset/{skip}/?count=100&isAgentPatch=-1
+//       &changeEnvironment=-1&parameterChange=-1&responsibleGroupId={grup}
+//
+// SORUMLU GRUP (kullanici, 2026-11-12): eski cagri `openningGroupId` ile yalniz ekibin ACTIGI
+// OCO'lari getiriyordu; istenen, degisikligi YAPACAK ekip biz olan tum OCO'lar ->
+// `responsibleGroupId`. Kullanicinin verdigi yeni cagrida `pcabRequired` yok (bilerek eklenmez).
 //
 // İSTEK DESENİ client.cjs İLE AYNI: undici dispatcher + kurumsal CA + boyut sınırı.
 // İkinci bir istek yolu açmak, TLS/proxy/timeout kurallarının bir gün ayrışması demekti.
@@ -127,11 +131,10 @@ function sayfaUrl(cfg, skip, groupId) {
   const u = new URL(`${aramaKoku(cfg.baseUrl)}${Number(skip) || 0}/`);
   u.searchParams.set('count', String(PAGE_SIZE));
   // Kullanıcının verdiği çağrıdaki süzgeçler: -1 = "hepsi".
-  u.searchParams.set('pcabRequired', '-1');
   u.searchParams.set('isAgentPatch', '-1');
   u.searchParams.set('changeEnvironment', '-1');
   u.searchParams.set('parameterChange', '-1');
-  u.searchParams.set('openningGroupId', String(groupId));
+  u.searchParams.set('responsibleGroupId', String(groupId));
   return u.toString();
 }
 

@@ -237,8 +237,8 @@ test('OC7: 400 mesaji OCO NUMARASINI degil, cagrilan ADRESI gosterir', () => {
 test('OC8: arama adresi ayarin YOL/SORGU kismindan bagimsiz kurulur', () => {
   const BEKLENEN =
     'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc' +
-    '/Change/SearchChangeOrderWithOffset/0/?count=100&pcabRequired=-1&isAgentPatch=-1' +
-    '&changeEnvironment=-1&parameterChange=-1&openningGroupId=6203';
+    '/Change/SearchChangeOrderWithOffset/0/?count=100&isAgentPatch=-1' +
+    '&changeEnvironment=-1&parameterChange=-1&responsibleGroupId=6203';
   const ayarlar = [
     // URETIMDEKI GERCEK DEGER.
     'https://servicerepository/ChangeManagement/ChangeManagementServiceRepository.svc/Change/getChangeOrderByWfInstanceId/?wfInstanceId=',

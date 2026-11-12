@@ -905,7 +905,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     label: 'OCO Takvimi Grup Kimliği',
     group: 'OCO',
     description:
-      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki openningGroupId). Boş bırakılırsa 6203 kullanılır.',
+      'OCO Takvimi ekranının hangi ekibin değişiklik kayıtlarını listeleyeceği (arama ucundaki responsibleGroupId: değişikliği yapacak sorumlu ekip). Boş bırakılırsa 6203 kullanılır.',
     required: false,
     example: '6203',
     usedIn: 'server/oco/search.cjs',
