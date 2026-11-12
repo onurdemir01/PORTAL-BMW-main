@@ -126,6 +126,14 @@ function initDenetim(app) {
   // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
   const { createResponseCache } = require('./response-cache.cjs');
   const responseCache = createResponseCache();
+  // Eski sunucu suzgeci (Nginx Hub sekmeleri). Modul yuklenemezse hicbir sey gizlenmez.
+  const eskiSunucuSuzgec = async (req) => {
+    try {
+      return await require('../nginx-console/eski-sunucu.cjs').suzgec(req);
+    } catch {
+      return { ayir: (rows) => rows, eskiMi: () => false, bilgi: () => null, damga: '' };
+    }
+  };
   // /web-app HARIC (2026-10-23): kendi tek-ucuslu tam sonuc onbellegi var (web-app.cjs, 10 dk, fresh=1);
   // burada da tutulsa her arama varyanti 1-2 MB'lik ayri giris olur (64 giris), govde iki kez
   // serilestirilir ve "Yenile" sonrasi diger varyantlar 60 sn eski kalir.
@@ -205,7 +213,9 @@ function initDenetim(app) {
         datesP,
       ]);
 
-      const raw = rowsRes.recordset || [];
+      // ESKI SUNUCULAR (Nginx Hub, 2026-11-12): envanterde yok + 14+ gundur gorulmedi.
+      const es = await eskiSunucuSuzgec(req);
+      const raw = es.ayir(rowsRes.recordset || []);
 
       const trfIdx = await trfIdxP;
 
@@ -246,7 +256,7 @@ function initDenetim(app) {
               .split('/')[0]
               .replace(/:\d+$/, '');
           prodProxyStats = { rows: 0, resolved: 0, unresolved: 0 };
-          for (const r of prx.recordset || []) {
+          for (const r of es.ayir(prx.recordset || [])) {
             prodProxyStats.rows++;
             const target = hostOf(r.target_url) || hostOf(r.upstream_name);
             const res = resolveTarget(
@@ -643,6 +653,7 @@ function initDenetim(app) {
         envs: envList,
         envStats,
         rows,
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res
@@ -1499,18 +1510,29 @@ function initDenetim(app) {
         allowedQ,
       ]);
 
+    // ESKI SUNUCULAR: tek sunucu sayfasi (onlyHost) suzulmez; filo ozeti eskileri ozetlemeden
+    // ONCE duser (sayilar onlari icermesin). Sicak onbellekte istek yok: varsayilan kip (gizle).
+    const es = onlyHost ? null : await eskiSunucuSuzgec(null);
+    const suz = (rows) => (es ? es.ayir(rows) : rows);
     const out = summarizeAudit({
-      hosts: hosts.recordset || [],
-      servers: servers.recordset || [],
-      locations: locations.recordset || [],
-      upstreams: upstreams.recordset || [],
-      settings: settings.recordset || [],
+      hosts: suz(hosts.recordset || []),
+      servers: suz(servers.recordset || []),
+      locations: suz(locations.recordset || []),
+      upstreams: suz(upstreams.recordset || []),
+      settings: suz(settings.recordset || []),
       allowed,
-      files: files.rows,
+      files: suz(files.rows),
       inventory,
       exceptions,
     });
-    return { ok: true, schemaReady: true, filesReady: files.ready, scanDate, ...out };
+    return {
+      ok: true,
+      schemaReady: true,
+      filesReady: files.ready,
+      scanDate,
+      ...out,
+      ...(es ? { eskiGizli: es.bilgi() } : {}),
+    };
   }
 
   // Sicak onbellek (2026-09-21): tum filo hesabi bellekte, istek aninda doner; suresi dolunca
@@ -1522,6 +1544,15 @@ function initDenetim(app) {
     compute: () => loadNginxAudit(null),
   });
   nginxAuditWarm.warm(45000);
+  // Eski sunucu temizliginden sonra yanit onbellegi ve sicak audit hesabi tazelenir.
+  try {
+    require('../nginx-console/eski-sunucu.cjs').onTemizlik(() => {
+      responseCache.clear();
+      nginxAuditWarm.run().catch(() => {});
+    });
+  } catch {
+    /* modul yoksa onbellekler kendi suresiyle duser */
+  }
   router.get('/nginx-audit', async (req, res) => {
     try {
       res.json(await nginxAuditWarm.get({ fresh: req.query.fresh === '1' }));
@@ -1887,13 +1918,15 @@ function initDenetim(app) {
 
       // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
       // (bkz. __tests__/nginx-api-summary.test.cjs).
-      const summary = summarize(aggRes.recordset || [], srvRes.recordset || []);
+      const es = await eskiSunucuSuzgec(req);
+      const summary = summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []));
       res.json({
         ok: true,
         scanDate: effectiveDate,
         scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
         availableDates: (datesRes.recordset || []).map((r) => r.d),
         ...summary,
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
@@ -2032,8 +2065,9 @@ function initDenetim(app) {
         [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
       );
 
-      const { envs, rows, scannedHosts } = summarizeLocations(r.recordset || []);
-      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts });
+      const es = await eskiSunucuSuzgec(req);
+      const { envs, rows, scannedHosts } = summarizeLocations(es.ayir(r.recordset || []));
+      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts, eskiGizli: es.bilgi() });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -2060,7 +2094,8 @@ function initDenetim(app) {
           ORDER BY env, location, hostname`,
       );
 
-      const rows = r.recordset || [];
+      const es = await eskiSunucuSuzgec(req);
+      const rows = es.ayir(r.recordset || [], (x) => x.hostname);
       // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
       // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.
       const lastUpdate =
@@ -2075,6 +2110,7 @@ function initDenetim(app) {
         lastUpdate: lastUpdate ? String(lastUpdate) : null,
         // hosts: ozetleyicinin DUZELTILMIS env tasiyan satirlari (ham tablo satirlari degil)
         ...summarizeNginxInventory(rows),
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });

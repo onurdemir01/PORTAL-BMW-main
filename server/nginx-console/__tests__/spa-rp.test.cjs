@@ -2348,3 +2348,30 @@ test('SR-RS2 yeni PROD dizin tanimi: Glomo grubunda GLOMO, diger grupta grup adi
   assert.equal(px.servis, 'WEBFORMS');
   assert.equal(px.servisKaynak, undefined);
 });
+
+// ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): SPA Kesfi ucu da eski sunucularin RP
+// satirlarini hesaba sokmaz ve yanita eskiGizli yazar (diger Nginx Hub listeleri gibi).
+test('SR-ESKI uc nokta: eski sunucunun RP tanim satirlari hesaptan dusurulur, eskiGizli yazilir', async () => {
+  const es = require('../eski-sunucu.cjs');
+  const asil = es.suzgec;
+  const eskiler = new Set(['GBNGXT33', 'GBNGXT34']);
+  const gorulen = new Set();
+  es.suzgec = async () => ({
+    ayir: (rows) => rows.filter((r) => (eskiler.has(r.host) ? (gorulen.add(r.host), false) : true)),
+    bilgi: () => ({ sayi: gorulen.size, hostlar: [...gorulen].sort(), gun: 14, gosteriliyor: false, olculemedi: false }),
+  });
+  try {
+    sahteDb();
+    const r = await hesapla();
+    assert.notEqual(by(r)['kart-ui'].rp, 'tanimli', 'eski sunucunun tanimi RP kararina girdi');
+    assert.deepEqual(r.eskiGizli.hostlar, ['GBNGXT33', 'GBNGXT34']);
+    assert.ok(Object.keys(r).includes('eskiGizli'), 'eskiGizli JSON govdesine girmiyor');
+  } finally {
+    es.suzgec = asil;
+  }
+  // Suzgec yokken (gercek modul, sahte DB envanteri okuyamaz -> fail-closed) karar degismez.
+  sahteDb();
+  const r2 = await hesapla();
+  assert.equal(by(r2)['kart-ui'].rp, 'tanimli');
+  assert.equal(r2.eskiGizli.sayi, 0);
+});
