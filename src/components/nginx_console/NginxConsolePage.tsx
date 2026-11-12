@@ -341,7 +341,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
     const needle = q.trim().toLowerCase();
     const g = new Map<string, NcHost[]>();
     for (const h of hosts) {
-      if (needle && !(h.host.toLowerCase().includes(needle) || (h.service || '').toLowerCase().includes(needle) || (h.env || '').includes(needle))) continue;
+      if (needle && !(h.host.toLowerCase().includes(needle) || [h.service, ...(h.services || [])].some((s) => (s || '').toLowerCase().includes(needle)) || (h.env || '').includes(needle))) continue;
       const key = groupKey(h);
       if (!g.has(key)) g.set(key, []);
       g.get(key)!.push(h);
@@ -494,7 +494,12 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
                 <span>dokum {fmtDateTime(tree.dumpedAt || null)} ({ageOf(tree.dumpedAt)} önce)</span>
                 <Pill tone={tree.nginxT?.status === 'ok' ? 'success' : 'danger'} title={tree.nginxT?.output}>nginx -t {tree.nginxT?.status}</Pill>
                 <span>{tree.fileCount} dosya · {tree.certs?.length || 0} sertifika</span>
-                {curHost?.service && <span>servis {curHost.service}</span>}
+                {curHost?.service && (
+                  <span title={curHost.etiket ? `Elle etiket (Envanter) · conf.d: ${curHost.etiket.oto.join(', ') || '—'}` : undefined}>
+                    servis {(curHost.services?.length ? curHost.services.filter((s) => s !== 'too_many') : [curHost.service]).join(', ') || curHost.service}
+                    {curHost.etiket ? ' (elle)' : ''}
+                  </span>
+                )}
               </div>
               {tree.tree && <TreeNode node={tree.tree} depth={0} onOpen={openFile} current={file?.path || null} defaultOpen />}
             </>

@@ -406,6 +406,11 @@ async function inventoryHosts() {
     console.warn('[NginxHub] Inventory kaynak sorgusu:', e.message);
   }
   const { siteOfHost } = require('../audit/nginx-hosts.cjs');
+  // ELLE ETIKET (kullanici, 2026-11-12: "etiket her yerde gecerli olsun"): Envanter'de verilen
+  // etiket sunucu listesi, drift gruplari ve service suzgeclerinde de gecer. Okunamazsa otomatik
+  // liste kalir (harita bos doner, firlatmaz).
+  const et = require('../audit/nginx-host-labels.cjs');
+  const { m: etiketler } = await et.etiketHaritasi();
   return (r.recordset || [])
     .map((x) => ({
       host: String(x.hostname || '')
@@ -447,7 +452,22 @@ async function inventoryHosts() {
       configCount: x.config_count == null ? null : Number(x.config_count),
       ip: x.ip || null,
     }))
-    .filter((h) => h.host);
+    .filter((h) => h.host)
+    .map((h) => {
+      const e = etiketler.get(h.host);
+      if (!e) return h;
+      const services = et.etkinListe(h.services, e);
+      return {
+        ...h,
+        services,
+        // 'ekle': otomatik birincil ad korunur (grup/es sunucu onerisi kaymasin); 'degistir': ilk etiket
+        service:
+          e.mod === 'ekle' && h.service && h.service !== 'too_many'
+            ? h.service
+            : services.find((s) => s !== 'too_many') || h.service,
+        etiket: { mod: e.mod, etiketler: e.etiketler, oto: h.services },
+      };
+    });
 }
 
 // ── AWX ─────────────────────────────────────────────────────────────────────────────────
@@ -784,6 +804,8 @@ async function spaKesfiHesapla() {
     dir,
     ups,
     trf,
+    // ELLE ETIKET (2026-11-12): RP tanimlarinin servisi sunucu etiketine gore (spa-rp.cjs servisOf).
+    etiketler: (await require('../audit/nginx-host-labels.cjs').etiketHaritasi()).m,
   };
   const { buildSpaDiscovery } = require('./spa-discovery.cjs');
   const sonuc = buildSpaDiscovery(disc, inv, usage, runs, rpKaynak, katalog);
@@ -835,16 +857,25 @@ function spaMemoYaz(sonuc) {
 // Ana uc ve ayrinti ucu ayni promise'i bekler; hesap bitince bellek ozeti BIR KEZ yazilir.
 // Ana uc donen nesneyi DEGISTIRMEZ (paylasilan nesne: ?satir=1 isteyen baska bir cagri olabilir).
 let _spaHesap = null;
-function spaHesapPaylas() {
+function spaHesapPaylas(deneme = 0) {
   if (!_spaHesap) {
-    _spaHesap = spaKesfiHesapla()
+    // Hesap surerken elle etiket degisirse sonuc ESKI etiketlerle kurulmustur: bir kez yeniden
+    // hesaplanir (bellek ozeti hep yazilir; ayrinti ucu null ozete dusmez - dogrulama bulgusu).
+    const et = require('../audit/nginx-host-labels.cjs');
+    const etSurum = et.surum();
+    const p = spaKesfiHesapla()
       .then((sonuc) => {
+        if (et.surum() !== etSurum && deneme < 1) {
+          if (_spaHesap === p) _spaHesap = null;
+          return spaHesapPaylas(deneme + 1);
+        }
         if (!sonuc.tableMissing) spaMemoYaz(sonuc);
         return sonuc;
       })
       .finally(() => {
-        _spaHesap = null;
+        if (_spaHesap === p) _spaHesap = null;
       });
+    _spaHesap = p;
   }
   return _spaHesap;
 }
@@ -885,7 +916,7 @@ async function spaRpAyrintiUcu(req, res) {
       const sonuc = await spaHesapPaylas();
       if (sonuc.tableMissing)
         return res.json({ ok: false, message: sonuc.message || 'SPA keşif tablosu yok.' });
-      memo = _spaMemo;
+      memo = _spaMemo || spaMemoYaz(sonuc);
     }
     const { rpTanimlari } = require('./spa-rp.cjs');
     const a = memo.apps.get(`${ns.toLowerCase()}|${app.toLowerCase()}`);
@@ -1063,6 +1094,8 @@ function initNginxConsole(app) {
         invError = e.message;
       }
       const dumped = new Map(listDumpedHosts().map((d) => [d.host, d]));
+      // Elle etiket (2026-11-12): okunamazsa ekran soyler; envanteri gecikmis sunucuya da uygulanir.
+      const etk = await require('../audit/nginx-host-labels.cjs').etiketHaritasi();
       const seen = new Set();
       const hosts = inv.map((h) => {
         seen.add(h.host);
@@ -1085,6 +1118,7 @@ function initNginxConsole(app) {
       for (const d of dumped.values()) {
         if (seen.has(d.host)) continue;
         const parsed = loadDump(d.host);
+        const e = etk.m.get(d.host);
         hosts.push({
           host: d.host,
           env: null,
@@ -1093,8 +1127,9 @@ function initNginxConsole(app) {
           cpu: null,
           memoryGb: null,
           os: null,
-          service: null,
-          services: [],
+          service: e ? e.etiketler[0] : null,
+          services: e ? [...e.etiketler] : [],
+          etiket: e ? { mod: e.mod, etiketler: e.etiketler, oto: [] } : null,
           nginxVersion: null,
           prefix: null,
           configCount: null,
@@ -1116,6 +1151,7 @@ function initNginxConsole(app) {
         hosts: es.ayir(hosts),
         consoleDir: consoleDir(),
         inventoryError: invError,
+        etiketHatasi: etk.hata,
         seenAt: seenMap().at,
         eskiGizli: es.bilgi(),
       });
@@ -1355,6 +1391,13 @@ function initNginxConsole(app) {
   // uctan gelir (SR21 boyut bekcisi, iki profil).
   const { createResponseCache } = require('../audit/response-cache.cjs');
   const spaCache = createResponseCache();
+  // Elle etiket degisince SPA yaniti (RP servisi etikete gore) bayat kalmasin.
+  require('../audit/nginx-host-labels.cjs').degisinceHaberVer(() => {
+    spaCache.clear();
+    _spaMemo = null;
+    // Suren hesap eski etiketi okumus olabilir: sonraki istek ona KATILMAZ, yeni hesap baslatir.
+    _spaHesap = null;
+  }, 'nginx-console-spa');
   // Isleyiciler yukarida (spaKesfiUcu / spaRpAyrintiUcu): govde kucultme ve ?satir=1 orada.
   router.get('/spa-discovery', spaCache.middleware, spaKesfiUcu);
   router.get('/spa-discovery/rp', spaRpAyrintiUcu);

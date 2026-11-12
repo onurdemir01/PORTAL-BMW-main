@@ -69,7 +69,18 @@ function registerNginxLocations(router) {
           WHERE scan_date = @d`,
         [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }]
       );
-      const raw = rs.recordset || [];
+      // ELLE ETIKET (2026-11-12, "her yerde gecerli"): sunucu 'Yerine gec' + tek etiketliyse tanimin
+      // servisi o etikettir (SPA Uygulamalari / Denetim SPA ile ayni kural; nginx-host-labels tekEtiket).
+      // conf.d'deki asil ad serviceOto'da kalir.
+      const et = require('./nginx-host-labels.cjs');
+      const etM = (await et.etiketHaritasi()).m;
+      const ham = rs.recordset || [];
+      // Tanim basina: aynalar karisik etiketliyse conf.d adi kalir (tek tanim iki satira bolunmesin).
+      const tanimEt = et.tanimEtiketi(ham, etM, keyOf);
+      const raw = ham.map((r) => {
+        const t = tanimEt(r);
+        return t && t !== String(r.service || '').trim().toUpperCase() ? { ...r, service: t, service_oto: r.service || null } : r;
+      });
 
       // Filtre secenekleri TUM veriden uretilir (filtre uygulanmadan once), yoksa bir
       // ortam secildiginde diger secenekler listeden kaybolurdu.
@@ -102,6 +113,7 @@ function registerNginxLocations(router) {
           total++;
           merged.set(k, {
             service: svc,
+            ...(r.service_oto !== undefined ? { serviceOto: r.service_oto } : {}),
             env: e,
             locationPath: path,
             includeName: String(r.include_name || '').trim(),

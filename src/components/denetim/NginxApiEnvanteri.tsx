@@ -343,9 +343,19 @@ export function NginxApiEnvanteri() {
                   <Td title={(r.serverNames || []).length ? `server_name: ${r.serverNames.join(', ')}` : 'nginx_audit (nginx -T) verisi yok — servis vhost dosyasından okunur'}>
                     {(r.services || []).length ? (
                       <span className="inline-flex flex-wrap gap-1">
-                        {r.services.map((sv) => (
-                          <span key={sv} className="px-1.5 py-0.5 rounded border text-[10px] font-mono" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>{sv}</span>
-                        ))}
+                        {r.services.map((sv) => {
+                          const elle = !!r.etiket && !r.etiket.oto.includes(sv);
+                          return (
+                            <span
+                              key={sv}
+                              className="px-1.5 py-0.5 rounded border text-[10px] font-mono"
+                              title={elle ? 'Elle etiket (Nginx Hub › Envanter)' : undefined}
+                              style={{ borderColor: elle ? 'var(--accent-light)' : 'var(--border-subtle)', background: elle ? 'var(--accent-bg)' : 'var(--bg-elevated)', color: 'var(--text-primary)' }}
+                            >
+                              {sv}
+                            </span>
+                          );
+                        })}
                       </span>
                     ) : (
                       <span className="text-[var(--text-muted)]">—</span>

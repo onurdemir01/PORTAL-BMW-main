@@ -126,6 +126,8 @@ function initDenetim(app) {
   // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
   const { createResponseCache } = require('./response-cache.cjs');
   const responseCache = createResponseCache();
+  // Elle etiket degisince (Envanter/API/SPA yanitlari etikete uyar) bayat yanit kalmasin.
+  require('./nginx-host-labels.cjs').degisinceHaberVer(() => responseCache.clear(), 'denetim-yanit');
   // Eski sunucu suzgeci (Nginx Hub sekmeleri). Modul yuklenemezse hicbir sey gizlenmez.
   const eskiSunucuSuzgec = async (req) => {
     try {
@@ -155,6 +157,10 @@ function initDenetim(app) {
       // hatasi hemen YAKALANIR (islenmemis red olmasin); datesP hatasi eskisi gibi asagida
       // await edildiginde 500'e gider - tarih yoksa (bos yanit) hic await edilmez.
       const yut = () => {};
+      // ELLE ETIKET (2026-11-12, "her yerde gecerli"): sunucusu 'Yerine gec' + tek etiketli satir o
+      // servisin altinda GRUPLANIR ve gosterilir (SPA Uygulamalari spa-rp servisOf ile ayni kural).
+      // Trafik anahtari ham r.service ile kalir (spaTrafikAnahtari; conf.d adi). Firlatmaz.
+      const etiketP = require('./nginx-host-labels.cjs').etiketHaritasi();
       const dateP = query(
         scanDate
           ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
@@ -340,9 +346,15 @@ function initDenetim(app) {
       // SERVIS BASINA LOCATION SAYISI (kullanici, 2026-09-14): ortam kirilimiyla. Bir
       // location = (servis, ortam, vhost, location_path) - ayni tanim birden fazla
       // sunucuda (mirror) olabilir, sunucu sayisiyla CARPILMAZ.
+      const etM = (await etiketP).m;
+      // TANIM BASINA (aynalar): tanimin tum sunuculari ayni etikette anlasmazsa conf.d adi kalir.
+      const tanimEt = require('./nginx-host-labels.cjs').tanimEtiketi(raw, etM, (r) =>
+        [r.service, normEnv(r.env), r.application || r.include_name, r.location_path].join('\u0000'),
+      );
+      const servisAdi = (r) => tanimEt(r) || r.service || '(bilinmiyor)';
       const svcLoc = new Map(); // service -> env -> Set(vhost|location)
       for (const r of raw) {
-        const svc = r.service || '(bilinmiyor)';
+        const svc = servisAdi(r);
         const e = normEnv(r.env);
         if (!svcLoc.has(svc)) svcLoc.set(svc, new Map());
         const m = svcLoc.get(svc);
@@ -384,7 +396,7 @@ function initDenetim(app) {
       // hucreyi "yuk yok - atil aday" gosterebiliyordu.
       const hucreAnahtar = new WeakMap(); // hucre -> Set(trafik anahtari)
       for (const r of raw) {
-        const service = r.service || '(bilinmiyor)';
+        const service = servisAdi(r);
         const application = r.application || r.include_name || '(bilinmiyor)';
         const env = normEnv(r.env);
         // Ayirici olarak U+0000: servis/uygulama adlarinda gecemeyecek tek karakter.
@@ -1098,11 +1110,20 @@ function initDenetim(app) {
       // servisin altindan reverse proxy'leniyor"). Non-prod: include satirinin vhost'u;
       // PROD: eski sunucudaki proxy_pass satirinin vhost'u.
       const ngxSvc = new Map();
-      const addSvc = (env, appLower, svc) => {
+      // Elle etiket (2026-11-12): sunucu 'Yerine gec' + tek etiketliyse servis o etikettir (spa-rp ile ayni).
+      const covEt = require('./nginx-host-labels.cjs');
+      const covEtM = (await covEt.etiketHaritasi()).m;
+      // Tanim basina (aynalar karisik etiketliyse conf.d adi kalir).
+      const covTanim = covEt.tanimEtiketi([...(ngxRes.recordset || []), ...(proxyRes.recordset || [])], covEtM, (r) =>
+        [r.kind || '', r.service, r.env, r.application, r.location_path, r.target_url, r.upstream_name].join('\u0000'),
+      );
+      const addSvc = (env, appLower, svc, etiket) => {
         const sv =
+          etiket ||
           String(svc || '')
             .trim()
-            .toUpperCase() || '(bilinmiyor)';
+            .toUpperCase() ||
+          '(bilinmiyor)';
         if (!ngxSvc.has(env)) ngxSvc.set(env, new Map());
         if (!ngxSvc.get(env).has(appLower)) ngxSvc.get(env).set(appLower, new Set());
         ngxSvc.get(env).get(appLower).add(sv);
@@ -1129,7 +1150,7 @@ function initDenetim(app) {
         }
         if (!ngx.has(e)) ngx.set(e, new Map());
         ngx.get(e).set(app.toLowerCase(), app);
-        addSvc(e, app.toLowerCase(), r.service);
+        addSvc(e, app.toLowerCase(), r.service, covTanim(r));
       }
       // PROD proxy satirlari -> (ns, app) -> PROD nginx kumesi (internet katmani; GBRVP*
       // hostlari internettir). Cozulemeyenler sayilir, sessizce dusmez.
@@ -1166,7 +1187,7 @@ function initDenetim(app) {
           if (!ngx.has('PROD')) ngx.set('PROD', new Map());
           if (!ngx.get('PROD').has(res.application))
             ngx.get('PROD').set(res.application, res.application);
-          addSvc('PROD', String(res.application).toLowerCase(), r.service);
+          addSvc('PROD', String(res.application).toLowerCase(), r.service, covTanim(r));
         }
       }
 
@@ -1970,13 +1991,16 @@ function initDenetim(app) {
       // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
       // (bkz. __tests__/nginx-api-summary.test.cjs).
       const es = await eskiSunucuSuzgec(req);
-      const summary = summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []));
+      // Elle etiket (2026-11-12): sunucunun service kolonu Envanter'deki etiketle ayni kurala uyar.
+      const etk = await require('./nginx-host-labels.cjs').etiketHaritasi();
+      const summary = summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []), etk.m);
       res.json({
         ok: true,
         scanDate: effectiveDate,
         scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
         availableDates: (datesRes.recordset || []).map((r) => r.d),
         ...summary,
+        etiketHatasi: etk.hata,
         eskiGizli: es.bilgi(),
       });
     } catch (err) {
@@ -2149,13 +2173,7 @@ function initDenetim(app) {
       // ELLE ETIKET (2026-11-12): Portal DB'deki etiketler otomatik service listesine uygulanir.
       // Okunamazsa sayfa bozulmaz, otomatik liste gosterilir ve hata ayrica soylenir.
       const et = require('./nginx-host-labels.cjs');
-      let etiketHatasi = null;
-      let etiketler = new Map();
-      try {
-        etiketler = await et.etiketleriOku(require('../db/index.cjs'));
-      } catch (e) {
-        etiketHatasi = e.message || String(e);
-      }
+      const { m: etiketler, hata: etiketHatasi } = await et.etiketHaritasi();
       const rows = et.etiketUygula(es.ayir(r.recordset || [], (x) => x.hostname), etiketler);
       // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
       // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.

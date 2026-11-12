@@ -496,7 +496,7 @@ test('ES15 uclar: listeleme uclari eskiGizli yazar ve suzgec ozetten once uygula
   const den = fs.readFileSync(path.join(__dirname, '..', '..', 'audit', 'denetim.cjs'), 'utf8');
   for (const s of [
     'hosts: suz(hosts.recordset || []),',
-    'summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []))',
+    'summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []), etk.m)',
     'summarizeLocations(es.ayir(r.recordset || []))',
     'es.ayir(r.recordset || [], (x) => x.hostname)',
     'const raw = es.ayir(rowsRes.recordset || []);',

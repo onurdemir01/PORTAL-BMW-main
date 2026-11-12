@@ -1048,6 +1048,8 @@ export interface NginxApiHostRow {
    *  nginx_audit server bloklarindan. Bos = audit verisi yok. */
   services: string[];
   serverNames: string[];
+  /** Elle etiket (Nginx Hub › Envanter): services etkin liste, oto vhost dosyalarından gelen. */
+  etiket?: { mod: 'degistir' | 'ekle'; etiketler: string[]; oto: string[] } | null;
   configs: number;
   locations: number;
   noLimitLocations: number;

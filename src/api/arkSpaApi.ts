@@ -8,6 +8,8 @@ export type ArkYuk = SpaYukOlcumu;
 
 export interface ArkSatir {
   service: string;
+  /** Tanımın tüm sunucuları 'Yerine geç' + tek elle etikete sahipse o etiket (Nginx Hub › Envanter). */
+  serviceEtiket?: string;
   env: string;
   namespace: string;
   application: string;

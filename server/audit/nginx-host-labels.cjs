@@ -49,7 +49,7 @@ function etiketUygula(rows, etiketler) {
     const e = etiketler.get(String(r.hostname || '').trim().toUpperCase());
     if (!e) return r;
     const oto = bol(r.services);
-    const etkin = e.mod === 'ekle' ? [...new Set([...oto, ...e.etiketler])] : [...e.etiketler];
+    const etkin = etkinListe(oto, e);
     return {
       ...r,
       services: etkin.join(','),
@@ -78,6 +78,97 @@ async function etiketleriOku(db) {
   return m;
 }
 
+/**
+ * Etkin service listesi (SAF): otomatik liste + elle etiket. Etiket yoksa otomatik liste aynen.
+ * @param {string[]} oto otomatik (conf.d) liste
+ * @param {{mod:string, etiketler:string[]}|null|undefined} e
+ */
+function etkinListe(oto, e) {
+  if (!e) return oto;
+  if (e.mod !== 'ekle') return [...e.etiketler];
+  // Ustune ekle: harf duyarsiz tekil (otomatik 'GLOMO' + etiket 'glomo' iki kez sayilmaz); otomatik yazim kalir.
+  const gorulen = new Set(oto.map((x) => String(x).toLowerCase()));
+  return [...oto, ...e.etiketler.filter((x) => !gorulen.has(x.toLowerCase()) && gorulen.add(x.toLowerCase()))];
+}
+
+// -- HER YERDE GECERLI (kullanici, 2026-11-12: "etiket her yerde gecerli olsun, SPA'ya da bagla") --
+// Ayni haritayi okuyanlar: Envanter, Nginx Hub sunucu listesi + drift, API Envanteri, SPA Uygulamalari
+// (spa-rp), Denetim SPA matrisi + kapsami, Nginx Locations, ARK SPA Raporu (yalniz gosterim), survey
+// 'nginx-hosts' etiketi. KASITLI OLARAK OKUMAYANLAR (otomasyon / birlestirme anahtari conf.d adidir):
+// survey 'nginx-services' / 'nginx-locations' degerleri, nginx-migration (Production Tasimalari),
+// nginx_ops tanim okuma, trafik anahtarlari (spaTrafikAnahtari), yuk testi.
+// tekEtiket kurali: yalniz 'degistir' + TEK etiket bir TANIMIN servisini belirler. Kisa bellek onbellegi: her istek Portal DB'ye gitmesin. Yazinca/silince onbellek bosalir ve
+// dinleyiciler (baska modullerin yanit onbellekleri) haber alir: eski service listesi kalmasin.
+const ONBELLEK_MS = 30 * 1000;
+let onbellek = null; // { at, m }
+let surumNo = 0; // her degisiklikte artar: uzun hesaplar bitince sonucun bayat olup olmadigini sorar
+const dinleyiciler = new Map(); // anahtar -> fn (ayni anahtar ikinci kez kaydolursa yerine gecer)
+
+/**
+ * Degisiklikte cagrilacak fonksiyon (or. yanit onbellegi temizligi). Anahtar verilirse ayni
+ * modul (router testlerde birden cok kurulur) dinleyici biriktirmez.
+ */
+function degisinceHaberVer(fn, anahtar) {
+  if (typeof fn === 'function') dinleyiciler.set(anahtar || fn, fn);
+}
+
+/**
+ * TANIM BASINA etiket (aynalar): ayni tanim (anahtar) birden cok sunucuda durur. Etiket yalniz TUM
+ * sunuculari ayni tekEtiket'i tasiyorsa gecer; karisiksa (bir ayna etiketli, digeri degil) tanim
+ * conf.d adinda kalir - aksi halde tek tanim iki satira bolunur, trafik iki kez sayilirdi.
+ * @returns {(r: object) => string|null}
+ */
+function tanimEtiketi(rows, m, anahtar, hostOf = (r) => r.host) {
+  const k = new Map();
+  if (m && m.size)
+    for (const r of rows || []) {
+      const a = anahtar(r);
+      const t = tekEtiket(m, hostOf(r));
+      const v = k.get(a);
+      k.set(a, v === undefined ? t : v === t ? v : null);
+    }
+  return (r) => (m && m.size ? k.get(anahtar(r)) || null : null);
+}
+
+/**
+ * Sunucunun KESIN tek servisi: yalniz 'degistir' + tek etiket ("bu sunucu X"); BUYUK harf.
+ * Diger durumlarda null (coklu etiket / ustune ekle bir tanimin hangi servise ait oldugunu soylemez).
+ */
+function tekEtiket(m, host) {
+  const e = m && m.get ? m.get(String(host || '').trim().toUpperCase()) : null;
+  return e && e.mod === 'degistir' && e.etiketler && e.etiketler.length === 1 ? String(e.etiketler[0]).toUpperCase() : null;
+}
+
+function degisti() {
+  onbellek = null;
+  surumNo += 1;
+  for (const fn of dinleyiciler.values()) {
+    try {
+      fn();
+    } catch {
+      /* yoksay */
+    }
+  }
+}
+
+/**
+ * Etiket haritasi (onbellekli). ASLA firlatmaz: okunamazsa bos harita + hata metni doner;
+ * cagiran ekran otomatik listeyle calismaya devam eder.
+ * @returns {Promise<{ m: Map<string, object>, hata: string|null }>}
+ */
+async function etiketHaritasi(db) {
+  if (onbellek && Date.now() - onbellek.at < ONBELLEK_MS) return { m: onbellek.m, hata: null };
+  try {
+    const s = surumNo;
+    const m = await etiketleriOku(db || require('../db/index.cjs'));
+    // Okuma surerken yazma olduysa bu (eski) harita onbellege GIRMEZ (dogrulama bulgusu).
+    if (s === surumNo) onbellek = { at: Date.now(), m };
+    return { m, hata: null };
+  } catch (e) {
+    return { m: new Map(), hata: e.message || String(e) };
+  }
+}
+
 async function etiketYaz(db, host, { mod, etiketler, not }, by) {
   const ex = await db.query(`SELECT 1 FROM nginx_host_labels WHERE host = $1`, [host]);
   if ((ex.rows || []).length) {
@@ -91,10 +182,29 @@ async function etiketYaz(db, host, { mod, etiketler, not }, by) {
       [host, mod, etiketler.join(','), not, by],
     );
   }
+  degisti();
 }
 
 async function etiketSil(db, host) {
   await db.query(`DELETE FROM nginx_host_labels WHERE host = $1`, [host]);
+  degisti();
 }
 
-module.exports = { HOST_RE, dogrula, etiketUygula, etiketleriOku, etiketYaz, etiketSil, _bol: bol };
+module.exports = {
+  HOST_RE,
+  dogrula,
+  etiketUygula,
+  etkinListe,
+  tekEtiket,
+  tanimEtiketi,
+  surum: () => surumNo,
+  etiketleriOku,
+  etiketHaritasi,
+  degisinceHaberVer,
+  etiketYaz,
+  etiketSil,
+  _bol: bol,
+  _sifirla: () => {
+    onbellek = null;
+  },
+};

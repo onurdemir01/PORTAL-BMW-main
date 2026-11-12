@@ -97,6 +97,13 @@ async function loadReport(fresh) {
   }
   const { query, sql } = require('../inventory/mssql.cjs');
   const { buildSpaReport } = require('./build.cjs');
+  // Hesap surerken elle etiket degisirse sonuc onbellege YAZILMAZ (eski serviceEtiket kalmasin).
+  let etSurum = null;
+  try {
+    etSurum = require('../audit/nginx-host-labels.cjs').surum();
+  } catch {
+    /* modul yoksa yoksay */
+  }
 
   const tarih = await query(
     `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
@@ -175,6 +182,23 @@ async function loadReport(fresh) {
     ekipOf: (ns, app) => ownersForApp(owners, app, [ns]),
     env: 'PROD',
   });
+  // ELLE ETIKET (2026-11-12, "her yerde gecerli, SPA'ya da bagla"): tanimin TUM sunuculari ayni
+  // 'Yerine gec' + tek etikete sahipse satir `serviceEtiket` tasir (ekranda gosterilir). `service`
+  // conf.d adi kalir: trafik anahtari, beyan ve servis suzgeci ona baglidir.
+  try {
+    const et = require('../audit/nginx-host-labels.cjs');
+    et.degisinceHaberVer(() => {
+      _cache = { at: 0, value: null };
+    }, 'spa-report');
+    const etM = (await et.etiketHaritasi()).m;
+    if (etM.size)
+      for (const row of r.rows || []) {
+        const t = [...new Set((row.hosts || []).map((h) => et.tekEtiket(etM, h)))];
+        if (t.length === 1 && t[0] && t[0] !== row.service) row.serviceEtiket = t[0];
+      }
+  } catch {
+    /* etiket modulu yoksa rapor eskisi gibi */
+  }
   const value = {
     ok: true,
     notScanned: false,
@@ -184,7 +208,13 @@ async function loadReport(fresh) {
     trafficReady: trfIdx.satir > 0,
     ...r,
   };
-  _cache = { at: Date.now(), value };
+  let guncel = true;
+  try {
+    guncel = etSurum === null || require('../audit/nginx-host-labels.cjs').surum() === etSurum;
+  } catch {
+    /* modul yoksa yoksay */
+  }
+  if (guncel) _cache = { at: Date.now(), value };
   return { ...value, cached: false };
 }
 

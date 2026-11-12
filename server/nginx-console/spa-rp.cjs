@@ -225,10 +225,19 @@ function rolOf(host, RP) {
  * satiri: Nginx_Config_Audit.service (servis vhost'u, <SERVICE>-<ENV>.conf). Yeni PROD dizin
  * kurulumunun (Nginx_Intranet_Audit) servis kolonu YOK: o zaman sunucunun tasima grubu soylenir -
  * Glomo grubu yalniz Glomo'dur ('GLOMO'); diger grup birden cok servisi tasir, tek ad UYDURULMAZ.
- * @returns {{ servis: string, servisKaynak?: 'grup' }}
+ * @returns {{ servis: string, servisKaynak?: 'grup'|'etiket', servisOto?: string }}
  */
-function servisOf(service, host, RP) {
+function servisOf(service, host, RP, etiketler) {
+  // 4. arguman: etiket haritasi (sunucu basina) YA DA tanim icin onceden cozulmus etiket (tanimEtiketi).
   const s = U(service);
+  // ELLE ETIKET (kullanici, 2026-11-12: "etiket her yerde gecerli olsun, SPA'ya da bagla"):
+  // Nginx Hub > Envanter'de sunucuya verilen etiket. Yalniz 'Yerine gec' + TEK etiket sunucunun
+  // servisini kesin soyler ("bu sunucu X"): tanimin conf.d adinin da, ad yoksa (yeni PROD dizin)
+  // sunucu grubunun da yerine gecer. Birden cok etiket ya da 'Ustune ekle' kipinde tanimin kendi
+  // adi korunur (tanimin hangi servise ait oldugu bilinmez; uydurulmaz).
+  const tek =
+    typeof etiketler === 'string' ? U(etiketler) : require('../audit/nginx-host-labels.cjs').tekEtiket(etiketler, host) || '';
+  if (tek && tek !== s) return s ? { servis: tek, servisKaynak: 'etiket', servisOto: s } : { servis: tek, servisKaynak: 'etiket' };
   if (s) return { servis: s };
   const g = (RP.groups || []).find((x) => x.oldHosts.includes(U(host)) || x.newHosts.includes(U(host)));
   if (!g) return { servis: '' };
@@ -577,6 +586,20 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   };
 
   let configTarih = '';
+  // ELLE ETIKET TANIM BASINA (aynalar): tanimin tum RP sunuculari ayni etikette anlasmazsa conf.d adi kalir.
+  const { tanimEtiketi } = require('../audit/nginx-host-labels.cjs');
+  const cfgEtiket = tanimEtiketi(
+    satirlar('cfg').filter((r) => RP.all.has(U(r.host))),
+    k.etiketler,
+    (r) => [rpEnvOf(U(r.host), RP), U(r.service), L(r.kind), T(r.location_path)].join('|'),
+    (r) => U(r.host),
+  );
+  const dirEtiket = tanimEtiketi(
+    satirlar('dir').filter((r) => bit(r.conf_exists)),
+    k.etiketler,
+    (r) => `${L(r.namespace)}|${L(r.application)}`,
+    (r) => U(r.host),
+  );
   for (const r of satirlar('cfg')) {
     const host = U(r.host);
     if (!host || !RP.all.has(host)) continue;
@@ -590,7 +613,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       vhost: T(r.vhost),
       location: T(r.location_path),
       status: U(r.status) || 'OK',
-      ...servisOf(r.service, host, RP),
+      ...servisOf(r.service, host, RP, cfgEtiket(r) || ''),
     };
     let bag;
     let d;
@@ -689,7 +712,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       vhost: (trafik && trafik.vhost) || '',
       location: `${ns}/${app}`,
       status: bit(r.app_deployed) ? 'OK' : 'MISSING_APP',
-      ...servisOf('', host, RP),
+      ...servisOf('', host, RP, dirEtiket(r) || ''),
       yol: 'dizin',
       esles,
       conf,
@@ -1007,4 +1030,5 @@ module.exports = {
   PENCERE_TAM_SA,
   ESLES_SIRA,
   KODLAR,
+  _servisOf: servisOf,
 };

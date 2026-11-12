@@ -11,6 +11,8 @@ export interface NcHost {
   location: string | null;
   service: string | null;
   services: string[];
+  /** Elle etiket (Nginx Hub › Envanter, 2026-11-12): services etkin liste; oto conf.d'den gelen. */
+  etiket?: { mod: 'degistir' | 'ekle'; etiketler: string[]; oto: string[] } | null;
   nginxVersion: string | null;
   prefix: string | null;
   configCount: number | null;
@@ -527,7 +529,10 @@ export interface NgSpaRpTanim {
   yol: 'proxy' | 'include' | 'dizin';
   /** Reverse proxy servisi (config'teki servis vhost'u; yoksa sunucu grubu). */
   servis?: string;
-  servisKaynak?: 'grup';
+  /** 'grup': ad tanımda yok, sunucu grubundan; 'etiket': Envanter'deki elle etiket (Yerine geç + tek etiket). */
+  servisKaynak?: 'grup' | 'etiket';
+  /** servisKaynak 'etiket' iken tanımın conf.d'deki asıl adı. */
+  servisOto?: string;
   esles: string;
   hedef?: string;
   hedefKaynak?: string;

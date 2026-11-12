@@ -1176,12 +1176,23 @@ function RpAyrinti({
                     </td>
                     <td
                       className="pr-2 whitespace-nowrap"
-                      title={t.servisKaynak === 'grup' ? 'Servis adı tanımda yok; sunucu grubundan' : undefined}
+                      title={
+                        t.servisKaynak === 'grup'
+                          ? 'Servis adı tanımda yok; sunucu grubundan'
+                          : t.servisKaynak === 'etiket'
+                            ? `Sunucunun elle etiketi (Nginx Hub › Envanter)${t.servisOto ? ` · conf.d: ${t.servisOto}` : ''}`
+                            : undefined
+                      }
                     >
                       {t.servis || '—'}
                       {t.servisKaynak === 'grup' && (
                         <span className="ml-1 text-[10px]" style={{ color: MUTED }}>
                           (grup)
+                        </span>
+                      )}
+                      {t.servisKaynak === 'etiket' && (
+                        <span className="ml-1 text-[10px]" style={{ color: MUTED }}>
+                          (etiket)
                         </span>
                       )}
                     </td>

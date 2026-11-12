@@ -43,7 +43,9 @@ export function NginxEtiketPenceresi({
   const etiketler = etiketleriAyir(metin);
   const gecersiz = etiketler.filter((x) => !ETIKET_RE.test(x) || x.toLowerCase() === 'too_many');
   const sonuc =
-    mod === 'ekle' ? [...new Set([...oto, ...etiketler])] : etiketler;
+    mod === 'ekle'
+      ? [...oto, ...etiketler.filter((x) => !oto.some((o) => o.toLowerCase() === x.toLowerCase()))]
+      : etiketler;
   const hata = !etiketler.length
     ? 'En az bir etiket yazın.'
     : etiketler.length > 20

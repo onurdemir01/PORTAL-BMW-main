@@ -405,7 +405,13 @@ const SOURCES = {
       const { query } = require('../inventory/mssql.cjs');
       const { envOfHost } = require('../audit/nginx-hosts.cjs');
       const wantEnv = normEnv(env);
-      const r = await query(`SELECT hostname, env, location, service FROM dbo.nginx_inventory`);
+      const r = await query(`SELECT hostname, env, location, service, services FROM dbo.nginx_inventory`);
+      // ELLE ETIKET (2026-11-12, "her yerde gecerli"): yalniz GORUNEN ad; secilen deger host adidir.
+      const et = require('../audit/nginx-host-labels.cjs');
+      et.degisinceHaberVer(() => {
+        for (const k of [...cache.keys()]) if (k.startsWith('nginx-hosts|')) cache.delete(k);
+      }, 'choice-sources-nginx-hosts');
+      const { m: etiketler } = await et.etiketHaritasi();
       const out = [];
       for (const row of r.recordset || []) {
         const host = String(row.hostname || '')
@@ -414,7 +420,10 @@ const SOURCES = {
         if (!host) continue;
         const e = normEnv(row.env) || envOfHost(host);
         if (wantEnv && e !== wantEnv) continue;
-        const svc = String(row.service || '').trim();
+        const e2 = etiketler.get(host);
+        const svc = e2
+          ? et.etkinListe(et._bol(row.services || row.service), e2).filter((x) => x !== 'too_many').join(',')
+          : String(row.service || '').trim();
         out.push({
           value: host,
           label: `${host}${svc ? '  ·  ' + svc : ''}${row.location ? '  ·  ' + row.location : ''}`,

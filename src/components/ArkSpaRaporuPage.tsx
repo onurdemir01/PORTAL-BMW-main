@@ -471,7 +471,13 @@ export default function ArkSpaRaporuPage() {
                     {r.location || '—'}
                     <span className="font-sans" style={{ color: 'var(--text-muted)' }}>
                       {' '}
-                      · {r.service} · {r.hosts.length} sunucu
+                      · {r.service}
+                      {r.serviceEtiket && (
+                        <span title="Sunucuların elle etiketi (Nginx Hub › Envanter); conf.d adı solda">
+                          {' '}→ {r.serviceEtiket} (etiket)
+                        </span>
+                      )}{' '}
+                      · {r.hosts.length} sunucu
                     </span>
                   </td>
                   <td className="px-2 py-1 font-mono">{r.application}</td>

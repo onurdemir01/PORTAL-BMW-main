@@ -42,9 +42,12 @@ function servicesOfHosts(serverRows) {
  * @param {{host:string, config_file:string, locations:number, no_limit:number,
  *          ip_limited?:number, srv_limited?:number}[]} recordset
  * @param {{host:string, conf_file:string, server_name?:string}[]} [serverRows]  Nginx_Audit_Servers (servis icin)
+ * @param {Map<string, object>} [etiketler]  elle etiket (nginx-host-labels.cjs; 2026-11-12 "her yerde gecerli")
  */
-function summarize(recordset, serverRows) {
+function summarize(recordset, serverRows, etiketler) {
   const svcOf = servicesOfHosts(serverRows);
+  const { etkinListe } = require('./nginx-host-labels.cjs');
+  const etiketOf = (host) => (etiketler && etiketler.get ? etiketler.get(String(host).toUpperCase()) || null : null);
   const raw = (recordset || []).map((r) => {
     const host = String(r.host || '').trim();
     return {
@@ -102,10 +105,14 @@ function summarize(recordset, serverRows) {
   const hostAgg = new Map();
   for (const r of raw) {
     if (!hostAgg.has(r.host)) {
+      // servis: vhost dosyalarindan (nginx_audit); yoksa bos liste -> ekranda tire. Elle etiket varsa
+      // etkin liste (Envanter ile ayni kural); otomatik liste `etiket.oto`da kalir.
+      const oto = svcOf.get(r.host)?.services || [];
+      const e = etiketOf(r.host);
       hostAgg.set(r.host, {
         host: r.host, env: r.env, site: r.site,
-        // servis: vhost dosyalarindan (nginx_audit); yoksa bos liste -> ekranda "—"
-        services: svcOf.get(r.host)?.services || [],
+        services: etkinListe(oto, e),
+        ...(e ? { etiket: { mod: e.mod, etiketler: e.etiketler, oto } } : {}),
         serverNames: svcOf.get(r.host)?.names || [],
         configs: 0, locations: 0, noLimitLocations: 0,
       });
