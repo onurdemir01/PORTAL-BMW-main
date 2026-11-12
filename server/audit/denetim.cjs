@@ -141,33 +141,24 @@ function initDenetim(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       const scanDate = String(req.query.scanDate || '').trim();
 
-      const dateRes = await query(
+      // PARALEL BASLANGIC (2026-11-12): tarih listesi, proxy kolon tespiti ve trafik
+      // (sema + satirlar) effectiveDate'e BAGLI DEGIL; ilk dalgada birlikte baslar. Yalniz
+      // tarihe bagli sorgular (SPA satirlari, PROD proxy) tarih cozulunce kosar. Yan sorgularin
+      // hatasi hemen YAKALANIR (islenmemis red olmasin); datesP hatasi eskisi gibi asagida
+      // await edildiginde 500'e gider - tarih yoksa (bos yanit) hic await edilmez.
+      const yut = () => {};
+      const dateP = query(
         scanDate
           ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
           : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
         scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
       );
-      const effectiveDate = dateRes.recordset?.[0]?.d || null;
-      if (!effectiveDate) {
-        return res.json({ ok: true, scanDate: null, services: [], rows: [], availableDates: [] });
-      }
-
-      const [rowsRes, datesRes] = await Promise.all([
-        query(
-          `SELECT service, env, application, namespace, include_name, location_path,
-                  host, vhost, deploy_mode, include_exists, app_deployed,
-                  in_ocp_inventory, status
-             FROM dbo.Nginx_Config_Audit
-            WHERE scan_date = @d${await spaFilter()}`,
-          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
-        ),
-        query(
-          `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d
-             FROM dbo.Nginx_Config_Audit ORDER BY d DESC`,
-        ),
-      ]);
-
-      const raw = rowsRes.recordset || [];
+      const datesP = query(
+        `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d
+           FROM dbo.Nginx_Config_Audit ORDER BY d DESC`,
+      );
+      datesP.catch(yut);
+      const proxyColsP = hasProxyColumns(); // kendi hatasini yutar (false)
 
       // YUK ALIYOR MU (kullanici, 2026-09-24): "bu uygulamalar yuk aliyor mu? Bunu en iyi
       // access log'dan goruruz." Kaynak dbo.Nginx_Spa_Traffic - bmw_nginx/nginx_config_audit
@@ -183,18 +174,40 @@ function initDenetim(app) {
       // `req7 > 0 ? active : sampled ? unknown : idle` idi: gunluk rotasyonlu hostta 1-4 gunluk
       // olcum "7 gundur yuk yok - atil aday" gorunuyordu; okunamayan mirror (LOADERR satiri
       // service/env/location NULL) hicbir hucreye ulasmiyordu.
-      let trfIdx = null; // null = tablo yok / okunamadi -> trafik hic gosterilmez
-      try {
-        const sema = (await query(SPA_TRAFIK_SEMA_SQL)).recordset?.[0] || {};
-        if (sema.trf) {
-          const tr = await query(spaTrafikSorgusu(!!sema.fs));
-          trfIdx = spaTrafikIndeksi(tr.recordset || [], (x) =>
-            spaTrafikAnahtari(x.service, x.env, x.location),
+      // null = tablo yok / okunamadi -> trafik hic gosterilmez (ekran calismaya devam eder)
+      const trfIdxP = query(SPA_TRAFIK_SEMA_SQL)
+        .then((r) => {
+          const sema = r.recordset?.[0] || {};
+          if (!sema.trf) return null;
+          return query(spaTrafikSorgusu(!!sema.fs)).then((tr) =>
+            spaTrafikIndeksi(tr.recordset || [], (x) => spaTrafikAnahtari(x.service, x.env, x.location)),
           );
-        }
-      } catch {
-        /* tablo yoksa trafik gosterilmez - ekran calismaya devam eder */
+        })
+        .catch(() => null);
+
+      const dateRes = await dateP;
+      const effectiveDate = dateRes.recordset?.[0]?.d || null;
+      if (!effectiveDate) {
+        return res.json({ ok: true, scanDate: null, services: [], rows: [], availableDates: [] });
       }
+
+      // proxyColsP cozulunce hasProxyColumns onbellegi dolu: spaFilter yeni sorgu atmaz.
+      await proxyColsP;
+      const [rowsRes, datesRes] = await Promise.all([
+        query(
+          `SELECT service, env, application, namespace, include_name, location_path,
+                  host, vhost, deploy_mode, include_exists, app_deployed,
+                  in_ocp_inventory, status
+             FROM dbo.Nginx_Config_Audit
+            WHERE scan_date = @d${await spaFilter()}`,
+          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+        ),
+        datesP,
+      ]);
+
+      const raw = rowsRes.recordset || [];
+
+      const trfIdx = await trfIdxP;
 
       // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
       // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
@@ -666,14 +679,29 @@ function initDenetim(app) {
   // OKUNAMADI ile BOS AYNI SEY DEGIL: `rows: null` -> her route "olculemedi"; `rows: []`
   // -> tarama okundu ama bu cluster listesinde satir yok. Ikisini tek bos listeye
   // indirmek, hic olculmemis bir ortami "SPA yok" diye gostermek olurdu.
-  async function spaSinyali(clusters) {
-    const { query, sql } = require('../inventory/mssql.cjs');
-    const sema = await query(
+  // SEMA YOKLAMASI ONBELLEGI (2026-11-12): tablo/kolon varligi nadiren degisir; 10 dk surec ici
+  // tutulur. Hata (null) ve "tablo yok" ONBELLEGE ALINMAZ: ilk job kosusundan sonra ekran
+  // 10 dk "tablo yok" demesin, gecici hata da 10 dk kalici olmasin.
+  const SPA_SEMA_TTL = 10 * 60_000;
+  let _spaSema = null;
+  let _spaSemaAt = 0;
+  async function spaSinyaliSema(query) {
+    if (_spaSema && Date.now() - _spaSemaAt < SPA_SEMA_TTL) return _spaSema;
+    const s = await query(
       `SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid,
               COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb`,
     )
       .then((r) => r.recordset?.[0] || {})
       .catch(() => null);
+    if (s && s.oid) {
+      _spaSema = s;
+      _spaSemaAt = Date.now();
+    }
+    return s;
+  }
+  async function spaSinyali(clusters) {
+    const { query, sql } = require('../inventory/mssql.cjs');
+    const sema = await spaSinyaliSema(query);
     if (!sema) return { rows: null, tableMissing: false, error: 'sema sorgusu okunamadi' };
     if (!sema.oid)
       return {

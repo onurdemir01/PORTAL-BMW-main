@@ -1,9 +1,10 @@
 // src/components/app_hub/WasGorunum.tsx — Application Hub: WebSphere (WAS) application server'ı.
-import React from 'react';
+import React, { useState } from 'react';
 import type { WasDetay } from '@/api/appHubApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
-import { Bolum, JvmArglari, KapasiteHucresi, KaynakUyarisi, OzetKutusu, TD, TH } from './ortak';
+import { Bolum, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH } from './ortak';
+import { OrtamOzeti, satirAnahtarlari } from './OrtamOzeti';
 
 const KAYNAK_AD: Record<string, string> = {
   envanter: 'WAS envanteri (WASAppsInventory)',
@@ -13,19 +14,21 @@ const KAYNAK_AD: Record<string, string> = {
 };
 
 export default function WasGorunum({ d }: { d: WasDetay }) {
+  // Ortam ozeti satirina tiklamak sunucu tablosunu o ortama suzer (JBoss gorunumuyle ayni).
+  const [ortam, setOrtam] = useState('');
+  const liste = d.sunucular.filter((s) => !ortam || (s.ortam || '') === ortam);
+  const anahtarlar = satirAnahtarlari(liste.map((s) => s.host));
   return (
     <div className="space-y-4">
       <KaynakUyarisi kaynaklar={d.kaynaklar} adlar={KAYNAK_AD} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <OzetKutusu etiket="Sunucu" deger={d.ozet.sunucuSayisi} alt={d.ozet.ortamlar.join(' · ') || undefined} />
-        <OzetKutusu etiket="WAS sürümü" deger={d.ozet.surumler.join(', ') || '—'} />
-        <OzetKutusu etiket="Web sunucusu" deger={d.ozet.webSunucuSayisi} />
-        <OzetKutusu
-          etiket="Toplam kapasite"
-          deger={d.ozet.toplamCpu ? `${d.ozet.toplamCpu} vCPU` : '—'}
-          alt={d.ozet.toplamBellekGb ? `${fmtNumber(d.ozet.toplamBellekGb)} GB bellek (toplam)` : undefined}
-        />
-      </div>
+      <OrtamOzeti
+        satirlar={d.sunucular.map((s) => ({ host: s.host, ortam: s.ortam, surum: s.wasSurum, java: s.jre, jvmler: [], kapasite: s.kapasite }))}
+        surumBasligi="WAS sürümü"
+        secili={ortam}
+        onSec={setOrtam}
+        jvmGoster={false}
+        altBilgi={`${fmtNumber(d.ozet.webSunucuSayisi)} web sunucusu`}
+      />
       <Bolum baslik="Sunucular" aciklama="JVM ayarları Uygulama Envanteri taramasının okuduğu server.xml'den gelir; tarama kapalıysa ya da bu alan henüz toplanmıyorsa boş görünür.">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -41,9 +44,9 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
               </tr>
             </thead>
             <tbody>
-              {!d.sunucular.length && <TableEmptyRow colSpan={7} />}
-              {d.sunucular.map((s) => (
-                <React.Fragment key={s.host}>
+              {!liste.length && <TableEmptyRow colSpan={7} />}
+              {liste.map((s, i) => (
+                <React.Fragment key={anahtarlar[i]}>
                   <tr style={{ borderTop: '1px solid var(--border-subtle)' }}>
                     <td className={TD} style={{ fontFamily: 'var(--font-mono)' }}>{s.host}</td>
                     <td className={TD}>{s.ortam || '—'}</td>

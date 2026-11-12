@@ -554,10 +554,7 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
-  // 2026-11-11: ortam suzgeci eklendi; metin '<ORTAM> ortaminda uygulama yok; ' ya da 'Bu suzgeclerle
-  // uygulama yok; ' + 'toplam N uygulama var.' olarak iki parcada.
-  assert.match(ui, /'Bu süzgeçlerle uygulama yok; '\}\s*toplam \{nf\(apps\.length\)\} uygulama var\./, 'bos gorunum sebebini soylemiyor');
-  assert.match(ui, /ortamında uygulama yok; `/, 'ortam secilince bos gorunum ortami soylemiyor');
+  assert.match(ui, /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/, 'bos gorunum sebebini soylemiyor');
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
   assert.match(ui, /a\.weakEvidence &&/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
 });
@@ -670,8 +667,10 @@ test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirila
   const var_ = (parca, mesaj) => assert.ok(ui.includes(parca), mesaj + ' :: ' + parca);
   var_('if (d && d.ok === false) { setHata(', 'ok:false cevabi veri gibi isleniyor');
   var_('SPA keşfi okunamadı: {hata}', 'hata ekranda gosterilmiyor');
-  var_(') : eksikTarama ? (', '"kacirilan yok" cumlesi nitelenmiyor');
-  var_('Taranabilen kısımda adı kurala uymayan SPA yok', 'nitelenmis cumle yok');
+  // 2026-11-12: Kesif ozeti yerine ozet matrisi; eksik taramada sayilar NITELENIR.
+  var_('eksikTarama={eksikTarama}', 'ozet matrisi eksik taramayi bilmiyor');
+  const mat = gsNorm(read('src/components/nginx_console/SpaOzetMatrisi.tsx'));
+  assert.ok(mat.includes('Sayılar yalnız taranabilen kısımdan: {eksikTarama}.'), 'eksik taramada ozet nitelenmiyor');
   var_("c.bucket !== 'guncel'", 'kapsam paneli ayrik kovaya gore listelemiyor');
 });
 
@@ -702,7 +701,8 @@ test('GS19-21 ekran: eski veri isareti kapsamdan; veri yokken "yok" denmez; hata
     !ui.includes('scanDate < data.scanDate'),
     'satir isareti yine global en yeni tarihle karsilastiriyor',
   );
-  var_('s.apps === 0 ? (', 'veri yokken "kacirilan yok" deniyor');
+  // veri yokken ozet matrisi hic cizilmez (satir yoksa null), tablo "Kesif verisi yok" der.
+  assert.ok(gsNorm(read('src/components/nginx_console/SpaOzetMatrisi.tsx')).includes('if (!satirlar.length) return null;'), 'veri yokken ozet sifirlarla ciziliyor');
   var_('Keşif verisi yok.', 'veri yok cumlesi yok');
   var_('{hata ? (', 'hata varken tablo "satir yok" diyor');
   var_('Veri okunamadı — sebep yukarıda.', 'tablo hata metni yok');

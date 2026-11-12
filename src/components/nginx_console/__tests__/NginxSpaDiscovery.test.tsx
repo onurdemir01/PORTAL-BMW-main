@@ -1463,26 +1463,28 @@ describe('NginxSpaDiscovery — RP servisi, özet kutusu, HTML yanıt (2026-10-1
     expect(hucre(satirOf(container, 'yok-ui'), 'rp').querySelector('[data-testid="rp-servis"]')).toBeNull();
   });
 
-  it('keşif özeti açılıp kapanır; kapalıyken tek satır özet; tercih bu tarayıcıda hatırlanır', async () => {
-    const { container, unmount } = render(<NginxSpaDiscovery />);
-    const ozet = await waitFor(() => {
-      const el = container.querySelector('[data-testid="spa-ozet"]') as HTMLElement | null;
-      if (!el) throw new Error('özet yok');
+  // OZET MATRISI (kullanici, 2026-11-12: "Kesif ozeti okumasi zor"): ortam basina SPA, tip, ad kalibi,
+  // RP, RP yuku, RP eslenik; sayiya tiklamak listeyi suzer; eski katlanir ozet yok.
+  it('özet matrisi: ortam satırı, sayılar SPA olanlardan; sayıya tıklamak listeyi o kırılıma süzer', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    const mat = await waitFor(() => {
+      const el = container.querySelector('[data-testid="spa-ozet-matrisi"]') as HTMLElement | null;
+      if (!el) throw new Error('matris yok');
       return el;
     });
-    const dugme = ozet.querySelector('button[aria-expanded]') as HTMLButtonElement;
-    expect(dugme.getAttribute('aria-expanded')).toBe('true');
-    expect(ozet.textContent).toContain('tanesi gerçekten SPA');
-    fireEvent.click(dugme);
-    expect(dugme.getAttribute('aria-expanded')).toBe('false');
-    expect(ozet.textContent).not.toContain('tanesi gerçekten SPA');
-    expect(ozet.textContent).toMatch(/uygulama tarandı · \S+ SPA/);
-    expect(localStorage.getItem('nginx-hub:spa-kesfi:ozet-acik')).toBe('0');
-    unmount();
-    const ikinci = render(<NginxSpaDiscovery />);
-    await waitFor(() => expect(ikinci.container.querySelector('[data-testid="spa-ozet"]')).not.toBeNull());
-    const oz2 = ikinci.container.querySelector('[data-testid="spa-ozet"]') as HTMLElement;
-    expect(oz2.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('[data-testid="spa-ozet"]')).toBeNull();
+    const satir = mat.querySelector('[data-testid="ozet-satiri"]') as HTMLElement;
+    expect(satir.querySelector('td')!.textContent).toBe('Test');
+    const toplamDugme = satir.querySelectorAll('td')[1].querySelector('button') as HTMLButtonElement;
+    expect(Number(toplamDugme.textContent)).toBeGreaterThan(0);
+    // RP uzerinden (tanimli) sayisina tikla: liste yalniz SPA + tanimli satirlar
+    const rpHucre = satir.querySelectorAll('td')[4];
+    const tanimli = rpHucre.querySelector('button') as HTMLButtonElement;
+    const n = Number(tanimli.textContent);
+    fireEvent.click(tanimli);
+    expect(satirlar(container).length).toBe(n);
+    expect(satirlar(container).every((tr) => hucre(tr, 'rp').textContent?.startsWith('tanımlı'))).toBe(true);
+    expect((container.querySelector('select[title="SPA"]') as HTMLSelectElement).value).toBe('evet');
   });
 
   it('yanıt JSON değilse (ara geçidin HTML sayfası) HTTP durumuyla anlaşılır hata; "Unexpected token" yok', async () => {

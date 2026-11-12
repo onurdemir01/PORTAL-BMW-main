@@ -278,11 +278,16 @@ async function loadLatest() {
 /**
  * Tek sunucu ayrintisi icin AGIR JVM kolonlari (jvm_args ailesi). Filo sorgusunda yoktur
  * (hacim; P9). Kolon semada yoksa (eski sema / dalga 3 oncesi) bos Map.
+ * @param {string} host
+ * @param {{ kol?: object|Promise<object> }} [opts]  kol: onceden okunmus sema (jvmAgirSemasi()
+ *   ciktisi ya da sozu). Cok sunuculu cagiran semayi bir kez okuyup paylasir; verilmezse ya da
+ *   bos cozulurse sema burada okunur (eski davranis).
  * @returns {Promise<Map<string, object>>}  anahtar `${gen}|${jvm kucuk harf}`
  */
-async function loadJvmAgir(host) {
+async function loadJvmAgir(host, opts) {
   const { query, sql } = require('../inventory/mssql.cjs');
-  const kol = await shKolonlari(query);
+  let kol = opts && opts.kol ? await opts.kol : null;
+  if (!kol) kol = await shKolonlari(query);
   if (!kol.ok) return new Map();
   const var_ = kol.cols.get('dbo.server_hub_jvms') || new Set();
   const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
@@ -301,6 +306,17 @@ async function loadJvmAgir(host) {
   for (const r of rows) out.set(`${Number(r.gen)}|${String(r.jvm || '').trim().toLowerCase()}`, r);
   return out;
 }
+
+/**
+ * loadJvmAgir icin kolon semasi (sys.columns) - istek basina BIR kez okunup
+ * loadJvmAgir(host, { kol }) ile paylasilir. Hata firlatmaz ({ ok:false } doner).
+ * Ayri export satiri yerine fonksiyonun ozelligi olarak sunulur: loadJvmAgir.semaOku().
+ */
+function jvmAgirSemasi() {
+  const { query } = require('../inventory/mssql.cjs');
+  return shKolonlari(query);
+}
+loadJvmAgir.semaOku = jvmAgirSemasi;
 
 /** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
 function hesapla() {

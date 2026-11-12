@@ -93,11 +93,6 @@ WAS_UYGULAMA_RE = re.compile(r'applications/([^/]+?)(?:\.ear)?/')
 JVM_SIR_RE = re.compile(r'(pass(word|wd|phrase)?|pwd|secret|token|credential|(access|license|signing|encryption'
                         r'|private|api|client|master|auth)[_.-]?key|key[_.-]?(store|pass)[_.-]?pass(word)?|keypass'
                         r'|storepass|truststore[_.-]?pass(word)?)', re.I)
-JVM_BEYAZ_ONEKLER = ('java.', 'javax.management.', 'sun.', 'jboss.', 'org.jboss.', 'org.wildfly.',
-                     'file.encoding', 'user.timezone', 'user.language', 'user.country', 'user.region',
-                     'logging.configuration', 'java.util.logging.manager', 'com.sun.management.jmxremote.port',
-                     'com.sun.management.jmxremote.ssl', 'com.sun.management.jmxremote.authenticate',
-                     'networkaddress.cache.ttl', 'jdk.tls.client.protocols', 'https.protocols')
 JVM_URL_KIMLIK_RE = re.compile(r'(://[^/:@ ]+:)[^@/ ]+@')
 JVM_KULLANICI_RE = re.compile(r'([A-Za-z0-9_$#.-]+/)[^@/ "]+@')
 JVM_AYRAC_RE = re.compile(r'[=:]')
@@ -795,8 +790,9 @@ def alt_dizinler(yol):
 
 
 def jvm_deger_acik(ad):
-    """-D / sistem ozelligi degeri acik kalabilir mi: once sir ERE'si, sonra beyaz onek (mask.cjs degerAcik)."""
-    return not JVM_SIR_RE.search(ad) and ad.startswith(JVM_BEYAZ_ONEKLER)
+    """-D / sistem ozelligi degeri acik kalabilir mi: YALNIZ sir adli olan gizlenir (mask.cjs degerAcik;
+    kullanici karari 2026-11-12 "yalniz parolalar gizli", eski onek beyaz listesi kalkti)."""
+    return not JVM_SIR_RE.search(ad)
 
 
 def jvm_belirtec(t):
@@ -806,8 +802,10 @@ def jvm_belirtec(t):
         return t
     if t.startswith('-D'):
         i = t.find('=')
-        if i < 0 or jvm_deger_acik(t[2:i]):
+        if i < 0:
             return t
+        if jvm_deger_acik(t[2:i]):
+            return JVM_KULLANICI_RE.sub(r'\1***@', JVM_URL_KIMLIK_RE.sub(r'\1***@', t))
         return t[:i + 1] + '***'
     t = JVM_KULLANICI_RE.sub(r'\1***@', JVM_URL_KIMLIK_RE.sub(r'\1***@', t))
     m = JVM_SIR_RE.search(t)
