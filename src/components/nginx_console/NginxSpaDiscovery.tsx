@@ -38,6 +38,9 @@
 // adresin alan adı ve uygulama adının "-app-v" eki görünür kalır (baş kısım kısalır); artan
 // genişliği Adresler alır; yapışkan başlık klavye odağını örtmez (scroll-padding); ikincil
 // metin --text-secondary (AA); "Reverse proxy" başlığı kendi <colgroup>'unda.
+// SPA KOLONU KALKTI (kullanıcı, 2026-11-12: "SPA ad kalıbı kısmını direkt kaldıralım"): SPA
+// olmayan / ölçülemeyen satır Uygulama hücresinde rozetle işaretlenir; SPA ve ad kalıbı
+// süzgeçleri ve CSV kolonları yerinde. "Uygulama isteği" artık Kolonlar menüsünden gizlenebilir.
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import {
   Fragment,
@@ -622,79 +625,37 @@ function Hucre({
 }
 
 /**
- * Ad kalıbı (SPA hücresinin 2. satırı): uygulama adı -app-v / -app-emb-v kuralına uyuyor mu.
- * İşaretli durumlar (gerçek SPA ama ad uymuyor / ad uyuyor ama nginx yok) ROZET; olağan durum
- * kısa metin. Kalıbın kendisi hücrenin ipucunda.
+ * SPA durum rozeti (Uygulama hücresinin namespace satırında). SPA kolonu kaldırıldı (kullanıcı,
+ * 2026-11-12: "SPA ad kalıbı kısmını direkt kaldıralım"); SPA ve ad kalıbı süzgeçleri yerinde.
+ * Olağan durum (SPA) rozetsiz; yalnız SPA OLMAYAN ("SPA değil") ve ÖLÇÜLEMEYEN ("SPA
+ * ölçülemedi", kesik çerçeve — "değil" DEĞİL) satır işaretlenir; zayıf kanıtlı SPA da.
  */
-const KALIP_IPUCU = 'Ad kalıbı: -app-v / -app-emb-v';
-function kalipIsareti(a: NgSpaApp): { rozet?: ReactNode; kisa?: string } {
-  if (a.patternMiss)
-    return {
-      rozet: (
-        <Rozet
-          ton="kotu"
-          ipucu="Gerçekten SPA ama adı -app-v / -app-emb-v kuralına uymuyor. Eski (ada bakan) yöntem bu uygulamayı SPA saymıyordu."
-        >
-          kalıba uymuyor
-        </Rozet>
-      ),
-    };
-  if (a.patternFalse)
-    return {
-      rozet: (
-        <Rozet ton="uyari" ipucu="Adı SPA kuralına uyuyor ama kabinde nginx bulunamadı.">
-          kalıba uyuyor
-        </Rozet>
-      ),
-    };
-  return { kisa: `kalıba ${a.pattern}` };
-}
-
-/**
- * SPA kolonu (ad kalıbı ikinci satırda). ÜÇ DURUM AYRI: hiçbir route eşleşmediyse
- * "bilinmiyor" — "hayır" DEĞİL.
- */
-function SpaHucre({ a }: { a: NgSpaApp }) {
-  const kalip = kalipIsareti(a);
-  const kalipSatiri = `\n${KALIP_IPUCU} → ${a.pattern}`;
+function SpaDurumRozeti({ a }: { a: NgSpaApp }) {
   if (a.spa === 'evet')
-    return (
-      <Hucre
-        ipucu={`Kabinde nginx çalışıyor · kanıt: ${a.signals.join(', ') || '—'}${kalipSatiri}`}
-        rozetler={[kalip.rozet]}
-        kisa={kalip.kisa}
+    return a.weakEvidence ? (
+      <Rozet
+        ton="uyari"
+        testId="spa-durum"
+        ipucu="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
       >
-        <Rozet ton="iyi">Evet</Rozet>
-        {a.weakEvidence && (
-          <span
-            className="ml-1"
-            title="Servis okunamadı; route, servisle aynı adı taşıyan iş yüküne bağlandı. Selector eşleşmesinden zayıf bir kanıt."
-          >
-            <Rozet ton="uyari">zayıf kanıt</Rozet>
-          </span>
-        )}
-      </Hucre>
-    );
+        zayıf kanıt
+      </Rozet>
+    ) : null;
   if (a.spa === 'hayir')
     return (
-      <Hucre
-        ipucu={`Route'un ardındaki iş yükünde nginx bulunamadı${kalipSatiri}`}
-        rozetler={[kalip.rozet]}
-        kisa={kalip.kisa}
-      >
-        <span style={{ color: SOLUK }}>Hayır</span>
-      </Hucre>
+      <Rozet ton="notr" testId="spa-durum" ipucu="Route'un ardındaki iş yükünde nginx bulunamadı.">
+        SPA değil
+      </Rozet>
     );
   return (
-    <Hucre
-      ipucu={`Hiçbir route bir iş yüküne eşlenemedi — SPA olup olmadığı ölçülemedi.\n${a.notes.join('\n')}${kalipSatiri}`}
-      rozetler={[kalip.rozet]}
-      kisa={kalip.kisa}
+    <Rozet
+      ton="uyari"
+      olcum
+      testId="spa-durum"
+      ipucu={`Hiçbir route bir iş yüküne eşlenemedi — SPA olup olmadığı ölçülemedi.${a.notes.length ? `\n${a.notes.join('\n')}` : ''}`}
     >
-      <Rozet ton="uyari" olcum>
-        Bilinmiyor
-      </Rozet>
-    </Hucre>
+      SPA ölçülemedi
+    </Rozet>
   );
 }
 
@@ -1406,6 +1367,14 @@ function UygulamaHucre({ a, acik }: { a: NgSpaApp; acik: boolean }) {
               </span>
             </>
           )}
+          {(a.spa !== 'evet' || a.weakEvidence) && (
+            <>
+              {' '}
+              <span className="shrink-0">
+                <SpaDurumRozeti a={a} />
+              </span>
+            </>
+          )}
         </span>
       </span>
     </span>
@@ -1591,7 +1560,6 @@ function UygulamaAyrinti({ a }: { a: NgSpaApp }) {
 // kolonları: CSV DEĞİŞMEDİ (aşağıda csv()).
 type KolonId =
   | 'uygulama'
-  | 'spa'
   | 'istek'
   | 'ag'
   | 'rp'
@@ -1621,17 +1589,11 @@ const KOLONLAR: readonly KolonTanim[] = [
     ipucu: "Satıra tıklayınca adreslerin, cluster'ların ve RP tanımlarının tamamı açılır.",
   },
   {
-    id: 'spa',
-    baslik: 'SPA',
-    alt: 'ad kalıbı',
-    ipucu:
-      "Kabinde nginx çalışıyor mu · altında: uygulama adı -app-v / -app-emb-v kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu)",
-  },
-  {
     id: 'istek',
     baslik: 'Uygulama isteği',
     alt: 'Dynatrace',
     sag: true,
+    gizlenebilir: true,
     ipucu: 'Dynatrace: uygulamanın pod/servis çağrıları (RP access log değil)',
   },
   {
@@ -1713,8 +1675,6 @@ function hucreIcerigi(
   switch (id) {
     case 'uygulama':
       return <UygulamaHucre a={a} acik={acik} />;
-    case 'spa':
-      return <SpaHucre a={a} />;
     case 'istek':
       return <IstekHucre a={a} />;
     case 'ag':
@@ -1949,7 +1909,7 @@ function YogunlukSecimi({ deger, onDegis }: { deger: Yogunluk; onDegis: (y: Yogu
 }
 
 /**
- * "Kolonlar" menüsü: Route envanteri / Adresler / Cluster'lar gizlenebilir. Klavye: düğme
+ * "Kolonlar" menüsü: Uygulama isteği / Route envanteri / Adresler / Cluster'lar gizlenebilir. Klavye: düğme
  * Enter/Space ile açılır, Tab onay kutularına geçer, Esc kapatıp odağı düğmeye döndürür;
  * dışarı tıklamak kapatır.
  */
@@ -2019,7 +1979,7 @@ function KolonMenusu({
             </label>
           ))}
           <div className="pt-1 text-[10px]" style={{ color: SOLUK }}>
-            Uygulama, SPA, uygulama isteği ve reverse proxy kolonları her zaman görünür.
+            Uygulama ve reverse proxy kolonları her zaman görünür.
           </div>
         </div>
       )}
@@ -2218,7 +2178,7 @@ export default function NginxSpaDiscovery() {
     setQ('');
     setNs('tumu');
     setCluster('tumu');
-    setServis('tumu');
+    setServis(x.servis || 'tumu');
     setIstek('tumu');
     setOrtam(x.ortam);
     setSpa('evet');
@@ -2431,8 +2391,8 @@ export default function NginxSpaDiscovery() {
           satıra tıklayınca adreslerin, cluster'ların ve RP tanımlarının tamamı açılır
         </summary>
         <div className="mt-1">
-          <b>SPA</b>: kabinde nginx çalışıyor mu; altında <b>ad kalıbı</b>: uygulama adı -app-v /
-          -app-emb-v kuralına uyuyor mu (eski yöntem SPA'yı yalnız adından tanıyordu) ·{' '}
+          <b>Uygulama</b>: SPA olmayan ya da SPA olup olmadığı ölçülemeyen satırda namespace
+          satırında "SPA değil" / "SPA ölçülemedi" rozeti (SPA ve ad kalıbı süzgeçleri yukarıda) ·{' '}
           <b>Uygulama isteği</b>: Dynatrace'e göre uygulama (pod) istek alıyor mu ·{' '}
           <b>Reverse proxy › Ağ</b>: route TLS tipi (passthrough = internet, reencrypt = intranet)
           · <b>Reverse proxy › Tanım</b>: internet SPA kendi ortamının RP sunucularında tanımlı mı

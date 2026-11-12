@@ -556,7 +556,9 @@ test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
   assert.match(ui, /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/, 'bos gorunum sebebini soylemiyor');
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
-  assert.match(ui, /a\.weakEvidence &&/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
+  // 2026-11-12: SPA kolonu kalkti; zayif kanit rozeti Uygulama hucresindeki SpaDurumRozeti'nde.
+  assert.match(ui, /a\.weakEvidence \?\s*\(\s*<Rozet[\s\S]{0,300}?zayıf kanıt/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
+  assert.match(ui, /\(a\.spa !== 'evet' \|\| a\.weakEvidence\) &&[\s\S]{0,200}?<SpaDurumRozeti a=\{a\} \/>/, 'SPA durum rozeti Uygulama hucresine baglanmiyor');
 });
 
 test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc vermeyen ise TARANAMADI', () => {
@@ -891,6 +893,10 @@ test('GS27 ekran: tek satir duzeni (KOLONLAR), is yuku kolonu yok, "KALIP KACIRD
   // Ag / Tanim / Istek; Route envanteri, Adresler ve Cluster'lar gizlenebilir (varsayilan
   // gorunur). Bilerek degisen duzen. Ayni guvencenin DAVRANIS hali vitest'te
   // (NginxSpaDiscovery.test.tsx "kolon duzeni": baslik sirasi = her satirin hucre sirasi).
+  // 2026-11-12 (kullanici: "SPA ad kalibi kismini direkt kaldiralim", "Uygulama istegi
+  // dynatrace kismini kapatilabilir bir kolon olarak secebileyim"): SPA kolonu kalkti (SPA
+  // olmayan satir Uygulama hucresinde rozetle; suzgecler ve CSV yerinde), Uygulama istegi
+  // gizlenebilir. Bilerek degisen duzen.
   const bas = ui.indexOf('const KOLONLAR: readonly KolonTanim[] = [');
   const son = ui.indexOf('];', bas);
   assert.ok(bas >= 0 && son > bas, 'KOLONLAR tablosu yok');
@@ -910,8 +916,7 @@ test('GS27 ekran: tek satir duzeni (KOLONLAR), is yuku kolonu yok, "KALIP KACIRD
     kolonlar,
     [
       ['uygulama', 'Uygulama', '', false],
-      ['spa', 'SPA', '', false],
-      ['istek', 'Uygulama isteği', '', false],
+      ['istek', 'Uygulama isteği', '', true],
       ['ag', 'Ağ', 'rp', false],
       ['rp', 'Tanım', 'rp', false],
       ['rpIstek', 'İstek', 'rp', false],
@@ -972,7 +977,10 @@ test('GS27 ekran: tek satir duzeni (KOLONLAR), is yuku kolonu yok, "KALIP KACIRD
   var_('const liste = a.hosts.length ? a.hosts : a.routes;', 'adresler (yoksa route) satirda yok');
   var_('<CokluDeger liste={liste}', 'adresler ayni satirda gosterilmiyor');
   var_('<CokluDeger liste={a.clusters}', 'cluster lar ayni satirda gosterilmiyor');
-  var_('Bilinmiyor', 'olculemeyen SPA "bilinmiyor" diye gosterilmiyor');
+  // 2026-11-12: SPA kolonu kalkti; olculemeyen SPA Uygulama hucresinde "SPA olculemedi"
+  // (kesik cerceve), "SPA degil" ile karismaz.
+  var_('SPA ölçülemedi', 'olculemeyen SPA "olculemedi" diye gosterilmiyor');
+  var_('SPA değil', 'SPA olmayan satir isaretlenmiyor');
 });
 
 // ── GS28 EKRAN CSS (dogrulama bulgulari, 2026-10-03) ─────────────────────────────────

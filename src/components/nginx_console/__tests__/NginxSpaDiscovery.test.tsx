@@ -199,7 +199,6 @@ const satirOf = (c: HTMLElement, app: string) => {
 /** Kolon kimlikleri (başlık ve satır aynı listeden çizilir; sıra "kolon düzeni" testinde). */
 type Kolon =
   | 'uygulama'
-  | 'spa'
   | 'istek'
   | 'ag'
   | 'rp'
@@ -819,7 +818,6 @@ describe('NginxSpaDiscovery — K3: RP isteği yalnız kendi ortamından, başka
 // düzeneğinde ölçülür).
 const DUZEN: [Kolon, string][] = [
   ['uygulama', 'Uygulama'],
-  ['spa', 'SPA'],
   ['istek', 'Uygulama isteği'],
   ['ag', 'Ağ'],
   ['rp', 'Tanım'],
@@ -927,7 +925,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     expect(yap.map((th) => [th.dataset.kolon, basligi(th)])).toEqual(DUZEN);
     // Erişilebilirlik: her yaprak başlık scope="col"; "Uygulama isteği" Dynatrace olduğunu söyler.
     for (const th of yap) expect(th.getAttribute('scope'), th.dataset.kolon).toBe('col');
-    expect(yap[2].getAttribute('title')).toContain('Dynatrace');
+    expect(yap[1].getAttribute('title')).toContain('Dynatrace');
     // data-kolon ile aranan hücre YANLIŞ kolonda durmuyor: her satır başlıkla aynı sırada ve
     // aynı sayıda hücre taşır; <col> sayısı da aynı.
     for (const tr of satirlar(container))
@@ -955,7 +953,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     expect(genislik).toEqual(DUZEN.map(([k]) => (k === 'adresler' ? '' : '1px')));
   });
 
-  it('birleşik hücreler: uygulama + namespace/ortam, SPA + ad kalıbı; ad düğmesi satırı klavyeyle açar', async () => {
+  it('birleşik hücre: uygulama + namespace/ortam + SPA durum rozeti; ad düğmesi satırı klavyeyle açar', async () => {
     const UZUN = 'kurumsal-nakit-yonetimi-raporlama-paneli';
     sahte.govde = () =>
       govdeElle([
@@ -999,24 +997,21 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     }
     // Kalıp dışı adda son "-parça" ayrılır.
     expect(dugme.children[1]?.textContent).toBe('-ui');
-    const spa = hucre(satirOf(container, 'miss-ui'), 'spa');
-    expect(spa.textContent).toContain('Evet');
-    expect(spa.textContent).toContain('kalıba uymuyor');
-    const yal = hucre(satirOf(container, 'yalanci-app-v'), 'spa');
-    expect(yal.textContent).toContain('Hayır');
-    expect(yal.textContent).toContain('kalıba uyuyor');
-    expect(yal.querySelector('[title*="nginx bulunamadı"]')).not.toBeNull();
+    // SPA KOLONU KALKTI (kullanıcı, 2026-11-12): SPA satırında rozet YOK; SPA olmayan satır
+    // Uygulama hücresinin namespace satırında "SPA değil" rozetiyle (nedeni ipucunda).
+    expect(container.querySelector('[data-kolon="spa"]')).toBeNull();
+    expect(u.querySelector('[data-testid="spa-durum"]')).toBeNull();
+    const yal = hucre(satirOf(container, 'yalanci-app-v'), 'uygulama');
+    const yalR = yal.querySelector('[data-testid="spa-durum"]');
+    expect(yalR?.textContent).toBe('SPA değil');
+    expect(yalR?.getAttribute('title')).toContain('nginx bulunamadı');
+    // Namespace satırında (namespace kısalır, rozet kısalmaz).
+    expect(yalR?.parentElement?.parentElement?.querySelector(':scope > .truncate')).not.toBeNull();
     // Düğmenin kendi işleyicisi yok: tıklama satıra kabarır, satır BİR kez açılır.
     expect(dugme.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(dugme);
     await waitFor(() => expect(dugme.getAttribute('aria-expanded')).toBe('true'));
     expect(container.querySelectorAll('tr.ng-ayrinti').length).toBe(1);
-    // patternMiss: kırmızı "kalıba uymuyor" ROZETİ ve açıklayan ipucu (eski K7: dal ölse de son
-    // dal aynı metni düz yazıyordu, test yeşil kalıyordu).
-    const miss = spa.querySelector('.ng-ikinci .pf-label');
-    expect(miss?.textContent).toBe('kalıba uymuyor');
-    expect(miss?.classList.contains('pf-label--red')).toBe(true);
-    expect(miss?.getAttribute('title')).toContain('kuralına uymuyor');
   });
 
   it('Adresler ve Cluster\'lar: ilk öğe + "+N" çipi; TAMAMI ipucunda ve ayrıntı panelinde; eski cluster işaretli', async () => {
@@ -1082,8 +1077,6 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     ['i-servisyok', 'istek', { istek: 'servis-yok' }, 'servis yok', false],
     ['ag-bilinmiyor', 'ag', { ag: 'bilinmiyor', agSay: { bos: 1 } }, 'bilinmiyor', true],
     ['ag-karisik', 'ag', { ag: 'karisik' }, 'karışık', false],
-    ['spa-bilinmiyor', 'spa', { spa: 'bilinmiyor', notes: ['x'] }, 'Bilinmiyor', true],
-    ['spa-evet', 'spa', { spa: 'evet' }, 'Evet', false],
     ['rp-olculemedi', 'rp', { rp: 'olculemedi', rpNeden: 'host-taranmadi' }, 'ölçülemedi', true],
     ['rp-tanimsiz', 'rp', { rp: 'tanimsiz' }, 'tanımsız', false],
     [
@@ -1112,6 +1105,50 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
       expect(r?.textContent, `${app}/${kolon}`).toBe(metin);
       expect(r?.classList.contains('ng-olcum'), `${app}/${kolon} kesik çerçeve`).toBe(kesik);
     }
+  });
+
+  it('SPA durum rozeti Uygulama hücresinde: ölçülemedi KESİK çerçeve, "SPA değil" düz, SPA rozetsiz; SPA olmayanın RP hücresi uygulanamaz', async () => {
+    sahte.govde = () =>
+      govdeElle([
+        elle({ application: 'spa-bilinmiyor', spa: 'bilinmiyor', notes: ['x-not'], rp: 'uygulanamaz' }),
+        elle({ application: 'spa-hayir', spa: 'hayir', rp: 'uygulanamaz' }),
+        elle({ application: 'spa-evet', spa: 'evet' }),
+      ]);
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(3));
+    const rozet = (app: string) =>
+      hucre(satirOf(container, app), 'uygulama').querySelector('[data-testid="spa-durum"]');
+    const bil = rozet('spa-bilinmiyor');
+    expect(bil?.textContent).toBe('SPA ölçülemedi');
+    expect(bil?.classList.contains('ng-olcum')).toBe(true);
+    expect(bil?.getAttribute('title')).toContain('x-not');
+    const hay = rozet('spa-hayir');
+    expect(hay?.textContent).toBe('SPA değil');
+    expect(hay?.classList.contains('ng-olcum')).toBe(false);
+    expect(rozet('spa-evet')).toBeNull();
+    expect(hucre(satirOf(container, 'spa-hayir'), 'rp').textContent).toBe('—');
+  });
+
+  it('"Uygulama isteği" (Dynatrace) Kolonlar menüsünden gizlenir, tercih hatırlanır; varsayılan görünür', async () => {
+    sahte.govde = () => govdeElle([elle({ application: 'a-ui' })]);
+    const r1 = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(r1.container).length).toBe(1));
+    expect(r1.container.querySelector('td[data-kolon="istek"]')).not.toBeNull();
+    fireEvent.click(r1.getByRole('button', { name: /^Kolonlar/ }));
+    fireEvent.click(r1.getByRole('checkbox', { name: 'Uygulama isteği' }));
+    expect(r1.container.querySelector('[data-kolon="istek"]')).toBeNull();
+    expect(JSON.parse(localStorage.getItem(GORUNUM_ANAHTARI) || 'null')).toEqual({
+      yogunluk: 'siki',
+      gizli: ['istek'],
+    });
+    r1.unmount();
+    const r2 = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(r2.container).length).toBe(1));
+    expect(r2.container.querySelector('[data-kolon="istek"]')).toBeNull();
+    expect(yaprakBasliklar(r2.container).map((th) => th.dataset.kolon)).toEqual(
+      DUZEN.map(([k]) => k).filter((k) => k !== 'istek'),
+    );
+    basligiYerlesimleDogrula(r2.container);
   });
 
   it('ölçülemedi nedeni ikinci satırda kısa adla; tam metin ipucunda', async () => {
@@ -1233,7 +1270,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     expect(bos.textContent).toContain('Bu süzgeçlerle uygulama yok; toplam 2 uygulama var.');
   });
 
-  it('"Kolonlar" menüsü klavyeyle: aria-expanded, yalnız gizlenebilir üç kolon, Esc kapatır ve odak düğmeye döner; dışarı tık kapatır', async () => {
+  it('"Kolonlar" menüsü klavyeyle: aria-expanded, yalnız gizlenebilir dört kolon, Esc kapatır ve odak düğmeye döner; dışarı tık kapatır', async () => {
     sahte.govde = () => govdeElle([elle({ application: 'a-ui' })]);
     const { container, getByRole } = render(<NginxSpaDiscovery />);
     await waitFor(() => expect(satirlar(container).length).toBe(1));
@@ -1245,7 +1282,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     if (!panel) throw new Error('aria-controls paneli göstermiyor');
     expect(
       [...panel.querySelectorAll('label')].map((l) => l.textContent?.trim()),
-    ).toEqual(['Route envanteri', 'Adresler', "Cluster'lar"]);
+    ).toEqual(['Uygulama isteği', 'Route envanteri', 'Adresler', "Cluster'lar"]);
     const kutu = getByRole('checkbox', { name: 'Route envanteri' }) as HTMLInputElement;
     expect(kutu.checked).toBe(true);
     kutu.focus();
@@ -1423,13 +1460,15 @@ describe('NginxSpaDiscovery — ikinci satır ve kolon içerikleri (2026-10-03)'
       ['bil-ui', 'bilinmiyor'],
     ] as const)
       expect(ilkSatir(app, 'ag'), app).toBe(t);
-    expect(ilkSatir('zayif-ui', 'spa')).toBe('Evetzayıf kanıt');
-    expect(parcalar(hucre(satirOf(container, 'miss-ui'), 'spa'))).toEqual([
-      ['rozet', 'kalıba uymuyor'],
-    ]);
-    expect(parcalar(hucre(satirOf(container, 'zayif-ui'), 'spa'))).toEqual([
-      ['metin', 'kalıba uyuyor'],
-    ]);
+    // Zayıf kanıt (SPA kolonu kalktı, 2026-11-12): Uygulama hücresinde uyarı rozeti; ad kalıbı
+    // tabloda yok (süzgeç yerinde), kalıba uymayan SPA satırı rozetsiz.
+    const zayif = hucre(satirOf(container, 'zayif-ui'), 'uygulama').querySelector(
+      '[data-testid="spa-durum"]',
+    );
+    expect(zayif?.textContent).toBe('zayıf kanıt');
+    expect(zayif?.classList.contains('pf-label--gold')).toBe(true);
+    expect(hucre(satirOf(container, 'miss-ui'), 'uygulama').querySelector('[data-testid="spa-durum"]')).toBeNull();
+    expect(container.textContent).not.toContain('kalıba uymuyor');
     expect(hucre(satirOf(container, 'kap-ui'), 'rp').textContent).toBe('kapsam dışı RP listesi yok');
     expect(parcalar(hucre(satirOf(container, 'eski-ui'), 'clusterlar'))).toEqual([
       ['rozet', '1/2 önceki koşudan'],
@@ -1485,6 +1524,11 @@ describe('NginxSpaDiscovery — RP servisi, özet kutusu, HTML yanıt (2026-10-1
     expect(satirlar(container).length).toBe(n);
     expect(satirlar(container).every((tr) => hucre(tr, 'rp').textContent?.startsWith('tanımlı'))).toBe(true);
     expect((container.querySelector('select[title="SPA"]') as HTMLSelectElement).value).toBe('evet');
+    // HANGI RP (2026-11-12): servis kutusuna tiklamak listeyi o servise suzer
+    const kart = mat.querySelector('[data-testid="rp-servisler"] button') as HTMLButtonElement;
+    const servisAdi = kart.querySelector('span')!.textContent!;
+    fireEvent.click(kart);
+    expect((container.querySelector('select[title^="Servis"]') as HTMLSelectElement).value).toBe(servisAdi === 'servis bilinmiyor' ? 'yok' : servisAdi);
   });
 
   it('yanıt JSON değilse (ara geçidin HTML sayfası) HTTP durumuyla anlaşılır hata; "Unexpected token" yok', async () => {

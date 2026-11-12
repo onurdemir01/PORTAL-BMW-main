@@ -32,6 +32,8 @@ export interface OzetSuzgec {
   rp?: NgSpaApp['rp'];
   rpIstek?: NgSpaApp['rpIstek'];
   eslenik?: Eslenik;
+  /** RP servisi (GLOMO, SAKLAMA ...); 'yok' = RP servisi bilinmiyor. */
+  servis?: string;
 }
 
 interface Satir {
@@ -51,6 +53,8 @@ interface Satir {
   yukOlculemedi: number;
   esTam: number;
   esEksik: number;
+  /** RP'de yayinda olanlarin servis kirilimi (bir uygulama birden cok serviste olabilir). */
+  servisler: Record<string, number>;
 }
 
 const ORTAM_SIRA = ['prod', 'qa', 'test', 'dev', 'edu'];
@@ -64,6 +68,7 @@ export function ortamAnahtari(a: NgSpaApp) {
 const bos = (ortam: string): Satir => ({
   ortam, spa: 0, bilinmiyor: 0, internet: 0, intranet: 0, digerAg: 0, kalipUyuyor: 0, kalipUymuyor: 0,
   rpTanimli: 0, rpTanimsiz: 0, rpOlculemedi: 0, yukVar: 0, yukYok: 0, yukOlculemedi: 0, esTam: 0, esEksik: 0,
+  servisler: {},
 });
 
 export function spaOzeti(apps: NgSpaApp[]): { satirlar: Satir[]; toplam: Satir } {
@@ -90,6 +95,8 @@ export function spaOzeti(apps: NgSpaApp[]): { satirlar: Satir[]; toplam: Satir }
         else s.yukOlculemedi += 1;
         if (eslenikDurumu(a) === 'tam') s.esTam += 1;
         else s.esEksik += 1;
+        const sv = a.rpServis && a.rpServis.length ? a.rpServis : [''];
+        for (const x of sv) s.servisler[x] = (s.servisler[x] || 0) + 1;
       }
     }
   }
@@ -141,6 +148,59 @@ function Ikili({ ogeler }: { ogeler: { n: number; etiket: string; ton?: 'iyi' | 
   );
 }
 
+function RpSatiri({ n, metin, ton, onClick, girinti = 0, testId }: { n: number; metin: string; ton?: 'iyi' | 'uyari' | 'kritik' | 'soluk'; onClick?: () => void; girinti?: number; testId?: string }) {
+  if (!n) return null;
+  return (
+    <li className="flex items-baseline gap-1.5" style={{ paddingLeft: girinti * 14 }} data-testid={testId}>
+      {girinti > 0 && <span aria-hidden="true" style={{ color: 'var(--border)' }}>└</span>}
+      <span className="text-[13px] font-semibold min-w-[2.25rem] text-right">
+        <Sayi n={n} ton={ton} onClick={onClick} title={metin} />
+      </span>
+      <span style={{ color: 'var(--text-secondary)' }}>{metin}</span>
+    </li>
+  );
+}
+
+/** Reverse proxy sutunu: internet SPA'larinin sirayla okunan akisi (kullanici, 2026-11-12: "RP uzerinden,
+ *  RP'de yok, yuk var/yok, RP eslenik sunucular hicbir seyi anlamiyorum"). Satir = soru, sayi tiklanir. */
+function RpAkisi({ s, suz }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => () => void }) {
+  if (!s.internet && !s.rpTanimli && !s.rpTanimsiz && !s.rpOlculemedi)
+    return <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>internet SPA yok (intranet SPA'lar reverse proxy kullanmaz)</span>;
+  return (
+    <ul className="space-y-0.5 text-[11.5px]" data-testid="rp-akisi">
+      <RpSatiri n={s.rpTanimli} metin="RP'de yayında" ton="iyi" onClick={suz({ rp: 'tanimli' })} testId="rp-yayinda" />
+      {/* HANGI RP (kullanici, 2026-11-12: "en onemli sey uygulama hangi reverse proxy'e tanimli, Glomo mu"):
+          servis basina sayi; tiklamak listeyi o servise suzer. */}
+      {s.rpTanimli > 0 && (
+        <li className="flex flex-wrap items-center gap-1 pb-0.5" style={{ paddingLeft: 14 }} data-testid="rp-servisler">
+          <span aria-hidden="true" style={{ color: 'var(--border)' }}>└</span>
+          {Object.entries(s.servisler)
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))
+            .map(([ad, n]) => (
+              <button
+                key={ad || 'bilinmiyor'}
+                type="button"
+                onClick={suz({ rp: 'tanimli', servis: ad || 'yok' })}
+                title={ad ? `${ad} reverse proxy servisinde tanımlı — listeyi süz` : 'RP servisi okunamadı — listeyi süz'}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[11px] hover:underline focus-visible:outline focus-visible:outline-2"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: ad ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                <span className="font-semibold">{ad || 'servis bilinmiyor'}</span>
+                <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>{fmtNumber(n)}</span>
+              </button>
+            ))}
+        </li>
+      )}
+      <RpSatiri n={s.yukVar} metin="son 7 günde trafik aldı" ton="iyi" onClick={suz({ rp: 'tanimli', rpIstek: 'var' })} girinti={1} testId="rp-trafik-var" />
+      <RpSatiri n={s.yukYok} metin="trafik almadı" ton="kritik" onClick={suz({ rp: 'tanimli', rpIstek: 'yok' })} girinti={1} testId="rp-trafik-yok" />
+      <RpSatiri n={s.yukOlculemedi} metin="trafik ölçülemedi" ton="soluk" girinti={1} />
+      <RpSatiri n={s.esEksik} metin="bazı RP sunucularında eksik / hatalı" ton="uyari" onClick={suz({ eslenik: 'eksik' })} girinti={1} testId="rp-eksik-sunucu" />
+      <RpSatiri n={s.rpTanimsiz} metin="RP'de tanımı yok" ton="kritik" onClick={suz({ rp: 'tanimsiz' })} testId="rp-tanimsiz" />
+      <RpSatiri n={s.rpOlculemedi} metin="RP'de var mı ölçülemedi" ton="soluk" onClick={suz({ rp: 'olculemedi' })} />
+    </ul>
+  );
+}
+
 export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgSpaApp[]; onSuz: (s: OzetSuzgec) => void; eksikTarama?: string }) {
   const { satirlar, toplam } = spaOzeti(apps);
   if (!satirlar.length) return null;
@@ -176,30 +236,7 @@ export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgS
           />
         </td>
         <td className={td}>
-          <Ikili
-            ogeler={[
-              { n: s.rpTanimli, etiket: 'RP üzerinden', ton: 'iyi', suz: suz({ rp: 'tanimli' }), title: 'Kendi ortamının reverse proxy sunucularında tanımlı' },
-              { n: s.rpTanimsiz, etiket: 'RP\'de yok', ton: 'uyari', suz: suz({ rp: 'tanimsiz' }), title: 'Internet SPA ama kendi ortamının RP sunucularında tanım yok' },
-              ...(s.rpOlculemedi ? [{ n: s.rpOlculemedi, etiket: 'ölçülemedi', ton: 'soluk' as const, suz: suz({ rp: 'olculemedi' }) }] : []),
-            ]}
-          />
-        </td>
-        <td className={td}>
-          <Ikili
-            ogeler={[
-              { n: s.yukVar, etiket: 'yük var', ton: 'iyi', suz: suz({ rp: 'tanimli', rpIstek: 'var' }), title: 'RP access log: son 7 günde istek var' },
-              { n: s.yukYok, etiket: 'yük yok', ton: 'kritik', suz: suz({ rp: 'tanimli', rpIstek: 'yok' }), title: 'RP access log: 7 günün tamamı ölçüldü, istek yok' },
-              ...(s.yukOlculemedi ? [{ n: s.yukOlculemedi, etiket: 'ölçülemedi', ton: 'soluk' as const, title: 'kısmi pencere / ölçüm kaynağı yok / ayrılamaz' }] : []),
-            ]}
-          />
-        </td>
-        <td className={td}>
-          <Ikili
-            ogeler={[
-              { n: s.esTam, etiket: 'tüm sunucularda', ton: 'iyi', suz: suz({ eslenik: 'tam' }), title: 'Tanım ortamın tüm eşlenik RP sunucularında var ve hatasız' },
-              { n: s.esEksik, etiket: 'eksik / hatalı', ton: 'kritik', suz: suz({ eslenik: 'eksik' }), title: 'Tanım bazı eşlenik RP sunucularında yok ya da bir sunucuda hatalı (dizin eksik, 404 vb.)' },
-            ]}
-          />
+          <RpAkisi s={s} suz={suz} />
         </td>
       </tr>
     );
@@ -214,9 +251,9 @@ export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgS
               <th className={th}>SPA</th>
               <th className={th}>Tip</th>
               <th className={th}>Ad kalıbı</th>
-              <th className={th}>Reverse proxy</th>
-              <th className={th}>RP'de yük (7 gün)</th>
-              <th className={th}>RP eşlenik sunucular</th>
+              <th className={th} title="Internet SPA'ların reverse proxy (nginx) sunucularından dışarıya açılma durumu">
+                Reverse proxy · internet SPA'ları
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -233,8 +270,20 @@ export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgS
       )}
       <p className="px-3 py-2 text-[11px] border-t" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         Sayılar yalnız SPA olan uygulamalardır (pod'unda nginx çalışıyor). Bir sayıya tıklayınca aşağıdaki liste o ortama ve o
-        kırılıma süzülür. Yük ve eşlenik sütunları yalnız reverse proxy'de tanımlı olanları sayar.
+        kırılıma süzülür.
       </p>
+      <dl className="px-3 py-2 border-t grid gap-x-4 gap-y-1 text-[11px] sm:grid-cols-[max-content_1fr]" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }} data-testid="rp-sozluk">
+        <dt className="font-semibold">RP'de yayında</dt>
+        <dd>Uygulamanın internet adresi, kendi ortamının reverse proxy (nginx) sunucularında tanımlı; internetten bu sunucular üzerinden erişilir.</dd>
+        <dt className="font-semibold">GLOMO, SAKLAMA …</dt>
+        <dd>Uygulamanın tanımlı olduğu reverse proxy servisi (vhost grubu). Bir uygulama birden çok serviste tanımlıysa her birinde sayılır.</dd>
+        <dt className="font-semibold">RP'de tanımı yok</dt>
+        <dd>Uygulama internete açık tipte (route passthrough) ama kendi ortamının reverse proxy sunucularında tanımı bulunamadı; dışarıdan erişilemiyor olabilir.</dd>
+        <dt className="font-semibold">Trafik aldı / almadı</dt>
+        <dd>Reverse proxy access log'larında son 7 günde bu uygulamaya istek geldi mi (sağlık kontrolü hc.jsp / hc.html sayılmaz). "Ölçülemedi": log 7 günü kapsamıyor ya da okunamadı — "almadı" demek değildir.</dd>
+        <dt className="font-semibold">Bazı RP sunucularında eksik</dt>
+        <dd>Bir ortamın reverse proxy sunucuları birbirinin kopyasıdır (ör. Pendik + Ankara); uygulamanın tanımı hepsinde olmalı. Bu sayı, tanımı sunuculardan en az birinde olmayan ya da bir sunucuda hatalı (dizin eksik, 404) olan uygulamalardır.</dd>
+      </dl>
     </section>
   );
 }
