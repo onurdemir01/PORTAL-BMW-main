@@ -152,10 +152,10 @@ function testHost(h) {
   });
 }
 
-(async () => {
-  const liste = hedefler();
+function basligiYaz() {
   console.log('── TLS dogrulama testi ───────────────────────────────');
-  console.log(`Ortam dosyasi: ${ortam ? `.env.${ortam} + ` : ''}.env.local + .env (Admin ekranindan kaydedilen degerler burada YOK)`);
+  const ortamDosyasi = ortam ? `.env.${ortam} + ` : '';
+  console.log(`Ortam dosyasi: ${ortamDosyasi}.env.local + .env (Admin ekranindan kaydedilen degerler burada YOK)`);
   console.log(`NODE_EXTRA_CA_CERTS: ${process.env.NODE_EXTRA_CA_CERTS || '(yok)'}`);
   console.log(`CORP_CA_CERT_PATH: ${process.env.CORP_CA_CERT_PATH || '(yok)'}`);
   for (const [anahtar, e] of Object.entries(ENTEGRASYONLAR)) {
@@ -164,11 +164,33 @@ function testHost(h) {
     console.log(`${e.onek}_TLS_CA: ${ek || '(yok)'}${kapali}`);
   }
   console.log('');
+}
 
+function ipucuYaz(h, hata) {
+  const metin = String(hata);
+  const onek = h.entegrasyon ? ENTEGRASYONLAR[h.entegrasyon].onek : null;
+  if (/UNABLE_TO|SELF_SIGNED|CERT_|INVALID_CA/.test(metin)) {
+    console.log(`    → Zincir bu guven deposunda yok. Zinciri gormek / cekmek icin: bash scripts/fetch-ca.sh ${h.host}`);
+    console.log(
+      onek
+        ? `    → CA'yi ${onek}_TLS_CA=<pem yolu> ile verin ya da sunucunun sistem CA paketine ekleyin.`
+        : '    → build-ca-bundle ile CORP_CA_CERT_PATH paketine ekleyin (docs/TLS-SETUP.md).',
+    );
+  } else if (/ALTNAME|HOSTNAME/.test(metin)) {
+    console.log('    → Sertifika bu adi kapsamiyor: adresin sertifikadaki ad(lar)la yazildigini kontrol edin.');
+  } else if (/ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED|TIMEOUT/.test(metin)) {
+    console.log('    → Ag/DNS erisimi yok (VPN/kurumsal ag gerekebilir) — sertifika sorunu DEGIL.');
+  }
+}
+
+(async () => {
+  const liste = hedefler();
+  basligiYaz();
   let hatali = 0;
   for (const h of liste) {
     const r = await testHost(h);
-    const ad = `${h.etiket}: ${h.host}${h.baglan && h.baglan !== h.host ? ` (baglanilan ${h.baglan})` : ''}:${h.port}`;
+    const baglanilan = h.baglan && h.baglan !== h.host ? ` (baglanilan ${h.baglan})` : '';
+    const ad = `${h.etiket}: ${h.host}${baglanilan}:${h.port}`;
     if (r.ok) {
       console.log(`✓ ${ad}`);
       console.log(`    issuer : ${r.issuer}`);
@@ -176,19 +198,7 @@ function testHost(h) {
     } else {
       hatali++;
       console.log(`✗ ${ad} — ${r.error}`);
-      const onek = h.entegrasyon ? ENTEGRASYONLAR[h.entegrasyon].onek : null;
-      if (/UNABLE_TO|SELF_SIGNED|CERT_|INVALID_CA/.test(String(r.error))) {
-        console.log(`    → Zincir bu guven deposunda yok. Zinciri gormek / cekmek icin: bash scripts/fetch-ca.sh ${h.host}`);
-        console.log(
-          onek
-            ? `    → CA'yi ${onek}_TLS_CA=<pem yolu> ile verin ya da sunucunun sistem CA paketine ekleyin.`
-            : '    → build-ca-bundle ile CORP_CA_CERT_PATH paketine ekleyin (docs/TLS-SETUP.md).',
-        );
-      } else if (/ALTNAME|HOSTNAME/.test(String(r.error))) {
-        console.log('    → Sertifika bu adi kapsamiyor: adresin sertifikadaki ad(lar)la yazildigini kontrol edin.');
-      } else if (/ENOTFOUND|EHOSTUNREACH|ETIMEDOUT|ECONNREFUSED|TIMEOUT/.test(String(r.error))) {
-        console.log('    → Ag/DNS erisimi yok (VPN/kurumsal ag gerekebilir) — sertifika sorunu DEGIL.');
-      }
+      ipucuYaz(h, r.error);
     }
     console.log('');
   }

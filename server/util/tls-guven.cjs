@@ -130,11 +130,8 @@ function ekDosyalar(anahtar) {
   return liste;
 }
 
-/**
- * Entegrasyonun guven baglami. Ek CA yoksa `null` (Node'un varsayilan deposu kullanilir).
- * Zorunlu ek CA okunamazsa ACIK hata firlatir (istek gitmez).
- */
-function guvenBaglami(anahtar) {
+// Okunabilen ek dosyalar (yol + mtime + boyut anahtariyla). Zorunlu olan okunamazsa firlatir.
+function okunabilirEkler(anahtar) {
   const dosyalar = [];
   for (const d of ekDosyalar(anahtar)) {
     try {
@@ -148,6 +145,33 @@ function guvenBaglami(anahtar) {
       durumuLogla(anahtar, `${d.etiket} okunamadi (${d.yol}); bu ek atlandi.`, true, d.etiket);
     }
   }
+  return dosyalar;
+}
+
+// Varsayilan depo + ek dosyalarin PEM bloklari -> tek guven baglami.
+function baglamKur(anahtar, dosyalar) {
+  const pemler = new Set(varsayilanDepo().map((p) => p.trim()));
+  const varsayilanSayi = pemler.size;
+  const ekler = [];
+  for (const d of dosyalar) {
+    const bloklar = parsePemCertificates(fs.readFileSync(d.yol, 'utf8'));
+    if (!bloklar.length && d.zorunlu) {
+      throw new Error(`${d.etiket} dosyasinda PEM sertifikasi yok: ${d.yol}`);
+    }
+    for (const b of bloklar) pemler.add(b.trim());
+    if (bloklar.length) ekler.push(`${d.etiket}=${bloklar.length}`);
+  }
+  const ozet = ekler.join(', ') || 'ek yok';
+  durumuLogla(anahtar, `sertifika dogrulamasi ACIK (varsayilan depo ${varsayilanSayi} + ${ozet}).`);
+  return tls.createSecureContext({ ca: [...pemler] });
+}
+
+/**
+ * Entegrasyonun guven baglami. Ek CA yoksa `null` (Node'un varsayilan deposu kullanilir).
+ * Zorunlu ek CA okunamazsa ACIK hata firlatir (istek gitmez).
+ */
+function guvenBaglami(anahtar) {
+  const dosyalar = okunabilirEkler(anahtar);
   if (!dosyalar.length) {
     durumuLogla(
       anahtar,
@@ -158,25 +182,8 @@ function guvenBaglami(anahtar) {
   const anahtarMetni = dosyalar.map((d) => d.anahtar).join('||');
   const onceki = _baglamlar.get(anahtar);
   if (onceki && onceki.anahtar === anahtarMetni) return onceki.baglam;
-
-  const pemler = new Set(varsayilanDepo().map((p) => p.trim()));
-  const varsayilanSayi = pemler.size;
-  const ekler = [];
-  for (const d of dosyalar) {
-    const bloklar = parsePemCertificates(fs.readFileSync(d.yol, 'utf8'));
-    if (!bloklar.length) {
-      if (d.zorunlu) throw new Error(`${d.etiket} dosyasinda PEM sertifikasi yok: ${d.yol}`);
-      continue;
-    }
-    for (const b of bloklar) pemler.add(b.trim());
-    ekler.push(`${d.etiket}=${bloklar.length}`);
-  }
-  const baglam = tls.createSecureContext({ ca: [...pemler] });
+  const baglam = baglamKur(anahtar, dosyalar);
   _baglamlar.set(anahtar, { anahtar: anahtarMetni, baglam });
-  durumuLogla(
-    anahtar,
-    `sertifika dogrulamasi ACIK (varsayilan depo ${varsayilanSayi} + ${ekler.join(', ') || 'ek yok'}).`,
-  );
   return baglam;
 }
 
@@ -220,8 +227,9 @@ function tlsHatasiAcikla(err, anahtar, host) {
   if (!tlsHatasiMi(err)) return err;
   const { ad, onek } = entegrasyon(anahtar);
   const ilk = err.message;
+  const yer = host ? ` (${host})` : '';
   err.message =
-    `${ad} TLS sertifikasi dogrulanamadi${host ? ` (${host})` : ''}: ${err.code}. ` +
+    `${ad} TLS sertifikasi dogrulanamadi${yer}: ${err.code}. ` +
     `Cozum: sunucunun CA zincirini ${onek}_TLS_CA ile verin ya da sunucunun sistem CA paketine ekleyin ` +
     `(once: npm run tls:dene; docs/TLS-SETUP.md). Acil gecici cikis: ${onek}_TLS_DOGRULAMA=kapali. [${ilk}]`;
   return err;
