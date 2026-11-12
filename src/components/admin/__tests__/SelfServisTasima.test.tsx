@@ -10,6 +10,7 @@
 //   UI5  toplu survey penceresi onay kutusu olmadan başlamaz
 //   UI6  geri al: kart başka bağa dönmüşse 'Kaydı kapat' (onaylı), geriAl(kaydiKapat=true)
 //   UI7  deneme: 'Koştur' doğrulama + gerçek iş onayı olmadan pasif
+//   UI8  hazırlık iptali portal içi onay penceresiyle sorulur; 'Hazırlığı koru' isteği göndermez
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
@@ -266,5 +267,33 @@ describe('Self Servis Taşıma', () => {
     fireEvent.click(kostur);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Bu servis Smart onayı istiyor.'));
     expect(tasima.deneme.mock.calls[1][1]).toMatchObject({ sadeceDogrula: false, confirm: true });
+  });
+
+  it('UI8 hazırlık iptali portal içi onayla sorulur; korunursa istek gitmez', async () => {
+    const hazirlik = { id: 9, itemId: 'a', status: 'HAZIRLIK' } as SsTasimaSatiri['kayit'];
+    tasima.plan.mockResolvedValue({
+      ok: true,
+      kaynak: { id: 2, name: 'maestro2' },
+      hedef: { id: 3, name: 'Maestro3 yeni' },
+      izinListesiDolu: false,
+      sunucuHatalari: [],
+      kayitHatasi: null,
+      hedefTemplateleri: [],
+      satirlar: [satir({ itemId: 'a', title: 'Hazirlikta servis', kayit: hazirlik })],
+    });
+    tasima.hazirlikIptal.mockResolvedValue({ ok: true });
+    const tarayiciOnayi = vi.spyOn(window, 'confirm');
+    render(<SelfServisTasima />);
+    fireEvent.click(await screen.findByText('Hazırlığı iptal et'));
+    expect(screen.getByText(/Hazirlikta servis: hazırlık kaydı kapatılsın mı\?/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Hazırlığı koru'));
+    await waitFor(() => expect(screen.queryByText('Hazırlığı koru')).toBeNull());
+    expect(tasima.hazirlikIptal).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Hazırlığı iptal et'));
+    fireEvent.click(await screen.findByText('Hazırlığı kapat'));
+    await waitFor(() => expect(tasima.hazirlikIptal).toHaveBeenCalledWith('a'));
+    expect(tarayiciOnayi).not.toHaveBeenCalled();
+    tarayiciOnayi.mockRestore();
   });
 });
