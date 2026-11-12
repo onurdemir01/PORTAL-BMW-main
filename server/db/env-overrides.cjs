@@ -204,6 +204,15 @@ const SYSTEM_CONFIG_KEYS = [
   'PORTAL_HSTS_MAX_AGE',
   // Server Hub > Uygulama Envanteri ciktisi (/sw; playbook'a ear_dizin olarak gider). Her kullanimda okunur.
   'EAR_ENVANTER_DIR',
+  // ── Ic servis TLS dogrulamasi (2026-11-12) — SICAK YUKLENIR ──────────────
+  // server/util/tls-guven.cjs her istekte okur: <ONEK>_TLS_CA ek CA dosyasi (mtime ile yeniden
+  // yuklenir), <ONEK>_TLS_DOGRULAMA=kapali ACIL cikis (uyari loglanir).
+  'AWX_TLS_CA',
+  'AWX_TLS_DOGRULAMA',
+  'OCP_TLS_CA',
+  'OCP_TLS_DOGRULAMA',
+  'NOBETCI_TLS_CA',
+  'NOBETCI_TLS_DOGRULAMA',
 ];
 
 // RESTART GEREKTIRMEYEN anahtarlar. Portalin cogu modulu env'i boot'ta okuyup
@@ -236,6 +245,12 @@ const HOT_RELOADABLE_KEYS = [
   'PORTAL_FRAME_ANCESTORS',
   'PORTAL_HSTS_MAX_AGE',
   'EAR_ENVANTER_DIR',
+  'AWX_TLS_CA',
+  'AWX_TLS_DOGRULAMA',
+  'OCP_TLS_CA',
+  'OCP_TLS_DOGRULAMA',
+  'NOBETCI_TLS_CA',
+  'NOBETCI_TLS_DOGRULAMA',
 ];
 
 const LOAD_TIMEOUT_MS = 8000; // olu DB boot'u sonsuza dek bloklamasin
