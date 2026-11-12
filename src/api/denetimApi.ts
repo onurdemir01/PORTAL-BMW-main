@@ -1233,6 +1233,21 @@ export interface NginxInvHost {
   disk_web_log: string | null;
   source_last_update: string | null;
   metadata_version: string | number | null;
+  /** Sunucu adi kalibindan ortam: PROD | QA | TEST | DEV | EDU | BILINMIYOR (kalip disi). */
+  envByName?: string;
+  /** Elle etiket (Portal DB); `services` zaten etkin (etiket uygulanmis) listedir. */
+  etiket?: NginxInvEtiket | null;
+}
+
+export interface NginxInvEtiket {
+  /** degistir: otomatik listenin yerine gecer · ekle: otomatik listeye eklenir */
+  mod: 'degistir' | 'ekle';
+  etiketler: string[];
+  not: string | null;
+  by: string | null;
+  at: string | null;
+  /** conf.d adlarindan gelen otomatik liste (karsilastirma icin) */
+  oto: string[];
 }
 
 export interface NginxInventoryResult {
@@ -1278,6 +1293,8 @@ export interface NginxInventoryResult {
     nginxUser: NginxInvDist[];
   };
   hosts: NginxInvHost[];
+  /** Etiketler okunamadiysa (Portal DB); liste otomatik kesifle gosterilir. */
+  etiketHatasi?: string | null;
   message?: string;
 }
 
@@ -1317,6 +1334,21 @@ export const denetimApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ note }),
     }).then(safeJson),
+
+  nginxInventoryLabelSet: (
+    host: string,
+    body: { mod: 'degistir' | 'ekle'; etiketler: string[]; not?: string },
+  ): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-inventory/labels/${encodeURIComponent(host)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(safeJson),
+
+  nginxInventoryLabelClear: (host: string): Promise<{ ok: boolean; message?: string }> =>
+    fetch(`${BASE}/nginx-inventory/labels/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(
+      safeJson,
+    ),
 
   nginxAuditExceptionClear: (host: string): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/nginx-audit/exceptions/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(

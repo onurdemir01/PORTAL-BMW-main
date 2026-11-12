@@ -68,6 +68,7 @@ const PORTAL_TABLOLARI = Object.freeze([
   { tablo: 'nginx_hub_file_history' },
   { tablo: 'nginx_hub_file_state' },
   { tablo: 'nginx_audit_exceptions' },
+  { tablo: 'nginx_host_labels' },
   { tablo: 'nginx_cis_exceptions' },
 ]);
 for (const t of [...TBMWANS_TABLOLARI, ...PORTAL_TABLOLARI]) {

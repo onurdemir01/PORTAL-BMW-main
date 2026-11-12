@@ -1677,6 +1677,57 @@ function initDenetim(app) {
       }
     });
 
+    // ── Nginx Hub > Envanter: sunucu etiketleri (2026-11-12) - yalniz Admin yazar ─────
+    // Gorunurluk /nginx-inventory onekinden gelir (Envanter sekmesi). Yazinca onbellek temizlenir.
+    {
+      const et = require('./nginx-host-labels.cjs');
+      router.put('/nginx-inventory/labels/:host', requireAdmin, async (req, res) => {
+        const host = String(req.params.host || '').trim().toUpperCase();
+        if (!et.HOST_RE.test(host))
+          return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+        const g = et.dogrula(req.body || {});
+        if (g.hata) return res.status(400).json({ ok: false, message: g.hata });
+        const by = (getRequestUser(req) || {}).username || null;
+        try {
+          await et.etiketYaz(db, host, g, by);
+          responseCache.clear();
+          try {
+            require('./index.cjs').auditPortal(req, 'nginx_host_label_set', {
+              username: by,
+              result: 'ok',
+              detail: JSON.stringify({ host, kip: g.mod, etiketler: g.etiketler }),
+            });
+          } catch {
+            /* yoksay */
+          }
+          res.json({ ok: true, host, mod: g.mod, etiketler: g.etiketler, not: g.not, by });
+        } catch (err) {
+          res.status(503).json({ ok: false, message: err.message });
+        }
+      });
+      router.delete('/nginx-inventory/labels/:host', requireAdmin, async (req, res) => {
+        const host = String(req.params.host || '').trim().toUpperCase();
+        if (!et.HOST_RE.test(host))
+          return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+        try {
+          await et.etiketSil(db, host);
+          responseCache.clear();
+          try {
+            require('./index.cjs').auditPortal(req, 'nginx_host_label_clear', {
+              username: (getRequestUser(req) || {}).username,
+              result: 'ok',
+              detail: JSON.stringify({ host }),
+            });
+          } catch {
+            /* yoksay */
+          }
+          res.json({ ok: true, host });
+        } catch (err) {
+          res.status(503).json({ ok: false, message: err.message });
+        }
+      });
+    }
+
     router.delete('/nginx-audit/exceptions/:host', requireAdmin, async (req, res) => {
       const host = String(req.params.host || '')
         .trim()
@@ -2095,7 +2146,17 @@ function initDenetim(app) {
       );
 
       const es = await eskiSunucuSuzgec(req);
-      const rows = es.ayir(r.recordset || [], (x) => x.hostname);
+      // ELLE ETIKET (2026-11-12): Portal DB'deki etiketler otomatik service listesine uygulanir.
+      // Okunamazsa sayfa bozulmaz, otomatik liste gosterilir ve hata ayrica soylenir.
+      const et = require('./nginx-host-labels.cjs');
+      let etiketHatasi = null;
+      let etiketler = new Map();
+      try {
+        etiketler = await et.etiketleriOku(require('../db/index.cjs'));
+      } catch (e) {
+        etiketHatasi = e.message || String(e);
+      }
+      const rows = et.etiketUygula(es.ayir(r.recordset || [], (x) => x.hostname), etiketler);
       // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
       // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.
       const lastUpdate =
@@ -2110,6 +2171,7 @@ function initDenetim(app) {
         lastUpdate: lastUpdate ? String(lastUpdate) : null,
         // hosts: ozetleyicinin DUZELTILMIS env tasiyan satirlari (ham tablo satirlari degil)
         ...summarizeNginxInventory(rows),
+        etiketHatasi,
         eskiGizli: es.bilgi(),
       });
     } catch (err) {

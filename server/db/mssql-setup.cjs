@@ -820,6 +820,23 @@ const TABLES = [
       )`,
   },
   {
+    // Nginx Hub > Envanter: sunucuya elle etiket (2026-11-12). conf.d adlarindan gelen otomatik
+    // service listesinin yerine gecer (kip=degistir) ya da ustune eklenir (kip=ekle). Bkz.
+    // server/audit/nginx-host-labels.cjs.
+    name: 'nginx_host_labels',
+    sql: `
+      CREATE TABLE nginx_host_labels (
+        host        NVARCHAR(64)   NOT NULL PRIMARY KEY,
+        kip         NVARCHAR(16)   NOT NULL DEFAULT 'degistir',
+        etiketler   NVARCHAR(1400) NOT NULL,
+        note        NVARCHAR(500)  NULL,
+        created_by  NVARCHAR(128)  NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        updated_by  NVARCHAR(128)  NULL,
+        updated_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // CIS NGINX Benchmark (2026-09-22): madde istisnalari — host NULL = tum filo. Skordan DUSER.
     name: 'nginx_cis_exceptions',
     sql: `
