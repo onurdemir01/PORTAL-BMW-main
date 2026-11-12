@@ -56,6 +56,14 @@ export interface JbossJvm {
   istek7g: number | null;
   taze: boolean;
   taramaTarihi: string | null;
+  /** Çalışma durumunun nasıl ölçüldüğü (2026-11-12): PS = süreç görüldü, CLI_STATUS = JBoss CLI
+   *  server-state, PS_ABSENT = süreç yok, UNMEASURED = ölçülemedi, ENVANTER = yalnız MWAppsInventory. */
+  durumKaynagi?: string | null;
+  /** MWAppsInventory'deki durum (karşılaştırma için). */
+  envanterDurumu?: string | null;
+  /** Tarama ile envanter arasındaki çelişkiler ("durum: envanter running, tarama kapalı"). */
+  uyumsuzluk?: string[];
+  domain?: string | null;
 }
 
 export interface JbossSunucu {
@@ -74,6 +82,8 @@ export interface JbossSunucu {
   minHeap: string | null;
   maxHeap: string | null;
   jvmler: JbossJvm[];
+  /** Envanterde aynı sunucu + uygulama için birden çok satır (domain) varsa hepsi (2026-11-12). */
+  domainler?: string[];
   web: WebBag[];
   webUyari: string | null;
   kapasite: Kapasite | null;

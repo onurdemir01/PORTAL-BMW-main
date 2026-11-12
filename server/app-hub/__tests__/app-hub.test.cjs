@@ -348,3 +348,39 @@ test('AH11 WAS: was_ozeti sunucular[].jvm okunur; okunamayan durum "parametre yo
   assert.equal(V.wasSunucuBilgisi(oz, 'srv3').jvmDurumu, null, 'eski tarayici olculmedi olmali');
   assert.equal(V.wasSunucuBilgisi(oz, 'yok'), null);
 });
+
+// AH12 (kullanici, 2026-11-12): "sunucu sekmeleri ya acilmiyor ya kapanmiyor" + "1 calisiyor 1 kapali
+// dogru mu nasil anlarim". MWAppsInventory'de ayni host + uygulama icin domain basina satir: TEK
+// sunucu satiri, domain'ler listelenir; JVM durumunun kaynagi ve envanterle celiskisi tasinir.
+test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () => {
+  sorgu.yanit = (t) => {
+    if (t.includes('FROM dbo.MWAppsInventory'))
+      return {
+        recordset: [
+          { app: 'MUSTERI', host: 'gojbap01', env: 'Production', domain: 'dom-a', jboss_version: 'EAP 8.0' },
+          { app: 'MUSTERI', host: 'gojbap01', env: 'Production', domain: 'dom-b', jboss_version: 'EAP 8.0' },
+        ],
+      };
+    return { recordset: [] };
+  };
+  hub.hosts = [
+    {
+      host: 'GOJBAP01',
+      fresh: true,
+      scanDate: '2026-11-11',
+      jvms: [
+        { name: 'MUSTERI', gen: 8, running: true, runningKnown: true, runningSrc: 'PS', invStatus: 'running', mismatch: [], domain: 'dom-a' },
+        { name: 'MUSTERI', gen: 0, running: false, runningKnown: true, invStatus: 'stopped', mismatch: [], domain: 'dom-b' },
+      ],
+    },
+  ];
+  hub.agir = new Map();
+  const d = await V.jbossDetay('MUSTERI');
+  assert.equal(d.sunucular.length, 1, 'ayni host + uygulama iki satir oldu (ekranda ayni anahtar)');
+  assert.deepEqual(d.sunucular[0].domainler, ['dom-a', 'dom-b']);
+  const [a, b] = d.sunucular[0].jvmler;
+  assert.equal(a.durumKaynagi, 'PS');
+  assert.equal(a.envanterDurumu, 'running');
+  assert.equal(b.durumKaynagi, 'ENVANTER', 'taramada gorulmeyen JVM envanterden geldigini soylemiyor');
+  assert.equal(b.calisiyor, false);
+});

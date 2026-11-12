@@ -290,7 +290,7 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
 
       <Bolum
         baslik="Canlı durum"
-        aciklama="Tür (Deployment / Argo Rollout / DC / StatefulSet), replika, imaj, kaynak, JVM parametreleri (maskeli) ve pod'ların çalıştığı node'lar."
+        aciklama="Tür (Deployment / Argo Rollout / DC / StatefulSet), replika, imaj, kaynak, JVM parametreleri (parola değerleri gizli) ve pod'ların çalıştığı node'lar."
       >
         <div className="p-4 space-y-3">
           {canliHata && <p className="text-[12px]" style={{ color: 'var(--status-danger)' }}>Son okumalar okunamadı: {canliHata}</p>}
