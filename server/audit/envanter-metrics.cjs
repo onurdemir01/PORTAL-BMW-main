@@ -42,6 +42,12 @@ const SOURCES = {
       DIM('os', 'İşletim sistemi'),
       DIM('os_version', 'OS sürümü'),
       DIM('jboss_version', 'JBoss sürümü', { product: 'JBoss' }),
+      // JBOSS 7 / 8 AYRI (kullanici, 2026-11-12): middleware_inventory artik jboss_version'in ana
+      // surume gore ayrilmis kopyasini da yaziyor (jboss_version degismedi). Iki surum tasiyan sunucu
+      // (GBTOAQ01: '7.3.5 8.1.6.1') her iki kirilimda dogru sayilir. Kolon tabloda YOKSA (yeni sema
+      // henuz yuklenmedi) boyut sessizce degil, AYRI bir notla dusurulur: bkz. mevcutBoyutlar.
+      DIM('jboss7_version', 'JBoss 7 sürümü', { product: 'JBoss 7', istegeBagli: true }),
+      DIM('jboss8_version', 'JBoss 8 sürümü', { product: 'JBoss 8', istegeBagli: true }),
       DIM('was_version', 'WAS sürümü', { product: 'WAS' }),
       DIM('ihs_version', 'IHS sürümü', { product: 'IHS' }),
       DIM('rha_version', 'RHA sürümü', { product: 'RHA' }),
@@ -99,9 +105,40 @@ function pickSource(raw) {
   return SOURCES[key] ? key : 'hosts';
 }
 
-function pickDim(src, raw, fallback) {
-  const found = SOURCES[src].dims.find((d) => d.col === String(raw || ''));
-  return found || SOURCES[src].dims.find((d) => d.col === fallback) || SOURCES[src].dims[0];
+// ISTEGE BAGLI KOLONLAR: tabloda gercekten var mi (sys.columns, 10 dk onbellek). Yoksa o boyut
+// sorgudan cikar - tek eksik kolon UNION ALL sorgusunun TAMAMINI (tum sayfayi) dusururdu. Kolon
+// listesi okunamazsa istege bagli boyutlar da cikar (temkinli yon; zorunlu boyutlar etkilenmez).
+const KOLON_TTL_MS = 10 * 60 * 1000;
+const _kolonOnbellek = new Map();
+async function tabloKolonlari(table) {
+  const o = _kolonOnbellek.get(table);
+  if (o && Date.now() - o.at < KOLON_TTL_MS) return o.kolonlar;
+  const { query, sql } = require('../inventory/mssql.cjs');
+  const rs = await query(
+    `SELECT LOWER(c.name) AS name FROM sys.columns c WHERE c.object_id = OBJECT_ID(@t)`,
+    [{ name: 't', type: sql.NVarChar(256), value: table }],
+  );
+  const kolonlar = new Set((rs.recordset || []).map((x) => String(x.name)));
+  _kolonOnbellek.set(table, { at: Date.now(), kolonlar });
+  return kolonlar;
+}
+async function mevcutBoyutlar(srcKey) {
+  const src = SOURCES[srcKey];
+  if (!src.dims.some((d) => d.istegeBagli)) return { dims: src.dims, eksik: [] };
+  let kolonlar = null;
+  try {
+    kolonlar = await tabloKolonlari(src.table);
+  } catch {
+    kolonlar = null;
+  }
+  const dims = src.dims.filter((d) => !d.istegeBagli || (kolonlar && kolonlar.has(d.col.toLowerCase())));
+  const eksik = src.dims.filter((d) => d.istegeBagli && !dims.includes(d)).map((d) => d.label);
+  return { dims, eksik };
+}
+
+function pickDim(src, raw, fallback, dims = SOURCES[src].dims) {
+  const found = dims.find((d) => d.col === String(raw || ''));
+  return found || dims.find((d) => d.col === fallback) || dims[0];
 }
 
 function registerEnvanterMetrics(router) {
@@ -125,8 +162,9 @@ function registerEnvanterMetrics(router) {
       const srcKey = pickSource(req.query.source);
       const src = SOURCES[srcKey];
       const T = src.table;
+      const { dims, eksik: eksikBoyutlar } = await mevcutBoyutlar(srcKey);
 
-      const parts = src.dims.map((d) => `
+      const parts = dims.map((d) => `
         SELECT '${d.col}' AS dim, ${NORM(d.col)} AS val, COUNT(*) AS n,
                ${src.hasHost ? 'COUNT(DISTINCT host)' : 'COUNT(*)'} AS hosts
           FROM ${T} GROUP BY ${NORM(d.col)}`);
@@ -144,7 +182,7 @@ function registerEnvanterMetrics(router) {
       ]);
 
       const distributions = {};
-      for (const d of src.dims) distributions[d.col] = [];
+      for (const d of dims) distributions[d.col] = [];
       for (const r of distRes.recordset || []) {
         const bucket = distributions[r.dim];
         if (bucket) bucket.push({ value: String(r.val), count: Number(r.n) || 0, hosts: Number(r.hosts) || 0 });
@@ -157,7 +195,7 @@ function registerEnvanterMetrics(router) {
 
       // "Kurulu" sayimi: surum alani DOLU olan sunucu sayisi. Urun sutunu bos ise o urun o
       // sunucuda yok demektir (loader bos birakir) - bu yuzden "(bos)" kovasi disarida kalir.
-      const products = src.dims
+      const products = dims
         .filter((d) => d.product)
         .map((d) => {
           const rowsFor = distributions[d.col] || [];
@@ -185,9 +223,11 @@ function registerEnvanterMetrics(router) {
             key: nm.key, label: nm.label, value: Number(t['sum_' + nm.key]) || 0,
           })),
         },
-        dims: src.dims.map((d) => ({ key: d.col, label: d.label })),
+        dims: dims.map((d) => ({ key: d.col, label: d.label })),
         products,
         distributions,
+        // Tabloda olmadigi icin hesaplanmayan istege bagli kirilimlar (ekran not olarak yazar).
+        eksikBoyutlar,
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Envanter metrikleri alınamadı.' });
@@ -202,8 +242,9 @@ function registerEnvanterMetrics(router) {
       const { query } = require('../inventory/mssql.cjs');
       const srcKey = pickSource(req.query.source);
       const src = SOURCES[srcKey];
-      const x = pickDim(srcKey, req.query.x, 'domain');
-      const y = pickDim(srcKey, req.query.y, src.dims.find((d) => d.product)?.col || src.dims[1].col);
+      const { dims } = await mevcutBoyutlar(srcKey);
+      const x = pickDim(srcKey, req.query.x, 'domain', dims);
+      const y = pickDim(srcKey, req.query.y, dims.find((d) => d.product)?.col || dims[1].col, dims);
       // metric=hosts yalnizca uygulama tablolarinda anlamli; dbo.Inventory'de zaten satir=sunucu.
       const metric = String(req.query.metric || 'rows') === 'hosts' && src.hasHost ? 'hosts' : 'rows';
       const agg = metric === 'hosts' ? 'COUNT(DISTINCT host)' : 'COUNT(*)';
@@ -250,4 +291,4 @@ function registerEnvanterMetrics(router) {
   });
 }
 
-module.exports = { registerEnvanterMetrics, SOURCES };
+module.exports = { registerEnvanterMetrics, SOURCES, _kolonOnbellek };

@@ -863,6 +863,8 @@ export interface EnvanterSummary {
   };
   dims: { key: string; label: string }[];
   products: EnvanterProduct[];
+  /** Tabloda kolonu olmadığı için hesaplanmayan isteğe bağlı kırılımlar (ör. JBoss 7 / 8 sürümü). */
+  eksikBoyutlar?: string[];
   distributions: Record<string, EnvanterDistRow[]>;
   message?: string;
 }

@@ -129,6 +129,12 @@ export default function EnvanterMetrics() {
       </div>
 
       {sum && <Totals sum={sum} />}
+      {sum && !!sum.eksikBoyutlar?.length && (
+        <p className="text-[11px] text-[var(--text-muted)]" data-testid="eksik-boyutlar">
+          {sum.eksikBoyutlar.join(', ')} kırılımı gösterilmiyor: tabloda henüz bu kolon yok (middleware_inventory işi yeni şemayla
+          çalıştığında görünür).
+        </p>
+      )}
       {sum && sum.products.length > 0 && <ProductCoverage sum={sum} />}
       {sum && <Distributions sum={sum} />}
       {sum && <Pivot source={source} sum={sum} />}
