@@ -1,5 +1,11 @@
 # BMW Portal — Deployment (RHEL, tek :3000 semasi)
 
+
+> **Calisma zamani paketi (2026-11-12):** sunucuya kurulan zip artik `npm run paket` ciktisidir:
+> devDependencies yok, `dist/` onceden derlenmis ve manifestli. `release.sh` / `release-git.sh` /
+> `run.sh` kurulumdan sonra agacta gelistirme paketi birakmaz (`stage-lib.sh` →
+> `stage_bagimlilik_ve_build`). Ayrinti: `docs/KURULUM-PAKET.md`, kural: `docs/GUVENLIK-0-ZAFIYET.md`.
+
 > ⚠ **Bu VM'de calistirilacak TEK komutlar:** `deploy/release.sh <env>` (surum guncelleme)
 > ve `deploy/run.sh <env> {start|stop|restart|status|logs}` (gunluk operasyon) — VEYA
 > `systemctl {start|stop|status} bmw-portal@<env>` (systemd tercih edilirse, bkz. asagi).

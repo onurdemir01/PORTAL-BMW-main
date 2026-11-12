@@ -2,6 +2,10 @@
 
 Bu depo, geliştirme akışını destekleyen uzman ajanları içerir. Her ajanın sorumluluk alanı, tetiklenme koşulları ve sınırları aşağıda belgelenmiştir.
 
+## Değişmez kural: 0 zafiyet (2026-11-12, herkes için)
+
+Kurumsal güvenlik taramasından geçen her teslim **0 zafiyet** ile geçer; istisna yoktur. Gerekirse her yere dokunulur, ama sonuçta uygulama **çalışır** kalır. Kuruma ve sunucuya giden şey çalışma zamanı paketidir (`npm run paket`); yeni paket 7 gün bekler ve yeni zafiyet yaratamaz. Ayrıntı ve kapılar: `docs/GUVENLIK-0-ZAFIYET.md`.
+
 ## Proje Ajanları (`.claude/agents/`)
 
 ### `logx-uzman`

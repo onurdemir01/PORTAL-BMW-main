@@ -62,12 +62,18 @@ if [[ -f "$STAGE_ROOT/deploy/stage-lib.sh" ]]; then source "$STAGE_ROOT/deploy/s
 stage_carry_persistent "$APP_ROOT" "$STAGE_ROOT"
 [[ -f "$STAGE_ROOT/.env.$ENV_NAME" ]] || echo "UYARI: .env.$ENV_NAME bulunamadi — baslatmadan once $APP_ROOT altina olusturun."
 
-# 3) Bagimliliklar + build — ESKI SURUM CALISIRKEN (vite build devDependencies ister → tam npm ci)
+# 3) Bagimliliklar + build — ESKI SURUM CALISIRKEN. Calisma zamani paketi (npm run paket) ise
+#    yalniz calisma zamani + dist dogrulamasi; kaynak agac ise build + gelistirme paketlerini sil
+#    (stage-lib.sh stage_bagimlilik_ve_build). Islevi tasimayan eski zip'te eski akis.
 cd "$STAGE_ROOT"
-echo "[release] npm ci (hazirlik dizini)"
-npm ci --no-audit --no-fund
-echo "[release] npm run build (hazirlik dizini)"
-npm run build
+if declare -F stage_bagimlilik_ve_build >/dev/null; then
+  stage_bagimlilik_ve_build "$STAGE_ROOT" || { echo "HATA: bagimlilik / build basarisiz." >&2; exit 1; }
+else
+  echo "[release] npm ci (hazirlik dizini; eski bicim zip)"
+  npm ci --no-audit --no-fund
+  echo "[release] npm run build (hazirlik dizini)"
+  npm run build
+fi
 [[ -f "$STAGE_ROOT/dist/index.html" ]] || { echo "HATA: build cikti uretmedi." >&2; exit 1; }
 
 # 4) Yedek (rollback.sh ile uyumlu; node_modules ve dist yedege girmez)
