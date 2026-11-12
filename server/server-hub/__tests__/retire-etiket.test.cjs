@@ -707,8 +707,8 @@ test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersi
 test('RE7 manuel kontrol: imza baglantisi, VERI_DEGISTI, yalniz KESIN + DOGRULANDI hazir, okunamadi BILINMIYOR', () => {
   const hosts = A(r1Veri()).hosts;
   const e = etiketle({ hosts }).etiketler[0];
-  const kayit = (sonuc, imza = e.imza) =>
-    new Map([[e.anahtar, { sonuc, imza, aciklama: 'CMDB kapali', isaretleyen: 'ayse' }]]);
+  const kayit = (sonuc, imza = e.imza, seviye = 'KESIN') =>
+    new Map([[e.anahtar, { sonuc, imza, seviye, aciklama: 'CMDB kapali', isaretleyen: 'ayse' }]]);
   const d = etiketle({ hosts, kontroller: kayit('DOGRULANDI') }).etiketler[0];
   assert.deepEqual([d.durum, d.retirementHazir], ['DOGRULANDI', true]);
   assert.equal(
@@ -723,6 +723,12 @@ test('RE7 manuel kontrol: imza baglantisi, VERI_DEGISTI, yalniz KESIN + DOGRULAN
   const sh = etiketle({ hosts, kurallar: { R1: 'SUPHELI' }, kontroller: kayit('DOGRULANDI') })
     .etiketler[0];
   assert.deepEqual([sh.seviye, sh.durum, sh.retirementHazir], ['SUPHELI', 'DOGRULANDI', false]);
+  // FAZ 0 (2026-11-11): SUPHELI iken verilen onay, kural sonradan KESIN'e cekilince kapiyi ACMAZ;
+  // seviyesi kayitli olmayan eski onay da acmaz (fail-closed).
+  const eskiSuphe = etiketle({ hosts, kontroller: kayit('DOGRULANDI', e.imza, 'SUPHELI') }).etiketler[0];
+  assert.deepEqual([eskiSuphe.seviye, eskiSuphe.durum, eskiSuphe.retirementHazir], ['KESIN', 'DOGRULANDI', false]);
+  const seviyesiz = etiketle({ hosts, kontroller: kayit('DOGRULANDI', e.imza, null) }).etiketler[0];
+  assert.equal(seviyesiz.retirementHazir, false, 'seviyesi bilinmeyen onay kapiyi acti');
   // Imza: istek sayisi / tarih degisimi imzayi bozmaz; kopya durumu bozar.
   const sayi = r1Veri();
   sayi.vhosts = [V3(WEB, 'oldapp.bmw.local', { hc_24h: 99 })];

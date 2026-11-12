@@ -204,13 +204,32 @@ const EnvanterPage: React.FC = () => {
     inventoryApi.health().then((r) => setDbAvailable(r.mssqlAvailable ?? false));
   }, []);
 
+  // TEK ISTEK KURALI (2026-11-12): sayfa acilisinda ve tablo degisiminde inventoryApi.data
+  // 2-4 kez cagriliyordu (kolon yukleme, filtre, siralama ve arama-debounce effect'leri
+  // ayni durumu ayri ayri tetikliyordu). Artik: yalniz arama METNI geciktirilir
+  // (debouncedSearch), veri istegi TEK effect'ten gider ve yalnizca kolonlar AKTIF
+  // tabloya aitken (columnsFor) calisir. Her istege artan bir numara verilir; geri gelen
+  // yanit en son istege ait degilse yok sayilir (api fonksiyonu AbortSignal almiyor).
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [columnsFor, setColumnsFor] = useState('');
+  const requestSeq = useRef(0);
+  // dbAvailable null -> true gecisi (health yaniti) tabloyu sifirlayip ikinci istek
+  // atmamali; yalniz "kapali" durumu davranisi degistirir.
+  const dbOff = dbAvailable === false;
+
   // Reset state on table change
   useEffect(() => {
-    if (!activeTable || dbAvailable === false) return;
+    if (!activeTable || dbOff) return;
+    let cancelled = false;
+    // Onceki tablonun havadaki veri yaniti artik "en son istek" sayilmaz.
+    requestSeq.current++;
+    setLoading(false);
+    setColumnsFor('');
     setMultiFilters({});
     setPendingFilterGroup(EMPTY_FILTER_GROUP);
     setAppliedFilterGroup(EMPTY_FILTER_GROUP);
     setSearch('');
+    setDebouncedSearch('');
     setRows([]);
     setPagination({ page: 1, pages: 1, total: 0, limit, exact: true, hasMore: false });
     setError(null);
@@ -220,6 +239,8 @@ const EnvanterPage: React.FC = () => {
     // Sunucu tercihleri kolonlardan once yuklenir ki prefsApi.get() dolu cache'ten okusun.
     Promise.all([inventoryApi.columns(activeTable), prefsApi.getAll().catch(() => ({}))]).then(
       ([r]) => {
+        // Gec gelen ESKI tablonun kolonlari yeni tablonun ustune yazilmaz.
+        if (cancelled) return;
         if (r.ok) {
           const cols = r.columns.map((c) => c.COLUMN_NAME);
           setAllColumns(cols);
@@ -240,65 +261,67 @@ const EnvanterPage: React.FC = () => {
           }
         }
       },
-    );
+    )
+      .catch(() => {
+        /* kolonlar alinamazsa da veri istegi gider; hata veri yanitinda gorunur */
+      })
+      .finally(() => {
+        // Eskiden arama-debounce effect'i kolon sonucundan bagimsiz istek atiyordu; kolon
+        // hatasinda da veri hatasi ekranda gorunsun diye hazir isareti her durumda konur.
+        if (!cancelled) setColumnsFor(activeTable);
+      });
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTable, dbAvailable]);
+  }, [activeTable, dbOff]);
 
   const fetchData = useCallback(
     async (page: number, exactCount = false) => {
-      if (dbAvailable === false || !activeTable) return;
+      if (dbOff || !activeTable) return;
+      const seq = ++requestSeq.current;
       setLoading(true);
       setError(null);
       try {
         const r = await inventoryApi.data(activeTable, {
           page,
           limit,
-          search,
+          search: debouncedSearch,
           multiFilters,
           filterGroup: appliedFilterGroup.filters.length > 0 ? appliedFilterGroup : undefined,
           orderBy: orderBy ?? undefined,
           orderDir: orderDir ?? undefined,
           exactCount,
         });
+        if (seq !== requestSeq.current) return;
         if (!r.ok) throw new Error((r as unknown as { error: string }).error || 'Veri alınamadı');
         setRows(r.rows);
         setAppliedWhere(r.appliedWhere ?? null);
         setPagination(r.pagination);
       } catch (e: unknown) {
+        if (seq !== requestSeq.current) return;
         setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setLoading(false);
+        if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [activeTable, search, multiFilters, appliedFilterGroup, limit, orderBy, orderDir, dbAvailable],
+    [activeTable, debouncedSearch, multiFilters, appliedFilterGroup, limit, orderBy, orderDir, dbOff],
   );
 
-  // Initial fetch when columns load
+  // Kolonlar aktif tabloya ait oldugunda TEK effect veri ister; filtre/siralama/limit/
+  // geciktirilmis arama degisince fetchData kimligi degisir ve 1. sayfa yeniden istenir.
+  const columnsReady = activeTable !== '' && columnsFor === activeTable;
   useEffect(() => {
-    if (allColumns.length > 0) fetchData(1);
-  }, [allColumns, fetchData]);
+    if (columnsReady) fetchData(1);
+  }, [columnsReady, fetchData]);
 
-  // Re-fetch when multiFilters or appliedFilterGroup change
+  // Search debounce — yalniz metin geciktirilir, istek yukaridaki effect'ten gider.
   useEffect(() => {
-    if (allColumns.length > 0) fetchData(1);
+    if (search === debouncedSearch) return;
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [multiFilters, appliedFilterGroup]);
-
-  // Re-fetch when limit or sort changes
-  useEffect(() => {
-    if (allColumns.length > 0) fetchData(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [limit, orderBy, orderDir]);
-
-  // Search debounce
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchData(1), 400);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, [search, fetchData]);
+  }, [search]);
 
   useEffect(() => {
     inventoryApi

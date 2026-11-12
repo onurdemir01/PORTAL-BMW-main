@@ -422,7 +422,9 @@ test('D1-U03/U09 yeni bulgu kodlarinin etiketleri var ve listelerde kullaniliyor
   assert.ok(ke('RUNNING_UNMEASURED').includes(KOD.RUNNING_UNMEASURED));
   assert.equal(ke('BILINMEYEN_KOD_X'), 'BILINMEYEN_KOD_X', 'etiketsiz kod oldugu gibi kalmali');
   // Sunucu penceresi bulgu listesi + Bulgular sekmesi tablosu
-  assert.ok(say(PAGE, 'kodEtiketi(f.code)') >= 2, 'kod etiketi listelerde kullanilmiyor');
+  // Bulgular tablosu 2026-11-11'den beri KodHucresi bileseninde (kodlar kapaliyken yalniz ad: kodAdi).
+  assert.ok(say(PAGE, 'kodEtiketi(f.code)') + say(PAGE, 'kodEtiketi(kod)') >= 2, 'kod etiketi listelerde kullanilmiyor');
+  assert.ok(say(PAGE, 'KOD_ETIKET[code] || code') >= 1, 'kodlar kapaliyken okunur ad yok');
 });
 
 // ── D1-U04 / U09 tarama isi sonucu (loader) ───────────────────────────────────────────

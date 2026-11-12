@@ -200,12 +200,15 @@ test('IK4 uctan uca: Kapsam intranet hucresi ortak rapordan, sayilar esit', asyn
   // SPA sutunu ("ic agda") ad kalibinda kalir, etiketli
   assert.equal(p.intranetTotal, 1);
   assert.equal(out.intranetKaynak, 'intranet-spa');
-  assert.deepEqual(out.intranetRapor.platformDisi.map((d) => d.platform), ['wyden']);
+  // YALNIZ ARK (2026-11-11): ARK disi cluster bilgisi Kapsam yanitina tasinmaz; platform listesi de yok.
+  assert.equal(out.intranetRapor.platformDisi, undefined, 'ARK disi cluster bilgisi Kapsam yanitinda');
+  assert.equal(out.platforms, undefined, 'platform listesi Kapsam yanitinda');
+  assert.equal(out.platform, 'ark');
   assert.equal(out.intranetRapor.dizinTarihi, '2026-10-18');
   assert.equal(out.intranetScanned, true);
 });
 
-test('IK5 uctan uca: rapor dustu / kesif yok -> olculemedi; baska platform ad kalibi', async () => {
+test('IK5 uctan uca: rapor dustu / kesif yok -> olculemedi; ?platform= yok sayilir (yalniz ARK)', async () => {
   raporFn = async () => { throw new Error('kesif sorgusu zaman asimi'); };
   let out = await al('platform=ark');
   let p = out.rows.find((x) => x.env === 'PROD');
@@ -222,9 +225,9 @@ test('IK5 uctan uca: rapor dustu / kesif yok -> olculemedi; baska platform ad ka
   p = out.rows.find((x) => x.env === 'PROD');
   assert.deepEqual([out.intranetScanned, p.measuredIntranet, p.intranetOlculemediCount], [false, false, 5]);
   assert.match(p.intranetKaynakHata, /Nginx_Intranet_Audit/);
+  // YALNIZ ARK (kullanici, 2026-11-11): ARK disi platform istense de ARK hesabi doner (ad kalibi dali yok).
   const once = raporCagri;
   out = await al('platform=ark_ai');
-  p = out.rows.find((x) => x.env === 'PROD');
-  assert.equal(raporCagri, once, 'ARK disi platformda ARK raporu cagrildi');
-  assert.deepEqual([out.intranetKaynak, p.intranetKaynak, p.intranetFull, p.intranetTotal, p.measuredIntranet], ['ad-kalibi', 'ad-kalibi', 1, 1, true]);
+  assert.equal(raporCagri, once + 1, 'platform=ark_ai iken ARK raporu cagrilmadi');
+  assert.deepEqual([out.platform, out.intranetKaynak], ['ark', 'intranet-spa']);
 });

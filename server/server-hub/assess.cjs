@@ -1666,6 +1666,8 @@ function assess(data, opts = {}) {
         // turu + v2 trafik + atfedilemeyen proxy yok). Aksi halde bulgu KALIR, eylem
         // onerilmez ve metin ILK engeli soyler.
         const engel = retireEngeli(h, j);
+        // FAZ 1 (2026-11-11): Retirement Analizi de ayni engeli okur (senaryo.cjs RETIRE_ENGELI).
+        j.retireEngeli = engel ? { kod: engel.kod, metin: engel.metin } : null;
         add(
           'warning',
           'jvm',
@@ -2454,9 +2456,40 @@ function assess(data, opts = {}) {
   // JBoss tasiyan sunucular sayilir (JBoss olmayan sunucunun uygulamasi JVM degildir).
   const jbossEnvHosts = envanterUrun('JBOSS');
   let envJvm = 0;
+  const envJvmByHost = new Map();
   for (const [host, apps] of appsByHost) {
     if (!jbossEnvHosts.has(U(host))) continue;
-    for (const a of apps) envJvm += a.jvmCount || (a.autoStarts || []).length || 0;
+    let n = 0;
+    for (const a of apps) n += a.jvmCount || (a.autoStarts || []).length || 0;
+    envJvm += n;
+    envJvmByHost.set(U(host), (envJvmByHost.get(U(host)) || 0) + n);
+  }
+  // JVM "VERI CEKILEN" URUN SATIRLARI GIBI KESISIMLE (2026-11-11). Kullanici: "veri cekilen 5.985,
+  // veritabaninda 5.547, kapsama %108 nasil olabiliyor?" Eskiden pay TUM taranan sunuculardaki JVM
+  // satirlariydi (envanterde JBoss olmayan / hic olmayan sunucular dahil), payda yalniz envanterde
+  // JBoss tasiyan sunucularin MWAppsInventory toplami -> pay paydanin alt kumesi degildi.
+  // Simdi sunucu basina: veri cekilen = min(taranan, envanter); fazlasi iki ayri alanda ve ekranda
+  // yazili (envanter eksikligi bilgidir, gizlenmez). Ad eslesmesi yok: MWApps uygulama (server-group)
+  // basina sayi tutar, tarama server-config basina satir; karsilastirilabilen tek birim sunucu basina sayi.
+  // Ozdeslik: scannedTotal = scanned + scannedOverInventory + scannedNotInInventory.
+  const tarJvmByHost = new Map();
+  for (const h of genel) {
+    const n = (h.jvms || []).filter((j) => j.source !== 'envanter').length;
+    if (n) tarJvmByHost.set(U(h.host), (tarJvmByHost.get(U(h.host)) || 0) + n);
+  }
+  let jvmEslesen = 0;
+  let jvmFazla = 0;
+  let jvmEnvDisi = 0;
+  let jvmEnvDisiHost = 0;
+  for (const [h, n] of tarJvmByHost) {
+    if (!jbossEnvHosts.has(h)) {
+      jvmEnvDisi += n;
+      jvmEnvDisiHost += 1;
+      continue;
+    }
+    const e = envJvmByHost.get(h) || 0;
+    jvmEslesen += Math.min(n, e);
+    jvmFazla += Math.max(0, n - e);
   }
   // AD `scanCoverage` - yukaridaki `summary.coverage` ILE KARISTIRILMAMALI (2026-09-24).
   // O, yalniz TARANAN sunucular icinde "envanter bu urunu diyor mu" diye bakar; yani
@@ -2481,7 +2514,15 @@ function assess(data, opts = {}) {
     jvm: {
       // Envanter (MWAppsInventory) ne diyor, tarama kac JVM satiri getirdi.
       inventory: envJvm,
-      scanned: jvms.filter((j) => j.source !== 'envanter').length,
+      // Envanterdeki JVM'lerden verisi cekilen (sunucu basina min(taranan, envanter)): <= inventory.
+      scanned: jvmEslesen,
+      // Taramanin getirdigi butun JVM satirlari (eski 'scanned').
+      scannedTotal: jvms.filter((j) => j.source !== 'envanter').length,
+      // Envanterde JBoss olan sunucuda taramanin envanterden FAZLA buldugu JVM (envanter eksik sayiyor).
+      scannedOverInventory: jvmFazla,
+      // Envanterde JBoss olarak gorunmeyen (ya da hic olmayan) sunuculardaki JVM'ler ve o sunucu sayisi.
+      scannedNotInInventory: jvmEnvDisi,
+      scannedNotInInventoryHosts: jvmEnvDisiHost,
       // CLI'dan okunamayip ENVANTERDEN tamamlanan satirlar ayri durur: bunlar "bilgisini
       // cektik" sayilmaz, envanterden odunc alindi.
       fromInventory: jvms.filter((j) => j.source === 'envanter').length,

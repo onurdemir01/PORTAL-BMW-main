@@ -126,6 +126,14 @@ function initDenetim(app) {
   // kontrolunu atlayamaz. 60 sn; ?fresh=1 (Yenile dugmesi) atlar. Bkz. response-cache.cjs
   const { createResponseCache } = require('./response-cache.cjs');
   const responseCache = createResponseCache();
+  // Eski sunucu suzgeci (Nginx Hub sekmeleri). Modul yuklenemezse hicbir sey gizlenmez.
+  const eskiSunucuSuzgec = async (req) => {
+    try {
+      return await require('../nginx-console/eski-sunucu.cjs').suzgec(req);
+    } catch {
+      return { ayir: (rows) => rows, eskiMi: () => false, bilgi: () => null, damga: '' };
+    }
+  };
   // /web-app HARIC (2026-10-23): kendi tek-ucuslu tam sonuc onbellegi var (web-app.cjs, 10 dk, fresh=1);
   // burada da tutulsa her arama varyanti 1-2 MB'lik ayri giris olur (64 giris), govde iki kez
   // serilestirilir ve "Yenile" sonrasi diger varyantlar 60 sn eski kalir.
@@ -141,33 +149,24 @@ function initDenetim(app) {
       const { query, sql } = require('../inventory/mssql.cjs');
       const scanDate = String(req.query.scanDate || '').trim();
 
-      const dateRes = await query(
+      // PARALEL BASLANGIC (2026-11-12): tarih listesi, proxy kolon tespiti ve trafik
+      // (sema + satirlar) effectiveDate'e BAGLI DEGIL; ilk dalgada birlikte baslar. Yalniz
+      // tarihe bagli sorgular (SPA satirlari, PROD proxy) tarih cozulunce kosar. Yan sorgularin
+      // hatasi hemen YAKALANIR (islenmemis red olmasin); datesP hatasi eskisi gibi asagida
+      // await edildiginde 500'e gider - tarih yoksa (bos yanit) hic await edilmez.
+      const yut = () => {};
+      const dateP = query(
         scanDate
           ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
           : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
         scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
       );
-      const effectiveDate = dateRes.recordset?.[0]?.d || null;
-      if (!effectiveDate) {
-        return res.json({ ok: true, scanDate: null, services: [], rows: [], availableDates: [] });
-      }
-
-      const [rowsRes, datesRes] = await Promise.all([
-        query(
-          `SELECT service, env, application, namespace, include_name, location_path,
-                  host, vhost, deploy_mode, include_exists, app_deployed,
-                  in_ocp_inventory, status
-             FROM dbo.Nginx_Config_Audit
-            WHERE scan_date = @d${await spaFilter()}`,
-          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
-        ),
-        query(
-          `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d
-             FROM dbo.Nginx_Config_Audit ORDER BY d DESC`,
-        ),
-      ]);
-
-      const raw = rowsRes.recordset || [];
+      const datesP = query(
+        `SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d
+           FROM dbo.Nginx_Config_Audit ORDER BY d DESC`,
+      );
+      datesP.catch(yut);
+      const proxyColsP = hasProxyColumns(); // kendi hatasini yutar (false)
 
       // YUK ALIYOR MU (kullanici, 2026-09-24): "bu uygulamalar yuk aliyor mu? Bunu en iyi
       // access log'dan goruruz." Kaynak dbo.Nginx_Spa_Traffic - bmw_nginx/nginx_config_audit
@@ -183,18 +182,42 @@ function initDenetim(app) {
       // `req7 > 0 ? active : sampled ? unknown : idle` idi: gunluk rotasyonlu hostta 1-4 gunluk
       // olcum "7 gundur yuk yok - atil aday" gorunuyordu; okunamayan mirror (LOADERR satiri
       // service/env/location NULL) hicbir hucreye ulasmiyordu.
-      let trfIdx = null; // null = tablo yok / okunamadi -> trafik hic gosterilmez
-      try {
-        const sema = (await query(SPA_TRAFIK_SEMA_SQL)).recordset?.[0] || {};
-        if (sema.trf) {
-          const tr = await query(spaTrafikSorgusu(!!sema.fs));
-          trfIdx = spaTrafikIndeksi(tr.recordset || [], (x) =>
-            spaTrafikAnahtari(x.service, x.env, x.location),
+      // null = tablo yok / okunamadi -> trafik hic gosterilmez (ekran calismaya devam eder)
+      const trfIdxP = query(SPA_TRAFIK_SEMA_SQL)
+        .then((r) => {
+          const sema = r.recordset?.[0] || {};
+          if (!sema.trf) return null;
+          return query(spaTrafikSorgusu(!!sema.fs)).then((tr) =>
+            spaTrafikIndeksi(tr.recordset || [], (x) => spaTrafikAnahtari(x.service, x.env, x.location)),
           );
-        }
-      } catch {
-        /* tablo yoksa trafik gosterilmez - ekran calismaya devam eder */
+        })
+        .catch(() => null);
+
+      const dateRes = await dateP;
+      const effectiveDate = dateRes.recordset?.[0]?.d || null;
+      if (!effectiveDate) {
+        return res.json({ ok: true, scanDate: null, services: [], rows: [], availableDates: [] });
       }
+
+      // proxyColsP cozulunce hasProxyColumns onbellegi dolu: spaFilter yeni sorgu atmaz.
+      await proxyColsP;
+      const [rowsRes, datesRes] = await Promise.all([
+        query(
+          `SELECT service, env, application, namespace, include_name, location_path,
+                  host, vhost, deploy_mode, include_exists, app_deployed,
+                  in_ocp_inventory, status
+             FROM dbo.Nginx_Config_Audit
+            WHERE scan_date = @d${await spaFilter()}`,
+          [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+        ),
+        datesP,
+      ]);
+
+      // ESKI SUNUCULAR (Nginx Hub, 2026-11-12): envanterde yok + 14+ gundur gorulmedi.
+      const es = await eskiSunucuSuzgec(req);
+      const raw = es.ayir(rowsRes.recordset || []);
+
+      const trfIdx = await trfIdxP;
 
       // PROD MATRISTE (2026-09-14, kullanici: "prod uygulamalarin bilgileri gozukmuyor"):
       // eski GBRVP* vhost'lari SPA include'u degil proxy_pass kullanir; bu satirlar
@@ -205,6 +228,10 @@ function initDenetim(app) {
       let prodProxyStats = null;
       if (await hasProxyColumns()) {
         try {
+          // YALNIZ ARK (2026-11-11): proxy hedefi ARK disi bir route'a cozulmesin.
+          const arkC = PLATFORM_CLUSTERS.ark;
+          const arkYer = arkC.map((_, i) => `@a${i}`).join(', ');
+          const arkPar = () => arkC.map((c, i) => ({ name: `a${i}`, type: sql.NVarChar(200), value: c }));
           const [prx, routes, ocp] = await Promise.all([
             query(
               `SELECT service, env, host, vhost, location_path, upstream_name, target_url
@@ -213,9 +240,10 @@ function initDenetim(app) {
               [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
             ),
             query(
-              `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`,
+              `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkYer})`,
+              arkPar(),
             ).catch(() => ({ recordset: [] })),
-            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`).catch(
+            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkYer})`, arkPar()).catch(
               () => ({ recordset: [] }),
             ),
           ]);
@@ -228,7 +256,7 @@ function initDenetim(app) {
               .split('/')[0]
               .replace(/:\d+$/, '');
           prodProxyStats = { rows: 0, resolved: 0, unresolved: 0 };
-          for (const r of prx.recordset || []) {
+          for (const r of es.ayir(prx.recordset || [])) {
             prodProxyStats.rows++;
             const target = hostOf(r.target_url) || hostOf(r.upstream_name);
             const res = resolveTarget(
@@ -625,6 +653,7 @@ function initDenetim(app) {
         envs: envList,
         envStats,
         rows,
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res
@@ -661,14 +690,29 @@ function initDenetim(app) {
   // OKUNAMADI ile BOS AYNI SEY DEGIL: `rows: null` -> her route "olculemedi"; `rows: []`
   // -> tarama okundu ama bu cluster listesinde satir yok. Ikisini tek bos listeye
   // indirmek, hic olculmemis bir ortami "SPA yok" diye gostermek olurdu.
-  async function spaSinyali(clusters) {
-    const { query, sql } = require('../inventory/mssql.cjs');
-    const sema = await query(
+  // SEMA YOKLAMASI ONBELLEGI (2026-11-12): tablo/kolon varligi nadiren degisir; 10 dk surec ici
+  // tutulur. Hata (null) ve "tablo yok" ONBELLEGE ALINMAZ: ilk job kosusundan sonra ekran
+  // 10 dk "tablo yok" demesin, gecici hata da 10 dk kalici olmasin.
+  const SPA_SEMA_TTL = 10 * 60_000;
+  let _spaSema = null;
+  let _spaSemaAt = 0;
+  async function spaSinyaliSema(query) {
+    if (_spaSema && Date.now() - _spaSemaAt < SPA_SEMA_TTL) return _spaSema;
+    const s = await query(
       `SELECT OBJECT_ID('dbo.BMW_Spa_Discovery') AS oid,
               COL_LENGTH('dbo.BMW_Spa_Discovery', 'match_by') AS mb`,
     )
       .then((r) => r.recordset?.[0] || {})
       .catch(() => null);
+    if (s && s.oid) {
+      _spaSema = s;
+      _spaSemaAt = Date.now();
+    }
+    return s;
+  }
+  async function spaSinyali(clusters) {
+    const { query, sql } = require('../inventory/mssql.cjs');
+    const sema = await spaSinyaliSema(query);
     if (!sema) return { rows: null, tableMissing: false, error: 'sema sorgusu okunamadi' };
     if (!sema.oid)
       return {
@@ -700,9 +744,8 @@ function initDenetim(app) {
   router.get('/route-stats', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const placeholders = clusters.map((_, i) => `@c${i}`).join(', ');
       const r = await query(
@@ -740,9 +783,8 @@ function initDenetim(app) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { routesOfCluster } = require('./route-stats.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const cluster = String(req.query.cluster || '').trim();
       const esles = clusters.find((c) => String(c).toLowerCase() === cluster.toLowerCase());
@@ -779,9 +821,8 @@ function initDenetim(app) {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { routesOfIp } = require('./route-stats.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
       const ip = String(req.query.ip || '').trim();
       if (!/^[0-9a-f.:]{3,45}$/i.test(ip))
@@ -818,9 +859,8 @@ function initDenetim(app) {
   router.get('/nginx-spa-coverage', async (req, res) => {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
-      const platform = PLATFORM_CLUSTERS[String(req.query.platform || 'ark')]
-        ? String(req.query.platform)
-        : 'ark';
+      // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; ?platform= yok sayilir.
+      const platform = 'ark';
       const clusters = PLATFORM_CLUSTERS[platform];
 
       const dateRes = await query(
@@ -1137,20 +1177,18 @@ function initDenetim(app) {
       // INTRANET KURULUMU = Nginx ARK SPA > Intranet SPA ile AYNI hesap (kullanici, 2026-10-19:
       // "farkli sayfada farkli veri gozukmesi bizim yanlis raporlama yapmamiza sebep oluyor").
       // Hucre ve tikla-listesi o raporun satirlarindan (ayni onbellek); bkz. intranet-kapsam.cjs.
-      // Rapor yalniz ARK icin var: baska platformda eski ad kalibi hesabi, kaynagi yazilarak.
-      // Rapor okunamazsa intranet hucresi OLCULEMEDI - ad kalibi hesabina donulmez.
+      // Rapor okunamazsa intranet hucresi OLCULEMEDI - ad kalibi hesabina donulmez. (Platform her zaman
+      // ARK: eski "baska platformda ad kalibi" dali 2026-11-11'de kalkti.)
       let ortakIntranet = null;
       let ortakIntranetHata = '';
-      if (platform === 'ark') {
-        try {
-          const r = await require('../spa-report/index.cjs').intranetOzeti(
-            String(req.query.fresh || '') === '1',
-          );
-          if (intranetKapsam.raporHazir(r)) ortakIntranet = r;
-          else ortakIntranetHata = intranetKapsam.raporHatasi(r);
-        } catch (err) {
-          ortakIntranetHata = intranetKapsam.raporHatasi(null, err.message);
-        }
+      try {
+        const r = await require('../spa-report/index.cjs').intranetOzeti(
+          String(req.query.fresh || '') === '1',
+        );
+        if (intranetKapsam.raporHazir(r)) ortakIntranet = r;
+        else ortakIntranetHata = intranetKapsam.raporHatasi(r);
+      } catch (err) {
+        ortakIntranetHata = intranetKapsam.raporHatasi(null, err.message);
       }
 
       const ENV_LIST = [
@@ -1216,17 +1254,9 @@ function initDenetim(app) {
         // INTRANET KAPSAMI: uygulama uc dizinin UCUNDE de var mi? Hesap ayri modulde
         // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
         const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
-        const ortak =
-          platform !== 'ark'
-            ? null
-            : ortakIntranet
-              ? intranetKapsam.intranetHucresi(
-                  ortakIntranet,
-                  e,
-                  (nss, app) => ownersForApp(owners, app, nss),
-                  CAP,
-                )
-              : intranetKapsam.olculemediHucre(ortakIntranetHata);
+        const ortak = ortakIntranet
+          ? intranetKapsam.intranetHucresi(ortakIntranet, e, (nss, app) => ownersForApp(owners, app, nss), CAP)
+          : intranetKapsam.olculemediHucre(ortakIntranetHata);
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
 
@@ -1352,7 +1382,6 @@ function initDenetim(app) {
       res.json({
         ok: true,
         platform,
-        platforms: Object.keys(PLATFORM_CLUSTERS),
         clusters,
         scanDate,
         spaPatternLabel: SPA_LABEL,
@@ -1364,7 +1393,7 @@ function initDenetim(app) {
         // Beklenmeyen durum: intranet sunucusunda servis vhost'u tanimi bulundu.
         intranetVhostRows,
         // Intranet kurulum hucresinin kaynagi ve Intranet SPA raporunun kapsami (ekranda yazilir).
-        intranetKaynak: platform === 'ark' ? 'intranet-spa' : 'ad-kalibi',
+        intranetKaynak: 'intranet-spa',
         intranetKaynakHata: ortakIntranetHata,
         intranetRapor: ortakIntranet
           ? {
@@ -1372,7 +1401,6 @@ function initDenetim(app) {
               dizinTarihi: ortakIntranet.dizinTarihi || null,
               dizinDurum: ortakIntranet.dizinDurum,
               taranmayanSunucu: ortakIntranet.taranmayanSunucu,
-              platformDisi: ortakIntranet.platformDisi,
               ortamsiz: ortakIntranet.rows.filter((r) => r.env === 'BILINMIYOR').length,
             }
           : null,
@@ -1482,18 +1510,29 @@ function initDenetim(app) {
         allowedQ,
       ]);
 
+    // ESKI SUNUCULAR: tek sunucu sayfasi (onlyHost) suzulmez; filo ozeti eskileri ozetlemeden
+    // ONCE duser (sayilar onlari icermesin). Sicak onbellekte istek yok: varsayilan kip (gizle).
+    const es = onlyHost ? null : await eskiSunucuSuzgec(null);
+    const suz = (rows) => (es ? es.ayir(rows) : rows);
     const out = summarizeAudit({
-      hosts: hosts.recordset || [],
-      servers: servers.recordset || [],
-      locations: locations.recordset || [],
-      upstreams: upstreams.recordset || [],
-      settings: settings.recordset || [],
+      hosts: suz(hosts.recordset || []),
+      servers: suz(servers.recordset || []),
+      locations: suz(locations.recordset || []),
+      upstreams: suz(upstreams.recordset || []),
+      settings: suz(settings.recordset || []),
       allowed,
-      files: files.rows,
+      files: suz(files.rows),
       inventory,
       exceptions,
     });
-    return { ok: true, schemaReady: true, filesReady: files.ready, scanDate, ...out };
+    return {
+      ok: true,
+      schemaReady: true,
+      filesReady: files.ready,
+      scanDate,
+      ...out,
+      ...(es ? { eskiGizli: es.bilgi() } : {}),
+    };
   }
 
   // Sicak onbellek (2026-09-21): tum filo hesabi bellekte, istek aninda doner; suresi dolunca
@@ -1505,6 +1544,15 @@ function initDenetim(app) {
     compute: () => loadNginxAudit(null),
   });
   nginxAuditWarm.warm(45000);
+  // Eski sunucu temizliginden sonra yanit onbellegi ve sicak audit hesabi tazelenir.
+  try {
+    require('../nginx-console/eski-sunucu.cjs').onTemizlik(() => {
+      responseCache.clear();
+      nginxAuditWarm.run().catch(() => {});
+    });
+  } catch {
+    /* modul yoksa onbellekler kendi suresiyle duser */
+  }
   router.get('/nginx-audit', async (req, res) => {
     try {
       res.json(await nginxAuditWarm.get({ fresh: req.query.fresh === '1' }));
@@ -1870,13 +1918,15 @@ function initDenetim(app) {
 
       // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
       // (bkz. __tests__/nginx-api-summary.test.cjs).
-      const summary = summarize(aggRes.recordset || [], srvRes.recordset || []);
+      const es = await eskiSunucuSuzgec(req);
+      const summary = summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []));
       res.json({
         ok: true,
         scanDate: effectiveDate,
         scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
         availableDates: (datesRes.recordset || []).map((r) => r.d),
         ...summary,
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
@@ -2015,8 +2065,9 @@ function initDenetim(app) {
         [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
       );
 
-      const { envs, rows, scannedHosts } = summarizeLocations(r.recordset || []);
-      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts });
+      const es = await eskiSunucuSuzgec(req);
+      const { envs, rows, scannedHosts } = summarizeLocations(es.ayir(r.recordset || []));
+      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts, eskiGizli: es.bilgi() });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -2043,7 +2094,8 @@ function initDenetim(app) {
           ORDER BY env, location, hostname`,
       );
 
-      const rows = r.recordset || [];
+      const es = await eskiSunucuSuzgec(req);
+      const rows = es.ayir(r.recordset || [], (x) => x.hostname);
       // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
       // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.
       const lastUpdate =
@@ -2058,6 +2110,7 @@ function initDenetim(app) {
         lastUpdate: lastUpdate ? String(lastUpdate) : null,
         // hosts: ozetleyicinin DUZELTILMIS env tasiyan satirlari (ham tablo satirlari degil)
         ...summarizeNginxInventory(rows),
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });

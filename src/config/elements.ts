@@ -32,6 +32,10 @@ export const PAGES: PageElement[] = [
   { id: 'NginxConsole', label: 'Nginx Hub', route: '/nginx-console' },
   { id: 'ServerHub', label: 'Server Hub', route: '/server-hub' },
   { id: 'CryptoHub', label: 'Crypto Hub', route: '/crypto-hub' },
+  // Application Hub (2026-11-08): uygulama adiyla JBoss / WAS / OpenShift birlesik gorunum
+  { id: 'AppHub', label: 'Application Hub', route: '/application-hub' },
+  // BMW Hub (2026-11-08): ekibin acik isleri, yalniz Admin
+  { id: 'BmwHub', label: 'Açık İşler', route: '/bmw-hub' },
   { id: 'LogX', label: 'LogX', route: '/logx' },
   { id: 'OpsX', label: 'OpsX', route: '/opsx' },
   { id: 'FileX', label: 'FileX', route: '/filex' },
@@ -69,17 +73,20 @@ export const PAGES: PageElement[] = [
 // Envanter ayrı bir grup oldu. Her biri direkt açılır.
 export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'genel', label: 'Genel', itemIds: ['Dashboard'] },
-  { id: 'envanter', label: 'Envanter', itemIds: ['Envanter', 'Denetim'] },
+  // Application Hub (2026-11-08): kendi girisi
+  { id: 'apphub', label: 'Application Hub', itemIds: ['AppHub'] },
   // Nginx Hub tek basina bir sekme (2026-09-19)
   { id: 'nginxhub', label: 'Nginx Hub', itemIds: ['NginxConsole'] },
   // Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu, kendi girisi
   { id: 'serverhub', label: 'Server Hub', itemIds: ['ServerHub'] },
   // Crypto Hub (2026-09-25): Metaco + Wyden, kendi girisi
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
+  // BMW Hub (2026-11-08): acik isler / otomasyon talepleri, kendi girisi
+  // 2026-11-08: Envanter, Denetim, Nobet ve OCO Takvimi de BMW Hub grubunda (kullanici)
+  { id: 'bmwhub', label: 'BMW Hub', itemIds: ['BmwHub', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi'] },
   // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
   { id: 'arkspa', label: 'Nginx ARK SPA', itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },
-  { id: 'operasyon', label: 'Nöbetçiler', itemIds: ['Nöbet', 'OcoTakvimi'] },
   // 2026-07-28: "LogX" ust-seviye grubu KALDIRILDI; LogX artik bu grubun alt ogesi.
   // Grup etiketi "Otomasyon" -> "Self Servis"; grup ANAHTARI ("otomasyon") degismedi
   // (DB'deki nav_group element_key'i ve ona bagli kayitlar korunsun diye).
@@ -118,6 +125,7 @@ export const ADMIN_TABS: TabElement[] = [
   { id: 'admintab:dbbackup', label: 'DB Yedekleme' },
   { id: 'admintab:ansible', label: 'Ansible Info' },
   { id: 'admintab:playbooks', label: 'Playbook Kayıtları' },
+  { id: 'admintab:sstasima', label: 'Self Servis Taşıma' },
   { id: 'admintab:system', label: 'Sistem' },
   { id: 'admintab:users', label: 'Kullanıcılar' },
   { id: 'admintab:visibility', label: 'Sayfa Erişimi' },

@@ -278,11 +278,16 @@ async function loadLatest() {
 /**
  * Tek sunucu ayrintisi icin AGIR JVM kolonlari (jvm_args ailesi). Filo sorgusunda yoktur
  * (hacim; P9). Kolon semada yoksa (eski sema / dalga 3 oncesi) bos Map.
+ * @param {string} host
+ * @param {{ kol?: object|Promise<object> }} [opts]  kol: onceden okunmus sema (jvmAgirSemasi()
+ *   ciktisi ya da sozu). Cok sunuculu cagiran semayi bir kez okuyup paylasir; verilmezse ya da
+ *   bos cozulurse sema burada okunur (eski davranis).
  * @returns {Promise<Map<string, object>>}  anahtar `${gen}|${jvm kucuk harf}`
  */
-async function loadJvmAgir(host) {
+async function loadJvmAgir(host, opts) {
   const { query, sql } = require('../inventory/mssql.cjs');
-  const kol = await shKolonlari(query);
+  let kol = opts && opts.kol ? await opts.kol : null;
+  if (!kol) kol = await shKolonlari(query);
   if (!kol.ok) return new Map();
   const var_ = kol.cols.get('dbo.server_hub_jvms') || new Set();
   const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
@@ -301,6 +306,17 @@ async function loadJvmAgir(host) {
   for (const r of rows) out.set(`${Number(r.gen)}|${String(r.jvm || '').trim().toLowerCase()}`, r);
   return out;
 }
+
+/**
+ * loadJvmAgir icin kolon semasi (sys.columns) - istek basina BIR kez okunup
+ * loadJvmAgir(host, { kol }) ile paylasilir. Hata firlatmaz ({ ok:false } doner).
+ * Ayri export satiri yerine fonksiyonun ozelligi olarak sunulur: loadJvmAgir.semaOku().
+ */
+function jvmAgirSemasi() {
+  const { query } = require('../inventory/mssql.cjs');
+  return shKolonlari(query);
+}
+loadJvmAgir.semaOku = jvmAgirSemasi;
 
 /** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
 function hesapla() {
@@ -576,6 +592,31 @@ async function launch(req, keyName, templateName, extraVars, detail) {
 }
 
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
+
+// ── RETIREMENT KAPISI ICIN ANALIZ KARARI (Faz 3 golge, 2026-11-11) ──────────────────────────────
+// docs/RETIREMENT-MOTOR-BIRLESTIRME.md: Retirement kaydi acilirken her hedefin Analiz kopya karari.
+// Router kurulduysa AYNI hesap (onbellek + tek ucus) kullanilir; kurulmadiysa (test / router'siz) yenisi.
+let _iliskiHesabi = null;
+async function retirementAnalizi(hedefler) {
+  if (!_iliskiHesabi) {
+    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({ getAssessment: (f) => getAssessment(f === true) });
+  }
+  const h = await _iliskiHesabi(false);
+  if (!h.grafik || !h.kararlar) return { okunamadi: true, hedefler: [] };
+  const { A } = require('./iliski-grafigi.cjs');
+  const out = (hedefler || []).map((t) => {
+    const gen = t.gen == null || t.gen === '' ? null : Number(t.gen);
+    const k = h.kararlar.kopyalar.get(A.jvm(t.host, gen, t.appName));
+    return {
+      host: String(t.host || '').toUpperCase(),
+      appName: t.appName,
+      gen,
+      karar: k ? k.karar : 'BULUNAMADI',
+      ana: k ? (k.maddeler.find((m) => m.etki === 'ENGELLER') || k.maddeler.find((m) => m.etki === 'EKSIK') || {}).kod || null : null,
+    };
+  });
+  return { okunamadi: false, hedefler: out };
+}
 
 function initServerHub(app) {
   const { requireAuth } = require('../auth/index.cjs');
@@ -952,7 +993,15 @@ function initServerHub(app) {
   // ── ILISKI GRAFIGI (2026-11-07) ── varlik indeksi, kanitli kenarlar, capraz dogrulama (iliski-uclar.cjs).
   const iliskiHesabi = require('./iliski-uclar.cjs').mount(router, {
     getAssessment: (fresh) => getAssessment(fresh === true),
+    audit: (req, detail) => {
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+      } catch {
+        /* best-effort */
+      }
+    },
   });
+  _iliskiHesabi = iliskiHesabi;
   // ── KALICI NOTLAR (2026-11-07) ── Admin notu / etiket / sinif; tarama silmez (notlar-uclar.cjs).
   require('./notlar-uclar.cjs').mount(router, {
     iliskiHesabi,
@@ -977,6 +1026,25 @@ function initServerHub(app) {
         /* best-effort */
       }
     },
+  });
+
+  // ── KARSILASTIRMA (Faz 4, 2026-11-11) ── etiket motoru (A) ile Analiz grup karari (B) nerede ayrisiyor.
+  // Gozlem raporu; hicbir sey degistirmez. Iki hesap da kendi onbellegini kullanir.
+  const etiketHesabi = require('./retire-uclar.cjs').etiketHesabiKur({
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    ayarlar,
+    kontrol: require('./retire-kontrol.cjs'),
+  });
+  router.get('/iliski/karsilastirma', async (req, res) => {
+    try {
+      const fresh = req.query.fresh === '1';
+      const [et, h] = await Promise.all([etiketHesabi(fresh), iliskiHesabi(fresh)]);
+      if (!h.grafik || !h.kararlar) return res.status(424).json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
+      const { karsilastir } = require('./karsilastirma.cjs');
+      res.json({ ok: true, latestScan: h.a && h.a.latestScan ? h.a.latestScan : null, ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }) });
+    } catch (e) {
+      res.status(424).json({ ok: false, message: e.message || 'Karşılaştırma yapılamadı.' });
+    }
   });
 
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
@@ -1012,6 +1080,7 @@ function initServerHub(app) {
 
 module.exports = {
   initServerHub,
+  retirementAnalizi,
   REGISTRY_KEYS,
   FIX_ACTIONS,
   HOST_RE,

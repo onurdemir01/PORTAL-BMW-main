@@ -18,6 +18,7 @@ const http = require('http');
 const { readDutyRoster } = require('../duty-roster/index.cjs');
 const { clearTokenCache } = require('../ansible/runner.cjs');
 const { readResponseLimited } = require("../util/bounded-read.cjs");
+const { tlsSecenekleri, tlsHatasiAcikla } = require("../util/tls-guven.cjs");
 
 /** Nobetci API yanit tavani. Nobet listesi birkac KB`dir. */
 const NOBETCI_MAX_BYTES = 4 * 1024 * 1024;
@@ -80,7 +81,9 @@ function fetchNobetList() {
         ...(hostOverride ? { Host: parsed.host } : {}),
       },
       timeout: 8000,
-      rejectUnauthorized: false,
+      // TLS DOGRULAMASI ACIK. NOBETCI_API_HOST ile baska bir adrese (or. IP) baglanilsa da
+      // sertifika URL'deki GERCEK ada gore dogrulanir (SNI + ad kontrolu).
+      ...tlsSecenekleri("nobetci", parsed, { sunucuAdi: hostOverride ? parsed.hostname : undefined }),
     };
 
     console.log(`[Nobetci] Baglaniyor: ${opts.hostname}:${opts.port}${opts.path}`);
@@ -114,7 +117,7 @@ function fetchNobetList() {
         .catch(reject);
     });
     req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-    req.on("error",   (e) => reject(e));
+    req.on("error",   (e) => reject(tlsHatasiAcikla(e, "nobetci", parsed.hostname)));
     req.end();
   });
 }

@@ -17,7 +17,13 @@
 # balancer / advertise, AJP / HTTP dinleyici soket adlari), socket-binding-group (ajp / http / https
 # portlari, outbound remote-destination host:port), server-group profil / port grubu / ofset, server
 # port-offset ve deployment yolunun diskte olup olmadigi (yalniz lstat). WebSphere serverindex.xml
-# (sunucu, uc nokta portlari, kurulu uygulamalar). Istege bagli (EAR_BAGLANTI=1) yapilandirilmis portlara
+# (sunucu, uc nokta portlari, kurulu uygulamalar). WAS JVM (2026-11-08): sunucu basina
+# cells/<c>/nodes/<n>/servers/<s>/server.xml icindeki processDefinitions/jvmEntries: initialHeapSize,
+# maximumHeapSize, genericJvmArguments ve systemProperties. IKINCI ICERIK ISTISNASI: sistem ozelligi
+# ADLARI pakete girer, DEGERLER Server Hub jvm_args beyaz listesiyle maskeli (jvm_maskele: -X acik, -D
+# degeri yalniz beyaz onekte ve sir ERE'sine uymuyorsa acik, aksi '***'; diger belirtecte sir anahtari
+# sonrasi '***'); Portal alimi (ear-envanter-alim.cjs wasOzeti) mask.cjs ile IKINCI kez maskeler.
+# Istege bagli (EAR_BAGLANTI=1) yapilandirilmis portlara
 # ESTABLISHED baglantilarin anlik goruntusu /proc/net/tcp{,6}'dan (surec eslemesi yok, uzak IP sayilir).
 #
 # KIPLER: OZET - dosya basina stat YOK (scandir ad + tip), yalniz kutuphane jar'larinin boyutu;
@@ -82,6 +88,17 @@ PROC = os.environ.get('EAR_PROC', '/proc')
 SOKET_ADLARI = ('ajp', 'http', 'https')
 IFADE_RE = re.compile(r'^(?:\$\{[^:}]+:(-?\d+)\}|(-?\d+))$')
 WAS_UYGULAMA_RE = re.compile(r'applications/([^/]+?)(?:\.ear)?/')
+# JVM argumani maskesi: Server Hub mask.cjs maskJvmArgs / server_hub_scan.sh wl() ile ayni -D karari.
+# re.I Unicode katlar (U+0130 / U+0131 / U+017F / U+212A da eslesir): Portal'dan DAHA COK maskeleyen yon.
+JVM_SIR_RE = re.compile(r'(pass(word|wd|phrase)?|pwd|secret|token|credential|(access|license|signing|encryption'
+                        r'|private|api|client|master|auth)[_.-]?key|key[_.-]?(store|pass)[_.-]?pass(word)?|keypass'
+                        r'|storepass|truststore[_.-]?pass(word)?)', re.I)
+JVM_URL_KIMLIK_RE = re.compile(r'(://[^/:@ ]+:)[^@/ ]+@')
+JVM_KULLANICI_RE = re.compile(r'([A-Za-z0-9_$#.-]+/)[^@/ "]+@')
+JVM_AYRAC_RE = re.compile(r'[=:]')
+JVM_BOSLUK_RE = re.compile(r'[\t\r\n\x0b\x0c]')
+JVM_ARG_SINIRI = 2000
+JVM_OZELLIK_SINIRI = 100
 
 JAR_RE = re.compile(r'^(.+?)-(\d[^/]*)\.jar$', re.I)
 UCUCU_SEGMENT = set(['logs', 'log', 'tmp', 'temp', 'work'])
@@ -772,8 +789,83 @@ def alt_dizinler(yol):
         return [], 'HATA'
 
 
+def jvm_deger_acik(ad):
+    """-D / sistem ozelligi degeri acik kalabilir mi: YALNIZ sir adli olan gizlenir (mask.cjs degerAcik;
+    kullanici karari 2026-11-12 "yalniz parolalar gizli", eski onek beyaz listesi kalkti)."""
+    return not JVM_SIR_RE.search(ad)
+
+
+def jvm_belirtec(t):
+    """Tek belirtec: -X acik; -Dk=v beyaz liste karari; digerinde kimlikli URL / 'kullanici/parola@' ve
+    sir anahtarindan sonraki ilk '=' / ':' sonrasi '***' (Portal serbest maskesinden DAHA COK maskeler)."""
+    if t == '' or t.startswith('-X'):
+        return t
+    if t.startswith('-D'):
+        i = t.find('=')
+        if i < 0:
+            return t
+        if jvm_deger_acik(t[2:i]):
+            return JVM_KULLANICI_RE.sub(r'\1***@', JVM_URL_KIMLIK_RE.sub(r'\1***@', t))
+        return t[:i + 1] + '***'
+    t = JVM_KULLANICI_RE.sub(r'\1***@', JVM_URL_KIMLIK_RE.sub(r'\1***@', t))
+    m = JVM_SIR_RE.search(t)
+    if m:
+        a = JVM_AYRAC_RE.search(t, m.end())
+        if a:
+            return t[:a.end()] + '***'
+    return t
+
+
+def jvm_maskele(s):
+    """Arguman metni: TAB / satir sonu bosluga, TEK bosluga gore belirtecler (mask.cjs split(' ') ile ayni)."""
+    return ' '.join(jvm_belirtec(t) for t in JVM_BOSLUK_RE.sub(' ', s or '').strip().split(' '))
+
+
+def jvm_kes(s, n):
+    """ONCE maske SONRA kes: belirtec sinirinda; kesilen belirtec sayisi ' ...+N' olarak eklenir."""
+    if len(s) <= n:
+        return s
+    p = s.split(' ')
+    tut, uz = [], 0
+    for t in p:
+        if uz + len(t) + 1 > n - 12:
+            break
+        tut.append(t)
+        uz += len(t) + 1
+    return ' '.join(tut) + ' ...+' + str(len(p) - len(tut))
+
+
+def was_jvm_ozeti(yol):
+    """server.xml processDefinitions/jvmEntries -> heap (MB), maskeli genericJvmArguments, sistem ozellikleri.
+    durum: XML durumu (OKUNDU | YOK | IZIN | ...) ya da JVM_YOK (dosya okundu, jvmEntries yok)."""
+    x, d = xml_oku(yol)
+    out = {'yol': yol[:400], 'durum': d}
+    if x is None:
+        return out
+    girisler = [e for e in x.iter() if yerel(e.tag) == 'jvmEntries']
+    if not girisler:
+        out['durum'] = 'JVM_YOK'
+        return out
+    j = girisler[0]
+    ozellikler = [c for c in j if yerel(c.tag) == 'systemProperties']
+    out.update({
+        'jvm_girisi': len(girisler),
+        'ilk_heap_mb': ifade_sayi(j.get('initialHeapSize')),
+        'en_cok_heap_mb': ifade_sayi(j.get('maximumHeapSize')),
+        'jvm_argumanlari': jvm_kes(jvm_maskele(j.get('genericJvmArguments')), JVM_ARG_SINIRI),
+        'sistem_ozellikleri': [
+            {'ad': (c.get('name') or '')[:256],
+             'deger': None if c.get('value') is None else
+             (c.get('value')[:512] if jvm_deger_acik(c.get('name') or '') else '***')}
+            for c in ozellikler[:JVM_OZELLIK_SINIRI]],
+        'ozellik_kesildi': len(ozellikler) > JVM_OZELLIK_SINIRI,
+    })
+    return out
+
+
 def was_tara():
-    """WebSphere: <kok>/profiles/<p>/config/cells/<c>/nodes/<n>/serverindex.xml -> sunucu, uc nokta, uygulama."""
+    """WebSphere: <kok>/profiles/<p>/config/cells/<c>/nodes/<n>/serverindex.xml -> sunucu, uc nokta, uygulama;
+    sunucu basina nodes/<n>/servers/<s>/server.xml -> 'jvm' (was_jvm_ozeti)."""
     out = {'kokler': [], 'dosyalar': [], 'sunucular': [], 'kesildi': False}
     for kok in WAS_KOKLERI:
         profiller, durum = alt_dizinler(kok.rstrip('/') + '/profiles')
@@ -807,10 +899,16 @@ def was_tara():
                                     if yerel(e.tag) == 'endPoint':
                                         uclar.append({'ad': (c.get('endPointName') or '')[:64], 'host': (e.get('host') or '')[:256],
                                                       'port': ifade_sayi(e.get('port'))})
+                        ad = se.get('serverName') or ''
+                        # Ad yol bileseni olur: bos, '.'/'..' ya da '/' iceren ad okunmaz (agac disina cikmaz).
+                        if ad and ad not in ('.', '..') and '/' not in ad and '\x00' not in ad:
+                            jvm = was_jvm_ozeti('/'.join([hucre_kok, hucre, 'nodes', dugum, 'servers', ad, 'server.xml']))
+                        else:
+                            jvm = {'yol': '', 'durum': 'HATA'}
                         out['sunucular'].append({'profil': prof[:128], 'hucre': hucre[:128], 'dugum': dugum[:128],
-                                                 'ad': (se.get('serverName') or '')[:128],
+                                                 'ad': ad[:128],
                                                  'tur': (se.get('serverType') or '')[:64],
-                                                 'uclar': uclar, 'uygulamalar': uygulamalar})
+                                                 'uclar': uclar, 'uygulamalar': uygulamalar, 'jvm': jvm})
     return out
 
 

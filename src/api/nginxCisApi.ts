@@ -2,6 +2,7 @@
 // Skor Portal'da hesaplanir: istisna ve kurum referansi job beklemeden etkili olur; "Skoru tazele"
 // AWX'teki nginx_cis_scan job'ini tetikler (canli skor).
 import { safeJson } from './http';
+import { eskiGizliKaydet } from './nginxEskiSunucuApi';
 
 const BASE = '/api/nginx-cis';
 
@@ -50,7 +51,8 @@ export interface NcCisOverview {
 const json = (body: unknown) => ({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 export const nginxCisApi = {
-  overview: (fresh = false): Promise<NcCisOverview> => fetch(`${BASE}/overview${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  overview: (fresh = false): Promise<NcCisOverview> =>
+    fetch(`${BASE}/overview${fresh ? '?fresh=1' : ''}`).then(safeJson).then(eskiGizliKaydet('cis')),
   host: (host: string, fresh = false): Promise<{ ok: boolean; host: NcCisHostDetail; message?: string }> =>
     fetch(`${BASE}/host/${encodeURIComponent(host)}${fresh ? '?fresh=1' : ''}`).then(safeJson),
   setException: (itemId: string, host: string | null, note: string): Promise<{ ok: boolean; message?: string }> =>

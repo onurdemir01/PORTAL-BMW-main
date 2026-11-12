@@ -1,6 +1,7 @@
 // src/api/nginxConsoleApi.ts — Nginx Hub (2026-09-19): sunucu listesi, konfigurasyon
 // agaci/icerik (Ansible dokumundan, /sw), sertifika envanteri, dokum yenileme ve tek dosya push.
 import { safeJson } from './http';
+import { eskiGizliKaydet } from './nginxEskiSunucuApi';
 
 const BASE = '/api/nginx-console';
 
@@ -705,6 +706,7 @@ export const nginxConsoleApi = {
     // hata; eskiden r.json() "Unexpected token '<'" diye dusuyordu (2026-10-14 uretim).
     fetch(`${BASE}/spa-discovery${fresh ? '?fresh=1' : ''}`)
       .then(safeJson)
+      .then(eskiGizliKaydet('spaKesif'))
       .then(spaYanitDoldur),
   /** Bir uygulamanın RP tanımları ve tanım başına trafik (satıra tıklayınca açılan panel). */
   spaRp: (ns: string, app: string, fresh = false): Promise<NgSpaRpDetay> =>
@@ -713,9 +715,9 @@ export const nginxConsoleApi = {
     ).then(safeJson),
   /** Tüm Nginx sunucularının rate limit dökümü (satır düzeyinde). */
   rateLimit: (scanDate?: string): Promise<NginxRateLimitResult> =>
-    fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
-      safeJson,
-    ),
+    fetch(`${BASE}/ratelimit${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('ratelimit')),
 
   // Yanitta liste yoksa (ara gecit / eski surum) basari SAYILMAZ: ekran "okunamadi" der, coker
   // ya da "sunucu yok" demez (2026-11-07).
@@ -728,6 +730,7 @@ export const nginxConsoleApi = {
   }> =>
     fetch(`${BASE}/hosts`)
       .then(safeJson)
+      .then(eskiGizliKaydet('hosts'))
       .then(listeli('hosts', 'Sunucu listesi')),
   tree: (host: string): Promise<NcTree> =>
     fetch(`${BASE}/tree/${encodeURIComponent(host)}`).then(safeJson),
@@ -756,17 +759,21 @@ export const nginxConsoleApi = {
   certs: (host?: string): Promise<NcCertsResult> =>
     fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ''}`)
       .then(safeJson)
+      .then(eskiGizliKaydet('certs'))
       .then(listeli('certs', 'Sertifika listesi', 'summary')),
   drift: (service?: string, env?: string): Promise<NcDriftResult> => {
     const u = new URLSearchParams();
     if (service) u.set('service', service);
     if (env) u.set('env', env);
     const qs = u.toString();
-    return fetch(`${BASE}/drift${qs ? '?' + qs : ''}`).then(safeJson);
+    return fetch(`${BASE}/drift${qs ? '?' + qs : ''}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('drift'));
   },
   orphans: (host?: string): Promise<NcOrphansResult> =>
     fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ''}`)
       .then(safeJson)
+      .then(eskiGizliKaydet('orphans'))
       .then(listeli('hosts', 'Kullanılmayan dosya listesi', 'summary')),
   /** Kullanılmayan dosyaları karantinaya alır. mode=plan hiçbir şeye dokunmaz. */
   orphansCleanup: (body: {
@@ -809,7 +816,9 @@ export const nginxConsoleApi = {
     Object.entries(q).forEach(([k, v]) => {
       if (v != null && v !== '') u.set(k, String(v));
     });
-    return fetch(`${BASE}/changes?${u.toString()}`).then(safeJson);
+    return fetch(`${BASE}/changes?${u.toString()}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('changes'));
   },
   blob: (
     sha: string,
@@ -847,13 +856,17 @@ export interface NginxRateLimitHost {
   zoneCount: number;
   /** nginx -T çıktısında rate_limits.conf görünüyor mu */
   fileLoaded: boolean;
+  /** nginx.conf'taki rate_limits.conf include satırı (nginx_audit, ham dosyadan);
+   *  null = ölçülmedi (eski analiz sürümü). */
+  rateLimitInclude?: 'enabled' | 'disabled' | 'missing' | null;
   /** audit'in referans dosyayla karşılaştırmasında uyuşmayan direktif sayısı */
   mismatch: number;
   /** eksik = zone yok YA DA tanımlı ama uygulanmıyor */
   /** bilinmiyor = ölçülmedi; kurulumyok/calismiyor/configbozuk = sunucunun kendi durumu.
-   *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür. */
+   *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür.
+   *  kapali = include bilerek yorumlu ve hiçbir estate zone'u yok (bulgu değil, seçim). */
   durum:
-    'standart' | 'farkli' | 'eksik' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
+    'standart' | 'farkli' | 'eksik' | 'kapali' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
   /** null = ölçülmedi */
   kurulu: boolean | null;
   /** null = ölçülmedi. false iken değerler DOSYADA yazandır, şu an uygulanmıyor. */
@@ -872,6 +885,8 @@ export interface NginxRateLimitSummary {
   standart: number;
   farkli: number;
   eksik: number;
+  /** bilerek kapalı sunucu sayısı (dosyaYuklenmemis'e girmez) */
+  kapali: number;
   bilinmiyor: number;
   kurulumyok: number;
   calismiyor: number;
@@ -888,6 +903,8 @@ export interface NginxRateLimitResult {
   tableMissing?: boolean;
   /** true = bu taramada limit direktifleri yok (eski nginx_audit sürümü) */
   directivesMissing?: boolean;
+  /** bilgi: kaç sunucuda rate limit bilerek kapalı (uyarı değil) */
+  kapaliMessage?: string;
   scanDate: string | null;
   availableDates: string[];
   hosts: NginxRateLimitHost[];

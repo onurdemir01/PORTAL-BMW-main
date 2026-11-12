@@ -235,4 +235,11 @@ function startWatcher(minutes = 5) {
   setTimeout(() => sweep().catch(() => {}), 30_000).unref?.();
 }
 
-module.exports = { init, putBlob, getBlob, hasBlob, diffState, ingestDump, recordPublishIntent, fileHistory, changes, startWatcher, sweep, _objectsDir: objectsDir };
+/** Eski sunucu temizligi: host'un ingest isaretleri birakilir (bellek). */
+function unut(host) {
+  const H = String(host || '').toUpperCase();
+  _ingested.delete(H);
+  _inflight.delete(H);
+}
+
+module.exports = { init, putBlob, getBlob, hasBlob, diffState, ingestDump, recordPublishIntent, fileHistory, changes, startWatcher, sweep, unut, _objectsDir: objectsDir };

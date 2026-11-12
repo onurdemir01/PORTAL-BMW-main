@@ -18,6 +18,9 @@ const ENC_PREFIX = 'enc:v1:';
 // eskiden LogX otomatik-LDAP-auth icin tutulan ephemeral cred-cache) FARKLI olarak restart'lar
 // arasi SABIT olmali (DB'deki sifreli deger sonraki boot'ta da cozulebilmeli). Operator
 // tarafindan elle doldurulur.
+// AES-256-GCM dogrulama etiketi uzunlugu (bayt). Bkz. decryptSecretValue.
+const GCM_ETIKET = 16;
+
 function getEncryptionKey() {
   const raw = process.env.ENV_OVERRIDES_ENCRYPTION_KEY;
   if (!raw) return null;
@@ -47,7 +50,7 @@ function encryptSecretValue(plain) {
     return plain;
   }
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: GCM_ETIKET });
   const enc = Buffer.concat([cipher.update(String(plain), 'utf8'), cipher.final()]);
   const payload = {
     iv: iv.toString('base64'),
@@ -64,8 +67,15 @@ function decryptSecretValue(stored) {
   const payload = JSON.parse(
     Buffer.from(stored.slice(ENC_PREFIX.length), 'base64').toString('utf8'),
   );
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(payload.tag, 'base64'));
+  // ETIKET UZUNLUGU SABIT (2026-11-12, SAST bulgusu): authTagLength verilmezse GCM kisaltilmis bir
+  // etiketi (4 bayta kadar) kabul eder; sahte bir degerin dogrulamayi tahminle gecme olasiligi buyur.
+  // Sifreleme her zaman 16 baytlik etiket yazar; baska uzunluk bozuk / kurcalanmis kayittir.
+  const etiket = Buffer.from(payload.tag, 'base64');
+  if (etiket.length !== GCM_ETIKET) throw new Error('Sifreli deger bozuk: dogrulama etiketi uzunlugu gecersiz');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'base64'), {
+    authTagLength: GCM_ETIKET,
+  });
+  decipher.setAuthTag(etiket);
   return Buffer.concat([
     decipher.update(Buffer.from(payload.enc, 'base64')),
     decipher.final(),
@@ -204,6 +214,15 @@ const SYSTEM_CONFIG_KEYS = [
   'PORTAL_HSTS_MAX_AGE',
   // Server Hub > Uygulama Envanteri ciktisi (/sw; playbook'a ear_dizin olarak gider). Her kullanimda okunur.
   'EAR_ENVANTER_DIR',
+  // ── Ic servis TLS dogrulamasi (2026-11-12) — SICAK YUKLENIR ──────────────
+  // server/util/tls-guven.cjs her istekte okur: <ONEK>_TLS_CA ek CA dosyasi (mtime ile yeniden
+  // yuklenir), <ONEK>_TLS_DOGRULAMA=kapali ACIL cikis (uyari loglanir).
+  'AWX_TLS_CA',
+  'AWX_TLS_DOGRULAMA',
+  'OCP_TLS_CA',
+  'OCP_TLS_DOGRULAMA',
+  'NOBETCI_TLS_CA',
+  'NOBETCI_TLS_DOGRULAMA',
 ];
 
 // RESTART GEREKTIRMEYEN anahtarlar. Portalin cogu modulu env'i boot'ta okuyup
@@ -236,6 +255,12 @@ const HOT_RELOADABLE_KEYS = [
   'PORTAL_FRAME_ANCESTORS',
   'PORTAL_HSTS_MAX_AGE',
   'EAR_ENVANTER_DIR',
+  'AWX_TLS_CA',
+  'AWX_TLS_DOGRULAMA',
+  'OCP_TLS_CA',
+  'OCP_TLS_DOGRULAMA',
+  'NOBETCI_TLS_CA',
+  'NOBETCI_TLS_DOGRULAMA',
 ];
 
 const LOAD_TIMEOUT_MS = 8000; // olu DB boot'u sonsuza dek bloklamasin

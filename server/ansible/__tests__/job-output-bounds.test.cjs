@@ -69,13 +69,17 @@ function gercekFetch() {
   const j = RUNNER_SRC.indexOf('function isAwxStdoutTooLarge');
   const k = RUNNER_SRC.indexOf('const JOB_OUTPUT_MAX_BYTES');
   assert.ok(i > 0 && j > i && k > 0 && k < i, 'kaynak cikarimi bozuldu — desen degismis');
+  // TLS secenekleri de GERCEK yardimcidan (server/util/tls-guven.cjs); http: hedefte bos doner.
+  const { tlsSecenekleri, tlsHatasiAcikla } = require('../../util/tls-guven.cjs');
   return new Function(
     'http',
     'https',
     'URL',
+    'tlsSecenekleri',
+    'tlsHatasiAcikla',
     `${RUNNER_SRC.slice(k, i)}\n${RUNNER_SRC.slice(i, j)}\n` +
       'return { fetchAwxPlainText, AWX_RESPONSE_MAX_BYTES, AWX_TRUNCATION_NOTICE };',
-  )(http, require('node:https'), URL);
+  )(http, require('node:https'), URL, tlsSecenekleri, tlsHatasiAcikla);
 }
 
 // JO1 — ASIL KAPI. Buyuk yanit bellege OLDUGU GIBI alinmamali.
@@ -196,6 +200,9 @@ function gercekJsonIstek(fnAdi, ekStok = {}) {
     _tokenCache: { token: null, expiresAt: null },
     getConfig: () => ({ url: TEST_AWX_URL }),
     getToken: async () => 'test-token',
+    // GERCEK TLS yardimcisi (stok degil): http: hedefte bos secenek, https'te dogrulama.
+    tlsSecenekleri: require('../../util/tls-guven.cjs').tlsSecenekleri,
+    tlsHatasiAcikla: require('../../util/tls-guven.cjs').tlsHatasiAcikla,
     ...ekStok,
   };
   const adlar = [];

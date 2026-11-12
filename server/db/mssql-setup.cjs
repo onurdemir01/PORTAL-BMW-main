@@ -881,6 +881,44 @@ const TABLES = [
       )`,
   },
   {
+    // SELF SERVIS TASIMA (2026-11-10, maestro2 -> maestro3): servis karti (ansible_ss_items) bir
+    // AWX sunucusundan digerine tasinirken hazirlik / tasima / geri alma kaydi. Kart yerinde
+    // UPDATE edilir (id, baslik, erisim degismez); kaynak ayar satiri kopyalanir, SILINMEZ.
+    // Kart basina tek ACIK kayit (HAZIRLIK | TASINDI) filtreli tekil indeksle garanti edilir
+    // (UX_ss_migrations_acik, asagida). Sir tutmaz: parola varsayilani yalniz $encrypted$ olarak gelir.
+    name: 'ansible_ss_migrations',
+    sql: `
+      CREATE TABLE ansible_ss_migrations (
+        id                       INT IDENTITY(1,1) PRIMARY KEY,
+        item_id                  NVARCHAR(64)  NOT NULL,
+        from_server              INT           NOT NULL,
+        from_template            INT           NOT NULL,
+        from_template_name       NVARCHAR(512) NULL,
+        to_server                INT           NOT NULL,
+        to_template              INT           NOT NULL,
+        to_template_name         NVARCHAR(512) NULL,
+        status                   NVARCHAR(16)  NOT NULL,
+        eslesme                  NVARCHAR(8)   NOT NULL,
+        onceki_json              NVARCHAR(MAX) NULL,
+        uygulanan_json           NVARCHAR(MAX) NULL,
+        hedef_survey_onceki_json NVARCHAR(MAX) NULL,
+        survey_yazildi           BIT           NOT NULL DEFAULT 0,
+        hedef_survey_hash        NVARCHAR(64)  NULL,
+        deneme_job_id            INT           NULL,
+        deneme_at                DATETIME2     NULL,
+        deneme_kaynak_hash       NVARCHAR(64)  NULL,
+        deneme_hedef_survey_hash NVARCHAR(64)  NULL,
+        denemesiz_gerekce        NVARCHAR(500) NULL,
+        created_by               NVARCHAR(128) NOT NULL,
+        created_at               DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+        tasiyan                  NVARCHAR(128) NULL,
+        tasindi_at               DATETIME2     NULL,
+        geri_alan                NVARCHAR(128) NULL,
+        geri_alindi_at           DATETIME2     NULL,
+        geri_alma_notu           NVARCHAR(MAX) NULL
+      )`,
+  },
+  {
     // 2026-09-23 (kullanici): "tasinan uygulamalar icin bir daha tanim olusturma dugmesi
     // aktif olmasin". nginx_migration_tracking uygulama basina TEK satir tutar ve son
     // olusturulan yolu ezer; oysa bir uygulamada birden fazla (servis, location) olabilir.
@@ -1413,6 +1451,65 @@ const TABLES = [
         purpose         NVARCHAR(MAX),
         how_to_use      NVARCHAR(MAX),
         updated_at      DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // BMW Hub (2026-11-08): ekibin acik isleri (otomasyon talepleri). Yalniz Admin.
+    // Acan ve sahiplenen kisi AD kullanici adi + gorunen adla tutulur (ad degisse de kim
+    // oldugu kaybolmaz). Kurallar: shared/bmwHub.cjs; API: server/bmw-hub/index.cjs.
+    name: 'bmw_hub_isler',
+    sql: `
+      CREATE TABLE bmw_hub_isler (
+        id              NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        baslik          NVARCHAR(300) NOT NULL,
+        aciklama        NVARCHAR(MAX),
+        durum           NVARCHAR(20)  NOT NULL DEFAULT 'acik',
+        oncelik         NVARCHAR(20)  NOT NULL DEFAULT 'orta',
+        kategori        NVARCHAR(100) NOT NULL DEFAULT 'Otomasyon',
+        sahip           NVARCHAR(200),
+        beklenen        NVARCHAR(500),
+        son_tarih       DATE,
+        acan_kullanici  NVARCHAR(255) NOT NULL,
+        acan_ad         NVARCHAR(255),
+        guncelleyen_ad  NVARCHAR(255),
+        olusturma       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        guncelleme      DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        kapanis         DATETIME2
+      )`,
+  },
+  {
+    // Application Hub (2026-11-08): OpenShift canli okumalarinin son hali (server/app-hub/canli.cjs).
+    // Okuma paylasilir: sonraki ziyaretci yeni AWX isi acmadan son okumayi ve zamanini gorur.
+    // JVM env degerleri betikte ve Portal'da iki kez maskelenmis olarak yazilir.
+    name: 'app_hub_ocp_canli',
+    sql: `
+      CREATE TABLE app_hub_ocp_canli (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        uygulama        NVARCHAR(128) NOT NULL,
+        cluster         NVARCHAR(128) NOT NULL,
+        namespace       NVARCHAR(256) NOT NULL,
+        sonuc_json      NVARCHAR(MAX),
+        ok              BIT NOT NULL DEFAULT 0,
+        hata            NVARCHAR(2000),
+        alan_kullanici  NVARCHAR(255) NOT NULL,
+        alan_ad         NVARCHAR(255),
+        awx_server_id   INT,
+        awx_job_id      INT,
+        alinma          DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // BMW Hub is gecmisi: notlar + otomatik kayitlar (olusturma, durum/sahip/tarih degisimi).
+    name: 'bmw_hub_notlar',
+    sql: `
+      CREATE TABLE bmw_hub_notlar (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        is_id           NVARCHAR(64)  NOT NULL,
+        tur             NVARCHAR(20)  NOT NULL DEFAULT 'not',
+        metin           NVARCHAR(MAX) NOT NULL,
+        yazan_kullanici NVARCHAR(255) NOT NULL,
+        yazan_ad        NVARCHAR(255),
+        olusturma       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
       )`,
   },
   {
@@ -2398,11 +2495,13 @@ async function seedEnvSuffixMap(pool) {
 // burada yalnizca ilk kurulumda tabloyu doldurmak icin).
 const PAGE_VISIBILITY_SEED = [
   { page_name: 'Dashboard', roles: 'Admin,User' },
-  { page_name: 'Envanter', roles: 'Admin,User' },
-  { page_name: 'Denetim', roles: 'Admin,User' },
+  { page_name: 'Envanter', roles: 'Admin' },
+  { page_name: 'Denetim', roles: 'Admin' },
   { page_name: 'NginxConsole', roles: 'Admin' },
   { page_name: 'ServerHub', roles: 'Admin' },
   { page_name: 'CryptoHub', roles: 'Admin' },
+  { page_name: 'BmwHub', roles: 'Admin' },
+  { page_name: 'AppHub', roles: 'Admin' },
   { page_name: 'LogX', roles: 'Admin,User' },
   { page_name: 'OpsX', roles: 'Admin,User' },
   { page_name: 'FileX', roles: 'Admin,User' },
@@ -2447,7 +2546,8 @@ const ELEMENT_SEED = [
   // idempotent seed INSERT deseni VAR OLAN satirlari GUNCELLEMEZ, bu yuzden ayri bir migration
   // adimi gerekiyor).
   { element_key: 'navgroup:genel', element_type: 'nav_group', label: 'Genel', sort_order: 1 },
-  { element_key: 'navgroup:envanter', element_type: 'nav_group', label: 'Envanter', sort_order: 2 },
+  // navgroup:envanter ve navgroup:operasyon (Nobetciler) 2026-11-08'de KALDIRILDI: sayfalari BMW Hub
+  // grubunda (kullanici). Mevcut kurulumlar icin moveToBmwHub() tasir ve bos gruplari siler.
   // Nginx Hub kendi basina bir sekme (kullanici, 2026-09-19): Envanter grubundan AYRILDI.
   {
     element_key: 'navgroup:nginxhub',
@@ -2469,6 +2569,20 @@ const ELEMENT_SEED = [
     label: 'Crypto Hub',
     sort_order: 3,
   },
+  // Application Hub (2026-11-08): uygulama adiyla JBoss / WAS / OpenShift birlesik gorunum
+  {
+    element_key: 'navgroup:apphub',
+    element_type: 'nav_group',
+    label: 'Application Hub',
+    sort_order: 2,
+  },
+  // BMW Hub (2026-11-08): ekibin acik isleri, yalniz Admin
+  {
+    element_key: 'navgroup:bmwhub',
+    element_type: 'nav_group',
+    label: 'BMW Hub',
+    sort_order: 3,
+  },
   // NGINX ARK SPA RAPORU (kullanici, 2026-09-28): tum servisler icin tek liste; ekipler
   // kendi uygulamalari icin beyan girer. Kendi bolumu - Denetim'in altinda degil.
   {
@@ -2483,12 +2597,6 @@ const ELEMENT_SEED = [
     element_type: 'nav_group',
     label: 'Performance',
     sort_order: 4,
-  },
-  {
-    element_key: 'navgroup:operasyon',
-    element_type: 'nav_group',
-    label: 'Nöbetçiler',
-    sort_order: 5,
   },
   {
     element_key: 'navgroup:otomasyon',
@@ -2511,16 +2619,17 @@ const ELEMENT_SEED = [
   {
     element_key: 'Envanter',
     element_type: 'page',
-    parent_key: 'navgroup:envanter',
+    parent_key: 'navgroup:bmwhub',
     label: 'Envanter',
     route: '/envanter',
     sort_order: 2,
-    roles: ['Admin', 'User'],
+    // 2026-11-08: YALNIZ Admin (kullanici: "genel erisime kapat, simdilik sadece Admin'ler").
+    roles: ['Admin'],
   },
   {
     element_key: 'Denetim',
     element_type: 'page',
-    parent_key: 'navgroup:envanter',
+    parent_key: 'navgroup:bmwhub',
     label: 'Middleware İç Denetim',
     route: '/denetim',
     sort_order: 3,
@@ -2565,6 +2674,31 @@ const ELEMENT_SEED = [
     // her seyi yapabiliyor olsun"). Sayfa yine HERKESE KAPALI - `roles: ['Admin']`
     // default_visible=0 yaziyor, yani acik kurali olmayan normal kullanici goremez.
     // Degisen tek sey: yoneticiler kapida kalmiyor.
+  },
+  {
+    // Application Hub (2026-11-08). Kullanici: "baglanan kisi sadece uygulamasinin ismini yazip
+    // bu uygulamaya dair her sey gozuksun". FAZ 1 yalniz Admin: Server Hub verisi (JVM, vhost,
+    // maskeli jvm_args) bugun yalniz Admin'e acik; uygulama ekiplerine acmak icin sunucuya
+    // legacy_app / ocp_namespace / env kisit suzgecleri eklenmeli (server/app-hub/index.cjs).
+    element_key: 'AppHub',
+    element_type: 'page',
+    parent_key: 'navgroup:apphub',
+    label: 'Application Hub',
+    route: '/application-hub',
+    sort_order: 1,
+    roles: ['Admin'],
+  },
+  {
+    // BMW Hub (2026-11-08): acik isler / otomasyon talepleri. Kullanici: "sadece adminlerin
+    // goruntuleyebilecegi bir sayfa olsun". Sunucu ayrica her uca Admin kapisi koyar: bir
+    // gorunurluk kurali sayfayi baskasina acsa bile veri yalniz Admin'e doner.
+    element_key: 'BmwHub',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'Açık İşler',
+    route: '/bmw-hub',
+    sort_order: 1,
+    roles: ['Admin'],
   },
   // CRYPTO HUB UYGULAMA AYRIMI (kullanici, 2026-10-01): "Metaco ve Wyden tarafini farkli
   // ekiplere gosterecegiz." Sayfanin TAMAMI yerine uygulama bazinda yetki verilir; bu
@@ -2647,10 +2781,10 @@ const ELEMENT_SEED = [
     // takvimi gormek bir yetki degil, koordinasyon ihtiyacidir.
     element_key: 'OcoTakvimi',
     element_type: 'page',
-    parent_key: 'navgroup:operasyon',
+    parent_key: 'navgroup:bmwhub',
     label: 'OCO Takvimi',
     route: '/oco-takvimi',
-    sort_order: 4,
+    sort_order: 5,
     roles: ['Admin', 'User'],
   },
   {
@@ -2739,10 +2873,10 @@ const ELEMENT_SEED = [
   {
     element_key: 'Nöbet',
     element_type: 'page',
-    parent_key: 'navgroup:operasyon',
+    parent_key: 'navgroup:bmwhub',
     label: 'Nöbet',
     route: '/duty-roster',
-    sort_order: 9,
+    sort_order: 4,
     roles: ['Admin', 'User'],
   },
   // 'navgroup:kaynaklar' + 'Linkler' seed'leri 2026-09-19'da KALDIRILDI (menuden cikti);
@@ -2875,6 +3009,14 @@ const ELEMENT_SEED = [
     element_type: 'admin_tab',
     parent_key: 'Admin',
     label: 'Playbook Kayıtları',
+    sort_order: 7,
+    default_visible: 1,
+  },
+  {
+    element_key: 'admintab:sstasima',
+    element_type: 'admin_tab',
+    parent_key: 'Admin',
+    label: 'Self Servis Taşıma',
     sort_order: 7,
     default_visible: 1,
   },
@@ -3810,6 +3952,19 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
   },
   {
+    // Application Hub (2026-11-08): tek uygulamanin OpenShift canli durumu - tur (Deployment /
+    // Argo Rollout / DC / StatefulSet), replika, imaj, kaynak, MASKELI JVM env'leri, pod -> node.
+    // SALT OKUNUR (oc get).
+    key_name: 'app_hub_ocp_canli',
+    display_name: 'Application Hub — OpenShift Canlı Okuma',
+    category: 'openshift',
+    handler: 'app_hub_ocp_canli',
+    description:
+      'bmw_portal/app_hub/app_hub_ocp.yml - app_hub_app + app_hub_targets [{cluster, namespace}] (en cok 20) icin bastion basina oc login + oc get (deployment, deploymentconfig, statefulset, rollouts.argoproj.io, pods, hpa). Sonuc set_stats app_hub_ocp_result.',
+    playbook_path: null,
+    env_var_name: 'APP_HUB_OCP_TEMPLATE_ID',
+  },
+  {
     key_name: 'opsx_openshift_pods',
     display_name: 'OpsX — Openshift Pod Keşfi',
     category: 'opsx',
@@ -4365,15 +4520,60 @@ async function removeKaynaklarNavGroup(pool) {
   }
 }
 
+// BMW HUB GRUBU (2026-11-08, kullanici): "Nobetciler ve OCO takvimini, Envanter ve Denetim'i BMW Hub'in
+// altina koy; Envanter'i genel erisime kapat, simdilik yalniz Admin'ler gorsun."
+// Seed yalniz EKSIK satiri ekler; mevcut kurulumda parent_key / etiket / default_visible eski kalirdi.
+// Tek seferlik (isaret portal_config_blobs). Envanter: default_visible=0 + role=User allow silinir
+// (Denetim'in 2026-09-17 kapanisiyla ayni). Admin'in tek tek verdigi kullanici / grup kurallari
+// DOKUNULMAZ. Bos kalan eski gruplar (envanter, operasyon) ve onlara bagli gorunurluk satirlari silinir.
+async function moveToBmwHub(pool) {
+  const MARK = 'migration:bmwhub-grubu-2026-11-08';
+  try {
+    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (done.recordset.length) return;
+    const sira = { BmwHub: 1, Envanter: 2, Denetim: 3, 'Nöbet': 4, OcoTakvimi: 5 };
+    for (const [k, o] of Object.entries(sira)) {
+      await pool
+        .request()
+        .input('k', k)
+        .input('o', o)
+        .query(`UPDATE portal_elements SET parent_key = 'navgroup:bmwhub', sort_order = @o WHERE element_key = @k`);
+    }
+    await pool.request().query(`UPDATE portal_elements SET label = N'Açık İşler' WHERE element_key = 'BmwHub'`);
+    await pool.request().query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Envanter'`);
+    await pool
+      .request()
+      .query(`DELETE FROM portal_element_visibility WHERE element_key = 'Envanter' AND principal_type = 'role' AND principal_id = 'User'`);
+    await pool.request().query(`UPDATE page_visibility SET roles = 'Admin' WHERE page_name IN ('Envanter', 'Denetim')`);
+    for (const g of ['navgroup:envanter', 'navgroup:operasyon']) {
+      const kalan = await pool.request().input('g', g).query(`SELECT COUNT(*) AS n FROM portal_elements WHERE parent_key = @g`);
+      if (Number(kalan.recordset[0].n) > 0) {
+        console.warn(`[DB] ${g} bos degil (admin tasimis olabilir); grup SILINMEDI.`);
+        continue;
+      }
+      await pool.request().input('g', g).query(`DELETE FROM portal_element_visibility WHERE element_key = @g`);
+      await pool.request().input('g', g).query(`DELETE FROM portal_elements WHERE element_key = @g`);
+    }
+    await pool
+      .request()
+      .input('n', MARK)
+      .input('d', JSON.stringify({ at: new Date().toISOString() }))
+      .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
+    console.log('[DB] BMW Hub grubu: Envanter, Denetim, Nobet, OCO Takvimi tasindi; Envanter yalniz Admin.');
+  } catch (err) {
+    console.warn('[DB] BMW Hub grubu migration uygulanamadi:', err.message);
+  }
+}
+
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
     Dashboard: 'navgroup:genel',
-    Envanter: 'navgroup:genel',
-    Denetim: 'navgroup:envanter',
+    Envanter: 'navgroup:bmwhub',
+    Denetim: 'navgroup:bmwhub',
     LogX: 'navgroup:otomasyon',
     OpsX: 'navgroup:otomasyon',
     FileX: 'navgroup:otomasyon',
-    Nöbet: 'navgroup:operasyon',
+    Nöbet: 'navgroup:bmwhub',
     Linkler: 'navgroup:kaynaklar',
     'Self Service': 'navgroup:otomasyon',
     Ansible: 'navgroup:otomasyon',
@@ -4446,6 +4646,7 @@ async function setupTables() {
   await migratePageParentKeysToNavGroups(pool);
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
+  await moveToBmwHub(pool);
   await removeMovedDenetimTabs(pool);
   await removeRetiredAdminTabs(pool);
   await allowMultipleCisOverrides(pool);
@@ -5507,6 +5708,12 @@ async function setupTables() {
     { name: 'IX_eew_kosu_host', table: 'ear_envanter_warlari', cols: 'kosu_id, host, uyg_no' },
     { name: 'IX_eew_set', table: 'ear_envanter_warlari', cols: 'kutuphane_seti' },
     { name: 'IX_eesk_ad', table: 'ear_envanter_set_kutuphaneleri', cols: 'ad, surum' },
+    // BMW Hub: liste durum + son tarihe gore, gecmis ise gore okunur.
+    { name: 'IX_bmwis_durum', table: 'bmw_hub_isler', cols: 'durum, son_tarih' },
+    { name: 'IX_bmwnot_is', table: 'bmw_hub_notlar', cols: 'is_id, olusturma' },
+    // Application Hub: son okuma uygulamaya gore, kaydin tekrari is numarasina gore aranir.
+    { name: 'IX_ahoc_app', table: 'app_hub_ocp_canli', cols: 'uygulama, alinma DESC' },
+    { name: 'IX_ahoc_job', table: 'app_hub_ocp_canli', cols: 'awx_server_id, awx_job_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {
@@ -5583,6 +5790,29 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_nls_ad):', err.message);
+  }
+
+  // -- Self Servis Tasima: kart basina TEK acik kayit (FILTRELI TEKIL, 2026-11-10) --
+  // Iki admin ayni servisi ayni anda hazirlar/tasirsa ikincisi UNIQUE ihlali alir ve 409 doner
+  // (server/ansible/ss-tasima.cjs tasimaHatasi). IX_ss_migrations_item: kart gecmisi listesi.
+  for (const [ad, ddl] of [
+    [
+      'UX_ss_migrations_acik',
+      `CREATE UNIQUE INDEX UX_ss_migrations_acik ON ansible_ss_migrations (item_id) WHERE status IN ('HAZIRLIK','TASINDI')`,
+    ],
+    ['IX_ss_migrations_item', `CREATE INDEX IX_ss_migrations_item ON ansible_ss_migrations (item_id, id DESC)`],
+  ]) {
+    try {
+      const exists = await pool
+        .request()
+        .query(`SELECT 1 FROM sys.indexes WHERE name = '${ad}' AND object_id = OBJECT_ID('ansible_ss_migrations')`);
+      if (!exists.recordset.length) {
+        await pool.request().query(ddl);
+        console.log(`[DB] Index olusturuldu: ${ad}`);
+      }
+    } catch (err) {
+      console.warn(`[DB] Index olusturulamadi (${ad}):`, err.message);
+    }
   }
 
   // ── OCP katalogu ilk kurulumu — EN SONDA ────────────────────────────────────

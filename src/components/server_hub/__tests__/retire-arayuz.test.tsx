@@ -43,6 +43,7 @@ const m = vi.hoisted(() => ({
   etiketSeviyesi: vi.fn(),
   kokYoksay: vi.fn(),
   iliskiKarar: vi.fn(),
+  iliskiKararlar: vi.fn(),
   seviyeDegistir: vi.fn(),
   limitDegistir: vi.fn(),
 }));
@@ -67,6 +68,8 @@ vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob:
 import RetireEtiketleriGorunum, { KontrolFormu } from '@/components/server_hub/RetireEtiketleri';
 import SunucuPaneli from '@/components/server_hub/SunucuPaneli';
 import { FindingsTab } from '@/components/server_hub/ServerHubPage';
+import RetirementAnaliziSekmesi from '@/components/server_hub/RetirementAnaliziSekmesi';
+import { KodGorunurSaglayici } from '@/components/server_hub/kodGorunurlugu';
 import KurallarTab from '@/components/server_hub/KurallarTab';
 import RetirementTab from '@/components/server_hub/RetirementTab';
 import * as shOnbellek from '@/components/server_hub/shOnbellek';
@@ -635,6 +638,32 @@ describe('RA4 sunucu paneli', () => {
     await waitFor(() => expect(m.retireEtiketAyrinti).toHaveBeenCalledTimes(1));
     expect(await within(et).findByTestId('etiket-ayrinti')).toBeInTheDocument();
   });
+  it('RA4b "Kodları göster" kapalıyken panel ve etiket ayrıntısı ham kod yazmaz (2026-11-11)', async () => {
+    m.host.mockResolvedValue({ ok: true, host: HOST() });
+    m.iliskiKarar.mockResolvedValue({ ok: true, tur: 'sunucu', siniflar: [], notOkunamadi: false, kopyalar: [], notlar: [] });
+    const ciz = async (goster: boolean) => {
+      const r = render(
+        <KodGorunurSaglayici goster={goster} ad={(k) => `ad-${k.length}`}>
+          <SunucuPaneli host={APP} retire={sonuc([etiket()])} onEtiketDegisti={vi.fn()} />
+        </KodGorunurSaglayici>,
+      );
+      const p = await screen.findByTestId('sunucu-paneli');
+      await within(p).findByText('Bu sunucuda karar verilecek uygulama kopyası yok.');
+      const et = screen.getByTestId('bolum-etiketler').querySelector('details details') as HTMLDetailsElement;
+      et.open = true;
+      fireEvent(et, new Event('toggle'));
+      await within(et).findByTestId('etiket-ayrinti');
+      const metin = p.textContent || '';
+      r.unmount();
+      return metin;
+    };
+    const acik = await ciz(true);
+    expect(acik).toMatch(/R\d{1,2} · /);
+    expect(acik).toContain('STOPPED_AUTOSTART_ON');
+    const kapali = await ciz(false);
+    expect(kapali).not.toMatch(/R\d{1,2} · /);
+    expect(kapali).not.toContain('STOPPED_AUTOSTART_ON');
+  });
   it('eski EAR verisi söylenir; okunamazsa LoadError', async () => {
     m.host.mockResolvedValueOnce({
       ok: true,
@@ -652,7 +681,7 @@ describe('RA4 sunucu paneli', () => {
 });
 
 describe('RA5 Bulgular', () => {
-  it('sunucuya tıklayınca panel açılır / kapanır; etiket görünümü ayrı', async () => {
+  it('sunucuya tıklayınca panel açılır / kapanır; etiket görünümü Retirement Analizi sekmesinde (2026-11-11)', async () => {
     m.findings.mockResolvedValue({
       ok: true,
       tableMissing: false,
@@ -686,9 +715,20 @@ describe('RA5 Bulgular', () => {
     await waitFor(() => expect(m.retireEtiketleri).toHaveBeenCalledTimes(1));
     fireEvent.click(dugme);
     expect(screen.queryByTestId('sunucu-paneli')).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: /Retirement etiketleri \(2\)/ }));
+    // Bulgular tek başına: alt sekme yok (etiket listesi Retirement Analizi'ne taşındı).
+    expect(screen.queryByRole('tab', { name: /Retirement etiketleri/ })).toBeNull();
+    expect(m.retireEtiketleri).toHaveBeenCalledTimes(1);
+  });
+
+  it('Retirement Analizi sekmesi: etiket listesi ayrı görünüm, yalnız açılınca indirilir', async () => {
+    m.iliskiKararlar.mockReturnValue(new Promise(() => {}));
+    m.retireEtiketleri.mockResolvedValue(sonuc([etiket(), GIRDI]));
+    render(<RetirementAnaliziSekmesi />);
+    expect(screen.getByRole('tab', { name: 'Karar analizi' })).toHaveAttribute('aria-selected', 'true');
+    expect(m.retireEtiketleri).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('tab', { name: /Retirement etiketleri/ }));
     expect(await screen.findByTestId('retire-etiketleri')).toBeInTheDocument();
-    expect(screen.queryByText('JBoss7 oldapp kapalı')).toBeNull();
+    expect(await screen.findByRole('tab', { name: /Retirement etiketleri \(2\)/ })).toBeInTheDocument();
     expect(m.retireEtiketleri).toHaveBeenCalledTimes(1);
   });
 });
@@ -1075,7 +1115,8 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^CSV \(1\)/ }));
     const [, bas, satir] = csvM.mock.calls[0] as [string, string[], string[][]];
     expect(satir).toHaveLength(1);
-    expect(satir[0][bas.indexOf('Kod')]).toBe('REBOOT_RISK');
+    // Kodlar varsayilan kapali (2026-11-11): CSV ekrandakini yazar, kolon 'Bulgu türü' + okunur ad.
+    expect(satir[0][bas.indexOf('Bulgu türü')]).toBe('JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz');
     // Hazır görünüm: çapraz kontrol (alan seçicisi "tümü"ne dönünce).
     fireEvent.change(screen.getByLabelText('alan'), { target: { value: 'all' } });
     fireEvent.click(screen.getByRole('button', { name: 'Görünümler' }));

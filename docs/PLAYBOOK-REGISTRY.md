@@ -89,3 +89,47 @@ Yalnızca **admin** ekranında (Playbook Kayıtları), yapılandırma eksikliği
 `SelfServicePage.tsx` (`ansible-ss-items.json`, `ansibleApi.saveSsItem`/`launchSs`) — bunlar bu
 sistemin dışındadır ve bu playbook kayıt sistemi tarafından hiçbir şekilde değiştirilmez veya
 üzerine yazılmaz.
+
+## AWX sunucu geçişi (maestro2 → maestro3): Self Servis Taşıma
+
+OpsX, ScaleX, LogX gibi modüllerin template bağları bu ekranda (Playbook Kayıtları) sunucu ve
+template numarası değiştirilerek taşınır. **Self Servis servisleri burada değildir**; onlar
+**Admin → Otomasyon → Self Servis Taşıma** ekranından taşınır (2026-11-10).
+
+Her servis (Self Servis kartı) bağımsız bir birimdir. Akış:
+
+1. **Rapor (kuru):** Kaynak/hedef sunucu seçilir (varsayılan maestro2 → maestro3). Hedefte
+   **aynı adlı** (boşluk kırpılır, büyük/küçük harf duyarlı) template otomatik eşlenir;
+   eşleşmeyen ya da birden çok aday olan servis için hedef listeden elle seçilir.
+2. **Durum çipleri:** `ESLESME_YOK > ENGEL > SURVEY_BOS > SURVEY_FARKLI > OZELLESTIRME_UYUMSUZ > HAZIR`,
+   ayrıca `TASINDI` / `GERI_ALINDI`. Engel: kaynak template için bekleyen Smart bileti ya da
+   zamanlanmış OCO, hedef template'in başka bir servise ya da Playbook Kayıtları satırına bağlı
+   olması, izin listesi, okunamayan sorgu (bilinmeyen sayı sıfır sayılmaz).
+3. **Survey'i hedefe yaz** (onaylı): kaynak AWX survey'i hedefe yazılır — önce spec, sonra
+   survey açılır, sonra geri okunup karşılaştırılır. Parola varsayılanları kaynaktan kopyalanmaz;
+   hedefte aynı parola sorusunun varsayılanı varsa korunur, yoksa AWX'te elle girilir (ekran
+   listeler). Hedef başka bir servise / Playbook Kayıtları'na bağlıysa, izin listesi dışındaysa ya
+   da başka servisle çakışıyorsa yazım reddedilir; ekranın gördüğü hedef survey hash'i zorunludur. Portal Survey Tasarımcısı kullanan serviste hedef survey'i kapatılır.
+   Portal kaynak sunucuya yalnız okuma isteği gönderir.
+4. **Deneme koşusu:** servis ayarları (Smart onayı, alan ayarları, koşullar) hedef template'e
+   kopyalanır; kart bağlanmadan önce doğrulama ve isteğe bağlı gerçek bir iş koşulur. Smart onaylı
+   serviste gerçek deneme yalnız Admin "Smart onayını atla" açıkken koşar (Smart'ta talep açılmaz).
+5. **Taşı:** tek transaction. Kart yerinde güncellenir (kimlik, başlık, `/self-service/<slug>`
+   bağlantısı, erişim ve açık/kapalı durumu değişmez). Geçerli deneme ya da en az 10 karakter
+   gerekçe şarttır; gerekçe denetime yazılır. Hedef ayar satırı her zaman kaynağın birebir
+   kopyası olur: kaynakta ayar yoksa hedefteki (bayat) satır arşivlenip silinir.
+6. **Geri al:** kart kaynak bağına döner. Kart bu arada başka template'e bağlandıysa reddedilir;
+   taşımadan sonra ayar değiştiyse onay ister. Kaynak sunucu Portal'da kapalıysa ya da kaynak
+   template okunamıyorsa geri alma reddedilir. Taşınmış kartın bağı Self Servis listesinden
+   (Servis Ekle/Düzenle/Sil) değiştirilemez; kart yine de başka bağa döndüyse geri al penceresi
+   yalnız kaydı kapatır (kart değişmez).
+
+Taşınmayanlar: iş geçmişi, Smart talepleri ve OCO kayıtları kaynak sunucuda salt-okunur kalır
+(servisin Geçmiş sekmesi eski işleri göstermeye devam eder). **Kaynak ayar satırı silinmez,
+kopyalanır**: eski işlerin çıktı filtresi oradan okunur. Envanter yenilemenin sabit #612 /
+"maestro2" bağı, uzun iş iptal listesi/token'ı ve AWX'te Portal dışında kurulmuş zamanlamalar
+bu ekranın kapsamı dışındadır (ekran uyarır).
+
+Kayıt tablosu: `ansible_ss_migrations` (kart başına tek açık kayıt, filtreli tekil indeks).
+Kod: `server/ansible/ss-tasima.cjs` (saf çekirdek), `ss-tasima-rotalari.cjs` (uçlar),
+`ss-ozellestirme-dogrulama.cjs` (`/ss/custom` ile ortak ayar doğrulaması).

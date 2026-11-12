@@ -46,6 +46,109 @@ function poolStats() {
   return null;
 }
 
+// TBMWANS (envanter) havuzlari: ana + uzun-sorgu. Modul yuklenemezse null.
+function tbmwansPoolStats() {
+  try {
+    const inv = require("./inventory/mssql.cjs");
+    return {
+      main: typeof inv.poolStats === "function" ? inv.poolStats() : null,
+      long: typeof inv.longPoolStats === "function" ? inv.longPoolStats() : null,
+    };
+  } catch { /* yoksay */ }
+  return null;
+}
+
+// tarn havuzu (ConnectionPool.pool) dolulugu; numUsed/numFree/numPendingAcquires
+// tarn'in gercek API'sidir (size/used/pending ozellikleri tarn'da YOKTUR).
+function tarnPoolStats(connectionPool) {
+  try {
+    const p = connectionPool && connectionPool.pool;
+    if (!p) return null;
+    const num = (fn) => (typeof p[fn] === "function" ? p[fn]() : null);
+    const used = num("numUsed");
+    const free = num("numFree");
+    const pendingAcquires = num("numPendingAcquires");
+    return {
+      connected: true,
+      size: typeof used === "number" && typeof free === "number" ? used + free : null,
+      used,
+      free,
+      pending: pendingAcquires,
+      pendingAcquires,
+      max: typeof p.max === "number" ? p.max : null,
+      min: typeof p.min === "number" ? p.min : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// -- Yavas sorgu gunlugu ----------
+// Havuz bekleme (getPool) ve request.query suresi AYRI olculur (hrtime.bigint).
+// Toplam SLOW_QUERY_MS (varsayilan 500) esigini asarsa TEK satir console.warn.
+// Gunluge YALNIZ havuz adi, sureler, satir sayisi ve SQL metninin ilk 150
+// karakteri (bosluklar tek bosluga indirilmis) yazilir; parametre DEGERLERI ASLA.
+const DEFAULT_SLOW_QUERY_MS = 500;
+const SQL_PREVIEW_CHARS = 150;
+let slowQueryCount = 0;
+
+function slowQueryThresholdMs() {
+  const n = Number.parseInt(process.env.SLOW_QUERY_MS, 10);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_SLOW_QUERY_MS;
+}
+
+function sqlPreview(text) {
+  if (typeof text !== "string") return "";
+  return text.replace(/\s+/g, " ").trim().slice(0, SQL_PREVIEW_CHARS);
+}
+
+function nsToMs(ns) {
+  return typeof ns === "bigint" ? Number(ns) / 1e6 : 0;
+}
+
+function rowCountOf(result) {
+  if (!result) return null;
+  if (Array.isArray(result.recordset)) return result.recordset.length;
+  if (Array.isArray(result.rows)) return result.rows.length;
+  if (Array.isArray(result.rowsAffected)) return result.rowsAffected.reduce((a, b) => a + (Number(b) || 0), 0);
+  return null;
+}
+
+// Gunluge yazildiysa true doner. Asla firlatmaz (gozlem, sorguyu bozmamali).
+function reportQueryTiming({ pool, waitNs, queryNs, result, sqlText, failed, retry } = {}) {
+  try {
+    const waitMs = nsToMs(waitNs);
+    const queryMs = nsToMs(queryNs);
+    if (!(waitMs + queryMs > slowQueryThresholdMs())) return false;
+    slowQueryCount++;
+    const rows = failed ? "-" : rowCountOf(result);
+    console.warn(
+      `[SlowQuery] pool=${pool || "?"} wait=${waitMs.toFixed(1)}ms query=${queryMs.toFixed(1)}ms ` +
+      `rows=${rows === null || rows === undefined ? "?" : rows}${failed ? " status=error" : ""}${retry ? " retry=1" : ""} ` +
+      `sql="${sqlPreview(sqlText)}"`
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// run() cagrisini olcer; sonuc/hatayi AYNEN iletir.
+async function timeQuery(pool, waitNs, sqlText, run, opts = {}) {
+  const t0 = process.hrtime.bigint();
+  let result;
+  let failed = true;
+  try {
+    result = await run();
+    failed = false;
+    return result;
+  } finally {
+    reportQueryTiming({
+      pool, waitNs, queryNs: process.hrtime.bigint() - t0, result, sqlText, failed, retry: !!opts.retry,
+    });
+  }
+}
+
 function snapshot() {
   const mem = process.memoryUsage();
   return {
@@ -57,6 +160,8 @@ function snapshot() {
     eventLoopLagMs: Math.round(loopLagMs),
     memoryMB: { rss: Math.round(mem.rss / 1048576), heapUsed: Math.round(mem.heapUsed / 1048576) },
     portalDbPool: poolStats(),
+    tbmwansDbPool: tbmwansPoolStats(),
+    slowQueries: { count: slowQueryCount, thresholdMs: slowQueryThresholdMs() },
   };
 }
 
@@ -114,4 +219,8 @@ function initMetrics(app) {
   startSnapshotWriter();
 }
 
-module.exports = { middleware, snapshot, initMetrics };
+module.exports = {
+  middleware, snapshot, initMetrics,
+  // db katmani yardimcilari (yavas sorgu gunlugu, havuz dolulugu)
+  timeQuery, reportQueryTiming, tarnPoolStats, sqlPreview, slowQueryThresholdMs,
+};

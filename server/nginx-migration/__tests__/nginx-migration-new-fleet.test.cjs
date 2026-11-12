@@ -541,9 +541,10 @@ test('R1 runner.getTemplateLaunchSettingsOnServer: HAM bayraklar; alan yoksa und
 
 test('R2 runner.getSurveySpecOnServer: {} -> bos; hata FIRLATIR (yutmaz); bozuk bicim -> hata', async () => {
   awx.tpl = { ask_variables_on_launch: false, survey_enabled: false, spec: [] };
-  assert.deepEqual(await runner.getSurveySpecOnServer(1, h.DELETE_TPL), { spec: [] });
+  // 2026-11-10: Self Servis Tasima icin name / description de doner (yoksa bos metin).
+  assert.deepEqual(await runner.getSurveySpecOnServer(1, h.DELETE_TPL), { spec: [], name: '', description: '' });
   awx.tpl = { ask_variables_on_launch: false, survey_enabled: true, spec: [{ variable: 'new_fleet', type: 'text' }] };
-  assert.deepEqual(await runner.getSurveySpecOnServer(1, h.DELETE_TPL), { spec: [{ variable: 'new_fleet', type: 'text' }] });
+  assert.deepEqual(await runner.getSurveySpecOnServer(1, h.DELETE_TPL), { spec: [{ variable: 'new_fleet', type: 'text' }], name: '', description: '' });
   awx.surveyStatus = 403;
   await assert.rejects(runner.getSurveySpecOnServer(1, h.DELETE_TPL), (e) => /** @type {any} */ (e).status === 403);
   awx.surveyStatus = 0;

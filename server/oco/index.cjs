@@ -67,6 +67,9 @@ function initOco(app) {
         fetched: r.fetched,
         // SESSIZ KIRPMA YOK: sayfa sınırına takıldıysak ekran bunu söyler.
         truncated: r.truncated,
+        // Iki sorgu (actigimiz + bize acilan): biri dustuyse ekran bunu soyler.
+        kaynak: r.kaynak,
+        eksik: r.eksik,
         fetchedAt: new Date().toISOString(),
       };
       _cache = { at: Date.now(), key, value };
