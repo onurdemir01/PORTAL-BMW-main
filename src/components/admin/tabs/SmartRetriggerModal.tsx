@@ -2,7 +2,7 @@
 // uğramış talebi yeniden tetikle (2026-11-11). Kurallar sunucuda (server/smart/yeniden-tetikle.cjs):
 // Smart reddettiyse / okunamadıysa tetiklenmez; onay yoksa admin gerekçeyle atlar; OCO'lu talepte
 // yeni OCO numarası ya da ayrı onay kutusuyla "pencere dışında hemen çalıştır".
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ArrowPathIcon, ExclamationTriangleIcon, PlayIcon } from '@heroicons/react/24/outline';
 import {
   ansibleApi,
@@ -10,6 +10,7 @@ import {
   type SmartRetriggerCheck,
 } from '@/api/ansibleApi';
 import { toast } from '@/hooks/useToast';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDateTime as fmt } from '@/utils/datetime';
 
 const SMART_ROZET: Record<string, { label: string; className: string }> = {
@@ -46,9 +47,10 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
     }
   }
 
-  useEffect(() => {
-    loadCheck();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // useAsyncEffect: loadCheck ilk satirinda setChecking(true) cagiriyor; effect icinde senkron
+  // setState (set-state-in-effect) olmasin diye is bir mikro-goreve ertelenir.
+  useAsyncEffect(async () => {
+    await loadCheck();
   }, [ticket.id]);
 
   const notEnAz = check?.notEnAz ?? 10;
