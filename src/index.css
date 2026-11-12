@@ -983,8 +983,10 @@ thead th {
   to { text-shadow: 0 0 10px var(--ch-hue-soft), 0 0 18px var(--ch-hue-soft); color: var(--ch-hue); }
 }
 /* BMW Hub ve Application Hub: Crypto Hub kalibi, kendi tonlari (--bh-* / --ah-* :root ve dark altinda). */
-/* Cok sayfali Hub grubu (BMW Hub): baslik bir <button class="pf-nav-toggle">; yan bosluklar dusulmezse menuden tasar. */
-.pf-nav-toggle.nginx-hub-link { width: calc(100% - 1.5rem); box-sizing: border-box; }
+/* Cok sayfali Hub grubu (BMW Hub): baslik bir <button class="pf-nav-toggle">; yan bosluklar dusulmezse menuden tasar.
+   Kenar boslugu ve kose .nginx-hub-link ile AYNI: asagidaki .pf-nav-toggle ondan sonra ve ayni ozgullukte
+   oldugu icin ikisini ezerdi (cerceve diger Hub'lardan 4 px sola kayiyor, alt boslugu kayboluyordu). */
+.pf-nav-toggle.nginx-hub-link { width: calc(100% - 1.5rem); box-sizing: border-box; margin: 0.35rem 0.75rem; border-radius: 0.6rem; }
 .bmw-hub-link::before {
   background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--bh-hue-soft) 74%, var(--bh-hue) 86%, var(--bh-hue) 93%, transparent 100%);
 }

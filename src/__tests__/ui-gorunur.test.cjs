@@ -4,6 +4,8 @@
 //   GD1 menu ogesi / bolum basligi / tek ogeli grup metni eski x konumunda (36 / 20 / 20 px)
 //   GD2 etkin oge aksan cizgisi ogenin icinde; Hub ogesine binmez
 //   GD3 masthead arama: genis ekranda kutu + kisayol, dar ekranda ikon; gizleme sarmalayicida
+//   GD4 menu ogelerine dikey bosluk eklenmedi
+//   GD5 cok sayfali Hub grubunun basligi (BMW Hub) diger Hub cerceveleriyle ayni hizada
 'use strict';
 
 const { test } = require('node:test');
@@ -83,5 +85,18 @@ test('GD3 masthead arama kutusu: kisayol etiketi, dar ekranda ikon, gizleme sarm
 test('GD4 menu ogelerine dikey bosluk eklenmedi (satirlar eski yerinde)', () => {
   for (const s of ['.pf-nav-link', '.pf-nav-toggle']) {
     assert.match(kural(s), /\n\s*margin: 0 0\.5rem;/, `${s} dikey bosluk tasiyor`);
+  }
+});
+
+// Cok sayfali Hub grubunun basligi (BMW Hub, main 2026-11-08) hem .pf-nav-toggle hem .nginx-hub-link
+// tasir. .pf-nav-toggle sonra geldigi icin Hub cercevesinin kenar boslugunu ve kosesini eziyordu:
+// cerceve diger Hub'lardan 4 px sola kaymisti (gercek tarayicida olculdu, 2026-11-12).
+test('GD5 Hub basligi diger Hub cerceveleriyle ayni hizada', () => {
+  const deger = (blok, oz) => (new RegExp(`(?:^|[\\s{;])${oz}:\\s*([^;]+);`).exec(blok) || [])[1];
+  const hub = kural('.nginx-hub-link');
+  const bas = kural('.pf-nav-toggle.nginx-hub-link');
+  for (const oz of ['margin', 'border-radius']) {
+    assert.ok(deger(hub, oz), `.nginx-hub-link ${oz} yok`);
+    assert.equal(deger(bas, oz), deger(hub, oz), `Hub basligi ${oz} farkli`);
   }
 });
