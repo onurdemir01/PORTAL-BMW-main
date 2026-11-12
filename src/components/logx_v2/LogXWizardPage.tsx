@@ -32,6 +32,8 @@ import ContextChips from '@/components/common/ContextChips';
 import LogXYonetimDugmesi from './shared/LogXYonetimDugmesi';
 import { isProdEnv } from '@/utils/env';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { logxOnSecimOku, derinBaglantiTemizle, type LogxOnSecim } from '@/utils/derinBaglanti';
 
 function setUrlParam(id: string | null) {
   const url = new URL(window.location.href);
@@ -258,21 +260,111 @@ const LogXWizardPage: React.FC = () => {
     return r;
   }, []);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const existing = params.get('logxRequest');
-    if (!existing) {
-      setLoading(false);
-      return;
-    }
-    setRequestId(existing);
-    refresh(existing)
-      .catch(() => {
-        setUrlParam(null);
-        setRequestId(null);
-      })
-      .finally(() => setLoading(false));
-  }, [refresh]);
+  // ÖN-SEÇİM (Application Hub derin bağlantısı, 2026-11-08; sözleşme: src/utils/derinBaglanti.ts).
+  // `legacyOnSecim` legacy AppSearchStep'i doldurur (`otomatik`: ilk girişte tek tam eşleşmeyi
+  // seçer); `ocpOnArama` AppNameStep aramasını doldurur. İkisi de ilk kullanımda TÜKETİLİR:
+  // "← Geri" ile dönen kullanıcı aynı otomatik seçimle tekrar ileri itilmez.
+  const [legacyOnSecim, setLegacyOnSecim] = useState<{ app: string; otomatik: boolean } | null>(
+    null,
+  );
+  const [ocpOnArama, setOcpOnArama] = useState<{ namespace: string; app: string } | null>(null);
+  const [onSecimUyari, setOnSecimUyari] = useState<string | null>(null);
+  // Açılış işi YALNIZ BİR KEZ: ikinci bir çalışma ikinci bir logx_v2_requests kaydı açardı.
+  const acilisYapildiRef = useRef(false);
+
+  // AÇILIŞ: `?logxRequest=<id>` varsa kaldığı yerden devam (eski davranış; ön-seçim parametreleri
+  // YOK SAYILIR). Yoksa ön-seçim parametreleri okunur, URL'den SİLİNİR (yenilemede tekrar
+  // uygulanmaz) ve istek oluşturulup uygulanır.
+  useAsyncEffect(
+    async (alive) => {
+      if (acilisYapildiRef.current) return;
+      acilisYapildiRef.current = true;
+      const params = new URLSearchParams(window.location.search);
+      const existing = params.get('logxRequest');
+      const okuma = existing ? null : logxOnSecimOku(params);
+      derinBaglantiTemizle();
+      try {
+        if (existing) {
+          setRequestId(existing);
+          await refresh(existing).catch(() => {
+            setUrlParam(null);
+            setRequestId(null);
+          });
+          return;
+        }
+        if (okuma?.uyari) setOnSecimUyari(okuma.uyari);
+        if (okuma?.onSecim) await onSecimUygula(okuma.onSecim);
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [refresh],
+  );
+
+  // Ön-seçimi uygular. Her adım NORMAL akıştaki çağrının aynısıdır (createRequest → select →
+  // namespace); sunucu kapıları (cluster doğrulaması, namespace kısıtı, prod) aynen işler.
+  // Bir değer geçersizse o adımda durulur ve kullanıcı oradan elle devam eder.
+  async function onSecimUygula(os: LogxOnSecim) {
+    await guarded(async () => {
+      const r = await logxV2Api.createRequest(os.platform);
+      setRequestId(r.requestId);
+      setUrlParam(r.requestId);
+      await refresh(r.requestId);
+      if (os.platform === 'legacy') {
+        setLegacyOnSecim({ app: os.app, otomatik: true });
+        return;
+      }
+      const tree = (await logxV2Api.getClusterTree()).tree || {};
+      const bul = (keys: string[], v: string) =>
+        keys.find((k) => k === v) ?? keys.find((k) => k.toLowerCase() === v.toLowerCase());
+      const env = bul(Object.keys(tree), os.env);
+      const tenant = env ? bul(Object.keys(tree[env] || {}), os.tenant) : undefined;
+      if (!env || !tenant) {
+        setOnSecimUyari(
+          !env
+            ? `Bağlantıdaki ortam “${os.env}” tanımlı değil — cluster'ı elle seçin.`
+            : `Bağlantıdaki tenant “${os.tenant}” ${env} ortamında yok — cluster'ı elle seçin.`,
+        );
+        return;
+      }
+      const grup = tree[env][tenant] || [];
+      let clusters = grup;
+      if (os.cluster) {
+        const c = bul(grup, os.cluster);
+        if (!c) {
+          setOnSecimUyari(
+            `Bağlantıdaki cluster “${os.cluster}” ${env} / ${tenant} grubunda yok — cluster'ı elle seçin.`,
+          );
+          return;
+        }
+        clusters = [c];
+      }
+      if (!clusters.length) {
+        setOnSecimUyari(`${env} / ${tenant} için aktif cluster yok — cluster'ı elle seçin.`);
+        return;
+      }
+      await logxV2Api.selectClusters(r.requestId, env, tenant, clusters);
+      // Namespace listesi (envanter) okunabiliyorsa seçim ona karşı denetlenir: listede yoksa
+      // (envanterde yok ya da kullanıcıya kısıtlı) seçici açılır ve sebep söylenir.
+      const liste = await loadNamespaceCache({ env, tenant, clusters });
+      await refresh(r.requestId);
+      if (liste) {
+        setNsList(liste);
+        const ns = bul(liste.items, os.namespace);
+        if (!ns) {
+          setOnSecimUyari(
+            `“${os.namespace}” seçilen cluster'ların namespace listesinde yok (ya da erişiminiz yok) — namespace'i listeden seçin.`,
+          );
+          return;
+        }
+        setOcpOnArama({ namespace: ns, app: os.app });
+        setChosenNamespace(ns);
+        return;
+      }
+      setOcpOnArama({ namespace: os.namespace, app: os.app });
+      setChosenNamespace(os.namespace);
+    });
+  }
 
   // Canlı keşif sonucu SUNUCUDAN türetilir (client state'ine kopyalanmaz): sayfa
   // yenilendiğinde de kaldığı yerden devam edebilsin. Ölçüt state değil ŞEKİL — sonuç
@@ -341,6 +433,9 @@ const LogXWizardPage: React.FC = () => {
   }
 
   function restart() {
+    setOnSecimUyari(null);
+    setLegacyOnSecim(null);
+    setOcpOnArama(null);
     setUrlParam(null);
     setRequestId(null);
     setRequest(null);
@@ -621,6 +716,23 @@ const LogXWizardPage: React.FC = () => {
         </div>
       </div>
 
+      {onSecimUyari && (
+        <div
+          data-testid="logx-ondolum-uyari"
+          className="flex items-start gap-2 rounded-xl border border-[var(--status-warning)] bg-[var(--status-warning-bg)] p-3 text-sm text-[var(--status-warning-text)]"
+        >
+          <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span className="flex-1">{onSecimUyari}</span>
+          <button
+            type="button"
+            onClick={() => setOnSecimUyari(null)}
+            className="text-xs underline underline-offset-2 flex-shrink-0"
+          >
+            Kapat
+          </button>
+        </div>
+      )}
+
       {busyError && (
         <div className="flex items-start gap-2 bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
           <ExclamationTriangleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -650,9 +762,14 @@ const LogXWizardPage: React.FC = () => {
         {step === 'legacy_app' && requestId && (
           <AppSearchStep
             busy={busy}
+            initialSearch={legacyOnSecim?.app}
+            autoSelectExact={legacyOnSecim?.otomatik}
             // Uygulama seçimi artık DOĞRUDAN tarama başlatmaz: araya sunucu seçimi girer.
             // Eskiden uygulamanın TÜM sunucuları (30'a kadar) taranıyordu.
-            onSelect={(app) => setLegacyApp(app)}
+            onSelect={(app) => {
+              setLegacyOnSecim((o) => (o ? { ...o, otomatik: false } : o));
+              setLegacyApp(app);
+            }}
           />
         )}
 
@@ -875,6 +992,9 @@ const LogXWizardPage: React.FC = () => {
                 // AppNameStep'i her adım değişiminde remount ettiği için bileşen içindeki
                 // bir ref sonsuz döngüyü engelleyemiyordu (bkz. autoScanMemoRef başlığı).
                 autoScanMemo={autoScanMemoRef.current}
+                initialSearch={
+                  ocpOnArama && ocpOnArama.namespace === activeNamespace ? ocpOnArama.app : undefined
+                }
                 onDiscover={() =>
                   guarded(async () => {
                     await logxV2Api.discoverApps(requestId, [activeNamespace]);
@@ -898,6 +1018,7 @@ const LogXWizardPage: React.FC = () => {
                     }
                     return next;
                   });
+                  setOcpOnArama(null);
                   setChosenNamespace(null);
                 }}
               />

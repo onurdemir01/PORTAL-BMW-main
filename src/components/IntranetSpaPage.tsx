@@ -331,7 +331,7 @@ export default function IntranetSpaPage() {
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold">Intranet SPA</h1>
           <p className="text-[12px] max-w-3xl" style={{ color: 'var(--text-secondary)' }}>
-            OpenShift’teki intranet SPA uygulamaları (Gerçek SPA Keşfi: pod’unda nginx olan ve route’u
+            OpenShift’teki intranet SPA uygulamaları (SPA Uygulamaları: pod’unda nginx olan ve route’u
             intranet olanlar). <b>Dynatrace</b> sütunu uygulamanın Dynatrace servislerinin istek
             sayısıdır; <b>Ekip beyanı</b> sizin ifadenizdir. İkisi çelişebilir. Beyan, SPA Raporu ile
             aynı uygulama kaydına yazılır.
@@ -367,7 +367,7 @@ export default function IntranetSpaPage() {
           className="text-[12px] rounded-lg px-3 py-2 border"
           style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}
         >
-          {data.message || 'Gerçek SPA Keşfi henüz yok'} — bu “intranet SPA yok” demek değildir.
+          {data.message || 'SPA Uygulamaları taraması henüz yok'} — bu “intranet SPA yok” demek değildir.
         </div>
       )}
       {data?.ok && data.dynatraceOkunamadi && (
@@ -715,7 +715,7 @@ export default function IntranetSpaPage() {
         <summary className="cursor-pointer select-none">Bu rapor neyi gösteriyor?</summary>
         <div className="mt-1 space-y-1 max-w-3xl">
           <p>
-            Liste Nginx Hub › Gerçek SPA Keşfi ile aynı hesaptan gelir: route’unun ardındaki pod’da
+            Liste Nginx Hub › SPA Uygulamaları ile aynı hesaptan gelir: route’unun ardındaki pod’da
             nginx bulunan (SPA) ve route’u intranet (reencrypt) olan uygulamalar. Hem intranet hem
             internet route’u olanlar “internet route’u da var” etiketiyle listededir.
           </p>

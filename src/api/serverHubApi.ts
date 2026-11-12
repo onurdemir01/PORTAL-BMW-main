@@ -302,7 +302,17 @@ export interface ShSummary {
         missingHosts: string[];
       }
     >;
-    jvm: { inventory: number; scanned: number; fromInventory: number };
+    jvm: {
+      inventory: number;
+      /** Envanterdeki JVM'lerden verisi cekilen (sunucu basina min(taranan, envanter)); <= inventory. */
+      scanned: number;
+      fromInventory: number;
+      /** Taramanin getirdigi butun JVM satirlari = scanned + scannedOverInventory + scannedNotInInventory. */
+      scannedTotal?: number;
+      scannedOverInventory?: number;
+      scannedNotInInventory?: number;
+      scannedNotInInventoryHosts?: number;
+    };
   };
 }
 /** EK-2: son basarili yukleme FRESH_MAX_DAYS'ten eskiyse /overview ve /findings bunu tasir. */
@@ -812,6 +822,52 @@ export interface ShKararAyrinti {
   sunucu?: { anahtar: string; ad: string; veri: { env?: string | null; tarama?: string | null } };
   web?: { anahtar: string; ad: string; vhost: number }[];
   notlar?: ShNot[];
+  /** Faz 2b (2026-11-11): uygulama + ortam + nesil grup kararlari ve elle kontrol durumu. */
+  gruplar?: ShGrupKarar[];
+  kontrolOkunamadi?: boolean;
+}
+/** Faz 4: etiket motoru (A) ile Analiz grup karari (B) karsilastirmasi. */
+export type ShKarsilastirmaSinif =
+  | 'KRITIK_A_KESIN_B_KULLANIMDA'
+  | 'A_KESIN_B_KARARSIZ'
+  | 'B_ADAY_A_YOK'
+  | 'B_ADAY_A_ENGEL'
+  | 'A_ONLY_EAR_GIRDI'
+  | 'ANAHTAR_ESLENEMEDI'
+  | 'UYUM';
+export interface ShKarsilastirmaSatiri {
+  sinif: ShKarsilastirmaSinif;
+  konu: string;
+  ortam: string | null;
+  nesil: string | number | null;
+  etiket: string | null;
+  etiketSeviye: string | null;
+  kurallar: string[];
+  grup: string | null;
+  grupKarar: ShKarar | null;
+  nedenler?: string[];
+}
+export interface ShKarsilastirma {
+  ok: boolean;
+  latestScan: string | null;
+  sayilar: Record<ShKarsilastirmaSinif, number>;
+  satirlar: ShKarsilastirmaSatiri[];
+}
+export type ShGrupKontrolDurum = 'BEKLIYOR' | 'DOGRULANDI' | 'YANLIS_ALARM' | 'VERI_DEGISTI' | 'BILINMIYOR';
+export interface ShGrupKarar {
+  anahtar: string;
+  ad: string;
+  ortam: string | null;
+  nesil: string;
+  karar: ShKarar;
+  kararMetni: string;
+  ozet: string;
+  kopyalar: string[];
+  imza: string;
+  durum: ShGrupKontrolDurum;
+  kontrol: { sonuc: string; aciklama: string; isaretleyen: string | null; zaman: string | null } | null;
+  /** Yalniz RETIRE_ADAYI + DOGRULANDI + guncel imza. */
+  kayitHazir: boolean;
 }
 export interface ShAraSonuc {
   anahtar: string;
@@ -949,6 +1005,11 @@ export const serverHubApi = {
     fetch(`${BASE}/iliski/kararlar${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKararlarSonuc>(r)),
   iliskiKarar: (anahtar: string): Promise<ShKararAyrinti> =>
     fetch(`${BASE}/iliski/karar?anahtar=${encodeURIComponent(anahtar)}`).then((r) => okJson<ShKararAyrinti>(r)),
+  iliskiKarsilastirma: (fresh = false): Promise<ShKarsilastirma> =>
+    fetch(`${BASE}/iliski/karsilastirma${fresh ? '?fresh=1' : ''}`).then((r) => okJson<ShKarsilastirma>(r)),
+  /** Faz 2b: grup elle kontrolu (DOGRULANDI yalniz RETIRE_ADAYI grupta, guncel imzayla). */
+  iliskiGrupKontrol: (b: { anahtar: string; sonuc: 'DOGRULANDI' | 'YANLIS_ALARM' | 'GERI_AL'; aciklama: string; imza: string }): Promise<{ ok: boolean; grup: ShGrupKarar }> =>
+    fetch(`${BASE}/iliski/kontrol`, put(b)).then((r) => okJson(r)),
   iliskiAra: (q: string): Promise<{ ok: boolean; sonuclar: ShAraSonuc[] }> =>
     fetch(`${BASE}/iliski/ara?q=${encodeURIComponent(q)}`).then((r) => okJson(r)),
   iliskiVarlik: (anahtar: string): Promise<ShVarlik> =>

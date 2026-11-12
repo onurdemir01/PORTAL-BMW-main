@@ -82,6 +82,36 @@ const { setupTables } = require('./db/mssql-setup.cjs');
 // PORT main() icinde, DB env-override'lari uygulandiktan SONRA cozulur (let — const degil).
 let PORT = Number(process.env.PORT || 5055);
 
+// <statik-once-katman>
+// STATIK VARLIKLAR OTURUMDAN ONCE (2026-11-12). express.static'i saran kapi: oturum
+// katmanindan (initAuth) ONCE kayitli oldugu icin YALNIZ duz dosya varliklarini
+// (dist/assets/*, dist/fonts/*, dist_prev) servis etmeye izinlidir. Asagidakiler
+// ASLA burada servis edilmez, oturumdan SONRAKI zincire birakilir (next):
+//   - /api ve altindaki her sey (buyuk/kucuk harf farketmez; Express rotalari da
+//     harf duyarsizdir) - API'yi golgeleyemez, her API isteginde fs stat da yapilmaz;
+//   - "/" ve "/" ile biten yollar (dizin istekleri);
+//   - .html/.htm ile biten her yol (cozulmus haliyle; "/%69ndex.html" dahil) -
+//     index.html surumlu/kullaniciya ozel haliyle sendIndexHtml'den gitmeli.
+// Yalniz GET/HEAD; cozulemeyen adres de sonraki zincire gider (eskiden de 4xx'te
+// fallthrough idi).
+function statikOnceKatman(statikMw) {
+  return function statikOnce(req, res, next) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let yol;
+    try {
+      yol = decodeURIComponent(req.path || '');
+    } catch {
+      return next();
+    }
+    const kucuk = yol.toLowerCase();
+    if (kucuk === '/api' || kucuk.startsWith('/api/')) return next();
+    if (kucuk.endsWith('/')) return next();
+    if (/\.html?$/.test(kucuk)) return next();
+    return statikMw(req, res, next);
+  };
+}
+// </statik-once-katman>
+
 async function main() {
   // Portal tablolarini MSSQL'de olustur/migre et. Modul init'leri store cache'lerini
   // DB'den yukledigi icin BEKLENIR (await) — tablolar hazir olmadan yukleme baslamasin.
@@ -121,6 +151,47 @@ async function main() {
   // auth basarisiz olursa oturum/yetki temeli olmadan hicbir route guvenli calismaz, bu
   // yuzden fatal kalir; digerleri (dynatrace/instana/splunk/kibana gibi harici entegrasyonlar
   // dahil) basarisiz olursa uygulamanin geri kalani acilmaya devam eder.
+
+  /* ============ STATIK VARLIKLAR (production) - OTURUMDAN ONCE ============ */
+  // Hash'li chunk/font istekleri eskiden express-session'dan geciyordu: her dosya icin
+  // portal_sessions SELECT + lastSeen guncellemesi. Bu dosyalar herkese acik SPA
+  // paketidir (dist/: assets/, fonts/, index.html - korumali icerik yok), oturum
+  // gerektirmez. Yalniz duz dosya servisi buraya alinir (statikOnceKatman kapisi);
+  // "/" + "/index.html" (sendIndexHtml), 404 bekcisi ve SPA fallback ASAGIDA,
+  // oturumdan SONRA aynen kalir. Cache basliklari degismedi.
+  const distDir = path.join(__dirname, '../dist');
+  const prodDist =
+    process.env.NODE_ENV === 'production' && fs.existsSync(path.join(distDir, 'index.html'));
+  if (prodDist) {
+    // Hash'li asset dosyalari degismez — agresif cache. index:false: "/" istegi
+    // sendIndexHtml'e kalsin.
+    app.use(
+      statikOnceKatman(
+        express.static(distDir, {
+          maxAge: '1y',
+          immutable: true,
+          index: false,
+          setHeaders: (res, filePath) => {
+            if (filePath.endsWith('index.html')) {
+              res.setHeader('Cache-Control', 'no-cache');
+            }
+          },
+        }),
+      ),
+    );
+    // ONCEKI SURUMUN DOSYALARI (2026-09-22): release sirasinda dist degisince eski hash'li
+    // chunk'lar silinir; acik sekmeler onlari isteyince "Failed to fetch dynamically imported
+    // module" alir. release betigi eski dizini dist_prev olarak birakirsa buradan servis edilir
+    // ve kullanici hic hata gormez (istemci tarafinda ayrica otomatik yenileme var).
+    const prevDir = path.join(path.dirname(distDir), 'dist_prev');
+    if (fs.existsSync(prevDir)) {
+      app.use(
+        statikOnceKatman(express.static(prevDir, { maxAge: '1y', immutable: true, index: false })),
+      );
+      console.log('[Server] onceki surum dosyalari da servis ediliyor (dist_prev)');
+    }
+  }
+
   const modules = [
     { name: 'auth', init: () => initAuth(app), optional: false },
     { name: 'dutyRoster', init: () => initDutyRoster(app), optional: true },
@@ -181,6 +252,8 @@ async function main() {
       init: () => require('./crypto-hub/index.cjs').initCryptoHub(app),
       optional: true,
     },
+    { name: 'bmwHub', init: () => require('./bmw-hub/index.cjs').initBmwHub(app), optional: true },
+    { name: 'appHub', init: () => require('./app-hub/index.cjs').initAppHub(app), optional: true },
     { name: 'oco', init: () => require('./oco/index.cjs').initOco(app), optional: true },
     {
       name: 'spa-report',
@@ -257,10 +330,10 @@ async function main() {
   // Prod'da frontend build'i (dist/) app tarafindan da servis edilebilir —
   // minimal topolojide (nginx'siz) tek basina calisir; nginx'li topolojide nginx
   // statigi kendisi servis eder, bu blok sadece yedek olarak kalir.
-  // Tum /api route'larindan SONRA kayitli oldugu icin API'yi golgelemez.
+  // Tum /api route'larindan SONRA kayitli oldugu icin API'yi golgelemez. Duz dosya
+  // varliklari (express.static) yukarida, oturumdan ONCE kayitli (statikOnceKatman).
   if (process.env.NODE_ENV === 'production') {
-    const distDir = path.join(__dirname, '../dist');
-    if (fs.existsSync(path.join(distDir, 'index.html'))) {
+    if (prodDist) {
       // index.html DOGRUDAN gonderilmez: sekme ikonunun adresine icerige bagli bir
       // surum (?v=<hash>) enjekte edilir. Sabit adres, tarayicinin ONCEKI ikonu
       // onbellekten boyayip sonra degistirmesine yol aciyordu - acilista bir an
@@ -365,32 +438,9 @@ async function main() {
         }
       };
 
-      // Statikten ONCE: "/" ve "/index.html" surumlu halden gecsin.
+      // "/" ve "/index.html" surumlu halden gecsin (oturumdan SONRA: tema tercihi
+      // req.session'dan okunur). Duz dosya varliklari yukarida, oturumdan ONCE.
       app.get(['/', '/index.html'], sendIndexHtml);
-
-      // Hash'li asset dosyalari degismez — agresif cache. index:false, "/" istegini
-      // yukaridaki handler'a birakmak icin.
-      app.use(
-        express.static(distDir, {
-          maxAge: '1y',
-          immutable: true,
-          index: false,
-          setHeaders: (res, filePath) => {
-            if (filePath.endsWith('index.html')) {
-              res.setHeader('Cache-Control', 'no-cache');
-            }
-          },
-        }),
-      );
-      // ONCEKI SURUMUN DOSYALARI (2026-09-22): release sirasinda dist degisince eski hash'li
-      // chunk'lar silinir; acik sekmeler onlari isteyince "Failed to fetch dynamically imported
-      // module" alir. release betigi eski dizini dist_prev olarak birakirsa buradan servis edilir
-      // ve kullanici hic hata gormez (istemci tarafinda ayrica otomatik yenileme var).
-      const prevDir = path.join(path.dirname(distDir), 'dist_prev');
-      if (fs.existsSync(prevDir)) {
-        app.use(express.static(prevDir, { maxAge: '1y', immutable: true, index: false }));
-        console.log('[Server] onceki surum dosyalari da servis ediliyor (dist_prev)');
-      }
 
       // VARLIK ISTEKLERI ICIN SPA FALLBACK YOK: /assets/... ya da uzantili bir dosya bulunamazsa
       // index.html (HTML) donmek, tarayiciya "modul bekliyordum, HTML geldi" hatasi verdirir ve

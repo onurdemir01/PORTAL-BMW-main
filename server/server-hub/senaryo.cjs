@@ -167,7 +167,28 @@ const SENARYOLAR = Object.freeze({
     baslik: 'Web dışı çağrılar ölçülmedi',
     elle: 'Bağlantı görüntüsünü açın ya da ss -tn ile JVM portuna gelen bağlantılara bakın.',
   },
+  // FAZ 1 (2026-11-11, docs/RETIREMENT-MOTOR-BIRLESTIRME.md): RETIRE_ADAYI'yi KAPATAN eksikler.
+  RETIRE_ENGELI: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'Server Hub retire kanıtı eksik',
+    elle: 'Engelin söylediği kaynağı tazeleyin (tarama / web katmanı / eşleme) ve yeniden bakın.',
+  },
+  NESIL_BILINMIYOR: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'JBoss nesli (7 / 8) bilinmiyor',
+    elle: 'Sunucuyu yeniden tarayın; aynı JVM iki kurulumda olabilir, hangisinin retire edileceği belirsiz.',
+  },
+  WAS_DEGERLENDIRILMEDI: {
+    katman: 'app',
+    etki: 'EKSIK',
+    baslik: 'WAS sunucusu Server Hub değerlendirmesine bağlı değil',
+    elle: 'WAS için çalışma durumu, auto-start ve deployment kanıtı yok; retire kararı elle verilmeli.',
+  },
 });
+/** Bu eksiklerden biri varken kopya RETIRE_ADAYI olamaz (Faz 1). */
+const ADAY_KAPATAN = new Set(['RETIRE_ENGELI', 'NESIL_BILINMIYOR', 'WAS_DEGERLENDIRILMEDI']);
 
 const madde = (kod, metin, kanit = null, ek = {}) => ({
   kod,
@@ -267,9 +288,15 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const host = d.veri.host;
 
     // ── kullanim kanitlari ──
+    // FAZ 1 (2026-11-11): ZAYIF (yalniz ada dayanan) eslemeli vhost'un gercek trafigi de kullanim
+    // kanitidir: zayif esleme retire'i DESTEKLEYEMEZ ama kullanimi gostermeye yeter (guvenli taraf).
+    const zayifVhost = gelen
+      .filter((e) => GUVEN[e.guven] < GUVEN.GUCLU)
+      .map((e) => g.dugumler.get(e.kaynak))
+      .filter((x) => x && x.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x));
     const trafikVar = [
       ...trafikler,
-      ...celiskiliVhost.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
+      ...[...celiskiliVhost, ...new Set(zayifVhost)].map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) })),
     ].filter((x) => x.t.olcum === 'VAR');
     for (const x of trafikVar) maddeler.push(madde('WEB_TRAFIK_VAR', x.t.metin, x.v.anahtar));
     if (trafikVar.length && calisiyor === false)
@@ -394,6 +421,10 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
             d.anahtar,
           ),
         );
+      if (ax.j.retireEngeli)
+        maddeler.push(
+          madde('RETIRE_ENGELI', `${ax.j.retireEngeli.kod}: ${ax.j.retireEngeli.metin}`, d.anahtar),
+        );
       if (ax.h.fresh === false) {
         maddeler.push(madde('BAYAT', `son tarama ${ax.h.scanDate || '?'}`, `sunucu:${host}`));
         eksikler.push({ ne: 'taze tarama', nasil: 'Server Hub › Şimdi tara' });
@@ -415,8 +446,14 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     if (!baglantiOlculdu && calisiyor !== false)
       maddeler.push(madde('BAGLANTI_OLCULMEDI', null, d.anahtar));
 
+    // Nesil anahtarda: jvm:<host>|<nesil>|<AD>; bilinmiyorsa '?' (iliski-grafigi A.jvm).
+    if (d.tur === 'jvm' && d.anahtar.split('|')[1] === '?')
+      maddeler.push(madde('NESIL_BILINMIYOR', `${d.ad}: JBoss nesli bilinmiyor`, d.anahtar));
+    if (d.tur === 'was') maddeler.push(madde('WAS_DEGERLENDIRILMEDI', null, d.anahtar));
+
     // ── karar ──
     const kullanim = trafikVar.length > 0 || cagiranlar.length > 0;
+    const adayKapali = maddeler.some((m) => ADAY_KAPATAN.has(m.kod));
     const bayat = maddeler.some((m) => m.kod === 'BAYAT');
     let karar;
     if (kullanim) karar = 'KULLANIMDA';
@@ -428,7 +465,8 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       !bayat &&
       (calisiyor === false || (baglantiTaze && !cagiranlar.length))
     )
-      karar = 'RETIRE_ADAYI';
+      // Aday kosullari tamam ama kapatan bir eksik var: "sorun yok" DEGIL, karar verilemez.
+      karar = adayKapali ? 'KARAR_VERILEMEZ' : 'RETIRE_ADAYI';
     else if (maddeler.some((m) => m.etki === 'DESTEKLER')) karar = 'SUPHELI';
     else if (calisiyor !== false && (!guclu.length || olcmedi.length)) karar = 'KARAR_VERILEMEZ';
     else karar = 'SORUN_YOK';
@@ -449,6 +487,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
 
   // ── uygulama basina ──
   const uygulamalar = new Map();
+  const gruplar = new Map();
   for (const d of g.dugumler.values()) {
     if (d.tur !== 'app') continue;
     const kk = g
@@ -460,19 +499,37 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const say = Object.fromEntries(
       KARARLAR.map((k) => [k, kk.filter((x) => x.karar === k).length]),
     );
-    const karar =
-      say.RETIRE_ADAYI === kk.length
-        ? 'RETIRE_ADAYI'
-        : say.KULLANIMDA
-          ? 'KULLANIMDA'
-          : say.KARAR_VERILEMEZ
-            ? 'KARAR_VERILEMEZ'
-            : say.SUPHELI
-              ? 'SUPHELI'
-              : say.RETIRE_ADAYI
-                ? 'SUPHELI'
-                : 'SORUN_YOK';
+    const karar = topluKarar(say, kk.length);
+    // GRUP KARARI (Faz 2, 2026-11-11): uygulama + ORTAM + NESIL. Elle kontrol ve Retirement kapisi bu
+    // birime baglanir (app: birimi PROD / TEST / nesilleri karistirir; kapi ona baglanamaz).
+    const grupKk = new Map();
+    for (const x of kk) {
+      const nesil = x.tur === 'jvm' ? x.anahtar.split('|')[1] || '?' : 'WAS';
+      const gk = `grup:${String(d.ad).toUpperCase()}|${x.env || '?'}|${nesil}`;
+      if (!grupKk.has(gk)) grupKk.set(gk, { ortam: x.env || null, nesil, kk: [] });
+      grupKk.get(gk).kk.push(x);
+    }
+    for (const [gk, gr] of grupKk) {
+      const gs = Object.fromEntries(KARARLAR.map((k) => [k, gr.kk.filter((x) => x.karar === k).length]));
+      // Ortami ya da nesli bilinmeyen grup RETIRE_ADAYI olamaz (hangi kurulum / ortam oldugu belirsiz).
+      let gKarar = topluKarar(gs, gr.kk.length);
+      if (gKarar === 'RETIRE_ADAYI' && (!gr.ortam || gr.nesil === '?')) gKarar = 'KARAR_VERILEMEZ';
+      gruplar.set(gk, {
+        anahtar: gk,
+        uygulama: d.anahtar,
+        ad: d.ad,
+        ortam: gr.ortam,
+        nesil: gr.nesil,
+        karar: gKarar,
+        kararMetni: KARAR_METNI[gKarar],
+        ozet: uygulamaOzeti(gKarar, gs, gr.kk.length),
+        sayilar: gs,
+        kopyalar: gr.kk.map((x) => x.anahtar).sort(),
+        imza: grupImzasi(gk, gKarar, gr.kk),
+      });
+    }
     uygulamalar.set(d.anahtar, {
+      gruplar: [...grupKk.keys()].sort(),
       anahtar: d.anahtar,
       ad: d.ad,
       karar,
@@ -483,7 +540,37 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       yapilabilecekler: yapilabilecekler(karar, kk),
     });
   }
-  return { kopyalar, uygulamalar };
+  return { kopyalar, uygulamalar, gruplar };
+}
+
+/**
+ * GRUP KANIT IMZASI (Faz 2b): elle kontrol bu imzaya baglanir; kanit degisirse kontrol VERI_DEGISTI olur.
+ * Sayi ve tarih GIRMEZ (her gece gecersizlesmesin): grup + karar + kopya basina karar ve SIRALI madde kodlari.
+ */
+function grupImzasi(gk, karar, kk) {
+  const govde = JSON.stringify({
+    gk,
+    karar,
+    k: kk
+      .map((x) => ({ a: x.anahtar, k: x.karar, m: [...new Set(x.maddeler.map((m) => m.kod))].sort() }))
+      .sort((a, b) => a.a.localeCompare(b.a)),
+  });
+  return require('node:crypto').createHash('sha256').update(govde).digest('hex').slice(0, 32);
+}
+
+/** Kopya kararlarindan toplu karar: hepsi aday ise aday; kullanim kanit her zaman kazanir. */
+function topluKarar(say, n) {
+  return say.RETIRE_ADAYI === n
+    ? 'RETIRE_ADAYI'
+    : say.KULLANIMDA
+      ? 'KULLANIMDA'
+      : say.KARAR_VERILEMEZ
+        ? 'KARAR_VERILEMEZ'
+        : say.SUPHELI
+          ? 'SUPHELI'
+          : say.RETIRE_ADAYI
+            ? 'SUPHELI'
+            : 'SORUN_YOK';
 }
 
 function uygulamaOzeti(karar, say, n) {
@@ -503,10 +590,12 @@ function yapilabilecekler(karar, kk) {
   if (karar === 'KULLANIMDA')
     out.push({ tur: 'bilgi', metin: 'Retire etmeyin: trafik ya da doğrudan çağrı var.' });
   if (karar === 'RETIRE_ADAYI')
+    // FAZ 0 (2026-11-11): Analiz'den DOGRULAMASIZ kayit acma yolu kapandi. Karar elle dogrulanmadan
+    // kayit acilmaz (docs/RETIREMENT-MOTOR-BIRLESTIRME.md); yonlendirme yerine ne yapilacagi yazilir.
     out.push({
-      tur: 'yonlendir',
-      metin: 'Retirement kaydı açılabilir',
-      hedef: 'server-hub?tab=retirement',
+      tur: 'elle',
+      metin:
+        'Retirement kaydı için önce elle doğrulayın: aşağıdaki ortam / kurulum grubunda “Doğrulandı olarak işaretle”; doğrulanan gruptan kayıt açılır. Uygulama sahibinin Smart silme talebi varsa BMW Hub › Retirement.',
     });
   const celiski = tum.find((m) => m.kod === 'CELISKI');
   if (celiski) out.push({ tur: 'elle', metin: `Çelişkiyi inceleyin: ${celiski.metin}` });
@@ -522,6 +611,8 @@ function yapilabilecekler(karar, kk) {
 
 module.exports = {
   kararla,
+  topluKarar,
+  grupImzasi,
   vhostTrafigi,
   SENARYOLAR,
   KARARLAR,

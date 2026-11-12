@@ -41,6 +41,8 @@ export interface OcoRow {
   actualStart: string | null;
   actualEnd: string | null;
   openedAt: string | null;
+  /** Hangi sorgudan geldi (2026-11-12): 'acan' = ekibin açtığı, 'sorumlu' = ekibe açılan. */
+  iliski?: ('acan' | 'sorumlu')[];
 }
 
 interface Sonuc {
@@ -50,6 +52,10 @@ interface Sonuc {
   fetched?: number;
   truncated?: boolean;
   fetchedAt?: string;
+  /** Sorgu başına servis sayıları (açtığımız / bize açılan). */
+  kaynak?: Partial<Record<'acan' | 'sorumlu', { total: number; fetched: number; truncated: boolean }>>;
+  /** Düşen sorgu: liste yalnız diğerinden — ekranda söylenir. */
+  eksik?: { rol: string; message: string }[];
   cached?: boolean;
   notConfigured?: boolean;
   message?: string;
@@ -117,9 +123,14 @@ function saat(iso: string | null): string {
 export default function OcoTakvimiPage() {
   const [data, setData] = useState<Sonuc | null>(null);
   const [loading, setLoading] = useState(true);
-  const [gecmisAcik, setGecmisAcik] = useState(false);
+  // GECMIS 7'SER GUN (kullanici, 2026-11-12: "gecmisi ac deyince 2024'e kadar her sey aciliyor; her
+  // tiklamada 7 gun geri atsin"). 0 = kapali; her tiklama 7 gun daha eskiye uzanir.
+  const [gecmisGun, setGecmisGun] = useState(0);
   const [sorgu, setSorgu] = useState('');
   const [acik, setAcik] = useState<number | null>(null);
+  // ILISKI SUZGECI (kullanici, 2026-11-12): "hem bizim actigimiz hem bize acilan OCO'lar ayni
+  // anda" - varsayilan hepsi; istenirse yalniz biri.
+  const [iliski, setIliski] = useState<'tumu' | 'acan' | 'sorumlu'>('tumu');
 
   const yukle = async (refresh = false) => {
     setLoading(true);
@@ -138,17 +149,25 @@ export default function OcoTakvimiPage() {
   }, []);
 
   const rows = useMemo(() => data?.rows || [], [data]);
+  const iliskiSay = useMemo(
+    () => ({
+      acan: rows.filter((r) => r.iliski?.includes('acan')).length,
+      sorumlu: rows.filter((r) => r.iliski?.includes('sorumlu')).length,
+    }),
+    [rows],
+  );
   const suzulmus = useMemo(() => {
     const q = sorgu.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    const ilk = iliski === 'tumu' ? rows : rows.filter((r) => r.iliski?.includes(iliski));
+    if (!q) return ilk;
+    return ilk.filter(
       (r) =>
         String(r.oco).includes(q) ||
         r.subject.toLowerCase().includes(q) ||
         r.statusText.toLowerCase().includes(q) ||
         r.explanation.toLowerCase().includes(q),
     );
-  }, [rows, sorgu]);
+  }, [rows, sorgu, iliski]);
 
   const bugun = gunAnahtari(new Date().toISOString());
   const gecmis = useMemo(
@@ -156,6 +175,17 @@ export default function OcoTakvimiPage() {
       suzulmus.filter((r) => gunAnahtari(r.plannedStart) && gunAnahtari(r.plannedStart) < bugun),
     [suzulmus, bugun],
   );
+  // Gosterilen gecmis: bugunden gecmisGun gun oncesine kadar (yerel gun anahtari, ISO karsilastirma).
+  const gecmisSinir = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - gecmisGun);
+    return gunAnahtari(d.toISOString());
+  }, [gecmisGun]);
+  const gecmisGorunen = useMemo(
+    () => (gecmisGun ? gecmis.filter((r) => gunAnahtari(r.plannedStart) >= gecmisSinir) : []),
+    [gecmis, gecmisGun, gecmisSinir],
+  );
+  const dahaEski = gecmis.length - gecmisGorunen.length;
   const gelecek = useMemo(
     () =>
       suzulmus.filter((r) => !gunAnahtari(r.plannedStart) || gunAnahtari(r.plannedStart) >= bugun),
@@ -202,6 +232,14 @@ export default function OcoTakvimiPage() {
               <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                 <CodeChip value={String(r.oco)} label={`#${r.oco}`} copyable tone="muted" />
               </span>
+              {r.iliski?.includes('acan') && (
+                <Chip tone="var(--accent)" title="Ekibimizin açtığı OCO">açtığımız</Chip>
+              )}
+              {r.iliski?.includes('sorumlu') && (
+                <Chip tone="var(--status-success)" title="Değişikliği yapacak sorumlu ekip biziz">
+                  bize açılan
+                </Chip>
+              )}
               {r.statusText && <Chip tone={DURUM_TON[r.statusText]}>{r.statusText}</Chip>}
               {r.impactText && <Chip>{r.impactText}</Chip>}
               {r.pcabRequired && <Chip tone="var(--status-warning)">PCAB</Chip>}
@@ -315,6 +353,39 @@ export default function OcoTakvimiPage() {
             color: 'var(--text-primary)',
           }}
         />
+        <div
+          role="radiogroup"
+          aria-label="OCO ilişkisi"
+          className="flex gap-1 rounded-lg p-0.5 w-fit"
+          style={{ background: 'var(--bg-elevated)' }}
+          data-testid="oco-iliski"
+        >
+          {(
+            [
+              { id: 'tumu', label: 'Tümü', n: rows.length },
+              { id: 'acan', label: 'Açtığımız', n: iliskiSay.acan },
+              { id: 'sorumlu', label: 'Bize açılan', n: iliskiSay.sorumlu },
+            ] as const
+          ).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={iliski === s.id}
+              onClick={() => setIliski(s.id)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md ${iliski === s.id ? 'shadow-sm' : ''}`}
+              style={{
+                background: iliski === s.id ? 'var(--bg-surface)' : 'transparent',
+                color: iliski === s.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {s.label}
+              <span className="ml-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                {s.n}
+              </span>
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => void yukle(true)}
@@ -355,6 +426,21 @@ export default function OcoTakvimiPage() {
         </div>
       )}
 
+      {/* IKI SORGUDAN BIRI DUSTU: liste yalniz digerinden; "OCO yok" gibi okunmasin. */}
+      {data?.ok && !!data.eksik?.length && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={{
+            color: 'var(--status-warning-text)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+          data-testid="oco-eksik"
+        >
+          Liste <b>eksik</b>: {data.eksik.map((e) => e.message).join(' · ')}
+        </div>
+      )}
+
       {/* SESSIZ KIRPMA YOK: sayfa siniri asildiysa liste EKSIK, bu yazilir. */}
       {data?.truncated && (
         <div
@@ -365,7 +451,14 @@ export default function OcoTakvimiPage() {
             borderColor: 'var(--status-warning)',
           }}
         >
-          Liste <b>eksik</b>: servis sayfa sınırına takıldı ({data.fetched} / {data.total} kayıt).
+          Liste <b>eksik</b>: servis sayfa sınırına takıldı
+          {data.kaynak
+            ? ` (${(['acan', 'sorumlu'] as const)
+                .filter((k) => data.kaynak?.[k]?.truncated)
+                .map((k) => `${k === 'acan' ? 'açtığımız' : 'bize açılan'}: ${data.kaynak![k]!.fetched} / ${data.kaynak![k]!.total} kayıt`)
+                .join(' · ')})`
+            : ` (${data.fetched} / ${data.total} kayıt)`}
+          .
         </div>
       )}
 
@@ -374,20 +467,41 @@ export default function OcoTakvimiPage() {
       ) : (
         <>
           {gecmis.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setGecmisAcik((x) => !x)}
-              className="text-[11px] underline"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {gecmisAcik ? 'Geçmişi gizle' : `Geçmiş ${gecmis.length} OCO'yu göster`}
-            </button>
+            <div className="flex flex-wrap items-center gap-3 text-[11px]" data-testid="oco-gecmis">
+              {dahaEski > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setGecmisGun((g) => g + 7)}
+                  className="underline"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {gecmisGun ? `7 gün daha geriye git` : 'Geçen haftanın OCO’larını göster'}
+                </button>
+              )}
+              {gecmisGun > 0 && (
+                <>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    son {gecmisGun} gün · {gecmisGorunen.length} geçmiş OCO
+                    {dahaEski > 0 ? ` · daha eski ${dahaEski}` : ''}
+                  </span>
+                  <button type="button" onClick={() => setGecmisGun(0)} className="underline" style={{ color: 'var(--text-muted)' }}>
+                    Geçmişi gizle
+                  </button>
+                </>
+              )}
+            </div>
           )}
-          {gecmisAcik && gunlereBol(gecmis).map(gunBlogu)}
+          {gecmisGun > 0 && gunlereBol(gecmisGorunen).map(gunBlogu)}
 
           {gelecek.length === 0 && gecmis.length === 0 ? (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
-              {data?.ok ? (sorgu ? 'Aramayla eşleşen OCO yok.' : 'Bu grupta OCO görünmüyor.') : ''}
+              {data?.ok
+                ? sorgu
+                  ? 'Aramayla eşleşen OCO yok.'
+                  : iliski !== 'tumu'
+                    ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
+                    : 'Bu grupta OCO görünmüyor.'
+                : ''}
             </div>
           ) : (
             gunlereBol(gelecek).map(gunBlogu)
@@ -395,8 +509,10 @@ export default function OcoTakvimiPage() {
 
           {data?.ok && (
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              {suzulmus.length} / {rows.length} OCO gösteriliyor · serviste toplam{' '}
-              {data.total ?? '?'}
+              {suzulmus.length} / {rows.length} OCO gösteriliyor
+              {data.kaynak?.acan || data.kaynak?.sorumlu
+                ? ` · serviste açtığımız ${data.kaynak?.acan?.total ?? '?'}, bize açılan ${data.kaynak?.sorumlu?.total ?? '?'} (ortak olanlar bir kez listelenir)`
+                : ` · serviste toplam ${data.total ?? '?'}`}
             </div>
           )}
         </>

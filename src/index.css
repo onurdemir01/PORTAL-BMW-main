@@ -111,6 +111,11 @@
      basiyordu — `--nav-text`in basina gelenin aynisi. Acik tema degeri degismedi. */
   --ch-hue:             #7c5cff;
   --ch-hue-soft:        rgba(124, 92, 255, 0.16);
+  /* BMW Hub (acik isler) camgobegi, Application Hub kehribar tonu - .crypto-hub-link ile ayni kalip. */
+  --bh-hue:             #0f8a7e;
+  --bh-hue-soft:        rgba(15, 138, 126, 0.16);
+  --ah-hue:             #b45309;
+  --ah-hue-soft:        rgba(180, 83, 9, 0.16);
   --nav-hover-bg:    #e0e0e0;
   --nav-current-bg:  #e0e0e0;
   --nav-text:        #151515;
@@ -208,6 +213,10 @@
      gerekce); menekse kimligi korunur, ton acilir. */
   --ch-hue:        #c4b5fd;
   --ch-hue-soft:   rgba(196, 181, 253, 0.18);
+  --bh-hue:        #5eead4;
+  --bh-hue-soft:   rgba(94, 234, 212, 0.18);
+  --ah-hue:        #fbbf24;
+  --ah-hue-soft:   rgba(251, 191, 36, 0.18);
   /* KOYU TEMADA MARKA RENGI ACIK MAVIDIR — PF6'nin bilincli karari.
      `dark--color--brand--200` = blue-20 (#b9dafc), uzerindeki metin ise
      `dark--text--color--300` = gray-90 (#1f1f1f).
@@ -972,6 +981,29 @@ thead th {
 @keyframes ch-glow {
   from { text-shadow: 0 0 2px var(--ch-hue-soft); color: var(--ch-hue); }
   to { text-shadow: 0 0 10px var(--ch-hue-soft), 0 0 18px var(--ch-hue-soft); color: var(--ch-hue); }
+}
+/* BMW Hub ve Application Hub: Crypto Hub kalibi, kendi tonlari (--bh-* / --ah-* :root ve dark altinda). */
+/* Cok sayfali Hub grubu (BMW Hub): baslik bir <button class="pf-nav-toggle">; yan bosluklar dusulmezse menuden tasar. */
+.pf-nav-toggle.nginx-hub-link { width: calc(100% - 1.5rem); box-sizing: border-box; }
+.bmw-hub-link::before {
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--bh-hue-soft) 74%, var(--bh-hue) 86%, var(--bh-hue) 93%, transparent 100%);
+}
+.bmw-hub-link::after { border-color: var(--bh-hue); }
+.bmw-hub-link.is-current { background: var(--bh-hue-soft); }
+.bmw-hub-link .nginx-hub-word { color: var(--bh-hue); text-shadow: 0 0 6px var(--bh-hue-soft); animation-name: bh-glow; }
+@keyframes bh-glow {
+  from { text-shadow: 0 0 2px var(--bh-hue-soft); color: var(--bh-hue); }
+  to { text-shadow: 0 0 10px var(--bh-hue-soft), 0 0 18px var(--bh-hue-soft); color: var(--bh-hue); }
+}
+.app-hub-link::before {
+  background: conic-gradient(from var(--nh-angle), transparent 0 62%, var(--ah-hue-soft) 74%, var(--ah-hue) 86%, var(--ah-hue) 93%, transparent 100%);
+}
+.app-hub-link::after { border-color: var(--ah-hue); }
+.app-hub-link.is-current { background: var(--ah-hue-soft); }
+.app-hub-link .nginx-hub-word { color: var(--ah-hue); text-shadow: 0 0 6px var(--ah-hue-soft); animation-name: ah-glow; }
+@keyframes ah-glow {
+  from { text-shadow: 0 0 2px var(--ah-hue-soft); color: var(--ah-hue); }
+  to { text-shadow: 0 0 10px var(--ah-hue-soft), 0 0 18px var(--ah-hue-soft); color: var(--ah-hue); }
 }
 @keyframes sh-glow {
   from { text-shadow: 0 0 2px var(--accent-light); color: var(--accent); }

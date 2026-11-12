@@ -1019,6 +1019,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
   });
   const oldIn = inList('o', oldHosts);
   const newIn = inList('n', newHosts);
+  const arkIn = inList('k', require('./ocp-platforms.cjs').PLATFORM_CLUSTERS.ark);
 
   // kind/target_url kolonlari DDL ile geldi. Yoksa config-proxy kaynagi kullanilamaz; ancak
   // nginx-T ve dizin kaynaklari bagimsizdir, onlarin tamamini erken donusle gizleme.
@@ -1063,10 +1064,15 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     )
       .then((r) => r.recordset || [])
       .catch(() => []),
-    query(`SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory`)
+    // YALNIZ ARK (kullanici, 2026-11-11): SPA'ler yalniz ARK cluster'larinda; proxy_pass hedefi ARK disi
+    // bir route / uygulamaya cozulmez.
+    query(
+      `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkIn.sqlText})`,
+      arkIn.params,
+    )
       .then((r) => r.recordset || [])
       .catch(() => []),
-    query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory`)
+    query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkIn.sqlText})`, arkIn.params)
       .then((r) => r.recordset || [])
       .catch(() => []),
     dirDate

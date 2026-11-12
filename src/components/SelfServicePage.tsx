@@ -43,6 +43,7 @@ import KapamaOnayiUyarisi from '@/components/self_service/KapamaOnayiUyarisi';
 import NginxTanimOkuma from '@/components/self_service/NginxTanimOkuma';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import { fmtDateTime } from '@/utils/datetime';
+import { servisinIsiMi } from '@/utils/ssBaglar';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
 
 // LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
@@ -1330,7 +1331,7 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
   useEffect(() => {
     ansibleApi
       .history(30)
-      .then((r) => setHistory((r.history || []).filter((h) => !item || (Number(h.template_id) === Number(item.awxTemplateId) && Number(h.awx_server_id) === Number(item.awxServerId)))))
+      .then((r) => setHistory((r.history || []).filter((h) => !item || servisinIsiMi(item, h))))
       .finally(() => setLoading(false));
   }, [item]);
 

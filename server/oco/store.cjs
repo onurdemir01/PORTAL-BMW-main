@@ -317,6 +317,26 @@ async function markApprovalResolved(id, { status, message }) {
   return rows.length > 0;
 }
 
+// ADMIN YENIDEN TETIKLEME (2026-11-11, server/smart/yeniden-tetikle.cjs): bilet TIMEOUT oldugunda
+// bagli OCO kaydi markApprovalResolved ile FAILED yapilmisti. Admin isi kosturunca kayit ekranda
+// "tetiklenmedi" demeye devam etmesin. YALNIZ FAILED kayit guncellenir (iptal edilmis kayda dokunulmaz).
+// status 'LAUNCHED' (awxJobId) ya da 'AWX_SCHEDULED' (awxScheduleId + yeni OCO numarasi / pencere).
+async function markRetriggered(id, { status, awxJobId, awxScheduleId, ocoNumber, runAt, windowEnd, message }) {
+  if (status !== 'LAUNCHED' && status !== 'AWX_SCHEDULED') throw new Error(`markRetriggered: gecersiz durum ${status}`);
+  const t = (d) => (d == null ? null : d instanceof Date ? d : new Date(d));
+  const { rows } = await db.query(
+    `UPDATE oco_scheduled_launches
+        SET status = $2, awx_job_id = $3, awx_schedule_id = COALESCE($4, awx_schedule_id),
+            oco_number = COALESCE($5, oco_number), run_at = COALESCE($6, run_at),
+            window_end = COALESCE($7, window_end), error_message = $8, updated_at = GETUTCDATE(),
+            resolved_at = ${status === 'LAUNCHED' ? 'GETUTCDATE()' : 'NULL'}
+      OUTPUT INSERTED.id
+      WHERE id = $1 AND status = 'FAILED'`,
+    [id, status, awxJobId ?? null, awxScheduleId ?? null, ocoNumber || null, t(runAt), t(windowEnd), String(message || '').slice(0, 4000) || null],
+  );
+  return rows.length > 0;
+}
+
 async function markFailed(id, message) {
   // Kosullu: yalnizca HENUZ SONUCLANMAMIS bir kaydi FAILED yapar. Arada kullanici
   // iptal ettiyse CANCELLED korunur — "iptal ettim ama basarisiz yaziyor" olmasin.
@@ -422,4 +442,4 @@ async function adoptTicket(id, ticket) {
 
 module.exports = {
   markPendingApprovalAtRequest, adoptTicket, BILET_KAYIT,
-  markAwxScheduledAfterApproval, create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markFailed, markExpired, cancel, adminCancel };
+  markAwxScheduledAfterApproval, create, createAwxScheduled, get, listScheduled, listAll, listByUsername, listForUser, canManage, update, cancelBy, gruplarKesisiyor, claimForLaunch, markLaunched, markPendingApproval, markApprovedLaunched, markApprovalResolved, markRetriggered, markFailed, markExpired, cancel, adminCancel };

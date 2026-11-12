@@ -298,7 +298,10 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
       imza,
       kontrol: kayit,
       durum,
-      retirementHazir: seviye === 'KESIN' && durum === 'DOGRULANDI',
+      // FAZ 0 (2026-11-11, docs/RETIREMENT-MOTOR-BIRLESTIRME.md): kontrol KESIN iken verilmis olmali.
+      // SUPHELI iken "dogrulandi" denmis etiket, kural sonradan KESIN'e cekilince kapiyi ACAMAZ
+      // (imza seviyeyi icermiyor; kayit.seviye kontrol anindaki seviyedir). Eski satirda seviye yok -> kapali.
+      retirementHazir: seviye === 'KESIN' && durum === 'DOGRULANDI' && kayit?.seviye === 'KESIN',
     });
   }
   etiketler.sort(

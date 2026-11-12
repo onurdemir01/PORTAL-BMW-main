@@ -20,6 +20,11 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
   - server group profili / port grubu / ofseti ve sunucu `port-offset`'i;
   - deployment yolunun diskte olup olmadığı (yalnız `lstat`).
   WebSphere kurulu sunucularda `profiles/*/config/cells/*/nodes/*/serverindex.xml`'den sunucular, `WC_*` portları ve kurulu uygulamalar okunur.
+- **WAS JVM parametreleri (2026-11-08, her taramada, yalnız okuma):** `serverindex.xml`'deki her sunucu için aynı düğümün `servers/<sunucu>/server.xml` dosyasındaki `processDefinitions/jvmEntries` okunur → `was_ozeti.sunucular[].jvm`:
+  - `durum` (`OKUNDU`, `YOK`, `IZIN`, `REDDEDILDI`, `BUYUK`, `BOZUK`, `DOSYA_DEGIL`, `HATA`; `JVM_YOK` = dosya okundu ama `jvmEntries` yok), `yol`;
+  - yalnız `OKUNDU` iken: `ilk_heap_mb` / `en_cok_heap_mb` (`initialHeapSize` / `maximumHeapSize`; yoksa `null`, 0 değil), `jvm_argumanlari` (`genericJvmArguments`, maskeli, en çok 2000 karakter, kesilirse sonda ` ...+N`), `sistem_ozellikleri` (`[{ad, deger}]`, en çok 100; değer maskeli, değersiz özellikte `null`), `ozellik_kesildi`, `jvm_girisi` (jvmEntries sayısı; ilki okunur).
+  - Bu, "sistem özelliği pakete girmez" kuralının ikinci istisnasıdır: özellik ADI girer, DEĞER Server Hub `jvm_args` beyaz listesiyle maskelenir. `-X*` açık; `-D` / özellik değeri yalnız ad `java.`, `javax.management.`, `sun.`, `jboss.`, `org.jboss.`, `org.wildfly.`, `file.encoding`, `user.*` ... (tam liste `mask.cjs` `BEYAZ_LISTE`) ile başlıyor VE sır kalıbına (password, secret, token, ...Key, keystore/truststore parolası) uymuyorsa açık; aksi `***`. Diğer belirteçlerde sır anahtarından sonraki değer ve URL / `kullanici/parola@` kimliği `***`.
+  - İki katman: tarayıcı (`jvm_maskele`) ve Portal alımı (`wasJvm`, `mask.cjs`). `debugArgs` ve diğer öznitelikler alınmaz. Adı `.`/`..` ya da `/` içeren sunucunun dosyası okunmaz (`HATA`).
 - **Bağlantı görüntüsü (Faz A, isteğe bağlı, varsayılan KAPALI):** yapılandırılmış JVM / WAS portlarına gelen ESTABLISHED bağlantılar `/proc/net/tcp`'den okunur. 10 sn arayla 3 örnek alınır, uzak IP'ye göre sayılır; sunucu başına ~20 sn sürer.
   - Web katmanını atlayan servis-servis çağrısının kanıtıdır.
   - Anlık görüntü olduğu için "kullanılmıyor" demeye tek başına yetmez.

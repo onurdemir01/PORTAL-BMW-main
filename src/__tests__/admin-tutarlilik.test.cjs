@@ -94,7 +94,7 @@ test('AD2 LogX Yonetimi ayri sekme; OCP Yapilandirma yalnizca ortak OCP ayarlari
   );
   assert.match(
     page,
-    /ids: \['playbooks', 'ansible', 'logxv2', 'logx', 'scalex'\]/,
+    /ids: \['playbooks', 'sstasima', 'ansible', 'logxv2', 'logx', 'scalex'\]/,
     'Otomasyon grubunda degil',
   );
   const logx = kodOnly(oku('src/components/admin/tabs/LogXAdminTab.tsx'));

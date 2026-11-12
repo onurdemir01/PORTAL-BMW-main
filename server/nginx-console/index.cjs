@@ -28,6 +28,7 @@ const {
 } = require('./dump-parse.cjs');
 const history = require('./history.cjs');
 const { computeDrift } = require('./drift.cjs');
+const eskiSunucu = require('./eski-sunucu.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
   fetch: 'nginx_console_fetch',
@@ -309,6 +310,16 @@ function loadFull(host) {
 // Geriye uyumluluk (eski ad): OZET doner, icerik icermez.
 const loadDump = loadSummary;
 
+/** Eski sunucu temizliginden sonra: host'un bellek onbellekleri ve ingest kuyrugu birakilir. */
+function unutHost(host) {
+  const H = String(host || '').toUpperCase();
+  _summaries.delete(H);
+  _full.delete(H);
+  for (let i = _ingestQueue.length - 1; i >= 0; i--) if (_ingestQueue[i].H === H) _ingestQueue.splice(i, 1);
+  _queued.delete(H);
+  history.unut(H);
+}
+
 function listDumpedHosts() {
   try {
     return fs
@@ -579,9 +590,16 @@ async function spaKesfiHesapla() {
   // kipinde ('@' satirlari; nginx_spa_traffic.sh SPA_HOST_MODE). Eskiden yalniz non-prod +
   // eski PROD okunuyor, yeni PROD tanimlari 'kaynak-yok' kaliyordu.
   const trfIn = inList('t', [...RP.all]);
+  const arkInv = (() => {
+    const arkC = require('../audit/ocp-platforms.cjs').PLATFORM_CLUSTERS.ark;
+    return {
+      sqlText: arkC.map((_, i) => `@k${i}`).join(', '),
+      params: arkC.map((c, i) => ({ name: `k${i}`, type: sql.NVarChar(200), value: c })),
+    };
+  })();
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
-  const [disc, inv, usage, runs, cfg, dir, ups, trf, katalog] = await Promise.all([
+  const [discHam, invHam, usageHam, runsHam, cfgHam, dirHam, upsHam, trfHam, katalogHam] = await Promise.all([
     // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
     // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
     // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
@@ -599,10 +617,14 @@ async function spaKesfiHesapla() {
     ).then((r) => r.recordset || []),
     // ROUTE ENVANTERI + termination_type (Ag capraz kontrolu). OKUNAMADI ile KAYITLI DEGIL
     // AYRI: eskiden hata [] olup TUM uygulamalar 'kayitli degil' gorunuyordu.
+    // YALNIZ ARK DB'DE (2026-11-12): ARK disi route'lar hic tasinmaz; asagidaki arkSuz JS
+    // suzgeci bekci olarak kalir (sonuc ayni). Kosul ayri dizgede: SR22 metin bekcisi sorgu
+    // govdesini birebir arar.
     yoksaNull(
       query(
         `SELECT cluster_name, namespace_name, route_name, route_address, termination_type
-           FROM dbo.BMW_Openshift_Route_Inventory`,
+           FROM dbo.BMW_Openshift_Route_Inventory` + ` WHERE cluster_name IN (${arkInv.sqlText})`,
+        arkInv.params,
       ),
     ),
     // OLCUM: CLUSTER BASINA EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
@@ -723,6 +745,30 @@ async function spaKesfiHesapla() {
       })
       .catch(() => null),
   ]);
+  // YALNIZ ARK (kullanici, 2026-11-11): "SPA'ler sadece ve sadece ARK OpenShift cluster'larinda bulunuyor;
+  // diger cluster'larla bir iliskisi, gosterimi vb. hicbir seyin olmasina gerek yok." Kesif isi butun jump
+  // server'lari taradigi icin tablolarda hosting / wyden / metaco / ark_ai / cicd satirlari da var: hepsi
+  // BURADA, hesaba girmeden atilir (uygulama satirlari, kapsam paneli, cluster suzgeci, k/n paydasi, kullanim
+  // ve route eslemesi). ARK = ocp-platforms.cjs PLATFORM_CLUSTERS.ark (kullanicinin resmi listesi). Katalogda
+  // tenant='ark' altinda lab / edu da var; payda yalniz bu listeyle (eskiden env bazli payda hosting /
+  // wyden prod cluster'larini da sayiyordu: 4/4 Tam uygulama 4/9 Kismi gorunebiliyordu).
+  const { platformOfCluster } = require('../audit/ocp-platforms.cjs');
+  const arkMi = (c) => platformOfCluster(c) === 'ark';
+  const arkSuz = (rows, alan) => (rows == null ? rows : rows.filter((r) => arkMi(r[alan])));
+  const disc = arkSuz(discHam, 'cluster');
+  const inv = arkSuz(invHam, 'cluster_name');
+  const usage = arkSuz(usageHam, 'cluster');
+  const runs = arkSuz(runsHam, 'cluster');
+  const katalog = arkSuz(katalogHam, 'cluster_name');
+  // ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): RP tanim/trafik satirlari nginx sunucusundan
+  // gelir; eski sunucunun satirlari hesaba girmeden atilir ve yanita eskiGizli yazilir. Hesap
+  // paylasilir/onbelleklenir, bu yuzden ?eskiler=1 burada uygulanmaz (her zaman gizler).
+  const esSpa = await eskiSunucu.suzgec(null);
+  const eskiSuz = (rows) => (rows == null ? rows : esSpa.ayir(rows));
+  const cfg = eskiSuz(cfgHam);
+  const dir = eskiSuz(dirHam);
+  const ups = eskiSuz(upsHam);
+  const trf = eskiSuz(trfHam);
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
   const durum = (varMi, rows) =>
     sema === null ? 'okunamadi' : !varMi ? 'yok' : rows === null ? 'okunamadi' : 'var';
@@ -750,6 +796,7 @@ async function spaKesfiHesapla() {
     scanDate: gun,
     ...sonuc,
     hesaplandi: new Date().toISOString(),
+    eskiGizli: esSpa.bilgi(),
   };
   // rpDetay SAYILAMAZ (JSON'a girmez); spread onu kopyalamadigi icin acikca tasinir.
   Object.defineProperty(out, 'rpDetay', { value: sonuc.rpDetay, enumerable: false });
@@ -875,6 +922,57 @@ function isAdmin(req) {
   return req.session?.user?.role === 'Admin';
 }
 
+// -- Eski sunucu uclari (router disinda: davranis testleri sahte req/res ile cagirir) -----
+async function eskiAdaylarUcu(_req, res) {
+  try {
+    res.json({ ok: true, ...(await eskiSunucu.adaylar()) });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, message: err.message });
+  }
+}
+
+async function eskiTemizleUcu(req, res) {
+  const istenen = Array.isArray(req.body?.hosts)
+    ? req.body.hosts.map((h) => String(h || '').trim().toUpperCase()).slice(0, 60)
+    : [];
+  const denetimKaydi = (result, detay) => {
+    try {
+      require('../audit/index.cjs').auditPortal(req, 'nginx_eski_sunucu_temizlik', {
+        result,
+        targetHost: istenen.length === 1 ? istenen[0] : null,
+        detail: JSON.stringify(detay),
+      });
+    } catch {
+      /* best-effort */
+    }
+  };
+  try {
+    const r = await eskiSunucu.temizle(req.body);
+    denetimKaydi(r.kalanVar ? 'partial' : 'ok', {
+      hosts: r.hosts.map((h) => ({
+        host: h.host,
+        tamam: h.tamam,
+        satir: h.silinenSatir,
+        dosya: h.dosyalar,
+        hata: h.hatalar.length ? h.hatalar : undefined,
+        islenmedi: h.islenmedi || undefined,
+      })),
+      toplamSatir: r.toplamSatir,
+      butceDoldu: r.butceDoldu,
+    });
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    denetimKaydi(err.status === 409 ? 'denied' : 'error', {
+      hosts: istenen,
+      mesaj: err.message,
+      reddedilen: err.reddedilen,
+    });
+    res
+      .status(err.status || 500)
+      .json({ ok: false, message: err.message, reddedilen: err.reddedilen || undefined });
+  }
+}
+
 /**
  * Admin olmayan kullanicinin gecebildigi SALT OKUNUR uclar (kullanici karari 2026-10-14: panelden
  * acilan sekmeler salt okunur calissin). Her biri (/hosts haric) asagidaki SEKME_YOLLARI'ndan bir
@@ -919,7 +1017,7 @@ function adminKapisi(gorunurlukHazir) {
 
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
 function initNginxConsole(app) {
-  const { requireAuth } = require('../auth/index.cjs');
+  const { requireAuth, requireAdmin } = require('../auth/index.cjs');
   history.init({ consoleDir, ensureIngested, listDumpedHosts });
   history.startWatcher(5);
   const router = express.Router();
@@ -955,7 +1053,7 @@ function initNginxConsole(app) {
   }
 
   // Sunucu listesi: envanter (env/servis) + dokum durumu (var mi, ne zaman, nginx -t, sertifika sayisi)
-  router.get('/hosts', async (_req, res) => {
+  router.get('/hosts', async (req, res) => {
     try {
       let inv = [];
       let invError = null;
@@ -1011,12 +1109,15 @@ function initNginxConsole(app) {
           inventoryMissing: true,
         });
       }
+      // ESKI SUNUCULAR (2026-11-12): envanterde yok + 14+ gundur gorulmedi -> gizlenir.
+      const es = await eskiSunucu.suzgec(req);
       res.json({
         ok: true,
-        hosts,
+        hosts: es.ayir(hosts),
         consoleDir: consoleDir(),
         inventoryError: invError,
         seenAt: seenMap().at,
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -1073,15 +1174,17 @@ function initNginxConsole(app) {
   });
 
   // Ayni dosya farkli sunucularda: (host -> sha) — "bu dosya hangi sunucuda farkli?"
-  router.get('/compare', (req, res) => {
+  router.get('/compare', async (req, res) => {
     const p = String(req.query.path || '');
     const hostsParam = String(req.query.hosts || '');
+    // Acik host listesi verilmisse oldugu gibi; varsayilan liste eski sunuculari dusurur.
+    const es = await eskiSunucu.suzgec(req);
     const hosts = hostsParam
       ? hostsParam
           .split(',')
           .map((h) => h.trim().toUpperCase())
           .filter((h) => HOST_RE.test(h))
-      : listDumpedHosts().map((d) => d.host);
+      : es.ayir(listDumpedHosts()).map((d) => d.host);
     const rows = [];
     for (const h of hosts) {
       const d = loadDump(h);
@@ -1097,13 +1200,15 @@ function initNginxConsole(app) {
     }
     const groups = new Map();
     for (const r of rows) if (r.exists) groups.set(r.sha256, (groups.get(r.sha256) || 0) + 1);
-    res.json({ ok: true, path: p, rows, variants: groups.size });
+    res.json({ ok: true, path: p, rows, variants: groups.size, eskiGizli: es.bilgi() });
   });
 
   // Sertifika envanteri (tum dokumler; ?host= ile tek sunucu)
-  router.get('/certs', (req, res) => {
+  router.get('/certs', async (req, res) => {
     const only = String(req.query.host || '').toUpperCase();
-    const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);
+    // aggregateCerts'ten ONCE suzulur: ozet sayilari gizlenen sunucuyu icermesin.
+    const es = await eskiSunucu.suzgec(req);
+    const hosts = only ? [only] : es.ayir(listDumpedHosts()).map((d) => d.host);
     const dumps = hosts
       .map(loadSummary)
       .filter(Boolean)
@@ -1132,6 +1237,7 @@ function initNginxConsole(app) {
         unused: certs.filter((c) => c.loadedUseCount === 0).length,
         generatedAt: new Date(now).toISOString(),
       },
+      eskiGizli: es.bilgi(),
     });
   });
 
@@ -1143,9 +1249,12 @@ function initNginxConsole(app) {
   router.get('/ratelimit', async (req, res) => {
     try {
       const { loadRateLimits } = require('./ratelimit.cjs');
-      res.json(
-        await loadRateLimits({ scanDate: String(req.query.scanDate || '').trim() || undefined }),
-      );
+      const es = await eskiSunucu.suzgec(req);
+      const data = await loadRateLimits({
+        scanDate: String(req.query.scanDate || '').trim() || undefined,
+        suz: (rows) => es.ayir(rows),
+      });
+      res.json({ ...data, eskiGizli: es.bilgi() });
     } catch (err) {
       // Tablo yoksa ekran calismaya devam etsin ama SEBEBI soylesin: "limit yok" ile
       // "tarama hic kosmadi" ayri seylerdir.
@@ -1169,8 +1278,10 @@ function initNginxConsole(app) {
   router.get('/ratelimit.csv', async (req, res) => {
     try {
       const { loadRateLimits, toCsv } = require('./ratelimit.cjs');
+      const es = await eskiSunucu.suzgec(req);
       const data = await loadRateLimits({
         scanDate: String(req.query.scanDate || '').trim() || undefined,
+        suz: (rows) => es.ayir(rows),
       });
       const ad = `nginx-rate-limit-${data.scanDate || 'bos'}.csv`;
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -1195,7 +1306,8 @@ function initNginxConsole(app) {
       const env = String(req.query.env || '')
         .trim()
         .toLowerCase();
-      const hosts = inv.filter(
+      const es = await eskiSunucu.suzgec(req);
+      const hosts = es.ayir(inv).filter(
         (h) =>
           (!svc ||
             (h.services || []).map((x) => x.toUpperCase()).includes(svc) ||
@@ -1216,6 +1328,7 @@ function initNginxConsole(app) {
           ...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase()))),
         ].sort(),
         generatedAt: new Date().toISOString(),
+        eskiGizli: es.bilgi(),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -1246,9 +1359,10 @@ function initNginxConsole(app) {
   router.get('/spa-discovery', spaCache.middleware, spaKesfiUcu);
   router.get('/spa-discovery/rp', spaRpAyrintiUcu);
 
-  router.get('/orphans', (req, res) => {
+  router.get('/orphans', async (req, res) => {
     const only = String(req.query.host || '').toUpperCase();
-    const hosts = only ? [only] : listDumpedHosts().map((d) => d.host);
+    const es = await eskiSunucu.suzgec(req);
+    const hosts = only ? [only] : es.ayir(listDumpedHosts()).map((d) => d.host);
     const now = Date.now();
     const rows = hosts
       .map(loadSummary)
@@ -1267,6 +1381,7 @@ function initNginxConsole(app) {
         ssl: rows.reduce((a, r) => a + r.ssl.length, 0),
         generatedAt: new Date(now).toISOString(),
       },
+      eskiGizli: es.bilgi(),
     });
   });
 
@@ -1571,7 +1686,11 @@ function initNginxConsole(app) {
         source: req.query.source ? String(req.query.source) : undefined,
         since: req.query.since ? new Date(String(req.query.since)) : undefined,
       });
-      res.json({ ok: true, changes: rows });
+      // Tek host istenmisse (sunucu gecmisi) oldugu gibi; filo listesi eski sunuculari dusurur.
+      // Sonradan suzulur: eski sunucunun degisiklikleri tanim geregi 14+ gun once oldugu icin
+      // "son N degisiklik" listesinin kuyrugundadir; liste N'den biraz kisa donebilir.
+      const es = await eskiSunucu.suzgec(req);
+      res.json({ ok: true, changes: req.query.host ? rows : es.ayir(rows), eskiGizli: es.bilgi() });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -1587,6 +1706,12 @@ function initNginxConsole(app) {
         .json({ ok: false, message: 'İçerik depoda yok (512 KB üstü ya da geçmiş öncesi).' });
     res.json({ ok: true, sha256: sha, content });
   });
+
+  // -- ESKI SUNUCU TEMIZLIGI (kullanici, 2026-11-12) - yalniz Admin ----------------------
+  // ADMIN_DISI_OKUMA'da DEGIL (router kapisi Admin olmayani zaten durdurur) ve ayrica
+  // requireAdmin. Ayrinti: eski-sunucu.cjs.
+  router.get('/eski-sunucular', requireAdmin, eskiAdaylarUcu);
+  router.post('/eski-sunucular/temizle', requireAdmin, eskiTemizleUcu);
 
   // Canli job durumu + stdout (JobTracker penceresi)
   router.get('/job-status/:serverId/:jobId', async (req, res) => {
@@ -1642,6 +1767,11 @@ module.exports = {
   ALLOWED_PATH_RE,
   HOST_RE,
   consoleDir,
+  rawDir,
+  listDumpedHosts,
+  seenMap,
+  _unutHost: unutHost,
+  _eskiUclariForTest: { adaylar: eskiAdaylarUcu, temizle: eskiTemizleUcu },
   _loadDumpForTest: loadDump,
   _loadFullForTest: loadFull,
   _loadSummaryForTest: loadSummary,

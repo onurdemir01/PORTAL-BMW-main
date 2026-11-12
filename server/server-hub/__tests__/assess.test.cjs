@@ -136,6 +136,10 @@ test('SH3: bulgu kodlari ve siddet: REBOOT_RISK danger, RETIRE_CANDIDATE warning
   // v2-guvenlik.test.cjs D1-C04'te sinanir.
   assert.equal(codes.RETIRE_CANDIDATE.fix, null);
   assert.equal(codes.RETIRE_CANDIDATE.retireBlock, 'LEGACY');
+  // FAZ 1 (2026-11-11): ayni engel JVM'e yazilir; Retirement Analizi (senaryo RETIRE_ENGELI) onu okur.
+  const eskiJvm = app.jvms.find((j) => j.retireEngeli);
+  assert.ok(eskiJvm, 'retire engeli JVM uzerinde yok (Analiz goremez)');
+  assert.equal(eskiJvm.retireEngeli.kod, 'LEGACY');
   assert.equal(codes.RESTART_REQUIRED.severity, 'warning');
   // OLCUT YALNIZ start.sh (2026-10-06): fixture'daki fark functions.sh'ta, yani olcut
   // disinda -> warning INIT_DIFF degil info INIT_DIFF_OLCUT_DISI. Olcut dosyasinin kendi
@@ -822,6 +826,29 @@ test('KP4 JVM: envanter (MWAppsInventory) vs taramadan GELEN', () => {
   assert.equal(c.jvm.scanned, 1, 'taramadan gelen JVM sayisi yanlis');
   // Envanterden TAMAMLANAN satirlar "cekildi" sayilmaz - odunc alinmis bilgidir.
   assert.equal(typeof c.jvm.fromInventory, 'number');
+});
+
+test('KP4b JVM veri cekilen envanteri ASAMAZ: fazlasi ve envanter disi ayri sayilir (%108, 2026-11-11)', () => {
+  const jvm = (host, ad) => ({ host, gen: 7, jvm: ad, running: 1, auto_start: 'true', server_state: 'running', ports: '' });
+  const d = {
+    ...KP_DATA,
+    jvms: [
+      jvm('GBAPP01', 'app1'),
+      jvm('GBAPP01', 'app1b'),
+      jvm('GBAPP01', 'app1c'),
+      jvm('GBEKSTRA', 'x1'),
+      jvm('GBEKSTRA', 'x2'),
+    ],
+  };
+  const c = assess(d).summary.scanCoverage.jvm;
+  assert.equal(c.inventory, 4);
+  assert.equal(c.scanned, 1, 'GBAPP01 envanterde 1 JVM: fazlasi veri cekilen sayilmamali');
+  assert.ok(c.scanned <= c.inventory, 'kapsama %100u asti');
+  assert.equal(c.scannedOverInventory, 2, 'envanterden fazla bulunan JVM sayilmiyor');
+  assert.equal(c.scannedNotInInventory, 2, 'envanterde JBoss olmayan sunucunun JVMleri ayri sayilmiyor');
+  assert.equal(c.scannedNotInInventoryHosts, 1);
+  assert.equal(c.scannedTotal, 5);
+  assert.equal(c.scannedTotal, c.scanned + c.scannedOverInventory + c.scannedNotInInventory, 'ozdeslik bozuk');
 });
 
 test('KP5 ESKI `coverage` alani EZILMEDI (ekranin urun kartlari ona bagli)', () => {

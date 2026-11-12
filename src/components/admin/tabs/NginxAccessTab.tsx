@@ -23,7 +23,7 @@ const TAB_LABELS: Record<string, string> = {
   api: 'API Envanteri',
   envanter: 'Envanter',
   audit: 'Audit',
-  spadiscovery: 'Gerçek SPA Keşfi',
+  spadiscovery: 'SPA Uygulamaları',
   // Yuk Testi (2026-10-27): sekme acilan Admin olmayan kullanici sonuclari okur; kosu baslatamaz.
   yuktesti: 'Yük Testi',
 };

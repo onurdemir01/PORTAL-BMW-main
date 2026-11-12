@@ -421,12 +421,14 @@ export default function ArkSpaRaporuPage() {
             </tr>
           </thead>
           <tbody>
-            {satirlar.map((r, i) => {
+            {satirlar.map((r) => {
               const k = satirAnahtari(r);
               const b = r.inUse ? BEYAN[r.inUse] : null;
               const devralinan = r.inUseScope === 'application';
               return (
-                <tr key={i} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                // ANAHTAR SATIR KIMLIGI (2026-11-12): sira numarasi suzgec degisince baska satira
+                // kayiyordu; acik secim/not yanlis satirda kalabilirdi.
+                <tr key={k} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
                   <td className="px-2 py-1">
                     <select
                       value={r.inUse || ''}

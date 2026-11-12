@@ -42,13 +42,13 @@ export default function NginxSpaBirlesik({ kapsamGorunur, kesifGorunur }: Props)
   const bolumler: { id: Bolum; label: string; aciklama: string; gorunur: boolean }[] = [
     {
       id: 'kesif',
-      label: 'Gerçek SPA Keşfi',
-      aciklama: 'Pod içinde nginx process ölçümü — uygulama GERÇEKTEN SPA mı',
+      label: 'Uygulamalar',
+      aciklama: 'OpenShift (ARK) SPA uygulamaları — pod içinde nginx ölçümü, istek ve reverse proxy durumu',
       gorunur: kesifGorunur,
     },
     {
       id: 'kapsam',
-      label: 'Kapsam & Taşıma',
+      label: 'Ortamlar ve Taşıma',
       aciklama: 'Dev/Test/QA/Prod kapsam barları, route istatistikleri ve Production Taşımaları',
       gorunur: kapsamGorunur,
     },

@@ -45,6 +45,9 @@ interface Props {
    *  yani bileşen içi bir ref her turda sıfırlanıp korumayı ETKİSİZ bırakıyordu.
    *  Anahtar `<clusterKey>|<namespace>`, değer tarama zamanı. */
   autoScanMemo?: Map<string, number>;
+  /** Arama kutusunun ilk değeri (Application Hub derin bağlantısı). Yalnız doldurur; seçim
+   *  ve sepete ekleme yine kullanıcının elindedir. */
+  initialSearch?: string;
   busy?: boolean;
 }
 
@@ -169,8 +172,9 @@ const AppNameStep: React.FC<Props> = ({
   busy,
   submitLabel,
   autoScanMemo,
+  initialSearch,
 }) => {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch ?? '');
   const [items, setItems] = useState<OcpAppItem[]>([]);
   const [cache, setCache] = useState<{
     fetchedAt: string | null;

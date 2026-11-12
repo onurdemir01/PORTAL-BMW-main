@@ -15,7 +15,7 @@
     { "no": 11, "tur": "serbest", "girdi": "\"password\" => \"DmrSecret1\"", "beklenen": "\"password\" => \"***\"" },
     { "no": 12, "tur": "serbest", "girdi": "passport-be.bmw.de:8443", "beklenen": "passport-be.bmw.de:8443" },
     { "no": 13, "tur": "alan", "girdi": "x.password=<TAB>NEXTFIELD", "beklenen": "x.password=<TAB>NEXTFIELD" },
-    { "no": 14, "tur": "jvm_args", "girdi": "-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Djavax.net.ssl.trustStorePassword=t", "beklenen": "-Xmx2g -Dfoo.bar=*** -Djboss.node.name=n1 -Djavax.net.ssl.trustStorePassword=***" },
+    { "no": 14, "tur": "jvm_args", "girdi": "-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Djavax.net.ssl.trustStorePassword=t", "beklenen": "-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Djavax.net.ssl.trustStorePassword=***" },
     { "no": 15, "tur": "serbest", "girdi": "x password=\"S3cr3t\" y", "beklenen": "x password=\"***\" y" },
     { "no": 16, "tur": "serbest", "girdi": "<secret value=\"abc\"/>", "beklenen": "<secret value=\"***\"/>" },
     { "no": 17, "tur": "serbest", "girdi": "<password>abc</password>", "beklenen": "<password>***</password>" },
@@ -29,8 +29,8 @@
     { "no": 25, "tur": "jvm_args", "girdi": "-Djboss.APİ_KEY=abc APİ_KEY=abc", "beklenen": "-Djboss.APİ_KEY=*** APİ_KEY=***" },
     { "no": 26, "tur": "jvm_arg_diff", "girdi": "reason=CLI_FAIL password=x", "beklenen": "reason=CLI_FAIL password=***" },
     { "no": 27, "tur": "jvm_arg_diff", "girdi": "k running=password=x configured=y", "beklenen": "k running=*** configured=*** (farkli)" },
-    { "no": 28, "tur": "jvm_arg_diff", "girdi": "garbage token=abc", "beklenen": "garbage ***" },
-    { "no": 29, "tur": "jvm_arg_diff", "girdi": "partial; -Dfoo.bar running=a configured=b; -Djboss.node.name running=n1 configured=n2; -Dzz.token running=t1 configured=t2 ...+3", "beklenen": "partial; -Dfoo.bar running=*** configured=*** (farkli); -Djboss.node.name running=n1 configured=n2; -Dzz.token running=*** configured=*** (farkli) ...+3" },
+    { "no": 28, "tur": "jvm_arg_diff", "girdi": "garbage token=abc", "beklenen": "garbage token=***" },
+    { "no": 29, "tur": "jvm_arg_diff", "girdi": "partial; -Dfoo.bar running=a configured=b; -Djboss.node.name running=n1 configured=n2; -Dzz.token running=t1 configured=t2 ...+3", "beklenen": "partial; -Dfoo.bar running=a configured=b; -Djboss.node.name running=n1 configured=n2; -Dzz.token running=*** configured=*** (farkli) ...+3" },
     { "no": 30, "tur": "jvm_arg_diff", "girdi": "-Xfoo running=password=x configured=y", "beklenen": "-Xfoo running=password=*** configured=y" },
     { "no": 31, "tur": "jvm_arg_diff", "girdi": "-Djboss.APİ_KEY running=a configured=b", "beklenen": "-Djboss.APİ_KEY running=*** configured=*** (farkli)" },
     { "no": 32, "tur": "serbest", "girdi": "app😀/Parola9@dbhost", "beklenen": "app😀/***@dbhost" },
@@ -38,9 +38,12 @@
     { "no": 34, "tur": "serbest", "girdi": "<password value=\"abc\"/>", "beklenen": "<password value=\"***\"/>" },
     { "no": 35, "tur": "jvm_arg_diff", "girdi": "-Ddb.password running=a; b configured=c; d", "beklenen": "-Ddb.password ***; ***; ***" },
     { "no": 36, "tur": "jvm_arg_diff", "girdi": "-Ddb.password running=Gizli1; configured=Yeni3", "beklenen": "-Ddb.password ***; ***" },
-    { "no": 37, "tur": "jvm_arg_diff", "girdi": "-Dfoo  running=abc configured=def", "beklenen": "-Dfoo ***" },
+    { "no": 37, "tur": "jvm_arg_diff", "girdi": "-Dfoo  running=abc configured=def", "beklenen": "-Dfoo  running=abc configured=def" },
     { "no": 38, "tur": "jvm_arg_diff", "girdi": "-Dapp.secret running=a configured=b; c", "beklenen": "-Dapp.secret running=*** configured=*** (farkli); ***" },
     { "no": 39, "tur": "jvm_arg_diff", "girdi": "-Djboss.node.name running=n1; token=t1 x; y", "beklenen": "-Djboss.node.name running=n1; token=*** ***; ***" },
-    { "no": 40, "tur": "jvm_arg_diff", "girdi": "-Dapp.secret running=a configured=b; -Djava.home running=/a configured=/b; token=t2; c; -Dk.pwd running=d configured=e; -Xmx running=1g configured=2g;  g", "beklenen": "-Dapp.secret running=*** configured=*** (farkli); -Djava.home running=/a configured=/b; token=***; c; -Dk.pwd running=*** configured=*** (farkli); -Xmx running=1g configured=2g;  ***" }
+    { "no": 40, "tur": "jvm_arg_diff", "girdi": "-Dapp.secret running=a configured=b; -Djava.home running=/a configured=/b; token=t2; c; -Dk.pwd running=d configured=e; -Xmx running=1g configured=2g;  g", "beklenen": "-Dapp.secret running=*** configured=*** (farkli); -Djava.home running=/a configured=/b; token=***; c; -Dk.pwd running=*** configured=*** (farkli); -Xmx running=1g configured=2g;  g" },
+    { "no": 41, "tur": "jvm_args", "girdi": "-Ddb.url=jdbc:oracle://usr:Gizli1@h:1521/x -Dapp.ortam=prod -Dconn=usr/Parola9@db", "beklenen": "-Ddb.url=jdbc:oracle://usr:***@h:1521/x -Dapp.ortam=prod -Dconn=usr/***@db" },
+    { "no": 42, "tur": "jvm_arg_diff", "girdi": "-Ddb.url running=jdbc://u:pw1@h configured=jdbc://u:pw2@h; -Dapp.ortam running=test configured=prod", "beklenen": "-Ddb.url running=*** configured=*** (farkli); -Dapp.ortam running=test configured=prod" },
+    { "no": 43, "tur": "jvm_args", "girdi": "-Dhttp.proxy=http://u:p@px:8080 -Dhttps.proxyPassword=pp -Dfeature.flag=on", "beklenen": "-Dhttp.proxy=http://u:***@px:8080 -Dhttps.proxyPassword=*** -Dfeature.flag=on" }
   ]
 }

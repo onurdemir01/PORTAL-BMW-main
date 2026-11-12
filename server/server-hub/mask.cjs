@@ -104,36 +104,15 @@ const DERLI = DESENLER.map((d) => ({ re: new RegExp(d.desen, 'gi'), yerine: d.ye
 const KEY_RE = new RegExp(KEY_KATLI, 'i');
 
 /**
- * jvm_args beyaz listesi (sozlesmede DONUK; genisletme yalniz sozlesme surumuyle).
- * -D anahtari bu oneklerden biriyle basliyor VE anahtar ERE'sine uymuyorsa deger acik kalir.
+ * -D anahtarinin degeri acik kalabilir mi: YALNIZ sir anahtari ERE'sine uyan gizlenir.
+ * KURAL DEGISTI (kullanici karari, 2026-11-12: "yalniz parolalar gizli"): eskiden onek beyaz listesi
+ * (java./jboss./sun. ...) disindaki HER -D degeri '***' oluyordu (-Dapp.ortam=*** gibi). Simdi sir
+ * adli olmayan her deger acik. Serbest metin desenleri (R1-R8: kullanici:parola@, password="...",
+ * XML <password>) DEGISMEDI. Ayni karar: server_hub_loader.py _gizli_anahtar, server_hub_scan.sh
+ * acik(), ear_tara.py jvm_deger_acik (ortak vakalar birebir).
  */
-const BEYAZ_LISTE = Object.freeze([
-  'java.',
-  'javax.management.',
-  'sun.',
-  'jboss.',
-  'org.jboss.',
-  'org.wildfly.',
-  'file.encoding',
-  'user.timezone',
-  'user.language',
-  'user.country',
-  'user.region',
-  'logging.configuration',
-  'java.util.logging.manager',
-  'com.sun.management.jmxremote.port',
-  'com.sun.management.jmxremote.ssl',
-  'com.sun.management.jmxremote.authenticate',
-  'networkaddress.cache.ttl',
-  'jdk.tls.client.protocols',
-  'https.protocols',
-]);
-
-/** -D anahtarinin degeri acik kalabilir mi: once ERE (sir), sonra beyaz liste. */
 function degerAcik(anahtar) {
-  const k = String(anahtar || '');
-  if (KEY_RE.test(k)) return false;
-  return BEYAZ_LISTE.some((p) => k.startsWith(p));
+  return !KEY_RE.test(String(anahtar || ''));
 }
 
 function maskAlan(alan) {
@@ -171,7 +150,9 @@ function maskJvmArgs(s) {
         const eq = tok.indexOf('=');
         if (eq < 0) return tok;
         const anahtar = tok.slice(2, eq);
-        return degerAcik(anahtar) ? tok : `-D${anahtar}=***`;
+        // ACIK deger de serbest metin maskesinden gecer (2026-11-12): beyaz liste kalkinca sir adli
+        // olmayan anahtarin DEGERINDEKI sir ('-Ddb.url=jdbc://u:parola@h') acik kalirdi.
+        return degerAcik(anahtar) ? maskText(tok) : `-D${anahtar}=***`;
       }
       return maskText(tok);
     })
@@ -228,7 +209,10 @@ function maskJvmArgDiff(s) {
       const anahtar = m[1];
       devam = false;
       if (anahtar.startsWith('-X')) return maskText(oge);
-      if (degerAcik(dAdi(anahtar))) return oge;
+      // Acik anahtarli oge: degerinde HERHANGI bir sir deseni gorulurse (maskText bir sey degistirdi)
+      // oge TAMAMEN gizlenir - 'k running=password=X configured=Y' ogesinde Y de paroladir ve desen
+      // onu tanimaz (2026-11-12, beyaz liste kalkinca).
+      if (degerAcik(dAdi(anahtar)) && maskText(oge) === oge) return oge;
       devam = true;
       return `${anahtar} running=*** configured=*** (farkli)`;
     }
@@ -248,7 +232,6 @@ module.exports = {
   KATLAMA,
   katla,
   DESENLER,
-  BEYAZ_LISTE,
   maskText,
   maskJvmArgs,
   maskJvmArgDiff,
