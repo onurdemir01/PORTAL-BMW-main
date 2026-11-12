@@ -35,3 +35,18 @@ test('NA3 hareket azaltma tercihi gecisi kapatir', () => {
   const css = oku('index.css');
   assert.match(css, /@media \(prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{[\s\S]*?transition-duration: 0\.001ms !important;/);
 });
+
+// NA4 (2026-11-08): ortak Modal aniden beliriyordu. Ortu solar, panel hafif buyur; ikisi de kisa
+// ve hareket azaltma tercihinde genel kural (animation-duration) sureyi sifirlar.
+test('NA4 modal acilis hareketi hafif ve hareket azaltmaya bagli', () => {
+  const M = oku('components/common/Modal.tsx');
+  assert.match(M, /className="fixed inset-0 z-\[1000\][^"]*\banimate-fade-in\b/, 'ortu animasyonsuz');
+  assert.match(M, /\$\{SIZE_MAP\[size\]\}[^`]*\banimate-scale-in\b/, 'panel animasyonsuz');
+  const A = oku('styles/animations.css');
+  for (const ad of ['fade-in', 'scale-in']) {
+    const m = new RegExp(`\\.animate-${ad}\\s*\\{ animation: \\w+ (\\d*\\.?\\d+)s`).exec(A);
+    assert.ok(m, `.animate-${ad} tanimsiz`);
+    assert.ok(Number(m[1]) < 0.3, `.animate-${ad} cok uzun: ${m[1]}s`);
+  }
+  assert.match(oku('index.css'), /prefers-reduced-motion: reduce\) \{\s*\*, \*::before, \*::after \{\s*animation-duration: 0\.001ms !important;/);
+});
