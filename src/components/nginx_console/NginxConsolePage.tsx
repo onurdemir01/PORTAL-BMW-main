@@ -31,6 +31,8 @@ import { RateLimitTab } from './RateLimitTab';
 import { RvpSecimTab } from './RvpSecimTab';
 import { YukTestiTab } from './YukTestiTab';
 import { SourceNote, type SourceKey } from './SourceNote';
+import { EskiSunucuNotu, EskiSunucuTemizligi } from './EskiSunucular';
+import type { EskiKaynak } from '@/api/nginxEskiSunucuApi';
 // DENETIM'DEN TASINDI (kullanici, 2026-09-22): "Denetim'deki tum nginx sayfalarini Nginx Hub'a
 // gom." Bilesenler yerinde kaldi (denetim/), yalniz sekme burada. Denetim'de artik nginx sekmesi yok.
 import { NGINX_DENETIM_HELP } from '@/components/DenetimPage';
@@ -202,6 +204,12 @@ export default function NginxConsolePage() {
     dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
     orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', yuktesti: 'yuktesti', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
   };
+  // ESKI SUNUCU NOTU (2026-11-12): sekmenin verisini getiren uc(lar) kac eski sunucuyu gizledi.
+  const ESKI_KAYNAK: Record<Tab, readonly EskiKaynak[]> = {
+    dashboard: ['hosts'], instances: ['hosts'], config: ['hosts'], changes: ['changes'], certs: ['certs'],
+    orphans: ['orphans'], drift: ['drift'], audit: ['audit'], cis: ['cis'], ratelimit: ['ratelimit'], rvpsecim: [],
+    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter'],
+  };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
     const times = hosts.map((h) => h.seenAt || h.dumpedAt).filter(Boolean) as string[];
@@ -245,12 +253,15 @@ export default function NginxConsolePage() {
       {visibleIds.includes(tab) && (
         <SourceNote source={SOURCE_OF[tab]} scanDate={SOURCE_OF[tab] === 'console' && !hostsErr ? lastDump : undefined} />
       )}
+      {visibleIds.includes(tab) && <EskiSunucuNotu kaynaklar={ESKI_KAYNAK[tab]} />}
       {(tab === 'dashboard' || tab === 'instances') && hostsErr ? (
         <LoadError compact title="Nginx sunucu listesi okunamadı" message={hostsErr} onRetry={loadHosts} retrying={hostsLoading} testId="nc-hosts-hata" />
       ) : (
         <>
           {tab === 'dashboard' && canSee('tab:nginx:dashboard') && <DashboardTab hosts={hosts} onGo={(t, h) => go(t, h)} />}
           {tab === 'instances' && canSee('tab:nginx:instances') && <InstancesTab hosts={hosts} loading={hostsLoading} onRefreshHosts={isAdmin ? refreshHosts : undefined} onOpen={(h) => go('config', h)} onReload={loadHosts} />}
+          {/* Eski sunucu temizligi (2026-11-12): yalniz Admin; sunucu da requireAdmin ile kapali. */}
+          {tab === 'instances' && isAdmin && canSee('tab:nginx:instances') && <EskiSunucuTemizligi />}
         </>
       )}
       {tab === 'config' && canSee('tab:nginx:config') && <ConfigTab isAdmin={isAdmin} initialHost={focusHost} />}

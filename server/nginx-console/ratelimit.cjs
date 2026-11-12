@@ -134,7 +134,7 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   return { durum, eksikler, farklar };
 }
 
-async function loadRateLimits({ scanDate } = {}) {
+async function loadRateLimits({ scanDate, suz } = {}) {
   const { query, sql } = require('../inventory/mssql.cjs');
 
   const dRes = await query(
@@ -246,7 +246,9 @@ async function loadRateLimits({ scanDate } = {}) {
   }
   for (const [host] of durumlar) if (!byHost.has(host)) al(host);
 
-  const hosts = [...byHost.values()].map((h) => {
+  // suz: eski (kapatilmis) sunuculari ozetten ONCE duser (eski-sunucu.cjs; Nginx Hub).
+  const tumHosts = [...byHost.values()];
+  const hosts = (typeof suz === 'function' ? suz(tumHosts) : tumHosts).map((h) => {
     const d = durumlar.get(String(h.host || '').toUpperCase()) || null;
     const st = hostStatus(h, olculdu, d ? d.durum : null);
     return {

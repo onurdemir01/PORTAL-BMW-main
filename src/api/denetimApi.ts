@@ -1,6 +1,7 @@
 // src/api/denetimApi.ts — "Denetim" sayfasinin veri istemcisi
 // (bkz. server/audit/denetim.cjs).
 import { safeJson } from './http';
+import { eskiGizliKaydet } from './nginxEskiSunucuApi';
 
 const BASE = '/api/denetim';
 
@@ -1285,21 +1286,25 @@ export const denetimApi = {
     ),
 
   nginxInventory: (): Promise<NginxInventoryResult> =>
-    fetch(`${BASE}/nginx-inventory`).then(safeJson),
+    fetch(`${BASE}/nginx-inventory`).then(safeJson).then(eskiGizliKaydet('envanter')),
 
   nginxApiLocations: (scanDate?: string): Promise<NginxApiLocationsResult> =>
     fetch(
       `${BASE}/nginx-api-locations${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`,
-    ).then(safeJson),
+    )
+      .then(safeJson)
+      .then(eskiGizliKaydet('apiLocations')),
 
   nginxApi: (scanDate?: string): Promise<NginxApiResult> =>
-    fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
-      safeJson,
-    ),
+    fetch(`${BASE}/nginx-api${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('api')),
 
   // fresh=true: sunucu onbellegini atla (Yenile dugmesi). Varsayilan: 60 sn onbellek.
   nginxAudit: (fresh = false): Promise<NginxAuditResult> =>
-    fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`).then(safeJson),
+    fetch(`${BASE}/nginx-audit${fresh ? '?fresh=1' : ''}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('audit')),
 
   nginxAuditExceptionSet: (
     host: string,
@@ -1346,7 +1351,9 @@ export const denetimApi = {
     if (scanDate) q.set('scanDate', scanDate);
     if (fresh) q.set('fresh', '1');
     const qs = q.toString();
-    return fetch(`${BASE}/nginx-spa${qs ? `?${qs}` : ''}`).then(safeJson);
+    return fetch(`${BASE}/nginx-spa${qs ? `?${qs}` : ''}`)
+      .then(safeJson)
+      .then(eskiGizliKaydet('spa'));
   },
 
   spaCoverage: (platform: string): Promise<SpaCoverageResult> =>
