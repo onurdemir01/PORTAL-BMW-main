@@ -89,6 +89,8 @@ const CALISMA_SCRIPTLERI = [
   'migrate',
   'db:seed',
   'playbook:rev',
+  // Deploy oncesi sunucuda ic servis sertifikalarini dener (docs/TLS-SETUP.md); dotenv disinda bagimlilik yok.
+  'tls:dene',
 ];
 
 /** Repo package.json'undan calisma zamani package.json'u. Saf islev. */
