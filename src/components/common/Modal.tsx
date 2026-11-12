@@ -141,10 +141,9 @@ export function Modal({ open, onClose, title, subtitle, icon: Icon, footer, size
             <button
               onClick={onClose}
               aria-label="Kapat"
-              className="ml-auto -mt-1 -mr-2 p-2 flex-shrink-0 transition-colors"
-              style={{ color: "var(--text-muted)" }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)"; }}
+              /* Hover CSS'te (G21): satir-ici `style.color` JS ile degistiriliyordu; klavye odagi
+                 hover rengini hic almiyordu. */
+              className="ml-auto -mt-1 -mr-2 p-2 flex-shrink-0 transition-colors rounded-[var(--radius-sm)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] focus-visible:text-[var(--text-primary)]"
             >
               <XMarkIcon className="w-5 h-5" />
             </button>

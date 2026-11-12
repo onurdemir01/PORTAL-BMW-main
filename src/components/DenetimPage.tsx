@@ -1157,6 +1157,7 @@ function OcpCoverage() {
       <div className="flex flex-wrap items-center gap-2">
         <Select
           sizeVariant="sm"
+          aria-label="Platform"
           value={platform}
           onChange={(e) => {
             setEnvFiltre({});
@@ -1175,6 +1176,7 @@ function OcpCoverage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="uygulama ara"
+            aria-label="Uygulama ara"
             className="pl-8 pr-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg w-56"
           />
         </div>
@@ -1235,7 +1237,9 @@ function OcpCoverage() {
       </div>
 
       {data && (
-        <div className="grid gap-3 md:grid-cols-4">
+        // Bes kutu `md:grid-cols-4` ile diziliyordu: besincisi alt satirda tek basina kaliyordu.
+        // Sutun sayisi kutu genisliginden: 1440 px'te tek satir, dar alanda (Taleplerim acik) sarar.
+        <div className="grid gap-3 grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]">
           <Stat n={data.totalApplications} l="toplam uygulama" />
           <Stat n={data.completeCount} l="tüm ortamlarda var" tone="ok" />
           <Stat

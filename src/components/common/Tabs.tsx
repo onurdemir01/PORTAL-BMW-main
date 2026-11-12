@@ -44,7 +44,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, nested = false, variant = "underline"
           className="ml-2 inline-flex items-center justify-center rounded-full px-2 text-[0.75rem]"
           style={{
             background: activeTab === index ? "var(--accent)" : "var(--border)",
-            color: activeTab === index ? "#fff" : "var(--text-secondary)",
+            color: activeTab === index ? "var(--text-on-accent)" : "var(--text-secondary)",
           }}
         >
           {tab.count}
