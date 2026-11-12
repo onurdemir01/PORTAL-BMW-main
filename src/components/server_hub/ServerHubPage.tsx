@@ -3945,7 +3945,9 @@ export function FindingsTab({
   useAsyncEffect(async () => {
     if (gorunur && shOnbellek.yas('findings') > shOnbellek.TAZE_MS) await load();
   }, [gorunur, load]);
-  const all = data?.findings || [];
+  // useMemo: `|| []` her render'da YENI dizi uretiyordu; asagidaki dort useMemo her seferinde
+  // yeniden hesaplaniyordu (react-hooks/exhaustive-deps).
+  const all = useMemo(() => data?.findings || [], [data?.findings]);
   const codes = useMemo(
     () =>
       [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort(),
