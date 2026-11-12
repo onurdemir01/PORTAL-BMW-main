@@ -1417,16 +1417,16 @@ const VAKALAR = JSON.parse(
 ).vakalar;
 const sekme = (s) => String(s).replace(/<TAB>/g, '\t');
 
-test('D1-C26 ortak 40 maske vakasi (14 sozlesme + M1-M3 + Unicode + jvm_arg_diff + EK-7.8) mask.cjs\'te birebir (G7)', () => {
+test('D1-C26 ortak 43 maske vakasi (14 sozlesme + M1-M3 + Unicode + jvm_arg_diff + EK-7.8 + acik -D degeri) mask.cjs\'te birebir (G7)', () => {
   assert.equal(
     VAKALAR.length,
-    40,
-    'ortak vaka listesi 40 degil (14 + M1-M3 5 + T2-M1 Unicode 8 + T2-M2 jvm_arg_diff 6 + R8a 1 + bicimsiz/devam 6)',
+    43,
+    'ortak vaka listesi 43 degil (14 + M1-M3 5 + T2-M1 Unicode 8 + T2-M2 jvm_arg_diff 6 + R8a 1 + bicimsiz/devam 6 + acik -D degerinde kimlik 3)',
   );
   assert.deepEqual(
     VAKALAR.map((v) => v.no),
-    Array.from({ length: 40 }, (_, i) => i + 1),
-    'vaka numaralari 1..40 sirali degil (TSV ile birebir karsilastirilir)',
+    Array.from({ length: 43 }, (_, i) => i + 1),
+    'vaka numaralari 1..43 sirali degil (TSV ile birebir karsilastirilir)',
   );
   const ISLEV = {
     serbest: mask.maskText,
@@ -1465,7 +1465,7 @@ test('D1-C15 hostDetail maskeli: note/detail/bulgu metni deseni, jvm_args BEYAZ 
         auto_start: 'true',
         server_state: 'running',
         ports: '8080',
-        jvm_args: '-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Ddb.password=gizli1',
+        jvm_args: '-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Ddb.password=gizli1 -Ddb.url=jdbc://u:gizli2@h',
       }),
     ],
     web: [W3(APP, 'IHS', { syntax: 'UNKNOWN', check_class: 'UNKNOWN', syntax_verification: 'NOT_VERIFIED', vhost_trust: 'NONE', detail: 'sozdizimi OLCULEMEDI: token: xyz' })],
@@ -1473,15 +1473,16 @@ test('D1-C15 hostDetail maskeli: note/detail/bulgu metni deseni, jvm_args BEYAZ 
   const h = sunucu(A(d), APP);
   const det = hostDetail(h);
   const json = JSON.stringify(det);
-  for (const sir of ['abc', 'xyz', 'baz', 'gizli1'])
+  for (const sir of ['abc', 'xyz', 'gizli1', 'gizli2'])
     assert.ok(!json.includes(sir), `ayrintida maskelenmemis sir: ${sir}`);
   assert.match(det.jboss[0].note, /keyStorePassword=\*\*\*/);
-  assert.equal(det.jvms[0].jvmArgs, '-Xmx2g -Dfoo.bar=*** -Djboss.node.name=n1 -Ddb.password=***');
+  // 2026-11-12 (yalniz parolalar gizli): sir adli olmayan -D acik, degerindeki kimlikli URL gizli
+  assert.equal(det.jvms[0].jvmArgs, '-Xmx2g -Dfoo.bar=baz -Djboss.node.name=n1 -Ddb.password=*** -Ddb.url=jdbc://u:***@h');
   // agir kolonlar ayri sorgudan (tek sunucu) gelirse de maskelenir
   const agir = new Map([['7|k1', { jvm_args: '-Dapp.encryption.key=K3y -Duser.timezone=UTC', jvm_arg_diff: '-Dfoo.bar running=a configured=b' }]]);
   const det2 = hostDetail(h, agir);
   assert.equal(det2.jvms[0].jvmArgs, '-Dapp.encryption.key=*** -Duser.timezone=UTC');
-  assert.equal(det2.jvms[0].jvmArgDiff, '-Dfoo.bar running=*** configured=*** (farkli)');
+  assert.equal(det2.jvms[0].jvmArgDiff, '-Dfoo.bar running=a configured=b');
   // bulgu listesi (Bulgular sekmesi) de maskeli metin tasir
   assert.ok(!JSON.stringify(flattenFindings([h])).includes('abc'));
   // hostDetail KENDI maskesini uygular (assess'ten bagimsiz ucuncu katman): ham sunucu nesnesi
@@ -1494,9 +1495,9 @@ test('D1-C15 hostDetail maskeli: note/detail/bulgu metni deseni, jvm_args BEYAZ 
     jvms: [
       {
         ...h.jvms[0],
-        jvmArgs: '-Dfoo=abc6',
-        configuredJvmArgs: '-Dbar=abc7',
-        jvmArgDiff: '-Dfoo running=abc8 configured=x',
+        jvmArgs: '-Dfoo.password=abc6',
+        configuredJvmArgs: '-Dbar.token=abc7',
+        jvmArgDiff: '-Dfoo.secret running=abc8 configured=x',
       },
     ],
   };
