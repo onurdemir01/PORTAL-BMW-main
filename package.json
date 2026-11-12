@@ -16,10 +16,12 @@
     "qa": "NODE_ENV=production node server/index.cjs qa",
     "prod": "NODE_ENV=production node server/index.cjs prod",
     "build": "vite build",
+    "paket": "node scripts/paket.cjs",
+    "guvenlik": "node scripts/guvenlik-denetim.cjs",
     "preview": "vite preview",
     "check:server": "tsc -p tsconfig.server-check.json --noEmit || true",
     "test": "node scripts/run-tests.cjs",
-    "lint": "eslint src/ server/ --max-warnings 112",
+    "lint": "eslint src/ server/ --max-warnings 107",
     "format": "prettier --write .",
     "test:ui": "vitest run",
     "lint:ascii": "node scripts/check-ascii.cjs",
@@ -50,7 +52,7 @@
     "compression": "^1.8.1",
     "dotenv": "^18.0.9",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.5.2",
+    "express-rate-limit": "^8.7.3",
     "express-session": "^1.19.0",
     "ldapts": "^9.2.0",
     "mssql": "^12.7.11",
@@ -58,11 +60,13 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.11.0",
-    "undici": "^7.29.1"
+    "semver": "^7.8.6",
+    "undici": "^7.30.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.1.18",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -84,10 +88,25 @@
     "lint-staged": "^17.4.1",
     "postcss": "^8.5.31",
     "prettier": "^3.9.6",
-    "semver": "^7.8.5",
     "tailwindcss": "^4.1.18",
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
     "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "compression": {
+      "debug": "^4.4.3"
+    },
+    "express-session": {
+      "debug": "^4.4.3"
+    },
+    "minimatch": "^11.0.5",
+    "@babel/core": {
+      "semver": "^7.8.5"
+    },
+    "@babel/helper-compilation-targets": {
+      "semver": "^7.8.5"
+    },
+    "uri-js": "npm:fast-uri@^3.1.9"
   }
 }

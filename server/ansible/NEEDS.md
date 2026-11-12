@@ -21,7 +21,7 @@ AWX_READ_ONLY_TEMPLATE_IDS=
 
 # Örnek:
 # AWX_URL=https://maestro2
-# AWX_TOKEN=eyJ0eXAiOiJKV1Q...
+# AWX_TOKEN=<AWX kisisel erisim belirteci>
 # AWX_READ_ONLY_TEMPLATE_IDS=101,102,103,104,105
 ```
 

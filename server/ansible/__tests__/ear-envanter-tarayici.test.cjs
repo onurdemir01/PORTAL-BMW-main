@@ -1315,7 +1315,7 @@ test('ET19 WAS JVM: server.xml jvmEntries heap / argumanlar / sistem ozellikleri
 </serverindex:ServerIndex>`,
   );
   const argumanlar = [
-    '-Xquickstart', '-XX:MaxMetaspaceSize=512m', '-Djava.awt.headless=true', '-Dapp.ortam=PROD_GIZLI_A',
+    '-Xquickstart', '-XX:MaxMetaspaceSize=512m', '-Djava.awt.headless=true', '-Dapp.ortam=PROD_ACIK_A',
     '-Djavax.net.ssl.keyStorePassword=GIZLI_B', '--password=GIZLI_C', '-javaagent:/opt/a.jar=token=GIZLI_D',
     '-Dbayrak',
   ].join(' ');
@@ -1326,7 +1326,7 @@ test('ET19 WAS JVM: server.xml jvmEntries heap / argumanlar / sistem ozellikleri
   <processDefinitions xmi:type="processexec:JavaProcessDef" executableName="\${JAVA_HOME}/bin/java">
     <jvmEntries initialHeapSize="512" maximumHeapSize="2048" debugArgs="-agentlib:jdwp=GIZLI_H" genericJvmArguments="${argumanlar}&#10;-Duser.timezone=Europe/Istanbul">
       <systemProperties name="java.security.policy" value="/opt/policy"/>
-      <systemProperties name="com.ibm.ozel" value="GIZLI_E"/>
+      <systemProperties name="com.ibm.ozel" value="ACIK_E"/>
       <systemProperties name="javax.net.ssl.trustStorePassword" value="GIZLI_F"/>
       <systemProperties name="jboss.AP&#304;_KEY" value="GIZLI_G"/>
       <systemProperties name="degersiz"/>
@@ -1341,15 +1341,17 @@ test('ET19 WAS JVM: server.xml jvmEntries heap / argumanlar / sistem ozellikleri
   const j1 = s('srv1').jvm;
   assert.equal(j1.durum, 'OKUNDU');
   assert.deepEqual([j1.ilk_heap_mb, j1.en_cok_heap_mb, j1.jvm_girisi], [512, 2048, 1]);
+  // MASKE KARARI (e97b2a6a, kullanici): yalniz ADI sir desenine uyan deger gizlenir. app.ortam ve
+  // com.ibm.ozel sir degil, acik kalir; GIZLI_* yalniz gercek sirlarda (asagidaki sizinti kontrolu).
   assert.equal(
     j1.jvm_argumanlari,
-    '-Xquickstart -XX:MaxMetaspaceSize=512m -Djava.awt.headless=true -Dapp.ortam=*** ' +
+    '-Xquickstart -XX:MaxMetaspaceSize=512m -Djava.awt.headless=true -Dapp.ortam=PROD_ACIK_A ' +
       '-Djavax.net.ssl.keyStorePassword=*** --password=*** -javaagent:/opt/a.jar=token=*** -Dbayrak ' +
       '-Duser.timezone=Europe/Istanbul',
   );
   assert.deepEqual(j1.sistem_ozellikleri, [
     { ad: 'java.security.policy', deger: '/opt/policy' },
-    { ad: 'com.ibm.ozel', deger: '***' },
+    { ad: 'com.ibm.ozel', deger: 'ACIK_E' },
     { ad: 'javax.net.ssl.trustStorePassword', deger: '***' },
     { ad: 'jboss.APİ_KEY', deger: '***' },
     { ad: 'degersiz', deger: null },

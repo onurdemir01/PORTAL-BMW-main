@@ -660,6 +660,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(within(pencere).getByRole('button', { name: 'İptal' })).toBeTruthy();
   });
 
+  // Tek basina ~3.2 sn (varsayilan sinir 5 sn): tam takim paralel kosarken sinir asiliyordu (2026-11-12).
   it('YT21 host seçici: hedefHost sorguda ve gövdede, IP adaylardan; paylaşılan VIP elle yazılınca ip_belirsiz; uygun:false düğmeyi kapatır', async () => {
     const BELIRSIZ = '10.1.2.4 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
     // B3'ten beri sunucu olculmus limit icin uygun:false DONMEZ; ekranin genel uygun:false yolu ornek bir nedenle sinanir.
@@ -715,7 +716,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     const once = api.ipSinifi.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: /Yeniden dene/ }));
     await waitFor(() => expect(api.ipSinifi.mock.calls.length).toBe(once + 1), SINIF_BEKLE);
-  });
+  }, 15000);
 
   it('YT22 wrk: SNI kapalı ve false, alanlar değişir, tavan satırı; gövdede motor wrk + bağlantılar (hizlar yok); onayda wrk yük satırı ve süre', async () => {
     const okKayit = tamamOnKontrol({

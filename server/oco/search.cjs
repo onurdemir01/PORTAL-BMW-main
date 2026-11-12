@@ -207,8 +207,8 @@ function aramaHatasi(statusCode, text, url, grup) {
 }
 
 /**
- * Grubun açtığı VE sorumlu olduğu TÜM OCO'ları çeker (iki sorgu, sayfalayarak), OCO numarasına
- * göre birleştirir ve kronolojik döndürür. fetchPage(skip, rol) testler içindir.
+ * Grubun actigi VE sorumlu oldugu TUM OCO'lari ceker (iki sorgu, sayfalayarak), OCO numarasina
+ * gore birlestirir ve kronolojik dondurur. fetchPage(skip, rol) testler icindir.
  * @returns {{ rows: object[], total: number, fetched: number, truncated: boolean,
  *   kaynak: object, eksik: {rol: string, message: string}[] }}
  */
@@ -256,7 +256,7 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
   return { rows, total: rows.length, fetched: rows.length, truncated, kaynak, eksik };
 }
 
-/** Tek sorgunun TÜM sayfaları. */
+/** Tek sorgunun TUM sayfalari. */
 async function tekSorgu(cek) {
   const rows = [];
   // OFSET HAM KAYIT SAYISIDIR, ekrana çıkan satır sayısı DEĞİL. `rows.length` kullanmak
