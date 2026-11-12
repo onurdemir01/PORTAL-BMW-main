@@ -67,6 +67,8 @@ const PLAYBOOKS = {
   // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR.
   // Hedefe tek `raw` (python3 -B - + heredoc); sonuc GBLABT02 uzerinden /sw'ye. AWX'e limit GITMEZ.
   earEnvanter: 'ear_envanter/ear_envanter.yml',
+  // Application Hub (2026-11-08): OpenShift canli okuma (bastion, salt okunur). Iki seviye derinlik.
+  appHubOcp: 'app_hub/app_hub_ocp.yml',
 };
 
 /** ScaleX AWX paketi — klasor olarak kopyalanir (tek dosya degil). */

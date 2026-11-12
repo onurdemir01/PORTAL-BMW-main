@@ -554,7 +554,7 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
-  assert.match(ui, /Bu süzgeçlerle uygulama yok; toplam/, 'bos gorunum sebebini soylemiyor');
+  assert.match(ui, /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/, 'bos gorunum sebebini soylemiyor');
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
   assert.match(ui, /a\.weakEvidence &&/, 'ad eslesmesi (zayif kanit) satirda isaretlenmiyor');
 });

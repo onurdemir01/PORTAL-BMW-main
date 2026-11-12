@@ -71,6 +71,8 @@ const TEST_DIRS = [
   'src/components/oco/__tests__',
   'src/components/opsx/__tests__',
   'src/components/server_hub/__tests__',
+  'src/components/app_hub/__tests__',
+  'src/components/bmw_hub/__tests__',
   'src/components/admin/__tests__',
   'src/components/admin/tabs/sistem/__tests__',
   'src/components/admin/tabs/logxv2/__tests__',
