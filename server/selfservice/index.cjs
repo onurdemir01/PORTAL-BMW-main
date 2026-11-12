@@ -30,9 +30,27 @@ function initSelfService(app) {
   try { router.use(require("../audit/index.cjs").auditMutations("selfservice")); } catch { /* audit yoksa yoksay */ }
 
   // Self Service sayfasi gizliyse gercek 403.
+  // SORGU UCLARI BMW HUB'DA DA (kullanici, 2026-11-12: "IP Sorgu ve OpenShift sorgu sekmelerini
+  // Otomasyon'dan alip BMW Hub'a tasiyalim"): bu uc salt okunur uc, Self Service YA DA BMW Hub sayfasini
+  // gorene acik. Ikisini de goremeyen 403; motor okunamazsa requireVisible'in fail-closed kurali gecerli.
   try {
-    const { requireVisiblePrefix } = require("../auth/visibility.cjs");
-    router.use(requireVisiblePrefix("Self Service"));
+    const { requireVisiblePrefix, requireVisible, canSee } = require("../auth/visibility.cjs");
+    const SORGU_UCLARI = ["/ip-check", "/server-ip-check", "/openshift-check"];
+    router.use(requireVisiblePrefix("Self Service", { exempt: SORGU_UCLARI }));
+    const selfService = requireVisible("Self Service");
+    router.use(async (req, res, next) => {
+      if (!SORGU_UCLARI.includes(req.path)) return next();
+      const { getRequestUser } = require("../auth/index.cjs");
+      const user = getRequestUser(req);
+      // Oturum yoksa ya da motor okunamazsa karar Self Service kapisinin (401 / fail-closed + Admin muaf).
+      if (!user) return selfService(req, res, next);
+      try {
+        if ((await canSee(user, "BmwHub")) || (await canSee(user, "Self Service"))) return next();
+        return res.status(403).json({ ok: false, error: "Bu kaynağa erişiminiz kapalı." });
+      } catch {
+        return selfService(req, res, next);
+      }
+    });
   } catch { /* motor yoksa yoksay */ }
 
   // ── SESSIZ KESME (2026-08-28) ────────────────────────────────────────────────

@@ -23,12 +23,9 @@ import {
   ArrowLeftIcon,
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
-  MagnifyingGlassIcon,
   CalendarDaysIcon,
   UserIcon,
   ChevronRightIcon,
-  GlobeAltIcon,
-  CubeIcon,
   CheckCircleIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
@@ -83,7 +80,7 @@ const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   },
 ];
 
-type TopTab = 'ansible' | 'ip' | 'openshift' | 'svc:new' | `svc:${string}`;
+type TopTab = 'ansible' | 'svc:new' | `svc:${string}`;
 
 // ── Survey Form Modal ─────────────────────────────────────────────────────────
 
@@ -1879,7 +1876,9 @@ export function ssSlug(title: string): string {
     .replace(/^-+|-+$/g, '') || 'servis';
 }
 
-const FIXED_SLUG: Record<string, string> = { ip: 'ip-sorgu', openshift: 'openshift-sorgu', 'svc:new': 'servis-ekle' };
+const FIXED_SLUG: Record<string, string> = { 'svc:new': 'servis-ekle' };
+// IP / OpenShift sorgulari BMW Hub'a tasindi (kullanici, 2026-11-12); eski yer imleri oraya yonlenir.
+const TASINAN_SLUG: Record<string, string> = { 'ip-sorgu': '/bmw-hub?sekme=ip', 'openshift-sorgu': '/bmw-hub?sekme=ocp' };
 
 export default function SelfServicePage() {
   const { user } = useAuth();
@@ -1925,8 +1924,6 @@ export default function SelfServicePage() {
   const ansibleGroup = groups.find((g) => g.groupKey === 'ansible');
   const ENTRIES: Record<string, { label: string; icon: React.ElementType; hint: string; muted?: boolean }> = {
     ansible: { label: `${ansibleGroup?.label || 'Ansible'} — tümü`, icon: CommandLineIcon, hint: 'Tanımlı Ansible servislerine genel bakış; her servis soldaki menüde ayrı bir giriştir.' },
-    ip: { label: 'IP Sorgu', icon: GlobeAltIcon, hint: 'Bir IP ya da sunucu adının envanterde neye karşılık geldiğini bulun.' },
-    openshift: { label: 'OpenShift Sorgu', icon: CubeIcon, hint: 'Namespace / uygulama envanterinde arama.' },
     'svc:new': { label: 'Servis Ekle', icon: PlusIcon, hint: 'AWX job template\'ini Portal\'a servis olarak tanımlayın; alanlar kayıttan sonra hemen düzenlenir.' },
   };
   // Her self servis ogesi menude ayri giris (2026-09-21, kullanici istegi)
@@ -1944,12 +1941,15 @@ export default function SelfServicePage() {
   const setActiveTop = (id: TopTab) => navigate(id === 'ansible' ? '/self-service' : `/self-service/${SLUG[id]}`);
   // Bilinmeyen/silinmis slug: sessizce "tumu"ne don (liste yuklendikten sonra)
   useEffect(() => {
+    if (slug && TASINAN_SLUG[slug]) {
+      navigate(TASINAN_SLUG[slug], { replace: true });
+      return;
+    }
     if (!loading && slug && !Object.values(SLUG).includes(slug)) navigate('/self-service', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, slug, ssItems.length]);
   const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
     { title: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, ids: ['ansible', ...svcIds, ...(isAdmin ? (['svc:new'] as TopTab[]) : [])] },
-    { title: 'Kontrol', icon: MagnifyingGlassIcon, ids: ['ip', 'openshift'] },
   ];
   const current = ENTRIES[activeTop] || ENTRIES.ansible;
   const isAnsibleView = activeTop === 'ansible' || activeTop.startsWith('svc:');
@@ -1970,7 +1970,7 @@ export default function SelfServicePage() {
         <div>
           <h1 className="page-title">Otomasyon</h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-            Ansible servisleri, IP ve OpenShift envanter kontrolü tek yerde.
+            Ansible servisleri. IP / sunucu ve OCP uygulama sorguları BMW Hub'da.
           </p>
         </div>
         <YardimDugmesi onClick={() => setShowHelp(true)} />
@@ -2043,8 +2043,6 @@ export default function SelfServicePage() {
                   onSelect={(id) => setActiveTop(id ? (`svc:${id}` as TopTab) : 'ansible')}
                 />
               )}
-              {activeTop === 'ip' && <IpCheckSection />}
-              {activeTop === 'openshift' && <OpenshiftCheckSection />}
             </div>
           </div>
         </section>

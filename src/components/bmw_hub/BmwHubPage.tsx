@@ -36,6 +36,8 @@ import { fmtDateTime, fmtRelative } from '@/utils/datetime';
 import RebootKontroluTab from '@/components/server_hub/RebootKontroluTab';
 import RetirementTab from '@/components/server_hub/RetirementTab';
 import { SekmeKabi } from '@/components/server_hub/sekmeGorunurlugu';
+import IpCheckSection from '@/components/self_service/IpCheckSection';
+import OpenshiftCheckSection from '@/components/self_service/OpenshiftCheckSection';
 
 type Gorunum = 'acik' | 'benim' | 'gecikmis' | 'sahipsiz' | 'kapali' | 'hepsi';
 type Duzen = 'liste' | 'pano';
@@ -932,7 +934,10 @@ function AcikIsler() {
 // altina bir sekme olarak alalim; Server Hub'i sadece envanterleme ve goruntuleme amacli kullaniyoruz."
 // Sekme URL'de (?sekme=), derin link ve geri tusu calisir. Ziyaret edilen sekme sokulmez, gizlenir
 // (Server Hub'daki SekmeKabi: gizli sekme yoklama yapmaz, pencere acmaz).
-type SekmeId = 'isler' | 'reboot' | 'retirement';
+// IP/Sunucu Sorgu ve OCP Uygulama Sorgu (kullanici, 2026-11-12): Otomasyon > Kontrol'den tasindi
+// (eski adlari IP Sorgu / OpenShift Sorgu). IP/Sunucu Sorgu, LB Suspend Exclude List AWX isinin Portal
+// karsiligini da tasir (sunucu adindan LB IP'leri).
+type SekmeId = 'isler' | 'reboot' | 'retirement' | 'ip' | 'ocp';
 const SEKMELER: { id: SekmeId; label: string; aciklama: string }[] = [
   { id: 'isler', label: 'Açık İşler', aciklama: 'Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor.' },
   {
@@ -944,6 +949,16 @@ const SEKMELER: { id: SekmeId; label: string; aciklama: string }[] = [
     id: 'retirement',
     label: 'Retirement',
     aciklama: 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.',
+  },
+  {
+    id: 'ip',
+    label: 'IP/Sunucu Sorgu',
+    aciklama: 'Bir IP ya da sunucu adının envanterde neye karşılık geldiğini bulun; sunucu adlarından LB\'de kullanılacak IP\'leri çıkarın (LB Suspend Exclude List kuralları, AWX işi başlatmadan).',
+  },
+  {
+    id: 'ocp',
+    label: 'OCP Uygulama Sorgu',
+    aciklama: 'OpenShift namespace / uygulama envanterinde arama.',
   },
 ];
 
@@ -1012,6 +1027,16 @@ export default function BmwHubPage() {
       {acilan.has('reboot') && (
         <SekmeKabi id="reboot" etkin={sekme}>
           <RebootKontroluTab />
+        </SekmeKabi>
+      )}
+      {acilan.has('ip') && (
+        <SekmeKabi id="ip" etkin={sekme}>
+          <IpCheckSection />
+        </SekmeKabi>
+      )}
+      {acilan.has('ocp') && (
+        <SekmeKabi id="ocp" etkin={sekme}>
+          <OpenshiftCheckSection />
         </SekmeKabi>
       )}
       {acilan.has('retirement') && (

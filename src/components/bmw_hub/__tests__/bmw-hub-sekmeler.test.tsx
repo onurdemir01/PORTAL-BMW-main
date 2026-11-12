@@ -112,3 +112,25 @@ describe('BS4 Server Hub kaynak kapıları', () => {
     );
   });
 });
+
+// BS5 (kullanici, 2026-11-12): IP Sorgu ve OpenShift Sorgu Otomasyon'dan BMW Hub'a tasindi;
+// adlari "IP/Sunucu Sorgu" ve "OCP Uygulama Sorgu". Otomasyon'da yoklar, eski yer imi yonlenir.
+vi.mock('@/components/self_service/IpCheckSection', () => ({ default: () => <div>IP_GOVDE</div> }));
+vi.mock('@/components/self_service/OpenshiftCheckSection', () => ({ default: () => <div>OCP_GOVDE</div> }));
+describe('BMW Hub — sorgu sekmeleri', () => {
+  it('BS5 IP/Sunucu Sorgu ve OCP Uygulama Sorgu sekmeleri; derin link açar', async () => {
+    kur('/bmw-hub?sekme=ip');
+    expect(await screen.findByText('IP_GOVDE')).toBeTruthy();
+    const sekmeler = screen.getAllByRole('tab').map((t) => t.textContent);
+    expect(sekmeler).toEqual(expect.arrayContaining(['IP/Sunucu Sorgu', 'OCP Uygulama Sorgu']));
+    fireEvent.click(screen.getByRole('tab', { name: 'OCP Uygulama Sorgu' }));
+    expect(await screen.findByText('OCP_GOVDE')).toBeTruthy();
+    expect(screen.getByTestId('konum').textContent).toContain('?sekme=ocp');
+  });
+  it('BS6 Otomasyon sayfasında sorgu girişleri yok; eski yer imleri BMW Hub sekmesine yönlenir', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'SelfServicePage.tsx'), 'utf8');
+    expect(src).not.toMatch(/<IpCheckSection|<OpenshiftCheckSection/);
+    expect(src).toMatch(/'ip-sorgu': '\/bmw-hub\?sekme=ip'/);
+    expect(src).toMatch(/'openshift-sorgu': '\/bmw-hub\?sekme=ocp'/);
+  });
+});
