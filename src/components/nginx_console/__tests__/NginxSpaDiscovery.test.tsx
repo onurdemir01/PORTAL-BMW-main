@@ -1652,3 +1652,31 @@ describe('NginxSpaDiscovery — servis süzgeci (2026-11-12)', () => {
     expect(satirlar(container).length).toBe(toplam);
   });
 });
+
+// GLOMO KAPSAMI (kullanici, 2026-11-12: "non-glomo sunuculari glomo uygulamalarina odaklanmak istedigimde
+// goruntuyu bozuyor"): ozet + liste yalniz kapsamdaki uygulamalardan; secim hatirlanir.
+describe('NginxSpaDiscovery — Glomo kapsamı (2026-11-12)', () => {
+  it('Glomo seçilince liste ve özet yalnız GLOMO servisli uygulamalar; Tüm servisler geri getirir; hatırlanır', async () => {
+    const { container, unmount } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBeGreaterThan(2));
+    const toplam = satirlar(container).length;
+    const grup = container.querySelector('[data-testid="glomo-kapsam"]') as HTMLElement;
+    const dugme = (ad: string) => [...grup.querySelectorAll('button')].find((b) => b.textContent?.startsWith(ad)) as HTMLButtonElement;
+    // fixture'da GLOMO servisli uygulama yok (servis KART): Glomo kapsami bos, Glomo disi KART'li olani gosterir
+    fireEvent.click(dugme('Glomo dışı'));
+    expect(dugme('Glomo dışı').getAttribute('aria-checked')).toBe('true');
+    expect(satirlar(container).length).toBe(1);
+    expect(satirlar(container)[0].textContent).toContain('kart-ui');
+    expect(container.querySelector('[data-testid="glomo-kapsam-notu"]')).not.toBeNull();
+    expect(localStorage.getItem('nginx-hub:spa-kesfi:glomo-kapsam')).toBe('glomo-disi');
+    fireEvent.click(dugme('Glomo'));
+    expect(satirlar(container).length).toBe(0);
+    unmount();
+    const ikinci = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(ikinci.container.querySelector('[data-testid="glomo-kapsam"]')).not.toBeNull());
+    const g2 = ikinci.container.querySelector('[data-testid="glomo-kapsam"]') as HTMLElement;
+    expect([...g2.querySelectorAll('button')].find((b) => b.getAttribute('aria-checked') === 'true')!.textContent).toMatch(/^Glomo\d/);
+    fireEvent.click([...g2.querySelectorAll('button')].find((b) => b.textContent?.startsWith('Tüm servisler')) as HTMLButtonElement);
+    await waitFor(() => expect(satirlar(ikinci.container).length).toBe(toplam));
+  });
+});

@@ -1745,6 +1745,30 @@ const ortamOf = (a: NgSpaApp) => {
   return e && e in ORTAM_ETIKET ? e : 'belirsiz';
 };
 const ORTAM_ANAHTARI = 'nginx-hub:spa-kesfi:ortam';
+// GLOMO KAPSAMI (kullanici, 2026-11-12: "non-glomo sunuculari glomo uygulamalarina odaklanmak istedigimde
+// goruntuyu bozuyor"). Ozet + liste + suzgec sayilari bu kapsamdaki uygulamalardan: 'glomo' = GLOMO
+// reverse proxy servisinde tanimli; 'glomo-disi' = Glomo disi bir RP servisinde tanimli (ikisinde de
+// olan iki kapsamda da gorunur). RP'de tanimi olmayan uygulamanin servisi bilinmez: yalniz 'tumu'de.
+type GlomoKapsam = 'tumu' | 'glomo' | 'glomo-disi';
+const GLOMO_ANAHTARI = 'nginx-hub:spa-kesfi:glomo-kapsam';
+function glomoKapsamOku(): GlomoKapsam {
+  try {
+    const v = window.localStorage.getItem(GLOMO_ANAHTARI);
+    return v === 'glomo' || v === 'glomo-disi' ? v : 'tumu';
+  } catch {
+    return 'tumu';
+  }
+}
+function glomoKapsamYaz(v: GlomoKapsam) {
+  try {
+    window.localStorage.setItem(GLOMO_ANAHTARI, v);
+  } catch {
+    // Yazilamazsa secim yalniz bu sayfa acikken gecerli kalir.
+  }
+}
+const glomoKapsaminda = (a: NgSpaApp, k: GlomoKapsam) =>
+  k === 'tumu' ||
+  (k === 'glomo' ? !!a.rpServis?.includes('GLOMO') : !!a.rpServis?.some((s) => s !== 'GLOMO'));
 function ortamOku(): string {
   try {
     const v = window.localStorage.getItem(ORTAM_ANAHTARI) || 'tumu';
@@ -2061,7 +2085,18 @@ export default function NginxSpaDiscovery() {
     await yukle();
   }, [yukle]);
 
-  const apps = useMemo(() => data?.apps || [], [data]);
+  const [glomoKapsam, setGlomoKapsamHam] = useState<GlomoKapsam>(glomoKapsamOku);
+  const glomoKapsamSec = (v: GlomoKapsam) => {
+    setGlomoKapsamHam(v);
+    glomoKapsamYaz(v);
+    // Kapsam disinda kalan servis secimi liste sessizce bosaltmasin.
+    if (v !== 'tumu') setServis('tumu');
+  };
+  const tumApps = useMemo(() => data?.apps || [], [data]);
+  const apps = useMemo(
+    () => (glomoKapsam === 'tumu' ? tumApps : tumApps.filter((a) => glomoKapsaminda(a, glomoKapsam))),
+    [tumApps, glomoKapsam],
+  );
   const ortamSay = useMemo(() => sayac(apps, ortamOf), [apps]);
   // Yalniz veride GORULEN ortamlar dugme olur (bos "Edu (0)" gurultu); secili ortam veride
   // yoksa (eski tercih) yine gosterilir ki secim gorunmez kalip listeyi bosaltmasin.
@@ -2368,7 +2403,48 @@ export default function NginxSpaDiscovery() {
       {/* OZET MATRISI (kullanici, 2026-11-12: "Kesif ozeti okumasi zor; komple kaldiralim"). Alti soru:
           ortam basina SPA, tip, ad kalibi, RP, RP yuku, RP eslenik sunucular. Tarama kapsami ve veri
           notlari katlanir bolumde (gizlenmez). */}
-      {s && <SpaOzetMatrisi apps={apps} onSuz={ozettenSuz} eksikTarama={eksikTarama} />}
+      {s && (
+        <div
+          role="radiogroup"
+          aria-label="Servis kapsamı"
+          className="flex flex-wrap items-center gap-1 p-1 rounded-lg w-fit"
+          style={{ background: 'var(--bg-elevated)' }}
+          data-testid="glomo-kapsam"
+        >
+          {(
+            [
+              { id: 'tumu', ad: 'Tüm servisler', ipucu: 'Tüm SPA uygulamaları (RP tanımı olmayanlar dahil)' },
+              { id: 'glomo', ad: 'Glomo', ipucu: 'Yalnız GLOMO reverse proxy servisinde tanımlı uygulamalar' },
+              { id: 'glomo-disi', ad: 'Glomo dışı', ipucu: 'Glomo dışı bir reverse proxy servisinde (Openbanking, Saklama, Webforms …) tanımlı uygulamalar' },
+            ] as const
+          ).map((k) => {
+            const secili = glomoKapsam === k.id;
+            const n = k.id === 'tumu' ? tumApps.length : tumApps.filter((a) => glomoKapsaminda(a, k.id)).length;
+            return (
+              <button
+                key={k.id}
+                type="button"
+                role="radio"
+                aria-checked={secili}
+                onClick={() => glomoKapsamSec(k.id)}
+                title={k.ipucu}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md ${secili ? 'shadow-sm' : ''}`}
+                style={{ background: secili ? 'var(--bg-surface)' : 'transparent', color: secili ? 'var(--text-primary)' : 'var(--text-muted)' }}
+              >
+                {k.ad}
+                <span className="ml-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>{nf(n)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {s && glomoKapsam !== 'tumu' && (
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="glomo-kapsam-notu">
+          Yalnız {glomoKapsam === 'glomo' ? 'GLOMO' : 'Glomo dışı bir'} reverse proxy servisinde tanımlı uygulamalar sayılıyor;
+          RP'de tanımı olmayan uygulamaların servisi bilinmediği için bu görünümde yer almaz ("Tüm servisler"de görünür).
+        </p>
+      )}
+      {s && <SpaOzetMatrisi apps={apps} onSuz={ozettenSuz} eksikTarama={eksikTarama} servisKapsam={glomoKapsam} />}
       {s && (
         <details className="text-[11px] rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }} data-testid="veri-notlari">
           <summary className="cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>

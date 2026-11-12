@@ -172,7 +172,7 @@ function RpSatiri({ n, metin, ton, onClick, girinti = 0, testId }: { n: number; 
 
 /** Reverse proxy sutunu: internet SPA'larinin sirayla okunan akisi (kullanici, 2026-11-12: "RP uzerinden,
  *  RP'de yok, yuk var/yok, RP eslenik sunucular hicbir seyi anlamiyorum"). Satir = soru, sayi tiklanir. */
-function RpAkisi({ s, suz }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => () => void }) {
+function RpAkisi({ s, suz, servisKapsam = 'tumu' }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => () => void; servisKapsam?: 'tumu' | 'glomo' | 'glomo-disi' }) {
   if (!s.internet && !s.rpTanimli && !s.rpTanimsiz && !s.rpOlculemedi)
     return <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>internet SPA yok (intranet SPA'lar reverse proxy kullanmaz)</span>;
   return (
@@ -184,6 +184,7 @@ function RpAkisi({ s, suz }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => 
         <li className="flex flex-wrap items-center gap-1 pb-0.5" style={{ paddingLeft: 14 }} data-testid="rp-servisler">
           <span aria-hidden="true" style={{ color: 'var(--border)' }}>└</span>
           {Object.entries(s.servisler)
+            .filter(([ad]) => servisKapsam === 'tumu' || (servisKapsam === 'glomo' ? ad === 'GLOMO' : ad !== 'GLOMO' && ad !== ''))
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'tr'))
             .map(([ad, n]) => (
               <button
@@ -211,7 +212,18 @@ function RpAkisi({ s, suz }: { s: Satir; suz: (x: Omit<OzetSuzgec, 'ortam'>) => 
   );
 }
 
-export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgSpaApp[]; onSuz: (s: OzetSuzgec) => void; eksikTarama?: string }) {
+export default function SpaOzetMatrisi({
+  apps,
+  onSuz,
+  eksikTarama,
+  servisKapsam = 'tumu',
+}: {
+  apps: NgSpaApp[];
+  onSuz: (s: OzetSuzgec) => void;
+  eksikTarama?: string;
+  /** Glomo kapsami: servis kutularinda yalniz kapsamdaki servisler (ayni uygulamanin diger servisi gurultu). */
+  servisKapsam?: 'tumu' | 'glomo' | 'glomo-disi';
+}) {
   const { satirlar, toplam } = spaOzeti(apps);
   if (!satirlar.length) return null;
   const th = 'px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap align-bottom';
@@ -246,7 +258,7 @@ export default function SpaOzetMatrisi({ apps, onSuz, eksikTarama }: { apps: NgS
           />
         </td>
         <td className={td}>
-          <RpAkisi s={s} suz={suz} />
+          <RpAkisi s={s} suz={suz} servisKapsam={servisKapsam} />
         </td>
       </tr>
     );
