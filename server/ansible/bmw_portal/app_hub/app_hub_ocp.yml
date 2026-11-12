@@ -1,0 +1,323 @@
+---
+- name: "Application Hub OCP - girdi kapisi ve bastion'lar"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: "Zorunlu girdiler"
+      ansible.builtin.assert:
+        that:
+          - terminal_hosts is defined and terminal_hosts | length > 0
+          - ocp_clusters is defined and ocp_clusters is sequence and ocp_clusters | length > 0
+          - app_hub_targets is defined and app_hub_targets is sequence and app_hub_targets | length > 0
+          - app_hub_targets | length <= 20
+          - app_hub_app is defined and app_hub_app is string
+          - app_hub_app is match('^[A-Za-z0-9]([-A-Za-z0-9._]*[A-Za-z0-9])?$')
+        fail_msg: >-
+          Zorunlu degiskenler eksik ya da gecersiz: terminal_hosts={{ terminal_hosts | default([]) | length }},
+          ocp_clusters={{ ocp_clusters | default([]) | length }}, app_hub_targets={{ app_hub_targets | default([]) | length }} (en cok 20).
+          Hepsi bossa AWX job template'inde extra variables prompt-on-launch kapali olabilir.
+        quiet: true
+
+    - name: "Hedef bicimi (cluster ve namespace)"
+      ansible.builtin.assert:
+        that:
+          - item.cluster is defined and item.cluster is string and item.cluster is match('^[A-Za-z0-9._-]+$')
+          - item.namespace is defined and item.namespace is string and item.namespace is match('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+        fail_msg: "gecersiz hedef: {{ item | string | truncate(120) }}"
+        quiet: true
+      loop: "{{ app_hub_targets }}"
+      loop_control:
+        label: "{{ item.cluster | default('?') }}/{{ item.namespace | default('?') }}"
+
+    - name: "Betigin kaynak sha1'i"
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/files/app_hub_ocp.sh"
+        checksum_algorithm: sha1
+      register: app_hub_src_stat
+
+    - name: "Kaynak sha1"
+      ansible.builtin.set_fact:
+        app_hub_src_sha1: "{{ app_hub_src_stat.stat.checksum | default('') }}"
+
+    - name: "Bastion'lar dinamik envantere"
+      ansible.builtin.add_host:
+        name: "{{ item }}"
+        groups: app_hub_terminal
+      loop: "{{ terminal_hosts }}"
+      changed_when: false
+
+- name: "Application Hub OCP - bastion basina salt okunur okuma"
+  hosts: app_hub_terminal
+  ignore_unreachable: true
+  any_errors_fatal: false
+  gather_facts: false
+  become: false
+  vars_files:
+    - ../../bmw_openshift_jobs/global_variables/credentials.yaml
+    - "{{ lookup('first_found', ['../../bmw_openshift_jobs/global_variables/openshift_inventory_vars.yaml'], errors='ignore') | default('/dev/null', true) }}"
+  vars:
+    oc_binary: ""
+    oc_binary_candidates:
+      - /bin/oc
+      - /usr/local/bin/oc
+      - /usr/bin/oc
+    oc_probe_paths: >-
+      {{
+        (([oc_binary] if (oc_binary | default('') | trim | length > 0) else [])
+         + (oc_binary_candidates | default([]))) | unique | list
+      }}
+    app_hub_script: "{{ app_hub_tmp.path | default('') }}"
+  tasks:
+    - name: "Okuma"
+      block:
+        - name: "Bu bastion'in cluster'lari"
+          ansible.builtin.set_fact:
+            my_ocp_clusters: >-
+              {{
+                (ocp_clusters | selectattr('terminal_host', 'defined')
+                              | selectattr('terminal_host', 'equalto', inventory_hostname) | list)
+                +
+                ((ocp_clusters | rejectattr('terminal_host', 'defined') | list)
+                 if inventory_hostname == ((groups['app_hub_terminal'] | default([])) | sort | first)
+                 else [])
+              }}
+          changed_when: false
+
+        - name: "Bu bastion'in hedefleri"
+          ansible.builtin.set_fact:
+            my_targets: >-
+              {{ app_hub_targets | selectattr('cluster', 'in', my_ocp_clusters | map(attribute='cluster_name') | list) | list }}
+          changed_when: false
+
+        - name: "oc adaylari"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+          loop: "{{ oc_probe_paths }}"
+          register: oc_stats
+          changed_when: false
+          failed_when: false
+          when: my_targets | length > 0
+
+        - name: "Kullanilabilir oc yollari"
+          ansible.builtin.set_fact:
+            oc_stat_hits: >-
+              {{
+                oc_stats.results | default([])
+                | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | selectattr('stat.exists')
+                | selectattr('stat.executable', 'defined') | selectattr('stat.executable')
+                | map(attribute='stat.path') | list
+              }}
+          when: my_targets | length > 0
+          changed_when: false
+
+        - name: "PATH icinde oc"
+          ansible.builtin.shell: command -v oc || true
+          args:
+            executable: /bin/bash
+          register: oc_which
+          when: (my_targets | length > 0) and (oc_stat_hits | default([]) | length == 0)
+          changed_when: false
+          failed_when: false
+
+        - name: "oc ikilisi"
+          ansible.builtin.set_fact:
+            oc_bin: >-
+              {{
+                oc_stat_hits[0] if (oc_stat_hits | default([]) | length > 0)
+                else (oc_which.stdout | default('', true) | trim)
+              }}
+          when: my_targets | length > 0
+          changed_when: false
+
+        - name: "Cluster baglanti bilgisi"
+          ansible.builtin.set_fact:
+            resolved_clusters: >-
+              {{
+                (resolved_clusters | default({})) | combine({
+                  item.cluster_name: {'url': resolved_url, 'username': resolved_username, 'password': resolved_password}
+                })
+              }}
+          vars:
+            inventory_key: "{{ item.tenant | default('') }}_{{ item.env | default('') }}"
+            inv_row: >-
+              {{ (clusters[inventory_key][item.cluster_name])
+                 if (clusters is defined and clusters[inventory_key] is defined
+                     and clusters[inventory_key][item.cluster_name] is defined)
+                 else {} }}
+            resolved_url: "{{ item.api_url | default('') | trim or (inv_row.url | default('')) }}"
+            resolved_username: "{{ item.username | default('') | trim or (ocp_username | default(username | default(''))) }}"
+            resolved_password: >-
+              {{ (lookup('vars', item.credential_key, default=''))
+                 if (item.credential_key | default('') | trim | length > 0)
+                 else (inv_row.password | default('')) }}
+          loop: "{{ my_ocp_clusters }}"
+          loop_control:
+            label: "{{ item.cluster_name }}"
+          no_log: true
+          changed_when: false
+          when: my_targets | length > 0
+
+        - name: "Kosuya ozel betik adi"
+          ansible.builtin.tempfile:
+            state: file
+            path: /var/tmp
+            prefix: .app_hub_ocp.
+            suffix: .sh
+          register: app_hub_tmp
+          changed_when: false
+          when: (my_targets | length > 0) and (oc_bin | default('') | trim | length > 0)
+
+        - name: "Betik bastion'a"
+          ansible.builtin.copy:
+            src: files/app_hub_ocp.sh
+            dest: "{{ app_hub_script }}"
+            mode: "0700"
+          changed_when: false
+          when: (my_targets | length > 0) and (oc_bin | default('') | trim | length > 0)
+
+        - name: "Kopyanin dogrulanmasi"
+          ansible.builtin.stat:
+            path: "{{ app_hub_script }}"
+            checksum_algorithm: sha1
+          register: app_hub_stat
+          failed_when: false
+          when: (my_targets | length > 0) and (oc_bin | default('') | trim | length > 0)
+
+        - name: "Hedef basina okuma"
+          ansible.builtin.command:
+            cmd: "timeout -k 10 300 bash {{ app_hub_script }}"
+          environment:
+            OC_BIN: "{{ oc_bin }}"
+            OCP_URL: "{{ resolved_clusters[item.cluster].url | default('') }}"
+            OCP_USER: "{{ resolved_clusters[item.cluster].username | default('') }}"
+            OCP_PASS: "{{ resolved_clusters[item.cluster].password | default('') }}"
+            NS: "{{ item.namespace }}"
+            APP: "{{ app_hub_app }}"
+            KUBECONFIG: "/tmp/app-hub-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace }}.kubeconfig"
+          loop: "{{ my_targets }}"
+          loop_control:
+            label: "{{ item.cluster }}/{{ item.namespace }}"
+          register: app_hub_runs
+          no_log: true
+          changed_when: false
+          failed_when: false
+          when: >-
+            (my_targets | length > 0)
+            and (oc_bin | default('') | trim | length > 0)
+            and ((app_hub_stat.stat.checksum | default('')) == (hostvars['localhost'].app_hub_src_sha1 | default('x')))
+
+        - name: "Gecici kubeconfig dosyalari silinir"
+          ansible.builtin.file:
+            path: "/tmp/app-hub-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace }}.kubeconfig"
+            state: absent
+          loop: "{{ my_targets }}"
+          loop_control:
+            label: "{{ item.cluster }}/{{ item.namespace }}"
+          changed_when: false
+          failed_when: false
+
+        - name: "Betik silinir"
+          ansible.builtin.file:
+            path: "{{ app_hub_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: app_hub_script | length > 0
+
+        - name: "Bastion sonuclari"
+          ansible.builtin.set_fact:
+            app_hub_results: >-
+              {{
+                (app_hub_results | default([])) + [
+                  ({'cluster': item.item.cluster, 'namespace': item.item.namespace, 'ok': true,
+                    'lines': (item.stdout_lines | default([]))[:900]})
+                  if ((item.rc | default(1)) == 0)
+                  else {'cluster': item.item.cluster, 'namespace': item.item.namespace, 'ok': false,
+                        'lines': (item.stdout_lines | default([]))[:50],
+                        'error': ('okuma basarisiz (rc=' ~ (item.rc | default('?') | string) ~ ')')
+                                 if not (item.skipped | default(false))
+                                 else 'betik kopyasi dogrulanamadi ya da oc bulunamadi'}
+                ]
+              }}
+          loop: "{{ app_hub_runs.results | default([]) }}"
+          loop_control:
+            label: "{{ item.item.cluster | default('?') }}/{{ item.item.namespace | default('?') }}"
+          changed_when: false
+          when: my_targets | length > 0
+
+        - name: "oc bulunamadiysa hedefler hata olarak"
+          ansible.builtin.set_fact:
+            app_hub_results: >-
+              {{
+                (app_hub_results | default([])) + [{
+                  'cluster': item.cluster, 'namespace': item.namespace, 'ok': false, 'lines': [],
+                  'error': "Bu bastion'da 'oc' bulunamadi: " ~ (oc_probe_paths | join(', '))
+                }]
+              }}
+          loop: "{{ my_targets }}"
+          loop_control:
+            label: "{{ item.cluster }}/{{ item.namespace }}"
+          when: (my_targets | length > 0) and ((oc_bin | default('') | trim | length) == 0)
+          changed_when: false
+
+      rescue:
+        - name: "Hata kaydedilir (host ayakta kalir)"
+          ansible.builtin.set_fact:
+            host_blocked_reason: "{{ ansible_failed_result.msg | default('Bu bastion uzerinde okuma tamamlanamadi.') | string | truncate(300) }}"
+
+- name: "Application Hub OCP - sonuclari topla ve yayinla"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: "Host hatalari temizlenir"
+      ansible.builtin.meta: clear_host_errors
+
+    - name: "Her hedefin sonucu kendi bastion'indan"
+      ansible.builtin.set_fact:
+        merged_results: >-
+          {{
+            (merged_results | default([])) + (reported[:1] if (reported | length > 0) else [{
+              'cluster': item.cluster, 'namespace': item.namespace, 'ok': false, 'lines': [],
+              'error': "Bastion sonuc bildirmedi (erisilemedi ya da erken dustu): " ~ owner_host
+                       ~ ((' - ' ~ (hostvars[owner_host].host_blocked_reason | default(''))) if (hostvars[owner_host] | default({})).host_blocked_reason is defined else '')
+            }])
+          }}
+      vars:
+        owner_row: "{{ (ocp_clusters | selectattr('cluster_name', 'equalto', item.cluster) | list | first) | default({}) }}"
+        owner_host: "{{ owner_row.terminal_host | default((groups['app_hub_terminal'] | default([]) | sort | first), true) }}"
+        host_results: "{{ (hostvars[owner_host] | default({}, true)).app_hub_results | default([], true) }}"
+        reported: >-
+          {{ host_results | selectattr('cluster', 'equalto', item.cluster)
+                          | selectattr('namespace', 'equalto', item.namespace) | list }}
+      loop: "{{ app_hub_targets }}"
+      loop_control:
+        label: "{{ item.cluster }}/{{ item.namespace }}"
+      changed_when: false
+
+    - name: "app_hub_ocp_result yayinlanir"
+      ansible.builtin.set_stats:
+        data:
+          app_hub_ocp_result:
+            app: "{{ app_hub_app }}"
+            overall_status: >-
+              {{
+                'ok'
+                if (merged_results | selectattr('ok', 'equalto', false) | list | length) == 0
+                else ('partial' if (merged_results | selectattr('ok', 'equalto', true) | list | length) > 0 else 'failed')
+              }}
+            results: "{{ merged_results }}"
+        per_host: false
+
+    - name: "Basarisiz hedeflerin sebebi"
+      ansible.builtin.debug:
+        msg: "{{ merged_results | rejectattr('ok') | map(attribute='error') | list }}"
+      when: (merged_results | rejectattr('ok') | list | length) > 0
+
+    - name: "Hicbir hedef okunamadiysa is basarisiz"
+      ansible.builtin.fail:
+        msg: "Hicbir (cluster, namespace) hedefi okunamadi."
+      when: (merged_results | selectattr('ok', 'equalto', true) | list | length) == 0

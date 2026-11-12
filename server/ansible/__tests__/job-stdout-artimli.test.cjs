@@ -64,12 +64,13 @@ function gercekGetJobOutput(port) {
     `${RUNNER_SRC.slice(g, gs + 2)}\n` +
     'return { getJobOutputOnServer };';
 
+  const { tlsSecenekleri, tlsHatasiAcikla } = require('../../util/tls-guven.cjs');
   return new Function(
-    'http', 'https', 'URL', 'stdoutCache',
+    'http', 'https', 'URL', 'stdoutCache', 'tlsSecenekleri', 'tlsHatasiAcikla',
     'getServerById', 'getTokenForServer', 'mapApiPath', 'collectJobEventsStdout', 'awxRequestToServer', 'console',
     govde,
   )(
-    http, require('node:https'), URL, onbellek,
+    http, require('node:https'), URL, onbellek, tlsSecenekleri, tlsHatasiAcikla,
     () => ({ id: 1, url: `http://127.0.0.1:${port}` }),
     async () => 'tok',
     (_s, p) => p,

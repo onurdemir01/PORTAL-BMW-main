@@ -36,6 +36,7 @@ import {
   type EtiketTon,
   type HizliSuzgec,
 } from './retireEtiket';
+import { useKodGorunur } from './kodGorunurlugu';
 
 const TON: Record<EtiketTon, { zemin: string; metin: string; renk: string }> = {
   kesin: {
@@ -233,6 +234,7 @@ export function KontrolFormu({ e, onDegisti }: { e: ShRetireEtiketHer; onDegisti
 
 /** Kopyalar = zincir: sunucu → JVM durumu → web sunucusu / vhost → trafik (ya da EAR / girdi). */
 function KopyaTablosu({ e, kAd }: { e: ShRetireEtiket; kAd: Map<string, string> }) {
+  const kodGoster = useKodGorunur();
   const th = 'px-2 py-1 text-left font-medium whitespace-nowrap';
   const td = 'px-2 py-1 align-top';
   const durum = (c: ShRetireEtiket['kopyalar'][number]) =>
@@ -368,7 +370,7 @@ function KopyaTablosu({ e, kAd }: { e: ShRetireEtiket; kAd: Map<string, string> 
                 {c.kurallar.length
                   ? c.kurallar.map((r) => (
                       <div key={r} className="text-[11px]">
-                        <span className="font-mono">{r}</span> {kAd.get(r) || ''}
+                        {(kodGoster || !kAd.get(r)) && <span className="font-mono">{r}</span>} {kAd.get(r) || ''}
                       </div>
                     ))
                   : '—'}
@@ -393,6 +395,7 @@ export function EtiketAyrinti({
   onDegisti: () => void;
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
+  const kodGoster = useKodGorunur();
   // Liste ozet tasir (kopyalar yok): zincir acilinca ayrinti ucundan EKSIKSIZ gelir. Kanit (imza)
   // degisince yeniden istenir; etiket artik yoksa (409) liste yenilenir.
   const [tam, setTam] = useState<ShRetireEtiket | null>(e.kopyalar ? (e as ShRetireEtiket) : null);
@@ -480,7 +483,7 @@ export function EtiketAyrinti({
             style={{ borderColor: 'var(--border-subtle)' }}
           >
             <summary className="cursor-pointer font-semibold">
-              {r} · {k.ad} — nasıl doğrulanır?
+              {kodGoster ? `${r} · ` : ''}{k.ad} — nasıl doğrulanır?
             </summary>
             <div className="mt-2 space-y-1.5" style={{ color: 'var(--text-secondary)' }}>
               <div>

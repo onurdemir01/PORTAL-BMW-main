@@ -144,6 +144,19 @@ async function claimForLaunch(id) {
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
 
+// ADMIN YENIDEN TETIKLEME (2026-11-11, bkz. yeniden-tetikle.cjs). TIMEOUT -> LAUNCHING gecisini
+// KAZANAN tetikler: cift tik ya da iki admin ayni bileti iki kez kosturamaz.
+async function claimTimeoutForRetrigger(id) {
+  const { rows } = await db.query(
+    `UPDATE smart_tickets
+       SET status = 'LAUNCHING', updated_at = GETUTCDATE()
+     OUTPUT INSERTED.*
+     WHERE id = $1 AND status = 'TIMEOUT'`,
+    [id]
+  );
+  return rows[0] ? rowToTicket(rows[0]) : null;
+}
+
 // ONAY GELDI, PENCERE BEKLENIYOR (2026-11-06, Crypto Hub D8). Durum PENDING kalir ki iptal CAS'i ve
 // poller'in sure kontrolu aynen calissin; onay ani yalniz bir kez yazilir.
 async function markApproved(id, smartStateName) {
@@ -205,4 +218,4 @@ async function findByOcoRecordIds(ids) {
   return out;
 }
 
-module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, markApproved, markState, findByOcoRecordIds };
+module.exports = { createTicket, getTicket, listPending, listByUsername, listAll, statusSummary, cancelTicket, claimForLaunch, claimTimeoutForRetrigger, markApproved, markState, findByOcoRecordIds };

@@ -13,7 +13,19 @@ const { ITEMS, BY_ID } = require('./catalog.cjs');
 const REGISTRY_KEY = 'nginx_cis_scan';
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 let _cache = { at: 0, value: null };
+// Eski sunucular dusurulmus skor (Nginx Hub CIS sekmesi) AYRI yuvada: Server Hub / App Hub
+// getAssessment'i suzgecsiz cagirir; tek yuva ikisi arasinda surekli yeniden hesaplanirdi.
+let _cacheSuz = { at: 0, value: null };
 const CACHE_MS = 60 * 1000;
+function cacheSifirla() {
+  _cache = { at: 0, value: null };
+  _cacheSuz = { at: 0, value: null };
+}
+try {
+  require('../nginx-console/eski-sunucu.cjs').onTemizlik(cacheSifirla);
+} catch {
+  /* modul yoksa onbellek kendi suresiyle dusar */
+}
 
 async function loadRaw() {
   const { query } = require('../inventory/mssql.cjs');
@@ -56,15 +68,28 @@ async function rulesStamp() {
   }
 }
 
-async function getAssessment(fresh) {
-  const stamp = await rulesStamp();
-  if (!fresh && _cache.value && _cache.stamp === stamp && Date.now() - _cache.at < CACHE_MS) return _cache.value;
-  const raw = await loadRaw();
+/**
+ * @param {boolean} fresh
+ * @param {object} [es] eski-sunucu suzgeci (Nginx Hub): verilirse eski sunucularin satirlari
+ *   scoreAll'dan ONCE dusurulur (ozet ve madde sayilari onlari icermez).
+ */
+async function getAssessment(fresh, es) {
+  const stamp = await rulesStamp() + (es ? '|' + es.damga : '');
+  if (!fresh && !es && _cache.value && _cache.stamp === stamp && Date.now() - _cache.at < CACHE_MS) return _cache.value;
+  if (!fresh && es && _cacheSuz.value && _cacheSuz.stamp === stamp && Date.now() - _cacheSuz.at < CACHE_MS) return _cacheSuz.value;
+  const ham = await loadRaw();
+  const raw = es && !ham.tableMissing
+    ? { ...ham, results: es.ayir(ham.results), hosts: es.ayir(ham.hosts) }
+    : ham;
   const rules = await loadPortalRules();
   const value = raw.tableMissing
     ? { tableMissing: true, hosts: [], perItem: [], summary: null, ...rules }
     : { tableMissing: false, ...scoreAll({ ...raw, ...rules }), ...rules };
-  _cache = { at: Date.now(), stamp, value };
+  // Gizlenen sunucu listesi suzgecin bu cagridaki birikimi; onbellekten donerken de ayni kalsin.
+  if (es) Object.defineProperty(value, 'eskiGizli', { value: es.bilgi(), enumerable: false });
+  const yeni = { at: Date.now(), stamp, value };
+  if (es) _cacheSuz = yeni;
+  else _cache = yeni;
   return value;
 }
 
@@ -105,7 +130,8 @@ function initNginxCis(app) {
 
   router.get('/overview', async (req, res) => {
     try {
-      const a = await getAssessment(req.query.fresh === '1');
+      const es = await require('../nginx-console/eski-sunucu.cjs').suzgec(req);
+      const a = await getAssessment(req.query.fresh === '1', es);
       if (a.tableMissing) {
         return res.json({ ok: true, tableMissing: true, message: 'dbo.Nginx_Cis_* tabloları henüz yok — nginx_cis job\'ı bir kez koşmalı.', hosts: [], perItem: [], summary: null, catalog: ITEMS, exceptions: [], overrides: [] });
       }
@@ -113,6 +139,7 @@ function initNginxCis(app) {
         ok: true, tableMissing: false, summary: a.summary, perItem: a.perItem, catalog: ITEMS,
         exceptions: a.exceptions, overrides: a.overrides,
         hosts: a.hosts.map((h) => ({ host: h.host, nginxVersion: h.nginxVersion, tState: h.tState, scanDate: h.scanDate, scannedAt: h.scannedAt, score: h.score, passed: h.passed, failed: h.failed, excepted: h.excepted, skipped: h.skipped })),
+        eskiGizli: a.eskiGizli || es.bilgi(),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'CIS verisi alınamadı.' });
@@ -150,7 +177,7 @@ function initNginxCis(app) {
       const ex = await db.query(`SELECT id FROM nginx_cis_exceptions WHERE item_id = $1 AND ISNULL(host, '') = $2`, [itemId, host || '']);
       if ((ex.rows || []).length) await db.query(`UPDATE nginx_cis_exceptions SET note = $2, created_by = $3, created_at = GETUTCDATE() WHERE id = $1`, [ex.rows[0].id, note, by]);
       else await db.query(`INSERT INTO nginx_cis_exceptions (item_id, host, note, created_by) VALUES ($1, $2, $3, $4)`, [itemId, host, note, by]);
-      _cache = { at: 0, value: null };
+      cacheSifirla();
       try { require('../audit/index.cjs').auditPortal(req, 'nginx_cis_exception_set', { detail: JSON.stringify({ itemId, host, note }) }); } catch { /* best-effort */ }
       res.json({ ok: true });
     } catch (err) {
@@ -163,7 +190,7 @@ function initNginxCis(app) {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'id geçersiz' });
       await require('../db/index.cjs').query(`DELETE FROM nginx_cis_exceptions WHERE id = $1`, [id]);
-      _cache = { at: 0, value: null };
+      cacheSifirla();
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -185,7 +212,7 @@ function initNginxCis(app) {
       const ex = await db.query(`SELECT id FROM nginx_cis_overrides WHERE item_id = $1 AND expected = $2`, [itemId, expected]);
       if ((ex.rows || []).length) await db.query(`UPDATE nginx_cis_overrides SET note = $2, created_by = $3, created_at = GETUTCDATE() WHERE id = $1`, [ex.rows[0].id, note, by]);
       else await db.query(`INSERT INTO nginx_cis_overrides (item_id, expected, note, created_by) VALUES ($1, $2, $3, $4)`, [itemId, expected, note, by]);
-      _cache = { at: 0, value: null };
+      cacheSifirla();
       try { require('../audit/index.cjs').auditPortal(req, 'nginx_cis_override_set', { detail: JSON.stringify({ itemId, expected, note }) }); } catch { /* best-effort */ }
       res.json({ ok: true });
     } catch (err) {
@@ -198,7 +225,7 @@ function initNginxCis(app) {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'id geçersiz' });
       await require('../db/index.cjs').query(`DELETE FROM nginx_cis_overrides WHERE id = $1`, [id]);
-      _cache = { at: 0, value: null };
+      cacheSifirla();
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -234,7 +261,7 @@ function initNginxCis(app) {
     try {
       const runner = require('../ansible/runner.cjs');
       const [statusInfo, outputInfo] = await Promise.all([runner.getJobStatusOnServer(serverId, jobId), runner.getJobOutputOnServer(serverId, jobId)]);
-      if (['successful', 'failed', 'error', 'canceled'].includes(statusInfo.status)) _cache = { at: 0, value: null };
+      if (['successful', 'failed', 'error', 'canceled'].includes(statusInfo.status)) cacheSifirla();
       res.json({ ok: true, status: statusInfo.status, output: outputInfo?.output || '' });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });

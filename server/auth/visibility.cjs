@@ -34,8 +34,8 @@ const CACHE_TTL_MS = 15000;
 // sayfalar eklendiginde yine de senkron tutulur ki eski istemci/probe yollari sasmasin.
 const DEFAULT_VISIBILITY = {
   "Dashboard":    ["Admin", "User"],
-  "Envanter":     ["Admin", "User"],
-  "Denetim":      ["Admin", "User"],
+  "Envanter":     ["Admin"],
+  "Denetim":      ["Admin"],
   "LogX":         ["Admin", "User"],
   "Self Service": ["Admin", "User"],
   "Ansible":      ["Admin"],

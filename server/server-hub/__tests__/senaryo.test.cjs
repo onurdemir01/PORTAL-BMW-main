@@ -405,11 +405,13 @@ test('SN3 uygulama toplamasi ve yapilabilecekler', () => {
   assert.match(u.ozet, /2 kopya: 1 kopya kullanımda, 1 kopya retire adayı/);
   assert.ok(u.yapilabilecekler.length <= 3);
   assert.ok(u.yapilabilecekler.every((x) => ['yonlendir', 'elle', 'bilgi'].includes(x.tur)));
-  // Tek kopya retire adayi -> uygulama RETIRE_ADAYI + Retirement kaydina yonlendirme
+  // Tek kopya retire adayi -> uygulama RETIRE_ADAYI; FAZ 0 (2026-11-11): Retirement'a DOGRUDAN
+  // yonlendirme YOK (dogrulamasiz kayit yolu), yalniz "once elle dogrulayin" maddesi.
   const { r: r2 } = karar({});
   const u2 = r2.uygulamalar.get('app:APP1');
   assert.equal(u2.karar, 'RETIRE_ADAYI');
-  assert.ok(u2.yapilabilecekler.some((x) => x.tur === 'yonlendir' && /Retirement/.test(x.metin)));
+  assert.ok(!u2.yapilabilecekler.some((x) => x.tur === 'yonlendir' && /Retirement/.test(x.metin)), 'dogrulamasiz Retirement yonlendirmesi geri geldi');
+  assert.ok(u2.yapilabilecekler.some((x) => x.tur === 'elle' && /elle doğrulayın/.test(x.metin)));
   // Karar verilemeyen: eksik veri yonlendirmesi
   const { r: r3 } = karar({ log: 'YOK' });
   assert.ok(
@@ -556,4 +558,134 @@ test('SN5 tazelik her kanitin kendi sunucusundan: bayat sifir "olculemedi", aday
   const e = filo({ gercek: 9 });
   e.veri.hostlar.get(WEB).taranma = '2026-09-01T00:00:00.000Z';
   assert.equal(kopya(e).karar, 'KULLANIMDA');
+});
+
+// FAZ 1 (2026-11-11, docs/RETIREMENT-MOTOR-BIRLESTIRME.md): Analiz aciklari.
+//   SN6a ZAYIF (yalniz ada dayanan) eslemeli vhost'un gercek trafigi KULLANIMDA (G6)
+//   SN6b Server Hub retire engeli (STALE / WEB_TIER / MAPPING ...) varken RETIRE_ADAYI yok (G7)
+//   SN6c JBoss nesli bilinmeyen kopya RETIRE_ADAYI olamaz (G7)
+function kararHosts(bayrak, degistir) {
+  const { hosts, veri } = filo(bayrak);
+  degistir(hosts);
+  const g = grafikKur({ hosts, veri });
+  const r = kararla({ g, dogrulamalar: dogrula(g, { veri }), hosts, simdi: SIMDI });
+  return { r, g };
+}
+test('SN6a zayif eslemeli vhost trafigi kullanimdir', () => {
+  const sifir = karar({ esleme: 'ZAYIF', gercek: 0 }).k;
+  assert.notEqual(sifir.karar, 'RETIRE_ADAYI', 'zayif esleme retire adayi yapti');
+  const { k } = karar({ esleme: 'ZAYIF', gercek: 40 });
+  assert.equal(k.karar, 'KULLANIMDA', `zayif eslemeli trafik kullanim sayilmadi: ${kodlar(k).join(',')}`);
+  assert.ok(kodlar(k).includes('WEB_TRAFIK_VAR'));
+});
+test('SN6b retire engeli adayi kapatir (KARAR_VERILEMEZ, sorun yok DEGIL)', () => {
+  assert.equal(karar({}).k.karar, 'RETIRE_ADAYI', 'fikstur on kosulu');
+  const { r } = kararHosts({}, (hosts) => {
+    hosts[0].jvms[0].retireEngeli = { kod: 'WEB_TIER', metin: 'web katmaninda olculemeyen host var: X' };
+  });
+  const k = r.kopyalar.get(A.jvm(APP, 8, 'APP1'));
+  assert.equal(k.karar, 'KARAR_VERILEMEZ');
+  assert.ok(kodlar(k).includes('RETIRE_ENGELI'));
+  // Kullanim kaniti engelden once gelir.
+  const { r: r2 } = kararHosts({ gercek: 5 }, (hosts) => {
+    hosts[0].jvms[0].retireEngeli = { kod: 'STALE', metin: 'bayat' };
+  });
+  assert.equal(r2.kopyalar.get(A.jvm(APP, 8, 'APP1')).karar, 'KULLANIMDA');
+});
+test('SN6c nesli bilinmeyen kopya aday olamaz', () => {
+  const { r } = kararHosts({}, (hosts) => {
+    hosts[0].jvms[0].gen = null;
+  });
+  const k = [...r.kopyalar.values()].find((x) => x.anahtar.startsWith(`jvm:${APP}|?|APP1`));
+  assert.ok(k, 'nesilsiz kopya grafikte yok');
+  assert.notEqual(k.karar, 'RETIRE_ADAYI');
+  assert.ok(kodlar(k).includes('NESIL_BILINMIYOR'));
+});
+
+// FAZ 2 (2026-11-11): grup karari = uygulama + ORTAM + NESIL. Elle kontrol ve Retirement kapisi bu birime baglanir.
+test('SN7 grup karari: uygulama|ortam|nesil; kullanim kazanir; ortami bilinmeyen grup aday olamaz', () => {
+  const { r } = karar({});
+  const app = [...r.uygulamalar.values()].find((u) => u.ad === 'APP1');
+  assert.ok(app, 'uygulama yok');
+  const gk = 'grup:APP1|PROD|8';
+  assert.ok(app.gruplar.includes(gk), `gruplar: ${app.gruplar.join(',')}`);
+  const g = r.gruplar.get(gk);
+  assert.deepEqual([g.karar, g.ortam, g.nesil, g.kopyalar], ['RETIRE_ADAYI', 'PROD', '8', [A.jvm(APP, 8, 'APP1')]]);
+  assert.equal(karar({ gercek: 3 }).r.gruplar.get(gk).karar, 'KULLANIMDA');
+  // Ortam bilinmiyor: kopya aday olsa da grup KARAR_VERILEMEZ.
+  const { hosts, veri } = filo({});
+  hosts[0].env = null;
+  const g2 = grafikKur({ hosts, veri });
+  const r2 = kararla({ g: g2, dogrulamalar: dogrula(g2, { veri }), hosts, simdi: SIMDI });
+  const bilinmeyen = [...r2.gruplar.values()].find((x) => x.ad === 'APP1');
+  assert.equal(bilinmeyen.ortam, null);
+  assert.notEqual(bilinmeyen.karar, 'RETIRE_ADAYI');
+});
+
+// FAZ 2b (2026-11-11): grup elle kontrolu. DOGRULANDI yalniz RETIRE_ADAYI grupta + guncel imzayla;
+// kanit degisince VERI_DEGISTI; depo okunamazsa BILINMIYOR (kayitHazir hicbir zaman true degil).
+test('SN8 grup kontrolu: imza, yalniz aday dogrulanir, VERI_DEGISTI, okunamadi', async () => {
+  const depo = new Map();
+  let okunamaz = false;
+  const kontrol = {
+    kontrolleriOku: async () => (okunamaz ? null : new Map(depo)),
+    kontrolYaz: async ({ anahtar, sonuc, aciklama, imza, seviye, kim }) => {
+      if (sonuc === 'GERI_AL') depo.delete(anahtar);
+      else depo.set(anahtar, { sonuc, aciklama, imza, seviye, isaretleyen: kim, zaman: '2026-11-11T00:00:00Z' });
+    },
+  };
+  const denetim = [];
+  const bayrak = { gercek: 0 };
+  const app = express();
+  app.use(express.json());
+  app.use((req, _r, n) => ((req.session = { user: { username: 'onur', role: 'Admin' } }), n()));
+  const router = express.Router();
+  require('../iliski-uclar.cjs').mount(router, {
+    getAssessment: async () => ({ tableMissing: false, hosts: filo(bayrak).hosts }),
+    iliskiVerisi: async () => filo(bayrak).veri,
+    simdi: SIMDI,
+    kontrol,
+    audit: (_req, d) => denetim.push(d),
+  });
+  app.use('/api/server-hub', router);
+  const srv = app.listen(0);
+  const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
+  const J = async (u, o) => {
+    const r = await fetch(u, o);
+    return { status: r.status, body: await r.json() };
+  };
+  const put = (b) => J(`${kok}/iliski/kontrol`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+  const grup = async () => (await J(`${kok}/iliski/karar?anahtar=${encodeURIComponent('app:APP1')}`)).body.gruplar.find((x) => x.anahtar === 'grup:APP1|PROD|8');
+  try {
+    let g = await grup();
+    assert.deepEqual([g.karar, g.durum, g.kayitHazir], ['RETIRE_ADAYI', 'BEKLIYOR', false]);
+    assert.match(g.imza, /^[0-9a-f]{32}$/);
+    assert.equal((await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: 'f'.repeat(32) })).status, 409, 'eski imza kabul edildi');
+    const ok = await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: g.imza });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual([ok.body.grup.durum, ok.body.grup.kayitHazir], ['DOGRULANDI', true]);
+    assert.equal(denetim.at(-1).op, 'analiz_grup_kontrol');
+    // Kanit degisti (trafik geldi): karar KULLANIMDA, imza farkli -> VERI_DEGISTI, kayit hazir DEGIL; DOGRULANDI yazilamaz.
+    bayrak.gercek = 5;
+    g = (await J(`${kok}/iliski/karar?anahtar=${encodeURIComponent('app:APP1')}`)).body.gruplar.find((x) => x.anahtar === 'grup:APP1|PROD|8');
+    if (!g) {
+      // Onbellek (VERI_MS) icinde eski grafik donebilir; taze hesap icin kararlar?fresh=1
+      await J(`${kok}/iliski/kararlar?fresh=1`);
+      g = await grup();
+    } else if (g.karar !== 'KULLANIMDA') {
+      await J(`${kok}/iliski/kararlar?fresh=1`);
+      g = await grup();
+    }
+    assert.deepEqual([g.karar, g.durum, g.kayitHazir], ['KULLANIMDA', 'VERI_DEGISTI', false]);
+    const red = await put({ anahtar: g.anahtar, sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: g.imza });
+    assert.equal(red.status, 409);
+    assert.match(red.body.message, /Retire adayı/);
+    // Depo okunamazsa BILINMIYOR
+    okunamaz = true;
+    g = await grup();
+    assert.deepEqual([g.durum, g.kayitHazir], ['BILINMIYOR', false]);
+    assert.equal((await put({ anahtar: 'app:APP1', sonuc: 'DOGRULANDI', aciklama: 'x', imza: 'a' })).status, 400);
+  } finally {
+    srv.close();
+  }
 });

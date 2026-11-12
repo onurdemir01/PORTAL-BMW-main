@@ -12,7 +12,8 @@
 // Bir kutuya sunucu eklenecekse once kullaniciya sorulur; bu dosyaya kendiliginden sunucu eklenmez.
 //
 // AMAC KOLONU ILE KULLANICININ ETIKETI AYRISABILIR: ARK + internet + Non-Glomo'nun production
-// karsiligi kullanicinin kararina gore GBNGXP44/45/58/59 + GBNGXAP28/29'dur; Excel bu alti sunucuyu
+// karsiligi kullanicinin kararina gore GBNGXP44/45/58/59 + GBNGXAP32/33'tur (2026-11-12: kapatilan GBNGXAP28/29
+// yerine kullanicinin onayiyla; alt ag Ankara DMZ blogu varsayildi); Excel bu sunuculari
 // "Production -> CSO Internet" diye etiketler. Karar kullanicinindir, `amac` alani Excel'in kendi
 // metnini AYNEN tasir (ekranda ikisi birden gorunur, biri digerini gizlemez).
 
@@ -72,8 +73,8 @@ ekle('GBNGXP44', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Int
 ekle('GBNGXP45', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
 ekle('GBNGXP58', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
 ekle('GBNGXP59', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXAP28', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXAP29', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
+ekle('GBNGXAP32', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
+ekle('GBNGXAP33', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
 
 // ARK / intranet
 ekle('GBNGXD50', 'Pendik', FW, '10.175.15.0/24', V129, 'Dev → Intranet');
@@ -201,7 +202,7 @@ export function rvpOner(s: RvpSecim): RvpOneri | null {
                 '(fw.garanti.com.tr) durur. Aşama sırası Dev → T14/T15, Test → T16/T17, ' +
                 'QA → T18/T19, Edu → T20/T21.',
             },
-      prod: { durum: 'sunucu', sunucular: liste('GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP28', 'GBNGXAP29') },
+      prod: { durum: 'sunucu', sunucular: liste('GBNGXP44', 'GBNGXP45', 'GBNGXP58', 'GBNGXP59', 'GBNGXAP32', 'GBNGXAP33') },
     };
 
   if (s.backend === 'ark')

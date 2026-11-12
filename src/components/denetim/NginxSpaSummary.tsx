@@ -596,7 +596,10 @@ function IpCell({ e, onPick }: { e: RouteStatsEnv; onPick: (ip: string) => void 
   );
 }
 
-export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet' }) {
+// ortam (2026-11-11): 'tumu' ya da DEV/TEST/QA/EDU/PROD. Seciliyse tablo YALNIZ o ortamin
+// satirini, "Sahiplerine ulas" yalniz o ortamin eksiklerini gosterir (PROD yeni sunucu satirlari
+// yalniz PROD'da).
+export default function NginxSpaSummary({ tier, ortam = 'tumu' }: { tier: 'internet' | 'intranet'; ortam?: string }) {
   const [cov, setCov] = useState<SpaCoverageResult | null>(null);
   const [routes, setRoutes] = useState<RouteStatsResult | null>(null);
   const [mig, setMig] = useState<NginxMigrationResult | null>(null);
@@ -633,8 +636,9 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
         const ia = ENV_ORDER.indexOf(a[0]), ib = ENV_ORDER.indexOf(b[0]);
         return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a[0].localeCompare(b[0]);
       })
+      .filter(([env]) => ortam === 'tumu' || env === ortam)
       .map(([env, v]) => ({ env, ...v }));
-  }, [cov, routes]);
+  }, [cov, routes, ortam]);
 
   // PROD: yeni sunucularda yuk almaya hazir olanlar (Production Tasimalari ile ayni hesap)
   const prodNew = useMemo(() => {
@@ -663,9 +667,10 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       else if (c.measured) out.push(...rowsFromCoverage(c.missingDetail?.internet || []).map((x) => ({ ...x, env, tier: 'internet' })));
       if (c.measuredIntranet) out.push(...rowsFromCoverage(c.missingDetail?.intranet || []).map((x) => ({ ...x, env, tier: 'intranet' })));
     }
-    if (mig) out.push(...rowsFromMigration(mig.groups).map((x) => ({ ...x, env: 'PROD', tier: 'yeni sunucu' })));
+    if (mig && (ortam === 'tumu' || ortam === 'PROD')) out.push(...rowsFromMigration(mig.groups).map((x) => ({ ...x, env: 'PROD', tier: 'yeni sunucu' })));
     return out;
-  }, [rows, mig]);
+  }, [rows, mig, ortam]);
+  const ortamAdi = ortam === 'tumu' ? 'tüm ortamlar' : `yalnız ${ortam}`;
 
   if (err && !cov)
     return <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{err}</div>;
@@ -685,7 +690,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
         <div>
           <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Ortam özeti — SPA’lar nerede?</h3>
           <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            OpenShift’teki SPA sayısı → nginx’e çıkmış olanlar → route’lar. Toplam <b>{fmtNumber(spaAll)}</b> SPA (uygulama × ortam), ARK cluster’ları
+            OpenShift’teki SPA sayısı → nginx’e çıkmış olanlar → route’lar. {ortam === 'tumu' ? 'Toplam' : `${ortam} ortamında`} <b>{fmtNumber(spaAll)}</b> SPA{ortam === 'tumu' ? ' (uygulama × ortam)' : ''}, ARK cluster’ları
             {cov.scanDate ? ` · nginx taraması ${cov.scanDate}` : ''}.
           </p>
         </div>
@@ -693,11 +698,11 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
           {/* Katman fark etmeksizin TUM deploy olmamis / sorunlu uygulamalar + sahipleri
               (kullanici, 2026-09-17: "internet veya intranet fark etmez, sahiplerine ulasmak istiyorum") */}
           <button
-            onClick={() => setOpen({ title: 'Deploy olmamış / sorunlu tüm SPA’lar ve sahipleri', subtitle: 'tüm ortamlar · internet (deploy edilmemiş: H+A yok) + intranet (hiç yok / yarım) + PROD yeni sunucular (hazır değil)', rows: allMissing })}
+            onClick={() => setOpen({ title: 'Deploy olmamış / sorunlu tüm SPA’lar ve sahipleri', subtitle: `${ortamAdi} · internet (deploy edilmemiş: H+A yok) + intranet (hiç yok / yarım)${ortam === 'tumu' || ortam === 'PROD' ? ' + PROD yeni sunucular (hazır değil)' : ''}`, rows: allMissing })}
             disabled={allMissing.length === 0}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-white disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
-            title="Katman fark etmeksizin, tüm ortamlarda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta)"
+            title={`Katman fark etmeksizin, ${ortam === 'tumu' ? 'tüm ortamlarda' : `${ortam} ortamında`} henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta)`}
           >
             <UsersIcon className="w-3.5 h-3.5" /> Sahiplerine ulaş · {fmtNumber(allMissing.length)}
           </button>
@@ -719,7 +724,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
               <th className={th} style={hl('internet')} title="İnternete açık (route tipi passthrough) SPA’lar: kaçı internet nginx’lerine deploy edilmiş (H+A), kaçı servise tanımlı (location/include), kaçı ikisi birden (yük alıyor)">
                 İnternet · deploy / tanım / çalışıyor
               </th>
-              <th className={th} style={hl('intranet')} title="İntranet SPA’ların (Gerçek SPA Keşfi: pod’da nginx + reencrypt route — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap) kaçı ortamın taranan her intranet nginx’ine TAM kurulu (hysdeploy + applications + conf)">
+              <th className={th} style={hl('intranet')} title="İntranet SPA’ların (SPA Uygulamaları: pod’da nginx + reencrypt route — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap) kaçı ortamın taranan her intranet nginx’ine TAM kurulu (hysdeploy + applications + conf)">
                 İntranet · nginx’e kurulu
               </th>
               <th className={th} title="Ortamdaki route sayısı, kaçı SPA uygulamasına ait ve payı">Route’lar</th>
@@ -743,7 +748,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           internete açık {fmtNumber(c.internetTotal)} ·{' '}
                           {/* AD KALIBI (2026-10-19): bu sutun ad kalibi + route envanteri sayar; intranet kurulum
                               sutunu ise Gercek SPA Kesfi'ni (Intranet SPA sayfasi) - iki sayi farkli olabilir. */}
-                          <span title={c.intranetKaynak === 'intranet-spa' ? `Ad kalıbına (-app-v / -app-emb-v) ve route envanterine göre iç ağ (reencrypt) SPA’ları. İntranet kurulum sütunu ise Gerçek SPA Keşfi’nin listesini sayar (${fmtNumber(c.intranetKurulumToplam || 0)} uygulama); bu yüzden iki sayı farklı olabilir.` : undefined}>
+                          <span title={c.intranetKaynak === 'intranet-spa' ? `Ad kalıbına (-app-v / -app-emb-v) ve route envanterine göre iç ağ (reencrypt) SPA’ları. İntranet kurulum sütunu ise SPA Uygulamaları listesini sayar (${fmtNumber(c.intranetKurulumToplam || 0)} uygulama); bu yüzden iki sayı farklı olabilir.` : undefined}>
                             iç ağda {fmtNumber(c.intranetTotal)}{c.intranetKaynak === 'intranet-spa' ? ' (ad kalıbı)' : ''}
                           </span>
                           {c.unknownTotal ? <> · <NoRouteLink c={c} env={env} onOpen={setOpen} /></> : null}
@@ -858,7 +863,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
                           </div>
                         )}
                         {c.intranetKaynak === 'intranet-spa' && (
-                          <Where>Kaynak: Gerçek SPA Keşfi — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.</Where>
+                          <Where>Kaynak: SPA Uygulamaları — Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap.</Where>
                         )}
                       </div>
                     ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
@@ -919,7 +924,7 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-4 text-center" style={{ color: 'var(--text-muted)' }}>Veri yok.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-4 text-center" style={{ color: 'var(--text-muted)' }}>{ortam === 'tumu' ? 'Veri yok.' : `${ortam} ortamı için veri yok.`}</td></tr>
             )}
           </tbody>
         </table>
@@ -928,12 +933,9 @@ export default function NginxSpaSummary({ tier }: { tier: 'internet' | 'intranet
       {open && <MissingAppsModal title={open.title} subtitle={open.subtitle} rows={open.rows} ownersReady={cov.ownersReady !== false} onClose={() => setOpen(null)} />}
       <div className="px-4 py-2 border-t text-[11px] leading-relaxed" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>
         <b>Tıklayın:</b> sayıya tıklayınca o ortamda henüz deploy olmamış uygulamalar ve sahipleri (ekip, e-posta), IP’ye tıklayınca o IP’ye çözen route’lar listelenir. <b>SPA</b> = OpenShift’te adında <code>-app-v</code>/<code>-app-emb-v</code> geçen uygulama; sayım uygulama × ortam. <b>İnternet</b> = route tipi passthrough; <b>deploy edilmiş</b> = internete açık sunucuda /hysdeploy + /usr/nginx/applications dizinleri (H+A), <b>servise tanımlı</b> = vhost’ta location/include (PROD’da eski GBRVP* sunucularının proxy_pass’i), <b>çalışıyor</b> = ikisi birden (kesişim; “deploy edilmiş − çalışıyor” = tanımsız olanlar, “servise tanımlı − çalışıyor” = paketi olmayanlar). {cov.intranetKaynak === 'intranet-spa'
-          ? <><b>İntranet</b> = Gerçek SPA Keşfi’nin intranet SPA’ları (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
+          ? <><b>İntranet</b> = SPA Uygulamaları listesindeki intranet SPA’lar (pod’da nginx + reencrypt route), Nginx ARK SPA › Intranet SPA ile aynı liste ve aynı hesap: ortamın taranan her intranet nginx’inde üç dizin de (hysdeploy + applications + conf) yerindeyse “tam kurulu”, hiçbirinde izi yoksa “hiç kurulmamış”, arada “yarım”; taranmayan sunucu “eksik” sayılmaz. OpenShift SPA sütunundaki “iç ağda” sayısı ad kalıbına göredir, bu yüzden farklı olabilir. </>
           : <><b>İntranet</b> = route tipi reencrypt, intranet nginx’lerinde üç dizin de yerindeyse “tam kurulu”. </>}
         <b>Taralı</b> = o ortam için nginx kaydı yok, ölçülemedi.
-        {!!cov.intranetRapor?.platformDisi.length && (
-          <span> ARK dışı cluster’lardaki intranet SPA’lar iki ekranda da sayılmaz: {cov.intranetRapor.platformDisi.map((d) => `${d.platform} ${fmtNumber(d.uygulama)}`).join(', ')}.</span>
-        )}
         {!!cov.intranetRapor?.ortamsiz && (
           <span> Namespace’i ortam eki taşımayan {fmtNumber(cov.intranetRapor.ortamsiz)} intranet SPA bir ortama yerleştirilemedi (Intranet SPA sayfasında “BILINMIYOR”).</span>
         )}

@@ -19,9 +19,12 @@ const OcpClusterPickStep: React.FC<{
   env: string;
   tenant: string;
   busy?: boolean;
+  // Application Hub derin bağlantısından gelen cluster: grupta VARSA önceden işaretlenir (yalnız
+  // işaret — tetikleme yine kullanıcının düğmesiyle). Grupta yoksa yok sayılır.
+  initialCluster?: string | null;
   // Belirli bir cluster adı YA DA "" (tüm grup — bkz. dosya başı notu).
   onSubmit: (cluster: string) => void;
-}> = ({ env, tenant, busy, onSubmit }) => {
+}> = ({ env, tenant, busy, initialCluster, onSubmit }) => {
   const [clusters, setClusters] = useState<string[]>([]);
   // null = henüz seçim yok (buton kapalı); ALL = "tüm cluster'lar"; aksi halde gerçek cluster adı.
   const [selected, setSelected] = useState<string | null>(null);
@@ -35,11 +38,13 @@ const OcpClusterPickStep: React.FC<{
       .then((r) => {
         const names = r.tree?.[env]?.[tenant] || [];
         setClusters(names);
-        setSelected(names.length === 1 ? names[0] : null); // tek seçenek varsa önceden işaretle
+        // tek seçenek varsa (ya da bağlantı gruptaki bir cluster'ı adlandırdıysa) önceden işaretle
+        const verilen = initialCluster ? names.find((n) => n.toLowerCase() === initialCluster.toLowerCase()) : undefined;
+        setSelected(verilen ?? (names.length === 1 ? names[0] : null));
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
-  }, [env, tenant]);
+  }, [env, tenant, initialCluster]);
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Cluster'lar yükleniyor...</div>;
   if (error) return <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">{error}</div>;

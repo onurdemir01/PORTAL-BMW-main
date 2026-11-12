@@ -12,6 +12,8 @@
 # Kullanim: source "$(dirname "$0")/stage-lib.sh"  (release*.sh icinden)
 #   stage_carry_persistent  <eski_agac> <yeni_agac>   .env.*, server/data, ocp-clusters.json,
 #                                                      sertifikalar, logs (PID/kilit) tasinir
+#   stage_bagimlilik_ve_build <agac>                  bagimliliklar + build; sonunda agacta
+#                                                      GELISTIRME PAKETI KALMAZ (asagida)
 #   stage_swap_and_start    <env> <eski_agac> <yeni_agac> <deploy_dir> <keep_prev>
 #                                                      stop → tasima → mv → start; eski agac
 #                                                      <eski_agac>.prev-<ts> olarak KALIR (build'siz
@@ -76,4 +78,30 @@ stage_swap_and_start() {
   # Basarisiz denemeler birikmesin
   ls -1dt "${old}".failed-* 2>/dev/null | tail -n +2 | xargs rm -rf 2>/dev/null || true
   return 0
+}
+
+# BAGIMLILIK + BUILD (2026-11-12). Iki tur agac gelir:
+#   - CALISMA ZAMANI PAKETI (`npm run paket` ciktisi; package.json'da devDependencies YOK, dist/
+#     onceden derlenmis): yalniz calisma zamani kurulur, `npm run build` dist DOGRULAMASIDIR.
+#   - KAYNAK AGAC (git klonu / eski bicim zip; gelistirme araclari var): tam kurulum + vite build,
+#     ardindan gelistirme paketleri silinir (`npm prune --omit=dev`).
+# Iki durumda da sunucuda gelistirme paketi (vite, eslint, test araclari) KALMAZ: kurumsal
+# bagimlilik taramasi ile sunucudaki agac ayni olur.
+stage_bagimlilik_ve_build() {
+  local kok="$1"
+  (
+    cd "$kok" || exit 1
+    if node -e "process.exit(require('./package.json').devDependencies ? 1 : 0)"; then
+      echo "[stage] calisma zamani paketi: npm ci --omit=dev + dist dogrulama"
+      npm ci --omit=dev --no-audit --no-fund || exit 1
+      npm run build || exit 1
+    else
+      echo "[stage] kaynak agac: npm ci + build + npm prune --omit=dev"
+      npm ci --no-audit --no-fund || exit 1
+      npm run build || exit 1
+      npm prune --omit=dev --no-audit --no-fund || exit 1
+      # prune silinen paketlerin bos @kapsam dizinlerini birakir; temizlik.
+      find node_modules -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null || true
+    fi
+  )
 }

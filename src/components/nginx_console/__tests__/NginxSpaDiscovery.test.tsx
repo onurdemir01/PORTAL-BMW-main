@@ -1463,26 +1463,28 @@ describe('NginxSpaDiscovery — RP servisi, özet kutusu, HTML yanıt (2026-10-1
     expect(hucre(satirOf(container, 'yok-ui'), 'rp').querySelector('[data-testid="rp-servis"]')).toBeNull();
   });
 
-  it('keşif özeti açılıp kapanır; kapalıyken tek satır özet; tercih bu tarayıcıda hatırlanır', async () => {
-    const { container, unmount } = render(<NginxSpaDiscovery />);
-    const ozet = await waitFor(() => {
-      const el = container.querySelector('[data-testid="spa-ozet"]') as HTMLElement | null;
-      if (!el) throw new Error('özet yok');
+  // OZET MATRISI (kullanici, 2026-11-12: "Kesif ozeti okumasi zor"): ortam basina SPA, tip, ad kalibi,
+  // RP, RP yuku, RP eslenik; sayiya tiklamak listeyi suzer; eski katlanir ozet yok.
+  it('özet matrisi: ortam satırı, sayılar SPA olanlardan; sayıya tıklamak listeyi o kırılıma süzer', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    const mat = await waitFor(() => {
+      const el = container.querySelector('[data-testid="spa-ozet-matrisi"]') as HTMLElement | null;
+      if (!el) throw new Error('matris yok');
       return el;
     });
-    const dugme = ozet.querySelector('button[aria-expanded]') as HTMLButtonElement;
-    expect(dugme.getAttribute('aria-expanded')).toBe('true');
-    expect(ozet.textContent).toContain('tanesi gerçekten SPA');
-    fireEvent.click(dugme);
-    expect(dugme.getAttribute('aria-expanded')).toBe('false');
-    expect(ozet.textContent).not.toContain('tanesi gerçekten SPA');
-    expect(ozet.textContent).toMatch(/uygulama tarandı · \S+ SPA/);
-    expect(localStorage.getItem('nginx-hub:spa-kesfi:ozet-acik')).toBe('0');
-    unmount();
-    const ikinci = render(<NginxSpaDiscovery />);
-    await waitFor(() => expect(ikinci.container.querySelector('[data-testid="spa-ozet"]')).not.toBeNull());
-    const oz2 = ikinci.container.querySelector('[data-testid="spa-ozet"]') as HTMLElement;
-    expect(oz2.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('[data-testid="spa-ozet"]')).toBeNull();
+    const satir = mat.querySelector('[data-testid="ozet-satiri"]') as HTMLElement;
+    expect(satir.querySelector('td')!.textContent).toBe('Test');
+    const toplamDugme = satir.querySelectorAll('td')[1].querySelector('button') as HTMLButtonElement;
+    expect(Number(toplamDugme.textContent)).toBeGreaterThan(0);
+    // RP uzerinden (tanimli) sayisina tikla: liste yalniz SPA + tanimli satirlar
+    const rpHucre = satir.querySelectorAll('td')[4];
+    const tanimli = rpHucre.querySelector('button') as HTMLButtonElement;
+    const n = Number(tanimli.textContent);
+    fireEvent.click(tanimli);
+    expect(satirlar(container).length).toBe(n);
+    expect(satirlar(container).every((tr) => hucre(tr, 'rp').textContent?.startsWith('tanımlı'))).toBe(true);
+    expect((container.querySelector('select[title="SPA"]') as HTMLSelectElement).value).toBe('evet');
   });
 
   it('yanıt JSON değilse (ara geçidin HTML sayfası) HTTP durumuyla anlaşılır hata; "Unexpected token" yok', async () => {
@@ -1500,5 +1502,109 @@ describe('NginxSpaDiscovery — RP servisi, özet kutusu, HTML yanıt (2026-10-1
     await waitFor(() => expect(container.textContent).toContain('SPA keşfi okunamadı'));
     expect(container.textContent).toContain('HTTP 403');
     expect(container.textContent).not.toContain('Unexpected token');
+  });
+});
+
+// ORTAM SUZGECI (kullanici, 2026-11-11: "Prod QA Test gibi sadece o ortamda olan uygulamalari
+// goruntulemek istiyorum"). Ortam namespace ekinden; eki olmayan "Belirsiz" kovasinda gizlenmez.
+describe('NginxSpaDiscovery — ortam süzgeci (2026-11-11)', () => {
+  const cokOrtam = () => {
+    const disc = [
+      A('kart-ui', 'kart-test'),
+      A('kart-ui', 'kart-prod', { cluster: 'gbocpprod1' }),
+      A('pos-ui', 'pos-prod', { cluster: 'gbocpprod2' }),
+      A('kart-ui', 'kart-qa', { cluster: 'gbocpqa1' }),
+      A('ekim-ui', 'ekim', { cluster: 'gbocptest2' }),
+    ];
+    const kaynak = { prxKolon: 4, cfg: [], dir: [], ups: [], trf: [], tablolar: { cfg: 'var', dir: 'var', trf: 'var', ups: 'var' } };
+    const r = buildSpaDiscovery(disc, [], [], [], kaynak);
+    return spaYanitGovdesi({ ok: true, tableMissing: false, scanDate: GUN, ...r, hesaplandi: 'H1' });
+  };
+  const dugme = (c: HTMLElement, ad: RegExp) => {
+    const b = [...c.querySelectorAll('[data-testid="ortam-secimi"] button')].find((x) => ad.test(x.textContent || ''));
+    if (!b) throw new Error('ortam düğmesi yok: ' + ad);
+    return b as HTMLButtonElement;
+  };
+
+  it('yalnız verideki ortamlar düğme olur, sayılarıyla; seçilen ortamın satırları kalır, namespace/cluster listesi ve sayılar o ortama göre', async () => {
+    sahte.govde = cokOrtam;
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(5));
+    const grup = container.querySelector('[data-testid="ortam-secimi"]') as HTMLElement;
+    const etiketler = [...grup.querySelectorAll('button')].map((b) => b.textContent);
+    expect(etiketler).toEqual(['Tüm ortamlar5', 'Prod2', 'QA1', 'Test1', 'Belirsiz1']);
+
+    fireEvent.click(dugme(container, /^Prod/));
+    expect(dugme(container, /^Prod/).getAttribute('aria-checked')).toBe('true');
+    expect(satirlar(container).length).toBe(2);
+    expect(satirlar(container).every((tr) => /-prod/.test(tr.textContent || ''))).toBe(true);
+    const ns = container.querySelector('select[title="Namespace"]') as HTMLSelectElement;
+    expect([...ns.options].map((o) => o.value)).toEqual(['tumu', 'kart-prod', 'pos-prod']);
+    const cl = container.querySelector('select[title="Cluster"]') as HTMLSelectElement;
+    expect([...cl.options].map((o) => o.value)).toEqual(['tumu', 'gbocpprod1', 'gbocpprod2']);
+    const spa = container.querySelector('select[title="SPA"]') as HTMLSelectElement;
+    expect(spa.textContent).toContain('SPA: evet (2)');
+    expect(container.textContent).toContain('2 uygulama');
+
+    fireEvent.click(dugme(container, /^Belirsiz/));
+    expect(satirlar(container).length).toBe(1);
+    expect(satirlar(container)[0].textContent).toContain('ekim-ui');
+  });
+
+  it('başka ortamın namespace seçimi ortam değişince düşer (liste sessizce boşalmaz); seçim hatırlanır; "süzgeçleri temizle" ortamı da sıfırlar', async () => {
+    sahte.govde = cokOrtam;
+    const { container, unmount } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(5));
+    const ns = container.querySelector('select[title="Namespace"]') as HTMLSelectElement;
+    fireEvent.change(ns, { target: { value: 'kart-test' } });
+    expect(satirlar(container).length).toBe(1);
+    fireEvent.click(dugme(container, /^QA/));
+    expect((container.querySelector('select[title="Namespace"]') as HTMLSelectElement).value).toBe('tumu');
+    expect(satirlar(container).length).toBe(1);
+    expect(satirlar(container)[0].textContent).toContain('kart-qa');
+    expect(localStorage.getItem('nginx-hub:spa-kesfi:ortam')).toBe('qa');
+    unmount();
+
+    const ikinci = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(ikinci.container).length).toBe(1));
+    expect(dugme(ikinci.container, /^QA/).getAttribute('aria-checked')).toBe('true');
+    const temizle = [...ikinci.container.querySelectorAll('button')].find((b) => b.textContent === 'süzgeçleri temizle') as HTMLButtonElement;
+    fireEvent.click(temizle);
+    expect(satirlar(ikinci.container).length).toBe(5);
+    expect(localStorage.getItem('nginx-hub:spa-kesfi:ortam')).toBe('tumu');
+  });
+
+  it('CSV yalnız seçili ortamın satırlarını yazar ve dosya adı ortamı taşır', async () => {
+    sahte.govde = cokOrtam;
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBe(5));
+    fireEvent.click(dugme(container, /^Test/));
+    const csvDugme = [...container.querySelectorAll('button')].find((b) => /CSV \(/.test(b.textContent || '')) as HTMLButtonElement;
+    vi.mocked(downloadCsv).mockClear();
+    fireEvent.click(csvDugme);
+    const [ad, , satir] = vi.mocked(downloadCsv).mock.calls[0] as [string, string[], unknown[][]];
+    expect(ad).toBe('spa_uygulamalari_test');
+    expect(satir.map((r) => r[1])).toEqual(['kart-test']);
+  });
+});
+
+// SERVIS SUZGECI (kullanici, 2026-11-12: "Uygulamalar listesine servis filtresini de ekle").
+describe('NginxSpaDiscovery — servis süzgeci (2026-11-12)', () => {
+  it('RP servisine göre süzer; "RP servisi yok" kovası; temizle sıfırlar', async () => {
+    const { container } = render(<NginxSpaDiscovery />);
+    await waitFor(() => expect(satirlar(container).length).toBeGreaterThan(2));
+    const toplam = satirlar(container).length;
+    const sel = container.querySelector('select[title^="Servis"]') as HTMLSelectElement;
+    const secenekler = [...sel.options].map((o) => o.textContent);
+    expect(secenekler[0]).toBe('tüm servisler');
+    expect(secenekler).toContain('KART (1)');
+    expect(secenekler[secenekler.length - 1]).toBe(`RP servisi yok (${toplam - 1})`);
+    fireEvent.change(sel, { target: { value: 'KART' } });
+    expect(satirlar(container).map((tr) => hucre(tr, 'uygulama').textContent?.includes('kart-ui'))).toEqual([true]);
+    fireEvent.change(sel, { target: { value: 'yok' } });
+    expect(satirlar(container).length).toBe(toplam - 1);
+    expect(satirlar(container).some((tr) => hucre(tr, 'uygulama').textContent?.includes('kart-ui'))).toBe(false);
+    fireEvent.click([...container.querySelectorAll('button')].find((b) => b.textContent === 'süzgeçleri temizle') as HTMLButtonElement);
+    expect(satirlar(container).length).toBe(toplam);
   });
 });

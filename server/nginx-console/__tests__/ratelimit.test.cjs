@@ -243,3 +243,139 @@ test('RL9: ortam sunucu adindan OKUNUR (sayilardan onceki harf), uydurulmaz', ()
     assert.ok(Object.prototype.hasOwnProperty.call(rl.ENV_HARF, harf), `${harf} harfi tanimli degil`);
   }
 });
+
+test('RL10: bilerek KAPALI (include yorumlu) eksik DEGILDIR, ayri durumdur', () => {
+  // rate_limit_enabled = false (2026-11-09): nginx.conf'ta `#include .../rate_limits.conf;`.
+  // nginx -T yorumlu satiri gostermez; sinyal nginx_audit_analyze.py'nin ham nginx.conf'tan
+  // yazdigi Nginx_Audit_Settings satiri: directive=rate_limits_include, value=enabled|disabled|missing.
+  assert.equal(rl.INCLUDE_SIGNAL, 'rate_limits_include');
+  assert.ok(rl.SORGU_DIREKTIFLERI.includes('rate_limits_include'), 'sinyal sorgulanmiyor');
+  const bos = { zones: {}, applied: {} };
+  assert.equal(rl.hostStatus({ ...bos, include: 'disabled' }).durum, 'kapali');
+  assert.deepEqual(rl.hostStatus({ ...bos, include: 'disabled' }).eksikler, []);
+  // Olculmedi (eski filo) bile olsa kapali sinyali kendi hukmudur.
+  assert.equal(rl.hostStatus({ ...bos, include: 'disabled' }, false).durum, 'kapali');
+  // Sunucu durumu yine once gelir.
+  assert.equal(rl.hostStatus({ ...bos, include: 'disabled' }, true, 'configbozuk').durum, 'configbozuk');
+  // "Uc zone yok" TEK BASINA kapali degildir: dosya kaybolmus olabilir.
+  assert.equal(rl.hostStatus({ ...bos, include: 'enabled' }).durum, 'eksik');
+  assert.equal(rl.hostStatus({ ...bos, include: null }).durum, 'eksik');
+  // Satir HIC yoksa eksik + sebep (toggle satiri eklemez).
+  const yok = rl.hostStatus({ ...bos, include: 'missing' });
+  assert.equal(yok.durum, 'eksik');
+  assert.ok(yok.eksikler[0].includes('include satırı yok'));
+  // "Include yorumlu" TEK BASINA kapali degildir: zone baska dosyadan geliyorsa olculur.
+  const tam = {
+    zones: { request_limit: { rate: '500r/s' }, server_limit: { rate: '5000r/s' }, limit_connection_perip: {} },
+    applied: { request_limit: { burst: 200, nodelay: true }, server_limit: { burst: 200, nodelay: true }, limit_connection_perip: { conn: 200 } },
+  };
+  assert.equal(rl.hostStatus({ ...tam, include: 'disabled' }).durum, 'standart');
+  const kismi = { zones: { request_limit: { rate: '500r/s' } }, applied: {}, include: 'disabled' };
+  assert.equal(rl.hostStatus(kismi).durum, 'eksik');
+  const yalnizUygulama = { zones: {}, applied: { server_limit: { burst: 200, nodelay: true } }, include: 'disabled' };
+  assert.equal(rl.hostStatus(yalnizUygulama).durum, 'eksik', 'uygulanan zone varken kapali denildi');
+
+  // Ozet: kapali kendi sayacinda, "dosya yuklu degil" sayacina GIRMEZ.
+  const H = (host, durum, fileLoaded) => ({ host, env: 'Production', durum, fileLoaded, calisiyor: true, requestRate: null, serverRate: null });
+  const s = rl.summarize([H('A1', 'kapali', false), H('A2', 'eksik', false), H('A3', 'standart', true)]);
+  assert.equal(s.kapali, 1);
+  assert.equal(s.eksik, 1);
+  assert.equal(s.dosyaYuklenmemis, 1, 'kapali sunucu "dosya yuklu degil" sayildi');
+  assert.equal(s.byEnv.Production.kapali, 1);
+  assert.equal(rl.kapaliMesaji(rl.summarize([H('A3', 'standart', true)])), undefined);
+  assert.match(rl.kapaliMesaji(rl.summarize([H('A1', 'kapali', false), H('A2', 'kapali', false)])), /^Tüm sunucularda/);
+  assert.match(rl.kapaliMesaji(s), /^1 sunucuda/);
+
+  // CSV: kapali ayri deger tasir, EKSIK/HAYIR yazmaz.
+  const csv = rl.toCsv([{
+    host: 'GBNGXP98', env: 'Production', requestRate: null, serverRate: null, connLimit: null,
+    applied: [], zoneCount: 0, fileLoaded: false, mismatch: 0, durum: 'kapali',
+    eksikler: [], farklar: [], detay: [], calisiyor: true,
+  }], '2026-11-09');
+  assert.ok(csv.includes('hayır (bilerek kapalı);Kapalı (bilerek)'), csv);
+  assert.ok(!/EKSİK|HAYIR/.test(csv), 'kapali sunucu raporda eksik gibi okunur');
+
+  // UI: notr bilgi tonu, kendi KPI'si, etiket.
+  const ui = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'nginx_console', 'RateLimitTab.tsx'), 'utf8');
+  const satir = ui.split(String.fromCharCode(10)).find((l) => l.trim().startsWith('kapali: {'));
+  assert.ok(satir, 'DURUM.kapali yok');
+  assert.ok(satir.includes("'Kapalı (bilerek)'") && satir.includes('--status-info') && !satir.includes('--status-danger'),
+    'kapali etiketi/rengi yanlis: ' + satir);
+  assert.ok(ui.includes('title="Kapalı (bilerek)" value={s.kapali}'), 'kapali KPI yok');
+  assert.ok(ui.includes("h.durum !== 'kapali' && ("), 'kapali sunucuda "rate_limits.conf yok" rozeti cikiyor');
+  assert.ok(ui.includes('data?.kapaliMessage'), 'kapali bilgi metni gosterilmiyor');
+  assert.ok(!ui.includes('Vazgeç'));
+});
+
+test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () => {
+  const mssqlYol = require.resolve('../../inventory/mssql.cjs');
+  const durumYol = require.resolve('../../audit/nginx-host-state.cjs');
+  const rlYol = require.resolve('../ratelimit.cjs');
+  const eski = { m: require.cache[mssqlYol], d: require.cache[durumYol], r: require.cache[rlYol] };
+  const satirlar = (hostlar) => hostlar.map(([host, value, matches]) => ({
+    host, conf_file: '/usr/nginx/nginx.conf', context: 'http', directive: 'rate_limits_include',
+    value, reference_value: matches === false ? 'enabled' : null, matches,
+  }));
+  const sahte = (yol, exports) => ({ id: yol, filename: yol, loaded: true, exports });
+  const kur = (rows) => {
+    require.cache[mssqlYol] = sahte(mssqlYol, {
+      sql: { NVarChar: () => 'nv' },
+      query: async (q, params = []) => {
+        if (/MAX\(scan_date\)/.test(q) || /DISTINCT TOP 30/.test(q)) return { recordset: [{ d: '2026-11-09' }] };
+        // Gercek SQL gibi: yalniz sorgulanan direktifler doner (sinyal sorgudan duserse gorunur).
+        const istenen = new Set(params.filter((p) => /^x\d+$/.test(p.name) && (q.includes(`@${p.name},`) || q.includes(`@${p.name})`)))
+          .map((p) => p.value));
+        return { recordset: rows.filter((r) => istenen.has(r.directive)) };
+      },
+    });
+    require.cache[durumYol] = sahte(durumYol, { loadHostStates: async () => new Map() });
+    delete require.cache[rlYol];
+    return require('../ratelimit.cjs');
+  };
+  try {
+    const r = await kur(satirlar([['GBNGXP01', 'disabled', null], ['GBNGXP02', 'disabled', null]])).loadRateLimits();
+    assert.equal(r.directivesMissing, false, 'tum filo kapaliyken "olculmedi" denildi');
+    assert.equal(r.message, undefined, 'yaniltici "surum henuz kosmamis" mesaji');
+    assert.deepEqual(r.hosts.map((h) => h.durum), ['kapali', 'kapali']);
+    assert.equal(r.hosts[0].rateLimitInclude, 'disabled');
+    assert.equal(r.summary.kapali, 2);
+    assert.equal(r.summary.dosyaYuklenmemis, 0);
+    assert.match(r.kapaliMessage, /^Tüm sunucularda/);
+    // Sinyal satiri nginx -T detayina girmez.
+    assert.deepEqual(r.hosts[0].detay, []);
+
+    // Karisik: biri acik ama zone yok (dosya kaybolmus) -> eksik; biri yok + sapma.
+    const r2 = await kur(satirlar([['GBNGXP01', 'disabled', null], ['GBNGXP03', 'enabled', null], ['GBNGXP04', 'missing', false]])).loadRateLimits();
+    const d = Object.fromEntries(r2.hosts.map((h) => [h.host, h]));
+    assert.equal(d.GBNGXP01.durum, 'kapali');
+    assert.equal(d.GBNGXP03.durum, 'eksik');
+    assert.equal(d.GBNGXP04.durum, 'eksik');
+    assert.equal(d.GBNGXP04.mismatch, 1);
+    assert.equal(r2.summary.dosyaYuklenmemis, 2);
+    assert.match(r2.kapaliMessage, /^1 sunucuda/);
+
+    // Eski analizci degerleri (acik/kapali/yok) yeni degerlere cevrilir.
+    const r3 = await kur(satirlar([['GBNGXP01', 'kapali', null], ['GBNGXP02', 'kapali', null]])).loadRateLimits();
+    assert.deepEqual(r3.hosts.map((h) => h.durum), ['kapali', 'kapali'], 'eski "kapali" degeri taninmadi');
+    assert.equal(r3.hosts[0].rateLimitInclude, 'disabled');
+    assert.equal(r3.summary.kapali, 2);
+    assert.equal(r3.directivesMissing, false);
+    const r3b = await kur(satirlar([['GBNGXP03', 'acik', null], ['GBNGXP04', 'yok', false]])).loadRateLimits();
+    const e = Object.fromEntries(r3b.hosts.map((h) => [h.host, h]));
+    assert.equal(e.GBNGXP03.rateLimitInclude, 'enabled');
+    assert.equal(e.GBNGXP04.rateLimitInclude, 'missing');
+    assert.ok(e.GBNGXP04.eksikler[0].includes('include satırı yok'), 'eski "yok" degerinde sebep kayboldu');
+
+    // Sinyal yoksa (eski analiz) eski davranis: olculmedi.
+    const r4 = await kur([{ host: 'GBNGXP05', conf_file: '/usr/nginx/conf/x.conf', context: 'main', directive: 'limit_req_status', value: '429', reference_value: '429', matches: true }]).loadRateLimits();
+    assert.equal(r4.directivesMissing, true);
+    assert.equal(r4.hosts[0].durum, 'bilinmiyor');
+    assert.equal(r4.hosts[0].rateLimitInclude, null);
+    assert.equal(r4.kapaliMessage, undefined);
+  } finally {
+    for (const [k, v] of [[mssqlYol, eski.m], [durumYol, eski.d], [rlYol, eski.r]]) {
+      if (v) require.cache[k] = v; else delete require.cache[k];
+    }
+  }
+});

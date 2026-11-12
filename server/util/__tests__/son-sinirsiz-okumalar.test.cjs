@@ -134,10 +134,11 @@ function gercekTokenFn() {
   // "ReferenceError: async is not defined" ile duserdi — bu tuzaga bir kez dusuldu.
   const j = RUNNER_SRC.indexOf('\nasync function fetchTokenOAuth2(');
   assert.ok(c > 0 && i > c && j > i, 'kaynak cikarimi bozuldu — desen degismis');
+  const { tlsSecenekleri, tlsHatasiAcikla } = require('../tls-guven.cjs');
   return new Function(
-    'http', 'https', 'URL',
+    'http', 'https', 'URL', 'tlsSecenekleri', 'tlsHatasiAcikla',
     `${RUNNER_SRC.slice(c, i)}\n${RUNNER_SRC.slice(i, j)}\nreturn { fetchTokenOAuth2AtPath, AWX_TOKEN_MAX_BYTES };`,
-  )(http, require('node:https'), URL);
+  )(http, require('node:https'), URL, tlsSecenekleri, tlsHatasiAcikla);
 }
 
 test('SS6 token ucu DEV yaniti tamponlamaz ve ACIKCA reddeder', async () => {

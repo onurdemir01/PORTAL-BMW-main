@@ -120,7 +120,11 @@ const WasHostPicker: React.FC<{
       {selectable.length === 0 && (
         <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800">
           <ExclamationTriangleIcon className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>Bu uygulamanın keşfedilebilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor).</span>
+          <span>
+            {hosts.length === 0
+              ? "Bu uygulama için WAS envanterinde sunucu kaydı bulunamadı — adı kontrol edin ya da başka uygulama seçin."
+              : "Bu uygulamanın keşfedilebilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor)."}
+          </span>
         </div>
       )}
 
@@ -166,13 +170,16 @@ const WasHostPicker: React.FC<{
   );
 };
 
-const WasAppSearchStep: React.FC<{ busy?: boolean; onSubmit: (v: WasAppSelection) => void }> = ({ busy, onSubmit }) => {
+// `initialApp` (Application Hub derin bağlantısı): uygulama ÖN-SEÇİLİ gelir, doğrudan sunucu
+// listesi (WasHostPicker) açılır. Ad envanterde yoksa sunucu listesi boş/hatalı döner ve picker
+// bunu görünür biçimde söyler; "Başka uygulama" her zaman arama listesine döndürür.
+const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit: (v: WasAppSelection) => void }> = ({ busy, initialApp, onSubmit }) => {
   const [search, setSearch] = useState("");
   const [apps, setApps] = useState<string[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [app, setApp] = useState<string | null>(null);
+  const [app, setApp] = useState<string | null>(initialApp || null);
 
   useEffect(() => {
     let cancelled = false;

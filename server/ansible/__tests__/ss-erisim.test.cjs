@@ -142,7 +142,7 @@ test('SE8 runner: sunucu tarafi kontrol ve atomik yazim', () => {
   );
   assert.match(RUNNER, /app\.post\('\/api\/ansible\/ss\/items\/:id\/access', requireAuth, requireAdmin,/);
 
-  const yaz = blok('async function writeSsItems(items)', 2200);
+  const yaz = blok('async function writeSsItems(items', 3600);
   assert.match(yaz, /BEGIN TRAN;[\s\S]*DELETE FROM ansible_ss_items;[\s\S]*COMMIT TRAN;[\s\S]*ROLLBACK TRAN;/);
   assert.match(yaz, /access_mode, access_groups\) VALUES/);
   const satir = blok('function ssRowToItem(r)', 900);
