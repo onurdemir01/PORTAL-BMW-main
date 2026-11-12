@@ -57,6 +57,8 @@ const YARDIM_KAPSAM_DISI = /^components\/nginx_console\/|^components\/admin\/tab
 test('YD1 HelpModal acan sayfa yardim dugmesini YardimDugmesi`nden alir', () => {
   const sayfalar = SRC_FILES.filter((f) => !f.split(path.sep).includes('__tests__'))
     .map((f) => [path.relative(ROOT, f), stripComments(fs.readFileSync(f, 'utf8'))])
+    // Yol ayraci normalize: Windows'ta path.relative ters egik cizgi verir, desen '/' bekler (bekci platformdan bagimsiz).
+    .map(([f, s]) => [f.split(path.sep).join('/'), s])
     .filter(([f, s]) => /<HelpModal\b/.test(s) && !YARDIM_KAPSAM_DISI.test(f) && !/common\/HelpModal\.tsx$/.test(f));
   assert.ok(sayfalar.length >= 6, `HelpModal kullanan sayfa az: ${sayfalar.length}`);
   for (const [f, s] of sayfalar) {
