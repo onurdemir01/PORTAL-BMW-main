@@ -15,6 +15,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { LdapUserPicker } from '../LdapUserPicker';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 export type TabAccessGrant = DenetimAccessGrant;
 
@@ -60,6 +61,7 @@ export function TabAccessPanel({
   /** "sekme" yerine başka bir kelime (Crypto Hub'da "uygulama"). */
   tabWord?: string;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [tabs, setTabs] = useState<string[]>([]);
   const [grants, setGrants] = useState<TabAccessGrant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,9 +139,12 @@ export function TabAccessPanel({
 
   const remove = async (g: TabAccessGrant) => {
     if (
-      !window.confirm(
-        `${g.principalId} (${PRINCIPAL_LABEL[g.principalType] || g.principalType}) için ${subject} erişimi kaldırılsın mı?`,
-      )
+      !(await onayla({
+        baslik: 'Erişimi kaldır',
+        metin: `${g.principalId} (${PRINCIPAL_LABEL[g.principalType] || g.principalType}) için ${subject} erişimi kaldırılsın mı?`,
+        onayMetni: 'Kaldır',
+        tehlikeli: true,
+      }))
     )
       return;
     try {
@@ -172,6 +177,7 @@ export function TabAccessPanel({
 
   return (
     <div className="space-y-4">
+      {onayPenceresi}
       <div
         className="rounded-xl border px-4 py-3"
         style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}

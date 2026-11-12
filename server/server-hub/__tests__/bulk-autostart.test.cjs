@@ -123,7 +123,9 @@ test('SB4 ZATEN ISTENEN DURUMDA is ACILMAZ', () => {
 
 test('SB5 ekranda SATIR BAZINDA dugme var ve onay istiyor', () => {
   assert.match(UI, /jvmAutoStart\(j\)/, 'satir dugmesi yok');
-  assert.match(UI, /window\.confirm\(/, 'tek tikla onaysiz degisiklik yapiliyor');
+  // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
+  assert.match(UI, /await onayla\(\{/, 'tek tikla onaysiz degisiklik yapiliyor');
+  assert.doesNotMatch(UI, /window\.confirm\(/, 'tarayici onayi geri gelmis');
   assert.match(UI, /Yalnız bu JVM etkilenir/, 'onay metni kapsami soylemiyor');
   // Islem bitince tarama TAZELENIR; yoksa eski deger kalir ve kullanici tekrar tiklar.
   assert.match(UI, /serverHubApi\s*\n?\s*\.host\(host, true\)/, 'islem sonrasi tarama tazelenmiyor');

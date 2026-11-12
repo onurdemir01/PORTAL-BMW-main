@@ -2,9 +2,10 @@ import React, { useEffect, useState } from "react";
 import { nobetciApi, type NobetciResult, type NobetRecord, type NobetPerson, type QuickLink } from "@/api/nobetciApi";
 import { Modal } from "@/components/common/Modal";
 import { UserCircleIcon } from "@heroicons/react/24/outline";
-import { QuestionMarkCircleIcon, PhoneIcon, CalendarIcon, LinkIcon } from "@heroicons/react/24/outline";
+import { PhoneIcon, CalendarIcon, LinkIcon } from "@heroicons/react/24/outline";
 import HelpModal, { type HelpSection } from "@/components/common/HelpModal";
 import { fmtDate as formatDate } from "@/utils/datetime";
+import YardimDugmesi from "@/components/common/YardimDugmesi";
 
 const DUTY_ROSTER_HELP_SECTIONS: HelpSection[] = [
   {
@@ -288,14 +289,7 @@ export default function DutyRosterPage() {
       {/* ── Başlık ────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4">
         <h1 className="page-title">Nöbet Çizelgesi</h1>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-xl border transition-colors flex-shrink-0"
-          style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
-        >
-          <QuestionMarkCircleIcon className="w-4 h-4" />
-          Yardım
-        </button>
+        <YardimDugmesi onClick={() => setShowHelp(true)} />
       </div>
 
       {/* ── Bugünün Nöbetçisi ─────────────────────────────────────── */}

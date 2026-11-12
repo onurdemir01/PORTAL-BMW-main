@@ -48,6 +48,7 @@ import { SsErisimBolumu, ssErisimModu } from './SsErisimBolumu';
 const fmtWhen = (iso: string) => fmtDateTime(iso);
 import { buildSuggestions, type SurveySuggestion } from '@/utils/surveySuggestions';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 // OCO'nun istenebilecegi ortam etiketleri. Portalin cluster katalogundaki `env`
 // degerleriyle ayni sozluk (`ansible_ocp_clusters.env`, `logx_env_suffix_map`).
@@ -367,6 +368,7 @@ export default function FieldOverridesModal({
    */
   ocoAyarYoksaAcik?: boolean;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [fields, setFields] = useState<LocalFieldState[]>([]);
   const [choiceSources, setChoiceSources] = useState<ChoiceSourceInfo[]>([]);
   // Kodla bağlı alanlar (sunucu survey yanıtında kodlaBagli işaretli olanlar; ör. API Generator
@@ -581,7 +583,7 @@ export default function FieldOverridesModal({
     }
   }
   async function restore(h: CustomizationHistoryItem) {
-    if (!window.confirm(`${fmtWhen(h.savedAt)} tarihli sürümü geri yüklemek istiyor musunuz? Mevcut hâl de geçmişe yazılır.`)) return;
+    if (!(await onayla({ baslik: 'Sürümü geri yükle', metin: `${fmtWhen(h.savedAt)} tarihli sürümü geri yüklemek istiyor musunuz? Mevcut hâl de geçmişe yazılır.`, onayMetni: 'Geri yükle' }))) return;
     setRestoring(h.id);
     setErr('');
     try {
@@ -1036,6 +1038,7 @@ export default function FieldOverridesModal({
         </>
       }
     >
+      {onayPenceresi}
       <div className="space-y-4">
         {ssErisimItem && erisim && (
           <SsErisimBolumu

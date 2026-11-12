@@ -96,16 +96,16 @@ describe('AWX sunucu yönetimi', () => {
 
   it('AU5 etkinleştirme onay ister', async () => {
     api.awxSunucuYonetim.mockResolvedValue({ ok: true, servers: [{ ...M1, enabled: false, bellekte: false }, M2] });
-    const onayla = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<AwxSunucuYonetimi />);
     fireEvent.click(within(await screen.findByTestId('awx-sunucu-1')).getByRole('button', { name: /Etkinleştir/ }));
-    expect(onayla).toHaveBeenCalled();
+    // Portal ici onay penceresi (2026-11-08): Iptal -> istek yok.
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(api.awxSunucuDurum).not.toHaveBeenCalled();
-    onayla.mockReturnValue(true);
     api.awxSunucuDurum.mockResolvedValue({ ok: true, yuklendi: true, message: 'ok' });
     fireEvent.click(within(screen.getByTestId('awx-sunucu-1')).getByRole('button', { name: /Etkinleştir/ }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Etkinleştir' }));
     await waitFor(() => expect(api.awxSunucuDurum).toHaveBeenCalledWith(1, true));
-    onayla.mockRestore();
   });
 
   it('AU6 Admin > Ansible sekmesi bölümü gösterir ve değişince sağlığı yeniler (kaynak)', () => {

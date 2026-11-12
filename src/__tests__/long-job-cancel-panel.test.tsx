@@ -356,14 +356,15 @@ describe('LongJobCancelPanel', () => {
           token: TANIMLI,
         }),
     });
-    const conf = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<LongJobCancelPanel summary={[]} />);
     const row = await screen.findByTestId('ljc-token-row-1');
     fireEvent.click(within(row).getByText('Sil'));
-    expect(conf).toHaveBeenCalled();
+    // Portal ici onay penceresi (2026-11-08; eskiden window.confirm): Iptal -> silme yok.
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'İptal' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
-    conf.mockReturnValue(true);
     fireEvent.click(within(row).getByText('Sil'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sil' }));
     await waitFor(() =>
       expect(calls.some((c) => c.method === 'DELETE' && c.url === '/api/ansible/longjob-cancel/tokens/1')).toBe(true),
     );
@@ -371,7 +372,6 @@ describe('LongJobCancelPanel', () => {
     fireEvent.click(within(screen.getByTestId('ljc-token-row-1')).getByText('Doğrula'));
     await waitFor(() => expect(screen.getByTestId('ljc-token-msg-1').textContent).toMatch(/İPTAL TOKEN'I GEÇERSİZ/));
     expect(calls.some((c) => c.method === 'POST' && c.url === '/api/ansible/longjob-cancel/tokens/1/verify')).toBe(true);
-    conf.mockRestore();
   });
 
   it('P11 şifreleme anahtarı yoksa kırmızı not ve Kaydet kapalı', async () => {

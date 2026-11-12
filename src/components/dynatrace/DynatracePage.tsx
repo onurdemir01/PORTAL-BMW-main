@@ -29,12 +29,12 @@ import {
   SparklesIcon,
   ArrowRightIcon,
   ArrowPathIcon,
-  QuestionMarkCircleIcon,
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
 import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import YardimDugmesi from '@/components/common/YardimDugmesi';
 
 const PERFORMANCE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -1423,13 +1423,7 @@ const DynatracePage: React.FC = () => {
               />
               {connected ? 'Bağlı' : 'Bağlantı yok'}
             </div>
-            <button
-              onClick={() => setShowHelp(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 border border-gray-200 rounded-full hover:bg-gray-50 transition-colors"
-            >
-              <QuestionMarkCircleIcon className="w-4 h-4" />
-              Yardım
-            </button>
+            <YardimDugmesi onClick={() => setShowHelp(true)} />
           </>
         }
       />

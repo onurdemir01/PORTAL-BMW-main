@@ -11,6 +11,7 @@ import LoadError from "@/components/common/LoadError";
 import { Select } from "@/components/ui/Form";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { fmtDateTime } from "@/utils/datetime";
+import { useOnay } from "@/components/common/OnayPenceresi";
 
 // SEED'DEKI HER KATEGORI BURADA OLMAK ZORUNDA. Liste `mssql-setup.cjs`
 // PLAYBOOK_REGISTRY_SEED ile ayrisirsa, kategorisi listede olmayan bir satiri admin
@@ -50,6 +51,7 @@ export function silmeOnayMetni(row: Pick<PlaybookRegistryEntry, "displayName" | 
 }
 
 export default function PlaybookRegistryTab() {
+  const { onayla, onayPenceresi } = useOnay();
   const [rows, setRows] = useState<PlaybookRegistryEntry[]>([]);
   const [servers, setServers] = useState<AwxServer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,7 +158,7 @@ export default function PlaybookRegistryTab() {
   }, [showForm, editId]);
 
   async function handleDelete(row: PlaybookRegistryEntry) {
-    if (!window.confirm(silmeOnayMetni(row))) return;
+    if (!(await onayla({ baslik: "Kaydı sil", metin: silmeOnayMetni(row), onayMetni: "Sil", tehlikeli: true }))) return;
     const r = await playbookRegistryApi.remove(row.id);
     if (r.ok) {
       setRows((prev) => prev.filter((x) => x.id !== row.id));
@@ -180,6 +182,7 @@ export default function PlaybookRegistryTab() {
 
   return (
     <div className="space-y-5">
+      {onayPenceresi}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 max-w-xl">
           AI Analist'in sohbette kendi kararıyla çağırabildiği salt-okunur tanılama playbook'ları
@@ -343,7 +346,7 @@ export default function PlaybookRegistryTab() {
               )}
               {!row.isReadonly && <Badge className="bg-red-50 text-red-600">değiştirici</Badge>}
               <SourceBadge row={row} />
-              <button onClick={() => openEdit(row)} className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors">
+              <button onClick={() => openEdit(row)} aria-label={`${row.displayName} kaydını düzenle`} className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors">
                 <PencilSquareIcon className="w-4 h-4" />
               </button>
               {row.handler !== "ocp_cluster" && (

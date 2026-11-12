@@ -12,6 +12,7 @@ import { ArrowUpTrayIcon, TrashIcon, PhotoIcon } from '@heroicons/react/24/outli
 import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import LoadError from '@/components/common/LoadError';
+import { useOnay } from '@/components/common/OnayPenceresi';
 
 interface AssetInfo {
   mime: string;
@@ -51,6 +52,7 @@ function ImageAssetEditor({
   previewBox: number;
   onChanged: () => Promise<void>;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
@@ -99,7 +101,7 @@ function ImageAssetEditor({
   };
 
   const onReset = async () => {
-    if (!window.confirm('Görsel silinip varsayılana dönülecek. Devam edilsin mi?')) return;
+    if (!(await onayla({ baslik: 'Görseli sıfırla', metin: 'Görsel silinip varsayılana dönülecek. Devam edilsin mi?', onayMetni: 'Varsayılana dön', tehlikeli: true }))) return;
     setBusy(true);
     setError(null);
     setOkMsg(null);
@@ -118,6 +120,7 @@ function ImageAssetEditor({
 
   return (
     <div className="space-y-4">
+      {onayPenceresi}
       <div>
         <h2 className="section-label">{title}</h2>
         <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>

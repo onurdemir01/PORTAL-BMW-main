@@ -21,7 +21,6 @@ import {
   PlayIcon,
   ClockIcon,
   ArrowLeftIcon,
-  QuestionMarkCircleIcon,
   ShieldCheckIcon,
   AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
@@ -45,6 +44,8 @@ import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import { fmtDateTime } from '@/utils/datetime';
 import { servisinIsiMi } from '@/utils/ssBaglar';
 import { isFieldActive as isFieldActiveShared } from '../../shared/surveyConditions.cjs';
+import { useOnay } from '@/components/common/OnayPenceresi';
+import YardimDugmesi from '@/components/common/YardimDugmesi';
 
 // LAUNCHING ARA DURUMU (2026-08-28): Smart onayı geldi, AWX çağrısı uçuşta. Bu da bir
 // BEKLEME durumudur — sonlanmış gibi davranıp yoklamayı kesersek ekran "başlatılıyor"da
@@ -1504,6 +1505,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   onItems?: (items: AnsibleSsItem[]) => void;
   onSelect?: (id: string | null) => void;
 }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [items, setItems] = useState<AnsibleSsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [launchItem, setLaunchItem] = useState<AnsibleSsItem | null>(null);
@@ -1568,7 +1570,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   }, [selected]);
 
   async function deleteItem(id: string) {
-    if (!confirm('Bu servisi kaldır?')) return;
+    if (!(await onayla({ baslik: 'Servisi kaldır', metin: 'Bu servis katalogdan kaldırılsın mı?', onayMetni: 'Kaldır', tehlikeli: true }))) return;
     await ansibleApi.deleteSsItem(id);
     onSelect?.(null);
     reload();
@@ -1674,6 +1676,7 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
 
   return (
     <div className="space-y-4">
+      {onayPenceresi}
       <div className="flex items-center justify-between">
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{isAdmin ? 'Soldaki menüden bir servis seçin ya da "Servis Ekle" ile yeni servis tanımlayın.' : 'Soldaki menüden bir servis seçip "Başlat" ile AWX işini açın.'}</p>
         <div className="flex gap-2">
@@ -1970,14 +1973,7 @@ export default function SelfServicePage() {
             Ansible servisleri, IP ve OpenShift envanter kontrolü tek yerde.
           </p>
         </div>
-        <button
-          onClick={() => setShowHelp(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-xl border transition-colors flex-shrink-0"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-        >
-          <QuestionMarkCircleIcon className="w-4 h-4" />
-          Yardım
-        </button>
+        <YardimDugmesi onClick={() => setShowHelp(true)} />
       </div>
 
       {err && (

@@ -17,6 +17,7 @@ import React, { useCallback, useState } from "react";
 import { safeJson } from "@/api/http";
 import { fmtDateTime } from "@/utils/datetime";
 import { useAsyncEffect } from "@/hooks/useAsyncEffect";
+import { useOnay } from "@/components/common/OnayPenceresi";
 
 interface TokenVerify {
   at: string | null;
@@ -84,6 +85,7 @@ function VerifyLine({ v }: { v: TokenVerify | null }) {
 }
 
 export default function LongJobCancelTokenSection({ onChanged }: { onChanged?: () => void }) {
+  const { onayla, onayPenceresi } = useOnay();
   const [data, setData] = useState<TokensResp | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<number, string>>({});
@@ -147,9 +149,12 @@ export default function LongJobCancelTokenSection({ onChanged }: { onChanged?: (
 
   const remove = async (row: CancelTokenRow) => {
     if (
-      !window.confirm(
-        `${row.serverName} iptal token'ı (${row.owner || "?"}) silinsin mi? Sonraki iptaller Portal servis kullanıcısıyla denenir.`,
-      )
+      !(await onayla({
+        baslik: "İptal token'ını sil",
+        metin: `${row.serverName} iptal token'ı (${row.owner || "?"}) silinsin mi? Sonraki iptaller Portal servis kullanıcısıyla denenir.`,
+        onayMetni: "Sil",
+        tehlikeli: true,
+      }))
     )
       return;
     setBusyFor(row.serverId, "delete");
@@ -199,6 +204,7 @@ export default function LongJobCancelTokenSection({ onChanged }: { onChanged?: (
 
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50/40 p-3 mb-3" data-testid="ljc-token-section">
+      {onayPenceresi}
       <div className="text-xs font-semibold text-gray-700 mb-1">İptal token'ı (AWX sunucusu başına)</div>
       <div className="text-xs mb-1 px-2 py-1 rounded border border-amber-300 bg-amber-100 text-amber-900" data-testid="ljc-token-warning">
         {TOKEN_TEMP_WARNING}

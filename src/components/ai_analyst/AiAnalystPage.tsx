@@ -12,6 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { aiAnalystApi, type AnalystEvent, type ChatSources, type AiConversation } from "@/api/aiAnalystApi";
 import LogAnalysisPanel from "./LogAnalysisPanel";
+import { useOnay } from "@/components/common/OnayPenceresi";
 
 // ── Sohbet öğe tipleri ────────────────────────────────────────────────────────
 type ChatItem =
@@ -69,6 +70,7 @@ function StepBubble({ item }: { item: Extract<ChatItem, { kind: "step" }> }) {
 type AnalystMode = "chat" | "logs";
 
 const AiAnalystPage: React.FC = () => {
+  const { onayla, onayPenceresi } = useOnay();
   const [searchParams, setSearchParams] = useSearchParams();
   const [mode, setMode]           = useState<AnalystMode>(searchParams.get("mode") === "logs" ? "logs" : "chat");
   const [items, setItems]         = useState<ChatItem[]>([]);
@@ -116,7 +118,7 @@ const AiAnalystPage: React.FC = () => {
 
   async function removeConversation(id: number) {
     // Geri alınamaz bir işlem: portalın diğer silme akışlarıyla aynı onay deseni.
-    if (!window.confirm("Bu sohbet kalıcı olarak silinecek. Devam edilsin mi?")) return;
+    if (!(await onayla({ baslik: "Sohbeti sil", metin: "Bu sohbet kalıcı olarak silinecek. Devam edilsin mi?", onayMetni: "Sil", tehlikeli: true }))) return;
     await aiAnalystApi.deleteConversation(id).catch(() => {});
     if (id === conversationId) {
       setConversationId(null);
@@ -230,6 +232,7 @@ const AiAnalystPage: React.FC = () => {
 
   return (
     <div className="flex flex-col" style={{ height: "calc(100vh - 7.5rem)" }}>
+      {onayPenceresi}
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>

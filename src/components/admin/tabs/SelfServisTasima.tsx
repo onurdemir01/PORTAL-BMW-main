@@ -14,6 +14,7 @@ import { ArrowPathIcon, InformationCircleIcon, ExclamationTriangleIcon } from '@
 import { ansibleApi, type AwxServer } from '@/api/ansibleApi';
 import { ssTasimaApi, type SsTasimaPlani, type SsTasimaSatiri, type SsTasimaDurumu } from '@/api/ssTasimaApi';
 import { Modal } from '@/components/common/Modal';
+import { useOnay } from '@/components/common/OnayPenceresi';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import SelfServisTasimaDetay from './SelfServisTasimaDetay';
@@ -210,6 +211,7 @@ export default function SelfServisTasima() {
   const [topluSonuc, setTopluSonuc] = useState<TopluSonuc[] | null>(null);
   const [topluCalisiyor, setTopluCalisiyor] = useState(false);
   const [topluSurveyOnay, setTopluSurveyOnay] = useState(false);
+  const { onayla, onayPenceresi } = useOnay();
   const topluDur = useRef(false);
   const iptal = useRef<AbortController | null>(null);
 
@@ -271,7 +273,15 @@ export default function SelfServisTasima() {
   }
 
   async function hazirlikIptal(s: SsTasimaSatiri) {
-    if (!window.confirm(`${s.title}: hazırlık kaydı kapatılsın mı? Hedefe kopyalanan ayar satırı bırakılır.`)) return;
+    if (
+      !(await onayla({
+        baslik: 'Hazırlığı iptal et',
+        metin: `${s.title}: hazırlık kaydı kapatılsın mı? Hedefe kopyalanan ayar satırı bırakılır.`,
+        onayMetni: 'Hazırlığı kapat',
+        iptalMetni: 'Hazırlığı koru',
+      }))
+    )
+      return;
     try {
       const r = await ssTasimaApi.hazirlikIptal(s.itemId);
       if (!r.ok) toast.error(r.message || 'Kapatılamadı.');
@@ -628,6 +638,7 @@ export default function SelfServisTasima() {
           </div>
         </Modal>
       )}
+      {onayPenceresi}
     </section>
   );
 }

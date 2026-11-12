@@ -5,7 +5,7 @@
 // listelenir ve "Geri yükle" ile geri getirilir. Gerçek istemci çalışır; yalnız fetch sahtedir.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import PlaybookRegistryTab, { silmeOnayMetni } from '@/components/admin/tabs/PlaybookRegistryTab';
 
 const satir = {
@@ -53,11 +53,12 @@ describe('Playbook Kayıtları silme / geri yükleme', () => {
   });
 
   it('PKU2 silme onayı kullanan uyarısıyla sorulur, onaylanınca silinir (engellenmez)', async () => {
-    const onay = vi.fn(() => true);
-    vi.stubGlobal('confirm', onay);
     render(<PlaybookRegistryTab />);
     fireEvent.click(await screen.findByRole('button', { name: 'Nginx Yük Testi kaydını sil' }));
-    expect(onay).toHaveBeenCalledWith(expect.stringContaining('Bu kaydı Nginx Hub > Yük Testi kullanıyor; silerseniz o ekran çalışmaz.'));
+    const pencere = await screen.findByRole('dialog');
+    expect(pencere).toHaveTextContent('Bu kaydı Nginx Hub > Yük Testi kullanıyor; silerseniz o ekran çalışmaz.');
+    expect(istekler.some((i) => i.method === 'DELETE')).toBe(false);
+    fireEvent.click(within(pencere).getByRole('button', { name: 'Sil' }));
     await waitFor(() => expect(istekler.some((i) => i.method === 'DELETE' && i.url === '/api/ansible/playbooks/7')).toBe(true));
   });
 

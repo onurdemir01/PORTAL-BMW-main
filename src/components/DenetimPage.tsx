@@ -19,7 +19,6 @@ import {
   MagnifyingGlassIcon,
   ServerStackIcon,
   Squares2X2Icon,
-  QuestionMarkCircleIcon,
   ArrowDownTrayIcon,
   DocumentDuplicateIcon,
   ChevronRightIcon,
@@ -57,6 +56,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import CodeChip from '@/components/common/CodeChip';
 import { fmtNumber } from '@/utils/datetime';
 import { downloadCsv as csvDownload } from '@/utils/csv';
+import YardimDugmesi from '@/components/common/YardimDugmesi';
 
 // NGINX BOLUMLERI NGINX HUB'A TASINDI (kullanici, 2026-09-22): sekmeler ve yardim metinleri
 // Nginx Hub'da; bilesenler yerinde. Bu dizi oradan import edilir.
@@ -247,13 +247,7 @@ export default function DenetimPage() {
               web-uygulama ilişkilerinin iç denetimi.
             </p>
           </div>
-          <button
-            onClick={() => setShowHelp(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors flex-shrink-0"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
-          >
-            <QuestionMarkCircleIcon className="w-4 h-4" /> Nasıl kullanılır?
-          </button>
+          <YardimDugmesi onClick={() => setShowHelp(true)} />
         </div>
 
         {/* SEKMELER — yedi sekme dolgulu bir hap seridinde sikisiyordu. Alt-cizgi

@@ -10,7 +10,6 @@ import {
   PhoneIcon,
   LinkIcon,
   SparklesIcon,
-  QuestionMarkCircleIcon,
   ServerStackIcon,
   ChartBarIcon,
 } from '@heroicons/react/24/outline';
@@ -29,6 +28,7 @@ import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtDateLong } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import AramaKutusu from '@/components/app_hub/AramaKutusu';
+import YardimDugmesi from '@/components/common/YardimDugmesi';
 
 // ─── Kisayollar ────────────────────────────────────────────
 
@@ -308,10 +308,7 @@ const DashboardPage: React.FC = () => {
           <span className={`badge ${isAdmin ? 'pf-label--red' : 'pf-label--blue'}`}>
             {user?.role}
           </span>
-          <button className="pf-btn-link" onClick={() => setShowHelp(true)}>
-            <QuestionMarkCircleIcon className="w-4 h-4" />
-            Bu sayfa nasıl kullanılır?
-          </button>
+          <YardimDugmesi onClick={() => setShowHelp(true)} />
         </div>
       </div>
 

@@ -1126,12 +1126,16 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
     expect(screen.getByText('KOPYA_TUTARSIZ metni GBCJAP02')).toBeInTheDocument();
   });
   it('İşlem düğmesi satırı açmaz; tek JVM için onay ister', async () => {
-    const onay = vi.spyOn(window, 'confirm').mockReturnValue(true);
     m.jvmAutoStart.mockResolvedValue({ ok: true, jobId: 5 });
     render(<FindingsTab />);
     const d = await screen.findByRole('button', { name: 'Auto-start AÇ' });
     fireEvent.click(d);
-    expect(onay).toHaveBeenCalledTimes(1);
+    // Portal ici onay penceresi (2026-11-08; eskiden window.confirm): onaylanmadan is baslamaz.
+    const pencere = await screen.findByRole('dialog');
+    expect(pencere).toHaveTextContent('GBCJAP01 üzerinde pay (JBoss 7) için auto-start AÇILACAK.');
+    expect(pencere).toHaveTextContent('Yalnız bu JVM etkilenir.');
+    expect(m.jvmAutoStart).not.toHaveBeenCalled();
+    fireEvent.click(within(pencere).getByRole('button', { name: 'Auto-start aç' }));
     await waitFor(() =>
       expect(m.jvmAutoStart).toHaveBeenCalledWith({ host: 'GBCJAP01', gen: 7, jvm: 'pay', enable: true }),
     );
@@ -1140,7 +1144,6 @@ describe('RA11 Bulgular tablosu (EarTablo)', () => {
       'aria-expanded',
       'false',
     );
-    onay.mockRestore();
   });
 });
 
