@@ -12,7 +12,12 @@
 //
 // GEÇMİŞ GİZLENMEZ, KATLANIR: varsayılan görünüm bugünden itibarendir; geçmiş kayıtlar
 // tek tıkla açılır. Tamamen gizlemek, "bu OCO hiç yok" yanılgısı üretirdi.
+//
+// TAKVİM YAPRAĞI (2026-11-13, "bazı arkadaşlar o şekilde görmek istiyor"): Liste | Takvim seçimi.
+// Liste varsayılan ve değişmedi; ?gorunum=takvim (paylaşılabilir) ya da izleyicinin son seçimi
+// takvimi açar. Takvim: src/components/oco/OcoTakvimYapragi.tsx; ortak rozet/ayrıntı OcoOrtak.tsx.
 import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon,
   CalendarDaysIcon,
@@ -26,23 +31,32 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import { gunSinifi, gunVurgu, pencereKapandi, type GunSinifi } from '@/components/oco/takvimVurgu';
+import { OcoDetay, OcoRozetleri, saat, type OcoRow } from '@/components/oco/OcoOrtak';
+import { gunAnahtari } from '@/components/oco/takvimIzgara';
+import OcoTakvimYapragi from '@/components/oco/OcoTakvimYapragi';
 
-export interface OcoRow {
-  oco: number;
-  subject: string;
-  explanation: string;
-  statusText: string;
-  statusCode: number;
-  impactText: string;
-  processText: string;
-  pcabRequired: boolean;
-  plannedStart: string | null;
-  plannedEnd: string | null;
-  actualStart: string | null;
-  actualEnd: string | null;
-  openedAt: string | null;
-  /** Hangi sorgudan geldi (2026-11-12): 'acan' = ekibin açtığı, 'sorumlu' = ekibe açılan. */
-  iliski?: ('acan' | 'sorumlu')[];
+// Liste ile takvim yapragi ayni tipi, ayni gun anahtarini kullanir (tek kaynak: oco/).
+export type { OcoRow };
+export { gunAnahtari };
+
+/** Gorunum secimi (2026-11-13, takvim yapragi): URL'de ?gorunum=takvim (paylasilabilir), yoksa
+ *  izleyicinin son secimi (localStorage), yoksa LISTE. */
+export type Gorunum = 'liste' | 'takvim';
+export const GORUNUM_ANAHTARI = 'oco-takvimi.gorunum';
+function kayitliGorunum(): Gorunum | null {
+  try {
+    const v = window.localStorage.getItem(GORUNUM_ANAHTARI);
+    return v === 'takvim' || v === 'liste' ? v : null;
+  } catch {
+    return null;
+  }
+}
+function gorunumKaydet(g: Gorunum) {
+  try {
+    window.localStorage.setItem(GORUNUM_ANAHTARI, g);
+  } catch {
+    /* gizli pencere / engelli depolama: yalniz hatirlanmaz */
+  }
 }
 
 interface Sonuc {
@@ -61,16 +75,6 @@ interface Sonuc {
   message?: string;
 }
 
-/** Gün anahtarı (YYYY-AA-GG) — yerel saatte. OCO pencereleri gece yarısını aşabildiği
- *  için gruplama BAŞLANGIÇ gününe göre yapılır; bitiş satırda ayrıca yazar. */
-export function gunAnahtari(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 /** Satırları güne göre gruplar; tarihsizler ayrı ve EN SONDA. */
 export function gunlereBol(rows: OcoRow[]): { gun: string; rows: OcoRow[] }[] {
   const harita = new Map<string, OcoRow[]>();
@@ -85,41 +89,6 @@ export function gunlereBol(rows: OcoRow[]): { gun: string; rows: OcoRow[] }[] {
   return cikti;
 }
 
-const DURUM_TON: Record<string, string> = {
-  'Sorumlu Grup Açma Onayı': 'var(--status-info)',
-  'Yönetici Onayı': 'var(--status-info)',
-  'Değişiklik Yönetimi Kontrol Onayı': 'var(--status-warning)',
-  'SRM Test ve Kapama Onayı': 'var(--status-success)',
-};
-
-function Chip({
-  children,
-  tone,
-  title,
-}: {
-  children: React.ReactNode;
-  tone?: string;
-  title?: string;
-}) {
-  return (
-    <span
-      className="text-[10px] px-1.5 py-0.5 rounded-full border whitespace-nowrap"
-      style={{ color: tone || 'var(--text-muted)', borderColor: tone || 'var(--border-subtle)' }}
-      title={title}
-    >
-      {children}
-    </span>
-  );
-}
-
-function saat(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '—';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 export default function OcoTakvimiPage() {
   const [data, setData] = useState<Sonuc | null>(null);
   const [loading, setLoading] = useState(true);
@@ -131,6 +100,24 @@ export default function OcoTakvimiPage() {
   // ILISKI SUZGECI (kullanici, 2026-11-12): "hem bizim actigimiz hem bize acilan OCO'lar ayni
   // anda" - varsayilan hepsi; istenirse yalniz biri.
   const [iliski, setIliski] = useState<'tumu' | 'acan' | 'sorumlu'>('tumu');
+  // GORUNUM (kullanici, 2026-11-13: "istek halinde gercek bir takvim yapragi seklinde"): liste
+  // varsayilan; URL parametresi paylasilabilir/yer imi, yoksa izleyicinin son secimi.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [kayitli] = useState<Gorunum | null>(kayitliGorunum);
+  const urlGorunum = searchParams.get('gorunum');
+  const gorunum: Gorunum =
+    urlGorunum === 'takvim' || urlGorunum === 'liste' ? urlGorunum : kayitli || 'liste';
+  const gorunumSec = (g: Gorunum) => {
+    gorunumKaydet(g);
+    setSearchParams(
+      (onceki) => {
+        const yeni = new URLSearchParams(onceki);
+        yeni.set('gorunum', g);
+        return yeni;
+      },
+      { replace: true },
+    );
+  };
 
   const yukle = async (refresh = false) => {
     setLoading(true);
@@ -232,23 +219,7 @@ export default function OcoTakvimiPage() {
               <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                 <CodeChip value={String(r.oco)} label={`#${r.oco}`} copyable tone="muted" />
               </span>
-              {r.iliski?.includes('acan') && (
-                <Chip tone="var(--accent)" title="Ekibimizin açtığı OCO">açtığımız</Chip>
-              )}
-              {r.iliski?.includes('sorumlu') && (
-                <Chip tone="var(--status-success)" title="Değişikliği yapacak sorumlu ekip biziz">
-                  bize açılan
-                </Chip>
-              )}
-              {r.statusText && <Chip tone={DURUM_TON[r.statusText]}>{r.statusText}</Chip>}
-              {r.impactText && <Chip>{r.impactText}</Chip>}
-              {r.pcabRequired && <Chip tone="var(--status-warning)">PCAB</Chip>}
-              {r.processText && r.processText !== 'Normal' && <Chip>{r.processText}</Chip>}
-              {kapandi && (
-                <Chip tone="var(--status-danger)" title="Planlanan bitiş saati geçti — pencere kapandı">
-                  penceresi kapandı
-                </Chip>
-              )}
+              <OcoRozetleri r={r} kapandi={kapandi} />
             </span>
           </span>
           {acikMi ? (
@@ -258,29 +229,7 @@ export default function OcoTakvimiPage() {
           )}
         </div>
         {acikMi && (
-          <div className="px-3 pb-3 pl-[7.5rem] space-y-2">
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Planlanan: {r.plannedStart ? fmtDateTime(r.plannedStart) : '—'}
-              {' → '}
-              {r.plannedEnd ? fmtDateTime(r.plannedEnd) : '—'}
-              {r.openedAt && <> · açılış {fmtDate(r.openedAt)}</>}
-              {/* GERCEKLESEN TARIH BOSSA "yapilmadi" DEMEK DEGIL: OCO kapanmadan bu
-                  alanlar dolmuyor. Bu yuzden yalnizca DOLU oldugunda yaziyoruz. */}
-              {r.actualStart && <> · gerçekleşen {fmtDateTime(r.actualStart)}</>}
-            </div>
-            {r.explanation && (
-              <pre
-                className="text-[11px] whitespace-pre-wrap rounded-lg border p-2 max-h-60 overflow-auto"
-                style={{
-                  borderColor: 'var(--border-subtle)',
-                  background: 'var(--bg-elevated)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                {r.explanation}
-              </pre>
-            )}
-          </div>
+          <OcoDetay r={r} className="px-3 pb-3 pl-[7.5rem] space-y-2" />
         )}
       </div>
     );
@@ -386,6 +335,35 @@ export default function OcoTakvimiPage() {
             </button>
           ))}
         </div>
+        <div
+          role="radiogroup"
+          aria-label="Görünüm"
+          className="flex gap-1 rounded-lg p-0.5 w-fit"
+          style={{ background: 'var(--bg-elevated)' }}
+          data-testid="oco-gorunum"
+        >
+          {(
+            [
+              { id: 'liste', label: 'Liste' },
+              { id: 'takvim', label: 'Takvim' },
+            ] as const
+          ).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={gorunum === s.id}
+              onClick={() => gorunumSec(s.id)}
+              className={`px-2.5 py-1 text-xs font-medium rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${gorunum === s.id ? 'shadow-sm' : ''}`}
+              style={{
+                background: gorunum === s.id ? 'var(--bg-surface)' : 'transparent',
+                color: gorunum === s.id ? 'var(--text-primary)' : 'var(--text-muted)',
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => void yukle(true)}
@@ -464,6 +442,24 @@ export default function OcoTakvimiPage() {
 
       {loading && !data ? (
         <LoadingLogo compact />
+      ) : gorunum === 'takvim' ? (
+        <>
+          <OcoTakvimYapragi rows={suzulmus} tumRows={rows} eksik={!!data?.truncated} bugun={bugun} />
+          {data?.ok && suzulmus.length === 0 && (
+            <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              {sorgu
+                ? 'Aramayla eşleşen OCO yok.'
+                : iliski !== 'tumu'
+                  ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
+                  : 'Bu grupta OCO görünmüyor.'}
+            </div>
+          )}
+          {data?.ok && (
+            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              {suzulmus.length} / {rows.length} OCO gösteriliyor
+            </div>
+          )}
+        </>
       ) : (
         <>
           {gecmis.length > 0 && (
