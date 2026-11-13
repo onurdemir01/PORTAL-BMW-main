@@ -615,7 +615,8 @@ export default function RetirementTab({ oneri = null }: { oneri?: { uygulama: st
 }
 
 // ── Yeni kayit: uygulama -> kesif -> alanlar ─────────────────────────────────────
-function CreateModal({ defaultDays, baslangic = null, onClose, onCreated }: { defaultDays: number; baslangic?: { uygulama: string; not: string } | null; onClose: () => void; onCreated: (id: number) => void }) {
+// Application Hub da kullanir (2026-11-13: "uygulamami retire et" butonu, yalniz Admin).
+export function CreateModal({ defaultDays, baslangic = null, onClose, onCreated }: { defaultDays: number; baslangic?: { uygulama: string; not: string } | null; onClose: () => void; onCreated: (id: number) => void }) {
   const [q, setQ] = useState('');
   const [apps, setApps] = useState<string[]>([]);
   const [app, setApp] = useState('');

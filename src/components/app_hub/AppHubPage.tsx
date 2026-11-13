@@ -9,7 +9,7 @@
 // Adres: /application-hub?tip=jboss|was|ocp&ad=<ad> (Dashboard araması buraya getirir).
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { appHubApi, type AppAramaSonucu, type AppDetay, type AppTip, type OcpDetay } from '@/api/appHubApi';
 import LoadError from '@/components/common/LoadError';
 import Button from '@/components/common/Button';
@@ -21,6 +21,8 @@ import AramaKutusu from './AramaKutusu';
 import JbossGorunum from './JbossGorunum';
 import WasGorunum from './WasGorunum';
 import OcpGorunum from './OcpGorunum';
+import { CreateModal as RetirementKayitPenceresi } from '@/components/server_hub/RetirementTab';
+import { retirementApi } from '@/api/retirementApi';
 
 const TIPLER: AppTip[] = ['jboss', 'was', 'ocp'];
 
@@ -42,7 +44,25 @@ function derinLinkler(d: AppDetay, ocpHedef: number) {
 export default function AppHubPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { canViewPage } = useAuth();
+  const { canViewPage, user } = useAuth();
+  // RETIREMENT (kullanici, 2026-11-13): "Application Hub'da uygulama sayfasina 'uygulamami retire et' butonu;
+  // bu ekrandan retirement talebi baslatilsin. Simdilik SADECE Admin." Sunucu (/api/retirement) zaten yalniz
+  // Admin'e acik. Retirement motoru JBoss hedefleriyle calisir (sunucu + uygulama + surum): buton yalniz JBoss'ta.
+  const isAdmin = user?.role === 'Admin';
+  const [retire, setRetire] = useState<{ gun: number } | null>(null);
+  const [retireYukleniyor, setRetireYukleniyor] = useState(false);
+  const [acilanKayit, setAcilanKayit] = useState<number | null>(null);
+  const retireAc = async () => {
+    setRetireYukleniyor(true);
+    try {
+      const c = await retirementApi.config();
+      setRetire({ gun: c && c.ok && Number(c.defaultDays) > 0 ? Number(c.defaultDays) : 45 });
+    } catch {
+      setRetire({ gun: 45 });
+    } finally {
+      setRetireYukleniyor(false);
+    }
+  };
   const tipP = params.get('tip') as AppTip | null;
   const tip = tipP && TIPLER.includes(tipP) ? tipP : null;
   const ad = (params.get('ad') || '').trim();
@@ -161,11 +181,38 @@ export default function AppHubPage() {
               LogX'te log al
             </Button>
           )}
+          {isAdmin && detay?.tip === 'jboss' && (
+            <Button variant="danger" icon={<TrashIcon className="w-4 h-4" />} onClick={() => void retireAc()} loading={retireYukleniyor}
+              title="Retirement kaydı açar (Smart silme kaydı gerekir). Yalnız Admin.">
+              Uygulamamı retire et
+            </Button>
+          )}
           <Button variant="ghost" icon={<ArrowPathIcon className={`w-4 h-4 ${yukleniyor ? 'animate-spin' : ''}`} />} onClick={yenile} disabled={yukleniyor}>
             Yenile
           </Button>
         </div>
       </header>
+
+      {acilanKayit != null && (
+        <div role="status" className="card px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-[13px]" style={{ borderLeft: '3px solid var(--status-success)' }}>
+          <span style={{ color: 'var(--text-primary)' }}>
+            Retirement kaydı <b>#{acilanKayit}</b> açıldı. STOP, silme ve IP/LB/DNS adımları BMW Hub › Retirement'tan yürür.
+          </span>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/bmw-hub?sekme=retirement')}>BMW Hub'da aç</Button>
+        </div>
+      )}
+
+      {retire && detay?.tip === 'jboss' && isAdmin && (
+        <RetirementKayitPenceresi
+          defaultDays={retire.gun}
+          baslangic={{ uygulama: detay.ad, not: `Application Hub'dan açıldı (${detay.ad}).` }}
+          onClose={() => setRetire(null)}
+          onCreated={(id) => {
+            setRetire(null);
+            setAcilanKayit(id);
+          }}
+        />
+      )}
 
       {hata ? (
         <LoadError title={`${ad} yüklenemedi`} message={hata} onRetry={yenile} retrying={yukleniyor} />
