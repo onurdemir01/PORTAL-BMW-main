@@ -175,7 +175,7 @@ test('KR3 ayarlar: okuma, okunamadi, yazma, gecmis, dogrulama', async () => {
   sifirla();
   DB.dus = true;
   a = await ayarlar.oku();
-  assert.deepEqual([a.okunamadi, a.limitler.reboot, Object.keys(a.seviyeler).length], [true, 50, 0]);
+  assert.deepEqual([a.okunamadi, a.limitler.reboot, Object.keys(a.seviyeler).length], [true, 500, 0]);
   assert.match(a.hata, /baglanti yok/);
   await assert.rejects(ayarlar.seviyeYaz({ kod: 'NO_LOAD', seviye: 'danger', kim: 'ayse' }), (e) => e.status === 503);
   DB.dus = false;
@@ -208,13 +208,14 @@ test('KR3 ayarlar: okuma, okunamadi, yazma, gecmis, dogrulama', async () => {
   for (const deger of [0, 501, 1.5, 'abc', ''])
     await assert.rejects(ayarlar.limitYaz({ ad: 'reboot', deger, kim: 'a' }), (e) => e.status === 400 && /1 ile 500/.test(e.message), `limit ${deger} kabul edildi`);
   await assert.rejects(ayarlar.limitYaz({ ad: 'yok', deger: 5, kim: 'a' }), (e) => e.status === 400);
-  w = await ayarlar.limitYaz({ ad: 'reboot', deger: '500', kim: 'a' });
-  assert.deepEqual([w.eski, w.yeni], ['50', '500']);
-  assert.equal(await ayarlar.limit('reboot'), 500);
-  w = await ayarlar.limitYaz({ ad: 'reboot', deger: 50, kim: 'a' });
+  // reboot varsayilani 2026-11-13'ten beri 500
+  w = await ayarlar.limitYaz({ ad: 'reboot', deger: '300', kim: 'a' });
+  assert.deepEqual([w.eski, w.yeni], ['500', '300']);
+  assert.equal(await ayarlar.limit('reboot'), 300);
+  w = await ayarlar.limitYaz({ ad: 'reboot', deger: 500, kim: 'a' });
   assert.equal(DB.ayar.has('limit:reboot'), false, 'varsayilana donen limit satiri silinmeli');
   const g = await ayarlar.gecmis(10);
-  assert.deepEqual([g[0].anahtar, g[0].eski, g[0].yeni], ['limit:reboot', '500', '50'], 'gecmis en yeni once');
+  assert.deepEqual([g[0].anahtar, g[0].eski, g[0].yeni], ['limit:reboot', '300', '500'], 'gecmis en yeni once');
 });
 
 test('KR3b ayar ve gecmis atomik: gecmis hatasinda ayar degismez, tekrar yazilabilir', async () => {
@@ -349,7 +350,7 @@ test('KR4 uclar: kurallar listesi + sayim, seviye degisikligi degerlendirmeye ya
     assert.deepEqual([l.status, l.body.yeni], [200, '200']);
     assert.equal((await put(`${kok}/kurallar/limit/tara`, { deger: 5000 })).status, 400);
     const lim = await fetch(`${kok}/limitler`).then(J);
-    assert.deepEqual(lim.body.limitler.map((x) => [x.ad, x.gecerli, x.varsayilan, x.ust]), [['tara', 200, 50, 1000], ['reboot', 50, 50, 500], ['hazirlik', 500, 500, 5000]]);
+    assert.deepEqual(lim.body.limitler.map((x) => [x.ad, x.gecerli, x.varsayilan, x.ust]), [['tara', 200, 50, 1000], ['reboot', 500, 500, 500], ['hazirlik', 500, 500, 5000]]);
     assert.equal(lim.body.limitler[0].degistiren, 'ayse');
   });
   tarama = null;

@@ -52,7 +52,8 @@ const LIMITLER = {
   },
   reboot: {
     ad: 'Reboot Kontrolü',
-    varsayilan: 50,
+    // 2026-11-13 (kullanici): varsayilan 50 -> 500 (ust sinirla ayni).
+    varsayilan: 500,
     ust: 500,
     aciklama: 'reboot_check işi (önce / sonra); sonra fazı her sunucunun “önce” görüntüsünü AWX işine taşır, bu yüzden üst sınır daha düşük.',
   },

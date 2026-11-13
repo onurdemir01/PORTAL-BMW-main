@@ -16,7 +16,7 @@
 
 const REGISTRY_KEY = 'reboot_check';
 // Varsayilan; Admin Server Hub > Kurallar & Limitler'den degistirir (ayarlar.cjs 'limit:reboot').
-const MAX_HOST = 50;
+const MAX_HOST = 500;
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 
 const db = () => require('../db/index.cjs');
