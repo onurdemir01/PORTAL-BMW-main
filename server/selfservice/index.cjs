@@ -45,7 +45,10 @@ function initSelfService(app) {
       // Oturum yoksa ya da motor okunamazsa karar Self Service kapisinin (401 / fail-closed + Admin muaf).
       if (!user) return selfService(req, res, next);
       try {
-        if ((await canSee(user, "BmwHub")) || (await canSee(user, "Self Service"))) return next();
+        // 2026-11-13: sorgular BMW Hub menusunde AYRI sayfa (IpSorgu / OcpSorgu); eski izinler de gecer.
+        for (const anahtar of ["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"]) {
+          if (await canSee(user, anahtar)) return next();
+        }
         return res.status(403).json({ ok: false, error: "Bu kaynağa erişiminiz kapalı." });
       } catch {
         return selfService(req, res, next);

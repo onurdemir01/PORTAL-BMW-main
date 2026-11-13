@@ -2818,6 +2818,37 @@ const ELEMENT_SEED = [
     roles: ['Admin', 'User'],
   },
   {
+    // BMW HUB MENUSU (kullanici, 2026-11-13: "IP Sorgu / OCP Uygulama Sorgu buraya gelmiyor"): onceki gun BMW Hub
+    // sayfasinda sekmeydi; sol menude AYRI sayfa. Salt okunur sorgular, Otomasyon'daki gibi Admin + User.
+    element_key: 'IpSorgu',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'IP/Sunucu Sorgu',
+    route: '/ip-sorgu',
+    sort_order: 6,
+    roles: ['Admin', 'User'],
+  },
+  {
+    element_key: 'OcpSorgu',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'OCP Uygulama Sorgu',
+    route: '/ocp-sorgu',
+    sort_order: 7,
+    roles: ['Admin', 'User'],
+  },
+  {
+    // YUK TESTI (kullanici, 2026-11-13: "Yuk Testi ozelligini de BMW Hub altina koyalim"): Nginx Hub sekmesinden
+    // tasindi. Eski sekme varsayilan KAPALI idi; sayfa da yalniz Admin (baslatma zaten yalniz Admin).
+    element_key: 'YukTesti',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'Yük Testi',
+    route: '/yuk-testi',
+    sort_order: 8,
+    roles: ['Admin'],
+  },
+  {
     element_key: 'LogX',
     element_type: 'page',
     parent_key: 'navgroup:otomasyon',

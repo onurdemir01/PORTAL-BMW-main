@@ -435,6 +435,8 @@ sahte('../../auth/index.cjs', { requireAuth: (req, res, next) => (req.session &&
 sahte('../../auth/visibility.cjs', {
   requireVisiblePrefix: (anahtar) => (req, res, next) => (req.gizli === anahtar ? res.status(403).json({ ok: false, gorunurluk: anahtar }) : next()),
   requireVisible: (anahtar) => (req, res, next) => (req.gizli === anahtar ? res.status(403).json({ ok: false, gorunurluk: anahtar }) : next()),
+  // 2026-11-13: Yuk Testi kapisi 'YukTesti' sayfasi YA DA NginxConsole + tab:nginx:yuktesti (canSee ile).
+  canSee: async (user, anahtar) => !(D.gizliler && D.gizliler.has(anahtar)),
 });
 sahte('../../audit/index.cjs', { auditPortal: (req, eylem, o) => D.denetim.push({ eylem, ...o }) });
 sahte('../../ansible/playbook-registry.cjs', { getByKey: async () => D.registry, getEffectiveTemplateId: (r) => r.awxTemplateId || null });
@@ -497,6 +499,7 @@ function istek(method, url, { session = ADMIN, body, gizli = null, query: sorgu 
       json(b) { this.body = b; this.headersSent = true; resolve(this); return this; },
       setHeader() {}, getHeader() {},
     };
+    D.gizliler = new Set(Array.isArray(gizli) ? gizli : gizli ? [gizli] : []);
     const req = { method, url, headers: {}, session, body, query, gizli, get path() { return yol; } };
     router.handle(req, res, (err) => resolve({ statusCode: 'sonraki', body: { err: err && err.message } }));
   });
@@ -566,9 +569,14 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
     assert.notEqual(r.statusCode, 403, `salt okunur ${u} Admin olmayana kapali`);
     assert.notEqual(r.statusCode, 401, u);
   }
-  for (const anahtar of ['NginxConsole', 'tab:nginx:yuktesti']) {
-    const r = await istek('GET', '/senaryolar', { session: KULLANICI, gizli: anahtar });
-    assert.deepEqual([r.statusCode, r.body.gorunurluk], [403, anahtar], `${anahtar} kapisi uygulanmiyor`);
+  // Gorunurluk: BMW Hub > Yuk Testi sayfasi (YukTesti) YA DA eski Nginx Hub sekme izni (NginxConsole + sekme).
+  for (const gizli of [['YukTesti', 'NginxConsole'], ['YukTesti', 'tab:nginx:yuktesti']]) {
+    const r = await istek('GET', '/senaryolar', { session: KULLANICI, gizli });
+    assert.equal(r.statusCode, 403, `${gizli.join(' + ')} gizliyken gecti`);
+  }
+  for (const gizli of [['YukTesti'], ['NginxConsole'], ['tab:nginx:yuktesti']]) {
+    const r = await istek('GET', '/senaryolar', { session: KULLANICI, gizli });
+    assert.notEqual(r.statusCode, 403, `${gizli.join(' + ')} gizliyken (diger izin varken) kapandi`);
   }
   // Isleyici de Admin ister (kapi atlansa bile): dogrudan isleyici kontrolu kaynakta.
   const kod = fs.readFileSync(IDX_YOL, 'utf8');
@@ -583,7 +591,7 @@ test('YKP1 kapilar: oturum, Admin, sayfa/sekme gorunurlugu (davranis)', { timeou
 
 test('YKP2 kapi sirasi, nginxRed haric listesi, ADMIN_DISI_OKUMA', () => {
   const kod = fs.readFileSync(IDX_YOL, 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  const sira = ['router.use(requireAuth);', 'adminOkumaKapisi({', "router.use(requireVisiblePrefix('NginxConsole'));", "router.use(requireVisible('tab:nginx:yuktesti'));", "router.get('/hedefler'"];
+  const sira = ['router.use(requireAuth);', 'adminOkumaKapisi({', "gor.requireVisible('YukTesti')", "if (await canSee(user, 'YukTesti')) return next();", "(await canSee(user, 'NginxConsole')) && (await canSee(user, 'tab:nginx:yuktesti'))", "router.get('/hedefler'"];
   let onceki = -1;
   for (const s of sira) {
     const i = kod.indexOf(s);

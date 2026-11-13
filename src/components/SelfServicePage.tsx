@@ -1878,7 +1878,7 @@ export function ssSlug(title: string): string {
 
 const FIXED_SLUG: Record<string, string> = { 'svc:new': 'servis-ekle' };
 // IP / OpenShift sorgulari BMW Hub'a tasindi (kullanici, 2026-11-12); eski yer imleri oraya yonlenir.
-const TASINAN_SLUG: Record<string, string> = { 'ip-sorgu': '/bmw-hub?sekme=ip', 'openshift-sorgu': '/bmw-hub?sekme=ocp' };
+const TASINAN_SLUG: Record<string, string> = { 'ip-sorgu': '/ip-sorgu', 'openshift-sorgu': '/ocp-sorgu' };
 
 export default function SelfServicePage() {
   const { user } = useAuth();

@@ -5,7 +5,7 @@
 // donmesin diye 409'a cevrilir; is hatalari zaten 409 (kalici) / 424 (gecici). 5xx YOK.
 //
 // KAPILAR (sira onemli): requireAuth -> adminOkumaKapisi (Admin olmayana yalniz ADMIN_DISI_OKUMA
-// GET yollari) -> requireVisiblePrefix('NginxConsole') -> requireVisible('tab:nginx:yuktesti').
+// GET yollari) -> gorunurluk: 'YukTesti' sayfasi (BMW Hub, 2026-11-13) YA DA NginxConsole + tab:nginx:yuktesti.
 // Yazan her uc ve /durum ayrica isleyicide Admin ister.
 //
 // AWX KIMLIKLERI ISTEMCIDEN ALINMAZ: sunucu / is numarasi kosu satirindan okunur.
@@ -975,9 +975,24 @@ function yonlendiriciKur() {
     return okumaKapisi(req, res, next);
   });
   try {
-    const { requireVisiblePrefix, requireVisible } = require('../auth/visibility.cjs');
-    router.use(requireVisiblePrefix('NginxConsole'));
-    router.use(requireVisible('tab:nginx:yuktesti'));
+    // BMW HUB > YUK TESTI (kullanici, 2026-11-13: "Yuk Testi ozelligini BMW Hub altina koyalim"): sayfa
+    // anahtari 'YukTesti'. Eski Nginx Hub sekme izni (NginxConsole + tab:nginx:yuktesti) de gecer: sekme
+    // izni verilmis kullanici erisimini kaybetmesin. Ikisi de yoksa 403; motor okunamazsa YukTesti kapisinin
+    // fail-closed kurali.
+    const gor = require('../auth/visibility.cjs');
+    const yukTestiKapisi = gor.requireVisible('YukTesti');
+    const canSee = gor.canSee;
+    router.use(async (req, res, next) => {
+      const user = require('../auth/utils.cjs').getRequestUser(req);
+      if (!user || typeof canSee !== 'function') return yukTestiKapisi(req, res, next);
+      try {
+        if (await canSee(user, 'YukTesti')) return next();
+        if ((await canSee(user, 'NginxConsole')) && (await canSee(user, 'tab:nginx:yuktesti'))) return next();
+        return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
+      } catch {
+        return yukTestiKapisi(req, res, next);
+      }
+    });
     gorunurlukKapisi = true;
   } catch {
     /* motor yoksa: hazir() false kalir, Admin olmayan hicbir uca gecemez */

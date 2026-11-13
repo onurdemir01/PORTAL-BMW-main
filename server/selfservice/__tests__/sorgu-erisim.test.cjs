@@ -21,7 +21,7 @@ function sahte(yol, exp) {
   require.cache[yol] = m;
 }
 
-const gorunur = { BmwHub: true, 'Self Service': true };
+const gorunur = { BmwHub: true, 'Self Service': true, IpSorgu: true, OcpSorgu: true };
 const kullanici = { username: 'ayse', role: 'User' };
 sahte(require.resolve('../../auth/index.cjs'), {
   requireAuth: (_q, _s, n) => n(),
@@ -78,14 +78,18 @@ test('SE1 yalniz BMW Hub goren: sorgu uclari acik, diger Self Service ucu kapali
   assert.equal(await durum('/groups'), 403, 'Self Service gizliyken diger uc acildi');
 });
 
-test('SE2 ikisini de goremeyen: sorgu uclari 403', async () => {
-  gorunur.BmwHub = false;
-  gorunur['Self Service'] = false;
+test('SE2 hicbirini goremeyen: sorgu uclari 403; yalniz yeni sayfa izni (IpSorgu / OcpSorgu) acar', async () => {
+  for (const k of ['BmwHub', 'Self Service', 'IpSorgu', 'OcpSorgu']) gorunur[k] = false;
   for (const [y, g] of SORGULAR) assert.equal(await durum(y, g), 403, `${y} gorunurluk olmadan acildi`);
+  for (const k of ['IpSorgu', 'OcpSorgu']) {
+    gorunur[k] = true;
+    for (const [y, g] of SORGULAR) assert.notEqual(await durum(y, g), 403, `${y} yalniz ${k} gorene kapali`);
+    gorunur[k] = false;
+  }
 });
 
 test('SE3 yalniz Self Service goren: sorgu uclari acik', async () => {
-  gorunur.BmwHub = false;
+  for (const k of ['BmwHub', 'IpSorgu', 'OcpSorgu']) gorunur[k] = false;
   gorunur['Self Service'] = true;
   for (const [y, g] of SORGULAR) assert.notEqual(await durum(y, g), 403, `${y} Self Service kullanicisina kapali`);
 });

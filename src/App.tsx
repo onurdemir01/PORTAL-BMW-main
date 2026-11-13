@@ -28,6 +28,10 @@ const LogXWizardPage = lazyWithRetry(() => import('@/components/logx_v2/LogXWiza
 const OpsXWizardPage = lazyWithRetry(() => import('@/components/opsx/OpsXWizardPage'));
 const NginxConsolePage = lazyWithRetry(() => import('@/components/nginx_console/NginxConsolePage'));
 const ServerHubPage = lazyWithRetry(() => import('@/components/server_hub/ServerHubPage'));
+// BMW Hub menusundeki ayri sayfalar (2026-11-13): IP/Sunucu Sorgu, OCP Uygulama Sorgu, Yuk Testi.
+const IpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.IpSorguPage })));
+const OcpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.OcpSorguPage })));
+const YukTestiPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.YukTestiPage })));
 const CryptoHubPage = lazyWithRetry(() => import('@/components/crypto_hub/CryptoHubPage'));
 const BmwHubPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubPage'));
 const AppHubPage = lazyWithRetry(() => import('@/components/app_hub/AppHubPage'));
@@ -40,6 +44,7 @@ const AiAnalystPage = lazyWithRetry(() => import('@/components/ai_analyst/AiAnal
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminRoute from './routes/AdminRoute';
 import PageVisibilityRoute from './routes/PageVisibilityRoute';
+import TasinanSekme from './routes/TasinanSekme';
 import AppLayout from './layouts/AppLayout';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
 
@@ -121,7 +126,7 @@ export default function App() {
               <Route path="/opsx" element={<OpsXWizardPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="NginxConsole" />}>
-              <Route path="/nginx-console" element={<NginxConsolePage />} />
+              <Route path="/nginx-console" element={<TasinanSekme param="tab" deger="yuktesti" hedef="/yuk-testi"><NginxConsolePage /></TasinanSekme>} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="ServerHub" />}>
               <Route path="/server-hub" element={<ServerHubPage />} />
@@ -133,7 +138,16 @@ export default function App() {
               <Route path="/application-hub" element={<AppHubPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="BmwHub" />}>
-              <Route path="/bmw-hub" element={<BmwHubPage />} />
+              <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu' }}><BmwHubPage /></TasinanSekme>} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="IpSorgu" />}>
+              <Route path="/ip-sorgu" element={<IpSorguPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="OcpSorgu" />}>
+              <Route path="/ocp-sorgu" element={<OcpSorguPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="YukTesti" />}>
+              <Route path="/yuk-testi" element={<YukTestiPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="FileX" />}>
               <Route path="/filex" element={<FileXWizardPage />} />

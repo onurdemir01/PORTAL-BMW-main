@@ -179,8 +179,9 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
 
   // Yuk Testi ayri router (2026-10-27): sayfa + sekme kapisi kendi dosyasinda.
   const yt = read('server/nginx-loadtest/index.cjs');
-  assert.ok(yt.includes("requireVisiblePrefix('NginxConsole')"), 'Yük Testi uçları sayfa kapısında değil');
-  assert.ok(yt.includes("requireVisible('tab:nginx:yuktesti')"), 'Yük Testi uçları sekme kapısında değil');
+  // 2026-11-13: Yuk Testi BMW Hub sayfasi (YukTesti) YA DA eski Nginx Hub sayfa + sekme izni (canSee ile).
+  assert.ok(yt.includes("if (await canSee(user, 'YukTesti')) return next();"), 'Yük Testi uçları YukTesti sayfa kapısında değil');
+  assert.ok(yt.includes("(await canSee(user, 'NginxConsole')) && (await canSee(user, 'tab:nginx:yuktesti'))"), 'Yük Testi eski sekme izni (sayfa + sekme birlikte) değil');
 
   const den = read('server/audit/denetim.cjs');
   assert.ok(

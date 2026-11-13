@@ -70,9 +70,7 @@ const HUB_TABS = [
   // RP Secimi (2026-10-05, kullanici): "hangi sunucuya deployment yapacagini bilmiyor" -
   // salt okunur sihirbaz, tanim YAPMAZ (karar tablosu rvpSecim.ts).
   { id: 'rvpsecim', label: 'RP Seçimi', icon: QuestionMarkCircleIcon },
-  // Yuk Testi (2026-10-27, kullanici): el kitiyle yapilan k6 yuk testi AWX uzerinden; varsayilan KAPALI
-  // (tab:nginx:yuktesti), is baslatan dugmeler yalniz Admin.
-  { id: 'yuktesti', label: 'Yük Testi', icon: BeakerIcon },
+  // Yuk Testi 2026-11-13'te BMW Hub menusune tasindi (/yuk-testi; ?tab=yuktesti App.tsx'te yonlenir).
 ] as const;
 // SPA + GERCEK SPA KESFI BIRLESTI (kullanici, 2026-10-08: "ikisi kafa karistirmaya
 // basladi"). Ayri 'spa' sekmesi KALDIRILDI; iki sayfa artik tek girisin ALT SEKMELERI

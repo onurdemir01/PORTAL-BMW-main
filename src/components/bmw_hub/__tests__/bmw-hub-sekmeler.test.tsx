@@ -113,24 +113,51 @@ describe('BS4 Server Hub kaynak kapıları', () => {
   });
 });
 
-// BS5 (kullanici, 2026-11-12): IP Sorgu ve OpenShift Sorgu Otomasyon'dan BMW Hub'a tasindi;
-// adlari "IP/Sunucu Sorgu" ve "OCP Uygulama Sorgu". Otomasyon'da yoklar, eski yer imi yonlenir.
+// BS5 (kullanici, 2026-11-13): IP/Sunucu Sorgu, OCP Uygulama Sorgu ve Yuk Testi sol menude BMW Hub grubunda AYRI
+// sayfa (2026-11-12'de BMW Hub sayfasinda sekmeydi; kullanici menude goremedi). Eski adresler yonlenir.
 vi.mock('@/components/self_service/IpCheckSection', () => ({ default: () => <div>IP_GOVDE</div> }));
 vi.mock('@/components/self_service/OpenshiftCheckSection', () => ({ default: () => <div>OCP_GOVDE</div> }));
-describe('BMW Hub — sorgu sekmeleri', () => {
-  it('BS5 IP/Sunucu Sorgu ve OCP Uygulama Sorgu sekmeleri; derin link açar', async () => {
-    kur('/bmw-hub?sekme=ip');
-    expect(await screen.findByText('IP_GOVDE')).toBeTruthy();
-    const sekmeler = screen.getAllByRole('tab').map((t) => t.textContent);
-    expect(sekmeler).toEqual(expect.arrayContaining(['IP/Sunucu Sorgu', 'OCP Uygulama Sorgu']));
-    fireEvent.click(screen.getByRole('tab', { name: 'OCP Uygulama Sorgu' }));
-    expect(await screen.findByText('OCP_GOVDE')).toBeTruthy();
-    expect(screen.getByTestId('konum').textContent).toContain('?sekme=ocp');
+describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
+  it('BS5 BMW Hub sayfasında artık sorgu sekmesi yok; eski ?sekme=ip|ocp adresi yeni sayfaya yönlenir', async () => {
+    kur('/bmw-hub');
+    const sekmeler = (await screen.findAllByRole('tab')).map((t) => t.textContent);
+    expect(sekmeler).not.toEqual(expect.arrayContaining(['IP/Sunucu Sorgu']));
+    const { default: TasinanSekme } = await import('@/routes/TasinanSekme');
+    const { IpSorguPage, OcpSorguPage } = await import('@/components/bmw_hub/BmwHubSayfalari');
+    for (const [eski, govde, arama] of [['/bmw-hub?sekme=ip&x=1', 'IP_GOVDE', '?x=1|bos'], ['/bmw-hub?sekme=ocp', 'OCP_GOVDE', '|bos']] as const) {
+      const r = render(
+        <MemoryRouter initialEntries={[eski]}>
+          <Routes>
+            <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu' }}><div>ESKI</div></TasinanSekme>} />
+            <Route path="/ip-sorgu" element={<><IpSorguPage /><Konum /></>} />
+            <Route path="/ocp-sorgu" element={<><OcpSorguPage /><Konum /></>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(await r.findByText(govde)).toBeTruthy();
+      expect(r.getAllByTestId('konum').at(-1)!.textContent).toBe(arama);
+      r.unmount();
+    }
   });
-  it('BS6 Otomasyon sayfasında sorgu girişleri yok; eski yer imleri BMW Hub sekmesine yönlenir', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'SelfServicePage.tsx'), 'utf8');
-    expect(src).not.toMatch(/<IpCheckSection|<OpenshiftCheckSection/);
-    expect(src).toMatch(/'ip-sorgu': '\/bmw-hub\?sekme=ip'/);
-    expect(src).toMatch(/'openshift-sorgu': '\/bmw-hub\?sekme=ocp'/);
+  it('BS6 menü kaydı, rotalar, sunucu tohumu ve eski yer imleri', () => {
+    const kok = path.join(__dirname, '..', '..', '..', '..');
+    const oku = (rel: string) => fs.readFileSync(path.join(kok, rel), 'utf8');
+    expect(oku('src/config/elements.ts')).toMatch(/itemIds: \['BmwHub', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'\]/);
+    const app = oku('src/App.tsx');
+    for (const [id, yol] of [['IpSorgu', '/ip-sorgu'], ['OcpSorgu', '/ocp-sorgu'], ['YukTesti', '/yuk-testi']]) {
+      expect(app).toContain(`<PageVisibilityRoute pageId="${id}" />`);
+      expect(app).toContain(`path="${yol}"`);
+      expect(oku('server/db/mssql-setup.cjs')).toMatch(new RegExp(String.raw`element_key: '${id}',\s*element_type: 'page',\s*parent_key: 'navgroup:bmwhub'`));
+    }
+    expect(app).toMatch(/<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/);
+    const ss = oku('src/components/SelfServicePage.tsx');
+    expect(ss).not.toMatch(/<IpCheckSection|<OpenshiftCheckSection/);
+    expect(ss).toMatch(/'ip-sorgu': '\/ip-sorgu'/);
+    expect(ss).toMatch(/'openshift-sorgu': '\/ocp-sorgu'/);
+    // Sunucu: sorgu uclari yeni sayfa izniyle, yuk testi uclari YukTesti ya da eski sekme izniyle acilir.
+    expect(oku('server/selfservice/index.cjs')).toMatch(/\["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"\]/);
+    const yt = oku('server/nginx-loadtest/index.cjs');
+    expect(yt).toMatch(/if \(await canSee\(user, 'YukTesti'\)\) return next\(\);/);
+    expect(yt).toMatch(/\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/);
   });
 });
