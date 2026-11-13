@@ -63,6 +63,11 @@ function kosulSuz(kosullar, params) {
  * `D.aracSorgular` sorgu gunlugu. Arac sorgusu degilse null.
  */
 function aracSorgusu(D, q, params) {
+  // Yuk makinesi listesi (2026-11-13): bos tablo = ortam listesi (eski davranis). D.yukHostlari / D.yukHostHata.
+  if (/FROM nginx_loadtest_yuk_hostlari/.test(q)) {
+    if (D.yukHostHata) throw D.yukHostHata;
+    return { rows: D.yukHostlari || [] };
+  }
   if (!/nginx_loadtest_araclar/.test(q)) return null;
   if (!D.aracSorgular) D.aracSorgular = [];
   D.aracSorgular.push({ q, params });

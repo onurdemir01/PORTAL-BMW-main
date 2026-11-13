@@ -25,6 +25,7 @@ import { BTN_TEHLIKE, LINK, SM_BTN, TBL_BTN, TON, smBtn } from '@/components/ser
 import { Cip, TabloIskelet, UyariKutusu, type Kolon } from '@/components/server_hub/RetirementUi';
 import { Alan, Bolum, GIRDI, KosuDurumHapi, Tanim, girdiStili } from './YukUi';
 import { glibcRhel8Ustu, hataMetni, shaKisa } from './yukTestiOrtak';
+import YukMakineleri from './YukMakineleri';
 
 /** Suren hazirlama isinde yeniden okuma araligi. */
 const YOKLAMA_MS = 10000;
@@ -206,6 +207,8 @@ export default function Araclar({ isAdmin }: { isAdmin: boolean }) {
           </div>
         )}
       </Bolum>
+
+      <YukMakineleri isAdmin={isAdmin} />
 
       <Bolum baslik="Hazırlama geçmişi" aciklama="Son 10 araç hazırlama işi (en yeni üstte)." govdeSinifi="p-0">
         <div className="overflow-x-auto">

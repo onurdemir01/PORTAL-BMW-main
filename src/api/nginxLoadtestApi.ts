@@ -72,7 +72,11 @@ export interface NlHedef {
   host: string; env: string | null; ipler: string[]; vhostlar: string[]; uygun: boolean; neden: string | null;
   kod?: string | null; hizSiniri?: number | null; vuSiniri?: number | null; limitReq?: number | null; limitConn?: number | null; vhostVerisi?: boolean;
 }
-export interface NlYukHost { host: string; env: string | null; uygun: boolean; neden: string | null }
+export interface NlYukHost {
+  host: string; env: string | null; uygun: boolean; neden: string | null;
+  /** Portal listesindeki not / ekleyen / tarih (2026-11-13; ortam listesinde null). */
+  not?: string | null; ekleyen?: string | null; eklendi?: string | null;
+}
 /** Genel sinirlar (sunucunun SINIRLAR'i). wrk: baglanti kademeleri ve is parcacigi; serbest hedefte iki motorda en cok
  *  `serbestTavanRps` istek/sn ve `serbestMaxBaglanti` baglanti / VU. */
 export interface NlSinirlar {
@@ -121,6 +125,10 @@ export interface NlVarsayilanlar {
 }
 export interface NlHedefler {
   ok: true; hedefler: NlHedef[]; yukHostlari: NlYukHost[]; sinirlar: NlSinirlar; varsayilan: NlVarsayilanlar;
+  /** Yuk makinesi listesinin kaynagi: 'portal' (Araclar'dan yonetilir) | 'ortam' (env / varsayilan) | null (okunamadi). */
+  yukHostKaynak?: 'portal' | 'ortam' | null;
+  /** Liste Portal DB'den okunamadiysa neden (yuk makinesi secilemez). */
+  yukHostHatasi?: string | null;
   /** Serbest hedef acik mi (NGINX_LOADTEST_SERBEST_AGLAR); `aglar` yalniz Admin istegine dolu. */
   serbest: { acik: boolean; aglar: string[] };
   /** Sunucunun kabul ettigi yuk araclari; alan gelmezse yalniz k6 (eski sunucu wrk'yi kabul etmez). */
@@ -1090,6 +1098,10 @@ export const nginxLoadtestApi = {
   araclariHazirla: (body: { derlemeHost: string }): Promise<NlEylem> => fetch(`${BASE}/araclar`, json(body)).then(safeJson),
   /** Admin. DONE bir seti geri ceker; 409 arac_yok / arac_geri_cekilemez / zaten_geri_cekildi; 424 db_okunamadi. */
   aracGeriCek: (id: number): Promise<NlEylem> => fetch(`${BASE}/araclar/${id}/geri-cek`, json({})).then(safeJson),
+  /** Admin. Yuk makinesi ekler (kapi: envanter, DEV/TEST/QA, uretim isareti yok); 409 yuk_host_izinsiz / zaten_var. */
+  yukMakinesiEkle: (body: { host: string; not?: string }): Promise<NlEylem & { hostlar?: string[] }> => fetch(`${BASE}/yuk-makineleri`, json(body)).then(safeJson),
+  /** Admin. Yuk makinesini cikarir; son makine cikarilamaz (409 son_makine). */
+  yukMakinesiCikar: (host: string): Promise<NlEylem & { hostlar?: string[] }> => fetch(`${BASE}/yuk-makineleri/${encodeURIComponent(host)}`, { method: 'DELETE' }).then(safeJson),
   /** Gece kuyruklari (okuma Admin disina acik), en yeni once. */
   kuyruklar: (): Promise<{ ok: true; kuyruklar: NlKuyruk[] }> => fetch(`${BASE}/kuyruklar`).then((r) => okJson(r)),
   kuyruk: (id: number): Promise<{ ok: true; kuyruk: NlKuyruk; ogeler: NlKuyrukOge[] }> => fetch(`${BASE}/kuyruklar/${id}`).then((r) => okJson(r)),

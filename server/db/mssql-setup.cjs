@@ -2395,6 +2395,19 @@ const TABLES = [
       )`,
   },
   {
+    // Yuk Testi YUK MAKINESI IZIN LISTESI (2026-11-13, server/nginx-loadtest/yuk-makineleri.cjs): Admin Yuk Testi >
+    // Araclar'dan ekler / cikarir. Tablo bossa NGINX_LOADTEST_YUK_HOSTLARI (yoksa GBNGXT34) gecerlidir; ilk degisiklik
+    // o listeyi tabloya tasir. Liste kapiyi gevsetemez (dogrula.yukHostKapisi her kosuda yeniden olcer).
+    name: 'nginx_loadtest_yuk_hostlari',
+    sql: `
+      CREATE TABLE nginx_loadtest_yuk_hostlari (
+        host        NVARCHAR(64)  NOT NULL PRIMARY KEY,
+        note        NVARCHAR(300) NULL,
+        created_by  NVARCHAR(128) NULL,
+        created_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // Yuk Testi GECE KUYRUGU (2026-11-03, server/nginx-loadtest/kuyruk.cjs): ardisik kosular, aralarinda dinlenme.
     // durum: BEKLIYOR | CALISIYOR | DINLENME | BITTI | IPTAL | HATALI. hazir = 0 iken (olusturma yarim) yurutucu
     // gormez. kira_id / kira_bitis: kuyrugu isleyen Portal sureci (kosullu UPDATE; surec olurse kira dolar,

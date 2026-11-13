@@ -1001,7 +1001,10 @@ test('YKP12 hedefler: uygunluk ve neden, yuk makineleri, sinirlar', { timeout: 1
   assert.deepEqual([h.GBNGXP40.uygun, h.GBNGXP40.ipler], [false, []]);
   assert.match(h.GBNGXP40.neden, /üretim/);
   assert.equal(h.GBNGXT51.uygun, false, 'EDU hedef uygun gorundu');
-  assert.deepEqual(r.body.yukHostlari, [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }]);
+  assert.deepEqual(r.body.yukHostlari, [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null, not: null, ekleyen: null, eklendi: null }]);
+  // Portal tablosu bos: ortam listesi (2026-11-13); kaynak ekrana soylenir.
+  assert.equal(r.body.yukHostKaynak, 'ortam');
+  assert.equal(r.body.yukHostHatasi, null);
   assert.equal(r.body.sinirlar.maxHiz, 5000);
   assert.equal(r.body.sinirlar.maxButceSn, 2700);
   // K2: ham olculmus degerler (uyari icin) de doner: fikstur rate=300r/s, limit_conn yok.

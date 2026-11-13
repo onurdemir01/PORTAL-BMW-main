@@ -118,6 +118,7 @@ const SAHIP_SILME = Object.freeze([
 ]);
 
 const db = () => require('../db/index.cjs');
+const yukMakineleri = require('./yuk-makineleri.cjs');
 const maskele = (s) => require('../retirement/is-ciktisi.cjs').maskele(s);
 const maskeleDerin = (v) => require('../retirement/is-ciktisi.cjs').maskeleDerin(v);
 
@@ -368,7 +369,8 @@ async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost,
     throw hata(409, 'senaryo_yok', 'Senaryonun içeriği kayıtlı özetiyle (sha256) uyuşmuyor; senaryoyu yeniden oluşturun.');
   }
   const { query, sql } = require('../inventory/mssql.cjs');
-  const izinli = dg.yukHostlari();
+  // Yuk makinesi izin listesi Portal DB'den (2026-11-13; okunamazsa 424 - kapali kalir).
+  const izinli = (await yukMakineleri.oku(db())).hostlar;
   const aglar = dg.serbestAglar();
   const yasak = dg.serbestYasak();
   const k = await dg.kaynaklariOku({ query, sql, hostlar: [hedefHost, yukHost].filter(Boolean), ip: hedefIp, vhost });
@@ -985,7 +987,16 @@ function yonlendiriciKur() {
     try {
       const { query, sql } = require('../inventory/mssql.cjs');
       const { envOfHost } = require('../audit/nginx-hosts.cjs');
-      const izinli = dg.yukHostlari();
+      // Liste okunamazsa ekran yine acilir: yuk makinesi secilemez, neden yazilir (kosu kapisi da 424 der).
+      let yl;
+      let yukHostHatasi = null;
+      try {
+        yl = await yukMakineleri.oku(db());
+      } catch (e) {
+        yl = { hostlar: [], kaynak: null, kayitlar: [] };
+        yukHostHatasi = maskele(e && e.message);
+      }
+      const izinli = yl.hostlar;
       const k = await dg.kaynaklariOku({ query, sql, ekHostlar: izinli });
       const hedefler = [...k.nginx.keys()].sort().map((h) => {
         const kp = dg.hedefKapisi(h, { nginxSatiri: k.nginx.get(h), invEnv: k.inv.get(h) });
@@ -1002,14 +1013,16 @@ function yonlendiriciKur() {
         };
       });
       hedefler.sort((a, b) => Number(b.uygun) - Number(a.uygun) || a.host.localeCompare(b.host));
+      const kayit = new Map(yl.kayitlar.map((x) => [x.host, x]));
       const yukHostlari = izinli.map((h) => {
         const y = dg.yukHostKapisi(h, { izinli, nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h) });
-        return { host: h, env: envOfHost(h), uygun: y.ok, neden: y.ok ? null : y.message };
+        const kx = kayit.get(h) || {};
+        return { host: h, env: envOfHost(h), uygun: y.ok, neden: y.ok ? null : y.message, not: kx.not || null, ekleyen: kx.ekleyen || null, eklendi: kx.eklendi || null };
       });
       // Serbest hedef izin listesi: acik mi herkese, aglarin kendisi YALNIZ Admin'e.
       const aglar = dg.serbestAglar();
       res.json({
-        ok: true, hedefler, yukHostlari, sinirlar: dg.SINIRLAR, varsayilan: dg.VARSAYILAN,
+        ok: true, hedefler, yukHostlari, yukHostKaynak: yl.kaynak, yukHostHatasi, sinirlar: dg.SINIRLAR, varsayilan: dg.VARSAYILAN,
         taramaVerisi: k.sunucular !== null, rateLimitVerisi: k.ayarlar !== null,
         serbest: { acik: aglar.length > 0, aglar: isAdmin(req) ? aglar.map((a) => a.metin) : [] },
         motorlar: [...dg.MOTORLAR],
@@ -1483,6 +1496,50 @@ function yonlendiriciKur() {
       res.json({ ok: true, ...r });
     } catch (e) {
       hataYaniti(req, res, e, 'nginx_loadtest_araclar_geri_cek', null);
+    }
+  });
+
+  // -- YUK MAKINELERI (2026-11-13): izin listesi Portal'dan; yalniz Admin yazar. Okuma /hedefler ile gelir. --
+  // Ekleme ayni kapidan gecer (envanter + ad kurali DEV/TEST/QA + uretim isareti); her kosu yeniden olcer.
+  router.post('/yuk-makineleri', async (req, res) => {
+    const g = req.body && typeof req.body === 'object' ? req.body : {};
+    const host = dg.hostNormalle(g.host) || null;
+    try {
+      adminSart(req);
+      const by = kullanici(req).username || null;
+      const r = await yukMakineleri.ekle(db(), { host: g.host, not: g.not }, by, async (h) => {
+        const { query, sql } = require('../inventory/mssql.cjs');
+        const k = await dg.kaynaklariOku({ query, sql, hostlar: [h] });
+        return dg.yukHostKapisi(h, { izinli: [h], nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h) });
+      });
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_yuk_makinesi_ekle', {
+          result: 'ok', targetHost: host, detail: baslat.denetimAyrintisi({ host, hostlar: r.hostlar }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, hostlar: r.hostlar, kaynak: r.kaynak });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_yuk_makinesi_ekle', { host, ip: null });
+    }
+  });
+
+  router.delete('/yuk-makineleri/:host', async (req, res) => {
+    const host = dg.hostNormalle(req.params.host) || null;
+    try {
+      adminSart(req);
+      const r = await yukMakineleri.cikar(db(), req.params.host, kullanici(req).username || null);
+      try {
+        require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_yuk_makinesi_cikar', {
+          result: 'ok', targetHost: host, detail: baslat.denetimAyrintisi({ host, hostlar: r.hostlar }),
+        });
+      } catch {
+        /* best-effort */
+      }
+      res.json({ ok: true, hostlar: r.hostlar, kaynak: r.kaynak });
+    } catch (e) {
+      hataYaniti(req, res, e, 'nginx_loadtest_yuk_makinesi_cikar', { host, ip: null });
     }
   });
 
