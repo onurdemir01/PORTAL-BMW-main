@@ -384,7 +384,7 @@ async function kosuPlani({ senaryoId, hedefHost = null, hedefIp, vhost, yukHost,
     throw kapidan(sinif);
   }
   const yukKapisi = (hedef) => dg.yukHostKapisi(yukHost, {
-    hedef, izinli, nginxSatiri: k.nginx.get(yukHost) || null, invEnv: k.inv.get(yukHost), invVar: k.inv.has(yukHost),
+    hedef, izinli, nginxSatiri: k.nginx.get(yukHost) || null, invEnv: k.inv.get(yukHost), invVar: k.inv.has(yukHost), invEnvler: k.invTum ? k.invTum.get(yukHost) : null,
   });
   let env = null;
   let p;
@@ -1015,9 +1015,9 @@ function yonlendiriciKur() {
       hedefler.sort((a, b) => Number(b.uygun) - Number(a.uygun) || a.host.localeCompare(b.host));
       const kayit = new Map(yl.kayitlar.map((x) => [x.host, x]));
       const yukHostlari = izinli.map((h) => {
-        const y = dg.yukHostKapisi(h, { izinli, nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h) });
+        const y = dg.yukHostKapisi(h, { izinli, nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h), invEnvler: k.invTum ? k.invTum.get(h) : null });
         const kx = kayit.get(h) || {};
-        return { host: h, env: envOfHost(h), uygun: y.ok, neden: y.ok ? null : y.message, not: kx.not || null, ekleyen: kx.ekleyen || null, eklendi: kx.eklendi || null };
+        return { host: h, env: y.env || envOfHost(h), uygun: y.ok, neden: y.ok ? null : y.message, not: kx.not || null, ekleyen: kx.ekleyen || null, eklendi: kx.eklendi || null };
       });
       // Serbest hedef izin listesi: acik mi herkese, aglarin kendisi YALNIZ Admin'e.
       const aglar = dg.serbestAglar();
@@ -1510,7 +1510,7 @@ function yonlendiriciKur() {
       const r = await yukMakineleri.ekle(db(), { host: g.host, not: g.not }, by, async (h) => {
         const { query, sql } = require('../inventory/mssql.cjs');
         const k = await dg.kaynaklariOku({ query, sql, hostlar: [h] });
-        return dg.yukHostKapisi(h, { izinli: [h], nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h) });
+        return dg.yukHostKapisi(h, { izinli: [h], nginxSatiri: k.nginx.get(h) || null, invEnv: k.inv.get(h), invVar: k.inv.has(h), invEnvler: k.invTum ? k.invTum.get(h) : null });
       });
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_yuk_makinesi_ekle', {

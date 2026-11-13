@@ -128,6 +128,32 @@ test('YD4 yuk makinesi: izin listesi, hedeften farkli, non-prod, envanterde', ()
   assert.deepEqual(dg.yukHostlari({ NGINX_LOADTEST_YUK_HOSTLARI: '!!!' }), []);
 });
 
+test('YD4b ad kurali disi yuk makinesi (GBJWLT01 / GBJALT02): ortam dbo.Inventory kaydindan, liste kodda', () => {
+  const izinli = ['GBJWLT01', 'GBJALT02', 'GBLABT02'];
+  const k = (invEnvler) => ({ izinli, hedef: 'GBNGXT33', nginxSatiri: null, invEnv: invEnvler ? invEnvler.at(-1) : undefined, invVar: !!invEnvler, invEnvler: invEnvler || undefined });
+  const t = dg.yukHostKapisi('GBJWLT01', k(['Test']));
+  assert.deepEqual([t.ok, t.env], [true, 'TEST']);
+  assert.equal(dg.yukHostKapisi('GBJALT02', k(['QA', 'qa '])).ok, true);
+  for (const kotu of [['Production'], ['PROD'], ['EDU'], ['Alpha'], ['ODM'], [null], [''], ['Test', 'Production'], ['Test', 'QA']]) {
+    assert.equal(dg.yukHostKapisi('GBJWLT01', k(kotu)).code, 'yuk_host_izinsiz', `envanter ${JSON.stringify(kotu)} gecti`);
+  }
+  assert.equal(dg.yukHostKapisi('GBJWLT01', k(null)).code, 'yuk_host_izinsiz', 'envanterde olmayan ad disi makine gecti');
+  // Kod listesinde olmayan ad disi makine Inventory 'Test' olsa da gecmez (Portal sunucusu GBLABT02 dahil).
+  assert.equal(dg.yukHostKapisi('GBLABT02', k(['Test'])).code, 'yuk_host_izinsiz');
+  assert.equal(dg.yukHostKapisi('GBJWLT03', { ...k(['Test']), izinli: ['GBJWLT03'] }).code, 'yuk_host_izinsiz');
+  assert.deepEqual([...dg.AD_DISI_YUK_HOSTLARI], ['GBJWLT01', 'GBJALT02']);
+  // Son kapi: yuk makinesi olarak kabul, hedef olarak red.
+  assert.deepEqual(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'GBJWLT01' })), []);
+  assert.ok(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'GBJWLT01' })).includes('yuk_hedef_host'));
+  assert.ok(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_yuk_host: 'GBLABT02' })).includes('yuk_yuk_host'));
+  // Playbook listesi Portal listesiyle birebir (iki depo ayri dagitilir).
+  const pb = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'nginx_loadtest', 'nginx_loadtest.yml'), 'utf8');
+  const m = /yt_extra_load_hosts: \[([^\]]*)\]/.exec(pb);
+  assert.ok(m, 'playbook yt_extra_load_hosts yok');
+  assert.deepEqual(m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, '')), [...dg.AD_DISI_YUK_HOSTLARI]);
+  assert.match(pb, /\(\(yuk_yuk_host \| string\) is match\(yt_re_nonprod_adi\)\) or \(\(yuk_yuk_host \| string\) in yt_extra_load_hosts\)/);
+});
+
 test('YD5 sinirlar, butce formulu ve olculmus rate limit (2026-11-03: daraltma yok, uyari)', () => {
   const ok = dg.parametreler({}, { sni: false });
   assert.equal(ok.ok, true);

@@ -477,7 +477,7 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_run_id` | string | her kip | `^[0-9]{1,10}$` (Portal koşu id'si; ADIM `R<id>`, koşu dizini `~www/.portal_yuktesti/<id>`; araclar: araç seti id'si, /sw dizini `<kök>/araclar/<id>`) |
 | `yuk_hedef_turu` | string | on_kontrol, kosu (durdurda yoksa `sunucu`) | `sunucu` \| `serbest` |
 | `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, ad kuralına göre DEV/TEST/QA (`GBNG[WX][A][DTQ]...`), EDU istisnası (GBNGXT51) değil; serbest: `''` (dolu ise red) |
-| `yuk_yuk_host` | string | on_kontrol, kosu, durdur | aynı ad kuralı; hedeften FARKLI |
+| `yuk_yuk_host` | string | on_kontrol, kosu, durdur | aynı ad kuralı **ya da** `yt_extra_load_hosts` listesinde (2026-11-13: GBJWLT01, GBJALT02 — nginx olmayan, yalnız yük üreten makineler; `www` hesabı ve `dzdo -u www` gerekir; Portal'da birebir aynı liste `AD_DISI_YUK_HOSTLARI`, ortamları dbo.Inventory'den DEV/TEST/QA olarak doğrulanır); hedeften FARKLI. Bu makineler hedef olamaz |
 | `yuk_motor` | string | on_kontrol, kosu | `k6` \| `wrk` |
 | `yuk_hedef_ip` | string | on_kontrol, kosu | IPv4; 0/127/169.254/224+ değil; sunucuda hedefte yerel olduğu ön kontrolde ve koşu başında ölçülür |
 | `yuk_host_basligi` | string | on_kontrol, kosu | RFC1123 küçük harf, port/joker yok, ≤ 253 (yalnız biçim; hedefin server_name listesinde olması ŞART değil) |

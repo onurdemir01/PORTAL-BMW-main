@@ -11,7 +11,8 @@
 //   - tablo OKUNAMAZSA kapali kalir (424): ortam listesine sessizce donmek Admin'in cikardigi makineyi geri acardi
 //
 // LISTE KAPIYI GEVSETEMEZ: ekleme aninda ve her kosuda dogrula.yukHostKapisi ayni kurallari uygular (ad kuralina
-// gore DEV/TEST/QA, uretim isareti yok, envanterde kayitli). Playbook ad kuralini ayrica denetler.
+// gore DEV/TEST/QA - ad kurali disinda yalniz koddaki AD_DISI_YUK_HOSTLARI, ortami dbo.Inventory'den -, uretim
+// isareti yok, envanterde kayitli). Playbook ad kuralini ve ayni sabit listeyi ayrica denetler.
 'use strict';
 
 const dg = require('./dogrula.cjs');

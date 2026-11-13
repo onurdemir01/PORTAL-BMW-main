@@ -156,6 +156,12 @@ const BOZUK_YUZDE = /%(?![0-9A-Fa-f]{2})/;
 const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
 
 const VARSAYILAN_YUK_HOSTLARI = Object.freeze(['GBNGXT34']);
+// AD KURALI DISI YUK MAKINELERI (kullanici, 2026-11-13: "GBJWLT01 ve GBJALT02'yi yalniz yuk basmasi icin
+// kullanmak istiyorum"; ikisinde www var, uzerlerinde uygulama yok). Nginx adi tasimayan makinenin ortami
+// addan okunamaz: yalniz bu KOD SABITINDEKI makineler, dbo.Inventory ortamlarinin HEPSI DEV/TEST/QA ise
+// yuk makinesi olabilir (Admin listesi bunu genisletemez). Playbook'ta birebir ayni liste:
+// yt_extra_load_hosts (nginx_loadtest.yml). Bu makineler HEDEF olamaz.
+const AD_DISI_YUK_HOSTLARI = Object.freeze(['GBJWLT01', 'GBJALT02']);
 // Tur 4: yuk araclari her on kontrol / kosuda /sw'deki arac setinden kosu dizinine kopyalanir.
 // yuk_k6_yolu / yuk_wrk_yolu artik SABIT isaret degeri tasir: yeni Portal + ESKI playbook penceresinde
 // eski playbook /home/www/bin ikilisini SESSIZCE kullanmasin (isaret yolu yoktur; on kontrol duser).
@@ -690,15 +696,27 @@ function hedefKapisi(host, kaynak) {
  * Yuk makinesi kapisi: izin listesinde, hedeften farkli, ad kuralina gore DEV/TEST/QA, uretim
  * isareti yok ve en az bir envanterde kayitli.
  */
-function yukHostKapisi(host, { hedef = null, izinli = [], nginxSatiri = null, invEnv, invVar = false } = {}) {
-  const { envOfHost } = require('../audit/nginx-hosts.cjs');
-  const env = envOfHost(host);
+function yukHostKapisi(host, { hedef = null, izinli = [], nginxSatiri = null, invEnv, invVar = false, invEnvler = null } = {}) {
+  const { envOfHost, envFromInventory } = require('../audit/nginx-hosts.cjs');
+  let env = envOfHost(host);
   if (hedef && host === hedef) return red(409, 'ayni_host', 'Yük makinesi hedefle aynı olamaz.', { env });
   if (!izinli.includes(host)) {
-    return red(409, 'yuk_host_izinsiz', `${host} yük makinesi izin listesinde değil (NGINX_LOADTEST_YUK_HOSTLARI).`, { env });
+    return red(409, 'yuk_host_izinsiz', `${host} yük makinesi izin listesinde değil (Yük Testi › Araçlar › Yük makineleri).`, { env });
+  }
+  // Ad kurali disi (AD_DISI_YUK_HOSTLARI): ortam dbo.Inventory'den KANITLANIR; satir yoksa, bos ya da
+  // satirlar celisiyorsa (biri bile DEV/TEST/QA degilse) red. Ad kurali tutan makinede bu yol hic kosmaz.
+  if (env === 'BILINMIYOR' && AD_DISI_YUK_HOSTLARI.includes(host)) {
+    const ham = Array.isArray(invEnvler) ? invEnvler : invVar ? [invEnv] : [];
+    if (!ham.length) return red(409, 'yuk_host_izinsiz', `${host} ortamı ad kuralından okunamıyor ve dbo.Inventory'de kaydı yok.`, { env });
+    const envler = [...new Set(ham.map((v) => envFromInventory(v)))];
+    if (envler.length !== 1 || !IZINLI_ORTAM.has(envler[0])) {
+      return red(409, 'yuk_host_izinsiz', `${host} dbo.Inventory ortamı ${ham.map((v) => (v == null || v === '' ? '(boş)' : String(v))).join(' / ')}; yük makinesi yalnız DEV/TEST/QA olabilir.`, { env });
+    }
+    env = envler[0];
   }
   if (!IZINLI_ORTAM.has(env)) return red(409, 'yuk_host_izinsiz', `${host} ortamı ${env}; yük makinesi yalnız DEV/TEST/QA olabilir.`, { env });
-  const sebep = uretimIsareti({ host, nginxEnv: nginxSatiri ? nginxSatiri.env : null, invEnv });
+  const sebep = uretimIsareti({ host, nginxEnv: nginxSatiri ? nginxSatiri.env : null, invEnv })
+    || (Array.isArray(invEnvler) ? invEnvler.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) : null);
   if (sebep) return red(409, 'yuk_host_izinsiz', `${host} için üretim işareti var (${sebep}).`, { env });
   if (!nginxSatiri && !invVar) return red(409, 'yuk_host_izinsiz', `${host} envanterde (dbo.nginx_inventory / dbo.Inventory) yok.`, { env });
   return { ok: true, env };
@@ -1127,6 +1145,8 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   const { envOfHost } = require('../audit/nginx-hosts.cjs');
   // Ad kurali GBNG[WX]A?[DTQ] + EDU degil: envOfHost DEV/TEST/QA (playbook yt_re_nonprod_adi + yt_edu_hostlari).
   const nonProdAd = (h) => HOST_RE.test(h) && IZINLI_ORTAM.has(envOfHost(h));
+  // Yuk makinesi icin ek: ad kurali disi kod sabiti (envanter kaniti kosuPlani'de alindi; playbook yt_extra_load_hosts).
+  const yukAdUygun = (h) => nonProdAd(h) || (HOST_RE.test(h) && AD_DISI_YUK_HOSTLARI.includes(h));
   if (!ISLEMLER.has(ev.yuk_islem)) ihlal.push('yuk_islem');
   if (!metin('yuk_run_id') || !RUN_ID_RE.test(ev.yuk_run_id)) ihlal.push('yuk_run_id');
   const durdur = ev.yuk_islem === 'durdur';
@@ -1143,7 +1163,7 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   if (!HEDEF_TURLERI.includes(tur)) ihlal.push('yuk_hedef_turu');
   const serbest = tur === 'serbest';
   if (serbest ? ev.yuk_hedef_host !== '' : !(metin('yuk_hedef_host') && nonProdAd(ev.yuk_hedef_host))) ihlal.push('yuk_hedef_host');
-  if (!metin('yuk_yuk_host') || !nonProdAd(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host) ihlal.push('yuk_yuk_host');
+  if (!metin('yuk_yuk_host') || !yukAdUygun(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host) ihlal.push('yuk_yuk_host');
   if (!durdur) {
     if (!MOTORLAR.includes(ev.yuk_motor)) ihlal.push('yuk_motor');
     const wrk = ev.yuk_motor === 'wrk';
@@ -1356,6 +1376,8 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
 
   // ── IP SAHIPLIGI (yalniz ip verildiginde) ──
   const inv = new Map();
+  // Ayni host icin TUM dbo.Inventory ortamlari (ad kurali disi yuk makinesi kapisi; inv son satiri tutar).
+  const invTum = new Map();
   const ipSahipleri = new Map();
   const ipTaninmayan = [];
   const sahipEkle = (ham, kaynak) => {
@@ -1470,7 +1492,11 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
       const r = await query(`SELECT host, env FROM dbo.Inventory WHERE UPPER(LTRIM(RTRIM(host))) IN (${il.sqlText})`, il.params);
       for (const x of r.recordset || []) {
         const h = hostNormalle(x.host);
-        if (h) inv.set(h, x.env == null ? null : String(x.env));
+        if (h) {
+          inv.set(h, x.env == null ? null : String(x.env));
+          if (!invTum.has(h)) invTum.set(h, []);
+          invTum.get(h).push(x.env == null ? null : String(x.env));
+        }
       }
     } catch (e) {
       throw okunamadi('dbo.Inventory', e);
@@ -1556,7 +1582,7 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
   }
   return {
-    nginx, inv, sunucular, ayarlar, ipSahipleri, ipTaninmayan,
+    nginx, inv, invTum, sunucular, ayarlar, ipSahipleri, ipTaninmayan,
     taramaVar: taramaVarMi === null ? sunucular !== null : taramaVarMi,
     ipEnvanteriVar, ipEnvanteriYasSaat, ipEnvanteriSon, taramaYasGun, taramaSon,
     ...(vhost !== null && vhost !== undefined ? { taramaAdlari } : {}),
@@ -1788,6 +1814,7 @@ module.exports = {
   onKontrolDegerlendir,
   onayMetniDogru,
   yukHostlari,
+  AD_DISI_YUK_HOSTLARI,
   yolGuvenli,
   birKezUyar,
   ciktiKok,

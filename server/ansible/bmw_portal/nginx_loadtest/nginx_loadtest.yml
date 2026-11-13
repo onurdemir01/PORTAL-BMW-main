@@ -9,6 +9,7 @@
     yt_re_host: '^[A-Z0-9][A-Z0-9-]{1,30}\Z'
     yt_re_nonprod_adi: '^GBNG[WX]A?[DTQ]'
     yt_edu_hostlari: ['GBNGXT51']
+    yt_extra_load_hosts: ['GBJWLT01', 'GBJALT02']
     yt_re_ipv4: '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\Z'
     yt_re_ozel_ip: '^(0|127|169\.254|22[4-9]|2[3-5][0-9])\.'
     yt_re_vhost: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\Z'
@@ -45,10 +46,10 @@
               - (yuk_yuk_host | default('') | string) is match(yt_re_host)
               - (yuk_hedef_host | default('') | string) != (yuk_yuk_host | string)
               - (((yuk_hedef_host | string) is match(yt_re_nonprod_adi)) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
-              - (yuk_yuk_host | string) is match(yt_re_nonprod_adi)
+              - ((yuk_yuk_host | string) is match(yt_re_nonprod_adi)) or ((yuk_yuk_host | string) in yt_extra_load_hosts)
               - (((yuk_hedef_host | string) not in yt_edu_hostlari) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
               - (yuk_yuk_host | string) not in yt_edu_hostlari
-            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host ad kuralina gore DEV/TEST/QA (GBNG[WX][A][DTQ]..., EDU degil), serbest: yuk_hedef_host bos; yuk_yuk_host DEV/TEST/QA ve hedeften FARKLI olmali; hicbir sey yapilmadi."
+            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host ad kuralina gore DEV/TEST/QA (GBNG[WX][A][DTQ]..., EDU degil), serbest: yuk_hedef_host bos; yuk_yuk_host DEV/TEST/QA (ya da yt_extra_load_hosts) ve hedeften FARKLI olmali; hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('') | string) != 'araclar'
 
