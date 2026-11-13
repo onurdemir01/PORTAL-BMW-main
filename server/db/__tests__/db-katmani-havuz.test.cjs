@@ -97,7 +97,7 @@ test('Y1 esik altinda sessiz, ustunde tek satir; SQL bosluklari daraltilir ve 15
   }), true);
   const s = yavas();
   assert.equal(s.length, 1);
-  assert.match(s[0], /pool=portal wait=200\.0ms query=400\.0ms rows=3 /);
+  assert.match(s[0], /pool=portal wait=200\.0ms query=400\.0ms loopLag=\d+ms rows=3 /);
   const onizleme = s[0].match(/sql="([^"]*)"/)[1];
   assert.equal(onizleme.length, 150);
   assert.ok(onizleme.startsWith('SELECT a, b FROM t WHERE x'), onizleme);
@@ -121,7 +121,7 @@ test('Y3 Portal adapter: bekleme/sorgu ayri olculur, parametre DEGERI gunluge ya
   assert.equal(r.rows.length, 2);
   const s = yavas();
   assert.equal(s.length, 1, s.join('\n'));
-  assert.match(s[0], /^\[SlowQuery\] pool=portal wait=\d+\.\dms query=\d+\.\dms rows=2 sql="SELECT \* FROM t WHERE parola = @p1 AND n = @p2"$/);
+  assert.match(s[0], /^\[SlowQuery\] pool=portal wait=\d+\.\dms query=\d+\.\dms loopLag=\d+ms rows=2 sql="SELECT \* FROM t WHERE parola = @p1 AND n = @p2"$/);
   assert.doesNotMatch(s[0], /GIZLI-DEGER-123/);
   assert.doesNotMatch(s[0].match(/sql="([^"]*)"/)[1], /42/);
 });
@@ -284,4 +284,56 @@ test('T4 uzun-sorgu havuzu da tek-ucus', async () => {
   const inv = require(INV);
   await Promise.all(Array.from({ length: 5 }, () => inv.queryLong('SELECT 1')));
   assert.equal(kurulan.length, 2, 'ana + tek uzun havuz bekleniyordu');
+});
+
+// -- (2026-11-13) Olcum: uzun havuz yedegi ayri etiket, yavas HTTP satiri ----------
+test('Y8 uzun havuz kurulamazsa ana havuza dusulur ve etiket tbmwans(long-fallback)', async () => {
+  process.env.SLOW_QUERY_MS = '0';
+  let n = 0;
+  sahteHavuz({ hata: () => (n++ === 1) });
+  const inv = require(INV);
+  await inv.queryLong('SELECT 3', []);
+  const s = yavas();
+  assert.equal(s.length, 1, s.join('\n'));
+  assert.match(s[0], /pool=tbmwans\(long-fallback\) /);
+});
+
+function sahteIstek({ baseUrl, routePath, originalUrl, method = 'GET' }) {
+  const EventEmitter = require('node:events');
+  const res = new EventEmitter();
+  res.statusCode = 200;
+  const req = { method, baseUrl, originalUrl, url: originalUrl, route: routePath ? { path: routePath } : undefined, query: { token: 'GIZLI' } };
+  return { req, res };
+}
+const yavasHttp = () => uyarilar.filter((u) => u.startsWith('[SlowHttp]'));
+
+test('SH1 yavas istek: rota KALIBI yazilir; ham URL / query string / deger yazilmaz', async () => {
+  const m = require(METRICS);
+  process.env.SLOW_HTTP_MS = '0';
+  const { req, res } = sahteIstek({ baseUrl: '/api/oco', routePath: '/calendar', originalUrl: '/api/oco/calendar?token=GIZLI&group=6203' });
+  await new Promise((r) => m.middleware(req, res, r));
+  await new Promise((r) => setTimeout(r, 3));
+  res.emit('finish');
+  const s = yavasHttp();
+  assert.equal(s.length, 1, uyarilar.join('\n'));
+  assert.match(s[0], /^\[SlowHttp\] method=GET route=\/api\/oco\/calendar status=200 ms=\d+ loopLag=\d+ms$/);
+  assert.doesNotMatch(s[0], /GIZLI|\?|6203/);
+});
+
+test('SH2 rota eslesmediyse yalniz baseUrl; esik altinda sessiz', async () => {
+  const m = require(METRICS);
+  process.env.SLOW_HTTP_MS = '0';
+  const a = sahteIstek({ baseUrl: '/api', originalUrl: '/api/yok/GIZLI?x=1' });
+  m.middleware(a.req, a.res, () => {});
+  await new Promise((r) => setTimeout(r, 2));
+  a.res.emit('finish');
+  assert.match(yavasHttp()[0], / route=\/api status=/);
+  assert.doesNotMatch(yavasHttp()[0], /GIZLI/);
+  process.env.SLOW_HTTP_MS = '60000';
+  const b = sahteIstek({ baseUrl: '/api/oco', routePath: '/calendar', originalUrl: '/api/oco/calendar' });
+  m.middleware(b.req, b.res, () => {});
+  b.res.emit('finish');
+  assert.equal(yavasHttp().length, 1, 'esik altindaki istek yazildi');
+  delete process.env.SLOW_HTTP_MS;
+  assert.equal(m.slowHttpThresholdMs(), 1500);
 });

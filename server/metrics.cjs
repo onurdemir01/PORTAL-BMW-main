@@ -20,6 +20,26 @@ let loopLagMs = 0;
   if (iv.unref) iv.unref();
 })();
 
+// -- Yavas istek gunlugu (2026-11-13) ----------
+// SlowQuery yalniz SQL'i gorur; OCO Takvimi gibi dis HTTP'ye giden ekranlar orada hic
+// gorunmuyordu. Istek suresi SLOW_HTTP_MS'i (varsayilan 1500) asarsa TEK satir yazilir.
+// GUNLUGE YALNIZ rota KALIBI girer (req.baseUrl + req.route.path): ham URL, query string,
+// parametre degeri ve kullanici adi ASLA yazilmaz (token/host adi sizmasin).
+const DEFAULT_SLOW_HTTP_MS = 1500;
+let slowHttpCount = 0;
+
+function slowHttpThresholdMs() {
+  const n = Number.parseInt(process.env.SLOW_HTTP_MS, 10);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_SLOW_HTTP_MS;
+}
+
+/** Rota KALIBI: '/api/oco' + '/calendar'. Rota eslesmediyse yalniz baseUrl (ham URL degil). */
+function routeOf(req) {
+  const base = typeof req.baseUrl === "string" ? req.baseUrl : "";
+  const rp = req.route && typeof req.route.path === "string" ? req.route.path : "";
+  return (base + rp) || "?";
+}
+
 function middleware(req, res, next) {
   const start = Date.now();
   requests++;
@@ -28,6 +48,15 @@ function middleware(req, res, next) {
     latencies.push(ms);
     if (latencies.length > MAX_SAMPLES) latencies.shift();
     if (res.statusCode >= 500) errors5xx++;
+    try {
+      if (ms > slowHttpThresholdMs()) {
+        slowHttpCount++;
+        console.warn(
+          `[SlowHttp] method=${String(req.method || "?").replace(/[^A-Z]/gi, "")} route=${routeOf(req)} ` +
+          `status=${res.statusCode} ms=${ms} loopLag=${Math.round(loopLagMs)}ms`
+        );
+      }
+    } catch { /* gozlem istegi bozmamali */ }
   });
   next();
 }
@@ -124,6 +153,8 @@ function reportQueryTiming({ pool, waitNs, queryNs, result, sqlText, failed, ret
     const rows = failed ? "-" : rowCountOf(result);
     console.warn(
       `[SlowQuery] pool=${pool || "?"} wait=${waitMs.toFixed(1)}ms query=${queryMs.toFixed(1)}ms ` +
+      // loopLag: "query=" suresi SQL mi yoksa olay dongusu (ayristirma/GC) mu - ayirt etmek icin.
+      `loopLag=${Math.round(loopLagMs)}ms ` +
       `rows=${rows === null || rows === undefined ? "?" : rows}${failed ? " status=error" : ""}${retry ? " retry=1" : ""} ` +
       `sql="${sqlPreview(sqlText)}"`
     );
@@ -162,6 +193,7 @@ function snapshot() {
     portalDbPool: poolStats(),
     tbmwansDbPool: tbmwansPoolStats(),
     slowQueries: { count: slowQueryCount, thresholdMs: slowQueryThresholdMs() },
+    slowHttp: { count: slowHttpCount, thresholdMs: slowHttpThresholdMs() },
   };
 }
 
@@ -223,4 +255,5 @@ module.exports = {
   middleware, snapshot, initMetrics,
   // db katmani yardimcilari (yavas sorgu gunlugu, havuz dolulugu)
   timeQuery, reportQueryTiming, tarnPoolStats, sqlPreview, slowQueryThresholdMs,
+  slowHttpThresholdMs, routeOf, loopLag: () => loopLagMs,
 };

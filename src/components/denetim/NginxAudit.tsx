@@ -35,6 +35,15 @@ import { downloadCsv as csvDownload } from '@/utils/csv';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
+/** Sunucu onbellegindeki hesabin yasi (warm-cache _cache.yasMs). */
+function hesapYasi(ms?: number): string {
+  if (ms == null || !Number.isFinite(ms)) return '';
+  const dk = Math.floor(ms / 60000);
+  if (dk < 1) return 'az önce hesaplandı';
+  if (dk < 60) return `${dk} dk önce hesaplandı`;
+  return `${Math.floor(dk / 60)} sa ${dk % 60} dk önce hesaplandı`;
+}
+
 export const hostPagePath = (host: string) => `/denetim/nginx-audit/${encodeURIComponent(host)}`;
 
 
@@ -388,6 +397,14 @@ export function NginxAudit() {
           <>
             {nf(rows.length)} sunucu gösteriliyor ·{' '}
             <GuncellemeRozeti etiket="tarama" tarih={data.scannedAt ? fmtDateTime(data.scannedAt) : data.scanDate} /> ·{' '}
+            {data._cache?.computedAt && (
+              <>
+                <span title={`Sunucu önbelleği: ${fmtDateTime(data._cache.computedAt)} hesaplandı (Yenile yeniden hesaplar)`}>
+                  {hesapYasi(data._cache.yasMs)}
+                </span>{' '}
+                ·{' '}
+              </>
+            )}
             {issue ? 'seçilen soruna göre sıralı' : 'sorunlu olanlar üstte'} · satıra tıklayınca sunucu sayfası açılır
           </>
         }

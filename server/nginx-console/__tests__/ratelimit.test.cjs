@@ -321,11 +321,12 @@ test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () =
   const kur = (rows) => {
     require.cache[mssqlYol] = sahte(mssqlYol, {
       sql: { NVarChar: () => 'nv' },
-      query: async (q, params = []) => {
+      query: async (q) => {
         if (/MAX\(scan_date\)/.test(q) || /DISTINCT TOP 30/.test(q)) return { recordset: [{ d: '2026-11-09' }] };
         // Gercek SQL gibi: yalniz sorgulanan direktifler doner (sinyal sorgudan duserse gorunur).
-        const istenen = new Set(params.filter((p) => /^x\d+$/.test(p.name) && (q.includes(`@${p.name},`) || q.includes(`@${p.name})`)))
-          .map((p) => p.value));
+        // Liste SQL'e LITERAL gomulu (2026-11-13; filtrelenmis indeks icin).
+        const m = /directive IN \(([^)]*)\)/.exec(q);
+        const istenen = new Set(m ? m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, '')) : []);
         return { recordset: rows.filter((r) => istenen.has(r.directive)) };
       },
     });
@@ -373,6 +374,65 @@ test('RL11: uctan uca - tum filo kapaliyken "surum kosmamis" DENMEZ', async () =
     assert.equal(r4.hosts[0].durum, 'bilinmiyor');
     assert.equal(r4.hosts[0].rateLimitInclude, null);
     assert.equal(r4.kapaliMessage, undefined);
+  } finally {
+    for (const [k, v] of [[mssqlYol, eski.m], [durumYol, eski.d], [rlYol, eski.r]]) {
+      if (v) require.cache[k] = v; else delete require.cache[k];
+    }
+  }
+});
+
+// RL12 (2026-11-13, SlowQuery): kullaniciya donuk ratelimit okumasi ana havuzda (pool=tbmwans).
+// Direktif listesi LITERAL (filtrelenmis indeks ancak boyle eslesir), tarih listesi Hosts'tan,
+// ham satirlar nginx_audit belirteciyle onbellekte (ayni tarama yeniden okunmaz).
+test('RL12: literal IN, tarih listesi Hosts tablosundan, belirtec ayniyken Settings yeniden okunmaz', async () => {
+  const mssqlYol = require.resolve('../../inventory/mssql.cjs');
+  const durumYol = require.resolve('../../audit/nginx-host-state.cjs');
+  const rlYol = require.resolve('../ratelimit.cjs');
+  const eski = { m: require.cache[mssqlYol], d: require.cache[durumYol], r: require.cache[rlYol] };
+  const sahte = (yol, exports) => ({ id: yol, filename: yol, loaded: true, exports });
+  const st = { stId: 50, kayit: [], tokenHata: false };
+  require.cache[mssqlYol] = sahte(mssqlYol, {
+    sql: { NVarChar: () => 'nv' },
+    query: async (q, params = []) => {
+      st.kayit.push({ q, params });
+      if (/MAX\(id\)/.test(q)) {
+        if (st.tokenHata) throw new Error('belirtec yok');
+        return { recordset: [{ d: '2026-11-13', h_id: 1, sv_id: 2, l_id: 3, u_id: 4, st_id: st.stId, f_id: 6 }] };
+      }
+      if (/MAX\(scan_date\)/.test(q) || /DISTINCT TOP 30/.test(q)) return { recordset: [{ d: '2026-11-13' }] };
+      return { recordset: [{ host: 'GBNGXP01', conf_file: '/usr/nginx/nginx.conf', context: 'http', directive: 'rate_limits_include', value: 'disabled', reference_value: null, matches: null }] };
+    },
+  });
+  require.cache[durumYol] = sahte(durumYol, { loadHostStates: async () => new Map() });
+  delete require.cache[rlYol];
+  try {
+    const rl = require('../ratelimit.cjs');
+    const settingsSorgulari = () => st.kayit.filter((k) => /FROM dbo\.Nginx_Audit_Settings\s+WHERE scan_date = @d/.test(k.q));
+    const r1 = await rl.loadRateLimits();
+    assert.equal(r1.hosts[0].durum, 'kapali');
+    const s = settingsSorgulari()[0];
+    assert.ok(!/@x\d/.test(s.q), 'direktif listesi hala parametreli');
+    for (const d of rl.SORGU_DIREKTIFLERI) assert.ok(s.q.includes(`'${d}'`), `${d} literal degil`);
+    assert.equal(rl.SORGU_DIREKTIFLERI.length, 7);
+    assert.deepEqual(s.params.map((p) => p.name), ['d'], 'direktif parametresi kaldi');
+    const tarih = st.kayit.find((k) => /DISTINCT TOP 30/.test(k.q));
+    assert.match(tarih.q, /FROM dbo\.Nginx_Audit_Hosts/, 'tarih listesi 1,56M satirlik Settings tablosunu tariyor');
+    assert.deepEqual(r1.availableDates, ['2026-11-13']);
+    // Inceleme 2026-11-13: varsayilan tarih de Hosts'tan (Settings'te MAX(scan_date) indeks yoksa tam tarama).
+    const varsayilan = st.kayit.find((k) => /MAX\(scan_date\), 23\) AS d FROM/.test(k.q));
+    assert.ok(varsayilan, 'varsayilan tarih sorgusu yok');
+    assert.match(varsayilan.q, /FROM dbo\.Nginx_Audit_Hosts/, 'varsayilan tarih Settings tablosundan okunuyor');
+
+    await rl.loadRateLimits();
+    assert.equal(settingsSorgulari().length, 1, 'ayni belirtecle Settings yeniden okundu');
+    st.stId = 51;
+    await rl.loadRateLimits();
+    assert.equal(settingsSorgulari().length, 2, 'belirtec degisince yeniden okunmadi');
+    // Belirtec okunamazsa onbellek kullanilmaz (her istek okur), ekran calisir.
+    st.tokenHata = true;
+    await rl.loadRateLimits();
+    await rl.loadRateLimits();
+    assert.equal(settingsSorgulari().length, 4);
   } finally {
     for (const [k, v] of [[mssqlYol, eski.m], [durumYol, eski.d], [rlYol, eski.r]]) {
       if (v) require.cache[k] = v; else delete require.cache[k];

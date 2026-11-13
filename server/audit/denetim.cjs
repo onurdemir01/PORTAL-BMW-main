@@ -1558,11 +1558,24 @@ function initDenetim(app) {
 
   // Sicak onbellek (2026-09-21): tum filo hesabi bellekte, istek aninda doner; suresi dolunca
   // arka planda yenilenir; ?fresh=1 bekleyerek yeniler. Boot'tan 45 sn sonra onceden isitilir.
+  // DEGISIM BELIRTECI (2026-11-13, SlowQuery): 10 dakikada bir kosulsuz 1,56M satir yerine 5 dk'da
+  // bir ucuz belirtec (ana havuz, MAX(id)/MAX(scan_date)); yalniz tarama degisip stabil olunca ya
+  // da saatte bir (Inventory.env, eski sunucu esigi gibi belirtecin gormedigi kaynaklar)
+  // hesaplanir. Eski sunucu durumu olculemediyse (fail-closed, gizleme yok) hesap 10 dk omurludur.
+  // Portal DB'deki istisna / kabul degisiklikleri run() ile yansir: ucusta hesap varsa run() onun
+  // ARDINDAN ek hesap zincirler (warm-cache.cjs TEKRAR). Ekran _cache.yasMs'i gosterir.
+  // seri: nginx-audit ve nginx-migration hesaplari uzun havuzu ayni anda paylasmaz.
   const { createWarmCache } = require('./warm-cache.cjs');
+  const { nginxAuditToken, migrationToken } = require('./nginx-audit-token.cjs');
+  const anaHavuzSorgu = (text) => require('../inventory/mssql.cjs').query(text);
   const nginxAuditWarm = createWarmCache({
     name: 'nginx-audit',
     ttlMs: 10 * 60 * 1000,
     compute: () => loadNginxAudit(null),
+    token: () => nginxAuditToken(anaHavuzSorgu),
+    maxAgeMs: (p) => (p && p.eskiGizli && p.eskiGizli.olculemedi ? 10 * 60 * 1000 : 60 * 60 * 1000),
+    checkMs: 5 * 60 * 1000,
+    seri: 'tbmwans-agir',
   });
   nginxAuditWarm.warm(45000);
   // Eski sunucu temizliginden sonra yanit onbellegi ve sicak audit hesabi tazelenir.
@@ -1683,6 +1696,7 @@ function initDenetim(app) {
           );
         }
         responseCache.clear();
+        nginxAuditWarm.run().catch(() => {});
         try {
           require('./index.cjs').auditPortal(req, 'nginx_audit_exception_set', {
             username: by,
@@ -1758,6 +1772,7 @@ function initDenetim(app) {
       try {
         await db.query(`DELETE FROM nginx_audit_exceptions WHERE host = $1`, [host]);
         responseCache.clear();
+        nginxAuditWarm.run().catch(() => {});
         try {
           require('./index.cjs').auditPortal(req, 'nginx_audit_exception_clear', {
             username: (getRequestUser(req) || {}).username,
@@ -1809,6 +1824,8 @@ function initDenetim(app) {
   // ── 1c) PROD TASIMA: eski GBRVP* proxy_pass hedefleri yeni GBNGXP4x/5x'te dizin mi ────
   // Veri yukleme nginx-migration.cjs/loadMigration'da: ayni yukleyici "Tanim olustur"
   // dugmesinin anti-tamper kontrolunde de kullanilir (server/nginx-migration/index.cjs).
+  // Belirtec: nginx_audit belirteci + Nginx_Config_Audit / Intranet / Spa_Traffic MAX(scan_date).
+  // OpenShift envanteri, route envanteri ve sahip tablolari tarih/id tasimaz: 60 dk azami yas.
   const migrationWarm = createWarmCache({
     name: 'nginx-migration',
     ttlMs: 10 * 60 * 1000,
@@ -1816,6 +1833,10 @@ function initDenetim(app) {
       const { queryLong: query, sql } = require('../inventory/mssql.cjs');
       return loadMigration({ query, sql, hasProxyColumns });
     },
+    token: () => migrationToken(anaHavuzSorgu),
+    maxAgeMs: 60 * 60 * 1000,
+    checkMs: 5 * 60 * 1000,
+    seri: 'tbmwans-agir',
   });
   migrationWarm.warm(75000);
   router.get('/nginx-migration', async (req, res) => {

@@ -169,7 +169,9 @@ async function queryLong(sqlText, inputs = []) {
   if (!pool) throw new Error("MSSQL bağlantısı yok");
   const req = pool.request();
   for (const { name, type, value } of inputs) req.input(name, type, value);
-  return timeQuery(longPool ? "tbmwans-long" : "tbmwans", waitNs, sqlText, () => req.query(sqlText));
+  // Uzun havuz kurulamadiysa ana havuza dusulur; gunlukte AYRI etiket (ana havuzun 30 sn
+  // zaman asimiyla calistigi gorunsun, "pool=tbmwans" ile karismasin).
+  return timeQuery(longPool ? "tbmwans-long" : "tbmwans(long-fallback)", waitNs, sqlText, () => req.query(sqlText));
 }
 
 module.exports = { getPool, isAvailable, query, queryLong, sql, poolStats, longPoolStats };

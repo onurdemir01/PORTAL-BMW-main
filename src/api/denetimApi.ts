@@ -744,6 +744,8 @@ export interface NginxAuditResult {
     hostsWithMismatch: number;
   } | null;
   message?: string;
+  /** sunucu sicak onbellegi (server/audit/warm-cache.cjs): hesabin ani ve yasi */
+  _cache?: { computedAt: string; checkedAt?: string; yasMs?: number; ms: number; stale: boolean };
 }
 
 export interface OcpCoverageRow {

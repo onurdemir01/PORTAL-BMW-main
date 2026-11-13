@@ -47,6 +47,51 @@ const INCLUDE_VALUES = new Set(['enabled', 'disabled', 'missing']);
 const INCLUDE_ALIASES = Object.freeze({ acik: 'enabled', kapali: 'disabled', yok: 'missing' });
 const SORGU_DIREKTIFLERI = [...DIRECTIVES, INCLUDE_SIGNAL];
 
+// LITERAL IN (2026-11-13, SlowQuery): direktif listesi parametre (@x0..@x6) yerine SQL'e literal
+// gomulur. Degerler kullanici girdisi DEGIL, kod sabitidir ve /^[a-z_]+$/ ile dogrulanir.
+// Neden: filtrelenmis indeks (WHERE directive IN (...)) ancak literal listeyle eslesir (DBA onerisi
+// P5); parametreli IN ile plan onu kullanamaz.
+const DIREKTIF_RE = /^[a-z_]+$/;
+for (const d of SORGU_DIREKTIFLERI) {
+  if (!DIREKTIF_RE.test(d)) throw new Error('ratelimit: gecersiz direktif sabiti ' + d);
+}
+const DIREKTIF_IN = SORGU_DIREKTIFLERI.map((d) => `'${d}'`).join(',');
+// Tarih listesi tarama basina tek satir tutan Hosts tablosundan (Settings 1,56M satir/gun).
+const HOSTS_TABLE = 'dbo.Nginx_Audit_Hosts';
+
+// HAM SATIR ONBELLEGI: anahtar = tarih + nginx_audit degisim belirteci (audit/nginx-audit-token.cjs).
+// Belirtec ayniysa tarama degismemistir; ayni gunun ayni satirlari yeniden okunmaz. Belirtec
+// okunamazsa onbellek kullanilmaz (her istek eskisi gibi okur). Satirlar salt okunur kullanilir.
+const HAM_MAKS = 4;
+const _ham = new Map();
+
+async function hamSatirlar({ query, sql, effectiveDate }) {
+  let tk = null;
+  try {
+    tk = await require('../audit/nginx-audit-token.cjs').nginxAuditToken(query);
+  } catch {
+    tk = null;
+  }
+  const anahtar = tk ? `${effectiveDate}|${tk}` : null;
+  if (anahtar && _ham.has(anahtar)) return _ham.get(anahtar);
+  const [setRes, datesRes] = await Promise.all([
+    query(
+      `SELECT host, conf_file, context, directive, value, reference_value, matches
+         FROM ${TABLE}
+        WHERE scan_date = @d AND directive IN (${DIREKTIF_IN})
+        ORDER BY host, directive`,
+      [{ name: 'd', type: sql.NVarChar(10), value: effectiveDate }],
+    ),
+    query(`SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${HOSTS_TABLE} ORDER BY d DESC`),
+  ]);
+  const v = { setRows: setRes.recordset || [], dates: (datesRes.recordset || []).map((x) => x.d) };
+  if (anahtar) {
+    _ham.set(anahtar, v);
+    while (_ham.size > HAM_MAKS) _ham.delete(_ham.keys().next().value);
+  }
+  return v;
+}
+
 const rx = {
   zone: /zone=([A-Za-z0-9_.\-]+)(?::([0-9]+[kmg]?))?/i,
   rate: /rate=([0-9]+r\/[sm])/i,
@@ -137,10 +182,12 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
 async function loadRateLimits({ scanDate, suz } = {}) {
   const { query, sql } = require('../inventory/mssql.cjs');
 
+  // Varsayilan tarih Hosts'tan (tarama basina host satiri; tarih listesiyle ayni kaynak). Settings'te
+  // MAX(scan_date) IX_Nginx_Audit_Settings_scan yoksa (1M+ satirda otomatik yaratilmaz) tam tarama.
   const dRes = await query(
     scanDate
       ? `SELECT CONVERT(varchar(10), CAST(@d AS DATE), 23) AS d`
-      : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM ${TABLE}`,
+      : `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM ${HOSTS_TABLE}`,
     scanDate ? [{ name: 'd', type: sql.NVarChar(10), value: scanDate }] : [],
   );
   const effectiveDate = dRes.recordset?.[0]?.d || null;
@@ -148,19 +195,7 @@ async function loadRateLimits({ scanDate, suz } = {}) {
     return { ok: true, scanDate: null, availableDates: [], hosts: [], summary: emptySummary(), catalog: { file: LIMIT_FILE, zones: ZONE_CATALOG } };
   }
 
-  const [setRes, datesRes] = await Promise.all([
-    query(
-      `SELECT host, conf_file, context, directive, value, reference_value, matches
-         FROM ${TABLE}
-        WHERE scan_date = @d AND directive IN (${SORGU_DIREKTIFLERI.map((_, i) => `@x${i}`).join(',')})
-        ORDER BY host, directive`,
-      [
-        { name: 'd', type: sql.NVarChar(10), value: effectiveDate },
-        ...SORGU_DIREKTIFLERI.map((v, i) => ({ name: `x${i}`, type: sql.NVarChar(64), value: v })),
-      ],
-    ),
-    query(`SELECT DISTINCT TOP 30 CONVERT(varchar(10), scan_date, 23) AS d FROM ${TABLE} ORDER BY d DESC`),
-  ]);
+  const ham = await hamSatirlar({ query, sql, effectiveDate });
 
   const byHost = new Map();
   const al = (host) => {
@@ -170,7 +205,7 @@ async function loadRateLimits({ scanDate, suz } = {}) {
     return byHost.get(host);
   };
 
-  for (const r of setRes.recordset || []) {
+  for (const r of ham.setRows) {
     const h = al(r.host);
     // Include sinyali bir nginx -T direktifi DEGIL: zone ayristirmasina, dosya listesine ve
     // "nginx -T ciktisindaki limit direktifleri" detayina girmez. Sapma sayisi audit ile ayni.
@@ -283,7 +318,7 @@ async function loadRateLimits({ scanDate, suz } = {}) {
   return {
     ok: true,
     scanDate: effectiveDate,
-    availableDates: (datesRes.recordset || []).map((x) => x.d),
+    availableDates: ham.dates,
     hosts,
     summary: summarize(hosts),
     // Bilgi (uyari degil): kac sunucuda rate limit bilerek kapali.

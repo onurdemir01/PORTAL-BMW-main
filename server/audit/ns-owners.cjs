@@ -25,11 +25,58 @@
 // (veriYokNs) sayilir - yedek kaynak hic okunmadi. Kaynaklardan biri HATAYLA okunamadiysa
 // sonuc onbellege ALINMAZ (gecici dusus TTL boyunca "veri yok" gostermesin); tablo YOK
 // (Invalid object name, 208) kalici durumdur, onbellege alinir.
+//
+// ONBELLEK (2026-11-13, SlowQuery: App_Owners 61k satir, uzun havuzda 25-237 sn): TTL 30 dk
+// (tablolar gunde bir yazilir). Tek-ucus: ayni anda gelen cagrilar tek okumayi paylasir. Deger
+// varsa (bayat olsa da) HEMEN doner, bayatsa arka planda tek yenileme baslar (kimse beklemez).
+// Iki tablo paralel okunur. Yenilemede gecici hata ONCEKI iyi degeri korur; onceki deger yoksa
+// sonuc doner ama onbellege alinmaz ve gecici dusen kaynak `appError` / `nsError: 'gecici'`
+// alaniyla isaretlenir.
+//
+// INCELEME (2026-11-13):
+//   - HAVUZ: okuma HER ZAMAN uzun havuzdan (queryLong, 180 sn) yapilir. Cagiranlarin cogu ana
+//     havuz `query`'sini (30 sn) verir; App_Owners prod'da 25-237 sn surdugu icin ana havuzda
+//     duser, tek-ucus da bu hatayi uzun havuz cagiranina (nginx-migration) gecirirdi. Verilen
+//     fonksiyon mssql.cjs'nin ana `query`'si ise queryLong'a cevrilir; baska (test sahtesi,
+//     zaten queryLong) ise oldugu gibi kullanilir.
+//   - GERI CEKILME: onbellekte iyi deger varken basarisiz yenilemeden sonra GERI_CEKILME_MS icinde
+//     yeni yenileme baslamaz (her istek yeni bir 61k satirlik okuma tetiklemesin). Onbellek YOKSA
+//     geri cekilme yok: tablo geri gelince ilk istek hemen dogru sahibi almali (AO15); tek-ucus
+//     ayni anda gelenleri yine tek okumada toplar.
+//   - YAS: donen nesne `asOf` (ISO; deger yoksa null), `yasMs` ve `stale` (yas >= TTL ya da son
+//     yenileme gecici dustu) tasir; bayat sahip verisi gorunur olur.
+//   - BEKLE: loadNamespaceOwners(query, { bekle: true }) bayat degeri dondurmez, yenilemeyi bekler
+//     (arka plan hesaplari - nginx-migration sicak onbellegi - bayat sahibi 60 dk saklamasin).
 'use strict';
 
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 30 * 60 * 1000;
 let _cache = null;
 let _cacheAt = 0;
+let _inflight = null;
+let _nesil = 0;
+const GERI_CEKILME_MS = 2 * 60 * 1000;
+let _sonHataAt = 0;
+
+/** Ana havuz query'si verildiyse uzun havuza cevirir (yorum: HAVUZ). */
+function okuyucu(query) {
+  try {
+    const m = require('../inventory/mssql.cjs');
+    if (m && query === m.query && typeof m.queryLong === 'function') return m.queryLong;
+  } catch {
+    /* mssql modulu yok: verilen fonksiyon */
+  }
+  return query;
+}
+
+/** Donen nesneye yas bilgisi yazar (onbellek nesnesi paylasilir; alanlar her cagrida tazelenir). */
+function yasli(o, at, hatali) {
+  if (!o) return o;
+  const yasMs = at ? Math.max(0, Date.now() - at) : null;
+  o.asOf = at ? new Date(at).toISOString() : null;
+  o.yasMs = yasMs;
+  o.stale = !at || yasMs >= TTL_MS || !!hatali;
+  return o;
+}
 
 const L = (s) => String(s || '').trim().toLowerCase();
 
@@ -92,45 +139,89 @@ function indexAppOwners(rows) {
 const tabloYok = (e) =>
   !!e && (Number(e.number) === 208 || /Invalid object name/i.test(String(e.message || '')));
 
-/** DB'den (onbellekli) yukler. query: mssql query(text). */
-async function loadNamespaceOwners(query) {
-  if (_cache && Date.now() - _cacheAt < TTL_MS) return _cache;
-  let ready = false;
-  let gecici = false;
-  let byNs = new Map();
-  try {
-    const r = await query(
-      `SELECT namespace, owner_group_name, owner_email, lookup_status
-         FROM dbo.Openshift_Namespace_Owners`,
-    );
-    byNs = indexOwners(r.recordset || []);
-    ready = true;
-  } catch (e) {
-    /* tablo yok / sorgu dustu: ready=false */
-    if (!tabloYok(e)) gecici = true;
-  }
-  let appReady = false;
-  let byApp = new Map();
-  try {
-    const r = await query(
-      `SELECT cluster, namespace, application, owner_group_name, owner_email, kaynak,
-              configuration_id, lookup_status, lookup_message
-         FROM dbo.Openshift_App_Owners`,
-    );
-    byApp = indexAppOwners(r.recordset || []);
-    appReady = true;
-  } catch (e) {
-    /* tablo henuz yok (dagitim sirasi): eski davranis */
-    if (!tabloYok(e)) gecici = true;
-  }
+/** Iki tabloyu PARALEL okur. { out, gecici } doner; asla firlatmaz. */
+async function oku(query) {
+  const nsP = query(
+    `SELECT namespace, owner_group_name, owner_email, lookup_status
+       FROM dbo.Openshift_Namespace_Owners`,
+  ).then(
+    (r) => ({ ok: true, map: indexOwners(r.recordset || []) }),
+    // tablo yok / sorgu dustu: ready=false
+    (e) => ({ ok: false, gecici: !tabloYok(e) }),
+  );
+  const appP = query(
+    `SELECT cluster, namespace, application, owner_group_name, owner_email, kaynak,
+            configuration_id, lookup_status, lookup_message
+       FROM dbo.Openshift_App_Owners`,
+  ).then(
+    (r) => ({ ok: true, map: indexAppOwners(r.recordset || []) }),
+    // tablo henuz yok (dagitim sirasi): eski davranis
+    (e) => ({ ok: false, gecici: !tabloYok(e) }),
+  );
+  const [ns, app] = await Promise.all([nsP, appP]);
   // ready: en az bir sahiplik kaynagi okundu (ekran "veri yok" demesin). Uygulama tablosu
   // yokken bu birebir eski anlamdir (namespace tablosu okundu mu).
-  const out = { ready: ready || appReady, nsReady: ready, byNs, appReady, byApp };
-  if (!gecici) {
-    _cache = out;
-    _cacheAt = Date.now();
+  const out = {
+    ready: ns.ok || app.ok,
+    nsReady: ns.ok,
+    byNs: ns.ok ? ns.map : new Map(),
+    appReady: app.ok,
+    byApp: app.ok ? app.map : new Map(),
+  };
+  return { out, nsGecici: !!ns.gecici, appGecici: !!app.gecici };
+}
+
+/** Tek-ucus yenileme. Tam okuma onbellege girer; gecici dususte onceki iyi deger korunur. */
+function yenile(query) {
+  if (_inflight) return _inflight;
+  const nesil = _nesil;
+  const p = oku(okuyucu(query))
+    .then(({ out, nsGecici, appGecici }) => {
+      if (nesil !== _nesil) return out; // _resetCache arada cagrildi: eski sonuc yazilmaz
+      if (!nsGecici && !appGecici) {
+        _cache = out;
+        _cacheAt = Date.now();
+        _sonHataAt = 0;
+        return yasli(out, _cacheAt, false);
+      }
+      _sonHataAt = Date.now();
+      if (_cache) return yasli(_cache, _cacheAt, true);
+      return yasli(
+        {
+          ...out,
+          ...(appGecici ? { appError: 'gecici' } : {}),
+          ...(nsGecici ? { nsError: 'gecici' } : {}),
+        },
+        0,
+        true,
+      );
+    })
+    .finally(() => {
+      if (_inflight === p) _inflight = null;
+    });
+  _inflight = p;
+  return p;
+}
+
+const geriCekilmede = () => _sonHataAt > 0 && Date.now() - _sonHataAt < GERI_CEKILME_MS;
+
+/**
+ * DB'den (onbellekli) yukler. query: mssql query(text) (ana havuz verilse de uzun havuz okunur).
+ * @param {{bekle?: boolean}} [o]  bekle: bayat degeri dondurme, yenilemeyi bekle (arka plan hesaplari)
+ */
+async function loadNamespaceOwners(query, { bekle = false } = {}) {
+  const hatali = _sonHataAt > 0;
+  if (_cache) {
+    if (Date.now() - _cacheAt >= TTL_MS) {
+      if (_inflight || !geriCekilmede()) {
+        const p = yenile(query);
+        if (bekle) return p;
+        p.catch((e) => console.warn('[ns-owners] arka plan yenileme hatasi:', e && e.message));
+      }
+    }
+    return yasli(_cache, _cacheAt, hatali);
   }
-  return out;
+  return yenile(query);
 }
 
 /**
@@ -224,6 +315,15 @@ function ownersForApp(owners, app, namespaces) {
 function _resetCache() {
   _cache = null;
   _cacheAt = 0;
+  _inflight = null;
+  _sonHataAt = 0;
+  _nesil += 1;
+}
+
+/** Test icin: onbellek yasini geri alir (TTL asimi); geri cekilme suresini de geri alir. */
+function _yaslandir(ms) {
+  _cacheAt -= ms;
+  if (_sonHataAt) _sonHataAt -= ms;
 }
 
 module.exports = {
@@ -233,5 +333,8 @@ module.exports = {
   ownersFor,
   ownersForApp,
   KAYNAK_NAMESPACE,
+  TTL_MS,
+  GERI_CEKILME_MS,
   _resetCache,
+  _yaslandir,
 };

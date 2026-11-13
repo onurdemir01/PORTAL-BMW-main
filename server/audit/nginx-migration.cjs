@@ -1147,7 +1147,8 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
     oldIncludeRows: oldIncludes,
     auditLocRows: auditLocs,
   });
-  const owners = await loadNamespaceOwners(query);
+  // bekle: bu hesap 60 dk sicak onbellekte kalir; bayat (>TTL) sahip yazilmasin, yenileme beklenir.
+  const owners = await loadNamespaceOwners(query, { bekle: true });
   for (const g of groups) {
     for (const a of g.apps) a.owner = ownersForApp(owners, a.application, [a.namespace]);
   }

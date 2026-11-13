@@ -7,17 +7,36 @@
 // SALT OKUNUR: bu modül OCO açmaz, kapatmaz, güncellemez — yalnızca listeler. (Zamanlanmış
 // tetikleme ve OCO penceresi denetimi ayrı yerlerde: oco/poller.cjs, oco/window.cjs.)
 //
-// ÖNBELLEK: arama ucu her çağrıda tüm sayfaları gezer. Ekran her açıldığında bunu yapmak
-// hem yavaş hem de kurumsal servise gereksiz yük. 60 saniyelik önbellek, "az önce açtım"
-// ile "şimdi tazeledim" arasındaki farkı kullanıcıya bırakır (Yenile düğmesi önbelleği
-// atlar).
+// ONBELLEK (2026-11-13): arama ucu her cagrida tum sayfalari gezer (3-4 sn). Onbellek
+// takvim-onbellek.cjs'te: 5 dk taze, 60 dk'ya kadar bayat deger ANINDA doner ve arka planda
+// tek yenileme baslar; ucustaki cekim paylasilir; hata onceki iyi degeri silmez. Yenile
+// dugmesi (refresh=1) taze cekimi bekler. Server-Timing basligi sureyi ve hit/stale/miss'i
+// tarayiciya soyler (uretimde olcum icin).
 'use strict';
 
 const express = require('express');
 const { httpStatus } = require('./client.cjs');
+const { createTakvimOnbellek } = require('./takvim-onbellek.cjs');
 
-const TTL_MS = 60 * 1000;
-let _cache = { at: 0, key: '', value: null };
+async function grubuCek(grup) {
+  const { searchChangeOrders } = require('./search.cjs');
+  const r = await searchChangeOrders({ groupId: grup });
+  return {
+    ok: true,
+    group: grup,
+    rows: r.rows,
+    total: r.total,
+    fetched: r.fetched,
+    // SESSIZ KIRPMA YOK: sayfa sinirina takildiysak ekran bunu soyler.
+    truncated: r.truncated,
+    // Iki sorgu (actigimiz + bize acilan): biri dustuyse ekran bunu soyler.
+    kaynak: r.kaynak,
+    eksik: r.eksik,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+const _onbellek = createTakvimOnbellek({ fetch: grubuCek });
 
 function initOco(app) {
   const { requireAuth } = require('../auth/index.cjs');
@@ -49,31 +68,17 @@ function initOco(app) {
       });
     }
 
-    const grup = String(req.query.group || getConfig().searchGroupId || '').trim();
+    const varsayilanGrup = String(getConfig().searchGroupId || '').trim();
+    const grup = String(req.query.group || varsayilanGrup || '').trim();
     const taze = String(req.query.refresh || '') === '1';
-    const key = `g:${grup}`;
-    if (!taze && _cache.value && _cache.key === key && Date.now() - _cache.at < TTL_MS) {
-      return res.json({ ..._cache.value, cached: true });
-    }
+    const t0 = Date.now();
 
     try {
-      const { searchChangeOrders } = require('./search.cjs');
-      const r = await searchChangeOrders({ groupId: grup });
-      const value = {
-        ok: true,
-        group: grup,
-        rows: r.rows,
-        total: r.total,
-        fetched: r.fetched,
-        // SESSIZ KIRPMA YOK: sayfa sınırına takıldıysak ekran bunu söyler.
-        truncated: r.truncated,
-        // Iki sorgu (actigimiz + bize acilan): biri dustuyse ekran bunu soyler.
-        kaynak: r.kaynak,
-        eksik: r.eksik,
-        fetchedAt: new Date().toISOString(),
-      };
-      _cache = { at: Date.now(), key, value };
-      res.json({ ...value, cached: false });
+      const { value, cache } = await _onbellek.get({ group: grup, refresh: taze });
+      // Ilk istekten sonra varsayilan grup arka planda taze tutulur (yalniz bir kez kurulur).
+      _onbellek.isit({ group: varsayilanGrup, isConfigured });
+      res.setHeader('Server-Timing', `oco;dur=${Date.now() - t0}, cache;desc=${cache}`);
+      res.json({ ...value, cached: cache !== 'miss', stale: cache === 'stale' });
     } catch (err) {
       // 502/503 gövdesini nginx yutardı; anlam err.status'ta kalır, tel üzerinde 400'e çevrilir.
       res.status(httpStatus(err)).json({ ok: false, message: err.message });
@@ -84,4 +89,4 @@ function initOco(app) {
   console.log('[OCO] module mounted at /api/oco');
 }
 
-module.exports = { initOco };
+module.exports = { initOco, _onbellek };

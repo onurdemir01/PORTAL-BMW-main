@@ -80,14 +80,56 @@ function sortChronological(rows) {
   return [...rows].sort((a, b) => t(a) - t(b) || a.oco - b.oco);
 }
 
-function buildDispatcher(targetUrl) {
-  const cfg = getConfig();
+// KALICI DISPATCHER (2026-11-13): eskiden HER SAYFADA yeni Agent kurulup finally'de
+// kapatiliyordu - her sayfa yeni TCP + TLS el sikismasi demekti (keep-alive yok). Artik modul
+// duzeyinde tek dispatcher: anahtar = proxy + hedef host + CA deposu (ca.cjs onbellegi;
+// sertifika donunce yeni dizi doner). Anahtar degisince eskisi kapatilir (ucustaki istekler
+// biter), yenisi kurulur. headersTimeout/bodyTimeout istek basina aynen verilir.
+const KEEPALIVE_MS = 30 * 1000;
+const BAGLANTI = 4;
+let _disp = null; // { anahtar, ca, dispatcher }
+
+function undiciFabrika({ proxyUrl, tlsOpts }) {
   const { Agent, ProxyAgent } = require('undici');
-  const target = new URL(targetUrl);
-  const { ca } = require('../ai/ca.cjs').buildCombinedCa();
-  const tlsOpts = { ca, rejectUnauthorized: true, servername: target.hostname };
-  if (cfg.proxyUrl) return new ProxyAgent({ uri: cfg.proxyUrl, requestTls: tlsOpts });
-  return new Agent({ connect: tlsOpts });
+  const ortak = { keepAliveTimeout: KEEPALIVE_MS, connections: BAGLANTI };
+  if (proxyUrl) return new ProxyAgent({ uri: proxyUrl, requestTls: tlsOpts, ...ortak });
+  return new Agent({ connect: tlsOpts, ...ortak });
+}
+
+function kapatSessiz(d) {
+  try {
+    const r = d && typeof d.close === 'function' ? d.close() : null;
+    if (r && typeof r.catch === 'function') r.catch(() => {});
+  } catch {
+    /* yoksay */
+  }
+}
+
+/** @param {{fabrika?:Function, caOku?:Function}} [bag] testler sahte fabrika/CA verir */
+function getDispatcher(targetUrl, bag = {}) {
+  const fabrika = bag.fabrika || undiciFabrika;
+  const caOku = bag.caOku || (() => require('../ai/ca.cjs').buildCombinedCa());
+  const cfg = getConfig();
+  const host = new URL(targetUrl).hostname;
+  const { ca } = caOku();
+  const anahtar = `${cfg.proxyUrl || ''}|${host}`;
+  if (_disp && _disp.anahtar === anahtar && _disp.ca === ca) return _disp.dispatcher;
+  if (_disp) kapatSessiz(_disp.dispatcher);
+  const tlsOpts = { ca, rejectUnauthorized: true, servername: host };
+  const dispatcher = fabrika({ proxyUrl: cfg.proxyUrl, tlsOpts });
+  _disp = { anahtar, ca, dispatcher };
+  return dispatcher;
+}
+
+function _resetDispatcher() {
+  if (_disp) kapatSessiz(_disp.dispatcher);
+  _disp = null;
+}
+
+/** Bir rolde ayni anda en fazla kac sayfa (OCO_SAYFA_ESZAMAN, varsayilan 3; 1 = eski sirali). */
+function sayfaEszaman() {
+  const n = Number.parseInt(process.env.OCO_SAYFA_ESZAMAN, 10);
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 6) : 3;
 }
 
 async function okuSinirli(body, max) {
@@ -256,52 +298,107 @@ async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) 
   return { rows, total: rows.length, fetched: rows.length, truncated, kaynak, eksik };
 }
 
-/** Tek sorgunun TUM sayfalari. */
-async function tekSorgu(cek) {
-  const rows = [];
-  // OFSET HAM KAYIT SAYISIDIR, ekrana çıkan satır sayısı DEĞİL. `rows.length` kullanmak
-  // sinsi bir hataydı: normalizeOrder numarasız bir kaydı düşürürse ofset geride kalır,
-  // sonraki sayfa aynı kayıtları tekrar getirir ve liste ya tekrarlar ya da hiç bitmez.
-  let alinan = 0;
-  let total = 0;
-  let sayfa = 0;
+/** Sayfa yanitini dogrular: { dilim: ham kayitlar, total }. */
+function sayfaCoz(payload, oncekiTotal) {
+  const sonuc = payload && payload.SearchChangeOrderWithOffsetResult;
+  if (!sonuc) throw fail('OCO arama servisinden beklenen yanıt gelmedi.', 502);
+  const dilim = Array.isArray(sonuc.Result) ? sonuc.Result : [];
+  return { dilim, total: Number(sonuc.TotalCount) || oncekiTotal || 0 };
+}
+
+/**
+ * Tek sorgunun TUM sayfalari.
+ *
+ * PARALEL SAYFA (2026-11-13): ilk sayfa sirali cekilir (TotalCount ogrenilir). Ilk sayfa TAM
+ * doluysa (PAGE_SIZE kayit) kalan sayfalar skip = i * PAGE_SIZE ile en fazla `eszaman` paralel
+ * cekilir ve skip sirasina gore birlestirilir. Ilk sayfa kisa geldiyse (servis istenenden az
+ * dondu) sayfa boyu bilinmez: eski SIRALI yol (ofset = alinan HAM kayit sayisi) kullanilir.
+ * Kurallar iki yolda da ayni: bos sayfa = dur (sonraki indeksler yok sayilir), MAX_PAGES ust
+ * siniri + truncated, herhangi bir sayfa hatasi rolun hatasi. Rol icinde OCO numarasina gore
+ * tekillestirilir (paralel cekimde kayan kayit iki sayfada gorunebilir).
+ */
+async function tekSorgu(cek, { eszaman = sayfaEszaman() } = {}) {
+  const ilk = sayfaCoz(await cek(0), 0);
+  let total = ilk.total;
+  const dilimler = [ilk.dilim];
   let truncated = false;
 
-  for (;;) {
-    const payload = await cek(alinan);
-    const sonuc = payload && payload.SearchChangeOrderWithOffsetResult;
-    if (!sonuc) throw fail('OCO arama servisinden beklenen yanıt gelmedi.', 502);
-
-    const dilim = Array.isArray(sonuc.Result) ? sonuc.Result : [];
-    total = Number(sonuc.TotalCount) || total;
-    alinan += dilim.length;
-    for (const r of dilim) {
-      const n = normalizeOrder(r);
-      if (n) rows.push(n);
-    }
-
-    sayfa += 1;
-    // BOŞ SAYFA = DUR: aksi halde servis hep boş dönerse döngü TotalCount'a hiç ulaşamaz.
-    if (!dilim.length) break;
-    if (alinan >= total) break;
-    if (sayfa >= MAX_PAGES) {
-      // SESSİZ KIRPMA YOK: eksik liste "bu kadar OCO var" diye okunurdu.
-      truncated = true;
-      break;
+  if (ilk.dilim.length === PAGE_SIZE && ilk.dilim.length < total && eszaman > 1) {
+    const toplamSayfa = Math.ceil(total / PAGE_SIZE);
+    const sinir = Math.min(toplamSayfa, MAX_PAGES);
+    let siradaki = 1;
+    let bosIndeks = Number.POSITIVE_INFINITY;
+    let hata = null;
+    const isci = async () => {
+      for (;;) {
+        const i = siradaki++;
+        if (i >= sinir || i > bosIndeks || hata) return;
+        try {
+          // OFSET sayfa INDEKSINDEN (ham kayit), ekrana cikan satir sayisindan DEGIL.
+          const p = sayfaCoz(await cek(i * PAGE_SIZE), total);
+          dilimler[i] = p.dilim;
+          if (!p.dilim.length) bosIndeks = Math.min(bosIndeks, i);
+        } catch (e) {
+          hata = hata || e;
+          return;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(eszaman, sinir - 1) }, isci));
+    if (hata) throw hata;
+    dilimler.length = Math.min(sinir, bosIndeks + 1);
+    // SESSIZ KIRPMA YOK: sinira takildiysak (ve bos sayfayla bitmediyse) soylenir.
+    truncated = toplamSayfa > MAX_PAGES && bosIndeks === Number.POSITIVE_INFINITY;
+  } else if (ilk.dilim.length && ilk.dilim.length < total) {
+    // SIRALI YOL. OFSET HAM KAYIT SAYISIDIR, ekrana cikan satir sayisi DEGIL. `rows.length`
+    // kullanmak sinsi bir hataydi: normalizeOrder numarasiz bir kaydi dusururse ofset geride
+    // kalir, sonraki sayfa ayni kayitlari tekrar getirir ve liste ya tekrarlar ya da hic bitmez.
+    let alinan = ilk.dilim.length;
+    let sayfa = 1;
+    for (;;) {
+      if (sayfa >= MAX_PAGES) {
+        // SESSIZ KIRPMA YOK: eksik liste "bu kadar OCO var" diye okunurdu.
+        truncated = true;
+        break;
+      }
+      const p = sayfaCoz(await cek(alinan), total);
+      total = p.total;
+      alinan += p.dilim.length;
+      dilimler.push(p.dilim);
+      sayfa += 1;
+      // BOS SAYFA = DUR: aksi halde servis hep bos donerse dongu TotalCount'a hic ulasamaz.
+      if (!p.dilim.length) break;
+      if (alinan >= total) break;
     }
   }
 
+  const tekil = new Map();
+  for (const d of dilimler) {
+    for (const r of d || []) {
+      const n = normalizeOrder(r);
+      if (n && !tekil.has(n.oco)) tekil.set(n.oco, n);
+    }
+  }
+  const rows = [...tekil.values()];
   return { rows: sortChronological(rows), total, fetched: rows.length, truncated };
+}
+
+function slowHttpEsik() {
+  try {
+    return require('../metrics.cjs').slowHttpThresholdMs();
+  } catch {
+    return 1500;
+  }
 }
 
 async function httpPage(cfg, skip, grup, rol) {
   const url = sayfaUrl(cfg, skip, grup, rol);
   const { request } = require('undici');
-  let dispatcher = null;
   let statusCode;
   let text;
+  const t0 = process.hrtime.bigint();
   try {
-    dispatcher = buildDispatcher(url);
+    const dispatcher = getDispatcher(url);
     const res = await request(url, {
       method: 'GET',
       headers: { accept: 'application/json' },
@@ -314,7 +411,18 @@ async function httpPage(cfg, skip, grup, rol) {
   } catch (err) {
     throw fail(`OCO arama servisine ulaşılamadı: ${err.message}`, 502);
   } finally {
-    if (dispatcher && typeof dispatcher.close === 'function') dispatcher.close().catch(() => {});
+    // OLCUM: sayfa basina sure ve bayt (URL / grup YAZILMAZ). Dispatcher KAPATILMAZ (kalici).
+    try {
+      const ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
+      if (ms > slowHttpEsik()) {
+        console.warn(
+          `[SlowHttp] svc=oco rol=${rol} skip=${Number(skip) || 0} ms=${ms} ` +
+            `bytes=${text == null ? '-' : Buffer.byteLength(text)} status=${statusCode == null ? '-' : statusCode}`,
+        );
+      }
+    } catch {
+      /* gozlem cekimi bozmamali */
+    }
   }
 
   if (statusCode < 200 || statusCode >= 300) {
@@ -329,6 +437,10 @@ async function httpPage(cfg, skip, grup, rol) {
 
 module.exports = {
   searchChangeOrders,
+  tekSorgu,
+  getDispatcher,
+  _resetDispatcher,
+  sayfaEszaman,
   aramaHatasi,
   aramaKoku,
   sayfaUrl,
