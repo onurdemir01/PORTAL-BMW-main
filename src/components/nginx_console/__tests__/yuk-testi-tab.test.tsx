@@ -614,7 +614,7 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
     expect(await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE)).toBeTruthy();
     expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.40', { yukHost: 'GBNGXT34', hedefHost: null });
-    expect(screen.getByText(/^Envanterdeki bir nginx sunucusuna ait değil\. Hedefe bağlanılmaz \(SSH yok\)/)).toBeTruthy();
+    expect(screen.getByText(/^Hiçbir envanterde kayıtlı değil\. Hedefe bağlanılmaz \(SSH yok\)/)).toBeTruthy();
     expect(screen.getByText(SERBEST_VHOST_YARDIMI)).toBeTruthy();
     expect(screen.getByLabelText('Host başlığı (vhost)')).toHaveValue('glomo-test.fw.garantibbva.com.tr');
     // Serbest varsayilanlari (kullanici alani degistirmedi) ve sinirlari.

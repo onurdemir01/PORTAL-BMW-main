@@ -49,7 +49,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const sonuc = require('../sonuc.cjs');
-const { kosuAnaliz, kararVer, ayristirma, NEDENLER, NEDEN_KALIPLARI, _pyForTest: py, _adimUyarilariniKatForTest: uyariKat } = require('../analiz.cjs');
+const { kosuAnaliz, kararVer, ayristirma, NEDENLER, NEDEN_KALIPLARI, CPU_YOK_NGINXSIZ, _pyForTest: py, _adimUyarilariniKatForTest: uyariKat } = require('../analiz.cjs');
 const { ADIMLAR, KARARLAR } = require('./fixtures/senaryolar.cjs');
 const { parmakIzi, portalDuzeniYaz, standart, Kurgu } = require('./fixtures/kurgu.cjs');
 const { WRK_OLCULMEYEN, wrkKosu, wrkDosyalari, serbestDosyalari } = require('./fixtures/wrk-serbest.cjs');
@@ -1833,4 +1833,129 @@ test('AN-KS karisik surum: eski Portal (6e33e5a) yeni dosyalari reddetmez, cikti
   // (b) yeni Portal + eski playbook dizini: eski Portal'in analiziyle ayni (bellek / kodlama / yuk alanlari yok).
   const nE = kosuAnaliz(await sonuc.kosuDiziniOku(dEski, { adim: 'R125' }), { adim: 'R125' });
   assert.deepEqual(temiz(nE), temiz(aE), 'yeni Portal eski playbook dizininde eski ciktiyi uretir');
+});
+
+// ---------------------------------------------------------------------------------------------
+// Tek hedef modeli (2026-11-13): nginx olmayan SUNUCU hedefi (kosuAnaliz hedefNginx:false; playbook yuk_cpu_kaydedici.sh
+// ROL=hedef -> hedefcpu_*, yukcpu_ ile ayni sema).
+//   AN-NX1 sunucu + hedefNginx false: host CPU ortalamasi / en yuksegi adimda, > %90 DOYMA (doyma:host_cpu_), cpu_ms_istek
+//          ve kapasite null, log / sunucu_ / bellek yok sayilir (dosya varsa uyari), kosu uyarisi nginx_yok(...);
+//          ozet.hedef_nginx false + hedef_cpu_kesitler + nproc; karar CPU'suz yoldan (adayNginx false: KALICI yok)
+//   AN-NX2 secenek yoksa (true) ya da serbest hedefte hedefcpu_ dosyalari analize girmez: cikti BIREBIR eskisi;
+//          gecersiz secenek TypeError
+//   AN-NX3 kayit yok / bozuk: kosu uyarisi, adimlar olcumsuz, kosu OKUNAMADI olmaz
+//   AN-NX4 kesit var ama bir TUR'un penceresinde ornek yok: o adimda host_cpu_ort null + 'hedef_cpu_olculemedi'
+//          adim uyarisi (docs 5.3), diger adimlar etkilenmez (mutasyon: push satiri silinince kirmizi)
+// ---------------------------------------------------------------------------------------------
+/** yukCpuEkle ile uretilen yukcpu_* dosyalarini hedefcpu_* adina tasir (ayni sema). */
+function hedefCpuEkle(dosyalar, bosta, ek = {}) {
+  const y = yukCpuEkle(dosyalar, bosta, { host: 'GBJWLT01', ...ek });
+  const out = new Map();
+  for (const [ad, v] of y) out.set(dosyalar.has(ad) ? ad : ad.replace(/^yukcpu_/, 'hedefcpu_'), v);
+  return out;
+}
+const NGINXSIZ = { hedefTuru: 'sunucu', hedefNginx: false };
+
+test('AN-NX1 nginx olmayan sunucu hedefi: host CPU, DOYMA > %90, istek basina CPU yok, uyari ve ozet, karar CPUsuz', async () => {
+  const bosta = (tur) => (tur.endsWith('_400_r1') ? 50 : 600);
+  const { veri, analiz: a } = await t3Analiz(standart('R130'), { donustur: (d) => hedefCpuEkle(serbestDosyalari(d), bosta), secenek: NGINXSIZ });
+  assert.deepEqual(veri.hedefCpuKesitler.map((x) => [x.anahtar, x.bilgiVar]), [['R130_GBJWLT01', true]]);
+  assert.deepEqual(veri.yukKesitler, []);
+  const t = turla(a);
+  const d = t.get('R130_K_yeni_br_400_r1');
+  assert.equal(d.gecerlilik, 'DOYMA');
+  assert.deepEqual(d.nedenler, ['doyma:host_cpu_%95.0(>%90)']);
+  assert.ok(NEDEN_KALIPLARI.some((x) => x.kod === 'doyma_host_cpu' && x.re.test(d.nedenler[0])));
+  const g = t.get('R130_K_yeni_br_100_r1');
+  assert.equal(g.gecerlilik, 'GECERLI');
+  assert.ok(Math.abs(g.host_cpu_ort - 40) < 1e-9, String(g.host_cpu_ort));
+  assert.ok(Math.abs(g.ham.host_cpu_max - 40) < 1e-9, String(g.ham.host_cpu_max));
+  for (const x of a.adimlar) {
+    assert.equal(x.cpu_ms_istek, null, x.tur);
+    assert.equal(x.kapasite_rps, null, x.tur);
+    assert.equal(x.istek_sunucu, null, x.tur);
+  }
+  for (const gr of a.ozet.gruplar) assert.equal(gr.kapasite_tahmini_rps, null);
+  assert.ok(a.uyarilar.includes('nginx_yok(istek_basina_cpu_ve_kapasite_yok)'), a.uyarilar.join('|'));
+  assert.ok(!a.uyarilar.includes('sunucu_olcumu_yok(serbest_hedef)'));
+  assert.ok(!a.uyarilar.some((u) => /^sunucu_kaydi_yok|^sunucu_logu_yok/.test(u)), a.uyarilar.join('|'));
+  assert.equal(a.ozet.hedef_nginx, false);
+  assert.equal(a.ozet.nproc, 16);
+  assert.equal(a.ozet.hedef_cpu_host, undefined);
+  assert.deepEqual(a.ozet.hedef_cpu_kesitler, [{ anahtar: 'R130_GBJWLT01', ornek: veri.hedefCpuKesitler[0].ornekler.length, bilgi_var: true, nproc: 16 }]);
+  assert.deepEqual(a.ozet.loglar, []);
+  aciklamali(a);
+  // Dizinde yine de nginx dosyalari (sunucu_ / log_) varsa yok sayilir ve sayisi soylenir; sonuc ayni.
+  const karisik = await t3Analiz(standart('R130'), { donustur: (d) => hedefCpuEkle(d, bosta), secenek: NGINXSIZ });
+  assert.ok(karisik.analiz.uyarilar.some((u) => /^nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi\(\d+\)$/.test(u)), karisik.analiz.uyarilar.join('|'));
+  assert.deepEqual(karisik.analiz.adimlar.map((x) => [x.tur, x.gecerlilik, x.host_cpu_ort, x.cpu_ms_istek]), a.adimlar.map((x) => [x.tur, x.gecerlilik, x.host_cpu_ort, x.cpu_ms_istek]));
+  // Karar: nginx'siz taraf CPU'suz yol (host CPU kademe kararina girmez), KALICI yok; iki yonde de.
+  for (const s of [{ adayNginx: false }, { refNginx: false }, { refNginx: false, adayNginx: false }]) {
+    const k = kararVer(a.adimlar, a.adimlar, s);
+    assert.notEqual(k.karar, 'KALICI', JSON.stringify(s));
+    assert.ok(k.nedenler.some((n) => n.includes(CPU_YOK_NGINXSIZ)), k.nedenler.join('|'));
+  }
+  // Varsayilan (true) karar BIREBIR eskisi.
+  assert.deepEqual(kararVer(a.adimlar, a.adimlar, { refNginx: true, adayNginx: true }), kararVer(a.adimlar, a.adimlar));
+  assert.throws(() => kararVer(a.adimlar, a.adimlar, { adayNginx: 'hayir' }), TypeError);
+});
+
+test('AN-NX2 secenek yoksa ya da serbest hedefte hedefcpu_ dosyalari analize girmez (cikti birebir); gecersiz secenek TypeError', async () => {
+  const bosta = () => 50;
+  const temiz = (an) => JSON.parse(JSON.stringify({ ...an, ozet: { ...an.ozet, sha256: null, okunan_bayt: null } }));
+  // Sunucu + secenek yok / true: nginx kosusu (hedefcpu_ sunucu kesiti DEGIL).
+  const sn = await t3Analiz(standart('R132'), { donustur: (d) => hedefCpuEkle(d, bosta), secenek: { hedefTuru: 'sunucu' } });
+  const st = await t3Analiz(standart('R132'), { donustur: (d) => hedefCpuEkle(d, bosta), secenek: { hedefTuru: 'sunucu', hedefNginx: true } });
+  const sz = await t3Analiz(standart('R132'), { secenek: { hedefTuru: 'sunucu' } });
+  assert.deepEqual(temiz(sn.analiz), temiz(sz.analiz));
+  assert.deepEqual(temiz(st.analiz), temiz(sz.analiz));
+  assert.equal(sz.analiz.ozet.hedef_nginx, undefined);
+  // Serbest hedefte secenek yok sayilir (sunucu tarafi zaten yok).
+  const ile = await t3Analiz(standart('R131'), { donustur: (d) => hedefCpuEkle(serbestDosyalari(d), bosta), secenek: { hedefTuru: 'serbest', hedefNginx: false } });
+  const siz = await t3Analiz(standart('R131'), { donustur: (d) => serbestDosyalari(d), secenek: { hedefTuru: 'serbest' } });
+  assert.deepEqual(temiz(ile.analiz), temiz(siz.analiz));
+  for (const x of ile.analiz.adimlar) assert.equal(x.host_cpu_ort, null);
+  for (const kotu of [null, 'false', 0]) {
+    assert.throws(() => kosuAnaliz(sz.veri, { adim: 'R132', hedefNginx: kotu }), TypeError, String(kotu));
+  }
+});
+
+test('AN-NX4 hedef CPU kesiti bir TURun penceresini kapsamiyor: o adimda hedef_cpu_olculemedi, digerleri olculu', async () => {
+  const bosta = () => 600;
+  const tam = (await t3Analiz(standart('R135'), { donustur: (d) => hedefCpuEkle(serbestDosyalari(d), bosta), secenek: NGINXSIZ })).analiz;
+  const hedefTur = 'R135_K_yeni_br_250_r1';
+  assert.ok(tam.adimlar.some((x) => x.tur === hedefTur), tam.adimlar.map((x) => x.tur).join('|'));
+  const { analiz: a } = await t3Analiz(standart('R135'), {
+    donustur: (d) => hedefCpuEkle(serbestDosyalari(d), bosta, { atla: (_t, tur) => tur === hedefTur }),
+    secenek: NGINXSIZ,
+  });
+  const t = turla(a);
+  const d = t.get(hedefTur);
+  assert.equal(d.host_cpu_ort, null);
+  assert.ok(d.ham.uyarilar.includes('hedef_cpu_olculemedi'), JSON.stringify(d.ham.uyarilar));
+  for (const x of a.adimlar) {
+    if (x.tur === hedefTur) continue;
+    const y = turla(tam).get(x.tur);
+    assert.deepEqual([x.host_cpu_ort, x.gecerlilik], [y.host_cpu_ort, y.gecerlilik], x.tur);
+    assert.ok(x.host_cpu_ort != null, x.tur);
+    assert.ok(!x.ham.uyarilar.includes('hedef_cpu_olculemedi'), x.tur);
+  }
+  // Tam kesitte hicbir adimda uyari yok.
+  for (const x of tam.adimlar) assert.ok(!x.ham.uyarilar.includes('hedef_cpu_olculemedi'), x.tur);
+});
+
+test('AN-NX3 hedef CPU kaydi yok / bozuk: kosu uyarisi, adimlar olcumsuz, OKUNAMADI yok', async () => {
+  const yok = (await t3Analiz(standart('R133'), { donustur: (d) => serbestDosyalari(d), secenek: NGINXSIZ })).analiz;
+  assert.ok(yok.uyarilar.includes('hedef_cpu_kaydi_yok'), yok.uyarilar.join('|'));
+  assert.ok(yok.uyarilar.includes('nginx_yok(istek_basina_cpu_ve_kapasite_yok)'));
+  assert.deepEqual(yok.ozet.hedef_cpu_kesitler, []);
+  for (const x of yok.adimlar) assert.equal(x.host_cpu_ort, null);
+  const { veri, analiz: bozuk } = await t3Analiz(standart('R134'), {
+    donustur: (d) => new Map([...serbestDosyalari(d), ['hedefcpu_R134_GBJWLT01.csv', { icerik: '1800000000,1,0,0,1,0,0,0,0\n', py: false, portal: true, log: false }]]),
+    secenek: NGINXSIZ,
+  });
+  assert.match(veri.hedefCpuKesitler[0].sorun, /eksik kolon/);
+  assert.ok(bozuk.uyarilar.includes('hedef_cpu_kaydi_bozuk'), bozuk.uyarilar.join('|'));
+  for (const x of bozuk.adimlar) assert.equal(x.host_cpu_ort, null);
+  assert.notEqual(bozuk.gecerlilik, 'OKUNAMADI');
 });

@@ -10,6 +10,8 @@
 // CPU penceresinin disinda (olcum etkilenmedi).
 // 2026-11-03: bellek uyarilari (bellek_bos_az, nginx_bellek_artisi; bilgi) ve kip dogrulamasi kodlari (gorunum.cjs
 // KIP_KALIPLARI: kip_protokol, kip_ka_yeni_baglanti, kip_sikistirma_az, kip_sikistirma_beklenmeyen).
+// 2026-11-13 (TEK HEDEF MODELI): nginx olmayan hedefin kosu uyarilari (nginx_yok(...), hedef_cpu_kaydi_yok / _bozuk,
+// nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi(n)) ve adim uyarisi hedef_cpu_olculemedi; karar satiri CPU-ms olculmedi (...).
 import type { NlReloadAni } from '@/api/nginxLoadtestApi';
 import { fmtNumber, fmtTimeSeconds } from '@/utils/datetime';
 
@@ -80,6 +82,12 @@ const UYARI_KURALLARI: Kural[] = [
   { re: /^baska_adim_atlandi:(.+)$/, ton: 'bilgi', cumle: (m) => `Başka bir koşunun adımı (${m[1]}) bu koşuya katılmadı.` },
   { re: /^serbest_kosuda_sunucu_dosyalari_yok_sayildi\((\d+)\)$/, ton: 'bilgi', cumle: (m) => `Serbest hedefte sunucu ölçümü yok; dizindeki ${m[1]} sunucu dosyası yok sayıldı.` },
   { re: /^sunucu_olcumu_yok\(serbest_hedef\)$/, ton: 'bilgi', cumle: () => 'Serbest hedef: CPU ve sunucu logu ölçülmez; sonuçlar yalnız yük aracının ölçümüdür.' },
+  // 2026-11-13 nginx olmayan hedef (analiz.cjs NGINX_YOK_UYARISI, HEDEF_CPU_KAYDI_YOK / _BOZUK, hedef_cpu_olculemedi).
+  { re: /^nginx_yok\(istek_basina_cpu_ve_kapasite_yok\)$/, ton: 'bilgi', cumle: () => 'Hedefte nginx yok: istek başına CPU (CPU-ms) ve kapasite hesaplanmaz; hedefin genel CPU’su ölçülür, %90 üstü doyma sayılır.' },
+  { re: /^hedef_cpu_kaydi_yok$/, ton: 'uyari', cumle: () => 'Hedefin genel CPU kaydı (hedefcpu_) bulunamadı; hedef CPU’su ölçülmedi.' },
+  { re: /^hedef_cpu_kaydi_bozuk$/, ton: 'uyari', cumle: () => 'Hedefin genel CPU kaydı okunamadı (bozuk ya da boş); hedef CPU’su ölçülmedi.' },
+  { re: /^hedef_cpu_olculemedi$/, ton: 'uyari', cumle: () => 'Bu adımın ölçüm penceresinde hedefin genel CPU örneği yok; hedefin doyup doymadığı denetlenemedi.' },
+  { re: /^nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi\((\d+)\)$/, ton: 'bilgi', cumle: (m) => `Nginx olmayan hedefte nginx ölçümü yok; dizindeki ${m[1]} sunucu dosyası yok sayıldı.` },
   { re: /^sunucu_logu_yok\(.*\)$/, ton: 'uyari', cumle: () => 'Hedefin nginx logu okunamadı; sunucu ile yük aracının istek sayıları karşılaştırılmadı.' },
   { re: /^h2_vu_basina_tek_akis\(.*\)$/, ton: 'bilgi', cumle: () => H2_UYARI_CUMLESI },
   { re: /^wrk_tls_payi_hesaplanmaz\(.*\)$/, ton: 'bilgi', cumle: () => 'wrk TLS sürümünü sabitlemez ve oturumu sürdürebilir; TLS payı hesaplanmaz.' },

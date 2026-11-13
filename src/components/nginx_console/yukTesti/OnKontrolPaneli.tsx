@@ -20,6 +20,9 @@
 // eski satirda bu satir YOK. Yuk sunucusunun glibc'si bilgi satirinda.
 // HTTP/2 (2026-11-02, h2_sozlesme.md 5.2): h2 kosusunun on kontrolunde son satir "HTTP/2 (ALPN)" (gecti: her yanitli yol h2;
 // kaldi: hedef h2 sunmuyor; olculemedi: curl h2'siz / yanitli yol yok / eski playbook). h1'de satir YOK (gorunum BIREBIR).
+// TEK HEDEF MODELI (2026-11-13): sunucu hedefinde `hedefNginx` false ise nginx'e ozgu satirlar (server_name, master,
+// /web_log, log_format) yerine tek "Nginx" satiri (uyari: bulunamadi, genel CPU olculur); null ise "Nginx" satiri kaldi
+// (belirlenemedi) ve nginx satirlari durur; alan yoksa (eski playbook) satirlar BIREBIR eskisi.
 import React from 'react';
 import { CheckCircleIcon, ExclamationTriangleIcon, MinusCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import type { NlKosuAyrinti, NlMotor, NlOnKontrol } from '@/api/nginxLoadtestApi';
@@ -100,8 +103,19 @@ function kontroller(o: NlOnKontrol, serbest: boolean, motor: NlMotor, isHatasi: 
     ];
   }
   const df = o.webLogDf;
+  if (o.hedefNginx === false) {
+    return [
+      { ad: 'IP hedefte yerel', sonuc: ikili(o.ipYerel) },
+      { ad: 'Nginx', sonuc: 'uyari', deger: 'bulunamadı — genel CPU ölçülür' },
+      ...arac,
+      motorSatiri(o, motor),
+      yollarSatiri(o),
+      ...h2Satirlari,
+    ];
+  }
   return [
     { ad: 'IP hedefte yerel', sonuc: ikili(o.ipYerel) },
+    ...(o.hedefNginx === null ? [{ ad: 'Nginx', sonuc: 'kaldi' as const, deger: 'belirlenemedi' }] : o.hedefNginx === true ? [{ ad: 'Nginx', sonuc: 'gecti' as const }] : []),
     // D7: Host basligi listede olmayabilir (joker / regex ad): kaldi degil uyari.
     { ad: 'server_name nginx -T’de', sonuc: ikili(o.serverNameVar, 'uyari') },
     { ad: 'Tek nginx master', sonuc: o.masterSayisi == null ? 'yok' : o.masterSayisi === 1 ? 'gecti' : 'kaldi', deger: o.masterSayisi == null ? undefined : `${fmtNumber(o.masterSayisi)} master` },

@@ -69,6 +69,9 @@ function kosuMeta(r, { motor, protokol, parametreler }) {
     kip: metinYoksaNull(p.kip),
     ae: metinYoksaNull(p.ae),
     sunucuAyar: sunucuAyarOzeti(p.sunucuAyar),
+    // TEK HEDEF MODELI (2026-11-13): yalniz nginx OLMAYAN sunucu hedefinde `nginx: false` (CPU'suz karar); eski satir
+    // (kolon NULL), nginx hedefi ve serbest satirda alan YOK (meta BIREBIR eskisi).
+    ...((r.hedef_turu || 'sunucu') === 'sunucu' && r.hedef_nginx != null && !(r.hedef_nginx === true || Number(r.hedef_nginx) === 1) ? { nginx: false } : {}),
   };
 }
 
@@ -242,6 +245,7 @@ function cokluKarsilastir({ ref, adaylar, analiz, esikler = {} }) {
         refMotor: ref.meta.motor, adayMotor: m.motor, refHedefTuru: ref.meta.hedefTuru, adayHedefTuru: m.hedefTuru,
         refIsParcacigi: ref.meta.isParcacigi, adayIsParcacigi: m.isParcacigi, refTavanRps: ref.meta.tavanRps, adayTavanRps: m.tavanRps,
         refProtokol: ref.meta.protokol, adayProtokol: ref.meta.protokol,
+        ...(ref.meta.nginx === false ? { refNginx: false } : {}), ...(m.nginx === false ? { adayNginx: false } : {}),
       });
     } catch (err) {
       karsilastirilamaz.push({ ...m, nedenler: [{ kod: 'hesaplanamadi', metin: `Karşılaştırma hesaplanamadı: ${String((err && err.message) || err).slice(0, 200)}` }], karar: null, kararNedenleri: [] });

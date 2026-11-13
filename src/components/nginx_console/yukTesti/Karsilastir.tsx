@@ -12,6 +12,8 @@
 // bekleme ceil(N x 1000 / tavan) oldugundan ayni baglanti kademesi farkli yuktur (sunucu bu durumda VERI YOK doner).
 // HTTP/2 (2026-11-02, h2_sozlesme.md D7): secicide h2 kosusu "HTTP/2" ile isaretli; iki tarafin protokolu karar satirinda;
 // protokoller farkliysa karar ONCESI bilgi kutusu (sunucu VERI YOK doner; karar yine sunucudan).
+// TEK HEDEF MODELI (2026-11-13): bir taraf nginx olmayan hedefteyse (kosu satiri ya da sunucu yaniti hedefNginx false) karar
+// ONCESI uyari; analizin "CPU-ms olculmedi (nginx olmayan hedef)" satiri da CPU'suz karar sayilir (CPU kademesi yazilmaz).
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, sayiVeya, type NlKarsilastirma, type NlKosu, type NlProtokol } from '@/api/nginxLoadtestApi';
@@ -21,7 +23,7 @@ import { fmtDate, fmtNumber } from '@/utils/datetime';
 import { SM_BTN, TH_STIL, TON, smBtn } from '@/components/server_hub/retirementStil';
 import { Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
-import { PROTOKOL_ETIKETI, farkMetni, gecerlilikBilgisi, hedefEtiketi, kademeMetni, kararBilgisi, kosuProtokolu, ondalik, yuzde, type AdimBirimi } from './yukTestiOrtak';
+import { NGINXSIZ_KARAR_NOTU, PROTOKOL_ETIKETI, farkMetni, gecerlilikBilgisi, hedefEtiketi, hedefNginxsiz, kademeMetni, kararBilgisi, kosuProtokolu, ondalik, yuzde, type AdimBirimi } from './yukTestiOrtak';
 
 /** Tabloda gosterilen olculer (analiz.cjs FARK_ALANLARI'ndan); `iyi`: dusuk olan iyi mi. */
 const OLCULER: { k: string; ad: string; basamak: number; oran?: boolean; dusukIyi: boolean }[] = [
@@ -91,6 +93,7 @@ export default function Karsilastir() {
   const farkliIsParcacigi = ikisiWrk && wRef?.isParcacigi != null && wAday?.isParcacigi != null && wRef.isParcacigi !== wAday.isParcacigi;
   const farkliTavan = ikisiWrk && wRef?.tavanRps != null && wAday?.tavanRps != null && wRef.tavanRps !== wAday.tavanRps;
   const serbestVar = !!refK && !!adayK && (refK.hedefTuru === 'serbest' || adayK.hedefTuru === 'serbest');
+  const nginxsizVar = !!refK && !!adayK && (hedefNginxsiz(refK) || hedefNginxsiz(adayK));
   const farkliProtokol = !!refK && !!adayK && protokolAdi(refK) !== protokolAdi(adayK);
 
   async function karsilastir() {
@@ -114,7 +117,8 @@ export default function Karsilastir() {
   const birim: AdimBirimi = (sonuc?.ref.motor ?? refK?.motor) === 'wrk' ? 'bağlantı' : 'istek/sn';
   // CPU olculmediyse (bir taraf serbest ya da sunucu CPU'suz karar yolu: analiz.cjs "CPU olculmedi (...)" satiri)
   // "CPU kademesi" yazilmaz: karar p95 ve hata oranina gore verildi.
-  const cpuOlculmedi = !!sonuc && (sonuc.ref.hedefTuru === 'serbest' || sonuc.aday.hedefTuru === 'serbest' || serbestVar || sonuc.nedenler.some((n) => n.startsWith('CPU olculmedi (')));
+  const cpuOlculmedi = !!sonuc && (sonuc.ref.hedefTuru === 'serbest' || sonuc.aday.hedefTuru === 'serbest' || serbestVar || nginxsizVar
+    || sonuc.ref.hedefNginx === false || sonuc.aday.hedefNginx === false || sonuc.nedenler.some((n) => n.startsWith('CPU olculmedi (') || n.startsWith('CPU-ms olculmedi (')));
   // Taraf protokolu: sunucu yaniti (yoksa secilen kosu satiri). Iki taraf HTTP/1.1 ise satir BIREBIR eskisi (yazilmaz).
   const tarafProt = (t: 'ref' | 'aday'): NlProtokol => sonuc?.[t].protokol ?? ((t === 'ref' ? refK : adayK) ? protokolAdi((t === 'ref' ? refK : adayK) as NlKosu) : 'h1');
   const protokolGoster = !!sonuc && (tarafProt('ref') === 'h2' || tarafProt('aday') === 'h2');
@@ -149,7 +153,7 @@ export default function Karsilastir() {
           </div>
         </div>
         {kosular && kosular.length < 2 && <p className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>Karşılaştırma için en az iki bitmiş koşu gerekir.</p>}
-        {(farkliOrtam || farkliMotor || farkliProtokol || farkliIsParcacigi || farkliTavan || serbestVar) && (
+        {(farkliOrtam || farkliMotor || farkliProtokol || farkliIsParcacigi || farkliTavan || serbestVar || nginxsizVar) && (
           <div className="mt-3 space-y-2">
             {farkliProtokol && refK && adayK && (
               <UyariKutusu ton="bilgi" baslik={`İki koşu farklı protokolle koşuldu (${PROTOKOL_ETIKETI[protokolAdi(refK)]} / ${PROTOKOL_ETIKETI[protokolAdi(adayK)]}); sonuç “Veri yok” döner, aynı protokolle yeniden koşun.`} />
@@ -161,6 +165,7 @@ export default function Karsilastir() {
             )}
             {farkliOrtam && <UyariKutusu ton="uyari" baslik="İki koşu farklı hedef, vhost ya da senaryoyla yapılmış — karşılaştırma yalnız aynı ölçüm düzeninde anlamlıdır." />}
             {serbestVar && <UyariKutusu ton="uyari" baslik="Bir koşu serbest hedefte (CPU ölçülmedi): KALICI verilmez; karar p95 ve hata oranına göre." />}
+            {nginxsizVar && <UyariKutusu ton="uyari" baslik={NGINXSIZ_KARAR_NOTU} />}
           </div>
         )}
       </Bolum>

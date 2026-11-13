@@ -10,21 +10,26 @@
 //   * kaynaklariOku: TBMWANS envanter / tarama tablolarini okur. Sorgu fonksiyonu PARAMETRE
 //     olarak gelir (testte sahte). Okunamayan kaynak "yok" SAYILMAZ: 424 envanter_okunamadi.
 //
-// ORTAM KURALI (kullanici kurali, 2026-10-27 sozlesmesi): ad kurali (audit/nginx-hosts.cjs
-// envOfHost) ESASTIR ve DEV/TEST/QA disindaki her sonuc (PROD, EDU, BILINMIYOR) reddedilir.
-// Diger kaynaklar (dbo.nginx_inventory.env, dbo.Inventory.env, PROD RP listeleri) yalniz
-// URETIM ISARETI EKLEYEBILIR, kapiyi asla gevsetemez. ratelimit.cjs'teki gevsek envOfHost ve
-// FAIL-OPEN tierOfHost bilerek KULLANILMAZ.
+// ORTAM KURALI (TEK HEDEF MODELI, kullanici karari 2026-11-13; 2026-10-27 ad kurali sozlesmesinin yerine):
+// hedef ve yuk makinesi dbo.Inventory'deki HERHANGI bir makine olabilir; ad kurali (GBNG[WX]A?[DTQ]) ARANMAZ.
+// Kosul (hostOrtami): makinenin dbo.Inventory'de en az bir satiri var ve TUM satirlarin ortami
+// (envFromInventory) DEV/TEST/QA; adindan PROD / EDU okunmuyor (audit/nginx-hosts.cjs envOfHost: GBRVP,
+// GBNG[WX]A?P, GBNGXT51); hicbir kaynakta (dbo.nginx_inventory.env, Inventory satirlari, PROD RP listesi)
+// uretim isareti yok. Uretim guvenligi karari Portal'in bu dbo.Inventory kapisindadir; playbook yalniz EDU
+// listesi, uretim adi, hedef != yuk, parametre sinirlari, IP yerel kaniti ve serbest izin dosyasini denetler.
+// ratelimit.cjs'teki gevsek envOfHost ve FAIL-OPEN tierOfHost bilerek KULLANILMAZ.
 //
 // TUR 3 (2026-10-28, yuktesti2_sozlesme.md): hedef IP'yi kullanici yazar; ipSinifla IP'nin
 // sahibini envanterlerden (nginx_inventory, Inventory, IPInventory, son tarama) bulur:
-//   * sunucu  - IP tam bir non-prod nginx sunucusunun (ya da host seciciyle secilmis ve o hostun
-//               IP'si; paylasilan VIP dahil): bugunku yol, sunucu tarafi da olculur.
-//   * serbest - IP hicbir nginx sunucusunun degil (LB VIP / yonetilmeyen sunucu): yalniz Portal
+//   * sunucu  - IP bir dbo.Inventory makinesinin (tek sahip, ya da host seciciyle secilmis ve o hostun
+//               IP'si; paylasilan VIP dahil, her sahip kurala uymali). Nginx olup olmadigina playbook karar
+//               verir (on_kontrol.sh nginx; set_stats hedef_nginx): nginx varsa sunucu tarafi ayrintili
+//               olculur, yoksa yalniz genel CPU (/proc/stat). Tavanlar iki durumda AYNI (SINIRLAR).
+//   * serbest - IP hicbir envanterde yok (LB VIP / yonetilmeyen sunucu): yalniz Portal
 //               izin listesindeki (NGINX_LOADTEST_SERBEST_AGLAR, en kucuk /24) aglarda, yasak
-//               listesinin (NGINX_LOADTEST_SERBEST_YASAK) disinda, hicbir PROD / EDU / bilinmeyen
-//               sahibe ait degilse ve envanter tazeyse; yalniz istemci olcumu, tavan 200 r/s / 50
-//               baglanti. "Sahipsiz" PROD olmadiginin kaniti DEGILDIR: asil koruma izin listesidir.
+//               listesinin (NGINX_LOADTEST_SERBEST_YASAK) disinda ve envanter tazeyse; yalniz istemci
+//               olcumu, tavan 200 r/s / 50 baglanti. "Sahipsiz" PROD olmadiginin kaniti DEGILDIR: asil
+//               koruma izin listesidir.
 // Motor: k6 (acik dongu, istek/sn) ya da wrk (kapali dongu, baglanti; toplam hiz tavan_rps ile
 // sinirli, tavan sunucuda hesaplanir). Host basligi iki kipte yalniz bicimle denetlenir (D7);
 // yalniz uretim / EDU / bilinmeyen sunucularda tanimli ad 409 host_uretim.
@@ -156,12 +161,6 @@ const BOZUK_YUZDE = /%(?![0-9A-Fa-f]{2})/;
 const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
 
 const VARSAYILAN_YUK_HOSTLARI = Object.freeze(['GBNGXT34']);
-// AD KURALI DISI YUK MAKINELERI (kullanici, 2026-11-13: "GBJWLT01 ve GBJALT02'yi yalniz yuk basmasi icin
-// kullanmak istiyorum"; ikisinde www var, uzerlerinde uygulama yok). Nginx adi tasimayan makinenin ortami
-// addan okunamaz: yalniz bu KOD SABITINDEKI makineler, dbo.Inventory ortamlarinin HEPSI DEV/TEST/QA ise
-// yuk makinesi olabilir (Admin listesi bunu genisletemez). Playbook'ta birebir ayni liste:
-// yt_extra_load_hosts (nginx_loadtest.yml). Bu makineler HEDEF olamaz.
-const AD_DISI_YUK_HOSTLARI = Object.freeze(['GBJWLT01', 'GBJALT02']);
 // Tur 4: yuk araclari her on kontrol / kosuda /sw'deki arac setinden kosu dizinine kopyalanir.
 // yuk_k6_yolu / yuk_wrk_yolu artik SABIT isaret degeri tasir: yeni Portal + ESKI playbook penceresinde
 // eski playbook /home/www/bin ikilisini SESSIZCE kullanmasin (isaret yolu yoktur; on kontrol duser).
@@ -179,6 +178,11 @@ const SON_EPOCH_UST_PAY_SN = 1800;
 
 const SERBEST_UYARISI = 'Serbest hedef: sunucu tarafı ölçüm (CPU, nginx logu) yapılmaz; sonuçlar yalnız istemci ölçümüdür. Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn ve 50 bağlantı). Yük bir yük dengeleyici (LB) üzerinden gidiyorsa nginx isteği (realip yoksa) LB\'nin IP\'sinden görür: IP başına 500 istek/sn ve 200 bağlantı sınırı LB arkasındaki herkesle, vhost başına 5000 istek/sn sınırı tüm istemcilerle paylaşılır; başka kullanıcılar 429 alabilir.';
 const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
+// TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx bulamadi (on_kontrol.hedef_nginx false). Ekran ayni metni gosterir
+// (yukTestiOrtak.ts NGINX_YOK_UYARISI, birebir).
+const NGINX_YOK_UYARISI = 'Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür.';
+const NGINX_YOK_AYAR_ENGELI = 'hedefte nginx yok: sunucu ayarı uygulanamaz';
+const NGINX_BELIRSIZ_ENGELI = 'hedefte nginx durumu belirlenemedi (nginx -T ve nginx master birbirini tutmuyor); ön kontrolü yeniden çalıştırın';
 // D7: Host basligi server_name listesinde olmamak ENGEL degil, onay isteyen UYARI.
 const HOST_LISTEDE_YOK_UYARISI = "Host başlığı (vhost) hedefin nginx -T çıktısındaki server_name'ler arasında yok ya da ölçülemedi (joker / regex ad olabilir; değilse istek default_server'a düşer). Ön kontroldeki 200 sonuçlarına bakın.";
 const WRK_SNI_MESAJI = "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın.";
@@ -673,53 +677,63 @@ function uretimIsareti(k) {
 }
 
 /**
- * Hedef kapisi (korkuluk 1). `kaynak`: { nginxSatiri (null = envanterde yok), invEnv }.
- * Donus: { ok:true, env } | red(409, 'hedef_uretim' | 'hedef_envanterde_yok', ...)
+ * Bir makinenin ortami (TEK HEDEF MODELI, 2026-11-13; hedef, yuk makinesi ve IP sahipleri AYNI kural).
+ * `k`: kaynaklariOku donusu (invTum: host -> dbo.Inventory env satirlari; nginx: nginx_inventory satiri).
+ * Sira: ad bicimi -> addan PROD / EDU (envOfHost; GBRVP, GBNG[WX]A?P, GBNGXT51) -> dbo.Inventory satiri yok ->
+ * satirlardan biri DEV/TEST/QA degil (bos / taninmayan dahil) -> uretim isareti (nginx_inventory.env, her satir,
+ * PROD RP listesi). Ad kurali (GBNG[WX]A?[DTQ]) GEREKMEZ. Ortam etiketi: ad DEV/TEST/QA soyluyorsa o (nginx-hosts.cjs:
+ * kalip envanterden incedir), degilse satirlarin ortami (tekse kendisi, karisik DEV/TEST/QA ise sirali 'QA/TEST').
+ * Donus: { ok:true, env, envler } | { ok:false, status, code, message, sebep, env } (sebep: ipSinifla mesajina
+ * gomulen kisa metin). Kodlar: hedef_uretim, hedef_envanterde_yok (cagiran yuk makinesi icin eslestirir).
  */
-function hedefKapisi(host, kaynak) {
-  const { envOfHost } = require('../audit/nginx-hosts.cjs');
-  const env = envOfHost(host);
-  if (!IZINLI_ORTAM.has(env)) {
-    return red(409, 'hedef_uretim', env === 'PROD'
-      ? `${host} üretim sunucusu (ad kuralı); yük testi yalnız DEV/TEST/QA sunucularında yapılır.`
-      : `${host} ortamı ${env}; yük testi yalnız DEV/TEST/QA sunucularında yapılır.`, { env });
+function hostOrtami(host, k) {
+  const { envOfHost, envFromInventory } = require('../audit/nginx-hosts.cjs');
+  const ret = (code, sebep, message, env) => ({ ...red(409, code, message, { env }), sebep });
+  if (typeof host !== 'string' || !HOST_RE.test(host)) return ret('hedef_uretim', 'adı geçersiz', `${host} geçerli bir sunucu adı değil.`, 'BILINMIYOR');
+  const adEnv = envOfHost(host);
+  if (adEnv === 'PROD' || adEnv === 'EDU') {
+    return ret('hedef_uretim', `ortamı ${adEnv}`, adEnv === 'PROD'
+      ? `${host} üretim sunucusu (ad kuralı); yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`
+      : `${host} ortamı EDU; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`, adEnv);
   }
-  if (!kaynak || !kaynak.nginxSatiri) {
-    return red(409, 'hedef_envanterde_yok', `${host} nginx envanterinde (dbo.nginx_inventory) yok.`, { env });
+  const satirlar = k && k.invTum && typeof k.invTum.get === 'function' ? k.invTum.get(host) || [] : [];
+  if (!satirlar.length) {
+    return ret('hedef_envanterde_yok', "dbo.Inventory'de kayıtlı değil", `${host} dbo.Inventory'de kayıtlı değil (ortam kanıtlanamıyor).`, adEnv);
   }
-  const sebep = uretimIsareti({ host, nginxEnv: kaynak.nginxSatiri.env, invEnv: kaynak.invEnv });
-  if (sebep) return red(409, 'hedef_uretim', `${host} için üretim işareti var (${sebep}); yük testi yapılmaz.`, { env });
-  return { ok: true, env };
+  const envler = [...new Set(satirlar.map((v) => envFromInventory(v)))].sort();
+  if (envler.some((e) => !IZINLI_ORTAM.has(e))) {
+    const ham = satirlar.map((v) => (v == null || String(v).trim() === '' ? '(boş)' : String(v).trim()));
+    const metin = [...new Set(ham)].join(' / ');
+    return ret('hedef_uretim', `dbo.Inventory ortamı ${metin}`, `${host} dbo.Inventory ortamı ${metin}; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`,
+      envler.find((e) => !IZINLI_ORTAM.has(e)));
+  }
+  const nginxEnv = k && k.nginx && typeof k.nginx.get === 'function' ? k.nginx.get(host)?.env ?? null : null;
+  const isaret = uretimIsareti({ host, nginxEnv, invEnv: null }) || satirlar.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) || null;
+  const env = IZINLI_ORTAM.has(adEnv) ? adEnv : envler.join('/');
+  if (isaret) return ret('hedef_uretim', `üretim işareti: ${isaret}`, `${host} için üretim işareti var (${isaret}); yük testi yapılmaz.`, env);
+  return { ok: true, env, envler };
+}
+
+/** Hedef kapisi (korkuluk 1): hostOrtami. Donus: { ok:true, env } | red(409, 'hedef_uretim' | 'hedef_envanterde_yok', ...). */
+function hedefKapisi(host, k) {
+  const o = hostOrtami(host, k);
+  if (!o.ok) return red(o.status, o.code, o.message, { env: o.env });
+  return { ok: true, env: o.env };
 }
 
 /**
- * Yuk makinesi kapisi: izin listesinde, hedeften farkli, ad kuralina gore DEV/TEST/QA, uretim
- * isareti yok ve en az bir envanterde kayitli.
+ * Yuk makinesi kapisi: hedeften farkli, izin listesinde (Portal DB, Araclar > Yuk makineleri) ve hostOrtami'ndan
+ * geciyor (ayni kural; ad kurali ARANMAZ). Hata kodu her durumda 'yuk_host_izinsiz' (ayni host: 'ayni_host').
  */
-function yukHostKapisi(host, { hedef = null, izinli = [], nginxSatiri = null, invEnv, invVar = false, invEnvler = null } = {}) {
-  const { envOfHost, envFromInventory } = require('../audit/nginx-hosts.cjs');
-  let env = envOfHost(host);
-  if (hedef && host === hedef) return red(409, 'ayni_host', 'Yük makinesi hedefle aynı olamaz.', { env });
+function yukHostKapisi(host, k, { hedef = null, izinli = [] } = {}) {
+  const { envOfHost } = require('../audit/nginx-hosts.cjs');
+  if (hedef && host === hedef) return red(409, 'ayni_host', 'Yük makinesi hedefle aynı olamaz.', { env: envOfHost(host) });
   if (!izinli.includes(host)) {
-    return red(409, 'yuk_host_izinsiz', `${host} yük makinesi izin listesinde değil (Yük Testi › Araçlar › Yük makineleri).`, { env });
+    return red(409, 'yuk_host_izinsiz', `${host} yük makinesi izin listesinde değil (Yük Testi › Araçlar › Yük makineleri).`, { env: envOfHost(host) });
   }
-  // Ad kurali disi (AD_DISI_YUK_HOSTLARI): ortam dbo.Inventory'den KANITLANIR; satir yoksa, bos ya da
-  // satirlar celisiyorsa (biri bile DEV/TEST/QA degilse) red. Ad kurali tutan makinede bu yol hic kosmaz.
-  if (env === 'BILINMIYOR' && AD_DISI_YUK_HOSTLARI.includes(host)) {
-    const ham = Array.isArray(invEnvler) ? invEnvler : invVar ? [invEnv] : [];
-    if (!ham.length) return red(409, 'yuk_host_izinsiz', `${host} ortamı ad kuralından okunamıyor ve dbo.Inventory'de kaydı yok.`, { env });
-    const envler = [...new Set(ham.map((v) => envFromInventory(v)))];
-    if (envler.length !== 1 || !IZINLI_ORTAM.has(envler[0])) {
-      return red(409, 'yuk_host_izinsiz', `${host} dbo.Inventory ortamı ${ham.map((v) => (v == null || v === '' ? '(boş)' : String(v))).join(' / ')}; yük makinesi yalnız DEV/TEST/QA olabilir.`, { env });
-    }
-    env = envler[0];
-  }
-  if (!IZINLI_ORTAM.has(env)) return red(409, 'yuk_host_izinsiz', `${host} ortamı ${env}; yük makinesi yalnız DEV/TEST/QA olabilir.`, { env });
-  const sebep = uretimIsareti({ host, nginxEnv: nginxSatiri ? nginxSatiri.env : null, invEnv })
-    || (Array.isArray(invEnvler) ? invEnvler.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) : null);
-  if (sebep) return red(409, 'yuk_host_izinsiz', `${host} için üretim işareti var (${sebep}).`, { env });
-  if (!nginxSatiri && !invVar) return red(409, 'yuk_host_izinsiz', `${host} envanterde (dbo.nginx_inventory / dbo.Inventory) yok.`, { env });
-  return { ok: true, env };
+  const o = hostOrtami(host, k);
+  if (!o.ok) return red(409, 'yuk_host_izinsiz', o.message.replace('yük testi yalnız DEV/TEST/QA makinelerinde yapılır', 'yük makinesi yalnız DEV/TEST/QA olabilir'), { env: o.env });
+  return { ok: true, env: o.env };
 }
 
 // ── ADAY IP ve VHOST ──────────────────────────────────────────────────────────────────────
@@ -746,7 +760,11 @@ function adayIpler({ listenler = [], envanterIp = null } = {}) {
     for (const ip of listenIpleri(l)) if (kullanilabilirIp(ip)) set.add(ip);
   }
   for (const ip of String(envanterIp || '').split(/[\s,;]+/)) if (kullanilabilirIp(ip)) set.add(ip);
-  return [...set].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  return [...set].sort(ipSirala);
+}
+
+function ipSirala(a, b) {
+  return a.localeCompare(b, 'en', { numeric: true });
 }
 
 /** Tarama satirlarinin server_name alanlarindan gecerli vhost adlari (joker/regex/'_' elenir). */
@@ -843,6 +861,10 @@ const SAYI = (v) => {
  * Sunucu ayari (2026-11-04): ayarli kosuda on kontrol srv_hazirlik 'ok' yayinlamadiysa ENGEL (eski playbook ayari uygulamaz;
  * yuk basildiktan sonra GECERSIZ olup gece kuyrugunu bosa harcamasin). Ayarsiz kosuda hedefte kalmis yedek
  * (hazirlik_yedek true) ENGEL: degismis konf olculurdu; on kontrolun temizlik play'i onu geri alir, yeniden calistirilir.
+ * Nginx'siz hedef (2026-11-13; sunucu hedefinde ok.hedef_nginx === false): server_name uyarisi, /web_log engeli, df /
+ * log_format uyarilari ve master kurali YOK; sunucu ayarli kosuda NGINX_YOK_AYAR_ENGELI; sabit uyarilardan once
+ * NGINX_YOK_UYARISI. hedef_nginx alani var ama true / false degilse (playbook '-': nginx -T ile master tutmuyor)
+ * ip_yerel'den hemen sonra NGINX_BELIRSIZ_ENGELI. Alan yoksa (eski playbook) cikti BIREBIR eskisi.
  */
 function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1', parametreler: kp = null } = {}) {
   const engeller = [];
@@ -853,11 +875,17 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   }
   if (!PROTOKOLLER.includes(protokol)) return { engeller: ['ön kontrol sonucu okunamadı (protokol tanınmadı)'], uyarilar };
   const serbest = hedefTuru === 'serbest';
+  // TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx'i olcer (set_stats on_kontrol.hedef_nginx true | false | null).
+  // Alan YOKSA (eski playbook: yalniz nginx hedefe kosabilirdi) cikti BIREBIR eskisi; null = belirlenemedi (ENGEL).
+  const nginxAlani = !serbest && Object.prototype.hasOwnProperty.call(ok, 'hedef_nginx');
+  const nginxsiz = nginxAlani && ok.hedef_nginx === false;
+  const belirsiz = nginxAlani && ok.hedef_nginx !== true && ok.hedef_nginx !== false;
   if (serbest) {
     if (!HAYIR(ok.ip_yuk_makinesinde)) engeller.push('hedef IP yük makinesinde yerel ya da ölçülemedi');
   } else {
     if (!EVET(ok.ip_yerel)) engeller.push('seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)');
-    if (!EVET(ok.server_name_var)) uyarilar.push(HOST_LISTEDE_YOK_UYARISI);
+    if (belirsiz) engeller.push(NGINX_BELIRSIZ_ENGELI);
+    if (!nginxsiz && !EVET(ok.server_name_var)) uyarilar.push(HOST_LISTEDE_YOK_UYARISI);
   }
   if (motor === 'wrk') {
     if (!EVET(ok.wrk_var)) {
@@ -883,8 +911,9 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
     if (h2Engeli) engeller.push(h2Engeli);
   }
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
-  if (!serbest && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
-  if (!serbest && kp && kp.sunucuAyar && ok.srv_hazirlik !== 'ok') {
+  if (!serbest && !nginxsiz && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
+  if (nginxsiz && kp && kp.sunucuAyar) engeller.push(NGINX_YOK_AYAR_ENGELI);
+  else if (!serbest && kp && kp.sunucuAyar && ok.srv_hazirlik !== 'ok') {
     engeller.push(ok.srv_hazirlik === 'fail' ? 'sunucu ayarı uygulanamadı (iş çıktısına bakın)' : 'sunucu ayarı ön kontrolde doğrulanmadı (playbook sunucu ayarını desteklemiyor olabilir; Ansible deposunu güncelleyin)');
   }
   if (!serbest && !(kp && kp.sunucuAyar) && ok.hazirlik_yedek === true) {
@@ -908,7 +937,7 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   const statik = SAYI(ok.sikistirma && ok.sikistirma.statik);
   // Sunucu ayarli kosuda dizinin durumu kosu oncesi kurulur: bu uyari gece kuyrugunda "yeni uyari" diye ogeyi atlatmasin.
   if (statik > 0 && !(kp && kp.sunucuAyar)) uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
-  if (!serbest) {
+  if (!serbest && !nginxsiz) {
     const df = SAYI(ok.web_log_df);
     if (df === null) uyarilar.push('/web_log doluluğu ölçülemedi');
     else if (df >= 65) uyarilar.push(`/web_log %${df} dolu (>= %65: disk temizleyici koşu sırasında logları silebilir)`);
@@ -921,6 +950,7 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   // 2026-11-03: yuk makinesi port / bellek olcumu (yeni playbook; alan yoksa uyari yok). Sabit uyarilardan once.
   if (kp && typeof kp === 'object') uyarilar.push(...yukMakinesiUyarilari(ok, { ...kp, motor }));
   if (serbest) uyarilar.push(SERBEST_UYARISI);
+  if (nginxsiz) uyarilar.push(NGINX_YOK_UYARISI);
   if (motor === 'wrk') uyarilar.push(WRK_UYARISI);
   return { engeller, uyarilar };
 }
@@ -1143,10 +1173,9 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (n === null || n < min || n > max) ihlal.push(k);
   };
   const { envOfHost } = require('../audit/nginx-hosts.cjs');
-  // Ad kurali GBNG[WX]A?[DTQ] + EDU degil: envOfHost DEV/TEST/QA (playbook yt_re_nonprod_adi + yt_edu_hostlari).
-  const nonProdAd = (h) => HOST_RE.test(h) && IZINLI_ORTAM.has(envOfHost(h));
-  // Yuk makinesi icin ek: ad kurali disi kod sabiti (envanter kaniti kosuPlani'de alindi; playbook yt_extra_load_hosts).
-  const yukAdUygun = (h) => nonProdAd(h) || (HOST_RE.test(h) && AD_DISI_YUK_HOSTLARI.includes(h));
+  // TEK HEDEF MODELI (2026-11-13): ad kurali ARANMAZ (ortam kosuPlani'nde dbo.Inventory'den kanitlandi). Son kapi
+  // playbook Play 1 ile ayni: gecerli ad, addan PROD / EDU degil (yt_re_prod_adi + yt_edu_hostlari).
+  const adUygun = (h) => HOST_RE.test(h) && !['PROD', 'EDU'].includes(envOfHost(h));
   if (!ISLEMLER.has(ev.yuk_islem)) ihlal.push('yuk_islem');
   if (!metin('yuk_run_id') || !RUN_ID_RE.test(ev.yuk_run_id)) ihlal.push('yuk_run_id');
   const durdur = ev.yuk_islem === 'durdur';
@@ -1162,8 +1191,8 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   const tur = ev.yuk_hedef_turu === undefined && durdur ? 'sunucu' : ev.yuk_hedef_turu;
   if (!HEDEF_TURLERI.includes(tur)) ihlal.push('yuk_hedef_turu');
   const serbest = tur === 'serbest';
-  if (serbest ? ev.yuk_hedef_host !== '' : !(metin('yuk_hedef_host') && nonProdAd(ev.yuk_hedef_host))) ihlal.push('yuk_hedef_host');
-  if (!metin('yuk_yuk_host') || !yukAdUygun(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host) ihlal.push('yuk_yuk_host');
+  if (serbest ? ev.yuk_hedef_host !== '' : !(metin('yuk_hedef_host') && adUygun(ev.yuk_hedef_host))) ihlal.push('yuk_hedef_host');
+  if (!metin('yuk_yuk_host') || !adUygun(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host) ihlal.push('yuk_yuk_host');
   if (!durdur) {
     if (!MOTORLAR.includes(ev.yuk_motor)) ihlal.push('yuk_motor');
     const wrk = ev.yuk_motor === 'wrk';
@@ -1323,8 +1352,46 @@ function enSonGunler(satirlar, anahtar) {
 }
 
 /**
+ * Envanter ip hucresi -> parcalar (bosluk / virgul / noktali virgul ile ayrilmis; bos parca atilir). TEK KURAL:
+ * aday IP uretimi (invSatiriEkle) ve IP sahibi aramasi (kaynaklariOku ip modu) ayni ayristirmayi kullanir;
+ * cok IP'li bir hucrenin icindeki IP'nin sahibi kacmaz (paylasilan VIP'te uretim sahibi).
+ */
+function hucreIpleri(v) {
+  return String(v ?? '').trim().split(/[\s,;]+/).filter(Boolean);
+}
+
+// dbo.Inventory host hucresi -> SQL'de kisa ad (ilk '.' oncesi, buyuk harf). FQDN ile kayitli satir
+// (gbx01.bmw.local) kisa adla (GBX01) ayni makinedir: ortam okumasi satirlarin HEPSINI gormeli. JS tarafi sahipAdi.
+const INV_KISA_AD = "UPPER(LEFT(LTRIM(RTRIM(host)), CHARINDEX('.', LTRIM(RTRIM(host)) + '.') - 1))";
+
+/** Liste -> en cok `n` elemanli parcalar (inListesi 500 sinirini sessizce kesmesin). */
+function parcala(liste, n = 500) {
+  const p = [];
+  for (let i = 0; i < liste.length; i += n) p.push(liste.slice(i, i + n));
+  return p;
+}
+
+/**
+ * dbo.Inventory satiri ({host, env, ip}) -> inv (son env), invTum (tum env'ler), invIp (gecerli IPv4'ler, sirali tekil).
+ * Host adi sahipAdi ile kisaltilir: FQDN satiri kisa adin satirlarina katilir (atilmaz).
+ */
+function invSatiriEkle({ inv, invTum, invIp }, x) {
+  const h = sahipAdi(x && x.host);
+  if (!h) return;
+  const env = x.env == null ? null : String(x.env);
+  inv.set(h, env);
+  if (!invTum.has(h)) invTum.set(h, []);
+  invTum.get(h).push(env);
+  if (invIp) {
+    const ipler = hucreIpleri(x.ip).filter((v) => kullanilabilirIp(v));
+    if (ipler.length) invIp.set(h, [...new Set([...(invIp.get(h) || []), ...ipler])].sort(ipSirala));
+  }
+}
+
+/**
  * Kapilarin ihtiyac duydugu TBMWANS verisi. `hostlar`: verilirse yalniz bu hostlar icin tarama
- * satirlari okunur (baslatma yolu); verilmezse envanterdeki tum non-prod hostlar (/hedefler).
+ * satirlari okunur (baslatma yolu); verilmezse (/hedefler) nginx envanteri + son iki taramanin hostlarindan
+ * hostOrtami'ndan gecenler (ad kurali ARANMAZ). dbo.Inventory kisa adla okunur (FQDN satirlari dahil).
  * Tablo YOKSA (OBJECT_ID null) o kaynak "veri yok" sayilir; sorgu HATASI 424'tur.
  * `ip` verilirse IP'nin SAHIPLERI de okunur (sozlesme 8.1; hepsi parametreli, IP SQL metnine
  * GOMULMEZ): nginx_inventory ip kolonu, dbo.Inventory ip, dbo.IPInventory (tireli host onarimi),
@@ -1333,7 +1400,8 @@ function enSonGunler(satirlar, anahtar) {
  * server_name'leri (taramaAdlari; Host basligi uretim kapisi). Tarama ve limit satirlari her hostun
  * son iki tarama gunu icindeki EN SON gunundendir (SON_IKI_TARAMA_GUNU). `ip` ve `vhost` verilmezse
  * kaynaklar ve sirasi tur 2 ile AYNI (tarama / limit sorgulari iki gunluk pencereyle).
- * Donus: { nginx: Map(host -> satir), inv: Map(host -> env), sunucular: Map(host -> {listen[], serverName[]})|null,
+ * Donus: { nginx: Map(host -> satir), inv: Map(host -> env), invTum: Map(host -> env[]), invIp: Map(host -> ip[]),
+ *          sunucular: Map(host -> {listen[], serverName[]})|null,
  *          ayarlar: Map(host -> satir[])|null, ipSahipleri: Map(host -> Set(kaynak)), ipTaninmayan: kaynak[],
  *          taramaVar, ipEnvanteriVar, ipEnvanteriYasSaat, ipEnvanteriSon, taramaYasGun, taramaSon,
  *          taramaAdlari: [{host, server_name, guncel}]|null (yalniz vhost verildiyse) }
@@ -1356,7 +1424,6 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     const h = hostNormalle(r.hostname);
     if (h && !nginx.has(h)) nginx.set(h, { host: h, env: r.env == null ? null : String(r.env), ip: r.ip == null ? null : String(r.ip), service: r.service || null });
   }
-  const { envOfHost } = require('../audit/nginx-hosts.cjs');
 
   const tabloVar = async (ad) => {
     try {
@@ -1376,8 +1443,10 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
 
   // ── IP SAHIPLIGI (yalniz ip verildiginde) ──
   const inv = new Map();
-  // Ayni host icin TUM dbo.Inventory ortamlari (ad kurali disi yuk makinesi kapisi; inv son satiri tutar).
+  // Ayni host icin TUM dbo.Inventory ortamlari (hostOrtami; inv son satiri tutar) ve IP'leri (hedefAyrintisi).
+  // IP sahibinin satirlari asagidaki kisa ad okumasinda gelir (sahip temel listeye girer; FQDN dahil).
   const invTum = new Map();
+  const invIp = new Map();
   const ipSahipleri = new Map();
   const ipTaninmayan = [];
   const sahipEkle = (ham, kaynak) => {
@@ -1401,12 +1470,13 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
   let taramaSon = null;
   if (ipModu) {
     for (const r of nginxSatirlari) {
-      if (String(r.ip ?? '').trim().split(/[\s,;]+/).includes(ip)) sahipEkle(r.hostname, 'dbo.nginx_inventory');
+      if (hucreIpleri(r.ip).includes(ip)) sahipEkle(r.hostname, 'dbo.nginx_inventory');
     }
     try {
-      const r = await query(`SELECT host, env, ip FROM dbo.Inventory WHERE LTRIM(RTRIM(ip)) = @ip0`, ipParam('ip0', ip));
+      // Aday IP uretimiyle AYNI ayristirma (hucreIpleri): LIKE genis okur, kesin eslesme JS'te her parcada.
+      const r = await query(`SELECT host, env, ip FROM dbo.Inventory WHERE ip LIKE @ip0`, ipParam('ip0', `%${ip}%`));
       for (const x of r.recordset || []) {
-        if (String(x.ip ?? '').trim() !== ip) continue;
+        if (!hucreIpleri(x.ip).includes(ip)) continue;
         const h = sahipEkle(x.host, 'dbo.Inventory');
         if (h) inv.set(h, x.env == null ? null : String(x.env));
       }
@@ -1480,50 +1550,68 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
   }
 
-  const ilgili = [...new Set([
-    ...(hostlar ? hostlar : [...nginx.keys()].filter((h) => IZINLI_ORTAM.has(envOfHost(h)))).map(hostNormalle).filter(Boolean),
+  // hostlar verilmezse (/hedefler) aday = nginx envanterindeki her host + son iki taramada gorunen her host; tarama ve
+  // limit okumasi bunlardan hostOrtami'ndan GECENLERE yapilir (TEK HEDEF MODELI: ad kurali ARANMAZ; GBJWLT01 gibi
+  // kalip disi ama taranmis hedefin vhost / limit / listen verisi seciciye de gelir, kosuPlani ile ayni veri).
+  let adayHostlar = null;
+  if (!hostlar) {
+    const taramaHostlari = [];
+    if (await taramaTablosu()) {
+      try {
+        const r = await query(`SELECT DISTINCT host FROM dbo.Nginx_Audit_Servers WHERE scan_date >= ${SON_IKI_TARAMA_GUNU}`);
+        for (const x of r.recordset || []) taramaHostlari.push(sahipAdi(x.host));
+      } catch (e) {
+        throw okunamadi('dbo.Nginx_Audit_Servers', e);
+      }
+    }
+    adayHostlar = [...new Set([...nginx.keys(), ...taramaHostlari])].filter(Boolean).sort();
+  }
+  const temel = [...new Set([
+    ...(hostlar ? hostlar.map(hostNormalle).filter(Boolean) : adayHostlar),
     ...ipSahipleri.keys(),
   ])];
-  const invHostlari = [...new Set([...ilgili, ...ekHostlar.map(hostNormalle).filter(Boolean)])];
+  const invHostlari = [...new Set([...temel, ...ekHostlar.map(hostNormalle).filter(Boolean)])];
 
   if (invHostlari.length) {
-    const il = inListesi('h', invHostlari, sql);
     try {
-      const r = await query(`SELECT host, env FROM dbo.Inventory WHERE UPPER(LTRIM(RTRIM(host))) IN (${il.sqlText})`, il.params);
-      for (const x of r.recordset || []) {
-        const h = hostNormalle(x.host);
-        if (h) {
-          inv.set(h, x.env == null ? null : String(x.env));
-          if (!invTum.has(h)) invTum.set(h, []);
-          invTum.get(h).push(x.env == null ? null : String(x.env));
-        }
+      // Kisa ad eslemesi (INV_KISA_AD): FQDN satirlari da okunur; ortam kurali makinenin TUM satirlarini gorur.
+      const istenen = new Set(invHostlari);
+      for (const parca of parcala(invHostlari)) {
+        const il = inListesi('h', parca, sql);
+        const r = await query(`SELECT host, env, ip FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`, il.params);
+        for (const x of r.recordset || []) if (istenen.has(sahipAdi(x.host))) invSatiriEkle({ inv, invTum, invIp }, x);
       }
     } catch (e) {
       throw okunamadi('dbo.Inventory', e);
     }
   }
+  const ilgili = hostlar
+    ? temel
+    : [...new Set([...adayHostlar.filter((h) => hostOrtami(h, { nginx, invTum }).ok), ...ipSahipleri.keys()])];
 
   let sunucular = null;
   // ip / vhost yoksa OBJECT_ID burada (tur 2 sirasi); varsa yukarida bir kez olculdu.
   if (ilgili.length && (await taramaTablosu())) {
     sunucular = new Map();
-    const il = inListesi('s', ilgili, sql);
     try {
-      const r = await query(
-        `SELECT host, listen, server_name, CONVERT(varchar(10), scan_date, 23) AS gun FROM dbo.Nginx_Audit_Servers
-          WHERE scan_date >= ${SON_IKI_TARAMA_GUNU} AND host IN (${il.sqlText})`,
-        il.params,
-      );
-      const satirlar = r.recordset || [];
-      // Host basina o hostun EN SON gunu (aday IP'ler, vhostlar): yarim gunde henuz yazilmamis host dunku
-      // tam satirlarini kullanir; iki gunun satirlari KARISTIRILMAZ.
-      const son = enSonGunler(satirlar, (x) => hostNormalle(x.host));
-      for (const x of satirlar) {
-        const h = hostNormalle(x.host);
-        if (!h || gunMetni(x.gun) !== son.get(h)) continue;
-        if (!sunucular.has(h)) sunucular.set(h, { listen: [], serverName: [] });
-        sunucular.get(h).listen.push(x.listen);
-        sunucular.get(h).serverName.push(x.server_name);
+      for (const parca of parcala(ilgili)) {
+        const il = inListesi('s', parca, sql);
+        const r = await query(
+          `SELECT host, listen, server_name, CONVERT(varchar(10), scan_date, 23) AS gun FROM dbo.Nginx_Audit_Servers
+            WHERE scan_date >= ${SON_IKI_TARAMA_GUNU} AND host IN (${il.sqlText})`,
+          il.params,
+        );
+        const satirlar = r.recordset || [];
+        // Host basina o hostun EN SON gunu (aday IP'ler, vhostlar): yarim gunde henuz yazilmamis host dunku
+        // tam satirlarini kullanir; iki gunun satirlari KARISTIRILMAZ. Parcalar host bazlidir (host bolunmez).
+        const son = enSonGunler(satirlar, (x) => hostNormalle(x.host));
+        for (const x of satirlar) {
+          const h = hostNormalle(x.host);
+          if (!h || gunMetni(x.gun) !== son.get(h)) continue;
+          if (!sunucular.has(h)) sunucular.set(h, { listen: [], serverName: [] });
+          sunucular.get(h).listen.push(x.listen);
+          sunucular.get(h).serverName.push(x.server_name);
+        }
       }
     } catch (e) {
       throw okunamadi('dbo.Nginx_Audit_Servers', e);
@@ -1533,7 +1621,6 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
   let ayarlar = null;
   if (ilgili.length && (await tabloVar('dbo.Nginx_Audit_Settings'))) {
     ayarlar = new Map();
-    const il = inListesi('a', ilgili, sql);
     const gunParam = (ad, deger) => ({ name: ad, type: sql.NVarChar(10), value: deger });
     try {
       // Son iki tarama gunu, seek ile: d = MAX(scan_date), o = d'den onceki gun (yoksa null).
@@ -1547,33 +1634,38 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
       if (d) {
         // Host basina etkin gun: iki gun icinde hostun HERHANGI bir Settings satiri oldugu en son gun (yalniz
         // limit satirlari degil: limit_req'i olmayan host mesru olarak limitsizdir). Host basina iki seek.
-        const r0 = await query(
-          `SELECT h.host,
-                  CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @d, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS d_var,
-                  CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @o, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS o_var
-             FROM (VALUES ${il.params.map((p) => `(@${p.name})`).join(', ')}) AS h(host)`,
-          [...il.params, gunParam('d', d), gunParam('o', o)],
-        );
         const gunHostlari = new Map();
-        for (const x of r0.recordset || []) {
-          const gun = Number(x.d_var) === 1 ? d : Number(x.o_var) === 1 && o ? o : null;
-          if (!gun) continue;
-          if (!gunHostlari.has(gun)) gunHostlari.set(gun, []);
-          gunHostlari.get(gun).push(String(x.host));
-        }
-        for (const [gun, hs] of gunHostlari) {
-          const il2 = inListesi('a', hs, sql);
-          const r = await query(
-            `SELECT host, directive, value FROM dbo.Nginx_Audit_Settings
-              WHERE scan_date = CONVERT(date, @g, 23)
-                AND directive IN ${LIMIT_DIREKTIFLERI} AND host IN (${il2.sqlText})`,
-            [...il2.params, gunParam('g', gun)],
+        for (const parca of parcala(ilgili)) {
+          const il = inListesi('a', parca, sql);
+          const r0 = await query(
+            `SELECT h.host,
+                    CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @d, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS d_var,
+                    CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @o, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS o_var
+               FROM (VALUES ${il.params.map((p) => `(@${p.name})`).join(', ')}) AS h(host)`,
+            [...il.params, gunParam('d', d), gunParam('o', o)],
           );
-          for (const x of r.recordset || []) {
-            const h = hostNormalle(x.host);
-            if (!h) continue;
-            if (!ayarlar.has(h)) ayarlar.set(h, []);
-            ayarlar.get(h).push({ directive: x.directive, value: x.value });
+          for (const x of r0.recordset || []) {
+            const gun = Number(x.d_var) === 1 ? d : Number(x.o_var) === 1 && o ? o : null;
+            if (!gun) continue;
+            if (!gunHostlari.has(gun)) gunHostlari.set(gun, []);
+            gunHostlari.get(gun).push(String(x.host));
+          }
+        }
+        for (const [gun, hs0] of gunHostlari) {
+          for (const hs of parcala(hs0)) {
+            const il2 = inListesi('a', hs, sql);
+            const r = await query(
+              `SELECT host, directive, value FROM dbo.Nginx_Audit_Settings
+                WHERE scan_date = CONVERT(date, @g, 23)
+                  AND directive IN ${LIMIT_DIREKTIFLERI} AND host IN (${il2.sqlText})`,
+              [...il2.params, gunParam('g', gun)],
+            );
+            for (const x of r.recordset || []) {
+              const h = hostNormalle(x.host);
+              if (!h) continue;
+              if (!ayarlar.has(h)) ayarlar.set(h, []);
+              ayarlar.get(h).push({ directive: x.directive, value: x.value });
+            }
           }
         }
       }
@@ -1582,7 +1674,7 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
   }
   return {
-    nginx, inv, invTum, sunucular, ayarlar, ipSahipleri, ipTaninmayan,
+    nginx, inv, invTum, invIp, sunucular, ayarlar, ipSahipleri, ipTaninmayan,
     taramaVar: taramaVarMi === null ? sunucular !== null : taramaVarMi,
     ipEnvanteriVar, ipEnvanteriYasSaat, ipEnvanteriSon, taramaYasGun, taramaSon,
     ...(vhost !== null && vhost !== undefined ? { taramaAdlari } : {}),
@@ -1593,24 +1685,88 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
 function hedefAyrintisi(k, host) {
   const n = k.nginx.get(host) || null;
   const s = k.sunucular ? k.sunucular.get(host) || null : null;
-  const ipler = adayIpler({ listenler: s ? s.listen : [], envanterIp: n ? n.ip : null });
+  // TEK HEDEF MODELI: dbo.Inventory IP'leri de aday (nginx olmayan makinede tek kaynak); playbook IP'nin hedefte
+  // yerel oldugunu on kontrolde VE kosu basinda olcer (ip_yerel).
+  const invIpler = k.invIp && typeof k.invIp.get === 'function' ? k.invIp.get(host) || [] : [];
+  const ipler0 = adayIpler({ listenler: s ? s.listen : [], envanterIp: n ? n.ip : null });
+  const ipler = invIpler.length ? [...new Set([...ipler0, ...invIpler])].sort(ipSirala) : ipler0;
   // Tarama verisi yoksa (tablo yok ya da host taranmamis) vhost listesi BILINMIYOR: null.
   const vh = s ? vhostlar(s.serverName) : null;
   const t = k.ayarlar ? rateLimitTavani(k.ayarlar.get(host) || []) : { hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null };
   return { ipler, vhostlar: vh, hizSiniri: t.hizSiniri, vuSiniri: t.vuSiniri, limitReq: t.limitReq, limitConn: t.limitConn };
 }
 
+// dbo.Inventory urun kolonlari (server-hub/index.cjs PRODUCT_COLS ile ayni adlar; kolon yoksa ipucu null).
+const URUN_KOLONLARI = Object.freeze([
+  { col: 'nginx_version', urun: 'NGINX' },
+  { col: 'rha_version', urun: 'RHA' },
+  { col: 'ihs_version', urun: 'IHS' },
+]);
+
+/**
+ * /hedefler icin TUM dbo.Inventory makineleri (TEK HEDEF MODELI, 2026-11-13). Urun kolonlari once sys.columns'tan
+ * olculur (olmayan kolon sorguya girmez; server-hub kalibi). `k` (kaynaklariOku donusu) verilirse henuz okunmamis
+ * hostlarin satirlari k.inv / k.invTum / k.invIp'e eklenir (hostOrtami ve hedefAyrintisi degismeden calissin).
+ * Donus: Map(host -> { nginxEnvanter: boolean|null, urunler: string[] }). nginxEnvanter: nginx_version dolu bir
+ * satiri var mi (kolon yoksa null). Yalniz IPUCU: hedefte nginx'i playbook olcer. Okunamazsa 424 envanter_okunamadi.
+ * `hostlar` (+ `sql`) verilirse yalniz o hostlar okunur (/ip-sinifi).
+ */
+async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null }) {
+  let kolonlar;
+  try {
+    const r = await query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`);
+    kolonlar = new Set((r.recordset || []).map((c) => String(c && c.name != null ? c.name : '').toLowerCase()).filter(Boolean));
+  } catch (e) {
+    throw okunamadi('dbo.Inventory', e);
+  }
+  const urunKolonlari = URUN_KOLONLARI.filter((u) => kolonlar.has(u.col));
+  let satirlar;
+  try {
+    const sec = ['host', 'env', 'ip', ...urunKolonlari.map((u) => u.col)].join(', ');
+    if (Array.isArray(hostlar)) {
+      const hs = [...new Set(hostlar.map(hostNormalle).filter(Boolean))];
+      if (!hs.length) return new Map();
+      const il = inListesi('h', hs, sql);
+      satirlar = ((await query(`SELECT ${sec} FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`, il.params)).recordset || [])
+        .filter((x) => hs.includes(sahipAdi(x && x.host)));
+    } else {
+      satirlar = (await query(`SELECT ${sec} FROM dbo.Inventory WHERE host IS NOT NULL`)).recordset || [];
+    }
+  } catch (e) {
+    throw okunamadi('dbo.Inventory', e);
+  }
+  const onceden = k && k.invTum instanceof Map ? new Set(k.invTum.keys()) : new Set();
+  const adaylar = new Map();
+  const nginxKolonu = urunKolonlari.some((u) => u.urun === 'NGINX');
+  for (const x of satirlar) {
+    // FQDN satiri (gbx01.bmw.local) kisa adin adayidir (atilmaz; IP yolu ve ortam kurali da kisa adla calisir).
+    const h = sahipAdi(x && x.host);
+    if (!h) continue;
+    if (!adaylar.has(h)) adaylar.set(h, { nginxEnvanter: nginxKolonu ? false : null, urunler: [] });
+    const a = adaylar.get(h);
+    for (const u of urunKolonlari) {
+      const v = x[u.col] == null ? '' : String(x[u.col]).trim();
+      if (!v) continue;
+      if (!a.urunler.includes(u.urun)) a.urunler.push(u.urun);
+      if (u.urun === 'NGINX') a.nginxEnvanter = true;
+    }
+    if (k && !onceden.has(h)) invSatiriEkle(k, x);
+  }
+  for (const a of adaylar.values()) a.urunler.sort();
+  return adaylar;
+}
+
 // ── IP SINIFLANDIRMASI (sozlesme 8.2; SAF, sira BAGLAYICI) ─────────────────────────────────
 
 /**
  * Yazilan hedef IP -> { ok:true, tur:'sunucu', host } | { ok:true, tur:'serbest', host:null, ag,
- * digerSahipler:[{host, env}] } | red(400 / 409 / 424, ..., { sahipler }). `k`: kaynaklariOku({ ip })
- * donusu. Sira: IP bicimi -> yasak listesi (gecersiz girdi / yasakli ag; IKI kipte, izin
- * listesinden ONCE) -> adi cozulemeyen sahip (iki yolda, host secici dahil) -> sahiplerin ortami ->
- * yuk makinesinin kendi IP'si -> uretim / EDU / bilinmeyen ortamli sahip -> nginx sahipleri (host
- * secici: hedefHost sahiplerden biri mi - paylasilan VIP kabul; elle IP: tek nginx sahibi ve tek
- * sahip) -> nginx sahibi yoksa serbest (izin listesi acik, tarama ve IPInventory var ve TAZE, IP
- * izinli bir agda ve ag / yayin adresi degil). Cagiran hedefHost icin ONCE hedefKapisi'ni calistirir.
+ * digerSahipler:[] } | red(400 / 409 / 424, ..., { sahipler }). `k`: kaynaklariOku({ ip }) donusu (sahiplerin
+ * dbo.Inventory satirlari invTum'da). Sira: IP bicimi -> yasak listesi (gecersiz girdi / yasakli ag; IKI kipte,
+ * izin listesinden ONCE) -> adi cozulemeyen sahip (iki yolda, host secici dahil) -> yuk makinesinin kendi IP'si ->
+ * HER sahip hostOrtami'ndan gecmeli (nginx olsun olmasin; biri bile gecemezse 409 hedef_uretim) -> host secici:
+ * hedefHost sahiplerden biri mi (paylasilan VIP kabul) -> elle IP: tek sahip sunucu, iki ve daha cok sahip 409
+ * ip_belirsiz -> sahip yoksa serbest (izin listesi acik, tarama ve IPInventory var ve TAZE, IP izinli bir agda ve
+ * ag / yayin adresi degil). Cagiran hedefHost icin ONCE hedefKapisi'ni calistirir.
  */
 function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedefHost = null, yukHost = null } = {}) {
   if (!kullanilabilirIp(ip)) return red(400, 'gecersiz_istek', 'hedefIp kullanılabilir bir IPv4 değil (0/8, 127/8, 169.254/16, 224+ olamaz).');
@@ -1625,47 +1781,40 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
   if (taninmayan.length) {
     return red(409, 'ip_sahibi_cozulemedi', `${ip} adı çözülemeyen bir envanter kaydına ait (${taninmayan.join(', ')}); IP'nin sahibi bilinmediği için yük testi yapılmaz.`);
   }
-  const { envOfHost, envFromInventory } = require('../audit/nginx-hosts.cjs');
   const sahipMap = k.ipSahipleri instanceof Map ? k.ipSahipleri : new Map();
-  // nginx sahibi: nginx envanterinde ya da son taramada listen'i bu IP. Ortam: nginx ise ad kurali;
-  // degilse ad kurali BILINMIYOR degilse o, aksi halde dbo.Inventory.env.
+  // TEK HEDEF MODELI (2026-11-13): her sahip (nginx olsun olmasin) hostOrtami kuralindan gecmeli. `nginx` alani
+  // yalniz bilgi (nginx_inventory ya da son taramada listen'i bu IP); hedefte nginx'i playbook olcer.
+  const ortamlar = new Map();
   const sahipler = [...sahipMap.keys()].sort().map((h) => {
     const kaynaklar = sahipMap.get(h);
     const nginx = k.nginx.has(h) || kaynaklar.has('tarama');
-    const adEnv = envOfHost(h);
-    const env = nginx || adEnv !== 'BILINMIYOR' ? adEnv : envFromInventory(k.inv.get(h));
-    return { host: h, env, nginx, kaynaklar: [...kaynaklar].sort() };
+    const o = hostOrtami(h, k);
+    ortamlar.set(h, o);
+    return { host: h, env: o.env, nginx, kaynaklar: [...kaynaklar].sort() };
   });
   const ek = { sahipler: sahipler.slice(0, 10) };
   if (yukHost && sahipler.some((s) => s.host === yukHost)) {
     return red(409, 'ayni_host', `${ip} yük makinesinin (${yukHost}) kendi IP'si; hedef olamaz.`, ek);
   }
   for (const s of sahipler) {
-    const isaret = IZINLI_ORTAM.has(s.env) ? uretimIsareti({ host: s.host, nginxEnv: k.nginx.get(s.host)?.env ?? null, invEnv: k.inv.get(s.host) ?? null }) : null;
-    if (!IZINLI_ORTAM.has(s.env) || isaret) {
-      const sebep = !IZINLI_ORTAM.has(s.env) ? `ortamı ${s.env}` : `üretim işareti: ${isaret}`;
-      return red(409, 'hedef_uretim', `${ip}, ${s.host} sunucusuna ait (${sebep}); yük testi yapılmaz.`, ek);
-    }
+    const o = ortamlar.get(s.host);
+    if (!o.ok) return red(409, 'hedef_uretim', `${ip}, ${s.host} sunucusuna ait (${o.sebep}); yük testi yapılmaz.`, ek);
   }
-  const nginxSahipleri = sahipler.filter((s) => s.nginx).map((s) => s.host);
+  const sahipAdlari = sahipler.map((s) => s.host);
   if (hedefHost) {
-    // Host secici: paylasilan VIP'te diger non-prod sahipler kabul (playbook ip_yerel'i on kontrolde
-    // VE kosu basinda olcer). Metni cagiran aday listesiyle kurar.
-    if (nginxSahipleri.includes(hedefHost)) return { ok: true, tur: 'sunucu', host: hedefHost };
+    // Host secici: paylasilan VIP'te diger sahipler de kurala uydu (yukaridaki dongu); secilen host sahiplerden biri
+    // olmali. Playbook ip_yerel'i on kontrolde VE kosu basinda secilen hostta olcer. Metni cagiran aday listesiyle kurar.
+    if (sahipAdlari.includes(hedefHost)) return { ok: true, tur: 'sunucu', host: hedefHost };
     return red(409, 'ip_hedefte_yok', `${ip}, ${hedefHost} için bilinen IP'lerden değil.`, ek);
   }
-  if (nginxSahipleri.length === 1 && sahipler.length === 1) return { ok: true, tur: 'sunucu', host: nginxSahipleri[0] };
-  if (nginxSahipleri.length >= 2) {
-    return red(409, 'ip_belirsiz', `${ip} birden çok nginx sunucusunda tanımlı (${nginxSahipleri.join(', ')}); hedef sunucuyu listeden seçin.`, ek);
+  if (sahipAdlari.length === 1) return { ok: true, tur: 'sunucu', host: sahipAdlari[0] };
+  if (sahipAdlari.length >= 2) {
+    return red(409, 'ip_belirsiz', `${ip} birden çok sunucuda tanımlı (${sahipAdlari.join(', ')}); hedef sunucuyu listeden seçin.`, ek);
   }
-  if (nginxSahipleri.length === 1) {
-    const digerleri = sahipler.filter((s) => !s.nginx).map((s) => s.host);
-    return red(409, 'ip_belirsiz', `${ip} hem nginx sunucusu ${nginxSahipleri[0]} hem ${digerleri.join(', ')} kaydında görünüyor; hedef sunucuyu listeden seçin.`, ek);
-  }
-  // Nginx sahibi yok: serbest adayi. "Sahipsiz" PROD olmadiginin kaniti DEGIL; asil koruma izin listesi.
+  // Hicbir envanterde sahibi yok: serbest adayi. "Sahipsiz" PROD olmadiginin kaniti DEGIL; asil koruma izin listesi.
   const izinli = Array.isArray(aglar) ? aglar : [];
   if (!izinli.length) {
-    return red(409, 'serbest_kapali', `${ip} envanterdeki bir nginx sunucusuna ait değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).`, ek);
+    return red(409, 'serbest_kapali', `${ip} hiçbir envanterde kayıtlı değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).`, ek);
   }
   if (!(k.taramaVar && k.ipEnvanteriVar)) {
     const eksik = [k.taramaVar ? null : 'dbo.Nginx_Audit_Servers', k.ipEnvanteriVar ? null : 'dbo.IPInventory'].filter(Boolean).join(' ve ');
@@ -1681,9 +1830,10 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
   if (parcalar.length) return red(424, 'envanter_bayat', `Serbest hedef için envanter bayat: ${parcalar.join('; ')}; yükleyici / tarama işlerini kontrol edin.`, ek);
   const ag = serbestAgBul(ip, izinli);
   if (!ag) {
-    return red(409, 'ip_izinli_agda_degil', `${ip} envanterdeki bir nginx sunucusuna ait değil ve izinli ağların (${izinli.map((a) => a.metin).join(', ')}) dışında.`, ek);
+    return red(409, 'ip_izinli_agda_degil', `${ip} hiçbir envanterde kayıtlı değil ve izinli ağların (${izinli.map((a) => a.metin).join(', ')}) dışında.`, ek);
   }
-  return { ok: true, tur: 'serbest', host: null, ag: ag.metin, digerSahipler: sahipler.map((s) => ({ host: s.host, env: s.env })) };
+  // Sahip yoksa digerSahipler her zaman bos (alan geriye uyum icin kalir).
+  return { ok: true, tur: 'serbest', host: null, ag: ag.metin, digerSahipler: [] };
 }
 
 // ── HOST BASLIGI (D7 + uretim kapisi + plan uyarilari; sozlesme 8.4) ─────────────────────────
@@ -1768,6 +1918,9 @@ module.exports = {
   EPOCH_RE,
   SON_EPOCH_UST_PAY_SN,
   SERBEST_UYARISI,
+  NGINX_YOK_UYARISI,
+  NGINX_YOK_AYAR_ENGELI,
+  NGINX_BELIRSIZ_ENGELI,
   WRK_UYARISI,
   HOST_LISTEDE_YOK_UYARISI,
   WRK_SNI_MESAJI,
@@ -1804,8 +1957,10 @@ module.exports = {
   yukMakinesiUyarilari,
   etiket,
   uretimIsareti,
+  hostOrtami,
   hedefKapisi,
   yukHostKapisi,
+  hedefAdaylariOku,
   listenIp,
   listenIpleri,
   adayIpler,
@@ -1814,7 +1969,6 @@ module.exports = {
   onKontrolDegerlendir,
   onayMetniDogru,
   yukHostlari,
-  AD_DISI_YUK_HOSTLARI,
   yolGuvenli,
   birKezUyar,
   ciktiKok,

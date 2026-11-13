@@ -11,6 +11,8 @@
 // HTTP/2 (2026-11-02): h2 k6 satirinda kipten once "HTTP/2"; h1 k6 ve wrk metinleri BIREBIR eskisi.
 // Dogrulama UV3 (2026-10-28): onay girdisi aria-describedby ile ipucuna (yuk-onay-ipucu; yapistirma kapali) ve yanlis
 // yazimda footer'daki uyusmazlik metnine (yuk-onay-durum) baglidir. Gorunmeyen id'ye bag yok: span yalniz !nameOk iken.
+// TEK HEDEF MODELI (2026-11-13): on kontrol hedefte nginx bulamadiysa (onKontrol.hedefNginx false) "Nginx" satiri neyin
+// olculmeyecegini soyler; nginx hedefte ve eski on kontrolde satir YOK (gorunum BIREBIR).
 import React, { useState } from 'react';
 import { BoltIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import type { NlKosuAyrinti, NlSenaryo } from '@/api/nginxLoadtestApi';
@@ -19,8 +21,11 @@ import { fmtNumber } from '@/utils/datetime';
 import { SM_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { Cip, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { sureMetni } from '@/components/server_hub/retirementCikti';
-import { AE_ETIKETI, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn, parametreSunucuAyari, protokolOf } from './yukTestiOrtak';
+import { AE_ETIKETI, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_CIP_IPUCU, adimDegerleri, butceSn, hedefNginxsiz, parametreSunucuAyari, protokolOf } from './yukTestiOrtak';
 import { GIRDI_TABAN, girdiStili } from './YukUi';
+
+/** Onay penceresindeki "Nginx" satiri (nginx'siz hedef). */
+export const NGINX_YOK_SATIRI = 'Bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür.';
 
 export interface BaslatOnayiDegeri { confirmText: string; uyariOnay: boolean }
 
@@ -87,6 +92,12 @@ export default function BaslatOnayi({ onKontrol, senaryo, uyarilar, sunucuUyaril
             <>
               <dt style={{ color: 'var(--text-secondary)' }}>Hedef sunucu</dt>
               <dd className="min-w-0 truncate font-mono font-semibold" title={`${hedef} · ${onKontrol.hedefIp || ''}`}>{hedef}{onKontrol.hedefIp ? <span className="font-normal" style={{ color: 'var(--text-secondary)' }}> · {onKontrol.hedefIp}</span> : null}</dd>
+              {hedefNginxsiz(onKontrol) && (
+                <>
+                  <dt style={{ color: 'var(--text-secondary)' }}>Nginx</dt>
+                  <dd className="min-w-0" style={{ color: 'var(--status-warning-text)' }}>{NGINX_YOK_SATIRI}</dd>
+                </>
+              )}
             </>
           )}
           <dt style={{ color: 'var(--text-secondary)' }}>Vhost</dt>

@@ -10,9 +10,10 @@
 //   - son makine cikarilamaz (tablo bosalip sessizce ortam listesine donmesin)
 //   - tablo OKUNAMAZSA kapali kalir (424): ortam listesine sessizce donmek Admin'in cikardigi makineyi geri acardi
 //
-// LISTE KAPIYI GEVSETEMEZ: ekleme aninda ve her kosuda dogrula.yukHostKapisi ayni kurallari uygular (ad kuralina
-// gore DEV/TEST/QA - ad kurali disinda yalniz koddaki AD_DISI_YUK_HOSTLARI, ortami dbo.Inventory'den -, uretim
-// isareti yok, envanterde kayitli). Playbook ad kuralini ve ayni sabit listeyi ayrica denetler.
+// LISTE KAPIYI GEVSETEMEZ: ekleme aninda ve her on kontrol / kosuda dogrula.yukHostKapisi ayni kurali uygular (TEK
+// HEDEF MODELI, 2026-11-13: dbo.Inventory'de kayitli, satirlarinin HEPSI DEV/TEST/QA, addan PROD / EDU degil, uretim
+// isareti yok; ad kurali ARANMAZ). www ile SSH'i on kontrol kanitlar; playbook EDU listesi, uretim adi ve hedef != yuk
+// kuralini ayrica denetler.
 'use strict';
 
 const dg = require('./dogrula.cjs');

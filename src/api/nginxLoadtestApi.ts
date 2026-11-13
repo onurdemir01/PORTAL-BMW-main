@@ -45,6 +45,11 @@
 // senaryoyu silmeden degistirmek; testi onden kaydedip hizli girmek): POST /kuyruklar/:id/duraklat ve /devam (yeni durum
 // degeri YOK; `duraklatAt` durumdan bagimsiz bayrak); PUT /kuyruklar/:id/ogeler/:ogeId (bekleyen oge); PUT /senaryolar/:id
 // (yalniz ad, aciklama, vhost: tsv / sha256 degismez); /sablonlar (Admin; HAR icermez, senaryoId'ye baglidir).
+// TEK HEDEF MODELI (2026-11-13, kullanici: "hedef makine ile yuk makinemin ne oldugunun teknik olarak ne onemi var?"):
+// hedef = dbo.Inventory'deki herhangi bir DEV/TEST/QA makinesi (ad kurali yok); nginx playbook tarafindan OLCULUR.
+// /hedefler satiri ve /ip-sinifi sunucu yaniti ipucu tasir (`nginxEnvanter`, `urunler`, `nginxSon`, `nginxSonAt`);
+// on kontrol ozeti `hedefNginx` (true / false / null; alan yoksa eski playbook = nginx) ve `hedefNproc`; kosu satiri ve
+// karsilastirma tarafi `hedefNginx`; coklu meta `nginx: false` yalniz nginx'siz satirda. Sozlesme (extra_vars) degismedi.
 import { okJson, safeJson, type ApiError } from './http';
 
 const BASE = '/api/nginx-loadtest';
@@ -57,7 +62,8 @@ export type NlKarar = 'KALICI' | 'NOTR' | 'RET' | 'GECERSIZ' | 'VERI_YOK' | 'DOY
 export type NlKip = 'yeni' | 'ka';
 export type NlAe = 'br' | 'gzip' | 'identity';
 export type NlIslem = 'on_kontrol' | 'kosu';
-/** `sunucu`: IP bir DEV/TEST/QA nginx sunucusunun (CPU kaydedici + nginx logu); `serbest`: LB VIP'i ya da yonetilmeyen sunucu (yalniz istemci). */
+/** `sunucu`: IP bir dbo.Inventory makinesinin (tum satirlari DEV/TEST/QA; TEK HEDEF MODELI 2026-11-13: nginx olsun olmasin,
+ *  nginx on kontrolde olculur); `serbest`: hicbir envanterde olmayan IP (LB VIP; yalniz istemci, izinli aglarda). */
 export type NlHedefTuru = 'sunucu' | 'serbest';
 /** `k6`: acik dongu (adim = istek/sn); `wrk`: kapali dongu (adim = baglanti sayisi, toplam hiz tavanli). */
 export type NlMotor = 'k6' | 'wrk';
@@ -71,6 +77,10 @@ export type NlProtokol = 'h1' | 'h2';
 export interface NlHedef {
   host: string; env: string | null; ipler: string[]; vhostlar: string[]; uygun: boolean; neden: string | null;
   kod?: string | null; hizSiniri?: number | null; vuSiniri?: number | null; limitReq?: number | null; limitConn?: number | null; vhostVerisi?: boolean;
+  /** TEK HEDEF MODELI (2026-11-13) ipuclari; kesin karar on kontrolde. `nginxEnvanter`: envanterde nginx izi (null:
+   *  bilinmiyor), `urunler`: dbo.Inventory urun kolonlari ('NGINX' | 'RHA' | 'IHS'), `nginxSon`: bu hedefin son DONE on
+   *  kontrolunun nginx tespiti (null: yok / olculmedi), `nginxSonAt`: o on kontrolun zamani. Eski sunucu: alan yok. */
+  nginxEnvanter?: boolean | null; urunler?: string[]; nginxSon?: boolean | null; nginxSonAt?: string | null;
 }
 export interface NlYukHost {
   host: string; env: string | null; uygun: boolean; neden: string | null;
@@ -125,6 +135,8 @@ export interface NlVarsayilanlar {
 }
 export interface NlHedefler {
   ok: true; hedefler: NlHedef[]; yukHostlari: NlYukHost[]; sinirlar: NlSinirlar; varsayilan: NlVarsayilanlar;
+  /** Uygun hedef sayisi (2026-11-13; eski sunucu: yok). */
+  hedefSayisi?: number;
   /** Yuk makinesi listesinin kaynagi: 'portal' (Araclar'dan yonetilir) | 'ortam' (env / varsayilan) | null (okunamadi). */
   yukHostKaynak?: 'portal' | 'ortam' | null;
   /** Liste Portal DB'den okunamadiysa neden (yuk makinesi secilemez). */
@@ -206,6 +218,11 @@ export interface NlOnKontrol {
   /** 2026-11-03: yuk makinesinin salt okunur olcumu (yeni playbook; eski: null): yerel port sayisi, tcp_tw_reuse,
    *  tcp_timestamps, cekirdek sayisi, bos bellek (kB). */
   yukPortSayisi?: number | null; yukTwReuse?: number | null; yukTcpTs?: number | null; yukNproc?: number | null; yukMemKb?: number | null;
+  /** TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx'i olcer. true / false; null = belirlenemedi (ENGEL); alan YOK
+   *  (undefined) = eski playbook (yalniz nginx hedefe kosabilirdi: nginx sayilir). Serbestte null. */
+  hedefNginx?: boolean | null;
+  /** Hedefin cekirdek sayisi (yeni playbook; yoksa null). */
+  hedefNproc?: number | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -218,6 +235,9 @@ export interface NlKosu {
   hedefTuru: NlHedefTuru; motor: NlMotor;
   /** Kosunun protokolu (liste kolonu, yoksa parametreler.protokol, yoksa h1). */
   protokol: NlProtokol;
+  /** Hedefte nginx var mi (2026-11-13; on kontrol satiri: on kontrol tespiti, kosu satiri: kosu tespiti). null = eski
+   *  satir / serbest / olculmedi (sunucu satirinda nginx sayilir). */
+  hedefNginx?: boolean | null;
   /** Serbest satirda Portal izin listesinde SU AN eslesen girdi (yalniz ayrinti). */
   serbestAg?: string | null;
   /** On kontrol satirinin plan uyarilari (Host basligi / yuk sunucusu havuzu; onay ister; yalniz ayrinti). */
@@ -336,7 +356,11 @@ export interface NlSonucOzeti {
  *  fark_yuzde YUZDE cinsinden (aday / ref - 1) x 100. */
 export interface NlKarsilastirmaSatiri { hiz: number | null; ref: Record<string, unknown> | null; aday: Record<string, unknown> | null; farkYuzde: Record<string, number | null> }
 /** Karsilastirmanin bir tarafi; `motor` / `hedefTuru` kosu satirindan (eski sunucu vermez). */
-export interface NlKarsilastirmaTarafi { id: number; etiket: string | null; createdAt: string | null; motor?: NlMotor; hedefTuru?: NlHedefTuru; protokol?: NlProtokol }
+export interface NlKarsilastirmaTarafi {
+  id: number; etiket: string | null; createdAt: string | null; motor?: NlMotor; hedefTuru?: NlHedefTuru; protokol?: NlProtokol;
+  /** 2026-11-13: false = nginx olmayan hedef (CPU-ms yok, KALICI verilmez); null / yok = nginx ya da serbest. */
+  hedefNginx?: boolean | null;
+}
 export interface NlKarsilastirma {
   ok: true; karar: NlKarar; nedenler: string[]; tablo: NlKarsilastirmaSatiri[];
   ref: NlKarsilastirmaTarafi; aday: NlKarsilastirmaTarafi;
@@ -364,6 +388,8 @@ export interface NlIpSahibi { host: string; env: string | null; nginx: boolean; 
 export interface NlIpSinifiSunucu {
   ok: true; tur: 'sunucu'; ip: string; host: string; env: string | null; vhostlar: string[]; vhostVerisi: boolean;
   hizSiniri: number | null; vuSiniri: number | null; limitReq?: number | null; limitConn?: number | null; uygun: boolean; neden: string | null; kod: string | null; kaynaklar: string[];
+  /** 2026-11-13: hostun aday IP'leri (uygun:false iken bos) ve nginx ipuclari (NlHedef ile ayni anlam). */
+  ipler?: string[]; nginxEnvanter?: boolean | null; urunler?: string[]; nginxSon?: boolean | null;
 }
 export interface NlIpSinifiSerbest { ok: true; tur: 'serbest'; ip: string; host: null; ag: string; digerSahipler: { host: string; env: string | null }[] }
 export type NlIpSinifi = NlIpSinifiSunucu | NlIpSinifiSerbest;
@@ -637,7 +663,16 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     yukPortSayisi: sayiVeya(alan(ham, 'yukPortSayisi', 'yukm_port_sayisi')), yukTwReuse: sayiVeya(alan(ham, 'yukTwReuse', 'yukm_tw_reuse')),
     yukTcpTs: sayiVeya(alan(ham, 'yukTcpTs', 'yukm_tcp_ts')), yukNproc: sayiVeya(alan(ham, 'yukNproc', 'yukm_nproc')),
     yukMemKb: sayiVeya(alan(ham, 'yukMemKb', 'yukm_mem_kb')),
+    // Alan yoksa anahtar da YOK (eski playbook = nginx); varsa true / false, baska her deger null (belirlenemedi).
+    ...(alan(ham, 'hedefNginx', 'hedef_nginx') !== undefined ? { hedefNginx: nginxDegeri(alan(ham, 'hedefNginx', 'hedef_nginx')) } : {}),
+    hedefNproc: sayiVeya(alan(ham, 'hedefNproc', 'hedef_nproc')),
   };
+}
+/** Nginx tespiti yalniz boolean (ya da Ansible metni 'True' / 'False'); digeri null. */
+function nginxDegeri(x: unknown): boolean | null {
+  if (typeof x === 'boolean') return x;
+  if (typeof x === 'string' && /^(true|false)$/i.test(x.trim())) return x.trim().toLowerCase() === 'true';
+  return null;
 }
 /** Arac seti satiri (camel ya da snake; eksik alan null, bayrak false). id yoksa null (gecersiz satir listeye girmez). */
 export function aracSetiNormalle(x: unknown): NlAracSeti | null {
@@ -717,6 +752,7 @@ export function kosuSatiriNormalle(x: unknown): NlKosu {
     hedefTuru: hedefTuruVeya(alan(r, 'hedefTuru', 'hedef_turu')),
     motor: motorVeya(alan(r, 'motor'), p?.motor),
     protokol: protokolVeya(alan(r, 'protokol'), p?.protokol),
+    hedefNginx: mantikVeya(alan(r, 'hedefNginx', 'hedef_nginx')),
   };
 }
 export function kosuNormalle(x: unknown): NlKosuAyrinti {
@@ -767,7 +803,7 @@ export function hedeflerNormalle(x: unknown): NlHedefler {
   const protokoller = (Array.isArray(r.protokoller) ? r.protokoller : []).filter((m): m is NlProtokol => m === 'h1' || m === 'h2');
   return {
     ...(r as unknown as NlHedefler),
-    hedefler: Array.isArray(r.hedefler) ? (r.hedefler as NlHedef[]) : [],
+    hedefler: Array.isArray(r.hedefler) ? (r.hedefler as unknown[]).map(hedefSatiriNormalle).filter((h): h is NlHedef => h != null) : [],
     yukHostlari: Array.isArray(r.yukHostlari) ? (r.yukHostlari as NlYukHost[]) : [],
     sinirlar,
     varsayilan: {
@@ -785,6 +821,17 @@ export function hedeflerNormalle(x: unknown): NlHedefler {
     araclar: aracDurumuNormalle(r.araclar),
   };
 }
+/** /hedefler satiri: listeler dizi; ipucu alanlari yalniz boolean / null (eski sunucu: alan yok -> null, urunler bos). */
+function hedefSatiriNormalle(x: unknown): NlHedef | null {
+  const r = nesne(x);
+  if (typeof r.host !== 'string' || !r.host) return null;
+  return {
+    ...(r as unknown as NlHedef),
+    ipler: metinDizisi(r.ipler), vhostlar: metinDizisi(r.vhostlar),
+    nginxEnvanter: nginxDegeri(r.nginxEnvanter), urunler: metinDizisi(r.urunler),
+    nginxSon: nginxDegeri(r.nginxSon), nginxSonAt: metinVeya(r.nginxSonAt),
+  };
+}
 /** /ip-sinifi 200 govdesi: listeler dizi, sinirlar sayi ya da null; tur bilinmiyorsa RET (fail-closed). */
 function ipSinifiNormalle(x: Ham): NlIpSinifi | NlIpSinifiRet {
   const ip = String(x.ip ?? '');
@@ -797,6 +844,7 @@ function ipSinifiNormalle(x: Ham): NlIpSinifi | NlIpSinifiRet {
       ok: true, tur: 'sunucu', ip, host: x.host, env: metinVeya(x.env), vhostlar: metinDizisi(x.vhostlar), vhostVerisi: x.vhostVerisi === true,
       hizSiniri: sayiVeya(x.hizSiniri), vuSiniri: sayiVeya(x.vuSiniri), limitReq: sayiVeya(x.limitReq), limitConn: sayiVeya(x.limitConn), uygun: x.uygun === true, neden: metinVeya(x.neden), kod: metinVeya(x.kod),
       kaynaklar: metinDizisi(x.kaynaklar),
+      ipler: metinDizisi(x.ipler), nginxEnvanter: nginxDegeri(x.nginxEnvanter), urunler: metinDizisi(x.urunler), nginxSon: nginxDegeri(x.nginxSon),
     };
   }
   return { ok: false, code: 'beklenmeyen', message: 'Sunucu IP’nin sınıfını bildirmedi; yeniden deneyin.' };
@@ -842,6 +890,8 @@ export interface NlCokluKosu {
   senaryoId: number | null; senaryoAd: string | null;
   /** "Fark" metni (parametreler; eski kosuda kip / ae kombodan). sunucuAyar null = kosu oncesi ayar istenmedi. */
   kip?: 'yeni' | 'ka' | null; ae?: 'br' | 'gzip' | 'identity' | null; sunucuAyar?: { seviye: number | null; static: boolean } | null;
+  /** 2026-11-13: yalniz nginx olmayan sunucu hedefinde false (CPU-ms yok, KALICI verilmez); diger satirda alan yok. */
+  nginx?: false;
 }
 export type NlKademeFarki = NlFark & { hiz: number; ref: number | null; aday: number | null };
 export interface NlCokluAday extends NlCokluKosu {
@@ -887,6 +937,8 @@ function cokluKosuNormalle(x: unknown): NlCokluKosu {
     kip: o.kip === 'yeni' || o.kip === 'ka' ? o.kip : null,
     ae: o.ae === 'br' || o.ae === 'gzip' || o.ae === 'identity' ? o.ae : null,
     sunucuAyar: o.sunucuAyar && typeof o.sunucuAyar === 'object' ? { seviye: sayiVeya(nesne(o.sunucuAyar).seviye), static: nesne(o.sunucuAyar).static === true } : null,
+    // Alan yalniz nginx'siz sunucu satirinda (deepEqual'li eski fikstur birebir kalir).
+    ...(o.nginx === false ? { nginx: false as const } : {}),
   };
 }
 const hizlarNormalle = (x: unknown) => (Array.isArray(x) ? x.map(cokluHizNormalle) : []);

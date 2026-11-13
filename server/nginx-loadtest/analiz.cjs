@@ -101,6 +101,13 @@
 //  17. Coklu karsilastirma (2026-11-04, coklu.cjs): kararVer'in gurultu x3 / esik kurali tek fonksiyonda (gurultuEsigi);
 //      hizOzeti (kararVer ile ayni gruplar) ve farkDurumu (hucre basina AYNI kural: CPU-ms, p95, hata; digerleri
 //      renklendirilmez) disari acildi. kararVer ciktisi BIREBIR (Python fikstur testleri).
+//  18. Nginx olmayan sunucu hedefi (TEK HEDEF MODELI, 2026-11-13; kosuAnaliz secenegi `hedefNginx` false, yalniz sunucu):
+//      playbook hedefte nginx bulamadi ve yuk_cpu_kaydedici.sh ROL=hedef calisti. Log, sunucu_ kesitleri, bellek ve bdetay
+//      YOK SAYILIR (serbestteki gibi; `logsuz`); hedefcpu_* kesitlerinden (GENEL CPU, /proc/stat) adim penceresinde host
+//      CPU ortalamasi / en yuksegi; ortalama > %90 DOYMA (sunucu kipindeki host CPU kurali). Pencere yuk makinesi saatiyle
+//      (zaman.csv). Hedef NIC (ag_*.txt rol=hedef) ayni pencereyle olculur. cpu_ms_istek / kapasite / rps_sunucu null kalir
+//      ve karar CPU'suz yoldan (kararVer refNginx / adayNginx false -> cpusuzKarar) verilir: genel host CPU'su nginx worker
+//      CPU'su degildir. Secenek verilmezse (true) cikti BIREBIR eskisi.
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
@@ -141,10 +148,15 @@ const PROTOKOL_ADI = Object.freeze({ h1: 'HTTP/1.1', h2: 'HTTP/2' });
 // Serbest hedefte yok sayilan cpu_kaydedici.sh dosyalari (sunucu_*.csv, bilgi_*.txt, log_*, diger_*).
 const SUNUCU_DOSYA_RE = /^(sunucu|bilgi|log|diger)_/;
 const SERBEST_UYARISI = 'sunucu_olcumu_yok(serbest_hedef)';
+// Nginx'siz hedef (kosu uyarilari): host CPU olculdu ama istek basina CPU / kapasite yok; kayit hic yok / hepsi bozuk.
+const NGINX_YOK_UYARISI = 'nginx_yok(istek_basina_cpu_ve_kapasite_yok)';
+const HEDEF_CPU_KAYDI_YOK = 'hedef_cpu_kaydi_yok';
+const HEDEF_CPU_KAYDI_BOZUK = 'hedef_cpu_kaydi_bozuk';
 const WRK_TLS_UYARISI = 'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)';
 // PORTAL FARKLARI 12: k6 HTTP/2'de VU basina tek akis; tarayicidaki eszamanli akislar olculmez.
 const H2_UYARISI = 'h2_vu_basina_tek_akis(tarayici_coklamasi_olculmez)';
 const CPU_YOK_SERBEST = 'CPU olculmedi (serbest hedef): KALICI verilmez; karar p95 ve hata oranina gore';
+const CPU_YOK_NGINXSIZ = 'CPU-ms olculmedi (nginx olmayan hedef): KALICI verilmez; karar p95 ve hata oranina gore';
 const CPU_YOK_WRK = 'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore';
 
 // GECERSIZ / HATALI / DOYMA neden onekleri -> (anlami, ne yapilir). Ekran yalniz gorulenleri aciklar.
@@ -208,6 +220,8 @@ const NEDEN_KALIPLARI = Object.freeze([
   { kod: 'tekrar_kosu_deneme', tur: 'uyari', re: /^tekrar_kosu:deneme_(\d+)_kullanildi\((\d+)_eski_satir_atildi\)$/ },
   { kod: 'cpu_olculemedi', tur: 'uyari', re: /^cpu_olculemedi\((reload|sayac_geriledi|net_negatif)\)$/ },
   { kod: 'yuk_cpu_olculemedi', tur: 'uyari', re: /^yuk_cpu_olculemedi$/ },
+  // 2026-11-13 nginx'siz hedef: kesit var ama bu TUR'un penceresinde hedef CPU ornegi yok.
+  { kod: 'hedef_cpu_olculemedi', tur: 'uyari', re: /^hedef_cpu_olculemedi$/ },
   // 2026-11-03 bellek (bilgi): TUR uyarisi bellek_bos_az, kosu uyarisi nginx_bellek_artisi.
   { kod: 'bellek_bos_az', tur: 'uyari', re: /^bellek_bos_az\((hedef|yuk),%([0-9.]+)\)$/ },
   { kod: 'nginx_bellek_artisi', tur: 'uyari', re: /^nginx_bellek_artisi\(ilk=(\d+)MB,son=(\d+)MB,kosu_sonu=(\d+)MB\)$/ },
@@ -427,6 +441,35 @@ function yukBostaCpu(yukKesitler, zaman, isinmaSn) {
   return Math.min(100, Math.max(0, 100.0 - mesgul));
 }
 
+/**
+ * Nginx'siz sunucu hedefinin genel pencere CPU'su (%). Pencere yukBostaCpu ile ayni ([bas + isinma +
+ * 3, bit - 2], zaman.csv = yuk makinesi saati; hedef saati ile fark NTP kadar). Ortalama ilk-son ornekten, en yuksek 5
+ * orneklik kayan pencereden (pencereCpu ile ayni kural). Pencere < 10 sn, 2'den az ornek ya da sayac ilerlemedi: null.
+ */
+function hedefHostCpu(kesitler, zaman, isinmaSn) {
+  if (!Array.isArray(kesitler) || !kesitler.length || !zaman) return null;
+  const w0 = zaman[0] + (isinmaSn || 0) + 3;
+  const w1 = zaman[1] - 2;
+  if (!(w1 - w0 >= YUK_PENCERE_MIN_SN)) return null;
+  const kesit = kesitSec(kesitler, w0, w1);
+  if (kesit === null) return null;
+  const ic = kesit.ornekler.filter((o) => w0 <= o.t && o.t <= w1);
+  if (ic.length < 2) return null;
+  const a = ic[0];
+  const b = ic[ic.length - 1];
+  if (!(b.tot > a.tot)) return null;
+  const yuzde = (x, y) => Math.min(100, Math.max(0, (100.0 * (y.busy - x.busy)) / (y.tot - x.tot)));
+  const ort = yuzde(a, b);
+  let max = null;
+  for (let i = 0; i < ic.length - 5; i++) {
+    if (ic[i + 5].tot > ic[i].tot) {
+      const v = yuzde(ic[i], ic[i + 5]);
+      max = max === null ? v : pyMax(max, v);
+    }
+  }
+  return { ort, max: max === null ? ort : max, kesit: kesit.anahtar };
+}
+
 const MB = (kb) => kb / 1024;
 const enKucuk = (xs) => (xs.length ? xs.reduce((a, b) => (b < a ? b : a)) : null);
 const enBuyuk = (xs) => (xs.length ? xs.reduce((a, b) => (b > a ? b : a)) : null);
@@ -571,7 +614,7 @@ function nicOlc(k, a, b) {
  * 2026-11-03 (bant genisligi, YALNIZ BILGI). Test trafigi (istemci JSON) + hedef NIC (kesitAdi'nin ag kesiti, [w0, w1]) + yuk
  * makinesi NIC (rol=yuk, yukBostaCpu penceresi). Hicbiri yoksa null (eski kosu). Kullanim > %70: `uyari`ya ag_kullanim_yuksek.
  */
-function agOlc(ctx, tur, kesitAdi, w0, w1, zaman, isinmaSn, uyari) {
+function agOlc(ctx, tur, kesitAdi, w0, w1, zaman, isinmaSn, uyari, genelKesit = null) {
   const o = { test_alinan_bps: null, test_gonderilen_bps: null, hedef: null, yuk: null };
   const ia = ctx.istemciAg.get(tur);
   if (ia && ia.sure !== null && ia.sure > 0) {
@@ -580,6 +623,11 @@ function agOlc(ctx, tur, kesitAdi, w0, w1, zaman, isinmaSn, uyari) {
   }
   if (kesitAdi && w0 !== null && w1 !== null && w1 > w0) {
     o.hedef = nicOlc(ctx.agHedef.find((k) => k.anahtar === kesitAdi), w0, w1);
+  } else if (genelKesit && zaman) {
+    // Nginx'siz hedef: genel CPU kesitiyle ayni anahtar ve yuk makinesi penceresi (log saati yok).
+    const g0 = zaman[0] + (isinmaSn || 0) + 3;
+    const g1 = zaman[1] - 2;
+    if (g1 > g0) o.hedef = nicOlc(ctx.agHedef.find((k) => k.anahtar === genelKesit), g0, g1);
   }
   if (ctx.agYuk.length && zaman) {
     const y0 = zaman[0] + (isinmaSn || 0) + 3;
@@ -904,7 +952,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
       if (Math.abs(fark - 2) > 10) uyari.push(`saat_farki~${fd(pyYuvarla(fark))}s(sunucu-istemci)`);
       if (Math.abs(fark - 2) <= SAAT_FARKI_TAVAN) saatFarki = fark - 2;
     }
-  } else if (zaman && !ctx.serbest) {
+  } else if (zaman && !ctx.logsuz) {
     const isinma = r.isinma_sn || 30;
     w0 = zaman[0] + isinma + 5;
     w1 = zaman[1] - 5;
@@ -912,7 +960,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     uyari.push('log_satiri_yok:pencere_istemci_saatinden');
     saatFarki = 0;
   } else {
-    // Ne log ne zaman satiri var ya da serbest hedef (sunucu olcumu yok): pencere kurulmaz.
+    // Ne log ne zaman satiri var ya da serbest / nginx'siz hedef (sunucu logu yok): pencere kurulmaz.
     kaynak = '-';
   }
   r.pencere_kaynak = kaynak;
@@ -934,14 +982,14 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r.sunucu_rt_p50 = yuzdelik(rts, 50);
   r.sunucu_rt_p95 = yuzdelik(rts, 95);
   r.sunucu_rt_p99 = yuzdelik(rts, 99);
-  r.n_log_olcum = ctx.serbest ? null : olcum.length;
+  r.n_log_olcum = ctx.logsuz ? null : olcum.length;
   r.govde_bayt_istek = bls.length ? pyToplam(bls) / bls.length : null;
   r['yeniden_baglanti_%'] = crs.length ? (100.0 * crs.filter((c) => c > 1).length) / crs.length : null;
   // 429 her fazda sayilir (k6 ilk 429'da kosuyu keser); 5xx yalniz olcum fazinda (istemci sayaci da oyle)
   let s429 = 0;
   for (const i of satirlar) if (kayit.durum[i] === 429) s429++;
-  // Serbest hedefte sunucu sayilmadi: nedende sunucu sayisi YOK (olculmedi, 0 degil).
-  const sunucuda = (n) => (ctx.serbest ? '' : `,sunucu=${n}`);
+  // Serbest / nginx'siz hedefte sunucu sayilmadi: nedende sunucu sayisi YOK (olculmedi, 0 degil).
+  const sunucuda = (n) => (ctx.logsuz ? '' : `,sunucu=${n}`);
   if ((r.n_429 || 0) > 0 || s429) gecersiz.push(`429(istemci=${fd(r.n_429 || 0)}${sunucuda(s429)})`);
   if ((r.n_5xx || 0) > 0 || s5xx) gecersiz.push(`5xx(istemci=${fd(r.n_5xx || 0)}${sunucuda(s5xx)})`);
   // PORTAL FARKLARI 12: protokol kolonu varsa karar protokol_uyumsuz'dan; yoksa (eski satir) h1'de bugunku kural.
@@ -960,7 +1008,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     gecersiz.push(prot === 'h1' ? 'http2' : `h2_disi(${fd(r.protokol_uyumsuz)})`);
   }
   if ((r.hata_orani || 0) > HATA_ESIK + EPS) gecersiz.push(`hata_%${fx(100 * r.hata_orani, 2)}(>%${fx(100 * HATA_ESIK, 1)})`);
-  if (r.n_olcum && !ctx.serbest) {
+  if (r.n_olcum && !ctx.logsuz) {
     const fark = Math.abs(olcum.length - r.n_olcum) / r.n_olcum;
     r['log_istemci_fark_%'] = 100.0 * fark;
     if (satirlar.length && fark > LOG_ESIK_GECERSIZ) gecersiz.push(`log_istemci_farki_%${fx(100 * fark, 1)}`);
@@ -1054,6 +1102,20 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
     }
   }
   if (r.adim.toLowerCase().includes('perf')) uyari.push('perf_ek_yuku(kararda_kullanilmaz)');
+  // Nginx'siz sunucu hedefi: genel CPU (hedefcpu_*). Yalniz host CPU ve DOYMA (> %90); cpu_ms_istek / kapasite null kalir.
+  // Kesit penceresi hedef NIC olcumune de gider (agOlc `genelKesit`).
+  let genelKesit = null;
+  if (ctx.genelCpu && ctx.hedefCpuKesitler.length) {
+    const hc = hedefHostCpu(ctx.hedefCpuKesitler, zaman, r.isinma_sn);
+    if (hc === null) {
+      if (Object.keys(ist).length) uyari.push('hedef_cpu_olculemedi');
+    } else {
+      r.host_cpu_ort = hc.ort;
+      r.host_cpu_max = hc.max;
+      genelKesit = hc.kesit;
+      if (hc.ort > DOYMA_HOST_CPU) doyma = true;
+    }
+  }
   // 2026-11-03 (K3): yuk makinesi CPU'su (serbest hedefte de; yuk makinesi ayni makine). Kayit yoksa null, isaret yok.
   r.yuk_cpu_bosta = yukBostaCpu(ctx.yukKesitler, zaman, r.isinma_sn);
   r.yuk_doydu = r.yuk_cpu_bosta !== null && r.yuk_cpu_bosta < YUK_BOSTA_ESIK;
@@ -1064,7 +1126,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r._bellek = bellekOlc(ctx, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari);
   r._kodlama = ctx.kodlama.get(tur) || null;
   // 2026-11-03 (bilgi): bant genisligi (uyarisi TUR uyarisi) ve bellek ayrisimi (yalniz olcum varsa).
-  r._ag = agOlc(ctx, tur, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari);
+  r._ag = agOlc(ctx, tur, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari, genelKesit);
   r._bdetay = bdetayOlc(ctx, kesitAdi, w0, w1, zaman, saatFarki);
   r._saatFarki = saatFarki;
   r.durum = gecersiz.length ? 'GECERSIZ' : doyma ? 'DOYMA' : 'GECERLI';
@@ -1072,8 +1134,8 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r.uyari = uyari.join(';');
   r._gecersiz = gecersiz;
   r._uyari = uyari;
-  r._s429 = ctx.serbest ? null : s429;
-  r._s5xx = ctx.serbest ? null : s5xx;
+  r._s429 = ctx.logsuz ? null : s429;
+  r._s5xx = ctx.logsuz ? null : s5xx;
   r._kesit = kesitAdi;
   return r;
 }
@@ -1405,7 +1467,8 @@ function cpusuzKarar(bitir, b, cpuNotu) {
  *   refMotor?: 'k6'|'wrk', adayMotor?: 'k6'|'wrk', refHedefTuru?: 'sunucu'|'serbest',
  *   adayHedefTuru?: 'sunucu'|'serbest', refIsParcacigi?: number|null, adayIsParcacigi?: number|null,
  *   refTavanRps?: number|null, adayTavanRps?: number|null, refProtokol?: 'h1'|'h2',
- *   adayProtokol?: 'h1'|'h2'}} [secenek]
+ *   adayProtokol?: 'h1'|'h2', refNginx?: boolean, adayNginx?: boolean}} [secenek]
+ *   refNginx / adayNginx false (nginx olmayan sunucu hedefi): serbest kuralindan hemen sonra CPU'suz karar (CPU_YOK_NGINXSIZ).
  */
 function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const s = secenek || {};
@@ -1416,6 +1479,11 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const adayMotor = secenekDegeri(s.adayMotor, 'k6', MOTORLAR, 'adayMotor');
   const refTur = secenekDegeri(s.refHedefTuru, 'sunucu', HEDEF_TURLERI, 'refHedefTuru');
   const adayTur = secenekDegeri(s.adayHedefTuru, 'sunucu', HEDEF_TURLERI, 'adayHedefTuru');
+  // TEK HEDEF MODELI (2026-11-13): nginx olmayan sunucu hedefinde CPU-ms yok (varsayilan true: cikti BIREBIR eskisi).
+  const refNginx = s.refNginx === undefined ? true : s.refNginx;
+  const adayNginx = s.adayNginx === undefined ? true : s.adayNginx;
+  if (typeof refNginx !== 'boolean') throw new TypeError('kararVer: refNginx true | false olmali');
+  if (typeof adayNginx !== 'boolean') throw new TypeError('kararVer: adayNginx true | false olmali');
   const refProtokol = secenekDegeri(s.refProtokol, 'h1', PROTOKOLLER, 'refProtokol');
   const adayProtokol = secenekDegeri(s.adayProtokol, 'h1', PROTOKOLLER, 'adayProtokol');
   const refIp = isParcacigiDegeri(s.refIsParcacigi, 'refIsParcacigi');
@@ -1490,6 +1558,7 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const cpusuz = { sat, notlar, ortak, rG, aG, kc, ref, ady, esikZarar, motor: refMotor, birim };
   // Serbest hedefte CPU hic olculmez (kaydedici yok): CPU blogundan ONCE CPU'suz yol.
   if (refTur === 'serbest' || adayTur === 'serbest') return cpusuzKarar(bitir, cpusuz, CPU_YOK_SERBEST);
+  if (!refNginx || !adayNginx) return cpusuzKarar(bitir, cpusuz, CPU_YOK_NGINXSIZ);
   const rKc = kc === null ? undefined : rG.get(kc);
   const aKc = kc === null ? undefined : aG.get(kc);
   if (!rKc || !aKc || !rKc.cpu_ms_istek || rKc.cpu_ms_istek <= 0 || aKc.cpu_ms_istek === null) {
@@ -1661,7 +1730,9 @@ function ayristirmaGruplardan(y, ka, idn, kademe) {
  * FARKLARI 8); diger trafik yalniz kesit + log penceresi olan CPU hesabinda okunur, serbestte o hesap hic
  * kurulmaz. `rcEtiketi`: zaman.csv rc nedeninin oneki (k6_rc / wrk_rc).
  */
-function adimHazirla(veri, { serbest = false, motor = 'k6' } = {}) {
+function adimHazirla(veri, { serbest = false, motor = 'k6', genelCpu = false } = {}) {
+  // Sunucu logu / sunucu_ kesitleri / bellek / bdetay yok sayilir: serbest hedef ve nginx'siz sunucu hedefi.
+  const logsuz = serbest || genelCpu;
   const istemci = new Map();
   for (const x of veri.istemci || []) if (x && x.satir && x.satir.tur) istemci.set(x.satir.tur, x.satir);
   const hatali = new Map();
@@ -1678,24 +1749,29 @@ function adimHazirla(veri, { serbest = false, motor = 'k6' } = {}) {
       zamanN.set(s.tur, (zamanN.get(s.tur) || 0) + 1);
     }
   }
-  const log = !serbest && veri.log && veri.log.turlar instanceof Map ? veri.log : { fazlar: [], turlar: new Map() };
+  const log = !logsuz && veri.log && veri.log.turlar instanceof Map ? veri.log : { fazlar: [], turlar: new Map() };
   return {
     istemci, hatali, zaman, zamanTum, zamanN,
-    kesitler: !serbest && Array.isArray(veri.kesitler) ? veri.kesitler : [],
+    kesitler: !logsuz && Array.isArray(veri.kesitler) ? veri.kesitler : [],
     yukKesitler: Array.isArray(veri.yukKesitler) ? veri.yukKesitler : [],
+    // Nginx'siz sunucu hedefi: genel CPU kesitleri; bozuk (sorun'lu, ornegi olmayan) kesit pencere hesabina girmez.
+    hedefCpuKesitler: genelCpu && Array.isArray(veri.hedefCpuKesitler) ? veri.hedefCpuKesitler.filter((k) => k && Array.isArray(k.ornekler) && k.ornekler.length) : [],
+    hedefCpuTum: genelCpu && Array.isArray(veri.hedefCpuKesitler) ? veri.hedefCpuKesitler : [],
     // 2026-11-03 (bilgi): hedef bellek kesitleri (serbestte yok sayilir) ve istemci JSON kodlama sayaclari.
-    bellekKesitler: !serbest && Array.isArray(veri.bellekKesitler) ? veri.bellekKesitler : [],
+    bellekKesitler: !logsuz && Array.isArray(veri.bellekKesitler) ? veri.bellekKesitler : [],
     kodlama: veri.istemciKodlama instanceof Map ? veri.istemciKodlama : new Map(),
     // 2026-11-03 (bilgi): bant genisligi (hedef NIC serbestte yok sayilir; rol ag_*.txt'den) ve bellek ayrisimi.
     istemciAg: veri.istemciAg instanceof Map ? veri.istemciAg : new Map(),
     agHedef: !serbest && Array.isArray(veri.agKesitler) ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'hedef') : [],
     agYuk: Array.isArray(veri.agKesitler) ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'yuk') : [],
     agKesitler: Array.isArray(veri.agKesitler) ? veri.agKesitler : [],
-    bdetayKesitler: !serbest && Array.isArray(veri.bdetayKesitler) ? veri.bdetayKesitler : [],
+    bdetayKesitler: !logsuz && Array.isArray(veri.bdetayKesitler) ? veri.bdetayKesitler : [],
     log: log.turlar,
     olcumKod: log.fazlar.indexOf('olcum'),
     diger: veri.diger instanceof Map ? veri.diger : new Map(),
     serbest,
+    logsuz,
+    genelCpu,
     rcEtiketi: motor === 'wrk' ? 'wrk_rc' : 'k6_rc',
   };
 }
@@ -1966,7 +2042,7 @@ function sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae }) {
  *   yalniz yeni playbook): verilmezse cikti BIREBIR eskisi. sunucuAyar (parametreler.sunucuAyar) ve ae (parametreler.ae)
  *   verilirse hazirlik kaniti denetlenir (sunucuAyarKaniti): yok / uyumsuz -> kosu GECERSIZ, neden sunucu_ayari_kanitsiz.
  */
-function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1', yukKaydedici = null, yukSonSatir = null, sunucuAyar = null, ae = null } = {}) {
+function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol = 'h1', yukKaydedici = null, yukSonSatir = null, sunucuAyar = null, ae = null, hedefNginx = true } = {}) {
   if (!veri || typeof veri !== 'object') throw new TypeError('kosuAnaliz: veri yok');
   if (typeof adim !== 'string' || !ADIM_RE.test(adim)) throw new TypeError('kosuAnaliz: adim gecersiz');
   if (!HEDEF_TURLERI.includes(hedefTuru)) throw new TypeError('kosuAnaliz: hedefTuru gecersiz (sunucu | serbest)');
@@ -1974,7 +2050,10 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
   if (!PROTOKOLLER.includes(protokol)) throw new TypeError('kosuAnaliz: protokol gecersiz (h1 | h2)');
   if (motor === 'wrk' && protokol === 'h2') throw new TypeError('kosuAnaliz: wrk yalniz h1');
   const serbest = hedefTuru === 'serbest';
-  const ctx = adimHazirla(veri, { serbest, motor });
+  if (typeof hedefNginx !== 'boolean') throw new TypeError('kosuAnaliz: hedefNginx gecersiz (true | false)');
+  // Serbest hedefte anlamsiz (sunucu tarafi zaten yok): yok sayilir.
+  const genelCpu = !serbest && hedefNginx === false;
+  const ctx = adimHazirla(veri, { serbest, motor, genelCpu });
   ctx.protokol = protokol;
   const uyarilar = Array.isArray(veri.uyarilar) ? veri.uyarilar.slice() : [];
   const dislama = dislamaListesi(ctx);
@@ -1987,7 +2066,8 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     if (!k.anahtar.startsWith(adim + '_')) uyarilar.push(`kesit_baska_adimin:${k.anahtar}`);
   }
   let nproc = null;
-  for (const k of ctx.kesitler) {
+  // Nginx'siz hedefte sunucu_ kesiti yok: nproc genel CPU kaydinin bilgi dosyasindan (yalniz ozet; kapasite yine null).
+  for (const k of ctx.genelCpu ? ctx.hedefCpuTum : ctx.kesitler) {
     const v = sayi(k.bilgi ? k.bilgi.nproc : null);
     if (v) {
       nproc = v;
@@ -2000,6 +2080,13 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     const yokSayilan = sunucuDosyaSayisi(veri);
     if (yokSayilan) uyarilar.push(`serbest_kosuda_sunucu_dosyalari_yok_sayildi(${yokSayilan})`);
     uyarilar.push(SERBEST_UYARISI);
+  } else if (genelCpu) {
+    // Nginx'siz hedef: cpu_kaydedici.sh calismadi; dizinde yine de sunucu dosyasi varsa (karisiklik) yok sayilir.
+    const yokSayilan = sunucuDosyaSayisi(veri);
+    if (yokSayilan) uyarilar.push(`nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi(${yokSayilan})`);
+    if (!ctx.hedefCpuTum.length) uyarilar.push(HEDEF_CPU_KAYDI_YOK);
+    else if (!ctx.hedefCpuKesitler.length) uyarilar.push(HEDEF_CPU_KAYDI_BOZUK);
+    uyarilar.push(NGINX_YOK_UYARISI);
   } else {
     if (!ctx.kesitler.length) uyarilar.push('sunucu_kaydi_yok(cpu_olculmedi)');
     if (!logVar) uyarilar.push('sunucu_logu_yok(log_istemci_karsilastirmasi_yapilmadi)');
@@ -2118,7 +2205,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     reloadlar,
     ayristirma: ayr,
     cpu_tlsli_pay: ayr && ayr.toplam ? ayr.tls / ayr.toplam : null,
-    loglar: !serbest && Array.isArray(veri.loglar) ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan })) : [],
+    loglar: !ctx.logsuz && Array.isArray(veri.loglar) ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan })) : [],
     sha256: veri.sha256 || null,
     okunan_bayt: typeof veri.okunanBayt === 'number' ? veri.okunanBayt : null,
   };
@@ -2152,6 +2239,17 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     }));
   }
   // 2026-11-03: yuk makinesi CPU kesitleri yalniz varsa (eski kosunun ozeti BIREBIR eskisi).
+  // Nginx'siz hedef: yalniz bu kipte (eski / nginx kosusunun ozeti BIREBIR eskisi).
+  if (genelCpu) {
+    ozet.hedef_nginx = false;
+    ozet.hedef_cpu_kesitler = ctx.hedefCpuTum.map((k) => ({
+      anahtar: k.anahtar,
+      ornek: (k.ornekler || []).length,
+      bilgi_var: k.bilgiVar === true,
+      nproc: sayi(k.bilgi ? k.bilgi.nproc : null),
+      ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
+    }));
+  }
   if (ctx.yukKesitler.length) {
     ozet.yuk_kesitler = ctx.yukKesitler.map((k) => ({
       anahtar: k.anahtar,
@@ -2182,6 +2280,10 @@ module.exports = {
   PROTOKOLLER,
   H2_UYARISI,
   WRK_TLS_UYARISI,
+  NGINX_YOK_UYARISI,
+  CPU_YOK_NGINXSIZ,
+  HEDEF_CPU_KAYDI_YOK,
+  HEDEF_CPU_KAYDI_BOZUK,
   EPS,
   _pyForTest: { sayi, pyToplam, pyMax, esikGecti, yuzdelik, medyan, ortalama, gurultu, oran, pyYuvarla, fx, fxs, fd },
   _kosulariHazirlaForTest: kosulariHazirla,

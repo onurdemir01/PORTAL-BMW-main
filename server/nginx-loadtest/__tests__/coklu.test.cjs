@@ -521,3 +521,24 @@ test('CK14 ortak kombo kararVer secimiyle kalir; router uctan uca h2 + gzip aday
   assert.equal(a.kademeFarki.cpu.aday, 0.8);
   assert.ok(!JSON.stringify(x.body).includes('/usr/nginx/applications'));
 });
+
+test('CK15 tek hedef modeli: nginx olmayan hedef (hedef_nginx 0) CPU-suz karar; meta alani yalniz false iken; eski satir birebir', () => {
+  const ref = kosu(1, dortAdim(1, [1.0, 1.02, 1.0, 1.02], [20, 20, 30, 30.5]));
+  const iyi = (m) => kosu(2, dortAdim(2, [0.8, 0.81, 0.8, 0.81], [20, 20, 30, 30]), m);
+  // Eski satir (kolon yok / NULL) ve nginx hedefi: meta'da alan yok, karar eskisi gibi KALICI.
+  for (const m of [{}, { hedef_nginx: null }, { hedef_nginx: 1 }, { hedef_nginx: true }]) {
+    const a = iyi(m);
+    assert.ok(!('nginx' in a.meta), JSON.stringify(m));
+    assert.equal(coklu.cokluKarsilastir({ ref, adaylar: [a], analiz }).adaylar[0].karar, 'KALICI', JSON.stringify(m));
+  }
+  // Nginx'siz aday ya da ref: CPU-ms kazanci KALICI yapmaz; neden metni CPU_YOK_NGINXSIZ.
+  for (const [r0, a0] of [[ref, iyi({ hedef_nginx: 0 })], [kosu(1, dortAdim(1, [1.0, 1.02, 1.0, 1.02], [20, 20, 30, 30.5]), { hedef_nginx: false }), iyi()]]) {
+    const x = coklu.cokluKarsilastir({ ref: r0, adaylar: [a0], analiz });
+    const k = x.adaylar[0] || x.karsilastirilamaz[0];
+    assert.notEqual(k.karar, 'KALICI');
+    assert.ok((k.kararNedenleri || k.nedenler || []).some((n) => String(n).includes(analiz.CPU_YOK_NGINXSIZ)), JSON.stringify(k.kararNedenleri || k.nedenler));
+  }
+  assert.equal(iyi({ hedef_nginx: 0 }).meta.nginx, false);
+  // Serbest satirda kolon anlamsiz: alan yok.
+  assert.ok(!('nginx' in iyi({ hedef_turu: 'serbest', hedef_nginx: 0 }).meta));
+});

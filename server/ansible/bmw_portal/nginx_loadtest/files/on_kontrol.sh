@@ -2,6 +2,8 @@
 # on_kontrol.sh - Portal Nginx Hub "Yuk Testi" on kontrolu. YUK URETMEZ, hicbir dosyaya/konfigurasyona yazmaz.
 # Kullanim: on_kontrol.sh hedef    (hedef nginx sunucusunda, www ile)
 #             ortam: HEDEF_IP HOST_BASLIGI [UST LOGDIR(/web_log) NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]
+#           on_kontrol.sh nginx    (hedef sunucuda, www ile; 2026-11-13 nginx otomatik tespiti, yalniz okuma)
+#             ortam: [NGINX_PREFIX(/usr/nginx) NGINX_BIN NGINX_ERRLOG PROC_ROOT]; HEDEF_IP / HOST_BASLIGI GEREKMEZ.
 #           on_kontrol.sh yollar   (yuk makinesinde, www ile)
 #             ortam: HEDEF_IP HOST_BASLIGI SNI(0|1) SENARYO(<tsv>) [UA_ONEK(portal-yuktesti) PARALEL(4) ZAMAN(5) CURL(curl)
 #                    PROTOKOL(h1) PROC_ROOT(/proc)]
@@ -9,6 +11,10 @@
 #   hedef : ip_yerel 1|0|-, nginx_T ok|fail, server_name_var 1|0|-, master_sayisi <n>, web_log_df <yuzde>|-,
 #           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-, hazirlik_yedek 1|0|- (<UST>/hazirlik var mi: geri
 #           alinmamis sunucu ayari; UST verilmezse -)
+#   nginx : nginx_bin 1|0 (NGINX_BIN calistirilabilir mi; bilgi), nginx_T ok|fail, master_sayisi <n>, nginx_var 1|0|-,
+#           nproc <n>|-. nginx_var: master >= 1 VE nginx -T ok -> 1; master 0 VE nginx -T fail -> 0; digeri (nginx -T ok
+#           ama master gorunmuyor: durmus ya da hidepid; master var ama -T basarisiz) -> '-' (belirlenemedi; playbook
+#           olcum yapmaz). nginx -T ve master taramasi hedef kipiyle AYNI islevler (nginx_T_calistir, master_say).
 #   yollar: ip_yuk_makinesinde 1|0|-, yuk makinesi (salt okunur, bilgi): port_araligi <lo> <hi>|-, tcp_tw_reuse <n>|-,
 #           tcp_timestamps <n>|-, nproc <n>|-, mem_kb <MemAvailable>|-; YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
@@ -102,23 +108,43 @@ alpn_openssl() {
     END { if (!y) print "-"; else if (p == "h2") print 1; else if (p != "" || n) print 0; else print "-" }'
 }
 
-hedef() {
-  local prefix bin tt ipy df okunur=0 f master=0 p c
-  [[ "${HEDEF_IP:-}" =~ $IP_RE ]] || red "HEDEF_IP gecersiz"
-  [[ "${HOST_BASLIGI:-}" =~ $HOST_RE ]] || red "HOST_BASLIGI gecersiz"
-  LOGDIR="${LOGDIR:-/web_log}"
-  prefix="${NGINX_PREFIX:-/usr/nginx}"
-  bin="${NGINX_BIN:-$prefix/sbin/nginx}"
+# nginx_hazirla: NGINX_PREFIX / NGINX_BIN / PROC_ROOT ve gecici dizin (hedef ve nginx kipleri ortak)
+nginx_hazirla() {
+  NG_PREFIX="${NGINX_PREFIX:-/usr/nginx}"
+  NG_BIN="${NGINX_BIN:-$NG_PREFIX/sbin/nginx}"
   PROC="${PROC_ROOT:-/proc}"
   GECICI="$(mktemp -d "${TMPDIR:-/tmp}/onkontrol.XXXXXX")" || red "gecici dizin olusturulamadi"
   d="$GECICI"
   chmod 700 "$d"
+}
+
+# nginx_T_calistir: nginx_console_dump.sh ile AYNI estate komutu; cikti yalniz $d/t'ye (basilmaz). 0 = ok.
+nginx_T_calistir() {
+  local tt=("$NG_BIN" -p "$NG_PREFIX/" -c "$NG_PREFIX/nginx.conf" -e "${NGINX_ERRLOG:-/web_log/error.log}" -T)
+  { command -v dzdo >/dev/null 2>&1 && dzdo -n ${tt[@]+"${tt[@]}"} > "$d/t" 2>/dev/null; } || ${tt[@]+"${tt[@]}"} > "$d/t" 2>/dev/null
+}
+
+# master_say: cpu_kaydedici.sh'in gordugu ile AYNI tarama (/proc; hidepid'de www'nin gorduguyle)
+master_say() {
+  local f c master=0
+  for f in "$PROC"/[0-9]*/cmdline; do
+    c=""; IFS= read -r -d '' c < "$f" 2>/dev/null
+    case "$c" in "nginx: master process"*) master=$((master + 1)) ;; esac
+  done
+  printf '%d' "$master"
+}
+
+hedef() {
+  local ipy df okunur=0 p
+  [[ "${HEDEF_IP:-}" =~ $IP_RE ]] || red "HEDEF_IP gecersiz"
+  [[ "${HOST_BASLIGI:-}" =~ $HOST_RE ]] || red "HOST_BASLIGI gecersiz"
+  LOGDIR="${LOGDIR:-/web_log}"
+  nginx_hazirla
 
   ipy="$(ip_yerel_mi "$HEDEF_IP")"
   printf 'ip_yerel\t%s\n' "$ipy"
 
-  tt=("$bin" -p "$prefix/" -c "$prefix/nginx.conf" -e "${NGINX_ERRLOG:-/web_log/error.log}" -T)
-  if { command -v dzdo >/dev/null 2>&1 && dzdo -n ${tt[@]+"${tt[@]}"} > "$d/t" 2>/dev/null; } || ${tt[@]+"${tt[@]}"} > "$d/t" 2>/dev/null; then
+  if nginx_T_calistir; then
     printf 'nginx_T\tok\n'
     # Yorumlar atilir; ';', '{', '}' ile bolunen her ifadede server_name belirtecleri TAM esitlikle aranir (joker/regex sayilmaz).
     awk -v h="$HOST_BASLIGI" '
@@ -135,12 +161,7 @@ hedef() {
     printf 'nginx_T\tfail\nserver_name_var\t-\nlog_format_ua\t-\nstatik_direktif\t-\n'
   fi
 
-  # cpu_kaydedici.sh'in gordugu ile AYNI tarama (/proc; hidepid'de www'nin gorduguyle)
-  for f in "$PROC"/[0-9]*/cmdline; do
-    c=""; IFS= read -r -d '' c < "$f" 2>/dev/null
-    case "$c" in "nginx: master process"*) master=$((master + 1)) ;; esac
-  done
-  printf 'master_sayisi\t%d\n' "$master"
+  printf 'master_sayisi\t%d\n' "$(master_say)"
 
   df="$(df -P "$LOGDIR" 2>/dev/null | awk 'NR == 2 { sub(/%$/, "", $5); if ($5 ~ /^[0-9]+$/) print $5 + 0 }')"
   printf 'web_log_df\t%s\n' "${df:--}"
@@ -156,6 +177,25 @@ hedef() {
   else printf 'hazirlik_yedek\t0\n'
   fi
   sonuc OK "hedef olculdu"
+}
+
+nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basilmaz)
+  local tok=fail master var=- n b=0
+  nginx_hazirla
+  [ -f "$NG_BIN" ] && [ -x "$NG_BIN" ] && b=1
+  printf 'nginx_bin\t%d\n' "$b"
+  if nginx_T_calistir; then tok=ok; fi
+  printf 'nginx_T\t%s\n' "$tok"
+  master="$(master_say)"
+  printf 'master_sayisi\t%d\n' "$master"
+  if [ "$master" -ge 1 ] && [ "$tok" = ok ]; then var=1
+  elif [ "$master" -eq 0 ] && [ "$tok" = fail ]; then var=0
+  fi
+  printf 'nginx_var\t%s\n' "$var"
+  n="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || :)"
+  [[ "$n" =~ ^[0-9]{1,5}$ ]] || n=-
+  printf 'nproc\t%s\n' "$n"
+  sonuc OK "nginx olculdu"
 }
 
 sys_oku() {   # sys_oku <dosya>: ilk satir, yalniz rakam ve bosluk; okunamazsa -
@@ -246,7 +286,8 @@ yollar() {
 
 case "${1:-}" in
   hedef) hedef ;;
+  nginx) nginx_modu ;;
   yollar) yollar ;;
   _tek) tek_yol "${2:-}" ;;
-  *) red "kullanim: on_kontrol.sh hedef|yollar" ;;
+  *) red "kullanim: on_kontrol.sh hedef|nginx|yollar" ;;
 esac

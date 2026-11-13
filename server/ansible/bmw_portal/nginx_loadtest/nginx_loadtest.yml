@@ -9,7 +9,7 @@
     yt_re_host: '^[A-Z0-9][A-Z0-9-]{1,30}\Z'
     yt_re_nonprod_adi: '^GBNG[WX]A?[DTQ]'
     yt_edu_hostlari: ['GBNGXT51']
-    yt_extra_load_hosts: ['GBJWLT01', 'GBJALT02']
+    yt_re_prod_adi: '^(GBRVP|GBNG[WX]A?P)'
     yt_re_ipv4: '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\Z'
     yt_re_ozel_ip: '^(0|127|169\.254|22[4-9]|2[3-5][0-9])\.'
     yt_re_vhost: '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\Z'
@@ -36,7 +36,7 @@
   tasks:
     - name: --- [Task] Girdi kapisi ---
       block:
-        - name: --- [Task] Islem, kosu kimligi, hedef turu, hedef ve yuk makinesi (ad kurali, prod ve EDU yok) ---
+        - name: --- [Task] Operation, run id, target type, target and load host (not EDU, not a production name, target != load host) ---
           ansible.builtin.assert:
             that:
               - (yuk_islem | default('') | string) is match(yt_re_islem)
@@ -45,11 +45,11 @@
               - (((yuk_hedef_host | default('') | string) is match(yt_re_host)) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else ((yuk_hedef_host | default('') | string) == ''))
               - (yuk_yuk_host | default('') | string) is match(yt_re_host)
               - (yuk_hedef_host | default('') | string) != (yuk_yuk_host | string)
-              - (((yuk_hedef_host | string) is match(yt_re_nonprod_adi)) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
-              - ((yuk_yuk_host | string) is match(yt_re_nonprod_adi)) or ((yuk_yuk_host | string) in yt_extra_load_hosts)
               - (((yuk_hedef_host | string) not in yt_edu_hostlari) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
+              - ((not ((yuk_hedef_host | string) is match(yt_re_prod_adi))) if ((yuk_hedef_turu | default('sunucu') | string) == 'sunucu') else true)
               - (yuk_yuk_host | string) not in yt_edu_hostlari
-            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host ad kuralina gore DEV/TEST/QA (GBNG[WX][A][DTQ]..., EDU degil), serbest: yuk_hedef_host bos; yuk_yuk_host DEV/TEST/QA (ya da yt_extra_load_hosts) ve hedeften FARKLI olmali; hicbir sey yapilmadi."
+              - not ((yuk_yuk_host | string) is match(yt_re_prod_adi))
+            fail_msg: "yuk_islem on_kontrol|kosu|durdur, yuk_run_id rakam, yuk_hedef_turu sunucu|serbest; sunucu: yuk_hedef_host gecerli ad, EDU degil, uretim adi (GBRVP..., GBNG[WX][A]P...) degil; serbest: yuk_hedef_host bos; yuk_yuk_host ayni kurallar ve hedeften FARKLI olmali. Ortam (tum dbo.Inventory kayitlari DEV/TEST/QA) Portal'in kapisinda kanitlanir; hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('') | string) != 'araclar'
 
@@ -248,7 +248,7 @@
             yt_actl_dizin: "{{ yt_actl.path }}"
           when: (yuk_islem | default('') | string) == 'araclar'
 
-        - name: --- [Task] Hedef nginx sunucusu (AWX limit KULLANILMAZ; serbest hedefte YOK) ---
+        - name: --- [Task] Target host from Inventory, nginx or not (AWX limit NOT used; none for serbest target) ---
           ansible.builtin.add_host:
             name: "{{ yuk_hedef_host }}"
             groups: yuk_hedef
@@ -352,7 +352,7 @@
                 src: "files/{{ item }}"
                 dest: "{{ yt_dizin }}/{{ item }}"
                 mode: '0600'
-              loop: "{{ (['on_kontrol.sh'] if yuk_islem == 'on_kontrol' else ['cpu_kaydedici.sh', 'on_kontrol.sh']) + (['hazirlik.sh'] if ((yuk_srv_ayar | default('0') | string) == '1') else []) }}"
+              loop: "{{ (['on_kontrol.sh'] if yuk_islem == 'on_kontrol' else ['cpu_kaydedici.sh', 'on_kontrol.sh', 'yuk_cpu_kaydedici.sh']) + (['hazirlik.sh'] if ((yuk_srv_ayar | default('0') | string) == '1') else []) }}"
               register: yt_h_kopya
               changed_when: false
               ignore_errors: true
@@ -406,8 +406,55 @@
                 msg: "betik kopyasi dogrulanamadi (kopya {{ 'basarisiz' if (yt_h_kopya is failed) else 'ok' }}, reddedilen {{ yt_h_red | join(',') }}, dizin sahibi/izni {{ yt_h_dstat.stat.uid | default('?') }}/{{ yt_h_dstat.stat.mode | default('?') }}); hicbir sey calistirilmadi"
               when: not (yt_h_kapi | bool)
 
+        - name: --- [Task] Nginx detection (on kontrol and kosu; before server settings and recorder) ---
+          when: yuk_islem in ['on_kontrol', 'kosu']
+          block:
+            - name: --- [Task] Detect nginx on the target (on_kontrol.sh nginx; read only) ---
+              ansible.builtin.command:
+                argv:
+                  - timeout
+                  - -k
+                  - '10'
+                  - '120'
+                  - env
+                  - bash
+                  - "{{ yt_dizin }}/on_kontrol.sh"
+                  - nginx
+                chdir: "{{ yt_dizin }}"
+              register: yt_ng_run
+              changed_when: false
+              failed_when: false
+
+            - name: --- [Task] Nginx detection output ---
+              ansible.builtin.debug:
+                msg: "{{ yt_ng_run.stdout_lines | default([]) }}"
+
+            - name: --- [Task] Nginx detection result ---
+              ansible.builtin.set_fact:
+                yt_hedef_nginx: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^nginx_var\t') | list | last | default('nginx_var\t-')).split('\t'))[1] | default('-') }}"
+                yt_hedef_nproc: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^nproc\t') | list | last | default('nproc\t-')).split('\t'))[1] | default('-') }}"
+                yt_hedef_nginx_T: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^nginx_T\t') | list | last | default('nginx_T\t-')).split('\t'))[1] | default('-') }}"
+                yt_hedef_master: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^master_sayisi\t') | list | last | default('master_sayisi\t-')).split('\t'))[1] | default('-') }}"
+
+            - name: --- [Task] Server settings need nginx ---
+              ansible.builtin.set_fact:
+                yt_hz_sonuc: ['SONUC', 'FAIL', "nginx bulunamadi ya da belirlenemedi (nginx_var {{ yt_hedef_nginx }}); sunucu ayari uygulanmadi"]
+                yt_hz_uyarilar: []
+                yt_hz: {}
+              when: ((yuk_srv_ayar | default('0') | string) == '1') and (yt_hedef_nginx != '1')
+
+            - name: '--- [Task] Stop: nginx state unclear (kosu) ---'
+              ansible.builtin.fail:
+                msg: "hedefte nginx durumu belirlenemedi (nginx_T {{ yt_hedef_nginx_T }}, master {{ yt_hedef_master }}); kaydedici baslatilmadi, yuk gonderilmedi"
+              when: (yuk_islem == 'kosu') and (yt_hedef_nginx not in ['0', '1'])
+
+            - name: '--- [Task] Stop: server settings requested but nginx not detected (kosu) ---'
+              ansible.builtin.fail:
+                msg: "sunucu ayari istendi ama hedefte nginx yok (nginx_var {{ yt_hedef_nginx }}); kaydedici baslatilmadi, yuk gonderilmedi"
+              when: (yuk_islem == 'kosu') and ((yuk_srv_ayar | default('0') | string) == '1') and (yt_hedef_nginx != '1')
+
         - name: --- [Task] Sunucu ayari (on kontrol ve kosu oncesi; kaydedici baslamadan ONCE) ---
-          when: (yuk_islem in ['on_kontrol', 'kosu']) and ((yuk_srv_ayar | default('0') | string) == '1')
+          when: (yuk_islem in ['on_kontrol', 'kosu']) and ((yuk_srv_ayar | default('0') | string) == '1') and ((yt_hedef_nginx | default('-')) == '1')
           block:
             - name: --- [Task] Konf yedegi, duzenleme, nginx -t, reload (hazirlik.sh uygula) ---
               ansible.builtin.command:
@@ -614,11 +661,23 @@
                 msg: "kosu kapisi: hedef IP {{ yuk_hedef_ip }} hedefte yerel degil ya da olculemedi (ip_yerel {{ yt_kosu_ip_yerel }}); kaydedici baslatilmadi, yuk gonderilmedi"
               when: yt_kosu_ip_yerel != '1'
 
+            - name: --- [Task] Recorder script by nginx detection ---
+              ansible.builtin.set_fact:
+                yt_kaydedici_betik: "{{ 'cpu_kaydedici.sh' if (yt_hedef_nginx == '1') else 'yuk_cpu_kaydedici.sh' }}"
+
             - name: --- [Task] Kaydedici ayrik baslatilir (setsid nohup timeout; pid dosyasi) ---
               ansible.builtin.shell:
                 cmd: "setsid nohup timeout -k 300 {{ (yuk_butce_sn | int) + 120 }} env SURE={{ (yuk_butce_sn | int) + 60 }} BOSTA_BAS={{ yuk_bosta_bas_sn | int }} HEDEF_IP={{ yuk_hedef_ip | quote }} UA_ONEK={{ yuk_ua_onek | quote }} SONUC={{ yt_dizin | quote }} bash {{ (yt_dizin ~ '/cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} 'portal run {{ yuk_run_id | int }}' > {{ (yt_dizin ~ '/kaydedici.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/kaydedici.pid') | quote }}"
                 chdir: "{{ yt_dizin }}"
               changed_when: false
+              when: yt_hedef_nginx == '1'
+
+            - name: --- [Task] Generic host CPU recorder started detached (no nginx; ROL=hedef; setsid nohup timeout; pid file) ---
+              ansible.builtin.shell:
+                cmd: "setsid nohup timeout -k 300 {{ (yuk_butce_sn | int) + 120 }} env ROL=hedef SURE={{ (yuk_butce_sn | int) + 60 }} ARALIK=1 BOSTA_BAS={{ yuk_bosta_bas_sn | int }} HEDEF_IP={{ yuk_hedef_ip | quote }} SONUC={{ yt_dizin | quote }} bash {{ (yt_dizin ~ '/yuk_cpu_kaydedici.sh') | quote }} R{{ yuk_run_id | int }} > {{ (yt_dizin ~ '/kaydedici.out') | quote }} 2>&1 < /dev/null & echo $! > {{ (yt_dizin ~ '/kaydedici.pid') | quote }}"
+                chdir: "{{ yt_dizin }}"
+              changed_when: false
+              when: yt_hedef_nginx == '0'
 
             - name: --- [Task] Kaydedici baslama zamani ---
               ansible.builtin.set_fact:
@@ -1273,9 +1332,9 @@
 
         - name: --- [Task] Kaydedici hala calisiyor mu ---
           ansible.builtin.set_fact:
-            yt_kcanli: "{{ (yt_kcmd.content is defined) and ((yt_dizin ~ '/cpu_kaydedici.sh') in (yt_kcmd.content | b64decode)) }}"
+            yt_kcanli: "{{ (yt_kcmd.content is defined) and ((yt_dizin ~ '/' ~ (yt_kaydedici_betik | default('cpu_kaydedici.sh'))) in (yt_kcmd.content | b64decode)) }}"
 
-        - name: --- [Task] Kaydediciye TERM (trap bitir; bilgi_*.txt yazilir) ---
+        - name: --- [Task] Kaydediciye TERM (trap bitir; bilgi_*.txt / hedefcpu_*.txt yazilir) ---
           ansible.builtin.command:
             argv:
               - kill
@@ -1294,10 +1353,10 @@
           failed_when: false
           when: yt_kcanli | bool
 
-        - name: --- [Task] Kaydedici ozet dosyasi (bilgi_*.txt) ---
+        - name: --- [Task] Kaydedici ozet dosyasi (bilgi_*.txt / hedefcpu_*.txt) ---
           ansible.builtin.find:
             paths: "{{ yt_dizin }}/R{{ yuk_run_id | int }}"
-            patterns: 'bilgi_*.txt'
+            patterns: "{{ 'bilgi_*.txt' if ((yt_kaydedici_betik | default('cpu_kaydedici.sh')) == 'cpu_kaydedici.sh') else 'hedefcpu_*.txt' }}"
           register: yt_kbilgi
           failed_when: false
 
@@ -2409,6 +2468,8 @@
                   'statik_direktif': ((({'1': true, '0': false})[(hostvars[yuk_hedef_host].yt_hk | default({})).statik_direktif | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'hazirlik_yedek': ((({'1': true, '0': false})[(hostvars[yuk_hedef_host].yt_hk | default({})).hazirlik_yedek | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'srv_hazirlik': ((('ok' if ((hostvars[yuk_hedef_host].yt_hz_sonuc[1] | default('FAIL')) == 'OK') else 'fail') if (hostvars[yuk_hedef_host].yt_hz_sonuc is defined) else none) if (yt8_tur == 'sunucu') else none),
+                  'hedef_nginx': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_nginx | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
+                  'hedef_nproc': ((((hostvars[yuk_hedef_host].yt_hedef_nproc | int) if ((hostvars[yuk_hedef_host].yt_hedef_nproc | default('-') | string) is match('^[0-9]{1,5}$')) else none)) if (yt8_tur == 'sunucu') else none),
                   'ip_yuk_makinesinde': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).ip_yuk_makinesinde | default('-'))] | default(none)),
                   'serbest_ag': ((((hostvars[yuk_yuk_host].yt_serbest_izin | default({})).ag | default('')) or none) if (yt8_tur == 'serbest') else none),
                   'arac_dogrulandi': ((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).dogrulandi | default(none)),
@@ -2447,7 +2508,8 @@
               {{ (((['hedef: ' ~ ((hostvars[yuk_hedef_host].yt_hk_sonuc | default(['', 'FAIL', 'olculmedi']))[2] | default(''))] if ((hostvars[yuk_hedef_host].yt_hk_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK' else [])) if (yt8_tur == 'sunucu') else [])
                  + (['yuk makinesi: ' ~ ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL', 'olculmedi']))[2] | default(''))] if ((hostvars[yuk_yuk_host].yt_yk_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK' else [])
                  + (['hedef IP ' ~ yuk_hedef_ip ~ ' hedef sunucuda yerel degil'] if ((yt8_tur == 'sunucu') and not yt_s_onk.ip_yerel) else [])
-                 + (['log dizini /web_log okunamiyor'] if ((yt8_tur == 'sunucu') and not yt_s_onk.log_dizini_okunur) else [])
+                 + (['log dizini /web_log okunamiyor'] if ((yt8_tur == 'sunucu') and (yt_s_onk.hedef_nginx is sameas true) and not yt_s_onk.log_dizini_okunur) else [])
+                 + ([('hedef: nginx durumu belirlenemedi (nginx_T ' ~ (hostvars[yuk_hedef_host].yt_hedef_nginx_T | default('-')) ~ ', master ' ~ (hostvars[yuk_hedef_host].yt_hedef_master | default('-')) ~ '); olcum yapilmaz')] if ((yt8_tur == 'sunucu') and (yt_s_onk.hedef_nginx is none) and (hostvars[yuk_hedef_host].yt_hedef_nginx is defined)) else [])
                  + (['arac kopyasi dogrulanamadi: ' ~ (yt_s_onk.arac_hata or 'olculmedi')] if not (yt_s_onk.arac_dogrulandi is sameas true) else [])
                  + (['arac calistirilamadi: ' ~ yt_s_onk.arac_hata] if ((yt_s_onk.arac_dogrulandi is sameas true) and (yt_s_onk.arac_hata is string)) else [])
                  + (['k6 kopyasi calistirilamiyor: ' ~ (hostvars[yuk_yuk_host].yt_dizin | default('-')) ~ '/arac/k6'] if ((yt8_motor == 'k6') and not (yt_s_onk.k6_var | bool)) else [])
@@ -2465,6 +2527,8 @@
                   'kaydedici_rc': ((hostvars[yuk_hedef_host].yt_kaydedici_rc | int) if ((yt8_tur == 'sunucu') and ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) >= 0)) else none),
                   'bas_epoch': ((hostvars[yuk_hedef_host].yt_kaydedici_bas | int) if ((yt8_tur == 'sunucu') and (hostvars[yuk_hedef_host].yt_kaydedici_bas is defined)) else ((hostvars[yuk_yuk_host].yt_kos_bas | int) if ((yt8_tur == 'serbest') and (hostvars[yuk_yuk_host].yt_kos_bas is defined)) else none)),
                   'bit_epoch': ((yt_bit_epoch | int) if (yt_bit_epoch is defined) else none),
+                  'hedef_nginx': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_nginx | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
+                  'hedef_kaydedici': ((({'cpu_kaydedici.sh': 'nginx', 'yuk_cpu_kaydedici.sh': 'genel'})[hostvars[yuk_hedef_host].yt_kaydedici_betik | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'istemci_ozet': (yt_istemci_ozet | default([])),
                   'dosyalar': (yt_dosyalar | default([])),
                   'sw_dizin': (yt_sw_dizin if (yt_sw_tamam | default(false) | bool) else none),
@@ -2571,7 +2635,7 @@
                   + (yt_engeller | default([]))
                   + ([('kaydedici hazir olmadi: ' ~ (hostvars[yuk_hedef_host].yt_kaydedici_mesaj | default('') | string | truncate(200)))] if ((yt8_tur == 'sunucu') and (yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_basladi is defined) and not (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool)) else [])
                   + ([(('wrk_kos.sh' if yt8_motor == 'wrk' else 'kos.sh') ~ ' rc ' ~ (hostvars[yuk_yuk_host].yt_kos_rc | string) ~ ': ' ~ ((hostvars[yuk_yuk_host].yt_kos_dur | default('')) or (hostvars[yuk_yuk_host].yt_kos_hata | default(''))))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_yuk_host].yt_kos_rc is defined) and ((hostvars[yuk_yuk_host].yt_kos_rc | int) != 0)) else [])
-                  + (['kaydedici ozet dosyasi bilgi_*.txt yazilmadi'] if ((yt8_tur == 'sunucu') and (yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool) and ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) != 0)) else [])
+                  + ([('kaydedici ozet dosyasi ' ~ ('bilgi_*.txt' if ((hostvars[yuk_hedef_host].yt_kaydedici_betik | default('cpu_kaydedici.sh')) == 'cpu_kaydedici.sh') else 'hedefcpu_*.txt') ~ ' yazilmadi')] if ((yt8_tur == 'sunucu') and (yt8_gecti | bool) and (yuk_islem | default('')) == 'kosu' and (hostvars[yuk_hedef_host].yt_kaydedici_hazir | default(false) | bool) and ((hostvars[yuk_hedef_host].yt_kaydedici_rc | default(-1) | int) != 0)) else [])
                   + (['durdurma ' ~ yuk_hedef_host ~ ': ' ~ ((hostvars[yuk_hedef_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if ((yt8_tur == 'sunucu') and (yt8_gecti | bool) and (yuk_islem | default('')) == 'durdur' and ((hostvars[yuk_hedef_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK') else [])
                   + (['durdurma ' ~ yuk_yuk_host ~ ': ' ~ ((hostvars[yuk_yuk_host].yt_durdur_sonuc | default([]))[3] | default('olculmedi'))] if ((yt8_gecti | bool) and (yuk_islem | default('')) == 'durdur' and ((hostvars[yuk_yuk_host].yt_durdur_sonuc | default(['', 'FAIL']))[1] | default('FAIL')) != 'OK') else []))
                  | join('; ') }}

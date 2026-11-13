@@ -27,7 +27,8 @@
 //       ayni saniyede kosar; tohum id terimini kaybederse hepsi AYNI jitter dizisini uretir ve kumelenme geri gelir).
 //   (j) /etc/portal_yuktesti/serbest_aglar LITERAL (extra_vars ile yonlendirilemez) tam bir stat ve bir slurp gorevinde;
 //       izin blogu Play 3'te on kontrol ve yuk kosusu bloklarindan ONCE.
-//   (k) Play 2 kosu blogunda kosu kapisi (on_kontrol.sh hedef + 'kosu kapisi' fail'i) TEK shell'den (kaydedici) ONCE.
+//   (k) Play 2 kosu blogunda kosu kapisi (on_kontrol.sh hedef + 'kosu kapisi' fail'i) IKI shell'den de (kaydedici: nginx
+//       hedefte cpu_kaydedici.sh, 2026-11-13 nginx'siz hedefte yuk_cpu_kaydedici.sh ROL=hedef) ONCE; baska shell yok.
 //   (l) 3. assert (is gecerlilik suresi): yuk_son_epoch ve now().timestamp().
 //   (m) izin blogu ret nedeni: 'gecersiz girdi' yalniz yazdirilabilir ASCII (regex_replace('[^ -~]', '?'); BOM / UTF-8
 //       disi bayt set_stats'a vekil karakter tasimasin), girdisi en cok 40 karakter (truncate(40, true, '...', 0)) ve www
@@ -328,10 +329,10 @@ test('NA6 (j)-(m) izin dosyasi literal ve sirasi, Play 2 kosu kapisi, is gecerli
   const hedefKomutu = p2.indexOf('- "{{ yt_dizin }}/on_kontrol.sh"\n                  - hedef\n', kapi);
   const fail = p2.indexOf('msg: "kosu kapisi: hedef IP', kapi);
   const shell = p2.indexOf('ansible.builtin.shell:');
-  assert.equal(p2.split('ansible.builtin.shell:').length - 1, 1, 'Play 2de TEK shell (kaydedici baslatma)');
+  assert.equal(p2.split('ansible.builtin.shell:').length - 1, 2, 'Play 2de IKI shell (nginx ve genel kaydedici baslatma)');
   assert.ok(
     blok > 0 && kapi > blok && hedefKomutu > kapi && fail > hedefKomutu && shell > fail,
-    'Play 2 kosu blogunda on_kontrol.sh hedef komutu ve kosu kapisi fail i TEK shell den ONCE',
+    'Play 2 kosu blogunda on_kontrol.sh hedef komutu ve kosu kapisi fail i IKI shell den de ONCE (ilk shell kapidan sonra)',
   );
   assert.match(p2.slice(fail - 300, fail + 300), /when: yt_kosu_ip_yerel != '1'/, "kosu kapisi ip_yerel '1' degilse duser");
 

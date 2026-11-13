@@ -4,10 +4,12 @@
 **wrk** (kapalı döngü, sabit bağlantı sayısı, toplam hızı tavanlı) ile yük uygular. Hedef IP iki
 türden biridir:
 
-* **sunucu** — IP envanterdeki bir DEV / TEST / QA nginx sunucusunun (paylaşılan VIP dahil). Hedefte
-  aynı anda CPU kaydedici çalışır; sonuçta her kademe için yanıt süresi, istek başına CPU
-  (CPU-ms/istek), hata ve kapasite çıkar.
-* **serbest** — IP hiçbir nginx sunucusunun değil (LB VIP'i ya da yönetilmeyen bir sunucu), Portal izin
+* **sunucu** — IP, `dbo.Inventory`'deki bir DEV / TEST / QA makinenin (paylaşılan VIP dahil; **tek hedef
+  modeli, 2026-11-13**: nginx olması gerekmez, ad kuralı aranmaz). Hedefte aynı anda CPU kaydedici
+  çalışır. Hedefte nginx'i playbook **kendisi tespit eder**: nginx varsa her kademe için yanıt süresi,
+  istek başına CPU (CPU-ms/istek), hata ve kapasite çıkar; nginx yoksa yalnız makinenin genel CPU'su ve
+  istemci ölçümü (§5.3).
+* **serbest** — IP hiçbir envanterde yok (LB VIP'i ya da yönetilmeyen bir sunucu), Portal izin
   listesindeki bir ağda. Hedefe bağlanılmaz (SSH yok); yalnız **istemci ölçümü** (p50/p95/p99, hata,
   429/5xx) yapılır.
 
@@ -210,7 +212,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 |---|---|---|
 | `NGINX_LOADTEST_RUN_TEMPLATE_ID` | — | Template ID (Playbook Kayıtları satırında yoksa) |
 | `NGINX_LOADTEST_AWX_SERVER_ID` | `1` | AWX sunucusu (kayıtta yoksa) |
-| `NGINX_LOADTEST_YUK_HOSTLARI` | `GBNGXT34` | İzinli yük makineleri (virgülle). **2026-11-13'ten beri liste Yük Testi › Araçlar › "Yük makineleri"nden (yalnız Admin) yönetilir** (Portal DB `nginx_loadtest_yuk_hostlari`); bu değişken yalnız Portal listesi boşken okunur ve ilk ekleme / çıkarmada Portal'a taşınır. Son makine çıkarılamaz; tablo okunamazsa liste kapalı kalır (424). Listedeki makine de ad kuralına göre DEV/TEST/QA, üretim işaretsiz ve envanterde olmalı (eklerken ve her koşuda denetlenir); liste kapıyı **gevşetemez**. Geçersiz giriş atılır. |
+| `NGINX_LOADTEST_YUK_HOSTLARI` | `GBNGXT34` | İzinli yük makineleri (virgülle). **2026-11-13'ten beri liste Yük Testi › Araçlar › "Yük makineleri"nden (yalnız Admin) yönetilir** (Portal DB `nginx_loadtest_yuk_hostlari`); bu değişken yalnız Portal listesi boşken okunur ve ilk ekleme / çıkarmada Portal'a taşınır. Son makine çıkarılamaz; tablo okunamazsa liste kapalı kalır (424). Listedeki makine de `dbo.Inventory`'de kayıtlı, **tüm** kayıtları DEV/TEST/QA, adından PROD / EDU okunmayan ve üretim işaretsiz olmalı (tek hedef modeli, 2026-11-13: ad kuralı aranmaz; eklerken ve her ön kontrol / koşuda denetlenir, `www` ile SSH'ı ön kontrol kanıtlar); liste kapıyı **gevşetemez**. Geçersiz giriş atılır. |
 | `NGINX_LOADTEST_K6`, `NGINX_LOADTEST_WRK` | — | **Artık kullanılmaz** (tur 4): araçlar /sw'deki arac setinden kopyalanır; playbook'a `yuk_k6_yolu` / `yuk_wrk_yolu` olarak sabit işaret değeri (`/yeni-playbook-gerekli/k6`, `/yeni-playbook-gerekli/wrk`) gider. |
 | `NGINX_LOADTEST_DERLEME_HOSTLARI` | `GBLABT02` | Araç derleme makineleri (virgül / boşluk / `;`). Her girdi `GBLABT02` ya da ad kuralına göre DEV / TEST / QA nginx adı (EDU değil); geçersiz girdi atılır (log'a bir kez); liste boş kalırsa `GBLABT02`. İlk eleman varsayılan. |
 | `NGINX_LOADTEST_ARAC_PROXY` | `http://tekprxv2.fw.garanti.com.tr:80` | İndirme vekili. `yok` = vekilsiz. Yalnız `http://<ad>:<port>` (küçük harfe çevrilir); kimlik bilgisi (`@`), `https://`, yol **geçersizdir** → "Araçları hazırla" 409 `arac_proxy_gecersiz`. Adres yalnız Admin'e gösterilir. |
@@ -238,6 +240,33 @@ durdurma ve canlı iş çıktısı **yalnız Admin**. **Koşu silme** (2026-11-0
 Admin'e gösterilir (diğerleri yalnız açık / kapalı bilgisini görür).
 
 ### 2.5 Teslim sırası
+
+**Tek hedef modeli (2026-11-13).** Portal ve Ansible zip'i **birlikte** dağıtılır. Zip'te değişen ayna
+dosyaları: `nginx_loadtest.yml`, `README.md`, `files/on_kontrol.sh`, `files/yuk_cpu_kaydedici.sh`
+(yeni dosya yok); Ansible deposundaki bekçi (`bmw_nginx/tests/check_nginx_loadtest_job.py`) aynı
+teslimde güncellenir. AWX survey / extra_vars **değişmedi** (38 anahtar; şablon değişikliği yok). Portal
+açılışta `nginx_loadtest_kosular.hedef_nginx BIT NULL` kolonunu ALTER ile ekler (eski satırlar NULL).
+
+* **Portal yeni, playbook eski**: set_stats'ta `hedef_nginx` yok → Portal hedefi nginx sayar (eski
+  davranış); nginx olmayan bir makine seçilirse eski playbook Play 1'de ad kuralıyla reddeder (fail-closed).
+* **Playbook yeni, Portal eski**: eski Portal yalnız ad kuralına uyan nginx hedeflerini gönderir; yeni
+  playbook bunlarda nginx'i tespit eder ve eskisi gibi ölçer (`hedef_nginx` alanı eski Portal'da yok sayılır).
+* **Yeniden sınıflandırma (D6)**: dağıtımdan önce, tek sahibi nginx olmayan DEV/TEST/QA bir Inventory
+  makinesi olan IP **serbest** sınıflanıyordu; artık **sunucu**. Böyle bir IP için dağıtımdan önce alınmış
+  ön kontrol ya da kuyruk öğesi 409 `on_kontrol_eski` / `onay_metni` ile düşer (onay metni artık IP değil
+  host adı): ön kontrolü yeniden çalıştırın (beklenen, fail-closed).
+* **Ad kuralı olmayan nginx hostu**: bir nginx hostunun `dbo.Inventory` satırı yoksa artık hedef olamaz
+  (`hedef_envanterde_yok`, "ortam kanıtlanamıyor"). Dağıtımdan önce `dbo.nginx_inventory` ↔ `dbo.Inventory`
+  eşleşmesini kontrol edin (yalnız okuma):
+
+  ```sql
+  -- TBMWANS: Inventory satiri olmayan nginx hostlari (bunlar hedef olamaz)
+  SELECT n.hostname, n.env FROM dbo.nginx_inventory n
+   WHERE NOT EXISTS (SELECT 1 FROM dbo.Inventory i WHERE UPPER(LTRIM(RTRIM(i.host))) = UPPER(LTRIM(RTRIM(n.hostname))));
+  -- TBMWANS: gercek ornek ve yuk makineleri
+  SELECT host, env, ip, nginx_version FROM dbo.Inventory
+   WHERE UPPER(LTRIM(RTRIM(host))) IN ('GBJWLT01','GBJALT02','GBNGXT14','GBNGXT34');
+  ```
 
 Tur 4 (yük araçları /sw'den):
 
@@ -292,21 +321,28 @@ kuralları geçmişte kaldı.
    * Satır sayısı ve toplam bayt sınırı, satırlar tek tek denetlenmeden **önce** uygulanır
      (sınırı aşan gövde hiç taranmaz). E-posta şüphesi doğrusal çalışır (uzun `@`'li yol olay
      döngüsünü kilitlemez); kararı eski düzenli ifadeyle birebir aynıdır.
-2. **Hedef IP** — IP'yi yazın ya da envanterden bir nginx sunucusu seçin (host seçici isteğe bağlı;
-   seçilirse IP o hostun aday IP'lerinden gelir ve paylaşılan bir VIP de kabul edilir). Ekran yazılan
+2. **Hedef IP** — IP'yi yazın ya da envanterden bir sunucu seçin (host seçici isteğe bağlı; seçilirse IP
+   o hostun aday IP'lerinden gelir ve paylaşılan bir VIP de kabul edilir). Tek hedef modeliyle
+   (2026-11-13) seçici `dbo.Inventory`'deki **her** uygun DEV / TEST / QA makineyi listeler (yüzlerce
+   olabilir): seçicinin üstündeki arama kutusu ada, ortama ve IP'ye göre süzer. Her satırda ortam, IP'ler
+   ve bir **nginx ipucu** görünür: son tamamlanmış ön kontrolün tespiti (`nginx` / `nginx yok`), yoksa
+   envanterdeki `nginx_version` (`nginx (envanter)` / `nginx yok (envanter)`), o da yoksa `nginx ?`. İpucu
+   yalnız bilgidir; kesin tespit ön kontrolde ve koşu başında playbook'ta yapılır (§5.3). Ekran yazılan
    IP'yi `/ip-sinifi` ile sınıflandırıp **gösterir**; kesin karar ön kontrolde ve koşu başlatılırken
-   sunucuda **yeniden** verilir (§4.2).
+   sunucuda **yeniden** verilir (§4.2). Yük parametrelerinin hepsi (motor, hız, süre, tekrar, ısınma,
+   bekleme, max VU, HTTP protokolü, bağlantı, sıkıştırma ve seviye) her hedefte açıktır; tavanlar her
+   Inventory hedefinde aynıdır.
 
    | | sunucu | serbest |
    |---|---|---|
-   | Ne zaman | IP tam bir non-prod nginx sunucusunun (ya da seçili hostun) | IP hiçbir nginx sunucusunun değil, izin listesinde, yasak listede değil, hiçbir PROD / EDU / bilinmeyen sahibe ait değil, envanter taze |
-   | Hedefe SSH | var (CPU kaydedici + nginx logu) | **yok** (yalnız istemci ölçümü) |
+   | Ne zaman | IP tek bir DEV/TEST/QA `dbo.Inventory` makinesinin (ya da seçili hostun; paylaşılan IP'nin her sahibi kurala uymalı) | IP hiçbir envanterde yok, izin listesinde, yasak listede değil, envanter taze |
+   | Hedefe SSH | var: nginx varsa CPU kaydedici + nginx logu, yoksa genel CPU kaydedici (`/proc/stat`, §5.3) | **yok** (yalnız istemci ölçümü) |
    | Ön kontrol | hedef + yük makinesi | yalnız yük makinesi: izin dosyası, IP yük makinesinde yerel değil, yollar 200, motor ikilisi |
    | Koşu başında | playbook hedefte `ip_yerel`'i **yeniden** ölçer; 1 değilse kaydedici ve yük başlamaz | playbook yük makinesindeki izin dosyasını **yeniden** denetler |
    | Tavanlar (2026-11-03) | k6 hız ≤ **5000**, VU ≤ **1000**; wrk bağlantı ≤ 199, toplam hız ≤ **5000**. Hedefin ölçülmüş `limit_req` / `limit_conn`'u artık **daraltmaz**: aşılırsa plan **uyarısı** (onay ister, engel değil; §4.1) | iki motorda **≤ 200 istek/sn** ve **≤ 50 bağlantı / VU** (değişmedi) |
    | Kilit | `T\|<HOST>` + `L\|<YUK>` (koşuda + `G\|global`) | `G\|global` (**ön kontrol dahil**) + `T\|IP:<ip>` + `L\|<YUK>` |
    | Onay metni | hedef host adı | hedef IP |
-   | Analiz | bugünkü (istemci + sunucu) | yalnız istemci; CPU alanları boş; `KALICI` verilmez |
+   | Analiz | nginx varsa bugünkü (istemci + sunucu); nginx yoksa istemci + host CPU ortalaması / DOYMA, CPU-ms ve kapasite boş, `KALICI` verilmez (§5.3) | yalnız istemci; CPU alanları boş; `KALICI` verilmez |
 
 3. **Yük aracı (motor)**
 
@@ -922,12 +958,22 @@ eder. İş hataları **409** (kalıcı) ya da **424** (geçici) döner; 5xx yok.
   değerlerini de ezebilir. Playbook kapıları bu yüzden **Portal hatasına ve AWX'ten yeniden
   başlatmaya (Relaunch) karşı savunma derinliğidir; kötü niyetli bir AWX kullanıcısına karşı sınır
   DEĞİLDİR.** Asıl sınır AWX RBAC'tir: şablonun Execute / Admin rolü yalnız Portal servis hesabında.
-* Katmanlar: (1) **Portal** — IP sınıflandırması, sahiplik, yasak / izin listesi, envanter tazeliği,
-  Host başlığı üretim kapısı, tavanlar, kilitler, onay metni; (2) **playbook** — ad kuralı, IP
+* Katmanlar: (1) **Portal** — `dbo.Inventory` ortam kapısı, IP sınıflandırması, sahiplik, yasak / izin
+  listesi, envanter tazeliği, Host başlığı üretim kapısı, tavanlar, kilitler, onay metni; (2) **playbook**
+  — EDU listesi ve üretim adı reddi, hedef ≠ yük makinesi, hedefte nginx tespiti, IP
   biçimi, iş geçerlilik süresi (`yuk_son_epoch`: Relaunch 15 dk sonra reddedilir), sunucu kipinde
   hedefte `ip_yerel` (ön kontrolde **ve** koşu başında), serbest kipte yük makinesindeki izin dosyası
   (sabit yol, sahibi www olmayan dosya), tavanlar; (3) **betikler** — yük makinesinde yerel IP reddi,
   429 / 5xx / soket hatası DUR'u.
+* **Üretim güvenliği kararı Portal'dadır (tek hedef modeli, kullanıcı kararı 2026-11-13).** Hedef ve
+  yük makinesi `dbo.Inventory`'deki herhangi bir makine olabilir; Portal makinenin **tüm** Inventory
+  satırlarının DEV/TEST/QA olduğunu, adından PROD / EDU okunmadığını ve hiçbir kaynakta üretim işareti
+  olmadığını kanıtlar (`dogrula.hostOrtami`). Playbook artık ad kuralı (`GBNG[WX]A?[DTQ]`) **aramaz**;
+  bağımsız olarak yalnız EDU listesini (`yt_edu_hostlari`), üretim adını (`yt_re_prod_adi`:
+  `^(GBRVP|GBNG[WX]A?P)`), hedef ≠ yük makinesini, parametre sınırlarını, hedefte IP'nin yerel olduğunu
+  (`ip_yerel`, ön kontrolde ve koşu başında) ve serbest izin dosyasını denetler. Dolayısıyla Inventory'de
+  yanlışlıkla Test yazılmış bir üretim makinesini (adı üretim kalıbında değilse) yalnız Inventory'nin
+  doğruluğu korur; kullanıcı bunu kabul etti.
 * **"Sahipsiz" yalnız "bilinen bir host değil" demektir, PROD olmadığının kanıtı DEĞİLDİR**: LB
   VIP'leri hiçbir envanterde yoktur. Serbest hedefte asıl koruma izin listesidir; dar tutun (tek VIP
   `/32` ya da yalnız VIP alt ağı `/24`).
@@ -936,18 +982,19 @@ eder. İş hataları **409** (kalıcı) ya da **424** (geçici) döner; 5xx yok.
 
 | Kural | Kod |
 |---|---|
-| Hedef **ad kuralına** göre DEV/TEST/QA olmalı; PROD, EDU, BILINMIYOR reddedilir. `dbo.nginx_inventory.env`, `dbo.Inventory.env` ya da PROD RP listesinden gelen **her** üretim işareti de reddettirir (bu kaynaklar kapıyı gevşetemez). | `hedef_uretim` |
-| Yazılan IP'nin **sahiplerinden** biri PROD / EDU / ortamı bilinmeyen (ALPHA, ODM dahil) ya da üretim işaretli (iki kipte; nginx olmayan sahip de) | `hedef_uretim` |
-| Hedef (host seçici) `dbo.nginx_inventory`'de olmalı | `hedef_envanterde_yok` |
+| Hedefin (tek hedef modeli, 2026-11-13) `dbo.Inventory` satırlarının **hepsi** DEV/TEST/QA olmalı (karışık Test + QA kabul; boş / tanınmayan / ALPHA / ODM / Production satır reddettirir); adından PROD ya da EDU okunan makine (`GBRVP…`, `GBNG[WX]A?P…`, `GBNGXT51`) Inventory ne derse desin reddedilir; `dbo.nginx_inventory.env`, Inventory satırları ya da PROD RP listesinden gelen **her** üretim işareti de reddettirir. Ad kuralı (`GBNG[WX]A?[DTQ]`) **aranmaz** (GBJWLT01 gibi makineler yalnız Inventory ile geçer). | `hedef_uretim` |
+| Yazılan IP'nin **sahiplerinden** biri (nginx olsun olmasın) aynı kuraldan geçmiyor: `dbo.Inventory`'de yok, ortamı DEV/TEST/QA değil, adından PROD / EDU ya da üretim işaretli (iki kipte; mesajda sebep: `ortamı PROD`, `dbo.Inventory'de kayıtlı değil`, `dbo.Inventory ortamı Production`, `üretim işareti: …`) | `hedef_uretim` |
+| Hedefin `dbo.Inventory`'de satırı yok (nginx envanterinde olsa bile; ortam kanıtlanamıyor) | `hedef_envanterde_yok` |
+| Sunucu ayarlı ön kontrol / koşu isteği, ama hedefin son tamamlanmış ön kontrolü nginx **bulamadı** (`hedef_nginx` 0). Önce sunucu ayarı olmadan ön kontrolü yeniden çalıştırın. Portal DB okunamazsa engellemez (playbook ayrıca reddeder) | `sunucu_ayari_nginx_yok` |
 | Envanter / tarama tablosu boş ya da okunamıyor ("yok" sayılmaz); serbest hedefte son tarama ya da dolu `dbo.IPInventory` yok | `envanter_okunamadi` (424) |
 | Serbest hedefte envanter bayat: `dbo.IPInventory` son yükleme > 48 saat ya da son nginx taraması > 2 gün (metinde tarih ve yaş) | `envanter_bayat` (424) |
-| Elle yazılan IP birden çok nginx sunucusunda ya da bir nginx sunucusu + başka bir kayıtta → hedef sunucuyu listeden seçin (paylaşılan VIP host seçiciyle kabul) | `ip_belirsiz` |
+| Elle yazılan IP birden çok sunucuda tanımlı (nginx ya da değil; "<ip> birden çok sunucuda tanımlı (A, B); hedef sunucuyu listeden seçin.") → paylaşılan IP host seçiciyle kabul, yalnız **her** sahip kuraldan geçiyorsa ve seçilen host sahiplerden biriyse; playbook IP'nin seçilen hostta yerel olduğunu ön kontrolde ve koşu başında ölçer (`ip_yerel`) | `ip_belirsiz` |
 | IP'nin sahibi adı çözülemeyen bir envanter kaydı (iki yolda — host seçici dahil; fail-closed) | `ip_sahibi_cozulemedi` |
 | Sahipsiz IP ve serbest hedef kapalı (`NGINX_LOADTEST_SERBEST_AGLAR` tanımlı değil) | `serbest_kapali` |
 | Sahipsiz IP izinli ağların dışında; /30 ve altı ağlarda ağ / yayın adresi de dışarıda sayılır | `ip_izinli_agda_degil` |
 | IP yasak listesinde (`NGINX_LOADTEST_SERBEST_YASAK`; iki kipte, izin listesinden önce) | `ip_yasakli_agda` |
 | Yasak listesinde geçersiz girdi: liste düzeltilene kadar **tüm** yük testi kapalı | `ip_yasak_listesi_gecersiz` |
-| Yük makinesi izin listesinde, ad kuralına göre non-prod, üretim işaretsiz, envanterde | `yuk_host_izinsiz` |
+| Yük makinesi izin listesinde (Araçlar › Yük makineleri) ve hedefle aynı kurala uyuyor (`dbo.Inventory`'de, tüm satırları DEV/TEST/QA, adından PROD / EDU değil, üretim işaretsiz; ad kuralı aranmaz) | `yuk_host_izinsiz` |
 | Yük makinesi hedefle aynı / IP yük makinesinin kendi IP'si | `ayni_host` |
 | IP, (seçili ya da sınıflandırılan) hedefin aday listesinde (hostun en son tarama gününün `listen` IP'leri — bir `server` bloğundaki **her** `listen` — + envanter IP'si; geri dönüş / joker değil) | `ip_hedefte_yok` |
 | Host başlığı son taramada **yalnız** üretim / EDU / ortamı bilinmeyen sunucularda tanımlı (iki kipte) | `host_uretim` |
@@ -1010,15 +1057,21 @@ normalleştirilir (FQDN'in alanı atılır, büyük harf). **IPInventory onarım
 `PRODDB01-10.20.30.45`); Portal `host + '-' + ip`'yi son `-`'den yeniden böler. Adı yine
 çözülemeyen satır `ip_sahibi_cozulemedi` ile durdurur (host seçici yolunda da).
 
-Sıra bağlayıcıdır: IP biçimi → yasak listesi (geçersiz girdi, yasaklı ağ; iki kipte) → adı çözülemeyen
-sahip → yük makinesinin kendi IP'si (`ayni_host`) → PROD / EDU / bilinmeyen ortamlı ya da üretim
-işaretli sahip (`hedef_uretim`) → nginx sahipleri: host seçicide seçili host sahiplerden biriyse
-**sunucu** (paylaşılan VIP'te diğer non-prod sahipler kabul; playbook IP'nin hostta yerel olduğunu ön
-kontrolde ve koşu başında ölçer), elle IP'de tek nginx sahibi ve tek sahip varsa **sunucu**, aksi
-`ip_belirsiz` → nginx sahibi yoksa **serbest** adayı: izin listesi açık mı, tarama ve dolu
+Sıra bağlayıcıdır (tek hedef modeli, 2026-11-13): IP biçimi → yasak listesi (geçersiz girdi, yasaklı ağ;
+iki kipte) → adı çözülemeyen sahip → yük makinesinin kendi IP'si (`ayni_host`) → **her** sahip (nginx
+olsun olmasın) `hostOrtami` kuralından geçmeli, biri bile geçmezse `hedef_uretim` → host seçicide seçili
+host sahiplerden biriyse **sunucu** (paylaşılan IP; playbook IP'nin seçilen hostta yerel olduğunu ön
+kontrolde ve koşu başında ölçer), değilse `ip_hedefte_yok` → elle IP'de tek sahip **sunucu**, iki ve
+daha çok sahip `ip_belirsiz` → hiç sahip yoksa **serbest** adayı: izin listesi açık mı, tarama ve dolu
 IPInventory var mı, envanter taze mi, IP izinli bir ağda mı (ağ / yayın adresi değil). Nginx olmayan
-non-prod sahip (ör. bir uygulama sunucusu) serbest hedefte kabul edilir ve `digerSahipler`'de
-gösterilir. Tazelik yalnız yükleyicinin koştuğunu gösterir (o gün erişilemeyen hostlar listede
+DEV/TEST/QA bir Inventory makinesinin IP'si artık serbest değil **sunucu** hedefidir (eskiden serbestti;
+`digerSahipler` artık hep boş). **Tek ayrıştırma kuralı**: `dbo.Inventory` `ip` hücresi boşluk / virgül / `;`
+ile bölünür; aday IP üretimi (seçici) ve IP sahibi araması aynı kuralı kullanır (sahip araması `LIKE` ile geniş
+okur, kesin eşleşme her parçada). Böylece `10.1.1.5, 10.151.166.200` hücreli bir üretim makinesi paylaşılan VIP
+`10.151.166.200`'in sahibi sayılır ve host seçici de `hedef_uretim` alır. **FQDN satırları**: `dbo.Inventory` her
+yerde kısa adla okunur (SQL'de ilk `.` öncesi, büyük harf); `gbx01.bmw.local` satırı `GBX01`'in satırıdır. Ortam
+kuralı makinenin **tüm** satırlarını görür: kısa ad `Test` + FQDN `Production` → `hedef_uretim` (hedef, yük makinesi
+ve IP sahibi için aynı). FQDN ile kayıtlı makine /hedefler listesinde kısa adıyla çıkar. Tazelik yalnız yükleyicinin koştuğunu gösterir (o gün erişilemeyen hostlar listede
 olmayabilir).
 
 #### Tarama günü: yarım yükleme
@@ -1593,6 +1646,42 @@ Protokol). Varsayılan ve alanı olmayan **eski koşular HTTP/1.1**'dir; davran�
 | `protokol_farkli(beklenen=<p>,olculen=<p\|yok>)` | Yük aracı istenen protokolü kullanmadı (`yok` = istemci satırında protokol kolonu yok: eski `yuk_k6.js`). Ansible deposunu güncelleyin, koşuyu tekrarlayın. |
 | `http2` | Yalnız HTTP/1.1 koşusunda: HTTP/2 ile gidildi (`GODEBUG=http2client=0` tutmadı). |
 
+### 5.3 Nginx olmayan hedef (tek hedef modeli, 2026-11-13)
+
+Kullanıcı kararı: "benim hedef makine ile yük makinemin ne olduğunun teknik olarak ne önemi var?" Hedef
+herhangi bir DEV / TEST / QA `dbo.Inventory` makinesi olabilir (gerçek örnek: hedef **GBJWLT01**,
+10.151.166.144, Inventory Test, `www` var, bugün nginx, ileride Apache; yük makinesi GBNGXT14). Nginx'i
+**playbook tespit eder**, ad değil (`files/on_kontrol.sh nginx`, salt okunur, `www`):
+
+| nginx master süreci | `nginx -T` | Sonuç (`hedef_nginx`) |
+|---|---|---|
+| ≥ 1 | başarılı | `true` — bugünkü tam ölçüm: `nginx -T`, access log metrikleri, CPU-ms/istek, sunucu ayarı (sıkıştırma aç/kapa + seviye, http2, static, `.gz` / `.br` kuralları) |
+| 0 | başarısız (ikili yok dahil) | `false` — genel ölçüm (aşağıda) |
+| diğer | | `null` — **belirlenemedi**: ön kontrol engeli ("hedefte nginx durumu belirlenemedi …"), koşuda playbook kaydediciden ve yükten önce durur. Gerçek bir nginx hedefi sessizce genel ölçüme düşürülmez |
+
+Nginx yoksa (`hedef_nginx: false`):
+
+* Tüm yük parametreleri açık, tavanlar aynı (k6 ≤ 5000 r/s / VU ≤ 1000, wrk ≤ 199 bağlantı, tavan 5000).
+* Hedefte `files/yuk_cpu_kaydedici.sh` `ROL=hedef` çalışır (`/proc/stat`, `hedefcpu_<ADIM>_<host>.csv|txt`;
+  `yukcpu_` ile aynı şema; hedef NIC'i `ag_*.txt rol=hedef`). Log okunmaz, sunucu ayarı yapılmaz: Portal
+  isteği reddeder (`sunucu_ayari_nginx_yok`, ön kontrol engeli "hedefte nginx yok: sunucu ayarı
+  uygulanamaz"), playbook da bağımsız olarak reddeder.
+* Ön kontrol `server_name`, `/web_log`, `log_format`, master kurallarını uygulamaz; onay isteyen tek uyarı:
+  "Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür."
+* Analiz (`kosuAnaliz` `hedefNginx: false`): adımda `host_cpu_ort` / `host_cpu_max` (yük makinesi saatiyle
+  pencere), ortalama > %90 → **DOYMA**; `cpu_ms_istek`, `kapasite_rps`, `rps_sunucu`, `istek_sunucu` boş
+  (asla 0). Koşu uyarıları: `nginx_yok(istek_basina_cpu_ve_kapasite_yok)`, kayıt yoksa
+  `hedef_cpu_kaydi_yok`, hepsi bozuksa `hedef_cpu_kaydi_bozuk`; adım uyarısı `hedef_cpu_olculemedi`.
+  Özette `hedef_nginx: false`, `hedef_cpu_kesitler`. Karşılaştırmada taraflardan biri nginx'siz ise CPU'suz
+  karar: "CPU-ms olculmedi (nginx olmayan hedef): KALICI verilmez; karar p95 ve hata oranina gore".
+* Portal DB: `nginx_loadtest_kosular.hedef_nginx` (BIT NULL). Ön kontrol satırı ön kontrol tespitini, koşu
+  satırı başlangıçta ön kontrolün tespitini, sonuçlandırmada koşu başındaki tespiti (set_stats
+  `kosu.hedef_nginx`) taşır. Ön kontrol ile koşu tespiti farklıysa koşu en iyi **KISMI** olur: "hedef nginx
+  durumu ön kontrolden bu yana değişti (ön kontrol: …, koşu: …)". NULL = eski satır / ölçülmedi (sunucu
+  satırı nginx sayılır; eski playbook yalnız nginx hedefe koşabilirdi).
+* **Apache'ye özgü metrikler sonraki adımdır** (log biçimi farklı); bugün Apache hedefte yalnız genel CPU
+  ve istemci metrikleri ölçülür.
+
 ---
 
 ## 6. API
@@ -1602,19 +1691,19 @@ retlerinde ayrıca `sahipler`).
 
 | Uç | Erişim | Not |
 |---|---|---|
-| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `protokol: 'h1'`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']`, `protokoller: ['h1', 'h2']` (alan yoksa arayüz yalnız HTTP/1.1 sunar), `araclar: { hazir, aracId, k6Surum, wrkSurum, kod: null \| 'araclar_ozet_sabit_yok' \| 'araclar_hazir_degil' \| 'araclar_ozet_degisti' \| 'araclar_geri_cekildi' \| 'db_okunamadi', mesaj }` (araç seti okunamazsa `hazir: false`, `db_okunamadi`; uç yine 200) |
-| `GET /ip-sinifi?ip=&yukHost=&hedefHost=` | Admin | yazılan IP'nin sınıfı; DB'ye ve denetime **yazmaz**. `ip` zorunlu, iki host isteğe bağlı (verilmiş ama geçersizse 400; `yukHost` yoksa `ayni_host` denetimi atlanır). Sunucu: `{ ok, tur: 'sunucu', ip, host, env, vhostlar, vhostVerisi, hizSiniri, vuSiniri, uygun, neden, kod, kaynaklar }` (`uygun: false` da 200'dür: ön kontrol yapılamaz); serbest: `{ ok, tur: 'serbest', ip, host: null, ag, digerSahipler: [{ host, env }] }`; ret: §4.1 kodları (400 / 409 / 424) + `sahipler` |
+| `GET /hedefler` | okuma | hedefler (uygun / değil + neden, aday IP, vhost önerileri, ölçülen tavanlar; tek hedef modeli 2026-11-13: uygun **tüm** DEV/TEST/QA `dbo.Inventory` makineleri + nginx envanterindeki her host, üretim / EDU Inventory makineleri listelenmez; tarama (vhost, listen IP) ve limit verisi ad kalıbından bağımsız olarak nginx envanteri + son iki taramanın hostlarından `hostOrtami`'ndan geçenler için okunur, yani `kosuPlani` ile aynı veri (GBJWLT01 gibi kalıp dışı ama taranmış hedefte de vhost önerisi ve limit ipucu); satırda ayrıca `nginxEnvanter: boolean \| null` (Inventory `nginx_version` dolu mu; kolon yoksa null), `urunler: ('NGINX' \| 'RHA' \| 'IHS')[]`, `nginxSon: boolean \| null` ve `nginxSonAt: ISO \| null` (hostun son DONE ön kontrolündeki tespit; okunamazsa null)), `hedefSayisi` (uygun hedef sayısı), yük makineleri, sınırlar (`baglantiMin`, `maxBaglanti`, `maxBaglantiSayisi`, `isParcacigiMin`, `maxIsParcacigi`, `serbestTavanRps`, `serbestMaxBaglanti` dahil), varsayılanlar (`motor`, `baglantilar`, `is_parcacigi`, `protokol: 'h1'`, `serbest: { hizlar, maxvu }` dahil), `serbest: { acik, aglar }` (`aglar` yalnız Admin'e dolu), `motorlar: ['k6', 'wrk']`, `protokoller: ['h1', 'h2']` (alan yoksa arayüz yalnız HTTP/1.1 sunar), `araclar: { hazir, aracId, k6Surum, wrkSurum, kod: null \| 'araclar_ozet_sabit_yok' \| 'araclar_hazir_degil' \| 'araclar_ozet_degisti' \| 'araclar_geri_cekildi' \| 'db_okunamadi', mesaj }` (araç seti okunamazsa `hazir: false`, `db_okunamadi`; uç yine 200) |
+| `GET /ip-sinifi?ip=&yukHost=&hedefHost=` | Admin | yazılan IP'nin sınıfı; DB'ye ve denetime **yazmaz**. `ip` zorunlu, iki host isteğe bağlı (verilmiş ama geçersizse 400; `yukHost` yoksa `ayni_host` denetimi atlanır). Sunucu: `{ ok, tur: 'sunucu', ip, host, env, ipler, vhostlar, vhostVerisi, hizSiniri, vuSiniri, limitReq, limitConn, uygun, neden, kod, kaynaklar, nginxEnvanter, urunler, nginxSon }` (`uygun: false` da 200'dür: ön kontrol yapılamaz; `nginxSon` için Portal DB'den tek salt okunur sorgu); serbest: `{ ok, tur: 'serbest', ip, host: null, ag, digerSahipler: [] }`; ret: §4.1 kodları (400 / 409 / 424) + `sahipler` |
 | `GET /senaryolar`, `GET /senaryolar/:id` | okuma | `:id` TSV'yi ve özeti de döner |
 | `POST /senaryolar`, `DELETE /senaryolar/:id` | Admin | silme yumuşaktır |
 | `PUT /senaryolar/:id` | Admin | 2026-11-04: `{ ad, aciklama, vhost }` → `{ ok }`; boş açıklama / vhost `NULL`, `tsv` / `sha256` değişmez, diğer alanlar yok sayılır. 400 `gecersiz_istek`, 409 `senaryo_yok`. Denetim `nginx_loadtest_senaryo_guncelle` |
 | `POST /kosular/on-kontrol` | Admin | `{ senaryoId, hedefHost?, hedefIp, vhost, yukHost, sni, parametreler, etiket? }` → `{ kosuId, jobId, awxServerId }`. `hedefHost` isteğe bağlı (`undefined` / `null` / `''` = yazılan IP sınıflandırılır). `parametreler.motor` `'k6'` (varsayılan) ya da `'wrk'`; k6: `hizlar`, `maxvu`; wrk: `baglantilar`, `is_parcacigi`; ortak `tekrar`, `isinma`, `sure`, `bosluk`, `bosta`, `kip`, `ae`, `protokol` (`'h1'` varsayılan \| `'h2'` yalnız k6 + `kip: 'ka'`; aksi 400). `tavan_rps` gönderilse de yok sayılır (sunucu hesaplar). |
 | `POST /kosular` | Admin | `{ onKontrolKosuId, confirmText, uyariOnay }` — `confirmText` sunucu hedefinde host adı, serbest hedefte hedef IP |
-| `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `protokol` (`h1` \| `h2`; eski satır `h1`), `hedefHost` (serbestte `null`). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
-| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, `protokol`, ön kontrol özeti (HTTP/2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2`) + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir; sade turu: `sonucOzeti` (§5.0) ve her adımda `cpuOlculemedi` (`reload` \| `sayac_geriledi` \| `net_negatif` \| `negatif_deger` — eski satırda DB'deki negatif / 0 değer \| `null`) ile `reloadlar: [{ t, tOnce, tSon, tur, faz }]` (epoch sn; `faz` ∈ `isinma`, `olcum`, `olcum_kenari`, `bosluk`, `kosu_oncesi`, §5.0); `cpuMsIstek` / `kapasiteRps` asla ≤ 0 (eski satırda da null'a çevrilir, DB değişmez) |
+| `GET /kosular?islem=&durum=&hedef=&ip=&hedefTuru=&motor=&onceki=&limit=` | okuma | `islem` ∈ `kosu`, `on_kontrol`; `durum` ∈ `QUEUED`, `RUNNING`, `FINALIZING`, `DONE`, `FAILED`, `CANCELED`, `OKUNAMADI`; `hedef` = sunucu adı; `ip` = hedef IPv4; `hedefTuru` ∈ `sunucu`, `serbest`; `motor` ∈ `k6`, `wrk`; `onceki` = koşu no (yalnız `id < onceki`, "daha eski" sayfası); `limit` 1..200 (varsayılan 50). Sıra `id` azalan. Yanıtta `dahaVar` (limit + 1 satır çekilir). Satırlarda `hedefTuru`, `motor`, `protokol` (`h1` \| `h2`; eski satır `h1`), `hedefHost` (serbestte `null`), `hedefNginx` (`true` \| `false` \| `null` = eski satır / ölçülmedi / serbest; §5.3). Geçersiz değer (ya da tekrarlanan parametre) → 400 `gecersiz_istek` |
+| `GET /kosular/:id` | okuma | ayrıntı: parametreler, `hedefTuru`, `motor`, `protokol`, `hedefNginx` (§5.3), ön kontrol özeti (yeni playbook: `hedef_nginx` `true` \| `false` \| `null`, `hedef_nproc`; alan yoksa eski playbook) (HTTP/2'de `protokol`, `curl_h2`, `alpn_h2`, `yollar_yanitli`, `yollar_h2`) + engel / uyarı listesi (`onKontrolUyarilari` = plan uyarıları başta + ön kontrol uyarıları), `planUyarilari` (ön kontrol satırınınki), `serbestAg` (serbest satırda Portal izin listesinde **şu an** eşleşen ağ ya da `null`), geçerlilik nedenleri, adımlar; `durdurIsi: { awxServerId, awxJobId } \| null` (son durdurma işi), `sonuclandirmaDenemesi` (sonuçlandırma deneme sayısı); tur 4: `aracId` (satırın arac seti ya da `null` — eski satır) ve `aracSeti: { id, k6Surum, wrkSurum, k6Sha256, wrkSha256, derlemeHost } \| null` (durumundan bağımsız); `aracId` doluysa ön kontrol engellerine araç kopyası maddeleri eklenir; sade turu: `sonucOzeti` (§5.0) ve her adımda `cpuOlculemedi` (`reload` \| `sayac_geriledi` \| `net_negatif` \| `negatif_deger` — eski satırda DB'deki negatif / 0 değer \| `null`) ile `reloadlar: [{ t, tOnce, tSon, tur, faz }]` (epoch sn; `faz` ∈ `isinma`, `olcum`, `olcum_kenari`, `bosluk`, `kosu_oncesi`, §5.0); `cpuMsIstek` / `kapasiteRps` asla ≤ 0 (eski satırda da null'a çevrilir, DB değişmez) |
 | `GET /kosular/:id/durum?since=` | Admin | maskeli iş çıktısı; `since` = elinizdeki metnin uzunluğu → yalnız devamı (`outputOffset`, `outputLength`) |
 | `POST /kosular/:id/durdur` | Admin | AWX iptali + (koşu) `durdur` kipi. Başarı: `{ ok, iptal, iptalHatasi, durdurIsi: { jobId, awxServerId } \| null, durdurHatasi: null }`. 409 `baslatiliyor`, 409 `kosu_bitti`, 424 `durdur_baslatilamadi` (gövdede `iptal`, `iptalHatasi`, `durdurHatasi`; metin motor ve türe göre), 424 `awx_okunamadi` (ön kontrol iptal edilemedi) |
 | `POST /kosular/:id/yeniden-oku` | Admin | sonucu okunamamış koşuyu yeniden sonuçlandırır → `{ ok: true }`; değilse 409 `yeniden_okunamaz` |
-| `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2) |
+| `GET /karsilastir?ref=&aday=&esikCpu=&esikP95=` | okuma | karar, nedenler, tablo, kademe, kombinasyon; `ref` / `aday` özetinde `motor`, `hedefTuru`, `protokol` (farklıysa karar `VERI_YOK`, §5.2), `hedefNginx` (`false` ise CPU'suz karar, §5.3) |
 | `GET /karsilastir-coklu?ref=&kosular=&esikCpu=&esikP95=` | okuma | 2026-11-04: koşu özetinde `protokol`, `kip`, `ae`, `sunucuAyar: { seviye, static } \| null` (dizin taşınmaz); `kosular` virgülle koşu numaraları; referans dahil en çok **16** koşu (ref listede yoksa eklenir, tekrarlar tekil). → `{ ref: { …koşu, kombinasyon, hizlar }, adaylar: [{ …koşu, karar, kararNedenleri, kademe, kombinasyon (adayın kendi kombosu), refKombinasyon, hizlar: [{ hiz, p95, p99, cpuMsIstek, hostCpu, hata, kapasite, bantBps, bellekMb, bellekKaynak: 'pss' \| 'rss' \| null, kip, gecerlilik, tekrar, gecerliTekrar, gurultuCpu, gurultuP95, fark: { <ölçü>: { yuzde, durum: 'iyi' \| 'kotu' \| 'gurultu_ici' \| 'renklendirilmez' \| 'yok', esikYuzde, gurultuBilinmiyor } } }], kademeFarki: { cpu, p95, bant, bellek, hata } }], karsilastirilamaz: [{ …koşu, nedenler: [{ kod: 'hedef_turu' \| 'hedef' \| 'motor' \| 'senaryo' \| 'tavan' \| 'is_parcacigi' \| 'veri_yok' \| 'hesaplanamadi', metin }], karar }], olculer, esikler }`. Koşu ve adım satırları **iki sorguda** (`IN ($1..$n)` parametreli; koşu satırında büyük JSON kolonları taşınmaz; adım satırı `ham` dahil tümüyle okunur, bkz. aşağıdaki not). 400 `gecersiz_istek` (eksik / geçersiz numara: metin numara en çok 9 hane, 16'yı aşan, yalnız referans, eşik), 409 `kosu_yok` (bulunamayan var) ya da `kosu_uygun_degil` (yalnız ön kontrol / bitmemiş) + ayrı listeler `eksik: [id]` (bulunamayan), `onKontrol: [id]` (ön kontrol kaydı), `bitmemis: [id]` (QUEUED / RUNNING / FINALIZING), 424 `db_okunamadi` / `analiz_okunamadi`. Not (2026-11-04 inceleme, bilgi): en kötü durumda 16 koşu × 100 adım × `ham` (≤ 32 KB) ≈ 51 MB tek istekte belleğe gelir ve önbellek yoktur; bugünkü koşular (adım başı birkaç KB, 10–40 adım) için değiştirilmedi |
 | `GET /rapor?kuyruk=` ya da `?kosular=` | okuma | 2026-11-04: yalnız biri; `kosular` virgülle, tekil en çok **100** koşu (verilen sıra), `kuyruk` kuyruk sırasıyla. → `{ satirlar: [{ kosuNo, etiket, hiz, protokol, kip, ae, brotliSeviye, gzipSeviye, gzipStatikSeviye, gzipStatik, brotliStatikSeviye, brotliStatik, toplamIstek, p50, p95, p99, hostCpu, bantBps, tarih, sureSn, durum, gecerlilik, tekrar, gecerliTekrar, … }], atlananlar: [{ kosuId, etiket, neden: 'bulunamadi' \| 'on_kontrol' \| 'bitmemis' \| 'olcum_yok' \| 'hesaplanamadi' \| 'kosu_baslamadi', durum }] }`. Ölçülmeyen `null`; sunucu ayarı olmayan koşuda seviye / static alanları `'-'`. Koşu ve adım satırları iki sorguda (`IN` parametreli); koşu satırı `sonuc`'u da okur (hazırlık kanıtı, olası sızıntı), ön kontrol özeti taşınmaz. 400 `gecersiz_istek`, 409 `kuyruk_yok`, 424 `db_okunamadi` |
 | `DELETE /kosular/:id` | başlatan kişi ya da Admin | 2026-11-04: `{ confirmText: '<koşu no>' }` (`12` ya da `#12`) → `{ ok, sayi: 1, silinen: [{ id, islem, etiket, hedefHost, hedefIp, hedefTuru }] }`. Kayıt + adım satırları silinir; `/sw` dosyaları durur. 400 `gecersiz_istek` / `onay_metni` (DB okunmaz; 2147483647'yi aşan numara da 400), 403 `yetki_yok` (başkasının kaydı; `yetkisiz`), 404 `kosu_yok`, 409 `kosu_suruyor` / `kosu_kilitli` / `kuyruga_bagli` / `on_kontrol_bagli` / `eszamanli_degisti` (+ `silinemeyenler: [{ id, kod, metin, kuyrukId?, bagliKosuId? }]`), 424 `db_okunamadi` (silme batch'i bağlantı kopmasında yeniden denenmez). Denetim `nginx_loadtest_kosu_sil` (403 / 409 / 424 `fail`; 400 / 404 yazılmaz) |

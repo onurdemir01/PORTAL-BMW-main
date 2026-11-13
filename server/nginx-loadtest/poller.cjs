@@ -64,8 +64,8 @@ const DENEME_NEDENI = 'sonuç 3 denemede okunamadı (Portal süreci okuma sıras
 const OLAY_EKSIK_NEDENI = 'AWX olay işlemesi tamamlanmadı; arşivlenen çıktı eksik olabilir';
 const SW_YOK_NEDENI = "yük başlamadı ya da sonuçlar /sw'ye kopyalanmadı (playbook sw_dizin bildirmedi)";
 // tick ve tetikle AYNI kolonlari okur (sonuclandirma butceyi, satir yasini, deneme sayisini, hedef
-// turunu ve motoru ister).
-const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor, durdur_awx_job_id,
+// turunu, motoru ve 2026-11-13'ten beri on kontrolun nginx tespitini (hedef_nginx) ister).
+const SONUCLANDIRMA_KOLONLARI = `id, islem, durum, awx_server_id, awx_job_id, parametreler, started_at, created_at, sonuclandirma_denemesi, kilit_id, hedef_turu, motor, durdur_awx_job_id, hedef_nginx,
        DATEDIFF(SECOND, COALESCE(started_at, created_at), GETUTCDATE()) AS calisma_yas_sn`;
 
 let _timer = null;
@@ -317,6 +317,14 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   const protokol = protokolOf(kosu);
   const kosRc = kosuBolumu ? SAYI(kosuBolumu.kos_rc) : null;
   if (kosRc !== null && kosRc !== 0) ekNedenler.push(`${motor === 'wrk' ? 'wrk_kos.sh' : 'kos.sh'} rc=${kosRc}`);
+  // TEK HEDEF MODELI (2026-11-13): kosu basinda playbook'un nginx tespiti (kosu.hedef_nginx; eski playbook: yok -> null,
+  // nginx sayilir). Satirin kolonu on kontrolun tespitidir: ikisi de olculmus ve farkliysa hedef degismis -> KISMI.
+  const hn = hedefTuru === 'sunucu' && kosuBolumu && typeof kosuBolumu.hedef_nginx === 'boolean' ? kosuBolumu.hedef_nginx : null;
+  const okNginx = kosu.hedef_nginx == null ? null : kosu.hedef_nginx === true || Number(kosu.hedef_nginx) === 1;
+  if (hn !== null && okNginx !== null && hn !== okNginx) {
+    const m = (v) => (v ? 'nginx var' : 'nginx yok');
+    ekNedenler.push(`hedef nginx durumu ön kontrolden bu yana değişti (ön kontrol: ${m(okNginx)}, koşu: ${m(hn)})`);
+  }
   const basarili = kosuBasarili(st.status, stats.durum);
   const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? `: ${String(stats.hata).slice(0, 300)}` : ''})`;
 
@@ -340,6 +348,8 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     const srv = param && param.sunucuAyar ? { sunucuAyar: param.sunucuAyar, ae: param.ae } : {};
     analiz = analizNormalle(await cModulu('analiz.cjs').kosuAnaliz(veri, {
       adim: `R${id}`, hedefTuru, motor, protokol, ...(yukKaydedici ? { yukKaydedici } : {}), ...(yukSonSatir ? { yukSonSatir } : {}), ...srv,
+      // Nginx'siz hedef: genel CPU (hedefcpu_*), log ve CPU-ms yok. Secenek yalniz false iken (eski satir BIREBIR).
+      ...(hn === false ? { hedefNginx: false } : {}),
     }));
   } catch (e) {
     okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
@@ -369,16 +379,29 @@ function bitisZamani(v) {
   return Number.isFinite(t.getTime()) ? t : null;
 }
 
+/**
+ * TEK HEDEF MODELI (2026-11-13): satira yazilacak nginx tespiti (1 | 0 | null = kolon degismez). On kontrol satiri:
+ * set_stats on_kontrol.hedef_nginx; kosu satiri: kosu.hedef_nginx. Yalniz sunucu hedefinde ve yalniz boolean (eski
+ * playbook alan gondermez: kolon NULL kalir ya da kosu satirinda on kontrol kopyasi korunur).
+ */
+function hedefNginxOf(kosu, stats) {
+  if ((kosu.hedef_turu || 'sunucu') !== 'sunucu' || !stats) return null;
+  const bolum = kosu.islem === 'on_kontrol' ? stats.on_kontrol : kosu.islem === 'kosu' ? stats.kosu : null;
+  const v = bolum && typeof bolum === 'object' ? bolum.hedef_nginx : undefined;
+  return typeof v === 'boolean' ? (v ? 1 : 0) : null;
+}
+
 async function sonYaz(kosu, st, k) {
   if (Array.isArray(k.adimlar)) await adimlariYaz(Number(kosu.id), k.adimlar);
   const sonucJson = k.sonuc == null ? null : jsonKisa(k.sonuc, SONUC_MAX_BAYT) ?? JSON.stringify({ kirpildi: true });
   await db().query(
     `UPDATE nginx_loadtest_kosular
-        SET durum = $2, gecerlilik = $3, gecersiz_nedenleri = $4, sonuc = $5, on_kontrol_ozet = $6,
+        SET durum = $2, gecerlilik = $3, gecersiz_nedenleri = $4, sonuc = $5, on_kontrol_ozet = $6, hedef_nginx = COALESCE($9, hedef_nginx),
             sw_dizin = COALESCE($7, sw_dizin), finished_at = COALESCE($8, finished_at, GETUTCDATE()), finalized_at = GETUTCDATE()
       WHERE id = $1 AND durum = 'FINALIZING'`,
     [Number(kosu.id), k.durum, k.gecerlilik ?? null, k.nedenler ? JSON.stringify(k.nedenler.filter(Boolean)) : null, sonucJson,
-      k.onKontrolOzet ? jsonKisa(k.onKontrolOzet, 64 * 1024) : null, k.swDizin ?? null, bitisZamani(st && st.finished)],
+      k.onKontrolOzet ? jsonKisa(k.onKontrolOzet, 64 * 1024) : null, k.swDizin ?? null, bitisZamani(st && st.finished),
+      k.hedefNginx === 1 || k.hedefNginx === 0 ? k.hedefNginx : null],
   );
 }
 
@@ -492,6 +515,7 @@ async function kosuyuSonuclandir(kosu) {
       }
     }
     if (olayEksik) k = { ...k, nedenler: [...(k.nedenler || []), OLAY_EKSIK_NEDENI] };
+    k = { ...k, hedefNginx: hedefNginxOf(kosu, stats) };
     await sonYaz(kosu, st, k);
     return { terminal: true, durum: k.durum };
   } finally {

@@ -2282,7 +2282,8 @@ const TABLES = [
         hedef_turu          NVARCHAR(10) NOT NULL DEFAULT 'sunucu',
         motor               NVARCHAR(8) NOT NULL DEFAULT 'k6',
         plan_uyarilari      NVARCHAR(2000) NULL,
-        arac_id             INT NULL
+        arac_id             INT NULL,
+        hedef_nginx         BIT NULL
       )`,
   },
   {
@@ -5594,6 +5595,14 @@ async function setupTables() {
       table: 'nginx_loadtest_kosular',
       col: 'arac_id',
       sql: `ALTER TABLE nginx_loadtest_kosular ADD arac_id INT NULL`,
+    },
+    {
+      // Nginx Yuk Testi tek hedef modeli (2026-11-13): hedefte nginx var mi (playbook olcumu, set_stats hedef_nginx).
+      // NULL = eski satir / olculmedi (sunucu satiri nginx sayilir) ya da serbest. On kontrol satiri: on kontrol tespiti;
+      // kosu satiri: baslangicta on kontrol satirindan kopya, sonuclandirmada kosu tespiti (set_stats kosu.hedef_nginx).
+      table: 'nginx_loadtest_kosular',
+      col: 'hedef_nginx',
+      sql: `ALTER TABLE nginx_loadtest_kosular ADD hedef_nginx BIT NULL`,
     },
     {
       // Nginx Yuk Testi tur 4 D2 (2026-11-02): Admin bir DONE arac setini geri ceker. Tablo onceki

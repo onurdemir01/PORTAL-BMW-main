@@ -24,9 +24,9 @@ import { COKLU_OLCULER, nginxLoadtestApi, type NlCokluAday, type NlCokluHiz, typ
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import { SM_BTN, TBL_BTN, TH_STIL, TON, smBtn } from '@/components/server_hub/retirementStil';
-import { Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
+import { Cip, Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
-import { hedefEtiketi, kademeMetni, kararBilgisi, type AdimBirimi } from './yukTestiOrtak';
+import { NGINXSIZ_KARAR_NOTU, hedefEtiketi, kademeMetni, kararBilgisi, type AdimBirimi } from './yukTestiOrtak';
 import CokluGrafik, { type CokluSeri } from './CokluGrafik';
 import {
   MAX_COKLU, OLCU_SIRASI, OLCU_TANIM, SIRALAMALAR, csvMetni, cumle, farkParcalari, farkYuzdeMetni, hizBul, hizlarBirlesimi, hucreTonu, karsilastirmaNotlari, kosuEtiketi,
@@ -337,10 +337,14 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
   );
 }
 
-function KosuHucre({ k }: { k: { id: number; etiket: string | null; createdAt: string | null } }) {
+/** Kosu hucresi; nginx olmayan hedefte (meta nginx false, 2026-11-13) "nginx yok" cipi: o satirin karari CPU'suz. */
+function KosuHucre({ k }: { k: { id: number; etiket: string | null; createdAt: string | null; nginx?: false } }) {
   return (
     <div className="min-w-0">
-      <div className="truncate font-semibold" title={k.etiket || undefined}>{kosuEtiketi(k)}</div>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span className="min-w-0 truncate font-semibold" title={k.etiket || undefined}>{kosuEtiketi(k)}</span>
+        {k.nginx === false && <Cip ton="uyari" cerceve title={NGINXSIZ_KARAR_NOTU}>nginx yok</Cip>}
+      </div>
       <div className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>{`#${k.id} · ${fmtDateTime(k.createdAt)}`}</div>
     </div>
   );

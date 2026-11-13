@@ -6,7 +6,7 @@ import React from 'react';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import type { NlHedefTuru, NlMotor, NlProtokol, NlSunucuAyari, NlUyariTuru } from '@/api/nginxLoadtestApi';
 import { Cip, Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
-import { H2_CIP_IPUCU, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
+import { H2_CIP_IPUCU, NGINX_YOK_UYARISI, SERBEST_CIP_IPUCU, WRK_CIP_IPUCU, gecerlilikBilgisi, kosuDurumu, ISLEM_ETIKETI } from './yukTestiOrtak';
 
 /** Sunucu ayarinin gorunur uyarilari: geri alma uyari / hata ve hazirlik betiginin uyarilari (ok ise hic bir sey cizilmez). */
 export function SunucuAyarUyarilari({ ayar }: { ayar: NlSunucuAyari }) {
@@ -107,13 +107,16 @@ export function Alan({ id, etiket, yardim, not, hata, children, className = '' }
   );
 }
 
-/** Serbest hedef, wrk ve HTTP/2 cipleri (k6 + sunucu + HTTP/1.1 varsayilandir: cip YOK). Tur / motor / protokol kosu satirindan. */
-export function TurMotorCipleri({ hedefTuru, motor, protokol }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null; protokol?: NlProtokol | null }) {
+/** Serbest hedef, nginx'siz hedef, wrk ve HTTP/2 cipleri (k6 + nginx'li sunucu + HTTP/1.1 varsayilandir: cip YOK). Tur / motor /
+ *  protokol kosu satirindan; `nginxsiz` (2026-11-13) kosu satirinin hedefNginx === false'undan (sunucu hedefinde). */
+export function TurMotorCipleri({ hedefTuru, motor, protokol, nginxsiz = false }: { hedefTuru?: NlHedefTuru | null; motor?: NlMotor | null; protokol?: NlProtokol | null; nginxsiz?: boolean }) {
   const h2 = protokol === 'h2' && motor !== 'wrk';
-  if (hedefTuru !== 'serbest' && motor !== 'wrk' && !h2) return null;
+  const ngYok = nginxsiz && hedefTuru !== 'serbest';
+  if (hedefTuru !== 'serbest' && motor !== 'wrk' && !h2 && !ngYok) return null;
   return (
     <>
       {hedefTuru === 'serbest' && <Cip ton="uyari" cerceve title={SERBEST_CIP_IPUCU}>serbest</Cip>}
+      {ngYok && <Cip ton="uyari" cerceve title={NGINX_YOK_UYARISI}>nginx yok</Cip>}
       {motor === 'wrk' && <Cip cerceve title={WRK_CIP_IPUCU}>wrk</Cip>}
       {h2 && <Cip cerceve title={H2_CIP_IPUCU}>HTTP/2</Cip>}
     </>

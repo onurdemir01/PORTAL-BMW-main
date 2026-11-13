@@ -14,6 +14,8 @@
 //   konf_*.txt, NOT.txt, istemci_*.json, SHA256SUMS
 //   ag_<ADIM>_<host>.csv|txt     2026-11-03 (bilgi): iki makinenin NIC sayaclari (/proc/net/dev; txt rol=hedef|yuk)
 //   bdetay_<ADIM>_<host>.csv     2026-11-03 (bilgi): hedef nginx worker Anon / Shmem / File / Pss + baglanti sayisi
+//   hedefcpu_<ADIM>_<host>.csv|txt  2026-11-13 (tek hedef modeli): nginx olmayan sunucu hedefinin genel CPU'su
+//                                (yuk_cpu_kaydedici.sh ROL=hedef; yukcpu_ ile ayni sema, YALNIZ BILGI kurali ayni)
 //   hazirlik_<ADIM>_<host>.txt   2026-11-04: hazirlik.sh kaniti (http2, ae, seviye, static, dizin, gz_uretilen, br_uretilen,
 //                                atlanan, dosya_seviye, disk_kanit, uyarilar, sureler); sunucu ayarli kosu bunsuz GECERSIZ (analiz.cjs)
 // Hepsi istege bagli: eksik dosya analizde "olculmedi" (null) ya da GECERSIZ nedeni olur, okuma
@@ -64,7 +66,7 @@ const KOLON_ILK = 16;
 // Python gibi yalniz son degeri tutar (bellek buyumez).
 const SATIR_TAVANI = Object.freeze({
   zaman: 2000, baslatilan: 2000, istemci: 100, hatali_istemci: 100, sunucu: 20000, diger: 20000, bilgi_liste: 2000,
-  yuk_cpu: 20000, bellek: 20000,
+  yuk_cpu: 20000, hedef_cpu: 20000, bellek: 20000,
   // 2026-11-03: ag = SATIR (arayuz x ornek; satirlar tutulmaz, yalniz ornek basina toplam), ag_ornek = farkli ornek anlari.
   ag: 1000000, ag_ornek: 20000, bdetay: 20000,
 });
@@ -119,6 +121,9 @@ const DESENLER = Object.freeze([
   [/^NOT\.txt$/, 'not'],
   [/^yukcpu_.*\.csv$/, 'yuk_cpu'],
   [/^yukcpu_.*\.txt$/, 'yuk_cpu_bilgi'],
+  // 2026-11-13 (tek hedef modeli): nginx olmayan sunucu hedefinin genel CPU'su. Eski Portal bu oneki tanimaz ve ATLAR.
+  [/^hedefcpu_.*\.csv$/, 'hedef_cpu'],
+  [/^hedefcpu_.*\.txt$/, 'hedef_cpu_bilgi'],
   [/^bellek_.*\.csv$/, 'bellek'],
   [/^ag_.*\.csv$/, 'ag'],
   [/^ag_.*\.txt$/, 'ag_bilgi'],
@@ -1028,6 +1033,7 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
  *   zaman / baslatilan      : [sozluk] | null      (dosya yoksa null)
  *   kesitler   : [{ anahtar, dosya, ornekler: [{t,u,s,n,k,p,busy,tot}], bilgi, bilgiVar }]
  *   yukKesitler: [{ anahtar, dosya, ornekler: [{t,busy,tot[,mt,ma,ar]}], bilgi, bilgiVar }]  (yuk makinesi CPU + bellek; yoksa [])
+ *   hedefCpuKesitler: ayni sekil (hedefcpu_*; nginx olmayan sunucu hedefinin genel CPU'su; yoksa [])
  *   bellekKesitler: [{ anahtar, dosya, ornekler: [{t,rss,n,mt,ma}], sorun? }]  (hedef bellek_*.csv; yoksa [])
  *   istemciKodlama: Map<tur, {br,gzip,deflate,zstd,yok,diger,yok_1kb_alti}>  (istemci_*.json `kodlama`; yoksa bos)
  *   istemciAg  : Map<tur, {alinan, gonderilen, sure}>  (istemci_*.json ag_*; yoksa bos)
@@ -1074,6 +1080,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   const dosyalar = [];
   const tur = new Map();
   const yukNormalDegil = [];
+  const hedefCpuNormalDegil = [];
   const bellekNormalDegil = [];
   const bilgiNormalDegil = [];
   for (const g of girdiler) {
@@ -1083,6 +1090,11 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
       // B7: yuk makinesi CPU dosyasi YALNIZ BILGI: normal dosya degilse kosu OKUNAMADI olmaz, kesit 'sorun'la bos gecer.
       if (desen && (desen[1] === 'yuk_cpu' || desen[1] === 'yuk_cpu_bilgi')) {
         if (desen[1] === 'yuk_cpu') yukNormalDegil.push(ad);
+        continue;
+      }
+      // Nginx'siz hedefin genel CPU kaydi da YALNIZ BILGI (ayni kural).
+      if (desen && (desen[1] === 'hedef_cpu' || desen[1] === 'hedef_cpu_bilgi')) {
+        if (desen[1] === 'hedef_cpu') hedefCpuNormalDegil.push(ad);
         continue;
       }
       // 2026-11-03: hedef bellek kaydi da YALNIZ BILGI (ayni kural).
@@ -1130,7 +1142,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   }
 
   const veri = {
-    dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [], yukKesitler: [],
+    dizin, okunanBayt: 0, istemci: [], hataliIstemci: [], zaman: null, baslatilan: null, kesitler: [], yukKesitler: [], hedefCpuKesitler: [],
     bellekKesitler: [], istemciKodlama: new Map(), istemciAg: new Map(), agKesitler: [], bdetayKesitler: [], hazirliklar: [], log: null, loglar: [], diger: new Map(), not: '', konf: [], dosyalar, sha256: null, uyarilar,
   };
   const depo = new LogDeposu();
@@ -1138,6 +1150,8 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
   const sunucular = [];
   const yukler = [];
   const yukBilgiler = new Map();
+  const hedefCpular = [];
+  const hedefCpuBilgiler = new Map();
   const bellekler = [];
   const aglar = [];
   const agBilgiler = new Map();
@@ -1167,6 +1181,12 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         isleyici = yukOrnekOkuyucu(ad, SATIR_TAVANI.yuk_cpu);
         break;
       case 'yuk_cpu_bilgi':
+        isleyici = yukBilgiOkuyucu(ad);
+        break;
+      case 'hedef_cpu':
+        isleyici = yukOrnekOkuyucu(ad, SATIR_TAVANI.hedef_cpu);
+        break;
+      case 'hedef_cpu_bilgi':
         isleyici = yukBilgiOkuyucu(ad);
         break;
       case 'bellek':
@@ -1215,9 +1235,10 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
     } catch (e) {
       // B7: yuk makinesi CPU dosyasi okunamazsa (izin, G/C) yalniz o kesit 'sorun'lu bos gecer; bayt tavani kosunun
       // butununu bagladigi icin yine OKUNAMADI.
-      if (!['yuk_cpu', 'yuk_cpu_bilgi', 'bellek', 'ag', 'ag_bilgi', 'bdetay'].includes(t) || sayac.toplam > sayac.max) throw e;
+      if (!['yuk_cpu', 'yuk_cpu_bilgi', 'hedef_cpu', 'hedef_cpu_bilgi', 'bellek', 'ag', 'ag_bilgi', 'bdetay'].includes(t) || sayac.toplam > sayac.max) throw e;
       const sorun = String(e && e.message ? e.message : e).slice(0, 200);
       if (t === 'yuk_cpu') yukler.push({ ad, ornekler: [], sorun });
+      if (t === 'hedef_cpu') hedefCpular.push({ ad, ornekler: [], sorun });
       if (t === 'bellek') bellekler.push({ ad, ornekler: [], sorun });
       if (t === 'ag') aglar.push({ ad, ornekler: [], arayuzSayisi: 0, sarma: 0, sifirlama: 0, sorun });
       if (t === 'bdetay') bdetaylar.push({ ad, ornekler: [], sorun });
@@ -1251,6 +1272,12 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         break;
       case 'yuk_cpu_bilgi':
         yukBilgiler.set(ad, sonuc);
+        break;
+      case 'hedef_cpu':
+        hedefCpular.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
+        break;
+      case 'hedef_cpu_bilgi':
+        hedefCpuBilgiler.set(ad, sonuc);
         break;
       case 'bellek':
         bellekler.push({ ad, ornekler: sonuc, sorun: isleyici.sorun || null });
@@ -1330,6 +1357,12 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
     const anahtar = ad.slice('yukcpu_'.length, -'.csv'.length);
     const bilgi = yukBilgiler.get(`yukcpu_${anahtar}.txt`);
     veri.yukKesitler.push({ anahtar, dosya: ad, ornekler, bilgi: bilgi || null, bilgiVar: !!bilgi, ...(sorun ? { sorun } : {}) });
+  }
+  for (const ad of hedefCpuNormalDegil) hedefCpular.push({ ad, ornekler: [], sorun: `${ad}: normal dosya degil` });
+  for (const { ad, ornekler, sorun } of hedefCpular) {
+    const anahtar = ad.slice('hedefcpu_'.length, -'.csv'.length);
+    const bilgi = hedefCpuBilgiler.get(`hedefcpu_${anahtar}.txt`);
+    veri.hedefCpuKesitler.push({ anahtar, dosya: ad, ornekler, bilgi: bilgi || null, bilgiVar: !!bilgi, ...(sorun ? { sorun } : {}) });
   }
   for (const ad of bellekNormalDegil) bellekler.push({ ad, ornekler: [], sorun: `${ad}: normal dosya degil` });
   for (const { ad, ornekler, sorun } of bellekler) {

@@ -12,9 +12,11 @@ gider. İki motor vardır (`yuk_motor`):
 
 İki hedef türü vardır (`yuk_hedef_turu`):
 
-- **sunucu**: IP bir DEV/TEST/QA nginx sunucusuna ait. Hedefte aynı anda `cpu_kaydedici.sh` worker CPU'sunu ve
-  yalnız test isteklerinin access-log satırlarını kaydeder; IP'nin hedefte yerel olduğu ön kontrolde ve koşu
-  başında yeniden ölçülür.
+- **sunucu**: IP, dbo.Inventory'deki bir DEV/TEST/QA makinesine ait (2026-11-13: nginx olsun olmasın; ad kuralı
+  aranmaz, "Hedef ve yük makinesi kuralı"). IP'nin hedefte yerel olduğu ön kontrolde ve koşu başında yeniden ölçülür.
+  Hedefte nginx **otomatik tespit edilir** (`on_kontrol.sh nginx`): nginx varsa `cpu_kaydedici.sh` worker CPU'sunu ve
+  yalnız test isteklerinin access-log satırlarını kaydeder (bugünkü tam davranış); nginx yoksa yalnız makinenin toplam
+  CPU'su ölçülür (`yuk_cpu_kaydedici.sh ROL=hedef`), log ayrıştırılmaz ve sunucu ayarı yapılmaz ("Nginx'siz hedef").
 
 İki hedef türünde de koşu boyunca **yük makinesinin** toplam CPU'su `yuk_cpu_kaydedici.sh` ile saniyede bir
 kaydedilir ("Yük makinesi CPU kaydı").
@@ -39,13 +41,13 @@ aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`
 | Dosya | İş |
 |---|---|
 | `nginx_loadtest.yml` | Tek playbook, dört kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`, `araclar`), iki hedef türü, iki motor. On play (aşağıda). |
-| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN `openssl s_client` ile TEK bağlantıda ölçülür; h2'de `alpn_h2` ve `alpn_kaynak curl|openssl` satırları). |
+| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `nginx` kipi hedefte (2026-11-13; nginx var mı: `nginx_bin`, `nginx_T`, `master_sayisi`, `nginx_var` `1` \| `0` \| `-`, `nproc`; "Nginx'siz hedef"); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN `openssl s_client` ile TEK bağlantıda ölçülür; h2'de `alpn_h2` ve `alpn_kaynak curl|openssl` satırları). |
 | `files/kos.sh` | Kit kopyası: bir ADIM'ın (hız × tekrar) k6 koşularını sırayla çalıştırır (motor `k6`). |
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
 | `files/yuk_wrk.lua` | Portal'a özgü wrk betiği: ağırlıklı yol seçimi, bağlantı başına bekleme ile ortalama hız tavanı, ilk 429 / 5xx'te iş parçacığını durdurma, tam sayılı özet dosyası. |
 | `files/cpu_kaydedici.sh` | Kit kopyası: hedefte saniyede bir worker CPU örneği + yalnız test UA'lı log satırları (yalnız sunucu hedefte); Portal eki `bellek_*.csv` (worker RSS + MemAvailable, "Bellek ölçümü"), `ag_*.csv` / `ag_*.txt` (NIC, "Bant genişliği") ve `bdetay_*.csv` (Anon / Shmem / File / PSS + bağlantı, "Bellek artışı nasıl okunur"). |
-| `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`; 2026-11-03 `ag_R<id>_<host>.csv` / `.txt` (hedefe giden arayüzün NIC sayaçları). |
+| `files/yuk_cpu_kaydedici.sh` | Portal'a özgü: koşu boyunca **yük makinesinde** (www, dzdo/nginx yok) saniyede bir `/proc/stat` toplam CPU örneği; `sonuc/R<id>/yukcpu_R<id>_<host>.csv` + bitişte `.txt`; 2026-11-03 `ag_R<id>_<host>.csv` / `.txt` (hedefe giden arayüzün NIC sayaçları). 2026-11-13 `ROL=hedef`: nginx'i olmayan sunucu hedefte aynı kayıt `R<id>/hedefcpu_R<id>_<host>.csv` / `.txt` adıyla ("Nginx'siz hedef"). |
 | `files/durdur.sh` | Bir koşunun bir sunucuda kalan süreçlerini (pid dosyaları, k6, wrk, koşu dizinindeki araç kopyasından çalışan süreçler, kit ve Portal betikleri) TERM, 10 sn sonra KILL. |
 | `files/hazirlik.sh` | Portal'a özgü (2026-11-04; hedefte www ile): koşu öncesi nginx ayarı. `uygula` (yedek, `http2 on;`, `comp_level`, `*_static`, `nginx -t`, reload), `dosyalar` (`.gz` / `.br` silme ve üretme, kanıt), `kanit` (dosyaların gerçekten diskten sunulduğu) ve `geri_al` ("Sunucu ayarı (koşu öncesi)"). |
 | `files/arac_hazirla.sh` | Portal'a özgü (araclar kipi, derleme makinesinde www ile): k6 arşivinden yalnız ikiliyi çıkarır, wrk'yi derler, ikisini doğrular (sürüm satırı, kütüphaneler, glibc gereksinimi). Ağa çıkmaz; indirme Play 8'in `get_url` görevlerindedir. |
@@ -189,7 +191,10 @@ olası sızıntı, aynı koşuyu tekrarlayın.
 
 Gece kuyruğundaki senaryolar elle sunucu ayarı değiştirmeden koşsun diye: `yuk_srv_ayar` `1` iken hedefteki nginx koşudan
 hemen önce istenen duruma getirilir, iş bitince geri alınır. Yalnız sunucu hedefte ve `on_kontrol` / `kosu` kipinde;
-`0` (eski Portal dahil) iken hiçbir şey değişmez. Hedef non-prod (girdi kapısı ad kuralı).
+`0` (eski Portal dahil) iken hiçbir şey değişmez. Hedef non-prod (Portal'ın dbo.Inventory kapısı; playbook EDU ve
+üretim adını reddeder). 2026-11-13: yalnız nginx'i **tespit edilmiş** hedefte (`on_kontrol.sh nginx` → `nginx_var 1`);
+nginx yoksa ya da belirlenemediyse `hazirlik.sh` hiç çalışmaz, ön kontrolde `sunucu ayari: nginx bulunamadi ya da
+belirlenemedi (nginx_var <0|->); sunucu ayari uygulanmadi` engeli, koşuda kaydedici ve yük başlamadan `fail`.
 
 Ne değişir:
 
@@ -349,16 +354,19 @@ sonuç play'i Play 10):
    sunucu ayarı (`yuk_srv_*`; `1` yalnız sunucu hedefte ve on_kontrol/kosu); (7) durdur dışı her kip:
    iş geçerlilik süresi `yuk_son_epoch`; senaryo base64'ten çözülür, **her satırı** yeniden
    denetlenir, sha256 karşılaştırılır (araclar ve durdur'da senaryo yok); betiklerin kaynak sha1'leri alınır; yük
-   makinesi `yuk_makine` grubuna `add_host` ile eklenir; hedef `yuk_hedef` grubuna **yalnız sunucu hedefte** eklenir;
+   makinesi `yuk_makine` grubuna `add_host` ile eklenir; hedef (nginx olsun olmasın) `yuk_hedef` grubuna **yalnız sunucu hedefte** eklenir;
    araclar kipinde YALNIZ derleme makinesi `yuk_derleme` grubuna eklenir ve kontrol düğümünde geçici araç toplama dizini
    açılır (AWX `limit` KULLANILMAZ). Reddedilirse hiçbir hosta bağlanılmaz.
-2. **yuk_hedef** (become www; serbestte host yok, play "no hosts matched" ile atlanır): `yuk_srv_ayar` `1` ise önce
+2. **yuk_hedef** (become www; serbestte host yok, play "no hosts matched" ile atlanır): kopya kapısından hemen sonra
+   (on_kontrol ve kosu) **nginx tespiti** `on_kontrol.sh nginx` (`yt_hedef_nginx` `1|0|-`; koşuda `-` ise ve sunucu ayarı
+   istenip nginx yoksa kaydedici ve yük BAŞLAMAZ; "Nginx'siz hedef"); `yuk_srv_ayar` `1` ise ve nginx tespit edildiyse önce
    `hazirlik.sh uygula` (koşuda ardından `dosyalar` ve `kanit`; FAIL'de kaydedici ve yük BAŞLAMAZ, ön kontrolde engel; "Sunucu ayarı
-   (koşu öncesi)"); `on_kontrol` → `on_kontrol.sh hedef`; `kosu` → koşu dizini, `cpu_kaydedici.sh` + `on_kontrol.sh` kopyası (kapı), önce **koşu
+   (koşu öncesi)"); `on_kontrol` → `on_kontrol.sh hedef`; `kosu` → koşu dizini, `cpu_kaydedici.sh` + `on_kontrol.sh` + `yuk_cpu_kaydedici.sh` kopyası (kapı), önce **koşu
    kapısı**: `on_kontrol.sh hedef` yeniden koşar (yük üretmez) ve `ip_yerel` `1` değilse kaydedici ve yük BAŞLAMAZ
    (`hedef <H>: kosu kapisi: ...`; Portal dışı başlatma, paylaşılan VIP'in ön kontrolden sonra başka hosta geçmesi);
    sonra kaydedici **ayrık** başlatılır (`setsid nohup timeout -k 300 <bütçe+120> env SURE=<bütçe+60> ... & echo $! >
-   kaydedici.pid`), `wait_for` ile `YUKU SIMDI BASLATIN` ya da başlatıcının/kaydedicinin KENDİ hata satırı beklenir
+   kaydedici.pid`; nginx varsa `cpu_kaydedici.sh`, yoksa `env ROL=hedef ... yuk_cpu_kaydedici.sh R<id>` ile AYNI pid / out
+   dosyaları, `yt_kaydedici_betik`), `wait_for` ile `YUKU SIMDI BASLATIN` ya da başlatıcının/kaydedicinin KENDİ hata satırı beklenir
    (en çok bosta+90 sn; desen "Tuzaklar"da).
 3. **yuk_makine** (become www):
    - Hazırlık (`on_kontrol`; `kosu`ta serbest hedefte her zaman, sunucu hedefte yalnız kaydedici hazırsa): koşu
@@ -397,8 +405,9 @@ sonuç play'i Play 10):
      küçük). Ardından (kaydedici başlamadıysa da) `tail -n 1 <koşu dizini>/yuk_cpu.out` → `yt_yk_cpu_son` (ASCII,
      200; set_stats `kosu.yukm_cpu_son_satir`). Play 3 kurtarma yoluna düşerse kaydedici `SURE` ile kendisi biter;
      Play 7 (`durdur.sh`) onu da öldürür.
-4. **yuk_hedef** (serbestte atlanır): kaydediciye `kill -TERM <pid>` (pid'in komut satırı koşu dizinini içeriyorsa),
-   bitmesi en çok 290 sn beklenir (trap `bitir` `bilgi_*.txt` yazar; sarmalayıcının KILL'i 300 sn'de),
+4. **yuk_hedef** (serbestte atlanır): kaydediciye `kill -TERM <pid>` (pid'in komut satırı `<koşu dizini>/<yt_kaydedici_betik>`
+   içeriyorsa), bitmesi en çok 290 sn beklenir (trap `bitir` `bilgi_*.txt` yazar, genel kaydedici `hedefcpu_*.txt`;
+   `kaydedici_rc` hangisi çalıştıysa onun özet dosyasından; sarmalayıcının KILL'i 300 sn'de),
    `log_*.tsv` gzip'lenir.
 5. **yuk_hedef + yuk_makine** (serbestte yalnız yük makinesi): sonuç dosyaları (toplam ≤ 200 MiB) kontrol düğümüne
    `fetch` (düz). Sonuç dizini hedefte `<dizin>/R<id>`, yük makinesinde `<dizin>/sonuc/R<id>`
@@ -460,6 +469,57 @@ girdi kapısı reddeder, Play 6 ve Play 9 atlanır, Play 10 `girdi reddedildi` s
 motor yalnız `on_kontrol`/`kosu` dallarında ve işlem karşılaştırmasıyla kısa devre korunarak geçer: eski Portal'ın
 hedef türü ve motor göndermeyen durdurması uzak play'lerde hiçbir ifadeyi patlatmaz.
 
+## Hedef ve yük makinesi kuralı (2026-11-13)
+
+Kullanıcı kararı (2026-11-13): hedef makine ile yük makinesinin ne olduğu teknik olarak önemli değildir; ekran her
+hedefte aynı yük parametrelerini sunar (araç k6 / wrk, hız, süre, tekrar, ısınma, adımlar arası bekleme, max VU, HTTP
+protokolü, HTTP/1.1'de bağlantı, hedef, yük makinesi, sıkıştırma ve seviyesi).
+
+- **Hedef** (`yuk_hedef_turu` `sunucu`): dbo.Inventory'de kayıtlı ve **tüm** kayıtları DEV / TEST / QA olan, üretim
+  işareti taşımayan, EDU olmayan, yük makinesinden farklı HER makine (örnek: GBJWLT01, Inventory ortamı Test, nginx
+  şimdilik, Apache ileride). Ad kalıbı (`GBNG[WX][A][DTQ]`) artık şart değildir. IP, hedefin Inventory IP'lerinden biri
+  olmalı ve ön kontrolde VE koşu başında hedefte `www` ile yerel olduğu kanıtlanır (`ip_yerel 1`; aksi hâlde hiçbir yük
+  gönderilmez). Birden çok makinede tanımlı (paylaşılan / VIP) IP'yi Portal elle girişte reddeder; listeden seçilen
+  hedefte IP'nin sahiplerinden biri olması, bütün sahiplerin kurallardan geçmesi ve `ip_yerel` kanıtı şarttır.
+- **Yük makinesi**: aynı ortam kuralı (dbo.Inventory, tüm kayıtlar DEV/TEST/QA, üretim işareti yok, EDU değil) +
+  `www` ile SSH (ön kontrol kanıtlar). Admin listesi (Portal Araçlar › Yük makineleri) seçim listesi olarak kalır, ama
+  kapısı ad kuralı değil bu kuraldır. `yt_extra_load_hosts` listesi kalktı.
+- **Tavanlar** her Inventory hedefinde aynı (k6 5000 istek/sn ve 1000 VU, wrk 199 bağlantı, tavan 5000). 200 istek/sn /
+  50 bağlantı tavanı YALNIZ hiçbir envanterde olmayan ham IP'ye (serbest: `NGINX_LOADTEST_SERBEST_AGLAR` + yük
+  makinesindeki izin dosyası) kalır; o yol değişmedi.
+- **Playbook'un bağımsız denetimleri** (Portal'a güvenmez): EDU listesi (`yt_edu_hostlari`), üretim adı
+  (`yt_re_prod_adi`: `^(GBRVP|GBNG[WX]A?P)`; GBJWLT01 / GBJALT02'yi engellemeyen ucuz bir ret), hedef ≠ yük makinesi,
+  bütün parametre sınırları, hedefte IP yerel kanıtı ve serbest yolda izin dosyası. Ortam (DEV/TEST/QA) playbook'ta
+  ARTIK DENETLENMEZ: üretim güvenliği kararı Portal'ın dbo.Inventory kapısındadır (kullanıcı bunu kabul etti,
+  2026-11-13). AWX'i doğrudan başlatabilen biri bu kapıyı aşabilir; asıl sınır yine AWX RBAC'tır ("Güvenlik").
+
+## Nginx'siz hedef (otomatik tespit)
+
+Nginx adla değil, hedefte ölçülerek bulunur. Play 2, kopya kapısından hemen sonra (on_kontrol ve kosu) `on_kontrol.sh
+nginx` koşturur (www, yalnız okuma; `nginx -T` ve nginx master taraması `hedef` kipiyle AYNI işlevler):
+
+| nginx -T | nginx master | nginx_var | Ne olur |
+|---|---|---|---|
+| ok | ≥ 1 | `1` | Bugünkü tam davranış: `cpu_kaydedici.sh` (worker CPU, access-log, `cpu_ms_istek`), sunucu ayarı (sıkıştırma aç/kapat + seviye, http2, static, `.gz` / `.br`) |
+| fail (ikili yok dahil) | 0 | `0` | Genel ölçüm: `yuk_cpu_kaydedici.sh ROL=hedef` (`/proc/stat` toplam CPU), log ayrıştırma YOK, sunucu ayarı YOK |
+| ok | 0 | `-` | Belirlenemedi (nginx durmuş ya da hidepid): ön kontrolde engel, koşuda kaydedici ve yük başlamadan `fail` |
+| fail | ≥ 1 | `-` | Belirlenemedi (başka yolda nginx ya da `-T` reddi): aynı |
+
+- Belirsiz durumda gerçek bir nginx hedef sessizce "genel" ölçüme düşürülmez (fail closed).
+- Genel kaydedici: `setsid nohup timeout -k 300 <bütçe+120> env ROL=hedef SURE=<bütçe+60> ARALIK=1 BOSTA_BAS=<bosta>
+  HEDEF_IP=<ip> SONUC=<koşu dizini> bash yuk_cpu_kaydedici.sh R<id>`; aynı `kaydedici.pid` / `kaydedici.out`, aynı
+  `YUKU SIMDI BASLATIN` bekleyişi, aynı Play 3 / 4 / 6 akışı. Dosyalar hedefte `<koşu dizini>/R<id>/`:
+  `hedefcpu_R<id>_<host>.csv` (yükcpu ile aynı başlık; `arac_rss_kb` boş), bitişte `hedefcpu_R<id>_<host>.txt`
+  (`rol=hedef`, `bosta_bas` ek), `ag_R<id>_<host>.csv` / `.txt` (`rol=hedef`, `secim=hedef_ip`). Play 4 pid'in komut
+  satırında `<koşu dizini>/yuk_cpu_kaydedici.sh`'i arar ve `kaydedici_rc`'yi `hedefcpu_*.txt`'den verir.
+- Sunucu ayarı: Portal son ön kontrol nginx bulamadıysa reddeder; playbook ayrıca tespit `1` değilse `hazirlik.sh`'i
+  hiç çalıştırmaz (ön kontrolde engel, koşuda `fail`).
+- Portal analizi: CPU ortalaması ve DOYMA (> %90) raporlanır; `cpu_ms_istek` ve KALICI kararı YOK (istek başına CPU
+  ölçülmez). Ekran: "Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür."
+- set_stats: `on_kontrol.hedef_nginx` / `hedef_nproc`, `kosu.hedef_nginx` / `hedef_kaydedici` ("set_stats").
+- **Apache**: Apache'ye özgü metrikler (log biçimi farklı, worker modeli farklı) SONRAKİ adımdır. Bugün Apache hedefte
+  yalnız genel CPU ve istemci metrikleri ölçülür.
+
 ## Portal ↔ AWX sözleşmesi
 
 Katalog anahtarı `nginx_loadtest_run` (kategori `nginx`, env `NGINX_LOADTEST_RUN_TEMPLATE_ID`),
@@ -476,8 +536,8 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_islem` | string | her kip | `on_kontrol` \| `kosu` \| `durdur` \| `araclar` |
 | `yuk_run_id` | string | her kip | `^[0-9]{1,10}$` (Portal koşu id'si; ADIM `R<id>`, koşu dizini `~www/.portal_yuktesti/<id>`; araclar: araç seti id'si, /sw dizini `<kök>/araclar/<id>`) |
 | `yuk_hedef_turu` | string | on_kontrol, kosu (durdurda yoksa `sunucu`) | `sunucu` \| `serbest` |
-| `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, ad kuralına göre DEV/TEST/QA (`GBNG[WX][A][DTQ]...`), EDU istisnası (GBNGXT51) değil; serbest: `''` (dolu ise red) |
-| `yuk_yuk_host` | string | on_kontrol, kosu, durdur | aynı ad kuralı **ya da** `yt_extra_load_hosts` listesinde (2026-11-13: GBJWLT01, GBJALT02 — nginx olmayan, yalnız yük üreten makineler; `www` hesabı ve `dzdo -u www` gerekir; Portal'da birebir aynı liste `AD_DISI_YUK_HOSTLARI`, ortamları dbo.Inventory'den DEV/TEST/QA olarak doğrulanır); hedeften FARKLI. Bu makineler hedef olamaz |
+| `yuk_hedef_host` | string | on_kontrol, kosu, durdur | sunucu: `^[A-Z0-9][A-Z0-9-]{1,30}$`, EDU listesinde (`yt_edu_hostlari`: GBNGXT51) değil, üretim adı (`yt_re_prod_adi`: `^(GBRVP\|GBNG[WX]A?P)`) değil; 2026-11-13'ten beri ad kuralı ARANMAZ: ortamı (tüm dbo.Inventory kayıtları DEV/TEST/QA) Portal kanıtlar, nginx'i playbook tespit eder; serbest: `''` (dolu ise red) |
+| `yuk_yuk_host` | string | on_kontrol, kosu, durdur | `^[A-Z0-9][A-Z0-9-]{1,30}$`, EDU değil, üretim adı değil, hedeften FARKLI (2026-11-13: ad kuralı ve `yt_extra_load_hosts` listesi kalktı; ortamı Portal dbo.Inventory'den kanıtlar, `www` ile SSH'ı ön kontrol kanıtlar). Bir makine bir koşuda yük makinesi, başka bir koşuda hedef olabilir |
 | `yuk_motor` | string | on_kontrol, kosu | `k6` \| `wrk` |
 | `yuk_hedef_ip` | string | on_kontrol, kosu | IPv4; 0/127/169.254/224+ değil; sunucuda hedefte yerel olduğu ön kontrolde ve koşu başında ölçülür |
 | `yuk_host_basligi` | string | on_kontrol, kosu | RFC1123 küçük harf, port/joker yok, ≤ 253 (yalnız biçim; hedefin server_name listesinde olması ŞART değil) |
@@ -495,7 +555,7 @@ Tablo 40 değişken: 34 koşu + 6 yalnız araclar.
 | `yuk_kip` | string | on_kontrol, kosu | `yeni` (her istek yeni bağlantı) \| `ka` (keep-alive) |
 | `yuk_protokol` | string | on_kontrol, kosu | `h1` (HTTP/1.1) \| `h2` (HTTP/2); YOKSA `h1` (eski Portal); `h2` yalnız motor `k6` ve `yuk_kip` `ka` ile; durdurda denetlenmez. 34. koşu değişkeni (bkz. "Protokol") |
 | `yuk_ae` | string | on_kontrol, kosu | `br` \| `gzip` \| `identity` |
-| `yuk_srv_ayar` | string | on_kontrol, kosu | `0` \| `1`; YOKSA `0` (eski Portal). `1` yalnız `yuk_hedef_turu` `sunucu` ve on_kontrol \| kosu; durdur ve serbest hedefte red. 35. koşu değişkeni ("Sunucu ayarı (koşu öncesi)") |
+| `yuk_srv_ayar` | string | on_kontrol, kosu | `0` \| `1`; YOKSA `0` (eski Portal). `1` yalnız `yuk_hedef_turu` `sunucu` ve on_kontrol \| kosu; durdur ve serbest hedefte red; 2026-11-13: hedefte nginx tespit edilmediyse (`nginx_var` `1` değil) ayar uygulanmaz (ön kontrolde engel, koşuda `fail`). 35. koşu değişkeni ("Sunucu ayarı (koşu öncesi)") |
 | `yuk_srv_seviye` | string | on_kontrol, kosu | `''` ya da rakam: `br` 1..11, `gzip` 1..9; `identity` ve ayar `0` iken `''`; ayar `1` ve `br` / `gzip` iken zorunlu |
 | `yuk_srv_static` | string | on_kontrol, kosu | `0` \| `1`; ayar `0` iken `0` |
 | `yuk_srv_dizin` | string | on_kontrol, kosu | `''` ya da `^/usr/nginx/applications/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`, `..` yok; ayar `1` iken HER ZAMAN zorunlu (static kapalı da: silme için), ayar `0` iken `''` |
@@ -571,8 +631,10 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 yollar_toplam, yollar_200, ilk_hatalar: [{yol, status}] (≤20),
                 sikistirma: {statik, dinamik, sikistirmasiz},
                 protokol ('h1'|'h2'|null), curl_h2 (bool|null), alpn_h2 (bool|null),
-                alpn_kaynak ('curl'|'openssl'|null), yollar_yanitli (int|null), yollar_h2 (int|null) } | null,
+                alpn_kaynak ('curl'|'openssl'|null), yollar_yanitli (int|null), yollar_h2 (int|null),
+                hedef_nginx (bool|null), hedef_nproc (int|null) } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
+          hedef_nginx (bool|null), hedef_kaydedici ('nginx'|'genel'|null),
           istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null),
           yukm_cpu_basladi (bool|null), yukm_cpu_son_satir (str ≤ 200 ASCII|null) } | null,
   durdur: { durdurulan: ["<HOST> <ad> pid <pid> <TERM|KILL|KALDI>"] } | null,
@@ -615,13 +677,22 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
 - Hedef alanları (`ip_yerel` ... `statik_direktif`) sunucuda bugünkü anlamda (ölçülmediyse bool alanlar `false`),
   serbestte yedisi `null`. `ip_yuk_makinesinde`: `on_kontrol.sh yollar`'ın ölçümü (iki türde; ölçülmediyse `null`).
   `serbest_ag`: yük makinesi izin dosyasında hedef IP'yi kapsayan girdi (yalnız serbest; aksi `null`).
+- `hedef_nginx` (on_kontrol ve kosu; 2026-11-13): `on_kontrol.sh nginx`'in `nginx_var`'ı, o işte ölçülen: `true` (nginx
+  var: bugünkü tam davranış), `false` (nginx yok: genel CPU kaydı, log ve sunucu ayarı yok), `null` (belirlenemedi ya da
+  ölçülmedi; serbestte her zaman `null`). Eski playbook bu anahtarı hiç yazmaz: Portal yokluğu "nginx" sayar (eski
+  playbook yalnız nginx hedefte koşabiliyordu). `hedef_nproc`: hedefin çekirdek sayısı (yalnız sunucu; ölçülmediyse
+  `null`). `kosu.hedef_kaydedici`: hangi kaydedici başlatıldı (`'nginx'` = `cpu_kaydedici.sh`, `'genel'` =
+  `yuk_cpu_kaydedici.sh ROL=hedef`; başlamadıysa / serbestte `null`). `hedef_nginx` `false` iken nginx'e ait on_kontrol
+  alanları (`server_name_var`, `log_*`, `master_sayisi`, `web_log_df`, `statik_direktif`) yine yayınlanır ama Portal yok sayar.
 - `k6_*` yalnız motor k6'da, `wrk_*` yalnız motor wrk'te dolu; diğerleri `null`; ikisi de koşu dizinindeki araç
   kopyasının ölçümüdür. `wrk_calisiyor` true ama `wrk_var` false: ikili çalışıyor, ama sürüm satırı okunamadı ya da 4
   altında (`make VER=4.2.0`'sız derleme; araç seti yeniden hazırlanır).
 - `durum`:
   - `on_kontrol`: `OK` yalnız ölçülen taraflarda **engel** yoksa. Engeller (Portal koşuyu başlatmaz): sunucu
     hedefte hedefin sonucu OK değil, hedef IP hedefte yerel değil (ya da ölçülemedi: o zaman yük makinesinden HİÇ
-    istek gitmez ve yük makinesi tarafı da `FAIL`), `/web_log` okunamıyor; iki türde yük makinesi sonucu OK değil
+    istek gitmez ve yük makinesi tarafı da `FAIL`), `/web_log` okunamıyor (YALNIZ `hedef_nginx` `true` iken), nginx
+    tespiti çalıştı ama sonuç belirsiz (`hedef: nginx durumu belirlenemedi (nginx_T <ok|fail>, master <n>); olcum
+    yapilmaz`), sunucu ayarı istendi ama nginx yok (`sunucu ayari: nginx bulunamadi ya da belirlenemedi ...`); iki türde yük makinesi sonucu OK değil
     (serbestte izin dosyası reddi dahil), araç kopyası doğrulanamadı (`arac kopyasi dogrulanamadi: <neden|olculmedi>`)
     ya da doğrulandı ama çalıştırılamadı (`arac calistirilamadi: glibc uyumsuz: ...`), h2 istendi ve hedef ALPN ile h2
     sunmuyor (`HTTP/2: hedef bu Host icin ALPN ile h2 sunmuyor (<n2>/<ny> yol h2)`; `alpn_kaynak` openssl ise
@@ -647,7 +718,8 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
   der. Portal kararı set_stats'tan verir: `durum: DUR` + AWX `failed` koşusu **başarılı** sayılır
   (`DONE`, geçerlilik en iyi `KISMI`; veri /sw'de), `durum: FAIL` her zaman başarısız, AWX `canceled`
   her şeyden önce gelir. Serbest hedefte DUR yalnız yük makinesinin `kos_rc`'sine (4/130) ve /sw kopyasına bakar.
-- `kaydedici_rc`: kaydedici ayrık koştuğu için gerçek çıkış kodu alınamaz; `bilgi_*.txt` varsa `0`,
+- `kaydedici_rc`: kaydedici ayrık koştuğu için gerçek çıkış kodu alınamaz; `bilgi_*.txt` (nginx'siz hedefte
+  `hedefcpu_*.txt`) varsa `0`,
   `kaydedici.out`'ta `HATA:` varsa `2`, yoksa `null`; serbestte her zaman `null`.
 - `bas_epoch`: sunucuda kaydedicinin başlatıldığı an, serbestte koşu betiğinin başladığı an; `bit_epoch`: /sw
   kopyasından hemen önce (kontrol düğümü saati). Ölçüm penceresinin asıl sınırları `bilgi_*.txt` ve `zaman.csv`'dedir.
@@ -1031,11 +1103,14 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   playbook kapıları Portal hatasına ve AWX'ten yeniden başlatmaya (Relaunch) karşı **savunma derinliğidir**; asıl
   sınır AWX RBAC'tır: şablonun Execute / Admin rolü yalnız Portal servis hesabında (AWX tablosu, Kanarya).
 - Katmanlar: (1) Portal — IP sınıflandırması, sahiplik, yasak / izin listesi, envanter tazeliği, Host üretim kapısı,
-  tavanlar, kilitler, onay metni; (2) playbook — ad kuralı, IP biçimi, iş geçerlilik süresi (`yuk_son_epoch`: Portal
+  tavanlar, kilitler, onay metni, dbo.Inventory ortam kapısı; (2) playbook — EDU / üretim adı reddi, hedef ≠ yük, IP biçimi, iş geçerlilik süresi (`yuk_son_epoch`: Portal
   her işi en çok 15 dk geçerli başlatır, Relaunch 15 dk sonra reddedilir), sunucu kipinde hedefte `ip_yerel` (ön
   kontrolde VE koşu başında), serbest kipte yük makinesindeki izin dosyası (literal yol, sahibi www olmayan dosya),
   tavanlar; (3) betikler — yük makinesinde yerel IP reddi (on_kontrol.sh, wrk_kos.sh), 429 / 5xx / soket DUR'u.
-- Hedef (sunucu) ve yük makinesi ad kuralına göre DEV/TEST/QA, EDU istisnası değil, birbirinden farklı. Serbest
+- Hedef (sunucu) ve yük makinesi: 2026-11-13'ten beri **üretim güvenliği kararı Portal'dadır** (kullanıcı kararı:
+  ortam, tüm dbo.Inventory kayıtları DEV/TEST/QA, üretim işareti yok, EDU değil); playbook ad kuralı ARAMAZ, yalnız EDU
+  listesi, üretim adı (`yt_re_prod_adi`), hedef ≠ yük makinesi, parametre sınırları, hedefte IP yerel kanıtı ve serbest
+  izin dosyasını bağımsız denetler ("Hedef ve yük makinesi kuralı"). Serbest
   hedefe SSH ile bağlanılmaz; "sahipsiz IP" PROD olmadığının kanıtı değildir (LB VIP'leri envanterde yok): asıl
   koruma dar tutulan izin listeleridir.
 - Hedef IP özel aralıkta değil; sunucuda hedefte yerel olduğu (`ip -o -4 addr`), iki türde yük makinesinde yerel
@@ -1282,7 +1357,10 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
   `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.cjs`
   (NA6: yuk_wrk.lua / wrk_kos.sh / durdur.sh / playbook metin kuralları; (i) tohum satırları, (m) ret nedeni kesmesi ve
   dosya metni temizliği), `nginx-loadtest-k6.test.cjs` (k6 mantığı; K7 `ozet_hesapla` anahtar sırası =
-  wrk_kos.sh `JSON_ANAHTARLARI`), genel playbook bekçileri.
+  wrk_kos.sh `JSON_ANAHTARLARI`), `nginx-loadtest-nginxsiz.test.cjs` (NA10, 2026-11-13: Play 1'de ad kuralı ve ek liste
+  yok, EDU + üretim adı reddi; nginx tespiti sunucu ayarından ve kaydedicilerden ÖNCE; genel kaydedici `ROL=hedef`;
+  Play 4 kaydedici seçimi; Play 10 `hedef_nginx`; bash varsa `on_kontrol.sh nginx` üç durumu ve `yuk_cpu_kaydedici.sh`
+  `ROL`), genel playbook bekçileri.
 
 ## Kanarya (ilk gerçek koşudan önce, bir kez)
 

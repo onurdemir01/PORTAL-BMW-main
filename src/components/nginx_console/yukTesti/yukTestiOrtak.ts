@@ -422,6 +422,37 @@ export const SERBEST_UYARISI = 'Serbest hedef: sunucu tarafı ölçüm (CPU, ngi
 // Inceleme WR2 (2026-10-28): tavan yalniz ORTALAMA hizi sinirlar (kapali dongu + sabit bekleme istekleri kumeler;
 // Portal burst'u okumaz): metin "aşamaz" demez, burst'u kucuk / burst'suz yolda 429 -> DUR oldugunu soyler.
 export const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
+/** TEK HEDEF MODELI (2026-11-13): sunucu dogrula.cjs NGINX_YOK_UYARISI ile BIREBIR (sunucu bu metni onaylatir). */
+export const NGINX_YOK_UYARISI = 'Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür.';
+/** Sunucu NGINX_YOK_AYAR_ENGELI / NGINX_BELIRSIZ_ENGELI (cumle basi buyuk harfle). */
+export const NGINX_YOK_AYAR_ENGELI = 'Hedefte nginx yok: sunucu ayarı uygulanamaz';
+export const NGINX_BELIRSIZ_ENGELI = 'Hedefte nginx durumu belirlenemedi (nginx -T ve nginx master birbirini tutmuyor); ön kontrolü yeniden çalıştırın';
+/** Sunucu ayari kutusu kapaliyken nedeni (son on kontrol nginx bulamadi) ve envanter ipucu notu. */
+export const SRV_AYAR_NGINX_YOK_NOTU = 'Son ön kontrol bu sunucuda nginx bulamadı; sunucu ayarı yalnız nginx hedefte uygulanır.';
+export const SRV_AYAR_ENVANTER_NOTU = 'Envanterde nginx görünmüyor; ön kontrol doğrular.';
+/** Karsilastirmada bir taraf nginx olmayan hedefteyse (analiz CPU_YOK_NGINXSIZ ile ayni anlam). */
+export const NGINXSIZ_KARAR_NOTU = 'Nginx olmayan hedef: KALICI verilmez; karar p95 ve hata oranına göre.';
+/** Nginx olmayan hedefte CPU-ms / kapasite hucresinin ipucu. */
+export const NGINX_YOK_CPU_IPUCU = 'nginx yok: istek başına CPU ölçülmez';
+/**
+ * Kosu nginx olmayan bir sunucu hedefinde mi. Oncelik satirin KENDI tespitinde: hedefNginx boolean ise yalniz o
+ * gecerli (playbook nginx'i kosu basinda yeniden olcer; on kontrol "yok" deyip kosu "var" bulduysa olculmus CPU-ms
+ * gizlenmez, liste / karsilastirma ile ayni karar). On kontrolun tespitine yalniz satirinki null iken donulur (eski
+ * satir, sonuclanmamis kosu). null / alan yok = nginx (eski satir) ya da serbest; asla nginx'siz sayilmaz.
+ */
+export function hedefNginxsiz(k: { hedefTuru?: NlHedefTuru | null; hedefNginx?: boolean | null; onKontrol?: Pick<NlOnKontrol, 'hedefNginx'> | null } | null | undefined): boolean {
+  if (!k || k.hedefTuru === 'serbest') return false;
+  if (typeof k.hedefNginx === 'boolean') return k.hedefNginx === false;
+  return k.onKontrol?.hedefNginx === false;
+}
+/** Secici satirinin nginx ipucu: son on kontrol, yoksa envanter, o da yoksa '?'. Kesin karar on kontrolde. */
+export function nginxIpucu(h: { nginxSon?: boolean | null; nginxEnvanter?: boolean | null } | null | undefined): string {
+  if (h?.nginxSon === true) return 'nginx';
+  if (h?.nginxSon === false) return 'nginx yok';
+  if (h?.nginxEnvanter === true) return 'nginx (envanter)';
+  if (h?.nginxEnvanter === false) return 'nginx yok (envanter)';
+  return 'nginx ?';
+}
 export const SERBEST_ON_KONTROL_BILGISI = 'Serbest hedef: hedef sunucu denetlenmedi (SSH yok); yalnız yük sunucusu ve yollar denetlendi.';
 /** "wrk 4.2.0 [epoll] Copyright ..." -> "4.2.0 [epoll] ..." (bilgi satiri "wrk ..." ile baslar; ad iki kez yazilmasin). */
 const wrkSurumu = (s: string) => s.replace(/^wrk\s+/i, '');
@@ -453,6 +484,11 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   // Hic yol denenmediyse (0 / 0) sikistirma sifirlari OLCULMEDI: olculmus gibi yazilmaz.
   if (o.sikistirma && (o.yollarToplam ?? 0) > 0) d.bilgiler.push(`Sıkıştırma: statik ${fmtNumber(o.sikistirma.statik)}, dinamik ${fmtNumber(o.sikistirma.dinamik)}, sıkıştırmasız ${fmtNumber(o.sikistirma.sikistirmasiz)}`);
   if (serbest) d.bilgiler.push(SERBEST_ON_KONTROL_BILGISI);
+  // TEK HEDEF MODELI: alan yoksa (eski playbook) kurallar BIREBIR eskisi; false nginx'siz, null belirlenemedi (ENGEL).
+  const nginxAlani = !serbest && o.hedefNginx !== undefined;
+  const nginxsiz = nginxAlani && o.hedefNginx === false;
+  const belirsiz = nginxAlani && o.hedefNginx !== true && o.hedefNginx !== false;
+  if (!serbest && o.hedefNproc != null) d.bilgiler.push(`hedef ${fmtNumber(o.hedefNproc)} çekirdek`);
   if (k.sunucuDegerlendirmesi) {
     d.engeller.push(...k.sunucuDegerlendirmesi.engeller.map(buyukBasla));
     d.uyarilar.push(...k.sunucuDegerlendirmesi.uyarilar.map(buyukBasla));
@@ -462,8 +498,10 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
     if (o.ipYukMakinesinde !== false) d.engeller.push('Hedef IP yük sunucusunda yerel ya da ölçülemedi — istek gönderilmedi.');
   } else {
     if (o.ipYerel === false) d.engeller.push('Seçilen IP hedef sunucuda yerel değil.');
+    if (belirsiz) d.engeller.push(NGINX_BELIRSIZ_ENGELI);
     // D7: Host basligi listede olmamak (ya da olculememek) olcum dogrulugu sorunudur: onay isteyen UYARI, listenin basinda.
-    if (o.serverNameVar !== true) d.uyarilar.unshift(HOST_LISTEDE_YOK_UYARISI);
+    // Nginx'siz hedefte server_name olcumu yok: uyari da yok.
+    if (!nginxsiz && o.serverNameVar !== true) d.uyarilar.unshift(HOST_LISTEDE_YOK_UYARISI);
   }
   // Tur 4: aracli satirda (eski satir aracId null: kural YOK) dogrulanmamis kopya engeldir; motor maddesinden once.
   if (k.aracId != null && o.aracDogrulandi !== true) d.engeller.push(`Yük aracı kopyası doğrulanamadı: ${o.aracHata ?? 'ölçülemedi'}.`);
@@ -483,7 +521,8 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
     d.uyarilar.push(`${fmtNumber(o.yollarToplam - o.yollar200)} / ${fmtNumber(o.yollarToplam)} yol 200 dönmedi — HAR alındıktan sonra deploy olmuş olabilir; k6 kurulum adımında bu yollarla koşu durur.`);
   }
   if (o.sikistirma?.statik != null && o.sikistirma.statik > 0) d.uyarilar.push(`Hedefte ön-sıkıştırılmış dosyalar var (${fmtNumber(o.sikistirma.statik)} yol statik .br/.gz ile dönüyor) — CPU ölçümü sıkıştırma maliyetini içermez.`);
-  if (!serbest) {
+  if (nginxsiz && k.parametreler?.sunucuAyar) d.engeller.push(NGINX_YOK_AYAR_ENGELI);
+  if (!serbest && !nginxsiz) {
     if (o.webLogDf != null && o.webLogDf >= 65) d.uyarilar.push(`/web_log doluluğu %${fmtNumber(o.webLogDf)} (≥ %65) — koşu geçersiz sayılır.`);
     if (o.logFormatUa === false) d.uyarilar.push('Etkin log_format “user-agent=” alanını yazmıyor — sunucu tarafı ölçüm test satırlarını ayıramaz.');
     if (o.masterSayisi != null && o.masterSayisi !== 1) d.engeller.push(`Hedefte ${fmtNumber(o.masterSayisi)} nginx master süreci var (1 bekleniyordu) — CPU kaydedici bu durumda başlamaz.`);
@@ -493,6 +532,7 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   // 2026-11-03: yuk makinesi port / bellek olcumu (sunucu ile ayni yer: sabit uyarilardan once).
   d.uyarilar.push(...yukMakinesiUyarilari(o, k.parametreler, motor));
   if (serbest) d.uyarilar.push(SERBEST_UYARISI);
+  if (nginxsiz) d.uyarilar.push(NGINX_YOK_UYARISI);
   if (motor === 'wrk') d.uyarilar.push(WRK_UYARISI);
   return d;
 }

@@ -202,7 +202,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
                   {/* Dar kolonda cipler alt satira gecer; etiket (IP / host) kesilmez (uzun host adi kolona sigmazsa kesilir). */}
                   <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
                     <span className="min-w-0 max-w-full truncate font-mono text-[12px]" title={hedefEtiketi(k) || undefined}>{hedefEtiketi(k) || '—'}</span>
-                    <TurMotorCipleri hedefTuru={k.hedefTuru} motor={k.motor} protokol={k.protokol} />
+                    <TurMotorCipleri hedefTuru={k.hedefTuru} motor={k.motor} protokol={k.protokol} nginxsiz={k.hedefNginx === false} />
                   </div>
                   {/* Sunucu hedefinde ikinci satir IP · vhost; serbestte IP zaten etiket: yalniz vhost. */}
                   {k.hedefHost ? (

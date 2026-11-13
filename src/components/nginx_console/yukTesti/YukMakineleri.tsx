@@ -1,8 +1,9 @@
 // src/components/nginx_console/yukTesti/YukMakineleri.tsx — Yük Testi > Araçlar: yük makinesi listesi (2026-11-13).
 //
 // Kullanıcı: "bu değişikliği direkt Portal üzerinden yapamaz mıyız ya niye .env dosyasında işlem yapıyoruz".
-// Liste Portal'da tutulur; yalnız Admin ekler / çıkarır. Eklenen makine sunucuda aynı kapıdan geçer (envanterde
-// kayıtlı, ad kuralına göre DEV/TEST/QA, üretim işareti yok); her koşu bunu yeniden ölçer. Liste boşken
+// Liste Portal'da tutulur; yalnız Admin ekler / çıkarır. Eklenen makine sunucuda aynı kapıdan geçer (TEK HEDEF MODELI
+// 2026-11-13: dbo.Inventory'de kayıtlı, tüm kayıtları DEV/TEST/QA, üretim işaretsiz, EDU değil; ad kuralı aranmaz); her
+// koşu bunu yeniden ölçer, www ile SSH'ı ön kontrol kanıtlar. Liste boşken
 // NGINX_LOADTEST_YUK_HOSTLARI (yoksa GBNGXT34) geçerlidir; ilk değişiklik o listeyi Portal'a taşır.
 import React, { useCallback, useState } from 'react';
 import { ArrowPathIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
@@ -17,7 +18,7 @@ import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
 import { hataMetni } from './yukTestiOrtak';
 
 export const YUK_MAKINESI_ACIKLAMASI =
-  'Yük bu makinelerden üretilir. Eklenen makine envanterde kayıtlı, ad kuralına göre DEV / TEST / QA ve üretim işaretsiz olmalı; her ön kontrol ve koşu bunu yeniden denetler. Mümkünse reverse proxy olmayan bir makine seçin (ölçüm daha temiz).';
+  'Yük bu makinelerden üretilir. Eklenen makine dbo.Inventory’de kayıtlı, tüm kayıtları DEV / TEST / QA, üretim işaretsiz ve EDU olmayan bir makine olmalı; ad kuralı aranmaz. Her ön kontrol ve koşu bunu yeniden denetler; www ile SSH’ı ön kontrol kanıtlar. Mümkünse reverse proxy olmayan bir makine seçin (ölçüm daha temiz).';
 export const ORTAM_KAYNAGI_METNI =
   'Liste şu an Portal ortam değişkeninden (NGINX_LOADTEST_YUK_HOSTLARI, yoksa varsayılan GBNGXT34) geliyor. İlk ekleme ya da çıkarma bu listeyi Portal’a taşır; sonrasında ortam değişkeni okunmaz.';
 
@@ -47,8 +48,8 @@ export default function YukMakineleri({ isAdmin }: { isAdmin: boolean }) {
 
   const liste = veri?.yukHostlari || [];
   const listede = new Set(liste.map((y) => y.host));
-  // Öneri: envanterdeki DEV / TEST / QA nginx makineleri (sunucu yine de kendi kapısından geçirir).
-  const adaylar = (veri?.hedefler || []).filter((h) => DEV_TEST_QA.has(String(h.env || '').toUpperCase()) && !listede.has(h.host)).map((h) => h.host);
+  // Öneri: envanterdeki uygun DEV / TEST / QA makineleri (karışık ortam 'QA/TEST' dahil; sunucu yine de kendi kapısından geçirir).
+  const adaylar = (veri?.hedefler || []).filter((h) => h.uygun && String(h.env || '').toUpperCase().split('/').every((e) => DEV_TEST_QA.has(e)) && !listede.has(h.host)).map((h) => h.host);
   const yazilan = host.trim().toUpperCase();
 
   async function ekle() {
@@ -121,7 +122,7 @@ export default function YukMakineleri({ isAdmin }: { isAdmin: boolean }) {
       {isAdmin && veri && !veri.yukHostHatasi && (
         <form className="grid items-end gap-3 rounded-lg border p-3 @lg/yuk:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]" style={{ borderColor: 'var(--border-subtle)' }}
           onSubmit={(e) => { e.preventDefault(); void ekle(); }}>
-          <Alan id="yuk-makinesi-ekle" etiket="Makine" yardim="Envanterdeki DEV / TEST / QA nginx makineleri önerilir; başka bir ad da yazılabilir.">
+          <Alan id="yuk-makinesi-ekle" etiket="Makine" yardim="Envanterdeki DEV / TEST / QA makineleri önerilir; başka bir ad da yazılabilir.">
             <input id="yuk-makinesi-ekle" list="yuk-makinesi-adaylari" value={host} onChange={(e) => setHost(e.target.value)} placeholder="GBNGXT33"
               className={`${GIRDI} font-mono uppercase`} style={girdiStili()} autoComplete="off" />
             <datalist id="yuk-makinesi-adaylari">{adaylar.map((h) => <option key={h} value={h} />)}</datalist>

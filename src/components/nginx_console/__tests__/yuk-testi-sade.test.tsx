@@ -605,6 +605,8 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
       bellek_bos_az: 'bellek_bos_az(yuk,%7.5)', nginx_bellek_artisi: 'nginx_bellek_artisi(ilk=110MB,son=210MB,kosu_sonu=215MB)',
       // 2026-11-03 bant genisligi (bilgi).
       ag_kullanim_yuksek: 'ag_kullanim_yuksek(hedef,%82.4)',
+      // 2026-11-13 nginx olmayan hedef (adim uyarisi).
+      hedef_cpu_olculemedi: 'hedef_cpu_olculemedi',
     };
     expect(Object.keys(ORNEK).sort()).toEqual(NEDEN_KALIPLARI.map((k) => k.kod).sort());
     for (const k of NEDEN_KALIPLARI) {
@@ -622,6 +624,12 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
       expect({ neden, bilinmiyor: a.bilinmiyor ?? false, ton: a.ton }).toEqual({ neden, bilinmiyor: false, ton: 'uyari' });
       expect(a.cumle).toBe(`Yük makinesi CPU’su ölçülemedi (${parca}); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.`);
     }
+    // 2026-11-13 (TEK HEDEF MODELI): nginx olmayan hedefin kosu uyarilari (analiz.cjs kosuAnaliz, NEDEN_KALIPLARI disi) duz cumle.
+    for (const kod of ['nginx_yok(istek_basina_cpu_ve_kapasite_yok)', 'hedef_cpu_kaydi_yok', 'hedef_cpu_kaydi_bozuk', 'nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi(3)']) {
+      const a = uyariAcikla(kod);
+      expect({ kod, bilinmiyor: a.bilinmiyor ?? false, hamDegil: a.cumle !== kod && /\s/.test(a.cumle) }).toEqual({ kod, bilinmiyor: false, hamDegil: true });
+    }
+    expect(uyariAcikla('nginxsiz_kosuda_sunucu_dosyalari_yok_sayildi(3)').cumle).toBe('Nginx olmayan hedefte nginx ölçümü yok; dizindeki 3 sunucu dosyası yok sayıldı.');
     // B1: yeni playbook kaydedicinin son satirini ekler ('<neden>;son=<satir>'); satir parantez icerebilir.
     const s = uyariAcikla('yuk_cpu_olculemedi(kaydedici_baslamadi;son=HATA: /proc/stat okunamiyor (x))');
     expect([s.bilinmiyor ?? false, s.cumle]).toEqual([false, 'Yük makinesi CPU’su ölçülemedi (kaydedici başlatılamadı; kaydedicinin son çıktısı: “HATA: /proc/stat okunamiyor (x)”); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.']);

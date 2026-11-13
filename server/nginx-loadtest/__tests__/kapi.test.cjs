@@ -69,6 +69,14 @@
 //   -- kosu silme incelemesi (2026-11-04) --
 //   YKP67 on kontrol okunduktan sonra (plan / arac kontrolu sirasinda) silinirse kosu INSERT'i 0 satir yazar: 409
 //         on_kontrol_eski, kopuk on_kontrol_kosu_id'li satir yok, AWX yok, kilitler birakilir, ret denetimde
+//   -- tek hedef modeli (2026-11-13) --
+//   YKP97 gercek ornek GBJWLT01 (yalniz dbo.Inventory) -> GBNGXT14: sunucu turu, 38 anahtar, k6 5000; nginx yok uyarisi
+//         onay ister, kosu satiri on kontrol tespitini tasir; belirsiz tespit engel; uretim / satirsiz makine 409
+//   YKP98 sunucu ayari: son DONE on kontrol nginx bulamadiysa 409 sunucu_ayari_nginx_yok (en son tespit; DB hatasi engellemez)
+//   YKP99 /hedefler: tum uygun Inventory makineleri + nginxEnvanter / urunler / nginxSon; uretim / EDU Inventory listede yok
+//   YKP99b /hedefler: ad kalibi disi ama taranmis hedefte vhost / limit verisi (ad kurali kalmadi); FQDN Inventory
+//          satiri kisa adla listede; kisa ad Test + FQDN Production makine uygun degil
+//   YKP100 paylasilan IP: elle ip_belirsiz, host secici sunucu, bir sahip uretim -> hedef_uretim
 'use strict';
 
 const { test } = require('node:test');
@@ -91,7 +99,10 @@ function sahteC(ad, exports) {
 
 const BAS = Date.parse('2026-10-27T10:00:00Z');
 const D = {};
+let yuklendi = false;
 function sifirla() {
+  // /hedefler ekran onbellegi (60 sn) testler arasinda tasinmasin.
+  if (yuklendi) yt._hedefOnbellegiSifirlaForTest();
   Object.assign(D, {
     simdi: BAS,
     sorgular: [],
@@ -130,6 +141,11 @@ function sifirla() {
     envSorgular: [],
     nginxEk: [],
     invIp: [],
+    // Tek hedef modeli (2026-11-13): Inventory urun kolonlari (sys.columns; null = host, env, ip), ek Inventory satirlari,
+    // son on kontrol nginx tespiti sorgusunun hatasi.
+    invKolonlar: null,
+    invEk: [],
+    nginxSonHata: null,
     ipEnvanteri: [{ host: 'GBNGXT33', ip: '10.0.0.5' }, { host: 'GBNGXT33', ip: '10.0.0.9' }, { host: 'GBNGXT34', ip: '10.0.0.6' }],
     ipEnvYasSaat: 2,
     taramaYasGun: 0,
@@ -285,8 +301,8 @@ sahte('../../db/index.cjs', {
     if (/^SELECT TOP \(\$1\)/.test(q)) {
       return { rows: D.kosular.filter(listeSuz(q, params)).sort((a, b) => b.id - a.id).slice(0, params[0]).map(kosuSatiri) };
     }
-    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id\) OUTPUT INSERTED\.id SELECT \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14, \$15( WHERE .*)?$/.test(q)) {
-      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id] = params;
+    if (/^INSERT INTO nginx_loadtest_kosular \(senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, durum, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id, hedef_nginx\) OUTPUT INSERTED\.id SELECT \$1, \$2, \$3, \$4, \$5, \$6, \$7, \$8, \$9, 'QUEUED', \$10, \$11, \$12, \$13, \$14, \$15, \$16( WHERE .*)?$/.test(q)) {
+      const [senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id, hedef_nginx] = params;
       // 2026-11-04 silme yarisi: INSERT'ten hemen once (on kontrol okunduktan sonra) calisan kanca; kosul SQL'e duyarli
       // (WHERE metni yoksa uygulanmaz: SQL'den silinirse test kirmiziya doner).
       if (D.kosuInsertOncesi) { const f = D.kosuInsertOncesi; D.kosuInsertOncesi = null; f(); }
@@ -294,7 +310,7 @@ sahte('../../db/index.cjs', {
         && on_kontrol_kosu_id != null && !D.kosular.some((x) => x.id === on_kontrol_kosu_id && x.islem === 'on_kontrol')) return { rows: [], rowCount: 0 };
       const id = 100 + D.kosular.length + 1;
       D.kosular.push({
-        id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id,
+        id, senaryo_id, on_kontrol_kosu_id, islem, etiket, hedef_host, hedef_ip, vhost, yuk_host, parametreler, created_by, kilit_id, hedef_turu, motor, plan_uyarilari, arac_id, hedef_nginx,
         durum: 'QUEUED', created_at: new Date(D.simdi), sonuclandirma_denemesi: 0,
       });
       return { rows: [{ id }], rowCount: 1 };
@@ -304,6 +320,20 @@ sahte('../../db/index.cjs', {
       const r = D.kosular.find((x) => x.id === params[0] && x.awx_job_id == null);
       if (r) Object.assign(r, { durum: r.durum === 'QUEUED' ? 'RUNNING' : r.durum, adim: params[1], awx_server_id: params[2], awx_job_id: params[3], sw_dizin: params[4], started_at: new Date(D.simdi) });
       return { rows: [], rowCount: r ? 1 : 0 };
+    }
+    // Tek hedef modeli (2026-11-13): son DONE on kontrolun nginx tespiti (sunucu ayari kapisi, /ip-sinifi) ve host basina
+    // son tespitler (/hedefler). Sahte satirlar D.kosular'dan ANLAMIYLA suzulur.
+    if (/^SELECT TOP 1 hedef_nginx, finished_at FROM nginx_loadtest_kosular WHERE hedef_host = \$1 AND islem = 'on_kontrol' AND durum = 'DONE' AND hedef_nginx IS NOT NULL ORDER BY id DESC$/.test(q)) {
+      if (D.nginxSonHata) throw D.nginxSonHata;
+      return { rows: D.kosular.filter((x) => x.hedef_host === params[0] && x.islem === 'on_kontrol' && x.durum === 'DONE' && x.hedef_nginx != null).sort((a, b) => b.id - a.id).slice(0, 1).map((x) => ({ hedef_nginx: x.hedef_nginx, finished_at: x.finished_at ?? null })) };
+    }
+    if (/^SELECT hedef_host, hedef_nginx, finished_at FROM \( SELECT hedef_host, hedef_nginx, finished_at, ROW_NUMBER\(\) OVER \(PARTITION BY hedef_host ORDER BY id DESC\) AS sira FROM nginx_loadtest_kosular WHERE islem = 'on_kontrol' AND durum = 'DONE' AND hedef_nginx IS NOT NULL AND hedef_host <> ''\) AS t WHERE t\.sira = 1$/.test(q)) {
+      if (D.nginxSonHata) throw D.nginxSonHata;
+      const son = new Map();
+      for (const x of D.kosular.filter((y) => y.islem === 'on_kontrol' && y.durum === 'DONE' && y.hedef_nginx != null && y.hedef_host).sort((a, b) => b.id - a.id)) {
+        if (!son.has(x.hedef_host)) son.set(x.hedef_host, { hedef_host: x.hedef_host, hedef_nginx: x.hedef_nginx, finished_at: x.finished_at ?? null });
+      }
+      return { rows: [...son.values()] };
     }
     if (/^SELECT durum FROM nginx_loadtest_kosular WHERE id = \$1$/.test(q)) return { rows: D.kosular.filter((x) => x.id === params[0]).map((x) => ({ durum: x.durum })) };
     if (/^UPDATE nginx_loadtest_kosular SET durdur_awx_server_id = \$2, durdur_awx_job_id = \$3 WHERE id = \$1$/.test(q)) {
@@ -389,8 +419,17 @@ sahte('../../inventory/mssql.cjs', {
         ...D.nginxEk,
       ] };
     }
-    if (/^SELECT host, env, ip FROM dbo\.Inventory WHERE LTRIM\(RTRIM\(ip\)\) = @ip0$/.test(q)) return { recordset: D.invIp.filter((r) => r.ip === deger('ip0')) };
-    if (/FROM dbo\.Inventory/.test(q)) return { recordset: Object.entries(D.invEnv).filter(([h]) => hostlar.has(h)).map(([host, env]) => ({ host, env })) };
+    if (/^SELECT host, env, ip FROM dbo\.Inventory WHERE ip LIKE @ip0$/.test(q)) return { recordset: D.invIp.filter((r) => like(String(r.ip ?? ''), deger('ip0'))) };
+    // Tek hedef modeli (2026-11-13): urun kolonlari sys.columns'tan; tum Inventory listesi (/hedefler) ve host IN listesi.
+    // Satirlar: invEnv (ip yok) + invIp (host, env, ip) + invEk (urun kolonlari dahil serbest satirlar).
+    if (/^SELECT name FROM sys\.columns WHERE object_id = OBJECT_ID\('dbo\.Inventory'\)$/.test(q)) return { recordset: (D.invKolonlar || ['host', 'env', 'ip']).map((name) => ({ name })) };
+    const invSatirlari = () => [
+      ...Object.entries(D.invEnv).map(([host, env]) => ({ host, env })),
+      ...D.invIp.filter((r) => !Object.prototype.hasOwnProperty.call(D.invEnv, r.host)),
+      ...(D.invEk || []),
+    ];
+    if (/^SELECT host, env, ip(, \w+)* FROM dbo\.Inventory WHERE host IS NOT NULL$/.test(q)) return { recordset: invSatirlari() };
+    if (/FROM dbo\.Inventory/.test(q)) return { recordset: invSatirlari().filter((r) => hostlar.has(String(r.host).split('.')[0].toUpperCase())) };
     if (/^SELECT OBJECT_ID\('dbo\.IPInventory'\) AS oid$/.test(q)) return { recordset: [{ oid: D.ipEnvanteri ? 21 : null }] };
     if (/^SELECT OBJECT_ID\('dbo\.Nginx_Audit_Servers'\) AS oid$/.test(q)) return { recordset: [{ oid: D.taramaYok ? null : 7 }] };
     if (/OBJECT_ID/.test(q)) return { recordset: [{ oid: 7 }] };
@@ -401,6 +440,7 @@ sahte('../../inventory/mssql.cjs', {
     if (/^SELECT DATEDIFF\(HOUR, MAX\(last_seen_at\), GETDATE\(\)\) AS yas_saat/.test(q)) return { recordset: [{ yas_saat: D.ipEnvYasSaat, son: '2026-10-27 08:00:00' }] };
     if (/^SELECT DATEDIFF\(DAY, MAX\(scan_date\), CAST\(GETDATE\(\) AS DATE\)\) AS yas_gun/.test(q)) return { recordset: [{ yas_gun: D.taramaYasGun, son: TARAMA_GUNU }] };
     const [qp, pen] = taramaPenceresi(q);
+    if (pen && /^SELECT DISTINCT host FROM dbo\.Nginx_Audit_Servers WHERE <P>$/.test(qp)) return { recordset: [...new Set(pen.map((r) => r.host))].map((host) => ({ host })) };
     if (pen && /^SELECT DISTINCT host, listen FROM dbo\.Nginx_Audit_Servers WHERE <P> AND listen LIKE @ip3$/.test(qp)) {
       return { recordset: pen.filter((r) => like(r.listen, deger('ip3'))).map(({ host, listen }) => ({ host, listen })) };
     }
@@ -481,6 +521,7 @@ sahteC('analiz.cjs', {
 
 const IDX_YOL = path.join(__dirname, '..', 'index.cjs');
 const yt = require('../index.cjs');
+yuklendi = true;
 const dg = require('../dogrula.cjs');
 const router = yt._yonlendiriciKurForTest();
 
@@ -1019,7 +1060,7 @@ test('YKP12 hedefler: uygunluk ve neden, yuk makineleri, sinirlar', { timeout: 1
   assert.deepEqual([h.GBNGXT33.limitReq, h.GBNGXT33.limitConn], [300, null]);
   assert.deepEqual(r.body.varsayilan.hizlar, [100, 250, 400]);
   D.invHata = new Error('kapali');
-  const r2 = await istek('GET', '/hedefler');
+  const r2 = await istek('GET', '/hedefler?yenile=1');
   assert.deepEqual([r2.statusCode, r2.body.code], [424, 'envanter_okunamadi']);
 });
 
@@ -1046,6 +1087,8 @@ test('YKP13 kurulum: modul kaydi, tablolar + indeksler, sekme ve kayit seed\'ler
     ['nginx_loadtest_kosular', /\bmotor\s+NVARCHAR\(8\) NOT NULL DEFAULT 'k6'/],
     ['nginx_loadtest_kosular', /\bplan_uyarilari\s+NVARCHAR\(2000\) NULL/],
     ['nginx_loadtest_kilitleri', /\bbag_turu\s+NVARCHAR\(12\) NULL/],
+    // Tek hedef modeli (2026-11-13): playbook'un nginx tespiti.
+    ['nginx_loadtest_kosular', /\bhedef_nginx\s+BIT NULL/],
   ]) assert.match(tablo(t), kolon, `${t}: ${kolon} kolonu yok`);
   assert.doesNotMatch(kur, /Tablo hic dagitilmadi: ALTER yok/, 'eski "ALTER yok" yorumu kaldi (ozellik itildi)');
   const alterSql = (kolon) => {
@@ -1055,6 +1098,8 @@ test('YKP13 kurulum: modul kaydi, tablolar + indeksler, sekme ve kayit seed\'ler
   assert.equal(alterSql('hedef_turu'), "ALTER TABLE nginx_loadtest_kosular ADD hedef_turu NVARCHAR(10) NOT NULL CONSTRAINT DF_nlk_hedef_turu DEFAULT 'sunucu'");
   assert.equal(alterSql('motor'), "ALTER TABLE nginx_loadtest_kosular ADD motor NVARCHAR(8) NOT NULL CONSTRAINT DF_nlk_motor DEFAULT 'k6'");
   assert.equal(alterSql('plan_uyarilari'), 'ALTER TABLE nginx_loadtest_kosular ADD plan_uyarilari NVARCHAR(2000) NULL');
+  assert.equal(alterSql('hedef_nginx'), 'ALTER TABLE nginx_loadtest_kosular ADD hedef_nginx BIT NULL');
+  assert.doesNotMatch(kur, /hedef_cpu_host/, 'B secenegi kolonu kaldi');
   // ALTER'lar tur 2 girdilerinin ARDINDA.
   assert.ok(kur.indexOf("col: 'sonuclandirma_denemesi'") < kur.indexOf("col: 'hedef_turu'"), 'tur 3 ALTER tur 2 girdilerinden once');
   for (const [ad, tablo, kolon] of [['IX_nlk_job', 'nginx_loadtest_kosular', 'awx_server_id, awx_job_id'], ['IX_nlk_hedef', 'nginx_loadtest_kosular', 'hedef_host, created_at'], ['IX_nla_kosu', 'nginx_loadtest_adimlar', 'kosu_id']]) {
@@ -1424,7 +1469,9 @@ test('YKP22 elle yazilan IP: siniflar uctan uca, ret denetime yazilir, AWX\'e gi
   const AGLAR = () => { process.env.NGINX_LOADTEST_SERBEST_AGLAR = SERBEST_AG; };
   const durumlar = [
     ['tek nginx sahibi -> sunucu', () => {}, '10.0.0.9', null, 200, null],
-    ['iki nginx sahibi', () => { D.tarama.push({ host: 'GBNGXT35', listen: '10.0.0.9:443', server_name: 'x.test.local' }); }, '10.0.0.9', null, 409, 'ip_belirsiz'],
+    ['iki nginx sahibi', () => { D.invEnv.GBNGXT35 = 'Test'; D.tarama.push({ host: 'GBNGXT35', listen: '10.0.0.9:443', server_name: 'x.test.local' }); }, '10.0.0.9', null, 409, 'ip_belirsiz'],
+    // Tek hedef modeli: sahiplerden biri dbo.Inventory'de yoksa (ortam kanitlanamiyor) ip_belirsiz degil hedef_uretim.
+    ['ikinci sahip dbo.Inventory\'de yok', () => { D.tarama.push({ host: 'GBNGXT35', listen: '10.0.0.9:443', server_name: 'x.test.local' }); }, '10.0.0.9', null, 409, 'hedef_uretim'],
     ['adi cozulemeyen sahip', () => { D.ipEnvanteri.push({ host: '', ip: '10.0.0.9' }); }, '10.0.0.9', null, 409, 'ip_sahibi_cozulemedi'],
     ['adi cozulemeyen sahip (host secici)', () => { D.ipEnvanteri.push({ host: '', ip: '10.0.0.9' }); }, '10.0.0.9', 'GBNGXT33', 409, 'ip_sahibi_cozulemedi'],
     ['PROD nginx sahibi', () => {}, '10.9.0.1', null, 409, 'hedef_uretim'],
@@ -1533,9 +1580,11 @@ test('YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host sec
   // Sunucu: /hedefler satiriyla ayni alanlar + kaynaklar.
   r = await istek('GET', '/ip-sinifi?ip=10.0.0.9&yukHost=GBNGXT34');
   assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  // Tek hedef modeli (2026-11-13): aday IP'ler (ipler) ve nginx ipuclari (envanter kolonu yok: null; on kontrol yok: null).
   assert.deepEqual(r.body, {
-    ok: true, tur: 'sunucu', ip: '10.0.0.9', host: 'GBNGXT33', env: 'TEST', vhostlar: ['api.test.local', 'app.test.local'], vhostVerisi: true,
+    ok: true, tur: 'sunucu', ip: '10.0.0.9', host: 'GBNGXT33', env: 'TEST', ipler: ['10.0.0.5', '10.0.0.9'], vhostlar: ['api.test.local', 'app.test.local'], vhostVerisi: true,
     hizSiniri: 270, vuSiniri: null, limitReq: 300, limitConn: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.IPInventory', 'tarama'],
+    nginxEnvanter: null, urunler: [], nginxSon: null,
   });
   // Serbest.
   r = await istek('GET', `/ip-sinifi?ip=${SERBEST_IP}&yukHost=GBNGXT34`);
@@ -1560,11 +1609,12 @@ test('YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host sec
   assert.deepEqual([r.statusCode, r.body.uygun, r.body.kod, r.body.neden], [200, false, 'ip_hedefte_yok', "10.0.0.88, GBNGXT33 için bilinen IP'lerden değil (10.0.0.5, 10.0.0.9)."]);
   // Paylasilan VIP: hedefHost ile 200 sunucu; ayni IP hedefHost'suz 409 ip_belirsiz.
   D.nginxEk.push({ hostname: 'GBNGXT35', env: 'test', ip: '10.0.0.7' });
+  D.invEnv.GBNGXT35 = 'Test';
   D.tarama.push({ host: 'GBNGXT33', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' }, { host: 'GBNGXT35', listen: '10.0.0.100:443 ssl', server_name: 'vip.test.local' });
   r = await istek('GET', '/ip-sinifi?ip=10.0.0.100&hedefHost=GBNGXT33&yukHost=GBNGXT34');
   assert.deepEqual([r.statusCode, r.body.tur, r.body.host, r.body.uygun, r.body.kaynaklar], [200, 'sunucu', 'GBNGXT33', true, ['tarama']], JSON.stringify(r.body));
   r = await istek('GET', '/ip-sinifi?ip=10.0.0.100&yukHost=GBNGXT34');
-  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'ip_belirsiz', '10.0.0.100 birden çok nginx sunucusunda tanımlı (GBNGXT33, GBNGXT35); hedef sunucuyu listeden seçin.']);
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'ip_belirsiz', '10.0.0.100 birden çok sunucuda tanımlı (GBNGXT33, GBNGXT35); hedef sunucuyu listeden seçin.']);
   assert.deepEqual(r.body.sahipler.map((s) => s.host), ['GBNGXT33', 'GBNGXT35']);
   // hedefHost + adi cozulemeyen sahip -> 409 ip_sahibi_cozulemedi (host secici de fail-closed).
   D.ipEnvanteri.push({ host: '', ip: '10.0.0.100' });
@@ -1585,8 +1635,8 @@ test('YKP24 /ip-sinifi: yalniz Admin, yanit sekilleri, uygun:false 200, host sec
   }
   r = await istek('GET', '/ip-sinifi', { query: { ip: ['10.0.0.9'] } });
   assert.equal(r.statusCode, 400);
-  // Portal DB'ye, denetime, AWX'e hic dokunulmadi.
-  assert.equal(D.sorgular.length, 0, '/ip-sinifi Portal DB\'ye dokundu');
+  // Portal DB'ye YAZILMADI (yalniz son on kontrolun nginx tespiti OKUNUR, tek salt okunur sorgu), denetime, AWX'e dokunulmadi.
+  assert.ok(D.sorgular.every((x) => /^SELECT TOP 1 hedef_nginx, finished_at FROM nginx_loadtest_kosular WHERE /.test(x.q)), `/ip-sinifi Portal DB'ye baska sorgu gonderdi: ${D.sorgular.map((x) => x.q).join(' | ')}`);
   assert.equal(D.denetim.length, 0, '/ip-sinifi denetime yazdi');
   assert.equal(D.launch.length, 0);
 });
@@ -3479,4 +3529,241 @@ test('YKP91 ogeye bagli on kontrol: olcum on kontrolden, degerlendirme ogenin pa
   const port = r.body.uyariTurleri.find((t) => /yerel port aralığı/.test(t.ornek));
   assert.ok(port, `port uyarisi onaya gelmedi: ${JSON.stringify(r.body.uyariTurleri)}`);
   assert.deepEqual(port.ogeler, [2], 'port uyarisi yalniz yeni kipli ogenin');
+});
+
+// -- TEK HEDEF MODELI (2026-11-13): her DEV/TEST/QA dbo.Inventory makinesi hedef; nginx'i playbook olcer --
+const GERCEK_IP = '10.151.166.144';
+const gercekHazirla = () => {
+  D.invIp.push({ host: 'GBJWLT01', env: 'Test', ip: GERCEK_IP });
+  D.invEnv.GBNGXT14 = 'Test';
+  process.env.NGINX_LOADTEST_YUK_HOSTLARI = 'GBNGXT14';
+};
+const GERCEK_GOVDE = (ek = {}) => GOVDE({ hedefHost: 'GBJWLT01', hedefIp: GERCEK_IP, yukHost: 'GBNGXT14', parametreler: { hizlar: [5000], maxvu: 1000 }, ...ek });
+const OK_OZET_NGINXSIZ = {
+  ...OK_OZET, hedef_nginx: false, hedef_nproc: 8, server_name_var: null, master_sayisi: 0, web_log_df: null, log_dizini_okunur: false, log_format_ua: null,
+};
+
+test('YKP97 gercek ornek: hedef GBJWLT01 (yalniz dbo.Inventory Test, nginx envanteri yok), yuk GBNGXT14; sunucu tavanlari; nginx yok uyarisi ve satir', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  gercekHazirla();
+  try {
+    // On kontrol: sunucu turu, ad kurali yok, k6 5000 / maxvu 1000 (sunucu tavanlari), sozlesme anahtarlari HEAD ile ayni.
+    const ok = await onKontrolHazirla({ govde: GERCEK_GOVDE(), ozet: OK_OZET_NGINXSIZ });
+    const ev = D.launch.at(-1)[2];
+    assert.deepEqual([ok.hedef_turu, ok.hedef_host, ok.hedef_nginx], ['sunucu', 'GBJWLT01', null]);
+    assert.deepEqual([ev.yuk_hedef_turu, ev.yuk_hedef_host, ev.yuk_yuk_host, ev.yuk_hedef_ip, ev.yuk_hizlar, ev.yuk_maxvu], ['sunucu', 'GBJWLT01', 'GBNGXT14', GERCEK_IP, '5000', '1000']);
+    assert.deepEqual(Object.keys(ev), [...dg.EKSTRA_ANAHTARLAR]);
+    assert.ok(!('yuk_hedef_cpu_host' in ev));
+    assert.deepEqual(dg.ekstraDegiskenleriDenetle(ev), []);
+    assert.deepEqual(tutulan(), [], 'on kontrol kilitleri birakilmadi');
+    // Poller on kontrol tespitini kolona yazmis gibi (hedef_nginx 0).
+    ok.hedef_nginx = 0;
+    // Ayrinti: nginx yok uyarisi onay listesinde, engel yok, kosu.hedefNginx false.
+    const a = await istek('GET', `/kosular/${ok.id}`);
+    assert.equal(a.statusCode, 200, JSON.stringify(a.body));
+    assert.deepEqual([a.body.kosu.hedefNginx, a.body.kosu.onKontrolEngelleri], [false, []]);
+    assert.ok(a.body.kosu.onKontrolUyarilari.includes(dg.NGINX_YOK_UYARISI), JSON.stringify(a.body.kosu.onKontrolUyarilari));
+    assert.equal(a.body.kosu.onKontrol.hedef_nginx, false);
+    // Kosu: uyari onaysiz 409; onayli 200, kosu satiri on kontrolun tespitini tasir (INSERT $16 = 0).
+    let r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBJWLT01' } });
+    assert.deepEqual([r.statusCode, r.body.code], [409, 'uyari_onayi']);
+    assert.ok(r.body.uyarilar.includes(dg.NGINX_YOK_UYARISI));
+    r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBJWLT01', uyariOnay: true } });
+    assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+    const kosu = D.kosular.find((x) => x.id === r.body.kosuId);
+    assert.deepEqual([kosu.islem, kosu.hedef_turu, kosu.hedef_host, kosu.hedef_nginx], ['kosu', 'sunucu', 'GBJWLT01', 0]);
+    assert.equal(D.launch.at(-1)[2].yuk_srv_ayar, '0');
+    const l = await istek('GET', '/kosular?limit=10');
+    assert.equal(l.body.kosular.find((x) => x.id === kosu.id).hedefNginx, false);
+    // Eski on kontrol satiri (kolon NULL, set_stats alani yok): kosu satiri NULL (nginx sayilir).
+    sifirla();
+    senaryoEkle();
+    gercekHazirla();
+    const eski = await onKontrolHazirla({ govde: GERCEK_GOVDE() });
+    r = await istek('POST', '/kosular', { body: { onKontrolKosuId: eski.id, confirmText: 'GBJWLT01', uyariOnay: true } });
+    assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+    assert.equal(D.kosular.find((x) => x.id === r.body.kosuId).hedef_nginx, null);
+    // Belirsiz tespit (null) ENGEL: kosu baslamaz.
+    sifirla();
+    senaryoEkle();
+    gercekHazirla();
+    const bel = await onKontrolHazirla({ govde: GERCEK_GOVDE(), ozet: { ...OK_OZET, hedef_nginx: null } });
+    r = await istek('POST', '/kosular', { body: { onKontrolKosuId: bel.id, confirmText: 'GBJWLT01', uyariOnay: true } });
+    assert.deepEqual([r.statusCode, r.body.code], [409, 'on_kontrol_eski']);
+    assert.ok(r.body.engeller.includes(dg.NGINX_BELIRSIZ_ENGELI), JSON.stringify(r.body));
+    // Uretim / EDU Inventory makinesi ve satirsiz makine hedef de yuk makinesi de olamaz.
+    for (const [ad, hazirla, govde, kod] of [
+      ['Inventory Production', () => { D.invIp.push({ host: 'GBAPPP01', env: 'Production', ip: '10.151.166.150' }); }, { hedefHost: 'GBAPPP01', hedefIp: '10.151.166.150' }, 'hedef_uretim'],
+      ['karisik Test + Production', () => { D.invEk = [{ host: 'GBJWLT01', env: 'Production', ip: '10.151.166.199' }]; }, {}, 'hedef_uretim'],
+      ['Inventory satirsiz yuk makinesi', () => { delete D.invEnv.GBNGXT14; }, {}, 'yuk_host_izinsiz'],
+    ]) {
+      sifirla();
+      senaryoEkle();
+      gercekHazirla();
+      hazirla();
+      const x = await istek('POST', '/kosular/on-kontrol', { body: GERCEK_GOVDE(govde) });
+      assert.deepEqual([x.statusCode, x.body.code], [409, kod], `${ad}: ${JSON.stringify(x.body)}`);
+      assert.equal(D.launch.length, 0, ad);
+    }
+  } finally {
+    delete process.env.NGINX_LOADTEST_YUK_HOSTLARI;
+  }
+});
+
+test('YKP98 sunucu ayari: son DONE on kontrol nginx bulamadiysa 409 sunucu_ayari_nginx_yok; nginx / tespit yok / DB hatasi engellemez', { timeout: 20000 }, async () => {
+  const SRV = GERCEK_GOVDE({ parametreler: { hizlar: [100], ae: 'br', sunucuAyar: { seviye: 6, static: false, dizin: SRV_DIZIN } } });
+  const eskiOk = (hedef_nginx, id = 50) => D.kosular.push({ id, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBJWLT01', hedef_ip: GERCEK_IP, hedef_turu: 'sunucu', hedef_nginx, finished_at: new Date(BAS - 3600000), created_by: 'onur' });
+  try {
+    for (const [ad, hazirla, http, kod] of [
+      ['son tespit nginx yok', () => eskiOk(0), 409, 'sunucu_ayari_nginx_yok'],
+      ['en son tespit gecerli (eski 0, yeni 1)', () => { eskiOk(0, 50); eskiOk(1, 51); }, 200, null],
+      ['en son tespit 0 (eski 1)', () => { eskiOk(1, 50); eskiOk(0, 51); }, 409, 'sunucu_ayari_nginx_yok'],
+      ['hic tespit yok', () => {}, 200, null],
+      ['Portal DB okunamadi (engellenmez; playbook ayrica reddeder)', () => { eskiOk(0); D.nginxSonHata = new Error('kapali'); }, 200, null],
+    ]) {
+      sifirla();
+      senaryoEkle();
+      gercekHazirla();
+      D.nginxSonHata = null;
+      hazirla();
+      const r = await istek('POST', '/kosular/on-kontrol', { body: SRV });
+      assert.deepEqual([r.statusCode, r.body.code], [http, kod || undefined], `${ad}: ${JSON.stringify(r.body)}`);
+      if (http !== 200) {
+        assert.match(r.body.message, /^Son ön kontrol GBJWLT01 üzerinde nginx bulamadı; sunucu ayarı yalnız nginx hedefte uygulanır/);
+        assert.equal(D.launch.length, 0, ad);
+      }
+    }
+    // Ayarsiz on kontrol nginx'siz hedefte serbestce yapilir (yeniden tespit icin).
+    sifirla();
+    senaryoEkle();
+    gercekHazirla();
+    eskiOk(0);
+    assert.equal((await istek('POST', '/kosular/on-kontrol', { body: GERCEK_GOVDE() })).statusCode, 200);
+    // On kontrol nginx yok dediyse ayarli kosu da ENGEL (onKontrolDegerlendir).
+    sifirla();
+    senaryoEkle();
+    gercekHazirla();
+    const ok = await onKontrolHazirla({ govde: SRV, ozet: { ...OK_OZET_NGINXSIZ, srv_hazirlik: 'fail' } });
+    const r = await istek('POST', '/kosular', { body: { onKontrolKosuId: ok.id, confirmText: 'GBJWLT01', uyariOnay: true } });
+    assert.deepEqual([r.statusCode, r.body.code, r.body.engeller], [409, 'on_kontrol_eski', [dg.NGINX_YOK_AYAR_ENGELI]]);
+  } finally {
+    D.nginxSonHata = null;
+    delete process.env.NGINX_LOADTEST_YUK_HOSTLARI;
+  }
+});
+
+test('YKP99 /hedefler: tum uygun dbo.Inventory makineleri, nginx ipuclari (envanter + son on kontrol), uretim Inventory makinesi listede yok', { timeout: 20000 }, async () => {
+  sifirla();
+  D.invKolonlar = ['host', 'env', 'ip', 'nginx_version', 'rha_version'];
+  D.invEk = [
+    { host: 'GBJWLT01', env: 'Test', ip: GERCEK_IP, nginx_version: '1.24.0', rha_version: null },
+    { host: 'GBJALT02', env: 'QA', ip: '10.151.166.160', nginx_version: null, rha_version: '2.4.57' },
+    { host: 'GBAPPP01', env: 'Production', ip: '10.9.9.9', nginx_version: '1.24.0', rha_version: null },
+    { host: 'GBEDUT01', env: 'EDU', ip: '10.9.9.10', nginx_version: null, rha_version: null },
+    { host: 'GBYOKIP1', env: 'Test', ip: null, nginx_version: null, rha_version: null },
+  ];
+  D.kosular.push(
+    { id: 60, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBJWLT01', hedef_nginx: 1, finished_at: new Date('2026-10-26T10:00:00Z') },
+    { id: 61, islem: 'on_kontrol', durum: 'DONE', hedef_host: 'GBJWLT01', hedef_nginx: 0, finished_at: new Date('2026-10-27T09:00:00Z') },
+    { id: 62, islem: 'on_kontrol', durum: 'FAILED', hedef_host: 'GBJALT02', hedef_nginx: 1, finished_at: new Date('2026-10-27T09:30:00Z') },
+  );
+  const r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const h = Object.fromEntries(r.body.hedefler.map((x) => [x.host, x]));
+  assert.deepEqual(
+    [h.GBJWLT01.uygun, h.GBJWLT01.env, h.GBJWLT01.ipler, h.GBJWLT01.vhostlar, h.GBJWLT01.vhostVerisi, h.GBJWLT01.nginxEnvanter, h.GBJWLT01.urunler, h.GBJWLT01.nginxSon, h.GBJWLT01.nginxSonAt],
+    [true, 'TEST', [GERCEK_IP], [], false, true, ['NGINX'], false, '2026-10-27T09:00:00.000Z'],
+  );
+  assert.deepEqual([h.GBJALT02.uygun, h.GBJALT02.env, h.GBJALT02.nginxEnvanter, h.GBJALT02.urunler, h.GBJALT02.nginxSon], [true, 'QA', false, ['RHA'], null]);
+  // IP'si bilinmeyen Inventory makinesi listede ama uygun degil.
+  assert.deepEqual([h.GBYOKIP1.uygun, h.GBYOKIP1.kod], [false, 'ip_hedefte_yok']);
+  assert.equal(h.GBAPPP01, undefined, 'uretim Inventory makinesi listelendi');
+  assert.equal(h.GBEDUT01, undefined, 'EDU Inventory makinesi listelendi');
+  // nginx envanterindeki hostlar uymasa da gerekcesiyle listede kalir (bugunku kapali satirlar).
+  assert.deepEqual([h.GBNGXP40.uygun, h.GBNGXT51.uygun, h.GBNGXT33.uygun], [false, false, true]);
+  assert.equal(r.body.hedefSayisi, r.body.hedefler.filter((x) => x.uygun).length);
+  // Siralama: uygunlar once, sonra ad.
+  const uygun = r.body.hedefler.map((x) => x.uygun);
+  assert.deepEqual(uygun, [...uygun].sort((a, b) => Number(b) - Number(a)));
+  // Son tespit sorgusu hata verirse ipucu null, uc 200.
+  D.nginxSonHata = new Error('kapali');
+  const r2 = await istek('GET', '/hedefler');
+  D.nginxSonHata = null;
+  assert.equal(r2.statusCode, 200);
+  assert.equal(r2.body.hedefler.find((x) => x.host === 'GBJWLT01').nginxSon, null);
+});
+
+test('YKP99b /hedefler: kalip disi taranmis hedefte vhost ve limit verisi; FQDN satiri kisa adla; karisik ortam uygun degil', { timeout: 20000 }, async () => {
+  sifirla();
+  D.invEk = [
+    { host: 'GBJWLT01', env: 'Test', ip: GERCEK_IP },
+    { host: 'gbfqdt01.bmw.local', env: 'Test', ip: '10.151.166.170' },
+    { host: 'GBMIXT01', env: 'Test', ip: '10.151.166.180' },
+    { host: 'gbmixt01.bmw.local', env: 'Production', ip: '10.151.166.181' },
+  ];
+  D.tarama.push({ host: 'GBJWLT01', listen: '10.151.166.146:443 ssl', server_name: 'jw.test.local' });
+  D.ayarlar = [{ host: 'GBJWLT01', directive: 'limit_req_zone', value: '$binary_remote_addr zone=r:1m rate=120r/s' }];
+  const r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const h = Object.fromEntries(r.body.hedefler.map((x) => [x.host, x]));
+  assert.deepEqual(
+    [h.GBJWLT01.uygun, h.GBJWLT01.vhostVerisi, h.GBJWLT01.vhostlar, h.GBJWLT01.limitReq, h.GBJWLT01.ipler],
+    [true, true, ['jw.test.local'], 120, [GERCEK_IP, '10.151.166.146'].sort()],
+  );
+  assert.deepEqual([h.GBFQDT01 && h.GBFQDT01.uygun, h.GBFQDT01 && h.GBFQDT01.ipler], [true, ['10.151.166.170']]);
+  assert.equal(h['GBFQDT01.BMW.LOCAL'], undefined);
+  assert.equal(h.GBMIXT01, undefined, 'kisa ad Test + FQDN Production makine uygun listelendi');
+});
+
+test('YKP100 paylasilan IP: elle -> ip_belirsiz; host secici -> secilen sahip sunucu; sahiplerden biri uretim -> hedef_uretim', { timeout: 20000 }, async () => {
+  sifirla();
+  senaryoEkle();
+  D.invIp.push({ host: 'GBJWLT01', env: 'Test', ip: '10.0.0.9' });
+  let r = await istek('GET', '/ip-sinifi?ip=10.0.0.9&yukHost=GBNGXT34');
+  assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'ip_belirsiz', '10.0.0.9 birden çok sunucuda tanımlı (GBJWLT01, GBNGXT33); hedef sunucuyu listeden seçin.']);
+  for (const h of ['GBJWLT01', 'GBNGXT33']) {
+    r = await istek('GET', `/ip-sinifi?ip=10.0.0.9&hedefHost=${h}&yukHost=GBNGXT34`);
+    assert.deepEqual([r.statusCode, r.body.tur, r.body.host, r.body.uygun], [200, 'sunucu', h, true], JSON.stringify(r.body));
+  }
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost: 'GBJWLT01', hedefIp: '10.0.0.9' }) });
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  assert.deepEqual([D.launch.at(-1)[2].yuk_hedef_host, D.launch.at(-1)[2].yuk_hedef_ip], ['GBJWLT01', '10.0.0.9']);
+  // Uc sahip, biri uretim: host secici de red (fail-closed).
+  sifirla();
+  senaryoEkle();
+  D.invIp.push({ host: 'GBJWLT01', env: 'Test', ip: '10.0.0.9' }, { host: 'GBAPPP09', env: 'Production', ip: '10.0.0.9' });
+  r = await istek('GET', '/ip-sinifi?ip=10.0.0.9&hedefHost=GBNGXT33&yukHost=GBNGXT34');
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'hedef_uretim']);
+  r = await istek('POST', '/kosular/on-kontrol', { body: GOVDE({ hedefHost: 'GBNGXT33', hedefIp: '10.0.0.9' }) });
+  assert.deepEqual([r.statusCode, r.body.code, D.launch.length], [409, 'hedef_uretim', 0]);
+});
+
+// YKP-HO1 (2026-11-13, SlowQuery): /hedefler'in agir TBMWANS okumalari (tum Inventory + limit direktifleri) 60 sn
+// tek-ucus onbellekte; ?yenile=1 taze okur; hata onbellege girmez; kapilar (/ip-sinifi) onbellegi kullanmaz.
+test('YKP-HO1 /hedefler TBMWANS okumasi 60 sn onbellekte, yenile=1 ve hata', { timeout: 10000 }, async () => {
+  sifirla();
+  D.envSorgular = [];
+  let r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+  const ilk = D.envSorgular.length;
+  assert.ok(ilk > 0);
+  r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200);
+  assert.equal(D.envSorgular.length, ilk, 'ikinci cagri TBMWANS okudu');
+  r = await istek('GET', '/hedefler?yenile=1');
+  assert.equal(r.statusCode, 200);
+  assert.ok(D.envSorgular.length > ilk, 'yenile=1 taze okumadi');
+  const sonra = D.envSorgular.length;
+  await istek('GET', '/ip-sinifi?ip=10.0.0.9&hedefHost=GBNGXT33&yukHost=GBNGXT34');
+  assert.ok(D.envSorgular.length > sonra, '/ip-sinifi onbellekten okudu');
+  yt._hedefOnbellegiSifirlaForTest();
+  D.invHata = new Error('baglanti koptu');
+  r = await istek('GET', '/hedefler');
+  assert.notEqual(r.statusCode, 200);
+  D.invHata = null;
+  const once = D.envSorgular.length;
+  r = await istek('GET', '/hedefler');
+  assert.equal(r.statusCode, 200, 'hata onbellege girdi');
+  assert.ok(D.envSorgular.length > once);
 });

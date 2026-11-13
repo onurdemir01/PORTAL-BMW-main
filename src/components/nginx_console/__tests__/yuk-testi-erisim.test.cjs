@@ -29,7 +29,10 @@ test('YTE-1 sayfa: Tab birlesimi, TABS, HUB_TABS, kaynak notu ve gorunurluk kapi
   assert.ok(tabTipi && tabTipi.includes("'yuktesti'"), 'Tab birlesiminde yuktesti yok');
   const tabs = page.split('\n').find((s) => s.startsWith('const TABS: readonly Tab[] = ['));
   assert.ok(tabs && tabs.includes("'yuktesti'"), 'TABS dizisinde yuktesti yok (?tab=yuktesti baglantisi Dashboard\'a duser)');
-  assert.ok(blok(page, 'const HUB_TABS = [', '] as const;', 'HUB_TABS').includes("{ id: 'yuktesti', label: 'Yük Testi', icon: "), 'HUB_TABS kaydi yok');
+  // 2026-11-13: Yuk Testi BMW Hub menusune tasindi (/yuk-testi); Nginx Hub sekme seridinde ARTIK YOK, eski
+  // ?tab=yuktesti adresi App.tsx'te TasinanSekme ile yeni sayfaya yonlenir (bmw-hub-sekmeler BS6 da bakar).
+  assert.ok(!blok(page, 'const HUB_TABS = [', '] as const;', 'HUB_TABS').includes("id: 'yuktesti'"), 'Yuk Testi Nginx Hub seridinde hala var');
+  assert.match(oku('src', 'App.tsx'), /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/, 'eski ?tab=yuktesti yonlenmiyor');
   // Onek eslesmesi: kapi + isAdmin sart; sonradan eklenen prop'lar (kullaniciAdi, 2026-11) bekciyi bozmasin.
   assert.ok(
     page.includes("{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin}"),

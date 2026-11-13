@@ -49,6 +49,14 @@
 // kutulariyla sorulur. Toplu ekleme duzenlemede cizilmez.
 // KAYITLI TEST (2026-11-04): ustte "Kayıtlı test" seridi (KayitliTest.tsx) formu ayni yoldan doldurur; kaydin senaryosu listede
 // yoksa "1 · Senaryo" soyler. TOPLU EKLEME: Plan kutusunun altinda MatrisEkle (matris.ts), `onKuyrugaTopluEkle` ile.
+// TEK HEDEF MODELI (2026-11-13, kullanici: "hedef makine ile yuk makinemin ne oldugunun teknik olarak ne onemi var?"):
+//  - Hedef = dbo.Inventory'deki her DEV / TEST / QA makine (ad kurali yok; kapi sunucuda). Liste uzun olabilir: secicinin
+//    ustunde arama kutusu (ad, ortam, IP; secili host hep listede kalir, "<n> / <toplam> sunucu"). Secenek metninde ortam,
+//    ilk uc IP ve nginx ipucu (son on kontrol > envanter > '?'); kesin tespit on kontrolde (playbook).
+//  - Elle yazilan, hicbir envanterde olmayan IP (LB VIP) eskisi gibi serbest hedef: ikincil yol (izinli aglar, 200 / 50 tavan).
+//  - Tum yuk parametreleri her hedefte acik. "Sunucuyu koşu öncesi ayarla" (sikistirma seviyesi, static, HTTP/2 acma)
+//    yalniz nginx hedefte: son on kontrol (ya da bu formun on kontrolu) nginx bulamadiysa kutu KAPALI ve nedeni yazili;
+//    govdeye sunucuAyar girmez (sunucu da 409 sunucu_ayari_nginx_yok der). Envanterde nginx gorunmuyorsa kutu acik, not var.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon, BoltIcon, ChevronDownIcon, ChevronRightIcon, ClipboardDocumentCheckIcon, ServerStackIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
 import {
@@ -74,7 +82,7 @@ import {
 import { Alan, Bolum, GIRDI, KosuDurumHapi, SunucuAyarUyarilari, UyariTuruOnayi, girdiStili } from './YukUi';
 import { ETIKET_MAX as KUYRUK_ETIKET_MAX, yeniYerelId, type DuzenlenenOge, type TaslakOge } from './kuyrukTaslak';
 import {
-  AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
+  AE_ETIKETI, AKTIF_DURUMLAR, GIRDIYE_BAGLI_RETLER, KIP_ETIKETI, PROTOKOL_ETIKETI, SERBEST_VHOST_YARDIMI, SRV_AYAR_ENVANTER_NOTU, SRV_AYAR_NGINX_YOK_NOTU, nginxIpucu, VHOST_LISTEDE_YOK_NOTU, adimDegerleri, baglantiBeklemesiMs,
   SRV_SEVIYE_MAX, baglantilariAyristir, butceSn, butceTavani, hataMetni, hedefSinirlari, hizlariAyristir, ipGecerli, nedenMetni, onKontrolDegerlendir, onKontrolKalanMs,
   limitUyarilari, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, srvDizinYaz, sunucuAyarHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
@@ -83,8 +91,8 @@ const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : NaN);
 /** Siniflandirma istegi yazma bitince (her tusta degil). */
 const SINIF_GECIKME_MS = 400;
 const MOTOR_ETIKETI: Record<NlMotor, string> = { k6: 'k6 — açık döngü (sabit istek/sn)', wrk: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' };
-const BOLUM2_ACIKLAMASI = 'Hedef IP’yi yazın ya da envanterden bir nginx sunucusu seçin. IP bir DEV / TEST / QA nginx sunucusunun ise sunucu tarafı da ölçülür (CPU, nginx logu); bir LB VIP’i ya da envanterde olmayan bir sunucu ise yalnız izinli ağlarda ve yalnız istemci ölçümüyle (serbest hedef).';
-const SERBEST_GOVDESI = 'Envanterdeki bir nginx sunucusuna ait değil. Hedefe bağlanılmaz (SSH yok); yalnız istemci ölçümü yapılır (p95, hata, 429). Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn, 50 bağlantı). Yük bir LB üzerinden gidiyorsa nginx isteği LB’nin IP’sinden görür: IP başına 500 istek/sn ve vhost başına 5000 istek/sn sınırları LB arkasındaki herkesle paylaşılır. Yük sunucusundaki izin dosyası da bu IP’yi kapsamalı (ön kontrol denetler).';
+const BOLUM2_ACIKLAMASI = 'Hedef IP’yi yazın ya da envanterden bir sunucu seçin. Envanterdeki (dbo.Inventory) her DEV / TEST / QA makine hedef olabilir; nginx varsa sunucu tarafı ayrıntılı ölçülür (CPU, nginx logu), yoksa yalnız genel CPU. Hiçbir envanterde olmayan bir IP (LB VIP) yalnız izinli ağlarda ve yalnız istemci ölçümüyle (serbest hedef).';
+const SERBEST_GOVDESI = 'Hiçbir envanterde kayıtlı değil. Hedefe bağlanılmaz (SSH yok); yalnız istemci ölçümü yapılır (p95, hata, 429). Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn, 50 bağlantı). Yük bir LB üzerinden gidiyorsa nginx isteği LB’nin IP’sinden görür: IP başına 500 istek/sn ve vhost başına 5000 istek/sn sınırları LB arkasındaki herkesle paylaşılır. Yük sunucusundaki izin dosyası da bu IP’yi kapsamalı (ön kontrol denetler).';
 
 /** /ip-sinifi sonucu: 200 (sunucu / serbest), kalici ret (400 / 409: dugme kapali) ya da gecici (424: dugme acik). */
 type SinifSonucu =
@@ -92,7 +100,14 @@ type SinifSonucu =
   | { tur: 'ret'; mesaj: string }
   | { tur: 'gecici'; mesaj: string };
 /** Sunucu hedefinin form icin gereken alanlari (/ip-sinifi sunucu yaniti ya da /hedefler satiri). */
-type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri' | 'limitReq' | 'limitConn'>;
+type SunucuHedefi = Pick<NlHedef, 'host' | 'env' | 'vhostlar' | 'vhostVerisi' | 'hizSiniri' | 'vuSiniri' | 'limitReq' | 'limitConn' | 'nginxSon' | 'nginxEnvanter'>;
+/** Secici satirinda en cok bu kadar IP; fazlasi "+n". */
+const SECICI_IP_SAYISI = 3;
+/** Secenek metni: "GBJWLT01 · TEST · 10.151.166.144 · nginx yok" (uygun degilse " — neden"). */
+function hedefSecenekMetni(h: NlHedef): string {
+  const ipler = h.ipler.length ? ` · ${h.ipler.slice(0, SECICI_IP_SAYISI).join(', ')}${h.ipler.length > SECICI_IP_SAYISI ? ` +${h.ipler.length - SECICI_IP_SAYISI}` : ''}` : '';
+  return `${h.host} · ${h.env || '?'}${ipler} · ${nginxIpucu(h)}${h.uygun ? '' : ` — ${nedenMetni(h.neden) || 'uygun değil'}`}`;
+}
 
 export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyrugaEkle, onKuyrugaTopluEkle, kuyrukOgeSayisi = 0, duzenlenen = null, onTaslakGuncelle, onDuzenlemeBitti }: {
   onBasladi: (kosuId: number) => void; onSenaryolar: () => void; onAraclar?: () => void;
@@ -136,6 +151,8 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const [duzHata, setDuzHata] = useState('');
   const [duzMesgul, setDuzMesgul] = useState(false);
   const [protokolRet, setProtokolRet] = useState<{ anahtar: string; mesaj: string } | null>(null);
+  // Hedef secicinin aramasi (yalniz gorunum; govdeye girmez).
+  const [hedefAra, setHedefAra] = useState('');
   const busyRef = useRef(false);
 
   const yukle = useCallback(async () => {
@@ -234,8 +251,14 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   const sniEtkin = motor !== 'wrk';
   // HTTP/2 yalniz k6 ve yalniz sunucu kabul ediyorsa; aksi halde gonderilen h1 (secim kapali). h2'de kip 'ka'.
   const h2Acik = !!veri?.protokoller?.includes('h2');
+  // Sunucu ayari yalniz nginx hedefte: /hedefler (ya da /ip-sinifi) son on kontrol tespiti ya da bu formun bitmis on kontrolu
+  // (ayni hedef) nginx bulamadiysa kutu kapali, govdeye girmez. Envanter ipucu kutuyu KAPATMAZ (yalniz not; on kontrol olcer).
+  const okNginxYok = !!okKayit && okKayit.durum === 'DONE' && okKayit.hedefTuru !== 'serbest' && !!sunucuHost && okKayit.hedefHost === sunucuHost && okKayit.onKontrol?.hedefNginx === false;
+  const okNginxVar = !!okKayit && okKayit.durum === 'DONE' && !!sunucuHost && okKayit.hedefHost === sunucuHost && okKayit.onKontrol?.hedefNginx === true;
+  const srvNginxYok = hedefTuru === 'sunucu' && !okNginxVar && (okNginxYok || sunucuHedef?.nginxSon === false);
+  const srvEnvanterNotu = hedefTuru === 'sunucu' && !srvNginxYok && !okNginxVar && sunucuHedef?.nginxSon == null && sunucuHedef?.nginxEnvanter === false;
   // Kutu acikken sunucu h2'yi kosu oncesi acar: secim /hedefler protokoller'inden bagimsiz serbest.
-  const srvAktif = hedefTuru === 'sunucu' && !!form?.srvAyar;
+  const srvAktif = hedefTuru === 'sunucu' && !!form?.srvAyar && !srvNginxYok;
   const protokolSecilebilir = motor === 'k6' && (h2Acik || srvAktif);
   const protokol: NlProtokol = protokolSecilebilir && form?.protokol === 'h2' ? 'h2' : 'h1';
   const kip: NlKip = protokol === 'h2' ? 'ka' : form?.kip ?? 'yeni';
@@ -458,6 +481,12 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
   if (!veri || !form || !senaryolar || !sinir || !param) return <div className="skeleton h-72 rounded-xl" aria-busy="true"><span className="sr-only">Yükleniyor…</span></div>;
 
   const hedefler = [...veri.hedefler].sort((a, b) => Number(b.uygun) - Number(a.uygun) || a.host.localeCompare(b.host));
+  // Arama: ad, ortam ya da IP (buyuk / kucuk harf duyarsiz); secili host her zaman listede kalir.
+  const araQ = hedefAra.trim().toLocaleLowerCase('tr-TR');
+  const gorunenHedefler = araQ
+    ? hedefler.filter((h) => h.host === form.hedefHost || `${h.host} ${h.env || ''} ${h.ipler.join(' ')}`.toLocaleLowerCase('tr-TR').includes(araQ))
+    : hedefler;
+  const uygunHedefSayisi = veri.hedefSayisi ?? hedefler.filter((h) => h.uygun).length;
   const motorlar = veri.motorlar.length ? veri.motorlar : (['k6'] as NlMotor[]);
   const serbest = hedefTuru === 'serbest';
   const sayiAlani = (k: 'tekrar' | 'isinma' | 'sure' | 'bosluk' | 'bosta' | 'is_parcacigi', etiket: string, min: number, max: number, yardim: string, hata = pHata[k] ? `Aralık: ${pHata[k]}` : null) => (
@@ -553,14 +582,18 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                 <input id="yuk-ip" value={form.hedefIp} onChange={(e) => degistir('hedefIp', e.target.value.trim())} placeholder="ör. 10.20.30.40" autoComplete="off" spellCheck={false}
                   aria-invalid={(!!ip && !!fHata.ip) || undefined} className={`${GIRDI} font-mono tabular-nums`} style={girdiStili(!!ip && !!fHata.ip)} />
               </Alan>
-              <Alan id="yuk-hedef" etiket="Hedef sunucu (isteğe bağlı)" hata={form.hedefHost ? fHata.hedef : null} yardim="IP birden çok sunucuda tanımlıysa (paylaşılan VIP) buradan seçin; IP o sunucunun adaylarından olur.">
+              <Alan id="yuk-hedef" etiket="Hedef sunucu (isteğe bağlı)" hata={form.hedefHost ? fHata.hedef : null}
+                yardim={`Envanterdeki DEV / TEST / QA makineler (${fmtNumber(uygunHedefSayisi)} uygun); nginx ipucu son ön kontrolden ya da envanterden, kesin tespit ön kontrolde. IP birden çok sunucuda tanımlıysa (paylaşılan VIP) buradan seçin.`}>
+                <input id="yuk-hedef-ara" type="search" aria-label="Hedef sunucu ara" placeholder="Ad, ortam ya da IP" value={hedefAra} onChange={(e) => setHedefAra(e.target.value)}
+                  autoComplete="off" spellCheck={false} className={`${GIRDI} mb-1.5`} style={girdiStili()} aria-controls="yuk-hedef" aria-describedby="yuk-hedef-sayi" />
                 <select id="yuk-hedef" value={form.hedefHost} onChange={(e) => hedefSec(e.target.value)} className={`${GIRDI} ${form.hedefHost ? 'font-mono' : ''}`} style={girdiStili(!!form.hedefHost && !!fHata.hedef)}>
                   <option value="">— IP’yi elle yazacağım —</option>
-                  {hedefler.map((h) => <option key={h.host} value={h.host} disabled={!h.uygun}>{`${h.host} · ${h.env || '?'}${h.uygun ? '' : ` — ${nedenMetni(h.neden) || 'uygun değil'}`}`}</option>)}
+                  {gorunenHedefler.map((h) => <option key={h.host} value={h.host} disabled={!h.uygun}>{hedefSecenekMetni(h)}</option>)}
                 </select>
+                <p id="yuk-hedef-sayi" className="mt-1 text-[11px] leading-4 tabular-nums" style={{ color: 'var(--text-muted)' }} aria-live="polite">{`${fmtNumber(gorunenHedefler.length)} / ${fmtNumber(hedefler.length)} sunucu`}</p>
               </Alan>
               <div className="@lg/yuk:col-span-2">
-                <SinifKutusu anahtar={sinifAnahtari} suruyor={sinifSuruyor} sonuc={sinifSonucu} onYenidenDene={() => setSinifDeneme((d) => d + 1)} />
+                <SinifKutusu anahtar={sinifAnahtari} suruyor={sinifSuruyor} sonuc={sinifSonucu} onYenidenDene={() => setSinifDeneme((d) => d + 1)} nginxYok={srvNginxYok} />
               </div>
               <Alan id="yuk-vhost" etiket="Host başlığı (vhost)" hata={vhost ? fHata.vhost : null} not={vhostListedeYok ? VHOST_LISTEDE_YOK_NOTU : null} yardim={vhostYardimi}>
                 <input id="yuk-vhost" value={vhost} onChange={(e) => degistir('vhost', e.target.value.trim().toLowerCase())} list={vhostListesi?.length ? 'yuk-vhost-oneriler' : undefined}
@@ -729,11 +762,17 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
                   </label>
                   {hedefTuru === 'sunucu' && (
                     <div className="min-w-0 space-y-3 @lg/yuk:col-span-2 @3xl/yuk:col-span-3">
-                      <label className="flex cursor-pointer items-start gap-2 text-[12px]" style={{ color: 'var(--text-primary)' }}>
-                        <input id="yuk-srv-ayar" type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={form.srvAyar} onChange={(e) => degistir('srvAyar', e.target.checked)} />
+                      <label className={`flex items-start gap-2 text-[12px] ${srvNginxYok ? 'cursor-not-allowed' : 'cursor-pointer'}`} style={{ color: srvNginxYok ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
+                        <input id="yuk-srv-ayar" type="checkbox" className="mt-0.5 accent-[var(--accent)]" checked={srvAktif} disabled={srvNginxYok} aria-describedby={srvNginxYok || srvEnvanterNotu ? 'yuk-srv-not' : undefined}
+                          onChange={(e) => degistir('srvAyar', e.target.checked)} />
                         <span>Sunucuyu koşu öncesi ayarla <span style={{ color: 'var(--text-secondary)' }}>{`— ${ALAN_ACIKLAMASI.sunucuAyar}`}</span></span>
                       </label>
-                      {form.srvAyar && (
+                      {(srvNginxYok || srvEnvanterNotu) && (
+                        <p id="yuk-srv-not" className="text-[11px] leading-4" style={{ color: srvNginxYok ? 'var(--status-warning-text)' : 'var(--text-secondary)' }}>
+                          {srvNginxYok ? SRV_AYAR_NGINX_YOK_NOTU : SRV_AYAR_ENVANTER_NOTU}
+                        </p>
+                      )}
+                      {srvAktif && (
                         <div className="grid gap-3 @lg/yuk:grid-cols-2">
                           {form.ae !== 'identity' && (
                             <Alan id="yuk-srv-seviye" etiket={`${form.ae === 'br' ? 'Brotli' : 'Gzip'} seviyesi (1–${SRV_SEVIYE_MAX[form.ae]})`} hata={fHata.srvSeviye || null} yardim={ALAN_ACIKLAMASI.srvSeviye}>
@@ -851,7 +890,7 @@ export default function YeniKosu({ onBasladi, onSenaryolar, onAraclar, onKuyruga
  * Yazilan IP'nin sinifi. Sunucu hedefi sakin bir bilgi satiri; serbest hedef uyari (yalniz istemci olcumu, LB
  * paylasimi); kalici ret ve `uygun:false` hata (on kontrol kapali); gecici (424) uyari + "Yeniden dene" (dugme acik).
  */
-function SinifKutusu({ anahtar, suruyor, sonuc, onYenidenDene }: { anahtar: string; suruyor: boolean; sonuc: SinifSonucu | null; onYenidenDene: () => void }) {
+function SinifKutusu({ anahtar, suruyor, sonuc, onYenidenDene, nginxYok = false }: { anahtar: string; suruyor: boolean; sonuc: SinifSonucu | null; onYenidenDene: () => void; nginxYok?: boolean }) {
   if (!anahtar) return null;
   if (suruyor || !sonuc) {
     return (
@@ -882,9 +921,16 @@ function SinifKutusu({ anahtar, suruyor, sonuc, onYenidenDene }: { anahtar: stri
   return (
     <div role="status" className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] leading-5" style={{ background: TON.aksan.zemin, boxShadow: `inset 0 0 0 1px ${TON.aksan.kenar}`, color: 'var(--text-primary)' }}>
       <ServerStackIcon className="mt-0.5 h-4 w-4 shrink-0" style={{ color: TON.aksan.metin }} aria-hidden />
-      <span className="min-w-0">{`Sunucu hedefi: ${v.host} (${v.env || '?'}) — CPU kaydedici ve nginx logu ölçülür; IP’nin sunucuda yerel olduğu ön kontrolde ve koşu başında doğrulanır.`}</span>
+      <span className="min-w-0">{`Sunucu hedefi: ${v.host} (${v.env || '?'}) — ${sunucuOlcumMetni(v, nginxYok)}; IP’nin sunucuda yerel olduğu ön kontrolde ve koşu başında doğrulanır.`}</span>
     </div>
   );
+}
+
+/** Sunucu hedefinde neyin olculecegi: nginx'li (ya da ipucu yok / eski sunucu) hedefte eski metin BIREBIR. */
+function sunucuOlcumMetni(v: Pick<NlHedef, 'nginxSon' | 'nginxEnvanter'>, nginxYok: boolean): string {
+  if (nginxYok || v.nginxSon === false) return 'son ön kontrol nginx bulamadı: genel CPU ve istemci metrikleri ölçülür (nginx kurulduysa ön kontrol yeniden tespit eder)';
+  if (v.nginxSon !== true && v.nginxEnvanter === false) return 'envanterde nginx görünmüyor: ön kontrol tespit eder (nginx varsa CPU kaydedici ve nginx logu, yoksa genel CPU ölçülür)';
+  return 'CPU kaydedici ve nginx logu ölçülür';
 }
 
 type BasamakDurumu = 'bekliyor' | 'suruyor' | 'tamam' | 'hata' | 'hazir' | 'eski';

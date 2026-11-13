@@ -538,6 +538,8 @@ describe('Yük Testi — API istemcisi (fetch)', () => {
     expect(s).toEqual({
       ok: true, tur: 'sunucu', ip: '10.1.2.5', host: 'GBNGXT10', env: 'TEST', vhostlar: ['a.example'], vhostVerisi: true, hizSiniri: 270, vuSiniri: null,
       limitReq: null, limitConn: null, uygun: true, neden: null, kod: null, kaynaklar: ['dbo.nginx_inventory', 'tarama'],
+      // 2026-11-13: eski sunucu ipucu alanlarini vermez -> bos / null.
+      ipler: [], nginxEnvanter: null, urunler: [], nginxSon: null,
     });
     f.mockResolvedValueOnce(jsonYanit({ ok: true, tur: 'serbest', ip: '10.20.30.40', host: null, ag: '10.20.30.0/24', digerSahipler: [{ host: 'GBAPPT01', env: 'TEST' }, { env: 'TEST' }] }));
     expect(await nginxLoadtestApi.ipSinifi('10.20.30.40', { yukHost: null, hedefHost: null })).toEqual({

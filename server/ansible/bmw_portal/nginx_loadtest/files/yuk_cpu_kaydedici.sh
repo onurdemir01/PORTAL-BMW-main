@@ -4,6 +4,13 @@
 #           altinda adim YUK_DOYDU isaretlenir (sonuc hedefin degil yuk makinesinin sinirini gosterebilir).
 # Kullanim: SONUC=<dizin> [SURE=<sn>] [ARALIK=1] ./yuk_cpu_kaydedici.sh <ADIM>     TERM / INT ile biter (ya da SURE ile).
 # Ortam   : SONUC(./sonuc) SURE(0 = sinirsiz) ARALIK(1) ARAC_DIZIN(<SONUC'un ust dizini>/arac) PROC_ROOT(/proc; sinama)
+#           ROL(yuk|hedef; varsayilan yuk) BOSTA_BAS(0; sn, bos ornek suresi)
+# 2026-11-13 ROL=hedef: nginx'i OLMAYAN sunucu hedefinde (on_kontrol.sh nginx -> nginx_var 0; ornegin Apache; www,
+#           yalniz /proc okunur). Playbook SONUC=<kosu dizini> verir: dosyalar <kosu dizini>/R<id>'ye (Play 5 toplar). Onek
+#           hedefcpu_ (hedefcpu_<ADIM>_<host>.csv ayni kolonlar, arac_rss_kb hep bos; .txt'ye ek rol=hedef bosta_bas),
+#           ag_*.txt rol=hedef secim=hedef_ip (arayuz: HEDEF_IP'nin atali oldugu arayuz, 'ip -o -4 addr'), arac aranmaz.
+#           ROL=hedef ya da BOSTA_BAS > 0 iken BOSTA_BAS sn sonra bir kez '>>> ... YUKU SIMDI BASLATIN' basilir (playbook
+#           bunu bekler). Varsayilanlarla (ROL=yuk, BOSTA_BAS=0) cikti eskisiyle BIREBIR ayni.
 # Portal  : Portal'a ozgu (el kitinde yok). SALT OKUNUR: yalniz /proc/stat okur; nginx, dzdo, root gerekmez (www).
 #           cpu_kaydedici.sh yeniden kullanilmaz: o nginx master ve LOGDIR ister, sunucu_*/bilgi_* adlari da eski
 #           Portal'da ikinci hedef kesiti sayilir. Buradaki yukcpu_ oneki hicbir eski Portal desenine uymaz.
@@ -31,13 +38,16 @@ ARAC_DIZIN="${ARAC_DIZIN:-$(dirname -- "$SONUC")/arac}"
 PROC="${PROC_ROOT:-/proc}"
 [[ "$SURE" =~ ^[0-9]{1,6}$ ]] || hata "SURE tam sayi (saniye) olmali"
 [[ "$ARALIK" =~ ^[0-9]+([.][0-9]+)?$ ]] || hata "ARALIK saniye olmali"
+ROL="${ROL:-yuk}"; BOSTA_BAS="${BOSTA_BAS:-0}"
+case "$ROL" in yuk) ONEK=yukcpu ;; hedef) ONEK=hedefcpu ;; *) hata "ROL yuk ya da hedef olmali: '$ROL'" ;; esac
+[[ "$BOSTA_BAS" =~ ^[0-9]{1,4}$ ]] || hata "BOSTA_BAS tam sayi (saniye) olmali"
 [ -r "$PROC/stat" ] || hata "$PROC/stat okunamiyor"
 
 HOSTK="$(hostname -s 2>/dev/null || uname -n)"; HOSTK="$(printf '%s' "${HOSTK%%.*}" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9-' '-')"
 OUT="$SONUC/$ADIM"
 mkdir -p "$OUT" || hata "dizin olusturulamadi: $OUT"
 TABAN="${ADIM}_${HOSTK}"
-CSV="$OUT/yukcpu_${TABAN}.csv"; BILGI="$OUT/yukcpu_${TABAN}.txt"
+CSV="$OUT/${ONEK}_${TABAN}.csv"; BILGI="$OUT/${ONEK}_${TABAN}.txt"
 AG_CSV="$OUT/ag_${TABAN}.csv"; AG_TXT="$OUT/ag_${TABAN}.txt"; SYS="${SYS_ROOT:-/sys}"
 HEDEF_IP_OK=""; [[ "${HEDEF_IP:-}" =~ ^[0-9]{1,3}([.][0-9]{1,3}){3}$ ]] && HEDEF_IP_OK=1
 CLK="$(getconf CLK_TCK 2>/dev/null)"; [[ "$CLK" =~ ^[0-9]+$ ]] || CLK=100
@@ -52,6 +62,12 @@ ag_arayuz_bul() {   # yuk makinesi: hedefe giden yolun arayuzu (ip route get <HE
   "$1" route get "$HEDEF_IP" 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
 }
 AG_ROL=yuk; AG_SECIM_ADI=ip_route
+if [ "$ROL" = hedef ]; then
+  ag_arayuz_bul() {   # CPU olculen hedef: HEDEF_IP'nin atali oldugu arayuz (cpu_kaydedici.sh ile ayni; vlan 'x@y' -> x)
+    "$1" -o -4 addr show 2>/dev/null | awk -v ip="$HEDEF_IP" '{ for (i = 1; i < NF; i++) if ($i == "inet") { split($(i + 1), a, "/"); if (a[1] == ip) { d = $2; sub(/@.*/, "", d); sub(/:$/, "", d); print d; exit } } }'
+  }
+  AG_ROL=hedef; AG_SECIM_ADI=hedef_ip
+fi
 AG_ACIK=0; AG_ARAYUZ=""; AG_SECIM=""; AG_HIZ=""; AG_MAX=32
 ag_ip_komutu() { local k; for k in ip /sbin/ip /usr/sbin/ip; do if command -v "$k" >/dev/null 2>&1; then echo "$k"; return 0; fi; done; return 1; }
 ag_arayuz_var() {
@@ -143,7 +159,7 @@ ornek_al() {
     [ -n "$mt" ] && [ -n "$ma" ] && break
   done 2>/dev/null < "$PROC/meminfo"
   [[ "$mt" =~ ^[0-9]+$ ]] || mt=""; [[ "$ma" =~ ^[0-9]+$ ]] || ma=""
-  arac_bul
+  [ "$ROL" = hedef ] || arac_bul
   if [ -n "$ARAC_PID" ]; then
     while read -r k v _; do
       if [ "$k" = "VmRSS:" ]; then [[ "$v" =~ ^[0-9]+$ ]] && ar="$v"; break; fi
@@ -164,6 +180,7 @@ bitir() {
   {
     echo "surum=1"; echo "adim=$ADIM"; echo "host=$HOSTK"; echo "nproc=$NPROC"; echo "clk_tck=$CLK"
     echo "bas_epoch=$BAS_EPOCH"; echo "bit_epoch=$(simdi)"; echo "ornek_sayisi=$NORNEK"
+    if [ "$ROL" = hedef ]; then echo "rol=hedef"; echo "bosta_bas=$BOSTA_BAS"; fi
   } > "$BILGI"
   ag_maliyet_yaz
   echo "== yuk_cpu_kaydedici ozeti ($ADIM, $HOSTK): ornek=$NORNEK dosyalar: $CSV $BILGI $AG_TXT (ag: $AG_SECIM${AG_ARAYUZ:+ $AG_ARAYUZ})"
@@ -176,8 +193,14 @@ ag_bilgi_yaz
 trap bitir INT TERM
 echo "== yuk_cpu_kaydedici: adim=$ADIM host=$HOSTK nproc=$NPROC clk_tck=$CLK cikti=$CSV"
 BAS="$(simdi)"
+DUYUR=0; DUYURULDU=0
+if [ "$ROL" = hedef ] || [ "$BOSTA_BAS" -gt 0 ]; then DUYUR=1; fi
 while :; do
   ornek_al
+  if [ "$DUYUR" = 1 ] && [ "$DUYURULDU" = 0 ] && [ $(( $(simdi) - BAS )) -ge "$BOSTA_BAS" ]; then
+    DUYURULDU=1
+    echo ">>> $(date '+%H:%M:%S') bos ornek tamam: YUKU SIMDI BASLATIN (rol=$ROL adim=$ADIM)"
+  fi
   if [ "$SURE" -gt 0 ] && [ $(( $(simdi) - BAS )) -ge "$SURE" ]; then bitir; fi
   sleep "$ARALIK" &
   wait $! 2>/dev/null || :

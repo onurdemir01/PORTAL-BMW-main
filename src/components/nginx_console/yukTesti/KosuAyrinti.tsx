@@ -34,6 +34,9 @@
 // 2026-11-04: Admin'e baslikta etiketin yaninda kalem (EtiketDuzenle; PUT /kosular/:id/etiket), kayit ayrintiyi yerinde gunceller.
 // 2026-11-04 (kosu silme): Admin'e ya da kaydi baslatan kisiye "Sil" (tehlike tonu; suren iste kapali) -> KosuSilOnayi (kosu
 // numarasi yazilir) -> onSilindi (liste yeniden okunur). Kayit bulunamazsa (409 / 404 kosu_yok) "silinmiş olabilir" denir.
+// TEK HEDEF MODELI (2026-11-13): nginx olmayan sunucu hedefinde (kosu.hedefNginx ya da on kontrolun tespiti false) baslikta
+// "nginx yok" cipi, Sonuçlar'in ustunde NGINX_YOK_UYARISI; CPU-ms / kapasite "—" (ipucu: istek basina CPU olculmez), host CPU
+// (genel, /proc/stat) dolu. Eski satir (hedefNginx null) BIREBIR eskisi.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeftIcon, ArrowPathIcon, ChevronDownIcon, ChevronRightIcon, StopCircleIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { nginxLoadtestApi, type NlSilinen, type NlAdim, type NlAg, type NlBellekDetay, type NlBellekNoktasi, type NlKipDogrulama, type NlKipDurumu, type NlKosuAyrinti, type NlMotor, type NlNic, type NlProtokol } from '@/api/nginxLoadtestApi';
@@ -55,7 +58,7 @@ import OnKontrolPaneli from './OnKontrolPaneli';
 import { Bolum, GecerlilikHapi, KosuDurumHapi, SunucuAyarUyarilari, Tanim, TurMotorCipleri, islemEtiketi } from './YukUi';
 import {
   AE_ETIKETI, AKTIF_DURUMLAR, KAPASITE_IPUCU, KIP_ETIKETI, OKUNAMADI_ACIKLAMASI, PROTOKOL_ETIKETI, kosuProtokolu, SONUC_DENEME_SINIRI, adimDegerleri, adimEtiketi, adimGecerliligi, adimSirala, bellekKolonuVar,
-  bellekYuzdeMetni, sunucuAyariGeriAlinmamis, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
+  bellekYuzdeMetni, hedefNginxsiz, NGINX_YOK_CPU_IPUCU, NGINX_YOK_UYARISI, sunucuAyariGeriAlinmamis, butceSn, cpuMsMetni, durdurBaslatilamadiMetni, enYuksekNginxBellek, gecerlilikBilgisi, hataMetni, hizGrupla, hostCpuIpucu, kademeMetni, kalanSurecDurdurulabilir, mbMetni, motorOf, ondalik, seriAdi, sonucOkunuyorMetni,
   tekrarIpucu, turCumlesi, turEtiketi, uyarilariAyir, yenidenOkunabilir, yukCpuHucre, yukCpuKolonuVar, yuzde, type AdimBirimi,
   AG_KULLANIM_ESIK, BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, BELLEK_PSS_IPUCU, NIC_IPUCU, TEST_TRAFIGI_IPUCU, agKolonuVar, bantMetni, bellekDetayVar, bellekSizintiMetni,
   enYuksekTestTrafigi, nicSecimMetni, kosuSahibiMi,
@@ -233,7 +236,7 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[15px] font-semibold leading-6" style={{ color: 'var(--text-primary)' }}>{islemEtiketi(kosu.islem)} #{kosu.id}</h2>
               {kosu.adim && <Cip cerceve>{kosu.adim}</Cip>}
-              <TurMotorCipleri hedefTuru={kosu.hedefTuru} motor={motor} protokol={protokol} />
+              <TurMotorCipleri hedefTuru={kosu.hedefTuru} motor={motor} protokol={protokol} nginxsiz={hedefNginxsiz(kosu)} />
               <KosuDurumHapi durum={kosu.durum} />
               {kosu.durum === 'FINALIZING' && kosu.sonuclandirmaDenemesi >= 1 && (
                 <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-secondary)' }} title={sonucOkunuyorMetni(kosu.sonuclandirmaDenemesi)}>{`deneme ${fmtNumber(kosu.sonuclandirmaDenemesi)}/${SONUC_DENEME_SINIRI}`}</span>
@@ -389,6 +392,10 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
 // ── Sonuclar ────────────────────────────────────────────────────────────────────────
 function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrinti; adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; protokol: NlProtokol }) {
   const serbest = kosu.hedefTuru === 'serbest';
+  // Nginx'siz hedef: istek basina CPU ve kapasite yok (genel host CPU var).
+  const nginxsiz = hedefNginxsiz(kosu);
+  const cpuYok = serbest || nginxsiz;
+  const cpuYokMetni = serbest ? SERBEST_SUNUCU_YOK : NGINX_YOK_CPU_IPUCU;
   const wrk = birim === 'bağlantı';
   const nproc = kosu.analiz.nproc;
   const gruplar = hizGrupla(adimlar, nproc);
@@ -459,6 +466,7 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
           {adimlar.length > 0 && <p>Tamamlanan adımlar aşağıda; yarım kalan adım geçersiz sayılır.</p>}
         </UyariKutusu>
       )}
+      {nginxsiz && <UyariKutusu ton="bilgi" rol="status" baslik={NGINX_YOK_UYARISI} />}
       {adimlar.length > 0 && <KosuOzetSatiri ozet={ozet} adimlar={adimlar} birim={birim} protokol={protokol} />}
       {h2Bilgisi.length > 0 && <UyariKutusu ton="bilgi" rol="status" baslik={uyariAcikla(h2Bilgisi[0]).cumle} />}
       {g && !aktif && !(okunamadi && kosu.gecerlilik === 'OKUNAMADI') && (
@@ -492,11 +500,11 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
         <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border @3xl/yuk:grid-cols-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--border-subtle)' }}>
           <OzetHucre etiket="Geçerli adım" alt="doyma dahil; geçersiz adım hesaba katılmaz">{fmtNumber(nGecerli)} / {fmtNumber(adimlar.length)}</OzetHucre>
           {/* Serbest hedefte CPU kaydedici yok: CPU ve kapasite olculmez ("—"), sifir DEGIL; CPU kademesi de yok. */}
-          <OzetHucre etiket={`CPU-ms/istek${!serbest && kademeCpu != null ? ` @ ${kademeMetni(kademeCpu, birim)}` : ''}`}
-            alt={serbest ? SERBEST_SUNUCU_YOK : tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{serbest ? '—' : cpuMsMetni(gk?.cpuMsIstek)}</OzetHucre>
+          <OzetHucre etiket={`CPU-ms/istek${!cpuYok && kademeCpu != null ? ` @ ${kademeMetni(kademeCpu, birim)}` : ''}`}
+            alt={cpuYok ? cpuYokMetni : tlsPay != null ? `TLS payı %${ondalik(tlsPay * 100, 0)}` : 'nginx worker, user+sys, arka plan çıkarılmış'}>{cpuYok ? '—' : cpuMsMetni(gk?.cpuMsIstek)}</OzetHucre>
           <OzetHucre etiket={`p95${kademeP95 != null ? ` @ ${kademeMetni(kademeP95, birim)}` : ''}`} alt={wrk ? 'istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması' : 'istemci (k6), geçerli adımların ortalaması'}>{gp?.p95 != null ? `${ondalik(gp.p95, 1)} ms` : '—'}</OzetHucre>
-          <OzetHucre etiket="Tahmini kapasite" alt={serbest ? SERBEST_SUNUCU_YOK : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>
-            <span title={serbest ? SERBEST_SUNUCU_YOK : KAPASITE_IPUCU} className="cursor-help">{!serbest && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</span>
+          <OzetHucre etiket="Tahmini kapasite" alt={cpuYok ? cpuYokMetni : nproc != null ? `${fmtNumber(nproc)} çekirdek × 1000 × 0,8 / CPU-ms` : 'çekirdek sayısı × 1000 × 0,8 / CPU-ms'}>
+            <span title={cpuYok ? cpuYokMetni : KAPASITE_IPUCU} className="cursor-help">{!cpuYok && gk?.kapasiteRps != null ? `~${fmtNumber(Math.round(gk.kapasiteRps))} istek/sn` : '—'}</span>
           </OzetHucre>
           {bellekVar && (
             <OzetHucre etiket="Nginx bellek (en yüksek)" alt={enBellek ? `worker RSS toplamı · ${turEtiketi(enBellek.tur, adimlar, birim)}` : 'nginx worker belleği ölçülmedi (yalnız yük makinesi)'}>{mbMetni(enBellek?.mb)}</OzetHucre>
@@ -515,8 +523,8 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
         {sizinti && <UyariKutusu ton={sizinti.ton} rol="status" baslik={sizinti.metin} />}
         <div className="grid gap-5 @3xl/yuk:grid-cols-2">
           <HizGrafigi baslik="p95 yanıt süresi" birim="ms" noktalar={nokta((a) => a.p95)} cizgi={cizgi((x) => x.p95)} xBirimi={birim} />
-          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={2} bicim={cpuMsMetni} noktalar={nokta((a) => (serbest ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (serbest ? null : x.cpuMsIstek))} xBirimi={birim}
-            bos={serbest ? 'Serbest hedef: sunucu ölçümü yok (CPU kaydedici ve nginx logu çalışmaz).' : 'CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz).'} />
+          <HizGrafigi baslik="CPU-ms / istek" birim="ms" basamak={2} bicim={cpuMsMetni} noktalar={nokta((a) => (cpuYok ? null : a.cpuMsIstek))} cizgi={cizgi((x) => (cpuYok ? null : x.cpuMsIstek))} xBirimi={birim}
+            bos={serbest ? 'Serbest hedef: sunucu ölçümü yok (CPU kaydedici ve nginx logu çalışmaz).' : nginxsiz ? 'Nginx olmayan hedef: istek başına CPU ölçülmez (yalnız genel host CPU).' : 'CPU ölçülmedi (sunucu kaydı yok ya da adımlar geçersiz).'} />
           {bellekVar && (
             <HizGrafigi baslik="Nginx bellek (en yüksek)" birim="MB" basamak={0} bicim={mbMetni} noktalar={nokta((a) => a.bellek?.nginxRssMaxMb ?? null)} cizgi={[]} xBirimi={birim}
               bos="Nginx worker belleği ölçülmedi (yalnız yük makinesi belleği var ya da serbest hedef)." />
@@ -527,7 +535,7 @@ function Sonuclar({ kosu, adimlar, aktif, birim, protokol }: { kosu: NlKosuAyrin
               bos="Test trafiği ölçülmedi (eski yük betiği)." />
           )}
         </div>
-        <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} nproc={nproc} />
+        <AdimTablosu adimlar={adimlar} aktif={aktif} birim={birim} serbest={serbest} nginxsiz={nginxsiz} nproc={nproc} />
           </div>
         </div>
       )}
@@ -581,19 +589,24 @@ const BELLEK_KOLONLARI = new Set(['rss', 'hbel', 'ybel']);
 const AG_KOLONLARI = new Set(['agal', 'aggo']);
 /** Serbest hedefte sunucu logu yok: rps kolonunun ipucu sunucu logundan soz etmez. */
 const SERBEST_RPS_IPUCU = `istemcinin gerçekleşen hızı / ${SERBEST_SUNUCU_YOK}`;
-const kolonlar = (birim: AdimBirimi, serbest: boolean, yukCpu: boolean, bellek = false, nproc: number | null = null, ag = false): AdimKolonu[] => KOLONLAR
+const kolonlar = (birim: AdimBirimi, serbest: boolean, yukCpu: boolean, bellek = false, nproc: number | null = null, ag = false, nginxsiz = false): AdimKolonu[] => KOLONLAR
   .filter((k) => (yukCpu || k.anahtar !== 'yuk') && (bellek || !BELLEK_KOLONLARI.has(k.anahtar)) && (ag || !AG_KOLONLARI.has(k.anahtar))).map((k) => ({
     ...k, ...(k.anahtar === 'host' ? { ipucu: hostCpuIpucu(nproc) } : null), ...(birim === 'bağlantı' ? WRK_KOLON[k.anahtar] : null),
     ...(serbest && SUNUCU_KOLONLARI.has(k.anahtar) ? { ipucu: SERBEST_SUNUCU_YOK } : null),
     ...(serbest && k.anahtar === 'rps' ? { ipucu: SERBEST_RPS_IPUCU } : null),
+    ...(!serbest && nginxsiz && NGINXSIZ_BOS_KOLONLAR.has(k.anahtar) ? { ipucu: NGINX_YOK_CPU_IPUCU } : null),
+    ...(!serbest && nginxsiz && k.anahtar === 'host' ? { ipucu: NGINXSIZ_HOST_IPUCU } : null),
   }));
+/** Nginx'siz hedefte bos kalan kolonlar (istek basina CPU, kapasite) ve genel host CPU ipucu. */
+const NGINXSIZ_BOS_KOLONLAR = new Set(['cpu', 'kap']);
+const NGINXSIZ_HOST_IPUCU = 'ölçüm penceresinde hedefin genel CPU kullanımı (/proc/stat, tüm süreçler); %90 üstü doyma';
 const sayiHucre = 'px-2.5 py-1.5 text-right tabular-nums';
 const UYARI_HUCRE = { color: 'var(--status-warning-text)', fontWeight: 600 } as const;
 /** Bos bellek %10 altinda (analiz bellek_bos_az ile ayni esik): hucre uyari renginde. */
 const bosAz = (x: number | null | undefined) => x != null && x < 10;
 const YUK_DOYDU_IPUCU = 'Yük makinesinin boşta CPU’su %20’nin altında: sonuç hedefin değil yük makinesinin sınırını gösterebilir. Adım “doyma” sayılır ve p95 kararında kullanılmaz; hedefin CPU-ms/istek değeri geçerli kalır.';
 
-function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; serbest: boolean; nproc?: number | null }) {
+function AdimTablosu({ adimlar, aktif, birim, serbest, nginxsiz = false, nproc = null }: { adimlar: NlAdim[]; aktif: boolean; birim: AdimBirimi; serbest: boolean; nginxsiz?: boolean; nproc?: number | null }) {
   const [acik, setAcik] = useState<Set<string>>(new Set());
   const sirali = adimSirala(adimlar);
   const cokSeri = new Set(adimlar.map(seriAdi)).size > 1;
@@ -602,7 +615,7 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
   const yukCpu = yukCpuKolonuVar(adimlar);
   const bellek = bellekKolonuVar(adimlar);
   const ag = agKolonuVar(adimlar);
-  const kolonListesi = kolonlar(birim, serbest, yukCpu, bellek, nproc, ag);
+  const kolonListesi = kolonlar(birim, serbest, yukCpu, bellek, nproc, ag, nginxsiz);
   const genislik = 56 + (yukCpu ? 6.5 : 0) + (bellek ? 17 : 0) + (ag ? 12 : 0);
   return (
     <div>
@@ -651,9 +664,13 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nproc = null }: { adimlar
                       <>{['cpu', 'host', 'kap'].map((s) => <td key={s} className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={SERBEST_SUNUCU_YOK}>—</td>)}</>
                     ) : (
                       <>
-                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{cpuMsMetni(a.cpuMsIstek)}</td>
+                        {nginxsiz
+                          ? <td className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={NGINX_YOK_CPU_IPUCU}>—</td>
+                          : <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{cpuMsMetni(a.cpuMsIstek)}</td>}
                         <td className={sayiHucre} style={(a.hostCpuOrt ?? 0) > 90 ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{a.hostCpuOrt != null ? `%${ondalik(a.hostCpuOrt, 0)}` : '—'}</td>
-                        <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>
+                        {nginxsiz
+                          ? <td className={sayiHucre} style={{ color: 'var(--text-muted)' }} title={NGINX_YOK_CPU_IPUCU}>—</td>
+                          : <td className={sayiHucre} title={a.cpuOlculemedi ? cpuOlculemediMetni(a.cpuOlculemedi) : undefined}>{a.kapasiteRps != null ? `~${fmtNumber(Math.round(a.kapasiteRps))}` : '—'}</td>}
                       </>
                     )}
                     {yukCpu && <td className={sayiHucre} data-testid="yuk-cpu-bosta" style={a.yukDoydu ? { color: 'var(--status-warning-text)', fontWeight: 600 } : undefined}>{yukCpuHucre(a)}</td>}

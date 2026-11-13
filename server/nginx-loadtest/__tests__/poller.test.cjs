@@ -129,8 +129,11 @@ sahte('../../db/index.cjs', {
       return { rows: [], rowCount: 1 };
     }
     if (/^UPDATE nginx_loadtest_kosular SET durum = \$2, gecerlilik = \$3/.test(q)) {
-      const [id, durum, gecerlilik, nedenler, sonuc, okOzet, swDizin, bitis] = params;
+      const [id, durum, gecerlilik, nedenler, sonuc, okOzet, swDizin, bitis, hedefNginx] = params;
       D.son = { id, durum, gecerlilik, nedenler: JSON.parse(nedenler || 'null'), sonuc: JSON.parse(sonuc || 'null'), okOzet: JSON.parse(okOzet || 'null'), swDizin, bitis };
+      // Tek hedef modeli (2026-11-13): $9 = hedef_nginx (1 | 0 | null = kolon degismez; SQL COALESCE).
+      D.sonNginx = hedefNginx;
+      D.sonSql = q;
       return { rows: [], rowCount: 1 };
     }
     if (/^UPDATE nginx_loadtest_kosular SET durum = 'RUNNING'/.test(q)) return { rows: [], rowCount: 1 };
@@ -635,7 +638,7 @@ test('YPL18 tick ve tetikle sonuclandirmanin istedigi kolonlari okur', async () 
     assert.match(pl.SONUCLANDIRMA_KOLONLARI, new RegExp(`\\b${k}\\b`), k);
   }
   // Tur 3 kolonlari kilit_id'den sonra, DATEDIFF'ten once.
-  assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /kilit_id, hedef_turu, motor, durdur_awx_job_id, DATEDIFF\(/);
+  assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /kilit_id, hedef_turu, motor, durdur_awx_job_id, hedef_nginx, DATEDIFF\(/);
   assert.match(pl.SONUCLANDIRMA_KOLONLARI.replace(/\s+/g, ' '), /DATEDIFF\(SECOND, COALESCE\(started_at, created_at\), GETUTCDATE\(\)\) AS calisma_yas_sn/);
   // tick satiri oldugu gibi gecirir: eski satirdaki 404 "is yok" olur.
   sifirla({ awxHata: Object.assign(new Error('not found'), { status: 404 }), aktif: [KOSU({ calisma_yas_sn: 99999 })] });
@@ -931,4 +934,49 @@ test('YPL24 durdurma isinin sonucu sonuc.durdur_geri_alma alanina yazilir', asyn
   D.awx = { ...D.awx, status: 'successful', artifacts: { nginx_loadtest_result: DSTATS({ sunucu_ayar: { geri_alma: 'uyari' } }) } };
   await pl.tick();
   assert.equal(JSON.parse(D.durdurYazilan[0][1]).durdur_geri_alma.durum, 'uyari');
+});
+
+// -- TEK HEDEF MODELI (2026-11-13): playbook'un nginx tespiti (set_stats on_kontrol / kosu .hedef_nginx) --
+test('PL-NX hedef_nginx: kolona yazilir (on kontrol / kosu), kosuAnaliz hedefNginx:false yalniz false iken, tespit degistiyse KISMI', async () => {
+  // SQL: kolon COALESCE ile (null yazilmaz -> on kontrolden kopya korunur).
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS() };
+  await pl.kosuyuSonuclandir(KOSU());
+  assert.match(D.sonSql, /hedef_nginx = COALESCE\(\$9, hedef_nginx\)/);
+  assert.equal(D.sonNginx, null, 'alansiz (eski playbook) kosu kolona deger yazdi');
+  assert.ok(!('hedefNginx' in D.analizSecenek), 'alansiz kosuda analiz secenegi eklendi');
+  // On kontrol: on_kontrol.hedef_nginx -> 1 / 0; null / metin / serbest -> null.
+  for (const [v, tur, bek] of [[true, 'sunucu', 1], [false, 'sunucu', 0], [null, 'sunucu', null], ['false', 'sunucu', null], [false, 'serbest', null]]) {
+    sifirla();
+    D.awx.artifacts = { nginx_loadtest_result: STATS({ islem: 'on_kontrol', kosu: null, on_kontrol: { ip_yerel: true, hedef_nginx: v } }) };
+    await pl.kosuyuSonuclandir(KOSU({ islem: 'on_kontrol', hedef_turu: tur }));
+    assert.equal(D.sonNginx, bek, JSON.stringify([v, tur]));
+  }
+  // Kosu: kosu.hedef_nginx false -> secenek hedefNginx:false + kolon 0; true -> secenek YOK + kolon 1.
+  for (const [v, bekSec, bekKolon] of [[false, false, 0], [true, undefined, 1], [null, undefined, null], ['0', undefined, null]]) {
+    sifirla();
+    D.awx.artifacts = { nginx_loadtest_result: STATS({ kosu: { kos_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17', hedef_nginx: v, hedef_kaydedici: v === false ? 'genel' : 'nginx' } }) };
+    await pl.kosuyuSonuclandir(KOSU());
+    assert.equal(D.analizSecenek.hedefNginx, bekSec, String(v));
+    if (bekSec === undefined) assert.ok(!('hedefNginx' in D.analizSecenek), String(v));
+    assert.equal(D.sonNginx, bekKolon, String(v));
+  }
+  // Serbest kosuda alan yok sayilir.
+  sifirla();
+  D.awx.artifacts = { nginx_loadtest_result: STATS({ hedef_turu: 'serbest', kosu: { kos_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17', hedef_nginx: false } }) };
+  await pl.kosuyuSonuclandir(KOSU({ hedef_turu: 'serbest' }));
+  assert.ok(!('hedefNginx' in D.analizSecenek));
+  assert.equal(D.sonNginx, null);
+  // On kontrol tespiti (satirin kolonu) ile kosu tespiti farkli: GECERLI -> KISMI + neden; ayni ya da bilinmiyorsa neden yok.
+  for (const [satir, kosuV, kismi] of [[1, false, true], [0, true, true], [true, false, true], [0, false, false], [1, true, false], [null, false, false], [0, null, false]]) {
+    sifirla();
+    D.awx.artifacts = { nginx_loadtest_result: STATS({ kosu: { kos_rc: 0, sw_dizin: '/sw/BMW_PORTAL/nginx_loadtest/17', hedef_nginx: kosuV } }) };
+    await pl.kosuyuSonuclandir(KOSU({ hedef_nginx: satir }));
+    const neden = (D.son.nedenler || []).find((n) => /^hedef nginx durumu ön kontrolden bu yana değişti/.test(n));
+    assert.equal(!!neden, kismi, JSON.stringify([satir, kosuV, D.son.nedenler]));
+    if (kismi) {
+      assert.equal(D.son.gecerlilik, 'KISMI');
+      assert.match(neden, /\(ön kontrol: nginx (var|yok), koşu: nginx (var|yok)\)$/);
+    }
+  }
 });
