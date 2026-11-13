@@ -1490,7 +1490,7 @@ type SekmeId =
 export default function ServerHubPage() {
   // Sekmeler: Server Hub envanter + goruntuleme. OPERASYON AKISLARI (Reboot Kontrolu, Retirement)
   // 2026-11-11'de BMW Hub'a tasindi (kullanici: "Server Hub'i sadece envanterleme ve goruntuleme
-  // amacli kullaniyoruz"); Retirement'a gecis BMW Hub'in retirement sekmesine yonlendirir.
+  // amacli kullaniyoruz"); 2026-11-13'ten beri BMW Hub menusunde ayri sayfa (/retirement), gecis oraya.
   const navigate = useNavigate();
   const [tab, setTab] = useState<SekmeId>('hosts');
   // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
@@ -1511,9 +1511,10 @@ export default function ServerHubPage() {
   } | null>(null);
   // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement kayit formunu
   // uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir). Retirement artik
-  // BMW Hub'da: oneri yonlendirme durumu (location.state) ile tasinir, URL'e uygulama adi yazilmaz.
+  // BMW Hub > Retirement sayfasinda (/retirement, 2026-11-13): oneri yonlendirme durumu (location.state) ile tasinir,
+  // URL'e uygulama adi yazilmaz.
   const retirementAc = (uygulama: string, not: string) => {
-    navigate('/bmw-hub?sekme=retirement', { state: { retireOneri: { uygulama, not } } });
+    navigate('/retirement', { state: { retireOneri: { uygulama, not } } });
   };
   // RETIREMENT ANALIZI ROZETI (2026-11-07): Uygulama 360 / sunucu paneli "Analizde ac" -> analiz sekmesi
   // o kayit secili (tek kaynak, iki giris). Context: rozet panelin icinde, prop zinciri gerekmez.
@@ -3849,7 +3850,7 @@ export function FindingsTab({
   onRetirementAc,
 }: {
   initial?: { area?: string; code?: string; product?: string; envGroup?: string } | null;
-  /** KESIN + DOGRULANDI retirement etiketinden Retirement sekmesinde kayit acar (2026-11-06). */
+  /** KESIN + DOGRULANDI retirement etiketinden Retirement sayfasinda (/retirement) kayit acar (2026-11-06). */
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
   const { onayla, onayPenceresi } = useOnay();

@@ -32,7 +32,9 @@ afterEach(() => F.dbKaldir());
 
 test('EU1 kapidan sonra baglanir; yurutucu ayri baslar', () => {
   const kaynak = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
-  const kapi = kaynak.indexOf("router.use(requireVisiblePrefix('ServerHub'))");
+  // 2026-11-13: kapi ServerHub + (yalniz Reboot Kontrolu uclarinda) RebootKontrolu sayfasi (ek-sayfa-kapisi).
+  const kapi = kaynak.indexOf("require('../auth/ek-sayfa-kapisi.cjs').ekSayfaKapisi(");
+  assert.ok(kaynak.indexOf("gor.requireVisiblePrefix('ServerHub')") > 0, 'ServerHub kapisi yok');
   const admin = kaynak.indexOf(
     "res.status(403).json({ ok: false, message: 'Server Hub yalnız Admin.' })",
   );

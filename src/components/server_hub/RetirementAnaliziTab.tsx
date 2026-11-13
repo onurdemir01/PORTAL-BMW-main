@@ -9,7 +9,7 @@
 // en çok 3 "yapılabilecek", Admin sınıf rozetleri) -> "Ayrıntı" modalı: açılır bölümler (yalnız ilki açık):
 // neden bu karar, kopyalar, doğrulama ve eksikler, zincir (web -> uygulama kanıtı), notlar. Aramasız ekranda
 // karar sayıları ve uygulama listesi; Admin'in "Bilinen" dediği uygulamalar ayrı bölümde, sayılmaz.
-// Ekran HİÇBİR ŞEY ÇALIŞTIRMAZ: "Retirement kaydı aç" yalnız Retirement sekmesindeki formu doldurur.
+// Ekran HİÇBİR ŞEY ÇALIŞTIRMAZ: "Retirement kaydı aç" yalnız Retirement sayfasındaki (/retirement) formu doldurur.
 // Veri: /iliski/* ve /notlar (iliski-uclar.cjs, notlar-uclar.cjs). Ölçülemeyen hiçbir şey yeşil görünmez.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowPathIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';

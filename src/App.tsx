@@ -32,6 +32,9 @@ const ServerHubPage = lazyWithRetry(() => import('@/components/server_hub/Server
 const IpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.IpSorguPage })));
 const OcpSorguPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.OcpSorguPage })));
 const YukTestiPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubSayfalari').then((m) => ({ default: m.YukTestiPage })));
+// Reboot Kontrolu ve Retirement (2026-11-13): BMW Hub sayfasindaki sekmeden ayri menu sayfasina.
+const RebootKontroluPage = lazyWithRetry(() => import('@/components/bmw_hub/RebootKontroluPage'));
+const RetirementPage = lazyWithRetry(() => import('@/components/bmw_hub/RetirementPage'));
 const CryptoHubPage = lazyWithRetry(() => import('@/components/crypto_hub/CryptoHubPage'));
 const BmwHubPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubPage'));
 const AppHubPage = lazyWithRetry(() => import('@/components/app_hub/AppHubPage'));
@@ -138,7 +141,13 @@ export default function App() {
               <Route path="/application-hub" element={<AppHubPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="BmwHub" />}>
-              <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu' }}><BmwHubPage /></TasinanSekme>} />
+              <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="RebootKontrolu" />}>
+              <Route path="/reboot-kontrolu" element={<RebootKontroluPage />} />
+            </Route>
+            <Route element={<PageVisibilityRoute pageId="Retirement" />}>
+              <Route path="/retirement" element={<RetirementPage />} />
             </Route>
             <Route element={<PageVisibilityRoute pageId="IpSorgu" />}>
               <Route path="/ip-sorgu" element={<IpSorguPage />} />

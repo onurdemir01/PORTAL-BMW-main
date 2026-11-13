@@ -316,7 +316,13 @@ function initRetirement(app) {
   router.use(express.json({ limit: '512kb' }));
   router.use(requireAuth);
   router.use((req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ ok: false, message: 'Retirement yalnız Admin.' })));
-  try { router.use(require('../auth/visibility.cjs').requireVisiblePrefix('ServerHub')); } catch { /* yoksay */ }
+  // GORUNURLUK (2026-11-13): Retirement BMW Hub menusunde AYRI sayfa ('Retirement'). Eski kapi (ServerHub) kalir,
+  // yeni sayfa anahtari EK olarak gecer (server/auth/ek-sayfa-kapisi.cjs): kimse erisimini kaybetmez.
+  try {
+    const gor = require('../auth/visibility.cjs');
+    const ana = gor.requireVisiblePrefix('ServerHub');
+    router.use(require('../auth/ek-sayfa-kapisi.cjs').ekSayfaKapisi({ anahtar: 'Retirement', ana, canSee: gor.canSee }));
+  } catch { /* yoksay */ }
   // IS CIKTISI (2026-10-26, salt okunur, ayri modul): Admin + ServerHub kapilarindan SONRA baglanir.
   require('./is-ciktisi.cjs').mount(router, {
     db,

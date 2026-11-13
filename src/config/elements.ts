@@ -53,6 +53,9 @@ export const PAGES: PageElement[] = [
   { id: 'IpSorgu', label: 'IP/Sunucu Sorgu', route: '/ip-sorgu' },
   { id: 'OcpSorgu', label: 'OCP Uygulama Sorgu', route: '/ocp-sorgu' },
   { id: 'YukTesti', label: 'Yük Testi', route: '/yuk-testi' },
+  // 2026-11-13 (kullanici): Reboot Kontrolu ve Retirement BMW Hub menusunde ayri sayfa (once BMW Hub sayfasinda sekme).
+  { id: 'RebootKontrolu', label: 'Reboot Kontrolü', route: '/reboot-kontrolu' },
+  { id: 'Retirement', label: 'Retirement', route: '/retirement' },
   // Nginx ARK SPA (2026-10-13): iki sayfa. element_key 'ArkSpaRaporu' DEGISMEDI (mevcut gorunurluk
   // kurallari ve /api/spa-report kapisi ona bagli); yalniz etiket + adres.
   { id: 'ArkSpaRaporu', label: 'SPA Raporu', route: '/ark-spa/spa-raporu' },
@@ -87,7 +90,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
   { id: 'cryptohub', label: 'Crypto Hub', itemIds: ['CryptoHub'] },
   // BMW Hub (2026-11-08): acik isler / otomasyon talepleri, kendi girisi
   // 2026-11-08: Envanter, Denetim, Nobet ve OCO Takvimi de BMW Hub grubunda (kullanici)
-  { id: 'bmwhub', label: 'BMW Hub', itemIds: ['BmwHub', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'] },
+  { id: 'bmwhub', label: 'BMW Hub', itemIds: ['BmwHub', 'RebootKontrolu', 'Retirement', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'] },
   // Nginx ARK SPA Raporu (2026-09-28): tum servisler icin tek liste, kendi bolumu
   { id: 'arkspa', label: 'Nginx ARK SPA', itemIds: ['ArkSpaRaporu', 'ArkGlomoGecis', 'ArkIntranetSpa'] },
   { id: 'performance', label: 'Performance', itemIds: ['Performance'] },

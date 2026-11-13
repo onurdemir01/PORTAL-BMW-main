@@ -5,6 +5,7 @@
 //       gercek trafik ya da web disi cagiran -> KULLANIMDA; celiski + kullanim yok -> KARAR_VERILEMEZ
 //   SN3 uygulama toplamasi ve yapilabilecekler (en cok 3; yalniz yonlendir / elle / bilgi; calistiran yok)
 //   SN4 uclar: /iliski/kararlar ve /iliski/karar (app / sunucu / kopya), 400 / 409; uc saati motora verir; hata 424
+//   SN9 elle metinleri var olmayan "Retirement sekmesi"ni gostermez (2026-11-13)
 //   SN5 tazelik her kanitin kendi sunucusundan (web sunucusu Server Hub / UE taramasi, baglanti UE taramasi):
 //       bayat sifir "olculemedi", aday olamaz; kullanim kaniti bayat da olsa kazanir
 'use strict';
@@ -688,4 +689,14 @@ test('SN8 grup kontrolu: imza, yalniz aday dogrulanir, VERI_DEGISTI, okunamadi',
   } finally {
     srv.close();
   }
+});
+
+// SN9 (2026-11-13): Retirement artik sekme degil, sol menude BMW Hub > Retirement sayfasi (/retirement).
+// Kullaniciya giden elle metinleri var olmayan "Retirement sekmesi"ni gostermesin.
+test('SN9 elle metinleri Retirement sekmesine degil BMW Hub > Retirement sayfasina yonlendirir', () => {
+  const { SENARYOLAR } = require('../senaryo.cjs');
+  for (const [kod, s] of Object.entries(SENARYOLAR)) {
+    assert.ok(!/sekme/i.test(String(s.elle || '')), `${kod}: elle metni sekme diyor: ${s.elle}`);
+  }
+  assert.match(SENARYOLAR.RETIREMENT_KAYDI.elle, /BMW Hub › Retirement sayfas/);
 });

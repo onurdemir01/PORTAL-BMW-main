@@ -2731,6 +2731,29 @@ const ELEMENT_SEED = [
     sort_order: 1,
     roles: ['Admin'],
   },
+  {
+    // REBOOT KONTROLU / RETIREMENT (kullanici, 2026-11-13: "Reboot Kontrolu ile Retirement'i Acik Islerin icine
+    // koydun, BMW Hub'a eklemeni istemistim"): 2026-11-11'den beri BMW Hub sayfasinda (Acik Isler) sekmeydi; sol
+    // menude AYRI sayfa, Acik Isler'in hemen altinda. Kitle DEGISMEZ: sekmeyi BmwHub (roles Admin) goren goruyordu,
+    // uclar da yalniz Admin (+ ServerHub gorunurlugu; yeni anahtar ek-sayfa-kapisi ile EK olarak gecer). Mevcut
+    // kurulumda sirayi placeBmwHubFlowPages() duzeltir (seed yalniz eksik satiri ekler).
+    element_key: 'RebootKontrolu',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'Reboot Kontrolü',
+    route: '/reboot-kontrolu',
+    sort_order: 2,
+    roles: ['Admin'],
+  },
+  {
+    element_key: 'Retirement',
+    element_type: 'page',
+    parent_key: 'navgroup:bmwhub',
+    label: 'Retirement',
+    route: '/retirement',
+    sort_order: 3,
+    roles: ['Admin'],
+  },
   // CRYPTO HUB UYGULAMA AYRIMI (kullanici, 2026-10-01): "Metaco ve Wyden tarafini farkli
   // ekiplere gosterecegiz." Sayfanin TAMAMI yerine uygulama bazinda yetki verilir; bu
   // ogeler Admin > Crypto Hub Erisimi panelinden yonetilir.
@@ -4627,6 +4650,55 @@ async function moveToBmwHub(pool) {
   }
 }
 
+// REBOOT KONTROLU / RETIREMENT MENU SIRASI (2026-11-13, kullanici): iki yeni sayfa BMW Hub grubunda Acik Isler'in
+// HEMEN ALTINDA. Seed yalniz eksik satiri ekler ve mevcut kurulumda Envanter=2, Denetim=3 ... zaten dolu; ayni
+// sort_order'da sira belirsizdir. Tek seferlik (isaret portal_config_blobs): Acik Isler'in (BmwHub) sirasindan
+// SONRAKI grup sayfalari 2 kaydirilir, yeni iki sayfa araya girer. Adminin elle verdigi goreli sira korunur; yeni
+// sayfalar baska gruba tasinmissa (admin) dokunulmaz. Gorunurluk kurallarina dokunmaz.
+async function placeBmwHubFlowPages(pool) {
+  const MARK = 'migration:bmwhub-reboot-retirement-sira-2026-11-13';
+  const YENI = ['RebootKontrolu', 'Retirement'];
+  try {
+    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    if (done.recordset.length) return;
+    const r = await pool
+      .request()
+      .query(`SELECT element_key, sort_order FROM portal_elements WHERE parent_key = 'navgroup:bmwhub' AND element_type = 'page'`);
+    const satirlar = r.recordset || [];
+    const acik = satirlar.find((x) => x.element_key === 'BmwHub');
+    const yeniler = YENI.filter((k) => satirlar.some((x) => x.element_key === k));
+    if (!acik || yeniler.length !== YENI.length) {
+      // Isaret YAZILMAZ: seed bir sonraki aciliste eksigi ekler, sira o zaman duzelir.
+      console.warn('[DB] BMW Hub Reboot Kontrolu / Retirement sirasi: Acik Isler ya da yeni sayfa grupta yok; atlandi.');
+      return;
+    }
+    const taban = Number(acik.sort_order) || 0;
+    await pool
+      .request()
+      .input('t', taban)
+      .query(
+        `UPDATE portal_elements SET sort_order = sort_order + 2
+          WHERE parent_key = 'navgroup:bmwhub' AND element_type = 'page'
+            AND element_key NOT IN ('BmwHub', 'RebootKontrolu', 'Retirement') AND sort_order > @t`,
+      );
+    for (const [i, k] of YENI.entries()) {
+      await pool
+        .request()
+        .input('k', k)
+        .input('o', taban + 1 + i)
+        .query(`UPDATE portal_elements SET sort_order = @o WHERE element_key = @k AND parent_key = 'navgroup:bmwhub'`);
+    }
+    await pool
+      .request()
+      .input('n', MARK)
+      .input('d', JSON.stringify({ at: new Date().toISOString() }))
+      .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
+    console.log('[DB] BMW Hub: Reboot Kontrolu ve Retirement Acik Isler altina siralandi.');
+  } catch (err) {
+    console.warn('[DB] BMW Hub Reboot Kontrolu / Retirement sirasi uygulanamadi:', err.message);
+  }
+}
+
 async function migratePageParentKeysToNavGroups(pool) {
   const pageToGroup = {
     Dashboard: 'navgroup:genel',
@@ -4709,6 +4781,7 @@ async function setupTables() {
   // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
   await moveToBmwHub(pool);
+  await placeBmwHubFlowPages(pool);
   await removeMovedDenetimTabs(pool);
   await removeRetiredAdminTabs(pool);
   await allowMultipleCisOverrides(pool);
@@ -5898,4 +5971,4 @@ async function setupTables() {
   }
 }
 
-module.exports = { setupTables, PLAYBOOK_REGISTRY_SEED, seedPlaybookRegistry };
+module.exports = { setupTables, PLAYBOOK_REGISTRY_SEED, seedPlaybookRegistry, _placeBmwHubFlowPages: placeBmwHubFlowPages };

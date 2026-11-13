@@ -198,7 +198,7 @@ export default function AppHubPage() {
           <span style={{ color: 'var(--text-primary)' }}>
             Retirement kaydı <b>#{acilanKayit}</b> açıldı. STOP, silme ve IP/LB/DNS adımları BMW Hub › Retirement'tan yürür.
           </span>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/bmw-hub?sekme=retirement')}>BMW Hub'da aç</Button>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/retirement')}>BMW Hub'da aç</Button>
         </div>
       )}
 

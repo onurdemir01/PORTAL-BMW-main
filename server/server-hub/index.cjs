@@ -618,6 +618,16 @@ async function retirementAnalizi(hedefler) {
   return { okunamadi: false, hedefler: out };
 }
 
+// Reboot Kontrolu sayfasinin (BMW Hub, 2026-11-13) kullandigi Server Hub uclari: kayitlar / rapor / once-sonra
+// (reboot-check.cjs), bilinen sunucu adlari, AWX is durumu ve sunucu limiti (salt okunur). Liste RebootKontroluTab +
+// sunucuLimiti ile birebir; yeni uc eklenirse burada da acilmali (yoksa yalniz ServerHub gorunurlugu ile acilir).
+function rebootKontroluUcu(req) {
+  const p = String(req.path || String(req.url || '').split('?')[0]);
+  if (p === '/reboot-check' || p.startsWith('/reboot-check/')) return true;
+  if (req.method !== 'GET') return false;
+  return p === '/host-adlari' || p === '/limitler' || /^\/job-status\/[^/]+\/[^/]+$/.test(p);
+}
+
 function initServerHub(app) {
   const { requireAuth } = require('../auth/index.cjs');
   const router = express.Router();
@@ -629,8 +639,19 @@ function initServerHub(app) {
       : res.status(403).json({ ok: false, message: 'Server Hub yalnız Admin.' }),
   );
   try {
-    const { requireVisiblePrefix } = require('../auth/visibility.cjs');
-    router.use(requireVisiblePrefix('ServerHub'));
+    // REBOOT KONTROLU (2026-11-13): BMW Hub menusunde AYRI sayfa ('RebootKontrolu'). Sekmenin kullandigi uclar
+    // (REBOOT_KONTROLU_UCU) eski ServerHub kapisina EK olarak yeni sayfa anahtariyla da acilir; Server Hub'in
+    // diger uclari yalniz ServerHub ile (server/auth/ek-sayfa-kapisi.cjs).
+    const gor = require('../auth/visibility.cjs');
+    const ana = gor.requireVisiblePrefix('ServerHub');
+    router.use(
+      require('../auth/ek-sayfa-kapisi.cjs').ekSayfaKapisi({
+        anahtar: 'RebootKontrolu',
+        ana,
+        canSee: gor.canSee,
+        eslesir: rebootKontroluUcu,
+      }),
+    );
   } catch {
     /* motor yoksa yoksay */
   }
@@ -1080,6 +1101,7 @@ function initServerHub(app) {
 
 module.exports = {
   initServerHub,
+  rebootKontroluUcu,
   retirementAnalizi,
   REGISTRY_KEYS,
   FIX_ACTIONS,

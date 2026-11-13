@@ -127,7 +127,7 @@ const ayrinti = (): ShKararAyrinti => ({
       {
         tur: 'yonlendir',
         metin: 'Retirement kaydı açılabilir',
-        hedef: 'bmw-hub?sekme=retirement',
+        hedef: 'retirement',
       },
       { tur: 'elle', metin: 'Uygulama sahibine doğrulatın.' },
     ],

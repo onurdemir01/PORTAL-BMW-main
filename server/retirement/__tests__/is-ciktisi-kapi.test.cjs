@@ -20,7 +20,7 @@ function sahte(rel, exports) {
   require.cache[p] = { id: p, filename: p, loaded: true, exports };
 }
 
-const durum = { sorgular: [], hedefSatiri: null, webJson: null, registry: null, launch: [] };
+const durum = { sorgular: [], hedefSatiri: null, webJson: null, registry: null, launch: [], gizliAnahtarlar: new Set() };
 sahte('../../db/index.cjs', {
   query: async (sql, params = []) => {
     const s = String(sql).replace(/\s+/g, ' ').trim();
@@ -33,6 +33,8 @@ sahte('../../db/index.cjs', {
 sahte('../../auth/index.cjs', { requireAuth: (req, res, next) => (req.session?.user ? next() : res.status(401).json({ ok: false, kimlik: true })) });
 sahte('../../auth/visibility.cjs', {
   requireVisiblePrefix: (onek) => (req, res, next) => (req.gizli ? res.status(403).json({ ok: false, gorunurluk: onek }) : next()),
+  // 2026-11-13: Retirement BMW Hub menusunde ayri sayfa; 'Retirement' anahtari ServerHub kapisina EK olarak gecer.
+  canSee: async (_user, anahtar) => !durum.gizliAnahtarlar.has(anahtar),
 });
 sahte('../poller.cjs', {
   startPoller(_launch, _finalize, web) { durum.webBaslatici = web; },
@@ -71,7 +73,7 @@ function istek(url, { session = { user: { username: 'onur', role: 'Admin' } }, g
   });
 }
 
-test('RC8 is ciktisi ucu kimlik + Admin + ServerHub kapilarinin ARKASINDA (davranis)', async () => {
+test('RC8 is ciktisi ucu kimlik + Admin + ServerHub|Retirement kapilarinin ARKASINDA (davranis)', async () => {
   assert.ok(router, 'router baglanmadi');
   durum.hedefSatiri = { id: 9, record_id: 5, host: 'H', status: 'pending', last_job_id: null, web_result_json: null };
   const url = '/5/targets/9/is-ciktisi?adim=stop';
@@ -79,14 +81,26 @@ test('RC8 is ciktisi ucu kimlik + Admin + ServerHub kapilarinin ARKASINDA (davra
   for (const [ne, ops, kod] of [
     ['oturumsuz', { session: null, query: q }, 401],
     ['Admin olmayan', { session: { user: { username: 'u', role: 'User' } }, query: q }, 403],
-    ['ServerHub gorunurlugu yok', { gizli: true, query: q }, 403],
+    ['ServerHub ve Retirement gorunurlugu yok', { gizli: true, query: q, gizliAnahtar: ['Retirement'] }, 403],
   ]) {
     durum.sorgular = [];
+    durum.gizliAnahtarlar = new Set(ops.gizliAnahtar || []);
     const r = await istek(url, ops);
     assert.equal(r.statusCode, kod, `${ne}: ${JSON.stringify(r.body)}`);
     assert.equal(r.body.code, undefined, `${ne}: istek uca ulasti`);
     assert.equal(durum.sorgular.length, 0, `${ne}: uc DB okudu`);
   }
+  // Yeni sayfa anahtari (Retirement) ServerHub'i goremeyene de acar; ServerHub goren Retirement'i goremese de gecer.
+  for (const [ne, ops] of [
+    ['yalniz Retirement', { gizli: true, query: q }],
+    ['yalniz ServerHub', { query: q, gizliAnahtar: ['Retirement'] }],
+  ]) {
+    durum.sorgular = [];
+    durum.gizliAnahtarlar = new Set(ops.gizliAnahtar || []);
+    const r = await istek(url, ops);
+    assert.deepEqual([r.statusCode, r.body.code], [409, 'is_yok'], `${ne}: uca ulasamadi`);
+  }
+  durum.gizliAnahtarlar = new Set();
   durum.sorgular = [];
   const r = await istek(url, { query: q });
   assert.deepEqual([r.statusCode, r.body.code], [409, 'is_yok'], 'Admin icin uc bagli degil');

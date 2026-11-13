@@ -147,7 +147,7 @@ const SENARYOLAR = Object.freeze({
     katman: 'dis',
     etki: 'NOTR',
     baslik: 'Açık Retirement kaydı var',
-    elle: 'Retirement sekmesinde kaydın durumuna bakın.',
+    elle: 'BMW Hub › Retirement sayfasında kaydın durumuna bakın.',
   },
   CELISKI: {
     katman: 'zincir',

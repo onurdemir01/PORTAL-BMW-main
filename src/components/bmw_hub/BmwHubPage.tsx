@@ -6,8 +6,8 @@
 //
 // Kurallar (durum, öncelik, tarih, toplu satır biçimi) shared/bmwHub.cjs'te: ekrandaki toplu
 // ekleme önizlemesi sunucunun kaydedeceğiyle birebir aynı ayrıştırıcıyı kullanır.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ArrowPathIcon,
   ClipboardDocumentCheckIcon,
@@ -33,9 +33,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDateTime, fmtRelative } from '@/utils/datetime';
-import RebootKontroluTab from '@/components/server_hub/RebootKontroluTab';
-import RetirementTab from '@/components/server_hub/RetirementTab';
-import { SekmeKabi } from '@/components/server_hub/sekmeGorunurlugu';
 
 type Gorunum = 'acik' | 'benim' | 'gecikmis' | 'sahipsiz' | 'kapali' | 'hepsi';
 type Duzen = 'liste' | 'pano';
@@ -927,100 +924,17 @@ function AcikIsler() {
   );
 }
 
-// ── SEKMELER (2026-11-11) ─────────────────────────────────────────────────────────────────────────
-// Kullanici: "Server Hub'da bulunan Reboot Kontrolu ve Retirement operasyon akislarini BMW Hub'in
-// altina bir sekme olarak alalim; Server Hub'i sadece envanterleme ve goruntuleme amacli kullaniyoruz."
-// Sekme URL'de (?sekme=), derin link ve geri tusu calisir. Ziyaret edilen sekme sokulmez, gizlenir
-// (Server Hub'daki SekmeKabi: gizli sekme yoklama yapmaz, pencere acmaz).
-// IP/Sunucu Sorgu ve OCP Uygulama Sorgu 2026-11-12'de burada sekmeydi; 2026-11-13'te (kullanici: "sol menude
-// BMW Hub altinda gorunmuyor") ayri sayfalar oldu (/ip-sorgu, /ocp-sorgu; ?sekme=ip|ocp App.tsx'te yonlenir).
-type SekmeId = 'isler' | 'reboot' | 'retirement';
-const SEKMELER: { id: SekmeId; label: string; aciklama: string }[] = [
-  { id: 'isler', label: 'Açık İşler', aciklama: 'Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor.' },
-  {
-    id: 'reboot',
-    label: 'Reboot Kontrolü',
-    aciklama: 'Reboot öncesi ve sonrası çalıştırın: önce çalışan ürün ve JVM sonra da çalışmalı; kapalı kalan açılır, önce olmayan JVM kapatılır. Ölçülemeyen sunucu sorunsuz sayılmaz.',
-  },
-  {
-    id: 'retirement',
-    label: 'Retirement',
-    aciklama: 'Uygulama retirement: Smart silme kaydı → tüm ortam/site keşfi → STOP (auto-start kapat, durdur, paketi .old) → seçilen tarihte silme → IP/LB/DNS kayıtları.',
-  },
-];
-
+// ── SAYFA ────────────────────────────────────────────────────────────────────────────────────────
+// 2026-11-11'de Reboot Kontrolu ve Retirement bu sayfada sekmeydi (Server Hub'dan tasinmisti). 2026-11-13
+// (kullanici: "Reboot Kontrolu ile Retirement'i Acik Islerin icine koydun, BMW Hub'a eklemeni istemistim") sol
+// menude BMW Hub grubunda AYRI sayfalar oldu (/reboot-kontrolu, /retirement; RebootKontroluPage.tsx,
+// RetirementPage.tsx). Eski ?sekme=reboot|retirement adresleri App.tsx'te (TasinanSekme, router state'i ile) yeni sayfaya yonlenir.
+// IP/Sunucu Sorgu ve OCP Uygulama Sorgu da 2026-11-13'te ayni sekilde ayrildi (?sekme=ip|ocp).
 export default function BmwHubPage() {
-  const [params, setParams] = useSearchParams();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const sekme = (SEKMELER.find((t) => t.id === params.get('sekme'))?.id || 'isler') as SekmeId;
-  const [acilan, setAcilan] = useState<Set<SekmeId>>(() => new Set<SekmeId>([sekme]));
-  if (!acilan.has(sekme)) setAcilan((s) => new Set(s).add(sekme));
-
-  // Server Hub (Bulgular / Uygulama 360 / Retirement Analizi) "Retirement kaydi ac" -> buraya
-  // location.state ile gelir; her yeni istek kayit formunu bir kez acar, durum hemen temizlenir
-  // (yenileme / geri tusu formu tekrar acmasin).
-  const [retireOneri, setRetireOneri] = useState<{ uygulama: string; not: string; no: number } | null>(null);
-  const gelen = (location.state as { retireOneri?: { uygulama: string; not: string } } | null)?.retireOneri;
-  // Render sirasinda ayar (effect'te setState yok): her yeni gecis (location.key) bir kez islenir.
-  const [islenenKey, setIslenenKey] = useState<string | null>(null);
-  if (gelen?.uygulama && location.key !== islenenKey) {
-    setIslenenKey(location.key);
-    setRetireOneri((o) => ({ uygulama: gelen.uygulama, not: gelen.not || '', no: (o ? o.no : 0) + 1 }));
-  }
-  useEffect(() => {
-    if (gelen?.uygulama) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, [gelen, location.pathname, location.search, navigate]);
-
-  const sekmeSec = (id: SekmeId) =>
-    setParams(
-      (p) => {
-        const n = new URLSearchParams();
-        if (id !== 'isler') n.set('sekme', id);
-        // Acik Isler'in gorunum / duzen secimi o sekmeye donunce kalsin.
-        else ['gorunum', 'duzen'].forEach((k) => p.get(k) && n.set(k, p.get(k)!));
-        return n;
-      },
-      { replace: false },
-    );
-
-  const aktif = SEKMELER.find((t) => t.id === sekme)!;
   return (
     <div className="space-y-5">
-      <SectionHeader title="BMW Hub" subtitle={aktif.aciklama} />
-      <div role="tablist" aria-label="BMW Hub sekmeleri" className="flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-        {SEKMELER.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={sekme === t.id}
-            onClick={() => sekmeSec(t.id)}
-            className="px-3 py-2 text-[13px] font-medium -mb-px border-b-2 focus-visible:outline focus-visible:outline-2"
-            style={{
-              borderColor: sekme === t.id ? 'var(--bh-hue)' : 'transparent',
-              color: sekme === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {acilan.has('isler') && (
-        <SekmeKabi id="isler" etkin={sekme}>
-          <AcikIsler />
-        </SekmeKabi>
-      )}
-      {acilan.has('reboot') && (
-        <SekmeKabi id="reboot" etkin={sekme}>
-          <RebootKontroluTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('retirement') && (
-        <SekmeKabi id="retirement" etkin={sekme}>
-          <RetirementTab oneri={retireOneri} />
-        </SekmeKabi>
-      )}
+      <SectionHeader title="BMW Hub" subtitle="Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor." />
+      <AcikIsler />
     </div>
   );
 }
