@@ -105,6 +105,7 @@ function initDenetim(app) {
       [/^\/envanter(\/|$)/, 'envanter'],
       [/^\/app-envs(\/|$)/, 'appenvs'],
       [/^\/web-app(\/|$)/, 'webapp'],
+      [/^\/veri-katalogu(\/|$)/, 'katalog'],
     ];
     router.use((req, res, next) => {
       if (NGINX_PATH.test(req.path)) {
@@ -139,6 +140,8 @@ function initDenetim(app) {
   // /web-app HARIC (2026-10-23): kendi tek-ucuslu tam sonuc onbellegi var (web-app.cjs, 10 dk, fresh=1);
   // burada da tutulsa her arama varyanti 1-2 MB'lik ayri giris olur (64 giris), govde iki kez
   // serilestirilir ve "Yenile" sonrasi diger varyantlar 60 sn eski kalir.
+  // /veri-katalogu bu onbellekten GECER (2026-11-13): kendi 10 dk onbellegi de var ama govde kucuk
+  // (tek giris) ve ?fresh=1 iki katmani birlikte atlar.
   router.use((req, res, next) => (req.path === '/web-app' ? next() : responseCache.middleware(req, res, next)));
 
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
@@ -2478,6 +2481,9 @@ function initDenetim(app) {
 
   // ── 7) NGINX LOCATION DETAYI (servis/ortam bazinda location + namespace/app) ──────
   require('./nginx-locations.cjs').registerNginxLocations(router);
+
+  // ── 8) VERI KATALOGU (tablo -> yazan/okuyan/amac + canli satir/boyut + sapma) ────────
+  require('./veri-katalogu.cjs').registerVeriKatalogu(router);
 
   app.use('/api/denetim', router);
   console.log('[Denetim] module mounted at /api/denetim');

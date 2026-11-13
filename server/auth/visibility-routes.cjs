@@ -281,6 +281,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     'degisim',
     'appenvs',
     'webapp',
+    'katalog',
   ];
   const denetimKeys = () => ['Denetim', ...DENETIM_TAB_KEYS.map((t) => 'tab:denetim:' + t)];
 

@@ -3265,6 +3265,15 @@ const ELEMENT_SEED = [
     sort_order: 10,
     default_visible: 0,
   },
+  {
+    // Veri Katalogu (2026-11-13): Portal DB + TBMWANS tablolari kim yaziyor/okuyor, ne icin
+    element_key: 'tab:denetim:katalog',
+    element_type: 'tab',
+    parent_key: 'Denetim',
+    label: 'Veri Kataloğu',
+    sort_order: 11,
+    default_visible: 0,
+  },
   // Nginx Hub sekmeleri (2026-09-23): varsayilan KAPALI (kullanici karari). Sayfa zaten
   // yalniz Admin; baska bir kullaniciya/AD grubuna Admin > "Nginx Hub Erisimi" panelinden
   // sayfa + SECILEN sekmeler acilir. Denetim ile ayni model.

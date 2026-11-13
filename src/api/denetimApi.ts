@@ -1302,7 +1302,71 @@ export interface NginxInventoryResult {
   message?: string;
 }
 
+// ── VERI KATALOGU (2026-11-13; server/audit/veri-katalogu.cjs) ──────────────────────────────
+export type KatalogDb = 'Portal' | 'TBMWANS';
+export type KatalogYazanTuru = 'portal' | 'playbook' | 'betik' | 'bilinmiyor';
+export interface KatalogYazan {
+  tur: KatalogYazanTuru;
+  ad: string;
+  dosya: string;
+  nasil: string;
+  ne_zaman: string;
+  /** dosya tabloyu kendisi sorgulamıyorsa tabloya giden yardımcı modül (ör. server/logx/v2/ocp-cache.cjs). */
+  uzerinden?: string;
+}
+export interface KatalogOkuyan {
+  ad: string;
+  dosya: string;
+  /** dosya tabloyu kendisi sorgulamıyorsa tabloya giden yardımcı modül. */
+  uzerinden?: string;
+}
+export interface KatalogTablo {
+  db: KatalogDb;
+  tablo: string;
+  amac: string;
+  alan: string;
+  yazanlar: KatalogYazan[];
+  okuyanlar: KatalogOkuyan[];
+  saklama: string;
+  notlar: string;
+  kullanilmiyor: boolean;
+  guven: 'KESIN' | 'MAKUL';
+  /** var: veritabaninda bulundu · yok: bulunamadi · bilinmiyor: o veritabani okunamadi */
+  durum: 'var' | 'yok' | 'bilinmiyor';
+  satir: number | null;
+  mb: number | null;
+}
+export interface KatalogVeritabani {
+  db: KatalogDb;
+  ok: boolean;
+  hata?: string;
+  dbAdi?: string | null;
+  boyutVar?: boolean;
+  tabloSayisi?: number;
+  toplamMb?: number | null;
+  katalogSayisi: number;
+  ayniFiziksel?: boolean;
+}
+export interface VeriKataloguResult {
+  ok: boolean;
+  message?: string;
+  hesaplandi: string;
+  ayniFiziksel: boolean;
+  /** Bir DB okunamadı: fiziksel aynılık bilinmiyor, okunan DB'nin farkı iki kataloğun birleşimiyle süzüldü. */
+  sapmaKismi?: boolean;
+  veritabanlari: KatalogVeritabani[];
+  tablolar: KatalogTablo[];
+  sapma: {
+    katalogdaYok: { db: string; tablo: string; satir: number | null; mb: number | null }[];
+    veritabanindaYok: { db: KatalogDb; tablo: string; alan: string; kullanilmiyor: boolean }[];
+  };
+  secenekler: { veritabanlari: KatalogDb[]; alanlar: string[]; yazanTurleri: KatalogYazanTuru[]; guvenler: string[] };
+}
+
 export const denetimApi = {
+  veriKatalogu: (fresh = false): Promise<VeriKataloguResult> =>
+    fetch(`${BASE}/veri-katalogu${fresh ? '?fresh=1' : ''}`).then(safeJson),
+
   nginxProxy: (scanDate?: string): Promise<NginxProxyResult> =>
     fetch(`${BASE}/nginx-proxy${scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : ''}`).then(
       safeJson,

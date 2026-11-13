@@ -49,7 +49,7 @@ const ADIMLAR = {
 // sunucunun HER ZAMAN dondugu bir alani bulamayip cokuyor (sahte cokme; hata yolu dogru calisiyor).
 const SEKMELER = {
   '/nginx-console': { modlar: ['bos', 'hata'], sekmeler: ['instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'] },
-  '/denetim': { modlar: ['hata'], sekmeler: ['ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp'] },
+  '/denetim': { modlar: ['hata'], sekmeler: ['ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp', 'katalog'] },
 };
 // "bos" durumunda genel sahte govde ({ok:true, items:[] ...}) bazi uclarin GERCEK bos yanitina
 // benzemiyor; ekran olmayan bir alan yuzunden cokuyor ve tarama sahte cokme raporluyordu (2026-11-07,

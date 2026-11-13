@@ -8,6 +8,7 @@
 //   Envanter Audit              -> Inventory/MWApps/WASApps dagilimlari
 //   Jboss/WAS Applications Audit-> ad kuralindan ortam matrisi + sapmalar
 //   Web-App Relations           -> uygulamayi servis eden web sunucusu/vhost
+//   Veri Katalogu               -> Portal DB + TBMWANS tablolari: amac, yazan, okuyan, canli boyut
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useSearchParams } from 'react-router-dom';
@@ -28,6 +29,7 @@ import {
   ClockIcon,
   SignalIcon,
   GlobeAltIcon,
+  CircleStackIcon,
 } from '@heroicons/react/24/outline';
 import {
   denetimApi,
@@ -49,6 +51,7 @@ import { DirCell, HacLegend } from '@/components/denetim/HacCell';
 import NginxSpaSummary from '@/components/denetim/NginxSpaSummary';
 import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
+import VeriKatalogu from '@/components/denetim/VeriKatalogu';
 import OcpRouteProd from '@/components/denetim/OcpRouteProd';
 import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { toast } from '@/hooks/useToast';
@@ -130,6 +133,11 @@ const HELP: HelpSection[] = [
     title: 'Openshift Route Audit',
     body: "Yalnız production: route envanterindeki (dbo.BMW_Openshift_Route_Inventory, route_inventory job'ı; tablo her koşuda baştan yazılır) -prod namespace'lerindeki route'lar, prod cluster'larının hangisinde var. Dev/test/qa karşılaştırması bu ekranda yapılmaz — dev'deki bir route'un prod'da olması beklenmez. Satır = namespace tabanı (-prod eki atılmış) + route adı; her prod cluster bir sütundur. ARK'ta sütunlar resmi prod listesidir (prod1, prod2, prod4, ankprod2, drcprod1); listede olmayan bir cluster'da prod route'u görülürse o cluster 'beklenmeyen' sütunu olarak eklenir. Kapsam = route'un resmi prod cluster'larının kaçında olduğu (k/n): tam, kısmi ya da yalnız beklenmeyen cluster'da. Hiç kaydı gelmeyen cluster (job o cluster'a giriş yapamadıysa) 'veri yok' diye işaretlenir ve n'ye katılmaz — ölçülemedi, yok demek değildir. Her sütunun altındaki kutularla süzülür: route / namespace metniyle, her cluster için var / yok, kapsam türüyle.",
   },
+  {
+    icon: CircleStackIcon,
+    title: 'Veri Kataloğu',
+    body: "Portal DB ve TBMWANS'taki her tablonun ne için tutulduğunu, hangi Portal işinin ya da AWX playbook'unun yazdığını (nasıl, ne zaman, hangi dosya), kimin okuduğunu ve saklama kuralını gösterir. Açıklamalar server/katalog/tablolar.json kataloğundan gelir; satır sayısı ve ayrılmış boyut veritabanından canlı okunur (10 dk önbellek, Yenile atlar). Üstteki fark paneli iki yönlüdür: 'Katalogda yok' = veritabanında var ama kataloğa yazılmamış (yeni bir iş tablo açmış olabilir); 'Veritabanında yok' = katalogda var ama canlı veritabanında bulunamadı (kaldırılmış ya da henüz oluşturulmamış). Bir veritabanı okunamazsa o veritabanının tabloları 'bilinmiyor' görünür ve fark hesaplanmaz — 'yok' sayılmaz. 'Kullanılmıyor' rozeti okuyanı olmayan tabloları işaretler; silmeden önce gözden geçirilmeli. Satırın solundaki ok ayrıntıyı açar. Alan sütununa göre sıralıyken tablolar alan başlıkları altında gruplanır.",
+  },
 ];
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -179,10 +187,11 @@ type DenetimTab =
   | 'envanter'
   | 'degisim'
   | 'appenvs'
-  | 'webapp';
+  | 'webapp'
+  | 'katalog';
 // nginx sekmeleri (nginx, nginxapi, nginxenv, nginxaudit) 2026-09-22'de Nginx Hub'a tasindi.
 const DENETIM_TABS: DenetimTab[] = [
-  'ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp',
+  'ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp', 'katalog',
 ];
 
 export default function DenetimPage() {
@@ -245,7 +254,7 @@ export default function DenetimPage() {
               style={{ color: 'var(--text-muted)' }}
             >
               Nginx, OpenShift, init script'leri, envanter dağılımları, JBoss/WAS uygulamaları ve
-              web-uygulama ilişkilerinin iç denetimi.
+              web-uygulama ilişkilerinin iç denetimi; veritabanı tablolarının kataloğu.
             </p>
           </div>
           <YardimDugmesi onClick={() => setShowHelp(true)} />
@@ -269,6 +278,7 @@ export default function DenetimPage() {
               { id: 'degisim', label: 'Envanter Değişim', icon: ClockIcon },
               { id: 'appenvs', label: 'JBoss/WAS', icon: RectangleGroupIcon },
               { id: 'webapp', label: 'Web-App', icon: LinkIcon },
+              { id: 'katalog', label: 'Veri Kataloğu', icon: CircleStackIcon },
             ] as const
           )
             // SEKME BAZLI erisim (2026-09-17): Admin > Denetim Erisimi ile acilan sekmeler.
@@ -302,6 +312,7 @@ export default function DenetimPage() {
       {activeTab === 'degisim' && <EnvanterDegisim />}
       {activeTab === 'appenvs' && <AppEnvs />}
       {activeTab === 'webapp' && <WebApp />}
+      {activeTab === 'katalog' && <VeriKatalogu />}
 
       <HelpModal
         open={showHelp}
