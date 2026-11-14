@@ -193,8 +193,9 @@ test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi bi
   const varsDir = path.join(tmp, 'bmw_portal', 'bmw_openshift_jobs', 'global_variables');
   const fixturePlaybook = path.join(appDir, 'app_hub_ocp.yml');
   const fakeOc = path.join(tmp, 'oc');
-  const kubeconfig = '/tmp/app-hub-991234-c1-demo.kubeconfig';
-  const oncekiBetikler = new Set(fs.readdirSync('/var/tmp').filter((x) => /^\.app_hub_ocp\..*\.sh$/.test(x)));
+  const jobId = Number(`${process.pid}${Date.now()}`.slice(-9));
+  const kubeconfig = `/tmp/app-hub-${jobId}-c1-demo.kubeconfig`;
+  const scriptPrefix = `.app_hub_ocp.${jobId}.`;
   try {
     fs.mkdirSync(path.join(appDir, 'files'), { recursive: true });
     fs.mkdirSync(varsDir, { recursive: true });
@@ -216,11 +217,13 @@ test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi bi
     assert.ok(kaynak.includes(marker), 'sentetik hata noktasi bulunamadi');
     fs.writeFileSync(
       fixturePlaybook,
-      kaynak.replace(
-        marker,
-        '        - name: "Sentetik kubeconfig kalintisi"\n          ansible.builtin.copy:\n            dest: "' + kubeconfig + '"\n            content: "fixture"\n            mode: "0600"\n\n' +
-          '        - name: "Sentetik okuma sonrasi hata"\n          ansible.builtin.fail:\n            msg: "fixture failure"\n\n' + marker,
-      ),
+      kaynak
+        .replace('            prefix: .app_hub_ocp.', `            prefix: ${scriptPrefix}`)
+        .replace(
+          marker,
+          '        - name: "Sentetik kubeconfig kalintisi"\n          ansible.builtin.copy:\n            dest: "' + kubeconfig + '"\n            content: "fixture"\n            mode: "0600"\n\n' +
+            '        - name: "Sentetik okuma sonrasi hata"\n          ansible.builtin.fail:\n            msg: "fixture failure"\n\n' + marker,
+        ),
     );
     const extra = JSON.stringify({
       terminal_hosts: ['localhost'],
@@ -228,15 +231,15 @@ test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi bi
       app_hub_targets: [{ cluster: 'c1', namespace: 'demo' }],
       app_hub_app: 'demo',
       oc_binary: fakeOc,
-      tower_job_id: 991234,
+      tower_job_id: jobId,
     });
     const r = spawnSync('ansible-playbook', [fixturePlaybook, '-i', 'localhost,', '--connection=local', '-e', extra], { encoding: 'utf8' });
     assert.notEqual(r.status, 0, `sentetik hata job'u dusurmedi:\n${r.stdout}\n${r.stderr}`);
     assert.match(r.stdout, /TASK \[Gecici kubeconfig dosyalari silinir\]/);
     assert.match(r.stdout, /TASK \[Betik silinir\]/);
     assert.equal(fs.existsSync(kubeconfig), false, 'kubeconfig sentetik hata sonrasi kaldi');
-    const sonrakiBetikler = fs.readdirSync('/var/tmp').filter((x) => /^\.app_hub_ocp\..*\.sh$/.test(x));
-    assert.deepEqual(sonrakiBetikler.filter((x) => !oncekiBetikler.has(x)), [], 'gecici betik sentetik hata sonrasi kaldi');
+    const sonrakiBetikler = fs.readdirSync('/var/tmp').filter((x) => x.startsWith(scriptPrefix));
+    assert.deepEqual(sonrakiBetikler, [], 'bu fixture gecici betigi sentetik hata sonrasi kaldi');
 
     const cleanupMarker = '        - name: "Gecici kubeconfig dosyalari silinir"';
     const cleanupStart = fs.readFileSync(fixturePlaybook, 'utf8').split(cleanupMarker);
