@@ -152,12 +152,15 @@ const MAX_OCP_TARGETS = 20;
 // IS DURUMU SORGULANAMADI. JobProgress art arda bes hatadan sonra yoklamayi birakir;
 // eskiden sihirbaz ayni adimda kalip spinner'i sonsuza dek donduruyordu (yoklama da
 // durmus oldugu icin hicbir sey degismiyordu). Simdi sebep ve cikis yolu gosterilir.
-const JobPollErrorCard: React.FC<{ message: string; onRetry: () => void; onRestart: () => void }> = ({
-  message,
-  onRetry,
-  onRestart,
-}) => (
-  <div className="py-8 flex flex-col items-center gap-3 text-center" data-testid="logx-job-poll-error">
+const JobPollErrorCard: React.FC<{
+  message: string;
+  onRetry: () => void;
+  onRestart: () => void;
+}> = ({ message, onRetry, onRestart }) => (
+  <div
+    className="py-8 flex flex-col items-center gap-3 text-center"
+    data-testid="logx-job-poll-error"
+  >
     <ExclamationTriangleIcon aria-hidden="true" className="w-6 h-6 text-[var(--status-warning)]" />
     <p className="text-sm text-[var(--text-primary)]">{message}</p>
     <p className="text-xs text-[var(--text-muted)] max-w-md">
@@ -458,7 +461,12 @@ const LogXWizardPage: React.FC = () => {
   }
 
   // Bir is bittiginde (ya da durumu artik sorgulanamadiginda) ortak isleyici.
-  function jobBitti(r: { status: string; artifacts: unknown; errorMessage: string | null; technicalDetail?: string }) {
+  function jobBitti(r: {
+    status: string;
+    artifacts: unknown;
+    errorMessage: string | null;
+    technicalDetail?: string;
+  }) {
     setTechnicalDetail(r.technicalDetail ?? null);
     if (r.status === 'error' && !r.artifacts) {
       setJobPollError(r.errorMessage || 'İşin durumu sorgulanamadı.');
@@ -643,7 +651,7 @@ const LogXWizardPage: React.FC = () => {
       await logxV2Api.discoverNamespaces(requestId);
       await refresh(requestId);
     });
-  }, [loading, step, requestId, request?.input, busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, step, requestId, request?.input, busy, guarded, refresh]);
 
   // ERKEN ÇIKIŞ BURADA — TÜM hook'ların ALTINDA. Yukarı taşımayın.
   //
@@ -653,9 +661,7 @@ const LogXWizardPage: React.FC = () => {
   // ağaç unmount oldu, /logx BEMBEYAZ açıldı. TypeScript de build de bunu yakalamaz;
   // src/__tests__/hook-order.test.cjs yakalar.
   if (loading) {
-    return (
-      <LoadingLogo compact />
-    );
+    return <LoadingLogo compact />;
   }
 
   const canGoBack = backTargetFor(step) !== null;
@@ -1008,9 +1014,7 @@ const LogXWizardPage: React.FC = () => {
                 const next = [...prev];
                 for (const appName of appNames) {
                   if (next.length >= MAX_OCP_TARGETS) break;
-                  if (
-                    next.some((t) => t.namespace === activeNamespace && t.appName === appName)
-                  )
+                  if (next.some((t) => t.namespace === activeNamespace && t.appName === appName))
                     continue;
                   next.push({ namespace: activeNamespace, appName });
                 }
@@ -1120,8 +1124,14 @@ const LogXWizardPage: React.FC = () => {
         )}
 
         {step === 'expired' && (
-          <div className="py-8 flex flex-col items-center gap-3 text-center" data-testid="logx-suresi-doldu">
-            <ExclamationTriangleIcon aria-hidden="true" className="w-6 h-6 text-[var(--status-warning)]" />
+          <div
+            className="py-8 flex flex-col items-center gap-3 text-center"
+            data-testid="logx-suresi-doldu"
+          >
+            <ExclamationTriangleIcon
+              aria-hidden="true"
+              className="w-6 h-6 text-[var(--status-warning)]"
+            />
             <p className="text-sm text-[var(--text-primary)]">
               {request?.state === 'expired'
                 ? 'Bu isteğin süresi doldu; indirme bağlantısı artık geçerli değil.'

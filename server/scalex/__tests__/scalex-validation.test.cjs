@@ -696,7 +696,10 @@ test('D8 restore gerekcesiz calistirilamaz', () => {
   // 2026-10-23: kural tek yardimcida (`geriAlmaGerekceZorunlu`); `/run` onu uygular, admin
   // kartinin kural kutusu ondan okur. Davranis: scalex-kapi-matrisi KM30.
   const code = codeOnly(INDEX);
-  assert.match(code, /function geriAlmaGerekceZorunlu\(policy\) \{\s*return policy\.oco === 'warn';\s*\}/);
+  assert.match(
+    code,
+    /function geriAlmaGerekceZorunlu\(policy\) \{\s*return policy\.oco === 'warn';\s*\}/,
+  );
   assert.match(code, /geriAlmaGerekceZorunlu\(policy\) && !reason[\s\S]{0,300}reasonRequired/);
 });
 test('D9 OCO zamanlama ScaleX icin KAPALI (schedule hook throw eder)', () => {
@@ -774,10 +777,7 @@ test('E13 gecersiz timeout red (artik SANIYE butcesi: 30..3600)', () => {
   // BOS = varsayilan (5 dk); reddedilmez.
   assert.doesNotThrow(() => launch.assertValidTargets({ ...okBase, verificationTimeout: '' }));
   for (const t of ['30', '45', '300', '3600'])
-    assert.doesNotThrow(
-      () => launch.assertValidTargets({ ...okBase, verificationTimeout: t }),
-      t,
-    );
+    assert.doesNotThrow(() => launch.assertValidTargets({ ...okBase, verificationTimeout: t }), t);
 });
 test('E14 scale: negatif/ondalik/bos red, 0 ve pozitif kabul', () => {
   const b = { ...okBase, action: 'scale' };
@@ -1675,7 +1675,11 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   const ornekler = kurallarKodu.match(/resolveGatePolicy\(req, \{[^}]*\}\)/g) || [];
   assert.equal(ornekler.length, 4, `kural kutusu ornek sayisi: ${ornekler.length}`);
   for (const c of ornekler) {
-    assert.match(c, /environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/, `ornek durumda belirsiz ortam: ${c}`);
+    assert.match(
+      c,
+      /environment:\s*(ORNEK_PROD_DISI_ORTAM|''|'prod')\s*\}\)$/,
+      `ornek durumda belirsiz ortam: ${c}`,
+    );
     assert.match(c, /\.\.\.ortak/, `ornek durum herkesIcin degil: ${c}`);
   }
   assert.match(kurallarKodu, /const ortak = \{[^}]*herkesIcin: true/);
@@ -1684,9 +1688,20 @@ test('L5 kapi politikasini soran HER uc ortami GERCEKTEN geciriyor', () => {
   for (const c of calls) {
     assert.match(c, /environment:\s*(env|'prod')/, `ortam gecirilmeyen politika cagrisi: ${c}`);
   }
-  const cozucu = code.slice(code.indexOf('async function resolveGatePolicy'), code.indexOf('function istemciyeUlasan'));
-  assert.match(cozucu, /gatePolicyFor\(\{[^}]*\benvironment,/, 'cozucu ortami politikaya aktarmiyor');
-  assert.equal((code.match(/gatePolicyFor\(/g) || []).length, 1, 'bir uc politikayi cozucuyu atlayarak uretiyor');
+  const cozucu = code.slice(
+    code.indexOf('async function resolveGatePolicy'),
+    code.indexOf('function istemciyeUlasan'),
+  );
+  assert.match(
+    cozucu,
+    /gatePolicyFor\(\{[^}]*\benvironment,/,
+    'cozucu ortami politikaya aktarmiyor',
+  );
+  assert.equal(
+    (code.match(/gatePolicyFor\(/g) || []).length,
+    1,
+    'bir uc politikayi cozucuyu atlayarak uretiyor',
+  );
 });
 
 // ── M. PLAYBOOK KAYDI COZUMLEME (2026-09-01) ────────────────────────────────
@@ -2352,7 +2367,7 @@ test('S5 denetim ekrani modul izi, tarih araligi ve CSV tasiyor', () => {
   assert.match(tab, /dateFrom/, 'tarih araligi yok');
   assert.match(tab, /exportCsv/, 'CSV disari verme yok');
   // Kutu ekranda vardi ama deger sorguya HIC girmiyordu.
-  assert.match(tab, /qs\.set\("targetHost"/, 'targetHost filtresi hala olu');
+  assert.match(q(tab), /qs\.set\('targetHost'/, 'targetHost filtresi hala olu');
   // Bitis GUNUN SONUNU kapsamali: "2 Eylul" diyen kullanici o gunun kayitlarini ister.
   assert.match(tab, /T23:59:59/, 'bitis tarihi gunun sonunu kapsamiyor');
 });

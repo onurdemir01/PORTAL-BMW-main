@@ -9,7 +9,7 @@
 // GÖRÜNÜRLÜK: kullanıcı KENDİ ve GRUBUNUN kayıtlarını görür; Admin hepsini.
 // Filtre sunucuda — istemciye fazla kayıt gönderip orada gizlemek, veriyi zaten
 // sızdırmak olurdu.
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { ClockIcon, XCircleIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 import { scalexApi, type ScaleXOcoSchedule } from '@/api/scalexApi';
@@ -67,6 +67,11 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
   const [duzenlenen, setDuzenlenen] = useState<number | null>(null);
   const [yeniNumara, setYeniNumara] = useState('');
 
+  const onSayimRef = useRef(onSayim);
+  useEffect(() => {
+    onSayimRef.current = onSayim;
+  }, [onSayim]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -78,25 +83,22 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
         setItems(r.items);
         setScope(r.scope || '');
         setError(null);
-        onSayim?.(r.items.filter((it) => ACIK.has(it.status)).length);
+        onSayimRef.current?.(r.items.filter((it) => ACIK.has(it.status)).length);
       } else if (r.ok) {
         setItems([]);
         setError('Zamanlanmış işlemler okunamadı: sunucu beklenmeyen biçimde yanıt verdi.');
-        onSayim?.(null);
+        onSayimRef.current?.(null);
       } else {
         setError(`Zamanlanmış işlemler okunamadı: ${r.message || 'sunucu hata döndü'}`);
         // "Okunamadı" SIFIR değildir: sayaç "0" yazarsa kullanıcı bekleyen kaydı yok sanar.
-        onSayim?.(null);
+        onSayimRef.current?.(null);
       }
     } catch (e) {
       setError(`Zamanlanmış işlemler okunamadı: ${(e as Error).message}`);
-      onSayim?.(null);
+      onSayimRef.current?.(null);
     } finally {
       setLoading(false);
     }
-    // `onSayim` bilerek bağımlılık DEĞİL: çağıran her render'da yeni bir fonksiyon verirse
-    // liste sonsuz döngüyle yeniden okunurdu.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // `useAsyncEffect`: deponun bu is icin yazilmis hook'u. Yuklemeyi effect
@@ -104,9 +106,12 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
   // `setLoading(true)` effect govdesinde SENKRON degildir. Ayrica bilesen
   // sokulduysa `alive()` false doner ve cozulmus bir istek artik olmayan bir
   // bilesene yazmaz.
-  useAsyncEffect(async (alive) => {
-    if (alive()) await load();
-  }, [load, reloadKey]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await load();
+    },
+    [load, reloadKey],
+  );
 
   async function iptal(id: number) {
     setBusyId(id);
@@ -151,14 +156,16 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
   if (!items.length && !error) {
     return (
       <p className="text-xs text-[var(--text-muted)]">
-        Zamanlanmış işlem yok. OCO penceresi henüz açılmamışken bir işlem
-        başlatırsanız, burada “pencere açılınca çalıştır” kaydı görünür.
+        Zamanlanmış işlem yok. OCO penceresi henüz açılmamışken bir işlem başlatırsanız, burada
+        “pencere açılınca çalıştır” kaydı görünür.
       </p>
     );
   }
 
   return (
-    <section className={gomulu ? 'space-y-3' : 'rounded-xl border border-[var(--border)] p-4 space-y-3'}>
+    <section
+      className={gomulu ? 'space-y-3' : 'rounded-xl border border-[var(--border)] p-4 space-y-3'}
+    >
       <div className="flex items-center gap-2">
         {!gomulu && (
           <>
@@ -177,7 +184,11 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
           className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700"
         >
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => void load()} className="btn-secondary flex-shrink-0 !py-0.5 !px-2 text-xs">
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="btn-secondary flex-shrink-0 !py-0.5 !px-2 text-xs"
+          >
             Tekrar dene
           </button>
         </div>
@@ -228,28 +239,36 @@ const OcoSchedulePanel: React.FC<Props> = ({ reloadKey = 0, gomulu = false, onSa
                 const cl = (k.clusters || []).join(', ');
                 const uy = k.apps || [];
                 return (
-                  <p className="text-xs text-[var(--text-secondary)]" data-testid="scalex-zamanlama-kapsam">
+                  <p
+                    className="text-xs text-[var(--text-secondary)]"
+                    data-testid="scalex-zamanlama-kapsam"
+                  >
                     <span className="font-semibold">
                       {(k.action && ISLEM_ADI[k.action]) || k.action || 'işlem'}
                     </span>
-                    {k.action === 'scale' && k.targetReplicas != null && ` → ${k.targetReplicas} replica`}
+                    {k.action === 'scale' &&
+                      k.targetReplicas != null &&
+                      ` → ${k.targetReplicas} replica`}
                     {k.executionMode === 'dry_run' && ' (prova)'}
                     {' · '}
                     <span className="font-mono">{cl || '—'}</span>
                     {k.namespace ? ` / ${k.namespace}` : ''}
                     {uy.length ? ` · ${uy.length} uygulama` : ''}
-                    {k.tenant || k.env ? ` · ${k.tenant ?? ''}${k.tenant && k.env ? '/' : ''}${k.env ?? ''}` : ''}
+                    {k.tenant || k.env
+                      ? ` · ${k.tenant ?? ''}${k.tenant && k.env ? '/' : ''}${k.env ?? ''}`
+                      : ''}
                     {uy.length > 0 && (
-                      <span className="block text-[var(--text-muted)] truncate" title={uy.join(', ')}>
+                      <span
+                        className="block text-[var(--text-muted)] truncate"
+                        title={uy.join(', ')}
+                      >
                         {uy.join(', ')}
                       </span>
                     )}
                   </p>
                 );
               })()}
-              {it.errorMessage && (
-                <p className="text-xs text-red-700">{it.errorMessage}</p>
-              )}
+              {it.errorMessage && <p className="text-xs text-red-700">{it.errorMessage}</p>}
 
               {acik && (
                 <div className="flex flex-wrap items-center gap-2">

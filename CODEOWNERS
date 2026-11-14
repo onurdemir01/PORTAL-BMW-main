@@ -1,0 +1,24 @@
+# Corporate Code Ownership (bmw-portal)
+# Security-critical paths, CI gates, deployment scripts, and dependency manifests
+# require explicit owner review prior to merge.
+
+* @onurdemir01
+
+/.github/ @onurdemir01
+/Dockerfile @onurdemir01
+/.dockerignore @onurdemir01
+/.gitleaks.toml @onurdemir01
+/Jenkinsfile @onurdemir01
+/SECURITY.md @onurdemir01
+/deploy/ @onurdemir01
+/gelistirme/ @onurdemir01
+/package.json @onurdemir01
+/package-lock.json @onurdemir01
+/scripts/guvenlik-denetim.cjs @onurdemir01
+/scripts/manifest.cjs @onurdemir01
+/scripts/paket.cjs @onurdemir01
+/scripts/preflight.cjs @onurdemir01
+/scripts/sbom-uretim.cjs @onurdemir01
+/server/auth/ @onurdemir01
+/server/audit/ @onurdemir01
+/sonar-project.properties @onurdemir01

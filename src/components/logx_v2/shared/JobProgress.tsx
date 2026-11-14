@@ -49,6 +49,10 @@ const JobProgress: React.FC<Props> = ({
   // Iptal BASARISIZ olursa soylenir (eskiden sessizce yutuluyordu).
   const [cancelError, setCancelError] = useState<string | null>(null);
   const doneRef = useRef(false);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   async function handleCancel() {
     if (cancelling || doneRef.current) return;
@@ -77,7 +81,7 @@ const JobProgress: React.FC<Props> = ({
         setErrorCount(0);
         if (['successful', 'failed', 'error', 'canceled'].includes(r.status)) {
           doneRef.current = true;
-          onDone({
+          onDoneRef.current({
             status: r.status,
             artifacts: r.artifacts,
             errorMessage: r.errorMessage,
@@ -89,7 +93,7 @@ const JobProgress: React.FC<Props> = ({
           const next = prev + 1;
           if (next >= 5) {
             doneRef.current = true;
-            onDone({
+            onDoneRef.current({
               status: 'error',
               artifacts: null,
               errorMessage: 'Durum sorgulanamadı (bağlantı sorunu).',
@@ -103,7 +107,7 @@ const JobProgress: React.FC<Props> = ({
       cancelled = true;
       clearInterval(interval);
     };
-  }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [jobId]);
 
   // Canlı çıktı yalnızca kullanıcı panel açıkken poll edilir (gereksiz istek yapmamak için).
   //

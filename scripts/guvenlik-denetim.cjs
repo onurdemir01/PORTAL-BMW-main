@@ -20,6 +20,92 @@ const KOK = path.join(__dirname, '..');
 // bulgu da build'i durdurur.
 const TAM = path.join(KOK, 'gelistirme');
 
+// Ana surum hattina gore kurumsal tarama (Xray) en dusuk guvenli tabanlari.
+const XRAY_TABAN = {
+  undici: { 7: '7.30.2', 8: '8.12.4' },
+  'body-parser': { 2: '2.4.0' },
+  qs: { 6: '6.16.2' },
+  '@azure/msal-node': { 7: '7.1.0' },
+  hono: { 4: '4.13.18' },
+  '@hono/node-server': { 2: '2.1.7' },
+  'fast-uri': { 3: '3.1.9' },
+  'express-rate-limit': { 8: '8.7.2' },
+  debug: { 4: '4.0.0' },
+  minimatch: { 11: '11.0.8' },
+  'brace-expansion': { 5: '5.0.13' },
+  vite: { 8: '8.3.7' },
+  semver: { 7: '7.5.2' },
+};
+
+function parseSemver(v) {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(v || '').trim());
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function cmpSemver(a, b) {
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
+
+function paketAdi(yol) {
+  const s = String(yol || '');
+  const idx = s.lastIndexOf('node_modules/');
+  return idx >= 0 ? s.slice(idx + 'node_modules/'.length) : s;
+}
+
+/** Saf karar: tam kilit + kok kilit Xray tabanlarini ve runtime izolasyonunu denetler. */
+function xrayTabanKontrol(tamKilitPaketleri, kokKilitPaketleri = {}) {
+  const dusuren = [];
+  const bilgi = [];
+
+  for (const [yol, meta] of Object.entries(tamKilitPaketleri || {})) {
+    if (!yol || !meta || typeof meta !== 'object') continue;
+    const ad = paketAdi(yol);
+    const surumStr = String(meta.version || '');
+    const sv = parseSemver(surumStr);
+    const hatlar = XRAY_TABAN[ad];
+    if (hatlar) {
+      const tabanStr = sv ? hatlar[sv[0]] : null;
+      const taban = tabanStr ? parseSemver(tabanStr) : null;
+      if (!sv || !taban || cmpSemver(sv, taban) < 0) {
+        dusuren.push(
+          `${ad}@${surumStr || '?'} (xray taban ${tabanStr || 'hat yok'}${meta.dev ? ', gelistirme' : ', calisma zamani'}): ${yol}`,
+        );
+      }
+    }
+    if (ad === 'uri-js' && !String(meta.resolved || '').includes('/fast-uri/-/fast-uri-')) {
+      dusuren.push(
+        `uri-js@${surumStr || '?'} (gercek uri-js yasak, fast-uri alias gerekli): ${yol}`,
+      );
+    }
+    if (ad === 'picomatch') {
+      if (meta.dev) {
+        bilgi.push(`picomatch@${surumStr} (gelistirme, duzeltme yok, pakete girmez): ${yol}`);
+      } else {
+        dusuren.push(`picomatch@${surumStr} (calisma zamanina sizdi): ${yol}`);
+      }
+    }
+  }
+
+  for (const [yol, meta] of Object.entries(kokKilitPaketleri || {})) {
+    if (!yol || !meta || typeof meta !== 'object') continue;
+    const ad = paketAdi(yol);
+    if (meta.dev || meta.devOptional) {
+      dusuren.push(`${ad}@${meta.version || '?'} (kok kilitte dev/devOptional yasak): ${yol}`);
+    }
+    if (ad === 'picomatch') {
+      dusuren.push(`picomatch@${meta.version || '?'} (calisma zamani kok kilidinde yasak): ${yol}`);
+    }
+  }
+
+  return {
+    dusuren: dusuren.sort((a, b) => a.localeCompare(b)),
+    bilgi: bilgi.sort((a, b) => a.localeCompare(b)),
+  };
+}
+
 /** Saf karar: audit JSON'u + kilit paketleri -> { dusuren, bilgi }. */
 function karar(audit, kilitPaketleri) {
   const dusuren = [];
@@ -32,7 +118,10 @@ function karar(audit, kilitPaketleri) {
     if (calisma || duzeltmeVar) dusuren.push(satir);
     else bilgi.push(satir);
   }
-  return { dusuren: dusuren.sort((a, b) => a.localeCompare(b)), bilgi: bilgi.sort((a, b) => a.localeCompare(b)) };
+  return {
+    dusuren: dusuren.sort((a, b) => a.localeCompare(b)),
+    bilgi: bilgi.sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 function main() {
@@ -54,7 +143,14 @@ function main() {
   }
   const kilit =
     JSON.parse(fs.readFileSync(path.join(TAM, 'package-lock.json'), 'utf8')).packages || {};
-  const { dusuren, bilgi } = karar(audit, kilit);
+  const kokKilitPath = path.join(KOK, 'package-lock.json');
+  const kokKilit = fs.existsSync(kokKilitPath)
+    ? JSON.parse(fs.readFileSync(kokKilitPath, 'utf8')).packages || {}
+    : {};
+  const auditSonuc = karar(audit, kilit);
+  const xraySonuc = xrayTabanKontrol(kilit, kokKilit);
+  const bilgi = [...auditSonuc.bilgi, ...xraySonuc.bilgi];
+  const dusuren = [...auditSonuc.dusuren, ...xraySonuc.dusuren];
   for (const s of bilgi)
     console.log(`[guvenlik] bilgi (gelistirme, duzeltme yok, pakete girmez): ${s}`);
   if (dusuren.length) {
@@ -66,5 +162,5 @@ function main() {
   console.log('[guvenlik] OK - calisma zamaninda 0, gelistirmede duzeltmesi olan 0 zafiyet.');
 }
 
-module.exports = { karar };
+module.exports = { XRAY_TABAN, karar, xrayTabanKontrol };
 if (require.main === module) main();

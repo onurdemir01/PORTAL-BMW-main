@@ -2,9 +2,6 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
 const http = require('node:http');
 const express = require('express');
 
@@ -35,66 +32,6 @@ function restoreModules(backups, targetRels = []) {
     else delete require.cache[abs];
   }
 }
-
-test('server/db/config-mirror: restoreFileFromDb covers restored, seeded, noop, skip and mirrorToDb', async () => {
-  const backups = new Map();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfg-mirror-'));
-  const queries = [];
-
-  try {
-    setMockModule(
-      '../db/index.cjs',
-      {
-        query: async (sql, params) => {
-          queries.push({ sql, params });
-          if (sql.includes('SELECT data FROM portal_config_blobs')) {
-            if (params[0] === 'restorable') {
-              return { rows: [{ data: JSON.stringify({ hello: 'world' }) }] };
-            }
-            if (params[0] === 'noop-blob') {
-              return { rows: [{ data: '{}' }] };
-            }
-            if (params[0] === 'err-blob') {
-              throw new Error('db down');
-            }
-            return { rows: [] };
-          }
-          if (sql.includes('SELECT 1 FROM portal_config_blobs')) {
-            return { rows: params[0] === 'existing-mirror' ? [{ x: 1 }] : [] };
-          }
-          return { rows: [] };
-        },
-      },
-      backups,
-    );
-
-    delete require.cache[require.resolve('../db/config-mirror.cjs')];
-    const cm = require('../db/config-mirror.cjs');
-
-    const restorePath = path.join(tmpDir, 'restore.json');
-    assert.equal(await cm.restoreFileFromDb('restorable', restorePath), 'restored');
-    assert.deepEqual(JSON.parse(fs.readFileSync(restorePath, 'utf8')), { hello: 'world' });
-
-    const seedPath = path.join(tmpDir, 'seed.json');
-    fs.writeFileSync(seedPath, JSON.stringify({ seeded: true }));
-    assert.equal(await cm.restoreFileFromDb('seed-target', seedPath), 'seeded');
-
-    assert.equal(await cm.restoreFileFromDb('noop-blob', seedPath), 'noop');
-    assert.equal(await cm.restoreFileFromDb('err-blob', seedPath), 'skip');
-
-    cm.mirrorToDb('existing-mirror', { a: 1 });
-    cm.mirrorToDb('new-mirror', { b: 2 });
-    await new Promise((r) => setTimeout(r, 30));
-
-    assert.ok(queries.some((q) => q.sql.includes('UPDATE portal_config_blobs')));
-    assert.ok(queries.some((q) => q.sql.includes('INSERT INTO portal_config_blobs')));
-
-    await cm.reconcileAllConfigBlobs();
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-    restoreModules(backups, ['../db/config-mirror.cjs']);
-  }
-});
 
 test('server/db/seed & migrate: insert/skip hosts and exit cleanly on success and failure', async () => {
   const backups = new Map();

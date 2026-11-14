@@ -40,17 +40,29 @@ function reloadedRecently(): boolean {
 /** Yeni surum geldi: sayfayi bir kez yenile. Yenilenemiyorsa false doner. */
 export function reloadForNewVersion(): boolean {
   if (reloadedRecently()) return false;
-  try { sessionStorage.setItem(KEY, String(Date.now())); } catch { /* onemsiz */ }
+  try {
+    sessionStorage.setItem(KEY, String(Date.now()));
+  } catch {
+    /* onemsiz */
+  }
   window.location.reload();
   return true;
 }
+
+type ReactLazyComponent = Parameters<typeof React.lazy>[0] extends () => Promise<{
+  default: infer C;
+}>
+  ? C
+  : never;
 
 /**
  * React.lazy yerine: chunk indirilemezse once bir kez yeniden dener (agda anlik hata),
  * o da olmazsa sayfayi yeniler (yeni surum). Yenileme yapildiysa bilesen hic cizilmez.
  */
-export function lazyWithRetry<T extends React.ComponentType<unknown>>(factory: () => Promise<{ default: T }>) {
-  return React.lazy(async () => {
+export function lazyWithRetry<T extends ReactLazyComponent>(
+  factory: () => Promise<{ default: T }>,
+) {
+  return React.lazy<T>(async () => {
     try {
       return await factory();
     } catch (err) {

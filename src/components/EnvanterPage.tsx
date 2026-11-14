@@ -71,7 +71,11 @@ const EMPTY_FILTER_GROUP: FilterGroup = { mode: 'AND', filters: [] };
 
 function downloadCsv(columns: string[], rows: Record<string, unknown>[], tableName: string) {
   // Kacis/BOM/ayirici artik ORTAK yardimcida; ayirici kullanicinin tercihi.
-  csvIndir(tableName, columns, rows.map((r) => columns.map((c) => r[c] ?? '')));
+  csvIndir(
+    tableName,
+    columns,
+    rows.map((r) => columns.map((c) => r[c] ?? '')),
+  );
 }
 
 const EnvanterPage: React.FC = () => {
@@ -308,7 +312,16 @@ const EnvanterPage: React.FC = () => {
         if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [activeTable, debouncedSearch, multiFilters, appliedFilterGroup, limit, orderBy, orderDir, dbOff],
+    [
+      activeTable,
+      debouncedSearch,
+      multiFilters,
+      appliedFilterGroup,
+      limit,
+      orderBy,
+      orderDir,
+      dbOff,
+    ],
   );
 
   // Kolonlar aktif tabloya ait oldugunda TEK effect veri ister; filtre/siralama/limit/
@@ -326,8 +339,7 @@ const EnvanterPage: React.FC = () => {
     if (search === debouncedSearch) return;
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, debouncedSearch]);
 
   useEffect(() => {
     inventoryApi
@@ -500,7 +512,8 @@ const EnvanterPage: React.FC = () => {
             ) : (
               <ArrowDownTrayIcon className="w-4 h-4" />
             )}
-            CSV{totalActiveFilters > 0 ? ` (${pagination.total}${pagination.exact ? '' : '+'})` : ''}
+            CSV
+            {totalActiveFilters > 0 ? ` (${pagination.total}${pagination.exact ? '' : '+'})` : ''}
           </button>
         </div>
       </div>
@@ -845,8 +858,8 @@ const EnvanterPage: React.FC = () => {
             {appliedWhere}
           </code>
           <div className="mt-1 text-[10px] text-gray-400">
-            Arama kutusu, kolon süzgeçleri ve gelişmiş filtre <b>AND</b> ile birleşir;
-            gelişmiş filtrenin kendi içindeki AND/OR seçimi parantez içinde uygulanır.
+            Arama kutusu, kolon süzgeçleri ve gelişmiş filtre <b>AND</b> ile birleşir; gelişmiş
+            filtrenin kendi içindeki AND/OR seçimi parantez içinde uygulanır.
           </div>
         </details>
       )}
