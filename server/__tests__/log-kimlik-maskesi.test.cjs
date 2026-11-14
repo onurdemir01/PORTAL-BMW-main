@@ -41,3 +41,44 @@ test('LM2 dosya satiri Error yigininda da maskeler', () => {
   assert.doesNotMatch(satir, /Gizli!23/);
   assert.match(satir, /http:\/\/svc:\*\*\*@proxy:3128/);
 });
+
+test('LM3 Bearer, Basic ve JWT belirtecleri maskelenir', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1MSJ9.abc123signature';
+  const r1 = kimlikMaskele(`Authorization: Bearer super-gizli-token-999`);
+  assert.doesNotMatch(r1, /super-gizli-token-999/);
+  assert.equal(r1, 'Authorization: Bearer ***');
+
+  const r2 = kimlikMaskele(`Authorization: Basic dXNlcjpwYXNzd29yZA==`);
+  assert.doesNotMatch(r2, /dXNlcjpwYXNzd29yZA==/);
+  assert.equal(r2, 'Authorization: Basic ***');
+
+  const r3 = kimlikMaskele(`token=${jwt}`);
+  assert.doesNotMatch(r3, /eyJzdWI/);
+  assert.doesNotMatch(r3, /abc123signature/);
+});
+
+test('LM4 Cookie, Set-Cookie ve oturum cerezi degerleri maskelenir', () => {
+  const c1 = kimlikMaskele('Cookie: __Host-portal.sid=s%3Asecret123; theme=dark');
+  assert.doesNotMatch(c1, /secret123/);
+  assert.equal(c1, 'Cookie: [MASKED]');
+
+  const c2 = kimlikMaskele('Set-Cookie: connect.sid=s%3Aabc; Path=/; HttpOnly');
+  assert.doesNotMatch(c2, /s%3Aabc/);
+  assert.equal(c2, 'Set-Cookie: [MASKED]');
+
+  const c3 = kimlikMaskele('oturum __Host-portal.sid=gizliOturum123&x=1');
+  assert.doesNotMatch(c3, /gizliOturum123/);
+  assert.match(c3, /__Host-portal\.sid=\[MASKED\]/);
+});
+
+test('LM5 sorgu parametresi ve JSON gizli alanlari maskelenir', () => {
+  const q1 = kimlikMaskele('GET /api/login?user=ali&password=CokGizli1&token=tok999');
+  assert.doesNotMatch(q1, /CokGizli1/);
+  assert.doesNotMatch(q1, /tok999/);
+  assert.match(q1, /user=ali/);
+
+  const j1 = kimlikMaskele('{"user":"ali","api_key":"ak_live_12345","client_secret":"cs_999"}');
+  assert.doesNotMatch(j1, /ak_live_12345/);
+  assert.doesNotMatch(j1, /cs_999/);
+  assert.match(j1, /"user":"ali"/);
+});

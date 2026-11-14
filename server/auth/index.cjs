@@ -77,7 +77,7 @@ function initAuth(app) {
       saveUninitialized: false,
       rolling: true,
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: oturumCerezi.cookieSecure(),
         httpOnly: true,
         sameSite: "lax",
       },

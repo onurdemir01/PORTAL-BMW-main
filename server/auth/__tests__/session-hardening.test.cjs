@@ -44,9 +44,26 @@ test('SH2 production`da cerez YALNIZCA HTTPS uzerinde gider (secure)', () => {
   assert.doesNotMatch(b, /secure:\s*false/, 'secure sabit false — cerez duz HTTP`de gider');
   assert.match(
     b,
-    /secure:\s*process\.env\.NODE_ENV === 'production'/,
-    'secure ortama bagli degil — production`da duz HTTP`de sizabilir',
+    /secure:\s*oturumCerezi\.cookieSecure\(\)/,
+    'secure oturumCerezi.cookieSecure() ile ortama bagli degil',
   );
+  const { cookieSecure } = require('../oturum-cerezi.cjs');
+  const prevEnv = process.env.NODE_ENV;
+  const prevSecure = process.env.COOKIE_SECURE;
+  try {
+    delete process.env.COOKIE_SECURE;
+    process.env.NODE_ENV = 'production';
+    assert.equal(cookieSecure(), true);
+    process.env.NODE_ENV = 'development';
+    assert.equal(cookieSecure(), false);
+    process.env.COOKIE_SECURE = 'true';
+    assert.equal(cookieSecure(), true);
+  } finally {
+    if (prevEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = prevEnv;
+    if (prevSecure === undefined) delete process.env.COOKIE_SECURE;
+    else process.env.COOKIE_SECURE = prevSecure;
+  }
 });
 
 test('SH3 CSRF yuzeyi dar (sameSite)', () => {
@@ -65,7 +82,10 @@ test('SH4 HICBIR ortamda sabit / bilinen imza anahtari yok; bos anahtar sureci D
     'bos anahtarin yedegi surec basina rastgele degil',
   );
   // Atamada dize SABITI yedek olamaz (eski "bmw-portal-dev-secret..." deseni).
-  const atama = flat.slice(flat.indexOf('const SESSION_SECRET'), flat.indexOf(';', flat.indexOf('const SESSION_SECRET')));
+  const atama = flat.slice(
+    flat.indexOf('const SESSION_SECRET'),
+    flat.indexOf(';', flat.indexOf('const SESSION_SECRET')),
+  );
   assert.doesNotMatch(atama, /\|\| *'[^']+'/, 'sabit bir anahtar yedegi geri gelmis');
   assert.doesNotMatch(SRC, /dev-secret/, 'eski sabit gelistirme anahtari geri gelmis');
   // Anahtar yok diye surec dusurulmez: buna bagimli hicbir sey yok.
@@ -84,8 +104,16 @@ test('SH6 oturum kimligi belirtecten turer; imza her istekte gecerli anahtarla y
   // Anahtardan bagimsizligin iki ayagi initAuth'ta BAGLI olmali (davranis bekcisi:
   // oturum-belirteci.test.cjs). Biri duserse anahtar degisimi yine herkesi atar.
   assert.match(flat, /genid: oturumBelirteci\.kimlikUret/, 'yeni oturumlar belirtec tabanli degil');
-  const katman = flat.indexOf('oturumBelirteci.belirtecKatmani({ ad: COOKIE_NAME, secret: SESSION_SECRET })');
+  const katman = flat.indexOf(
+    'oturumBelirteci.belirtecKatmani({ ad: COOKIE_NAME, secret: SESSION_SECRET })',
+  );
   assert.ok(katman > 0, 'belirtec katmani baglanmamis');
-  assert.ok(katman < flat.indexOf('session({'), 'belirtec katmani express-session`dan SONRA — cerez cevrilmeden okunur');
-  assert.ok(flat.indexOf('eskiCereziTasi(COOKIE_NAME)') < katman, 'eski ad tasinmadan belirtec katmani calisiyor');
+  assert.ok(
+    katman < flat.indexOf('session({'),
+    'belirtec katmani express-session`dan SONRA — cerez cevrilmeden okunur',
+  );
+  assert.ok(
+    flat.indexOf('eskiCereziTasi(COOKIE_NAME)') < katman,
+    'eski ad tasinmadan belirtec katmani calisiyor',
+  );
 });

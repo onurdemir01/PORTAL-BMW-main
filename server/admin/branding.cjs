@@ -78,7 +78,7 @@ const DEFAULT_FAVICON_SVG = Buffer.from(
   `stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`,
   'utf-8'
 );
-const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha1').update(DEFAULT_FAVICON_SVG).digest('hex').slice(0, 16)}"`;
+const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha256').update(DEFAULT_FAVICON_SVG).digest('hex').slice(0, 16)}"`;
 
 // Bellek-ici kopya: her sekme yuklemesinde DB'ye gitmemek icin. Yukleme/silme
 // aninda tazelenir; birden fazla process varsa ETag revalidation yakalar.
@@ -164,7 +164,7 @@ async function loadFromDb(blobName) {
   return {
     mime: parsed.mime,
     buf,
-    etag: `"${crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16)}"`,
+    etag: `"${crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16)}"`,
     updatedAt: rows[0].updated_at,
     updatedBy: parsed.updatedBy || null,
   };
