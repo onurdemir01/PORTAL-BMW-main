@@ -9,11 +9,25 @@ const crypto = require('node:crypto');
 /**
  * Resolves Express `trust proxy` configuration from environment string.
  * Supports booleans (`true`/`false`), non-negative integer hop counts (`1`, `2`),
- * or comma-separated proxy IP/subnet/loopback tokens. Defaults safely to `'loopback'`.
+ * or comma-separated proxy IP/subnet/loopback tokens.
+ *
+ * DEFAULT WHEN UNSET (2026-11-14 regression fix):
+ *   production  -> 1 (trust exactly one hop: the reverse proxy directly in front)
+ *   otherwise   -> 'loopback'
+ * The portal runs behind a single nginx that connects to Node over the host's own
+ * NON-loopback address (deploy/BMW_Portal-D.conf: `proxy_pass http://<host-ip>:3000`).
+ * With a `'loopback'` default that connection is NOT trusted: X-Forwarded-Proto is ignored,
+ * `req.secure` is false, and express-session (cookie.secure=true in production) never sets
+ * the session cookie - nobody can log in. It also collapses every client onto the proxy IP
+ * (login rate limit, audit client_ip). One trusted hop keeps an unconfigured production
+ * install working; set TRUST_PROXY to the proxy address to pin it (defense in depth against
+ * requests that bypass nginx).
  */
-function resolveTrustProxy(raw) {
+function resolveTrustProxy(raw, opts = {}) {
+  const isProd =
+    typeof opts.isProd === 'boolean' ? opts.isProd : process.env.NODE_ENV === 'production';
   const s = String(raw ?? '').trim();
-  if (!s) return 'loopback';
+  if (!s) return isProd ? 1 : 'loopback';
   const low = s.toLowerCase();
   if (low === 'true') return true;
   if (low === 'false') return false;
@@ -25,7 +39,7 @@ function resolveTrustProxy(raw) {
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
-  if (!tokens.length) return 'loopback';
+  if (!tokens.length) return isProd ? 1 : 'loopback';
   return tokens.length === 1 ? tokens[0] : tokens.join(', ');
 }
 
