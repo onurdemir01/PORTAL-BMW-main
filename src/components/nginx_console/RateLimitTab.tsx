@@ -157,7 +157,7 @@ export function RateLimitTab() {
   }, [data, q, env, durum, sira]);
 
   const s = data?.summary;
-  const envler = useMemo(() => Object.keys(s?.byEnv || {}).sort(), [s]);
+  const envler = useMemo(() => Object.keys(s?.byEnv || {}).sort((a, b) => a.localeCompare(b)), [s]);
 
   const indir = () => {
     const qs = scanDate ? `?scanDate=${encodeURIComponent(scanDate)}` : '';

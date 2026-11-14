@@ -55,7 +55,7 @@ async function resolveByKey(keyName) {
   const row = await reg.getByKey(keyName).catch(() => null);
   if (!row || row.enabled === false) return { templateId: null, serverId: null, keyName };
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
-  const serverId = row.awxServerId != null ? Number(row.awxServerId) : Number.isInteger(envServer) && envServer >= 0 ? envServer : 0;
+  const serverId = (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
   return { templateId: reg.getEffectiveTemplateId(row) || null, serverId, keyName };
 }
 

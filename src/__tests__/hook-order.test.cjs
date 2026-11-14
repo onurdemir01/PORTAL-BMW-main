@@ -56,9 +56,7 @@ function findHookCall(statement) {
     if (hit) return;
     if (ts.isCallExpression(n)) {
       const e = n.expression;
-      const name = ts.isIdentifier(e)
-        ? e.text
-        : (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name) ? e.name.text : '');
+      const name = (() => { if (ts.isIdentifier(e)) return e.text; if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) return e.name.text; return ''; })();
       if (HOOK_NAME.test(name)) { hit = { name, node: n }; return; }
     }
     if (ts.isFunctionLike(n) && n !== statement) return;

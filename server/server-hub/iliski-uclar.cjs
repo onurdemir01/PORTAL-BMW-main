@@ -31,7 +31,8 @@ const BAYAT_GRAFIK_MS = 15 * 60 * 1000;
 function taramaImzasi(a) {
   let enYeni = 0;
   const hosts = (a && a.hosts) || [];
-  for (const h of hosts) if (typeof h.loadedAt === 'number' && h.loadedAt > enYeni) enYeni = h.loadedAt;
+  for (const h of hosts)
+    if (typeof h.loadedAt === 'number' && h.loadedAt > enYeni) enYeni = h.loadedAt;
   return `${(a && a.latestScan) || ''}|${hosts.length}|${enYeni}`;
 }
 const ANAHTAR_RE = /^(sunucu|jvm|was|web|vhost|ip|dns|app):[^\s]{1,390}$/;
@@ -41,7 +42,16 @@ function iliskiHesabiKur({
   iliskiVerisi = () => require('./iliski-verisi.cjs').iliskiVerisi(),
   simdi = Date.now,
 }) {
-  let durum = { a: null, veri: null, veriAt: 0, grafik: null, dogrulamalar: null, sureMs: null, kurulduAt: 0, imza: null };
+  let durum = {
+    a: null,
+    veri: null,
+    veriAt: 0,
+    grafik: null,
+    dogrulamalar: null,
+    sureMs: null,
+    kurulduAt: 0,
+    imza: null,
+  };
   let ucus = null;
   /** Tek ucus kurulum; bitince (basari ya da hata) ucus kendini temizler. */
   function kur(a, veriBayat) {
@@ -76,7 +86,7 @@ function iliskiHesabiKur({
    * @param {boolean} fresh
    * @param {{ bayatOlur?: boolean }} [opts]  bayatOlur: salt okuma ucu; var olan grafik hemen doner,
    *   tazeleme arkada (bayat: true isaretli). Yalniz AYNI tarama verisinden kurulmus grafik (taramaImzasi);
- *   yeni tarama yuklendiyse beklenir.
+   *   yeni tarama yuklendiyse beklenir.
    */
   return async function hesap(fresh, opts) {
     const a = await getAssessment(fresh === true);
@@ -91,7 +101,9 @@ function iliskiHesabiKur({
       simdi() - durum.kurulduAt < BAYAT_GRAFIK_MS &&
       durum.imza === taramaImzasi(a)
     ) {
-      kur(a, veriBayat).catch((e) => console.warn('[ServerHub] iliski arka plan tazelemesi dustu:', e && e.message));
+      kur(a, veriBayat).catch((e) =>
+        console.warn('[ServerHub] iliski arka plan tazelemesi dustu:', e && e.message),
+      );
       return { ...durum, bayat: true };
     }
     return kur(a, veriBayat);
@@ -105,11 +117,18 @@ function iliskiHesabiKur({
  */
 function grupDurumu(g, kontroller) {
   const k = kontroller ? kontroller.get(g.anahtar) || null : null;
-  const durum = !kontroller ? 'BILINMIYOR' : !k ? 'BEKLIYOR' : k.imza !== g.imza ? 'VERI_DEGISTI' : k.sonuc;
+  const durum = (() => {
+    if (!kontroller) return 'BILINMIYOR';
+    if (!k) return 'BEKLIYOR';
+    if (k.imza !== g.imza) return 'VERI_DEGISTI';
+    return k.sonuc;
+  })();
   return {
     ...g,
     durum,
-    kontrol: k ? { sonuc: k.sonuc, aciklama: k.aciklama, isaretleyen: k.isaretleyen, zaman: k.zaman } : null,
+    kontrol: k
+      ? { sonuc: k.sonuc, aciklama: k.aciklama, isaretleyen: k.isaretleyen, zaman: k.zaman }
+      : null,
     kayitHazir: g.karar === 'RETIRE_ADAYI' && durum === 'DOGRULANDI',
   };
 }
@@ -315,7 +334,10 @@ function mount(
           ...ek,
           uygulama: notlu(u, ctx),
           kopyalar: u.kopyalar.map((k) => notlu(kopyalar.get(k), ctx)).filter(Boolean),
-          gruplar: (u.gruplar || []).map((gk) => h.kararlar.gruplar.get(gk)).filter(Boolean).map((g) => grupDurumu(g, kontroller)),
+          gruplar: (u.gruplar || [])
+            .map((gk) => h.kararlar.gruplar.get(gk))
+            .filter(Boolean)
+            .map((g) => grupDurumu(g, kontroller)),
           kontrolOkunamadi: kontroller === null,
         });
       }
@@ -356,7 +378,12 @@ function mount(
         .komsuKenarlar(anahtar)
         .filter((e) => e.tur === 'kopya' && e.hedef === anahtar)
         .map((e) => e.kaynak);
-      res.json({ ok: true, tur: 'kopya', ...ek, kopya: { ...notlu(k, ctx), uygulamalar: sahipler } });
+      res.json({
+        ok: true,
+        tur: 'kopya',
+        ...ek,
+        kopya: { ...notlu(k, ctx), uygulamalar: sahipler },
+      });
     } catch (e) {
       res.status(424).json({ ok: false, message: e.message || 'Karar okunamadı.' });
     }
@@ -366,20 +393,45 @@ function mount(
   router.put('/iliski/kontrol', async (req, res) => {
     const b = req.body || {};
     const anahtar = String(b.anahtar || '');
-    if (!/^grup:[^\s]{3,390}$/.test(anahtar)) return res.status(400).json({ ok: false, message: 'Geçersiz grup anahtarı.' });
+    if (!/^grup:[^\s]{3,390}$/.test(anahtar))
+      return res.status(400).json({ ok: false, message: 'Geçersiz grup anahtarı.' });
     try {
       const h = await hesap(false);
       if (!h.grafik) return okunamadi(res);
       const g = h.kararlar.gruplar && h.kararlar.gruplar.get(anahtar);
-      if (!g) return res.status(409).json({ ok: false, message: 'Grup artık yok (son taramada görülmedi); sayfayı yenileyin.' });
+      if (!g)
+        return res
+          .status(409)
+          .json({
+            ok: false,
+            message: 'Grup artık yok (son taramada görülmedi); sayfayı yenileyin.',
+          });
       if (String(b.imza || '') !== g.imza) {
-        return res.status(409).json({ ok: false, message: 'Kanıt siz bakarken değişti; kararı yeniden inceleyip tekrar işaretleyin.', imza: g.imza });
+        return res
+          .status(409)
+          .json({
+            ok: false,
+            message: 'Kanıt siz bakarken değişti; kararı yeniden inceleyip tekrar işaretleyin.',
+            imza: g.imza,
+          });
       }
       if (b.sonuc === 'DOGRULANDI' && g.karar !== 'RETIRE_ADAYI') {
-        return res.status(409).json({ ok: false, message: `Yalnız "Retire adayı" grup doğrulanabilir (bu grup: ${g.kararMetni}).` });
+        return res
+          .status(409)
+          .json({
+            ok: false,
+            message: `Yalnız "Retire adayı" grup doğrulanabilir (bu grup: ${g.kararMetni}).`,
+          });
       }
       const kim = (req.session && req.session.user && req.session.user.username) || 'bilinmiyor';
-      await kontrol.kontrolYaz({ anahtar, sonuc: b.sonuc, aciklama: b.aciklama, imza: g.imza, seviye: g.karar === 'RETIRE_ADAYI' ? 'ADAY' : 'DIGER', kim });
+      await kontrol.kontrolYaz({
+        anahtar,
+        sonuc: b.sonuc,
+        aciklama: b.aciklama,
+        imza: g.imza,
+        seviye: g.karar === 'RETIRE_ADAYI' ? 'ADAY' : 'DIGER',
+        kim,
+      });
       audit(req, { op: 'analiz_grup_kontrol', anahtar, sonuc: b.sonuc, karar: g.karar });
       const kontroller = await kontrol.kontrolleriOku();
       res.json({ ok: true, grup: grupDurumu(g, kontroller) });

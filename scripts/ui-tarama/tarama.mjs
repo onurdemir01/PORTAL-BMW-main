@@ -26,7 +26,7 @@ import { sekme, DENETIM, sleep } from './lib.mjs';
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (ad, varsayilan = null) => {
   const i = process.argv.indexOf(ad);
-  return i < 0 ? varsayilan : process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true;
+  if (i < 0) return varsayilan; if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1]; return true;
 };
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5199);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9333);
@@ -193,13 +193,34 @@ for (const r of sonuclar) {
     continue;
   }
   const bulgu = [];
-  if (r.cokme) (say.cokme++, bulgu.push('COKME'));
-  if (r.tasmaX > 0) (say.tasma++, bulgu.push(`tasma ${r.tasmaX}px`));
-  if (r.kontrast.length) ((say.kontrast += r.kontrast.length), bulgu.push(`kontrast<3: ${r.kontrast.map((k) => k.o).join(',')}`));
-  if (r.etiketsizGirdi.length) ((say.etiketsiz += r.etiketsizGirdi.length), bulgu.push(`etiketsiz girdi ${r.etiketsizGirdi.length}`));
-  if (r.adsizDugme.length) ((say.adsiz += r.adsizDugme.length), bulgu.push(`adsiz dugme ${r.adsizDugme.length}`));
-  if (r.hamJson) (say.hamJson++, bulgu.push('ham JSON'));
-  if (r.konsol.length) ((say.konsol += r.konsol.length), bulgu.push(`konsol ${r.konsol.length}`));
+  if (r.cokme) {
+    say.cokme++;
+    bulgu.push('COKME');
+  }
+  if (r.tasmaX > 0) {
+    say.tasma++;
+    bulgu.push(`tasma ${r.tasmaX}px`);
+  }
+  if (r.kontrast.length) {
+    say.kontrast += r.kontrast.length;
+    bulgu.push(`kontrast<3: ${r.kontrast.map((k) => k.o).join(',')}`);
+  }
+  if (r.etiketsizGirdi.length) {
+    say.etiketsiz += r.etiketsizGirdi.length;
+    bulgu.push(`etiketsiz girdi ${r.etiketsizGirdi.length}`);
+  }
+  if (r.adsizDugme.length) {
+    say.adsiz += r.adsizDugme.length;
+    bulgu.push(`adsiz dugme ${r.adsizDugme.length}`);
+  }
+  if (r.hamJson) {
+    say.hamJson++;
+    bulgu.push('ham JSON');
+  }
+  if (r.konsol.length) {
+    say.konsol += r.konsol.length;
+    bulgu.push(`konsol ${r.konsol.length}`);
+  }
   if (bulgu.length) satirlar.push(`${yer}  ${bulgu.join(' | ')}`);
 }
 console.log(`\n[ui-tarama] ${sonuclar.length} olcum. Bulgu olan satirlar:\n` + (satirlar.join('\n') || '  (bulgu yok)'));

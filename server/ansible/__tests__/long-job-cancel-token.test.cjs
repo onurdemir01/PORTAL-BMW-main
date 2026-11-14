@@ -323,7 +323,7 @@ async function uygulama({ db, requireAdmin } = {}) {
   const kayit = [];
   const sarmal = {};
   for (const m of ['get', 'put', 'post', 'delete']) {
-    sarmal[m] = (p, ...h) => (kayit.push({ m, p, h }), app[m](p, ...h));
+    sarmal[m] = (p, ...h) => { kayit.push({ m, p, h }); return app[m](p, ...h); };
   }
   const requireAuth = (req, _s, n) => {
     req.session = { user: { username: 'admin_ayse' } };
@@ -364,7 +364,7 @@ async function uygulama({ db, requireAdmin } = {}) {
 function konsolYakala(t) {
   const satirlar = [];
   for (const m of ['error', 'warn', 'log', 'info', 'debug']) {
-    t.mock.method(console, m, (...a) => satirlar.push(a.map((x) => (x instanceof Error ? x.stack || x.message : typeof x === 'string' ? x : JSON.stringify(x))).join(' ')));
+    t.mock.method(console, m, (...a) => satirlar.push(a.map((x) => { if (x instanceof Error) return x.stack || x.message; if (typeof x === 'string') return x; return JSON.stringify(x); }).join(' ')));
   }
   return satirlar;
 }

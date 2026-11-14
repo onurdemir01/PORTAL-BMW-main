@@ -71,7 +71,7 @@ const SMART_DURUMU = {
 
 function kur(s) {
   sim.sifirla();
-  sim.smartKipi(s.kip === 'oco_only' ? 'oco_only' : s.kip === 'required' ? 'required' : undefined);
+  sim.smartKipi((() => { if (s.kip === 'oco_only') return 'oco_only'; if (s.kip === 'required') return 'required'; return undefined; })());
   if (s.smart === 'hazir' || s.smart === 'baglantisiz')
     sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
   if (s.smart === 'akissiz')
@@ -180,7 +180,7 @@ test('KM1 karar matrisi: her hucrede alti degismez', async (t) => {
     const prodApply = s.env === 'prod' && s.mode === 'apply';
     assert.equal(
       p.oco,
-      !prodApply ? 'skip' : s.action === 'restore' ? 'warn' : 'require',
+      (() => { if (!prodApply) return 'skip'; if (s.action === 'restore') return 'warn'; return 'require'; })(),
       `${ad}: policy.oco`,
     );
     assert.equal(

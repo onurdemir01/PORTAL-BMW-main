@@ -365,6 +365,7 @@ test('U7 uclar: liste, 400, 409, 424, tablo yok', async () => {
   let durum = 'tamam';
   const hosts = [H('P1', 'PROD', [J('pay')])];
   const app = express();
+  app.disable('x-powered-by');
   const router = express.Router();
   mount(router, {
     etiketHesabi: async () => {

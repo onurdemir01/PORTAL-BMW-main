@@ -29,7 +29,10 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   // 2026-11-14: dorduncu parametre (opts: Init ayrinti/ekip referansi) - Deployment vermez,
   // eski davranis birebir; + Init'te sunucu geneli dosyanin (appdomain.service) iki kokten
   // ortak referans hesabi.
-  assert.match(src, /function scriptDeviationReport\(raw, scripts, majorityOverride, opts = \{\}\)/);
+  assert.match(
+    src,
+    /function scriptDeviationReport\(raw, scripts, majorityOverride, opts = \{\}\)/,
+  );
   assert.equal(
     (src.match(/scriptDeviationReport\(/g) || []).length,
     6,
@@ -46,11 +49,12 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
 
 test('DS2 istemci: sekme, tip, liste, yardim bolumu, API', () => {
   const page = read('src/components/DenetimPage.tsx');
+  const tek = page.replace(/\s+/g, ' ');
   assert.match(page, /\| 'deploy'/);
-  assert.match(page, /'init', 'deploy',/);
-  assert.match(page, /\{ id: 'deploy', label: 'Deployment Scripts'/);
+  assert.match(tek, /'init', 'deploy',/);
+  assert.match(tek, /\{ id: 'deploy', label: 'Deployment Scripts'/);
   assert.ok(
-    page.includes(`activeTab === 'deploy' && <ScriptsAudit kind="deploy" />`),
+    tek.includes(`activeTab === 'deploy' && <ScriptsAudit kind="deploy" />`),
     'deploy sekmesi render edilmiyor',
   );
   assert.match(page, /title: 'Deployment Scripts Audit'/);

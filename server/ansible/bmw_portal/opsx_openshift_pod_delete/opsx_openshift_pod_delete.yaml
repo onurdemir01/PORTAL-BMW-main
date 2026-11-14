@@ -352,9 +352,10 @@
 
     - name: "Bilgilendirme e-postası (isteği açan kişiye)"
       community.general.mail:
-        host: "{{ smtp_host | default('smtpappv1.fw.garanti.com.tr') }}"
+        host: "{{ smtp_host | default('smtp.internal') }}"
         port: "{{ smtp_port | default(25) }}"
-        from: "{{ mail_from | default('ansible@garanti.com.tr') }}"
+        secure: "{{ smtp_secure | default('starttls') }}"
+        from: "{{ mail_from | default('ansible@portal.internal') }}"
         to: "{{ email }}"
         cc: "{{ mail_cc | default([]) }}"
         subject: "{{ mail_subject_prefix | default('Ansible Automation Report - Job :') }} Openshift Pod Delete/Restart (Portal OpsX)"
@@ -396,7 +397,7 @@
           attachments:
             - contentType: application/vnd.microsoft.card.adaptive
               content:
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json"
+                "$schema": "https://adaptivecards.io/schemas/adaptive-card.json"
                 type: AdaptiveCard
                 version: "1.4"
                 msteams:
@@ -424,8 +425,8 @@
       when: (opsx_teams_webhook_url | default('') | trim | length) > 0
       failed_when: false
       environment:
-        http_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
-        https_proxy: "{{ opsx_http_proxy | default('http://tekprxv2.fw.garanti.com.tr:80') }}"
+        http_proxy: "{{ opsx_http_proxy | default('') }}"
+        https_proxy: "{{ opsx_http_proxy | default('') }}"
         no_proxy: "localhost,127.0.0.1"
 
     - name: "Hiçbir pod silinemediyse işi BAŞARISIZ yap"

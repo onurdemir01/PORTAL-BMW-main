@@ -471,12 +471,12 @@ sahte('../../inventory/mssql.cjs', {
   },
 });
 
-sahte('../../auth/index.cjs', { requireAuth: (req, res, next) => (req.session && req.session.user ? next() : res.status(401).json({ ok: false, kimlik: true })) });
+sahte('../../auth/index.cjs', { requireAuth: (req, res, next) => (req.session?.user ? next() : res.status(401).json({ ok: false, kimlik: true })) });
 sahte('../../auth/visibility.cjs', {
   requireVisiblePrefix: (anahtar) => (req, res, next) => (req.gizli === anahtar ? res.status(403).json({ ok: false, gorunurluk: anahtar }) : next()),
   requireVisible: (anahtar) => (req, res, next) => (req.gizli === anahtar ? res.status(403).json({ ok: false, gorunurluk: anahtar }) : next()),
   // 2026-11-13: Yuk Testi kapisi 'YukTesti' sayfasi YA DA NginxConsole + tab:nginx:yuktesti (canSee ile).
-  canSee: async (user, anahtar) => !(D.gizliler && D.gizliler.has(anahtar)),
+  canSee: async (user, anahtar) => !(D.gizliler?.has(anahtar)),
 });
 sahte('../../audit/index.cjs', { auditPortal: (req, eylem, o) => D.denetim.push({ eylem, ...o }) });
 sahte('../../ansible/playbook-registry.cjs', { getByKey: async () => D.registry, getEffectiveTemplateId: (r) => r.awxTemplateId || null });

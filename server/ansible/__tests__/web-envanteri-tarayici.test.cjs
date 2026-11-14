@@ -687,7 +687,7 @@ function agacIzi(dizin) {
         gez(p);
       } else
         out.push(
-          `${rel} ${st.mode} ${st.size} ${st.mtimeMs} ${crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex')}`,
+          `${rel} ${st.mode} ${st.size} ${st.mtimeMs} ${crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')}`,
         );
     }
   };

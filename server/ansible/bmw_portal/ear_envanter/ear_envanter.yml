@@ -98,7 +98,7 @@
       ansible.builtin.file:
         path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/kosu-{{ ear_kosu_no }}/raw"
         state: directory
-        mode: '0775'
+        mode: '0770'
       delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
 
 # Portal kipinde localhost'ta tum gorevler atlanir; Limit kipinde run_once ile tek kez.
@@ -127,7 +127,7 @@
       ansible.builtin.file:
         path: "{{ ear_dizin | default('/sw/BMW_PORTAL/ear_envanter') }}/awx-{{ awx_job_id }}/raw"
         state: directory
-        mode: '0775'
+        mode: '0770'
       delegate_to: "{{ ear_yazici_host | default('GBLABT02') }}"
       run_once: true
       when: hedefler is not defined

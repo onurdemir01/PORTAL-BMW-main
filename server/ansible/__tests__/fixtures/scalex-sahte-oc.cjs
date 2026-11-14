@@ -268,8 +268,7 @@ function workloadGet() {
   let rc = 0;
   const sablon = jp();
   let buf = '';
-  for (let i = 0; i < kodlar.length; i++) {
-    const k = kodlar[i];
+  for (const k of kodlar) {
     if (yasakMi(k) || (!adli && listeYasakMi(k))) {
       // Gercek kubectl metni: kaynak TAM adiyla (`deployments.apps`) basta.
       const tam = tipBilgi(k).tam;

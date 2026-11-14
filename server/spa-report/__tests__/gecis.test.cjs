@@ -76,13 +76,13 @@ function gocYorumla(t, p) {
       const kosullar = m[3].split(' AND ');
       for (const ph of m[4].split(', ')) {
         const a = apps.get(p[Number(ph.slice(1)) - 1]);
-        if (!a) continue;
-        if (!kosullar.every((x) => kosulSagla(a, x, p))) continue;
-        cikti.push(Object.fromEntries(kolonlar.map((c) => [c, a[c] === true ? 1 : a[c] === false ? 0 : a[c]])));
+        if (!a) { continue; }
+        if (!kosullar.every((x) => kosulSagla(a, x, p))) { continue; }
+        cikti.push(Object.fromEntries(kolonlar.map((c) => [c, (() => { if (a[c] === true) return 1; if (a[c] === false) return 0; return a[c]; })()])));
         ata(a, m[1], p);
       }
     } else if (/^INSERT INTO spa_gecis_goc \(ad\) VALUES \(\$1\)$/.test(st)) {
-      if (goc.has(p[0])) throw new Error('Violation of PRIMARY KEY constraint (spa_gecis_goc)');
+      if (goc.has(p[0])) { throw new Error('Violation of PRIMARY KEY constraint (spa_gecis_goc)'); }
       goc.add(p[0]);
     } else throw new Error(`sahte DB: goc govdesinde bilinmeyen ifade: ${st.slice(0, 120)}`);
   }
@@ -93,11 +93,11 @@ const sahteDb = {
   query: async (sql, p = []) => {
     const t = String(sql).replace(/\s+/g, ' ').trim();
     sorgular.push({ t, p });
-    if (t.includes('spa_gecis_goc')) return gocYorumla(t, p);
-    if (t === 'IF NOT EXISTS (SELECT 1 FROM spa_gecis_set WHERE no = $1) INSERT INTO spa_gecis_set (no) VALUES ($1)') { if (!sets.has(p[0])) sets.set(p[0], { no: p[0], calisma_at: null, oco_no: null }); return { rows: [], rowCount: 1 }; }
-    if (t === 'SELECT app_key FROM spa_gecis_app') return { rows: [...apps.keys()].map((x) => ({ app_key: x })) };
+    if (t.includes('spa_gecis_goc')) { return gocYorumla(t, p); }
+    if (t === 'IF NOT EXISTS (SELECT 1 FROM spa_gecis_set WHERE no = $1) INSERT INTO spa_gecis_set (no) VALUES ($1)') { if (!sets.has(p[0])) { sets.set(p[0], { no: p[0], calisma_at: null, oco_no: null }); } return { rows: [], rowCount: 1 }; }
+    if (t === 'SELECT app_key FROM spa_gecis_app') { return { rows: [...apps.keys()].map((x) => ({ app_key: x })) }; }
     if (/^INSERT INTO spa_gecis_app \(app_key, namespace, application, set_no, kaynak\) VALUES \(\$1, \$2, \$3, \$4, '(excel|portal)'\)$/.test(t)) {
-      if (apps.has(p[0])) throw new Error('Violation of UNIQUE KEY constraint (spa_gecis_app.app_key)');
+      if (apps.has(p[0])) { throw new Error('Violation of UNIQUE KEY constraint (spa_gecis_app.app_key)'); }
       apps.set(p[0], { namespace: p[1], application: p[2], set_no: p[3], kaynak: t.includes("'portal'") ? 'portal' : 'excel', kullanimda: null, katilimci: null, gecti: false, gecis_tarihi: null, kontrol_at: null });
       return { rows: [], rowCount: 1 };
     }
@@ -106,7 +106,7 @@ const sahteDb = {
     // Tek uygulama guncellemeleri: SET atamalarinin HEPSI uygulanir (gizli bir sifirlama gorunur).
     const tek = /^UPDATE spa_gecis_app SET (.+) WHERE app_key = \$1( RETURNING kontrol_at)?$/.exec(t);
     if (tek) {
-      const a = apps.get(p[0]); if (!a) return { rows: [], rowCount: 0 };
+      const a = apps.get(p[0]); if (!a) { return { rows: [], rowCount: 0 }; }
       ata(a, tek[1], p);
       return { rows: tek[2] ? [{ kontrol_at: a.kontrol_at }] : [], rowCount: 1 };
     }

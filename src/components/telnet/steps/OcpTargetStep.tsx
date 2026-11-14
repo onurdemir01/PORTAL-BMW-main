@@ -43,8 +43,8 @@ const OcpTargetStep: React.FC<{
     }
   }, []);
 
-  const envs = Object.keys(tree).sort();
-  const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
+  const envs = Object.keys(tree).sort((a, b) => a.localeCompare(b));
+  const tenants = env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : [];
 
   // Ortam/tenant değişince namespace listesi yeniden çekilir; önceki seçimler sıfırlanır.
   useAsyncEffect(async (alive) => {

@@ -53,7 +53,7 @@ const sayi = (x) => {
   return Number.isInteger(n) && n > 0 ? n : null;
 };
 const sunucuNo = (x) => (x == null || x === '' || !Number.isInteger(Number(x)) || Number(x) < 0 ? null : Number(x));
-const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
+const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
 function jsonNesne(s) {
   try {
     const o = typeof s === 'string' ? JSON.parse(s) : s;
@@ -103,9 +103,7 @@ function maskele(metin) {
   return redactSecrets(maskSecrets(yerelMaske(String(metin ?? ''))));
 }
 /** Nesne / dizi icindeki her metne maskele (eski job-status'un result / fixResult alanlari). */
-const maskeleDerin = (v) => (typeof v === 'string' ? maskele(v)
-  : Array.isArray(v) ? v.map(maskeleDerin)
-    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, hassasYapisalAnahtar(k) && x != null ? '***' : maskeleDerin(x)])) : v);
+const maskeleDerin = (v) => { if (typeof v === 'string') return maskele(v); if (Array.isArray(v)) return v.map(maskeleDerin); if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, hassasYapisalAnahtar(k) && x != null ? '***' : maskeleDerin(x)])); return v; };
 
 // ── IS GECMISI ─────────────────────────────────────────────────────────────────────────────────
 function aileOf(templateName) {
@@ -194,8 +192,8 @@ function webSunucusu(w, jobId) {
   const guvenli = isaret != null ? isaret === jobId : !GERI_ACMA.has(String(w.status));
   return guvenli ? { id: sid, belirsiz: false, satir: null, kanit: 'kayit' } : { id: null, belirsiz: true, satir: null };
 }
-const kaynakOf = (satir) => (!satir || !satir.username ? null : satir.username === ZAMANLAYICI_KULLANICI ? 'zamanlayici' : 'elle');
-const onKontrolDurumu = (d) => (d === 'running' || d === 'baslatiliyor' ? 'suruyor' : d === 'ok' ? 'basarili' : d === 'failed' ? 'basarisiz' : 'bilinmiyor');
+const kaynakOf = (satir) => { if (!satir || !satir.username) return null; if (satir.username === ZAMANLAYICI_KULLANICI) return 'zamanlayici'; return 'elle'; };
+const onKontrolDurumu = (d) => { if (d === 'running' || d === 'baslatiliyor') return 'suruyor'; if (d === 'ok') return 'basarili'; if (d === 'failed') return 'basarisiz'; return 'bilinmiyor'; };
 // Web girdisinin is numarasi: running/ok/skip/failed kaldirma isi, restoring geri acma isi. restore_manual /
 // restore_failed'te geri acma HIC baslamadi: jobId hala (basarili) kaldirma isidir.
 const WEB_DURUMU = Object.freeze({
@@ -221,7 +219,7 @@ function hedefIsKayitlari(t, gecmis) {
   const izinIs = sayi(izin?.jobId);
   if (tur === 'onkontrol') {
     const g = gecmisli('onkontrol', son);
-    const durum = s === 'planning' ? 'suruyor' : ['planned', 'stop_scheduled', 'stopping'].includes(s) || izinIs === son ? 'basarili' : s === 'failed' ? 'basarisiz' : 'bilinmiyor';
+    const durum = (() => { if (s === 'planning') return 'suruyor'; if (['planned', 'stop_scheduled', 'stopping'].includes(s) || izinIs === son) return 'basarili'; if (s === 'failed') return 'basarisiz'; return 'bilinmiyor'; })();
     ekle('onkontrol', son, durum, { basladi: iso(g.satir?.started_at), bitti: izinIs === son ? iso(izin?.at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
   } else if (izinIs && izinIs !== son) {
     const g = gecmisli('onkontrol', izinIs);
@@ -229,9 +227,7 @@ function hedefIsKayitlari(t, gecmis) {
   }
   if (tur === 'stop') {
     const g = gecmisli('stop', son);
-    const durum = s === 'stopping' ? 'suruyor'
-      : ['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(s) ? 'basarili'
-        : s === 'failed' && !sayi(t.delete_job_id) ? 'basarisiz' : 'bilinmiyor';
+    const durum = (() => { if (s === 'stopping') return 'suruyor'; if (['stopped', 'deleting', 'deleted', 'rolling_back', 'active', 'rollback_failed'].includes(s)) return 'basarili'; if (s === 'failed' && !sayi(t.delete_job_id)) return 'basarisiz'; return 'bilinmiyor'; })();
     ekle('stop', son, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.stopped_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
   }
 
@@ -258,20 +254,20 @@ function hedefIsKayitlari(t, gecmis) {
       basladi: suruyor ? iso(o.at) : iso(g.satir?.started_at),
       bitti: suruyor ? null : iso(o.at),
       kaynak: o.kaynak === 'elle' || o.kaynak === 'zamanlayici' ? o.kaynak : kaynakOf(g.satir),
-      sunucu: kayitli != null ? { id: kayitli, belirsiz: false, satir: g.id === kayitli ? g.satir : null, kanit: 'kayit' } : g,
+      sunucu: (() => { if (kayitli != null) return { id: kayitli, belirsiz: false, satir: g.id === kayitli ? g.satir : null, kanit: 'kayit' }; return g; })(),
     });
   }
 
   const silme = sayi(t.delete_job_id);
   if (silme) {
     const g = gecmisli('delete', silme);
-    const durum = s === 'deleting' ? 'suruyor' : s === 'deleted' ? 'basarili' : s === 'failed' ? 'basarisiz' : 'bilinmiyor';
+    const durum = (() => { if (s === 'deleting') return 'suruyor'; if (s === 'deleted') return 'basarili'; if (s === 'failed') return 'basarisiz'; return 'bilinmiyor'; })();
     ekle('delete', silme, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.deleted_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
   }
   const geri = sayi(t.rollback_job_id);
   if (geri) {
     const g = gecmisli('rollback', geri);
-    const durum = s === 'rolling_back' ? 'suruyor' : s === 'active' ? 'basarili' : s === 'rollback_failed' ? 'basarisiz' : 'bilinmiyor';
+    const durum = (() => { if (s === 'rolling_back') return 'suruyor'; if (s === 'active') return 'basarili'; if (s === 'rollback_failed') return 'basarisiz'; return 'bilinmiyor'; })();
     ekle('rollback', geri, durum, { basladi: iso(g.satir?.started_at), bitti: durum === 'basarili' ? iso(t.rolled_back_at) : null, kaynak: kaynakOf(g.satir), sunucu: g });
   }
 

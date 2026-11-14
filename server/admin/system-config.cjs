@@ -71,7 +71,7 @@ function initSystemConfig(app) {
       // Denetim kaydi — deger secret olabilir, yalnizca anahtar adi yazilir.
       try {
         require('../audit/index.cjs').auditPortal(req, 'system_config_update', {
-          detail: `key=${key}${SECRET_PATTERN.test(key) ? ' (value redacted)' : ` value=${strValue.slice(0, 200)}`}`,
+          detail: `key=${key}${SECRET_PATTERN.test(key) ? ' (value redacted)' : (" value=" + strValue.slice(0, 200))}`,
         });
       } catch { /* yoksay */ }
       console.log(`[Config] ${req.session.user.username} -> ${key} guncellendi (DB override).`);

@@ -98,7 +98,7 @@ function prune() {
     // Siralamada `...05815` < `...05815-2` cunku ayni onekte UZUN olan sonra gelir —
     // yani ayni saniye icinde uretilenler de dogru sirada.
     .filter((n) => n.startsWith(`${base}.`) && /\.\d{14}(-\d+)?$/.test(n))
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .reverse();
   for (const stale of rotated.slice(cfg.keep)) {
     try {
@@ -238,12 +238,12 @@ function install(opts = {}) {
       max: 512 * MB,
     }),
     keep: numEnv(process.env.LOG_KEEP, DEFAULT_KEEP, { min: 1, max: 50 }),
-    toStdout:
-      String(process.env.LOG_TO_STDOUT || '').trim() === '1'
-        ? true
-        : String(process.env.LOG_TO_STDOUT || '').trim() === '0'
-          ? false
-          : !isProd,
+    toStdout: (() => {
+      const rawStdout = String(process.env.LOG_TO_STDOUT || '').trim();
+      if (rawStdout === '1') return true;
+      if (rawStdout === '0') return false;
+      return !isProd;
+    })(),
   };
 
   if (String(process.env.LOG_DISABLED || '').trim() === '1') {

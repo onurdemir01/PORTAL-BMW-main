@@ -230,7 +230,7 @@ test('DG8 runner ham extra_vars`i arindirmadan yanita koymaz', () => {
         !/^\s*(\/\/|\*)/.test(s) && /\b(t|detail|tpl|template|sablon)\??\.extra_vars\b/.test(s),
     );
   // Sunucu ICI tek okuma: Smart metadata sablon baglami (tarayiciya donmez).
-  const IC = /const ham = String\(\(t && t\.extra_vars\) \|\| ''\)\.trim\(\);/;
+  const IC = /const ham = String\(\((?:t && t\.extra_vars|t\?\.extra_vars)\) \|\| ''\)\.trim\(\);/;
   const arindirmasiz = okuyan
     .filter(
       ([, s]) =>

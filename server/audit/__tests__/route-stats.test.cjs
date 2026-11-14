@@ -29,7 +29,7 @@ const A = '.apps.fw.garanti.com.tr';
 /** Kesif satiri: dbo.BMW_Spa_Discovery sekli. */
 const S = (cluster, ns, route, isSpa, o = {}) => ({
   cluster, namespace: ns, route, is_spa: isSpa,
-  signal: o.signal === undefined ? (isSpa ? 'nginx-start.sh' : '') : o.signal,
+  signal: (() => { if (o.signal === undefined) { if (isSpa) return 'nginx-start.sh'; return ''; } return o.signal; })(),
   match_by: o.matchBy === undefined ? 'selector' : o.matchBy,
   workload: o.workload === undefined ? route : o.workload,
   scan_date: o.scanDate || '2026-10-07',

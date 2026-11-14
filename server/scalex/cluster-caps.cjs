@@ -173,9 +173,7 @@ async function kindsPerCluster({ env, tenant, clusterNames }) {
  */
 async function save({ env, tenant, clusterName, kinds, rbac, resourcesReadable, scannedBy, awxJobId }) {
   const okunabilir = resourcesReadable !== false;
-  const kindsCsv = okunabilir
-    ? (Array.isArray(kinds) ? kinds : []).slice(0, MAX_KINDS).join(',')
-    : null;
+  const kindsCsv = (() => { if (okunabilir) return (Array.isArray(kinds) ? kinds : []).slice(0, MAX_KINDS).join(','); return null; })();
   const params = [
     String(env),
     String(tenant),

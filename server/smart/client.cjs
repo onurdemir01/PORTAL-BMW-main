@@ -219,7 +219,7 @@ async function getFlowMetadata(flowName) {
   if (resultCode !== '1000') {
     throw Object.assign(
       new Error(
-        `Smart metadata sorgusu başarısız: ${result?.result?.resultMessage || `resultCode=${resultCode || 'yok'}`}`,
+        `Smart metadata sorgusu başarısız: ${result?.result?.resultMessage || ("resultCode=" + (resultCode || 'yok'))}`,
       ),
       { status: 502 },
     );

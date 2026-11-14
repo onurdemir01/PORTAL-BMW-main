@@ -116,19 +116,7 @@ function ocoPencereKarari({ basMs, sonMs, simdiMs, smartKapali }) {
     return { kod: 'gecersiz', sonBaslamaMs };
   }
   const kod =
-    simdiMs > sonMs
-      ? 'gecti'
-      : sonMs - OCO_SON_PAY_DK * 60000 <= basMs
-        ? 'kisa'
-        : simdiMs > sonBaslamaMs
-          ? 'son_pay'
-          : basMs - simdiMs > OCO_UFUK_GUN * 86400000
-            ? 'ufuk'
-            : simdiMs < basMs
-              ? smartKapali
-                ? 'bekle_kapali'
-                : 'bekle'
-              : 'acik';
+    (() => { if (simdiMs > sonMs) return 'gecti'; if (sonMs - OCO_SON_PAY_DK * 60000 <= basMs) return 'kisa'; if (simdiMs > sonBaslamaMs) return 'son_pay'; if (basMs - simdiMs > OCO_UFUK_GUN * 86400000) return 'ufuk'; if (simdiMs < basMs) { if (smartKapali) return 'bekle_kapali'; return 'bekle'; } return 'acik'; })();
   return { kod, sonBaslamaMs };
 }
 

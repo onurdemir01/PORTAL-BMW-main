@@ -215,7 +215,7 @@ function vhostTrafigi(d, t = TAZE) {
   if ((shOlcul && sh > 0) || (wSayi != null && wSayi > 0 && ['OLCULDU', 'KISMI'].includes(l.durum)))
     return {
       olcum: 'VAR',
-      metin: `${d.ad}: ${shOlcul && sh > 0 ? `Server Hub 7 gün ${sh}` : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? `access log ${wSayi}` : ''} gerçek istek`,
+      metin: `${d.ad}: ${shOlcul && sh > 0 ? ("Server Hub 7 gün " + sh) : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? ("access log " + wSayi) : ''} gerçek istek`,
     };
   const wTam = l && l.durum === 'OLCULDU' && wSayi === 0;
   const shSifir = shOlcul && sh === 0 && !(l && l.durum === 'KISMI');
@@ -224,17 +224,17 @@ function vhostTrafigi(d, t = TAZE) {
       olcum: 'YOK',
       hc: (l && l.hc_7g) || d.veri.shHc24s || 0,
       hcIstemci: (l && l.hc_istemcileri) || [],
-      metin: `${d.ad}: 7 gündür gerçek istek yok${l && l.hc_7g ? ` (yalnız ${l.hc_7g} sağlık kontrolü)` : ''}`,
+      metin: `${d.ad}: 7 gündür gerçek istek yok${l && l.hc_7g ? (" (yalnız " + l.hc_7g + " sağlık kontrolü)") : ''}`,
     };
   if (wTam || shSifir)
     return {
       olcum: 'OLCULEMEDI',
       bayat: true,
-      metin: `${d.ad}: sıfır trafik ölçümü bayat (${[wTam ? `access log ${t.ueTarih || '?'}` : '', shSifir ? `Server Hub ${t.shTarih || '?'}` : ''].filter(Boolean).join(', ')} taraması)`,
+      metin: `${d.ad}: sıfır trafik ölçümü bayat (${[wTam ? ("access log " + (t.ueTarih || '?')) : '', shSifir ? ("Server Hub " + (t.shTarih || '?')) : ''].filter(Boolean).join(', ')} taraması)`,
     };
   return {
     olcum: 'OLCULEMEDI',
-    metin: `${d.ad}: ${l ? `access log ${l.durum}` : 'access log yok'}${shOlcul ? '' : ', Server Hub ölçemedi'}`,
+    metin: `${d.ad}: ${l ? ("access log " + l.durum) : 'access log yok'}${shOlcul ? '' : ', Server Hub ölçemedi'}`,
   };
 }
 
@@ -560,17 +560,7 @@ function grupImzasi(gk, karar, kk) {
 
 /** Kopya kararlarindan toplu karar: hepsi aday ise aday; kullanim kanit her zaman kazanir. */
 function topluKarar(say, n) {
-  return say.RETIRE_ADAYI === n
-    ? 'RETIRE_ADAYI'
-    : say.KULLANIMDA
-      ? 'KULLANIMDA'
-      : say.KARAR_VERILEMEZ
-        ? 'KARAR_VERILEMEZ'
-        : say.SUPHELI
-          ? 'SUPHELI'
-          : say.RETIRE_ADAYI
-            ? 'SUPHELI'
-            : 'SORUN_YOK';
+  if (say.RETIRE_ADAYI === n) return 'RETIRE_ADAYI'; if (say.KULLANIMDA) return 'KULLANIMDA'; if (say.KARAR_VERILEMEZ) return 'KARAR_VERILEMEZ'; if (say.SUPHELI) return 'SUPHELI'; if (say.RETIRE_ADAYI) return 'SUPHELI'; return 'SORUN_YOK';
 }
 
 function uygulamaOzeti(karar, say, n) {

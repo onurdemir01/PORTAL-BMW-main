@@ -178,7 +178,6 @@ function envGapOf(r: NginxSpaRow): EnvGap {
   return 'none';
 }
 
-
 type DenetimTab =
   | 'ocp'
   | 'ocproute'
@@ -191,7 +190,15 @@ type DenetimTab =
   | 'katalog';
 // nginx sekmeleri (nginx, nginxapi, nginxenv, nginxaudit) 2026-09-22'de Nginx Hub'a tasindi.
 const DENETIM_TABS: DenetimTab[] = [
-  'ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp', 'katalog',
+  'ocp',
+  'ocproute',
+  'init',
+  'deploy',
+  'envanter',
+  'degisim',
+  'appenvs',
+  'webapp',
+  'katalog',
 ];
 
 export default function DenetimPage() {
@@ -217,9 +224,17 @@ export default function DenetimPage() {
 
   if (visibleTabs.length === 0) {
     return (
-      <div className="rounded-xl border px-6 py-10 text-center" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Bu sayfada size açılmış bir bölüm yok</div>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Middleware İç Denetim yalnız yöneticilere açıktır; bir bölüme erişim gerekiyorsa yöneticinizden isteyin (Admin › Denetim Erişimi).</p>
+      <div
+        className="rounded-xl border px-6 py-10 text-center"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
+        <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Bu sayfada size açılmış bir bölüm yok
+        </div>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          Middleware İç Denetim yalnız yöneticilere açıktır; bir bölüme erişim gerekiyorsa
+          yöneticinizden isteyin (Admin › Denetim Erişimi).
+        </p>
       </div>
     );
   }
@@ -285,22 +300,22 @@ export default function DenetimPage() {
             // Admin hepsini gorur (motor); sunucu uclari da ayni anahtarla kapali.
             .filter((t) => canSee(`tab:denetim:${t.id}`))
             .map((t) => {
-            const active = activeTab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                aria-current={active ? 'page' : undefined}
-                className="flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors border-b-2"
-                style={{
-                  color: active ? 'var(--accent)' : 'var(--text-muted)',
-                  borderColor: active ? 'var(--accent)' : 'transparent',
-                }}
-              >
-                <t.icon className="w-4 h-4 flex-shrink-0" /> {t.label}
-              </button>
-            );
-          })}
+              const active = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  aria-current={active ? 'page' : undefined}
+                  className="flex items-center gap-1.5 px-3 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors border-b-2"
+                  style={{
+                    color: active ? 'var(--accent)' : 'var(--text-muted)',
+                    borderColor: active ? 'var(--accent)' : 'transparent',
+                  }}
+                >
+                  <t.icon className="w-4 h-4 flex-shrink-0" /> {t.label}
+                </button>
+              );
+            })}
         </nav>
       </header>
 
@@ -338,7 +353,13 @@ export default function DenetimPage() {
 // orada suzgec gosterilmez. Secim bu tarayicida hatirlanir (Uygulamalar sekmesinden AYRI anahtar:
 // orada 'belirsiz' kovasi var, burada yok).
 const KAPSAM_ORTAM_SIRASI = ['PROD', 'QA', 'TEST', 'DEV', 'EDU'];
-const KAPSAM_ORTAM_ETIKET: Record<string, string> = { PROD: 'Prod', QA: 'QA', TEST: 'Test', DEV: 'Dev', EDU: 'Edu' };
+const KAPSAM_ORTAM_ETIKET: Record<string, string> = {
+  PROD: 'Prod',
+  QA: 'QA',
+  TEST: 'Test',
+  DEV: 'Dev',
+  EDU: 'Edu',
+};
 const KAPSAM_ORTAM_ANAHTARI = 'nginx-hub:spa-kapsam:ortam';
 function kapsamOrtamOku(): string {
   try {
@@ -422,7 +443,12 @@ export function NginxSpaAudit() {
       // Secili ortamda tanimi (hucresi) olmayan uygulama gosterilmez.
       if (ortam !== 'tumu' && !r.envs[ortam]) return false;
       // Ekip adiyla da aranabilir (2026-09-14): "hangi uygulamalar X ekibinin" sorusu.
-      if (needle && !r.application.toLowerCase().includes(needle) && !ownerText(r.owner).includes(needle)) return false;
+      if (
+        needle &&
+        !r.application.toLowerCase().includes(needle) &&
+        !ownerText(r.owner).includes(needle)
+      )
+        return false;
       if (onlyProblems) {
         // "Sorunlu" (kullanici, 2026-09-17: "kalan tanimlar neden sorunlu?"): PROXY normal
         // PROD durumudur, sorun DEGILDIR. Sorun = OK/PROXY disi durum, eski sunucularda eksik
@@ -513,9 +539,9 @@ export function NginxSpaAudit() {
         </summary>
         <div className="mt-2 text-[11px] text-[var(--text-secondary)] leading-relaxed max-w-3xl rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 space-y-1.5">
           <p>
-            <b>SPA sayısı (Toplam):</b> OpenShift’teki uygulama sayısıdır, sunucudaki değil.
-            Sayım <b>uygulama × ortam</b> çiftidir: aynı uygulama dev, test ve prod’da varsa{' '}
-            <b>3</b> sayılır. Yalnızca ARK cluster’ları ve adında{' '}
+            <b>SPA sayısı (Toplam):</b> OpenShift’teki uygulama sayısıdır, sunucudaki değil. Sayım{' '}
+            <b>uygulama × ortam</b> çiftidir: aynı uygulama dev, test ve prod’da varsa <b>3</b>{' '}
+            sayılır. Yalnızca ARK cluster’ları ve adında{' '}
             <code className="px-1 rounded bg-[var(--bg-surface)]">-app-v</code> /{' '}
             <code className="px-1 rounded bg-[var(--bg-surface)]">-app-emb-v</code> geçenler.
           </p>
@@ -530,35 +556,35 @@ export function NginxSpaAudit() {
             intranet mi <b>belirlenemedi</b>. “Sorun var” demek değil, “sınıflandıramadık” demek.
           </p>
           <p>
-            <b>route tipi edge/TLS yok:</b> route var ama tipi passthrough da reencrypt de değil.
-            Bu kuralın dışında kalır, tahmin edilmez.
+            <b>route tipi edge/TLS yok:</b> route var ama tipi passthrough da reencrypt de değil. Bu
+            kuralın dışında kalır, tahmin edilmez.
           </p>
           <p>
-            <b>OpenShift’te karşılığı olmayan tanım (Internet):</b> nginx’te bir uygulamaya
-            giden location tanımı var, ama OpenShift’te o adda bir SPA <b>artık yok</b>. Örnek:
-            uygulama emekliye ayrılmış, nginx tanımı kaldırılmamış. Servisi bozmaz; temizlik
-            adayı.
+            <b>OpenShift’te karşılığı olmayan tanım (Internet):</b> nginx’te bir uygulamaya giden
+            location tanımı var, ama OpenShift’te o adda bir SPA <b>artık yok</b>. Örnek: uygulama
+            emekliye ayrılmış, nginx tanımı kaldırılmamış. Servisi bozmaz; temizlik adayı.
           </p>
           <p>
-            <b>OpenShift’te karşılığı olmayan kurulum (Intranet):</b> aynı durumun intranet
-            hâli. Sunucuda uygulamanın dizinleri (<code className="px-1 rounded bg-[var(--bg-surface)]">/hysdeploy</code>,{' '}
+            <b>OpenShift’te karşılığı olmayan kurulum (Intranet):</b> aynı durumun intranet hâli.
+            Sunucuda uygulamanın dizinleri (
+            <code className="px-1 rounded bg-[var(--bg-surface)]">/hysdeploy</code>,{' '}
             <code className="px-1 rounded bg-[var(--bg-surface)]">/usr/nginx/applications</code>)
-            duruyor, ama OpenShift o adda bir intranet SPA listelemiyor. Ya uygulama
-            kaldırılmış ya da route tipi değişmiş. Servisi bozmaz; temizlik adayı.
+            duruyor, ama OpenShift o adda bir intranet SPA listelemiyor. Ya uygulama kaldırılmış ya
+            da route tipi değişmiş. Servisi bozmaz; temizlik adayı.
           </p>
           <p>
             <b>intranet olduğu hâlde dışarıda:</b> route tipi <i>reencrypt</i> (yani intranet)
-            olduğu hâlde <b>internete açık</b> bir nginx sunucusunda tanımlı. Gerçek bir
-            bulgudur. İntranet sunucusunda olması normaldir, bulgu değildir.
+            olduğu hâlde <b>internete açık</b> bir nginx sunucusunda tanımlı. Gerçek bir bulgudur.
+            İntranet sunucusunda olması normaldir, bulgu değildir.
           </p>
           <p>
-            <b>Ortam (DEV/TEST/QA/PROD):</b> uygulamanın namespace son ekinden gelir
-            (-dev / -test / -qa / -prod), taranan sunucudan değil.
+            <b>Ortam (DEV/TEST/QA/PROD):</b> uygulamanın namespace son ekinden gelir (-dev / -test /
+            -qa / -prod), taranan sunucudan değil.
           </p>
           <p>
             <b>Kapsam yüzdesi:</b> internet katmanında “nginx’te tanımlı / toplam”; intranet
-            katmanında <b>yalnızca tam kurulumlar</b> üzerinden. Yarım kurulumu kapsandı saymak,
-            404 dönen bir uygulamayı yeşil göstermek olurdu.
+            katmanında <b>yalnızca tam kurulumlar</b> üzerinden. Yarım kurulumu kapsandı saymak, 404
+            dönen bir uygulamayı yeşil göstermek olurdu.
           </p>
           <p>
             <b>ölçülemedi:</b> o ortama ait hiç kayıt yok. “Hiçbiri tanımlı değil” demek
@@ -567,7 +593,9 @@ export function NginxSpaAudit() {
           <p>
             <b>tam kurulu / yarım kurulum / hiç kurulmamış:</b> yalnızca intranet için. Üç dizinin
             kaçı yerinde:{' '}
-            <code className="px-1 rounded bg-[var(--bg-surface)]">/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</code>
+            <code className="px-1 rounded bg-[var(--bg-surface)]">
+              /hysdeploy/&lt;ns&gt;/&lt;app&gt;/
+            </code>
             ,{' '}
             <code className="px-1 rounded bg-[var(--bg-surface)]">
               /usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/
@@ -576,16 +604,15 @@ export function NginxSpaAudit() {
             <code className="px-1 rounded bg-[var(--bg-surface)]">
               application-confs/&lt;app&gt;-&lt;ns&gt;.conf
             </code>
-            . Üçü de varsa tam; biri eksikse yarım (404 döner ama kurulum başlamış); hiçbiri
-            yoksa hiç kurulmamış.
+            . Üçü de varsa tam; biri eksikse yarım (404 döner ama kurulum başlamış); hiçbiri yoksa
+            hiç kurulmamış.
           </p>
         </div>
       </details>
     </div>
   );
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -604,9 +631,8 @@ export function NginxSpaAudit() {
             ve kendi eksik-veri mesajini kendisi gosterir. */}
         {tier === 'internet' && (
           <div className="text-sm text-[var(--text-muted)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-xl px-4 py-6 text-center">
-            Henüz bir nginx tarama kaydı yok.{' '}
-            <code className="font-mono">nginx_config_audit</code> job&apos;ı çalıştıktan sonra
-            burası dolacak.
+            Henüz bir nginx tarama kaydı yok. <code className="font-mono">nginx_config_audit</code>{' '}
+            job&apos;ı çalıştıktan sonra burası dolacak.
           </div>
         )}
       </div>
@@ -629,69 +655,87 @@ export function NginxSpaAudit() {
       {/* YUK OZETI (kullanici, 2026-09-24): kac location yuk aliyor / almiyor / olculemedi.
           Tablo yoksa (job henuz kosmadi) hic gorunmez - bos rakam gostermek yaniltirdi. */}
       {yukOzeti?.ready && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] rounded-xl border px-3 py-2"
-             style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <span className="font-semibold">Yük (access log, son 7 gün){ortam === 'tumu' ? '' : ` · ${ortam}`}</span>
-          <span className="px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">yük var: {fmtNumber(yukOzeti.active)}</span>
-          <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">yük yok: {fmtNumber(yukOzeti.idle)}</span>
+        <div
+          className="flex flex-wrap items-center gap-2 text-[11px] rounded-xl border px-3 py-2"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <span className="font-semibold">
+            Yük (access log, son 7 gün){ortam === 'tumu' ? '' : ` · ${ortam}`}
+          </span>
+          <span className="px-1.5 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">
+            yük var: {fmtNumber(yukOzeti.active)}
+          </span>
+          <span className="px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200">
+            yük yok: {fmtNumber(yukOzeti.idle)}
+          </span>
           {!!yukOzeti.unknown && (
-            <span className="px-1.5 py-0.5 rounded border" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
-                  title="Log okunamadı ya da okunan log 7 günü / tanımın her sunucusunu kapsamıyor (günlük rotasyonlu sunucularda okunan süre 1-4 gün kalabilir) — “yük yok” demek DEĞİLDİR.">
+            <span
+              className="px-1.5 py-0.5 rounded border"
+              style={{
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-muted)',
+                borderColor: 'var(--border)',
+              }}
+              title="Log okunamadı ya da okunan log 7 günü / tanımın her sunucusunu kapsamıyor (günlük rotasyonlu sunucularda okunan süre 1-4 gün kalabilir) — “yük yok” demek DEĞİLDİR."
+            >
               ölçülemedi: {fmtNumber(yukOzeti.unknown)}
-              {!!yukOzeti.kismi && ` · istek yok ama 7 gün / her sunucu ölçülemedi: ${fmtNumber(yukOzeti.kismi)}`}
+              {!!yukOzeti.kismi &&
+                ` · istek yok ama 7 gün / her sunucu ölçülemedi: ${fmtNumber(yukOzeti.kismi)}`}
             </span>
           )}
           <span style={{ color: 'var(--text-muted)' }}>hc.jsp / hc.html sayılmaz</span>
         </div>
       )}
 
-      {tier === 'internet' && data.envStats && data.envStats.some((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam)) && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-          <div className="font-semibold mb-1">
-            Bazı ortamlarda hiç kayıt yok:{' '}
-            {data.envStats
-              .filter((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam))
-              .map((e) => e.env)
-              .join(', ')}
+      {tier === 'internet' &&
+        data.envStats &&
+        data.envStats.some((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam)) && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            <div className="font-semibold mb-1">
+              Bazı ortamlarda hiç kayıt yok:{' '}
+              {data.envStats
+                .filter((e) => e.rows === 0 && (ortam === 'tumu' || e.env === ortam))
+                .map((e) => e.env)
+                .join(', ')}
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              Bu denetim <b>SPA/include mimarisi</b> için yazılmıştır: yalnızca{' '}
+              <code className="px-1 rounded bg-white/70 border border-amber-200">
+                location …&#123; include application-confs/…&#125;
+              </code>{' '}
+              kalıbındaki satırlar kaydedilir. Ortam bilgisi de taranan sunucudan değil, vhost{' '}
+              <b>dosya adından</b> türer:{' '}
+              <code className="px-1 rounded bg-white/70 border border-amber-200">
+                &lt;SERVİS&gt;-&lt;ORTAM&gt;.conf
+              </code>{' '}
+              (örnek{' '}
+              <code className="px-1 rounded bg-white/70 border border-amber-200">
+                GLOMO-TEST.conf
+              </code>{' '}
+              → TEST). Bir ortamın boş görünmesi dört şeyden biri anlamına gelir: sunucular hâlâ{' '}
+              <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code>{' '}
+              mimarisinde (bu kalıp hiç bulunmaz), sunuculara ulaşılamadı, vhost dosya adları kalıba
+              uymuyor, ya da adlarındaki ortam eki farklı. Aşağıda hangi etiket altında kaç kayıt
+              olduğu görünüyor — beklenmedik bir etiket varsa sebep odur; tüm etiketler sıfırsa o
+              ortam bu denetimin kapsamı dışındadır.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {data.envStats.map((e) => (
+                <span
+                  key={e.env}
+                  title={e.rows ? `vhost: ${e.vhosts.join(', ')}` : 'kayıt yok'}
+                  className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${
+                    e.rows
+                      ? 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)]'
+                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                  }`}
+                >
+                  {e.env}: {fmtNumber(e.rows)}
+                </span>
+              ))}
+            </div>
           </div>
-          <p className="text-[11px] leading-relaxed">
-            Bu denetim <b>SPA/include mimarisi</b> için yazılmıştır: yalnızca{' '}
-            <code className="px-1 rounded bg-white/70 border border-amber-200">
-              location …&#123; include application-confs/…&#125;
-            </code>{' '}
-            kalıbındaki satırlar kaydedilir. Ortam bilgisi de taranan sunucudan değil, vhost{' '}
-            <b>dosya adından</b> türer:{' '}
-            <code className="px-1 rounded bg-white/70 border border-amber-200">
-              &lt;SERVİS&gt;-&lt;ORTAM&gt;.conf
-            </code>{' '}
-            (örnek{' '}
-            <code className="px-1 rounded bg-white/70 border border-amber-200">
-              GLOMO-TEST.conf
-            </code>{' '}
-            → TEST). Bir ortamın boş görünmesi dört şeyden biri anlamına gelir: sunucular hâlâ{' '}
-            <code className="px-1 rounded bg-white/70 border border-amber-200">proxy_pass</code>{' '}
-            mimarisinde (bu kalıp hiç bulunmaz), sunuculara ulaşılamadı, vhost dosya adları kalıba
-            uymuyor, ya da adlarındaki ortam eki farklı. Aşağıda hangi etiket altında kaç kayıt
-            olduğu görünüyor — beklenmedik bir etiket varsa sebep odur; tüm etiketler sıfırsa o
-            ortam bu denetimin kapsamı dışındadır.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {data.envStats.map((e) => (
-              <span
-                key={e.env}
-                title={e.rows ? `vhost: ${e.vhosts.join(', ')}` : 'kayıt yok'}
-                className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${
-                  e.rows
-                    ? 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)]'
-                    : 'bg-amber-100 text-amber-800 border-amber-300'
-                }`}
-              >
-                {e.env}: {fmtNumber(e.rows)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
 
       {tier === 'internet' && (
         <>
@@ -729,16 +773,16 @@ export function NginxSpaAudit() {
               Sadece sorunlular
             </label>
             {ortam === 'tumu' && (
-            <select
-              value={gapFilter}
-              onChange={(e) => setGapFilter(e.target.value as 'all' | 'prod-only' | 'no-prod')}
-              className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
-              title="Ortam farkı: PROD ile non-prod (dev/test/qa) arasındaki eksikler"
-            >
-              <option value="all">ortam farkı: hepsi</option>
-              <option value="prod-only">yalnız PROD'da var (non-prod'da yok)</option>
-              <option value="no-prod">non-prod'da var, PROD'da yok</option>
-            </select>
+              <select
+                value={gapFilter}
+                onChange={(e) => setGapFilter(e.target.value as 'all' | 'prod-only' | 'no-prod')}
+                className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
+                title="Ortam farkı: PROD ile non-prod (dev/test/qa) arasındaki eksikler"
+              >
+                <option value="all">ortam farkı: hepsi</option>
+                <option value="prod-only">yalnız PROD'da var (non-prod'da yok)</option>
+                <option value="no-prod">non-prod'da var, PROD'da yok</option>
+              </select>
             )}
             <span className="text-xs text-[var(--text-muted)] tabular-nums">
               {rows.length} uygulama
@@ -789,7 +833,10 @@ export function NginxSpaAudit() {
                   if (!st) return null;
                   const total = envs.reduce((a, e) => a + (st.envs[e] || 0), 0);
                   return (
-                    <span className="ml-1 text-[10px] font-normal text-[var(--text-muted)]" title={`location tanımı: ${envs.map((e) => `${e} ${st.envs[e] || 0}`).join(' · ')}`}>
+                    <span
+                      className="ml-1 text-[10px] font-normal text-[var(--text-muted)]"
+                      title={`location tanımı: ${envs.map((e) => `${e} ${st.envs[e] || 0}`).join(' · ')}`}
+                    >
                       {total}
                     </span>
                   );
@@ -806,11 +853,21 @@ export function NginxSpaAudit() {
               <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
                 <span className="text-[var(--text-muted)]">{service} location tanımı:</span>
                 {envs.map((e) => (
-                  <span key={e} className="px-1.5 py-0.5 rounded border tabular-nums" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                  <span
+                    key={e}
+                    className="px-1.5 py-0.5 rounded border tabular-nums"
+                    style={{
+                      borderColor: 'var(--border-subtle)',
+                      background: 'var(--bg-elevated)',
+                    }}
+                  >
                     {e} <b>{st.envs[e] || 0}</b>
                   </span>
                 ))}
-                <span className="text-[var(--text-muted)]">(vhost içindeki farklı location sayısı; aynı tanım birden fazla sunucuda olsa da bir kez)</span>
+                <span className="text-[var(--text-muted)]">
+                  (vhost içindeki farklı location sayısı; aynı tanım birden fazla sunucuda olsa da
+                  bir kez)
+                </span>
               </div>
             );
           })()}
@@ -844,10 +901,20 @@ export function NginxSpaAudit() {
                     <td className="px-3 py-2 font-mono text-xs text-[var(--text-primary)]">
                       {r.application}
                       {envGapOf(r) === 'prod-only' && (
-                        <span className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-amber-50 text-amber-700 border-amber-200" title="PROD'da tanımlı ama dev/test/qa'da yok">yalnız PROD</span>
+                        <span
+                          className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-amber-50 text-amber-700 border-amber-200"
+                          title="PROD'da tanımlı ama dev/test/qa'da yok"
+                        >
+                          yalnız PROD
+                        </span>
                       )}
                       {envGapOf(r) === 'no-prod' && (
-                        <span className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]" title="dev/test/qa'da var, PROD'da tanım yok">PROD'da yok</span>
+                        <span
+                          className="ml-1.5 text-[9px] px-1 rounded border font-sans bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]"
+                          title="dev/test/qa'da var, PROD'da tanım yok"
+                        >
+                          PROD'da yok
+                        </span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -889,27 +956,44 @@ function TrafficBadge({ t }: { t?: NginxSpaEnvCell['traffic'] }) {
       ? { label: 'yük var', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' }
       : t.state === 'idle'
         ? { label: 'yük yok', cls: 'bg-red-50 text-red-700 border-red-200' }
-        : { label: kismi || 'yük ?', cls: 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]' };
-  const sonIstek = t.lastSeen && /^\d{14}$/.test(t.lastSeen)
-    ? `${t.lastSeen.slice(6, 8)}.${t.lastSeen.slice(4, 6)}.${t.lastSeen.slice(0, 4)} ${t.lastSeen.slice(8, 10)}:${t.lastSeen.slice(10, 12)}`
-    : null;
+        : {
+            label: kismi || 'yük ?',
+            cls: 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]',
+          };
+  const sonIstek =
+    t.lastSeen && /^\d{14}$/.test(t.lastSeen)
+      ? `${t.lastSeen.slice(6, 8)}.${t.lastSeen.slice(4, 6)}.${t.lastSeen.slice(0, 4)} ${t.lastSeen.slice(8, 10)}:${t.lastSeen.slice(10, 12)}`
+      : null;
   const title = [
-    t.state === 'active' ? 'Access log’da istek var (hc.jsp / hc.html hariç).'
-      : t.state === 'idle' ? '7 günün tamamı ve tanımın her sunucusu ölçüldü: hc dışı istek YOK — atıl aday.'
-        : kismi ? kismiAciklama(t)
+    t.state === 'active'
+      ? 'Access log’da istek var (hc.jsp / hc.html hariç).'
+      : t.state === 'idle'
+        ? '7 günün tamamı ve tanımın her sunucusu ölçüldü: hc dışı istek YOK — atıl aday.'
+        : kismi
+          ? kismiAciklama(t)
           : 'Ölçülemedi: access log okunamadı. “Yük yok” demek DEĞİLDİR.',
     t.req24 != null ? `Son 24 saat: ${t.req24} istek` : null,
-    t.req7 != null ? `Son 7 gün: ${t.req7} istek${t.sampled ? ' (alt sınır — okunan log 7 günü kapsamıyor)' : ''}` : null,
+    t.req7 != null
+      ? `Son 7 gün: ${t.req7} istek${t.sampled ? ' (alt sınır — okunan log 7 günü kapsamıyor)' : ''}`
+      : null,
     t.hc24 ? `Sağlık kontrolü (hariç tutuldu): ${t.hc24}` : null,
     sonIstek ? `Son istek: ${sonIstek}` : null,
-    t.locations && t.locations > 1 ? `${t.locations} location birleşik (biri yük alıyorsa “yük var”)` : null,
+    t.locations && t.locations > 1
+      ? `${t.locations} location birleşik (biri yük alıyorsa “yük var”)`
+      : null,
     t.hosts || t.unknownHosts
       ? `Okunan sunucu: ${t.hosts}${t.unknownHosts ? ` · log okunamayan: ${t.unknownHosts}` : ''}${t.missingHosts ? ` · ölçüm satırı olmayan: ${t.missingHosts}` : ''}`
       : null,
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
   return (
-    <span className={`px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${meta.cls}`} title={title}>
-      {meta.label}{t.state === 'active' && t.req24 != null ? ` · ${t.req24}/24s` : ''}
+    <span
+      className={`px-1.5 py-0.5 rounded border text-[10px] whitespace-nowrap ${meta.cls}`}
+      title={title}
+    >
+      {meta.label}
+      {t.state === 'active' && t.req24 != null ? ` · ${t.req24}/24s` : ''}
     </span>
   );
 }
@@ -926,7 +1010,10 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
   // DEGILDIR. Hangi harfin nerede eksik oldugu ipucunda.
   const missingDirs = (cell.dirs || [])
     .filter((d) => d.flags && !(d.flags.hys && d.flags.app && d.flags.conf))
-    .map((d) => `${d.host}: ${[!d.flags!.hys && 'H', !d.flags!.app && 'A', !d.flags!.conf && 'C'].filter(Boolean).join('')} yok`);
+    .map(
+      (d) =>
+        `${d.host}: ${[!d.flags!.hys && 'H', !d.flags!.app && 'A', !d.flags!.conf && 'C'].filter(Boolean).join('')} yok`,
+    );
   const dirsIncomplete = missingDirs.length > 0;
   const meta =
     cell.status === 'OK' && dirsIncomplete
@@ -964,7 +1051,9 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
     <span className="inline-flex flex-wrap gap-1">
       {cell.dirs.map((d) => (
         <span key={d.host} className="inline-flex items-center gap-1" title={d.host}>
-          {cell.dirs && (cell.dirs.length > 1 || isProd) && <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>}
+          {cell.dirs && (cell.dirs.length > 1 || isProd) && (
+            <span className="text-[9px] opacity-70">{d.host.replace(/^GBNGX/, '')}</span>
+          )}
           <DirCell f={d.flags} />
         </span>
       ))}
@@ -983,27 +1072,46 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
         : 'bg-amber-50 text-amber-700 border-amber-200';
     const oldTitle = oldHas
-      ? `proxy tanımı olan: ${cell.hosts.join(', ')}` + (oldMissing.length ? `\nTANIM OLMAYAN: ${oldMissing.join(', ')}` : '\n(grubun tüm eski sunucularında var)')
+      ? `proxy tanımı olan: ${cell.hosts.join(', ')}` +
+        (oldMissing.length
+          ? `\nTANIM OLMAYAN: ${oldMissing.join(', ')}`
+          : '\n(grubun tüm eski sunucularında var)')
       : 'eski GBRVP* sunucularında proxy tanımı bulunamadı';
     return (
       <td className="px-3 py-2">
         <div className="inline-flex flex-col gap-1 text-[11px]" title={title}>
           <div className={`px-2 py-1 rounded-lg border ${oldCls}`} title={oldTitle}>
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Eski</span>
-              <span className="font-semibold">{oldHas ? `proxy · ${cell.hosts.length}/${oldExpected.length} sunucu` : 'tanım yok'}</span>
+              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">
+                Eski
+              </span>
+              <span className="font-semibold">
+                {oldHas ? `proxy · ${cell.hosts.length}/${oldExpected.length} sunucu` : 'tanım yok'}
+              </span>
               {cell.suffixAdded && <span className="text-[9px] opacity-70">+prod</span>}
             </div>
             {oldMissing.length > 0 && (
-              <span className="block text-[10px]">eksik: {oldMissing.map((h) => h.replace(/^GBRVP/, '')).join(', ')}</span>
+              <span className="block text-[10px]">
+                eksik: {oldMissing.map((h) => h.replace(/^GBRVP/, '')).join(', ')}
+              </span>
             )}
-            {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
+            {cell.locationPath && (
+              <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>
+            )}
             {/* YUK: eski sunucunun access log'undan - trafik hala oraya geliyor (2026-09-24) */}
-            {cell.traffic && <span className="block mt-0.5"><TrafficBadge t={cell.traffic} /></span>}
+            {cell.traffic && (
+              <span className="block mt-0.5">
+                <TrafficBadge t={cell.traffic} />
+              </span>
+            )}
           </div>
-          <div className={`px-2 py-1 rounded-lg border ${dirsIncomplete || !cell.dirs?.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+          <div
+            className={`px-2 py-1 rounded-lg border ${dirsIncomplete || !cell.dirs?.length ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}
+          >
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">Yeni</span>
+              <span className="text-[9px] font-semibold uppercase tracking-wide opacity-70">
+                Yeni
+              </span>
               {cell.dirs?.length ? dirsBlock : <span className="opacity-80">taranmadı</span>}
             </div>
             {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
@@ -1014,13 +1122,22 @@ function EnvCell({ cell }: { cell?: NginxSpaEnvCell }) {
   }
   return (
     <td className="px-3 py-2">
-      <div className={`inline-flex flex-col gap-0.5 text-[11px] px-2 py-1 rounded-lg border ${meta.cls}`} title={title}>
+      <div
+        className={`inline-flex flex-col gap-0.5 text-[11px] px-2 py-1 rounded-lg border ${meta.cls}`}
+        title={title}
+      >
         <span className="font-semibold">{meta.label}</span>
         {/* Context path GORUNUR (kullanici, 2026-09-14: "servislerde location bilgisi yok") */}
-        {cell.locationPath && <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>}
+        {cell.locationPath && (
+          <span className="font-mono text-[10px] opacity-90">{cell.locationPath}</span>
+        )}
         {!cell.inOcpInventory && <span className="opacity-80">OCP'de yok</span>}
         {/* YUK: access log'dan (2026-09-24) - tanim yerinde ama istek geliyor mu? */}
-        {cell.traffic && <span className="mt-0.5"><TrafficBadge t={cell.traffic} /></span>}
+        {cell.traffic && (
+          <span className="mt-0.5">
+            <TrafficBadge t={cell.traffic} />
+          </span>
+        )}
         {/* H/A/C dizin bayraklari (sunucu basina) - Production Tasimalari ile ayni gosterim */}
         {dirsBlock && <span className="mt-0.5">{dirsBlock}</span>}
       </div>
@@ -1058,7 +1175,8 @@ function OcpCoverage() {
     try {
       const r = await denetimApi.ocpCoverage(p);
       // BİÇİM DENETİMİ (2026-10-23): `ok: true` ama listeler yoksa sayfa çökmesin, okunamadı desin.
-      const bicimTamam = Array.isArray(r.rows) && Array.isArray(r.clusters) && Array.isArray(r.patterns);
+      const bicimTamam =
+        Array.isArray(r.rows) && Array.isArray(r.clusters) && Array.isArray(r.patterns);
       if (r.ok && bicimTamam) {
         setData(r);
         setErr('');
@@ -1139,7 +1257,8 @@ function OcpCoverage() {
   /** Ortamda en az bir namespace'i olan uygulama sayisi (filtreden bagimsiz, TUM satirlar). */
   const ortamdaSayi = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const e of data?.envs ?? []) m[e] = (data?.rows ?? []).filter((r) => (r.envs[e] ?? []).length > 0).length;
+    for (const e of data?.envs ?? [])
+      m[e] = (data?.rows ?? []).filter((r) => (r.envs[e] ?? []).length > 0).length;
     return m;
   }, [data]);
   const filtreVar = Object.values(envFiltre).some(Boolean);
@@ -1149,8 +1268,7 @@ function OcpCoverage() {
     [data, isPartial],
   );
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -1276,8 +1394,8 @@ function OcpCoverage() {
               <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
                 <span className="font-mono">{platform}</span> cluster’ında bir uygulamanın o ortamda
                 en az bir namespace’i varsa sayılır. <b>Yüzde</b> = o ortamda bulunan uygulama ÷
-                platformda herhangi bir ortamda görülen <b>tüm</b> uygulamalar
-                ({fmtNumber(data.rows.length)}); yani “uygulamaların yüzde kaçı bu ortamda da var”.
+                platformda herhangi bir ortamda görülen <b>tüm</b> uygulamalar (
+                {fmtNumber(data.rows.length)}); yani “uygulamaların yüzde kaçı bu ortamda da var”.
                 Ekrandaki filtrelerden etkilenmez.
               </p>
             </div>
@@ -1331,12 +1449,22 @@ function OcpCoverage() {
           </div>
           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 mb-2">
             Tablodaki <span className="font-mono">k/n</span> ifadesindeki <b>n</b> budur.
-            {Object.values(data.envClusterKaynagi || {}).includes('resmi')
-              ? <> “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir; uygulaması 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya katılmaz. Hiç kaydı gelmeyen resmi cluster <b>veri yok</b> olarak gösterilir ve n’ye katılmaz — ölçülemedi, yok demek değil.</>
-              : <> o ortamda gerçekten namespace barındıran cluster sayısıdır.</>}{' '}
-            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster (örn. DR) için "eksik" görünmesi çoğu zaman normaldir.{' '}
-            <b>−N</b>: o ortamda bulunan ama bu cluster'da olmayan uygulama sayısı (ortamdaki toplam − cluster'daki).
-            Çipe tıklayınca aşağıdaki tablo bu uygulamalara süzülür.
+            {Object.values(data.envClusterKaynagi || {}).includes('resmi') ? (
+              <>
+                {' '}
+                “resmi” işaretli ortamlarda n, ortamın <b>resmi cluster listesinden</b> gelir;
+                uygulaması 0 olan cluster da sayılır. Listede olmayan bir cluster’da o ortamın
+                namespace’i görülürse <b>beklenmeyen</b> olarak ayrıca gösterilir ve sayıya
+                katılmaz. Hiç kaydı gelmeyen resmi cluster <b>veri yok</b> olarak gösterilir ve n’ye
+                katılmaz — ölçülemedi, yok demek değil.
+              </>
+            ) : (
+              <> o ortamda gerçekten namespace barındıran cluster sayısıdır.</>
+            )}{' '}
+            Parantez içindeki sayı o cluster'daki uygulama sayısıdır — az uygulamalı bir cluster
+            (örn. DR) için "eksik" görünmesi çoğu zaman normaldir. <b>−N</b>: o ortamda bulunan ama
+            bu cluster'da olmayan uygulama sayısı (ortamdaki toplam − cluster'daki). Çipe tıklayınca
+            aşağıdaki tablo bu uygulamalara süzülür.
           </p>
           <div className="space-y-1.5">
             {envs.map((e) => {
@@ -1348,50 +1476,79 @@ function OcpCoverage() {
                     {e}
                   </span>
                   {data.envClusterKaynagi?.[e] === 'resmi' && (
-                    <span className="text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700" title="n bu ortamın resmi cluster listesinden geliyor">resmi</span>
+                    <span
+                      className="text-[9px] px-1 rounded border border-sky-200 bg-sky-50 text-sky-700"
+                      title="n bu ortamın resmi cluster listesinden geliyor"
+                    >
+                      resmi
+                    </span>
                   )}
                   {list.map((c) => {
                     // FARK: ortamda olup bu cluster'da OLMAYAN uygulama sayisi. Beklenmeyen cluster
                     // icin fark anlamsiz (orada olmasi beklenmiyor); tiklayinca oradakiler suzulur.
                     const fark = c.veriYok || c.beklenmeyen ? 0 : (ortamdaSayi[e] ?? 0) - c.apps;
-                    const hedef = c.veriYok ? '' : c.beklenmeyen ? `var:${c.cluster}` : fark > 0 ? `yok:${c.cluster}` : '';
+                    const hedef = c.veriYok
+                      ? ''
+                      : c.beklenmeyen
+                        ? `var:${c.cluster}`
+                        : fark > 0
+                          ? `yok:${c.cluster}`
+                          : '';
                     const secili = !!hedef && envFiltre[e] === hedef;
                     return (
-                    <button
-                      type="button"
-                      key={c.cluster}
-                      disabled={!hedef}
-                      aria-pressed={secili}
-                      onClick={() => {
-                        envFiltreKur(e, secili ? '' : hedef);
-                        if (!secili) setOnlyPartial(false);
-                        // scrollIntoView DEGIL: AppLayout kok kabini da kaydirip ust cubugu ekrandan cikariyordu.
-                        if (!secili && tabloRef.current) ogeyeKaydir(tabloRef.current, null, false);
-                      }}
-                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${hedef ? 'cursor-pointer hover:underline' : 'cursor-default'} ${secili ? 'ring-2 ring-[var(--accent)]' : ''} ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
-                      style={c.beklenmeyen ? undefined : {
-                        borderColor: c.veriYok ? 'var(--border)' : 'var(--border-subtle)',
-                        background: 'var(--bg-elevated)',
-                        color: c.apps ? 'var(--text-secondary)' : 'var(--text-muted)',
-                      }}
-                      title={
-                        c.beklenmeyen
-                          ? `Beklenmeyen: ${e} ortamının resmi listesinde yok ama ${c.apps} uygulamanın ${e} namespace'i burada`
-                          : c.veriYok
-                            ? `Veri yok: bu cluster'dan hiç kayıt gelmedi (job giriş yapamamış olabilir). Ölçülemedi — n'ye katılmadı.`
-                            : `${c.apps} uygulama`
-                      }
-                    >
-                      {c.cluster}
-                      {!c.veriYok && <span className="ml-1 tabular-nums text-[var(--text-muted)]">({c.apps})</span>}
-                      {fark > 0 && (
-                        <span className="ml-1 tabular-nums font-sans font-semibold" style={{ color: 'var(--status-warning-text)' }}>
-                          −{fmtNumber(fark)}
-                        </span>
-                      )}
-                      {c.beklenmeyen && <span className="ml-1 text-[9px] font-sans font-semibold">beklenmeyen</span>}
-                      {c.veriYok && <span className="ml-1 text-[9px] font-sans font-semibold">veri yok</span>}
-                    </button>
+                      <button
+                        type="button"
+                        key={c.cluster}
+                        disabled={!hedef}
+                        aria-pressed={secili}
+                        onClick={() => {
+                          envFiltreKur(e, secili ? '' : hedef);
+                          if (!secili) setOnlyPartial(false);
+                          // scrollIntoView DEGIL: AppLayout kok kabini da kaydirip ust cubugu ekrandan cikariyordu.
+                          if (!secili && tabloRef.current)
+                            ogeyeKaydir(tabloRef.current, null, false);
+                        }}
+                        className={`text-[11px] px-2 py-0.5 rounded-lg border font-mono ${hedef ? 'cursor-pointer hover:underline' : 'cursor-default'} ${secili ? 'ring-2 ring-[var(--accent)]' : ''} ${c.beklenmeyen ? 'bg-amber-50 text-amber-800 border-amber-300' : ''} ${c.veriYok ? 'border-dashed' : ''}`}
+                        style={
+                          c.beklenmeyen
+                            ? undefined
+                            : {
+                                borderColor: c.veriYok ? 'var(--border)' : 'var(--border-subtle)',
+                                background: 'var(--bg-elevated)',
+                                color: c.apps ? 'var(--text-secondary)' : 'var(--text-muted)',
+                              }
+                        }
+                        title={
+                          c.beklenmeyen
+                            ? `Beklenmeyen: ${e} ortamının resmi listesinde yok ama ${c.apps} uygulamanın ${e} namespace'i burada`
+                            : c.veriYok
+                              ? `Veri yok: bu cluster'dan hiç kayıt gelmedi (job giriş yapamamış olabilir). Ölçülemedi — n'ye katılmadı.`
+                              : `${c.apps} uygulama`
+                        }
+                      >
+                        {c.cluster}
+                        {!c.veriYok && (
+                          <span className="ml-1 tabular-nums text-[var(--text-muted)]">
+                            ({c.apps})
+                          </span>
+                        )}
+                        {fark > 0 && (
+                          <span
+                            className="ml-1 tabular-nums font-sans font-semibold"
+                            style={{ color: 'var(--status-warning-text)' }}
+                          >
+                            −{fmtNumber(fark)}
+                          </span>
+                        )}
+                        {c.beklenmeyen && (
+                          <span className="ml-1 text-[9px] font-sans font-semibold">
+                            beklenmeyen
+                          </span>
+                        )}
+                        {c.veriYok && (
+                          <span className="ml-1 text-[9px] font-sans font-semibold">veri yok</span>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
@@ -1419,7 +1576,10 @@ function OcpCoverage() {
         </div>
       )}
 
-      <div ref={tabloRef} className="overflow-x-auto rounded-xl border border-[var(--border-subtle)] scroll-mt-4">
+      <div
+        ref={tabloRef}
+        className="overflow-x-auto rounded-xl border border-[var(--border-subtle)] scroll-mt-4"
+      >
         <table className="w-full text-sm pf-table-sticky">
           <thead>
             <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
@@ -1481,11 +1641,11 @@ function OcpCoverage() {
                   // Artik kac cluster'da oldugu yazili; kismi kapsam sari.
                   const { k, n, on, all, beklenmeyen, veriYok } = coverageOf(r, e);
                   const partial = k > 0 && n > 0 && k < n;
-                  const cls = !k
-                    ? 'bg-red-50 text-red-600 border-red-200'
-                    : partial
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  const cls = (() => {
+                    if (!k) return 'bg-red-50 text-red-600 border-red-200';
+                    if (partial) return 'bg-amber-50 text-amber-700 border-amber-200';
+                    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  })();
                   const eksik = all.filter((c) => !on.has(c));
                   return (
                     <td key={e} className="px-3 py-2">
@@ -1493,17 +1653,24 @@ function OcpCoverage() {
                         className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}
                         title={
                           (k
-                            ? `VAR: ${[...on].sort().join(', ')}` +
-                              (eksik.length ? `\nYOK: ${eksik.sort().join(', ')}` : '') +
+                            ? `VAR: ${[...on].sort((a, b) => a.localeCompare(b)).join(', ')}` +
+                              (eksik.length
+                                ? `\nYOK: ${eksik.sort((a, b) => a.localeCompare(b)).join(', ')}`
+                                : '') +
                               `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join('\n')}`
                             : `Bu ortamda hiç yok (${n} cluster tarandı)`) +
-                          (veriYok.length ? `\n\nVeri yok (ölçülemedi, n'ye katılmadı): ${veriYok.join(', ')}` : '')
+                          (veriYok.length
+                            ? `\n\nVeri yok (ölçülemedi, n'ye katılmadı): ${veriYok.join(', ')}`
+                            : '')
                         }
                       >
                         {k ? `${k}/${n}` : 'YOK'}
                       </span>
                       {beklenmeyen.length > 0 && (
-                        <span className="ml-1 text-[10px] px-1 rounded border bg-amber-50 text-amber-800 border-amber-300" title={`${e} ortamının resmi cluster listesinde olmayan cluster'da da var: ${beklenmeyen.join(', ')}`}>
+                        <span
+                          className="ml-1 text-[10px] px-1 rounded border bg-amber-50 text-amber-800 border-amber-300"
+                          title={`${e} ortamının resmi cluster listesinde olmayan cluster'da da var: ${beklenmeyen.join(', ')}`}
+                        >
                           +{beklenmeyen.length} beklenmeyen
                         </span>
                       )}
@@ -1535,13 +1702,14 @@ const SCRIPTS_AUDIT_META = {
     csv: 'init',
     job: 'check_initialize',
     intro:
-      'İnit script\'leri (/vhosting[8]/scripts/initialize) — sha512 referanstan (ekip sürümü ya da çoğunluk) sapanlar.',
+      "İnit script'leri (/vhosting[8]/scripts/initialize) — sha512 referanstan (ekip sürümü ya da çoğunluk) sapanlar.",
   },
   deploy: {
     api: (root: string) => denetimApi.deployScripts(root),
     csv: 'deployment',
     job: 'check_deployment_scripts',
-    intro: 'Deployment script\'leri (/vhosting[8]/HYSUXSCRIPTS/*.sh: was_startstop.sh, was_fulldeploy_*.sh …) — sha512 çoğunluktan sapanlar.',
+    intro:
+      "Deployment script'leri (/vhosting[8]/HYSUXSCRIPTS/*.sh: was_startstop.sh, was_fulldeploy_*.sh …) — sha512 çoğunluktan sapanlar.",
   },
 } as const;
 function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
@@ -1559,20 +1727,23 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
   // ekrandan itiyordu. Sayi hep gorunur; adlar istenince aciliyor.
   const [openMissing, setOpenMissing] = useState<string | null>(null);
 
-  const load = useCallback(async (r: string) => {
-    setLoading(true);
-    try {
-      const res = await meta.api(r);
-      if (res.ok) {
-        setData(res);
-        setErr('');
-      } else setErr(res.message || 'Veri alınamadı.');
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [meta]);
+  const load = useCallback(
+    async (r: string) => {
+      setLoading(true);
+      try {
+        const res = await meta.api(r);
+        if (res.ok) {
+          setData(res);
+          setErr('');
+        } else setErr(res.message || 'Veri alınamadı.');
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [meta],
+  );
 
   useAsyncEffect(async () => {
     await load(root);
@@ -1584,7 +1755,8 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
   // gorunmez ve ekran eskisi gibi calisir.
   const [cls, setCls] = useState<'genel' | 'ozel'>('genel');
   const shown = useMemo(
-    () => (cls === 'ozel' && data?.special ? ({ ...data, ...data.special } as InitScriptsResult) : data),
+    () =>
+      cls === 'ozel' && data?.special ? ({ ...data, ...data.special } as InitScriptsResult) : data,
     [data, cls],
   );
 
@@ -1632,8 +1804,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
       .sort((a, b) => b.deviationCount - a.deviationCount || a.host.localeCompare(b.host));
   }, [shown, q, onlyDiff]);
 
-  if (loading && !data)
-    return <LoadingLogo />;
+  if (loading && !data) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -1807,8 +1978,11 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
       </div>
 
       <div className="text-xs text-[var(--text-muted)]">
-        {meta.intro} Kaynak job: <code>{meta.job}</code>{data?.scanDate ? ` · son tarama ${data.scanDate.split('-').reverse().join('.')}` : ''}.
-        {data?.message && data.hosts === 0 && <span className="ml-1 text-amber-700">{data.message}</span>}
+        {meta.intro} Kaynak job: <code>{meta.job}</code>
+        {data?.scanDate ? ` · son tarama ${data.scanDate.split('-').reverse().join('.')}` : ''}.
+        {data?.message && data.hosts === 0 && (
+          <span className="ml-1 text-amber-700">{data.message}</span>
+        )}
       </div>
 
       {data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}
@@ -1827,7 +2001,11 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
             }
             tone="ok"
           />
-          <Stat n={shown!.hosts - shown!.identicalHosts} l="en az bir script'te farklı" tone="warn" />
+          <Stat
+            n={shown!.hosts - shown!.identicalHosts}
+            l="en az bir script'te farklı"
+            tone="warn"
+          />
           <Stat n={shown!.totalVariants} l="toplam farklı sürüm" />
         </div>
       )}
@@ -1918,7 +2096,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                               }`}
                               title={
                                 sc.referenceSource === 'ekip'
-                                  ? 'Ekip sürümü: depodaki dosyanın (bmw_wds_scripts/initialize/files) normalleştirilmiş hash\'i'
+                                  ? "Ekip sürümü: depodaki dosyanın (bmw_wds_scripts/initialize/files) normalleştirilmiş hash'i"
                                   : 'Ekip sürümü bilinmiyor; en yaygın sürüm referans alındı'
                               }
                             >
@@ -1967,7 +2145,10 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                         </span>
                       )}
                       {(sc.crlfCount || 0) > 0 && (
-                        <span className="ml-1.5 text-amber-700" title="Betikte CR var: çalışmayabilir">
+                        <span
+                          className="ml-1.5 text-amber-700"
+                          title="Betikte CR var: çalışmayabilir"
+                        >
                           {sc.crlfCount} CRLF
                         </span>
                       )}
@@ -1995,69 +2176,74 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                           {sc.variants.map((v, i) => {
                             // isReference yoksa (eski yanit / Deployment) ilk surum cogunluktur.
                             const isRef = v.isReference ?? i === 0;
-                            const refIdx = sc.variants.filter((x, j) => (x.isReference ?? j === 0)).length;
+                            const refIdx = sc.variants.filter(
+                              (x, j) => x.isReference ?? j === 0,
+                            ).length;
                             return (
-                            <div
-                              key={v.hash}
-                              className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-                            >
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                                    sc.perServer
-                                      ? 'bg-violet-50 text-violet-700 border-violet-200'
+                              <div
+                                key={v.hash}
+                                className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                      sc.perServer
+                                        ? 'bg-violet-50 text-violet-700 border-violet-200'
+                                        : isRef
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}
+                                  >
+                                    {sc.perServer
+                                      ? `sürüm ${i + 1}`
                                       : isRef
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                                  }`}
-                                >
-                                  {sc.perServer
-                                    ? `sürüm ${i + 1}`
-                                    : isRef
-                                      ? sc.referenceSource === 'ekip'
-                                        ? 'ekip sürümü'
-                                        : 'çoğunluk'
-                                      : `farklı sürüm ${i + 1 - refIdx}`}
-                                </span>
-                                <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">
-                                  {v.hash.slice(0, 32)}…
-                                </span>
-                                <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
-                                  {v.count} sunucu
-                                </span>
-                              </div>
-                              <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
-                                {v.hosts.slice(0, 40).join(', ')}
-                                {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
-                              </div>
-                              {(v.rawVariants || []).length > 1 && (
-                                <div className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-1.5">
-                                  <div className="text-[10px] text-[var(--text-muted)]">
-                                    Aynı içerik, {v.rawVariants!.length} farklı bayt biçimi (satır
-                                    sonu / boşluk)
-                                    {!sc.perServer && isRef
-                                      ? ' — referansla aynı içerik, sapma sayılmaz:'
-                                      : sc.perServer
-                                        ? ':'
-                                        : ' — içerik referanstan farklı, bu sunucular sapan sayılır:'}
-                                  </div>
-                                  {v.rawVariants!.map((rv) => (
-                                    <div key={rv.hash} className="flex items-start gap-2 text-[11px]">
-                                      <span className="font-mono text-[var(--text-muted)] flex-shrink-0">
-                                        {rv.hash.slice(0, 16)}…
-                                      </span>
-                                      <span className="tabular-nums text-[var(--text-muted)] flex-shrink-0">
-                                        {rv.count} sunucu
-                                      </span>
-                                      <span className="font-mono text-[var(--text-secondary)] break-words">
-                                        {rv.hosts.slice(0, 12).join(', ')}
-                                        {rv.hosts.length > 12 && ` … (+${rv.hosts.length - 12})`}
-                                      </span>
-                                    </div>
-                                  ))}
+                                        ? sc.referenceSource === 'ekip'
+                                          ? 'ekip sürümü'
+                                          : 'çoğunluk'
+                                        : `farklı sürüm ${i + 1 - refIdx}`}
+                                  </span>
+                                  <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">
+                                    {v.hash.slice(0, 32)}…
+                                  </span>
+                                  <span className="text-xs text-[var(--text-muted)] tabular-nums ml-auto">
+                                    {v.count} sunucu
+                                  </span>
                                 </div>
-                              )}
-                            </div>
+                                <div className="mt-1.5 text-[11px] text-[var(--text-secondary)] font-mono break-words">
+                                  {v.hosts.slice(0, 40).join(', ')}
+                                  {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
+                                </div>
+                                {(v.rawVariants || []).length > 1 && (
+                                  <div className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-1.5">
+                                    <div className="text-[10px] text-[var(--text-muted)]">
+                                      Aynı içerik, {v.rawVariants!.length} farklı bayt biçimi (satır
+                                      sonu / boşluk)
+                                      {!sc.perServer && isRef
+                                        ? ' — referansla aynı içerik, sapma sayılmaz:'
+                                        : sc.perServer
+                                          ? ':'
+                                          : ' — içerik referanstan farklı, bu sunucular sapan sayılır:'}
+                                    </div>
+                                    {v.rawVariants!.map((rv) => (
+                                      <div
+                                        key={rv.hash}
+                                        className="flex items-start gap-2 text-[11px]"
+                                      >
+                                        <span className="font-mono text-[var(--text-muted)] flex-shrink-0">
+                                          {rv.hash.slice(0, 16)}…
+                                        </span>
+                                        <span className="tabular-nums text-[var(--text-muted)] flex-shrink-0">
+                                          {rv.count} sunucu
+                                        </span>
+                                        <span className="font-mono text-[var(--text-secondary)] break-words">
+                                          {rv.hosts.slice(0, 12).join(', ')}
+                                          {rv.hosts.length > 12 && ` … (+${rv.hosts.length - 12})`}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                           {(sc.crlfHosts || []).length > 0 && (
@@ -2210,18 +2396,18 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                     )}
                   </td>
                   {hasCustomCol && (
-                  <td className="px-3 py-2">
-                    {h.hasCustom ? (
-                      <span
-                        className="text-[11px] font-mono text-violet-700"
-                        title={h.customHash || ''}
-                      >
-                        {(h.customHash || '').slice(0, 10)}…
-                      </span>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">yok</span>
-                    )}
-                  </td>
+                    <td className="px-3 py-2">
+                      {h.hasCustom ? (
+                        <span
+                          className="text-[11px] font-mono text-violet-700"
+                          title={h.customHash || ''}
+                        >
+                          {(h.customHash || '').slice(0, 10)}…
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">yok</span>
+                      )}
+                    </td>
                   )}
                 </tr>
               ))}
@@ -2253,14 +2439,13 @@ function InitDataAge({ data, job }: { data: InitScriptsResult; job: string }) {
   const known = !!data.loadedAt && days !== null && days !== undefined;
   const old = known && (minutes ?? (days as number) * 1440) > INIT_STALE_DAYS * 1440;
   const stale = !known || old;
-  const ne =
-    !known
-      ? ''
-      : (days as number) >= 1
-        ? `${days} gün önce`
-        : minutes !== null && minutes !== undefined && minutes >= 60
-          ? `${Math.floor(minutes / 60)} saat önce`
-          : 'az önce';
+  const ne = !known
+    ? ''
+    : (days as number) >= 1
+      ? `${days} gün önce`
+      : minutes !== null && minutes !== undefined && minutes >= 60
+        ? `${Math.floor(minutes / 60)} saat önce`
+        : 'az önce';
   const kaynak =
     data.referenceSource === 'ekip'
       ? 'ekip sürümü (depo)'
@@ -2280,7 +2465,9 @@ function InitDataAge({ data, job }: { data: InitScriptsResult; job: string }) {
           <>
             {old ? (
               <>
-                <b>Veri {days} gün önce yüklendi — <code>{job}</code> işi çalışmıyor olabilir.</b>{' '}
+                <b>
+                  Veri {days} gün önce yüklendi — <code>{job}</code> işi çalışmıyor olabilir.
+                </b>{' '}
                 Son yükleme: {data.loadedAt}. Sonuçlar güncel olmayabilir; AWX'te son koşunun
                 durumuna bakın.
               </>
@@ -2323,10 +2510,10 @@ function VariantBadge({ sc }: { sc: InitScriptStat }) {
     : tumuSapiyor
       ? 'bg-amber-50 text-amber-700 border-amber-200'
       : n <= 1
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : n <= 3
-        ? 'bg-amber-50 text-amber-700 border-amber-200'
-        : 'bg-red-50 text-red-700 border-red-200';
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : n <= 3
+          ? 'bg-amber-50 text-amber-700 border-amber-200'
+          : 'bg-red-50 text-red-700 border-red-200';
   return (
     <span className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}>
       {n === 0 ? 'hiç yok' : `${n} sürüm`}
@@ -2338,17 +2525,7 @@ function VariantBadge({ sc }: { sc: InitScriptStat }) {
 // `hint`: sayinin NE OLDUGUNU tek cumlede soyler. Etiketler kisa olmak zorunda
 // (kutuya sigmali) ama kisa etiket cogu zaman belirsiz kaliyordu - "Toplam" neyin
 // toplami? Aciklama etiketin ALTINDA duruyor, fare ipucunda gizli degil.
-function Stat({
-  n,
-  l,
-  tone,
-  hint,
-}: {
-  n: number;
-  l: string;
-  tone?: 'ok' | 'warn';
-  hint?: string;
-}) {
+function Stat({ n, l, tone, hint }: { n: number; l: string; tone?: 'ok' | 'warn'; hint?: string }) {
   const color =
     tone === 'ok'
       ? 'text-emerald-600'
@@ -2359,9 +2536,7 @@ function Stat({
     <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3">
       <div className={`text-2xl font-bold tabular-nums ${color}`}>{fmtNumber(n)}</div>
       <div className="text-xs text-[var(--text-secondary)] mt-0.5">{l}</div>
-      {hint && (
-        <div className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">{hint}</div>
-      )}
+      {hint && <div className="text-[10px] text-[var(--text-muted)] mt-1 leading-snug">{hint}</div>}
     </div>
   );
 }

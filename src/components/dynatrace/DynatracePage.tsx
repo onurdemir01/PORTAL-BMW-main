@@ -350,7 +350,7 @@ function ProblemsTab({ env }: { env: string }) {
   // env/status değişince otomatik yenile; host filtresi Enter'a basılınca tetiklenir
   // (sunucu tarafında başlık bazlı metin araması — bkz. server/dynatrace/index.cjs filterProblems).
   useAsyncEffect(async () => {
-    await load();
+    load();
   }, [env, status]);
 
   async function openDetail(id: string, title: string) {
@@ -573,7 +573,7 @@ function EventsTab({ env }: { env: string }) {
   };
 
   useAsyncEffect(async () => {
-    await load();
+    load();
   }, [env, eventType, from]);
 
   return (
@@ -1098,7 +1098,7 @@ function InstanaTab() {
   };
 
   useAsyncEffect(async () => {
-    await load();
+    load();
   }, [env, sub]);
 
   if (configured === false) {

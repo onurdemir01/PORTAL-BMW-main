@@ -167,7 +167,7 @@ test('OS3b mod: enforce 403 (oturum 401 DEGIL), log gecirir, off gecirir', () =>
   const calistir = () => {
     let durum = 0;
     let gecti = false;
-    const res = { status: (s) => ((durum = s), res), json: () => res };
+    const res = { status: (s) => { durum = s; return res; }, json: () => res };
     mw({ ...istek('POST', { origin: 'https://kotu.example' }), originalUrl: '/api/x', path: '/x' }, res, () => (gecti = true));
     return { durum, gecti };
   };

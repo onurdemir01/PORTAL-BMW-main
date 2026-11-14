@@ -108,7 +108,7 @@ async function filoHedefleri() {
   const { getAppsTable } = require('../config/apps-table.cjs');
   const tablo = getAppsTable();
   const r = await query(
-    `SELECT host, env FROM ${tablo.includes('.') ? tablo : `dbo.${tablo}`} WHERE host IS NOT NULL AND LTRIM(RTRIM(host)) <> '' GROUP BY host, env`,
+    `SELECT host, env FROM ${tablo.includes('.') ? tablo : ("dbo." + tablo)} WHERE host IS NOT NULL AND LTRIM(RTRIM(host)) <> '' GROUP BY host, env`,
   );
   return hedefleriDuzle((r.recordset || []).map((x) => ({ host: x.host, ortam: x.env })));
 }
@@ -297,11 +297,7 @@ async function kosuOlustur({
   if (!liste.length)
     throw hata(
       422,
-      k === 'SORUNLU'
-        ? 'Sorunlu sunucu yok: hepsinin son taraması tam (ya da kök yok).'
-        : k.startsWith('ORTAM:')
-          ? `Seçilen ortamlarda sunucu yok (${k.slice(6)}).`
-          : 'Taranacak sunucu yok (envanter boş ya da liste boş).',
+      (() => { if (k === 'SORUNLU') return 'Sorunlu sunucu yok: hepsinin son taraması tam (ya da kök yok).'; if (k.startsWith('ORTAM:')) return `Seçilen ortamlarda sunucu yok (${k.slice(6)}).`; return 'Taranacak sunucu yok (envanter boş ya da liste boş).'; })(),
       'hedef_yok',
     );
   const partiler = partilereBol(liste, kip === 'TAM' ? a.parti_tam : a.parti_ozet);
@@ -387,14 +383,12 @@ function extraVarsOf(kosu, parti) {
     ...(p.baglanti_kontrolu === 'ACIK' ? { ear_baglanti_kontrol: true } : {}),
     ...(p.was_kokler ? { ear_was_kokler: p.was_kokler } : {}),
     // Faz W yalniz aciksa (kapaliyken extra_vars eskisiyle birebir).
-    ...(p.web_kontrolu === 'ACIK'
-      ? {
+    ...(() => { if (p.web_kontrolu === 'ACIK') return {
           ear_web_kontrol: true,
           ...(p.web_hc ? { ear_web_hc: p.web_hc } : {}),
           ...(p.web_kokler ? { ear_web_kokler: p.web_kokler } : {}),
           ...(p.web_okuma_kullanicisi ? { ear_web_okuma_kullanicisi: p.web_okuma_kullanicisi } : {}),
-        }
-      : {}),
+        }; return {}; })(),
   };
 }
 
@@ -503,11 +497,7 @@ async function launchSonucunuBagla(kosu, parti, sonuc) {
   const neden = yazimHatasi
     ? `AWX işi başladı; job kimliği normal yoldan yazılamadı: ${M(maskele(yazimHatasi.message), 500)}`
     : 'AWX işi başladıktan sonra koşu/parti sahipliği kaybedildi';
-  let uzlasma = jobId == null
-    ? `${neden}; AWX job kimliği yok, iptal doğrulanamadı`
-    : iptalEdildi
-      ? `${neden}; AWX iptali istendi`
-      : `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi && iptalHatasi.message), 300) || 'bilinmeyen hata'}`;
+  let uzlasma = (() => { if (jobId == null) return `${neden}; AWX job kimliği yok, iptal doğrulanamadı`; if (iptalEdildi) return `${neden}; AWX iptali istendi`; return `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi && iptalHatasi.message), 300) || 'bilinmeyen hata'}`; })();
   let uzlasmaKaydi = false;
   try {
     const kurtarma = await db().query(
@@ -588,16 +578,8 @@ async function hostuAl(kosu, parti, hedef, statsHost, dizin, isNotu) {
     const paketVardi =
       statsHost &&
       (statsHost.paket === true || statsHost.paket === 'True' || statsHost.paket === 'true');
-    const durum = paketVardi
-      ? 'OKUNAMADI'
-      : playbookDurum && playbookDurum !== 'SONUC'
-        ? playbookDurum
-        : 'SONUC_YOK';
-    const neden = paketVardi
-      ? "playbook paketi yazdığını bildirdi ama dosya /sw'de yok"
-      : statsHost
-        ? M(maskele(statsHost.hata), 600) || null
-        : isNotu || 'bu host için sonuç gelmedi';
+    const durum = (() => { if (paketVardi) return 'OKUNAMADI'; if (playbookDurum && playbookDurum !== 'SONUC') return playbookDurum; return 'SONUC_YOK'; })();
+    const neden = (() => { if (paketVardi) return "playbook paketi yazdığını bildirdi ama dosya /sw'de yok"; if (statsHost) return M(maskele(statsHost.hata), 600) || null; return isNotu || 'bu host için sonuç gelmedi'; })();
     return alim.bosHostKaydi({
       partiNo: parti.parti_no,
       ortam: hedef.ortam,
@@ -637,9 +619,7 @@ async function partiyiAl(kosu, parti, st) {
   const { harita, uyusmazlik } = statsHaritasi(stats, kosu, parti);
   const dizin = parametreler(kosu).dizin || alim.earDizin();
   const isNotu =
-    st && st.status && st.status !== 'successful'
-      ? `AWX işi ${st.status}${st.jobExplanation ? `: ${M(maskele(st.jobExplanation), 300)}` : ''}`
-      : null;
+    (() => { if (st && st.status && st.status !== 'successful') return `AWX işi ${st.status}${st.jobExplanation ? (": " + M(maskele(st.jobExplanation), 300)) : ''}`; return null; })();
   let veri = 0;
   for (const hedef of hostlarOf(parti)) {
     const kayit = await hostuAl(kosu, parti, hedef, harita.get(hedef.host) || null, dizin, isNotu);

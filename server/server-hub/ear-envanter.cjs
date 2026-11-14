@@ -200,7 +200,8 @@ const eskiParametreler = (q) => ({ ortam: q.ortam, jboss: q.jboss, durum: q.duru
 
 /** WAR satiri istemciye kutuphane set izi olmadan gider (ic anahtar). */
 function setsiz(r) {
-  const { kutuphane_seti: _iz, ...x } = r;
+  const x = { ...r };
+  delete x.kutuphane_seti;
   return x;
 }
 
@@ -531,13 +532,7 @@ function mount(router, { launch, audit } = {}) {
         return [await oku(a), await oku(b)];
       });
       const neden = (x) =>
-        x.kip !== 'TAM'
-          ? `${x.host}: ÖZET taramada dosya ağacı tutulmaz; TAM tarama gerekir.`
-          : x.u.durum !== 'TAM'
-            ? `${x.host}: tarama eksik (${x.u.durum}); dosya farkı güvenilir olmaz.`
-            : eslenikMotoru.yapiIzi(x.u.satirlar) !== String(x.u.yapi_izi || '')
-              ? `${x.host}: ağaç satırları tarayıcının yapı iziyle tutmuyor; fark hesaplanamadı.`
-              : null;
+        { if (x.kip !== 'TAM') return `${x.host}: ÖZET taramada dosya ağacı tutulmaz; TAM tarama gerekir.`; if (x.u.durum !== 'TAM') return `${x.host}: tarama eksik (${x.u.durum}); dosya farkı güvenilir olmaz.`; if (eslenikMotoru.yapiIzi(x.u.satirlar) !== String(x.u.yapi_izi || '')) return `${x.host}: ağaç satırları tarayıcının yapı iziyle tutmuyor; fark hesaplanamadı.`; return null; };
       const engel = neden(sonuc[0]) || neden(sonuc[1]);
       if (engel) return res.json({ ok: true, hesaplanamadi: engel });
       res.json({
@@ -708,7 +703,7 @@ function mount(router, { launch, audit } = {}) {
             eslenik: await eslenikMotoru.analiz({ kosu }),
           }),
         );
-        ad = `ear-envanter_${kosu ? `kosu${kosu}` : 'son'}_${damga()}.zip`;
+        ad = `ear-envanter_${kosu ? 'kosu' + kosu : 'son'}_${damga()}.zip`;
       }
       const zip = zipOlustur(girisler, { sinirBayt: 256 * 1024 * 1024 });
       denetim(req, {

@@ -252,14 +252,11 @@ function parseResourceLines(lines) {
 
 /** Plan TEMIZ mi: RESPLAN ok + RESEND ok + sha ve jeton bicimi dogru. */
 function planTemizMi(res) {
-  const p = res && res.plan;
+  const p = res?.plan;
   return !!(
-    p &&
-    p.durum === 'ok' &&
+    p?.durum === 'ok' &&
     HEX64.test(p.dosyaSha) &&
-    HEX64.test(p.jeton) &&
-    res.end &&
-    res.end.islem === 'resources_plan' &&
+    HEX64.test(p.jeton) && res.end?.islem === 'resources_plan' &&
     res.end.sonuc === 'ok'
   );
 }
@@ -373,7 +370,7 @@ function planSonucu(serverId, jobId, res, username, simdi = Date.now(), bittiAni
     // kayitli riskli yol - biri yeter (ayri onay kutusu sunucuda zorunlu, karar 1).
     riskli:
       !!res.plan.riskli ||
-      (res.affect || []).some((a) => a && a.riskli) ||
+      (res.affect || []).some((a) => a?.riskli) ||
       R.riskliYol(istek.bilesen),
     bekleyen: res.plan.bekleyen || '',
     planIsi: anahtar,
@@ -446,7 +443,7 @@ async function isKaydiBul(db, serverId, jobId) {
     `SELECT TOP 1 username, template_name FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
     [Number(jobId), Number(serverId)],
   );
-  if (!rows || !rows.length) return null;
+  if (!rows?.length) return null;
   const c = sablonAdiCoz(rows[0].template_name);
   if (!c) return { yabanci: true };
   return { username: rows[0].username || '', tenantKey: c.tenantKey, action: c.action };
@@ -468,13 +465,13 @@ function isErisimKarari({ kayit, user, gorunen, tenantOf, isOpen, nodeGorunen = 
   const tenant = tenantOf(kayit.tenantKey);
   if (!tenant) return { izin: false, status: 403, mesaj: 'İşin ortamı tanınmadı — erişim verilmedi.' };
   if (NODE_ISLERI.includes(kayit.action)) {
-    const goruyor = tenant.app === 'metaco' && ((gorunen && gorunen.has('metaco')) || nodeGorunen === true);
+    const goruyor = tenant.app === 'metaco' && ((gorunen?.has('metaco')) || nodeGorunen === true);
     if (!goruyor) return { izin: false, status: 403, mesaj: 'Bu alana erişiminiz yok (Metaco).' };
     if (typeof nodeAcik !== 'function' || !nodeAcik(tenant)) {
       return { izin: false, status: 403, closed: true, mesaj: 'kapali' };
     }
   } else {
-    if (!gorunen || !gorunen.has(tenant.app)) {
+    if (!gorunen?.has(tenant.app)) {
       return {
         izin: false,
         status: 403,
@@ -572,14 +569,14 @@ async function kilitAl(db, { tenantKey, release, username, lockId }) {
         AND (held IS NULL OR held = 0 OR locked_until IS NULL OR locked_until < GETUTCDATE())`,
     [key, username, lockId],
   );
-  if (r && r.rowCount > 0) return { durum: 'alindi', key };
+  if (r?.rowCount > 0) return { durum: 'alindi', key };
   const sec = async () =>
     db.query(
       `SELECT TOP 1 held, holder, awx_server_id, awx_job_id, locked_until FROM crypto_hub_locks WHERE lock_key = $1`,
       [key],
     );
   const s = await sec();
-  if (s.rows && s.rows.length) return { durum: 'mesgul', key, sahip: s.rows[0] };
+  if (s.rows?.length) return { durum: 'mesgul', key, sahip: s.rows[0] };
   try {
     await db.query(
       `INSERT INTO crypto_hub_locks (lock_key, tenant_key, release_name, held, holder, lock_id, locked_until)
@@ -590,7 +587,7 @@ async function kilitAl(db, { tenantKey, release, username, lockId }) {
   } catch (e) {
     // Yaris: arada baskasi ekledi (UNIQUE). Satir varsa mesgul; yoksa gercek hata.
     const s2 = await sec();
-    if (s2.rows && s2.rows.length) return { durum: 'mesgul', key, sahip: s2.rows[0] };
+    if (s2.rows?.length) return { durum: 'mesgul', key, sahip: s2.rows[0] };
     throw e;
   }
 }
@@ -601,12 +598,12 @@ async function kilitOku(db, tenantKey, release) {
     `SELECT TOP 1 held, holder, awx_server_id, awx_job_id, locked_until FROM crypto_hub_locks WHERE lock_key = $1`,
     [kilitAnahtari(tenantKey, release)],
   );
-  return r && r.rows && r.rows.length ? r.rows[0] : null;
+  return r?.rows?.length ? r.rows[0] : null;
 }
 
 /** Satir tutuluyor ve suresi dolmamis mi (locked_until UTC). */
 function kilitAktifMi(row, simdi = Date.now()) {
-  if (!row || !row.held) return false;
+  if (!row?.held) return false;
   const t = row.locked_until == null ? NaN : new Date(row.locked_until).getTime();
   return Number.isFinite(t) && t > simdi;
 }
@@ -617,7 +614,7 @@ async function tutulanKilitler(db) {
     `SELECT TOP 50 lock_key, awx_server_id, awx_job_id FROM crypto_hub_locks WHERE held = 1 AND awx_job_id IS NOT NULL`,
     [],
   );
-  return (r && r.rows) || [];
+  return (r?.rows) || [];
 }
 
 async function kilitIseBagla(db, key, lockId, serverId, jobId) {
@@ -635,7 +632,7 @@ async function kilitBirak(db, key, lockId, sonuc) {
       WHERE lock_key = $1 AND lock_id = $2 AND held = 1`,
     [key, lockId, String(sonuc || '').slice(0, 64)],
   );
-  return !!(r && r.rowCount > 0);
+  return !!(r?.rowCount > 0);
 }
 
 /**
@@ -650,7 +647,7 @@ async function kilitBirakIs(db, serverId, jobId, sonuc) {
       WHERE awx_server_id = $1 AND awx_job_id = $2 AND held = 1`,
     [Number(serverId), Number(jobId), String(sonuc || '').slice(0, 64)],
   );
-  return !!(r && r.rowCount > 0);
+  return !!(r?.rowCount > 0);
 }
 
 // ── helm_template onizlemesi: Secret maskesi ────────────────────────────────────────
@@ -721,14 +718,14 @@ function maskeleManifest(lines, sirRe) {
       }
     }
     const ad = /^(\s*)-?\s*name:\s*["']?([A-Za-z0-9_.-]+)["']?\s*$/.exec(l);
-    if (ad && sirRe && sirRe.test(ad[2])) {
+    if (sirRe?.test(ad?.[2])) {
       envSir = i;
       out.push(l);
       continue;
     }
     if (envSir >= 0 && i - envSir <= 2) {
       const v = /^(\s*)(-\s*)?value:\s*(.*)$/.exec(l);
-      if (v && v[3].trim() && v[3].trim() !== '|' && v[3].trim() !== '>') {
+      if (v?.[3].trim() && v[3].trim() !== '|' && v[3].trim() !== '>') {
         out.push(`${v[1]}${v[2] || ''}value: ****`);
         envSir = -1;
         continue;
@@ -741,7 +738,7 @@ function maskeleManifest(lines, sirRe) {
       }
     }
     const k = /^(\s*-?\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/.exec(l);
-    if (k && sirRe && sirRe.test(k[2])) {
+    if (sirRe?.test(k?.[2])) {
       const d = k[3];
       if (d === '|' || d === '>' || d === '|-' || d === '>-') {
         out.push(`${k[1]}${k[2]}: ****`);

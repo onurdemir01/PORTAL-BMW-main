@@ -56,8 +56,8 @@ function motorSatiri(o: NlOnKontrol, motor: NlMotor): Kontrol {
  *  yayinlar) "kaldı": sunucunun `!(toplam > 0)` engeliyle ayni anlam; 0 === 0 "geçti" sayilmaz. */
 function yollarSatiri(o: NlOnKontrol): Kontrol {
   return {
-    ad: 'Senaryo yolları 200', sonuc: o.yollarToplam == null ? 'yok' : !(o.yollarToplam > 0) ? 'kaldi' : o.yollar200 == null ? 'yok' : o.yollar200 === o.yollarToplam ? 'gecti' : 'uyari',
-    deger: o.yollarToplam == null ? undefined : !(o.yollarToplam > 0) ? 'hiçbir yol denenmedi' : `${fmtNumber(o.yollar200)} / ${fmtNumber(o.yollarToplam)}`,
+    ad: 'Senaryo yolları 200', sonuc: (() => { if (o.yollarToplam == null) return 'yok'; if (o.yollarToplam <= 0) return 'kaldi'; if (o.yollar200 == null) return 'yok'; if (o.yollar200 === o.yollarToplam) return 'gecti'; return 'uyari'; })(),
+    deger: (() => { if (o.yollarToplam == null) return undefined; if (o.yollarToplam <= 0) return 'hiçbir yol denenmedi'; return `${fmtNumber(o.yollar200)} / ${fmtNumber(o.yollarToplam)}`; })(),
   };
 }
 /** Tur 4: yuk sunucusundaki arac kopyasi (Portal'in sha256'siyla dogrulama). Dogrulandi ve hata yok: gecti (ilk 12 hane);

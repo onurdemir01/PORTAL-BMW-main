@@ -80,9 +80,7 @@ function regexpMetinlerindeGeriAlma(kaynak) {
     ara = bas + 1;
     const satir = kaynak.slice(satirBasi(bas), bas);
     if (/^\s*\/\/|(^|\s)\/\/\s/.test(satir)) continue;
-    let i = bas + 'new RegExp('.length;
-    let derinlik = 1;
-    while (i < kaynak.length && derinlik > 0) {
+    for (let i = bas + 'new RegExp('.length, derinlik = 1; i < kaynak.length && derinlik > 0; i += 1) {
       const c = kaynak[i];
       if (c === '(') derinlik += 1;
       else if (c === ')') derinlik -= 1;
@@ -106,7 +104,6 @@ function regexpMetinlerindeGeriAlma(kaynak) {
         }
         i = j;
       }
-      i += 1;
     }
   }
   return bulgular;

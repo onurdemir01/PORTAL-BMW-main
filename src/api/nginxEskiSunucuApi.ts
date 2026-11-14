@@ -55,7 +55,7 @@ export function eskiGizliKaydet<T>(kaynak: EskiKaynak) {
 export function eskiGizliBirlesik(kaynaklar: readonly EskiKaynak[]): EskiGizli | null {
   const var_ = kaynaklar.map((k) => durum.get(k)).filter(Boolean) as EskiGizli[];
   if (!var_.length) return null;
-  const hostlar = [...new Set(var_.flatMap((e) => e.hostlar || []))].sort();
+  const hostlar = [...new Set(var_.flatMap((e) => e.hostlar || []))].sort((a, b) => a.localeCompare(b));
   return {
     sayi: Math.max(hostlar.length, ...var_.map((e) => e.sayi || 0)),
     hostlar,

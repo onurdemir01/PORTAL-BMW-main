@@ -81,7 +81,7 @@ test('YTE-5 Admin olmayan icin is baslatan / silen dugme cizilmez', () => {
   // Govde tek satirda (`&& <YeniKosu`) ya da parantezli blokta (`&& (` ... `<YeniKosu` ... `)}`) olabilir.
   const yeniKapi = "{etkin === 'yeni' && isAdmin && ";
   const yi = tab.indexOf(yeniKapi);
-  const yeniGovde = yi < 0 ? '' : tab.slice(yi + yeniKapi.length, tab.indexOf(')}', yi) < 0 ? undefined : tab.indexOf(')}', yi));
+  const yeniGovde = (() => { if (yi < 0) return ''; return tab.slice(yi + yeniKapi.length, tab.indexOf(')}', yi) < 0 ? undefined : tab.indexOf(')}', yi)); })();
   assert.ok(yeniGovde.startsWith('<YeniKosu') || (yeniGovde.startsWith('(') && yeniGovde.includes('<YeniKosu')), "'Yeni koşu' govdesi isAdmin kapisindan gecmiyor");
   assert.equal(tab.split('<YeniKosu').length - 1, 1, "'Yeni koşu' govdesi ikinci (kapisiz) bir yerde ciziliyor");
   const ayr = oku(...NGINX, 'yukTesti', 'KosuAyrinti.tsx');

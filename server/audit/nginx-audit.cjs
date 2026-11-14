@@ -296,7 +296,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     if (h) excMap.set(h, {
       note: String(e.note || ''),
       by: e.updated_by || e.created_by || null,
-      at: e.updated_at ? new Date(e.updated_at).toISOString() : (e.created_at ? new Date(e.created_at).toISOString() : null),
+      at: (() => { if (e.updated_at) return new Date(e.updated_at).toISOString(); if (e.created_at) return new Date(e.created_at).toISOString(); return null; })(),
     });
   }
 
@@ -346,7 +346,7 @@ function summarizeAudit({ hosts, servers, locations, upstreams, settings, files,
     const total = parts.reduce((a, x) => a + x[2], 0);
     h.complianceParts = parts.map(([label, ok, tot]) => ({ label, ok: Math.max(0, ok), total: tot, pct: tot > 0 ? Math.round((Math.max(0, ok) / tot) * 100) : null }));
     h.complianceChecks = total;
-    h.compliance = h.status === 'fail' ? 0 : (total > 0 ? Math.round((passed / total) * 100) : null);
+    h.compliance = (() => { if (h.status === 'fail') return 0; if (total > 0) return Math.round((passed / total) * 100); return null; })();
   }
   list.sort((a, b) => b.issues - a.issues || a.host.localeCompare(b.host));
 

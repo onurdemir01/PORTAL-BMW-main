@@ -302,11 +302,10 @@ const SOURCES = {
           const hosts = kurulu.get(a);
           const cls = kesifte.get(a);
           const parca = [
-            hosts ? `Sunucuda kurulu: ${[...hosts].sort().join(', ')}`
-              : sunucu ? 'Sunucuda kurulu değil' : 'Sunucu taraması okunamadı',
+            (() => { if (hosts) return `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`; if (sunucu) return 'Sunucuda kurulu değil'; return 'Sunucu taraması okunamadı'; })(),
             ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
           ];
-          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort().join(', ')})`);
+          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')})`);
           if (!isSpaApp(a)) parca.push('ad standardı dışı');
           return {
             value: a,
@@ -453,7 +452,8 @@ const SOURCES = {
             .filter(Boolean),
         ),
       ];
-      return svcs.sort().map((s) => ({ value: s, label: s }));
+      svcs.sort((a, b) => Number(a > b) - Number(a < b));
+      return svcs.map((s) => ({ value: s, label: s }));
     },
   },
 
@@ -524,8 +524,8 @@ const SOURCES = {
         if (conf) confs.add(conf);
       }
       const out = [];
-      for (const v of [...locs].sort()) out.push({ value: v, label: v, group: 'API yolu' });
-      for (const v of [...confs].sort())
+      for (const v of [...locs].sort((a, b) => Number(a > b) - Number(a < b))) out.push({ value: v, label: v, group: 'API yolu' });
+      for (const v of [...confs].sort((a, b) => Number(a > b) - Number(a < b)))
         out.push({ value: v, label: v, group: 'Konfigürasyon dosyası' });
       return out;
     },
@@ -726,7 +726,7 @@ function kokYolu(locs, zonlar) {
   const say = new Map();
   for (const z of zonlar || []) {
     const m = /^(.*)_(?:rate|location)_limit$/.exec(String(z || '').trim());
-    if (!m || !m[1].includes('/')) continue;
+    if (!m?.[1].includes('/')) continue;
     const govde = m[1].startsWith('/') ? m[1] : `/${m[1]}`;
     say.set(govde, (say.get(govde) || 0) + 1);
   }
@@ -768,7 +768,7 @@ function confZonelari(rows, hosts, conf) {
     if (T(r.ip_zone)) out.add(T(r.ip_zone));
     if (T(r.server_zone)) out.add(T(r.server_zone));
   }
-  return [...out].sort();
+  return [...out].sort((a, b) => Number(a > b) - Number(a < b));
 }
 
 /**
@@ -842,7 +842,7 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
       ? kokYol
       : '';
-  const deger = (set) => [...set].sort().join(' / ');
+  const deger = (set) => [...set].sort((a, b) => Number(a > b) - Number(a < b)).join(' / ');
   const uclar = [...uc.values()]
     .map((e) => ({
       yol: e.yol,
@@ -874,8 +874,8 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     zoneBilgisi,
     zoneKirpildi: !!opts.zoneKirpildi,
     zonelar: {
-      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort(),
-      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort(),
+      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
+      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
     },
     // 'degisiklik' (rate_limit_change) | 'bilgi' (read: hicbir sey degismez, panel dili buna gore)
     mod: opts.mod === 'bilgi' ? 'bilgi' : 'degisiklik',
@@ -979,12 +979,12 @@ async function loadChoiceDetails(sourceName, params, value) {
  */
 function paramsFromValues(choicesSource, values) {
   const out = {};
-  const map = (choicesSource && choicesSource.params) || {};
+  const map = (choicesSource?.params) || {};
   for (const [param, fieldName] of Object.entries(map)) {
-    out[param] = values ? values[String(fieldName)] : undefined;
+    out[param] = values?.[String(fieldName)];
   }
   // Sabit secenekler (admin ekraninda girilen; or. tenant=ark) parametrelere eklenir.
-  for (const [k, v] of Object.entries((choicesSource && choicesSource.options) || {})) {
+  for (const [k, v] of Object.entries((choicesSource?.options) || {})) {
     if (String(v ?? '').trim()) out[k] = String(v).trim();
   }
   return out;
@@ -995,7 +995,7 @@ function paramsFromValues(choicesSource, values) {
  * cevap vermezse {status:503} (fail-closed). Bos choicesSource -> dogrulama yok.
  */
 async function assertValueInSource(choicesSource, value, values, label) {
-  if (!choicesSource || !choicesSource.source) return;
+  if (!choicesSource?.source) return;
   let choices;
   try {
     choices = await loadChoices(choicesSource.source, paramsFromValues(choicesSource, values));

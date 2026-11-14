@@ -109,7 +109,7 @@ def uyar(metin):
         DURUM['uyarilar'].append(metin[:300])
 
 
-def M(v, n):
+def kisalt(v, n):
     return ('' if v is None else str(v))[:n]
 
 
@@ -201,42 +201,53 @@ def esle(desen):
 
 # ── SURECLER (/proc) ─────────────────────────────────────────────────────────────────────────────
 
+def _bayrak_uygula(kayit, a, sonraki):
+    if a == '-d':
+        kayit['kok'] = sonraki[:400]
+    elif a == '-f':
+        kayit['conf'] = sonraki[:400]
+    else:
+        kayit['tanimlar'].append(sonraki[:64])
+
+
+def _httpd_argv_coz(argv):
+    kayit = {'argv0': argv[0][:400], 'kok': '', 'conf': '', 'tanimlar': []}
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        sonraki = argv[i + 1] if i + 1 < len(argv) else ''
+        if a in ('-d', '-f', '-D') and sonraki:
+            _bayrak_uygula(kayit, a, sonraki)
+            i += 2
+        else:
+            if a.startswith('-D') and len(a) > 2:
+                kayit['tanimlar'].append(a[2:66])
+            i += 1
+    return kayit
+
+
+def _pid_surec_kaydi(pid):
+    veri, _ = oku(os.path.join(PROC, pid, 'cmdline'), 65536)
+    if not veri:
+        return None
+    argv = [metin(x) for x in veri.split(b'\0') if x]
+    if not argv or os.path.basename(argv[0]) not in ('httpd', 'httpd.worker', 'httpd.event', 'apache2'):
+        return None
+    return _httpd_argv_coz(argv)
+
+
 def surecler():
     """Calisan httpd surecleri: [{argv0, kok, conf, tanimlar}], ps_gorunur. hidepid'de surec 'yok' DEGIL."""
     gorunur = os.path.isdir(os.path.join(PROC, '1'))
-    out = []
     try:
         pidler = [x for x in os.listdir(PROC) if x.isdigit()]
     except OSError:
         return [], False
+    out = []
     for pid in pidler:
-        veri, durum = oku(os.path.join(PROC, pid, 'cmdline'), 65536)
-        if not veri:
-            continue
-        argv = [metin(x) for x in veri.split(b'\0') if x]
-        if not argv:
-            continue
-        ad = os.path.basename(argv[0])
-        if ad not in ('httpd', 'httpd.worker', 'httpd.event', 'apache2'):
-            continue
-        kayit = {'argv0': argv[0][:400], 'kok': '', 'conf': '', 'tanimlar': []}
-        i = 1
-        while i < len(argv):
-            a = argv[i]
-            sonraki = argv[i + 1] if i + 1 < len(argv) else ''
-            if a in ('-d', '-f', '-D') and sonraki:
-                if a == '-d':
-                    kayit['kok'] = sonraki[:400]
-                elif a == '-f':
-                    kayit['conf'] = sonraki[:400]
-                else:
-                    kayit['tanimlar'].append(sonraki[:64])
-                i += 2
-                continue
-            if a.startswith('-D') and len(a) > 2:
-                kayit['tanimlar'].append(a[2:66])
-            i += 1
-        out.append(kayit)
+        kayit = _pid_surec_kaydi(pid)
+        if kayit is not None:
+            out.append(kayit)
     return out, gorunur
 
 
@@ -257,23 +268,27 @@ def urun_of(*yollar):
 
 # ── APACHE CONFIG AYRISTIRICI ────────────────────────────────────────────────────────────────────
 
+def _tirnak_ici_adim(satir, i, tirnak, cur):
+    c = satir[i]
+    if c == '\\' and i + 1 < len(satir) and satir[i + 1] == tirnak:
+        cur.append(tirnak)
+        return tirnak, i + 2
+    if c == tirnak:
+        return None, i + 1
+    cur.append(c)
+    return tirnak, i + 1
+
+
 def bol(satir):
     """Yonerge satirini argumanlara boler (cift / tek tirnak, kacis)."""
     out, cur, tirnak, i, var = [], [], None, 0, False
     while i < len(satir):
-        c = satir[i]
         if tirnak:
-            if c == '\\' and i + 1 < len(satir) and satir[i + 1] == tirnak:
-                cur.append(tirnak)
-                i += 2
-                continue
-            if c == tirnak:
-                tirnak = None
-            else:
-                cur.append(c)
-        elif c in '"\'':
-            tirnak = c
-            var = True
+            tirnak, i = _tirnak_ici_adim(satir, i, tirnak, cur)
+            continue
+        c = satir[i]
+        if c in '"\'':
+            tirnak, var = c, True
         elif c.isspace():
             if cur or var:
                 out.append(''.join(cur))
@@ -330,7 +345,7 @@ class Kurulum(object):
 
     def hata(self, tur, dosya, satir, deger=''):
         if len(self.hatalar) < LISTE_SINIRI:
-            self.hatalar.append({'tur': tur, 'dosya': M(dosya, 400), 'satir': satir, 'deger': M(deger, 300)})
+            self.hatalar.append({'tur': tur, 'dosya': kisalt(dosya, 400), 'satir': satir, 'deger': kisalt(deger, 300)})
         else:
             self.kesildi = True
 
@@ -370,7 +385,7 @@ class Kurulum(object):
             self.kesildi = True
             return
         veri, durum = oku(yol, CONF_SINIR)
-        self.dosyalar.append({'yol': M(yol, 400), 'durum': durum})
+        self.dosyalar.append({'yol': kisalt(yol, 400), 'durum': durum})
         if veri is None:
             return
         self.okunan.add(gercek)
@@ -399,71 +414,176 @@ class Kurulum(object):
                 continue
             self.yonerge(yol, no2, t, derinlik, baglam)
 
-    def yonerge(self, yol, no, t, derinlik, baglam):
-        y = baglam['yigin_bolum']
-        etkin = all(b['etkin'] for b in y)
-        belirsiz = any(b.get('belirsiz') for b in y)
-        if t.startswith('</'):
-            ad = t[2:].rstrip('>').strip().lower()
-            if y and y[-1]['ad'] == ad:
-                b = y.pop()
-                if ad == 'virtualhost' and b.get('vhost') is not None:
-                    baglam['vhost'] = None
+    def _ifmodule_bolumu(self, arg, yol, no, b):
+        olumsuz = arg.startswith('!')
+        mod = arg.lstrip('!').strip()
+        var = self.modul_var(mod)
+        b['etkin'] = (not var) if olumsuz else var
+        if len(self.if_kararlari) < LISTE_SINIRI:
+            self.if_kararlari.append({'tur': 'IfModule', 'deger': kisalt(arg, 128), 'sonuc': b['etkin'],
+                                      'dosya': kisalt(yol, 400), 'satir': no})
+
+    def _ifdefine_bolumu(self, arg, yol, no, b):
+        olumsuz = arg.startswith('!')
+        tanim = arg.lstrip('!').strip()
+        if tanim in self.tanimlar or tanim in self.degiskenler:
+            var = True
+        elif not self.ps_gorunur:
+            var = not olumsuz
+            b['belirsiz'] = True
+        else:
+            var = False
+        b['etkin'] = (not var) if olumsuz else var
+        if len(self.if_kararlari) < LISTE_SINIRI:
+            self.if_kararlari.append({'tur': 'IfDefine', 'deger': kisalt(arg, 128), 'sonuc': b['etkin'],
+                                      'belirsiz': bool(b.get('belirsiz')), 'dosya': kisalt(yol, 400), 'satir': no})
+
+    def _virtualhost_bolumu(self, p, yol, no, belirsiz, b, baglam):
+        if len(self.vhostlar) >= VHOST_SINIRI:
+            self.kesildi = True
+            b['etkin'] = False
             return
-        if t.startswith('<'):
-            govde = self.genislet(t[1:].rstrip('>').strip())
-            p = bol(govde)
-            ad = p[0].lower() if p else ''
-            arg = ' '.join(p[1:]) if len(p) > 1 else ''
-            b = {'ad': ad, 'etkin': True}
-            if ad == 'ifmodule':
-                olumsuz = arg.startswith('!')
-                mod = arg.lstrip('!').strip()
-                var = self.modul_var(mod)
-                b['etkin'] = (not var) if olumsuz else var
-                if len(self.if_kararlari) < LISTE_SINIRI:
-                    self.if_kararlari.append({'tur': 'IfModule', 'deger': M(arg, 128), 'sonuc': b['etkin'],
-                                              'dosya': M(yol, 400), 'satir': no})
-            elif ad == 'ifdefine':
-                olumsuz = arg.startswith('!')
-                tanim = arg.lstrip('!').strip()
-                if tanim in self.tanimlar or tanim in self.degiskenler:
-                    var = True
-                elif not self.ps_gorunur:
-                    # Komut satiri tanimlari (-D) gorulemedi: blok ISLENIR ama belirsiz isaretlenir.
-                    var = not olumsuz
-                    b['belirsiz'] = True
-                else:
-                    var = False
-                b['etkin'] = (not var) if olumsuz else var
-                if len(self.if_kararlari) < LISTE_SINIRI:
-                    self.if_kararlari.append({'tur': 'IfDefine', 'deger': M(arg, 128), 'sonuc': b['etkin'],
-                                              'belirsiz': bool(b.get('belirsiz')), 'dosya': M(yol, 400), 'satir': no})
-            elif ad == 'virtualhost' and etkin:
-                if len(self.vhostlar) >= VHOST_SINIRI:
-                    self.kesildi = True
-                    b['etkin'] = False
-                else:
-                    v = {'adres': [M(x, 128) for x in p[1:9]], 'server_name': '', 'aliases': [], 'dosya': M(yol, 400),
-                         'satir': no, 'belirsiz': belirsiz, 'access_log': [], 'error_log': '', 'document_root': '',
-                         'hedefler': [], 'ssl': None, 'jk_mount': [], 'mcmp': False}
-                    self.vhostlar.append(v)
-                    b['vhost'] = v
-                    baglam['vhost'] = v
-            elif ad in ('location', 'locationmatch'):
-                b['konum'] = self.genislet(arg)
-            elif ad == 'proxy' and arg.lower().startswith('balancer://'):
-                b['balancer'] = arg[len('balancer://'):].strip('/').lower()
-                self.balancer(b['balancer'], yol, no)
-            y.append(b)
+        v = {'adres': [kisalt(x, 128) for x in p[1:9]], 'server_name': '', 'aliases': [], 'dosya': kisalt(yol, 400),
+             'satir': no, 'belirsiz': belirsiz, 'access_log': [], 'error_log': '', 'document_root': '',
+             'hedefler': [], 'ssl': None, 'jk_mount': [], 'mcmp': False}
+        self.vhostlar.append(v)
+        b['vhost'] = v
+        baglam['vhost'] = v
+
+    def _acilis_etiketi(self, yol, no, t, etkin, belirsiz, baglam):
+        govde = self.genislet(t[1:].rstrip('>').strip())
+        p = bol(govde)
+        ad = p[0].lower() if p else ''
+        arg = ' '.join(p[1:]) if len(p) > 1 else ''
+        b = {'ad': ad, 'etkin': True}
+        if ad == 'ifmodule':
+            self._ifmodule_bolumu(arg, yol, no, b)
+        elif ad == 'ifdefine':
+            self._ifdefine_bolumu(arg, yol, no, b)
+        elif ad == 'virtualhost' and etkin:
+            self._virtualhost_bolumu(p, yol, no, belirsiz, b, baglam)
+        elif ad in ('location', 'locationmatch'):
+            b['konum'] = self.genislet(arg)
+        elif ad == 'proxy' and arg.lower().startswith('balancer://'):
+            b['balancer'] = arg[len('balancer://'):].strip('/').lower()
+            self.balancer(b['balancer'], yol, no)
+        baglam['yigin_bolum'].append(b)
+
+    def _include_yonergesi(self, ad, a, yol, no, derinlik, baglam):
+        desen = self.yol(a[0])
+        if any(c in desen for c in '*?['):
+            bulunan = [x for x in esle(desen) if duzenli_mi(x)[0]]
+            if not bulunan and ad == 'include':
+                self.hata('EKSIK_INCLUDE', yol, no, a[0])
+        elif os.path.isdir(desen):
+            bulunan = [x for x in esle(os.path.join(desen, '*')) if duzenli_mi(x)[0]]
+        else:
+            ok, durum = duzenli_mi(desen)
+            bulunan = [desen] if ok else []
+            if not ok and durum == 'YOK' and ad == 'include':
+                self.hata('EKSIK_INCLUDE', yol, no, a[0])
+            elif not ok and durum != 'YOK':
+                self.hata('INCLUDE_' + (durum or 'HATA'), yol, no, desen)
+        for x in bulunan:
+            self.dosya_isle(x, derinlik + 1, baglam)
+
+    def _proxypass_yonergesi(self, ad, a, konum, hedef_kap, yol, no):
+        if konum is not None and len(a) >= 1 and not a[0].startswith('/'):
+            yolu, url = konum, a[0]
+        elif len(a) >= 2:
+            yolu, url = a[0], a[1]
+        else:
             return
-        if not etkin:
+        if url != '!':
+            self.hedef_ekle(hedef_kap, 'proxy' if ad == 'proxypass' else 'proxymatch', url, yolu, yol, no)
+
+    def _balancermember_yonergesi(self, a, bal, yol, no):
+        ad_b = bal
+        url = a[0]
+        if not ad_b and len(a) >= 2 and a[0].lower().startswith('balancer://'):
+            ad_b, url = a[0][len('balancer://'):].strip('/').lower(), a[1]
+        if ad_b:
+            sema, host, port = url_coz(url)
+            b2 = self.balancer(ad_b, yol, no)
+            if len(b2['uyeler']) < HEDEF_SINIRI:
+                b2['uyeler'].append({'url': kisalt(url, 300), 'sema': sema, 'host': kisalt(host, 256), 'port': port})
+
+    def _jkmount_yonergesi(self, a, konum, v, yol, no):
+        yolu = a[0] if len(a) >= 2 else (konum or '')
+        worker = a[1] if len(a) >= 2 else a[0]
+        kayit = {'yol': kisalt(yolu, 300), 'worker': kisalt(worker, 128), 'dosya': kisalt(yol, 400), 'satir': no}
+        hedef = v['jk_mount'] if v is not None else self.jk_mount_global
+        if len(hedef) < HEDEF_SINIRI:
+            hedef.append(kayit)
+
+    def _vhost_ozel_yonergesi(self, ad, a, v):
+        if v is None:
             return
+        if ad == 'serveralias':
+            for x in a:
+                if len(v['aliases']) < 100:
+                    v['aliases'].append(kisalt(x, 256))
+        elif ad == 'documentroot':
+            v['document_root'] = kisalt(a[0], 400)
+        elif ad == 'sslcertificatefile':
+            y2 = self.yol(a[0])
+            v['ssl'] = {'sertifika': kisalt(y2, 400), 'var': var_mi(y2)}
+
+    def _vhost_veya_ana_yonergesi(self, ad, a, v, hedef_kap, yol, no):
+        if ad == 'listen':
+            adres, port = self.adres_port(a[0])
+            if len(self.dinle) < LISTE_SINIRI:
+                self.dinle.append({'adres': adres, 'port': port, 'dosya': kisalt(yol, 400), 'satir': no})
+        elif ad == 'servername':
+            hedef_kap['server_name'] = kisalt(a[0], 256)
+        elif ad in ('customlog', 'transferlog'):
+            hedef_kap['access_log'].append(kisalt(self.log_yolu(a[0]), 400))
+        elif ad == 'errorlog':
+            hedef_kap['error_log'] = kisalt(self.log_yolu(a[0]), 400)
+        else:
+            self._vhost_ozel_yonergesi(ad, a, v)
+
+    def _eklenti_yonergesi(self, ad, a, v, konum, yol, no):
+        if ad == 'jkworkersfile':
+            self.jk_workers = self.yol(a[0])
+        elif ad == 'jklogfile':
+            self.jk_log = self.log_yolu(a[0])
+        elif ad == 'jkmount':
+            self._jkmount_yonergesi(a, konum, v, yol, no)
+        elif ad == 'jkmountfile':
+            self.jk_mount_dosyasi(self.yol(a[0]), v, yol, no)
+        elif ad == 'webspherepluginconfig':
+            self.was_config = self.yol(a[0])
+
+    def _mc_yonergesi(self, ad, a, v, yol, no):
+        if not (a or ad == 'enablemcpmreceive'):
+            return
+        self.mc[ad] = kisalt(' '.join(a) or 'On', 200)
+        if ad == 'enablemcpmreceive' and v is not None:
+            v['mcmp'] = True
+            self.mc_dinleyen.append({'adres': v['adres'], 'dosya': kisalt(yol, 400), 'satir': no})
+
+    def _arka_uc_yonergesi(self, ad, a, v, hedef_kap, konum, bal, yol, no):
+        if ad in ('proxypass', 'proxypassmatch'):
+            self._proxypass_yonergesi(ad, a, konum, hedef_kap, yol, no)
+        elif ad == 'balancermember' and a:
+            self._balancermember_yonergesi(a, bal, yol, no)
+        elif ad == 'rewriterule' and len(a) >= 3:
+            bayrak = a[2].strip('[]').lower().split(',')
+            if 'p' in bayrak or 'proxy' in bayrak:
+                self.hedef_ekle(hedef_kap, 'rewrite', a[1], a[0], yol, no)
+        elif a and ad in ('jkworkersfile', 'jklogfile', 'jkmount', 'jkmountfile', 'webspherepluginconfig'):
+            self._eklenti_yonergesi(ad, a, v, konum, yol, no)
+        elif ad in MC_YONERGELERI:
+            self._mc_yonergesi(ad, a, v, yol, no)
+
+    def _normal_yonerge(self, yol, no, t, derinlik, baglam):
         p = bol(t)
         if not p:
             return
         ad = p[0].lower()
         a = [self.genislet(x) for x in p[1:]]
+        y = baglam['yigin_bolum']
         v = baglam['vhost']
         hedef_kap = v if v is not None else self.ana
         konum = next((b.get('konum') for b in reversed(y) if b.get('konum')), None)
@@ -476,88 +596,29 @@ class Kurulum(object):
             self.moduller.add(a[0])
             self.moduller.add(os.path.basename(a[1]).replace('.so', '.c'))
         elif ad in ('include', 'includeoptional') and a:
-            # httpd: Include'un hedefi yoksa (joker eslesmese de) sunucu BASLAMAZ; IncludeOptional sessiz.
-            # Okunamayan hedef (izin) iki turde de OLCULEMEDI'dir: eksik sanilmaz.
-            desen = self.yol(a[0])
-            if any(c in desen for c in '*?['):
-                bulunan = [x for x in esle(desen) if duzenli_mi(x)[0]]
-                if not bulunan and ad == 'include':
-                    self.hata('EKSIK_INCLUDE', yol, no, a[0])
-            elif os.path.isdir(desen):
-                bulunan = [x for x in esle(os.path.join(desen, '*')) if duzenli_mi(x)[0]]
-            else:
-                ok, durum = duzenli_mi(desen)
-                bulunan = [desen] if ok else []
-                if not ok and durum == 'YOK' and ad == 'include':
-                    self.hata('EKSIK_INCLUDE', yol, no, a[0])
-                elif not ok and durum != 'YOK':
-                    self.hata('INCLUDE_' + (durum or 'HATA'), yol, no, desen)
-            for x in bulunan:
-                self.dosya_isle(x, derinlik + 1, baglam)
-        elif ad == 'listen' and a:
-            adres, port = self.adres_port(a[0])
-            if len(self.dinle) < LISTE_SINIRI:
-                self.dinle.append({'adres': adres, 'port': port, 'dosya': M(yol, 400), 'satir': no})
-        elif ad == 'servername' and a:
-            hedef_kap['server_name'] = M(a[0], 256)
-        elif ad == 'serveralias' and v is not None:
-            for x in a:
-                if len(v['aliases']) < 100:
-                    v['aliases'].append(M(x, 256))
-        elif ad in ('customlog', 'transferlog') and a:
-            hedef_kap['access_log'].append(M(self.log_yolu(a[0]), 400))
-        elif ad == 'errorlog' and a:
-            hedef_kap['error_log'] = M(self.log_yolu(a[0]), 400)
-        elif ad == 'documentroot' and a and v is not None:
-            v['document_root'] = M(a[0], 400)
-        elif ad in ('sslcertificatefile',) and a and v is not None:
-            y2 = self.yol(a[0])
-            v['ssl'] = {'sertifika': M(y2, 400), 'var': var_mi(y2)}
-        elif ad == 'proxypass' or ad == 'proxypassmatch':
-            if konum is not None and len(a) >= 1 and not a[0].startswith('/'):
-                yolu, url = konum, a[0]
-            elif len(a) >= 2:
-                yolu, url = a[0], a[1]
-            else:
-                return
-            if url == '!':
-                return
-            self.hedef_ekle(hedef_kap, 'proxy' if ad == 'proxypass' else 'proxymatch', url, yolu, yol, no)
-        elif ad == 'balancermember' and a:
-            ad_b = bal
-            url = a[0]
-            if not ad_b and len(a) >= 2 and a[0].lower().startswith('balancer://'):
-                ad_b, url = a[0][len('balancer://'):].strip('/').lower(), a[1]
-            if ad_b:
-                sema, host, port = url_coz(url)
-                b2 = self.balancer(ad_b, yol, no)
-                if len(b2['uyeler']) < HEDEF_SINIRI:
-                    b2['uyeler'].append({'url': M(url, 300), 'sema': sema, 'host': M(host, 256), 'port': port})
-        elif ad == 'rewriterule' and len(a) >= 3:
-            bayrak = a[2].strip('[]').lower().split(',')
-            if 'p' in bayrak or 'proxy' in bayrak:
-                self.hedef_ekle(hedef_kap, 'rewrite', a[1], a[0], yol, no)
-        elif ad == 'jkworkersfile' and a:
-            self.jk_workers = self.yol(a[0])
-        elif ad == 'jklogfile' and a:
-            self.jk_log = self.log_yolu(a[0])
-        elif ad == 'jkmount' and a:
-            yolu = a[0] if len(a) >= 2 else (konum or '')
-            worker = a[1] if len(a) >= 2 else a[0]
-            kayit = {'yol': M(yolu, 300), 'worker': M(worker, 128), 'dosya': M(yol, 400), 'satir': no}
-            hedef = v['jk_mount'] if v is not None else self.jk_mount_global
-            if len(hedef) < HEDEF_SINIRI:
-                hedef.append(kayit)
-        elif ad == 'jkmountfile' and a:
-            self.jk_mount_dosyasi(self.yol(a[0]), v, yol, no)
-        elif ad == 'webspherepluginconfig' and a:
-            self.was_config = self.yol(a[0])
-        elif ad in MC_YONERGELERI and (a or ad == 'enablemcpmreceive'):
-            # EnableMCPMReceive argumansiz yazilir (2.4); eski surumlerde 'On'.
-            self.mc[ad] = M(' '.join(a) or 'On', 200)
-            if ad == 'enablemcpmreceive' and v is not None:
-                v['mcmp'] = True
-                self.mc_dinleyen.append({'adres': v['adres'], 'dosya': M(yol, 400), 'satir': no})
+            self._include_yonergesi(ad, a, yol, no, derinlik, baglam)
+        elif a and ad in ('listen', 'servername', 'serveralias', 'customlog', 'transferlog',
+                          'errorlog', 'documentroot', 'sslcertificatefile'):
+            self._vhost_veya_ana_yonergesi(ad, a, v, hedef_kap, yol, no)
+        else:
+            self._arka_uc_yonergesi(ad, a, v, hedef_kap, konum, bal, yol, no)
+
+    def yonerge(self, yol, no, t, derinlik, baglam):
+        y = baglam['yigin_bolum']
+        etkin = all(b['etkin'] for b in y)
+        belirsiz = any(b.get('belirsiz') for b in y)
+        if t.startswith('</'):
+            ad = t[2:].rstrip('>').strip().lower()
+            if y and y[-1]['ad'] == ad:
+                b = y.pop()
+                if ad == 'virtualhost' and b.get('vhost') is not None:
+                    baglam['vhost'] = None
+            return
+        if t.startswith('<'):
+            self._acilis_etiketi(yol, no, t, etkin, belirsiz, baglam)
+            return
+        if etkin:
+            self._normal_yonerge(yol, no, t, derinlik, baglam)
 
     def log_yolu(self, d):
         """Log hedefi -> mutlak yol. Boru (|rotatelogs <yol> ...) ise '|<mutlak yol>'; syslog oldugu gibi."""
@@ -574,14 +635,14 @@ class Kurulum(object):
         s = s.strip()
         m = re.match(r'^\[([^\]]+)\]:(\d+)$', s) or re.match(r'^([^:]+):(\d+)$', s)
         if m:
-            return M(m.group(1), 128), int(m.group(2))
+            return kisalt(m.group(1), 128), int(m.group(2))
         if s.isdigit():
             return '*', int(s)
-        return M(s, 128), None
+        return kisalt(s, 128), None
 
     def balancer(self, ad, dosya, satir):
         if ad not in self.balancerlar:
-            self.balancerlar[ad] = {'ad': M(ad, 128), 'uyeler': [], 'dosya': M(dosya, 400), 'satir': satir}
+            self.balancerlar[ad] = {'ad': kisalt(ad, 128), 'uyeler': [], 'dosya': kisalt(dosya, 400), 'satir': satir}
         return self.balancerlar[ad]
 
     def hedef_ekle(self, kap, tur, url, yolu, dosya, satir):
@@ -589,9 +650,9 @@ class Kurulum(object):
             self.kesildi = True
             return
         sema, host, port = url_coz(url)
-        kap['hedefler'].append({'tur': tur, 'yol': M(yolu, 300), 'url': M(re.sub(r'//[^/@]*@', '//', url), 300),
-                                'sema': sema, 'host': M(host, 256), 'port': port,
-                                'dosya': M(dosya, 400), 'satir': satir})
+        kap['hedefler'].append({'tur': tur, 'yol': kisalt(yolu, 300), 'url': kisalt(re.sub(r'//[^/@]*@', '//', url), 300),
+                                'sema': sema, 'host': kisalt(host, 256), 'port': port,
+                                'dosya': kisalt(dosya, 400), 'satir': satir})
 
     def jk_mount_dosyasi(self, yol, v, kaynak, satir):
         veri, durum = oku(yol, CONF_SINIR)
@@ -608,87 +669,92 @@ class Kurulum(object):
             if yolu.startswith('!'):
                 continue
             if len(hedef) < HEDEF_SINIRI:
-                hedef.append({'yol': M(yolu, 300), 'worker': M(worker.strip(), 128), 'dosya': M(yol, 400), 'satir': no})
+                hedef.append({'yol': kisalt(yolu, 300), 'worker': kisalt(worker.strip(), 128), 'dosya': kisalt(yol, 400), 'satir': no})
 
     def cozumle(self):
         baglam = {'yigin': [], 'yigin_bolum': [], 'vhost': None}
         self.dosya_isle(self.conf, 0, baglam)
 
 
+def _worker_kaydi(ad, ozellik, liste):
+    g = lambda alan: ozellik.get('worker.%s.%s' % (ad, alan), '')
+    ref = g('reference')
+    if ref.startswith('worker.'):
+        r = ref[len('worker.'):]
+        g2 = g
+        g = lambda alan, r=r, g2=g2: g2(alan) or ozellik.get('worker.%s.%s' % (r, alan), '')
+    uyeler = [x.strip() for x in (g('balance_workers') or g('balanced_workers')).split(',') if x.strip()]
+    try:
+        port = int(g('port')) if g('port') else None
+    except ValueError:
+        port = None
+    return {'ad': kisalt(ad, 128), 'tur': kisalt(g('type') or ('lb' if uyeler else ''), 16), 'host': kisalt(g('host'), 256),
+            'port': port, 'uyeler': [kisalt(x, 128) for x in uyeler[:HEDEF_SINIRI]], 'listede': ad in liste}
+
+
 def workers_oku(yol):
     """workers.properties -> {durum, workerlar: [{ad, tur, host, port, uyeler}]}."""
     veri, durum = oku(yol, CONF_SINIR)
     if veri is None:
-        return {'yol': M(yol, 400), 'durum': durum, 'workerlar': []}
+        return {'yol': kisalt(yol, 400), 'durum': durum, 'workerlar': []}
     ozellik = {}
     for s in metin(veri).split('\n'):
         t = s.strip()
-        if not t or t.startswith('#') or '=' not in t:
-            continue
-        k, deger = t.split('=', 1)
-        ozellik[k.strip()] = deger.strip()
+        if t and not t.startswith('#') and '=' in t:
+            k, deger = t.split('=', 1)
+            ozellik[k.strip()] = deger.strip()
     liste = [x.strip() for x in ozellik.get('worker.list', '').split(',') if x.strip()]
     adlar = set(liste)
     for k in ozellik:
         m = re.match(r'^worker\.([^.]+)\.', k)
         if m:
             adlar.add(m.group(1))
-    out = []
-    for ad in sorted(adlar)[:LISTE_SINIRI]:
-        g = lambda alan: ozellik.get('worker.%s.%s' % (ad, alan), '')
-        ref = g('reference')
-        if ref.startswith('worker.'):
-            r = ref[len('worker.'):]
-            g2 = g
-            g = lambda alan, r=r, g2=g2: g2(alan) or ozellik.get('worker.%s.%s' % (r, alan), '')
-        uyeler = [x.strip() for x in (g('balance_workers') or g('balanced_workers')).split(',') if x.strip()]
-        try:
-            port = int(g('port')) if g('port') else None
-        except ValueError:
-            port = None
-        out.append({'ad': M(ad, 128), 'tur': M(g('type') or ('lb' if uyeler else ''), 16), 'host': M(g('host'), 256),
-                    'port': port, 'uyeler': [M(x, 128) for x in uyeler[:HEDEF_SINIRI]], 'listede': ad in liste})
-    return {'yol': M(yol, 400), 'durum': 'OKUNDU', 'workerlar': out}
+    out = [_worker_kaydi(ad, ozellik, liste) for ad in sorted(adlar)[:LISTE_SINIRI]]
+    return {'yol': kisalt(yol, 400), 'durum': 'OKUNDU', 'workerlar': out}
 
 
 def yerel(etiket):
     return etiket.rsplit('}', 1)[-1] if isinstance(etiket, str) else ''
 
 
+def _was_cluster_sunuculari(e):
+    sunucular = []
+    for s in e.iter():
+        if yerel(s.tag) != 'Server':
+            continue
+        for tr in s.iter():
+            if yerel(tr.tag) == 'Transport' and len(sunucular) < HEDEF_SINIRI:
+                try:
+                    port = int(tr.get('Port') or '')
+                except ValueError:
+                    port = None
+                sunucular.append({'ad': kisalt(s.get('Name'), 256), 'host': kisalt(tr.get('Hostname'), 256),
+                                  'port': port, 'protokol': kisalt(tr.get('Protocol'), 16)})
+    return sunucular
+
+
 def was_oku(yol):
     """plugin-cfg.xml -> ServerCluster / Server / Transport, UriGroup, VirtualHostGroup, Route, Log."""
     kok, durum = xml_oku(yol)
-    out = {'yol': M(yol, 400), 'durum': durum, 'clusterlar': [], 'urigruplari': {}, 'vhostgruplari': {},
+    out = {'yol': kisalt(yol, 400), 'durum': durum, 'clusterlar': [], 'urigruplari': {}, 'vhostgruplari': {},
            'rotalar': [], 'log': ''}
     if kok is None:
         return out
     for e in kok.iter():
         t = yerel(e.tag)
         if t == 'Log' and e.get('Name'):
-            out['log'] = M(e.get('Name'), 400)
+            out['log'] = kisalt(e.get('Name'), 400)
         elif t == 'ServerCluster' and len(out['clusterlar']) < LISTE_SINIRI:
-            sunucular = []
-            for s in e.iter():
-                if yerel(s.tag) != 'Server':
-                    continue
-                for tr in s.iter():
-                    if yerel(tr.tag) == 'Transport' and len(sunucular) < HEDEF_SINIRI:
-                        try:
-                            port = int(tr.get('Port') or '')
-                        except ValueError:
-                            port = None
-                        sunucular.append({'ad': M(s.get('Name'), 256), 'host': M(tr.get('Hostname'), 256),
-                                          'port': port, 'protokol': M(tr.get('Protocol'), 16)})
-            out['clusterlar'].append({'ad': M(e.get('Name'), 256), 'sunucular': sunucular})
+            out['clusterlar'].append({'ad': kisalt(e.get('Name'), 256), 'sunucular': _was_cluster_sunuculari(e)})
         elif t == 'UriGroup':
-            out['urigruplari'][M(e.get('Name'), 256)] = [M(u.get('Name'), 300) for u in e
+            out['urigruplari'][kisalt(e.get('Name'), 256)] = [kisalt(u.get('Name'), 300) for u in e
                                                         if yerel(u.tag) == 'Uri'][:HEDEF_SINIRI]
         elif t == 'VirtualHostGroup':
-            out['vhostgruplari'][M(e.get('Name'), 256)] = [M(u.get('Name'), 300) for u in e
+            out['vhostgruplari'][kisalt(e.get('Name'), 256)] = [kisalt(u.get('Name'), 300) for u in e
                                                           if yerel(u.tag) == 'VirtualHost'][:HEDEF_SINIRI]
         elif t == 'Route' and len(out['rotalar']) < LISTE_SINIRI:
-            out['rotalar'].append({'cluster': M(e.get('ServerCluster'), 256), 'urigroup': M(e.get('UriGroup'), 256),
-                                   'vhostgroup': M(e.get('VirtualHostGroup'), 256)})
+            out['rotalar'].append({'cluster': kisalt(e.get('ServerCluster'), 256), 'urigroup': kisalt(e.get('UriGroup'), 256),
+                                   'vhostgroup': kisalt(e.get('VirtualHostGroup'), 256)})
     return out
 
 
@@ -788,12 +854,98 @@ def sinif_of(yolu):
     return 'gercek'
 
 
+def _access_gercek_kaydet(oz, mi, t, gun_bas, ip, istemci, yollar):
+    oz['gercek_7g'] += 1
+    if t >= gun_bas:
+        oz['gercek_24s'] += 1
+    if oz['son_gercek'] is None or t > oz['son_gercek']:
+        oz['son_gercek'] = t
+    d = mi.group(3)[0] + 'xx'
+    if d in oz['durum_sinif']:
+        oz['durum_sinif'][d] += 1
+    if len(istemci) < 100000:
+        istemci[ip] = istemci.get(ip, 0) + 1
+    seg = '/' + mi.group(2).split('?', 1)[0].lstrip('/').split('/', 1)[0][:80]
+    if len(yollar) < 5000:
+        yollar[seg] = yollar.get(seg, 0) + 1
+
+
+def _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+    oz['satir'] += 1
+    mz = ACCESS_ZAMAN.search(s)
+    mi = ACCESS_ISTEK.search(s)
+    t = access_zamani(mz) if mz else None
+    if t is None or not mi:
+        oz['ayristirilamayan'] += 1
+        return None
+    if oz['son_satir'] is None or t > oz['son_satir']:
+        oz['son_satir'] = t
+    if t < pencere_bas or t > SIMDI + 3600:
+        return t
+    sinif = sinif_of(mi.group(2))
+    ip = s.split(' ', 1)[0][:64]
+    if sinif == 'hc':
+        oz['hc_7g'] += 1
+        if t >= gun_bas:
+            oz['hc_24s'] += 1
+        hc_ist[ip] = hc_ist.get(ip, 0) + 1
+    elif sinif == 'statik':
+        oz['statik_7g'] += 1
+    else:
+        _access_gercek_kaydet(oz, mi, t, gun_bas, ip, istemci, yollar)
+    return t
+
+
+def _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+    en_eski = None
+    for i, s in enumerate(satirlar):
+        if not s:
+            continue
+        if i % 20000 == 0 and sure_doldu():
+            oz['ornek'] = True
+            break
+        t = _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar)
+        if t is not None and (en_eski is None or t < en_eski):
+            en_eski = t
+    return en_eski
+
+
+def _access_durum_belirle(oz, pencere_bas):
+    if oz['satir'] and oz['ayristirilamayan'] > oz['satir'] // 2:
+        oz['durum'], oz['neden'] = 'OLCULEMEDI', 'satirlarin yarisindan fazlasi ayristirilamadi (LogFormat farkli)'
+    elif oz['kapsama_bas'] is None:
+        oz['durum'], oz['neden'] = ('BOS', 'log dosyasi bos') if not oz['satir'] else ('OLCULEMEDI', 'zaman damgasi yok')
+    elif oz['ornek'] or oz['kapsama_bas'] > pencere_bas:
+        oz['durum'] = 'KISMI'
+        oz['neden'] = 'butce / sure siniri' if oz['ornek'] else 'log penceresi %d gunden kisa' % GUN
+
+
+def _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+    kalan = LOG_BUTCE - DURUM['log_bayt']
+    if sure_doldu() or kalan <= 0:
+        oz['ornek'] = True
+        return True
+    satirlar, okunan, kesik = satirlar_of(yol, kalan)
+    DURUM['log_bayt'] += okunan
+    if satirlar is None:
+        oz['dosyalar'].append({'yol': kisalt(yol, 400), 'durum': kisalt(kesik, 32)})
+        oz['ornek'] = True
+        return False
+    if kesik:
+        oz['ornek'] = True
+    oz['dosyalar'].append({'yol': kisalt(yol, 400), 'durum': 'KESIK' if kesik else 'OKUNDU', 'bayt': okunan})
+    en_eski = _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar)
+    if en_eski is not None and (oz['kapsama_bas'] is None or en_eski < oz['kapsama_bas']):
+        oz['kapsama_bas'] = en_eski
+    return bool(oz['kapsama_bas'] is not None and oz['kapsama_bas'] <= pencere_bas and not kesik)
+
+
 def access_ozeti(desen, onbellek):
     """Bir access log deseni icin pencere ozeti; ayni desen birden cok vhost'ta ise bir kez okunur."""
     if desen in onbellek:
         return onbellek[desen]
     dosyalar = log_dosyalari(desen)
-    oz = {'desen': M(desen, 400), 'durum': 'OLCULDU', 'neden': '', 'dosyalar': [], 'pencere_gun': GUN,
+    oz = {'desen': kisalt(desen, 400), 'durum': 'OLCULDU', 'neden': '', 'dosyalar': [], 'pencere_gun': GUN,
           'kapsama_bas': None, 'son_satir': None, 'gercek_24s': 0, 'gercek_7g': 0, 'hc_24s': 0, 'hc_7g': 0,
           'statik_7g': 0, 'durum_sinif': {'2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0}, 'istemci_sayisi': 0,
           'hc_istemcileri': [], 'ilk_istemciler': [], 'son_gercek': None, 'ornek': False,
@@ -808,122 +960,70 @@ def access_ozeti(desen, onbellek):
     istemci, hc_ist, yollar = {}, {}, {}
     pencere_bas = SIMDI - GUN * 86400
     gun_bas = SIMDI - 86400
-    for mtime, yol, boy in dosyalar:
-        if sure_doldu():
-            oz['ornek'] = True
-            break
-        kalan = LOG_BUTCE - DURUM['log_bayt']
-        if kalan <= 0:
-            oz['ornek'] = True
-            break
-        satirlar, okunan, kesik = satirlar_of(yol, kalan)
-        DURUM['log_bayt'] += okunan
-        if satirlar is None:
-            oz['dosyalar'].append({'yol': M(yol, 400), 'durum': M(kesik, 32)})
-            oz['ornek'] = True
-            continue
-        if kesik:
-            oz['ornek'] = True
-        oz['dosyalar'].append({'yol': M(yol, 400), 'durum': 'KESIK' if kesik else 'OKUNDU', 'bayt': okunan})
-        en_eski = None
-        for i, s in enumerate(satirlar):
-            if not s:
-                continue
-            if i % 20000 == 0 and sure_doldu():
-                oz['ornek'] = True
-                break
-            oz['satir'] += 1
-            mz = ACCESS_ZAMAN.search(s)
-            mi = ACCESS_ISTEK.search(s)
-            t = access_zamani(mz) if mz else None
-            if t is None or not mi:
-                oz['ayristirilamayan'] += 1
-                continue
-            if en_eski is None or t < en_eski:
-                en_eski = t
-            if oz['son_satir'] is None or t > oz['son_satir']:
-                oz['son_satir'] = t
-            if t < pencere_bas or t > SIMDI + 3600:
-                continue
-            sinif = sinif_of(mi.group(2))
-            ip = s.split(' ', 1)[0][:64]
-            if sinif == 'hc':
-                oz['hc_7g'] += 1
-                if t >= gun_bas:
-                    oz['hc_24s'] += 1
-                hc_ist[ip] = hc_ist.get(ip, 0) + 1
-            elif sinif == 'statik':
-                oz['statik_7g'] += 1
-            else:
-                oz['gercek_7g'] += 1
-                if t >= gun_bas:
-                    oz['gercek_24s'] += 1
-                if oz['son_gercek'] is None or t > oz['son_gercek']:
-                    oz['son_gercek'] = t
-                d = mi.group(3)[0] + 'xx'
-                if d in oz['durum_sinif']:
-                    oz['durum_sinif'][d] += 1
-                if len(istemci) < 100000:
-                    istemci[ip] = istemci.get(ip, 0) + 1
-                seg = '/' + mi.group(2).split('?', 1)[0].lstrip('/').split('/', 1)[0][:80]
-                if len(yollar) < 5000:
-                    yollar[seg] = yollar.get(seg, 0) + 1
-        if en_eski is not None and (oz['kapsama_bas'] is None or en_eski < oz['kapsama_bas']):
-            oz['kapsama_bas'] = en_eski
-        if oz['kapsama_bas'] is not None and oz['kapsama_bas'] <= pencere_bas and not kesik:
+    for _, yol, _ in dosyalar:
+        if _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
             break
     sirala = lambda d: [{'ip': k, 'n': n} for k, n in sorted(d.items(), key=lambda x: (-x[1], x[0]))[:5]]
     oz['istemci_sayisi'] = len(istemci)
     oz['ilk_istemciler'] = sirala(istemci)
     oz['hc_istemcileri'] = sirala(hc_ist)
     oz['ilk_yollar'] = [{'yol': k, 'n': n} for k, n in sorted(yollar.items(), key=lambda x: (-x[1], x[0]))[:5]]
-    if oz['satir'] and oz['ayristirilamayan'] > oz['satir'] // 2:
-        oz['durum'], oz['neden'] = 'OLCULEMEDI', 'satirlarin yarisindan fazlasi ayristirilamadi (LogFormat farkli)'
-    elif oz['kapsama_bas'] is None:
-        oz['durum'], oz['neden'] = ('BOS', 'log dosyasi bos') if not oz['satir'] else ('OLCULEMEDI', 'zaman damgasi yok')
-    elif oz['ornek'] or oz['kapsama_bas'] > pencere_bas:
-        oz['durum'] = 'KISMI'
-        oz['neden'] = 'butce / sure siniri' if oz['ornek'] else 'log penceresi %d gunden kisa' % GUN
+    _access_durum_belirle(oz, pencere_bas)
     return oz
+
+
+def _error_satir_zamani(s):
+    mz = ERROR_ZAMAN.search(s)
+    if not mz:
+        return None
+    a = AYLAR.get(mz.group(1).lower())
+    if not a:
+        return None
+    t = calendar.timegm((int(mz.group(6)), a, int(mz.group(2)), int(mz.group(3)),
+                         int(mz.group(4)), int(mz.group(5))))
+    return None if t < SIMDI - GUN * 86400 else t
+
+
+def _error_satiri_say(s, sayac):
+    t = _error_satir_zamani(s)
+    if t is None:
+        return
+    for tur, desen in ARKA_UC:
+        m = desen.search(s)
+        if m:
+            hedef = m.group(1).strip('[]') + (':' + m.group(2) if m.group(2) else '')
+            k = (tur, hedef[:300])
+            e = sayac.get(k)
+            sayac[k] = (e[0] + 1, max(e[1], t)) if e else (1, t)
+            break
+
+
+def _error_yolu_temizle(kaynak_yol):
+    if kaynak_yol and kaynak_yol.startswith('|'):
+        kaynak_yol = kaynak_yol[1:].strip() if kaynak_yol[1:].strip().startswith('/') else ''
+    if not kaynak_yol or kaynak_yol.startswith('syslog') or ' ' in kaynak_yol:
+        return None
+    return kaynak_yol
 
 
 def error_ozeti(yollar):
     """error_log / JkLogFile / WAS eklenti logu: pencere icindeki arka uca baglanamama sayilari."""
     out = []
-    for kaynak_yol in yollar:
-        if kaynak_yol and kaynak_yol.startswith('|'):
-            kaynak_yol = kaynak_yol[1:].strip() if kaynak_yol[1:].strip().startswith('/') else ''
-        if not kaynak_yol or kaynak_yol.startswith('syslog') or ' ' in kaynak_yol:
+    for ham_yol in yollar:
+        kaynak_yol = _error_yolu_temizle(ham_yol)
+        if not kaynak_yol:
             continue
-        kayit = {'yol': M(kaynak_yol, 400), 'durum': 'OKUNDU', 'hatalar': []}
+        kayit = {'yol': kisalt(kaynak_yol, 400), 'durum': 'OKUNDU', 'hatalar': []}
         out.append(kayit)
-        satirlar, okunan, kesik = satirlar_of(kaynak_yol, ERROR_LOG_BAYT)
+        satirlar, _, kesik = satirlar_of(kaynak_yol, ERROR_LOG_BAYT)
         if satirlar is None:
-            kayit['durum'] = M(kesik or 'OKUNAMADI', 32)
+            kayit['durum'] = kisalt(kesik or 'OKUNAMADI', 32)
             continue
         if kesik:
             kayit['durum'] = 'KESIK'
         sayac = {}
         for s in satirlar:
-            mz = ERROR_ZAMAN.search(s)
-            if mz:
-                a = AYLAR.get(mz.group(1).lower())
-                if not a:
-                    continue
-                t = calendar.timegm((int(mz.group(6)), a, int(mz.group(2)), int(mz.group(3)),
-                                     int(mz.group(4)), int(mz.group(5))))
-                if t < SIMDI - GUN * 86400:
-                    continue
-            else:
-                continue
-            for tur, desen in ARKA_UC:
-                m = desen.search(s)
-                if m:
-                    hedef = m.group(1).strip('[]') + (':' + m.group(2) if m.group(2) else '')
-                    k = (tur, hedef[:300])
-                    e = sayac.get(k)
-                    sayac[k] = (e[0] + 1, max(e[1], t)) if e else (1, t)
-                    break
+            _error_satiri_say(s, sayac)
         kayit['hatalar'] = [{'tur': k[0], 'hedef': k[1], 'n': n, 'son': son}
                             for k, (n, son) in sorted(sayac.items(), key=lambda x: -x[1][0])[:LISTE_SINIRI]]
     return out
@@ -938,52 +1038,57 @@ def hex_ip(h):
     return socket.inet_ntop(socket.AF_INET6, b''.join(b[i:i + 4][::-1] for i in range(0, 16, 4)))
 
 
+def _soket_satiri_coz(s, aile):
+    p = s.split()
+    if len(p) < 4 or p[3] != '0A':
+        return None
+    try:
+        h, port = p[1].split(':')
+        adres = hex_ip(h)
+    except (ValueError, OSError):
+        return None
+    return {'adres': adres, 'port': int(port, 16), 'aile': aile}
+
+
 def soketler():
     """LISTEN soketleri /proc/net/tcp{,6}'dan: [{adres, port, aile}]. Surec eslemesi YOK (yetki ister)."""
-    out, okundu, durum = [], False, 'OLCULDU'
+    out, okundu = [], False
     for ad, aile in (('tcp', 4), ('tcp6', 6)):
-        veri, d = oku(os.path.join(PROC, 'net', ad), 64 * 1024 * 1024)
+        veri, _ = oku(os.path.join(PROC, 'net', ad), 64 * 1024 * 1024)
         if veri is None:
             continue
         okundu = True
         for s in metin(veri).split('\n')[1:]:
-            p = s.split()
-            if len(p) < 4 or p[3] != '0A':
-                continue
-            try:
-                h, port = p[1].split(':')
-                adres = hex_ip(h)
-            except (ValueError, OSError):
-                continue
-            k = {'adres': adres, 'port': int(port, 16), 'aile': aile}
-            if k not in out and len(out) < LISTE_SINIRI:
+            k = _soket_satiri_coz(s, aile)
+            if k is not None and k not in out and len(out) < LISTE_SINIRI:
                 out.append(k)
-    if not okundu:
-        durum = 'OLCULEMEDI'
-    return {'durum': durum, 'dinlenen': out}
+    return {'durum': 'OLCULDU' if okundu else 'OLCULEMEDI', 'dinlenen': out}
+
+
+def _ip_ham_oku():
+    if IP_DOSYA:
+        veri, _ = oku(IP_DOSYA, 4 * 1024 * 1024)
+        return metin(veri) if veri is not None else None
+    ikili = next((x for x in IP_ADAYLARI if duzenli_mi(x)[0]), None)
+    if not ikili:
+        return None
+    try:
+        return subprocess.check_output([ikili, '-o', 'addr', 'show'], stderr=subprocess.DEVNULL,
+                                       timeout=10).decode('utf-8', 'replace')
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def ipler():
     """Sunucunun IP'leri 'ip -o addr show' ile: [{ip, onek, iface, aile}]."""
-    ham = None
-    if IP_DOSYA:
-        veri, d = oku(IP_DOSYA, 4 * 1024 * 1024)
-        ham = metin(veri) if veri is not None else None
-    else:
-        ikili = next((x for x in IP_ADAYLARI if duzenli_mi(x)[0]), None)
-        if ikili:
-            try:
-                ham = subprocess.check_output([ikili, '-o', 'addr', 'show'], stderr=subprocess.DEVNULL,
-                                              timeout=10).decode('utf-8', 'replace')
-            except (OSError, subprocess.SubprocessError):
-                ham = None
+    ham = _ip_ham_oku()
     if ham is None:
         return {'durum': 'OLCULEMEDI', 'liste': []}
     out = []
     for s in ham.split('\n'):
         m = re.match(r'^\d+:\s+(\S+)\s+(inet6?)\s+([0-9a-fA-F.:]+)/(\d+)', s)
         if m and len(out) < LISTE_SINIRI:
-            out.append({'ip': m.group(3), 'onek': int(m.group(4)), 'iface': M(m.group(1), 32),
+            out.append({'ip': m.group(3), 'onek': int(m.group(4)), 'iface': kisalt(m.group(1), 32),
                         'aile': 6 if m.group(2) == 'inet6' else 4})
     return {'durum': 'OLCULDU', 'liste': out}
 
@@ -1013,14 +1118,7 @@ def kurulumlari_bul():
     return list(adaylar.values()), gorunur
 
 
-def kurulum_tara(a, gorunur, log_onbellek):
-    k = Kurulum(a['kok'], a['conf'], a['urun'], a['kaynak'], a['tanimlar'], gorunur)
-    k.cozumle()
-    jk = workers_oku(k.jk_workers) if k.jk_workers else None
-    was = was_oku(k.was_config) if k.was_config else None
-    mc_yuklu = any(x in k.moduller for x in ('manager_module', 'proxy_cluster_module', 'mod_manager.c',
-                                              'mod_proxy_cluster.c', 'cluster_slotmem_module'))
-    # Hedef turunu netlestir: tanimsiz balancer + mod_cluster yuklu -> dinamik (mc); jk worker -> host:port.
+def _balancer_hedefleri_isaretle(k, mc_yuklu):
     for v in k.vhostlar + [k.ana]:
         for h in v['hedefler']:
             if h['sema'] == 'balancer':
@@ -1028,6 +1126,9 @@ def kurulum_tara(a, gorunur, log_onbellek):
                 h['balancer_tanimli'] = b is not None
                 if b is None and mc_yuklu:
                     h['tur'] = 'mc'
+
+
+def _vhost_loglarini_topla(k, log_onbellek):
     ana_log = k.ana['access_log']
     paylasim = {}
     for v in k.vhostlar:
@@ -1036,30 +1137,45 @@ def kurulum_tara(a, gorunur, log_onbellek):
     vhostlar = []
     for v in k.vhostlar:
         miras = not v['access_log']
-        loglar = []
-        for d in (v['access_log'] or ana_log):
-            oz = access_ozeti(d, log_onbellek)
-            loglar.append(dict(oz, paylasilan=paylasim.get(d, 0) > 1 or miras, miras=miras))
+        loglar = [dict(access_ozeti(d, log_onbellek), paylasilan=paylasim.get(d, 0) > 1 or miras, miras=miras)
+                  for d in (v['access_log'] or ana_log)]
         v2 = dict(v)
         v2['loglar'] = loglar
         del v2['access_log']
         vhostlar.append(v2)
+    return ana_log, vhostlar
+
+
+def _error_yollarini_topla(k, was):
     error_yollari = [v['error_log'] for v in k.vhostlar if v['error_log']] + [k.ana['error_log']]
     error_yollari = [x for x in error_yollari if x]
     if k.jk_log:
         error_yollari.append(k.jk_log)
     if was and was.get('log'):
         error_yollari.append(was['log'])
+    return error_yollari
+
+
+def kurulum_tara(a, gorunur, log_onbellek):
+    k = Kurulum(a['kok'], a['conf'], a['urun'], a['kaynak'], a['tanimlar'], gorunur)
+    k.cozumle()
+    jk = workers_oku(k.jk_workers) if k.jk_workers else None
+    was = was_oku(k.was_config) if k.was_config else None
+    mc_yuklu = any(x in k.moduller for x in ('manager_module', 'proxy_cluster_module', 'mod_manager.c',
+                                              'mod_proxy_cluster.c', 'cluster_slotmem_module'))
+    _balancer_hedefleri_isaretle(k, mc_yuklu)
+    ana_log, vhostlar = _vhost_loglarini_topla(k, log_onbellek)
+    error_yollari = _error_yollarini_topla(k, was)
     calisiyor = (a['surec'] > 0) if gorunur else (True if a['surec'] > 0 else None)
     return {
-        'kok': M(k.kok, 400), 'conf': M(k.conf, 400), 'urun': k.urun, 'kaynak': k.kaynak,
+        'kok': kisalt(k.kok, 400), 'conf': kisalt(k.conf, 400), 'urun': k.urun, 'kaynak': k.kaynak,
         'calisiyor': calisiyor, 'surec_sayisi': a['surec'], 'tanimlar': sorted(k.tanimlar)[:50],
         'moduller': sorted(k.moduller)[:300], 'dosyalar': k.dosyalar, 'hatalar': k.hatalar,
         'if_kararlari': k.if_kararlari, 'dinle': k.dinle, 'vhostlar': vhostlar,
         'ana': {'server_name': k.ana['server_name'], 'hedefler': k.ana['hedefler'],
                 'access_log': ana_log, 'error_log': k.ana['error_log']},
         'balancerlar': sorted(k.balancerlar.values(), key=lambda b: b['ad']),
-        'jk': {'workers': jk, 'mount_global': k.jk_mount_global, 'log': M(k.jk_log, 400)},
+        'jk': {'workers': jk, 'mount_global': k.jk_mount_global, 'log': kisalt(k.jk_log, 400)},
         'mod_cluster': {'yuklu': mc_yuklu, 'yonergeler': k.mc, 'mcmp_vhostlari': k.mc_dinleyen},
         'was': was, 'error_loglari': error_ozeti(sorted(set(error_yollari))),
         'kesildi': k.kesildi,

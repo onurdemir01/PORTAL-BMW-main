@@ -39,7 +39,7 @@ function yukle({ records, biletler = new Map(), biletHatasi = null }) {
     adoptTicket: async (id, t) => { calls.push(['adopt', id, t.status]); return 'X'; },
   });
   sahte(smartPath, {
-    findByOcoRecordIds: async (ids) => { calls.push(['bilet-sorgu', ids]); if (biletHatasi) throw biletHatasi; return biletler; },
+    findByOcoRecordIds: async (ids) => { calls.push(['bilet-sorgu', ids]); if (biletHatasi) { throw biletHatasi; } return biletler; },
   });
   delete require.cache[pollerPath];
   const poller = require('../poller.cjs');

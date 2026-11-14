@@ -10,11 +10,11 @@
     <title>BMW Portal</title>
 
     <!-- Sekme logosu: Admin > Marka sekmesinden yuklenen gorsel sunucudan gelir.
-         TEK <link> girdisi bilincli: birden fazla rel="icon" verildiginde tarayici
+         TEK link girdisi bilincli: birden fazla rel="icon" verildiginde tarayici
          hangisini kullanacagina KENDI karar verir (Chrome olceklenebilir SVG'yi
          tercih edebilir) ve yuklenen logo yok sayilir. Logo yuklenmemisse endpoint
          404 DEGIL, gomulu varsayilan gorseli doner — fallback sunucu tarafinda.
-         Prod'da bu adrese sunucu ?v=<hash> enjekte eder (server/index.cjs). -->
+         Prod'da bu adrese sunucu ?v=hash enjekte eder (server/index.cjs). -->
     <link rel="icon" href="/api/branding/favicon" />
 
     <!-- Red Hat font ailesi KENDI SUNUCUMUZDAN (bkz. src/fonts.css).
@@ -62,10 +62,12 @@
           var stored = null;
           try { stored = localStorage.getItem("bmw-theme"); } catch (e) {}
           var sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var theme =
-            (boot.theme === "light" || boot.theme === "dark") ? boot.theme :
-            (stored === "light" || stored === "dark") ? stored :
-            (sysDark ? "dark" : "light");
+          var theme = sysDark ? "dark" : "light";
+          if (boot.theme === "light" || boot.theme === "dark") {
+            theme = boot.theme;
+          } else if (stored === "light" || stored === "dark") {
+            theme = stored;
+          }
           document.documentElement.setAttribute("data-theme", theme);
           // Sunucu tercihi localStorage'a da yazilir: bir sonraki acilista, HTML
           // gomulemese bile (or. nginx statigi dogrudan servis ederse) dogru tema.

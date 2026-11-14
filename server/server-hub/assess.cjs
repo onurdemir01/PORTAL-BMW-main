@@ -132,7 +132,8 @@ function hedefAyristir(t) {
   const m6 = /^\[([0-9A-Fa-f:.]+)\](?::(\d+))?$/.exec(s);
   if (m6) return { host: m6[1].toLowerCase(), port: m6[2] ? Number(m6[2]) : null };
   const m = s.match(/^\[?([^\]:]+)\]?(?::(\d+))?$/);
-  return m ? { host: shortHost(m[1]), port: m[2] ? Number(m[2]) : null } : null;
+  if (m) return { host: shortHost(m[1]), port: m[2] ? Number(m[2]) : null };
+  return null;
 }
 
 /** "host:port,host2:port2" -> [{host, port}] */
@@ -184,16 +185,17 @@ function hedefListesi(raw) {
   const dinamik = hepsi.some(dinamikMi);
   const eksik = hepsi.some((p) => p.includes('~') && !dinamikMi(p));
   // gosterim: sira korunur (tarayici jetonu basa yazar); kesik parca yerine sonda '~'
-  const gosterim =
-    eksik || dinamik
-      ? [
-          ...hepsi
-            .map((p) => p.trim())
-            .filter((p) => p && (!p.includes('~') || dinamikMi(p)))
-            .map((p) => (dinamikMi(p) ? DINAMIK_JETON : p)),
-          ...(eksik ? ['~'] : []),
-        ].join(',')
-      : temiz;
+  const gosterim = (() => {
+    if (eksik || dinamik)
+      return [
+        ...hepsi
+          .map((p) => p.trim())
+          .filter((p) => p && (!p.includes('~') || dinamikMi(p)))
+          .map((p) => (dinamikMi(p) ? DINAMIK_JETON : p)),
+        ...(eksik ? ['~'] : []),
+      ].join(',');
+    return temiz;
+  })();
   return { parcalar, eksik, dinamik, gosterim };
 }
 
@@ -240,7 +242,9 @@ const ERISIM_NEDENLERI = [
 function erisimNedeni(ham) {
   const t = String(ham || '');
   const n = ERISIM_NEDENLERI.filter(([re]) => re.test(t)).map(([, m]) => m);
-  return n.length ? n.join(' + ') : 'hata bir dosyaya erişimden kaynaklanıyor (yetki ya da eksik dosya)';
+  return n.length
+    ? n.join(' + ')
+    : 'hata bir dosyaya erişimden kaynaklanıyor (yetki ya da eksik dosya)';
 }
 
 // ── ENVANTER UYGULAMASI <-> TARAMA JVM'I (2026-11-14, uretim GBJIST02) ──────────────────────────
@@ -292,7 +296,9 @@ function envanterEslestir(apps, jvms) {
     if (x.tur) continue;
     // Son ek 1-3 hane (APP2024 bir yil / baska uygulama, numara degil). Ad rakamla bitiyorsa ayirac
     // ZORUNLU: APP1 + 2 = APP12 ile APP + 12 ayirt edilemez (APP1 -> APP1-2 / APP1_02 eslesir).
-    const sayiRe = new RegExp(`^${regexKacis(ad)}${/[0-9]$/.test(ad) ? '[-_.]' : '[-_.]?'}[0-9]{1,3}$`);
+    const sayiRe = new RegExp(
+      `^${regexKacis(ad)}${/[0-9]$/.test(ad) ? '[-_.]' : '[-_.]?'}[0-9]{1,3}$`,
+    );
     for (const j of taranan) {
       if (alinan.has(j)) continue;
       const g = L(j.group);
@@ -451,13 +457,17 @@ function assess(data, opts = {}) {
     if (r.jvm_arg_status !== undefined) j.jvmArgStatus = nz(r.jvm_arg_status);
     // PARAMETRE FARKI (2026-11-06): filo sorgusu agir jvm_arg_diff metnini DEGIL yalniz hafif
     // isaretini getirir (index.cjs ARG_FARK_IFADE): 0 fark yok, 1 fark var, 2 olculemedi ('reason=').
-    if (r.jvm_arg_fark !== undefined) j.argFark = r.jvm_arg_fark == null ? null : Number(r.jvm_arg_fark);
+    if (r.jvm_arg_fark !== undefined)
+      j.argFark = r.jvm_arg_fark == null ? null : Number(r.jvm_arg_fark);
     if (r.jvm_args_src !== undefined) j.jvmArgsSrc = nz(r.jvm_args_src);
     // SUREC BASLANGICI (2026-11-14, Toplu Restart): restart kaniti icin restart ONCESI ve SONRASI tarama degeri
     // karsilastirilir (Date.now ile DEGIL). Bos / sayi degilse null.
     if (r.process_start_epoch !== undefined) {
       const ps = Number(r.process_start_epoch);
-      j.processStartEpoch = r.process_start_epoch == null || r.process_start_epoch === '' || !Number.isFinite(ps) ? null : ps;
+      j.processStartEpoch =
+        r.process_start_epoch == null || r.process_start_epoch === '' || !Number.isFinite(ps)
+          ? null
+          : ps;
     }
     // AGIR KOLONLAR yalniz tek sunucu ayrintisinda gelir; geldiyse beyaz liste maskesi.
     if (r.jvm_args !== undefined) j.jvmArgs = maskJvmArgs(nz(r.jvm_args));
@@ -543,7 +553,10 @@ function assess(data, opts = {}) {
   }
   // Sunucu basina yalniz EN YENI kosunun (en buyuk run_at) satirlari gecerlidir.
   for (const h of byHost.values()) {
-    const enYeni = h.loadIssues.reduce((a, x) => (x.runAt != null && x.runAt > a ? x.runAt : a), -1);
+    const enYeni = h.loadIssues.reduce(
+      (a, x) => (x.runAt != null && x.runAt > a ? x.runAt : a),
+      -1,
+    );
     if (enYeni >= 0) h.loadIssues = h.loadIssues.filter((x) => x.runAt === enYeni);
   }
   // ── Ortam (2026-09-22): dbo.Inventory.env; yoksa sunucu adindan (…P\d = prod). Non-Prod/Prod kirilimi.
@@ -617,8 +630,11 @@ function assess(data, opts = {}) {
   for (const h of byHost.values()) {
     h.invProducts = invProductsByHost.get(U(h.host)) || [];
     h.env = envOf(h.host);
-    h.envGroup =
-      h.env === 'PROD' ? 'Production' : h.env === 'BILINMIYOR' ? 'Bilinmiyor' : 'Non-Production';
+    h.envGroup = (() => {
+      if (h.env === 'PROD') return 'Production';
+      if (h.env === 'BILINMIYOR') return 'Bilinmiyor';
+      return 'Non-Production';
+    })();
     // JBOSS OLMAYAN SUNUCU (kullanici, 2026-09-24): "JBoss olmayan sunuculara bakmani istemiyorum".
     // Eskiden dbo.MWAppsInventory'deki her uygulama icin JVM satiri uretiliyordu; JBoss kurulu
     // OLMAYAN sunucularda bunlarin auto-start'i dogal olarak okunamiyor ve ekran "bilinmiyor"
@@ -644,13 +660,14 @@ function assess(data, opts = {}) {
       const olculen = es.jvms.filter((j) => j.runningKnown !== false);
       const grupCalisan = olculen.filter((j) => j.running).length;
       const invRunning = a.status === 'running';
-      const invAuto = a.autoStarts.length
-        ? a.autoStarts.every((x) => x === 'true')
-          ? 'true'
-          : a.autoStarts.every((x) => x === 'false')
-            ? 'false'
-            : 'karisik'
-        : 'unknown';
+      const invAuto = (() => {
+        if (a.autoStarts.length) {
+          if (a.autoStarts.every((x) => x === 'true')) return 'true';
+          if (a.autoStarts.every((x) => x === 'false')) return 'false';
+          return 'karisik';
+        }
+        return 'unknown';
+      })();
       for (let hi = 0; hi < es.jvms.length; hi++) {
         const hit = es.jvms[hi];
         hit.domain = a.domain || hit.domain || '';
@@ -712,10 +729,7 @@ function assess(data, opts = {}) {
       // eylem, retire adayi, kopya grubu ve tarama sayaci uretilmez; ekran "JBoss 0" yerine
       // "yalniz envanterde" yazar. Ayni uygulamanin ikinci envanter satiri (baska domain) ikinci satir
       // uretmez.
-      if (
-        !es.jvms.length &&
-        !h.jvms.some((j) => j.source === 'envanter' && L(j.name) === L(a.app))
-      )
+      if (!es.jvms.length && !h.jvms.some((j) => j.source === 'envanter' && L(j.name) === L(a.app)))
         h.jvms.push({
           yalnizEnvanter: true,
           gen: 0,
@@ -743,12 +757,11 @@ function assess(data, opts = {}) {
           invJvmCount: a.jvmCount,
           mismatch: [],
           autoStartSource: 'envanter',
-          autoStartReason:
-            invAuto === 'karisik'
-              ? 'envanter-celiskili'
-              : invAuto === 'unknown'
-                ? 'envanterde-yok'
-                : null,
+          autoStartReason: (() => {
+            if (invAuto === 'karisik') return 'envanter-celiskili';
+            if (invAuto === 'unknown') return 'envanterde-yok';
+            return null;
+          })(),
         });
     }
     for (const j of h.jvms) if (!j.source) j.source = 'cli';
@@ -1218,20 +1231,20 @@ function assess(data, opts = {}) {
   });
   const HEDEF_NEDEN_METNI = {
     COZULEMEDI: 'hedefi bilinmiyor',
-    JVMSIZ: "hedef sunucuda JVM ya da bu portu dinleyen ölçülmüş vhost yok",
+    JVMSIZ: 'hedef sunucuda JVM ya da bu portu dinleyen ölçülmüş vhost yok',
     TARANMAMIS: 'hedef sunucu taranmamış',
   };
   /** Bulgu metni parcasi: hangi web sunucusu/vhost, nereye. */
-  const atfMetni = (x) =>
-    x.tur === 'EKSIK'
-      ? `${x.host}/${x.serverName || '?'} → hedef listesi kesik`
-      : x.tur === 'HEDEF' && x.neden === 'DINAMIK'
-        ? `${x.host}/${x.serverName || '?'} → dinamik proxy (hedef kaydı yok)`
-        : x.tur === 'HEDEF' && x.neden === 'CONF_OKUNAMADI'
-          ? `${x.host}/${x.serverName || '?'} → hedef bilinmiyor (vhost conf'u okunamadı)`
-          : x.tur === 'HEDEF'
-            ? `${x.host}/${x.serverName || '?'} → ${x.target} (${HEDEF_NEDEN_METNI[x.neden] || 'hedefi bilinmiyor'})`
-            : `${x.host}/${x.serverName || '?'} → :${x.port}`;
+  const atfMetni = (x) => {
+    if (x.tur === 'EKSIK') return `${x.host}/${x.serverName || '?'} → hedef listesi kesik`;
+    if (x.tur === 'HEDEF' && x.neden === 'DINAMIK')
+      return `${x.host}/${x.serverName || '?'} → dinamik proxy (hedef kaydı yok)`;
+    if (x.tur === 'HEDEF' && x.neden === 'CONF_OKUNAMADI')
+      return `${x.host}/${x.serverName || '?'} → hedef bilinmiyor (vhost conf'u okunamadı)`;
+    if (x.tur === 'HEDEF')
+      return `${x.host}/${x.serverName || '?'} → ${x.target} (${HEDEF_NEDEN_METNI[x.neden] || 'hedefi bilinmiyor'})`;
+    return `${x.host}/${x.serverName || '?'} → :${x.port}`;
+  };
 
   // ── WEB KATMANI (S3: tierMeasured) ───────────────────────────────────────────────
   // JVM'in ortam+sitesindeki WEB satiri olan, envanterde web urunu tasiyan ya da web urunu
@@ -1289,7 +1302,15 @@ function assess(data, opts = {}) {
     if (eski.length || j.vhosts.some((m) => m.v.trafficState == null))
       return {
         kod: 'LEGACY',
-        metin: `v2 trafik kanıtı yok (eski tarama satırı${eski.length ? ': ' + eski.slice(0, 5).map((b) => b.host).join(', ') : ''})`,
+        metin: `v2 trafik kanıtı yok (eski tarama satırı${
+          eski.length
+            ? ': ' +
+              eski
+                .slice(0, 5)
+                .map((b) => b.host)
+                .join(', ')
+            : ''
+        })`,
       };
     const olcmeyen = [...ilgili.values()].filter((b) => !b.measured);
     if (olcmeyen.length)
@@ -1303,9 +1324,7 @@ function assess(data, opts = {}) {
     if (j.vhosts.some((m) => m.kind !== 'EXACT_JVM' && m.kind !== 'WEB_APP'))
       return { kod: 'MAPPING', metin: `eşleme türü ${j.mapping}` };
     if (
-      !j.vhosts.every(
-        (m) => m.v.trafficState === 'NO_RECENT_TRAFFIC' && m.v.trafficReason === 'OK',
-      )
+      !j.vhosts.every((m) => m.v.trafficState === 'NO_RECENT_TRAFFIC' && m.v.trafficReason === 'OK')
     )
       return { kod: 'NO_V2', metin: 'v2 trafik kanıtı yok' };
     const atf = [...atfedilemeyenTrafik(h, j), ...hedefiBilinmeyenTrafik(h, j)];
@@ -1467,10 +1486,12 @@ function assess(data, opts = {}) {
         'info',
         'scan',
         'LOAD_DUPLICATE',
-        `AWX envanterinde aynı makine iki adla: ${h.loadDuplicate
-          .map((x) => x.detail)
-          .filter(Boolean)
-          .join('; ') || '?'}`,
+        `AWX envanterinde aynı makine iki adla: ${
+          h.loadDuplicate
+            .map((x) => x.detail)
+            .filter(Boolean)
+            .join('; ') || '?'
+        }`,
       );
     const kismi = h.scanErrors.filter((t) => /^(deadline:|fuse:)/.test(t));
     if (kismi.length)
@@ -1551,7 +1572,12 @@ function assess(data, opts = {}) {
       // Dizin var ama jboss-cli ve host XML yok, ya da was dizine giremiyor (genelde eski
       // /usr/jboss kalintisi olan JBoss 8 sunuculari). JBoss CLI kartinin paydasina girmez.
       if (jbKalinti(b))
-        add('info', 'jboss', 'JBOSS_KALINTI', `JBoss ${b.gen} dizini var ama kullanılan bir kurulum görünmüyor: ${b.note}`.trim());
+        add(
+          'info',
+          'jboss',
+          'JBOSS_KALINTI',
+          `JBoss ${b.gen} dizini var ama kullanılan bir kurulum görünmüyor: ${b.note}`.trim(),
+        );
       else if (b.cli === 'SKIP' && b.note)
         add('info', 'jboss', 'CLI_SKIP', `JBoss ${b.gen} CLI çalıştırılamadı: ${b.note}`.trim());
       if (b.hostState === 'restart-required' || b.hostState === 'reload-required')
@@ -1597,7 +1623,7 @@ function assess(data, opts = {}) {
           'warning',
           'jvm',
           'JVM_UNDEFINED_PROCESS',
-          `JBoss ${g}: tanım kaynağı okundu${kaynaklar.size ? ` (${[...kaynaklar].join(', ')})` : ''}, çalışan ${ad} tanımda yok (ps'te tanımsız süreç)`,
+          `JBoss ${g}: tanım kaynağı okundu${kaynaklar.size ? ' (' + [...kaynaklar].join(', ') + ')' : ''}, çalışan ${ad} tanımda yok (ps'te tanımsız süreç)`,
           null,
           { undefinedJvms: adlar.slice(0, 50) },
         );
@@ -1664,7 +1690,14 @@ function assess(data, opts = {}) {
           `${id} çalışıyor ama auto-start KAPALI — reboot sonrası açılmaz`,
           fixOn,
         );
-        h.retireAdaylari.push({ kural: 'R7', tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+        h.retireAdaylari.push({
+          kural: 'R7',
+          tur: 'JVM',
+          ad: j.name,
+          host: h.host,
+          gen: j.gen,
+          engel: null,
+        });
       }
       // NEDEN BILINMIYOR (kullanici, 2026-09-28: "1930 bilinmiyor durumunda raporlamissin,
       // nedir bunlar? neyi bilinmiyor olarak algiliyorsun"). Uc ayri durum ayni kelimeyle
@@ -1690,7 +1723,14 @@ function assess(data, opts = {}) {
           `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`,
           fixOff,
         );
-        h.retireAdaylari.push({ kural: 'R8', tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+        h.retireAdaylari.push({
+          kural: 'R8',
+          tur: 'JVM',
+          ad: j.name,
+          host: h.host,
+          gen: j.gen,
+          engel: null,
+        });
       }
       // ── CAPRAZ KONTROLLER (capraz.cjs): her biri hem bulgu hem etiket adayi (R9-R12). ──
       const cx = capraz.jvm(h.host, j);
@@ -1699,7 +1739,14 @@ function assess(data, opts = {}) {
       if (cx && (cx.kopya || cx.kalinti || cx.ocp || cx.celiski.length))
         j.capraz = { kopya: cx.kopya, kalinti: cx.kalinti, ocp: cx.ocp, celiski: cx.celiski };
       const jAday = (kural) =>
-        h.retireAdaylari.push({ kural, tur: 'JVM', ad: j.name, host: h.host, gen: j.gen, engel: null });
+        h.retireAdaylari.push({
+          kural,
+          tur: 'JVM',
+          ad: j.name,
+          host: h.host,
+          gen: j.gen,
+          engel: null,
+        });
       if (cx && cx.kopya) {
         add(
           'warning',
@@ -1792,20 +1839,33 @@ function assess(data, opts = {}) {
         trafficState: ts || null,
       };
       // Kanit: hangi web sunucusu, hangi vhost, hangi access log (kullanici istegi)
-      const kanit = j.vhosts.length
-        ? ` [${j.matchKind === 'proxy' ? 'proxy hedefi' : j.matchKind === 'web-app' ? 'Web-App ilişkisi' : j.matchKind}: ${j.vhosts
+      const kanit = (() => {
+        if (j.vhosts.length)
+          return ` [${(() => {
+            if (j.matchKind === 'proxy') return 'proxy hedefi';
+            if (j.matchKind === 'web-app') return 'Web-App ilişkisi';
+            return j.matchKind;
+          })()}: ${j.vhosts
             .map(
               (m) =>
-                `${m.host}/${m.v.serverName || '?'}${m.v.accessLog ? ' → ' + m.v.accessLog : ''}`,
+                String(m.host) +
+                '/' +
+                (m.v.serverName || '?') +
+                (m.v.accessLog ? ' → ' + m.v.accessLog : ''),
             )
             .slice(0, 2)
-            .join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`
-        : '';
+            .join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`;
+        return '';
+      })();
       const durmus = rk && !j.running;
       // ETIKET ADAYLARI: R1 kapali + auto-start acik + trafik yok; R2 kapali + auto-start kapali +
       // trafik var (IHS acik). Engel (bayat / esleme / olculemeyen katman) adayi dusurmez: etiket
       // motoru KESIN'i SUPHELI'ye indirir ve nedenini yazar.
-      if (durmus && ((j.autoStart === 'true' && ts === 'NO_RECENT_TRAFFIC') || (j.autoStart === 'false' && ts === 'ACTIVE'))) {
+      if (
+        durmus &&
+        ((j.autoStart === 'true' && ts === 'NO_RECENT_TRAFFIC') ||
+          (j.autoStart === 'false' && ts === 'ACTIVE'))
+      ) {
         const engel = ts === 'NO_RECENT_TRAFFIC' ? retireEngeli(h, j) : null;
         h.retireAdaylari.push({
           kural: ts === 'NO_RECENT_TRAFFIC' ? 'R1' : 'R2',
@@ -1827,7 +1887,7 @@ function assess(data, opts = {}) {
           'warning',
           'jvm',
           'RETIRE_CANDIDATE',
-          `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}${engel ? ` — eylem önerilmez: ${engel.metin}` : ''}`,
+          `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}${engel ? ' — eylem önerilmez: ' + engel.metin : ''}`,
           engel ? null : { action: 'jboss_retire', gen: j.gen, jvm: j.name },
           { ...logKanit, retireBlock: engel ? engel.kod : null },
         );
@@ -1880,7 +1940,9 @@ function assess(data, opts = {}) {
               .slice(0, 3)
               .map(
                 (x) =>
-                  `${atfMetni(x)} ${x.trafficState || (x.req7d > 0 ? 'ACTIVE' : 'ölçülemedi')}`,
+                  String(atfMetni(x)) +
+                  ' ' +
+                  (x.trafficState || (x.req7d > 0 ? 'ACTIVE' : 'ölçülemedi')),
               )
               .join(', ')}${atf.length > 3 ? ' +' + (atf.length - 3) : ''}) — retire önerilmez`,
             null,
@@ -1892,19 +1954,26 @@ function assess(data, opts = {}) {
     // ya da EAR_VERI_MAX_GUN'den eskiyse bulgu ve etiket URETILMEZ; h.ear nedenini tasir (ekran soyler).
     const ear = earByHost.get(h.host) || null;
     const earYas = ear && ear.taranma ? Math.floor((now - Date.parse(ear.taranma)) / GUN_MS) : null;
-    h.ear = !earVeri || earVeri.okunamadi
-      ? { durum: 'OKUNAMADI' }
-      : !ear
-        ? { durum: 'YOK' }
-        : {
-            durum: earYas == null || earYas > EAR_VERI_MAX_GUN ? 'ESKI' : 'VAR',
-            taranma: ear.taranma,
-            yasGun: earYas,
-            kosuId: ear.kosuId,
-            uygulamalar: ear.uygulamalar.map((u) => ({ kok: u.kok, ad: u.ad, jboss: u.jboss, durum: u.durum, warSayisi: u.warSayisi, xml: u.xml })),
-            // Faz 2: null = deployment kontrolu kapali / olculmedi.
-            deployment: ear.deployment || null,
-          };
+    h.ear = (() => {
+      if (!earVeri || earVeri.okunamadi) return { durum: 'OKUNAMADI' };
+      if (!ear) return { durum: 'YOK' };
+      return {
+        durum: earYas == null || earYas > EAR_VERI_MAX_GUN ? 'ESKI' : 'VAR',
+        taranma: ear.taranma,
+        yasGun: earYas,
+        kosuId: ear.kosuId,
+        uygulamalar: ear.uygulamalar.map((u) => ({
+          kok: u.kok,
+          ad: u.ad,
+          jboss: u.jboss,
+          durum: u.durum,
+          warSayisi: u.warSayisi,
+          xml: u.xml,
+        })),
+        // Faz 2: null = deployment kontrolu kapali / olculmedi.
+        deployment: ear.deployment || null,
+      };
+    })();
     // Retirement'la kapatilmis hedefin JVM'i taramada yok ama paketi ozgun adiyla diskte (capraz.cjs;
     // yalniz taze Uygulama Envanteri verisiyle): EAR konusu.
     for (const c of capraz.host(h.host)) {
@@ -1925,21 +1994,40 @@ function assess(data, opts = {}) {
         const konu = { kok: u.kok, ad: u.ad, jboss: u.jboss };
         // KISMI taranan EAR'da WAR'lar eksik olabilir: "WAR yok" yalniz TAM taramada.
         if (u.durum === 'TAM' && u.warSayisi === 0) {
-          add('warning', 'ear', 'EAR_WAR_YOK', `${yer}: EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir`, null, { ear: konu });
+          add(
+            'warning',
+            'ear',
+            'EAR_WAR_YOK',
+            `${yer}: EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir`,
+            null,
+            { ear: konu },
+          );
           h.retireAdaylari.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok });
         }
         const x = u.xml;
         if (x && x.durum === 'JVM_YOK') {
           const dep = (x.deploymentlar || []).map((d) => d.ad).filter(Boolean);
-          const gruplar = [...new Set((x.deploymentlar || []).flatMap((d) => (d.gruplar || []).map((g) => g.ad)))];
-          const metin =
-            x.neden === 'GRUPTA_YOK'
-              ? `deployment tanımlı (${dep.slice(0, 3).join(', ') || '?'}) ama hiçbir server-group'a atanmamış`
-              : x.neden === 'SUNUCU_YOK'
-                ? `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`
-                : `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`;
-          add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}`, null, { ear: { ...konu, neden: x.neden || 'TANIM_YOK' } });
-          h.retireAdaylari.push({ kural: 'R5', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok, neden: x.neden || 'TANIM_YOK' });
+          const gruplar = [
+            ...new Set((x.deploymentlar || []).flatMap((d) => (d.gruplar || []).map((g) => g.ad))),
+          ];
+          const metin = (() => {
+            if (x.neden === 'GRUPTA_YOK')
+              return `deployment tanımlı (${dep.slice(0, 3).join(', ') || '?'}) ama hiçbir server-group'a atanmamış`;
+            if (x.neden === 'SUNUCU_YOK')
+              return `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`;
+            return `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`;
+          })();
+          add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}`, null, {
+            ear: { ...konu, neden: x.neden || 'TANIM_YOK' },
+          });
+          h.retireAdaylari.push({
+            kural: 'R5',
+            tur: 'EAR',
+            ad: u.ad,
+            host: h.host,
+            kok: u.kok,
+            neden: x.neden || 'TANIM_YOK',
+          });
         } else if (x && x.durum === 'OLCULEMEDI') {
           const k = x.neden || 'neden bilinmiyor';
           if (!olcmeyen.has(k)) olcmeyen.set(k, []);
@@ -1961,7 +2049,11 @@ function assess(data, opts = {}) {
       if (dep && Array.isArray(dep.jvmler)) {
         const diskEar = new Set(ear.uygulamalar.map((u) => U(u.ad)));
         const olcmeyen = [];
-        const adlar = (l) => `${l.slice(0, 5).map((d) => d.ad).join(', ')}${l.length > 5 ? ' +' + (l.length - 5) : ''}`;
+        const adlar = (l) =>
+          `${l
+            .slice(0, 5)
+            .map((d) => d.ad)
+            .join(', ')}${l.length > 5 ? ' +' + (l.length - 5) : ''}`;
         for (const dj of dep.jvmler) {
           const id = `JBoss${dj.nesil} ${dj.ad}`;
           const konu = { deployment: { jvm: dj.ad, nesil: dj.nesil } };
@@ -1971,14 +2063,39 @@ function assess(data, opts = {}) {
           }
           const dl = Array.isArray(dj.deploymentlar) ? dj.deploymentlar : [];
           if (!dl.length) {
-            add('danger', 'ear', 'DEPLOY_YOK', `${id} ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM`, null, konu);
+            add(
+              'danger',
+              'ear',
+              'DEPLOY_YOK',
+              `${id} ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM`,
+              null,
+              konu,
+            );
             continue;
           }
           const failed = dl.filter((d) => d.durum === 'FAILED');
-          if (failed.length) add('danger', 'ear', 'DEPLOY_FAILED', `${id}: deployment FAILED — ${adlar(failed)}`, null, konu);
+          if (failed.length)
+            add(
+              'danger',
+              'ear',
+              'DEPLOY_FAILED',
+              `${id}: deployment FAILED — ${adlar(failed)}`,
+              null,
+              konu,
+            );
           const kapali = dl.filter((d) => d.etkin === false);
-          if (kapali.length) add('warning', 'ear', 'DEPLOY_KAPALI', `${id}: devre dışı deployment — ${adlar(kapali)}`, null, konu);
-          const uyusmayan = dl.filter((d) => !diskEar.has(U(d.ad)) && !diskEar.has(U(d.calisma_adi)));
+          if (kapali.length)
+            add(
+              'warning',
+              'ear',
+              'DEPLOY_KAPALI',
+              `${id}: devre dışı deployment — ${adlar(kapali)}`,
+              null,
+              konu,
+            );
+          const uyusmayan = dl.filter(
+            (d) => !diskEar.has(U(d.ad)) && !diskEar.has(U(d.calisma_adi)),
+          );
           if (uyusmayan.length)
             h.retireAdaylari.push({
               kural: 'R6',
@@ -2007,7 +2124,10 @@ function assess(data, opts = {}) {
           if (!kokBasina.has(g.kok)) kokBasina.set(g.kok, []);
           kokBasina.get(g.kok).push(g);
         }
-        const kesik = ear.kokGirdileri.kesilen > 0 ? ` (liste kesik: ${ear.kokGirdileri.kesilen} girdi daha)` : '';
+        const kesik =
+          ear.kokGirdileri.kesilen > 0
+            ? ` (liste kesik: ${ear.kokGirdileri.kesilen} girdi daha)`
+            : '';
         for (const [kok, gl] of kokBasina) {
           const TIP = { D: 'dizin', F: 'dosya', L: 'bağ' };
           add(
@@ -2016,13 +2136,28 @@ function assess(data, opts = {}) {
             'KOK_EAR_DISI',
             `${kok} altında .ear ile bitmeyen ${gl.length} girdi: ${gl
               .slice(0, 5)
-              .map((g) => `${g.ad} (${TIP[g.tip] || '?'}${g.hedef ? ' → ' + g.hedef : ''})`)
+              .map(
+                (g) =>
+                  String(g.ad) +
+                  ' (' +
+                  (TIP[g.tip] || '?') +
+                  (g.hedef ? ' → ' + g.hedef : '') +
+                  ')',
+              )
               .join(', ')}${gl.length > 5 ? ' +' + (gl.length - 5) : ''}${kesik}`,
             null,
             { ear: { kok, girdiler: gl.slice(0, 100) } },
           );
           for (const g of gl)
-            h.retireAdaylari.push({ kural: 'R4', tur: 'GIRDI', ad: g.ad, host: h.host, kok, tip: g.tip, hedef: g.hedef || null });
+            h.retireAdaylari.push({
+              kural: 'R4',
+              tur: 'GIRDI',
+              ad: g.ad,
+              host: h.host,
+              kok,
+              tip: g.tip,
+              hedef: g.hedef || null,
+            });
         }
       }
     }
@@ -2134,11 +2269,7 @@ function assess(data, opts = {}) {
         );
       }
       // webRunningKnown (v3): BLIND'da ps'te gorulmeyen web "calismiyor" DEGILDIR.
-      if (
-        w.runningKnown !== false &&
-        !w.running &&
-        h.vhosts.some((v) => v.product === w.product)
-      )
+      if (w.runningKnown !== false && !w.running && h.vhosts.some((v) => v.product === w.product))
         add('warning', 'web', 'NOT_RUNNING', `${w.product} çalışmıyor ama vhost tanımları var`);
     }
     for (const v of h.vhosts) {
@@ -2357,7 +2488,12 @@ function assess(data, opts = {}) {
       autoOff: jvms.filter((j) => j.autoStart === 'false').length,
       autoUnknown: jvms.filter((j) => j.autoStart === 'unknown').length,
       // BILINMIYOR'UN KIRILIMI: tek sayi "neyi bilmiyoruz" sorusunu cevapsiz birakiyordu.
-      autoUnknownBy: ['cli-okunamadi', 'envanterde-yok', 'envanter-celiskili', 'tanimsiz-surec'].reduce((m, k) => {
+      autoUnknownBy: [
+        'cli-okunamadi',
+        'envanterde-yok',
+        'envanter-celiskili',
+        'tanimsiz-surec',
+      ].reduce((m, k) => {
         m[k] = jvms.filter(
           (j) => j.autoStart === 'unknown' && (j.autoStartReason || 'cli-okunamadi') === k,
         ).length;
@@ -2483,9 +2619,8 @@ function assess(data, opts = {}) {
       hosts: hostlar.length,
       olcutHosts: olcutlu.length,
       noOlcutHosts: hostlar.length - olcutlu.length,
-      compliant: olcutlu.filter((h) =>
-        h.init.filter(olcuteGirer).every((i) => i.status === 'OK'),
-      ).length,
+      compliant: olcutlu.filter((h) => h.init.filter(olcuteGirer).every((i) => i.status === 'OK'))
+        .length,
       unreadableFiles: say((i) => olcuteGirer(i) && i.status === 'UNREADABLE'),
       diffFiles: say((i) => olcuteGirer(i) && i.status === 'DIFF'),
       otherDiffFiles: say((i) => i.status === 'DIFF' && !i.hostSpecific && !olcuteGirer(i)),
@@ -2496,9 +2631,7 @@ function assess(data, opts = {}) {
    *  olcumdur; boylece kartin iki barinin paydasi ayni kumeden gelir. */
   const urunHostlari = (p) =>
     p === 'JBOSS'
-      ? genel.filter(
-          (h) => h.jboss.length > 0 || (h.products || []).some((x) => /^JBOSS/i.test(x)),
-        )
+      ? genel.filter((h) => h.jboss.length > 0 || (h.products || []).some((x) => /^JBOSS/i.test(x)))
       : genel.filter((h) => h.web.some((w) => w.product === p));
 
   summary.productInit = {};
@@ -2511,7 +2644,9 @@ function assess(data, opts = {}) {
   // JVM'i olmayan sunucu JBoss sunucusu SAYILMAZ (ayri sayi: kalinti).
   const jbEtkin = (h) => h.jboss.filter((b) => !jbKalinti(b));
   const yalnizKalinti = (h) =>
-    h.jboss.length > 0 && jbEtkin(h).length === 0 && !(h.jvms || []).some((j) => !yalnizEnvanter(j));
+    h.jboss.length > 0 &&
+    jbEtkin(h).length === 0 &&
+    !(h.jvms || []).some((j) => !yalnizEnvanter(j));
   const jbHostlari = urunHostlari('JBOSS').filter((h) => !yalnizKalinti(h));
   const jbAny = (h, d) => jbEtkin(h).some((b) => b.cli === d);
   summary.jbossCli = {
@@ -2719,8 +2854,17 @@ function assess(data, opts = {}) {
   summary.taramadanDusen = {
     sayi: dusenler.length,
     sunucular: dusenler
-      .map((h) => ({ host: h.host, scanDate: h.scanDate || null, env: h.env || null, products: h.products || [] }))
-      .sort((a, b) => String(b.scanDate || '').localeCompare(String(a.scanDate || '')) || a.host.localeCompare(b.host))
+      .map((h) => ({
+        host: h.host,
+        scanDate: h.scanDate || null,
+        env: h.env || null,
+        products: h.products || [],
+      }))
+      .sort(
+        (a, b) =>
+          String(b.scanDate || '').localeCompare(String(a.scanDate || '')) ||
+          a.host.localeCompare(b.host),
+      )
       .slice(0, 500),
   };
   return { hosts, summary, latestScan, staleFleet, schemaUnknown: semaBilinmiyor };

@@ -64,7 +64,7 @@ async function okunamadi(fn, desen) {
   });
 }
 
-const ISTEMCI = KOLON.join(',') + '\n' + KOLON.map((k) => (k === 'tur' ? 'R1_K_yeni_br_250_r1' : k === 'adim' ? 'R1' : '1')).join(',') + '\n';
+const ISTEMCI = KOLON.join(',') + '\n' + KOLON.map((k) => { if (k === 'tur') return 'R1_K_yeni_br_250_r1'; if (k === 'adim') return 'R1'; return '1'; }).join(',') + '\n';
 const LOG_BAS = 'tur\tfaz\ttime_local\tstatus\tyol\trequest_time\tresponse_lenght\tconnection_request\tdeneme\n';
 
 test('SN1 dizin yok / dosya / bos ad -> OKUNAMADI', async () => {

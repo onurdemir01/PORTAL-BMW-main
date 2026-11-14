@@ -303,7 +303,7 @@ function kipDogrulama(a, { motor = 'k6', hedefTuru = 'sunucu', protokol = 'h1' }
     }
   }
   const durumlar = [p.durum, b.durum, k.durum];
-  const durum = durumlar.includes('uyari') ? 'uyari' : durumlar.includes('tamam') ? 'tamam' : 'olculmedi';
+  const durum = (() => { if (durumlar.includes('uyari')) return 'uyari'; if (durumlar.includes('tamam')) return 'tamam'; return 'olculmedi'; })();
   return { protokol: p, baglanti: b, sikistirma: k, uyarilar, durum };
 }
 
@@ -420,7 +420,7 @@ function sunucuAyari(p, sonucOzet, analizOzeti, satir = {}) {
   const metin = st && typeof st.geri_alma_metin === 'string' ? st.geri_alma_metin.slice(0, 500) : null;
   const dgr = nesne(nesne(sonucOzet) && sonucOzet.durdur_geri_alma);
   const durdurIs = satir.durdurIs == null ? null : Number(satir.durdurIs);
-  let geriAlma = ga ? { durum: GERI_ALMA_DURUMLARI.has(ga) ? ga : 'hata', metin } : null;
+  let geriAlma = (() => { if (ga) return { durum: GERI_ALMA_DURUMLARI.has(ga) ? ga : 'hata', metin }; return null; })();
   if (dgr && (durdurIs === null || Number(dgr.is) === durdurIs)) {
     geriAlma = { durum: GERI_ALMA_DURUMLARI.has(dgr.durum) ? dgr.durum : 'hata', metin: typeof dgr.metin === 'string' ? dgr.metin.slice(0, 500) : null };
   } else if (satir.terminal && durdurIs !== null && (!geriAlma || geriAlma.durum === 'hata')) {
@@ -436,14 +436,14 @@ function sunucuAyari(p, sonucOzet, analizOzeti, satir = {}) {
     seviye: sonlu(sa.seviye),
     static: sa.static === true,
     dizin: typeof sa.dizin === 'string' ? sa.dizin : null,
-    kanit: k ? {
+    kanit: (() => { if (k) return {
       durum: k.durum === 'uyumlu' ? 'uyumlu' : 'kanitsiz',
       sapmalar: Array.isArray(k.sapmalar) ? k.sapmalar.map(String).slice(0, 10) : [],
       gzUretilen: sonlu(k.gz_uretilen),
       brUretilen: sonlu(k.br_uretilen),
       atlanan: sonlu(k.atlanan),
       uyarilar: Array.isArray(k.uyarilar) ? k.uyarilar.map(String).slice(0, 20) : [],
-    } : null,
+    }; return null; })(),
     geriAlma,
     uyarilar,
   };

@@ -1139,7 +1139,7 @@ function ClusterCapsPanel() {
 
   /** Listedeki EN YENI tarama damgasi — not bunu gosterir. */
   const enYeniTarama = useMemo(
-    () => rows.map((r) => r.fetchedAt).sort().slice(-1)[0] || '',
+    () => rows.map((r) => r.fetchedAt).sort((a, b) => a.localeCompare(b)).slice(-1)[0] || '',
     [rows],
   );
 

@@ -34,7 +34,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
   // Secenek kaynagi: yalnizca metin tipli survey alanlari kaynaga baglanabilir.
   const specNames = specFields.map((f) => f.variable);
   for (const ov of overrides) {
-    if (!ov || !ov.choicesSource) continue;
+    if (!ov?.choicesSource) continue;
     if (!ov.choicesSource.source) {
       delete ov.choicesSource;
       continue;
@@ -47,12 +47,12 @@ function dogrula(specFieldsGirdi, dataGirdi) {
       continue;
     }
     const problem = choiceSources.validateChoicesSource(ov.choicesSource, specNames);
-    if (problem) hatalar.push(`"${(field && field.question_name) || ov.fieldName}" seçenek kaynağı: ${problem}`);
+    if (problem) hatalar.push(`"${(field?.question_name) || ov.fieldName}" seçenek kaynağı: ${problem}`);
   }
 
   // Gizlenen alanin cozumlenen varsayilani bos olamaz.
   for (const ov of overrides) {
-    if (!ov || !ov.hidden) continue;
+    if (!ov?.hidden) continue;
     const field = specFields.find((f) => f.variable === ov.fieldName);
     if (!field) continue; // survey'de olmayan (extra_vars fallback) pseudo-alan - serbest
     const resolvedDefault = ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
@@ -65,7 +65,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
 
   // Gizli built-in launch seceneginin bos olmayan bir varsayilani olmali.
   for (const [key, ov] of Object.entries(data.launchOptionOverrides || {})) {
-    if (!ov || !ov.hidden) continue;
+    if (!ov?.hidden) continue;
     if (ov.default === undefined || ov.default === null || String(ov.default).trim() === '') {
       hatalar.push(
         `"${LAUNCH_OPTION_LABELS[key] || key}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`,
@@ -74,7 +74,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
   }
 
   const outputFilter = data.outputFilter;
-  if (outputFilter && outputFilter.enabled && !String(outputFilter.contains || '').trim()) {
+  if (outputFilter?.enabled && !String(outputFilter.contains || '').trim()) {
     hatalar.push('Çıktı filtresi etkin ama aranacak metin boş — bir metin girin veya filtreyi kapatın.');
   }
 
@@ -82,7 +82,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
   const customSurveyFields = Array.isArray(data.customSurveyFields) ? data.customSurveyFields : [];
   const seenNames = new Set();
   for (const f of customSurveyFields) {
-    const name = String((f && f.name) || '').trim();
+    const name = String((f?.name) || '').trim();
     if (!name) {
       hatalar.push('Her özel alanın bir değişken adı olmalı.');
       continue;
@@ -98,7 +98,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
       continue;
     }
     seenNames.add(name);
-    if (!String((f && f.label) || '').trim()) {
+    if (!String((f?.label) || '').trim()) {
       hatalar.push(`"${name}" alanının bir görünen adı (label) olmalı.`);
       continue;
     }
@@ -106,11 +106,11 @@ function dogrula(specFieldsGirdi, dataGirdi) {
       hatalar.push(`"${f.label}" gizli ama varsayılan değeri yok — gizlemeden önce bir varsayılan değer belirleyin.`);
       continue;
     }
-    if (f.choicesSource && !f.choicesSource.source) delete f.choicesSource;
+    if (!f.choicesSource?.source) delete f.choicesSource;
     if (f.choicesSource) {
       const problem = choiceSources.validateChoicesSource(
         f.choicesSource,
-        customSurveyFields.map((o) => String((o && o.name) || '').trim()),
+        customSurveyFields.map((o) => String((o?.name) || '').trim()),
       );
       if (problem) {
         hatalar.push(`"${f.label}" seçenek kaynağı: ${problem}`);
@@ -132,7 +132,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
         continue;
       }
       for (const c of conditions) {
-        const condField = String((c && c.field) || '').trim();
+        const condField = String((c?.field) || '').trim();
         if (!condField) {
           hatalar.push(`"${f.label}" için bir koşul alanı seçilmemiş.`);
           break;
@@ -141,7 +141,7 @@ function dogrula(specFieldsGirdi, dataGirdi) {
           hatalar.push(`"${f.label}" kendi kendine bağlı olamaz.`);
           break;
         }
-        if (!customSurveyFields.some((other) => String((other && other.name) || '').trim() === condField)) {
+        if (!customSurveyFields.some((other) => String((other?.name) || '').trim() === condField)) {
           hatalar.push(`"${f.label}" tanımsız bir alana bağlı: "${condField}"`);
           break;
         }

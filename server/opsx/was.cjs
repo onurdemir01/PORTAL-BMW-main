@@ -133,11 +133,7 @@ async function resolveTemplate(kind) {
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
   const serverId =
-    row.awxServerId != null
-      ? Number(row.awxServerId)
-      : Number.isInteger(envServer) && envServer >= 0
-        ? envServer
-        : 0;
+    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
   return { templateId: templateId || null, serverId, keyName, playbookPath: row.playbookPath || '' };
 }
 
@@ -162,7 +158,7 @@ async function assertTemplatePlaybook(kind, tpl) {
   const expected = basenameOf(tpl.playbookPath) || EXPECTED_PLAYBOOK[kind];
   const { findTemplate } = require('../ansible/template-preflight.cjs');
   const meta = await findTemplate(tpl.serverId, tpl.templateId);
-  if (!meta || !meta.playbook) return;
+  if (!meta?.playbook) return;
   const actual = basenameOf(meta.playbook);
   if (actual !== expected) {
     throw httpError(
@@ -504,7 +500,7 @@ function startWasReconciler() {
 function lockBusyError(lock) {
   const row = lock.busy || {};
   const which = String(lock.busyKey || '').startsWith('A|') ? 'Bu uygulamada' : 'Bu JVM üzerinde';
-  const who = row.holder ? ` (${row.holder}` + (row.awx_job_id ? `, AWX #${row.awx_job_id})` : ')') : '';
+  const who = (() => { if (row.holder) return ` (${row.holder}` + (row.awx_job_id ? `, AWX #${row.awx_job_id})` : ')'); return ''; })();
   return httpError(
     409,
     `${which} süren bir WAS işlemi var${who}. Aynı uygulamanın iki sunucusu aynı anda indirilmez — ` +

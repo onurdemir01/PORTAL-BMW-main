@@ -80,7 +80,7 @@ function normalizeTracking(body) {
 }
 
 function rowToTracking(r) {
-  const d = (v) => (v ? String(v instanceof Date ? v.toISOString().slice(0, 10) : v).slice(0, 10) : null);
+  const d = (v) => { if (v) return String(v instanceof Date ? v.toISOString().slice(0, 10) : v).slice(0, 10); return null; };
   return {
     group: r.group_id,
     namespace: r.namespace,
@@ -808,9 +808,7 @@ function initNginxMigration(app) {
       const g = assessNewFleetGuard(await readNewFleetContract(cfg.awxServerId, cfg.deleteTemplateId, { runner }));
       res.json({
         ok: true,
-        guard: g.ok
-          ? { ok: true, via: g.via, ...(g.warning ? { warning: g.warning } : {}) }
-          : { ok: false, code: g.code, measured: g.measured, message: g.message },
+        guard: (() => { if (g.ok) return { ok: true, via: g.via, ...(g.warning ? { warning: g.warning } : {}) }; return { ok: false, code: g.code, measured: g.measured, message: g.message }; })(),
       });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });

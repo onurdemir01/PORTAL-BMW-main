@@ -154,7 +154,7 @@ test('NH-A2 panel uçları: sayfaya + seçilen sekmelere allow yazılır (seçil
   // 'all' de AYNI listeye genisler: beyaz listeyi atlayan bir kisayol olmamali.
   assert.match(
     routes,
-    /tabs === 'all'\s*\?\s*NGINX_TAB_KEYS/,
+    /(?:tabs === 'all'\s*\?\s*NGINX_TAB_KEYS|if \(tabs === 'all'\) return NGINX_TAB_KEYS)/,
     "'all' seçimi NGINX_TAB_KEYS dışına genişliyor",
   );
 });

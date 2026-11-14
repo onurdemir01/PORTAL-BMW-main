@@ -712,7 +712,7 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
 
   // SMART ortam kurali DEGISMEDI: yalnizca production.
   if (!prod) {
-    const oco = ocoUygulanir ? (action === 'restore' ? 'warn' : 'require') : 'skip';
+    const oco = (() => { if (ocoUygulanir) { if (action === 'restore') return 'warn'; return 'require'; } return 'skip'; })();
     return {
       oco,
       smart: 'skip',
@@ -729,7 +729,7 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
 
   const s = smartKarari(smart);
   const oco =
-    action === 'restore' ? (ocoUygulanir ? 'warn' : 'skip') : ocoUygulanir ? 'require' : 'skip';
+    (() => { if (action === 'restore') { if (ocoUygulanir) return 'warn'; return 'skip'; } if (ocoUygulanir) return 'require'; return 'skip'; })();
   return {
     oco,
     smart: s.smart,
@@ -751,11 +751,7 @@ function gatePolicyFor({ action, executionMode, environment, ocoConfig, smart })
     schedulable: oco === 'require' && s.smart === 'skip',
     blocked: s.blocked,
     reason:
-      action === 'restore'
-        ? 'geri alma bir onarim islemidir'
-        : ocoGateDisabled
-          ? 'OCO kapisi admin tarafindan KAPATILMIS'
-          : null,
+      (() => { if (action === 'restore') return 'geri alma bir onarim islemidir'; if (ocoGateDisabled) return 'OCO kapisi admin tarafindan KAPATILMIS'; return null; })(),
   };
 }
 

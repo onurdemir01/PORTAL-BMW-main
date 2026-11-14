@@ -47,8 +47,8 @@ function sahteDb(satirlar) {
     sorgular,
     query: async (sql, params = []) => {
       sorgular.push({ sql, params });
-      const m = /\b(?:UPDATE|FROM|INTO)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(sql);
-      const tablo = m && m[1];
+      const m = /\b(?:UPDATE|FROM|INTO)\s+([a-z_][a-z0-9_]*)/i.exec(sql);
+      const tablo = m?.[1];
       if (!tablo || !BILINEN_TABLOLAR.has(tablo)) {
         throw new Error(`Invalid object name '${tablo || '?'}'.`);
       }
@@ -121,7 +121,7 @@ test('OW3 store.cjs BILINMEYEN hicbir tabloya dokunmaz', async () => {
   // OW1 yalnizca TEK fonksiyonu kosturur. Bu bekci dosyadaki TUM sorgulari tarar:
   // ayni yazim hatasi baska bir fonksiyonda tekrarlanirsa burada yakalanir.
   const bulunan = new Set();
-  const re = /\b(?:UPDATE|FROM|INTO)\s+([A-Za-z_][A-Za-z0-9_]*)/gi;
+  const re = /\b(?:UPDATE|FROM|INTO)\s+([a-z_][a-z0-9_]*)/gi;
   let m;
   while ((m = re.exec(STORE_SRC)) !== null) bulunan.add(m[1]);
   const yabanci = [...bulunan].filter((t) => !BILINEN_TABLOLAR.has(t));

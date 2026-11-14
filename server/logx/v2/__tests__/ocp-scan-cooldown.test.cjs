@@ -97,10 +97,10 @@ test('CD7 `scannedEmpty` bilinmeyen tarama kaydinda TRUE olamaz', () => {
   const src = norm(read('ocp-cache.cjs'));
   assert.match(
     src,
-    /scannedEmpty: Boolean\(scan && !scan\.unknown &&/,
+    /scannedEmpty: Boolean\((?:scan && !scan\.unknown|!scan\?\.unknown) &&/,
     '`unknown` tarama kaydi "tarandi ve bos" sayiliyor — yanlis bilgi',
   );
-  assert.match(src, /scanUnknown: Boolean\(scan && scan\.unknown\)/, 'scanUnknown yayinlanmiyor');
+  assert.match(src, /scanUnknown: Boolean\((?:scan && scan\.unknown|scan\?\.unknown)\)/, 'scanUnknown yayinlanmiyor');
 });
 
 test('CD8 katalog birlestiricisi `scanUnknown` bayragini TASIYOR', () => {

@@ -258,7 +258,7 @@ function createRouter() {
   router.patch('/isler/:id', async (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const gelen = {};
-    for (const k of Object.keys(KOLON)) if (Object.prototype.hasOwnProperty.call(body, k)) gelen[k] = body[k];
+    for (const k of Object.keys(KOLON)) if (Object.hasOwn(body, k)) gelen[k] = body[k];
     if (!Object.keys(gelen).length) return res.status(400).json({ ok: false, error: 'Değişecek alan yok.' });
     const { deger, hatalar } = K.isDogrula(gelen, { kismi: true });
     if (hatalar.length) return res.status(400).json({ ok: false, error: hatalar.join(' ') });

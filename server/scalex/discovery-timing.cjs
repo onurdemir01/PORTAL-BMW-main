@@ -126,7 +126,7 @@ async function record({ env, tenant, namespace, timing, awxJobId, job, playbookT
           S(t.namespace ?? namespace, 100) || null,
           S(t.mode, 32) || 'unknown',
           msOrNull(t.kinds),
-          t.cached === true ? 1 : t.cached === false ? 0 : null,
+          (() => { if (t.cached === true) return 1; if (t.cached === false) return 0; return null; })(),
           msOrNull(t.setupMs),
           msOrNull(t.discoverMs),
           msOrNull(t.elapsedMs),

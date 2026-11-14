@@ -385,7 +385,7 @@ function BarList({
         >
           {all
             ? 'daha az göster'
-            : `tümünü göster (${nf(rows.length)} ${unit === 'sunucu' ? 'değer' : 'değer'})`}
+            : `tümünü göster (${nf(rows.length)} değer)`}
         </button>
       )}
     </div>

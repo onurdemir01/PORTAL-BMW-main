@@ -25,6 +25,15 @@ const intranetKapsam = require('./intranet-kapsam.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
 // Tarama SAATI (2026-09-23): tablolarda `scanned_at` varsa okunur, yoksa null.
 const { scanStamp } = require('./scan-stamp.cjs');
+
+function hostOf(u) {
+  return String(u || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, '')
+    .split('/')[0]
+    .replace(/:\d+$/, '');
+}
 const {
   loadMigration,
   resolveTarget,
@@ -130,7 +139,10 @@ function initDenetim(app) {
   const { createResponseCache } = require('./response-cache.cjs');
   const responseCache = createResponseCache();
   // Elle etiket degisince (Envanter/API/SPA yanitlari etikete uyar) bayat yanit kalmasin.
-  require('./nginx-host-labels.cjs').degisinceHaberVer(() => responseCache.clear(), 'denetim-yanit');
+  require('./nginx-host-labels.cjs').degisinceHaberVer(
+    () => responseCache.clear(),
+    'denetim-yanit',
+  );
   // Eski sunucu suzgeci (Nginx Hub sekmeleri). Modul yuklenemezse hicbir sey gizlenmez.
   const eskiSunucuSuzgec = async (req) => {
     try {
@@ -144,7 +156,9 @@ function initDenetim(app) {
   // serilestirilir ve "Yenile" sonrasi diger varyantlar 60 sn eski kalir.
   // /veri-katalogu bu onbellekten GECER (2026-11-13): kendi 10 dk onbellegi de var ama govde kucuk
   // (tek giris) ve ?fresh=1 iki katmani birlikte atlar.
-  router.use((req, res, next) => (req.path === '/web-app' ? next() : responseCache.middleware(req, res, next)));
+  router.use((req, res, next) =>
+    req.path === '/web-app' ? next() : responseCache.middleware(req, res, next),
+  );
 
   // ── 1) NGINX SPA AUDIT ──────────────────────────────────────────────────────────────
   // Nginx_Config_Audit gunluk satir tutar; HER ZAMAN en son scan_date okunur (tarih
@@ -199,7 +213,9 @@ function initDenetim(app) {
           const sema = r.recordset?.[0] || {};
           if (!sema.trf) return null;
           return query(spaTrafikSorgusu(!!sema.fs)).then((tr) =>
-            spaTrafikIndeksi(tr.recordset || [], (x) => spaTrafikAnahtari(x.service, x.env, x.location)),
+            spaTrafikIndeksi(tr.recordset || [], (x) =>
+              spaTrafikAnahtari(x.service, x.env, x.location),
+            ),
           );
         })
         .catch(() => null);
@@ -242,7 +258,8 @@ function initDenetim(app) {
           // YALNIZ ARK (2026-11-11): proxy hedefi ARK disi bir route'a cozulmesin.
           const arkC = PLATFORM_CLUSTERS.ark;
           const arkYer = arkC.map((_, i) => `@a${i}`).join(', ');
-          const arkPar = () => arkC.map((c, i) => ({ name: `a${i}`, type: sql.NVarChar(200), value: c }));
+          const arkPar = () =>
+            arkC.map((c, i) => ({ name: `a${i}`, type: sql.NVarChar(200), value: c }));
           const [prx, routes, ocp] = await Promise.all([
             query(
               `SELECT service, env, host, vhost, location_path, upstream_name, target_url
@@ -254,18 +271,12 @@ function initDenetim(app) {
               `SELECT DISTINCT namespace_name, route_address FROM dbo.BMW_Openshift_Route_Inventory WHERE cluster_name IN (${arkYer})`,
               arkPar(),
             ).catch(() => ({ recordset: [] })),
-            query(`SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkYer})`, arkPar()).catch(
-              () => ({ recordset: [] }),
-            ),
+            query(
+              `SELECT DISTINCT namespace, application FROM dbo.Openshift_Inventory WHERE cluster IN (${arkYer})`,
+              arkPar(),
+            ).catch(() => ({ recordset: [] })),
           ]);
           const maps = buildResolverMaps(routes.recordset || [], ocp.recordset || []);
-          const hostOf = (u) =>
-            String(u || '')
-              .trim()
-              .toLowerCase()
-              .replace(/^[a-z]+:\/\//, '')
-              .split('/')[0]
-              .replace(/:\d+$/, '');
           prodProxyStats = { rows: 0, resolved: 0, unresolved: 0 };
           for (const r of es.ayir(prx.recordset || [])) {
             prodProxyStats.rows++;
@@ -354,7 +365,9 @@ function initDenetim(app) {
       const etM = (await etiketP).m;
       // TANIM BASINA (aynalar): tanimin tum sunuculari ayni etikette anlasmazsa conf.d adi kalir.
       const tanimEt = require('./nginx-host-labels.cjs').tanimEtiketi(raw, etM, (r) =>
-        [r.service, normEnv(r.env), r.application || r.include_name, r.location_path].join('\u0000'),
+        [r.service, normEnv(r.env), r.application || r.include_name, r.location_path].join(
+          '\u0000',
+        ),
       );
       const servisAdi = (r) => tanimEt(r) || r.service || '(bilinmiyor)';
       const svcLoc = new Map(); // service -> env -> Set(vhost|location)
@@ -555,7 +568,7 @@ function initDenetim(app) {
           const covered = new Set();
           for (const r of rows) {
             const c = r.envs.PROD;
-            if (c && c.namespace)
+            if (c?.namespace)
               covered.add(String(c.namespace).toLowerCase() + '/' + r.application.toLowerCase());
           }
           for (const [nsApp, e] of onNewProd) {
@@ -644,13 +657,13 @@ function initDenetim(app) {
       };
       for (const r of rows) {
         for (const c of Object.values(r.envs)) {
-          if (!c || !c.traffic) continue;
+          if (!c?.traffic) continue;
           trafficStats[
-            c.traffic.state === 'active'
-              ? 'active'
-              : c.traffic.state === 'idle'
-                ? 'idle'
-                : 'unknown'
+            (() => {
+              if (c.traffic.state === 'active') return 'active';
+              if (c.traffic.state === 'idle') return 'idle';
+              return 'unknown';
+            })()
           ] += 1;
           if (c.traffic.state === 'unknown' && c.traffic.hosts > 0) trafficStats.kismi += 1;
         }
@@ -721,7 +734,7 @@ function initDenetim(app) {
     )
       .then((r) => r.recordset?.[0] || {})
       .catch(() => null);
-    if (s && s.oid) {
+    if (s?.oid) {
       _spaSema = s;
       _spaSemaAt = Date.now();
     }
@@ -1028,11 +1041,11 @@ function initDenetim(app) {
           return { type: byName, how: 'name' };
         }
         const set = routeByNs.get(nsLower);
-        if (set && set.size === 1) {
+        if (set?.size === 1) {
           matchStats.ns++;
           return { type: [...set][0], how: 'ns' };
         }
-        if (set && set.size > 1) {
+        if (set?.size > 1) {
           matchStats.conflict++;
           return { type: null, how: 'conflict' };
         }
@@ -1073,14 +1086,12 @@ function initDenetim(app) {
         // Kullanicinin verdigi kural: passthrough -> internet (nginx'e cikabilir),
         // reencrypt -> intranet (nginx'e CIKAMAZ). Diger tipler (edge, tls yok)
         // bu kuralin disinda; "diger" olarak ayri tutulur, tahmin edilmez.
-        const net =
-          type === 'passthrough'
-            ? 'internet'
-            : type === 'reencrypt'
-              ? 'intranet'
-              : type
-                ? 'diger'
-                : 'bilinmiyor';
+        const net = (() => {
+          if (type === 'passthrough') return 'internet';
+          if (type === 'reencrypt') return 'intranet';
+          if (type) return 'diger';
+          return 'bilinmiyor';
+        })();
         if (!ocp.has(env)) ocp.set(env, new Map());
         const k = app.toLowerCase();
         const prev = ocp.get(env).get(k);
@@ -1119,8 +1130,19 @@ function initDenetim(app) {
       const covEt = require('./nginx-host-labels.cjs');
       const covEtM = (await covEt.etiketHaritasi()).m;
       // Tanim basina (aynalar karisik etiketliyse conf.d adi kalir).
-      const covTanim = covEt.tanimEtiketi([...(ngxRes.recordset || []), ...(proxyRes.recordset || [])], covEtM, (r) =>
-        [r.kind || '', r.service, r.env, r.application, r.location_path, r.target_url, r.upstream_name].join('\u0000'),
+      const covTanim = covEt.tanimEtiketi(
+        [...(ngxRes.recordset || []), ...(proxyRes.recordset || [])],
+        covEtM,
+        (r) =>
+          [
+            r.kind || '',
+            r.service,
+            r.env,
+            r.application,
+            r.location_path,
+            r.target_url,
+            r.upstream_name,
+          ].join('\u0000'),
       );
       const addSvc = (env, appLower, svc, etiket) => {
         const sv =
@@ -1162,13 +1184,6 @@ function initDenetim(app) {
       const proxyStats = { rows: 0, resolved: 0, spa: 0, unresolved: 0 };
       {
         const maps = buildResolverMaps(routeRes.recordset || [], ocpRes.recordset || []);
-        const hostOf = (u) =>
-          String(u || '')
-            .trim()
-            .toLowerCase()
-            .replace(/^[a-z]+:\/\//, '')
-            .split('/')[0]
-            .replace(/:\d+$/, '');
         for (const r of proxyRes.recordset || []) {
           proxyStats.rows++;
           if (tierOfHost(r.host) === 'intranet') continue;
@@ -1281,7 +1296,12 @@ function initDenetim(app) {
         // (nginx-intranet.cjs) - orada birim testleriyle kilitli.
         const ic = coverageForEnv(bucket.intranet, intraIdx.get(e), CAP);
         const ortak = ortakIntranet
-          ? intranetKapsam.intranetHucresi(ortakIntranet, e, (nss, app) => ownersForApp(owners, app, nss), CAP)
+          ? intranetKapsam.intranetHucresi(
+              ortakIntranet,
+              e,
+              (nss, app) => ownersForApp(owners, app, nss),
+              CAP,
+            )
           : intranetKapsam.olculemediHucre(ortakIntranetHata);
         const onlyNginx = [];
         for (const [k, v] of n) if (!o.has(k)) onlyNginx.push(v);
@@ -1578,7 +1598,7 @@ function initDenetim(app) {
     ttlMs: 10 * 60 * 1000,
     compute: () => loadNginxAudit(null),
     token: () => nginxAuditToken(anaHavuzSorgu),
-    maxAgeMs: (p) => (p && p.eskiGizli && p.eskiGizli.olculemedi ? 10 * 60 * 1000 : 60 * 60 * 1000),
+    maxAgeMs: (p) => (p?.eskiGizli?.olculemedi ? 10 * 60 * 1000 : 60 * 60 * 1000),
     checkMs: 5 * 60 * 1000,
     seri: 'tbmwans-agir',
   });
@@ -1723,7 +1743,9 @@ function initDenetim(app) {
     {
       const et = require('./nginx-host-labels.cjs');
       router.put('/nginx-inventory/labels/:host', requireAdmin, async (req, res) => {
-        const host = String(req.params.host || '').trim().toUpperCase();
+        const host = String(req.params.host || '')
+          .trim()
+          .toUpperCase();
         if (!et.HOST_RE.test(host))
           return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
         const g = et.dogrula(req.body || {});
@@ -1747,7 +1769,9 @@ function initDenetim(app) {
         }
       });
       router.delete('/nginx-inventory/labels/:host', requireAdmin, async (req, res) => {
-        const host = String(req.params.host || '').trim().toUpperCase();
+        const host = String(req.params.host || '')
+          .trim()
+          .toUpperCase();
         if (!et.HOST_RE.test(host))
           return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
         try {
@@ -2032,7 +2056,11 @@ function initDenetim(app) {
       const es = await eskiSunucuSuzgec(req);
       // Elle etiket (2026-11-12): sunucunun service kolonu Envanter'deki etiketle ayni kurala uyar.
       const etk = await require('./nginx-host-labels.cjs').etiketHaritasi();
-      const summary = summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []), etk.m);
+      const summary = summarize(
+        es.ayir(aggRes.recordset || []),
+        es.ayir(srvRes.recordset || []),
+        etk.m,
+      );
       res.json({
         ok: true,
         scanDate: effectiveDate,
@@ -2181,7 +2209,14 @@ function initDenetim(app) {
 
       const es = await eskiSunucuSuzgec(req);
       const { envs, rows, scannedHosts } = summarizeLocations(es.ayir(r.recordset || []));
-      res.json({ ok: true, scanDate: effectiveDate, envs, rows, scannedHosts, eskiGizli: es.bilgi() });
+      res.json({
+        ok: true,
+        scanDate: effectiveDate,
+        envs,
+        rows,
+        scannedHosts,
+        eskiGizli: es.bilgi(),
+      });
     } catch (err) {
       res.status(503).json({ ok: false, message: err.message });
     }
@@ -2213,7 +2248,10 @@ function initDenetim(app) {
       // Okunamazsa sayfa bozulmaz, otomatik liste gosterilir ve hata ayrica soylenir.
       const et = require('./nginx-host-labels.cjs');
       const { m: etiketler, hata: etiketHatasi } = await et.etiketHaritasi();
-      const rows = et.etiketUygula(es.ayir(r.recordset || [], (x) => x.hostname), etiketler);
+      const rows = et.etiketUygula(
+        es.ayir(r.recordset || [], (x) => x.hostname),
+        etiketler,
+      );
       // En yeni source_last_update, verinin ne kadar taze oldugunu soyler. Tabloda
       // scan_date YOK (TRUNCATE+yeniden yazim), bu yuzden tazelik gostergesi budur.
       const lastUpdate =
@@ -2340,7 +2378,10 @@ function initDenetim(app) {
       }
       const t = teamRefs && teamRefs.get(sc.key);
       if (t && t.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
-      for (const v of [keyRefs && keyRefs.get(sc.key), majorityOverride && majorityOverride.get(sc.key)]) {
+      for (const v of [
+        keyRefs && keyRefs.get(sc.key),
+        majorityOverride && majorityOverride.get(sc.key),
+      ]) {
         const kr = asReference(v);
         if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
       }
@@ -2411,7 +2452,10 @@ function initDenetim(app) {
             (!!ref.norm && v.norm === ref.norm);
         }
         // Referans grubu basa; geri kalan kalabaliktan aza.
-        variants = [...variants.filter((v) => v.isReference), ...variants.filter((v) => !v.isReference)];
+        variants = [
+          ...variants.filter((v) => v.isReference),
+          ...variants.filter((v) => !v.isReference),
+        ];
       }
 
       const counts = { ok: 0, format: 0, deviation: 0 };
@@ -2740,7 +2784,11 @@ function initDenetim(app) {
         const params = [
           { name: 'root', type: sqlTypes.NVarChar, value: root },
           { name: 'other', type: sqlTypes.NVarChar, value: otherRoot },
-          ...hostWide.map((sc, i) => ({ name: `hw${i}`, type: sqlTypes.NVarChar, value: sc.label })),
+          ...hostWide.map((sc, i) => ({
+            name: `hw${i}`,
+            type: sqlTypes.NVarChar,
+            value: sc.label,
+          })),
         ];
         const hwIn = hostWide.length ? hostWide.map((_, i) => `@hw${i}`).join(', ') : "''";
         const dr = await query(
@@ -2890,7 +2938,14 @@ function initDenetim(app) {
       // Ayrinti (norm/CR/durum) ve ekip referansi: tablolar yoksa ya da okunamazsa ekran
       // eskisi gibi (ham hash + cogunluk) calisir - bu yuzden hatalari YUTULUR ve bildirilir.
       const ek = await readInitExtras(query, sql, root, scripts);
-      const age = await readInitAge(query, sql, table, root, have.has('load_date'), ek.detailExists);
+      const age = await readInitAge(
+        query,
+        sql,
+        table,
+        root,
+        have.has('load_date'),
+        ek.detailExists,
+      );
       const opts = { details: ek.details, teamRefs: ek.teamRefs, keyRefs: new Map() };
 
       // Sunucu geneli dosya (appdomain.service): referans iki tablonun birlesiminden, host

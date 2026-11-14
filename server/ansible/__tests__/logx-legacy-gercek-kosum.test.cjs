@@ -144,7 +144,9 @@ function kostur(
     playbook = yerel;
   }
   const vf = path.join(tmp, `vars-${path.basename(playbook)}.json`);
-  fs.writeFileSync(vf, JSON.stringify({ ansible_become: false, ...vars }));
+  // `uretimProbe` dzdo/become kapilarini test eder: extra-vars `-e ansible_become=false`
+  // task-duzeyi `become: true` anahtarini ezdigi icin probe testinde enjekte edilmez.
+  fs.writeFileSync(vf, JSON.stringify(uretimProbe ? vars : { ansible_become: false, ...vars }));
   const r = spawnSync(
     'ansible-playbook',
     ['-i', envanter, '-c', 'local', playbook, '-e', `@${vf}`, ...(ayrintili ? ['-v'] : [])],
@@ -296,7 +298,7 @@ test(
       // Is BASARISIZ biter ama sonuc yine yayinlanmistir (yukarida okundu): portal sebebi gosterir.
       assert.notEqual(rc, 0);
     } finally {
-      fs.chmodSync(kilitli, 0o755);
+      fs.chmodSync(kilitli, 0o700);
       temizle(kok);
     }
   },
@@ -402,7 +404,7 @@ test(
       // YARISTIR ve her kosuda tetiklenmez - sonuca bakarak degil, yola bakarak olculur.
       for (const h of ['sunucu-a', 'sunucu-b'])
         assert.ok(
-          cikti.includes(`"path": "${path.join(staging, `logx-lg4-iki-host-${h}`)}"`),
+          cikti.includes(`"path": "${path.join(staging, 'logx-lg4-iki-host-' + h)}"`),
           `${h}: ise ozel dizin sunucu adini tasimiyor`,
         );
       assert.equal(sonuc.overall_status, 'success', JSON.stringify(sonuc).slice(0, 800));
@@ -775,15 +777,15 @@ test(
       assert.notEqual(rc, 0, 'cok-host toplayici yokken is yesil kaldi');
       assert.equal(sonuc.overall_status, 'failed');
       assert.equal(sonuc.staged_path, '');
-      assert.deepEqual(
-        sonuc.hosts.map((h) => [h.host, h.status]).sort(),
-        [
-          ['SUNUCU-A', 'error'],
-          ['SUNUCU-B', 'error'],
-        ],
-      );
+      assert.deepEqual(sonuc.hosts.map((h) => [h.host, h.status]).sort(), [
+        ['SUNUCU-A', 'error'],
+        ['SUNUCU-B', 'error'],
+      ]);
       assert.ok(sonuc.hosts.every((h) => /^modern_python_bulunamadi:/.test(h.error)));
-      assert.ok(!/TASK \[Mevcut per-host parca ZIP'lerini bul/.test(cikti), 'Python isteyen birlestirme gorevi calisti');
+      assert.ok(
+        !/TASK \[Mevcut per-host parca ZIP'lerini bul/.test(cikti),
+        'Python isteyen birlestirme gorevi calisti',
+      );
     } finally {
       temizle(kok);
     }
@@ -820,9 +822,13 @@ const ornekleriOku = () =>
  * olarak yayinlar; ornek dosyasi Ansible surumune gore degismesin.
  */
 function ornekle(kok, sonuc) {
-  const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) =>
-    k === 'size_bytes' ? (Number(v) > 0 ? 1 : 0) : v,
-  );
+  const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) => {
+    if (k === 'size_bytes') {
+      if (Number(v) > 0) return 1;
+      return 0;
+    }
+    return v;
+  });
   if (Array.isArray(o.hosts))
     o.hosts.sort((a, b) => String(a.host).localeCompare(String(b.host), 'en'));
   return o;

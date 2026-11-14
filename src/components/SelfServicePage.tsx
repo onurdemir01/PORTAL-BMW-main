@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -6,10 +6,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { selfServiceApi, type SelfServiceGroup } from '@/api/selfServiceApi';
 import { ansibleApi, type OcoWindowInfo, type SmartTicketStatusYaniti } from '@/api/ansibleApi';
 import { nobetciApi, type NobetciResult } from '@/api/nobetciApi';
-import type { AnsibleSsItem, SurveyField, JobHistoryRecord, LaunchOptions, SurveyGates } from '@/api/ansibleApi';
+import type {
+  AnsibleSsItem,
+  SurveyField,
+  JobHistoryRecord,
+  LaunchOptions,
+  SurveyGates,
+} from '@/api/ansibleApi';
 import FieldOverridesModal from '@/components/self_service/FieldOverridesModal';
 import { ssErisimModu, grupEtiketi } from '@/components/self_service/SsErisimBolumu';
-import DynamicChoiceSelect, { MULTI_SEP, splitMulti } from '@/components/self_service/DynamicChoiceSelect';
+import DynamicChoiceSelect, {
+  MULTI_SEP,
+  splitMulti,
+} from '@/components/self_service/DynamicChoiceSelect';
 import AnsibleLogTerminal from '@/components/common/AnsibleLogTerminal';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { useFloatingWindow, ResizeHandle } from '@/hooks/useFloatingWindow';
@@ -60,7 +69,14 @@ const JOB_FINISHED = ['successful', 'failed', 'error', 'canceled'];
 // poller'in yeni ekledigi SCHEDULED) panel bos bir kutu olarak ciziliyordu —
 // kullanici bunu "bembeyaz bos alan" olarak bildirdi (2026-09-22). Artik bilinmeyen
 // durumlar da yazili bir satirla gosterilir.
-const RENDERED_TICKET_STATES = ['PENDING', 'LAUNCHING', 'SCHEDULED', 'REJECTED', 'TIMEOUT', 'ERROR'];
+const RENDERED_TICKET_STATES = [
+  'PENDING',
+  'LAUNCHING',
+  'SCHEDULED',
+  'REJECTED',
+  'TIMEOUT',
+  'ERROR',
+];
 
 const SELF_SERVICE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -105,7 +121,11 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const [gates, setGates] = useState<SurveyGates | null>(null);
   // YEREL OKUMA (2026-10-20): nginx_ops.yml sablonunda action=read AWX'e gitmez; tanimlar
   // formda gosterilir (sunucu launch-ss'te de reddeder).
-  const [yerelOkuma, setYerelOkuma] = useState<{ tur: string; eylemAlanlari: string[]; deger: string } | null>(null);
+  const [yerelOkuma, setYerelOkuma] = useState<{
+    tur: string;
+    eylemAlanlari: string[];
+    deger: string;
+  } | null>(null);
   const [limit, setLimit] = useState('');
   const [forks, setForks] = useState('');
   const [jobTags, setJobTags] = useState('');
@@ -179,7 +199,10 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     // 2026-10-22: 1040 -> 1280 (kullanici: "pencereyi biraz daha genisletelim"). API Generator'da
     // secim + sagdaki "birlikte etkilenecek uclar" paneli yan yana; konfigurasyon adlari uzun.
     useFloatingWindow(
-      { w: Math.min(1280, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 40), h: 640 },
+      {
+        w: Math.min(1280, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 40),
+        h: 640,
+      },
       { w: 420, h: 380 },
       { autoHeight: true },
     );
@@ -241,7 +264,8 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const visibleFields = fields.filter(isFieldActive);
   // Alan adi harf duyarsiz (AWX survey'leri "ENV"/"env" yazabiliyor).
   const alanDegeri = (adlar: string[]) => {
-    for (const [k, v] of Object.entries(values)) if (adlar.includes(k.toLowerCase())) return String(v ?? '').trim();
+    for (const [k, v] of Object.entries(values))
+      if (adlar.includes(k.toLowerCase())) return String(v ?? '').trim();
     return '';
   };
   const yerelOkumaAktif =
@@ -256,10 +280,16 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     let envLabel = '';
     for (const f of visibleFields) {
       if (!['env', 'ortam'].includes(f.name.trim().toLowerCase())) continue;
-      const v = String(values[f.name] || '').trim().toLowerCase();
-      if (v) { envLabel = v; break; }
+      const v = String(values[f.name] || '')
+        .trim()
+        .toLowerCase();
+      if (v) {
+        envLabel = v;
+        break;
+      }
     }
-    const envs = gates.ocoEnvironments && gates.ocoEnvironments.length ? gates.ocoEnvironments : null;
+    const envs =
+      gates.ocoEnvironments && gates.ocoEnvironments.length ? gates.ocoEnvironments : null;
     const willAsk = envs ? envs.includes(envLabel) : ['prod', 'production'].includes(envLabel);
     const scope = envs ? envs.map((e) => e.toUpperCase()).join(', ') : 'PRODUCTION';
     return { willAsk, scope, envLabel };
@@ -289,37 +319,53 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     ) {
       return 'Listeden geçerli bir seçenek seçin.';
     }
-    if (f.type === 'multiselect' && !f.choicesSource && Array.isArray(f.choices) && f.choices.length > 0) {
-      if (splitMulti(v).some((x) => !f.choices.includes(x))) return 'Listeden geçerli seçenekler seçin.';
+    if (
+      f.type === 'multiselect' &&
+      !f.choicesSource &&
+      Array.isArray(f.choices) &&
+      f.choices.length > 0
+    ) {
+      if (splitMulti(v).some((x) => !f.choices.includes(x)))
+        return 'Listeden geçerli seçenekler seçin.';
     }
     return null;
   }
   const hasAnyFieldError = visibleFields.some((f) => fieldError(f) !== null);
 
-  function trackJob(id: number) {
-    const trackerId = addJob({
-      title: item.title,
-      fetchStatus: async () => {
-        const r = await ansibleApi.ssJobStatus(item.awxServerId, id);
-        // Parse/erken hatada AWX stdout'u BOŞ döner; hata result_traceback/job_explanation'dadır.
-        // Log önceliği: stdout > traceback > explanation.
-        const log = r.output || r.resultTraceback || r.jobExplanation || '';
-        return { status: r.status, output: log };
-      },
-    });
-    setTrackedJobId(trackerId);
-  }
+  const trackJob = useCallback(
+    (id: number) => {
+      const trackerId = addJob({
+        title: item.title,
+        fetchStatus: async () => {
+          const r = await ansibleApi.ssJobStatus(item.awxServerId, id);
+          // Parse/erken hatada AWX stdout'u BOŞ döner; hata result_traceback/job_explanation'dadır.
+          // Log önceliği: stdout > traceback > explanation.
+          const log = r.output || r.resultTraceback || r.jobExplanation || '';
+          return { status: r.status, output: log };
+        },
+      });
+      setTrackedJobId(trackerId);
+    },
+    [addJob, item.title, item.awxServerId],
+  );
 
   // Smart onayı bekleyen bir talebi periyodik kontrol eder. LAUNCHED olunca normal
   // job takibine (trackJob) geçilir — kullanıcı hiçbir ek tıklama yapmadan aynı
   // ekranda "onay bekleniyor" -> "iş çalışıyor" akışını görür.
+  const trackedPendingId = pendingTicket?.id;
+  const trackedPendingStatus = pendingTicket?.status;
   useEffect(() => {
-    if (!pendingTicket || !WAITING_TICKET_STATES.includes(pendingTicket.status)) return;
+    if (
+      !trackedPendingId ||
+      !trackedPendingStatus ||
+      !WAITING_TICKET_STATES.includes(trackedPendingStatus)
+    )
+      return;
     const timer = setInterval(async () => {
       try {
-        const r = await ansibleApi.smartTicketStatus(pendingTicket.id);
+        const r = await ansibleApi.smartTicketStatus(trackedPendingId);
         if (!r.ok) return;
-        setTalepDurumu({ id: pendingTicket.id, yanit: r, alindiMs: Date.now() });
+        setTalepDurumu({ id: trackedPendingId, yanit: r, alindiMs: Date.now() });
         if (r.status === 'LAUNCHED' && r.jobId) {
           clearInterval(timer);
           setPendingTicket(null);
@@ -330,7 +376,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
         if (!WAITING_TICKET_STATES.includes(r.status)) {
           clearInterval(timer);
           setPendingTicket({
-            id: pendingTicket.id,
+            id: trackedPendingId,
             status: r.status,
             errorMessage: r.errorMessage,
             externalTicketId: r.externalTicketId,
@@ -341,8 +387,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
       }
     }, 4000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingTicket?.id, pendingTicket?.status]);
+  }, [trackedPendingId, trackedPendingStatus, trackJob]);
 
   // ── OCO Kontrolu akisi ────────────────────────────────────────────────────────
   // Sunucu bu servis icin OCO Kontrolu acikken ve talep PRODUCTION iken (extra_vars'ta
@@ -461,7 +506,11 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
           },
         });
         if (r.smartFirst && r.smartTicketId != null) {
-          setPendingTicket({ id: r.smartTicketId, status: 'PENDING', externalTicketId: r.externalTicketId });
+          setPendingTicket({
+            id: r.smartTicketId,
+            status: 'PENDING',
+            externalTicketId: r.externalTicketId,
+          });
           window.dispatchEvent(new CustomEvent('portal:smart-ticket-created'));
         }
         return;
@@ -523,725 +572,749 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   // kapatip her seyi sildiriyordu (kullanici bildirimi). Kapatma yalnizca X ve Iptal ile.
   const body = (
     <>
-        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 flex flex-col">
-          {err && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-              {err}
-            </div>
-          )}
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 flex flex-col">
+        {err && (
+          <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+            {err}
+          </div>
+        )}
 
-          {loading && <SkeletonList rows={4} />}
+        {loading && <SkeletonList rows={4} />}
 
-          {/* OCO ON UYARISI — formun EN USTUNDE, alanlar doldurulmadan once. Secim henuz prod
+        {/* OCO ON UYARISI — formun EN USTUNDE, alanlar doldurulmadan once. Secim henuz prod
               degilse bilgi tonunda (mor), prod/listedeki ortam secildiyse uyari tonuna (sari)
               doner: "OCO numaranizi hazir edin". Boylece kullanici Baslat'a basinca ne olacagini
               en bastan bilir; OCO paneli (asagida) yine ayni akis, surpriz degil. */}
-          {!loading && !jobId && !pendingTicket && !ocoState && ocoHint && (
-            <div
-              role="status"
-              data-testid="oco-prewarn"
-              data-tone={ocoHint.willAsk ? 'warning' : 'info'}
-              className="rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5"
-              style={{
-                borderColor: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)',
-                background: ocoHint.willAsk ? 'var(--status-warning-bg)' : 'var(--status-info-bg)',
-                boxShadow: `inset 4px 0 0 ${ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)'}`,
-              }}
-            >
-              <ShieldCheckIcon className="w-5 h-5 shrink-0 mt-0.5" style={{ color: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)' }} />
-              <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-                {ocoHint.willAsk ? (
-                  <>
-                    <b>Bu seçim için OCO gerekecek — OCO numaranızı hazır edin.</b>{' '}
-                    "Başlat"a bastığınızda iş <b>hemen tetiklenmez</b>: bir sonraki adımda OCO numarası sorulur, kesinti penceresi doğrulanır ve iş ona göre başlatılır.
-                  </>
-                ) : (
-                  <>
-                    <b>Bu serviste {ocoHint.scope} seçilirse OCO sorulur.</b>{' '}
-                    Form gönderilince iş hemen başlamaz; bir sonraki adımda OCO numarası istenir ve kesinti penceresine göre planlanır. Diğer ortamlar için OCO gerekmez, iş doğrudan başlar.
-                  </>
-                )}
-                {gates?.smart && (
-                  <> Ayrıca bu servis <b>Smart onayı</b> gerektirir: iş, onay geldikten sonra tetiklenir.</>
-                )}
-              </div>
+        {!loading && !jobId && !pendingTicket && !ocoState && ocoHint && (
+          <div
+            role="status"
+            data-testid="oco-prewarn"
+            data-tone={ocoHint.willAsk ? 'warning' : 'info'}
+            className="rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5"
+            style={{
+              borderColor: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)',
+              background: ocoHint.willAsk ? 'var(--status-warning-bg)' : 'var(--status-info-bg)',
+              boxShadow: `inset 4px 0 0 ${ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)'}`,
+            }}
+          >
+            <ShieldCheckIcon
+              className="w-5 h-5 shrink-0 mt-0.5"
+              style={{ color: ocoHint.willAsk ? 'var(--status-warning)' : 'var(--status-info)' }}
+            />
+            <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+              {ocoHint.willAsk ? (
+                <>
+                  <b>Bu seçim için OCO gerekecek — OCO numaranızı hazır edin.</b> "Başlat"a
+                  bastığınızda iş <b>hemen tetiklenmez</b>: bir sonraki adımda OCO numarası sorulur,
+                  kesinti penceresi doğrulanır ve iş ona göre başlatılır.
+                </>
+              ) : (
+                <>
+                  <b>Bu serviste {ocoHint.scope} seçilirse OCO sorulur.</b> Form gönderilince iş
+                  hemen başlamaz; bir sonraki adımda OCO numarası istenir ve kesinti penceresine
+                  göre planlanır. Diğer ortamlar için OCO gerekmez, iş doğrudan başlar.
+                </>
+              )}
+              {gates?.smart && (
+                <>
+                  {' '}
+                  Ayrıca bu servis <b>Smart onayı</b> gerektirir: iş, onay geldikten sonra
+                  tetiklenir.
+                </>
+              )}
             </div>
-          )}
+          </div>
+        )}
 
-          {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
+        {/* OCO Kontrolu paneli — acikken form alanlari GIZLENIR: kullanicinin bu
               noktada verecegi tek karar OCO ile ilgili, alanlari tekrar duzenlemesi
               kafa karistirici olurdu (degerler state'te duruyor, geri donunce kaybolmaz). */}
-          {!loading && !jobId && ocoState && (!pendingTicket || ocoState.phase === 'done') && (
-            <div className="space-y-3">
-              {/* 'done' asamasinda bu baslik CIZILMEZ: sonuc metni asagidaki yesil kartta
+        {!loading && !jobId && ocoState && (!pendingTicket || ocoState.phase === 'done') && (
+          <div className="space-y-3">
+            {/* 'done' asamasinda bu baslik CIZILMEZ: sonuc metni asagidaki yesil kartta
                   zaten var, ikisi birden basilinca ayni cumle ekranda iki kez gorunuyordu
                   (2026-09-22 kullanici bildirimi). */}
-              {ocoState.phase !== 'done' && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-[15px] font-bold text-amber-900">
-                    Production talebi — OCO kontrolü
-                  </p>
-                  <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
-                    {ocoState.message ||
-                      'Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir.'}
-                  </p>
+            {ocoState.phase !== 'done' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-[15px] font-bold text-amber-900">
+                  Production talebi — OCO kontrolü
+                </p>
+                <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
+                  {ocoState.message ||
+                    'Bu iş PRODUCTION ortamına yöneliktir; devam etmek için OCO kaydı gerekir.'}
+                </p>
+              </div>
+            )}
+
+            {ocoState.phase === 'ask' && (
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)]">
+                  OCO Numarası
+                </label>
+                <div className="flex items-center gap-2">
+                  <TextInput
+                    className="font-mono flex-1"
+                    value={ocoNumber}
+                    placeholder="ör. 22502813"
+                    onChange={(e) => setOcoNumber(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={ocoLookup}
+                    disabled={ocoBusy || !ocoNumber.trim()}
+                    className="btn-primary px-4 py-2 text-sm whitespace-nowrap"
+                  >
+                    {ocoBusy ? 'Sorgulanıyor…' : 'Sorgula'}
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {ocoState.phase === 'ask' && (
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold text-[var(--text-secondary)]">
-                    OCO Numarası
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <TextInput
-                      className="font-mono flex-1"
-                      value={ocoNumber}
-                      placeholder="ör. 22502813"
-                      onChange={(e) => setOcoNumber(e.target.value)}
-                    />
-                    <button
-                      type="button"
-                      onClick={ocoLookup}
-                      disabled={ocoBusy || !ocoNumber.trim()}
-                      className="btn-primary px-4 py-2 text-sm whitespace-nowrap"
-                    >
-                      {ocoBusy ? 'Sorgulanıyor…' : 'Sorgula'}
-                    </button>
+            {ocoState.phase === 'decide' && ocoState.info && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-[var(--border)] p-3.5 space-y-1.5 text-[13px]">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--text-muted)]">OCO</span>
+                    <span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">
+                      {ocoState.info.ocoNumber}
+                    </span>
                   </div>
-                </div>
-              )}
-
-              {ocoState.phase === 'decide' && ocoState.info && (
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-[var(--border)] p-3.5 space-y-1.5 text-[13px]">
+                  {ocoState.info.subject && (
                     <div className="flex justify-between gap-3">
-                      <span className="text-[var(--text-muted)]">OCO</span>
-                      <span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">
-                        {ocoState.info.ocoNumber}
-                      </span>
-                    </div>
-                    {ocoState.info.subject && (
-                      <div className="flex justify-between gap-3">
-                        <span className="text-[var(--text-muted)]">Konu</span>
-                        <span className="text-right">{ocoState.info.subject}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between gap-3">
-                      <span className="text-[var(--text-muted)]">Kesinti başlangıcı</span>
-                      <span className="font-mono tabular-nums">{ocoState.info.startText}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-[var(--text-muted)]">Kesinti bitişi</span>
-                      <span className="font-mono tabular-nums">{ocoState.info.endText}</span>
-                    </div>
-                    <div className="flex justify-between gap-3 pt-1 border-t border-[var(--border)]">
-                      <span className="text-[var(--text-muted)]">Tetiklenebilir aralık</span>
-                      <span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">
-                        {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
-                      </span>
-                    </div>
-                    {ocoState.info.equal && (
-                      <p className="text-[11px] text-[var(--text-muted)] pt-1">
-                        OCO'da tek bir an verilmiş; bu nedenle pencere 2 saat olarak uygulandı.
-                      </p>
-                    )}
-                  </div>
-
-                  {ocoState.info.phase === 'expired' && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                      OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar
-                      işlem deneyiniz.
+                      <span className="text-[var(--text-muted)]">Konu</span>
+                      <span className="text-right">{ocoState.info.subject}</span>
                     </div>
                   )}
-
-                  {ocoState.info.phase === 'inside' && (
-                    <button
-                      type="button"
-                      onClick={() => launch()}
-                      disabled={launching}
-                      className="btn-primary w-full px-4 py-2.5 text-sm"
-                    >
-                      Kesinti penceresi açık — işi şimdi başlat
-                    </button>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--text-muted)]">Kesinti başlangıcı</span>
+                    <span className="font-mono tabular-nums">{ocoState.info.startText}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--text-muted)]">Kesinti bitişi</span>
+                    <span className="font-mono tabular-nums">{ocoState.info.endText}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 pt-1 border-t border-[var(--border)]">
+                    <span className="text-[var(--text-muted)]">Tetiklenebilir aralık</span>
+                    <span className="font-mono tabular-nums font-semibold text-[var(--text-primary)]">
+                      {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
+                    </span>
+                  </div>
+                  {ocoState.info.equal && (
+                    <p className="text-[11px] text-[var(--text-muted)] pt-1">
+                      OCO'da tek bir an verilmiş; bu nedenle pencere 2 saat olarak uygulandı.
+                    </p>
                   )}
+                </div>
 
-                  {ocoState.info.phase === 'before' && (
-                    <div className="space-y-2.5">
-                      {/* Bu iki kutu SECENEK; eskiden biri dolu mavi bir dugme, digeri
+                {ocoState.info.phase === 'expired' && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar
+                    işlem deneyiniz.
+                  </div>
+                )}
+
+                {ocoState.info.phase === 'inside' && (
+                  <button
+                    type="button"
+                    onClick={() => launch()}
+                    disabled={launching}
+                    className="btn-primary w-full px-4 py-2.5 text-sm"
+                  >
+                    Kesinti penceresi açık — işi şimdi başlat
+                  </button>
+                )}
+
+                {ocoState.info.phase === 'before' && (
+                  <div className="space-y-2.5">
+                    {/* Bu iki kutu SECENEK; eskiden biri dolu mavi bir dugme, digeri
                           cizgili bir dugmeydi ve "hangisi secili" izlenimi veriyordu.
                           Ikisi de AYNI agirlikta kart oldu: solda renkli bir serit,
                           kalin baslik + acik gri aciklama, sagda ok. Fark rengin
                           ANLAMINDA: mavi = Portal yapar, gri = siz yaparsiniz. */}
-                      <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
-                        Nasıl ilerlemek istersiniz?
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => launch('schedule')}
-                        disabled={launching}
-                        className={ocoOptionCard}
-                        style={{ borderLeft: '4px solid var(--accent)' }}
-                      >
-                        <CalendarDaysIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--accent)]" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-[var(--text-primary)]">
-                            Otomatik tetikle
-                          </span>
-                          <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
-                            Portal işi{' '}
-                            <b className="font-semibold text-[var(--text-secondary)] tabular-nums">
-                              {ocoState.info.windowStartText}
-                            </b>{' '}
-                            saatinde kendisi başlatır. Bu ekranı kapatabilirsiniz.
-                          </span>
-                        </span>
-                        <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => launch('later')}
-                        disabled={launching}
-                        className={ocoOptionCard}
-                        style={{ borderLeft: '4px solid var(--text-muted)' }}
-                      >
-                        <UserIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--text-muted)]" />
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-sm font-semibold text-[var(--text-primary)]">
-                            Kendim çalıştıracağım
-                          </span>
-                          <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
-                            Şimdi hiçbir şey başlatılmaz. Pencere açıkken (
-                            <b className="font-semibold text-[var(--text-secondary)] tabular-nums">
-                              {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
-                            </b>
-                            ) tekrar gelip başlatırsınız.
-                          </span>
-                        </span>
-                        <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOcoState({ phase: 'ask' });
-                    }}
-                    className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition"
-                  >
-                    ← Başka bir OCO numarası gir
-                  </button>
-                </div>
-              )}
-
-              {ocoState.phase === 'done' && (
-                <div
-                  data-testid="oco-done"
-                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-2.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <CheckCircleIcon className="w-5 h-5 shrink-0 text-emerald-600" />
-                    <p className="text-[15px] font-bold text-emerald-900">
-                      {ocoState.done?.kind === 'deferred'
-                        ? 'İş başlatılmadı'
-                        : ocoState.done?.kind === 'smart-first'
-                          ? 'Smart onay talebi açıldı'
-                          : 'İş kesinti penceresine zamanlandı'}
+                    <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+                      Nasıl ilerlemek istersiniz?
                     </p>
-                  </div>
-
-                  {ocoState.done?.externalTicketId && (
-                    <div
-                      data-testid="oco-smart-no"
-                      className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2"
+                    <button
+                      type="button"
+                      onClick={() => launch('schedule')}
+                      disabled={launching}
+                      className={ocoOptionCard}
+                      style={{ borderLeft: '4px solid var(--accent)' }}
                     >
-                      <span className="text-[12px] font-semibold text-emerald-900">Smart Kayıt No</span>
-                      <span
-                        className="font-mono text-[13px] font-bold text-emerald-900 truncate"
-                        title={ocoState.done.externalTicketId}
-                      >
-                        {ocoState.done.externalTicketId}
+                      <CalendarDaysIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--accent)]" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                          Otomatik tetikle
+                        </span>
+                        <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                          Portal işi{' '}
+                          <b className="font-semibold text-[var(--text-secondary)] tabular-nums">
+                            {ocoState.info.windowStartText}
+                          </b>{' '}
+                          saatinde kendisi başlatır. Bu ekranı kapatabilirsiniz.
+                        </span>
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const no = ocoState.done?.externalTicketId;
-                          if (no) navigator.clipboard?.writeText(no);
-                        }}
-                        className="ml-auto text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition"
-                        title="Smart kayıt numarasını kopyala"
-                      >
-                        Kopyala
-                      </button>
-                    </div>
-                  )}
+                      <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => launch('later')}
+                      disabled={launching}
+                      className={ocoOptionCard}
+                      style={{ borderLeft: '4px solid var(--text-muted)' }}
+                    >
+                      <UserIcon className="w-5 h-5 flex-shrink-0 mt-0.5 text-[var(--text-muted)]" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-semibold text-[var(--text-primary)]">
+                          Kendim çalıştıracağım
+                        </span>
+                        <span className="block text-xs text-[var(--text-muted)] mt-0.5 leading-relaxed">
+                          Şimdi hiçbir şey başlatılmaz. Pencere açıkken (
+                          <b className="font-semibold text-[var(--text-secondary)] tabular-nums">
+                            {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
+                          </b>
+                          ) tekrar gelip başlatırsınız.
+                        </span>
+                      </span>
+                      <ChevronRightIcon className="w-4 h-4 flex-shrink-0 mt-1 text-[var(--text-muted)]" />
+                    </button>
+                  </div>
+                )}
 
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px] text-emerald-900">
-                    {ocoState.info?.ocoNumber && (
-                      <>
-                        <dt className="font-semibold">OCO kaydı</dt>
-                        <dd className="font-mono">{ocoState.info.ocoNumber}</dd>
-                      </>
-                    )}
-                    {ocoState.info && (
-                      <>
-                        <dt className="font-semibold">Kesinti penceresi</dt>
-                        <dd className="font-mono tabular-nums">
-                          {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
-                        </dd>
-                      </>
-                    )}
-                    {ocoState.done?.awxScheduleId != null && (
-                      <>
-                        <dt className="font-semibold">AWX zamanlaması</dt>
-                        <dd className="font-mono">#{ocoState.done.awxScheduleId}</dd>
-                      </>
-                    )}
-                  </dl>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOcoState({ phase: 'ask' });
+                  }}
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition"
+                >
+                  ← Başka bir OCO numarası gir
+                </button>
+              </div>
+            )}
 
-                  <p className="text-[12px] leading-relaxed text-emerald-900">
-                    {ocoState.done?.kind === 'smart-first' ? (
-                      <>
-                        Onayı <b>bugün, mesai içinde</b> verebilirsiniz;
-                        kesinti saatini beklemenize gerek yok. Onay verildiği anda iş{' '}
-                        {ocoState.done.runAtText} kesinti penceresine zamanlanır
-                        ve o saatte kendiliğinden çalışır. Onay pencere açıldıktan sonra gelirse ve pencere
-                        hâlâ açıksa iş hemen başlar. <b>Bu sayfayı kapatabilirsiniz</b> — Smart'ta birden
-                        fazla onaycı varsa hepsi onayladığında iş kendiliğinden başlar; onay için süre
-                        sınırı yok, en geç kesinti penceresinin sonuna kadar onaylanabilir. Durumu
-                        aşağıdaki kutudan ve "Taleplerim" panelinden izleyebilirsiniz.
-                      </>
-                    ) : ocoState.done?.kind === 'awx' ? (
-                      <>
-                        İş AWX'te zamanlandı; {ocoState.done.runAtText} saatinde AWX tarafından tetiklenecek.
-                        Portal kapalı olsa bile çalışır. Bu ekranı kapatabilirsiniz.
-                      </>
-                    ) : ocoState.done?.kind === 'portal' ? (
-                      <>
-                        İş {ocoState.done.runAtText} saatine zamanlandı. Bu serviste Smart onayı da gerektiği
-                        için tetikleme Portal üzerinden yapılacak; Smart talebi o saatte açılacağından onayın
-                        da o sırada verilmesi gerekir.
-                      </>
-                    ) : (
-                      ocoState.message
-                    )}
+            {ocoState.phase === 'done' && (
+              <div
+                data-testid="oco-done"
+                className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 space-y-2.5"
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircleIcon className="w-5 h-5 shrink-0 text-emerald-600" />
+                  <p className="text-[15px] font-bold text-emerald-900">
+                    {ocoState.done?.kind === 'deferred'
+                      ? 'İş başlatılmadı'
+                      : ocoState.done?.kind === 'smart-first'
+                        ? 'Smart onay talebi açıldı'
+                        : 'İş kesinti penceresine zamanlandı'}
                   </p>
                 </div>
-              )}
-            </div>
-          )}
 
-          {!loading && !jobId && !pendingTicket && !ocoState && (
-            <>
-              {visibleFields.length === 0 ? (
-                <p className="text-sm text-[var(--text-muted)] text-center py-4">
-                  Bu template için ek parametre gerekmez.
+                {ocoState.done?.externalTicketId && (
+                  <div
+                    data-testid="oco-smart-no"
+                    className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 py-2"
+                  >
+                    <span className="text-[12px] font-semibold text-emerald-900">
+                      Smart Kayıt No
+                    </span>
+                    <span
+                      className="font-mono text-[13px] font-bold text-emerald-900 truncate"
+                      title={ocoState.done.externalTicketId}
+                    >
+                      {ocoState.done.externalTicketId}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const no = ocoState.done?.externalTicketId;
+                        if (no) navigator.clipboard?.writeText(no);
+                      }}
+                      className="ml-auto text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition"
+                      title="Smart kayıt numarasını kopyala"
+                    >
+                      Kopyala
+                    </button>
+                  </div>
+                )}
+
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px] text-emerald-900">
+                  {ocoState.info?.ocoNumber && (
+                    <>
+                      <dt className="font-semibold">OCO kaydı</dt>
+                      <dd className="font-mono">{ocoState.info.ocoNumber}</dd>
+                    </>
+                  )}
+                  {ocoState.info && (
+                    <>
+                      <dt className="font-semibold">Kesinti penceresi</dt>
+                      <dd className="font-mono tabular-nums">
+                        {ocoState.info.windowStartText} — {ocoState.info.windowEndText}
+                      </dd>
+                    </>
+                  )}
+                  {ocoState.done?.awxScheduleId != null && (
+                    <>
+                      <dt className="font-semibold">AWX zamanlaması</dt>
+                      <dd className="font-mono">#{ocoState.done.awxScheduleId}</dd>
+                    </>
+                  )}
+                </dl>
+
+                <p className="text-[12px] leading-relaxed text-emerald-900">
+                  {ocoState.done?.kind === 'smart-first' ? (
+                    <>
+                      Onayı <b>bugün, mesai içinde</b> verebilirsiniz;{' '}
+                      <span>kesinti saatini beklemenize gerek yok.</span> Onay verildiği anda iş{' '}
+                      {ocoState.done.runAtText} kesinti penceresine zamanlanır ve o saatte
+                      kendiliğinden çalışır. Onay pencere açıldıktan sonra gelirse ve pencere hâlâ
+                      açıksa iş hemen başlar. <b>Bu sayfayı kapatabilirsiniz</b> — Smart'ta birden
+                      fazla onaycı varsa hepsi onayladığında iş kendiliğinden başlar; onay için süre
+                      sınırı yok, en geç kesinti penceresinin sonuna kadar onaylanabilir. Durumu
+                      aşağıdaki kutudan ve "Taleplerim" panelinden izleyebilirsiniz.
+                    </>
+                  ) : ocoState.done?.kind === 'awx' ? (
+                    <>
+                      İş AWX'te zamanlandı; {ocoState.done.runAtText} saatinde AWX tarafından
+                      tetiklenecek. Portal kapalı olsa bile çalışır. Bu ekranı kapatabilirsiniz.
+                    </>
+                  ) : ocoState.done?.kind === 'portal' ? (
+                    <>
+                      İş {ocoState.done.runAtText} saatine zamanlandı. Bu serviste Smart onayı da
+                      gerektiği için tetikleme Portal üzerinden yapılacak; Smart talebi o saatte
+                      açılacağından onayın da o sırada verilmesi gerekir.
+                    </>
+                  ) : (
+                    ocoState.message
+                  )}
                 </p>
-              ) : (
-                <div className="space-y-4">
-                  {visibleFields.map((f) => {
-                    const id = `f-${f.name}`;
-                    const err = submitAttempted || touched.has(f.name) ? fieldError(f) : null;
-                    const val = values[f.name] || '';
-                    const set = (v: string) => setValues((s) => ({ ...s, [f.name]: v }));
-                    const onBlur = () => setTouched((t) => new Set(t).add(f.name));
-                    return (
-                      <Field
-                        key={f.name}
-                        label={f.label}
-                        htmlFor={id}
-                        required={f.required}
-                        hint={f.description}
-                        error={err}
-                      >
-                        {f.choicesSource ? (
-                          <DynamicChoiceSelect
-                            id={id}
-                            source={f.choicesSource}
-                            values={values}
-                            value={val}
-                            onChange={set}
-                            onBlur={onBlur}
-                            error={!!err}
-                            multiple={f.type === 'multiselect'}
-                            alanlar={Object.fromEntries(visibleFields.map((v) => [v.name, v.label || v.name]))}
-                          />
-                        ) : f.type === 'multiselect' ? (
-                          // COKLU SECIM = onay kutulari (2026-09-16: "overwrite edilecek dosyalari
-                          // tikle secebileyim"). Deger satir sonu ile birlesik; sunucu listeye cevirir.
-                          <div className={`rounded-lg border p-2 space-y-0.5 ${err ? 'border-red-400' : 'border-[var(--border)]'}`} id={id} onBlur={onBlur}>
-                            {f.choices.map((c) => {
-                              const picked = new Set(splitMulti(val));
-                              return (
-                                <label key={c} className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={picked.has(c)}
-                                    onChange={() => {
-                                      if (picked.has(c)) picked.delete(c);
-                                      else picked.add(c);
-                                      set(f.choices.filter((x) => picked.has(x)).join(MULTI_SEP));
-                                    }}
-                                  />
-                                  <span>{f.choiceLabels?.[c] ?? c}</span>
-                                </label>
-                              );
-                            })}
-                            <div className="text-[11px] text-[var(--text-muted)] pt-1">{splitMulti(val).length} / {f.choices.length} seçili</div>
-                          </div>
-                        ) : f.type === 'multiplechoice' ? (
-                          <Select
-                            id={id}
-                            error={!!err}
-                            value={val}
-                            onChange={(e) => set(e.target.value)}
-                            onBlur={onBlur}
-                          >
-                            <option value="">Seçin…</option>
-                            {f.choices.map((c) => (
-                              <option key={c} value={c}>
-                                {f.choiceLabels?.[c] ?? c}
-                              </option>
-                            ))}
-                          </Select>
-                        ) : f.type === 'textarea' ? (
-                          <Textarea
-                            id={id}
-                            rows={3}
-                            error={!!err}
-                            className="font-mono"
-                            value={val}
-                            onChange={(e) => set(e.target.value)}
-                            onBlur={onBlur}
-                          />
-                        ) : (
-                          <TextInput
-                            id={id}
-                            error={!!err}
-                            type={
-                              f.type === 'integer' || f.type === 'float'
-                                ? 'number'
-                                : f.type === 'password'
-                                  ? 'password'
-                                  : 'text'
-                            }
-                            value={val}
-                            onChange={(e) => set(e.target.value)}
-                            onBlur={onBlur}
-                            min={f.min}
-                            max={f.max}
-                          />
-                        )}
-                      </Field>
-                    );
-                  })}
-                </div>
-              )}
+              </div>
+            )}
+          </div>
+        )}
 
-              {/* Built-in AWX "prompt on launch" seçenekleri — yalnızca AWX'in ilgili
-                  ask_*_on_launch bayrağını gerçekten açtığı alanlar gösterilir. */}
-              {launchOptions &&
-                (launchOptions.limit.enabled ||
-                  launchOptions.forks.enabled ||
-                  launchOptions.jobTags.enabled ||
-                  launchOptions.skipTags.enabled ||
-                  launchOptions.verbosity.enabled ||
-                  launchOptions.jobType.enabled) && (
-                  <div className="space-y-4 pt-3 border-t border-[var(--border)]">
-                    <p className="section-label">Çalışma Zamanı Seçenekleri</p>
-                    {launchOptions.limit.enabled && (
-                      <Field label="Limit" htmlFor="lo-limit" hint="host_pattern veya boş bırak">
-                        <TextInput
-                          id="lo-limit"
-                          type="text"
-                          placeholder="host_pattern"
-                          value={limit}
-                          onChange={(e) => setLimit(e.target.value)}
+        {!loading && !jobId && !pendingTicket && !ocoState && (
+          <>
+            {visibleFields.length === 0 ? (
+              <p className="text-sm text-[var(--text-muted)] text-center py-4">
+                Bu template için ek parametre gerekmez.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {visibleFields.map((f) => {
+                  const id = `f-${f.name}`;
+                  const err = submitAttempted || touched.has(f.name) ? fieldError(f) : null;
+                  const val = values[f.name] || '';
+                  const set = (v: string) => setValues((s) => ({ ...s, [f.name]: v }));
+                  const onBlur = () => setTouched((t) => new Set(t).add(f.name));
+                  return (
+                    <Field
+                      key={f.name}
+                      label={f.label}
+                      htmlFor={id}
+                      required={f.required}
+                      hint={f.description}
+                      error={err}
+                    >
+                      {f.choicesSource ? (
+                        <DynamicChoiceSelect
+                          id={id}
+                          source={f.choicesSource}
+                          values={values}
+                          value={val}
+                          onChange={set}
+                          onBlur={onBlur}
+                          error={!!err}
+                          multiple={f.type === 'multiselect'}
+                          alanlar={Object.fromEntries(
+                            visibleFields.map((v) => [v.name, v.label || v.name]),
+                          )}
                         />
-                      </Field>
-                    )}
-                    <div className="grid grid-cols-2 gap-3">
-                      {launchOptions.forks.enabled && (
-                        <Field label="Forks" htmlFor="lo-forks">
-                          <TextInput
-                            id="lo-forks"
-                            type="number"
-                            min={0}
-                            placeholder="varsayılan"
-                            value={forks}
-                            onChange={(e) => setForks(e.target.value)}
-                          />
-                        </Field>
-                      )}
-                      {launchOptions.verbosity.enabled && (
-                        <Field label="Verbosity" htmlFor="lo-verb">
-                          <Select
-                            id="lo-verb"
-                            value={verbosity}
-                            onChange={(e) => setVerbosity(e.target.value)}
-                          >
-                            {[0, 1, 2, 3, 4].map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
-                          </Select>
-                        </Field>
-                      )}
-                    </div>
-                    {launchOptions.jobTags.enabled && (
-                      <Field
-                        label="Job Tags"
-                        htmlFor="lo-jt"
-                        hint="virgülle ayır — ör: deploy,restart"
-                      >
-                        <TextInput
-                          id="lo-jt"
-                          type="text"
-                          placeholder="deploy,restart"
-                          value={jobTags}
-                          onChange={(e) => setJobTags(e.target.value)}
-                        />
-                      </Field>
-                    )}
-                    {launchOptions.skipTags.enabled && (
-                      <Field label="Skip Tags" htmlFor="lo-st" hint="virgülle ayır — ör: slow">
-                        <TextInput
-                          id="lo-st"
-                          type="text"
-                          placeholder="slow"
-                          value={skipTags}
-                          onChange={(e) => setSkipTags(e.target.value)}
-                        />
-                      </Field>
-                    )}
-                    {launchOptions.jobType.enabled && (
-                      <Field label="Job Type" htmlFor="lo-type" required>
-                        <Select
-                          id="lo-type"
-                          value={jobType}
-                          onChange={(e) => setJobType(e.target.value)}
+                      ) : f.type === 'multiselect' ? (
+                        // COKLU SECIM = onay kutulari (2026-09-16: "overwrite edilecek dosyalari
+                        // tikle secebileyim"). Deger satir sonu ile birlesik; sunucu listeye cevirir.
+                        <div
+                          className={`rounded-lg border p-2 space-y-0.5 ${err ? 'border-red-400' : 'border-[var(--border)]'}`}
+                          id={id}
+                          onBlur={onBlur}
                         >
-                          <option value="run">Run</option>
-                          <option value="check">Check</option>
+                          {f.choices.map((c) => {
+                            const picked = new Set(splitMulti(val));
+                            return (
+                              <label
+                                key={c}
+                                className="flex items-center gap-2 text-[12px] cursor-pointer py-0.5"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={picked.has(c)}
+                                  onChange={() => {
+                                    if (picked.has(c)) picked.delete(c);
+                                    else picked.add(c);
+                                    set(f.choices.filter((x) => picked.has(x)).join(MULTI_SEP));
+                                  }}
+                                />
+                                <span>{f.choiceLabels?.[c] ?? c}</span>
+                              </label>
+                            );
+                          })}
+                          <div className="text-[11px] text-[var(--text-muted)] pt-1">
+                            {splitMulti(val).length} / {f.choices.length} seçili
+                          </div>
+                        </div>
+                      ) : f.type === 'multiplechoice' ? (
+                        <Select
+                          id={id}
+                          error={!!err}
+                          value={val}
+                          onChange={(e) => set(e.target.value)}
+                          onBlur={onBlur}
+                        >
+                          <option value="">Seçin…</option>
+                          {f.choices.map((c) => (
+                            <option key={c} value={c}>
+                              {f.choiceLabels?.[c] ?? c}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : f.type === 'textarea' ? (
+                        <Textarea
+                          id={id}
+                          rows={3}
+                          error={!!err}
+                          className="font-mono"
+                          value={val}
+                          onChange={(e) => set(e.target.value)}
+                          onBlur={onBlur}
+                        />
+                      ) : (
+                        <TextInput
+                          id={id}
+                          error={!!err}
+                          type={
+                            f.type === 'integer' || f.type === 'float'
+                              ? 'number'
+                              : f.type === 'password'
+                                ? 'password'
+                                : 'text'
+                          }
+                          value={val}
+                          onChange={(e) => set(e.target.value)}
+                          onBlur={onBlur}
+                          min={f.min}
+                          max={f.max}
+                        />
+                      )}
+                    </Field>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Built-in AWX "prompt on launch" seçenekleri — yalnızca AWX'in ilgili
+                  ask_*_on_launch bayrağını gerçekten açtığı alanlar gösterilir. */}
+            {launchOptions &&
+              (launchOptions.limit.enabled ||
+                launchOptions.forks.enabled ||
+                launchOptions.jobTags.enabled ||
+                launchOptions.skipTags.enabled ||
+                launchOptions.verbosity.enabled ||
+                launchOptions.jobType.enabled) && (
+                <div className="space-y-4 pt-3 border-t border-[var(--border)]">
+                  <p className="section-label">Çalışma Zamanı Seçenekleri</p>
+                  {launchOptions.limit.enabled && (
+                    <Field label="Limit" htmlFor="lo-limit" hint="host_pattern veya boş bırak">
+                      <TextInput
+                        id="lo-limit"
+                        type="text"
+                        placeholder="host_pattern"
+                        value={limit}
+                        onChange={(e) => setLimit(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    {launchOptions.forks.enabled && (
+                      <Field label="Forks" htmlFor="lo-forks">
+                        <TextInput
+                          id="lo-forks"
+                          type="number"
+                          min={0}
+                          placeholder="varsayılan"
+                          value={forks}
+                          onChange={(e) => setForks(e.target.value)}
+                        />
+                      </Field>
+                    )}
+                    {launchOptions.verbosity.enabled && (
+                      <Field label="Verbosity" htmlFor="lo-verb">
+                        <Select
+                          id="lo-verb"
+                          value={verbosity}
+                          onChange={(e) => setVerbosity(e.target.value)}
+                        >
+                          {[0, 1, 2, 3, 4].map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
                         </Select>
                       </Field>
                     )}
                   </div>
-                )}
-            </>
-          )}
-
-          {yerelOkumaAktif && !resultView && (
-            <NginxTanimOkuma
-              env={alanDegeri(['env', 'ortam'])}
-              service={alanDegeri(['service', 'servis'])}
-              namespace={alanDegeri(['namespace']) || undefined}
-              application={alanDegeri(['application', 'app', 'uygulama']) || undefined}
-            />
-          )}
-
-          {pendingTicket && (
-            <div className="space-y-3 animate-fade-in text-center py-6">
-              {pendingTicket.status === 'PENDING' && (
-                <>
-                  <div className="mx-auto w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-medium text-[var(--text-primary)]">
-                    Smart üzerinde onay bekleniyor…
-                  </p>
-                  {pendingTicket.externalTicketId && (
-                    <p className="text-sm font-semibold text-[var(--text-primary)]">
-                      Smart Kayıt No:{' '}
-                      <span className="font-mono">{pendingTicket.externalTicketId}</span>
-                    </p>
+                  {launchOptions.jobTags.enabled && (
+                    <Field
+                      label="Job Tags"
+                      htmlFor="lo-jt"
+                      hint="virgülle ayır — ör: deploy,restart"
+                    >
+                      <TextInput
+                        id="lo-jt"
+                        type="text"
+                        placeholder="deploy,restart"
+                        value={jobTags}
+                        onChange={(e) => setJobTags(e.target.value)}
+                      />
+                    </Field>
                   )}
-                  {talepDurumu?.id === pendingTicket.id && (
-                    <SmartTalepSayaci
-                      talep={talepDurumu.yanit}
-                      serverNow={talepDurumu.yanit.serverNow}
-                      alindiMs={talepDurumu.alindiMs}
-                      className="mx-auto max-w-sm text-left"
-                    />
+                  {launchOptions.skipTags.enabled && (
+                    <Field label="Skip Tags" htmlFor="lo-st" hint="virgülle ayır — ör: slow">
+                      <TextInput
+                        id="lo-st"
+                        type="text"
+                        placeholder="slow"
+                        value={skipTags}
+                        onChange={(e) => setSkipTags(e.target.value)}
+                      />
+                    </Field>
                   )}
-                  <KapamaOnayiUyarisi />
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    {ocoState?.done?.kind === 'smart-first' ? (
-                      <>
-                        Onay verildiğinde iş <strong>hemen değil</strong>, {ocoState.done.runAtText}{' '}
-                        kesinti penceresinde çalışacak.
-                      </>
-                    ) : (
-                      <>Tamamla’ya basıldığında iş otomatik başlar; bu pencereyi kapatabilirsiniz, talebi sağdaki “Taleplerim”den izleyin.</>
-                    )}
-                  </p>
-                  <div className="text-left text-xs bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mx-auto max-w-sm text-amber-800">
-                    Kapama Onayı tamamlandıktan ortalama 5 dakika sonra Teams bildirimi gelmezse{' '}
-                    {onCall?.ok && onCall.name ? (
-                      <>
-                        günün nöbetçisi <strong>{onCall.name}</strong>
-                        {onCall.intercom
-                          ? ` (dahili: ${onCall.intercom})`
-                          : onCall.phone
-                            ? ` (${onCall.phone})`
-                            : ''}{' '}
-                        ile iletişime geçin.
-                      </>
-                    ) : (
-                      <>günün nöbetçisiyle iletişime geçin.</>
-                    )}
-                  </div>
-                </>
-              )}
-              {pendingTicket.status === 'REJECTED' && (
-                <>
-                  <p className="text-sm font-medium text-red-600">Smart talebi reddedildi.</p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    İş başlatılmadı. Detay için Smart talep{' '}
-                    {pendingTicket.externalTicketId
-                      ? `#${pendingTicket.externalTicketId}`
-                      : `#${pendingTicket.id}`}
-                    'e bakın.
-                  </p>
-                </>
-              )}
-              {pendingTicket.status === 'TIMEOUT' && (
-                <>
-                  <p className="text-sm font-medium text-amber-700">
-                    Smart onayı zaman aşımına uğradı.
-                  </p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {pendingTicket.errorMessage || 'İş başlatılmadı.'}
-                  </p>
-                </>
-              )}
-              {pendingTicket.status === 'ERROR' && (
-                <>
-                  <p className="text-sm font-medium text-red-600">
-                    Talep onaylandı ama iş başlatılamadı.
-                  </p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {pendingTicket.errorMessage || 'Lütfen sistem yöneticinize başvurun.'}
-                  </p>
-                </>
-              )}
-              {pendingTicket.status === 'SCHEDULED' && (
-                <>
-                  <p className="text-sm font-medium text-emerald-700">
-                    Onay alındı — iş kesinti penceresine zamanlandı.
-                  </p>
-                  <p className="text-xs text-[var(--text-muted)]">
-                    {pendingTicket.errorMessage ||
-                      'İş, OCO kaydındaki kesinti penceresinde kendiliğinden çalışacak; tekrar bir işlem yapmanız gerekmiyor.'}
-                  </p>
-                </>
-              )}
-              {!RENDERED_TICKET_STATES.includes(pendingTicket.status) && (
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Smart talebi durumu: <b>{pendingTicket.status}</b>
-                  {pendingTicket.externalTicketId ? (
-                    <>
-                      {' '}
-                      — kayıt no <span className="font-mono">{pendingTicket.externalTicketId}</span>
-                    </>
-                  ) : null}
-                </p>
-              )}
-            </div>
-          )}
-
-          {jobId && (
-            <div className="space-y-3 animate-fade-in flex-1 min-h-0 flex flex-col">
-              <p className="text-sm font-medium text-[var(--text-primary)] text-center flex-shrink-0">
-                İş başlatıldı — AWX Job #{jobId}
-              </p>
-              {trackedJob && (
-                <div className="flex-1 min-h-0 flex flex-col">
-                  <AnsibleLogTerminal
-                    output={trackedJob.output}
-                    status={trackedJob.status}
-                    title={`${item.title} — AWX job`}
-                    placeholder="AWX job başlatıldı — konsol çıktısı akmaya başlayacak…"
-                    size={floatSize.h === 'auto' ? 'compact' : 'fill'}
-                  />
-                  {trackedJob.pollErr && (
-                    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex-shrink-0">
-                      {trackedJob.pollErr}
-                    </div>
+                  {launchOptions.jobType.enabled && (
+                    <Field label="Job Type" htmlFor="lo-type" required>
+                      <Select
+                        id="lo-type"
+                        value={jobType}
+                        onChange={(e) => setJobType(e.target.value)}
+                      >
+                        <option value="run">Run</option>
+                        <option value="check">Check</option>
+                      </Select>
+                    </Field>
                   )}
                 </div>
               )}
-            </div>
-          )}
-        </div>
+          </>
+        )}
 
-        <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-shrink-0">
-          {/* INLINE FORMDA "Iptal"IN KAPATACAGI BIR PENCERE YOK (2026-09-22, kullanici:
+        {yerelOkumaAktif && !resultView && (
+          <NginxTanimOkuma
+            env={alanDegeri(['env', 'ortam'])}
+            service={alanDegeri(['service', 'servis'])}
+            namespace={alanDegeri(['namespace']) || undefined}
+            application={alanDegeri(['application', 'app', 'uygulama']) || undefined}
+          />
+        )}
+
+        {pendingTicket && (
+          <div className="space-y-3 animate-fade-in text-center py-6">
+            {pendingTicket.status === 'PENDING' && (
+              <>
+                <div className="mx-auto w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm font-medium text-[var(--text-primary)]">
+                  Smart üzerinde onay bekleniyor…
+                </p>
+                {pendingTicket.externalTicketId && (
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">
+                    Smart Kayıt No:{' '}
+                    <span className="font-mono">{pendingTicket.externalTicketId}</span>
+                  </p>
+                )}
+                {talepDurumu?.id === pendingTicket.id && (
+                  <SmartTalepSayaci
+                    talep={talepDurumu.yanit}
+                    serverNow={talepDurumu.yanit.serverNow}
+                    alindiMs={talepDurumu.alindiMs}
+                    className="mx-auto max-w-sm text-left"
+                  />
+                )}
+                <KapamaOnayiUyarisi />
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {ocoState?.done?.kind === 'smart-first' ? (
+                    <>
+                      Onay verildiğinde iş <strong>hemen değil</strong>, {ocoState.done.runAtText}{' '}
+                      kesinti penceresinde çalışacak.
+                    </>
+                  ) : (
+                    <>
+                      Tamamla’ya basıldığında iş otomatik başlar; bu pencereyi kapatabilirsiniz,
+                      talebi sağdaki “Taleplerim”den izleyin.
+                    </>
+                  )}
+                </p>
+                <div className="text-left text-xs bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mx-auto max-w-sm text-amber-800">
+                  Kapama Onayı tamamlandıktan ortalama 5 dakika sonra Teams bildirimi gelmezse{' '}
+                  {onCall?.ok && onCall.name ? (
+                    <>
+                      günün nöbetçisi <strong>{onCall.name}</strong>
+                      {onCall.intercom
+                        ? ` (dahili: ${onCall.intercom})`
+                        : onCall.phone
+                          ? ` (${onCall.phone})`
+                          : ''}{' '}
+                      ile iletişime geçin.
+                    </>
+                  ) : (
+                    <>günün nöbetçisiyle iletişime geçin.</>
+                  )}
+                </div>
+              </>
+            )}
+            {pendingTicket.status === 'REJECTED' && (
+              <>
+                <p className="text-sm font-medium text-red-600">Smart talebi reddedildi.</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  İş başlatılmadı. Detay için Smart talep{' '}
+                  {pendingTicket.externalTicketId
+                    ? `#${pendingTicket.externalTicketId}`
+                    : `#${pendingTicket.id}`}
+                  'e bakın.
+                </p>
+              </>
+            )}
+            {pendingTicket.status === 'TIMEOUT' && (
+              <>
+                <p className="text-sm font-medium text-amber-700">
+                  Smart onayı zaman aşımına uğradı.
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {pendingTicket.errorMessage || 'İş başlatılmadı.'}
+                </p>
+              </>
+            )}
+            {pendingTicket.status === 'ERROR' && (
+              <>
+                <p className="text-sm font-medium text-red-600">
+                  Talep onaylandı ama iş başlatılamadı.
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {pendingTicket.errorMessage || 'Lütfen sistem yöneticinize başvurun.'}
+                </p>
+              </>
+            )}
+            {pendingTicket.status === 'SCHEDULED' && (
+              <>
+                <p className="text-sm font-medium text-emerald-700">
+                  Onay alındı — iş kesinti penceresine zamanlandı.
+                </p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {pendingTicket.errorMessage ||
+                    'İş, OCO kaydındaki kesinti penceresinde kendiliğinden çalışacak; tekrar bir işlem yapmanız gerekmiyor.'}
+                </p>
+              </>
+            )}
+            {!RENDERED_TICKET_STATES.includes(pendingTicket.status) && (
+              <p className="text-sm text-[var(--text-secondary)]">
+                Smart talebi durumu: <b>{pendingTicket.status}</b>
+                {pendingTicket.externalTicketId ? (
+                  <>
+                    {' '}
+                    — kayıt no <span className="font-mono">{pendingTicket.externalTicketId}</span>
+                  </>
+                ) : null}
+              </p>
+            )}
+          </div>
+        )}
+
+        {jobId && (
+          <div className="space-y-3 animate-fade-in flex-1 min-h-0 flex flex-col">
+            <p className="text-sm font-medium text-[var(--text-primary)] text-center flex-shrink-0">
+              İş başlatıldı — AWX Job #{jobId}
+            </p>
+            {trackedJob && (
+              <div className="flex-1 min-h-0 flex flex-col">
+                <AnsibleLogTerminal
+                  output={trackedJob.output}
+                  status={trackedJob.status}
+                  title={`${item.title} — AWX job`}
+                  placeholder="AWX job başlatıldı — konsol çıktısı akmaya başlayacak…"
+                  size={floatSize.h === 'auto' ? 'compact' : 'fill'}
+                />
+                {trackedJob.pollErr && (
+                  <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 flex-shrink-0">
+                    {trackedJob.pollErr}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="px-5 py-4 border-t border-[var(--border)] flex items-center justify-between gap-3 flex-shrink-0">
+        {/* INLINE FORMDA "Iptal"IN KAPATACAGI BIR PENCERE YOK (2026-09-22, kullanici:
               "Iptal'e basmanin bir anlami yok, sayfa surekli ayni kaliyor"): servis
               kartin icinde acik duruyor, onClose yalnizca formu sifirliyordu ve bos
               formda hicbir sey degismis gibi gorunmuyordu. Artik dugme yaptigi isi
               soyluyor: sonuc ekranindayken "Yeni Talep", formdayken "Formu Temizle" —
               temizlenecek bir sey yoksa pasif. Modal modunda davranis aynen korunur. */}
-          {inline ? (
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={jobStreaming || (!resultView && !formDirty)}
-              title={
-                jobStreaming
-                  ? 'İş çalışıyor — Ansible çıktısı bu ekranda akıyor. İş bitince yeni talep açabilirsiniz (iş alt çubuktan da izlenir).'
-                  : resultView
-                    ? 'Formu sıfırlayıp yeni bir talep oluşturun'
-                    : formDirty
-                      ? 'Girdiğiniz değerleri temizler'
-                      : 'Temizlenecek bir şey yok — form zaten boş.'
-              }
-              className="text-sm font-medium inline-flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[var(--text-secondary)]"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-              {jobStreaming ? 'İş çalışıyor…' : resultView ? 'Yeni Talep' : 'Formu Temizle'}
-            </button>
-          ) : (
-            <button
-              onClick={onClose}
-              className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
-            >
-              {resultView ? 'Kapat' : 'İptal'}
-            </button>
-          )}
-          {yerelOkumaAktif && !resultView && (
-            <span className="text-xs text-[var(--text-muted)]">Read için iş başlatılmaz — tanımlar yukarıda.</span>
-          )}
-          {!jobId && !pendingTicket && !ocoState && !yerelOkumaAktif && (
-            <button
-              onClick={() => launch()}
-              disabled={launching || loading || hasAnyFieldError}
-              title={
-                missingRequiredLabels.length > 0
-                  ? `Zorunlu alan(lar) eksik: ${missingRequiredLabels.join(', ')}`
-                  : hasAnyFieldError
-                    ? 'Bazı alanlar geçersiz — kırmızı uyarıları düzeltin.'
-                    : undefined
-              }
-              className="btn-primary px-5 py-2 text-sm flex items-center gap-2"
-            >
-              {launching ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <PlayIcon className="w-4 h-4" />
-              )}
-              İş Başlat
-            </button>
-          )}
-        </div>
+        {inline ? (
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={jobStreaming || (!resultView && !formDirty)}
+            title={
+              jobStreaming
+                ? 'İş çalışıyor — Ansible çıktısı bu ekranda akıyor. İş bitince yeni talep açabilirsiniz (iş alt çubuktan da izlenir).'
+                : resultView
+                  ? 'Formu sıfırlayıp yeni bir talep oluşturun'
+                  : formDirty
+                    ? 'Girdiğiniz değerleri temizler'
+                    : 'Temizlenecek bir şey yok — form zaten boş.'
+            }
+            className="text-sm font-medium inline-flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-[var(--text-secondary)]"
+          >
+            <ArrowPathIcon className="w-4 h-4" />
+            {jobStreaming ? 'İş çalışıyor…' : resultView ? 'Yeni Talep' : 'Formu Temizle'}
+          </button>
+        ) : (
+          <button
+            onClick={onClose}
+            className="text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition"
+          >
+            {resultView ? 'Kapat' : 'İptal'}
+          </button>
+        )}
+        {yerelOkumaAktif && !resultView && (
+          <span className="text-xs text-[var(--text-muted)]">
+            Read için iş başlatılmaz — tanımlar yukarıda.
+          </span>
+        )}
+        {!jobId && !pendingTicket && !ocoState && !yerelOkumaAktif && (
+          <button
+            onClick={() => launch()}
+            disabled={launching || loading || hasAnyFieldError}
+            title={
+              missingRequiredLabels.length > 0
+                ? `Zorunlu alan(lar) eksik: ${missingRequiredLabels.join(', ')}`
+                : hasAnyFieldError
+                  ? 'Bazı alanlar geçersiz — kırmızı uyarıları düzeltin.'
+                  : undefined
+            }
+            className="btn-primary px-5 py-2 text-sm flex items-center gap-2"
+          >
+            {launching ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <PlayIcon className="w-4 h-4" />
+            )}
+            İş Başlat
+          </button>
+        )}
+      </div>
     </>
   );
   if (inline) return <div className="flex flex-col -m-5">{body}</div>;
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
-      {...backdrop}
-    >
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" {...backdrop}>
       <div
         ref={floatRef}
         className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl flex flex-col animate-modal-pop relative"
@@ -1296,7 +1369,10 @@ function ErisimRozeti({ item }: { item: AnsibleSsItem }) {
   const mod = ssErisimModu(item);
   if (mod === 'kapali') {
     return (
-      <span data-testid="ss-rozet-kapali" className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">
+      <span
+        data-testid="ss-rozet-kapali"
+        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100"
+      >
         kullanıcılara kapalı
       </span>
     );
@@ -1306,7 +1382,9 @@ function ErisimRozeti({ item }: { item: AnsibleSsItem }) {
     return (
       <span
         data-testid="ss-rozet-ekipler"
-        title={gruplar.map(grupEtiketi).join(', ') || 'Ekip listesi boş — servis kimseye açık değil'}
+        title={
+          gruplar.map(grupEtiketi).join(', ') || 'Ekip listesi boş — servis kimseye açık değil'
+        }
         className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100"
       >
         {gruplar.length ? `${gruplar.length} ekibe açık` : 'ekip seçilmedi'}
@@ -1368,10 +1446,7 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
 
   return createPortal(
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm overflow-y-auto p-4">
-      <div
-        className="min-h-full flex items-center justify-center"
-        {...backdrop}
-      >
+      <div className="min-h-full flex items-center justify-center" {...backdrop}>
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[calc(100dvh-2rem)] my-4">
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
@@ -1384,7 +1459,8 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
                 </button>
               ) : (
                 <>
-                  <ClockIcon className="w-5 h-5 text-[var(--accent)]" /> {item ? `${item.title} — geçmiş (son 30 gün)` : 'İş Geçmişi (Son 30 Gün)'}
+                  <ClockIcon className="w-5 h-5 text-[var(--accent)]" />{' '}
+                  {item ? `${item.title} — geçmiş (son 30 gün)` : 'İş Geçmişi (Son 30 Gün)'}
                 </>
               )}
             </h2>
@@ -1494,7 +1570,12 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
 //   'new'     -> yeni servis formu (admin)
 //   <item id> -> o servisin ayrinti karti (Baslat, Gecmis, Alanlari Yonet, Sil)
 // Liste degisince `onItems` ile ust bilesene bildirilir (menu oradan kurulur).
-function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
+function AnsibleSection({
+  isAdmin,
+  selected = null,
+  onItems,
+  onSelect,
+}: {
   isAdmin: boolean;
   selected?: string | null;
   onItems?: (items: AnsibleSsItem[]) => void;
@@ -1573,7 +1654,15 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   }
 
   async function deleteItem(id: string) {
-    if (!(await onayla({ baslik: 'Servisi kaldır', metin: 'Bu servis katalogdan kaldırılsın mı?', onayMetni: 'Kaldır', tehlikeli: true }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Servisi kaldır',
+        metin: 'Bu servis katalogdan kaldırılsın mı?',
+        onayMetni: 'Kaldır',
+        tehlikeli: true,
+      }))
+    )
+      return;
     await ansibleApi.deleteSsItem(id);
     onSelect?.(null);
     reload();
@@ -1622,7 +1711,8 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
   // gorunurluk anahtari) — admin her zaman TUM kayitlari gorur ve calistirabilir,
   // aksi halde bir servisi kapatan admin onu bir daha o ekrandan yonetemezdi.
   const visibleItems = isAdmin ? items : items.filter((i) => i.enabled);
-  const selectedItem = selected && selected !== 'new' ? visibleItems.find((i) => i.id === selected) || null : null;
+  const selectedItem =
+    selected && selected !== 'new' ? visibleItems.find((i) => i.id === selected) || null : null;
 
   // Tek servis (menuden secildi): form DOGRUDAN kartin icinde — baslik zaten kart
   // basliginda, o yuzden ikinci bir kart + "Baslat" dugmesi YOK. Ust satir: kucuk eylemler.
@@ -1632,34 +1722,56 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
       <div className="space-y-3">
         <div className="flex items-center gap-2 flex-wrap text-xs">
           {isAdmin && <ErisimRozeti item={item} />}
-          <span style={{ color: 'var(--text-muted)' }}>AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}</span>
+          <span style={{ color: 'var(--text-muted)' }}>
+            AWX template #{item.awxTemplateId} · sunucu {item.awxServerId}
+          </span>
           {resetNote && (
             <span
               role="status"
               data-testid="ss-form-reset-note"
               className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border animate-fade-in"
-              style={{ borderColor: 'var(--status-success)', color: 'var(--status-success)', background: 'var(--status-success-bg)' }}
+              style={{
+                borderColor: 'var(--status-success)',
+                color: 'var(--status-success)',
+                background: 'var(--status-success-bg)',
+              }}
             >
               <CheckCircleIcon className="w-3.5 h-3.5" /> Form sıfırlandı
             </span>
           )}
           <span className="ml-auto flex items-center gap-1.5">
-            <button onClick={() => setShowHistory(true)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }} title="Bu servisin geçmişi">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+              title="Bu servisin geçmişi"
+            >
               <ClockIcon className="w-3.5 h-3.5" /> Geçmiş
             </button>
             {isAdmin && (
               <>
-                <button onClick={() => setFieldsItem(item)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                <button
+                  onClick={() => setFieldsItem(item)}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}
+                >
                   <AdjustmentsHorizontalIcon className="w-3.5 h-3.5" /> Alanları Yönet
                 </button>
-                <button onClick={() => deleteItem(item.id)} className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border" style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}>
+                <button
+                  onClick={() => deleteItem(item.id)}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] rounded-lg border"
+                  style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
+                >
                   <TrashIcon className="w-3.5 h-3.5" /> Sil
                 </button>
               </>
             )}
           </span>
         </div>
-        <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+        <div
+          className="rounded-2xl border p-5"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
           {/* key: servis degisince form sifirdan kurulsun; onClose (Iptal/Kapat) = ayni servisi yeniden ac */}
           <SurveyModal
             key={item.id + ':' + formEpoch}
@@ -1672,7 +1784,14 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
           />
         </div>
         {showHistory && <HistoryModal item={item} onClose={() => setShowHistory(false)} />}
-        {fieldsItem && <FieldOverridesModal item={fieldsItem} ssErisimItem={fieldsItem} onErisimKaydedildi={sessizYenile} onClose={() => setFieldsItem(null)} />}
+        {fieldsItem && (
+          <FieldOverridesModal
+            item={fieldsItem}
+            ssErisimItem={fieldsItem}
+            onErisimKaydedildi={sessizYenile}
+            onClose={() => setFieldsItem(null)}
+          />
+        )}
       </div>
     );
   }
@@ -1681,7 +1800,11 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
     <div className="space-y-4">
       {onayPenceresi}
       <div className="flex items-center justify-between">
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{isAdmin ? 'Soldaki menüden bir servis seçin ya da "Servis Ekle" ile yeni servis tanımlayın.' : 'Soldaki menüden bir servis seçip "Başlat" ile AWX işini açın.'}</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+          {isAdmin
+            ? 'Soldaki menüden bir servis seçin ya da "Servis Ekle" ile yeni servis tanımlayın.'
+            : 'Soldaki menüden bir servis seçip "Başlat" ile AWX işini açın.'}
+        </p>
         <div className="flex gap-2">
           <button
             onClick={() => setShowHistory(true)}
@@ -1707,7 +1830,10 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
       </div>
 
       {isAdmin && addForm && (
-        <div className="rounded-2xl border p-5 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+        <div
+          className="rounded-2xl border p-5 space-y-3"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+        >
           <h3 className="text-sm font-bold">Yeni Ansible Servisi</h3>
           {saveError && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -1787,7 +1913,10 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
           />
         </div>
       ) : visibleItems.length === 0 ? (
-        <div className="rounded-2xl border flex items-center justify-center h-40" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div
+          className="rounded-2xl border flex items-center justify-center h-40"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {isAdmin
               ? 'Henüz Ansible servisi yok. Servis Ekle butonunu kullanın.'
@@ -1796,65 +1925,80 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {visibleItems
-            .sort((a, b) => a.order - b.order)
-            .map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border p-5 card-hover group relative"
-                style={{ background: 'var(--bg-surface)', borderColor: item.enabled ? 'var(--border-subtle)' : 'var(--status-warning)', boxShadow: 'var(--shadow-sm)' }}
-              >
-                <div className="mb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-base">{item.title}</h3>
-                      {/* enabled=false SADECE normal kullanicilardan gizler — admin her zaman
+          {(() => {
+            const siraliItems = [...visibleItems];
+            siraliItems.sort((a, b) => a.order - b.order);
+            return siraliItems;
+          })().map((item) => (
+            <div
+              key={item.id}
+              className="rounded-2xl border p-5 card-hover group relative"
+              style={{
+                background: 'var(--bg-surface)',
+                borderColor: item.enabled ? 'var(--border-subtle)' : 'var(--status-warning)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              <div className="mb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-base">{item.title}</h3>
+                    {/* enabled=false SADECE normal kullanicilardan gizler — admin her zaman
                         gorur ve calistirabilir; bu rozet admin'e bunu hatirlatir. */}
-                      {isAdmin && <ErisimRozeti item={item} />}
-                    </div>
-                    {isAdmin && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
-                        <button
-                          onClick={() => setFieldsItem(item)}
-                          title="Alanları Yönet"
-                          className="p-1 text-gray-300 hover:text-[var(--accent)] rounded"
-                        >
-                          <AdjustmentsHorizontalIcon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteItem(item.id)}
-                          title="Sil"
-                          className="p-1 text-gray-300 hover:text-red-500 rounded"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
+                    {isAdmin && <ErisimRozeti item={item} />}
                   </div>
-                  {item.description && (
-                    <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{item.description}</p>
+                  {isAdmin && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
+                      <button
+                        onClick={() => setFieldsItem(item)}
+                        title="Alanları Yönet"
+                        className="p-1 text-gray-300 hover:text-[var(--accent)] rounded"
+                      >
+                        <AdjustmentsHorizontalIcon className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteItem(item.id)}
+                        title="Sil"
+                        className="p-1 text-gray-300 hover:text-red-500 rounded"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Template #{item.awxTemplateId} · Server {item.awxServerId}
-                  </span>
-                  <button
-                    onClick={() => setLaunchItem(item)}
-                    className="btn-primary px-4 py-1.5 text-sm flex items-center gap-1.5"
-                  >
-                    <PlayIcon className="w-4 h-4" />
-                    Başlat
-                  </button>
-                </div>
+                {item.description && (
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    {item.description}
+                  </p>
+                )}
               </div>
-            ))}
+              <div className="flex items-center justify-between">
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Template #{item.awxTemplateId} · Server {item.awxServerId}
+                </span>
+                <button
+                  onClick={() => setLaunchItem(item)}
+                  className="btn-primary px-4 py-1.5 text-sm flex items-center gap-1.5"
+                >
+                  <PlayIcon className="w-4 h-4" />
+                  Başlat
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {launchItem && <SurveyModal item={launchItem} onClose={() => setLaunchItem(null)} />}
       {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
-      {fieldsItem && <FieldOverridesModal item={fieldsItem} ssErisimItem={fieldsItem} onErisimKaydedildi={sessizYenile} onClose={() => setFieldsItem(null)} />}
+      {fieldsItem && (
+        <FieldOverridesModal
+          item={fieldsItem}
+          ssErisimItem={fieldsItem}
+          onErisimKaydedildi={sessizYenile}
+          onClose={() => setFieldsItem(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1872,19 +2016,36 @@ const ocoOptionCard =
 /** Menu girisinden URL parcasi: "Nginx - RVP Operations" -> "nginx-rvp-operations".
  *  Turkce harfler sadelesir; ayni slug iki serviste cikarsa ikincisi "-<id>" alir. */
 export function ssSlug(title: string): string {
-  const tr: Record<string, string> = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', â: 'a', î: 'i', û: 'u' };
-  return title
-    .replace(/İ/g, 'i').replace(/I/g, 'i')
-    .toLowerCase()
-    .replace(/[çğıöşüâîû]/g, (c) => tr[c] || c)
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'servis';
+  const tr: Record<string, string> = {
+    ç: 'c',
+    ğ: 'g',
+    ı: 'i',
+    ö: 'o',
+    ş: 's',
+    ü: 'u',
+    â: 'a',
+    î: 'i',
+    û: 'u',
+  };
+  return (
+    title
+      .replace(/İ/g, 'i')
+      .replace(/I/g, 'i')
+      .toLowerCase()
+      .replace(/[çğıöşüâîû]/g, (c) => tr[c] || c)
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'servis'
+  );
 }
 
 const FIXED_SLUG: Record<string, string> = { 'svc:new': 'servis-ekle' };
 // IP / OpenShift sorgulari BMW Hub'a tasindi (kullanici, 2026-11-12); eski yer imleri oraya yonlenir.
-const TASINAN_SLUG: Record<string, string> = { 'ip-sorgu': '/ip-sorgu', 'openshift-sorgu': '/ocp-sorgu' };
+const TASINAN_SLUG: Record<string, string> = {
+  'ip-sorgu': '/ip-sorgu',
+  'openshift-sorgu': '/ocp-sorgu',
+};
 
 export default function SelfServicePage() {
   const { user } = useAuth();
@@ -1908,7 +2069,10 @@ export default function SelfServicePage() {
         setLoading(true);
         // Menu icin servis listesi de ILK yuklemede beklenir: URL'deki slug ancak liste
         // gelince cozulur; yoksa sayfa bir an "tumu"ne dusup sonra servise atlardi.
-        const [r, x] = await Promise.all([selfServiceApi.get(), ansibleApi.ssItems().catch(() => ({ items: [] as AnsibleSsItem[] }))]);
+        const [r, x] = await Promise.all([
+          selfServiceApi.get(),
+          ansibleApi.ssItems().catch(() => ({ items: [] as AnsibleSsItem[] })),
+        ]);
         if (alive()) setGroups(r.groups || []);
         if (alive()) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled));
       } catch (e: unknown) {
@@ -1925,38 +2089,65 @@ export default function SelfServicePage() {
   // -> groups); IP / OpenShift kontrolleri eskiden "Check" sekmesinin ic sekmesiydi, simdi
   // menude kendi basina iki giris.
   const ansibleGroup = groups.find((g) => g.groupKey === 'ansible');
-  const ENTRIES: Record<string, { label: string; icon: React.ElementType; hint: string; muted?: boolean }> = {
-    ansible: { label: `${ansibleGroup?.label || 'Ansible'} — tümü`, icon: CommandLineIcon, hint: 'Tanımlı Ansible servislerine genel bakış; her servis soldaki menüde ayrı bir giriştir.' },
-    'svc:new': { label: 'Servis Ekle', icon: PlusIcon, hint: 'AWX job template\'ini Portal\'a servis olarak tanımlayın; alanlar kayıttan sonra hemen düzenlenir.' },
-  };
-  // Her self servis ogesi menude ayri giris (2026-09-21, kullanici istegi)
-  const SLUG: Record<string, string> = { ...FIXED_SLUG };
-  const usedSlugs = new Set<string>(Object.values(FIXED_SLUG));
-  const svcIds = [...ssItems].sort((a, b) => a.order - b.order).map((i) => {
-    ENTRIES[`svc:${i.id}`] = { label: i.title, icon: PlayIcon, hint: i.description || `AWX template #${i.awxTemplateId}`, muted: !i.enabled };
-    let sl = ssSlug(i.title);
-    if (usedSlugs.has(sl)) sl = `${sl}-${i.id}`;
-    usedSlugs.add(sl);
-    SLUG[`svc:${i.id}`] = sl;
-    return `svc:${i.id}` as TopTab;
-  });
-  const activeTop: TopTab = (slug && (Object.keys(SLUG).find((k) => SLUG[k] === slug) as TopTab | undefined)) || 'ansible';
-  const setActiveTop = (id: TopTab) => navigate(id === 'ansible' ? '/self-service' : `/self-service/${SLUG[id]}`);
+  const { ENTRIES, SLUG, svcIds } = useMemo(() => {
+    const entries: Record<
+      string,
+      { label: string; icon: React.ElementType; hint: string; muted?: boolean }
+    > = {
+      ansible: {
+        label: `${ansibleGroup?.label || 'Ansible'} — tümü`,
+        icon: CommandLineIcon,
+        hint: 'Tanımlı Ansible servislerine genel bakış; her servis soldaki menüde ayrı bir giriştir.',
+      },
+      'svc:new': {
+        label: 'Servis Ekle',
+        icon: PlusIcon,
+        hint: "AWX job template'ini Portal'a servis olarak tanımlayın; alanlar kayıttan sonra hemen düzenlenir.",
+      },
+    };
+    const slugs: Record<string, string> = { ...FIXED_SLUG };
+    const usedSlugs = new Set<string>(Object.values(FIXED_SLUG));
+    const ids = [...ssItems]
+      .sort((a, b) => a.order - b.order)
+      .map((i) => {
+        entries[`svc:${i.id}`] = {
+          label: i.title,
+          icon: PlayIcon,
+          hint: i.description || `AWX template #${i.awxTemplateId}`,
+          muted: !i.enabled,
+        };
+        let sl = ssSlug(i.title);
+        if (usedSlugs.has(sl)) sl = `${sl}-${i.id}`;
+        usedSlugs.add(sl);
+        slugs[`svc:${i.id}`] = sl;
+        return `svc:${i.id}` as TopTab;
+      });
+    return { ENTRIES: entries, SLUG: slugs, svcIds: ids };
+  }, [ansibleGroup?.label, ssItems]);
+  const activeTop: TopTab =
+    (slug && (Object.keys(SLUG).find((k) => SLUG[k] === slug) as TopTab | undefined)) || 'ansible';
+  const setActiveTop = (id: TopTab) =>
+    navigate(id === 'ansible' ? '/self-service' : `/self-service/${SLUG[id]}`);
   // Bilinmeyen/silinmis slug: sessizce "tumu"ne don (liste yuklendikten sonra)
   useEffect(() => {
     if (slug && TASINAN_SLUG[slug]) {
       navigate(TASINAN_SLUG[slug], { replace: true });
       return;
     }
-    if (!loading && slug && !Object.values(SLUG).includes(slug)) navigate('/self-service', { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, slug, ssItems.length]);
+    if (!loading && slug && !Object.values(SLUG).includes(slug))
+      navigate('/self-service', { replace: true });
+  }, [loading, slug, SLUG, navigate]);
   const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
-    { title: ansibleGroup?.label || 'Ansible', icon: CommandLineIcon, ids: ['ansible', ...svcIds, ...(isAdmin ? (['svc:new'] as TopTab[]) : [])] },
+    {
+      title: ansibleGroup?.label || 'Ansible',
+      icon: CommandLineIcon,
+      ids: ['ansible', ...svcIds, ...(isAdmin ? (['svc:new'] as TopTab[]) : [])],
+    },
   ];
   const current = ENTRIES[activeTop] || ENTRIES.ansible;
   const isAnsibleView = activeTop === 'ansible' || activeTop.startsWith('svc:');
-  const ansibleSelected = activeTop === 'svc:new' ? 'new' : activeTop.startsWith('svc:') ? activeTop.slice(4) : null;
+  const ansibleSelected =
+    activeTop === 'svc:new' ? 'new' : activeTop.startsWith('svc:') ? activeTop.slice(4) : null;
   const CurrentIcon = current.icon;
 
   if (loading) {
@@ -1985,14 +2176,20 @@ export default function SelfServicePage() {
         </div>
       )}
 
-      <div className="grid gap-4 ss-grid" style={{ gridTemplateColumns: 'minmax(11rem, 12.5rem) 1fr' }}>
+      <div
+        className="grid gap-4 ss-grid"
+        style={{ gridTemplateColumns: 'minmax(11rem, 12.5rem) 1fr' }}
+      >
         {/* Sol: bolumlu menu */}
         <nav aria-label="Otomasyon bölümleri" className="space-y-4 self-start lg:sticky lg:top-4">
           {SECTIONS.map((sec) => {
             const SIcon = sec.icon;
             return (
               <div key={sec.title}>
-                <div className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                <div
+                  className="flex items-center gap-1.5 px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--text-muted)' }}
+                >
                   <SIcon className="w-3.5 h-3.5" /> {sec.title}
                 </div>
                 <ul className="space-y-0.5">
@@ -2013,8 +2210,17 @@ export default function SelfServicePage() {
                             boxShadow: active ? 'inset 3px 0 0 var(--accent)' : 'none',
                           }}
                         >
-                          <Icon className="w-4 h-4 flex-shrink-0" style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
-                          <span className="truncate" title={e.label + (e.muted ? ' (kullanıcılara kapalı)' : '')} style={e.muted ? { opacity: 0.6 } : undefined}>{e.label}</span>
+                          <Icon
+                            className="w-4 h-4 flex-shrink-0"
+                            style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
+                          />
+                          <span
+                            className="truncate"
+                            title={e.label + (e.muted ? ' (kullanıcılara kapalı)' : '')}
+                            style={e.muted ? { opacity: 0.6 } : undefined}
+                          >
+                            {e.label}
+                          </span>
                         </button>
                       </li>
                     );
@@ -2027,13 +2233,25 @@ export default function SelfServicePage() {
 
         {/* Sag: icerik */}
         <section className="card overflow-hidden min-w-0">
-          <header className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-            <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'var(--bg-surface)', color: 'var(--accent)', boxShadow: 'var(--shadow-sm)' }}>
+          <header
+            className="flex items-center gap-3 px-5 py-4 border-b"
+            style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+          >
+            <span
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{
+                background: 'var(--bg-surface)',
+                color: 'var(--accent)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
               <CurrentIcon className="w-5 h-5" />
             </span>
             <div className="min-w-0">
               <h2 className="text-base font-semibold leading-tight">{current.label}</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{current.hint}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {current.hint}
+              </p>
             </div>
           </header>
           <div className="p-5">

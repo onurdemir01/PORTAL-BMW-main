@@ -3543,13 +3543,11 @@ async function seedPortalElements(pool) {
         .query(`SELECT 1 FROM portal_elements WHERE element_key = @k`);
       if (exists.recordset.length) continue;
       const restricted = Array.isArray(el.roles);
-      const defaultVisible = restricted
-        ? 0
-        : el.default_visible != null
-          ? el.default_visible
-            ? 1
-            : 0
-          : 1;
+      let elVis = 1;
+      if (el.default_visible != null) {
+        elVis = el.default_visible ? 1 : 0;
+      }
+      const defaultVisible = restricted ? 0 : elVis;
       await pool
         .request()
         .input('k', el.element_key)
@@ -3593,9 +3591,7 @@ async function seedPortalElements(pool) {
       await pool
         .request()
         .input('n', MARK)
-        .query(
-          `INSERT INTO portal_config_blobs (name, data) VALUES (@n, '{"done":true}')`,
-        );
+        .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, '{"done":true}')`);
       console.log('[DB] Crypto Hub sikiligi kaldirildi (admin muafiyeti geri geldi).');
     }
   } catch (err) {
@@ -3693,15 +3689,21 @@ async function seedPortalElements(pool) {
   // kurulumda eski etiket/adres kalirdi. Yalniz hala ESKI varsayilan olan alanlar guncellenir -
   // admin elle bir ad verdiyse ona dokunulmaz. Adres her durumda yeni (eski adres yonlendirilir).
   try {
-    await pool.request().query(
-      `UPDATE portal_elements SET label = N'SPA Raporu' WHERE element_key = 'ArkSpaRaporu' AND label = N'Nginx ARK SPA Raporu'`,
-    );
-    await pool.request().query(
-      `UPDATE portal_elements SET route = '/ark-spa/spa-raporu' WHERE element_key = 'ArkSpaRaporu' AND route = '/ark-spa-raporu'`,
-    );
-    await pool.request().query(
-      `UPDATE portal_elements SET label = N'Nginx ARK SPA' WHERE element_key = 'navgroup:arkspa' AND label = N'Nginx ARK SPA Raporu'`,
-    );
+    await pool
+      .request()
+      .query(
+        `UPDATE portal_elements SET label = N'SPA Raporu' WHERE element_key = 'ArkSpaRaporu' AND label = N'Nginx ARK SPA Raporu'`,
+      );
+    await pool
+      .request()
+      .query(
+        `UPDATE portal_elements SET route = '/ark-spa/spa-raporu' WHERE element_key = 'ArkSpaRaporu' AND route = '/ark-spa-raporu'`,
+      );
+    await pool
+      .request()
+      .query(
+        `UPDATE portal_elements SET label = N'Nginx ARK SPA' WHERE element_key = 'navgroup:arkspa' AND label = N'Nginx ARK SPA Raporu'`,
+      );
   } catch (err) {
     console.warn('[DB] Nginx ARK SPA etiket/adres guncellenemedi:', err.message);
   }
@@ -4076,7 +4078,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'system',
     handler: 'app_retirement_delete',
     description:
-      'bmw_automation_folder/app_retirement/app_retirement_delete.yml — durdurulmus uygulamanin *.<smart_no>.old paketlerini siler, deployment kaydini ve bossa server-group\'u kaldirir. GERI ALINAMAZ. Portal zamanlayicisi silme gunu 23:00 (TR) tetikler. Yalniz Admin.',
+      "bmw_automation_folder/app_retirement/app_retirement_delete.yml — durdurulmus uygulamanin *.<smart_no>.old paketlerini siler, deployment kaydini ve bossa server-group'u kaldirir. GERI ALINAMAZ. Portal zamanlayicisi silme gunu 23:00 (TR) tetikler. Yalniz Admin.",
     playbook_path: null,
     env_var_name: 'APP_RETIREMENT_DELETE_TEMPLATE_ID',
   },
@@ -4086,7 +4088,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'system',
     handler: 'app_retirement_rollback',
     description:
-      'bmw_automation_folder/app_retirement/app_retirement_rollback.yml — STOP\'un tersi: *.<smart_no>.old paketleri geri adlandirir, auto-start=true, JVM\'i baslatir. Silinmis uygulamada calismaz. plan_only=true once plan. Yalniz Admin.',
+      "bmw_automation_folder/app_retirement/app_retirement_rollback.yml — STOP'un tersi: *.<smart_no>.old paketleri geri adlandirir, auto-start=true, JVM'i baslatir. Silinmis uygulamada calismaz. plan_only=true once plan. Yalniz Admin.",
     playbook_path: null,
     env_var_name: 'APP_RETIREMENT_ROLLBACK_TEMPLATE_ID',
   },
@@ -4107,7 +4109,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'system',
     handler: 'server_hub_ear_envanter',
     description:
-      'bmw_portal/ear_envanter/ear_envanter.yml — hedeflerde tek raw gorevi (python3 -B -, tirnakli heredoc; dosya kopyalanmaz, hicbir sey yazilmaz) ile EAR/WAR, JSP/TLD/JAR sayilari, Spring/log4j surumleri ve (TAM kip) dosya agaci; sonuc /sw (EAR_ENVANTER_DIR) uzerinden Portal DB\'ye alinir. Portal hedefleri partilere boler (hedefler, ear_kip, ear_kosu_no, ear_parti_no, ear_dizin, ear_okuma_kullanicisi, ear_kokler). Variables prompt-on-launch ACIK olmali; Forks 50. Yalniz Admin.',
+      "bmw_portal/ear_envanter/ear_envanter.yml — hedeflerde tek raw gorevi (python3 -B -, tirnakli heredoc; dosya kopyalanmaz, hicbir sey yazilmaz) ile EAR/WAR, JSP/TLD/JAR sayilari, Spring/log4j surumleri ve (TAM kip) dosya agaci; sonuc /sw (EAR_ENVANTER_DIR) uzerinden Portal DB'ye alinir. Portal hedefleri partilere boler (hedefler, ear_kip, ear_kosu_no, ear_parti_no, ear_dizin, ear_okuma_kullanicisi, ear_kokler). Variables prompt-on-launch ACIK olmali; Forks 50. Yalniz Admin.",
     playbook_path: null,
     env_var_name: 'EAR_ENVANTER_TEMPLATE_ID',
   },
@@ -4140,7 +4142,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'nginx',
     handler: 'nginx_loadtest_run',
     description:
-      'bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/), durdur ve araclar kipi (k6 + wrk /sw\'ye; yalniz Admin). Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.',
+      "bmw_portal/nginx_loadtest/nginx_loadtest.yml — izinli yuk makinesinden k6 (acik dongu, sabit istek/sn) ya da wrk (kapali dongu, sabit baglanti, hiz tavanli) ile yuk; hedef non-prod bir nginx sunucusu (CPU kaydedici + nginx logu) ya da serbest hedef (izinli agdaki LB VIP / yonetilmeyen sunucu: yalniz istemci olcumu, hedefe SSH yok). On kontrol (yuk yok), kosu (sonuclar /sw/BMW_PORTAL/nginx_loadtest/<kosu>/), durdur ve araclar kipi (k6 + wrk /sw'ye; yalniz Admin). Prompt on launch (Variables) ACIK, Limit kullanilmaz, template timeout <= 60 dk, Concurrent Jobs ACIK, Execute / Admin rolu yalniz Portal servis hesabinda. Yalniz Admin tetikler; bkz. docs/NGINX-YUK-TESTI.md.",
     playbook_path: null,
     env_var_name: 'NGINX_LOADTEST_RUN_TEMPLATE_ID',
   },
@@ -4271,9 +4273,12 @@ async function silinenVarsayilanAnahtarlari(pool) {
     return new Set((r.recordset || []).map((x) => x.key_name));
   } catch (err) {
     // 208 = tablo yok (oturum dilinden bagimsiz); metin yalniz yedek.
-    const no = err && (err.number ?? (err.originalError && err.originalError.info && err.originalError.info.number));
-    if (no === 208 || /Invalid object name/i.test(String(err && err.message))) return new Set();
-    console.warn('[DB] Silinen varsayilan playbook kayitlari okunamadi; seed bu acilista atlandi:', err.message);
+    const no = err?.number ?? err?.originalError?.info?.number;
+    if (no === 208 || /Invalid object name/i.test(String(err?.message))) return new Set();
+    console.warn(
+      '[DB] Silinen varsayilan playbook kayitlari okunamadi; seed bu acilista atlandi:',
+      err.message,
+    );
     return null;
   }
 }
@@ -4313,8 +4318,14 @@ async function seedPlaybookRegistry(pool) {
   try {
     await pool
       .request()
-      .input('old_desc', 'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.')
-      .input('new_desc', 'JBoss geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.')
+      .input(
+        'old_desc',
+        'JBoss/WAS geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
+      )
+      .input(
+        'new_desc',
+        'JBoss geleneksel Linux sunucularda uygulama restart/stop/start/thread dump/heap dump islemi.',
+      )
       .query(
         `UPDATE ansible_playbook_registry SET description = @new_desc
           WHERE key_name = 'opsx_legacy_operation' AND CAST(description AS NVARCHAR(400)) = @old_desc`,
@@ -4722,37 +4733,63 @@ async function removeKaynaklarNavGroup(pool) {
 async function moveToBmwHub(pool) {
   const MARK = 'migration:bmwhub-grubu-2026-11-08';
   try {
-    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    const done = await pool
+      .request()
+      .input('n', MARK)
+      .query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
     if (done.recordset.length) return;
-    const sira = { BmwHub: 1, Envanter: 2, Denetim: 3, 'Nöbet': 4, OcoTakvimi: 5 };
+    const sira = { BmwHub: 1, Envanter: 2, Denetim: 3, Nöbet: 4, OcoTakvimi: 5 };
     for (const [k, o] of Object.entries(sira)) {
       await pool
         .request()
         .input('k', k)
         .input('o', o)
-        .query(`UPDATE portal_elements SET parent_key = 'navgroup:bmwhub', sort_order = @o WHERE element_key = @k`);
+        .query(
+          `UPDATE portal_elements SET parent_key = 'navgroup:bmwhub', sort_order = @o WHERE element_key = @k`,
+        );
     }
-    await pool.request().query(`UPDATE portal_elements SET label = N'Açık İşler' WHERE element_key = 'BmwHub'`);
-    await pool.request().query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Envanter'`);
     await pool
       .request()
-      .query(`DELETE FROM portal_element_visibility WHERE element_key = 'Envanter' AND principal_type = 'role' AND principal_id = 'User'`);
-    await pool.request().query(`UPDATE page_visibility SET roles = 'Admin' WHERE page_name IN ('Envanter', 'Denetim')`);
+      .query(`UPDATE portal_elements SET label = N'Açık İşler' WHERE element_key = 'BmwHub'`);
+    await pool
+      .request()
+      .query(`UPDATE portal_elements SET default_visible = 0 WHERE element_key = 'Envanter'`);
+    await pool
+      .request()
+      .query(
+        `DELETE FROM portal_element_visibility WHERE element_key = 'Envanter' AND principal_type = 'role' AND principal_id = 'User'`,
+      );
+    await pool
+      .request()
+      .query(
+        `UPDATE page_visibility SET roles = 'Admin' WHERE page_name IN ('Envanter', 'Denetim')`,
+      );
     for (const g of ['navgroup:envanter', 'navgroup:operasyon']) {
-      const kalan = await pool.request().input('g', g).query(`SELECT COUNT(*) AS n FROM portal_elements WHERE parent_key = @g`);
+      const kalan = await pool
+        .request()
+        .input('g', g)
+        .query(`SELECT COUNT(*) AS n FROM portal_elements WHERE parent_key = @g`);
       if (Number(kalan.recordset[0].n) > 0) {
         console.warn(`[DB] ${g} bos degil (admin tasimis olabilir); grup SILINMEDI.`);
         continue;
       }
-      await pool.request().input('g', g).query(`DELETE FROM portal_element_visibility WHERE element_key = @g`);
-      await pool.request().input('g', g).query(`DELETE FROM portal_elements WHERE element_key = @g`);
+      await pool
+        .request()
+        .input('g', g)
+        .query(`DELETE FROM portal_element_visibility WHERE element_key = @g`);
+      await pool
+        .request()
+        .input('g', g)
+        .query(`DELETE FROM portal_elements WHERE element_key = @g`);
     }
     await pool
       .request()
       .input('n', MARK)
       .input('d', JSON.stringify({ at: new Date().toISOString() }))
       .query(`INSERT INTO portal_config_blobs (name, data) VALUES (@n, @d)`);
-    console.log('[DB] BMW Hub grubu: Envanter, Denetim, Nobet, OCO Takvimi tasindi; Envanter yalniz Admin.');
+    console.log(
+      '[DB] BMW Hub grubu: Envanter, Denetim, Nobet, OCO Takvimi tasindi; Envanter yalniz Admin.',
+    );
   } catch (err) {
     console.warn('[DB] BMW Hub grubu migration uygulanamadi:', err.message);
   }
@@ -4767,17 +4804,24 @@ async function placeBmwHubFlowPages(pool) {
   const MARK = 'migration:bmwhub-reboot-retirement-sira-2026-11-13';
   const YENI = ['RebootKontrolu', 'Retirement'];
   try {
-    const done = await pool.request().input('n', MARK).query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
+    const done = await pool
+      .request()
+      .input('n', MARK)
+      .query(`SELECT 1 FROM portal_config_blobs WHERE name = @n`);
     if (done.recordset.length) return;
     const r = await pool
       .request()
-      .query(`SELECT element_key, sort_order FROM portal_elements WHERE parent_key = 'navgroup:bmwhub' AND element_type = 'page'`);
+      .query(
+        `SELECT element_key, sort_order FROM portal_elements WHERE parent_key = 'navgroup:bmwhub' AND element_type = 'page'`,
+      );
     const satirlar = r.recordset || [];
     const acik = satirlar.find((x) => x.element_key === 'BmwHub');
     const yeniler = YENI.filter((k) => satirlar.some((x) => x.element_key === k));
     if (!acik || yeniler.length !== YENI.length) {
       // Isaret YAZILMAZ: seed bir sonraki aciliste eksigi ekler, sira o zaman duzelir.
-      console.warn('[DB] BMW Hub Reboot Kontrolu / Retirement sirasi: Acik Isler ya da yeni sayfa grupta yok; atlandi.');
+      console.warn(
+        '[DB] BMW Hub Reboot Kontrolu / Retirement sirasi: Acik Isler ya da yeni sayfa grupta yok; atlandi.',
+      );
       return;
     }
     const taban = Number(acik.sort_order) || 0;
@@ -4794,7 +4838,9 @@ async function placeBmwHubFlowPages(pool) {
         .request()
         .input('k', k)
         .input('o', taban + 1 + i)
-        .query(`UPDATE portal_elements SET sort_order = @o WHERE element_key = @k AND parent_key = 'navgroup:bmwhub'`);
+        .query(
+          `UPDATE portal_elements SET sort_order = @o WHERE element_key = @k AND parent_key = 'navgroup:bmwhub'`,
+        );
     }
     await pool
       .request()
@@ -4956,7 +5002,7 @@ async function setupTables() {
       UPDATE user_role_overrides SET username = LOWER(username)
        WHERE username <> LOWER(username)
          AND NOT EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(user_role_overrides.username))`);
-    if (upd.rowsAffected && upd.rowsAffected[0]) {
+    if (upd.rowsAffected?.[0]) {
       console.log(
         `[DB] user_role_overrides: ${upd.rowsAffected[0]} kullanici adi kucuk harfe cevrildi.`,
       );
@@ -4964,7 +5010,7 @@ async function setupTables() {
     const vis = await pool.request().query(`
       UPDATE portal_element_visibility SET principal_id = LOWER(principal_id)
        WHERE principal_type <> 'role' AND principal_id <> LOWER(principal_id)`);
-    if (vis.rowsAffected && vis.rowsAffected[0]) {
+    if (vis.rowsAffected?.[0]) {
       console.log(
         `[DB] portal_element_visibility: ${vis.rowsAffected[0]} principal kucuk harfe cevrildi.`,
       );
@@ -4979,9 +5025,21 @@ async function setupTables() {
     // eslesir; Faz D "aktif oturumlarim" listesi de buradan okur. Portalin KENDI
     // tablosu, NULL'a izin veren sutun = yalnizca meta veri islemi. Indeks YOK
     // (tablo kucuk; dis DB'de otomatik indeks dersi).
-    { table: 'portal_sessions', col: 'username', sql: `ALTER TABLE portal_sessions ADD username NVARCHAR(256) NULL` },
-    { table: 'portal_sessions', col: 'created_at', sql: `ALTER TABLE portal_sessions ADD created_at DATETIME2 NULL` },
-    { table: 'portal_sessions', col: 'last_seen_at', sql: `ALTER TABLE portal_sessions ADD last_seen_at DATETIME2 NULL` },
+    {
+      table: 'portal_sessions',
+      col: 'username',
+      sql: `ALTER TABLE portal_sessions ADD username NVARCHAR(256) NULL`,
+    },
+    {
+      table: 'portal_sessions',
+      col: 'created_at',
+      sql: `ALTER TABLE portal_sessions ADD created_at DATETIME2 NULL`,
+    },
+    {
+      table: 'portal_sessions',
+      col: 'last_seen_at',
+      sql: `ALTER TABLE portal_sessions ADD last_seen_at DATETIME2 NULL`,
+    },
     {
       // Yuk Testi gece kuyrugu (2026-11-03): gecici hata geri cekilmesi. Tablo ilk surumle kurulduysa eklenir
       // (NULL'a izin veren sutun = yalniz meta veri islemi).
@@ -4991,8 +5049,16 @@ async function setupTables() {
     },
     // Yuk Testi kuyruk duraklatma (2026-11-04): gece kuyrugu tablosu kurulu ortamlarda eklenir (NULL'a izin veren
     // sutun = yalniz meta veri islemi).
-    { table: 'nginx_loadtest_kuyruk', col: 'duraklat_at', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklat_at DATETIME2 NULL` },
-    { table: 'nginx_loadtest_kuyruk', col: 'duraklatan', sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklatan NVARCHAR(100) NULL` },
+    {
+      table: 'nginx_loadtest_kuyruk',
+      col: 'duraklat_at',
+      sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklat_at DATETIME2 NULL`,
+    },
+    {
+      table: 'nginx_loadtest_kuyruk',
+      col: 'duraklatan',
+      sql: `ALTER TABLE nginx_loadtest_kuyruk ADD duraklatan NVARCHAR(100) NULL`,
+    },
     {
       // Uygulama Envanteri (2026-11-05): kutuphane setinin BOYUTSUZ izi ("ayni surum, farkli dosya" karari).
       // Eski setlerde NULL kalir; eslenik analizi set satirlarindan hesaplayip yazar.
@@ -5002,8 +5068,16 @@ async function setupTables() {
     },
     // Uygulama Envanteri tarayici surum 2 (2026-11-06): kokteki .ear disi girdiler, JBoss domain.xml /
     // host.xml ozeti ve EAR -> JVM eslemesi (JSON). Eski satirlarda NULL = olculmedi.
-    { table: 'ear_envanter_hostlari', col: 'kok_girdileri', sql: `ALTER TABLE ear_envanter_hostlari ADD kok_girdileri NVARCHAR(MAX) NULL` },
-    { table: 'ear_envanter_hostlari', col: 'xml_ozeti', sql: `ALTER TABLE ear_envanter_hostlari ADD xml_ozeti NVARCHAR(MAX) NULL` },
+    {
+      table: 'ear_envanter_hostlari',
+      col: 'kok_girdileri',
+      sql: `ALTER TABLE ear_envanter_hostlari ADD kok_girdileri NVARCHAR(MAX) NULL`,
+    },
+    {
+      table: 'ear_envanter_hostlari',
+      col: 'xml_ozeti',
+      sql: `ALTER TABLE ear_envanter_hostlari ADD xml_ozeti NVARCHAR(MAX) NULL`,
+    },
     // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; istege bagli). NULL = olculmedi.
     {
       table: 'ear_envanter_hostlari',
@@ -5939,7 +6013,11 @@ async function setupTables() {
     { name: 'IX_ajh_job', table: 'ansible_job_history', cols: 'job_id, awx_server_id' },
     // Crypto Hub node talepleri: tarama bilet numarasiyla, ekran kiraciya gore okur.
     { name: 'IX_chnc_ticket', table: 'crypto_hub_node_changes', cols: 'smart_ticket_id' },
-    { name: 'IX_chnc_tenant', table: 'crypto_hub_node_changes', cols: 'tenant_key, created_at DESC' },
+    {
+      name: 'IX_chnc_tenant',
+      table: 'crypto_hub_node_changes',
+      cols: 'tenant_key, created_at DESC',
+    },
     // Yuk Testi: poller/kilit isi numarasiyla, liste hedefe gore, adimlar kosuya gore okunur.
     { name: 'IX_nlk_job', table: 'nginx_loadtest_kosular', cols: 'awx_server_id, awx_job_id' },
     { name: 'IX_nlk_hedef', table: 'nginx_loadtest_kosular', cols: 'hedef_host, created_at' },
@@ -6077,12 +6155,17 @@ async function setupTables() {
       'UX_ss_migrations_acik',
       `CREATE UNIQUE INDEX UX_ss_migrations_acik ON ansible_ss_migrations (item_id) WHERE status IN ('HAZIRLIK','TASINDI')`,
     ],
-    ['IX_ss_migrations_item', `CREATE INDEX IX_ss_migrations_item ON ansible_ss_migrations (item_id, id DESC)`],
+    [
+      'IX_ss_migrations_item',
+      `CREATE INDEX IX_ss_migrations_item ON ansible_ss_migrations (item_id, id DESC)`,
+    ],
   ]) {
     try {
       const exists = await pool
         .request()
-        .query(`SELECT 1 FROM sys.indexes WHERE name = '${ad}' AND object_id = OBJECT_ID('ansible_ss_migrations')`);
+        .query(
+          `SELECT 1 FROM sys.indexes WHERE name = '${ad}' AND object_id = OBJECT_ID('ansible_ss_migrations')`,
+        );
       if (!exists.recordset.length) {
         await pool.request().query(ddl);
         console.log(`[DB] Index olusturuldu: ${ad}`);
@@ -6105,4 +6188,9 @@ async function setupTables() {
   }
 }
 
-module.exports = { setupTables, PLAYBOOK_REGISTRY_SEED, seedPlaybookRegistry, _placeBmwHubFlowPages: placeBmwHubFlowPages };
+module.exports = {
+  setupTables,
+  PLAYBOOK_REGISTRY_SEED,
+  seedPlaybookRegistry,
+  _placeBmwHubFlowPages: placeBmwHubFlowPages,
+};

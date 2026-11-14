@@ -31,9 +31,7 @@ function initSplunk(app) {
       ok: true,
       configured,
       reachable,
-      message: configured
-        ? (reachable ? undefined : 'Splunk sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).')
-        : 'SPLUNK_BASE_URL/SPLUNK_TOKEN tanımlı değil — Splunk entegrasyonu devre dışı.',
+      message: (() => { if (configured) { if (reachable) return undefined; return 'Splunk sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; } return 'SPLUNK_BASE_URL/SPLUNK_TOKEN tanımlı değil — Splunk entegrasyonu devre dışı.'; })(),
     });
   });
 

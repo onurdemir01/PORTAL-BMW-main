@@ -114,7 +114,7 @@ function isDogrula(girdi, { kismi = false } = {}) {
   const g = girdi && typeof girdi === 'object' ? girdi : {};
   const deger = {};
   const hatalar = [];
-  const var_ = (k) => Object.prototype.hasOwnProperty.call(g, k);
+  const var_ = (k) => Object.hasOwn(g, k);
 
   if (!kismi || var_('baslik')) {
     const b = metin(g.baslik);
@@ -204,9 +204,9 @@ function bugunIst(simdi) {
 
 /** Acik bir isin son tarihi gecti mi. Tamamlanan / iptal edilen is gecikmis sayilmaz. */
 function gecikmisMi(is, bugun) {
-  if (!is || !is.sonTarih) return false;
+  if (!is?.sonTarih) return false;
   const d = DURUMLAR.find((x) => x.key === is.durum);
-  if (!d || !d.acikMi) return false;
+  if (!d?.acikMi) return false;
   return is.sonTarih < (bugun || bugunIst());
 }
 

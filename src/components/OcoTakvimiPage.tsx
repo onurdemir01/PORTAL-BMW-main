@@ -83,7 +83,7 @@ export function gunlereBol(rows: OcoRow[]): { gun: string; rows: OcoRow[] }[] {
     if (!harita.has(g)) harita.set(g, []);
     harita.get(g)!.push(r);
   }
-  const gunler = [...harita.keys()].filter((g) => g).sort();
+  const gunler = [...harita.keys()].filter((g) => g).sort((a, b) => a.localeCompare(b));
   const cikti = gunler.map((g) => ({ gun: g, rows: harita.get(g)! }));
   if (harita.has('')) cikti.push({ gun: '', rows: harita.get('')! });
   return cikti;

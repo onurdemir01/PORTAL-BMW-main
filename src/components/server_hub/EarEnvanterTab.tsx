@@ -69,7 +69,7 @@ export function TaraPenceresi({
   // Çift tıklama iki AWX işi açmasın: state render'da yakalanır, ref anında (double-submit bekçisi deseni).
   const busyRef = useRef(false);
   const { hostlar, gecersiz } = hostListesiAyristir(metin);
-  const ortamKey = [...ortamlar].sort().join(',');
+  const ortamKey = [...ortamlar].sort((a, b) => a.localeCompare(b)).join(',');
   const onizlemeAnahtari = `${kapsam}|${ortamKey}|${kip}`;
   useAsyncEffect(
     async (alive) => {

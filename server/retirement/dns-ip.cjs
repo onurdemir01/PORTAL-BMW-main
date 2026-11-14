@@ -27,7 +27,7 @@ const OZEL_IP_YOK = new Set(['', '*', '0.0.0.0', '_default_', '[::]', '::']);
 const ipOf = (listen) => {
   const ilk = String(listen || '').trim().split(/[\s,]+/)[0] || '';
   const i = ilk.lastIndexOf(':');
-  return (i > 0 ? ilk.slice(0, i) : ilk.includes('.') ? ilk : '').replace(/^\[|\]$/g, '');
+  return (() => { if (i > 0) return ilk.slice(0, i); if (ilk.includes('.')) return ilk; return ''; })().replace(/^\[|\]$/g, '');
 };
 
 /**
@@ -67,8 +67,8 @@ function dnsIpOzeti(rec, { vhostRows = [], certRows = [], cozum = {}, turler = {
       cozumHata: c.hata || null,
       paylasilan,
       tur,
-      smartAkisi: tur === 'intranet' ? '2523535_Delete_6' : tur === 'internet' ? '349792_Delete' : null,
-      durum: rec.dnsReuse ? 'kalacak' : paylasilan.length ? 'silinmemeli' : 'silinecek',
+      smartAkisi: (() => { if (tur === 'intranet') return '2523535_Delete_6'; if (tur === 'internet') return '349792_Delete'; return null; })(),
+      durum: (() => { if (rec.dnsReuse) return 'kalacak'; if (paylasilan.length) return 'silinmemeli'; return 'silinecek'; })(),
     };
   }).sort((a, b) => a.ad.localeCompare(b.ad));
 
@@ -96,7 +96,7 @@ function dnsIpOzeti(rec, { vhostRows = [], certRows = [], cozum = {}, turler = {
     for (const v of vhostRows) if (U(v.host) === e.host && ipOf(v.listen) === e.ip && !bizimMi(v.host, v.server_name)) digerleri.push(L(v.server_name) || '(adsiz vhost)');
     for (const c of certRows) if (U(c.host) === e.host && String(c.ip || '').trim() === e.ip && !bizimMi(c.host, c.server_name)) digerleri.push(L(c.server_name) || '(adsiz vhost)');
     e.digerleri = [...new Set(digerleri)].sort();
-    e.durum = e.digerleri.length ? 'iade_edilmez' : taranan.has(e.host) ? 'iade' : 'olculemedi';
+    e.durum = (() => { if (e.digerleri.length) return 'iade_edilmez'; if (taranan.has(e.host)) return 'iade'; return 'olculemedi'; })();
   }
 
   // ── LB VIP'leri (DNS'in cozuldugu IP'ler)
@@ -107,7 +107,7 @@ function dnsIpOzeti(rec, { vhostRows = [], certRows = [], cozum = {}, turler = {
   }
   const vip = [...vipMap.values()].map((x) => {
     const silinmeyen = dns.filter((d) => d.durum === 'silinmemeli' && (d.vip || []).includes(x.ip)).map((d) => d.ad);
-    return { ...x, durum: rec.lbReuse ? 'kalacak' : silinmeyen.length ? 'iade_edilmez' : 'iade', sebep: silinmeyen.length ? `başka vhost'un da kullandığı DNS bu IP'ye çözülüyor: ${silinmeyen.join(', ')}` : null };
+    return { ...x, durum: (() => { if (rec.lbReuse) return 'kalacak'; if (silinmeyen.length) return 'iade_edilmez'; return 'iade'; })(), sebep: silinmeyen.length ? `başka vhost'un da kullandığı DNS bu IP'ye çözülüyor: ${silinmeyen.join(', ')}` : null };
   }).sort((a, b) => a.ip.localeCompare(b.ip, undefined, { numeric: true }));
 
   return { dns, vip, vhostIp: [...vhostIp.values()].sort((a, b) => a.host.localeCompare(b.host) || String(a.ip).localeCompare(String(b.ip))) };
@@ -140,8 +140,8 @@ async function dnsIpHesapla(rec, { turler = {}, db } = {}) {
     query(`SELECT v.host, v.server_name, v.aliases, v.listen, v.conf_file
              FROM dbo.Server_Hub_Vhosts v
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m ON m.host = v.host AND m.d = v.scan_date
-            WHERE v.host IN (${hostlar.map((h) => `'${h}'`).join(',')})`).then((r) => r.recordset || []).catch((e) => { hubHata = String(e.message || e); return []; }),
-    query(`SELECT host, ip, port, server_name FROM dbo.BMW_Certificates_Inventory WHERE UPPER(host) IN (${hostlar.map((h) => `'${h}'`).join(',')})`).then((r) => r.recordset || []).catch(() => []),
+            WHERE v.host IN (${hostlar.map((h) => ("'" + h + "'")).join(',')})`).then((r) => r.recordset || []).catch((e) => { hubHata = String(e.message || e); return []; }),
+    query(`SELECT host, ip, port, server_name FROM dbo.BMW_Certificates_Inventory WHERE UPPER(host) IN (${hostlar.map((h) => ("'" + h + "'")).join(',')})`).then((r) => r.recordset || []).catch(() => []),
   ]) : [[], []];
   const taranan = new Set(vhostRows.map((v) => U(v.host)));
   const ilk = dnsIpOzeti(rec, { vhostRows, certRows, cozum: {}, turler, taranan });

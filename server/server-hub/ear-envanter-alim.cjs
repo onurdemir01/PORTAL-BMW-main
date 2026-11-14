@@ -145,11 +145,7 @@ function kosuAltDizini(kosu) {
 /** kosu: Portal kosu numarasi ya da kosuAltDizini() sonucu (kosu-<n> / awx-<n>). */
 function hamDosyaYolu(dizin, kosu, host) {
   const alt =
-    typeof kosu === 'string' && ALT_DIZIN_RE.test(kosu)
-      ? kosu
-      : Number.isInteger(Number(kosu))
-        ? `kosu-${Number(kosu)}`
-        : null;
+    (() => { if (typeof kosu === 'string' && ALT_DIZIN_RE.test(kosu)) return kosu; if (Number.isInteger(Number(kosu))) return `kosu-${Number(kosu)}`; return null; })();
   if (!alt || !HOST_RE.test(String(host))) throw kodluHata('GECERSIZ', 'geçersiz koşu / host');
   return path.join(dizin, alt, 'raw', `${String(host).toUpperCase()}.out`);
 }
@@ -226,7 +222,7 @@ function wasJvm(v) {
       const ad = M(nesne(o).ad, 256);
       const d = nesne(o).deger;
       // Acik (sir adli olmayan) deger de serbest metin maskesinden gecer: URL / kullanici/parola@ (2026-11-12).
-      return { ad, deger: d == null ? null : degerAcik(ad) ? M(maskText(M(d, 1024)), 512) : '***' };
+      return { ad, deger: (() => { if (d == null) return null; if (degerAcik(ad)) return M(maskText(M(d, 1024)), 512); return '***'; })() };
     }),
     ozellik_kesildi: j.ozellik_kesildi === true || ozellikler.length > SINIR_WAS_OZELLIK,
   };
@@ -335,7 +331,7 @@ function teknoloji(liste) {
     jackson: al('jackson-databind'),
     thymeleaf: al('thymeleaf'),
     struts: al('struts2-core', 'struts-core', 'struts'),
-    servlet: jakarta && javax ? 'karisik' : jakarta ? 'jakarta' : javax ? 'javax' : null,
+    servlet: (() => { if (jakarta && javax) return 'karisik'; if (jakarta) return 'jakarta'; if (javax) return 'javax'; return null; })(),
   };
 }
 
@@ -357,7 +353,7 @@ function kutuphaneSeti(liste) {
     .slice(0, SINIR_KUTUPHANE)
     .map((k) => [M(k && k[0], 200), M(k && k[1], 100), S(k && k[2])])
     .sort((x, y) =>
-      x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : x[2] - y[2],
+      { if (x[0] < y[0]) return -1; if (x[0] > y[0]) return 1; if (x[1] < y[1]) return -1; if (x[1] > y[1]) return 1; return x[2] - y[2]; },
     );
   if (!satirlar.length) return null;
   return {
@@ -607,7 +603,7 @@ function dmrAyristir(metin) {
     m = /^[A-Za-z_][\w.$-]*/.exec(kalan);
     if (m) {
       i += m[0].length;
-      return m[0] === 'true' ? true : m[0] === 'false' ? false : m[0] === 'undefined' ? null : m[0];
+      if (m[0] === 'true') return true; if (m[0] === 'false') return false; if (m[0] === 'undefined') return null; return m[0];
     }
     throw new Error(`DMR beklenmeyen karakter: ${JSON.stringify(c)}`);
   };
@@ -638,7 +634,7 @@ function deploymentCoz(buf) {
             return {
               ad: M(r.name || k, 256),
               calisma_adi: M(r['runtime-name'] || '', 256) || null,
-              etkin: r.enabled === false ? false : r.enabled === true ? true : null,
+              etkin: (() => { if (r.enabled === false) return false; if (r.enabled === true) return true; return null; })(),
               durum: r.status == null ? null : M(r.status, 32),
             };
           });
@@ -729,7 +725,7 @@ const vhostOf = (v) => ({
   document_root: M(v.document_root, 400),
   error_log: M(v.error_log, 400),
   hedefler: sinirli(v.hedefler, 200, hedefOf),
-  ssl: v.ssl && typeof v.ssl === 'object' ? { sertifika: M(v.ssl.sertifika, 400), var: typeof v.ssl.var === 'boolean' ? v.ssl.var : null } : null,
+  ssl: (() => { if (v.ssl && typeof v.ssl === 'object') return { sertifika: M(v.ssl.sertifika, 400), var: typeof v.ssl.var === 'boolean' ? v.ssl.var : null }; return null; })(),
   jk_mount: sinirli(v.jk_mount, 200, (x) => ({ yol: M(x.yol, 300), worker: M(x.worker, 128), dosya: M(x.dosya, 400), satir: N(x.satir) })),
   mcmp: v.mcmp === true,
   loglar: sinirli(v.loglar, 5, logOf),

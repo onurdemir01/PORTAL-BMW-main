@@ -234,7 +234,7 @@
       ansible.builtin.copy:
         content: "{{ {'at': seen_now, 'hosts': ((seen_prev | default({})) if (seen_prev | default({})) is mapping else {}) | combine(seen_new)} | to_nice_json }}\n"
         dest: "{{ console_dir | default('/sw/BMW_PORTAL/nginx_console') }}/raw/_seen.json"
-        mode: '0666'
+        mode: '0660'
       delegate_to: GBLABT02
       when: (seen_hosts | length) > 0
       failed_when: false

@@ -27,18 +27,18 @@ function denetim(req, action, opts) {
 function oturumlariOku(store, username) {
   const u = String(username || '').toLowerCase();
   return new Promise((resolve, reject) => {
-    if (store && typeof store.listByUser === 'function') {
-      return store.listByUser(u, (err, list) => (err ? reject(err) : resolve(list || [])));
+    if (typeof store?.listByUser === 'function') {
+      return store.listByUser(u, (err, list) => { if (err) return reject(err instanceof Error ? err : new Error(String(err))); return resolve(list || []); });
     }
-    if (store && typeof store.all === 'function') {
+    if (typeof store?.all === 'function') {
       return store.all((err, all) => {
-        if (err) return reject(err);
+        if (err) return reject(err instanceof Error ? err : new Error(String(err)));
         const girdiler = Array.isArray(all)
-          ? all.map((sess) => [sess && sess.id, sess])
+          ? all.map((sess) => [sess?.id, sess])
           : Object.entries(all || {});
         resolve(
           girdiler
-            .filter(([, sess]) => sess && sess.user && String(sess.user.username || '').toLowerCase() === u)
+            .filter(([, sess]) => String(sess.user?.username || '').toLowerCase() === u)
             .map(([sid, sess]) => ({ sid, sess })),
         );
       });
@@ -49,37 +49,30 @@ function oturumlariOku(store, username) {
 
 function sil(store, sid) {
   return new Promise((resolve, reject) =>
-    store.destroy(sid, (err) => (err ? reject(err) : resolve())),
+    store.destroy(sid, (err) => { if (err) return reject(err instanceof Error ? err : new Error(String(err))); return resolve(); }),
   );
 }
 
 // UA'dan kisa cihaz ozeti ("Chrome · Windows"). Tam UA da doner (title olarak).
 function cihazOzeti(ua) {
   const s = String(ua || '');
-  const tarayici = /Edg\//.test(s)
-    ? 'Edge'
-    : /OPR\//.test(s)
-      ? 'Opera'
-      : /Firefox\//.test(s)
-        ? 'Firefox'
-        : /Chrome\//.test(s)
-          ? 'Chrome'
-          : /Safari\//.test(s)
-            ? 'Safari'
-            : s
-              ? 'Tarayıcı'
-              : 'Bilinmiyor';
-  const isletim = /Windows/.test(s)
-    ? 'Windows'
-    : /Android/.test(s)
-      ? 'Android'
-      : /iPhone|iPad|iOS/.test(s)
-        ? 'iOS'
-        : /Mac OS X|Macintosh/.test(s)
-          ? 'macOS'
-          : /Linux/.test(s)
-            ? 'Linux'
-            : '';
+  const tarayici = (() => {
+    if (/Edg\//.test(s)) return 'Edge';
+    if (/OPR\//.test(s)) return 'Opera';
+    if (/Firefox\//.test(s)) return 'Firefox';
+    if (/Chrome\//.test(s)) return 'Chrome';
+    if (/Safari\//.test(s)) return 'Safari';
+    if (s) return 'Taray\u0131c\u0131';
+    return 'Bilinmiyor';
+  })();
+  const isletim = (() => {
+    if (/Windows/.test(s)) return 'Windows';
+    if (/Android/.test(s)) return 'Android';
+    if (/iPhone|iPad|iOS/.test(s)) return 'iOS';
+    if (/Mac OS X|Macintosh/.test(s)) return 'macOS';
+    if (/Linux/.test(s)) return 'Linux';
+    return '';
+  })();
   return isletim ? `${tarayici} · ${isletim}` : tarayici;
 }
 
@@ -136,7 +129,7 @@ function initSessionsRoutes(router, { requireAdmin }) {
   const sessionRouter = express.Router();
 
   const kimlikGerekli = (req, res, next) => {
-    if (!req.session || !req.session.user) {
+    if (!req.session?.user) {
       return oturumYok(res).status(401).json({ ok: false, error: 'Oturum bulunamadı.' });
     }
     next();
@@ -204,7 +197,7 @@ function initSessionsRoutes(router, { requireAdmin }) {
       if (id && !hedef.length) return res.status(404).json({ ok: false, error: 'Oturum bulunamadı (kapanmış olabilir).' });
       for (const x of hedef) await sil(req.sessionStore, x.sid);
       denetim(req, 'session_revoked', {
-        detail: `by=admin target=${hedefKullanici} ${id ? `id=${id}` : 'scope=all'} count=${hedef.length}`,
+        detail: `by=admin target=${hedefKullanici} ${id ? 'id=' + id : 'scope=all'} count=${hedef.length}`,
       });
       res.json({ ok: true, revoked: hedef.length });
     } catch (e) {

@@ -20,37 +20,71 @@ function yukle(sablonlar) {
   require.cache[runnerPath] = new Module(runnerPath, null);
   require.cache[runnerPath].exports = {
     getServers: () => [{ id: 1 }],
-    listTemplatesForServer: async () => { if (sablonlar instanceof Error) throw sablonlar; return sablonlar; },
+    listTemplatesForServer: async () => {
+      if (sablonlar instanceof Error) {
+        throw sablonlar;
+      }
+      return sablonlar;
+    },
   };
   require.cache[runnerPath].loaded = true;
   delete require.cache[prePath];
   const m = require('../template-preflight.cjs');
-  return { m, restore: () => { if (saved) require.cache[runnerPath] = saved; else delete require.cache[runnerPath]; delete require.cache[prePath]; } };
+  return {
+    m,
+    restore: () => {
+      if (saved) {
+        require.cache[runnerPath] = saved;
+      } else {
+        delete require.cache[runnerPath];
+      }
+      delete require.cache[prePath];
+    },
+  };
 }
 const T = (id, playbook, name = `tpl${id}`) => ({ id, name, playbook, ask_variables: true });
 
 test('TP1 OLAYIN KENDISI: server_hub_fix satirinda rollback sablonu -> RED (409), is baslatilmaz', async () => {
-  const { m, restore } = yukle([T(77, 'bmw_automation_folder/app_retirement/app_retirement_rollback.yml', 'App Retirement - Geri Al')]);
+  const { m, restore } = yukle([
+    T(
+      77,
+      'bmw_automation_folder/app_retirement/app_retirement_rollback.yml',
+      'App Retirement - Geri Al',
+    ),
+  ]);
   try {
-    await assert.rejects(() => m.assertRegistryPlaybook(1, 77, 'server_hub_fix'), (e) => {
-      assert.equal(e.status, 409);
-      assert.equal(e.code, 'awx_template_playbook_mismatch');
-      assert.match(e.message, /app_retirement_rollback\.yml/);
-      assert.match(e.message, /server_hub_fix\.yml/);
-      return true;
-    });
-  } finally { restore(); }
+    await assert.rejects(
+      () => m.assertRegistryPlaybook(1, 77, 'server_hub_fix'),
+      (e) => {
+        assert.equal(e.status, 409);
+        assert.equal(e.code, 'awx_template_playbook_mismatch');
+        assert.match(e.message, /app_retirement_rollback\.yml/);
+        assert.match(e.message, /server_hub_fix\.yml/);
+        return true;
+      },
+    );
+  } finally {
+    restore();
+  }
 });
 
 test('TP2 dogru sablon GECER; dizin farki onemsiz (yalniz dosya adi), kasa duyarsiz', async () => {
   const { m, restore } = yukle([T(5, 'baska/proje/dizini/Server_Hub_Fix.yml')]);
-  try { await m.assertRegistryPlaybook(1, 5, 'server_hub_fix'); } finally { restore(); }
+  try {
+    await m.assertRegistryPlaybook(1, 5, 'server_hub_fix');
+  } finally {
+    restore();
+  }
 });
 
 test('TP3 FAIL-OPEN: metadata okunamaz / sablon yok / playbook alani bos -> engellemez', async () => {
   for (const s of [new Error('awx yok'), [], [T(5, '')]]) {
     const { m, restore } = yukle(s);
-    try { await m.assertRegistryPlaybook(1, 5, 'server_hub_fix'); } finally { restore(); }
+    try {
+      await m.assertRegistryPlaybook(1, 5, 'server_hub_fix');
+    } finally {
+      restore();
+    }
   }
 });
 
@@ -58,20 +92,44 @@ test('TP4 eslemede olmayan anahtar KONTROL EDILMEZ; retirement/server hub anahta
   const { m, restore } = yukle([T(5, 'x.yml')]);
   try {
     await m.assertRegistryPlaybook(1, 5, 'bilinmeyen_anahtar');
-    for (const k of ['app_retirement_stop', 'app_retirement_delete', 'app_retirement_rollback', 'server_hub_scan', 'server_hub_fix'])
+    for (const k of [
+      'app_retirement_stop',
+      'app_retirement_delete',
+      'app_retirement_rollback',
+      'server_hub_scan',
+      'server_hub_fix',
+    ])
       assert.equal(m.BEKLENEN_PLAYBOOK[k], `${k}.yml`, `${k} eslemede yok`);
-  } finally { restore(); }
+  } finally {
+    restore();
+  }
 });
 
 test('TP5 HER baslatma noktasi korumayi isi baslatmadan ONCE cagirir', () => {
   const kaynak = (p) => fs.readFileSync(path.join(__dirname, '..', '..', ...p), 'utf8');
   const noktalar = [
-    ...[...kaynak(['retirement', 'index.cjs']).matchAll(/assertRegistryPlaybook\([\s\S]{0,400}?launchJobOnServer\(/g)],
+    ...[
+      ...kaynak(['retirement', 'index.cjs']).matchAll(
+        /assertRegistryPlaybook\([\s\S]{0,400}?launchJobOnServer\(/g,
+      ),
+    ],
     // Server Hub (2026-11-14): sablon TEK okunur (launchHazirla -> sablonOku), iki kontrol sablonKontrol'de
     // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla.
-    ...[...kaynak(['server-hub', 'index.cjs']).matchAll(/sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,400}?launchJobOnServer\(/g)],
+    ...[
+      ...kaynak(['server-hub', 'index.cjs']).matchAll(
+        /sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,400}?launchJobOnServer\(/g,
+      ),
+    ],
   ];
-  assert.equal(noktalar.length, 4, `korunan baslatma noktasi sayisi ${noktalar.length} (beklenen 4: retirement launch, web kapat, web geri ac, server hub launch)`);
+  assert.equal(
+    noktalar.length,
+    4,
+    `korunan baslatma noktasi sayisi ${noktalar.length} (beklenen 4: retirement launch, web kapat, web geri ac, server hub launch)`,
+  );
   const ri = kaynak(['retirement', 'index.cjs']);
-  assert.equal((ri.match(/launchJobOnServer\(/g) || []).length, 3, 'retirement\'ta korumasiz yeni bir baslatma noktasi eklenmis olabilir');
+  assert.equal(
+    (ri.match(/launchJobOnServer\(/g) || []).length,
+    3,
+    "retirement'ta korumasiz yeni bir baslatma noktasi eklenmis olabilir",
+  );
 });

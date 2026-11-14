@@ -121,7 +121,7 @@ test('RTU2 CreateModal: bos satir kolon sabitinden, satirdaki td sayisi = kolon 
   const tr = yerlesim('CreateModal', 'tr').find((y) => y.kosullar.join(' / ') === 'disc && / disc.targets.length === 0 : / =>');
   assert.ok(tr, 'kesif satiri (<tr>) beklenen yerde degil');
   const el = tr.dugum.parent;
-  const etiketi = (c) => (ts.isJsxElement(c) ? c.openingElement.tagName.getText(SF) : ts.isJsxSelfClosingElement(c) ? c.tagName.getText(SF) : null);
+  const etiketi = (c) => { if (ts.isJsxElement(c)) return c.openingElement.tagName.getText(SF); if (ts.isJsxSelfClosingElement(c)) return c.tagName.getText(SF); return null; };
   const tdler = el.children.filter((c) => etiketi(c) === 'td');
   assert.equal(tdler.length, kol.elements.length, `satirda ${tdler.length} td, colgroup'ta ${kol.elements.length} kolon`);
   assert.ok(cm.includes('<TabloIskelet kolonlar={CM_KOLONLAR}'), 'baslik ve colgroup kolon sabitinden gelmiyor');
@@ -234,7 +234,7 @@ test('IPK4 SOZLESME: gercek kesif (in-place) ciktisi istemcinin inPlaceOzeti ala
 });
 
 // ── KAYIT AYRINTISI (RecordModal) ──────────────────────────────────────────────────────────────
-const etiketi = (c) => (ts.isJsxElement(c) ? c.openingElement.tagName.getText(SF) : ts.isJsxSelfClosingElement(c) ? c.tagName.getText(SF) : null);
+const etiketi = (c) => { if (ts.isJsxElement(c)) return c.openingElement.tagName.getText(SF); if (ts.isJsxSelfClosingElement(c)) return c.tagName.getText(SF); return null; };
 const enYakinFonksiyon = (n) => { for (let p = n.parent; p; p = p.parent) if (ts.isFunctionLike(p)) return p; return null; };
 const enYakinJsx = (n) => { for (let p = n.parent; p; p = p.parent) if (ts.isJsxElement(p) || ts.isJsxFragment(p)) return p; return null; };
 

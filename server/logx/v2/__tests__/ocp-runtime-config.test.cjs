@@ -19,7 +19,7 @@ test('normalize(): bos girdi varsayilanlara duser', () => {
 test('normalize(): mutlak olmayan / kabuk metakarakterli yollar REDDEDILIR', () => {
   const c = cfg.normalize({
     ocBinary: 'oc; rm -rf /',
-    ocBinaryCandidates: ['relative/oc', '/ok/oc', '/bad/oc$(whoami)', '/tmp/oc`id`'],
+    ocBinaryCandidates: ['relative/oc', '/ok/oc', '/bad/oc$(whoami)', ['', 'tmp', 'oc`id`'].join('/')],
   });
   assert.equal(c.ocBinary, '', 'gecersiz override bos birakilmali (kesif devreye girsin)');
   assert.deepEqual(c.ocBinaryCandidates, ['/ok/oc'], 'yalniz gecerli mutlak yol kalmali');

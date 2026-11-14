@@ -13,7 +13,11 @@
 // olsun"): etiket kurallarının seviyesi (kesin / şüpheli / kapalı) ve kökte yok sayılan girdiler.
 // İkisinde de gerekçe zorunlu; geçmişte görünür.
 import React, { useMemo, useState } from 'react';
-import { ArrowPathIcon, MagnifyingGlassIcon, ArrowUturnLeftIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  ArrowUturnLeftIcon,
+} from '@heroicons/react/24/outline';
 import {
   serverHubApi,
   type ShKurallar,
@@ -31,7 +35,10 @@ import { fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
 const OK_METIN = 'color-mix(in srgb, var(--status-success) 55%, var(--text-primary))';
-export const SEVIYE: Record<ShSeverity, { etiket: string; renk: string; zemin: string; metin: string; etki: string }> = {
+export const SEVIYE: Record<
+  ShSeverity,
+  { etiket: string; renk: string; zemin: string; metin: string; etki: string }
+> = {
   danger: {
     etiket: 'kritik',
     renk: 'var(--status-danger)',
@@ -66,8 +73,16 @@ const BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 const btnStil = (birincil = false): React.CSSProperties =>
   birincil
-    ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent, #fff)' }
-    : { background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' };
+    ? {
+        background: 'var(--accent)',
+        borderColor: 'var(--accent)',
+        color: 'var(--text-on-accent, #fff)',
+      }
+    : {
+        background: 'var(--bg-surface)',
+        borderColor: 'var(--border)',
+        color: 'var(--text-primary)',
+      };
 const say = (n: number | null | undefined) => (n == null ? '—' : fmtNumber(n));
 
 export function SeviyeRozeti({ s, kucuk = false }: { s: ShSeverity; kucuk?: boolean }) {
@@ -95,7 +110,11 @@ function ayarAdi(anahtar: string, limitler: ShLimit[]): string {
   return anahtar;
 }
 const degerAdi = (anahtar: string, v: string | null) =>
-  v == null ? '—' : anahtar.startsWith('seviye:') && v in SEVIYE ? SEVIYE[v as ShSeverity].etiket : v;
+  v == null
+    ? '—'
+    : anahtar.startsWith('seviye:') && v in SEVIYE
+      ? SEVIYE[v as ShSeverity].etiket
+      : v;
 
 export default function KurallarTab() {
   const [veri, setVeri] = useState<ShKurallar | null>(null);
@@ -137,7 +156,9 @@ export default function KurallarTab() {
       .filter(
         (m) =>
           !aranan ||
-          norm([m.ad, m.neTaranir, ...m.ciktilar.flatMap((c) => [c.kod || '', c.kosul])].join(' ')).includes(aranan),
+          norm(
+            [m.ad, m.neTaranir, ...m.ciktilar.flatMap((c) => [c.kod || '', c.kosul])].join(' '),
+          ).includes(aranan),
       );
   }, [veri, q, alan, yalnizDegisen]);
 
@@ -148,43 +169,79 @@ export default function KurallarTab() {
       </div>
     );
   if (!veri)
-    return <div className="text-sm rounded-xl border px-3 py-2" style={{ color: 'var(--status-danger-text)', borderColor: 'var(--status-danger)' }}>{hata}</div>;
+    return (
+      <div
+        className="text-sm rounded-xl border px-3 py-2"
+        style={{ color: 'var(--status-danger-text)', borderColor: 'var(--status-danger)' }}
+      >
+        {hata}
+      </div>
+    );
 
-  const degisen = veri.maddeler.flatMap((m) => m.ciktilar).filter((c) => c.kod && c.gecerli !== c.varsayilan).length;
+  const degisen = veri.maddeler
+    .flatMap((m) => m.ciktilar)
+    .filter((c) => c.kod && c.gecerli !== c.varsayilan).length;
   const alanlar = [...new Set(veri.maddeler.map((m) => m.alan))];
   const gruplar = alanlar
-    .map((a) => ({ alan: a, ad: veri.alanlar[a] || a, maddeler: maddeler.filter((m) => m.alan === a) }))
+    .map((a) => ({
+      alan: a,
+      ad: veri.alanlar[a] || a,
+      maddeler: maddeler.filter((m) => m.alan === a),
+    }))
     .filter((g) => g.maddeler.length);
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <section
+        className="rounded-xl border p-4 space-y-3"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="max-w-3xl">
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Tarama maddeleri ve seviyeleri</h2>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Tarama maddeleri ve seviyeleri
+            </h2>
             <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
-              Server Hub her gün aşağıdaki <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(veri.maddeler.length)}</b> maddeyi tarar. Her maddenin
-              çıktısı bir seviyeyle raporlanır; seviyeyi buradan değiştirebilirsiniz. Değişiklik sunucu durumunu, sayaçları ve
-              sıralamayı hemen etkiler. <b style={{ color: 'var(--text-secondary)' }}>Açılış Hazırlığı ve özet kartları</b> (reboot riski, retire adayı…)
-              bulgu koduna bakar; seviye değişse de onlar değişmez.
+              Server Hub her gün aşağıdaki{' '}
+              <b style={{ color: 'var(--text-secondary)' }}>{fmtNumber(veri.maddeler.length)}</b>{' '}
+              maddeyi tarar. Her maddenin çıktısı bir seviyeyle raporlanır; seviyeyi buradan
+              değiştirebilirsiniz. Değişiklik sunucu durumunu, sayaçları ve sıralamayı hemen
+              etkiler.{' '}
+              <b style={{ color: 'var(--text-secondary)' }}>Açılış Hazırlığı ve özet kartları</b>{' '}
+              (reboot riski, retire adayı…) bulgu koduna bakar; seviye değişse de onlar değişmez.
             </p>
           </div>
-          <button type="button" className={BTN} style={btnStil()} onClick={yenile} disabled={yukleniyor}>
+          <button
+            type="button"
+            className={BTN}
+            style={btnStil()}
+            onClick={yenile}
+            disabled={yukleniyor}
+          >
             <ArrowPathIcon className={`w-3.5 h-3.5 ${yukleniyor ? 'animate-spin' : ''}`} /> Yenile
           </button>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Seviyelerin etkisi">
           {SIRA.map((s) => (
-            <div key={s} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+            <div
+              key={s}
+              className="rounded-lg border px-3 py-2"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+            >
               <SeviyeRozeti s={s} />
-              <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>{SEVIYE[s].etki}</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                {SEVIYE[s].etki}
+              </p>
             </div>
           ))}
         </div>
         {veri.okunamadi && (
-          <div className="text-[12px] rounded-lg border px-3 py-2" style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}>
-            Server Hub ayarları okunamadı ({veri.hata || 'bilinmeyen hata'}): şu an <b>varsayılan</b> seviyeler ve limitler uygulanıyor, değişiklik
-            kaydedilemez.
+          <div
+            className="text-[12px] rounded-lg border px-3 py-2"
+            style={{ color: 'var(--status-warning-text)', borderColor: 'var(--status-warning)' }}
+          >
+            Server Hub ayarları okunamadı ({veri.hata || 'bilinmeyen hata'}): şu an{' '}
+            <b>varsayılan</b> seviyeler ve limitler uygulanıyor, değişiklik kaydedilemez.
           </div>
         )}
         {!veri.sayimOlculdu && (
@@ -197,21 +254,40 @@ export default function KurallarTab() {
       <LimitlerBolumu limitler={veri.limitler} kilitli={veri.okunamadi} onKaydedildi={yenile} />
 
       {veri.etiketKurallari && (
-        <EtiketKurallariBolumu kurallar={veri.etiketKurallari} kilitli={veri.okunamadi} onKaydedildi={yenile} />
+        <EtiketKurallariBolumu
+          kurallar={veri.etiketKurallari}
+          kilitli={veri.okunamadi}
+          onKaydedildi={yenile}
+        />
       )}
-      {veri.kokYoksay && <KokYoksayBolumu y={veri.kokYoksay} kilitli={veri.okunamadi} onKaydedildi={yenile} />}
+      {veri.kokYoksay && (
+        <KokYoksayBolumu y={veri.kokYoksay} kilitli={veri.okunamadi} onKaydedildi={yenile} />
+      )}
 
-      <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-        <div className="flex items-center gap-2 flex-wrap px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+      <section
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
+        <div
+          className="flex items-center gap-2 flex-wrap px-4 py-3 border-b"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <div className="relative">
-            <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+            <MagnifyingGlassIcon
+              className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--text-muted)' }}
+            />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Madde, kod ya da koşul ara"
               aria-label="Madde, kod ya da koşul ara"
               className="h-7 pl-7 pr-2 text-[12px] rounded-lg border w-64 max-w-full"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              style={{
+                borderColor: 'var(--border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+              }}
             />
           </div>
           <select
@@ -219,7 +295,11 @@ export default function KurallarTab() {
             onChange={(e) => setAlan(e.target.value)}
             aria-label="Alana göre süz"
             className="h-7 px-2 text-[12px] rounded-lg border"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
           >
             <option value="">Tüm alanlar</option>
             {alanlar.map((a) => (
@@ -228,8 +308,15 @@ export default function KurallarTab() {
               </option>
             ))}
           </select>
-          <label className="inline-flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={yalnizDegisen} onChange={(e) => setYalnizDegisen(e.target.checked)} />
+          <label
+            className="inline-flex items-center gap-1.5 text-[12px]"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <input
+              type="checkbox"
+              checked={yalnizDegisen}
+              onChange={(e) => setYalnizDegisen(e.target.checked)}
+            />
             Yalnız seviyesi değiştirilenler ({fmtNumber(degisen)})
           </label>
           {veri.taramaTarihi && (
@@ -244,8 +331,15 @@ export default function KurallarTab() {
           </p>
         )}
         {gruplar.map((g) => (
-          <div key={g.alan} className="border-b last:border-b-0" style={{ borderColor: 'var(--border-subtle)' }}>
-            <h3 className="px-4 pt-3 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          <div
+            key={g.alan}
+            className="border-b last:border-b-0"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <h3
+              className="px-4 pt-3 text-[11px] font-semibold uppercase tracking-wide"
+              style={{ color: 'var(--text-muted)' }}
+            >
               {g.ad}
             </h3>
             <div className="px-4 pb-3 space-y-3 mt-2">
@@ -262,12 +356,31 @@ export default function KurallarTab() {
   );
 }
 
-function MaddeKarti({ m, kilitli, onKaydedildi }: { m: ShKuralMadde; kilitli: boolean; onKaydedildi: () => void }) {
+function MaddeKarti({
+  m,
+  kilitli,
+  onKaydedildi,
+}: {
+  m: ShKuralMadde;
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   return (
-    <article className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }} aria-label={m.ad}>
-      <header className="px-3 py-2 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-        <div className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>{m.ad}</div>
-        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Ne taranır: {m.neTaranir}</div>
+    <article
+      className="rounded-lg border"
+      style={{ borderColor: 'var(--border-subtle)' }}
+      aria-label={m.ad}
+    >
+      <header
+        className="px-3 py-2 border-b"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+      >
+        <div className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {m.ad}
+        </div>
+        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          Ne taranır: {m.neTaranir}
+        </div>
       </header>
       <div className="overflow-x-auto">
         <table className="w-full text-[12px]">
@@ -277,12 +390,22 @@ function MaddeKarti({ m, kilitli, onKaydedildi }: { m: ShKuralMadde; kilitli: bo
               <th className="px-3 py-1.5 text-left font-medium">Kod</th>
               <th className="px-3 py-1.5 text-left font-medium">Varsayılan</th>
               <th className="px-3 py-1.5 text-left font-medium">Geçerli seviye</th>
-              <th className="px-3 py-1.5 text-right font-medium" title="Son taramada bu kodla üretilen bulgu ve sunucu sayısı">Son tarama</th>
+              <th
+                className="px-3 py-1.5 text-right font-medium"
+                title="Son taramada bu kodla üretilen bulgu ve sunucu sayısı"
+              >
+                Son tarama
+              </th>
             </tr>
           </thead>
           <tbody>
             {m.ciktilar.map((c, i) => (
-              <CiktiSatiri key={c.kod || `ok-${i}`} c={c} kilitli={kilitli} onKaydedildi={onKaydedildi} />
+              <CiktiSatiri
+                key={c.kod || `ok-${i}`}
+                c={c}
+                kilitli={kilitli}
+                onKaydedildi={onKaydedildi}
+              />
             ))}
           </tbody>
         </table>
@@ -291,7 +414,15 @@ function MaddeKarti({ m, kilitli, onKaydedildi }: { m: ShKuralMadde; kilitli: bo
   );
 }
 
-function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: boolean; onKaydedildi: () => void }) {
+function CiktiSatiri({
+  c,
+  kilitli,
+  onKaydedildi,
+}: {
+  c: ShKuralCikti;
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   const [bekleyen, setBekleyen] = useState<ShSeverity | null>(null);
   const [not, setNot] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
@@ -324,34 +455,67 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
   if (!c.kod)
     return (
       <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-        <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>{c.kosul}</td>
-        <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>—</td>
-        <td className="px-3 py-1.5"><SeviyeRozeti s="ok" kucuk /></td>
-        <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>bulgu üretilmez</td>
+        <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>
+          {c.kosul}
+        </td>
+        <td className="px-3 py-1.5" style={{ color: 'var(--text-muted)' }}>
+          —
+        </td>
+        <td className="px-3 py-1.5">
+          <SeviyeRozeti s="ok" kucuk />
+        </td>
+        <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          bulgu üretilmez
+        </td>
         <td className="px-3 py-1.5" />
       </tr>
     );
 
   return (
     <>
-      <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: degisti ? 'var(--bg-elevated)' : undefined }}>
+      <tr
+        className="border-t align-top"
+        style={{
+          borderColor: 'var(--border-subtle)',
+          background: degisti ? 'var(--bg-elevated)' : undefined,
+        }}
+      >
         <td className="px-3 py-1.5" style={{ color: 'var(--text-primary)' }}>
           {c.kosul}
           {c.dogrulama && (
             <details className="mt-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              <summary className="cursor-pointer" style={{ color: 'var(--accent)' }}>nasıl doğrulanır?</summary>
+              <summary className="cursor-pointer" style={{ color: 'var(--accent)' }}>
+                nasıl doğrulanır?
+              </summary>
               <div className="mt-1 space-y-0.5">
-                <div><b>Neden:</b> {c.dogrulama.neden}</div>
-                <div><b>Ne eksik olabilir:</b> {c.dogrulama.eksik}</div>
+                <div>
+                  <b>Neden:</b> {c.dogrulama.neden}
+                </div>
+                <div>
+                  <b>Ne eksik olabilir:</b> {c.dogrulama.eksik}
+                </div>
                 {c.dogrulama.kontrol.map((k) => (
-                  <code key={k} className="block font-mono break-all px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-elevated)' }}>{k}</code>
+                  <code
+                    key={k}
+                    className="block font-mono break-all px-1.5 py-0.5 rounded"
+                    style={{ background: 'var(--bg-elevated)' }}
+                  >
+                    {k}
+                  </code>
                 ))}
               </div>
             </details>
           )}
         </td>
-        <td className="px-3 py-1.5 font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{c.kod}</td>
-        <td className="px-3 py-1.5"><SeviyeRozeti s={c.varsayilan} kucuk /></td>
+        <td
+          className="px-3 py-1.5 font-mono text-[11px]"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          {c.kod}
+        </td>
+        <td className="px-3 py-1.5">
+          <SeviyeRozeti s={c.varsayilan} kucuk />
+        </td>
         <td className="px-3 py-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
             <select
@@ -363,7 +527,11 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
               }}
               aria-label={`${c.kod} seviyesi`}
               className="h-7 px-1.5 text-[12px] rounded-lg border font-semibold"
-              style={{ borderColor: SEVIYE[bekleyen || c.gecerli].renk, color: SEVIYE[bekleyen || c.gecerli].metin, background: 'var(--bg-surface)' }}
+              style={{
+                borderColor: SEVIYE[bekleyen || c.gecerli].renk,
+                color: SEVIYE[bekleyen || c.gecerli].metin,
+                background: 'var(--bg-surface)',
+              }}
             >
               {SIRA.map((s) => (
                 <option key={s} value={s}>
@@ -387,12 +555,16 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
           </div>
           {degisti && (
             <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              değiştiren {c.degistiren || '?'}{c.zaman ? ` · ${fmtDateTime(c.zaman)}` : ''}
+              değiştiren {c.degistiren || '?'}
+              {c.zaman ? ` · ${fmtDateTime(c.zaman)}` : ''}
               {c.aciklama ? ` · “${c.aciklama}”` : ''}
             </div>
           )}
         </td>
-        <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+        <td
+          className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap"
+          style={{ color: 'var(--text-secondary)' }}
+        >
           {c.bulgu == null ? (
             <span title="Son tarama okunamadı — ölçülemedi">—</span>
           ) : (
@@ -407,8 +579,11 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
           <td colSpan={5} className="px-3 pb-2">
             <div className="flex items-center gap-2 flex-wrap text-[12px]">
               <span style={{ color: 'var(--text-secondary)' }}>
-                <b className="font-mono">{c.kod}</b>: <SeviyeRozeti s={c.gecerli} kucuk /> → <SeviyeRozeti s={bekleyen} kucuk />
-                {c.bulgu != null && c.bulgu > 0 ? ` · son taramadaki ${fmtNumber(c.bulgu)} bulgu yeni seviyeyle sayılır` : ''}
+                <b className="font-mono">{c.kod}</b>: <SeviyeRozeti s={c.gecerli} kucuk /> →{' '}
+                <SeviyeRozeti s={bekleyen} kucuk />
+                {c.bulgu != null && c.bulgu > 0
+                  ? ` · son taramadaki ${fmtNumber(c.bulgu)} bulgu yeni seviyeyle sayılır`
+                  : ''}
               </span>
               <input
                 value={not}
@@ -417,12 +592,31 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
                 placeholder="Açıklama (opsiyonel; geçmişte görünür)"
                 aria-label={`${c.kod} değişiklik açıklaması`}
                 className="h-7 px-2 text-[12px] rounded-lg border flex-1 min-w-[12rem]"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                }}
               />
-              <button type="button" className={BTN} style={btnStil(true)} disabled={gonderiliyor} onClick={() => kaydet(bekleyen)}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil(true)}
+                disabled={gonderiliyor}
+                onClick={() => kaydet(bekleyen)}
+              >
                 Kaydet
               </button>
-              <button type="button" className={BTN} style={btnStil()} disabled={gonderiliyor} onClick={() => { setBekleyen(null); setNot(''); }}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                disabled={gonderiliyor}
+                onClick={() => {
+                  setBekleyen(null);
+                  setNot('');
+                }}
+              >
                 İptal
               </button>
             </div>
@@ -433,14 +627,28 @@ function CiktiSatiri({ c, kilitli, onKaydedildi }: { c: ShKuralCikti; kilitli: b
   );
 }
 
-function LimitlerBolumu({ limitler, kilitli, onKaydedildi }: { limitler: ShLimit[]; kilitli: boolean; onKaydedildi: () => void }) {
+function LimitlerBolumu({
+  limitler,
+  kilitli,
+  onKaydedildi,
+}: {
+  limitler: ShLimit[];
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   return (
-    <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+    <section
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
       <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Tek seferde girilebilecek sunucu / JVM sayısı</h2>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Tek seferde girilebilecek sunucu / JVM sayısı
+        </h2>
         <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu (Toplu Auto-Start / Toplu Restart: tek toplu işte en fazla JVM). Üst
-          sınır, işin AWX’e taşıdığı veri ve süre yüzünden sabittir.
+          Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu (Toplu Auto-Start
+          / Toplu Restart: tek toplu işte en fazla JVM). Üst sınır, işin AWX’e taşıdığı veri ve süre
+          yüzünden sabittir.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -465,7 +673,15 @@ function LimitlerBolumu({ limitler, kilitli, onKaydedildi }: { limitler: ShLimit
   );
 }
 
-function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolean; onKaydedildi: () => void }) {
+function LimitSatiri({
+  l,
+  kilitli,
+  onKaydedildi,
+}: {
+  l: ShLimit;
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   const [deger, setDeger] = useState(String(l.gecerli));
   const [not, setNot] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
@@ -491,17 +707,32 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
   return (
     <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
       <td className="px-3 py-2">
-        <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>{l.etiket}</div>
-        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{l.aciklama}</div>
+        <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {l.etiket}
+        </div>
+        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {l.aciklama}
+        </div>
         {l.degistiren && (
           <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            değiştiren {l.degistiren}{l.zaman ? ` · ${fmtDateTime(l.zaman)}` : ''}{l.not ? ` · “${l.not}”` : ''}
+            değiştiren {l.degistiren}
+            {l.zaman ? ` · ${fmtDateTime(l.zaman)}` : ''}
+            {l.not ? ` · “${l.not}”` : ''}
           </div>
         )}
       </td>
-      <td className="px-3 py-2 text-right tabular-nums font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtNumber(l.gecerli)}</td>
-      <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--text-secondary)' }}>{fmtNumber(l.varsayilan)}</td>
-      <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--text-secondary)' }}>{fmtNumber(l.ust)}</td>
+      <td
+        className="px-3 py-2 text-right tabular-nums font-semibold"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        {fmtNumber(l.gecerli)}
+      </td>
+      <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+        {fmtNumber(l.varsayilan)}
+      </td>
+      <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--text-secondary)' }}>
+        {fmtNumber(l.ust)}
+      </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           <input
@@ -514,7 +745,11 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
             aria-label={`${l.etiket} tek seferde en fazla ${l.birim || 'sunucu'}`}
             aria-invalid={!gecerli}
             className="h-7 w-20 px-2 text-[12px] rounded-lg border tabular-nums"
-            style={{ borderColor: gecerli ? 'var(--border)' : 'var(--status-danger)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            style={{
+              borderColor: gecerli ? 'var(--border)' : 'var(--status-danger)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
           />
           <input
             value={not}
@@ -524,7 +759,11 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
             placeholder="Açıklama (opsiyonel)"
             aria-label={`${l.etiket} limit açıklaması`}
             className="h-7 px-2 text-[12px] rounded-lg border w-40"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
           />
           <button
             type="button"
@@ -536,7 +775,16 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
             Kaydet
           </button>
           {l.gecerli !== l.varsayilan && (
-            <button type="button" className={BTN} style={btnStil()} disabled={kilitli || gonderiliyor} onClick={() => { setDeger(String(l.varsayilan)); kaydet(l.varsayilan); }}>
+            <button
+              type="button"
+              className={BTN}
+              style={btnStil()}
+              disabled={kilitli || gonderiliyor}
+              onClick={() => {
+                setDeger(String(l.varsayilan));
+                kaydet(l.varsayilan);
+              }}
+            >
               <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön
             </button>
           )}
@@ -557,14 +805,30 @@ const ETIKET: Record<ShEtiketSeviye, { etiket: string; renk: string }> = {
   KAPALI: { etiket: 'kapalı (etiket üretmez)', renk: 'var(--text-muted)' },
 };
 
-function EtiketKurallariBolumu({ kurallar, kilitli, onKaydedildi }: { kurallar: ShEtiketKurali[]; kilitli: boolean; onKaydedildi: () => void }) {
+function EtiketKurallariBolumu({
+  kurallar,
+  kilitli,
+  onKaydedildi,
+}: {
+  kurallar: ShEtiketKurali[];
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   return (
-    <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }} aria-label="Retirement etiket kuralları">
+    <section
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      aria-label="Retirement etiket kuralları"
+    >
       <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Retirement etiket kuralları</h2>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          Retirement etiket kuralları
+        </h2>
         <p className="text-[12px] mt-0.5 max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-          Etiket bulgudan ayrıdır: “retire edilebilir mi” sorusudur. <b style={{ color: 'var(--text-secondary)' }}>Kesin</b> etiket, eşlenik kopyalardan biri çalışıyorsa,
-          trafik ölçülemediyse ya da kanıt eksikse kendiliğinden şüpheliye iner ve nedeni yazılır. Yalnız kesin + elle “doğrulandı” etiketten Retirement kaydı açılır.
+          Etiket bulgudan ayrıdır: “retire edilebilir mi” sorusudur.{' '}
+          <b style={{ color: 'var(--text-secondary)' }}>Kesin</b> etiket, eşlenik kopyalardan biri
+          çalışıyorsa, trafik ölçülemediyse ya da kanıt eksikse kendiliğinden şüpheliye iner ve
+          nedeni yazılır. Yalnız kesin + elle “doğrulandı” etiketten Retirement kaydı açılır.
           Değişiklik hemen uygulanır; gerekçe zorunlu.
         </p>
       </div>
@@ -579,7 +843,12 @@ function EtiketKurallariBolumu({ kurallar, kilitli, onKaydedildi }: { kurallar: 
           </thead>
           <tbody>
             {kurallar.map((k) => (
-              <EtiketKuraliSatiri key={k.kural} k={k} kilitli={kilitli} onKaydedildi={onKaydedildi} />
+              <EtiketKuraliSatiri
+                key={k.kural}
+                k={k}
+                kilitli={kilitli}
+                onKaydedildi={onKaydedildi}
+              />
             ))}
           </tbody>
         </table>
@@ -588,7 +857,15 @@ function EtiketKurallariBolumu({ kurallar, kilitli, onKaydedildi }: { kurallar: 
   );
 }
 
-function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; kilitli: boolean; onKaydedildi: () => void }) {
+function EtiketKuraliSatiri({
+  k,
+  kilitli,
+  onKaydedildi,
+}: {
+  k: ShEtiketKurali;
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   const [secim, setSecim] = useState<ShEtiketSeviye>(k.gecerli);
   const [not, setNot] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
@@ -611,19 +888,31 @@ function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; k
   };
   const degisecek = secim !== k.gecerli;
   return (
-    <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: k.gecerli !== k.varsayilan ? 'var(--bg-elevated)' : undefined }}>
+    <tr
+      className="border-t align-top"
+      style={{
+        borderColor: 'var(--border-subtle)',
+        background: k.gecerli !== k.varsayilan ? 'var(--bg-elevated)' : undefined,
+      }}
+    >
       <td className="px-3 py-2">
         <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
           <span className="font-mono">{k.kural}</span> · {k.ad}
         </div>
-        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{k.kosul}</div>
+        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {k.kosul}
+        </div>
         {k.degistiren && (
           <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            değiştiren {k.degistiren}{k.zaman ? ` · ${fmtDateTime(k.zaman)}` : ''}{k.aciklama ? ` · “${k.aciklama}”` : ''}
+            değiştiren {k.degistiren}
+            {k.zaman ? ` · ${fmtDateTime(k.zaman)}` : ''}
+            {k.aciklama ? ` · “${k.aciklama}”` : ''}
           </div>
         )}
       </td>
-      <td className="px-3 py-2" style={{ color: ETIKET[k.varsayilan].renk }}>{ETIKET[k.varsayilan].etiket}</td>
+      <td className="px-3 py-2" style={{ color: ETIKET[k.varsayilan].renk }}>
+        {ETIKET[k.varsayilan].etiket}
+      </td>
       <td className="px-3 py-2">
         <div className="flex items-center gap-1.5 flex-wrap">
           <select
@@ -632,7 +921,11 @@ function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; k
             onChange={(e) => setSecim(e.target.value as ShEtiketSeviye)}
             aria-label={`${k.kural} etiketi`}
             className="h-7 px-1.5 text-[12px] rounded-lg border font-semibold"
-            style={{ borderColor: 'var(--border)', color: ETIKET[secim].renk, background: 'var(--bg-surface)' }}
+            style={{
+              borderColor: 'var(--border)',
+              color: ETIKET[secim].renk,
+              background: 'var(--bg-surface)',
+            }}
           >
             {(Object.keys(ETIKET) as ShEtiketSeviye[]).map((s) => (
               <option key={s} value={s}>
@@ -650,12 +943,31 @@ function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; k
                 placeholder="Gerekçe (zorunlu)"
                 aria-label={`${k.kural} değişiklik gerekçesi`}
                 className="h-7 px-2 text-[12px] rounded-lg border w-56"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                }}
               />
-              <button type="button" className={BTN} style={btnStil(true)} disabled={kilitli || gonderiliyor || not.trim().length < 3} onClick={kaydet}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil(true)}
+                disabled={kilitli || gonderiliyor || not.trim().length < 3}
+                onClick={kaydet}
+              >
                 Kaydet
               </button>
-              <button type="button" className={BTN} style={btnStil()} disabled={gonderiliyor} onClick={() => { setSecim(k.gecerli); setNot(''); }}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                disabled={gonderiliyor}
+                onClick={() => {
+                  setSecim(k.gecerli);
+                  setNot('');
+                }}
+              >
                 İptal
               </button>
             </>
@@ -666,12 +978,27 @@ function EtiketKuraliSatiri({ k, kilitli, onKaydedildi }: { k: ShEtiketKurali; k
   );
 }
 
-function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurallar['kokYoksay']>; kilitli: boolean; onKaydedildi: () => void }) {
+function KokYoksayBolumu({
+  y,
+  kilitli,
+  onKaydedildi,
+}: {
+  y: NonNullable<ShKurallar['kokYoksay']>;
+  kilitli: boolean;
+  onKaydedildi: () => void;
+}) {
   const [metin, setMetin] = useState(y.gecerli.join(', '));
   const [not, setNot] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
-  const liste = [...new Set(metin.split(/[,\n]+/).map((x) => x.trim()).filter(Boolean))].sort();
-  const degisti = liste.join(',') !== [...y.gecerli].sort().join(',');
+  const liste = [
+    ...new Set(
+      metin
+        .split(/[,\n]+/)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+  const degisti = liste.join(',') !== [...y.gecerli].sort((a, b) => a.localeCompare(b)).join(',');
   const kaydet = async (l: string[]) => {
     setGonderiliyor(true);
     try {
@@ -690,12 +1017,26 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
     }
   };
   return (
-    <section className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }} aria-label="Kökte yok sayılan girdiler">
-      <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Kökte yok sayılan girdiler</h2>
+    <section
+      className="rounded-xl border p-4 space-y-2"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      aria-label="Kökte yok sayılan girdiler"
+    >
+      <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+        Kökte yok sayılan girdiler
+      </h2>
       <p className="text-[12px] max-w-3xl" style={{ color: 'var(--text-muted)' }}>
-        /vhosting ve /vhosting8 kökünde .ear ile bitmeyen her girdi “retire şüphesi” bulgusu ve etiketi üretir. Buradaki adlar (büyük / küçük harf
-        fark etmez) yok sayılır. Varsayılan: <span className="font-mono">{y.varsayilan.join(', ')}</span>.
-        {y.degistiren && <> Son değiştiren {y.degistiren}{y.zaman ? ` · ${fmtDateTime(y.zaman)}` : ''}{y.not ? ` · “${y.not}”` : ''}.</>}
+        /vhosting ve /vhosting8 kökünde .ear ile bitmeyen her girdi “retire şüphesi” bulgusu ve
+        etiketi üretir. Buradaki adlar (büyük / küçük harf fark etmez) yok sayılır. Varsayılan:{' '}
+        <span className="font-mono">{y.varsayilan.join(', ')}</span>.
+        {y.degistiren && (
+          <>
+            {' '}
+            Son değiştiren {y.degistiren}
+            {y.zaman ? ` · ${fmtDateTime(y.zaman)}` : ''}
+            {y.not ? ` · “${y.not}”` : ''}.
+          </>
+        )}
       </p>
       <textarea
         value={metin}
@@ -704,7 +1045,11 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
         rows={2}
         aria-label="Yok sayılan girdi adları (virgülle)"
         className="w-full px-2 py-1 text-[12px] rounded-lg border font-mono"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+        style={{
+          borderColor: 'var(--border)',
+          background: 'var(--bg-surface)',
+          color: 'var(--text-primary)',
+        }}
       />
       <div className="flex items-center gap-1.5 flex-wrap">
         <input
@@ -714,13 +1059,33 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
           placeholder="Gerekçe (zorunlu)"
           aria-label="Yok sayma listesi gerekçesi"
           className="h-7 px-2 text-[12px] rounded-lg border w-64"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+          }}
         />
-        <button type="button" className={BTN} style={btnStil(true)} disabled={kilitli || gonderiliyor || !degisti || not.trim().length < 3} onClick={() => kaydet(liste)}>
+        <button
+          type="button"
+          className={BTN}
+          style={btnStil(true)}
+          disabled={kilitli || gonderiliyor || !degisti || not.trim().length < 3}
+          onClick={() => kaydet(liste)}
+        >
           Kaydet ({liste.length} ad)
         </button>
-        {[...y.gecerli].sort().join(',') !== [...y.varsayilan].sort().join(',') && (
-          <button type="button" className={BTN} style={btnStil()} disabled={kilitli || gonderiliyor || not.trim().length < 3} onClick={() => { setMetin(y.varsayilan.join(', ')); kaydet(y.varsayilan); }}>
+        {[...y.gecerli].sort((a, b) => a.localeCompare(b)).join(',') !==
+          [...y.varsayilan].sort((a, b) => a.localeCompare(b)).join(',') && (
+          <button
+            type="button"
+            className={BTN}
+            style={btnStil()}
+            disabled={kilitli || gonderiliyor || not.trim().length < 3}
+            onClick={() => {
+              setMetin(y.varsayilan.join(', '));
+              kaydet(y.varsayilan);
+            }}
+          >
             <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön
           </button>
         )}
@@ -729,10 +1094,19 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
   );
 }
 
-function GecmisBolumu({ gecmis, limitler }: { gecmis: ShAyarGecmis[] | null; limitler: ShLimit[] }) {
+function GecmisBolumu({
+  gecmis,
+  limitler,
+}: {
+  gecmis: ShAyarGecmis[] | null;
+  limitler: ShLimit[];
+}) {
   const [acik, setAcik] = useState(false);
   return (
-    <section className="rounded-xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+    <section
+      className="rounded-xl border"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
       <button
         type="button"
         onClick={() => setAcik((v) => !v)}
@@ -742,15 +1116,20 @@ function GecmisBolumu({ gecmis, limitler }: { gecmis: ShAyarGecmis[] | null; lim
       >
         Değişiklik geçmişi
         <span className="text-[11px] font-normal" style={{ color: 'var(--text-muted)' }}>
-          {gecmis == null ? 'okunamadı' : `${fmtNumber(gecmis.length)} kayıt`} · {acik ? 'gizle' : 'göster'}
+          {gecmis == null ? 'okunamadı' : `${fmtNumber(gecmis.length)} kayıt`} ·{' '}
+          {acik ? 'gizle' : 'göster'}
         </span>
       </button>
       {acik && (
         <div className="overflow-x-auto border-t" style={{ borderColor: 'var(--border-subtle)' }}>
           {gecmis == null ? (
-            <p className="px-4 py-3 text-[12px]" style={{ color: 'var(--status-warning-text)' }}>Geçmiş okunamadı.</p>
+            <p className="px-4 py-3 text-[12px]" style={{ color: 'var(--status-warning-text)' }}>
+              Geçmiş okunamadı.
+            </p>
           ) : gecmis.length === 0 ? (
-            <p className="px-4 py-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz değişiklik yok; tüm seviyeler ve limitler varsayılan.</p>
+            <p className="px-4 py-3 text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              Henüz değişiklik yok; tüm seviyeler ve limitler varsayılan.
+            </p>
           ) : (
             <table className="w-full text-[12px]">
               <thead>
@@ -765,13 +1144,27 @@ function GecmisBolumu({ gecmis, limitler }: { gecmis: ShAyarGecmis[] | null; lim
               <tbody>
                 {gecmis.map((g, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{g.zaman ? fmtDateTime(g.zaman) : '—'}</td>
-                    <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>{g.degistiren}</td>
-                    <td className="px-3 py-1.5" style={{ color: 'var(--text-primary)' }}>{ayarAdi(g.anahtar, limitler)}</td>
-                    <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                    <td
+                      className="px-3 py-1.5 whitespace-nowrap"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      {g.zaman ? fmtDateTime(g.zaman) : '—'}
+                    </td>
+                    <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>
+                      {g.degistiren}
+                    </td>
+                    <td className="px-3 py-1.5" style={{ color: 'var(--text-primary)' }}>
+                      {ayarAdi(g.anahtar, limitler)}
+                    </td>
+                    <td
+                      className="px-3 py-1.5 whitespace-nowrap"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
                       {degerAdi(g.anahtar, g.eski)} → {degerAdi(g.anahtar, g.yeni)}
                     </td>
-                    <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>{g.aciklama || '—'}</td>
+                    <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>
+                      {g.aciklama || '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

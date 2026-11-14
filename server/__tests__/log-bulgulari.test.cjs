@@ -91,7 +91,7 @@ test('LB5 iptal yetkisi yoksa ISIN HALA KOSTUGU soyleniyor', () => {
 
 test('LB6 KALICI red TEKRAR DENENMIYOR', () => {
   const kod = kodOnly(LJC);
-  assert.match(kod, /e\.permanent/, 'kalici red ayirt edilmiyor');
+  assert.match(kod, /e\??\.permanent/, 'kalici red ayirt edilmiyor');
   assert.match(
     kod,
     /_attempts\.set\(key, MAX_ATTEMPTS\)/,

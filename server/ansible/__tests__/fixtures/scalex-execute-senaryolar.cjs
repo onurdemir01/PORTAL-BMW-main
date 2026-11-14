@@ -108,7 +108,7 @@ function sonDurum(model) {
     for (const o of liste) nes[`${k}/${o.name}`] = o.spec;
   const cm = {};
   for (const [ad, d] of Object.entries(model.cm || {})) {
-    const { created_at: _a, updated_at: _b, ...kalan } = d;
+    const kalan = { ...d }; delete kalan.created_at; delete kalan.updated_at;
     cm[ad] = kalan;
   }
   return { nesneler: nes, cm, hpaPin: model.hpaPin || [] };

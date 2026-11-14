@@ -9,10 +9,12 @@
 --
 -- Idempotent: iki kez calistirmak zararsizdir.
 
+DECLARE @elemKey VARCHAR(32) = 'ScaleX';
+
 -- 1) Element satiri yoksa ekle (normalde mssql-setup ekler).
-IF NOT EXISTS (SELECT 1 FROM portal_elements WHERE element_key = 'ScaleX')
+IF NOT EXISTS (SELECT 1 FROM portal_elements WHERE element_key = @elemKey)
   INSERT INTO portal_elements (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible)
-  VALUES ('ScaleX', 'page', 'navgroup:otomasyon', N'ScaleX', '/scalex', 10, 1, 0);
+  VALUES (@elemKey, 'page', 'navgroup:otomasyon', N'ScaleX', '/scalex', 10, 1, 0);
 
 -- 2) Rol kurallari — OpsX/LogX ile AYNI varsayilan (Admin + User).
 --    Kisitlama sayfa bazinda degil, KAYNAK bazinda yapilir (namespace/uygulama).

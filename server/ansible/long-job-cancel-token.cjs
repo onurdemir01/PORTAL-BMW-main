@@ -70,7 +70,7 @@ function normApiBase(value) {
  * gittigi yer tam olarak budur. Okunamazsa null.
  */
 function serverFingerprint(server) {
-  if (!server || !server.url) return null;
+  if (!server?.url) return null;
   let origin;
   try {
     origin = new URL(String(server.url).trim()).origin;
@@ -101,7 +101,7 @@ function mismatchMessage(entry, why) {
 // -- Redaksiyon -----------------------------------------------------------------
 function knownSecrets() {
   const out = [];
-  for (const v of _plain.values()) if (v && v.token) out.push(v.token);
+  for (const v of _plain.values()) if (v?.token) out.push(v.token);
   for (const t of _retired) out.push(t);
   return out;
 }
@@ -119,7 +119,7 @@ function redact(text, extra = []) {
     const x = v == null ? '' : String(v);
     if (x.length >= 6) s = s.split(x).join('***');
   }
-  return s.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***');
+  return s.replace(/(Bearer\s+)[a-z0-9._~+/=-]+/gi, '$1***');
 }
 
 // -- Okuma ------------------------------------------------------------------------
@@ -178,13 +178,13 @@ function setEntries(map) {
   }
   for (const [id, r] of [..._runtime]) {
     const e = map.get(id);
-    if (!e || e.tokenEnc !== r.tokenEnc) _runtime.delete(id);
+    if (e?.tokenEnc !== r.tokenEnc) _runtime.delete(id);
   }
 }
 
 async function readFresh(db) {
   const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
-  return parseBlob(rows && rows[0] ? rows[0].data : null);
+  return parseBlob(rows?.[0] ? rows[0].data : null);
 }
 
 /**
@@ -199,7 +199,7 @@ async function load(db, { fresh = false } = {}) {
     _readError = null;
     return { entries: m, error: null };
   } catch (e) {
-    _readError = { at: iso(), message: redact((e && e.message) || String(e)).slice(0, 500) };
+    _readError = { at: iso(), message: redact((e?.message) || String(e)).slice(0, 500) };
     console.error(
       `[LongJobCancelToken] iptal token kaydi okunamadi (portal_config_blobs '${BLOB_NAME}'); ` +
         (_entries ? 'son gecerli kayitla devam ediliyor' : 'hic gecerli kayit yok (olculemedi)') +
@@ -212,7 +212,7 @@ async function load(db, { fresh = false } = {}) {
 
 function decryptFor(serverId, entry) {
   const cached = _plain.get(serverId);
-  if (cached && cached.enc === entry.tokenEnc) return cached.token;
+  if (cached?.enc === entry.tokenEnc) return cached.token;
   const token = cryptoMod().decryptSecretValue(entry.tokenEnc);
   if (!token) throw new Error('bos deger');
   _plain.set(serverId, { enc: entry.tokenEnc, token });
@@ -256,13 +256,13 @@ async function getCancelAuth(db, serverId, { server = null } = {}) {
   } catch (err) {
     const message =
       `İPTAL TOKEN'I ÇÖZÜLEMEDİ (${e.owner || 'sahibi bilinmiyor'}): ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş ` +
-      `olabilir (${redact((err && err.message) || String(err)).slice(0, 200)}). Admin ekranından token'ı yeniden girin ya da silin.`;
+      `olabilir (${redact((err?.message) || String(err)).slice(0, 200)}). Admin ekranından token'ı yeniden girin ya da silin.`;
     // Durum/ekran: token tanimli ama KULLANILAMIYOR (sessiz degil).
     _runtime.set(id, { at: iso(), httpStatus: null, message, tokenEnc: e.tokenEnc, reason: 'cozulemedi' });
     throw codeErr('undecryptable', message, { tokenUndecryptable: true, permanent: true, owner: e.owner || null });
   }
   const rt = _runtime.get(id);
-  if (rt && (rt.reason === 'cozulemedi' || rt.reason === 'adres_degisti')) _runtime.delete(id);
+  if ((rt?.reason === 'cozulemedi' || rt?.reason === 'adres_degisti')) _runtime.delete(id);
   return { via: 'cancel_token', token, owner: e.owner, entry: { tokenEnc: e.tokenEnc } };
 }
 
@@ -299,7 +299,7 @@ function mutate(db, fn) {
     }
     const data = serialize(map);
     const ex = await db.query(`SELECT 1 FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
-    if (ex.rows && ex.rows.length) {
+    if (ex.rows?.length) {
       await db.query(`UPDATE portal_config_blobs SET data = $2, updated_at = GETUTCDATE() WHERE name = $1`, [BLOB_NAME, data]);
     } else {
       await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, data]);
@@ -364,8 +364,8 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
   try {
     who = await verify(t);
   } catch (e) {
-    const status = e && e.status;
-    const msg = redact((e && e.message) || String(e), [t]).slice(0, 300);
+    const status = e?.status;
+    const msg = redact((e?.message) || String(e), [t]).slice(0, 300);
     if (status === 401 || status === 403) {
       throw codeErr(400, `Token geçersiz (AWX ${status}) — kaydedilmedi. AWX yanıtı: ${msg}`, { reason: 'invalid', httpStatus: status });
     }
@@ -375,7 +375,7 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
       { reason: 'unverified', httpStatus: status || null },
     );
   }
-  if (!who || !who.username) {
+  if (!who?.username) {
     throw codeErr(502, "Token doğrulanamadı: AWX /me yanıtında kullanıcı adı yok — kaydedilmedi.", { reason: 'unverified' });
   }
   const tokenEnc = cryptoMod().encryptSecretValue(t);
@@ -387,7 +387,7 @@ async function saveToken(db, { serverId, server, token, by, verify }) {
   let replacedOwner = null;
   await mutate(db, (map) => {
     const prev = map.get(id);
-    replacedOwner = prev ? prev.owner : null;
+    replacedOwner = (prev?.owner ?? null);
     map.set(id, {
       tokenEnc,
       owner: str(who.username, 150),
@@ -457,21 +457,21 @@ async function verifyStored(db, serverId, { by, verify, server = null }) {
   try {
     token = decryptFor(id, e);
   } catch (err) {
-    const message = `Token çözülemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş olabilir): ${redact(err && err.message).slice(0, 200)}`;
+    const message = `Token çözülemedi (ENV_OVERRIDES_ENCRYPTION_KEY eksik ya da değişmiş olabilir): ${redact(err?.message).slice(0, 200)}`;
     await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: false, result: 'cozulemedi', message, by }).catch(() => {});
     return { ok: false, measured: true, owner: e.owner, httpStatus: null, message };
   }
   try {
     const who = await verify(token);
-    if (!who || !who.username) throw new Error("AWX /me yanıtında kullanıcı adı yok");
+    if (!who?.username) throw new Error("AWX /me yanıtında kullanıcı adı yok");
     const ownerChanged = e.owner && who.username !== e.owner;
     const message = ownerChanged ? `Token sahibi değişmiş görünüyor: kayıtta ${e.owner}, AWX ${who.username} diyor.` : null;
     await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: true, httpStatus: 200, result: 'gecerli', message, by });
     _runtime.delete(id);
     return { ok: true, measured: true, owner: who.username, httpStatus: 200, message };
   } catch (err) {
-    const status = err && err.status;
-    const msg = redact((err && err.message) || String(err), [token]).slice(0, 300);
+    const status = err?.status;
+    const msg = redact((err?.message) || String(err), [token]).slice(0, 300);
     if (status === 401 || status === 403) {
       const message = `İPTAL TOKEN'I GEÇERSİZ (AWX ${status}): ${msg}`;
       await recordVerify(db, id, e.tokenEnc, { at: iso(), ok: false, httpStatus: status, result: 'gecersiz', message, by }).catch(() => {});
@@ -496,7 +496,7 @@ async function markInvalid(db, serverId, { tokenEnc, httpStatus, message }) {
   try {
     await recordVerify(db, id, tokenEnc, { at, ok: false, httpStatus: httpStatus || 401, result: 'gecersiz', message: m, by: 'otomatik iptal' });
   } catch (e) {
-    console.error('[LongJobCancelToken] gecersiz token sonucu kaydedilemedi:', redact((e && e.message) || String(e)));
+    console.error('[LongJobCancelToken] gecersiz token sonucu kaydedilemedi:', redact((e?.message) || String(e)));
   }
 }
 
@@ -504,21 +504,21 @@ async function markInvalid(db, serverId, { tokenEnc, httpStatus, message }) {
 function entryView(id, e, server) {
   const rt = _runtime.get(id);
   const invalidRt = !!(rt && e && rt.tokenEnc && rt.tokenEnc === e.tokenEnc);
-  const lv = e ? e.lastVerify : null;
+  const lv = (e?.lastVerify ?? null);
   // server verilmediyse (durum ekrani) adres OLCULMEZ: null ("degismedi" DENMEZ).
   const why = e && server !== undefined ? bindingProblem(e, server) : null;
   return {
     serverId: id,
     defined: !!e,
-    owner: e ? e.owner : null,
+    owner: (e?.owner ?? null),
     ownerIsSuperuser: e ? !!e.ownerIsSuperuser : false,
-    setBy: e ? e.setBy : null,
-    setAt: e ? e.setAt : null,
+    setBy: (e?.setBy ?? null),
+    setAt: (e?.setAt ?? null),
     lastVerify: lv,
-    boundTo: e ? e.bind || null : null,
+    boundTo: e?.bind || null,
     addressChanged: e && server !== undefined ? !!why : null,
     addressMessage: why ? mismatchMessage(e, why) : null,
-    invalid: !!e && (invalidRt || !!why || !!(lv && lv.ok === false && lv.result === 'gecersiz')),
+    invalid: !!e && (invalidRt || !!why || !!(lv?.ok === false && lv.result === 'gecersiz')),
     invalidInfo: invalidRt
       ? { at: rt.at, httpStatus: rt.httpStatus, message: rt.message, reason: rt.reason || 'gecersiz' }
       : null,

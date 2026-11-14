@@ -66,7 +66,14 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
 
   // Hafif versiyon ucu — istemci bunu sik poll'ler, degisince /resolved'i tazeler.
   router.get('/version', requireAuth, (req, res) => {
-    res.json({ ok: true, version: visibilityEngine.getVersion() });
+    const version = visibilityEngine.getVersion();
+    const etag = `W/"vis-v${version}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'private, no-cache');
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+    return res.json({ ok: true, version });
   });
 
   // ── Element CRUD (admin) — dinamik "her seyi ekle/cikar/gizle" yonetim yuzeyi ──
@@ -209,7 +216,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
       if (req.query.username) {
         try {
           const kimlik = await require('./users.cjs').getUserIdentity(String(req.query.username));
-          if (kimlik && kimlik.mail) hedef.mail = kimlik.mail;
+          if (kimlik?.mail) hedef.mail = kimlik.mail;
           const ldap = await require('./ldap.cjs').findLdapUserByUsername(
             String(req.query.username),
           );
@@ -321,12 +328,11 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // body: { principalType: 'user'|'group', principalId, tabs: string[] | 'all' }
   router.put('/denetim-access', requireAdmin, async (req, res) => {
     try {
-      const pt =
-        req.body?.principalType === 'group'
-          ? 'group'
-          : req.body?.principalType === 'user'
-            ? 'user'
-            : null;
+      const pt = (() => {
+        if (req.body?.principalType === 'group') return 'group';
+        if (req.body?.principalType === 'user') return 'user';
+        return null;
+      })();
       const pid = String(req.body?.principalId || '')
         .trim()
         .toLowerCase();
@@ -334,12 +340,12 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
         return res
           .status(400)
           .json({ ok: false, error: 'principalType (user|group) ve principalId zorunlu.' });
-      const want =
-        req.body?.tabs === 'all'
-          ? DENETIM_TAB_KEYS
-          : (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
-              DENETIM_TAB_KEYS.includes(t),
-            );
+      const want = (() => {
+        if (req.body?.tabs === 'all') return DENETIM_TAB_KEYS;
+        return (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
+          DENETIM_TAB_KEYS.includes(t),
+        );
+      })();
       if (want.length === 0)
         return res.status(400).json({ ok: false, error: 'En az bir sekme secilmeli.' });
       const all = await elementsStore.listRules();
@@ -487,12 +493,12 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
           ok: false,
           error: 'principalType (user|group|email) ve principalId zorunlu.',
         });
-      const want =
-        req.body?.tabs === 'all'
-          ? CRYPTO_APP_KEYS
-          : (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
-              CRYPTO_APP_KEYS.includes(t),
-            );
+      const want = (() => {
+        if (req.body?.tabs === 'all') return CRYPTO_APP_KEYS;
+        return (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
+          CRYPTO_APP_KEYS.includes(t),
+        );
+      })();
       if (want.length === 0)
         return res.status(400).json({ ok: false, error: 'En az bir uygulama secilmeli.' });
       const all = await elementsStore.listRules();
@@ -506,7 +512,9 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
         const allow = key === 'CryptoHub' ? true : want.includes(app);
         // SECILMEYEN UYGULAMAYA KURAL YAZILMAZ: oge SIKI, kuralsiz zaten kapali.
         const mine =
-          key === 'CryptoHub' || allow ? [{ principalType: pt, principalId: pid, allow: true }] : [];
+          key === 'CryptoHub' || allow
+            ? [{ principalType: pt, principalId: pid, allow: true }]
+            : [];
         await elementsStore.setElementRules(key, [...others, ...mine]);
       }
       visibilityEngine.bumpVersion();
@@ -579,12 +587,11 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
   // body: { principalType: 'user'|'group', principalId, tabs: string[] | 'all' }
   router.put('/nginx-access', requireAdmin, async (req, res) => {
     try {
-      const pt =
-        req.body?.principalType === 'group'
-          ? 'group'
-          : req.body?.principalType === 'user'
-            ? 'user'
-            : null;
+      const pt = (() => {
+        if (req.body?.principalType === 'group') return 'group';
+        if (req.body?.principalType === 'user') return 'user';
+        return null;
+      })();
       const pid = String(req.body?.principalId || '')
         .trim()
         .toLowerCase();
@@ -592,12 +599,11 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
         return res
           .status(400)
           .json({ ok: false, error: 'principalType (user|group) ve principalId zorunlu.' });
+      const rawTabs = Array.isArray(req.body?.tabs) ? req.body.tabs : [];
       const want =
         req.body?.tabs === 'all'
           ? NGINX_TAB_KEYS
-          : (Array.isArray(req.body?.tabs) ? req.body.tabs : []).filter((t) =>
-              NGINX_TAB_KEYS.includes(t),
-            );
+          : rawTabs.filter((t) => NGINX_TAB_KEYS.includes(t));
       if (want.length === 0)
         return res.status(400).json({ ok: false, error: 'En az bir sekme secilmeli.' });
       const all = await elementsStore.listRules();

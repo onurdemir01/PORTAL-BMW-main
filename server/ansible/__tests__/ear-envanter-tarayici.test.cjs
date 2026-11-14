@@ -585,7 +585,7 @@ test(
       assert.match(u.uyarilar.join('\n'), /listelenemedi .*gizli/);
       assert.equal(yuk.durum, 'KISMI');
     } finally {
-      fs.chmodSync(gizli, 0o755);
+      fs.chmodSync(gizli, 0o700);
     }
   },
 );
@@ -628,9 +628,7 @@ function domainXml(deploymentlar, { ekGruplar = [], ek = '' } = {}) {
     .map(
       (x) =>
         `  <deployment name="${xmlKac(x.ad)}" runtime-name="${xmlKac(x.calisma || x.ad)}">` +
-        (x.yol
-          ? `<fs-${x.arsiv ? 'archive' : 'exploded'} path="${xmlKac(x.yol)}"${x.goreli ? ` relative-to="${x.goreli}"` : ''}/>`
-          : '<content sha1="0123456789abcdef"/>') +
+        (() => { if (x.yol) return `<fs-${x.arsiv ? 'archive' : 'exploded'} path="${xmlKac(x.yol)}"${x.goreli ? (" relative-to=\"" + x.goreli + "\"") : ''}/>`; return '<content sha1="0123456789abcdef"/>'; })() +
         '</deployment>',
     )
     .join('\n');
@@ -653,7 +651,7 @@ function domainXml(deploymentlar, { ekGruplar = [], ek = '' } = {}) {
 /** [{ ad, grup, auto }] -> host.xml; auto undefined -> nitelik YOK (JBoss varsayilani true). */
 function hostXml(sunucular, hostAdi = 'master') {
   const s = sunucular
-    .map((x) => `  <server name="${x.ad}" group="${x.grup}"${x.auto === undefined ? '' : ` auto-start="${x.auto}"`}><jvm name="default"/></server>`)
+    .map((x) => `  <server name="${x.ad}" group="${x.grup}"${x.auto === undefined ? '' : (" auto-start=\"" + x.auto + "\"")}><jvm name="default"/></server>`)
     .join('\n');
   return `<?xml version="1.0"?>\n<host name="${hostAdi}" xmlns="${NS}">\n<servers>\n${s}\n</servers>\n</host>\n`;
 }
@@ -1198,7 +1196,7 @@ test('ET16 Faz A: mod_cluster proxies / proxy-list, soket portlari, ofsetler, de
       const dk = yk.yapilandirma.find((k) => k.nesil === '8').deploymentlar.find((x) => x.ad === 'APP8.ear');
       assert.equal(dk.yol_durumu, 'OLCULEMEDI');
     } finally {
-      fs.chmodSync(kilitli, 0o755);
+      fs.chmodSync(kilitli, 0o700);
     }
   }
   const k7 = y.yapilandirma.find((k) => k.nesil === '7');

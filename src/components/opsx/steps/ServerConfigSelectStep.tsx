@@ -222,7 +222,7 @@ const ServerConfigSelectStep: React.FC<{
       )}
 
       <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-        {Object.keys(grouped).sort().map((host) => {
+        {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((host) => {
           const multiple = grouped[host].length > 1;
           return (
           <div key={host}>

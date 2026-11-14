@@ -53,12 +53,21 @@ function sahteTbmwans() {
       }
       return { recordset: [satir] };
     }
-    let m = /SELECT DISTINCT UPPER\(LTRIM\(RTRIM\(host\)\)\) AS host FROM (dbo\.\w+) WHERE scan_date >= @esik/.exec(text);
+    let m =
+      /SELECT DISTINCT UPPER\(LTRIM\(RTRIM\(host\)\)\) AS host FROM (dbo\.\w+) WHERE scan_date >= @esik/.exec(
+        text,
+      );
     if (m) {
       if (t.sinyalHata) throw new Error(t.sinyalHata);
       assert.equal(p.esik.type, 'Date');
-      const rows = (t.tablolar.get(m[1]) || []).filter((r) => new Date(r.scan_date) >= p.esik.value);
-      return { recordset: [...new Set(rows.map((r) => r.host.trim().toUpperCase()))].map((host) => ({ host })) };
+      const rows = (t.tablolar.get(m[1]) || []).filter(
+        (r) => new Date(r.scan_date) >= p.esik.value,
+      );
+      return {
+        recordset: [...new Set(rows.map((r) => r.host.trim().toUpperCase()))].map((host) => ({
+          host,
+        })),
+      };
     }
     if (/FROM dbo\.nginx_inventory/.test(text)) return { recordset: t.nginxInv };
     m = /FROM (dbo\.\w+) GROUP BY UPPER/.exec(text);
@@ -73,7 +82,10 @@ function sahteTbmwans() {
       }
       return { recordset: [...g.values()] };
     }
-    m = /^DELETE TOP \(@n\) FROM (dbo\.\w+) WHERE (host|UPPER\(LTRIM\(RTRIM\(host\)\)\)) = @h$/.exec(text);
+    m =
+      /^DELETE TOP \(@n\) FROM (dbo\.\w+) WHERE (host|UPPER\(LTRIM\(RTRIM\(host\)\)\)) = @h$/.exec(
+        text,
+      );
     if (m) {
       assert.equal(p.n.type, 'Int');
       assert.equal(p.h.type, 'NVarChar(64)');
@@ -108,17 +120,22 @@ function sahtePortal() {
     if (m) {
       if (!t.tablolar.has(m[1])) throw new Error(`Invalid object name '${m[1]}'.`);
       const g = new Map();
-      for (const r of t.tablolar.get(m[1])) if (r.host != null) g.set(r.host.trim().toUpperCase(), (g.get(r.host.trim().toUpperCase()) || 0) + 1);
+      for (const r of t.tablolar.get(m[1]))
+        if (r.host != null)
+          g.set(r.host.trim().toUpperCase(), (g.get(r.host.trim().toUpperCase()) || 0) + 1);
       return { rows: [...g].map(([host, n]) => ({ host, n })), rowCount: g.size };
     }
-    m = /^DELETE TOP \((\d+)\) FROM (\w+) WHERE (host|UPPER\(LTRIM\(RTRIM\(host\)\)\)) = \$1$/.exec(text);
+    m = /^DELETE TOP \((\d+)\) FROM (\w+) WHERE (host|UPPER\(LTRIM\(RTRIM\(host\)\)\)) = \$1$/.exec(
+      text,
+    );
     if (m) {
       assert.equal(opts.tekrar, false, 'silme yeniden denenmemeli');
       if (t.hata.has(m[2])) throw new Error(t.hata.get(m[2]));
       const n = Number(m[1]);
       const normal = m[3] !== 'host';
       const esit = (h) =>
-        h != null && (normal ? h.trim().toUpperCase() : h.replace(/\s+$/, '').toUpperCase()) === params[0];
+        h != null &&
+        (normal ? h.trim().toUpperCase() : h.replace(/\s+$/, '').toUpperCase()) === params[0];
       let k = 0;
       const kalan = [];
       for (const r of t.tablolar.get(m[2]) || []) {
@@ -145,7 +162,8 @@ function dosya(ad, gunOnceN, icerik = 'x') {
   return p;
 }
 function rawTemizle() {
-  for (const ad of fs.readdirSync(raw)) fs.rmSync(path.join(raw, ad), { recursive: true, force: true });
+  for (const ad of fs.readdirSync(raw))
+    fs.rmSync(path.join(raw, ad), { recursive: true, force: true });
 }
 
 beforeEach(() => {
@@ -184,7 +202,10 @@ test('ES2 kural: envanterde yok + 14 gun hicbir kaynakta yok -> eski; herhangi b
   dosya('GBDUMPT1.txt', 3);
   dosya('GBDUMPE1.txt', 20);
   dosya('GBSEEN01.txt', 30);
-  fs.writeFileSync(path.join(raw, '_seen.json'), JSON.stringify({ at: gunOnce(1).toISOString(), hosts: { gbseen01: gunOnce(1).toISOString() } }));
+  fs.writeFileSync(
+    path.join(raw, '_seen.json'),
+    JSON.stringify({ at: gunOnce(1).toISOString(), hosts: { gbseen01: gunOnce(1).toISOString() } }),
+  );
   const d = await es.durum();
   assert.equal(d.ok, true, d.hata);
   const eski = (h) => es.eskiMi(d, h);
@@ -201,7 +222,11 @@ test('ES2 kural: envanterde yok + 14 gun hicbir kaynakta yok -> eski; herhangi b
   assert.equal(eski('GBESKI01'), true, '40 gun once taranmis');
   assert.equal(eski('GBINVE01'), true, 'nginx_inventory 30 gun eski');
   assert.equal(eski('GBDUMPE1'), true, 'yalniz 20 gunluk dokum');
-  assert.equal(eski('GBALTT01'), true, 'alt tablo sinyal sayilmaz (ayni isin Hosts tablosu belirler)');
+  assert.equal(
+    eski('GBALTT01'),
+    true,
+    'alt tablo sinyal sayilmaz (ayni isin Hosts tablosu belirler)',
+  );
   assert.equal(eski('GBHICYOK'), true);
   assert.equal(eski(''), false);
   process.env.NGINX_ESKI_SUNUCU_GUN = '30';
@@ -210,10 +235,36 @@ test('ES2 kural: envanterde yok + 14 gun hicbir kaynakta yok -> eski; herhangi b
 });
 
 for (const [ad, kur] of [
-  ['envanter sorgusu hata', () => { tb.envanterHata = 'Login failed'; }],
-  ['envanter bos', () => { tb.envanter = []; }],
-  ['sinyal tablosu okunamadi', () => { tb.tablolar.set('dbo.Nginx_Audit_Hosts', []); tb.sinyalHata = 'timeout'; }],
-  ['raw dizini yok', () => { es._test.bagla({ tbmwans: () => tb.api, portal: () => pdb.api, simdi: () => SIMDI, yerel: () => ({ ...nc, rawDir: () => path.join(dir, 'yok') }) }); }],
+  [
+    'envanter sorgusu hata',
+    () => {
+      tb.envanterHata = 'Login failed';
+    },
+  ],
+  [
+    'envanter bos',
+    () => {
+      tb.envanter = [];
+    },
+  ],
+  [
+    'sinyal tablosu okunamadi',
+    () => {
+      tb.tablolar.set('dbo.Nginx_Audit_Hosts', []);
+      tb.sinyalHata = 'timeout';
+    },
+  ],
+  [
+    'raw dizini yok',
+    () => {
+      es._test.bagla({
+        tbmwans: () => tb.api,
+        portal: () => pdb.api,
+        simdi: () => SIMDI,
+        yerel: () => ({ ...nc, rawDir: () => path.join(dir, 'yok') }),
+      });
+    },
+  ],
 ]) {
   test(`ES3 fail-closed (${ad}): hicbir sunucu eski degil, liste degismez, aday listesi 503`, async () => {
     kur();
@@ -233,9 +284,23 @@ for (const [ad, kur] of [
 
 test('ES4 suzgec: eskiler gizlenir ve sayilir; ?eskiler=1 gizlemeyi kapatir; tek ucus + onbellek', async () => {
   const s = await es.suzgec({ query: {} });
-  const out = s.ayir([{ host: 'GBNGXP01' }, { host: 'GBOLU001' }, { host: 'gbolu001' }, { hostname: 'X' }]);
-  assert.deepEqual(out.map((r) => r.host), ['GBNGXP01', undefined]);
-  assert.deepEqual(s.bilgi(), { sayi: 1, hostlar: ['GBOLU001'], gun: 14, gosteriliyor: false, olculemedi: false });
+  const out = s.ayir([
+    { host: 'GBNGXP01' },
+    { host: 'GBOLU001' },
+    { host: 'gbolu001' },
+    { hostname: 'X' },
+  ]);
+  assert.deepEqual(
+    out.map((r) => r.host),
+    ['GBNGXP01', undefined],
+  );
+  assert.deepEqual(s.bilgi(), {
+    sayi: 1,
+    hostlar: ['GBOLU001'],
+    gun: 14,
+    gosteriliyor: false,
+    olculemedi: false,
+  });
   const g = await es.suzgec({ query: { eskiler: '1' } });
   assert.equal(g.ayir([{ host: 'GBOLU001' }]).length, 1);
   assert.equal(g.bilgi().gosteriliyor, true);
@@ -254,7 +319,11 @@ function senaryo() {
     { host: 'GBOLU001', scan_date: tarih(31) },
   ]);
   tb.tablolar.set('dbo.Nginx_Config_Audit', [{ host: 'GBOLU001', scan_date: tarih(30) }]);
-  pdb.tablolar.set('nginx_hub_file_history', [{ host: 'GBOLU001' }, { host: 'GBOLU001' }, { host: 'GBNGXP01' }]);
+  pdb.tablolar.set('nginx_hub_file_history', [
+    { host: 'GBOLU001' },
+    { host: 'GBOLU001' },
+    { host: 'GBNGXP01' },
+  ]);
   pdb.tablolar.set('nginx_hub_file_state', [{ host: 'GBOLU001' }]);
   pdb.tablolar.set('nginx_cis_exceptions', [{ host: null }, { host: 'GBOLU001' }]);
   // nginx_audit_exceptions YOK (tablo eksik): sayim atlanir
@@ -263,23 +332,42 @@ function senaryo() {
   dosya('GBOLU001.summary.json.tmp1234', 30);
   dosya('GBOLU0011.txt', 30); // ayni onekli BASKA sunucu
   dosya('GBNGXP01.txt', 1);
-  fs.writeFileSync(path.join(raw, '_seen.json'), JSON.stringify({ at: gunOnce(1).toISOString(), hosts: { GBNGXP01: gunOnce(1).toISOString(), gbolu001: gunOnce(30).toISOString() } }));
+  fs.writeFileSync(
+    path.join(raw, '_seen.json'),
+    JSON.stringify({
+      at: gunOnce(1).toISOString(),
+      hosts: { GBNGXP01: gunOnce(1).toISOString(), gbolu001: gunOnce(30).toISOString() },
+    }),
+  );
 }
 
 test('ES5 aday listesi: kaynak basina sayim, dosyalar, son gorulme; envanterdeki sunucu aday degil', async () => {
   senaryo();
   const a = await es.adaylar();
-  assert.deepEqual(a.adaylar.map((x) => x.host), ['GBOLU001', 'GBOLU0011']);
+  assert.deepEqual(
+    a.adaylar.map((x) => x.host),
+    ['GBOLU001', 'GBOLU0011'],
+  );
   const x = a.adaylar[0];
-  assert.deepEqual(x.dosyalar, ['GBOLU001.summary.json', 'GBOLU001.summary.json.tmp1234', 'GBOLU001.txt']);
+  assert.deepEqual(x.dosyalar, [
+    'GBOLU001.summary.json',
+    'GBOLU001.summary.json.tmp1234',
+    'GBOLU001.txt',
+  ]);
   assert.deepEqual(x.tbmwans, { 'dbo.Nginx_Audit_Hosts': 2, 'dbo.Nginx_Config_Audit': 1 });
-  assert.deepEqual(x.portal, { nginx_hub_file_history: 2, nginx_hub_file_state: 1, nginx_cis_exceptions: 1 });
+  assert.deepEqual(x.portal, {
+    nginx_hub_file_history: 2,
+    nginx_hub_file_state: 1,
+    nginx_cis_exceptions: 1,
+  });
   assert.equal(x.toplamSatir, 7);
   assert.equal(x.sonTarama, tarih(30));
   assert.ok(x.sonGorulme && Date.parse(x.sonGorulme) <= SIMDI - 29 * GUN);
   assert.deepEqual(a.sinirlar, { maksHost: 50, maksSatir: 20000, parca: 5000 });
   // dbo.nginx_inventory ve dbo.Inventory hic sayilmaz/silinmez
-  assert.ok(!tb.sorgular.some((q) => /COUNT_BIG[\s\S]*(nginx_inventory|dbo\.Inventory)/.test(q.text)));
+  assert.ok(
+    !tb.sorgular.some((q) => /COUNT_BIG[\s\S]*(nginx_inventory|dbo\.Inventory)/.test(q.text)),
+  );
 });
 
 test('ES6 istek dogrulama: onay SIL zorunlu, en fazla 50 sunucu, gecersiz ad', async () => {
@@ -287,7 +375,13 @@ test('ES6 istek dogrulama: onay SIL zorunlu, en fazla 50 sunucu, gecersiz ad', a
     [{ hosts: ['GBOLU001'] }, /Onay eksik/],
     [{ hosts: ['GBOLU001'], onay: 'sil' }, /Onay eksik/],
     [{ hosts: [], onay: 'SIL' }, /En az bir/],
-    [{ hosts: Array.from({ length: 51 }, (_, i) => `GBX${String(i).padStart(4, '0')}`), onay: 'SIL' }, /en fazla 50/],
+    [
+      {
+        hosts: Array.from({ length: 51 }, (_, i) => `GBX${String(i).padStart(4, '0')}`),
+        onay: 'SIL',
+      },
+      /en fazla 50/,
+    ],
     [{ hosts: ['../etc'], onay: 'SIL' }, /Geçersiz sunucu/],
     [{ hosts: ['GB OLU'], onay: 'SIL' }, /Geçersiz sunucu/],
   ]) {
@@ -298,7 +392,10 @@ test('ES6 istek dogrulama: onay SIL zorunlu, en fazla 50 sunucu, gecersiz ad', a
 
 test('ES7 silme aninda yeniden kontrol: envanterdeki / yeni taranmis sunucu istenirse HICBIR SEY silinmez', async () => {
   senaryo();
-  await assert.rejects(es.temizle({ hosts: ['GBOLU001', 'GBNGXP01'], onay: 'SIL' }), (e) => e.status === 409 && e.reddedilen.join() === 'GBNGXP01');
+  await assert.rejects(
+    es.temizle({ hosts: ['GBOLU001', 'GBNGXP01'], onay: 'SIL' }),
+    (e) => e.status === 409 && e.reddedilen.join() === 'GBNGXP01',
+  );
   // Ekran listeledikten sonra sunucu yeniden taranmis:
   await es.adaylar();
   tb.tablolar.get('dbo.Nginx_Audit_Hosts').push({ host: 'GBOLU001', scan_date: tarih(0) });
@@ -316,25 +413,47 @@ test('ES8 temizlik: DB satirlari + yalniz o sunucunun dosyalari + _seen anahtari
   assert.equal(r.toplamSatir, 7);
   const h = r.hosts[0];
   assert.equal(h.tamam, true, JSON.stringify(h.hatalar));
-  assert.deepEqual(h.dosyalar.sort(), ['GBOLU001.summary.json', 'GBOLU001.summary.json.tmp1234', 'GBOLU001.txt']);
+  assert.deepEqual(h.dosyalar.sort(), [
+    'GBOLU001.summary.json',
+    'GBOLU001.summary.json.tmp1234',
+    'GBOLU001.txt',
+  ]);
   assert.equal(h.seen, true);
   assert.deepEqual(fs.readdirSync(raw).sort(), ['GBNGXP01.txt', 'GBOLU0011.txt', '_seen.json']);
   const seen = JSON.parse(fs.readFileSync(path.join(raw, '_seen.json'), 'utf8'));
   assert.deepEqual(Object.keys(seen.hosts), ['GBNGXP01']);
-  assert.deepEqual(pdb.tablolar.get('nginx_cis_exceptions'), [{ host: null }], 'filo geneli istisna (host NULL) kalir');
+  assert.deepEqual(
+    pdb.tablolar.get('nginx_cis_exceptions'),
+    [{ host: null }],
+    'filo geneli istisna (host NULL) kalir',
+  );
   assert.deepEqual(pdb.tablolar.get('nginx_hub_file_history'), [{ host: 'GBNGXP01' }]);
-  assert.deepEqual(tb.tablolar.get('dbo.Nginx_Audit_Hosts').map((x) => x.host), ['GBNGXP01']);
+  assert.deepEqual(
+    tb.tablolar.get('dbo.Nginx_Audit_Hosts').map((x) => x.host),
+    ['GBNGXP01'],
+  );
   assert.equal(dinlendi, 1, 'temizlik dinleyicisi (onbellekler) cagrildi');
   // Portal once, sonra TBMWANS; her DELETE TOP <= 5000
   assert.ok([...tb.deletes, ...pdb.deletes].every((d) => d.n <= 5000));
   const ikinci = await es.adaylar();
-  assert.ok(!ikinci.adaylar.some((x) => x.host === 'GBOLU001'), 'temizlenen sunucu artik aday degil');
+  assert.ok(
+    !ikinci.adaylar.some((x) => x.host === 'GBOLU001'),
+    'temizlenen sunucu artik aday degil',
+  );
 });
 
 test('ES9 parcali silme ve istek basina 20000 satir siniri: kalan rapor edilir, yarim kalan sunucunun dosyasi silinmez', async () => {
   const rows = (h, n) => Array.from({ length: n }, () => ({ host: h, scan_date: tarih(40) }));
-  tb.tablolar.set('dbo.Nginx_Audit_Settings', [...rows('GBAAA001', 12000), ...rows('GBBBB001', 9000), ...rows('GBCCC001', 10)]);
-  tb.tablolar.set('dbo.Nginx_Audit_Hosts', [...rows('GBAAA001', 1), ...rows('GBBBB001', 1), ...rows('GBCCC001', 1)]);
+  tb.tablolar.set('dbo.Nginx_Audit_Settings', [
+    ...rows('GBAAA001', 12000),
+    ...rows('GBBBB001', 9000),
+    ...rows('GBCCC001', 10),
+  ]);
+  tb.tablolar.set('dbo.Nginx_Audit_Hosts', [
+    ...rows('GBAAA001', 1),
+    ...rows('GBBBB001', 1),
+    ...rows('GBCCC001', 1),
+  ]);
   dosya('GBAAA001.txt', 40);
   dosya('GBBBB001.txt', 40);
   dosya('GBCCC001.txt', 40);
@@ -344,16 +463,23 @@ test('ES9 parcali silme ve istek basina 20000 satir siniri: kalan rapor edilir, 
   assert.equal(r.kalanVar, true);
   const [a, b, c] = r.hosts;
   assert.equal(a.tamam, true);
-  assert.deepEqual(a.silinenSatir, { 'dbo.Nginx_Audit_Hosts': 1, 'dbo.Nginx_Audit_Settings': 12000 });
+  assert.deepEqual(a.silinenSatir, {
+    'dbo.Nginx_Audit_Hosts': 1,
+    'dbo.Nginx_Audit_Settings': 12000,
+  });
   assert.equal(b.tamam, false);
   assert.equal(b.silinenSatir['dbo.Nginx_Audit_Hosts'], 1);
   assert.equal(b.silinenSatir['dbo.Nginx_Audit_Settings'], 20000 - 12001 - 1);
   assert.deepEqual(b.dosyalar, [], 'yarim kalan sunucunun dokumu silinmez (aday listesinde kalir)');
   assert.equal(c.islenmedi, true);
-  assert.ok(fs.existsSync(path.join(raw, 'GBBBB001.txt')) && fs.existsSync(path.join(raw, 'GBCCC001.txt')));
+  assert.ok(
+    fs.existsSync(path.join(raw, 'GBBBB001.txt')) && fs.existsSync(path.join(raw, 'GBCCC001.txt')),
+  );
   assert.ok(!fs.existsSync(path.join(raw, 'GBAAA001.txt')));
   // Parcalar: 12000 -> 5000, 5000, 2000; hicbir parca 5000'i asmaz, butce asilmaz.
-  const aParca = tb.deletes.filter((d) => d.host === 'GBAAA001' && d.tablo === 'dbo.Nginx_Audit_Settings').map((d) => d.k);
+  const aParca = tb.deletes
+    .filter((d) => d.host === 'GBAAA001' && d.tablo === 'dbo.Nginx_Audit_Settings')
+    .map((d) => d.k);
   assert.deepEqual(aParca, [5000, 5000, 2000]);
   assert.ok(tb.deletes.every((d) => d.n >= 1 && d.n <= 5000));
   // Ikinci kosu kalani bitirir.
@@ -365,7 +491,10 @@ test('ES9 parcali silme ve istek basina 20000 satir siniri: kalan rapor edilir, 
 
 test('ES10 silme hatasi (izin yok): hata raporlanir, diger tablolar denenir, dosyalar SILINMEZ', async () => {
   senaryo();
-  tb.deleteHata.set('dbo.Nginx_Config_Audit', "The DELETE permission was denied on the object 'Nginx_Config_Audit'");
+  tb.deleteHata.set(
+    'dbo.Nginx_Config_Audit',
+    "The DELETE permission was denied on the object 'Nginx_Config_Audit'",
+  );
   const r = await es.temizle({ hosts: ['GBOLU001'], onay: 'SIL' });
   const h = r.hosts[0];
   assert.equal(h.tamam, false);
@@ -392,7 +521,10 @@ test('ES11 yol icerme: dizin ve sembolik bag silinmez; yalniz HOST.(txt|summary.
   const f = es._test.hostDosyalariniSil('GBOLU002');
   assert.deepEqual(f.silinen, ['GBOLU002.summary.json']);
   assert.deepEqual(f.atlanan, ['GBOLU002.txt']);
-  assert.ok(fs.existsSync(path.join(raw, 'GBOLU002.txt.bak')) && fs.existsSync(path.join(raw, 'GBOLU002.summary.json.tmpX')));
+  assert.ok(
+    fs.existsSync(path.join(raw, 'GBOLU002.txt.bak')) &&
+      fs.existsSync(path.join(raw, 'GBOLU002.summary.json.tmpX')),
+  );
   if (bag) {
     const g = es._test.hostDosyalariniSil('GBOLU003');
     assert.deepEqual(g.silinen, []);
@@ -403,14 +535,23 @@ test('ES11 yol icerme: dizin ve sembolik bag silinmez; yalniz HOST.(txt|summary.
 });
 
 test('ES12 SQL: silme parametreli ve whitelist tablo; tablo adi dogrulanir', async () => {
-  await assert.rejects(es._test.parcaliSil('tbmwans', 'dbo.X; DROP TABLE y', 'GBOLU001', 10), /gecersiz/);
-  await assert.rejects(es._test.parcaliSil('tbmwans', 'dbo.Nginx_Audit_Hosts', "GB'X", 10), /gecersiz/);
+  await assert.rejects(
+    es._test.parcaliSil('tbmwans', 'dbo.X; DROP TABLE y', 'GBOLU001', 10),
+    /gecersiz/,
+  );
+  await assert.rejects(
+    es._test.parcaliSil('tbmwans', 'dbo.Nginx_Audit_Hosts', "GB'X", 10),
+    /gecersiz/,
+  );
   const src = fs.readFileSync(path.join(__dirname, '..', 'eski-sunucu.cjs'), 'utf8');
   assert.ok(src.includes('DELETE TOP (@n) FROM ${tablo} WHERE host = @h'));
   assert.ok(src.includes('DELETE TOP (${n}) FROM ${tablo} WHERE host = $1'));
   assert.ok(!/nginx_inventory'?\s*}?,?\s*\n?\s*{ tablo: 'dbo\.Inventory/.test(src));
   for (const t of [...es.TBMWANS_TABLOLARI, ...es.PORTAL_TABLOLARI]) {
-    assert.ok(!/nginx_inventory$|\.Inventory$/i.test(t.tablo), `${t.tablo} baska isin tablosu, silinmemeli`);
+    assert.ok(
+      !/nginx_inventory$|\.Inventory$/i.test(t.tablo),
+      `${t.tablo} baska isin tablosu, silinmemeli`,
+    );
   }
   assert.deepEqual(es.SINIRLAR, { PARCA: 5000, MAKS_HOST: 50, MAKS_SATIR: 20000 });
 });
@@ -423,11 +564,24 @@ test('ES13 yalniz Admin: uclar Admin disi okuma listesinde degil, router require
     let gecti = false;
     let durum = 200;
     const req = { method, path: p, session: { user: { username: 'u', role: rol } } };
-    const res = { status(c) { durum = c; return this; }, json() { return this; } };
-    kapi(req, res, () => { gecti = true; });
+    const res = {
+      status(c) {
+        durum = c;
+        return this;
+      },
+      json() {
+        return this;
+      },
+    };
+    kapi(req, res, () => {
+      gecti = true;
+    });
     return { gecti, durum };
   };
-  for (const [m, p] of [['GET', '/eski-sunucular'], ['POST', '/eski-sunucular/temizle']]) {
+  for (const [m, p] of [
+    ['GET', '/eski-sunucular'],
+    ['POST', '/eski-sunucular/temizle'],
+  ]) {
     assert.equal(kos('User', m, p).gecti, false, `${m} ${p} Admin disina acik`);
     assert.equal(kos('Admin', m, p).gecti, true);
   }
@@ -439,17 +593,48 @@ test('ES13 yalniz Admin: uclar Admin disi okuma listesinde degil, router require
   const auditYolu = require.resolve('../../audit/index.cjs');
   const kayitlar = [];
   const eski = require.cache[auditYolu];
-  require.cache[auditYolu] = { id: auditYolu, filename: auditYolu, loaded: true, exports: { auditPortal: (req, action, opts) => kayitlar.push({ action, ...opts }) } };
+  require.cache[auditYolu] = {
+    id: auditYolu,
+    filename: auditYolu,
+    loaded: true,
+    exports: { auditPortal: (req, action, opts) => kayitlar.push({ action, ...opts }) },
+  };
   try {
     senaryo();
-    const cevap = () => { const r = { kod: 200, govde: null, status(c) { r.kod = c; return r; }, json(b) { r.govde = b; return r; } }; return r; };
+    const cevap = () => {
+      const r = {
+        kod: 200,
+        govde: null,
+        status(c) {
+          r.kod = c;
+          return r;
+        },
+        json(b) {
+          r.govde = b;
+          return r;
+        },
+      };
+      return r;
+    };
     const r1 = cevap();
-    await nc._eskiUclariForTest.temizle({ body: { hosts: ['GBNGXP01'], onay: 'SIL' }, session: { user: { username: 'adm', role: 'Admin' } } }, r1);
+    await nc._eskiUclariForTest.temizle(
+      {
+        body: { hosts: ['GBNGXP01'], onay: 'SIL' },
+        session: { user: { username: 'adm', role: 'Admin' } },
+      },
+      r1,
+    );
     assert.equal(r1.kod, 409);
     assert.equal(kayitlar.at(-1).action, 'nginx_eski_sunucu_temizlik');
     assert.equal(kayitlar.at(-1).result, 'denied');
     const r2 = cevap();
-    await nc._eskiUclariForTest.temizle({ body: { hosts: ['GBOLU001'], onay: 'SIL' }, session: { user: { username: 'adm', role: 'Admin' } } }, r2);
+    await nc._eskiUclariForTest.temizle(
+      {
+        body: { hosts: ['GBOLU001'], onay: 'SIL' },
+        session: { user: { username: 'adm', role: 'Admin' } },
+      },
+      r2,
+    );
     assert.equal(r2.kod, 200);
     assert.equal(r2.govde.ok, true);
     const k = kayitlar.at(-1);
@@ -471,12 +656,20 @@ test('ES13 yalniz Admin: uclar Admin disi okuma listesinde degil, router require
 test('ES14 eszamanli temizlik reddedilir (kilit)', async () => {
   senaryo();
   let birak;
-  const bekle = new Promise((r) => { birak = r; });
+  const bekle = new Promise((r) => {
+    birak = r;
+  });
   const asil = pdb.api.query;
-  pdb.api.query = async (...a) => { await bekle; return asil(...a); };
+  pdb.api.query = async (...a) => {
+    await bekle;
+    return asil(...a);
+  };
   const ilk = es.temizle({ hosts: ['GBOLU001'], onay: 'SIL' });
   await new Promise((r) => setImmediate(r));
-  await assert.rejects(es.temizle({ hosts: ['GBOLU001'], onay: 'SIL' }), (e) => e.status === 409 && /sürüyor/.test(e.message));
+  await assert.rejects(
+    es.temizle({ hosts: ['GBOLU001'], onay: 'SIL' }),
+    (e) => e.status === 409 && /sürüyor/.test(e.message),
+  );
   birak();
   const r = await ilk;
   assert.equal(r.hosts[0].tamam, true);
@@ -487,20 +680,25 @@ test('ES15 uclar: listeleme uclari eskiGizli yazar ve suzgec ozetten once uygula
   for (const s of [
     'hosts: es.ayir(hosts),',
     ': es.ayir(listDumpedHosts()).map((d) => d.host);',
-    'const hosts = es.ayir(inv).filter(',
+    /const hosts = es\s*\.ayir\(inv\)\s*\.filter\(/,
     'suz: (rows) => es.ayir(rows),',
     'changes: req.query.host ? rows : es.ayir(rows), eskiGizli: es.bilgi()',
-  ]) assert.ok(src.includes(s), s);
+  ])
+    assert.ok(typeof s === 'string' ? src.includes(s) : s.test(src), String(s));
   const cis = fs.readFileSync(path.join(__dirname, '..', '..', 'nginx-cis', 'index.cjs'), 'utf8');
-  assert.ok(cis.indexOf('results: es.ayir(ham.results)') > 0 && cis.indexOf('results: es.ayir(ham.results)') < cis.indexOf('scoreAll({ ...raw, ...rules })'));
+  assert.ok(
+    cis.indexOf('results: es.ayir(ham.results)') > 0 &&
+      cis.indexOf('results: es.ayir(ham.results)') < cis.indexOf('scoreAll({ ...raw, ...rules })'),
+  );
   const den = fs.readFileSync(path.join(__dirname, '..', '..', 'audit', 'denetim.cjs'), 'utf8');
   for (const s of [
     'hosts: suz(hosts.recordset || []),',
-    'summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []), etk.m)',
+    /summarize\(\s*es\.ayir\(aggRes\.recordset \|\| \[\]\),\s*es\.ayir\(srvRes\.recordset \|\| \[\]\),\s*etk\.m,?\s*\)/,
     'summarizeLocations(es.ayir(r.recordset || []))',
     'es.ayir(r.recordset || [], (x) => x.hostname)',
     'const raw = es.ayir(rowsRes.recordset || []);',
-  ]) assert.ok(den.includes(s), s);
+  ])
+    assert.ok(typeof s === 'string' ? den.includes(s) : s.test(den), String(s));
   const rl = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
   assert.ok(rl.indexOf("typeof suz === 'function'") < rl.indexOf('const ozet = summarize(hosts);'));
 });
@@ -526,9 +724,32 @@ test('ES16 suresi dolan deger hemen doner, yenisi arka planda hesaplanir (liste 
 test('ES17 FQDN/kisa ad: kaynak sunucuyu yalniz FQDN ile gorduyse kisa adli dokum ESKI DEGIL, aday degil, silinmez', async () => {
   // Envanterde yok; dokum 30 gun once (kisa ad). Taze sinyal yalniz FQDN ile.
   for (const [ad, kur] of [
-    ['TBMWANS tarama tablosu', () => tb.tablolar.set('dbo.Nginx_Cis_Hosts', [{ host: 'gbngxp09.bmw.local', scan_date: tarih(1) }])],
-    ['dbo.nginx_inventory', () => { tb.nginxInv = [{ hostname: 'gbngxp09.bmw.local', source_last_update: gunOnce(1).toISOString() }]; }],
-    ['_seen.json', () => fs.writeFileSync(path.join(raw, '_seen.json'), JSON.stringify({ at: gunOnce(1).toISOString(), hosts: { 'gbngxp09.bmw.local': gunOnce(1).toISOString() } }))],
+    [
+      'TBMWANS tarama tablosu',
+      () =>
+        tb.tablolar.set('dbo.Nginx_Cis_Hosts', [
+          { host: 'gbngxp09.bmw.local', scan_date: tarih(1) },
+        ]),
+    ],
+    [
+      'dbo.nginx_inventory',
+      () => {
+        tb.nginxInv = [
+          { hostname: 'gbngxp09.bmw.local', source_last_update: gunOnce(1).toISOString() },
+        ];
+      },
+    ],
+    [
+      '_seen.json',
+      () =>
+        fs.writeFileSync(
+          path.join(raw, '_seen.json'),
+          JSON.stringify({
+            at: gunOnce(1).toISOString(),
+            hosts: { 'gbngxp09.bmw.local': gunOnce(1).toISOString() },
+          }),
+        ),
+    ],
   ]) {
     rawTemizle();
     tb = sahteTbmwans();
@@ -541,8 +762,15 @@ test('ES17 FQDN/kisa ad: kaynak sunucuyu yalniz FQDN ile gorduyse kisa adli doku
     assert.equal(es.eskiMi(d, 'gbngxp09.bmw.local'), false, ad);
     const a = await es.adaylar();
     assert.ok(!a.adaylar.some((x) => x.host === 'GBNGXP09'), `${ad}: canli sunucu aday listesinde`);
-    await assert.rejects(es.temizle({ hosts: ['GBNGXP09'], onay: 'SIL' }), (e) => e.status === 409, ad);
-    assert.ok(fs.existsSync(path.join(raw, 'GBNGXP09.txt')), `${ad}: canli sunucunun dokumu silindi`);
+    await assert.rejects(
+      es.temizle({ hosts: ['GBNGXP09'], onay: 'SIL' }),
+      (e) => e.status === 409,
+      ad,
+    );
+    assert.ok(
+      fs.existsSync(path.join(raw, 'GBNGXP09.txt')),
+      `${ad}: canli sunucunun dokumu silindi`,
+    );
   }
   // Ters yon de: tabloda kisa ad taze, sorulan FQDN.
   tb.tablolar.set('dbo.Nginx_Audit_Hosts', [{ host: 'GBNGXP10', scan_date: tarih(1) }]);
@@ -572,7 +800,10 @@ test('ES18b _seen.json yoksa eski davranis (yalniz dokum mtime); dizi bicimi "at
   let d = await es.durum({ taze: true });
   assert.equal(d.ok, true, d.hata);
   assert.equal(es.eskiMi(d, 'GBOLU001'), true);
-  fs.writeFileSync(path.join(raw, '_seen.json'), JSON.stringify({ at: gunOnce(1).toISOString(), hosts: ['gbolu001'] }));
+  fs.writeFileSync(
+    path.join(raw, '_seen.json'),
+    JSON.stringify({ at: gunOnce(1).toISOString(), hosts: ['gbolu001'] }),
+  );
   d = await es.durum({ taze: true });
   assert.equal(d.ok, true, d.hata);
   assert.equal(es.eskiMi(d, 'GBOLU001'), false);
@@ -597,10 +828,19 @@ test('ES19 bas bosluklu host satirlari: duz silme kacirirsa normallestirilmis ik
   assert.equal(h.tamam, true, JSON.stringify(h.hatalar));
   assert.equal(h.silinenSatir['dbo.Nginx_Audit_Hosts'], 3);
   assert.equal(h.silinenSatir.nginx_hub_file_state, 2);
-  assert.deepEqual(tb.tablolar.get('dbo.Nginx_Audit_Hosts').map((x) => x.host), ['GBNGXP01']);
+  assert.deepEqual(
+    tb.tablolar.get('dbo.Nginx_Audit_Hosts').map((x) => x.host),
+    ['GBNGXP01'],
+  );
   assert.deepEqual(pdb.tablolar.get('nginx_hub_file_state'), []);
-  assert.ok(tb.deletes.some((d) => d.normal && d.k === 1), 'normallestirilmis gecis kosmadi');
-  assert.ok(!tb.deletes.some((d) => d.normal && d.tablo !== 'dbo.Nginx_Audit_Hosts'), 'gereksiz normal gecis');
+  assert.ok(
+    tb.deletes.some((d) => d.normal && d.k === 1),
+    'normallestirilmis gecis kosmadi',
+  );
+  assert.ok(
+    !tb.deletes.some((d) => d.normal && d.tablo !== 'dbo.Nginx_Audit_Hosts'),
+    'gereksiz normal gecis',
+  );
   assert.ok(!fs.existsSync(path.join(raw, 'GBOLU001.txt')));
 
   // Normal gecis de silemezse: sunucu TAMAM SAYILMAZ, dosya kalir, hata yazilir.
@@ -618,8 +858,15 @@ test('ES19 bas bosluklu host satirlari: duz silme kacirirsa normallestirilmis ik
 });
 
 test('ES20 onay metni: SIL ve Turkce Caps Lock SIL (noktali I) kabul; kucuk harf reddedilir', () => {
-  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: 'SIL' }), { hosts: ['GBOLU001'] });
-  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: 'SİL' }), { hosts: ['GBOLU001'] });
-  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: ' SIL ' }), { hosts: ['GBOLU001'] });
-  for (const onay of ['sil', 'si̇l', 'SILL', 42, null]) assert.equal(es._test.istekDogrula({ hosts: ['GBOLU001'], onay }).status, 400, String(onay));
+  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: 'SIL' }), {
+    hosts: ['GBOLU001'],
+  });
+  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: 'SİL' }), {
+    hosts: ['GBOLU001'],
+  });
+  assert.deepEqual(es._test.istekDogrula({ hosts: ['GBOLU001'], onay: ' SIL ' }), {
+    hosts: ['GBOLU001'],
+  });
+  for (const onay of ['sil', 'si̇l', 'SILL', 42, null])
+    assert.equal(es._test.istekDogrula({ hosts: ['GBOLU001'], onay }).status, 400, String(onay));
 });

@@ -212,17 +212,17 @@ function initAuth(app) {
         });
       } catch { /* yoksay */ }
       let mesaj = err.message;
-      if (sayac && sayac.retryAfter) {
+      if (sayac?.retryAfter) {
         res.setHeader("Retry-After", String(sayac.retryAfter));
         mesaj += ` Çok fazla hatalı deneme: ${sayac.retryAfter} saniye bekleyin.`;
-      } else if (sayac && sayac.kalan > 0 && sayac.kalan <= 2) {
+      } else if (sayac?.kalan > 0 && sayac.kalan <= 2) {
         mesaj += ` (${sayac.kalan} deneme hakkınız kaldı, sonra kısa bir bekleme uygulanır.)`;
       }
       res.status(status).json({
         ok: false,
         code,
         error: mesaj,
-        ...(sayac && sayac.retryAfter ? { retryAfter: sayac.retryAfter } : {}),
+        ...(sayac?.retryAfter ? { retryAfter: sayac.retryAfter } : {}),
       });
     }
   });
@@ -361,11 +361,7 @@ function initAuth(app) {
       sessionStore: sessionStore ? "mssql" : "memory",
       sessionPolicy: sessionPolicy.policy(),
       cookieSecureConfigured: process.env.NODE_ENV === "production",
-      hint: !req.session?.user && !!oturumCerezi.istektekiOturumCerezi(req)
-        ? "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir."
-        : (process.env.NODE_ENV === "production" && req.headers["x-forwarded-proto"] !== "https"
-          ? "Prod'da X-Forwarded-Proto=https YOK → secure cookie set edilmez → login sonrası 401. Ters-proxy header'ı göndermeli."
-          : "OK / ek teşhis gerekmez."),
+      hint: (() => { if (!req.session?.user && !!oturumCerezi.istektekiOturumCerezi(req)) return "Cookie var ama session yok → farklı proses/MemoryStore ya da store'da kayıt yok. SESSION_STORE=mssql önerilir."; if (process.env.NODE_ENV === "production" && req.headers["x-forwarded-proto"] !== "https") return "Prod'da X-Forwarded-Proto=https YOK → secure cookie set edilmez → login sonrası 401. Ters-proxy header'ı göndermeli."; return "OK / ek teşhis gerekmez."; })(),
     });
   });
 

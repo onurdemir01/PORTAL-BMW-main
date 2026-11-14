@@ -233,7 +233,7 @@ async function getApps({ env, tenant, clusterName, namespace }) {
     // TARAMA KAYDI OKUNAMADI. Sihirbaz bu durumda OTOMATIK tarama YAPMAMALI: kayit
     // okunamadigi icin tarama sonrasi da ayni belirsizlik surer ve her giris yeni bir
     // AWX job'i acar (sonsuz dongu). Elle tarama yolu acik kalir.
-    scanUnknown: Boolean(scan && scan.unknown),
+    scanUnknown: Boolean(scan?.unknown),
   };
 }
 

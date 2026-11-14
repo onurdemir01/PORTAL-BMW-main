@@ -85,7 +85,8 @@ function portalKalan(once, son) {
   const out = [];
   for (const u of [...o.urun].sort()) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
   for (const k of [...o.jvm].sort()) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
-  for (const k of [...s.jvm].sort()) if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) out.push(`FARK|NEW|JVM|${k}|`);
+  for (const k of [...s.jvm].sort())
+    if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) out.push(`FARK|NEW|JVM|${k}|`);
   return out;
 }
 
@@ -101,10 +102,16 @@ function kontrolNedenleri(once, r) {
   const onceVar = Array.isArray(once) && bootVar(once);
   const onceBos = (onceVar && !izlenenVar(once)) || plan.some((l) => l.startsWith('BILGI|BOS|'));
   if (onceBos)
-    neden.push('Reboot öncesi görüntüde izlenen ürün/JVM yoktu; bu sunucuda hiçbir şey açılıp kapatılmadı (uygulamalar zaten kapalıyken mi alındı?).');
-  const eski = plan.some((l) => l.startsWith('BILGI|ESKI|')) || (onceVar && nesilKarsilastirilamaz(once, r?.son_goruntu));
+    neden.push(
+      'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; bu sunucuda hiçbir şey açılıp kapatılmadı (uygulamalar zaten kapalıyken mi alındı?).',
+    );
+  const eski =
+    plan.some((l) => l.startsWith('BILGI|ESKI|')) ||
+    (onceVar && nesilKarsilastirilamaz(once, r?.son_goruntu));
   if (eski)
-    neden.push('Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss nesil kuralı değiştiği için JBoss ürün/JVM\'leri karşılaştırılmadı ve dokunulmadı — elle kontrol edin.');
+    neden.push(
+      "Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss nesil kuralı değiştiği için JBoss ürün/JVM'leri karşılaştırılmadı ve dokunulmadı — elle kontrol edin.",
+    );
   const calisan = [];
   if (onceVar) {
     const haric = nesilKarsilastirilamaz(once, r?.son_goruntu);
@@ -129,7 +136,9 @@ function kontrolNedenleri(once, r) {
     }
   }
   if (calisan.length)
-    neden.push(`Reboot öncesi çalışmayan ${calisan.length} öğe şimdi çalışıyor ve kurala göre dokunulmadı: ${calisan.slice(0, 10).join(', ')}${calisan.length > 10 ? ' …' : ''} — beklenen durum mu kontrol edin.`);
+    neden.push(
+      `Reboot öncesi çalışmayan ${calisan.length} öğe şimdi çalışıyor ve kurala göre dokunulmadı: ${calisan.slice(0, 10).join(', ')}${calisan.length > 10 ? ' …' : ''} — beklenen durum mu kontrol edin.`,
+    );
   return neden;
 }
 
@@ -144,7 +153,10 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
   for (const h of hedefler) {
     const r = sunucular?.[h];
     if (!r || r.sonuc_yok || r.ulasilamadi) {
-      out[h] = { durum: 'olculemedi', sebep: 'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)' };
+      out[h] = {
+        durum: 'olculemedi',
+        sebep: 'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)',
+      };
       continue;
     }
     if (!r.once_var) {
@@ -155,11 +167,17 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
     const hatali = islemler.filter((l) => l.split('|')[4] === 'FAIL').length;
     const kalanBetik = dizi(r.son_fark).filter((l) => l.startsWith('FARK|'));
     if (!r.son_olculdu) {
-      out[h] = { durum: 'olculemedi', sebep: 'son goruntu alinamadi', islem: islemler.length, hatali };
+      out[h] = {
+        durum: 'olculemedi',
+        sebep: 'son goruntu alinamadi',
+        islem: islemler.length,
+        hatali,
+      };
       continue;
     }
     const once = onceSat?.[h];
-    const kalanPortal = Array.isArray(once) && bootVar(once) ? portalKalan(once, r.son_goruntu) : [];
+    const kalanPortal =
+      Array.isArray(once) && bootVar(once) ? portalKalan(once, r.son_goruntu) : [];
     const kalan = Math.max(kalanBetik.length, kalanPortal.length);
     const neden = kontrolNedenleri(once, r);
     const durum = kalan ? 'sorunlu' : neden.length ? 'kontrol' : 'sorunsuz';
@@ -186,7 +204,13 @@ function kayitDurumu(d, sonucVar) {
 }
 
 /** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
-const goruntuTamam = (r) => !!(r && r.goruntu_ok && Array.isArray(r.goruntu) && r.goruntu.some((l) => String(l).startsWith('BOOT|')));
+const goruntuTamam = (r) =>
+  !!(
+    r &&
+    r.goruntu_ok &&
+    Array.isArray(r.goruntu) &&
+    r.goruntu.some((l) => String(l).startsWith('BOOT|'))
+  );
 
 /** "once" sonucundan "sonra" job'inin rc_once girdisi: yalniz goruntusu ALINAN (yeni bicim) sunucular. */
 function onceGirdisi(onceSunucular) {
@@ -225,12 +249,19 @@ function satir(r, ayrinti) {
 function sonraOzeti(r, sonuc, job) {
   const hedefler = jsonOku(r.hosts_json) || [];
   const onceSat = onceGirdisi(jsonOku(r.once_json)?.sunucular);
-  const deg = sonraDegerlendir(sonuc?.sunucular || {}, jsonOku(r.sonra_hedef_json) || hedefler, onceSat);
+  const deg = sonraDegerlendir(
+    sonuc?.sunucular || {},
+    jsonOku(r.sonra_hedef_json) || hedefler,
+    onceSat,
+  );
   const d = Object.values(deg);
   const durum = kayitDurumu(d, !!sonuc);
   const sorunsuz = d.filter((x) => x.durum === 'sorunsuz').length;
   const kontrol = d.filter((x) => x.durum === 'kontrol').length;
-  const ozet = { ...(jsonOku(r.ozet_json) || {}), sonra: { sorunsuz, kontrol, toplam: d.length, job, sunucu: deg } };
+  const ozet = {
+    ...(jsonOku(r.ozet_json) || {}),
+    sonra: { sorunsuz, kontrol, toplam: d.length, job, sunucu: deg },
+  };
   return { durum, ozet };
 }
 
@@ -261,7 +292,11 @@ async function kayit(id) {
 
 /** Kosan faz bittiyse AWX sonucunu okuyup kayda yazar (okunamazsa hicbir sey yazmaz). */
 async function ilerlet(r) {
-  const faz = r.status === 'once_kosuyor' ? 'once' : r.status === 'sonra_kosuyor' ? 'sonra' : null;
+  const faz = (() => {
+    if (r.status === 'once_kosuyor') return 'once';
+    if (r.status === 'sonra_kosuyor') return 'sonra';
+    return null;
+  })();
   if (!faz) return r;
   const jobId = faz === 'once' ? r.once_job_id : r.sonra_job_id;
   const serverId = faz === 'once' ? r.once_server_id : r.sonra_server_id;
@@ -278,16 +313,28 @@ async function ilerlet(r) {
     // ONCE BOS: goruntu alindi ama izlenen urun/JVM yok -> uyari (kayit yine once_hazir olabilir).
     const onceBos = alinan.filter((h) => !izlenenVar(sunucular[h].goruntu));
     const durum = alinan.length ? 'once_hazir' : 'once_hata';
-    const ozet = { once: { alinan: alinan.length, toplam: hedefler.length, job: info.status, once_bos: onceBos } };
+    const ozet = {
+      once: { alinan: alinan.length, toplam: hedefler.length, job: info.status, once_bos: onceBos },
+    };
     await db().query(
       `UPDATE reboot_checks SET status = $1, once_json = $2, once_at = GETUTCDATE(), ozet_json = $3, updated_at = GETUTCDATE() WHERE id = $4 AND status = 'once_kosuyor'`,
-      [durum, JSON.stringify(sonuc || { job: info.status }).slice(0, 4000000), JSON.stringify(ozet), r.id],
+      [
+        durum,
+        JSON.stringify(sonuc || { job: info.status }).slice(0, 4000000),
+        JSON.stringify(ozet),
+        r.id,
+      ],
     );
   } else {
     const { durum, ozet } = sonraOzeti(r, sonuc, info.status);
     await db().query(
       `UPDATE reboot_checks SET status = $1, sonra_json = $2, sonra_at = GETUTCDATE(), ozet_json = $3, updated_at = GETUTCDATE() WHERE id = $4 AND status = 'sonra_kosuyor'`,
-      [durum, JSON.stringify(sonuc || { job: info.status }).slice(0, 4000000), JSON.stringify(ozet), r.id],
+      [
+        durum,
+        JSON.stringify(sonuc || { job: info.status }).slice(0, 4000000),
+        JSON.stringify(ozet),
+        r.id,
+      ],
     );
   }
   return kayit(r.id);
@@ -310,7 +357,8 @@ function mount(router, { launch, HOST_RE, limit }) {
   // (reboot-rapor.cjs). Yeni sekmede acilir; e-postaya yapistirilabilir (Outlook uyumlu tablo yerlesimi).
   router.get('/reboot-check/:id/rapor', async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).type('text').send('Geçersiz kayıt.');
+    if (!Number.isInteger(id) || id <= 0)
+      return res.status(400).type('text').send('Geçersiz kayıt.');
     try {
       let r = await kayit(id);
       if (!r) return res.status(404).type('text').send('Kayıt yok.');
@@ -319,7 +367,10 @@ function mount(router, { launch, HOST_RE, limit }) {
       } catch (e) {
         console.warn('[RebootCheck] kayit yeniden degerlendirilemedi:', e.message);
       }
-      res.set('Cache-Control', 'no-store').type('html').send(require('./reboot-rapor.cjs').raporHtml(satir(r, true)));
+      res
+        .set('Cache-Control', 'no-store')
+        .type('html')
+        .send(require('./reboot-rapor.cjs').raporHtml(satir(r, true)));
     } catch (err) {
       res.status(500).type('text').send(err.message);
     }
@@ -327,7 +378,8 @@ function mount(router, { launch, HOST_RE, limit }) {
 
   router.get('/reboot-check/:id', async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
+    if (!Number.isInteger(id) || id <= 0)
+      return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
     try {
       let r = await kayit(id);
       if (!r) return res.status(404).json({ ok: false, message: 'Kayıt yok.' });
@@ -354,7 +406,11 @@ function mount(router, { launch, HOST_RE, limit }) {
     const hosts = [
       ...new Set(
         (Array.isArray(req.body?.hosts) ? req.body.hosts : [])
-          .map((h) => String(h || '').trim().toUpperCase())
+          .map((h) =>
+            String(h || '')
+              .trim()
+              .toUpperCase(),
+          )
           .filter(Boolean),
       ),
     ];
@@ -376,7 +432,13 @@ function mount(router, { launch, HOST_RE, limit }) {
       const { rows } = await db().query(
         `INSERT INTO reboot_checks (hosts_json, notes, status, created_by, once_job_id, once_server_id)
          VALUES ($1, $2, 'once_kosuyor', $3, $4, $5) RETURNING id`,
-        [JSON.stringify(hosts), not || null, req.session?.user?.username || 'unknown', j.jobId, j.awxServerId],
+        [
+          JSON.stringify(hosts),
+          not || null,
+          req.session?.user?.username || 'unknown',
+          j.jobId,
+          j.awxServerId,
+        ],
       );
       res.json({ ok: true, id: rows?.[0]?.id ?? null, ...j });
     } catch (err) {
@@ -388,19 +450,36 @@ function mount(router, { launch, HOST_RE, limit }) {
   // ve DURDURUR). Yalniz "once" goruntusu ALINAN sunucular hedeflenir.
   router.post('/reboot-check/:id/sonra', async (req, res) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
+    if (!Number.isInteger(id) || id <= 0)
+      return res.status(400).json({ ok: false, message: 'Geçersiz kayıt.' });
     if (req.body?.onay !== true)
-      return res.status(400).json({ ok: false, message: 'Reboot sonrası düzeltme JVM/web başlatır ve durdurur; onay gerekli.' });
+      return res
+        .status(400)
+        .json({
+          ok: false,
+          message: 'Reboot sonrası düzeltme JVM/web başlatır ve durdurur; onay gerekli.',
+        });
     try {
       const r = await kayit(id);
       if (!r) return res.status(404).json({ ok: false, message: 'Kayıt yok.' });
       if (!SONRA_ACIK.includes(r.status))
-        return res.status(409).json({ ok: false, message: `Kayıt bu durumda reboot sonrası kontrole uygun değil (${r.status}).` });
+        return res
+          .status(409)
+          .json({
+            ok: false,
+            message: `Kayıt bu durumda reboot sonrası kontrole uygun değil (${r.status}).`,
+          });
       const once = jsonOku(r.once_json);
       const rcOnce = onceGirdisi(once?.sunucular);
       const hedef = Object.keys(rcOnce);
       if (!hedef.length)
-        return res.status(409).json({ ok: false, message: 'Hiçbir sunucunun (yeni biçimde) "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz. Reboot öncesi görüntüyü yeniden alın.' });
+        return res
+          .status(409)
+          .json({
+            ok: false,
+            message:
+              'Hiçbir sunucunun (yeni biçimde) "önce" görüntüsü yok; reboot sonrası kontrol yapılamaz. Reboot öncesi görüntüyü yeniden alın.',
+          });
       const j = await launch(
         req,
         REGISTRY_KEY,
@@ -422,6 +501,17 @@ function mount(router, { launch, HOST_RE, limit }) {
 }
 
 module.exports = {
-  mount, sonraDegerlendir, onceGirdisi, kontrolNedenleri, kayitDurumu, portalKalan, nesilKarsilastirilamaz, onceKume, kume,
-  sonraOzeti, yenidenDegerlendir, SONRA_ACIK, REGISTRY_KEY,
+  mount,
+  sonraDegerlendir,
+  onceGirdisi,
+  kontrolNedenleri,
+  kayitDurumu,
+  portalKalan,
+  nesilKarsilastirilamaz,
+  onceKume,
+  kume,
+  sonraOzeti,
+  yenidenDegerlendir,
+  SONRA_ACIK,
+  REGISTRY_KEY,
 };

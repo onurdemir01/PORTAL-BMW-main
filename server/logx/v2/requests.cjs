@@ -118,7 +118,7 @@ async function expireOldRequests(deleteStagedFileFn) {
   for (const parca of chunk(idler)) {
     await db.query(
       `UPDATE logx_v2_requests SET state = 'expired'
-        WHERE request_id IN (${parca.map((_, i) => `$${i + 1}`).join(',')})`,
+        WHERE request_id IN (${parca.map((_, i) => ("$" + (i + 1))).join(',')})`,
       parca
     );
   }

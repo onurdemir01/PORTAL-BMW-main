@@ -138,7 +138,8 @@ const AYLAR = Object.freeze({
 const ZAMAN_RE = /^([0-9]{2})\/([A-Za-z]{3})\/([0-9]{4}):([0-9]{2}):([0-9]{2}):([0-9]{2}) ([+-])([0-9]{2})([0-9]{2})$/;
 // Python float() dizgi soz dizimi (alt cizgi ayiracli rakamlar dahil); inf/nan sonlu olmadigi icin
 // `sayi` zaten None dondurur, burada kabul edilmeleri gerekmez.
-const PY_FLOAT_RE = /^[+-]?(?:[0-9](?:_?[0-9])*(?:\.(?:[0-9](?:_?[0-9])*)?)?|\.[0-9](?:_?[0-9])*)(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/;
+const PY_DIGITS = "[0-9](?:_?[0-9])*";
+const PY_FLOAT_RE = new RegExp(`^[+-]?(?:${PY_DIGITS}(?:\\.(?:${PY_DIGITS})?)?|\\.${PY_DIGITS})(?:[eE][+-]?${PY_DIGITS})?$`);
 const PY_INT_RE = /^[+-]?[0-9](?:_?[0-9])*$/;
 
 function okunamadi(mesaj, neden) {
@@ -468,17 +469,19 @@ function ornekOkuyucu(ad, maxSatir = Infinity) {
  * Dosya YALNIZ BILGI: eksik kolon ya da satir tavani kosuyu OKUNAMADI yapmaz; ornekler bosaltilir ve `sorun`
  * yazilir (analiz yuk_cpu_olculemedi(kayit_bozuk) der). Kisa ya da sayisal olmayan satir atlanir.
  */
+function tabloBoz(o, ornekler, ad, neden) {
+  o.sorun = `${ad}: ${neden}`;
+  ornekler.length = 0;
+  return true;
+}
+
 function yukOrnekOkuyucu(ad, maxSatir = Infinity) {
   let bas = null;
   let idx = null;
   let bitti = false;
-  let ornekler = [];
+  const ornekler = [];
   const o = { sorun: null };
-  const boz = (neden) => {
-    o.sorun = `${ad}: ${neden}`;
-    ornekler = [];
-    bitti = true;
-  };
+  const boz = (neden) => { bitti = tabloBoz(o, ornekler, ad, neden); };
   return Object.assign(o, {
     satir(s) {
       if (bitti) return;
@@ -526,12 +529,10 @@ function yukOrnekOkuyucu(ad, maxSatir = Infinity) {
 function bellekOkuyucu(ad, maxSatir = Infinity) {
   let idx = null;
   let bitti = false;
-  let ornekler = [];
+  const ornekler = [];
   const o = { sorun: null };
   const boz = (neden) => {
-    o.sorun = `${ad}: ${neden}`;
-    ornekler = [];
-    bitti = true;
+    bitti = tabloBoz(o, ornekler, ad, neden);
   };
   return Object.assign(o, {
     satir(s) {
@@ -598,7 +599,7 @@ function agOkuyucu(ad, maxSatir = Infinity, maxOrnek = Infinity) {
   const o = { sorun: null, arayuzler: new Set(), sarma: 0, sifirlama: 0 };
   const boz = (neden) => {
     o.sorun = `${ad}: ${neden}`;
-    ornekler = [];
+    ornekler.length = 0;
     bitti = true;
   };
   return Object.assign(o, {
@@ -637,7 +638,7 @@ function agOkuyucu(ad, maxSatir = Infinity, maxOrnek = Infinity) {
         o.arayuzler.add(ar);
       }
       son.set(ar, { rx: yr, tx: yt });
-      if (sonOrnek && sonOrnek.t === t) {
+      if (sonOrnek?.t === t) {
         sonOrnek.rx = rx;
         sonOrnek.tx = tx;
         return;
@@ -659,13 +660,9 @@ function agOkuyucu(ad, maxSatir = Infinity, maxOrnek = Infinity) {
 function bdetayOkuyucu(ad, maxSatir = Infinity) {
   let idx = null;
   let bitti = false;
-  let ornekler = [];
+  const ornekler = [];
   const o = { sorun: null };
-  const boz = (neden) => {
-    o.sorun = `${ad}: ${neden}`;
-    ornekler = [];
-    bitti = true;
-  };
+  const boz = (neden) => { bitti = tabloBoz(o, ornekler, String(ad), neden); };
   return Object.assign(o, {
     satir(s) {
       if (bitti) return;
@@ -1012,9 +1009,9 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
   try {
     await pipeline(asamalar);
   } catch (e) {
-    if (e && e.code === 'OKUNAMADI') throw e;
+    if (e?.code === 'OKUNAMADI') throw e;
     const tur = gz && e && /^Z_|incorrect header|unexpected end/i.test(`${e.code || ''} ${e.message || ''}`) ? 'gzip acilamadi' : 'okunamadi';
-    throw okunamadi(`${ad}: ${tur} (${e && e.message ? e.message : e})`, e);
+    throw okunamadi(`${ad}: ${tur} (${e?.message ? e.message : e})`, e);
   }
   if (yazici instanceof SatirYazici) sonuc.uzun = yazici.uzun;
   return sonuc;
@@ -1098,7 +1095,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         continue;
       }
       // 2026-11-03: hedef bellek kaydi da YALNIZ BILGI (ayni kural).
-      if (desen && desen[1] === 'bellek') {
+      if (desen?.[1] === 'bellek') {
         bellekNormalDegil.push(ad);
         continue;
       }
@@ -1227,7 +1224,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         isleyici = shaOkuyucu();
         break;
       default:
-        isleyici = null;
+        break;
     }
     let s;
     try {
@@ -1236,7 +1233,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
       // B7: yuk makinesi CPU dosyasi okunamazsa (izin, G/C) yalniz o kesit 'sorun'lu bos gecer; bayt tavani kosunun
       // butununu bagladigi icin yine OKUNAMADI.
       if (!['yuk_cpu', 'yuk_cpu_bilgi', 'hedef_cpu', 'hedef_cpu_bilgi', 'bellek', 'ag', 'ag_bilgi', 'bdetay'].includes(t) || sayac.toplam > sayac.max) throw e;
-      const sorun = String(e && e.message ? e.message : e).slice(0, 200);
+      const sorun = String(e?.message ? e.message : e).slice(0, 200);
       if (t === 'yuk_cpu') yukler.push({ ad, ornekler: [], sorun });
       if (t === 'hedef_cpu') hedefCpular.push({ ad, ornekler: [], sorun });
       if (t === 'bellek') bellekler.push({ ad, ornekler: [], sorun });
@@ -1298,8 +1295,8 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         veri.hazirliklar.push({ anahtar: ad.slice('hazirlik_'.length, -'.txt'.length), dosya: ad, bilgi: sonuc });
         break;
       case 'istemci_ozet':
-        if (sonuc && sonuc.kodlama) veri.istemciKodlama.set(sonuc.tur, sonuc.kodlama);
-        if (sonuc && sonuc.ag) veri.istemciAg.set(sonuc.tur, sonuc.ag);
+        if (sonuc?.kodlama) veri.istemciKodlama.set(sonuc.tur, sonuc.kodlama);
+        if (sonuc?.ag) veri.istemciAg.set(sonuc.tur, sonuc.ag);
         break;
       case 'log':
       case 'log_gz':

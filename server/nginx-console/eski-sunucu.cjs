@@ -129,8 +129,8 @@ async function envanterOku(query) {
 
 async function varOlanTablolar(query) {
   const adlar = [...TBMWANS_TABLOLARI.map((t) => t.tablo), 'dbo.nginx_inventory'];
-  const r = await query(`SELECT ${adlar.map((t, i) => `OBJECT_ID('${t}') AS t${i}`).join(', ')}`);
-  const satir = (r && r.recordset && r.recordset[0]) || {};
+  const r = await query(`SELECT ${adlar.map((t, i) => "OBJECT_ID('" + t + "') AS t" + i).join(', ')}`);
+  const satir = (r?.recordset?.[0]) || {};
   const set = new Set();
   adlar.forEach((t, i) => {
     if (satir[`t${i}`] != null) set.add(t);
@@ -163,7 +163,7 @@ async function tazeTbmwans(query, sql, varOlan, esikMs) {
 }
 
 /** raw/ altindaki host dosyalari: HOST -> [dosya adi]. Dizin okunamazsa FIRLATIR. */
-const DOSYA_RE = /^([A-Za-z0-9][A-Za-z0-9-]{1,62})\.(txt|summary\.json(\.tmp\d+)?)$/i;
+const DOSYA_RE = /^([a-z0-9][a-z0-9-]{1,62})\.(txt|summary\.json(\.tmp\d+)?)$/i;
 function hostDosyaHaritasi(dizin) {
   const m = new Map();
   for (const ad of fs.readdirSync(dizin)) {
@@ -355,7 +355,7 @@ async function adaylar() {
       { status: 503, ayrinti: d.hata },
     );
   }
-  const { queryLong, query, sql } = bag.tbmwans();
+  const { queryLong, query } = bag.tbmwans();
   const q = queryLong || query;
   const db = bag.portal();
   const nc = bag.yerel();

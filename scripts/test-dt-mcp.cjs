@@ -63,7 +63,7 @@ async function main() {
   const tools = await mcp.listTools();
   console.log(`✓ ${tools.length} tool listelendi (${Date.now() - t1}ms):`);
   for (const t of tools) {
-    console.log(`  - ${t.name}${t.description ? ` — ${String(t.description).slice(0, 80)}` : ''}`);
+    console.log(`  - ${t.name}${t.description ? (" — " + String(t.description).slice(0, 80)) : ''}`);
   }
 
   // Managed sunucu dogrulamasi: tool adlari dynatrace_managed_* olmali

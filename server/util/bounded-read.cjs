@@ -68,7 +68,7 @@ function readResponseLimited(response, { maxBytes, label, onAbort } = {}) {
       } catch {
         /* kapatma hatasi yutulur — asil hata asagida bildiriliyor */
       }
-      reject(err);
+      reject(err instanceof Error ? err : new Error(String(err)));
     };
 
     response.on('data', (c) => {

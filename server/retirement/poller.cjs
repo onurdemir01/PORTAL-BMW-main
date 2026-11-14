@@ -164,7 +164,7 @@ async function stopTick(now) {
       for (const x of alinan)
         await db.query(`UPDATE retirement_targets SET last_job_id = $1, updated_at = GETUTCDATE() WHERE id = $2`, [r?.jobId ?? null, x.id]);
       await db.query(`UPDATE retirement_records SET status = 'stopping', updated_at = GETUTCDATE() WHERE id = $1 AND status = 'open'`, [t.record_id]);
-      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? ` (${alinan.length} hedef tek iste)` : ''}`);
+      await olay(t.record_id, 'stop', `${etiket}: kesinti penceresi acildi, STOP isi #${r?.jobId ?? '?'}${alinan.length > 1 ? (" (" + alinan.length + " hedef tek iste)") : ''}`);
       kosan += alinan.length;
     } catch (e) {
       console.error(
@@ -587,13 +587,13 @@ async function webSonucTick(recordId = null) {
         continue;
       }
       if (!s || !s.terminal) continue;
-      w.status = s.ok ? 'ok' : s.skip ? 'skip' : 'failed';
+      w.status = (() => { if (s.ok) return 'ok'; if (s.skip) return 'skip'; return 'failed'; })();
       w.bitti = new Date().toISOString();
       w.message = `is #${w.jobId}: ${s.message || ''}`.slice(0, 500);
       degisti = true;
       kapanan += 1;
       await olay(t.record_id, w.status === 'failed' ? 'error' : 'web',
-        `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma ${w.status === 'ok' ? 'TAMAM' : w.status === 'skip' ? 'ATLANDI (yapilacak sey bulunmadi)' : 'BASARISIZ'} - ${w.message}`);
+        `${t.app_name}: ${w.host} / ${w.serverName} vhost kaldirma ${(() => { if (w.status === 'ok') return 'TAMAM'; if (w.status === 'skip') return 'ATLANDI (yapilacak sey bulunmadi)'; return 'BASARISIZ'; })()} - ${w.message}`);
     }
     if (degisti)
       await db.query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2`, [JSON.stringify(liste).slice(0, 60000), t.id]);

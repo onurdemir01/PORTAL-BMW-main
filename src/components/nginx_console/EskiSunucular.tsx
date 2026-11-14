@@ -294,7 +294,7 @@ export function EskiSunucuTemizligi() {
             taranmışsa hiçbir şey silinmez. Bir istekte en fazla {fmtNumber(maksSatir)} satır silinir.
           </p>
           <div className="font-mono text-xs max-h-32 overflow-auto rounded border p-1.5" style={{ borderColor: 'var(--border-subtle)' }}>
-            {[...secili].sort().join(', ')}
+            {[...secili].sort((a, b) => a.localeCompare(b)).join(', ')}
           </div>
           <label className="block text-xs">
             Onaylamak için <b className="font-mono">SIL</b> yazın (büyük harfle; <span className="font-mono">SİL</span> de kabul edilir):

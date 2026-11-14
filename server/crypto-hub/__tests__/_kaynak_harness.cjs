@@ -280,7 +280,7 @@ function dbSorgu(durum, sqlText, p) {
       if (tut && row.held) {
         row.held = 0;
         row.locked_until = null;
-        row.last_result = /WHERE lock_key/.test(s) ? p[2] : p[2];
+        row.last_result = p[2];
         n += 1;
       }
     }

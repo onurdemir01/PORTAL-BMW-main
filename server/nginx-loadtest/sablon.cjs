@@ -63,7 +63,7 @@ function sablonGovdesi(b, bicimDenetle) {
   return { ad, govde, govdeJson };
 }
 
-const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
+const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
 
 function sablonApi(r) {
   let govde = null;

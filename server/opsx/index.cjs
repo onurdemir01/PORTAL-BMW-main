@@ -83,12 +83,11 @@ async function resolveByKey(keyName) {
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   // Satirda awx_server_id yoksa OPSX_AWX_SERVER_ID, o da yoksa 0 (ilk/varsayilan sunucu).
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
-  const serverId =
-    row.awxServerId != null
-      ? Number(row.awxServerId)
-      : Number.isInteger(envServer) && envServer >= 0
-        ? envServer
-        : 0;
+  const serverId = (() => {
+    if (row.awxServerId != null) return Number(row.awxServerId);
+    if (Number.isInteger(envServer) && envServer >= 0) return envServer;
+    return 0;
+  })();
   return { templateId: templateId || null, serverId, keyName };
 }
 
@@ -117,7 +116,9 @@ async function resolveTarget(platform) {
 // /vhosting/<app>.ear, /usr/jboss8 kolu /vhosting8/<app>.ear yazar. Kol oradan okunur; app_path
 // yoksa/NF ise eski davranis (urun surumunun majoru).
 function kurulumKolu(appPath, jbossVersion) {
-  const p = String(appPath || '').trim().toLowerCase();
+  const p = String(appPath || '')
+    .trim()
+    .toLowerCase();
   if (p.startsWith('/vhosting8/')) return '8';
   if (p.startsWith('/vhosting/')) return '7';
   const m = String(jbossVersion || '').match(/^(\d+)/)?.[1];
@@ -187,7 +188,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
     : null;
 
   let jbossMajors;
-  if (claimed && claimed.length) {
+  if (claimed?.length) {
     // ANTI-TOCTOU: istemcinin iddia ettigi her major, secilen sunuculardan EN AZ
     // BIRINDE gercekten kurulu olmali. Aksi halde kullanici envanterde hic olmayan
     // bir majore islem yaptirabilirdi.
@@ -195,7 +196,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
     if (bogus.length) {
       throw Object.assign(
         new Error(
-          `Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => `JBoss ${m}`).join(', ')}`,
+          `Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => 'JBoss ' + m).join(', ')}`,
         ),
         { status: 400 },
       );
@@ -449,7 +450,7 @@ async function namespacesForCluster(env, tenant, user) {
   const ocpInventory = require('../logx/v2/ocp-inventory.cjs');
   const restrictions = require('../logx/v2/restrictions.cjs');
   const out = await ocpInventory.getNamespaces({ clusterNames }).catch(() => ({ items: [] }));
-  const all = [...new Set(out.items || [])].sort();
+  const all = [...new Set(out.items || [])].sort((a, b) => a.localeCompare(b));
   // filterAllowed birebir anahtar eslesmesi bekler; namespace cluster-bagimsiz secildigi
   // icin her namespace'i HER gercek cluster adiyla ayrica kontrol ederiz — bir tanesinde
   // bile acikca kisitlanmissa o namespace listeden dusurulur (fail-safe).
@@ -481,7 +482,7 @@ async function appsForNamespace(env, tenant, namespace, user) {
   const out = await ocpInventory
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
-  return [...new Set((out.items || []).map((i) => i.name))].sort();
+  return [...new Set((out.items || []).map((i) => i.name))].sort((a, b) => a.localeCompare(b));
 }
 
 // Legacy restart / stop / start isteginin dogrulamasi ve AWX girdisi (2026-11-14, POST /api/opsx/run'dan
@@ -492,11 +493,19 @@ function hataVer(status, message, code) {
   return Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
 }
 
-async function legacyIstegiHazirla({ application, hosts, hostMajors, operation, serverConfigMap }, cfg, staticVars) {
+async function legacyIstegiHazirla(
+  { application, hosts, hostMajors, operation, serverConfigMap },
+  cfg,
+  staticVars,
+) {
   if (!ALLOWED_OPERATIONS[operation]) throw hataVer(400, 'Geçersiz işlem.');
   // ANTI-TOCTOU + jboss_version turetme: resolveLegacyTargets() (bkz. dosya basi) —
   // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-  const { requested, seciliEnvler, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors);
+  const { requested, seciliEnvler, jbossVersion } = await resolveLegacyTargets(
+    application,
+    hosts,
+    hostMajors,
+  );
 
   // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
   // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
@@ -580,7 +589,16 @@ async function legacyIstegiHazirla({ application, hosts, hostMajors, operation, 
  * Uretim onay kapisi BURADA DEGIL: cagiran once kapiyi gecirmeli (route opsxProductionKapisi; Toplu Restart
  * uretimi hic baslatmaz - topluRestartBaslat).
  */
-async function opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVars, limitValue, logSummary }) {
+async function opsxIsiBaslat({
+  req,
+  plat,
+  serverId,
+  templateId,
+  keyName,
+  extraVars,
+  limitValue,
+  logSummary,
+}) {
   const runner = require('../ansible/runner.cjs');
   // AWX'te "Prompt on launch" kapaliysa gonderilen extra_vars SESSIZCE yutulur ve
   // playbook bos girdiyle calisir. LogX ile ORTAK kontrol (2026-08-09 olayi).
@@ -598,7 +616,13 @@ async function opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVa
   // (Toplu Restart "dokunulmadi" demez, toplu isi durdurur). Route davranisi degismez.
   let result;
   try {
-    result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
+    result = await runner.launchJobOnServer(
+      serverId,
+      templateId,
+      extraVars,
+      limitValue,
+      req.session?.user,
+    );
   } catch (e) {
     const st = Number(e && e.status);
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
@@ -668,14 +692,21 @@ async function opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVa
 // restart iken server_config_map'e BAKMADAN script tabanli TAM restart kosar -> toplu yoldan hic gitmez.
 const METADATAHUB_TAM_RESTART = Object.freeze(['GBABAT01', 'GBABAT02', 'GBABAP01', 'GBABAP02']);
 const metadatahubHostMu = (h) => {
-  const H = String(h || '').trim().toUpperCase();
+  const H = String(h || '')
+    .trim()
+    .toUpperCase();
   return METADATAHUB_TAM_RESTART.some((x) => H.startsWith(x));
 };
 
 // AD KURALI (2026-11-14 inceleme): filo adlandirmasinda kisa adin ortam harfi P = PROD (server-hub assess.cjs
 // envOf ile AYNI desen). Envanter ortami yanlis "TEST" etiketli P-adli host toplu yoldan GECMEZ.
 const adKuraliProdMu = (h) => {
-  const m = /^[A-Z]{4,6}?(A?)([DTQPO])\d+$/.exec(String(h || '').trim().toUpperCase().split('.')[0]);
+  const m = /^[A-Z]{4,6}?(A?)([DTQPO])\d+$/.exec(
+    String(h || '')
+      .trim()
+      .toUpperCase()
+      .split('.')[0],
+  );
   return !!m && m[2] === 'P';
 };
 
@@ -693,7 +724,10 @@ async function legacyLimitKontrol() {
     );
   let st;
   try {
-    st = await require('../ansible/runner.cjs').getTemplateLaunchSettingsOnServer(serverId, templateId);
+    st = await require('../ansible/runner.cjs').getTemplateLaunchSettingsOnServer(
+      serverId,
+      templateId,
+    );
   } catch (e) {
     throw hataVer(
       503,
@@ -717,7 +751,9 @@ async function legacyLimitKontrol() {
  * code 'uretim' / 'standalone' = bu JVM toplu yoldan gitmez (ekran nedeni yazar).
  */
 async function topluRestartBaslat({ req, application, host, gen, jvm }) {
-  const H = String(host || '').trim().toUpperCase();
+  const H = String(host || '')
+    .trim()
+    .toUpperCase();
   const g = String(gen);
   if (metadatahubHostMu(H))
     throw hataVer(
@@ -726,7 +762,11 @@ async function topluRestartBaslat({ req, application, host, gen, jvm }) {
       'standalone',
     );
   if (adKuraliProdMu(H))
-    throw hataVer(409, `${H} sunucu adı kuralına göre prod (ortam harfi P) — OpsX'ten tek tek (Smart onayı).`, 'uretim');
+    throw hataVer(
+      409,
+      `${H} sunucu adı kuralına göre prod (ortam harfi P) — OpsX'ten tek tek (Smart onayı).`,
+      'uretim',
+    );
   const { templateId, serverId, keyName } = await legacyLimitKontrol();
   const opsxConfig = require('./config.cjs');
   const cfg = (await opsxConfig.getConfig()).legacy;
@@ -744,7 +784,11 @@ async function topluRestartBaslat({ req, application, host, gen, jvm }) {
   );
   const envler = hz.seciliEnvler || [];
   if (!envler.length || envler.some((e) => !String(e || '').trim()))
-    throw hataVer(409, `${H} envanterde ortamı bilinmiyor — prod olabilir; OpsX'ten tek tek.`, 'uretim');
+    throw hataVer(
+      409,
+      `${H} envanterde ortamı bilinmiyor — prod olabilir; OpsX'ten tek tek.`,
+      'uretim',
+    );
   const u = require('./prod-approval.cjs').uretimIstegi([
     { alan: 'ortam', deger: envler },
     { alan: 'sunucu', deger: hz.requested },
@@ -760,7 +804,13 @@ async function topluRestartBaslat({ req, application, host, gen, jvm }) {
     limitValue: hz.limitValue,
     logSummary: `${hz.logSummary} kaynak=server-hub-toplu-restart`,
   });
-  return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, templateId, limit: hz.limitValue };
+  return {
+    jobId: result?.jobId ?? null,
+    status: result?.status ?? null,
+    awxServerId: serverId,
+    templateId,
+    limit: hz.limitValue,
+  };
 }
 
 function initOpsX(app) {
@@ -1011,7 +1061,8 @@ function initOpsX(app) {
       res.status(409).json({
         ok: false,
         code: 'was_ucu',
-        message: 'Bu bir OpsX WAS işi; durumu ve çıktısı yalnız WAS ekranından (/api/opsx/was/...) okunur.',
+        message:
+          'Bu bir OpsX WAS işi; durumu ve çıktısı yalnız WAS ekranından (/api/opsx/was/...) okunur.',
       });
     const was = require('./was.cjs');
     try {
@@ -1125,14 +1176,17 @@ function initOpsX(app) {
     let limitValue = ''; // yalniz Legacy'de dolu — AWX'in --limit alani
     // ONAY KAPISI IKI DAL ICIN ORTAK noktada cagrilir; OpenShift dalinin KATALOGDAN
     // COZULMUS degerleri buraya tasinir (istemcinin gonderdigi env/tenant DEGIL).
-    let ocEnvForGate = '', ocTenantForGate = '', ocInputForGate = '';
+    let ocEnvForGate = '',
+      ocTenantForGate = '',
+      ocInputForGate = '';
     // AD BILEREK 'ocCluster*' DEGIL: `openshift-no-limit.test.cjs` o oneki YASAKLIYOR
     // (geri alinan AWX limit-kisitlama ozelliginin adlari; AWX o limiti sessizce
     // yutuyordu). Bu dizi bir LIMIT degil, uretim tespiti icin olculecek cluster adlari.
     let ocKapiHedefleri = [];
     // Legacy dalinin COZULMUS hedefleri: onay kapisi iki dal icin ORTAK noktada
     // cagrildigi icin dal icinde kalamazlar.
-    let requested = [], seciliEnvler = [];
+    let requested = [],
+      seciliEnvler = [];
     let logSummary;
 
     if (plat === 'legacy') {
@@ -1248,23 +1302,23 @@ function initOpsX(app) {
       logSummary = `env=${envKey} oc_cluster=${tenantKey} target_cluster=${targetCluster || '(tümü)'} oc_input=${ocInput}`;
     }
 
-
-      // ── PRODUCTION ONAY KAPISI (kullanici 2026-10-06) ──────────────────────────
-      // "OpsX kismindaki Legacy veya Openshift fark etmez bunlarin Production
-      //  akislarini Smart'a entegre etmek istiyorum. Yine Otomasyondaki gibi Smart
-      //  talebi acilsin, onay akislarindan gectikten sonra Ansible tetiklensin."
-      //
-      // BURADA, her sey COZULDUKTEN sonra: bilet gercekten kosacak isi anlatsin ve
-      // onay sonrasi replay'in yeniden DB'ye gitmesi gerekmesin. Uretim degilse kapi
-      // seffaftir (test/qa akislari aynen devam eder).
-      {
-        const kapi = await require('./prod-approval.cjs').opsxProductionKapisi({
-          platform: plat === 'legacy' ? 'legacy' : 'openshift',
-          serverId,
-          templateId,
-          extraVars,
-          limitValue: limitValue,
-          etiketler: plat === 'legacy'
+    // ── PRODUCTION ONAY KAPISI (kullanici 2026-10-06) ──────────────────────────
+    // "OpsX kismindaki Legacy veya Openshift fark etmez bunlarin Production
+    //  akislarini Smart'a entegre etmek istiyorum. Yine Otomasyondaki gibi Smart
+    //  talebi acilsin, onay akislarindan gectikten sonra Ansible tetiklensin."
+    //
+    // BURADA, her sey COZULDUKTEN sonra: bilet gercekten kosacak isi anlatsin ve
+    // onay sonrasi replay'in yeniden DB'ye gitmesi gerekmesin. Uretim degilse kapi
+    // seffaftir (test/qa akislari aynen devam eder).
+    {
+      const kapi = await require('./prod-approval.cjs').opsxProductionKapisi({
+        platform: plat === 'legacy' ? 'legacy' : 'openshift',
+        serverId,
+        templateId,
+        extraVars,
+        limitValue: limitValue,
+        etiketler:
+          plat === 'legacy'
             ? [
                 { alan: 'ortam', deger: seciliEnvler },
                 { alan: 'sunucu', deger: requested },
@@ -1274,21 +1328,35 @@ function initOpsX(app) {
                 { alan: 'cluster grubu', deger: ocTenantForGate },
                 { alan: 'cluster', deger: ocKapiHedefleri },
               ],
-          req,
-          islemAdi: plat === 'legacy' ? `Legacy ${operation}` : 'Openshift rollout (restart)',
-          ozet: plat === 'legacy'
-            ? { uygulama: String(application || '').trim(), sunucular: requested.join(', '), islem: operation }
+        req,
+        islemAdi: plat === 'legacy' ? `Legacy ${operation}` : 'Openshift rollout (restart)',
+        ozet:
+          plat === 'legacy'
+            ? {
+                uygulama: String(application || '').trim(),
+                sunucular: requested.join(', '),
+                islem: operation,
+              }
             : { ortam: ocEnvForGate, cluster: ocTenantForGate, hedefler: ocInputForGate },
-        });
-        if (!kapi.proceed) {
-          return kapi.status ? res.status(kapi.status).json(kapi.body) : res.json(kapi.body);
-        }
+      });
+      if (!kapi.proceed) {
+        return kapi.status ? res.status(kapi.status).json(kapi.body) : res.json(kapi.body);
       }
+    }
 
     try {
       // Preflight + launch + ansible_job_history + denetim opsxIsiBaslat()'ta (2026-11-14): Toplu Restart ayni
       // fonksiyonu kullanir.
-      const { result } = await opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVars, limitValue, logSummary });
+      const { result } = await opsxIsiBaslat({
+        req,
+        plat,
+        serverId,
+        templateId,
+        keyName,
+        extraVars,
+        limitValue,
+        logSummary,
+      });
       res.json({
         ok: true,
         jobId: result?.jobId ?? null,
@@ -2219,7 +2287,13 @@ function initOpsX(app) {
       let envKey, tenantKey, cleanPairs, clusterNames;
       try {
         const user = req.session?.user || {};
-        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzinli: true }));
+        ({ envKey, tenantKey, cleanPairs, clusterNames } = await resolveOpenshiftTargets(
+          env,
+          tenant,
+          pairs,
+          user,
+          { tumPodlarIzinli: true },
+        ));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -2236,10 +2310,17 @@ function initOpsX(app) {
         const namespace = String(p?.namespace || '').trim();
         const pod = String(p?.pod || '').trim();
         if (!allowedClusters.has(cluster)) {
-          return res.status(400).json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
+          return res
+            .status(400)
+            .json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
         }
         if (!allowedNamespaces.has(namespace)) {
-          return res.status(400).json({ ok: false, message: `Bu namespace seçilenler arasında değil: ${p?.namespace}` });
+          return res
+            .status(400)
+            .json({
+              ok: false,
+              message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
+            });
         }
         if (!podNameRe.test(pod) || pod.length > 253) {
           return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });
@@ -2253,7 +2334,9 @@ function initOpsX(app) {
         return res.status(400).json({ ok: false, message: 'En az bir pod seçilmeli.' });
       }
       if (cleanPodTargets.length > 50) {
-        return res.status(400).json({ ok: false, message: 'Tek seferde en fazla 50 pod silinebilir.' });
+        return res
+          .status(400)
+          .json({ ok: false, message: 'Tek seferde en fazla 50 pod silinebilir.' });
       }
 
       const neededClusters = [...new Set(cleanPodTargets.map((t) => t.cluster))];
@@ -2266,7 +2349,11 @@ function initOpsX(app) {
 
       const extraVars = {
         ...fanout,
-        ocp_pod_targets: cleanPodTargets.map((t) => ({ cluster_name: t.cluster, namespace: t.namespace, pod: t.pod })),
+        ocp_pod_targets: cleanPodTargets.map((t) => ({
+          cluster_name: t.cluster,
+          namespace: t.namespace,
+          pod: t.pod,
+        })),
         pod_delete_consent: true,
         email: String(req.session?.user?.mail || '').trim(),
         requester: String(req.session?.user?.username || '').trim(),
@@ -2303,7 +2390,7 @@ function initOpsX(app) {
           },
         });
         if (!kapi.proceed) {
-          if (kapi.body && kapi.body.pendingApproval) {
+          if (kapi.body?.pendingApproval) {
             kapi.body.staleWarning =
               'Pod adları istek anındaki haliyle donduruldu. Onay gecikirse bu podlar ' +
               'yenilenmiş olabilir; iş o podları bulamazsa atlar. Onay sonrası iş çıktısını ' +
@@ -2315,26 +2402,58 @@ function initOpsX(app) {
 
       try {
         const runner = require('../ansible/runner.cjs');
-        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(serverId, templateId, extraVars, { label: keyName });
-        const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', req.session?.user);
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          serverId,
+          templateId,
+          extraVars,
+          { label: keyName },
+        );
+        const result = await runner.launchJobOnServer(
+          serverId,
+          templateId,
+          extraVars,
+          '',
+          req.session?.user,
+        );
         try {
           const db = require('../db/index.cjs');
           await db.query(
             `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [req.session?.user?.username || 'unknown', serverId, templateId, 'OpsX: Openshift poddelete', result?.jobId, result?.status || 'pending', JSON.stringify({ platform: 'openshift-poddelete', ...extraVars })],
+            [
+              req.session?.user?.username || 'unknown',
+              serverId,
+              templateId,
+              'OpsX: Openshift poddelete',
+              result?.jobId,
+              result?.status || 'pending',
+              JSON.stringify({ platform: 'openshift-poddelete', ...extraVars }),
+            ],
           );
         } catch (e) {
           console.warn('[OpsX] Pod silme gecmisi kaydedilemedi:', e.message);
         }
         try {
           require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {
-            detail: JSON.stringify({ platform: 'openshift', ocOperation: 'poddelete', extraVars, jobId: result?.jobId ?? null }),
+            detail: JSON.stringify({
+              platform: 'openshift',
+              ocOperation: 'poddelete',
+              extraVars,
+              jobId: result?.jobId ?? null,
+            }),
           });
-        } catch { /* best-effort */ }
+        } catch {
+          /* best-effort */
+        }
         console.log(
           `[OpsX] ${req.session?.user?.username} -> openshift poddelete env=${envKey} tenant=${tenantKey} clusters=${neededClusters.join(',')} pods=${cleanPodTargets.length} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
         );
-        res.json({ ok: true, jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, sentBody: { extra_vars: extraVars } });
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: serverId,
+          sentBody: { extra_vars: extraVars },
+        });
       } catch (err) {
         res.status(err.status || 500).json({ ok: false, message: err.message });
       }
@@ -2353,23 +2472,45 @@ function initOpsX(app) {
     try {
       const db = require('../db/index.cjs');
       if (reqUser.role !== 'Admin') {
-        const { rows } = await db.query(`SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`, [jobId, serverId]);
-        if (rows.length && rows[0].username && String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()) {
+        const { rows } = await db.query(
+          `SELECT TOP 1 username FROM ansible_job_history WHERE job_id = $1 AND awx_server_id = $2`,
+          [jobId, serverId],
+        );
+        if (
+          rows.length &&
+          rows[0].username &&
+          String(rows[0].username).toLowerCase() !== String(reqUser.username || '').toLowerCase()
+        ) {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
         }
       }
-    } catch { /* fail-open, /job-status ile ayni desen */ }
+    } catch {
+      /* fail-open, /job-status ile ayni desen */
+    }
     try {
       const runner = require('../ansible/runner.cjs');
       const statusInfo = await runner.getJobStatusOnServer(serverId, jobId);
       const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-      if (!TERMINAL.has(statusInfo.status)) return res.json({ ok: true, status: statusInfo.status });
+      if (!TERMINAL.has(statusInfo.status))
+        return res.json({ ok: true, status: statusInfo.status });
       // Kismi basari da (bazi pod'lar silinemedi) playbook'u "failed" yapabilir - sonuc yine okunur.
       const out = extractOpsxPodDeleteResult(statusInfo.artifacts);
       if (!out) {
-        return res.json({ ok: true, status: statusInfo.status, message: statusInfo.status === 'successful' ? "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin." : 'İşlem başarısız oldu.' });
+        return res.json({
+          ok: true,
+          status: statusInfo.status,
+          message:
+            statusInfo.status === 'successful'
+              ? "İşlem tamamlandı ancak sonuç alınamadı — playbook'un set_stats adımını kontrol edin."
+              : 'İşlem başarısız oldu.',
+        });
       }
-      res.json({ ok: true, status: statusInfo.status, overallStatus: out.overall_status || null, results: out.results || [] });
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        overallStatus: out.overall_status || null,
+        results: out.results || [],
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }

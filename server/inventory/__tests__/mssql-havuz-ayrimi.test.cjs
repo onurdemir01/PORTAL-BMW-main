@@ -35,7 +35,7 @@ test('MV1 node-mssql`in `connect`i SONRAKI configleri YOK SAYAR (kuralin sebebi)
     constructor(cfg) { gorulen.push(cfg.user); this.config = cfg; }
     connect() { return Promise.resolve(this); }
     on() {} removeListener() {}
-    close(cb) { if (cb) cb(); return Promise.resolve(); }
+    close(cb) { if (cb) { cb(); } return Promise.resolve(); }
   };
   try {
     const gc = require('mssql/lib/global-connection');
@@ -56,9 +56,9 @@ test('MV2 HICBIR sunucu modulu global havuzu (`sql.connect`) kurmaz', () => {
   const gez = (d) => {
     for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) {
       const p = `${d}/${e.name}`;
-      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') gez(p); continue; }
-      if (!e.name.endsWith('.cjs')) continue;
-      if (/\bsql\.connect\s*\(/.test(kodOnly(oku(p)))) bulunan.push(p);
+      if (e.isDirectory()) { if (e.name !== '__tests__' && e.name !== 'node_modules') { gez(p); } continue; }
+      if (!e.name.endsWith('.cjs')) { continue; }
+      if (/\bsql\.connect\s*\(/.test(kodOnly(oku(p)))) { bulunan.push(p); }
     }
   };
   kokler.forEach(gez);

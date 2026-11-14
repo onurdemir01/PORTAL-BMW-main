@@ -30,31 +30,97 @@ const { yalnizEnvanter } = require('./capraz.cjs');
 // name" tum Promise.all'i reddederdi.
 const SH_KOLONLAR = Object.freeze({
   'dbo.Server_Hub_Hosts': [
-    'host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note',
-    'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at',
+    'host',
+    'scan_date',
+    'products',
+    'wall_s',
+    'cpu_s',
+    'note',
+    'scan_ver',
+    'rec_counts',
+    'scan_errors',
+    'proc_visibility',
+    'sock_visibility',
+    'loaded_at',
   ],
   'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
   'dbo.Server_Hub_Jboss': [
-    'host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note',
-    'mgmt_cfg', 'mgmt_state', 'cli_rescue', 'cli_run_as', 'host_config', 'dc_role',
+    'host',
+    'scan_date',
+    'gen',
+    'host_name',
+    'host_state',
+    'cli',
+    'note',
+    'mgmt_cfg',
+    'mgmt_state',
+    'cli_rescue',
+    'cli_run_as',
+    'host_config',
+    'dc_role',
   ],
   // FILO sorgusu: jvm_args / configured_jvm_args / jvm_arg_diff YOK (agir; yalniz tek
   // sunucu ayrintisinda, maskeli - JVM_AGIR_KOLONLAR).
   'dbo.Server_Hub_Jvms': [
-    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
-    'running_src', 'cfg_src', 'state_src', 'config_changed', 'config_risk',
-    'config_mtime_epoch', 'process_start_epoch', 'os_startup', 'reboot_expected',
-    'reboot_status', 'cfg_ports', 'cfg_ports_src', 'jvm_arg_status', 'jvm_args_src',
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+    'running_src',
+    'cfg_src',
+    'state_src',
+    'config_changed',
+    'config_risk',
+    'config_mtime_epoch',
+    'process_start_epoch',
+    'os_startup',
+    'reboot_expected',
+    'reboot_status',
+    'cfg_ports',
+    'cfg_ports_src',
+    'jvm_arg_status',
+    'jvm_args_src',
   ],
   'dbo.Server_Hub_Web': [
-    'host', 'scan_date', 'product', 'running', 'syntax', 'detail',
-    'check_class', 'syntax_verification', 'run_as', 'check_rc', 'vhost_trust', 'running_src',
+    'host',
+    'scan_date',
+    'product',
+    'running',
+    'syntax',
+    'detail',
+    'check_class',
+    'syntax_verification',
+    'run_as',
+    'check_rc',
+    'vhost_trust',
+    'running_src',
   ],
   'dbo.Server_Hub_Vhosts': [
-    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
-    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
-    'traffic_state', 'traffic_reason', 'cover_from_epoch', 'last_req_epoch',
-    'last_line_epoch', 'log_read_as',
+    'host',
+    'scan_date',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
+    'traffic_state',
+    'traffic_reason',
+    'cover_from_epoch',
+    'last_req_epoch',
+    'last_line_epoch',
+    'log_read_as',
   ],
   'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
@@ -75,12 +141,32 @@ const SH_ESKI_KOLONLAR = Object.freeze({
   'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
   'dbo.Server_Hub_Jboss': ['host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note'],
   'dbo.Server_Hub_Jvms': [
-    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
   ],
   'dbo.Server_Hub_Web': ['host', 'scan_date', 'product', 'running', 'syntax', 'detail'],
   'dbo.Server_Hub_Vhosts': [
-    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
-    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
+    'host',
+    'scan_date',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
   ],
   'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
@@ -179,7 +265,10 @@ async function loadLatest() {
     if (!cols.length) return Promise.resolve([]);
     // CIFT SATIR (2026-11-14): id, cift-satir.cjs'in "en son yukleme kalir" secimi icin; ayiklamadan sonra silinir.
     // Sema okunamazsa (C3) id secilmez: kopyalardan HANGISININ kalacagi belirsizdir (assess C3'te eylem onermez).
-    const idEk = kol.ok && (kol.cols.get(table.toLowerCase()) || new Set()).has('id') ? [`t.[id] AS [${CIFT.ID_KOLON}]`] : [];
+    const idEk =
+      kol.ok && (kol.cols.get(table.toLowerCase()) || new Set()).has('id')
+        ? [`t.[id] AS [${CIFT.ID_KOLON}]`]
+        : [];
     return query(
       `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek, ...idEk].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
@@ -261,7 +350,9 @@ async function loadLatest() {
     q('dbo.Server_Hub_Jboss'),
     q(
       'dbo.Server_Hub_Jvms',
-      kol.ok && (kol.cols.get('dbo.server_hub_jvms') || new Set()).has('jvm_arg_diff') ? [ARG_FARK_IFADE] : [],
+      kol.ok && (kol.cols.get('dbo.server_hub_jvms') || new Set()).has('jvm_arg_diff')
+        ? [ARG_FARK_IFADE]
+        : [],
     ),
     q('dbo.Server_Hub_Web'),
     q('dbo.Server_Hub_Vhosts'),
@@ -335,7 +426,7 @@ async function loadJvmAgir(host, opts) {
   // son = en buyuk id = filo okumasinin (cift-satir.cjs) sectigi satir.
   const sirala = var_.has('id') ? '\n     ORDER BY t.[id]' : '';
   const rows = await query(
-    `SELECT t.[gen], t.[jvm], ${agir.map((c) => `t.[${c}]`).join(', ')} FROM dbo.Server_Hub_Jvms t
+    `SELECT t.[gen], t.[jvm], ${agir.map((c) => 't.[' + c + ']').join(', ')} FROM dbo.Server_Hub_Jvms t
      JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts
             WHERE host = @h OR host LIKE @h + '.%' GROUP BY host) m
        ON m.host = t.host AND m.d = t.scan_date
@@ -345,7 +436,13 @@ async function loadJvmAgir(host, opts) {
     .then((r) => r.recordset || [])
     .catch(() => []);
   const out = new Map();
-  for (const r of rows) out.set(`${Number(r.gen)}|${String(r.jvm || '').trim().toLowerCase()}`, r);
+  for (const r of rows)
+    out.set(
+      `${Number(r.gen)}|${String(r.jvm || '')
+        .trim()
+        .toLowerCase()}`,
+      r,
+    );
   return out;
 }
 
@@ -395,7 +492,9 @@ function ciftSatirYayinla(value, data) {
   const onceVardi = _sonCiftLog !== '' && !/"toplam":0[,}]/.test(_sonCiftLog);
   _sonCiftLog = imza;
   if (c.toplam > 0)
-    console.warn(`[ServerHub] ${c.toplam} cift satir ayiklandi (en son yukleme tutuldu): ${JSON.stringify(c.tablolar)}`);
+    console.warn(
+      `[ServerHub] ${c.toplam} cift satir ayiklandi (en son yukleme tutuldu): ${JSON.stringify(c.tablolar)}`,
+    );
   else if (onceVardi) console.log('[ServerHub] cift satir 0a indi (DB temiz)');
 }
 
@@ -420,13 +519,20 @@ function hesapla() {
       ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
       : {
           tableMissing: false,
-          ...assess({ ...data, ear, capraz }, { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay }),
+          ...assess(
+            { ...data, ear, capraz },
+            { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay },
+          ),
         };
     value.ayar = {
       okunamadi: ayar.okunamadi === true,
       seviyeDegisen: Object.keys(ayar.seviyeler).length,
     };
-    value.ear = { okunamadi: ear.okunamadi === true, hata: ear.hata || '', hostSayisi: ear.hostlar.length };
+    value.ear = {
+      okunamadi: ear.okunamadi === true,
+      hata: ear.hata || '',
+      hostSayisi: ear.hostlar.length,
+    };
     value.capraz = caprazDurumu(capraz);
     ciftSatirYayinla(value, data);
     _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
@@ -477,7 +583,8 @@ async function getAssessment(fresh, olcum) {
 /** Server-Timing basligi (DevTools > Network > Timing): kaynak ve sureler. */
 function sureBasligi(res, o) {
   const parca = [`sh;desc="${o.kaynak || 'taze'}"`];
-  if (o.kaynak === 'taze') parca.push(`db;dur=${Number(o.db) || 0}`, `assess;dur=${Number(o.assess) || 0}`);
+  if (o.kaynak === 'taze')
+    parca.push(`db;dur=${Number(o.db) || 0}`, `assess;dur=${Number(o.assess) || 0}`);
   res.set('Server-Timing', parca.join(', '));
 }
 
@@ -518,7 +625,8 @@ function hostRow(h) {
     jvms: h.jvms.filter((j) => !yalnizEnvanter(j)).length,
     jvmsInventoryOnly: h.jvms.filter(yalnizEnvanter).length,
     // v3: calisma durumu OLCULEMEYEN JVM "calisiyor" da "kapali" da sayilmaz; ayri sayac
-    jvmsRunning: h.jvms.filter((j) => !yalnizEnvanter(j) && j.runningKnown !== false && j.running).length,
+    jvmsRunning: h.jvms.filter((j) => !yalnizEnvanter(j) && j.runningKnown !== false && j.running)
+      .length,
     jvmsUnmeasured: h.jvms.filter((j) => !yalnizEnvanter(j) && j.runningKnown === false).length,
     // tazelik kapisi (bayat / son yuklemede disarida kalan sunucuda eylem yok)
     fresh: h.fresh !== false,
@@ -657,10 +765,13 @@ async function launch(req, keyName, templateName, extraVars, detail, hazir) {
   // YANLIS SABLON (2026-10-08 uretim olayi: server_hub_fix satirinda rollback sablonu vardi) ve
   // "Prompt on launch" kapali: AYNI iki kontrol, ama sablon TEK GET ile bir kez okunur (eskiden
   // findTemplate iki kez tum sablon listesini sayfa sayfa okuyordu).
-  require('../ansible/template-preflight.cjs').sablonKontrol(tpl, { templateId, key: keyName, extraVars });
+  const preflight = require('../ansible/template-preflight.cjs');
+  preflight.sablonKontrol(tpl, { templateId, key: keyName, extraVars });
   const user = req.session?.user || {};
   // anketBellegi: survey_spec 2 dk hatirlanir (ayni sablon art arda baslatilinca ek GET yok).
-  const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, { anketBellegi: true });
+  const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, {
+    anketBellegi: true,
+  });
   try {
     const db = require('../db/index.cjs');
     await db.query(
@@ -693,7 +804,11 @@ const isAdmin = (req) => req.session?.user?.role === 'Admin';
 // AUTO-START DOGRULAMA KATMANI (2026-11-14): Portal'in baslattigi auto-start isinin CLI ile
 // dogrulanmis sonucu, bir sonraki tarama gelene kadar /host ve "zaten" kapisinda gecerli
 // (autostart-dogrulama.cjs basligi).
-const { AUTOSTART_EYLEMLERI, sunucuYazmaKapisi, jvmAutoStartKapisi } = require('./autostart-dogrulama.cjs');
+const {
+  AUTOSTART_EYLEMLERI,
+  sunucuYazmaKapisi,
+  jvmAutoStartKapisi,
+} = require('./autostart-dogrulama.cjs');
 let _autoStart = require('./autostart-dogrulama.cjs').kur();
 
 const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -714,7 +829,8 @@ function isSonucuIsle(serverId, jobId, statusInfo) {
     const as = _autoStart.isBitti(serverId, jobId, statusInfo.status, result);
     // Toplu (liste kipi) host isi: oge basina sonuc; DB'ye toplu yurutucu ayrica yazar (AWX'ten okuyarak).
     if (as.kayitli && as.toplu) autoStart = { toplu: true, ogeler: as.ogeler };
-    else if (as.kayitli) autoStart = { dogrulandi: as.dogrulandi === true, deger: as.deger || null };
+    else if (as.kayitli)
+      autoStart = { dogrulandi: as.dogrulandi === true, deger: as.deger || null };
     else onbellekSil();
   }
   return { result, autoStart };
@@ -768,7 +884,9 @@ function bulgulariKatmanla(hosts, satirlar) {
 let _iliskiHesabi = null;
 async function retirementAnalizi(hedefler) {
   if (!_iliskiHesabi) {
-    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({ getAssessment: (f) => getAssessment(f === true) });
+    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({
+      getAssessment: (f) => getAssessment(f === true),
+    });
   }
   const h = await _iliskiHesabi(false);
   if (!h.grafik || !h.kararlar) return { okunamadi: true, hedefler: [] };
@@ -781,7 +899,13 @@ async function retirementAnalizi(hedefler) {
       appName: t.appName,
       gen,
       karar: k ? k.karar : 'BULUNAMADI',
-      ana: k ? (k.maddeler.find((m) => m.etki === 'ENGELLER') || k.maddeler.find((m) => m.etki === 'EKSIK') || {}).kod || null : null,
+      ana: k
+        ? (
+            k.maddeler.find((m) => m.etki === 'ENGELLER') ||
+            k.maddeler.find((m) => m.etki === 'EKSIK') ||
+            {}
+          ).kod || null
+        : null,
     };
   });
   return { okunamadi: false, hedefler: out };
@@ -979,13 +1103,11 @@ function initServerHub(app) {
         (f) => f.fix && f.code === code && JSON.stringify(f.fix) === fixKey,
       );
       if (!finding)
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            message:
-              'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.',
-          });
+        return res.status(400).json({
+          ok: false,
+          message:
+            'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.',
+        });
       const fix = finding.fix;
       if (!FIX_ACTIONS.has(fix.action))
         return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
@@ -996,7 +1118,8 @@ function initServerHub(app) {
       const asUygula = confirmed && AUTOSTART_EYLEMLERI.has(fix.action);
       if (asUygula) {
         const kilit = await surenIsKilidi(host, fix.gen, fix.jvm);
-        if (kilit) return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+        if (kilit)
+          return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
       }
       const birak = asUygula ? _autoStart.rezervasyon(host, fix.gen, fix.jvm) : () => {};
       let r;
@@ -1009,7 +1132,14 @@ function initServerHub(app) {
           { op: confirmed ? 'fix' : 'plan', host, code, fix },
           hazir,
         );
-        if (confirmed) _autoStart.isKaydet(r.awxServerId, r.jobId, { host, gen: fix.gen, jvm: fix.jvm, action: fix.action, h });
+        if (confirmed)
+          _autoStart.isKaydet(r.awxServerId, r.jobId, {
+            host,
+            gen: fix.gen,
+            jvm: fix.jvm,
+            action: fix.action,
+            h,
+          });
       } finally {
         birak();
       }
@@ -1071,13 +1201,10 @@ function initServerHub(app) {
     const enable = req.body?.enable === true;
     // ACIK ONAY SART: istemciden kazara gelen bir istek sunucuda bir sey DEGISTIRMEMELI.
     if (req.body?.confirmed !== true)
-      return res
-        .status(400)
-        .json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
+      return res.status(400).json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
-    if (!JVM_RE.test(jvm))
-      return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
+    if (!JVM_RE.test(jvm)) return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
     if (!Number.isInteger(gen))
       return res.status(400).json({ ok: false, message: 'Geçersiz JBoss sürümü (gen).' });
     try {
@@ -1103,7 +1230,8 @@ function initServerHub(app) {
       // asagidaki "zaten" kapisi da onu gorur).
       if (tj) {
         const kilit = await surenIsKilidi(host, gen, jvm);
-        if (kilit) return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+        if (kilit)
+          return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
       }
       // Dogrulanmis auto-start (onceki is CLI ile geri okudu, tarama gelmedi) taramanin onune gecer:
       // "zaten" kapisi ayni isi ikinci kez acmasin (eskiden betik SKIP donuyordu, ekran yine "acildi").
@@ -1158,7 +1286,10 @@ function initServerHub(app) {
     ayarlar,
     HOST_RE,
     surenIsKilidi: (host, gen, jvm) => surenIsKilidi(host, gen, jvm, { topluHaric: true }),
-    audit: (req, detail) => require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
   });
 
   // TOPLU RESTART (kullanici 2026-11-14: "JVM parametreleri calisan surectekinden FARKLI uyarilari ... bunlar icin de
@@ -1175,7 +1306,10 @@ function initServerHub(app) {
     ayarlar,
     HOST_RE,
     surenIsKilidi: (host, gen, jvm) => surenIsKilidi(host, gen, jvm, { restartHaric: true }),
-    audit: (req, detail) => require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
   });
 
   // Reboot Kontrolu (2026-10-08): once/sonra goruntu + otomatik duzeltme (reboot-check.cjs).
@@ -1184,7 +1318,10 @@ function initServerHub(app) {
   // Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR tarama (ear-envanter.cjs).
   require('./ear-envanter.cjs').mount(router, {
     launch,
-    audit: (req, detail) => require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
   });
 
   // ── KURALLAR & LIMITLER (2026-10-20) ───────────────────────────────────────────────
@@ -1199,7 +1336,9 @@ function initServerHub(app) {
     onbellekSil,
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1210,7 +1349,9 @@ function initServerHub(app) {
   require('./gorunumler.cjs').mount(router, {
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1236,7 +1377,9 @@ function initServerHub(app) {
     getAssessment: (fresh) => getAssessment(fresh === true),
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1248,7 +1391,9 @@ function initServerHub(app) {
     iliskiHesabi,
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         // denetim kaydi yazilamadi: islem yine tamam
       }
@@ -1262,7 +1407,9 @@ function initServerHub(app) {
     kontrol: require('./retire-kontrol.cjs'),
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1280,9 +1427,16 @@ function initServerHub(app) {
     try {
       const fresh = req.query.fresh === '1';
       const [et, h] = await Promise.all([etiketHesabi(fresh), iliskiHesabi(fresh)]);
-      if (!h.grafik || !h.kararlar) return res.status(424).json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
+      if (!h.grafik || !h.kararlar)
+        return res
+          .status(424)
+          .json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
       const { karsilastir } = require('./karsilastirma.cjs');
-      res.json({ ok: true, latestScan: h.a && h.a.latestScan ? h.a.latestScan : null, ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }) });
+      res.json({
+        ok: true,
+        latestScan: h.a && h.a.latestScan ? h.a.latestScan : null,
+        ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }),
+      });
     } catch (e) {
       res.status(424).json({ ok: false, message: e.message || 'Karşılaştırma yapılamadı.' });
     }
@@ -1304,7 +1458,13 @@ function initServerHub(app) {
       // Sonuc dogrulama katmanina yazilir. Diger isler (tarama, Reboot Kontrolu, eslesmeyen is)
       // eskisi gibi siler: sonraki okuma taze (suren eski okuma da yazilmaz). Bkz. isSonucuIsle.
       const { result, autoStart } = isSonucuIsle(serverId, jobId, statusInfo);
-      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result, ...(autoStart ? { autoStart } : {}) });
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        output: outputInfo.output || '',
+        result,
+        ...(autoStart ? { autoStart } : {}),
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }

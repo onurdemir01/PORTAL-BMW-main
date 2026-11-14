@@ -134,7 +134,7 @@ test('RP5 gecerlilik: gecersiz deger gizlenmez, doymus adim disarida, kosu neden
 });
 
 test('RP6 atlananlar: olcum_yok, hesaplanamadi; kalanlar yazilir', () => {
-  const bozuk = { ...analiz, hizOzeti: (x) => { if (x[0].kosu_id === 2) throw new Error('bozuk'); return analiz.hizOzeti(x); } };
+  const bozuk = { ...analiz, hizOzeti: (x) => { if (x[0].kosu_id === 2) { throw new Error('bozuk'); } return analiz.hizOzeti(x); } };
   const r = kur([kosu(1, []), kosu(2, [adim(2, 100, 1)]), kosu(3, [adim(3, 100, 1)]), kosu(4, [adim(4, 100, 1, { g: 'HATALI' })])], bozuk);
   assert.deepEqual(r.satirlar.map((s) => s.kosuNo), [3]);
   assert.deepEqual(r.atlananlar.map((a) => [a.kosuId, a.neden]), [[1, 'olcum_yok'], [2, 'hesaplanamadi'], [4, 'olcum_yok']]);
@@ -147,12 +147,12 @@ sahte('../../db/index.cjs', {
   query: async (sql, params = []) => {
     const q = String(sql).replace(/\s+/g, ' ').trim();
     D.sorgular.push({ q, params });
-    if (/FROM nginx_loadtest_kuyruk_ogeler WHERE kuyruk_id = \$1 ORDER BY sira ASC, id ASC$/.test(q)) return { rows: D.ogeler.filter((o) => o.kuyruk_id === params[0]) };
+    if (/FROM nginx_loadtest_kuyruk_ogeler WHERE kuyruk_id = \$1 ORDER BY sira ASC, id ASC$/.test(q)) { return { rows: D.ogeler.filter((o) => o.kuyruk_id === params[0]) }; }
     if (/FROM nginx_loadtest_kosular k LEFT JOIN nginx_loadtest_senaryolar s ON s\.id = k\.senaryo_id WHERE k\.id IN \(/.test(q)) {
-      assert.match(q, new RegExp(`IN \\(${params.map((_, i) => `\\$${i + 1}`).join(', ')}\\)$`), 'IN listesi parametreli');
+      assert.match(q, new RegExp(`IN \\(${params.map((_, i) => "\\$" + (i + 1)).join(', ')}\\)$`), 'IN listesi parametreli');
       return { rows: D.kosular.filter((k) => params.includes(k.id)) };
     }
-    if (/^SELECT \* FROM nginx_loadtest_adimlar WHERE kosu_id IN \(/.test(q)) return { rows: D.adimlar.filter((a) => params.includes(a.kosu_id)) };
+    if (/^SELECT \* FROM nginx_loadtest_adimlar WHERE kosu_id IN \(/.test(q)) { return { rows: D.adimlar.filter((a) => params.includes(a.kosu_id)) }; }
     throw new Error(`beklenmeyen sorgu: ${q}`);
   },
 });

@@ -78,13 +78,18 @@ pipeline {
     // zamanlar dustugu duruma dusmustu — yazilmis, yesil sanilan, kosmayan testler.
     // GUVENLIK KAPISI (2026-11-12, docs/GUVENLIK-0-ZAFIYET.md): calisma zamani bagimliliginda HER
     // seviyede, gelistirmede duzeltmesi yayimlanmis her zafiyet build'i durdurur.
-    stage('Güvenlik') {
-      steps { sh 'npm run guvenlik' }
-    }
+    stage('Güvenlik') { steps { sh 'npm run guvenlik' } }
+    stage('SBOM') { steps { sh 'npm run sbom' } }
     stage('Testler') {
       steps {
         sh 'npm test'
         sh 'npm run test:ui'
+      }
+    }
+    stage('Kapsam ve Mutasyon Kapısı') {
+      steps {
+        sh 'npm run test:coverage'
+        sh 'npm run test:mutation'
       }
     }
 
@@ -92,22 +97,9 @@ pipeline {
       steps {
         sh 'npx tsc --noEmit'
         sh 'npm run lint:ascii'
-        // ESLINT DE CI'DA. Kuruldu (2026-09-04) ama boru hattinda HIC cagrilmiyordu.
-        // Su an 0 HATA / 127 UYARI ile geciyor: kapi HATALARI yakalar, uyarilar
-        // gorunur bir borc olarak kalir. Uyarilari da kirmiziya cevirmek
-        // (`--max-warnings 0`) AYRI ve olculebilir bir is; sessizce dayatmak,
-        // ilgisiz bir PR'i bloke etmek olurdu.
         sh 'npm run lint'
-        // DEVREYE ALMA ON KONTROLU. Yerel tutarliligi (surum ucluSU, runner ozeti,
-        // .env.example butunlugu, CI adimlari) dogrular ve AWX'e ELLE kopyalanmasi
-        // gereken paketleri ciktiya yazar. Elle adimlar cikis kodunu DUSURMEZ —
-        // ama artik her yapida GORUNUR: "kopyalandi mi" sorusu varsayima kalmaz.
+        sh 'npm run check:server'
         sh 'npm run preflight'
-        // PROD'UN NODE SURUMUYLE DE SOR. CI ajani ile prod farkli surumler
-        // kosabilir; on kontrol yalnizca AJANIN surumune bakarsa prod'daki
-        // gercek durumu HIC gostermez. Bu satir prod surumunu simule eder ve
-        // hangi paketlerin uyumsuz oldugunu (CALISMA ZAMANI / gelistirme
-        // ayrimiyla) her yapida yazdirir. Cikis kodunu DUSURMEZ.
         sh 'PREFLIGHT_NODE_VERSION=20.20.2 npm run preflight'
         // Backend dosyaları TS derlemesine girmez — sözdizimi kontrolü:
         sh '''
@@ -115,6 +107,18 @@ pipeline {
             node -c "$f" || { echo "SYNTAX FAIL: $f"; exit 1; }
           done
         '''
+      }
+    }
+
+    stage('SonarQube ve Quality Gate') {
+      when {
+        expression { return Boolean.valueOf(env.SONAR_HOST_URL?.trim()) }
+      }
+      steps {
+        sh 'sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.login="$SONAR_TOKEN"'
+        timeout(time: 10, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
       }
     }
 

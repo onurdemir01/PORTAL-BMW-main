@@ -142,7 +142,7 @@ async function cleanupExpiredDownloads() {
   if (rows.length > 0) {
     const tokens = rows.map((r) => r.token);
     await db.query(
-      `DELETE FROM opsx_dump_downloads WHERE token IN (${tokens.map((_, i) => `$${i + 1}`).join(',')})`,
+      `DELETE FROM opsx_dump_downloads WHERE token IN (${tokens.map((_, i) => ("$" + (i + 1))).join(',')})`,
       tokens
     );
   }

@@ -368,7 +368,7 @@ function fxs(x, n) {
 /** Python '%d' (float -> int: sifira dogru keser). */
 function fd(x) {
   const t = Math.trunc(x);
-  return Math.abs(t) >= 1e21 ? BigInt(t).toString() : String(t === 0 ? 0 : t);
+  if (Math.abs(t) >= 1e21) return BigInt(t).toString(); return String(t === 0 ? 0 : t);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -839,7 +839,7 @@ function reloadOlaylari(ctx, pencereler = new Map()) {
   tum.sort((x, y) => x.t - y.t);
   // CPU pencereleri baslangica (w0) gore; esitlikte TUR adi (kararli sira).
   const pencereListesi = [...pencereler].filter(([, p]) => p && Number.isFinite(p.w0) && Number.isFinite(p.w1))
-    .sort(([ta, a], [tb, b]) => a.w0 - b.w0 || (ta < tb ? -1 : ta > tb ? 1 : 0));
+    .sort(([ta, a], [tb, b]) => a.w0 - b.w0 || (() => { if (ta < tb) return -1; if (ta > tb) return 1; return 0; })());
   return tum.slice(0, MAX_RELOAD).map((x) => {
     const { _kanit: kanit, ...olay } = x;
     // a. Kanit bir TUR'un CPU penceresinde: pencereCpu o adimi reload'la dusurdu -> 'olcum'.
@@ -1059,7 +1059,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
         }
         // PORTAL FARKLARI 10: worker sayaci pencere icinde sifirlandiysa (reload / kapanan worker) ya da
         // geriye gittiyse CPU hesaplanmaz (null + uyari); karsilastir.py negatif deger yazardi.
-        let cpuYok = pc.reload ? 'reload' : pc.user < 0 || pc.sys < 0 ? 'sayac_geriledi' : null;
+        let cpuYok = (() => { if (pc.reload) return 'reload'; if (pc.user < 0 || pc.sys < 0) return 'sayac_geriledi'; return null; })();
         r.cpu_oran_ms_sn = cpuYok ? null : pc.user + pc.sys;
         r.arka_ms_sn = ap.user + ap.sys;
         const f0 = Math.floor(pc.t0);
@@ -1129,7 +1129,7 @@ function kosuHesapla(ctx, tur, ist, arkaKesit) {
   r._ag = agOlc(ctx, tur, kesitAdi, w0, w1, zaman, r.isinma_sn, uyari, genelKesit);
   r._bdetay = bdetayOlc(ctx, kesitAdi, w0, w1, zaman, saatFarki);
   r._saatFarki = saatFarki;
-  r.durum = gecersiz.length ? 'GECERSIZ' : doyma ? 'DOYMA' : 'GECERLI';
+  r.durum = (() => { if (gecersiz.length) return 'GECERSIZ'; if (doyma) return 'DOYMA'; return 'GECERLI'; })();
   r.gecersiz_nedeni = gecersiz.join(';');
   r.uyari = uyari.join(';');
   r._gecersiz = gecersiz;
@@ -1973,7 +1973,7 @@ const KANIT_ACIK = new Set(['1', 'acik', 'on', 'true', 'evet']);
 const KANIT_KAPALI = new Set(['0', 'kapali', 'off', 'false', 'hayir', 'yorum']);
 const kanitBool = (v) => {
   const m = String(v ?? '').trim().toLowerCase();
-  return KANIT_ACIK.has(m) ? true : KANIT_KAPALI.has(m) ? false : null;
+  if (KANIT_ACIK.has(m)) return true; if (KANIT_KAPALI.has(m)) return false; return null;
 };
 const kanitTam = (v) => (/^[0-9]{1,9}$/.test(String(v ?? '').trim()) ? Number(v) : null);
 /** hazirlik.sh `${SEVIYE:-9}`: seviye secilmeyen static kosu (identity + gzip_static) .gz'yi bununla uretir. */
@@ -2004,7 +2004,7 @@ function sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae }) {
   if (statik !== sunucuAyar.static) sapmalar.push('static');
   if (b.dizin !== sunucuAyar.dizin) sapmalar.push('dizin');
   // Static kosu dosyasiz olmaz (betik 0 dosyada FAIL der); sayilar okunabiliyorsa ayrica denetlenir.
-  const dosya = (ae === 'br' ? br : gz) === null || atlanan === null ? null : (ae === 'br' ? br : gz) + atlanan;
+  const dosya = (() => { if ((ae === 'br' ? br : gz) === null || atlanan === null) return null; return (ae === 'br' ? br : gz) + atlanan; })();
   if (sunucuAyar.static && dosya === 0) sapmalar.push('dosya');
   const dosyaSeviye = kanitTam(b.dosya_seviye);
   const diskKanit = String(b.disk_kanit ?? '').trim().slice(0, 16);
@@ -2127,7 +2127,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
   const yukOlculemedi = yukOlcumuDenetle(ctx, hesaplar, yukKaydedici);
   // B1: kaydedicinin son satiri (ASCII, 200) olculemedi notuna eklenir: '<neden>;son=<satir>'.
   const sonSatir = yukSonSatirTemizle(yukSonSatir);
-  if (yukOlculemedi) uyarilar.push(`yuk_cpu_olculemedi(${yukOlculemedi}${sonSatir ? `;son=${sonSatir}` : ''})`);
+  if (yukOlculemedi) uyarilar.push(`yuk_cpu_olculemedi(${yukOlculemedi}${sonSatir ? (";son=" + sonSatir) : ''})`);
   // 2026-11-03 (bilgi): olasi nginx bellek sizintisi (yalniz bellek kaydi varsa).
   const sizinti = bellekSizintisi(ctx, hesaplar);
   if (sizinti) uyarilar.push(sizinti);
@@ -2166,7 +2166,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
     gecerlilik = 'GECERSIZ';
     nedenler.push('istemci_sonucu_yok');
   } else {
-    gecerlilik = gecerli === 0 ? 'GECERSIZ' : gecerli < adimlar.length ? 'KISMI' : 'GECERLI';
+    gecerlilik = (() => { if (gecerli === 0) return 'GECERSIZ'; if (gecerli < adimlar.length) return 'KISMI'; return 'GECERLI'; })();
     for (const a of adimlar) {
       if (a.gecerlilik === 'GECERSIZ' || a.gecerlilik === 'HATALI') nedenler.push(`${a.tur}(${a.nedenler.join(';')})`);
     }

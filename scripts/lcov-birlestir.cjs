@@ -137,7 +137,7 @@ function mergeLcovTexts(texts, repoRoot = process.cwd()) {
   }
 
   const out = [];
-  for (const sf of [...merged.keys()].sort()) {
+  for (const sf of [...merged.keys()].sort((a, b) => a.localeCompare(b))) {
     const r = merged.get(sf);
     out.push('TN:');
     out.push(`SF:${sf}`);

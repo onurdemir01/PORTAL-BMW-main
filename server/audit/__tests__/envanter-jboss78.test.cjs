@@ -45,6 +45,7 @@ const em = require('../envanter-metrics.cjs');
 
 async function getir(yol) {
   const app = express();
+  app.disable('x-powered-by');
   const r = express.Router();
   em.registerEnvanterMetrics(r);
   app.use('/api/denetim', r);

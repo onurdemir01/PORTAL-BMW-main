@@ -272,7 +272,7 @@ async function adoptScheduledLaunches(cfg) {
 
     if (rec.status === 'CANCELLED') {
       await closeScheduled(requestKey, 'CANCELLED',
-        `Zamanlama iptal edildi${rec.cancelledBy ? ` (${rec.cancelledBy})` : ''}.`);
+        `Zamanlama iptal edildi${rec.cancelledBy ? (" (" + rec.cancelledBy + ")") : ''}.`);
       scheduledClosed++;
     } else if (rec.status === 'EXPIRED' || rec.status === 'FAILED') {
       await closeScheduled(requestKey, 'FAILED',

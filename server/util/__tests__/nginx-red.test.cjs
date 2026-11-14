@@ -16,6 +16,7 @@ const { nginxRedCevirici } = require('../nginx-red.cjs');
 
 async function kur(secenek) {
   const app = express();
+  app.disable('x-powered-by');
   app.use(nginxRedCevirici(secenek));
   app.all('/kod/:kod', (req, res) => {
     const kod = Number(req.params.kod);
@@ -126,6 +127,7 @@ test('NG3 401, 500, eylem5xx kapaliyken 5xx, ok:false olmayan ve metin govde DEG
 
 test('NG4 haric onekler cevrilmez; onek siniri tam', async () => {
   const app = express();
+  app.disable('x-powered-by');
   app.use('/api', nginxRedCevirici({ onek: 'ornek', eylem5xx: true, haric: ['/opsx'] }));
   for (const yol of ['/api/opsx/x', '/api/opsx', '/api/opsxyz/x', '/api/diger/x'])
     app.post(yol, (req, res) => res.status(403).json({ ok: false, message: 'ret' }));

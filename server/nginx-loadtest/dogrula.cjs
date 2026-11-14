@@ -120,7 +120,8 @@ const ISLEMLER = new Set(['on_kontrol', 'kosu', 'durdur']);
 // Desenler playbook assert'leriyle AYNI (sozlesme bolum 3). Birinde degisirse digeri de.
 const HOST_RE = /^[A-Z0-9][A-Z0-9-]{1,30}$/;
 const RUN_ID_RE = /^[0-9]{1,10}$/;
-const IPV4_RE = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$/;
+const IPV4_OCTET = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
+const IPV4_RE = new RegExp(`^${IPV4_OCTET}(\\.${IPV4_OCTET}){3}$`);
 // RFC 1123 ad: kucuk harf, port YOK, joker YOK, '~' (regex server_name) YOK, bosluk YOK.
 const VHOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 const HIZLAR_RE = /^[0-9]{1,4}( [0-9]{1,4}){0,4}$/;
@@ -335,7 +336,7 @@ function senaryoSatirlari(satirlar) {
     out.push(`${agirlik}\t${har}\t${s.tur}\t${s.boyut}\t${s.yol}`);
   });
   if (hatalar.length) {
-    return red(400, 'gecersiz_istek', `${hatalar.length} satır reddedildi: ${hatalar.slice(0, 3).map((h) => `#${h.satir} ${h.neden}`).join('; ')}`, {
+    return red(400, 'gecersiz_istek', `${hatalar.length} satır reddedildi: ${hatalar.slice(0, 3).map((h) => ("#" + h.satir + " " + h.neden)).join('; ')}`, {
       hatalar: hatalar.slice(0, 50),
     });
   }
@@ -707,7 +708,7 @@ function hostOrtami(host, k) {
     return ret('hedef_uretim', `dbo.Inventory ortamı ${metin}`, `${host} dbo.Inventory ortamı ${metin}; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`,
       envler.find((e) => !IZINLI_ORTAM.has(e)));
   }
-  const nginxEnv = k && k.nginx && typeof k.nginx.get === 'function' ? k.nginx.get(host)?.env ?? null : null;
+  const nginxEnv = typeof k?.nginx?.get === 'function' ? k.nginx.get(host)?.env ?? null : null;
   const isaret = uretimIsareti({ host, nginxEnv, invEnv: null }) || satirlar.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) || null;
   const env = IZINLI_ORTAM.has(adEnv) ? adEnv : envler.join('/');
   if (isaret) return ret('hedef_uretim', `üretim işareti: ${isaret}`, `${host} için üretim işareti var (${isaret}); yük testi yapılmaz.`, env);
@@ -742,7 +743,7 @@ function yukHostKapisi(host, k, { hedef = null, izinli = [] } = {}) {
 function listenIp(listen) {
   const ilk = String(listen || '').trim().split(/[\s,]+/)[0] || '';
   const i = ilk.lastIndexOf(':');
-  return (i > 0 ? ilk.slice(0, i) : ilk.includes('.') ? ilk : '').replace(/^\[|\]$/g, '');
+  return (() => { if (i > 0) return ilk.slice(0, i); if (ilk.includes('.')) return ilk; return ''; })().replace(/^\[|\]$/g, '');
 }
 
 // Tarayici (nginx_audit_scan.sh) bir server blogunun TUM listen direktiflerini tek alanda boslukla
@@ -1018,7 +1019,7 @@ function serbestAglar(env = process.env) {
   const gorulen = new Set();
   for (const girdi of ham.split(/[\s,;]+/).filter(Boolean)) {
     const r = agGirdisiCoz(girdi, SINIRLAR.serbestMinOnek);
-    const neden = !r.ok ? r.neden : !kullanilabilirIp(r.ag.agAdresi) ? 'ag adresi kullanilamaz (0/8, 127/8, 169.254/16, 224+)' : null;
+    const neden = (() => { if (!r.ok) return r.neden; if (!kullanilabilirIp(r.ag.agAdresi)) return 'ag adresi kullanilamaz (0/8, 127/8, 169.254/16, 224+)'; return null; })();
     if (neden) {
       birKezUyar('NGINX_LOADTEST_SERBEST_AGLAR', girdi, neden);
       continue;
@@ -1268,7 +1269,7 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (epoch === null || epoch < simdiSn || epoch > simdiSn + SON_EPOCH_UST_PAY_SN) ihlal.push('yuk_son_epoch');
     // Butce: <= 2700 (sunucu ayarli 1800) ve >= bosta + adim_sayisi * tekrar * (isinma + sure + bosluk) + 120 (ek paysiz formul).
     const butce = sayi('yuk_butce_sn');
-    const adimlar = metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar') ? ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length : NaN;
+    const adimlar = (() => { if (metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar')) return ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length; return NaN; })();
     const altSinir = Number(ev.yuk_bosta_bas_sn) + adimlar * Number(ev.yuk_tekrar) * (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) + 120;
     const butceTavani = ev.yuk_srv_ayar === '1' ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
     if (butce === null || butce < 1 || butce > butceTavani || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');
@@ -1641,11 +1642,11 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
             `SELECT h.host,
                     CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @d, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS d_var,
                     CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @o, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS o_var
-               FROM (VALUES ${il.params.map((p) => `(@${p.name})`).join(', ')}) AS h(host)`,
+               FROM (VALUES ${il.params.map((p) => ("(@" + p.name + ")")).join(', ')}) AS h(host)`,
             [...il.params, gunParam('d', d), gunParam('o', o)],
           );
           for (const x of r0.recordset || []) {
-            const gun = Number(x.d_var) === 1 ? d : Number(x.o_var) === 1 && o ? o : null;
+            const gun = (() => { if (Number(x.d_var) === 1) return d; if (Number(x.o_var) === 1 && o) return o; return null; })();
             if (!gun) continue;
             if (!gunHostlari.has(gun)) gunHostlari.set(gun, []);
             gunHostlari.get(gun).push(String(x.host));

@@ -218,7 +218,7 @@ function ignoredMessage({ jobId, outcome, awxStatus = null, error = '' }) {
   else if (outcome === 'terminal') what = `nginx_ops işi (job ${job}) iptal edilemedi: iş zaten bitmiş (AWX durumu: ${awxStatus || 'ölçülemedi'}).`;
   else if (outcome === 'unverified') {
     what =
-      `nginx_ops işi (job ${job}) için iptal isteği AWX'te reddedildi ve işin durumu ÖLÇÜLEMEDİ${error ? ` (${error})` : ''}: ` +
+      `nginx_ops işi (job ${job}) için iptal isteği AWX'te reddedildi ve işin durumu ÖLÇÜLEMEDİ${error ? (" (" + error + ")") : ''}: ` +
       "işin bittiği DOĞRULANMADI, HÂLÂ ÇALIŞIYOR olabilir. İşi AWX'te bulup HEMEN iptal edin.";
   } else if (outcome === 'no_job_id') what = "AWX job numarası dönmedi; iptal isteği gönderilemedi. İşi AWX'te bulup HEMEN iptal edin.";
   else if (outcome === 'cancel_failed') what = `nginx_ops işi (job ${job}) İPTAL EDİLEMEDİ: ${error}. İşi AWX'ten HEMEN iptal edin.`;

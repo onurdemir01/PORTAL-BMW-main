@@ -18,7 +18,7 @@ test('maskString: TCKN (11 haneli, sifir disinda baslayan) maskelenir', () => {
 });
 
 test('maskString: sifirla baslayan 11 hane TCKN sayilmaz', () => {
-  const { masked, counts } = maskString('Referans: 01234567890');
+  const { counts } = maskString('Referans: 01234567890');
   // Sifirla baslayan TCKN degil — PHONE_GEN'e dusebilir ama TCKN degil.
   assert.ok(!counts.TCKN, 'sifirla baslayan TCKN sayilmamali');
 });

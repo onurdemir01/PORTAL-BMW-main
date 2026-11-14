@@ -914,7 +914,7 @@ function awxIstegi(req, res, govde) {
       res.writeHead(kod, {
         'Content-Type': typeof nesne === 'string' ? 'text/plain' : 'application/json',
       });
-      res.end(nesne === undefined ? '' : typeof nesne === 'string' ? nesne : JSON.stringify(nesne));
+      res.end((() => { if (nesne === undefined) return ''; if (typeof nesne === 'string') return nesne; return JSON.stringify(nesne); })());
     }, a.gecikmeMs + ekGecikme);
 
   if (req.method === 'GET' && p === '/api/v2/job_templates/') {

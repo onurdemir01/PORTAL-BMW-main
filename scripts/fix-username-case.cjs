@@ -99,9 +99,7 @@ async function main() {
     );
     if (!bozuk.length) {
       console.log(
-        bakilan === 0
-          ? `\n[${h.tablo}] BAKILACAK SATIR YOK (${h.kosul ? h.kosul + ' kosuluna uyan kayit yok' : 'tablo bos'}) — "temiz" DEGIL, olculecek bir sey yoktu.`
-          : `\n[${h.tablo}] temiz — ${bakilan} satir bakildi, hepsi tek bicimde.`,
+        (() => { if (bakilan === 0) return `\n[${h.tablo}] BAKILACAK SATIR YOK (${h.kosul ? h.kosul + ' kosuluna uyan kayit yok' : 'tablo bos'}) — "temiz" DEGIL, olculecek bir sey yoktu.`; return `\n[${h.tablo}] temiz — ${bakilan} satir bakildi, hepsi tek bicimde.`; })(),
       );
       continue;
     }

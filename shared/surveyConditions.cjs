@@ -29,8 +29,8 @@
 
 /** Tek bir kosul. values: { alanAdi: deger } */
 function evaluateCondition(cond, values) {
-  if (!cond || !cond.field) return false;
-  const raw = values ? values[cond.field] : undefined;
+  if (!cond?.field) return false;
+  const raw = values?.[cond.field];
   const val = raw === undefined || raw === null ? '' : String(raw).trim();
   return cond.operator === 'notEmpty' ? val !== '' : val === (cond.equals ?? '');
 }
@@ -46,9 +46,9 @@ function evaluateList(conditions, mode, values) {
 /** dependsOn icindeki DOLU gruplar (bos gruplar YOK SAYILIR - yarim kalmis bir grup
  *  alani sessizce gizlememeli). */
 function nonEmptyGroups(dependsOn) {
-  if (!dependsOn || !Array.isArray(dependsOn.groups)) return [];
+  if (!Array.isArray(dependsOn?.groups)) return [];
   return dependsOn.groups.filter(
-    (g) => g && Array.isArray(g.conditions) && g.conditions.length > 0,
+    (g) => Array.isArray(g?.conditions) && g.conditions.length > 0,
   );
 }
 

@@ -23,7 +23,7 @@ async function ocoPenceresiOku(rawNumber, { now = new Date() } = {}) {
     return { ok: false, status: ocoClient.httpStatus(e), message: e.message };
   }
   const pi = ocoWindow.extractPlannedInterruption(order.payload);
-  if (!pi || !pi.startDate) {
+  if (!pi?.startDate) {
     return {
       ok: false,
       status: 400,

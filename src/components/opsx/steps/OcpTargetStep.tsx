@@ -103,8 +103,8 @@ const OcpTargetStep: React.FC<{
       .finally(() => setLoading(false));
   }, []);
 
-  const envs = Object.keys(tree).sort();
-  const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
+  const envs = Object.keys(tree).sort((a, b) => a.localeCompare(b));
+  const tenants = env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : [];
   // Bu tenant/ortam grubundaki GERÇEK cluster'lar. Seçtirmiyoruz — iş her zaman grubun
   // tamamına gider (AWX `limit` denendi, sessizce yutuldu; bkz. server/opsx/index.cjs).
   // Ama kullanıcı neyin hedefleneceğini GÖRMELİ: sessizce "hepsi" demek, seçim yaptığını

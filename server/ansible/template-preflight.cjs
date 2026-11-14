@@ -89,10 +89,12 @@ function promptKapaliHatasi({ templateId, templateName = '', label = '', degiske
 // FAIL-OPEN (yukaridaki kontrolle ayni gerekce): metadata okunamazsa ya da sablonun playbook
 // alani bossa bloklanmaz.
 async function assertTemplatePlaybook(serverId, templateId, expectedPlaybook, { label = '' } = {}) {
-  const beklenen = String(expectedPlaybook || '').trim().toLowerCase();
+  const beklenen = String(expectedPlaybook || '')
+    .trim()
+    .toLowerCase();
   if (!beklenen) return;
   const tpl = await findTemplate(serverId, templateId);
-  if (!tpl || !tpl.playbook) return;
+  if (!tpl?.playbook) return;
   const gercek = String(tpl.playbook).split('/').pop().toLowerCase();
   if (gercek === beklenen) return;
   throw Object.assign(
@@ -151,7 +153,8 @@ async function sablonOku(serverId, templateId) {
           id: Number(t.id) || Number(templateId),
           name: t.name || '',
           playbook: t.playbook || '',
-          ask_variables: typeof t.askVariablesOnLaunch === 'boolean' ? t.askVariablesOnLaunch : null,
+          ask_variables:
+            typeof t.askVariablesOnLaunch === 'boolean' ? t.askVariablesOnLaunch : null,
         };
     } catch {
       // tek okuma dustu: liste yoluna dus (asagida)
@@ -166,7 +169,9 @@ async function sablonOku(serverId, templateId) {
  */
 function sablonKontrol(tpl, { templateId, key, extraVars }) {
   if (!tpl) return;
-  const beklenen = String(BEKLENEN_PLAYBOOK[key] || '').trim().toLowerCase();
+  const beklenen = String(BEKLENEN_PLAYBOOK[key] || '')
+    .trim()
+    .toLowerCase();
   if (beklenen && tpl.playbook) {
     const gercek = String(tpl.playbook).split('/').pop().toLowerCase();
     if (gercek !== beklenen)
@@ -179,7 +184,8 @@ function sablonKontrol(tpl, { templateId, key, extraVars }) {
         { status: 409, code: 'awx_template_playbook_mismatch' },
       );
   }
-  const degiskenVar = !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
+  const degiskenVar =
+    !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
   if (degiskenVar && tpl.ask_variables === false)
     throw promptKapaliHatasi({
       templateId,
@@ -191,7 +197,8 @@ function sablonKontrol(tpl, { templateId, key, extraVars }) {
 
 /** Kayit anahtarina gore TEK okumayla iki kontrol (assertRegistryPlaybook + assertTemplateAcceptsExtraVars). */
 async function assertRegistryTemplate(serverId, templateId, key, extraVars) {
-  const degiskenVar = !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
+  const degiskenVar =
+    !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
   if (!BEKLENEN_PLAYBOOK[key] && !degiskenVar) return;
   sablonKontrol(await sablonOku(serverId, templateId), { templateId, key, extraVars });
 }

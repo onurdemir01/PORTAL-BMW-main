@@ -52,7 +52,7 @@ function kosuMeta(r, { motor, protokol, parametreler }) {
   return {
     id: Number(r.id),
     etiket: r.etiket ?? null,
-    createdAt: r.created_at == null ? null : r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    createdAt: (() => { if (r.created_at == null) return null; if (r.created_at instanceof Date) return r.created_at.toISOString(); return String(r.created_at); })(),
     createdBy: r.created_by ?? null,
     durum: r.durum ?? null,
     gecerlilik: r.gecerlilik ?? null,
@@ -140,8 +140,8 @@ function ekOlculer(gorunum, kombo, hiz) {
     kapasite: ortalama(satir.filter((a) => a.gecerlilik === 'GECERLI').map((a) => a.kapasiteRps)),
     bantBps: ortalama(olcum.map((a) => a.ag && a.ag.testAlinanBps)),
     bellekMb: pss !== null ? pss : rss,
-    bellekKaynak: pss !== null ? 'pss' : rss !== null ? 'rss' : null,
-    kip: kipler.includes('uyari') ? 'uyari' : kipler.includes('tamam') ? 'tamam' : 'olculmedi',
+    bellekKaynak: (() => { if (pss !== null) return 'pss'; if (rss !== null) return 'rss'; return null; })(),
+    kip: (() => { if (kipler.includes('uyari')) return 'uyari'; if (kipler.includes('tamam')) return 'tamam'; return 'olculmedi'; })(),
   };
 }
 

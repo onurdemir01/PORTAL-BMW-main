@@ -62,7 +62,7 @@ function clusterCoverage(hosts) {
       present: cluster.hosts.filter((h) => set.has(UP(h))),
       missing: cluster.hosts.filter((h) => !set.has(UP(h))),
     })),
-    outside: [...set].filter((h) => !known.has(h)).sort(),
+    outside: [...set].filter((h) => !known.has(h)).sort((a, b) => a.localeCompare(b)),
   };
 }
 

@@ -71,7 +71,7 @@ test('EAX1 sablon yoksa AWX cagrilmaz; 2 dk kisitlamasi', async () => {
   let liste = 0;
   sahteModul(RUNNER_YOLU, {
     redactSecrets: (s) => s,
-    listTemplateJobsOnServer: async () => ((liste += 1), []),
+    listTemplateJobsOnServer: async () => { liste += 1; return []; },
   });
   sahteModul(REG_YOLU, { getByKey: async () => null, getEffectiveTemplateId: () => null });
   F.dbKur(F.sahteDb());
@@ -111,10 +111,7 @@ test('EAX2 is secimi ve kosu acma', async () => {
   let okunamaz = true;
   sahteModul(RUNNER_YOLU, {
     redactSecrets: (s) => s,
-    listTemplateJobsOnServer: async (...a) => (
-      listeArg.push(a),
-      [905, 904, 903, 902, 901, 900].map((id) => ({ id, status: 'successful' }))
-    ),
+    listTemplateJobsOnServer: async (...a) => { listeArg.push(a); return [905, 904, 903, 902, 901, 900].map((id) => ({ id, status: 'successful' })); },
     getJobStatusOnServer: async (sid, id) => {
       detay.push([sid, id]);
       if (id === 900 && okunamaz) throw new Error('AWX zaman asimi');
@@ -290,7 +287,7 @@ test('EAX6 Portal kipi: sablon Limit dolu iken parti baslatilmaz', async () => {
   });
   let cagri = 0;
   poller.kur({
-    launch: async () => ((cagri += 1), { jobId: 1, awxServerId: 2, status: 'pending' }),
+    launch: async () => { cagri += 1; return { jobId: 1, awxServerId: 2, status: 'pending' }; },
   });
   const db = F.sahteDb([
     [

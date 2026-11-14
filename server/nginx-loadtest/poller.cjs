@@ -326,7 +326,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     ekNedenler.push(`hedef nginx durumu ön kontrolden bu yana değişti (ön kontrol: ${m(okNginx)}, koşu: ${m(hn)})`);
   }
   const basarili = kosuBasarili(st.status, stats.durum);
-  const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? `: ${String(stats.hata).slice(0, 300)}` : ''})`;
+  const hataMetni = `AWX işi başarısız (${st.status}${stats.hata ? (": " + String(stats.hata).slice(0, 300)) : ''})`;
 
   // Playbook kosu bolumunu yayinladi ama sw_dizin bildirmedi: /sw'ye HIC veri kopyalanmadi (yuk
   // baslamadi ya da kopya dustu). Dizin okunmaz; "okunamadi" degil, gecersiz bir basarisizliktir.
@@ -341,7 +341,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
     // 2026-11-03 (B1): yeni playbook kosu.yukm_cpu_basladi (bool) ve kosu.yukm_cpu_son_satir (kaydedici ciktisinin son
     // satiri) yayinlar; eski playbook: yok -> secenek YOK (analiz BIREBIR eskisi).
     const yb = kosuBolumu ? kosuBolumu.yukm_cpu_basladi : undefined;
-    const yukKaydedici = yb === true ? 'basladi' : yb === false ? 'baslamadi' : null;
+    const yukKaydedici = (() => { if (yb === true) return 'basladi'; if (yb === false) return 'baslamadi'; return null; })();
     const yukSonSatir = yukKaydedici && typeof kosuBolumu.yukm_cpu_son_satir === 'string' ? kosuBolumu.yukm_cpu_son_satir : null;
     // 2026-11-04: sunucu ayarli kosuda hazirlik kaniti denetlenir; ayarsiz satirda secenek YOK (analiz BIREBIR eskisi).
     const param = parametrelerOf(kosu);
@@ -386,9 +386,9 @@ function bitisZamani(v) {
  */
 function hedefNginxOf(kosu, stats) {
   if ((kosu.hedef_turu || 'sunucu') !== 'sunucu' || !stats) return null;
-  const bolum = kosu.islem === 'on_kontrol' ? stats.on_kontrol : kosu.islem === 'kosu' ? stats.kosu : null;
+  const bolum = (() => { if (kosu.islem === 'on_kontrol') return stats.on_kontrol; if (kosu.islem === 'kosu') return stats.kosu; return null; })();
   const v = bolum && typeof bolum === 'object' ? bolum.hedef_nginx : undefined;
-  return typeof v === 'boolean' ? (v ? 1 : 0) : null;
+  if (typeof v === 'boolean') { if (v) return 1; return 0; } return null;
 }
 
 async function sonYaz(kosu, st, k) {

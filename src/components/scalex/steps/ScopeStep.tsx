@@ -55,10 +55,10 @@ const ScopeStep: React.FC<Props> = ({ busy, initial, onSubmit }) => {
     setDeneme((n) => n + 1);
   };
 
-  const envs = useMemo(() => Object.keys(tree).sort(), [tree]);
-  const tenants = useMemo(() => (env ? Object.keys(tree[env] || {}).sort() : []), [tree, env]);
+  const envs = useMemo(() => Object.keys(tree).sort((a, b) => a.localeCompare(b)), [tree]);
+  const tenants = useMemo(() => (env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : []), [tree, env]);
   const clusters = useMemo(
-    () => (env && tenant ? [...(tree[env]?.[tenant] || [])].sort() : []),
+    () => (env && tenant ? [...(tree[env]?.[tenant] || [])].sort((a, b) => a.localeCompare(b)) : []),
     [tree, env, tenant],
   );
 

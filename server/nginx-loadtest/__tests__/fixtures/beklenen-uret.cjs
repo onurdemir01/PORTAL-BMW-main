@@ -32,7 +32,7 @@ function yaz(x, girinti) {
   const ic = girinti + ' ';
   if (Array.isArray(x)) return x.length ? `[\n${x.map((e) => ic + yaz(e, ic)).join(',\n')}\n${girinti}]` : '[]';
   const anahtarlar = Object.keys(x).sort();
-  return `{\n${anahtarlar.map((k) => `${ic}${JSON.stringify(k)}: ${yaz(x[k], ic)}`).join(',\n')}\n${girinti}}`;
+  return `{\n${anahtarlar.map((k) => (String(ic) + JSON.stringify(k) + ": " + yaz(x[k], ic))).join(',\n')}\n${girinti}}`;
 }
 
 function main(argv) {

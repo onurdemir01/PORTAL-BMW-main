@@ -202,11 +202,9 @@ test('RP9 CLAIM TUTMAZSA launch EDILMEZ (cift tetikleme korumasi)', async () => 
   // degisir, tutmadiysa (baska tick almis) is BASLATILMAZ. Sahte DB varsayilan olarak
   // rowCount:1 donuyor, o yuzden bu testte claim'i BILEREK dusururuz - yoksa mutasyon
   // `if (!claim.rowCount) continue;` silinse bile bekci susuyordu (mutasyon M2).
-  const yazilan = [];
-  sahteDb.query = async (sql, params) => {
+  sahteDb.query = async (sql) => {
     const t = String(sql).replace(/\s+/g, ' ');
     if (/^SELECT/i.test(t.trim())) return { rows: [hedef()], rowCount: 1 };
-    yazilan.push({ sql: t, params });
     if (/SET status = 'stopping'/.test(t)) return { rows: [], rowCount: 0 };
     return { rows: [], rowCount: 1 };
   };

@@ -481,7 +481,7 @@ export function adimNormalle(x: unknown): NlAdim {
   a.ag = agNormalle(alan(r, 'ag'));
   a.bellekDetay = bellekDetayNormalle(alan(r, 'bellekDetay'));
   const reloadNedeni = a.nedenler.some((n) => n.startsWith('reload('));
-  const kotu = (x: number | null) => x != null && !(x > 0);
+  const kotu = (x: number | null) => x != null && x <= 0;
   if (reloadNedeni || kotu(a.cpuMsIstek) || kotu(a.kapasiteRps)) {
     if (!a.cpuOlculemedi && (a.cpuMsIstek != null || a.kapasiteRps != null)) a.cpuOlculemedi = reloadNedeni ? 'reload' : 'negatif_deger';
     a.cpuMsIstek = null;

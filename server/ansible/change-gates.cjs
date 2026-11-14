@@ -254,7 +254,7 @@ async function evaluateOcoGate({
   }
 
   const pi = ocoWindow.extractPlannedInterruption(order.payload);
-  if (!pi || !pi.startDate) {
+  if (!pi?.startDate) {
     return { outcome: 'error', status: 400, body: { ok: false, message: `OCO ${ocoNumber} kaydında planlanan kesinti tarihi yok (PlannedStartDate/PlannedEndDate ya da PlannedInterruption) — işlem yapılmadı.` } };
   }
   const w = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });

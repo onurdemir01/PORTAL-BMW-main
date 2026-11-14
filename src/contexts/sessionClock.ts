@@ -154,7 +154,7 @@ export function oturumSaatiOlustur(sec: SaatSecenekleri = {}) {
   // Bitisler degistiyse uygular ve true doner. Bosta bitisinin ILERLEMESI, sunucunun
   // etkinligi zaten kaydettigi demektir: kisitli extend sayaci da sifirlanir.
   function uygula(idle: number, abs: number, ek?: { warnSeconds?: number; remember?: boolean }): boolean {
-    if (!(idle > 0) || !(abs > 0)) return false;
+    if (!Number.isFinite(idle) || idle <= 0 || !Number.isFinite(abs) || abs <= 0) return false;
     let degisti = idle !== sunucuBosta || abs !== sunucuMutlak;
     if (degisti) surum += 1;
     // Ilk deger (giris / sayfa acilisi) de sunucunun etkinligi az once kaydettigi andir:

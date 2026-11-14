@@ -233,10 +233,7 @@ test('EPO7 parti baslatma kurallari', async () => {
   // Basari: is numarasi yazilir, extraVars dogru.
   let gelen;
   poller.kur({
-    launch: async (req, key, ad, ev) => (
-      (gelen = { req, key, ev }),
-      { jobId: 900, awxServerId: 2, status: 'pending' }
-    ),
+    launch: async (req, key, ad, ev) => { gelen = { req, key, ev }; return { jobId: 900, awxServerId: 2, status: 'pending' }; },
   });
   const db1 = partiDb();
   F.dbKur(db1);
@@ -343,14 +340,14 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
     [/SELECT TOP 1 \* FROM ear_envanter_partileri/, () => ({ rows: [parti({ durum: partiDurum })] })],
     [
       /SET durum = 'CALISIYOR', baslatma_denemesi/,
-      () => ((partiDurum = 'CALISIYOR'), { rowCount: 1 }),
+      () => { partiDurum = 'CALISIYOR'; return { rowCount: 1 }; },
     ],
     [/SELECT \* FROM ear_envanter_kosulari WHERE id/, () => ({ rows: [kosu({ durum: parent })] })],
     [/FROM ear_envanter_kosulari k LEFT JOIN ear_envanter_hostlari/, () => ({ rows: [{ beklenen: 2 }] })],
     [/SET durum = 'IPTAL'.*durum = 'BEKLIYOR'/s, () => ({ rowCount: 0 })],
     [
       /UPDATE ear_envanter_kosulari\s+SET durum = \$2/,
-      () => ((parent = 'IPTAL'), { rowCount: 1 }),
+      () => { parent = 'IPTAL'; return { rowCount: 1 }; },
     ],
     [/SELECT awx_server_id, awx_job_id FROM ear_envanter_partileri/, () => ({ rows: [] })],
     [
@@ -359,7 +356,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
     ],
     [
       /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
-      (p) => ((kayit = { serverId: p[1], jobId: p[2], hata: p[4] }), { rowCount: 1 }),
+      (p) => { kayit = { serverId: p[1], jobId: p[2], hata: p[4] }; return { rowCount: 1 }; },
     ],
   ]);
   F.dbKur(db);
@@ -394,7 +391,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
       [/UPDATE p\s+SET awx_server_id/, () => { throw new Error('DB write timeout'); }],
       [
         /SET awx_server_id = \$2, awx_job_id = \$3, awx_durum = \$4, hata = \$5/,
-        (p) => ((kurtarma = p), { rowCount: 1 }),
+        (p) => { kurtarma = p; return { rowCount: 1 }; },
       ],
     ],
   });
@@ -462,7 +459,7 @@ test('EPO7b launch-iptal yarisi ve job-ID yazim hatasi fail-closed uzlasir', asy
       [/COALESCE\(awx_server_id, 0\) = \$2 AND awx_job_id = \$3/, () => ({ rowCount: 0 })],
       [
         /UPDATE ear_envanter_partileri SET hata = \$2 WHERE id = \$1/,
-        (p) => ((cakismaNotu = p[1]), { rowCount: 1 }),
+        (p) => { cakismaNotu = p[1]; return { rowCount: 1 }; },
       ],
     ],
   });
@@ -671,7 +668,7 @@ test('EPO11 kosu acma', async () => {
 
   let baslatildi = null;
   poller.kur({
-    launch: async (req, key, ad, ev) => ((baslatildi = ev), { jobId: 5, awxServerId: 0 }),
+    launch: async (req, key, ad, ev) => { baslatildi = ev; return { jobId: 5, awxServerId: 0 }; },
   });
   const db = F.sahteDb([
     [/INSERT INTO ear_envanter_kosulari/, () => ({ rows: [{ id: 41 }] })],

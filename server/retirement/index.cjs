@@ -257,11 +257,7 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   // ragmen" tek tip mesaj aliyordu - sebep, satirin ANAHTARININ farkli olmasiydi). Hangi
   // kosulun tutmadigi soylenmezse admin dogru alana Template ID girmis gibi gorunur.
   if (!templateId) {
-    const neden = !row
-      ? `"${key}" anahtarlı satır YOK (Anahtar alanı tam olarak "${key}" olmalı; başka adla açılmış satır kullanılmaz)`
-      : row.enabled === false
-        ? `"${key}" satırı KAPALI (etkinleştirin)`
-        : `"${key}" satırında Template ID boş`;
+    const neden = (() => { if (!row) return `"${key}" anahtarlı satır YOK (Anahtar alanı tam olarak "${key}" olmalı; başka adla açılmış satır kullanılmaz)`; if (row.enabled === false) return `"${key}" satırı KAPALI (etkinleştirin)`; return `"${key}" satırında Template ID boş`; })();
     throw Object.assign(new Error(`AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`), { status: 501 });
   }
   const runner = require('../ansible/runner.cjs');
@@ -434,7 +430,7 @@ function initRetirement(app) {
     const p = require('./poller.cjs');
     const isler = {};
     for (const t of rec.targets || []) {
-      const jobId = t.status === 'deleting' ? t.deleteJobId : t.status === 'rolling_back' ? t.rollbackJobId : t.status === 'stopping' ? t.lastJobId : null;
+      const jobId = (() => { if (t.status === 'deleting') return t.deleteJobId; if (t.status === 'rolling_back') return t.rollbackJobId; if (t.status === 'stopping') return t.lastJobId; return null; })();
       if (jobId) isler[t.id] = { jobId, ...(p.awxDurumu(jobId) || {}) };
     }
     return { zamanlayici: p.zamanlayici(), isler };
@@ -478,11 +474,11 @@ function initRetirement(app) {
     const kullanimda = (a.hedefler || []).filter((h) => h.karar === 'KULLANIMDA');
     const engellenirdi = a.okunamadi || kullanimda.length > 0 || !hedefSecildi;
     const sebepler = [];
-    if (a.okunamadi) sebepler.push(`Analiz okunamadı${a.hata ? ` (${a.hata})` : ''}`);
-    if (kullanimda.length) sebepler.push(`KULLANIMDA: ${kullanimda.slice(0, 5).map((h) => `${h.appName} @ ${h.host}`).join(', ')}${kullanimda.length > 5 ? ` +${kullanimda.length - 5}` : ''}`);
+    if (a.okunamadi) sebepler.push(`Analiz okunamadı${a.hata ? (" (" + a.hata + ")") : ''}`);
+    if (kullanimda.length) sebepler.push(`KULLANIMDA: ${kullanimda.slice(0, 5).map((h) => (String(h.appName) + " @ " + h.host)).join(', ')}${kullanimda.length > 5 ? (" +" + (kullanimda.length - 5)) : ''}`);
     if (!hedefSecildi) sebepler.push('hedef seçilmeden (bütün ortamlar) açıldı');
     const dagilim = Object.entries(say).map(([k, n]) => `${n} ${k}`).join(', ') || 'karar yok';
-    const metin = `Retirement Analizi (gölge kapı, engellemez): ${dagilim}. ${engellenirdi ? `Zorunlu kipte bu kayıt AÇILMAZDI: ${sebepler.join('; ')}.` : 'Zorunlu kipte de açılırdı.'}`;
+    const metin = `Retirement Analizi (gölge kapı, engellemez): ${dagilim}. ${engellenirdi ? ("Zorunlu kipte bu kayıt AÇILMAZDI: " + sebepler.join('; ') + ".") : 'Zorunlu kipte de açılırdı.'}`;
     return { metin: metin.slice(0, 1000), ozet: { engellenirdi, okunamadi: !!a.okunamadi, dagilim: say, hedefSecildi, kullanimda: kullanimda.length } };
   }
 
@@ -509,7 +505,7 @@ function initRetirement(app) {
         const belirsiz = b.targets.filter((x) => (x.gen == null || x.gen === '')
           && disc.targets.filter((t) => t.host === String(x.host).toUpperCase() && t.appName === x.appName).length > 1);
         if (belirsiz.length)
-          return res.status(400).json({ ok: false, message: `${belirsiz.map((x) => `${x.appName} @ ${x.host}`).join(', ')}: bu sunucuda uygulama hem JBoss 7 hem JBoss 8'de var (in-place); hangi kurulumun retire edileceğini seçin.` });
+          return res.status(400).json({ ok: false, message: `${belirsiz.map((x) => (String(x.appName) + " @ " + x.host)).join(', ')}: bu sunucuda uygulama hem JBoss 7 hem JBoss 8'de var (in-place); hangi kurulumun retire edileceğini seçin.` });
         const wanted = new Set(b.targets.map((x) => (x.gen == null || x.gen === '' ? `${String(x.host).toUpperCase()}|${x.appName}|*` : kolAnahtar(x.host, x.appName, x.gen))));
         targets = disc.targets.filter((t) => wanted.has(kolAnahtar(t.host, t.appName, t.gen)) || wanted.has(`${t.host}|${t.appName}|*`));
       }
@@ -534,7 +530,7 @@ function initRetirement(app) {
       }
       // Olay metni 1000 karakterde kesilir (addEvent): ilk 5 in-place hedef + "+N" (sessizce yarida kalmasin).
       const inPlace = targets.filter((t) => t.inPlace);
-      const ipMetni = inPlace.slice(0, 5).map((t) => `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}; aynı sunucuda diğer kurulum: ${(t.digerSurumler || []).map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen')).join(', ')})`).join(', ') +
+      const ipMetni = inPlace.slice(0, 5).map((t) => `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}; aynı sunucuda diğer kurulum: ${(t.digerSurumler || []).map((g) => (g ? ("JBoss " + g) : 'sürümü bilinmeyen')).join(', ')})`).join(', ') +
         (inPlace.length > 5 ? ` +${inPlace.length - 5} hedef daha (hedef satırlarında)` : '');
       await addEvent(id, user, 'created', `Kayıt açıldı: ${targets.length} hedef (${disc.summary.bySite.Pendik} Pendik, ${disc.summary.bySite.Ankara} Ankara); Smart ${smartNo}${ocoNo ? ', OCO ' + ocoNo : ''}; silme ${planned || days + ' gün sonra'}` +
         (inPlace.length ? ` · IN-PLACE: ${ipMetni}` : ''));
@@ -589,7 +585,7 @@ function initRetirement(app) {
         req.session?.user?.username,
         'delete_now',
         `ADMIN beklemeyi atladi: silme tarihi ${onceki || 'belirsiz'} -> bugun. Zamanlayici en gec ~${Math.ceil(pollSn / 60)} dk icinde ` +
-          `${hazir.length} durdurulmus hedefi silecek: ${hazir.map((t) => `${t.appName} @ ${t.host} (${t.env})`).join(', ')}`,
+          `${hazir.length} durdurulmus hedefi silecek: ${hazir.map((t) => (String(t.appName) + " @ " + t.host + " (" + t.env + ")")).join(', ')}`,
       );
       res.json({ ok: true, oncekiTarih: onceki, hedefSayisi: hazir.length, pollSaniye: pollSn, record: await loadRecord(id) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
@@ -801,7 +797,7 @@ function initRetirement(app) {
             );
             await db().query(`UPDATE retirement_targets SET web_result_json = $1 WHERE id = $2`, [JSON.stringify(webDondur(h.web)), h.id]);
           }
-          await addEvent(id, req.session?.user?.username, 'schedule', `${etiket}: ${plan.reason} · ${hedefler.reduce((a, h) => a + h.web.length, 0)} vhost kaldirilacak${coklu ? ` · ${hedefler.length} hedef tek iste` : ''}`);
+          await addEvent(id, req.session?.user?.username, 'schedule', `${etiket}: ${plan.reason} · ${hedefler.reduce((a, h) => a + h.web.length, 0)} vhost kaldirilacak${coklu ? (" · " + hedefler.length + " hedef tek iste") : ''}`);
           return res.json({ ok: true, scheduled: true, runAt: plan.runAt, runAtText: plan.text, windowEnd: w.windowEnd, message: plan.reason, tids });
         }
         // Buraya: pencere ACIK (herkes) ya da ADMIN (pencere ne olursa olsun). Normal launch
@@ -858,7 +854,7 @@ function initRetirement(app) {
       // calisiyorsa (kilit) birkac saniye arayla yeniden denenir; o turda zaten baslamis olur.
       let webBasladi = null;
       if (confirmed && hedefler.some((h) => (h.web || []).length)) webBasladi = await webHemen();
-      await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${etiket} (${t.env}${coklu ? '' : `, ${t.site}`}) iş #${r.jobId}${coklu ? ` · ${hedefler.length} hedef tek işte` : ''}${notifyScc ? (SCC_MAIL_TO ? ' · SCC maili' : ' · SCC adresi tanımsız!') : ''}`);
+      await addEvent(id, req.session?.user?.username, confirmed ? 'stop' : 'plan', `${etiket} (${t.env}${coklu ? '' : (", " + t.site)}) iş #${r.jobId}${coklu ? (" · " + hedefler.length + " hedef tek işte") : ''}${(() => { if (notifyScc) { if (SCC_MAIL_TO) return ' · SCC maili'; return ' · SCC adresi tanımsız!'; } return ''; })()}`);
       // ON KONTROLDE WEB TRAFIGI TAZELENIR (yalniz on kontrolde, onayli STOP'ta degil).
       // Tarama baslatilamazsa ON KONTROL DUSMEZ: sebep (sablon yok, "Prompt on launch"
       // kapali...) ekrana tasinir ve pencere eldeki - daha eski - Server Hub verisiyle acilir.
@@ -949,7 +945,7 @@ function initRetirement(app) {
         return res.status(409).json({ ok: false, message: surenYuzunden ? `${surenYuzunden} vhost için aynı dosyada iş hâlâ sürüyor; sonuç okunmadan yeniden denenmez.` : 'Yeniden denenecek başarısız ya da atlanmış vhost yok.' });
       const vhostPlan = await vhostPlanBaslat(req, id, tid, secilen);
       await addEvent(id, req.session?.user?.username, 'web',
-        `${t.appName} @ ${t.host}: web adimi yeniden deneme ONIZLEMESI - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
+        `${t.appName} @ ${t.host}: web adimi yeniden deneme ONIZLEMESI - ${secilen.map((w) => (String(w.host) + " / " + w.serverName)).join(', ')}`);
       res.json({ ok: true, vhostPlan });
     } catch (err) { res.status(err.status || 500).json({ ok: false, message: err.message }); }
   });
@@ -980,7 +976,7 @@ function initRetirement(app) {
       liste = hazir.liste;
       await db().query(`UPDATE retirement_targets SET web_result_json = $1, updated_at = GETUTCDATE() WHERE id = $2 AND status = 'stopped'`, [JSON.stringify(liste).slice(0, 60000), tid]);
       await addEvent(id, req.session?.user?.username, 'web',
-        `${t.appName} @ ${t.host}: web adimi YENIDEN DENENECEK - ${secilen.map((w) => `${w.host} / ${w.serverName}`).join(', ')}`);
+        `${t.appName} @ ${t.host}: web adimi YENIDEN DENENECEK - ${secilen.map((w) => (String(w.host) + " / " + w.serverName)).join(', ')}`);
       // ZAMANLAYICIYI BEKLEMEDEN baslat; zamanlayici o an calisiyorsa is o turda baslar (kilitli).
       const poller = require('./poller.cjs');
       let simdi = { kosan: 0, kilitli: false };
@@ -1056,7 +1052,7 @@ function initRetirement(app) {
       const eklenenToplam = sonuc.filter((s) => s.eklenen.length && s.islem.startsWith('eklenecek')).reduce((a, s) => a + s.eklenen.length, 0);
       if (uygula)
         await addEvent(id, req.session?.user?.username, 'web',
-          `Web kesfi yenilendi: ${eklenenToplam} vhost eklendi${eklenenToplam ? ' - ' + sonuc.filter((s) => s.eklenen.length).map((s) => `${s.host}: ${s.eklenen.map((w) => `${w.host}/${w.serverName}`).join(', ')}`).join(' · ') : ''}`.slice(0, 1000));
+          `Web kesfi yenilendi: ${eklenenToplam} vhost eklendi${eklenenToplam ? ' - ' + sonuc.filter((s) => s.eklenen.length).map((s) => (String(s.host) + ": " + s.eklenen.map((w) => (String(w.host) + "/" + w.serverName)).join(', '))).join(' · ') : ''}`.slice(0, 1000));
       res.json({ ok: true, uygulandi: uygula, eklenenToplam, hedefler: sonuc, record: uygula ? await loadRecord(id) : undefined });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
@@ -1078,14 +1074,14 @@ function initRetirement(app) {
         return res.status(409).json({ ok: false, message: `Hedef bu durumda kayıttan çıkarılamaz (${t.status}). Durdurulmuş hedef için "Geri aktif et" kullanın.` });
       if (t.status === 'failed' && (t.webSonuc || []).some((w) => w.status === 'ok'))
         return res.status(409).json({ ok: false, message: 'Bu hedefin vhost’u kaldırılmış (yarım STOP): önce "Geri aktif et" ile geri açın.' });
-      const metin = `Kayıttan çıkarıldı${neden ? `: ${neden}` : ''}`;
+      const metin = `Kayıttan çıkarıldı${neden ? (": " + neden) : ''}`;
       const r = await db().query(
         `UPDATE retirement_targets SET status = 'skipped', scheduled_at = NULL, window_end = NULL, web_result_json = NULL, result_text = $1, updated_at = GETUTCDATE()
           WHERE id = $2 AND record_id = $3 AND status = $4`,
         [metin.slice(0, 1000), tid, id, t.status],
       );
       if (!r.rowCount) return res.status(409).json({ ok: false, message: 'Hedefin durumu bu arada değişti; ekranı tazeleyip yeniden deneyin.' });
-      await addEvent(id, req.session?.user?.username, 'note', `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}, ${t.env}) kayittan cikarildi (${t.status} idi)${neden ? ` - ${neden}` : ''}`);
+      await addEvent(id, req.session?.user?.username, 'note', `${t.appName} @ ${t.host} (JBoss ${t.gen ?? '?'}, ${t.env}) kayittan cikarildi (${t.status} idi)${neden ? (" - " + neden) : ''}`);
       res.json({ ok: true, record: await loadRecord(id) });
     } catch (err) { res.status(500).json({ ok: false, message: err.message }); }
   });
@@ -1102,7 +1098,7 @@ function initRetirement(app) {
       if (!rec) return res.status(400).json({ ok: false, message: 'Kayıt yok.' });
       const t = rec.targets.find((x) => x.id === tid);
       if (!t) return res.status(400).json({ ok: false, message: 'Hedef yok.' });
-      const kind = t.status === 'stopping' ? 'stop' : t.status === 'deleting' ? 'delete' : null;
+      const kind = (() => { if (t.status === 'stopping') return 'stop'; if (t.status === 'deleting') return 'delete'; return null; })();
       if (!kind) return res.status(409).json({ ok: false, message: `Hedef bu durumda uzlaştırılamaz (${t.status}).` });
 
       const reg = require('../ansible/playbook-registry.cjs');
@@ -1217,9 +1213,7 @@ function initRetirement(app) {
       // bildiriyor; bildirim yoksa ne yapildigini BILMIYORUZ (poller ile ayni kural).
       // On kontrol (planning) PLAN satiriyla basarilidir; toplu iste is durumu degil hedefin satiri.
       const k = stopKarari(info.status, ss);
-      const basarili = adim.kind === 'stop'
-        ? (t.status === 'planning' ? (ss.coklu ? k.plan : info.status === 'successful' && (k.kod === 'PLAN' || k.kod === 'OK')) : k.ok)
-        : info.status === 'successful' && line.split('	')[2] === 'OK';
+      const basarili = (() => { if (adim.kind === 'stop') { if (t.status === 'planning') { if (ss.coklu) return k.plan; return info.status === 'successful' && (k.kod === 'PLAN' || k.kod === 'OK'); } return k.ok; } return info.status === 'successful' && line.split('	')[2] === 'OK'; })();
       const yeni = basarili ? adim.ok : adim.hata;
       const zamanSql = basarili && adim.zaman ? `, ${adim.zaman} = GETUTCDATE()` : '';
       if (adim.kind === 'stop' && t.status === 'planning') {

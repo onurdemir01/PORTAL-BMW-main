@@ -91,8 +91,12 @@ const IZIN_HATASI = /permission|VIEW DATABASE STATE|VIEW SERVER STATE|denied|izi
 function zamanla(p, ms, ad) {
   let t = null;
   const zaman = new Promise((_, rej) => {
-    t = setTimeout(() => rej(new Error(`${ad}: ${Math.round(ms / 1000)} sn içinde yanıt gelmedi`)), ms);
-    if (t && typeof t.unref === 'function') t.unref();
+    // `.unref()` KULLANILMAZ: Promise.race beklenirken baska aktif tutamak yoksa
+    // Node 22 olay dongusu zamanlayici dolmadan cikis yapar (finally zaten temizler).
+    t = setTimeout(
+      () => rej(new Error(`${ad}: ${Math.round(ms / 1000)} sn içinde yanıt gelmedi`)),
+      ms,
+    );
   });
   return Promise.race([Promise.resolve().then(p), zaman]).finally(() => clearTimeout(t));
 }
@@ -117,12 +121,17 @@ async function canliOku(ad, sorgu, zamanAsimiMs) {
       boyutVar,
       dbAdi: ilk.db_adi != null ? String(ilk.db_adi) : null,
       sunucu: ilk.sunucu != null ? String(ilk.sunucu) : null,
-      tablolar: rows.map((x) => ({
-        sema: String(x.sema || 'dbo'),
-        tablo: String(x.tablo || ''),
-        satir: x.satir == null ? null : Number(x.satir),
-        mb: boyutVar && x.sayfa != null ? Math.round((Number(x.sayfa) * 8) / 1024 * 100) / 100 : null,
-      })).filter((x) => x.tablo),
+      tablolar: rows
+        .map((x) => ({
+          sema: String(x.sema || 'dbo'),
+          tablo: String(x.tablo || ''),
+          satir: x.satir == null ? null : Number(x.satir),
+          mb:
+            boyutVar && x.sayfa != null
+              ? Math.round(((Number(x.sayfa) * 8) / 1024) * 100) / 100
+              : null,
+        }))
+        .filter((x) => x.tablo),
     };
   } catch (e) {
     return { ok: false, hata: String((e && e.message) || e || 'bilinmeyen hata') };
@@ -130,14 +139,18 @@ async function canliOku(ad, sorgu, zamanAsimiMs) {
 }
 
 const anahtar = (sema, tablo) =>
-  (String(sema || 'dbo').toLowerCase() === 'dbo' ? '' : `${String(sema).toLowerCase()}.`) + String(tablo).toLowerCase();
+  (String(sema || 'dbo').toLowerCase() === 'dbo' ? '' : `${String(sema).toLowerCase()}.`) +
+  String(tablo).toLowerCase();
 
 /**
  * Saf hesap: katalog + iki DB'nin canli okumasi -> yanit govdesi.
  * canli: { Portal: canliOku(...) sonucu, TBMWANS: ... }
  */
 function katalogDurumu(katalog, canli, simdi = new Date()) {
-  const kimlik = (c) => (c && c.ok && c.dbAdi ? `${String(c.sunucu || '').toLowerCase()}|${c.dbAdi.toLowerCase()}` : null);
+  const kimlik = (c) =>
+    c && c.ok && c.dbAdi
+      ? `${String(c.sunucu || '').toLowerCase()}|${c.dbAdi.toLowerCase()}`
+      : null;
   const kP = kimlik(canli.Portal);
   const kT = kimlik(canli.TBMWANS);
   const ayniFiziksel = !!(kP && kT && kP === kT);
@@ -162,12 +175,21 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
 
   // Katalogdaki adlar, fiziksel veritabanina gore. Ayni fizikselse iki DB'nin girdileri birlesir.
   const katalogAdlari = (dbler) =>
-    new Set(katalog.filter((g) => dbler.includes(g.db)).map((g) => anahtar('dbo', String(g.tablo).replace(/^dbo\./i, ''))));
+    new Set(
+      katalog
+        .filter((g) => dbler.includes(g.db))
+        .map((g) => anahtar('dbo', String(g.tablo).replace(/^dbo\./i, ''))),
+    );
   const katalogdaYok = [];
   // Biri okunamadiysa fiziksellik bilinmiyor: okunan DB'yi iki katalogun birlesimiyle suz.
   const sapmaKismi = !(canli.Portal && canli.Portal.ok) || !(canli.TBMWANS && canli.TBMWANS.ok);
-  const gruplar = ayniFiziksel ? [{ etiket: 'Portal + TBMWANS', kaynak: 'TBMWANS', dbler: VERITABANLARI }]
-    : VERITABANLARI.map((db) => ({ etiket: db, kaynak: db, dbler: sapmaKismi ? VERITABANLARI : [db] }));
+  const gruplar = ayniFiziksel
+    ? [{ etiket: 'Portal + TBMWANS', kaynak: 'TBMWANS', dbler: VERITABANLARI }]
+    : VERITABANLARI.map((db) => ({
+        etiket: db,
+        kaynak: db,
+        dbler: sapmaKismi ? VERITABANLARI : [db],
+      }));
   for (const gr of gruplar) {
     const c = canli[gr.kaynak];
     if (!c || !c.ok) continue;
@@ -192,7 +214,9 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
     const c = canli[db] || { ok: false, hata: 'okunmadı' };
     const katalogSayisi = katalog.filter((g) => g.db === db).length;
     if (!c.ok) return { db, ok: false, hata: c.hata, katalogSayisi };
-    const toplamMb = c.boyutVar ? Math.round(c.tablolar.reduce((a, t) => a + (t.mb || 0), 0) * 100) / 100 : null;
+    const toplamMb = c.boyutVar
+      ? Math.round(c.tablolar.reduce((a, t) => a + (t.mb || 0), 0) * 100) / 100
+      : null;
     return {
       db,
       ok: true,
@@ -213,7 +237,12 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
     veritabanlari,
     tablolar,
     sapma: { katalogdaYok, veritabanindaYok },
-    secenekler: { veritabanlari: VERITABANLARI, alanlar: ALANLAR, yazanTurleri: YAZAN_TURLERI, guvenler: GUVENLER },
+    secenekler: {
+      veritabanlari: VERITABANLARI,
+      alanlar: ALANLAR,
+      yazanTurleri: YAZAN_TURLERI,
+      guvenler: GUVENLER,
+    },
   };
 }
 
@@ -260,7 +289,12 @@ function createVeriKatalogu({
     return ucus;
   }
 
-  return { sonuc, _sifirla: () => { son = null; } };
+  return {
+    sonuc,
+    _sifirla: () => {
+      son = null;
+    },
+  };
 }
 
 function varsayilanBagimliliklar() {
@@ -281,7 +315,9 @@ function registerVeriKatalogu(router, deps = null) {
       const govde = await vk.sonuc(String(req.query.fresh || '') === '1');
       res.json(govde);
     } catch (err) {
-      res.status(500).json({ ok: false, message: (err && err.message) || 'Veri kataloğu okunamadı.' });
+      res
+        .status(500)
+        .json({ ok: false, message: (err && err.message) || 'Veri kataloğu okunamadı.' });
     }
   });
   return vk;

@@ -67,7 +67,7 @@ function gercekSonTarihli(sayac = null) {
     ? (fn, ms) => { sayac.kurulan++; return setTimeout(fn, ms); }
     : setTimeout;
   const ct = sayac
-    ? (t) => { if (t) sayac.temizlenen++; return clearTimeout(t); }
+    ? (t) => { if (t) { sayac.temizlenen++; } return clearTimeout(t); }
     : clearTimeout;
   return new Function('setTimeout', 'clearTimeout',
     `${RUNNER_SRC.slice(i, j)}\nreturn sonTarihli;`)(st, ct);

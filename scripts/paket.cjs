@@ -61,6 +61,9 @@ const GELISTIRME_BETIKLERI = new Set([
   'scripts/ui-tarama',
   'scripts/paket.cjs',
   'scripts/guvenlik-denetim.cjs',
+  'scripts/lcov-birlestir.cjs',
+  'scripts/mutasyon-testi.cjs',
+  'scripts/sbom-uretim.cjs',
   // Kok manifest / gelistirici kurulumu (gelistirme/ dizini pakete girmez).
   'scripts/manifest.cjs',
   'scripts/kur.cjs',

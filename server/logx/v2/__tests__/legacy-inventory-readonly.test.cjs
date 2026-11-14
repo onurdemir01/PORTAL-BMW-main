@@ -45,7 +45,7 @@ const codeOnly = (src) =>
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
     .join('\n');
 
-const WRITE_VERB = /\b(INSERT\s+INTO|UPDATE\s+[A-Za-z_${]|MERGE\s+[A-Za-z_${]|DELETE\s+FROM)\b/i;
+const WRITE_VERB = /\b(INSERT\s+INTO|UPDATE\s+[a-z_${]|MERGE\s+[a-z_${]|DELETE\s+FROM)\b/i;
 
 test('IR1 uygulama envanteri tablosuna atilan HER sorgu SELECT', () => {
   const bulunan = [];

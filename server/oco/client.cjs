@@ -203,7 +203,7 @@ async function getChangeOrder(ocoNumber) {
 // dokunmaz); err.status semantik olarak kalir, yalnizca HTTP katmanina cevrilir.
 const NGINX_INTERCEPTED = new Set([403, 404, 500, 502, 503, 504]);
 function httpStatus(err) {
-  const s = Number((err && err.status) || 400);
+  const s = Number((err?.status) || 400);
   return NGINX_INTERCEPTED.has(s) ? 400 : s;
 }
 

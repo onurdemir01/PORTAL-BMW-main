@@ -172,25 +172,13 @@ function rebootReadiness(hosts, istenen, latestScan = null) {
     // SIRA ONEMLI: engel > olculemedi > risk. Olculemeyeni "risk"in altina koymak,
     // bilmedigimiz bir seyi bildigimiz bir seyden daha masum gostermek olurdu.
     // BAYAT sunucu engel/risk/hazir DEGIL, olculemedidir (EK-2); sema bilinmiyorsa da (C3).
-    const verdict = bayat || sema
-      ? 'unknown'
-      : varMi('blocker')
-        ? 'blocked'
-        : varMi('unknown')
-          ? 'unknown'
-          : varMi('risk')
-            ? 'risk'
-            : 'ok';
+    const verdict = (() => { if (bayat || sema) return 'unknown'; if (varMi('blocker')) return 'blocked'; if (varMi('unknown')) return 'unknown'; if (varMi('risk')) return 'risk'; return 'ok'; })();
     return {
       host,
       verdict,
       scanDate: h.scanDate || null,
       reasons,
-      note: bayat
-        ? `Tarama bayat (${h.scanDate || '?'}) — güncel durum bilinmiyor.`
-        : sema
-          ? 'Server Hub şeması okunamadı — güncel durum bilinmiyor.'
-          : '',
+      note: (() => { if (bayat) return `Tarama bayat (${h.scanDate || '?'}) — güncel durum bilinmiyor.`; if (sema) return 'Server Hub şeması okunamadı — güncel durum bilinmiyor.'; return ''; })(),
     };
   });
 

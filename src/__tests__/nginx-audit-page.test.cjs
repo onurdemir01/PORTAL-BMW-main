@@ -305,8 +305,8 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
     'hAC hucresi Sorunsuz yazmamali',
   );
   assert.ok(
-    den.includes('uppercase tracking-wide opacity-70">Eski</span>') &&
-      den.includes('uppercase tracking-wide opacity-70">Yeni</span>'),
+    /uppercase tracking-wide opacity-70">\s*Eski\s*<\/span>/.test(den) &&
+      /uppercase tracking-wide opacity-70">\s*Yeni\s*<\/span>/.test(den),
     'PROD hucresinde Eski/Yeni ayri kutular yok',
   );
   // Production Tasimalari: grup sekmeleri, location ilerlemesi, "Bu ekran ne gosteriyor" yok
@@ -327,7 +327,8 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   const srvm = flatten(read('../server/audit/nginx-migration.cjs'));
   assert.ok(
     srvm.includes('newLocRows') &&
-      srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'"),
+      (srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'") ||
+        srvm.includes("return 'defined'; if (on.length === 0) return 'none'; return 'partial';")),
     'yeni sunucu location durumu hesaplanmali',
   );
   const srv = read('../server/audit/denetim.cjs');

@@ -47,11 +47,7 @@ before(() => {
         sahte.cagrilar.push({ u, p });
         return sahte.yanit(u, p);
       },
-      CookieJar: class {
-        constructor() {
-          this.bos = true;
-        }
-      },
+      CookieJar: function CookieJar() { this.bos = true; },
     },
     metrics: {
       Counter: class {

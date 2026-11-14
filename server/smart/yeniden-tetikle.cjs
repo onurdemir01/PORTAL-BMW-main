@@ -79,7 +79,7 @@ function smartKarari({ status, hata } = {}) {
   }
   return {
     durum: 'bilinmiyor', engel: false, stateName, statusCode,
-    message: `Smart belgelenmemiş bir durumda (kod ${statusCode}${stateName ? `, "${stateName}"` : ''}); onaylı değil. Tetiklerseniz onay sizin gerekçenizle atlanır.`,
+    message: `Smart belgelenmemiş bir durumda (kod ${statusCode}${stateName ? (", \"" + stateName + "\"") : ''}); onaylı değil. Tetiklerseniz onay sizin gerekçenizle atlanır.`,
   };
 }
 
@@ -132,9 +132,7 @@ const MOD_METNI = {
 
 /** Bilete yazilacak aciklama: kim, nasil, neden. */
 function sonucMetni({ admin, mod, ocoNumber, smartDurum, not, zamanlandi }) {
-  const nasil = mod === 'oco'
-    ? `yeni OCO ${ocoNumber} ile ${zamanlandi ? `${zamanlandi} tarihine zamanlandı` : 'hemen çalıştırıldı'}`
-    : MOD_METNI[mod] || mod;
+  const nasil = (() => { if (mod === 'oco') return `yeni OCO ${ocoNumber} ile ${zamanlandi ? (String(zamanlandi) + " tarihine zamanlandı") : 'hemen çalıştırıldı'}`; return MOD_METNI[mod] || mod; })();
   const smart = smartDurum === 'onayli' ? 'Smart sonradan onaylamıştı' : 'Smart onayı admin tarafından atlandı';
   return `Zaman aşımından sonra admin ${admin} yeniden tetikledi: ${nasil}; ${smart}. Gerekçe: ${not}`.slice(0, 2000);
 }

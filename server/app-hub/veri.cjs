@@ -21,8 +21,14 @@
 // degildir, ekran da oyle yazar.
 'use strict';
 
-const L = (s) => String(s == null ? '' : s).trim().toLowerCase();
-const U = (s) => String(s == null ? '' : s).trim().toUpperCase();
+const L = (s) =>
+  String(s == null ? '' : s)
+    .trim()
+    .toLowerCase();
+const U = (s) =>
+  String(s == null ? '' : s)
+    .trim()
+    .toUpperCase();
 const nz = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
 const sayi = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
@@ -111,9 +117,12 @@ async function ara(q) {
   const skor = (ad) => {
     const a = L(ad);
     const b = L(q);
-    return a === b ? 0 : a.startsWith(b) ? 1 : 2;
+    if (a === b) return 0;
+    if (a.startsWith(b)) return 1;
+    return 2;
   };
-  const sirala = (x) => x.sort((a, b) => skor(a.ad) - skor(b.ad) || a.ad.localeCompare(b.ad, 'tr')).slice(0, 25);
+  const sirala = (x) =>
+    x.sort((a, b) => skor(a.ad) - skor(b.ad) || a.ad.localeCompare(b.ad, 'tr')).slice(0, 25);
   const sonuclar = [
     ...sirala(
       [...jbGrup.values()].map((g) => ({
@@ -125,7 +134,11 @@ async function ara(q) {
     ),
     ...sirala(wa.rows.map((r) => ({ ad: String(r.app), tip: 'was', ozet: `${r.n} sunucu` }))),
     ...sirala(
-      oc.rows.map((r) => ({ ad: String(r.app), tip: 'ocp', ozet: `${r.ns} namespace · ${r.cl} cluster` })),
+      oc.rows.map((r) => ({
+        ad: String(r.app),
+        tip: 'ocp',
+        ozet: `${r.ns} namespace · ${r.cl} cluster`,
+      })),
     ),
   ].sort((a, b) => skor(a.ad) - skor(b.ad));
   const okunamayan = [];
@@ -144,7 +157,7 @@ async function kapasiteOku(hostlar) {
   const { sql } = mssql();
   const params = liste.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(128), value: h }));
   const r = await guvenli(
-    `SELECT * FROM dbo.Inventory WHERE UPPER(host) IN (${liste.map((_, i) => `@h${i}`).join(', ')})`,
+    `SELECT * FROM dbo.Inventory WHERE UPPER(host) IN (${liste.map((_, i) => '@h' + i).join(', ')})`,
     params,
   );
   for (const row of r.rows) {
@@ -204,12 +217,19 @@ async function jbossDetay(adHam) {
     hub.sonTarama = a.latestScan || null;
     if (a.tableMissing) hub.hata = 'Server Hub tablolari bulunamadi.';
     const hedef = new Set(hostlar);
-    const eslesen = (a.hosts || []).filter((h) => hedef.has(U(h.host)) || hedef.has(U(String(h.host).split('.')[0])));
+    const eslesen = (a.hosts || []).filter(
+      (h) => hedef.has(U(h.host)) || hedef.has(U(String(h.host).split('.')[0])),
+    );
     const hedefHostlar = eslesen.slice(0, HOST_TAVAN);
     // N+1 yerine: kolon semasi istek basina bir kez, sunucu basina agir okuma SINIRLI paralel
     // (JVM_AGIR_ESZAMAN). Sonuc dizisi girdi sirasini korur; birlestirme asagida eski sirayla.
     const semaOku = hedefHostlar.length && sh.loadJvmAgir && sh.loadJvmAgir.semaOku;
-    const kolP = typeof semaOku === 'function' ? Promise.resolve().then(semaOku).catch(() => null) : null;
+    const kolP =
+      typeof semaOku === 'function'
+        ? Promise.resolve()
+            .then(semaOku)
+            .catch(() => null)
+        : null;
     const agirlar = await sinirliParalel(hedefHostlar, JVM_AGIR_ESZAMAN, (h) =>
       Promise.resolve()
         .then(() => (kolP ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
@@ -222,7 +242,8 @@ async function jbossDetay(adHam) {
       for (const j of d.jvms || []) {
         // Numarali / grup eslesmesi (2026-11-14, assess envanterEslestir): GBFACELIFTSUBE-T1 JVM'i
         // envanter uygulamasi GBFACELIFTSUBE-T'ye eslendiyse invApp tasir; uygulama ona gore secilir.
-        if (U(tabanAd(j.name)) !== U(base) && !(j.invApp && U(tabanAd(j.invApp)) === U(base))) continue;
+        if (U(tabanAd(j.name)) !== U(base) && !(j.invApp && U(tabanAd(j.invApp)) === U(base)))
+          continue;
         hub.jvmler.push({
           host: U(String(h.host).split('.')[0]),
           ad: j.name,
@@ -247,7 +268,10 @@ async function jbossDetay(adHam) {
           // DURUM KANITI (kullanici, 2026-11-12: "1 calisiyor 1 kapali, dogru mu nasil anlarim"):
           // olcum yontemi (PS / CLI_STATUS / PS_ABSENT / UNMEASURED); taramada gorulmeyen,
           // yalniz MWAppsInventory'den eklenen JVM (gen 0) 'ENVANTER'.
-          durumKaynagi: yalnizEnvanter(j) || (Number(j.gen) === 0 && !j.runningSrc) ? 'ENVANTER' : j.runningSrc || null,
+          durumKaynagi:
+            yalnizEnvanter(j) || (Number(j.gen) === 0 && !j.runningSrc)
+              ? 'ENVANTER'
+              : j.runningSrc || null,
           envanterDurumu: j.invStatus || null,
           uyumsuzluk: Array.isArray(j.mismatch) ? j.mismatch : [],
           domain: j.domain || null,
@@ -265,7 +289,8 @@ async function jbossDetay(adHam) {
     hubIx.get(k).push(j);
   }
   const hedefIx = new Map();
-  for (const tg of (disc.d && disc.d.targets) || []) hedefIx.set(`${U(tg.host)}|${L(tg.appName)}`, tg);
+  for (const tg of (disc.d && disc.d.targets) || [])
+    hedefIx.set(`${U(tg.host)}|${L(tg.appName)}`, tg);
 
   // TEKILLESTIRME (kullanici, 2026-11-12: "sunucu sekmeleri ya acilmiyor ya kapanmiyor"):
   // MWAppsInventory ayni host + uygulama icin domain basina ayri satir tasiyabiliyor; her satir
@@ -312,7 +337,15 @@ async function jbossDetay(adHam) {
   for (const s of sunucular) {
     for (const w of s.web) {
       const k = U(w.host);
-      if (!webIx.has(k)) webIx.set(k, { host: k, urun: w.product || null, vhostlar: new Set(), istek7g: 0, olculdu: false, uygulamaSunuculari: new Set() });
+      if (!webIx.has(k))
+        webIx.set(k, {
+          host: k,
+          urun: w.product || null,
+          vhostlar: new Set(),
+          istek7g: 0,
+          olculdu: false,
+          uygulamaSunuculari: new Set(),
+        });
       const g = webIx.get(k);
       if (w.serverName) g.vhostlar.add(w.serverName);
       g.uygulamaSunuculari.add(s.host);
@@ -323,7 +356,12 @@ async function jbossDetay(adHam) {
     }
   }
   const webSunuculari = [...webIx.values()]
-    .map((g) => ({ ...g, vhostlar: [...g.vhostlar].sort(), uygulamaSunuculari: [...g.uygulamaSunuculari].sort(), istek7g: g.olculdu ? g.istek7g : null }))
+    .map((g) => ({
+      ...g,
+      vhostlar: [...g.vhostlar].sort(),
+      uygulamaSunuculari: [...g.uygulamaSunuculari].sort(),
+      istek7g: g.olculdu ? g.istek7g : null,
+    }))
     .sort((a, b) => a.host.localeCompare(b.host));
 
   const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort();
@@ -340,14 +378,20 @@ async function jbossDetay(adHam) {
       calisanJvm: hub.jvmler.filter((j) => j.calisiyor === true).length,
       webSunucuSayisi: webSunuculari.length,
       toplamCpu: sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.cpu) || 0), 0) || null,
-      toplamBellekGb: Math.round(sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10) / 10 || null,
+      toplamBellekGb:
+        Math.round(
+          sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10,
+        ) / 10 || null,
       yuk: disc.d && disc.d.summary ? disc.d.summary.trafik || null : null,
     },
     sunucular,
     webSunuculari,
     kaynaklar: {
       envanter: { hata: mw.hata },
-      kesif: { hata: disc.hata, serverHubOkunamadi: !!(disc.d && disc.d.summary && disc.d.summary.hubUnavailable) },
+      kesif: {
+        hata: disc.hata,
+        serverHubOkunamadi: !!(disc.d && disc.d.summary && disc.d.summary.hubUnavailable),
+      },
       serverHub: { hata: hub.hata, sonTarama: hub.sonTarama },
       kapasite: { hata: kap.hata },
     },
@@ -367,7 +411,7 @@ async function wasOzetleri(hostlar) {
       `SELECT h.host, h.was_ozeti, h.taranma_utc FROM ear_envanter_hostlari h
          JOIN (SELECT host, MAX(kosu_id) AS k FROM ear_envanter_hostlari WHERE veri_var = 1 GROUP BY host) m
            ON m.host = h.host AND m.k = h.kosu_id
-        WHERE UPPER(h.host) IN (${liste.map((_, i) => `$${i + 1}`).join(', ')})`,
+        WHERE UPPER(h.host) IN (${liste.map((_, i) => '$' + (i + 1)).join(', ')})`,
       liste,
     );
     for (const r of rows) {
@@ -377,7 +421,10 @@ async function wasOzetleri(hostlar) {
       } catch {
         oz = null;
       }
-      out.set(U(r.host), { ozet: oz, taranma: r.taranma_utc ? new Date(r.taranma_utc).toISOString() : null });
+      out.set(U(r.host), {
+        ozet: oz,
+        taranma: r.taranma_utc ? new Date(r.taranma_utc).toISOString() : null,
+      });
     }
     return { harita: out, hata: null };
   } catch (e) {
@@ -457,15 +504,26 @@ async function wasDetay(ad) {
         envanterDurumu: nz(row.status),
         alan: nz(row.domain),
         kapasite: kap.harita.get(host) || null,
-        jvm: bilgi
-          ? {
+        jvm: (() => {
+          if (bilgi)
+            return {
               ...bilgi,
               jvmArgs: bilgi.jvmArgs ? maskJvmArgs(bilgi.jvmArgs) : null,
               taranma: e.taranma,
-            }
-          : null,
+            };
+          return null;
+        })(),
         jvmToplandi: !!(bilgi && bilgi.jvmDurumu === 'OKUNDU'),
-        web: m && Array.isArray(m.web) ? m.web.map((w) => ({ host: U(w.host), serverName: w.serverName || null, product: w.product || null, port: w.port || null, kaynak: w.kaynak || null })) : [],
+        web:
+          m && Array.isArray(m.web)
+            ? m.web.map((w) => ({
+                host: U(w.host),
+                serverName: w.serverName || null,
+                product: w.product || null,
+                port: w.port || null,
+                kaynak: w.kaynak || null,
+              }))
+            : [],
         tier: m ? m.tier || null : null,
       };
     })
@@ -473,12 +531,23 @@ async function wasDetay(ad) {
   const webIx = new Map();
   for (const s of sunucular)
     for (const w of s.web) {
-      if (!webIx.has(w.host)) webIx.set(w.host, { host: w.host, urun: w.product, vhostlar: new Set(), uygulamaSunuculari: new Set() });
+      if (!webIx.has(w.host))
+        webIx.set(w.host, {
+          host: w.host,
+          urun: w.product,
+          vhostlar: new Set(),
+          uygulamaSunuculari: new Set(),
+        });
       const g = webIx.get(w.host);
       if (w.serverName) g.vhostlar.add(w.serverName);
       g.uygulamaSunuculari.add(s.host);
     }
-  const webSunuculari = [...webIx.values()].map((g) => ({ ...g, vhostlar: [...g.vhostlar].sort(), uygulamaSunuculari: [...g.uygulamaSunuculari].sort(), istek7g: null }));
+  const webSunuculari = [...webIx.values()].map((g) => ({
+    ...g,
+    vhostlar: [...g.vhostlar].sort(),
+    uygulamaSunuculari: [...g.uygulamaSunuculari].sort(),
+    istek7g: null,
+  }));
   return {
     tip: 'was',
     ad,
@@ -488,7 +557,10 @@ async function wasDetay(ad) {
       surumler: [...new Set(sunucular.map((s) => s.wasSurum).filter(Boolean))].sort(),
       webSunucuSayisi: webSunuculari.length,
       toplamCpu: sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.cpu) || 0), 0) || null,
-      toplamBellekGb: Math.round(sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10) / 10 || null,
+      toplamBellekGb:
+        Math.round(
+          sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10,
+        ) / 10 || null,
     },
     sunucular,
     webSunuculari,
@@ -512,7 +584,13 @@ async function clusterIndeksi() {
   for (const r of rows) {
     const k = L(r.cluster_name);
     if (!ix.has(k)) ix.set(k, []);
-    ix.get(k).push({ env: r.env, tenant: r.tenant, ad: r.cluster_name, gorunen: r.display || null, konsol: r.console_url || null });
+    ix.get(k).push({
+      env: r.env,
+      tenant: r.tenant,
+      ad: r.cluster_name,
+      gorunen: r.display || null,
+      konsol: r.console_url || null,
+    });
   }
   return ix;
 }
@@ -533,7 +611,9 @@ async function ocpDetay(ad) {
     cixHata = hataMetni(e);
   }
   const namespaces = [...new Set(inv.rows.map((r) => String(r.namespace)))];
-  const nsParams = namespaces.slice(0, 50).map((n, i) => ({ name: `n${i}`, type: sql.NVarChar(256), value: n }));
+  const nsParams = namespaces
+    .slice(0, 50)
+    .map((n, i) => ({ name: `n${i}`, type: sql.NVarChar(256), value: n }));
   const inNs = nsParams.map((x) => `@${x.name}`).join(', ');
   const [rot, kul] = await Promise.all([
     nsParams.length
@@ -561,9 +641,19 @@ async function ocpDetay(ad) {
     let onbellek = null;
     if (ct) {
       try {
-        const c = await ocpCache.getApps({ env: ct.env, tenant: ct.tenant, clusterName: ct.ad, namespace: r.namespace });
+        const c = await ocpCache.getApps({
+          env: ct.env,
+          tenant: ct.tenant,
+          clusterName: ct.ad,
+          namespace: r.namespace,
+        });
         const it = (c.items || []).filter((x) => L(x.name) === L(ad));
-        if (it.length) onbellek = { kayitlar: it, alinma: c.fetchedAt ? new Date(c.fetchedAt).toISOString() : null, bayat: !!c.stale };
+        if (it.length)
+          onbellek = {
+            kayitlar: it,
+            alinma: c.fetchedAt ? new Date(c.fetchedAt).toISOString() : null,
+            bayat: !!c.stale,
+          };
       } catch {
         onbellek = null;
       }
@@ -573,7 +663,9 @@ async function ocpDetay(ad) {
       r.namespace,
       ad,
     );
-    const ku = kul.rows.find((x) => L(x.cluster) === L(r.cluster) && L(x.namespace) === L(r.namespace));
+    const ku = kul.rows.find(
+      (x) => L(x.cluster) === L(r.cluster) && L(x.namespace) === L(r.namespace),
+    );
     yerler.push({
       cluster: String(r.cluster),
       namespace: String(r.namespace),
@@ -582,13 +674,32 @@ async function ocpDetay(ad) {
       konsol: ct ? ct.konsol : null,
       katalogda: !!ct,
       onbellek,
-      routelar: (rr.adaylar || []).map((a) => ({ adres: a.url, ad: a.routeName || null, tls: a.termination || null, kanit: a.how === 'address' ? 'adres' : 'route adı' })),
+      routelar: (rr.adaylar || []).map((a) => ({
+        adres: a.url,
+        ad: a.routeName || null,
+        tls: a.termination || null,
+        kanit: a.how === 'address' ? 'adres' : 'route adı',
+      })),
       routeEslesme: rr.how || null,
       atfedilmeyenRoute: rr.atfedilmeyen || 0,
-      istek: ku ? { toplam: sayi(ku.req_total), gun: sayi(ku.window_days), olculdu: Number(ku.measured) === 1, tarih: ku.scan_date ? new Date(ku.scan_date).toISOString().slice(0, 10) : null } : null,
+      istek: (() => {
+        if (ku)
+          return {
+            toplam: sayi(ku.req_total),
+            gun: sayi(ku.window_days),
+            olculdu: Number(ku.measured) === 1,
+            tarih: ku.scan_date ? new Date(ku.scan_date).toISOString().slice(0, 10) : null,
+          };
+        return null;
+      })(),
     });
   }
-  yerler.sort((a, b) => String(a.ortam).localeCompare(String(b.ortam)) || a.cluster.localeCompare(b.cluster) || a.namespace.localeCompare(b.namespace));
+  yerler.sort(
+    (a, b) =>
+      String(a.ortam).localeCompare(String(b.ortam)) ||
+      a.cluster.localeCompare(b.cluster) ||
+      a.namespace.localeCompare(b.namespace),
+  );
   return {
     tip: 'ocp',
     ad,
@@ -608,4 +719,15 @@ async function ocpDetay(ad) {
   };
 }
 
-module.exports = { AD_RE, ARA_RE, ara, jbossDetay, wasDetay, ocpDetay, kapasiteOku, wasSunucuBilgisi, clusterIndeksi, _ic: { heap, sinirliParalel, JVM_AGIR_ESZAMAN } };
+module.exports = {
+  AD_RE,
+  ARA_RE,
+  ara,
+  jbossDetay,
+  wasDetay,
+  ocpDetay,
+  kapasiteOku,
+  wasSunucuBilgisi,
+  clusterIndeksi,
+  _ic: { heap, sinirliParalel, JVM_AGIR_ESZAMAN },
+};

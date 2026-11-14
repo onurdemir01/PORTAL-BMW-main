@@ -46,7 +46,7 @@ function wrkIstemci(d) {
   const x = { ...Object.fromEntries(KOLON.map((k) => [k, null])), ...d, ...WRK_ALANLARI };
   const csv = KOLON.join(',') + '\n' + KOLON.map((k) => wrkHucre(x[k])).join(',') + '\n';
   const j = {};
-  for (const k of JSON_ANAHTARLARI) j[k] = typeof x[k] === 'number' ? Number(g15(x[k])) : x[k] === undefined ? null : x[k];
+  for (const k of JSON_ANAHTARLARI) j[k] = (() => { if (typeof x[k] === 'number') return Number(g15(x[k])); if (x[k] === undefined) return null; return x[k]; })();
   return { csv, json: JSON.stringify(j, null, 2) + '\n' };
 }
 

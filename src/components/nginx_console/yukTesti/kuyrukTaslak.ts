@@ -4,9 +4,15 @@
 // "Gece kuyruğu" bolumunde siralanir ve "Kuyruğu oluştur" ile sunucuya gider. localStorage yalniz kolaylik:
 // okunamazsa / yazilamazsa taslak bellekte kalir (sunucuya giden her sey olusturma isteginde).
 // 2026-11-04: duzenleme (taslak ya da bekleyen kuyruk ogesi "Yeni koşu" formunda acilir) ve duraklatma turetimi.
-import type { NlKuyruk, NlKuyrukDurum, NlKuyrukGovde, NlKuyrukOge, NlKuyrukOgeDurum } from '@/api/nginxLoadtestApi';
+import type {
+  NlKuyruk,
+  NlKuyrukDurum,
+  NlKuyrukGovde,
+  NlKuyrukOge,
+  NlKuyrukOgeDurum,
+} from '@/api/nginxLoadtestApi';
 import type { Ton } from '@/components/server_hub/retirementStil';
-import { fmtTime } from '@/utils/datetime';
+import { fmtTime, PORTAL_TZ } from '@/utils/datetime';
 
 export interface TaslakOge {
   yerelId: string;
@@ -45,7 +51,11 @@ export function yeniYerelId(): string {
 export function taslakOku(): TaslakOge[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(TASLAK_ANAHTARI) || '[]');
-    return Array.isArray(v) ? v.filter((o) => o && typeof o.etiket === 'string' && o.govde && typeof o.yerelId === 'string') : [];
+    return Array.isArray(v)
+      ? v.filter(
+          (o) => o && typeof o.etiket === 'string' && o.govde && typeof o.yerelId === 'string',
+        )
+      : [];
   } catch {
     return [];
   }
@@ -61,24 +71,40 @@ export function taslakYaz(t: TaslakOge[]) {
 }
 
 /** Taslak ogesini yerinde degistirir (sira korunur). Bitmis on kontrol eski ayarlara aitti: numarasi dusar. */
-export function taslakGuncelle(t: TaslakOge[], yerelId: string, d: Pick<TaslakOge, 'etiket' | 'govde' | 'hedef' | 'ozet' | 'butceSn'>): TaslakOge[] {
+export function taslakGuncelle(
+  t: TaslakOge[],
+  yerelId: string,
+  d: Pick<TaslakOge, 'etiket' | 'govde' | 'hedef' | 'ozet' | 'butceSn'>,
+): TaslakOge[] {
   return t.map((o) => (o.yerelId === yerelId ? { ...o, ...d, onKontrolKosuId: null } : o));
 }
 
 /** Tahmini toplam sure (sn): her oge on kontrol + kosu ust siniri, aralarda bekleme. */
 export function taslakToplamSn(ogeler: Pick<TaslakOge, 'butceSn'>[], beklemeDk: number): number {
-  return ogeler.reduce((t, o) => t + ON_KONTROL_PAY_SN + (o.butceSn || 0), 0) + Math.max(0, ogeler.length - 1) * beklemeDk * 60;
+  return (
+    ogeler.reduce((t, o) => t + ON_KONTROL_PAY_SN + (o.butceSn || 0), 0) +
+    Math.max(0, ogeler.length - 1) * beklemeDk * 60
+  );
 }
 
 /** Bekleyen kuyruk ogesinin govdesi (`ayar`dan); eksik alan varsa null (duzenleme acilmaz). */
 export function ogeGovdesi(o: Pick<NlKuyrukOge, 'ayar'>): NlKuyrukGovde | null {
   const a = o.ayar;
   if (a?.senaryoId == null || !a.hedefIp || !a.vhost || !a.yukHost || !a.parametreler) return null;
-  return { senaryoId: a.senaryoId, hedefHost: a.hedefHost ?? null, hedefIp: a.hedefIp, vhost: a.vhost, yukHost: a.yukHost, sni: a.sni === true, parametreler: a.parametreler };
+  return {
+    senaryoId: a.senaryoId,
+    hedefHost: a.hedefHost ?? null,
+    hedefIp: a.hedefIp,
+    vhost: a.vhost,
+    yukHost: a.yukHost,
+    sni: a.sni === true,
+    parametreler: a.parametreler,
+  };
 }
 
 /** Sunucunun ogeGuncelle kosulu: bekliyor ve hic baslamamis. */
-export const ogeDuzenlenir = (o: Pick<NlKuyrukOge, 'durum' | 'onKontrolKosuId' | 'kosuId'>) => o.durum === 'BEKLIYOR' && o.onKontrolKosuId == null && o.kosuId == null;
+export const ogeDuzenlenir = (o: Pick<NlKuyrukOge, 'durum' | 'onKontrolKosuId' | 'kosuId'>) =>
+  o.durum === 'BEKLIYOR' && o.onKontrolKosuId == null && o.kosuId == null;
 
 export type DuraklatmaDurumu = null | 'bekliyor' | 'geri_alma' | 'duraklatildi';
 /**
@@ -86,17 +112,35 @@ export type DuraklatmaDurumu = null | 'bekliyor' | 'geri_alma' | 'duraklatildi';
  * hedefi mesgul diyor (hedefteki gecici ayar henuz geri alinmamis olabilir; sunucuya dokunulmaz). 'geri_alma': is bitti ama
  * sunucu ayari geri alinamadi (kilit yine de birakilir). 'duraklatildi': sunucu bos. Listede `ogeler` bos, `calisanVar` sunucudan.
  */
-export function duraklatmaDurumu(k: Pick<NlKuyruk, 'durum' | 'duraklatAt' | 'dinlenmeBitis' | 'calisanVar' | 'hedefMesgul' | 'geriAlmaSorunu'>, ogeler: Pick<NlKuyrukOge, 'durum'>[]): DuraklatmaDurumu {
+export function duraklatmaDurumu(
+  k: Pick<
+    NlKuyruk,
+    'durum' | 'duraklatAt' | 'dinlenmeBitis' | 'calisanVar' | 'hedefMesgul' | 'geriAlmaSorunu'
+  >,
+  ogeler: Pick<NlKuyrukOge, 'durum'>[],
+): DuraklatmaDurumu {
   if (!k.duraklatAt || !KUYRUK_AKTIF.has(k.durum)) return null;
-  if (k.calisanVar || k.hedefMesgul || ogeler.some((o) => o.durum === 'CALISIYOR') || (k.durum === 'DINLENME' && k.dinlenmeBitis == null)) return 'bekliyor';
+  if (
+    k.calisanVar ||
+    k.hedefMesgul ||
+    ogeler.some((o) => o.durum === 'CALISIYOR') ||
+    (k.durum === 'DINLENME' && k.dinlenmeBitis == null)
+  )
+    return 'bekliyor';
   return k.geriAlmaSorunu ? 'geri_alma' : 'duraklatildi';
 }
 export const DURAKLATMA_METNI: Record<NonNullable<DuraklatmaDurumu>, string> = {
-  bekliyor: 'Duraklatılıyor: süren iş bitip sunucu ayarları geri alınınca durur; sunucuya henüz dokunmayın.',
-  geri_alma: 'Sunucu ayarı geri alınamadı: hedefteki nginx ayarı değişmiş kalmış olabilir. Koşuyu açıp “Sunucu ayarını geri al”ı çalıştırın.',
-  duraklatildi: 'Duraklatıldı: sunucuda işlem yapabilirsiniz. Devam edince sıradaki öğe ön kontrolden başlar.',
+  bekliyor:
+    'Duraklatılıyor: süren iş bitip sunucu ayarları geri alınınca durur; sunucuya henüz dokunmayın.',
+  geri_alma:
+    'Sunucu ayarı geri alınamadı: hedefteki nginx ayarı değişmiş kalmış olabilir. Koşuyu açıp “Sunucu ayarını geri al”ı çalıştırın.',
+  duraklatildi:
+    'Duraklatıldı: sunucuda işlem yapabilirsiniz. Devam edince sıradaki öğe ön kontrolden başlar.',
 };
-export const DURAKLATMA_HAPI: Record<NonNullable<DuraklatmaDurumu>, { etiket: string; ton: Ton }> = {
+export const DURAKLATMA_HAPI: Record<
+  NonNullable<DuraklatmaDurumu>,
+  { etiket: string; ton: Ton }
+> = {
   bekliyor: { etiket: 'Duraklatılıyor', ton: 'uyari' },
   geri_alma: { etiket: 'Geri alma gerekli', ton: 'hata' },
   duraklatildi: { etiket: 'Duraklatıldı', ton: 'uyari' },
@@ -111,17 +155,57 @@ export function tasi<T>(dizi: T[], i: number, yon: -1 | 1): T[] {
   return d;
 }
 
-/** "HH:MM" -> `referans`tan sonraki (ya da esit) ilk yerel an. Gecersizse null. */
+const PORTAL_PARCA = new Intl.DateTimeFormat('en-GB', {
+  timeZone: PORTAL_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Tarihin `PORTAL_TZ` takvim/saat bilesenleri (`ay` 1..12). */
+export function portalParcalari(d: Date): {
+  yil: number;
+  ay: number;
+  gun: number;
+  sa: number;
+  dk: number;
+  sn: number;
+} {
+  const ps = PORTAL_PARCA.formatToParts(d);
+  const al = (t: Intl.DateTimeFormatPartTypes) => Number(ps.find((p) => p.type === t)?.value ?? 0);
+  return {
+    yil: al('year'),
+    ay: al('month'),
+    gun: al('day'),
+    sa: al('hour'),
+    dk: al('minute'),
+    sn: al('second'),
+  };
+}
+
+function portalAn(yil: number, ay: number, gun: number, sa: number, dk: number): Date {
+  const hedefUtc = Date.UTC(yil, ay - 1, gun, sa, dk, 0, 0);
+  const p0 = portalParcalari(new Date(hedefUtc));
+  const aday = hedefUtc - (Date.UTC(p0.yil, p0.ay - 1, p0.gun, p0.sa, p0.dk, p0.sn) - hedefUtc);
+  const p1 = portalParcalari(new Date(aday));
+  const fark = Date.UTC(p1.yil, p1.ay - 1, p1.gun, p1.sa, p1.dk, p1.sn) - hedefUtc;
+  return new Date(aday - fark);
+}
+
+/** "HH:MM" -> `PORTAL_TZ` diliminde `referans`tan sonraki (ya da esit) ilk an. Gecersizse null. */
 export function sonrakiSaat(hhmm: string, referans: Date): Date | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
   if (!m) return null;
   const sa = Number(m[1]);
   const dk = Number(m[2]);
   if (sa > 23 || dk > 59) return null;
-  const t = new Date(referans);
-  t.setHours(sa, dk, 0, 0);
-  if (t.getTime() < referans.getTime()) t.setDate(t.getDate() + 1);
-  return t;
+  const rp = portalParcalari(referans);
+  const bugun = portalAn(rp.yil, rp.ay, rp.gun, sa, dk);
+  return bugun.getTime() < referans.getTime() ? portalAn(rp.yil, rp.ay, rp.gun + 1, sa, dk) : bugun;
 }
 
 /** Secilen baslangic saati bu kadar dk once gectiyse "hemen" sayilir (00:00 secip 00:03'te olusturma: 24 sa sonra degil). */
@@ -139,20 +223,26 @@ export function baslangicSecimi(hhmm: string, referans: Date): BaslangicSecimi {
   const bugun = new Date(an);
   bugun.setDate(bugun.getDate() - 1);
   const gecenMs = referans.getTime() - bugun.getTime();
-  if (an.getTime() !== referans.getTime() && gecenMs >= 0 && gecenMs <= GECMIS_TOLERANS_DK * 60000) {
+  if (
+    an.getTime() !== referans.getTime() &&
+    gecenMs >= 0 &&
+    gecenMs <= GECMIS_TOLERANS_DK * 60000
+  ) {
     return { tur: 'gecti', dkOnce: Math.floor(gecenMs / 60000) };
   }
   return { tur: 'saat', an };
 }
 
-/** Yerel takvim gunu farki (an - referans): 0 bugun, 1 yarin. */
+/** `PORTAL_TZ` takvim gunu farki (an - referans): 0 bugun, 1 yarin. */
 export function gunFarki(an: Date, referans: Date): number {
-  const a = new Date(an.getFullYear(), an.getMonth(), an.getDate()).getTime();
-  const b = new Date(referans.getFullYear(), referans.getMonth(), referans.getDate()).getTime();
+  const ap = portalParcalari(an);
+  const bp = portalParcalari(referans);
+  const a = Date.UTC(ap.yil, ap.ay - 1, ap.gun);
+  const b = Date.UTC(bp.yil, bp.ay - 1, bp.gun);
   return Math.round((a - b) / 86400000);
 }
 
-/** "00:00" / "yarın 00:00" / "05.11 00:00" (referans gunune gore). */
+/** "00:00" / "yarın 00:00" / "05.11 00:00" (`PORTAL_TZ` takvim gunune gore). */
 export function gunSaatMetni(iso: string | null | undefined, referans: Date = new Date()): string {
   const s = saatMetni(iso);
   if (!iso || s === '—') return s;
@@ -161,7 +251,8 @@ export function gunSaatMetni(iso: string | null | undefined, referans: Date = ne
   if (f === 0) return s;
   if (f === 1) return `yarın ${s}`;
   if (f === -1) return `dün ${s}`;
-  return `${String(t.getDate()).padStart(2, '0')}.${String(t.getMonth() + 1).padStart(2, '0')} ${s}`;
+  const tp = portalParcalari(t);
+  return `${String(tp.gun).padStart(2, '0')}.${String(tp.ay).padStart(2, '0')} ${s}`;
 }
 
 export const KUYRUK_DURUMU: Record<NlKuyrukDurum, { etiket: string; ton: Ton; canli?: boolean }> = {

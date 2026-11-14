@@ -111,7 +111,7 @@ function onayDogru(confirmText, beklenen) {
 /** Denetim satiri: kosuyu tanitan kisa metin (sir yok; etiket kullanicinin yazdigi). */
 function denetimMetni(r) {
   const hedef = r.hedef_host || r.hedef_ip || '?';
-  return `#${r.id} ${r.islem} ${hedef}${r.etiket ? ` ${r.etiket}` : ''}`;
+  return `#${r.id} ${r.islem} ${hedef}${r.etiket ? (" " + r.etiket) : ''}`;
 }
 
 function silinenApi(r) {

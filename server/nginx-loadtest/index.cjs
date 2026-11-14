@@ -137,7 +137,7 @@ const sayi = (v) => {
   const n = dg.tamSayi(v);
   return n !== null && n > 0 && n <= KAYIT_NO_MAX ? n : null;
 };
-const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
+const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
 function jsonOku(s) {
   if (s == null || s === '') return null;
   try {
@@ -149,10 +149,10 @@ function jsonOku(s) {
 /** Anahtar sirasindan bagimsiz karsilastirma icin kararli JSON. */
 function kararliJson(v) {
   if (Array.isArray(v)) return `[${v.map(kararliJson).join(',')}]`;
-  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${kararliJson(v[k])}`).join(',')}}`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + kararliJson(v[k])).join(',')}}`;
   return JSON.stringify(v ?? null);
 }
-const kullanici = (req) => (req.session && req.session.user) || {};
+const kullanici = (req) => (req.session?.user) || {};
 const ayniKullanici = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase() && String(a || '').trim() !== '';
 
 // Denetime yazilan RET kodlari: 409 / 424 (islem denendi, durum engelledi / okunamadi). 400 (girdi / onay metni; DB'ye
@@ -574,7 +574,7 @@ async function kosuyuBaslat(req, { islem, plan, onKontrolKosuId = null, onaylana
       [plan.senaryo.id, onKontrolKosuId, islem, plan.etiket, plan.hedefHost || '', plan.hedefIp, plan.vhost, plan.yukHost, JSON.stringify(plan.parametreler), kullaniciAdi, lockId,
         hedefTuru, motor, planUyarilari.length ? JSON.stringify(planUyarilari) : null, aracId,
         // Kosu satiri on kontrolun nginx tespitini tasir (poller kosu tespitiyle karsilastirir); on kontrol satiri NULL.
-        islem === 'kosu' && typeof plan.hedefNginx === 'boolean' ? (plan.hedefNginx ? 1 : 0) : null],
+        (() => { if (islem === 'kosu' && typeof plan.hedefNginx === 'boolean') { if (plan.hedefNginx) return 1; return 0; } return null; })()],
     );
     kosuId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
     if (!(kosuId > 0)) {
@@ -686,7 +686,7 @@ async function kosuyuOnKontroldenBaslat(req, { okId, confirmText, uyariKarari, k
   if (!okId) throw hata(400, 'gecersiz_istek', 'onKontrolKosuId gerekli (önce ön kontrolü çalıştırın).');
   const ok = await kosuOku(okId);
   if (yer) yer.ok = ok;
-  if (!ok || ok.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', 'Ön kontrol bulunamadı; önce ön kontrolü çalıştırın.');
+  if (ok?.islem !== 'on_kontrol') throw hata(409, 'on_kontrol_eski', 'Ön kontrol bulunamadı; önce ön kontrolü çalıştırın.');
   if (!ayniKullanici(ok.created_by, kullanici(req).username)) {
     throw hata(409, 'on_kontrol_eski', 'Bu ön kontrol size ait değil; koşudan önce kendi ön kontrolünüzü çalıştırın.');
   }
@@ -695,7 +695,7 @@ async function kosuyuOnKontroldenBaslat(req, { okId, confirmText, uyariKarari, k
   if (!okSonuc || String(okSonuc.durum || '').toUpperCase() !== 'OK') throw hata(409, 'on_kontrol_eski', 'Ön kontrol sonucu OK değil; yeniden çalıştırın.');
   const yas = ok.yas_sn == null ? null : Number(ok.yas_sn);
   if (yas == null || !Number.isFinite(yas) || yas > ON_KONTROL_MAX_YAS_SN || yas < -60) {
-    throw hata(409, 'on_kontrol_eski', `Ön kontrol ${yas == null ? 'zamanı okunamadı' : `${Math.round(yas / 60)} dk önce bitti`}; en çok 15 dk önceki ön kontrol kabul edilir.`);
+    throw hata(409, 'on_kontrol_eski', `Ön kontrol ${yas == null ? 'zamanı okunamadı' : (String(Math.round(yas / 60)) + " dk önce bitti")}; en çok 15 dk önceki ön kontrol kabul edilir.`);
   }
   // Tur ve motor SATIRDAN (set_stats yankisindan degil); eski satir: DB varsayilani sunucu / k6.
   const tur = ok.hedef_turu || 'sunucu';
@@ -741,8 +741,7 @@ async function kosuyuOnKontroldenBaslat(req, { okId, confirmText, uyariKarari, k
   }
   // On kontrolun nginx tespiti (kolon; yoksa set_stats alani; eski satir: yok -> NULL) kosu satirina kopyalanir.
   const okOzet = jsonOku(ok.on_kontrol_ozet);
-  const okNginx = ok.hedef_nginx != null ? ok.hedef_nginx === true || Number(ok.hedef_nginx) === 1
-    : okOzet && typeof okOzet.hedef_nginx === 'boolean' ? okOzet.hedef_nginx : null;
+  const okNginx = (() => { if (ok.hedef_nginx != null) return ok.hedef_nginx === true || Number(ok.hedef_nginx) === 1; if (okOzet && typeof okOzet.hedef_nginx === 'boolean') return okOzet.hedef_nginx; return null; })();
   return kosuyuBaslat(req, { islem: 'kosu', plan: { ...plan, hedefNginx: tur === 'sunucu' ? okNginx : null }, onKontrolKosuId: okId, onaylananUyarilar: uyarilar, beklenenAracId: Number(ok.arac_id), kosuKaydedildi });
 }
 
@@ -859,7 +858,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
     // Kosu: durdurma isi yoksa uzaktaki yuk surebilir; iptal basarili olsa da BASARI DEGIL. Metin
     // motor ve ture gore (k6 + sunucu tur 2 ile birebir; serbestte hedefte kaydedici yok).
     if ((k.islem === 'kosu' || srvOnKontrol) && !sonuc.durdurIsi) {
-      const uzaktaki = srvOnKontrol ? 'konfigürasyon değişikliği' : tur === 'serbest' ? motor : `${motor} / kaydedici`;
+      const uzaktaki = (() => { if (srvOnKontrol) return 'konfigürasyon değişikliği'; if (tur === 'serbest') return motor; return `${motor} / kaydedici`; })();
       throw hata(424, 'durdur_baslatilamadi',
         `AWX işi ${iptalOldu ? 'iptal edildi' : 'iptal edilemedi'}, ancak durdurma işi başlatılamadı: ${sonuc.durdurHatasi}. Uzaktaki ${uzaktaki} sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.`,
         { iptal: sonuc.iptal, iptalHatasi: sonuc.iptalHatasi, durdurHatasi: sonuc.durdurHatasi });
@@ -871,7 +870,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
     if (!sonuc.durdurIsi) {
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_durdur', {
-          result: sonuc.iptal && sonuc.iptal.canceled ? 'ok' : 'fail',
+          result: sonuc.iptal?.canceled ? 'ok' : 'fail',
           targetHost: k.hedef_host || null, targetIp: k.hedef_ip,
           detail: baslat.denetimAyrintisi({ kosuId: id, ...sonuc }),
         });
@@ -966,7 +965,7 @@ async function mevcutKosular(idler) {
   const ids = [...new Set(idler.filter((v) => v != null).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
   if (!ids.length) return new Set();
   try {
-    const { rows } = await db().query(`SELECT /*SIL:mevcut*/ id FROM nginx_loadtest_kosular WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(', ')})`, ids);
+    const { rows } = await db().query(`SELECT /*SIL:mevcut*/ id FROM nginx_loadtest_kosular WHERE id IN (${ids.map((_, i) => ("$" + (i + 1))).join(', ')})`, ids);
     return new Set((rows || []).map((r) => Number(r.id)));
   } catch (e) {
     console.warn('[NginxYukTesti] kuyruk kosulari okunamadi (silindi bilgisi yok):', maskele(e && e.message));
@@ -1507,7 +1506,7 @@ function yonlendiriciKur() {
       const sid = k.awx_server_id == null ? null : Number(k.awx_server_id);
       const jid = k.awx_job_id == null ? null : Number(k.awx_job_id);
       if (sid == null || !(jid > 0)) {
-        const status = k.durum === 'QUEUED' ? 'pending' : k.durum === 'CANCELED' ? 'canceled' : 'failed';
+        const status = (() => { if (k.durum === 'QUEUED') return 'pending'; if (k.durum === 'CANCELED') return 'canceled'; return 'failed'; })();
         return res.json({ ok: true, status, finished: !AKTIF.has(k.durum), output: '', outputOffset: 0, outputLength: 0, result: null, ...temel });
       }
       const runner = require('../ansible/runner.cjs');
@@ -1524,7 +1523,7 @@ function yonlendiriciKur() {
         if (e && (e.code === 'awx_server_missing' || Number(e.status) === 404)) {
           const { rows } = await dbOku((d) => d.query(`SELECT TOP 1 stdout FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`, [sid, jid]));
           if (!rows.length) throw hata(409, 'awx_okunamadi', `AWX iş #${jid} okunamıyor ve Portal arşivinde çıktısı yok.`);
-          return res.json({ ok: true, kaynak: 'arsiv', status: k.durum === 'CANCELED' ? 'canceled' : k.durum === 'DONE' ? 'successful' : 'failed', finished: true, ...parcala(maskele(rows[0].stdout)), result: null, jobId: jid, awxServerId: sid, ...temel });
+          return res.json({ ok: true, kaynak: 'arsiv', status: (() => { if (k.durum === 'CANCELED') return 'canceled'; if (k.durum === 'DONE') return 'successful'; return 'failed'; })(), finished: true, ...parcala(maskele(rows[0].stdout)), result: null, jobId: jid, awxServerId: sid, ...temel });
         }
         throw hata(424, 'awx_okunamadi', `AWX işi okunamadı (#${jid}): ${maskele(e && e.message)}`);
       }
@@ -1862,7 +1861,7 @@ function yonlendiriciKur() {
       const uygun = [];
       for (const id of idler) {
         const r = byId.get(id);
-        const neden = !r ? 'bulunamadi' : r.islem !== 'kosu' ? 'on_kontrol' : AKTIF.has(r.durum) ? 'bitmemis' : null;
+        const neden = (() => { if (!r) return 'bulunamadi'; if (r.islem !== 'kosu') return 'on_kontrol'; if (AKTIF.has(r.durum)) return 'bitmemis'; return null; })();
         if (neden) atlananlar.push({ kosuId: id, etiket: r ? r.etiket ?? null : etiketler.get(id) ?? null, neden, durum: r ? r.durum : null });
         else uygun.push(id);
       }
@@ -1950,7 +1949,7 @@ function yonlendiriciKur() {
       if (!toplu && !bulunan.has(ids[0])) throw hata(404, 'kosu_yok', `Koşu #${ids[0]} bulunamadı (silinmiş olabilir).`);
       const yetkisiz = isAdmin(req) ? [] : satirlar.filter((r) => !ayniKullanici(r.created_by, kullanici(req).username));
       if (yetkisiz.length) {
-        const liste = yetkisiz.map((r) => `#${r.id}${r.created_by ? ` (${r.created_by})` : ''}`).join(', ');
+        const liste = yetkisiz.map((r) => `#${r.id}${r.created_by ? (" (" + r.created_by + ")") : ''}`).join(', ');
         try {
           require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_kosu_sil', {
             result: 'fail',
@@ -1996,7 +1995,7 @@ function yonlendiriciKur() {
       res.json({ ok: true, sayi: sirali.length, silinen: sirali.map(sil.silinenApi) });
     } catch (e) {
       const ilk = satirlar.find((r) => Number(r.id) === ids[0]);
-      hataYaniti(req, res, e, 'nginx_loadtest_kosu_sil', ilk ? { host: ilk.hedef_host, ip: ilk.hedef_ip, kosuId: toplu ? null : Number(ilk.id) } : null);
+      hataYaniti(req, res, e, 'nginx_loadtest_kosu_sil', (() => { if (ilk) return { host: ilk.hedef_host, ip: ilk.hedef_ip, kosuId: toplu ? null : Number(ilk.id) }; return null; })());
     }
   }
 
@@ -2029,7 +2028,7 @@ function yonlendiriciKur() {
 
 /** Calisan oge satiri -> yanittaki `suren` alani. */
 function surenOf(c) {
-  return c ? { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) } : null;
+  if (c) return { ogeId: Number(c.id), etiket: c.etiket, kosuId: c.kosu_id == null ? null : Number(c.kosu_id), onKontrolKosuId: c.on_kontrol_kosu_id == null ? null : Number(c.on_kontrol_kosu_id) }; return null;
 }
 
 // Kuyruk uclari (2026-11-04 tasima): KIMLIK KAPISININ ALTINDA tanimli; RO1 bekcisi satir sirasina bakar.

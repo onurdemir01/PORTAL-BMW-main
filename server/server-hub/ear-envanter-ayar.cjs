@@ -503,7 +503,7 @@ function bekleyenZamanlama(deger, simdi = new Date()) {
       birlesti: tam ? tam.ad : null,
     });
   }
-  return out.sort((a, b) => (a.plan.kip === b.plan.kip ? 0 : a.plan.kip === 'TAM' ? -1 : 1));
+  return out.sort((a, b) => { if (a.plan.kip === b.plan.kip) return 0; if (a.plan.kip === 'TAM') return -1; return 1; });
 }
 
 function kapsamMetni(k) {
@@ -514,13 +514,7 @@ function kapsamMetni(k) {
 
 function zamanlamaMetni(plan) {
   const sik =
-    plan.birim === 'HAFTA'
-      ? plan.aralik === 1
-        ? 'Her hafta'
-        : `Her ${plan.aralik} haftada bir`
-      : plan.aralik === 1
-        ? 'Her ay'
-        : `Her ${plan.aralik} ayda bir`;
+    (() => { if (plan.birim === 'HAFTA') { if (plan.aralik === 1) return 'Her hafta'; return `Her ${plan.aralik} haftada bir`; } if (plan.aralik === 1) return 'Her ay'; return `Her ${plan.aralik} ayda bir`; })();
   const ne =
     plan.birim === 'HAFTA'
       ? GUNLER[plan.gun] || '?'

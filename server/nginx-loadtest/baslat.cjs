@@ -41,9 +41,7 @@ function kisalt(metin, n) {
   const k = Array.from(String(metin));
   return k.length > n ? `${k.slice(0, n).join('')}…` : String(metin);
 }
-const kisaltDerin = (v, n) => (typeof v === 'string' ? kisalt(v, n)
-  : Array.isArray(v) ? v.map((x) => kisaltDerin(x, n))
-    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, kisaltDerin(b, n)])) : v);
+const kisaltDerin = (v, n) => { if (typeof v === 'string') return kisalt(v, n); if (Array.isArray(v)) return v.map((x) => kisaltDerin(x, n)); if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([a, b]) => [a, kisaltDerin(b, n)])); return v; };
 
 /**
  * Denetim ayrintisi: nesne -> en cok `sinir` karakterlik GECERLI JSON. Sigiyorsa JSON.stringify ile
@@ -115,11 +113,7 @@ async function sablonuCoz(env = process.env) {
   }
   const templateId = row && row.enabled !== false ? Number(reg.getEffectiveTemplateId(row)) || null : null;
   if (!templateId) {
-    const neden = !row
-      ? `"${KAYIT_ANAHTARI}" anahtarlı satır YOK`
-      : row.enabled === false
-        ? `"${KAYIT_ANAHTARI}" satırı KAPALI (etkinleştirin)`
-        : `"${KAYIT_ANAHTARI}" satırında Template ID boş (ya da NGINX_LOADTEST_RUN_TEMPLATE_ID)`;
+    const neden = (() => { if (!row) return `"${KAYIT_ANAHTARI}" anahtarlı satır YOK`; if (row.enabled === false) return `"${KAYIT_ANAHTARI}" satırı KAPALI (etkinleştirin)`; return `"${KAYIT_ANAHTARI}" satırında Template ID boş (ya da NGINX_LOADTEST_RUN_TEMPLATE_ID)`; })();
     throw hata(409, 'sablon_yok', `AWX job template'i tanımlı değil: Admin › Playbook Kayıtları › ${neden}.`);
   }
   return { templateId, serverId: sunucuSec(row.awxServerId, env.NGINX_LOADTEST_AWX_SERVER_ID) };

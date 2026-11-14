@@ -94,7 +94,7 @@ function envFromInventory(v) {
 
 /** Ortamlari sabit sirada dondurur; taninmayanlar EN SONA eklenir (gizlenmez). */
 function orderEnvs(seen) {
-  const extra = [...seen].filter((e) => !ENV_ORDER.includes(e)).sort();
+  const extra = [...seen].filter((e) => !ENV_ORDER.includes(e)).sort((a, b) => a.localeCompare(b));
   return [...ENV_ORDER.filter((e) => seen.has(e)), ...extra];
 }
 
@@ -160,7 +160,7 @@ function internetRpHosts() {
 
 /** Intranet SPA sunuculari, sirali kopya (Nginx ARK SPA > Intranet SPA kurulum durumu, 2026-10-19). */
 function intranetHosts() {
-  return [...INTRANET_HOSTS].sort();
+  return [...INTRANET_HOSTS].sort((a, b) => a.localeCompare(b));
 }
 
 module.exports = {

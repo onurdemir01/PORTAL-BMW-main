@@ -64,7 +64,7 @@ test('authenticateLocal(): dolu sifreyle bile YANLIS sifre reddedilir', () => {
 // gercek LDAP baglantisi gerektirir; bu yuzden regex mantigini burada izole dogruluyoruz
 // (ldap.cjs'teki gercek satirla BIREBIR ayni ifade).
 function determineRoleLike(memberOf, adminGroup, userGroup) {
-  const groups = (Array.isArray(memberOf) ? memberOf : memberOf ? [memberOf] : []).map((g) => String(g).toLowerCase());
+  const groups = (() => { if (Array.isArray(memberOf)) return memberOf; if (memberOf) return [memberOf]; return []; })().map((g) => String(g).toLowerCase());
   adminGroup = adminGroup.toLowerCase();
   userGroup = userGroup.toLowerCase();
   if (adminGroup && groups.some((g) => g === adminGroup || g.endsWith(',' + adminGroup))) return 'Admin';

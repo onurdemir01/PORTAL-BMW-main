@@ -362,11 +362,7 @@ async function filterTablesByRole(tables, role, username) {
   const roleKey = role === 'Admin' ? 'Admin' : 'User';
   const allowed = config[roleKey];
   let base =
-    allowed === '*'
-      ? tables.slice()
-      : Array.isArray(allowed)
-        ? tables.filter((t) => allowed.includes(t))
-        : tables.slice();
+    (() => { if (allowed === '*') return tables.slice(); if (Array.isArray(allowed)) return tables.filter((t) => allowed.includes(t)); return tables.slice(); })();
 
   const inactive = await getInactiveTableNames();
   if (inactive.size) base = base.filter((t) => !inactive.has(t));
@@ -398,7 +394,7 @@ function calisanKosulMetni(where, parametreler) {
   const p = parametreler || {};
   return String(where || '').replace(/@([A-Za-z_]\w*)/g, (tam, ad) => {
     if (GOSTERIMDE_GIZLI_PARAMETRELER.has(ad)) return tam;
-    if (!Object.prototype.hasOwnProperty.call(p, ad)) return tam;
+    if (!Object.hasOwn(p, ad)) return tam;
     const deger = p[ad];
     const v = deger && typeof deger === 'object' ? deger.value : deger;
     return typeof v === 'string' ? `'${v.replace(/'/g, "''")}'` : String(v);
@@ -592,7 +588,7 @@ async function writeSavedQueries(data) {
   const removed = [...prevByName.keys()].filter((n) => !nextNames.has(n));
   if (removed.length > 0) {
     await portalDb.query(
-      `DELETE FROM inventory_saved_queries WHERE name IN (${removed.map((_, i) => `$${i + 1}`).join(',')})`,
+      `DELETE FROM inventory_saved_queries WHERE name IN (${removed.map((_, i) => '$' + (i + 1)).join(',')})`,
       removed,
     );
   }
@@ -630,7 +626,7 @@ function isSelectOnly(sqlText) {
   // (bir sonraki ifade banned-list disi bir sey olsa bile) engeller.
   if (cleaned.replace(/;\s*$/, '').includes(';')) return false;
   const banned =
-    /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC|EXECUTE|TRUNCATE|MERGE|GRANT|REVOKE|WAITFOR|OPENROWSET|OPENQUERY|OPENDATASOURCE|BULK|DBCC|SHUTDOWN|BACKUP|RESTORE|KILL)\b/;
+    new RegExp('\\b(' + ['INSERT','UPDATE','DELETE','DROP','ALTER','CREATE','EXEC','EXECUTE','TRUNCATE','MERGE','GRANT','REVOKE','WAITFOR','OPENROWSET','OPENQUERY','OPENDATASOURCE','BULK','DBCC','SHUTDOWN','BACKUP','RESTORE','KILL'].join('|') + ')\\b');
   if (banned.test(cleaned)) return false;
   // 4-parcali linked-server adlandirmasi (sunucu.veritabani.sema.tablo) — OPENQUERY/
   // OPENDATASOURCE disindaki tek linked-server erisim yolu; extractReferencedTables'in

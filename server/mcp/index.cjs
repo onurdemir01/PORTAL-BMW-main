@@ -53,9 +53,7 @@ function initMcp(app) {
       return res.status(400).json({ ok: false, message: 'tool alanı gerekli.' });
     }
     try {
-      const result = req.params.server === 'instana'
-        ? await mod.callTool(tool, args, env === 'prod' ? 'prod' : 'nonprod')
-        : await mod.callTool(tool, args);
+      const result = (await (async () => { if (req.params.server === 'instana') return await mod.callTool(tool, args, env === 'prod' ? 'prod' : 'nonprod'); return await mod.callTool(tool, args); })());
       res.json({ ok: true, result });
     } catch (err) {
       res.status(502).json({ ok: false, message: err.message });

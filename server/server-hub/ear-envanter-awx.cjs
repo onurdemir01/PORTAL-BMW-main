@@ -85,7 +85,7 @@ function hostlarOf(stats, ortamlar) {
     gorulen.add(ad);
     out.push({ host: ad, ortam: M(ortamlar.get(ad) || '', 128) });
   }
-  return out.sort((a, b) => (a.host < b.host ? -1 : a.host > b.host ? 1 : 0));
+  return out.sort((a, b) => { if (a.host < b.host) return -1; if (a.host > b.host) return 1; return 0; });
 }
 
 /** MWAppsInventory'den host -> ortam (SALT OKUNUR). Okunamazsa bos: ortam bilgisi eksik kalir. */

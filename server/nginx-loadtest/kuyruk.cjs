@@ -122,7 +122,7 @@ function uyariKarariOf(onaylananTurler) {
   const kodlar = (Array.isArray(onaylananTurler) ? onaylananTurler : []).map((t) => (t && typeof t === 'object' ? t.kod : t));
   return (uyarilar) => {
     const yeni = yeniTurler(uyarilar, kodlar);
-    if (yeni.length) throw hata(409, 'yeni_uyari', `yeni uyarı: ${yeni.map((t) => `${t.kod} ${t.ornek}`).join(' | ')}`.slice(0, 900));
+    if (yeni.length) throw hata(409, 'yeni_uyari', `yeni uyarı: ${yeni.map((t) => (String(t.kod) + " " + t.ornek)).join(' | ')}`.slice(0, 900));
   };
 }
 
@@ -365,7 +365,7 @@ const SIRA_TABAN_SQL = `SELECT /*KQ:siraTaban*/ MAX(sira) AS m FROM nginx_loadte
 
 // -- YURUTUCU ------------------------------------------------------------------------------
 
-const sayiOf = (v) => (v == null || v === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+const sayiOf = (v) => { if (v == null || v === '') return null; if (Number.isFinite(Number(v))) return Number(v); return null; };
 function jsonOku(s, varsayilan = null) {
   if (s == null || s === '') return varsayilan;
   try {
@@ -507,7 +507,7 @@ async function geciciHata(ctx, oge, e, geriAl) {
   const deneme = Number(oge.deneme || 0) + 1;
   const son = deneme >= GECICI_DENEME_SINIRI;
   const bekleSn = GERI_CEKILME_SN[Math.min(deneme, GERI_CEKILME_SN.length) - 1];
-  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e && e.message, 400)}${son ? '' : `; yeniden deneme ${sureMetni(bekleSn)} sonra`}`;
+  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e && e.message, 400)}${son ? '' : ("; yeniden deneme " + sureMetni(bekleSn) + " sonra")}`;
   const durum = geriAl && oge.asama !== 'kosu' ? 'BEKLIYOR' : oge.durum;
   if (geriAl) await geriAl(msg, 1);
   else await ctx.db.query(SQL.ogeNeden, [oge.id, msg, 1, durum]);
@@ -604,7 +604,7 @@ async function ogeIlerlet(ctx, k, oge) {
   if ((oge.asama === 'on_kontrol' && okId == null) || (oge.asama === 'kosu' && kosuId == null)) {
     // Numarasiz sahiplenme: is AWX'e GITMEDI (numara launch'tan once, kuyruk CALISIYOR iken yazilir). Kuyruk
     // iptal edildiyse oge IPTAL; degilse geri alinir (surec yeniden basladi / kira dustu) ve yeniden denenir.
-    if (k.durum !== 'CALISIYOR') return (await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; iş başlatılmamıştı`)) ? 'devam' : 'dur';
+    if (k.durum !== 'CALISIYOR') return (await (async () => { if ((await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; iş başlatılmamıştı`))) return 'devam'; return 'dur'; })());
     const r = oge.asama === 'kosu'
       ? await db.query(SQL.kosuGeriAl, [oge.id, null, 'koşu başlatma yarım kaldı; iş başlatılmamıştı, yeniden denenecek', 0])
       : await db.query(SQL.ogeGeriAl, [oge.id, null, 'Portal başlatma sırasında yeniden başladı; iş başlatılmamıştı, yeniden denenecek', 0]);
@@ -622,7 +622,7 @@ async function ogeIlerlet(ctx, k, oge) {
       return r.rowCount ? 'devam' : 'dur';
     }
     const tamam = kosu.durum === 'DONE';
-    const neden = tamam ? null : kosu.durum === 'CANCELED' ? `koşu #${kosuId} durduruldu (CANCELED)` : `koşu #${kosuId} ${kosu.durum}`;
+    const neden = (() => { if (tamam) return null; if (kosu.durum === 'CANCELED') return `koşu #${kosuId} durduruldu (CANCELED)`; return `koşu #${kosuId} ${kosu.durum}`; })();
     if (!(await ogeKapat(db, oge, 'CALISIYOR', tamam ? 'BITTI' : 'HATALI', neden))) return 'dur';
     return sonrasi(ctx, k, kosuId);
   }
@@ -638,11 +638,11 @@ async function ogeIlerlet(ctx, k, oge) {
   }
   if (ok.durum !== 'DONE') {
     const s = jsonOku(ok.sonuc, {}) || {};
-    return (await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} ${ok.durum}${s.hata ? `: ${s.hata}` : ''}`)) ? 'devam' : 'dur';
+    if ((await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', `ön kontrol #${okId} ${ok.durum}${s.hata ? (": " + s.hata) : ''}`))) return 'devam'; return 'dur';
   }
   if (k.durum !== 'CALISIYOR') {
     // Kuyruk iptal edildi (ya da durdu): kosu BASLATILMAZ.
-    return (await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; ön kontrol #${okId} sonrası koşu başlatılmadı`)) ? 'devam' : 'dur';
+    if ((await ogeKapat(db, oge, 'CALISIYOR', 'IPTAL', `kuyruk ${k.durum === 'IPTAL' ? 'iptal edildi' : k.durum}; ön kontrol #${okId} sonrası koşu başlatılmadı`))) return 'devam'; return 'dur';
   }
   if (geriCekiliyor(oge)) return 'dur';
   let yetkiNeden;
@@ -794,7 +794,7 @@ function startKuyruk(islem) {
 
 // -- GORUNUM -------------------------------------------------------------------------------
 
-const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
+const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
 
 function turlerApi(v) {
   const d = jsonOku(v, []);

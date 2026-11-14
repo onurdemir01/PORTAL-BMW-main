@@ -40,17 +40,28 @@ const path = require('node:path');
 const SERVER = path.join(__dirname, '..', '..');
 function sahteModul(rel, exportsObj) {
   const p = require.resolve(path.join(SERVER, rel));
-  require.cache[p] = { id: p, filename: p, loaded: true, exports: exportsObj, children: [], paths: [] };
+  require.cache[p] = {
+    id: p,
+    filename: p,
+    loaded: true,
+    exports: exportsObj,
+    children: [],
+    paths: [],
+  };
 }
 const gec = (_req, _res, next) => next();
 
 const sha = (s) => crypto.createHash('sha512').update(Buffer.from(s, 'binary')).digest('hex');
 function norm(s) {
-  const lines = s.replace(/\r/g, '').split('\n').map((l) => l.replace(/[ \t]+$/, ''));
+  const lines = s
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((l) => l.replace(/[ \t]+$/, ''));
   while (lines.length && lines[lines.length - 1] === '') lines.pop();
   return lines.map((l) => l + '\n').join('');
 }
-const APP = '[Unit]\nDescription=App domain\n\n[Service]\nType=oneshot\n\n[Install]\nWantedBy=default.target';
+const APP =
+  '[Unit]\nDescription=App domain\n\n[Service]\nType=oneshot\n\n[Install]\nWantedBy=default.target';
 const V = {
   repo: APP,
   nl: APP + '\n',
@@ -67,7 +78,11 @@ const rs = (recordset) => ({ recordset });
 const ALL_COLS = ['host', 'appdomain_service', 'start_sh'];
 
 function satir(host, app, start) {
-  return { host, appdomain_service: app ? fp(app).raw : null, start_sh: start ? fp(start).raw : null };
+  return {
+    host,
+    appdomain_service: app ? fp(app).raw : null,
+    start_sh: start ? fp(start).raw : null,
+  };
 }
 
 async function query(text, params) {
@@ -103,7 +118,9 @@ async function query(text, params) {
     const refs = [...(DB.refs || [])];
     // SQL ORDER BY'in esi: sorgu siralamiyorsa sahte DB de siralamaz (girdi sirasi).
     if (/ORDER BY script, norm_sha512/.test(t)) {
-      refs.sort((a, b) => a.script.localeCompare(b.script) || a.norm_sha512.localeCompare(b.norm_sha512));
+      refs.sort(
+        (a, b) => a.script.localeCompare(b.script) || a.norm_sha512.localeCompare(b.norm_sha512),
+      );
     }
     return rs(refs);
   }
@@ -111,7 +128,11 @@ async function query(text, params) {
   if (t.includes('FROM dbo.InitScriptsInventory')) return rs(DB.rows || []);
   return rs([]);
 }
-sahteModul('inventory/mssql.cjs', { query, queryLong: query, sql: new Proxy({}, { get: () => 'tip' }) });
+sahteModul('inventory/mssql.cjs', {
+  query,
+  queryLong: query,
+  sql: new Proxy({}, { get: () => 'tip' }),
+});
 sahteModul('auth/index.cjs', { requireAuth: gec, requireAdmin: gec, getRequestUser: () => null });
 sahteModul('auth/visibility.cjs', { requireVisiblePrefix: () => gec, requireVisible: () => gec });
 
@@ -204,10 +225,17 @@ test('IR2 eski veri (ayrinti/referans yok): ham hash + cogunluk, davranis degism
 });
 
 test('IR3 .sh dosyasinda CRLF: sapma degil ama ayri sayilir, tam uyumlu sayilmaz', async () => {
-  const hosts = [['GBA1', SH], ['GBA2', SH], ['GBA3', SH_CRLF]];
+  const hosts = [
+    ['GBA1', SH],
+    ['GBA2', SH],
+    ['GBA3', SH_CRLF],
+  ];
   DB = {
     rows: hosts.map(([h, s]) => satir(h, V.nl, s)),
-    detail: hosts.flatMap(([h, s]) => [detay('vhosting', h, 'start.sh', s), detay('vhosting', h, 'appdomain.service', V.nl)]),
+    detail: hosts.flatMap(([h, s]) => [
+      detay('vhosting', h, 'start.sh', s),
+      detay('vhosting', h, 'appdomain.service', V.nl),
+    ]),
   };
   const j = await al();
   const s = script(j, 'start_sh');
@@ -225,7 +253,13 @@ test('IR3 .sh dosyasinda CRLF: sapma degil ama ayri sayilir, tam uyumlu sayilmaz
 
 test('IR4 gercek icerik farki sapmadir; MISSING ve UNREADABLE ayri', async () => {
   DB = {
-    rows: [satir('GBB1', V.nl, SH), satir('GBB2', V.nl, SH), satir('GBB3', V.real, SH), satir('GBB4', null, SH), satir('GBB5', null, SH)],
+    rows: [
+      satir('GBB1', V.nl, SH),
+      satir('GBB2', V.nl, SH),
+      satir('GBB3', V.real, SH),
+      satir('GBB4', null, SH),
+      satir('GBB5', null, SH),
+    ],
     detail: [
       detay('vhosting', 'GBB1', 'appdomain.service', V.nl),
       detay('vhosting', 'GBB2', 'appdomain.service', V.nl),
@@ -233,7 +267,9 @@ test('IR4 gercek icerik farki sapmadir; MISSING ve UNREADABLE ayri', async () =>
       detay('vhosting', 'GBB4', 'appdomain.service', null, 'MISSING'),
       detay('vhosting', 'GBB5', 'appdomain.service', null, 'UNREADABLE'),
     ],
-    refs: [{ script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm }],
+    refs: [
+      { script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm },
+    ],
   };
   const j = await al();
   const a = script(j, 'appdomain_service');
@@ -251,7 +287,14 @@ test('IR5 appdomain.service referansi iki tablodan (ayrinti varken): iki sekmede
   const X = 'x'.repeat(128);
   const Y = 'y'.repeat(128);
   const r = (host, app) => ({ host, appdomain_service: app, start_sh: null });
-  const d = (root, host, h) => ({ host, root, script: 'appdomain.service', norm_sha512: h, has_cr: 0, state: 'OK' });
+  const d = (root, host, h) => ({
+    host,
+    root,
+    script: 'appdomain.service',
+    norm_sha512: h,
+    has_cr: 0,
+    state: 'OK',
+  });
   const rows = [r('GBH1', X), r('GBH2', X), r('GBH3', X), r('GBH4', Y), r('GBH5', Y)];
   const rows8 = [r('GBH4', Y), r('GBH5', Y), r('GBH6', Y), r('GBH7', Y)];
   DB = {
@@ -316,7 +359,8 @@ function eskiRapor(raw, scripts, majorityOverride) {
       variants,
     };
   });
-  const majorityOf = majorityOverride || new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+  const majorityOf =
+    majorityOverride || new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
   const hostRows = raw.map((r) => {
     const deviations = [];
     const missing = [];
@@ -351,7 +395,9 @@ function eskiOzet(scripts, scriptStats, hostRows) {
     hosts: hostRows.length,
     scriptCount: scripts.length,
     identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0).length,
-    totalVariants: scriptStats.filter((sc) => !sc.perServer).reduce((a, sc) => a + sc.variantCount, 0),
+    totalVariants: scriptStats
+      .filter((sc) => !sc.perServer)
+      .reduce((a, sc) => a + sc.variantCount, 0),
     customHosts: hostRows.filter((r) => r.hasCustom).length,
     scripts: scriptStats,
     hostRows,
@@ -359,11 +405,19 @@ function eskiOzet(scripts, scriptStats, hostRows) {
 }
 // 2026-11-14 oncesi INIT_SCRIPTS etiketleri (git adcd3056): eski missingColumns bu listeden.
 const ESKI_INIT_ETIKETLER = [
-  ['appdomain_service', 'appdomain.service'], ['start_sh', 'start.sh'], ['functions_sh', 'functions.sh'],
-  ['startCTG_sh', 'startCTG.sh'], ['startWAS_sh', 'startWAS.sh'], ['startWEB_sh', 'startWEB.sh'],
-  ['startJboss_sh', 'startJboss.sh'], ['startJboss8_sh', 'startJboss8.sh'], ['startNginx_sh', 'startNginx.sh'],
-  ['startIHS_sh', 'startIHS.sh'], ['exceptionList_ini', 'exceptionList.ini'],
-  ['startApplicationServers_jy', 'startApplicationServers.jy'], ['stopApplicationServers_jy', 'stopApplicationServers.jy'],
+  ['appdomain_service', 'appdomain.service'],
+  ['start_sh', 'start.sh'],
+  ['functions_sh', 'functions.sh'],
+  ['startCTG_sh', 'startCTG.sh'],
+  ['startWAS_sh', 'startWAS.sh'],
+  ['startWEB_sh', 'startWEB.sh'],
+  ['startJboss_sh', 'startJboss.sh'],
+  ['startJboss8_sh', 'startJboss8.sh'],
+  ['startNginx_sh', 'startNginx.sh'],
+  ['startIHS_sh', 'startIHS.sh'],
+  ['exceptionList_ini', 'exceptionList.ini'],
+  ['startApplicationServers_jy', 'startApplicationServers.jy'],
+  ['stopApplicationServers_jy', 'stopApplicationServers.jy'],
   ['startCustom_sh', 'startCustom.sh'],
 ];
 function eskiYanit(rows, scripts) {
@@ -398,14 +452,62 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
   // functions.sh: ozel kumenin kendi cogunlugu (z) genelinkinden (f) farkli - eski kod ozel
   // satirlarini GENEL cogunluga, ozel istatistigi KENDI cogunluguna gore sayardi; aynen kalmali.
   const rows = [
-    { host: 'GBA01', appdomain_service: h('a'), start_sh: h('s'), functions_sh: h('f'), startCustom_sh: h('1') },
-    { host: 'GBA02', appdomain_service: h('a'), start_sh: h('s'), functions_sh: null, startCustom_sh: null },
-    { host: 'GBA03', appdomain_service: h('b'), start_sh: h('s'), functions_sh: h('f'), startCustom_sh: h('2') },
-    { host: 'GBA04', appdomain_service: h('b'), start_sh: h('t'), functions_sh: h('g'), startCustom_sh: null },
-    { host: 'GBA05', appdomain_service: h('a'), start_sh: null, functions_sh: null, startCustom_sh: null },
-    { host: 'GBEVM01', appdomain_service: h('b'), start_sh: h('t'), functions_sh: null, startCustom_sh: h('3') },
-    { host: 'GBEVM02', appdomain_service: h('b'), start_sh: h('t'), functions_sh: h('z'), startCustom_sh: null },
-    { host: 'GBPRV01', appdomain_service: h('a'), start_sh: h('s'), functions_sh: h('z'), startCustom_sh: null },
+    {
+      host: 'GBA01',
+      appdomain_service: h('a'),
+      start_sh: h('s'),
+      functions_sh: h('f'),
+      startCustom_sh: h('1'),
+    },
+    {
+      host: 'GBA02',
+      appdomain_service: h('a'),
+      start_sh: h('s'),
+      functions_sh: null,
+      startCustom_sh: null,
+    },
+    {
+      host: 'GBA03',
+      appdomain_service: h('b'),
+      start_sh: h('s'),
+      functions_sh: h('f'),
+      startCustom_sh: h('2'),
+    },
+    {
+      host: 'GBA04',
+      appdomain_service: h('b'),
+      start_sh: h('t'),
+      functions_sh: h('g'),
+      startCustom_sh: null,
+    },
+    {
+      host: 'GBA05',
+      appdomain_service: h('a'),
+      start_sh: null,
+      functions_sh: null,
+      startCustom_sh: null,
+    },
+    {
+      host: 'GBEVM01',
+      appdomain_service: h('b'),
+      start_sh: h('t'),
+      functions_sh: null,
+      startCustom_sh: h('3'),
+    },
+    {
+      host: 'GBEVM02',
+      appdomain_service: h('b'),
+      start_sh: h('t'),
+      functions_sh: h('z'),
+      startCustom_sh: null,
+    },
+    {
+      host: 'GBPRV01',
+      appdomain_service: h('a'),
+      start_sh: h('s'),
+      functions_sh: h('z'),
+      startCustom_sh: null,
+    },
   ];
   for (const root of ['vhosting', 'vhosting8']) {
     const sorgular = [];
@@ -435,14 +537,21 @@ test('IR2b eski veri BIREBIR eski algoritma (ozel sunucular, eksik, startCustom,
 
 test('IR6 GBEVM/GBPRV genel envanterin ekip referansina gore olculur', async () => {
   DB = {
-    rows: [satir('GBN1', V.nl, SH), satir('GBN2', V.nl, SH), satir('GBEVM01', V.repo, SH), satir('GBPRV01', V.real, SH)],
+    rows: [
+      satir('GBN1', V.nl, SH),
+      satir('GBN2', V.nl, SH),
+      satir('GBEVM01', V.repo, SH),
+      satir('GBPRV01', V.real, SH),
+    ],
     detail: [
       detay('vhosting', 'GBN1', 'appdomain.service', V.nl),
       detay('vhosting', 'GBN2', 'appdomain.service', V.nl),
       detay('vhosting', 'GBEVM01', 'appdomain.service', V.repo),
       detay('vhosting', 'GBPRV01', 'appdomain.service', V.real),
     ],
-    refs: [{ script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm }],
+    refs: [
+      { script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm },
+    ],
   };
   const j = await al();
   assert.ok(j.special);
@@ -463,9 +572,16 @@ test('IR7 ek tablo sorgusu duserse 200, extrasError dolu, eski davranis', async 
 
 test('IR8 verinin yasi: load_date > scan_date > bilinmiyor', async () => {
   const rows = [satir('GBY1', V.nl, SH)];
-  DB = { rows, cols: [...ALL_COLS, 'load_date'], loadDate: { t: '2026-11-11 03:00:00', m: 3 * 1440 + 30 } };
+  DB = {
+    rows,
+    cols: [...ALL_COLS, 'load_date'],
+    loadDate: { t: '2026-11-11 03:00:00', m: 3 * 1440 + 30 },
+  };
   let j = await al();
-  assert.deepEqual([j.loadedAt, j.ageDays, j.ageMinutes, j.ageSource], ['2026-11-11 03:00:00', 3, 3 * 1440 + 30, 'load_date']);
+  assert.deepEqual(
+    [j.loadedAt, j.ageDays, j.ageMinutes, j.ageSource],
+    ['2026-11-11 03:00:00', 3, 3 * 1440 + 30, 'load_date'],
+  );
 
   // load_date sutunu yok (eski loader) ama ayrinti tablosu var -> scan_date
   DB = {
@@ -497,21 +613,37 @@ test('IR8 verinin yasi: load_date > scan_date > bilinmiyor', async () => {
 
 test('IR9 istemci: veri yasi seridi, yas bilinmiyorsa uyari, bicim/CRLF/okunamaz ayrimi', () => {
   const fs = require('node:fs');
-  const page = fs.readFileSync(path.join(SERVER, '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
+  const page = fs.readFileSync(
+    path.join(SERVER, '..', 'src', 'components', 'DenetimPage.tsx'),
+    'utf8',
+  );
   const tek = page.replace(/\s+/g, ' ');
-  assert.ok(tek.includes('{data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}'), 'yas seridi cizilmiyor');
-  assert.match(page, /const INIT_STALE_DAYS = 2;/);
-  assert.match(page, /const old = known && \(minutes \?\? \(days as number\) \* 1440\) > INIT_STALE_DAYS \* 1440;/);
-  assert.match(page, /const stale = !known \|\| old;/);
   assert.ok(
-    tek.includes('<b>Veri {days} gün önce yüklendi — <code>{job}</code> işi çalışmıyor olabilir.</b>'),
+    tek.includes(
+      '{data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}',
+    ),
+    'yas seridi cizilmiyor',
+  );
+  assert.match(page, /const INIT_STALE_DAYS = 2;/);
+  assert.match(
+    page,
+    /const old = known && \(minutes \?\? \(days as number\) \* 1440\) > INIT_STALE_DAYS \* 1440;/,
+  );
+  assert.match(page, /const stale = !known \|\| old;/);
+  assert.match(
+    tek,
+    /<b>\s*Veri \{days\} gün önce yüklendi — <code>\{job\}<\/code> işi çalışmıyor olabilir\.\s*<\/b>/,
     '2 gunden eski veri uyarisi yok',
   );
   assert.ok(
-    tek.includes("{data.detailAvailable ? 'Yalnız boşluk/satır sonu farkı olan kopyalar sapma sayılmaz.'"),
+    tek.includes(
+      "{data.detailAvailable ? 'Yalnız boşluk/satır sonu farkı olan kopyalar sapma sayılmaz.'",
+    ),
     'eski veride bicim farki iddiasi yapilmamali',
   );
-  assert.ok(page.includes('Verinin yaşı bilinmiyor (eski yükleyici); sonuçlar güncel olmayabilir.'));
+  assert.ok(
+    page.includes('Verinin yaşı bilinmiyor (eski yükleyici); sonuçlar güncel olmayabilir.'),
+  );
   for (const alan of [
     '(h.formatOnly || []).map(',
     '(h.crlf || []).map(',
@@ -528,8 +660,13 @@ test('IR10 kismi ek tablo hatasi: ayrinti okundu ama referans dustu -> tamamen e
   const hosts = filo();
   DB = {
     rows: hosts.map(([h, s]) => satir(h, s, SH)),
-    detail: hosts.flatMap(([h, s]) => [detay('vhosting', h, 'appdomain.service', s), detay('vhosting', h, 'start.sh', SH)]),
-    refs: [{ script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm }],
+    detail: hosts.flatMap(([h, s]) => [
+      detay('vhosting', h, 'appdomain.service', s),
+      detay('vhosting', h, 'start.sh', SH),
+    ]),
+    refs: [
+      { script: 'appdomain.service', raw_sha512: fp(V.repo).raw, norm_sha512: fp(V.repo).norm },
+    ],
     refThrow: true,
   };
   const j = await al();
@@ -537,7 +674,11 @@ test('IR10 kismi ek tablo hatasi: ayrinti okundu ama referans dustu -> tamamen e
   assert.equal(j.detailAvailable, false, 'yarim okunan ayrinti kullanilmamali');
   assert.equal(j.formatOnlyHosts, 0);
   const a = script(j, 'appdomain_service');
-  assert.deepEqual([a.variantCount, a.deviatingCount, a.formatOnlyCount], [3, 8, 0], 'eski yol (ham + cogunluk)');
+  assert.deepEqual(
+    [a.variantCount, a.deviatingCount, a.formatOnlyCount],
+    [3, 8, 0],
+    'eski yol (ham + cogunluk)',
+  );
 });
 
 test('IR11 ayrinti satiri eksik kopya ayni ham hash uzerinden normu alir: tek surum', async () => {
@@ -548,7 +689,10 @@ test('IR11 ayrinti satiri eksik kopya ayni ham hash uzerinden normu alir: tek su
     // (CRLF secildi: kanonik LF kopyanin ham hash'i normuyla ZATEN ayni, kor kalirdi.)
     detail: hosts
       .filter(([h]) => !/^GBCRLF[12]$/.test(h))
-      .flatMap(([h, s]) => [detay('vhosting', h, 'appdomain.service', s), detay('vhosting', h, 'start.sh', SH)]),
+      .flatMap(([h, s]) => [
+        detay('vhosting', h, 'appdomain.service', s),
+        detay('vhosting', h, 'start.sh', SH),
+      ]),
   };
   const j = await al();
   const a = script(j, 'appdomain_service');
@@ -601,18 +745,39 @@ test('IR13 referans tablosunda cift satir: sirali ilk kazanir', async () => {
 
 test('IR14 istemci: eski veri/Deployment gorunumu korunur, yaniltici "sapma sayilmaz" yok', () => {
   const fs = require('node:fs');
-  const page = fs.readFileSync(path.join(SERVER, '..', 'src', 'components', 'DenetimPage.tsx'), 'utf8');
+  const page = fs.readFileSync(
+    path.join(SERVER, '..', 'src', 'components', 'DenetimPage.tsx'),
+    'utf8',
+  );
   const tek = page.replace(/\s+/g, ' ');
   const var_ = (s, m) => assert.ok(tek.includes(s), m || s);
   var_("const ekipVar = shown?.referenceSource === 'ekip' || shown?.referenceSource === 'karma';");
   var_("{ekipVar ? 'Referans' : 'Çoğunluk'}", 'eski veride baslik Cogunluk kalmali');
-  var_('{ekipVar && sc.referenceSource && !sc.perServer && (', 'cogunluk cipi eski veride cizilmemeli');
-  var_("...(kind === 'init' ? ['bicim_farki', 'crlf', 'okunamayan'] : []),", 'Deployment sunucu CSV eski sutunlar');
+  var_(
+    '{ekipVar && sc.referenceSource && !sc.perServer && (',
+    'cogunluk cipi eski veride cizilmemeli',
+  );
+  var_(
+    "...(kind === 'init' ? ['bicim_farki', 'crlf', 'okunamayan'] : []),",
+    'Deployment sunucu CSV eski sutunlar',
+  );
   var_("...(kind === 'init' ? [ 'referans_kaynak',", 'Deployment script CSV eski sutunlar');
-  var_("{!sc.perServer && isRef ? ' — referansla aynı içerik, sapma sayılmaz:'", 'sapma sayilmaz yalniz referans surumunde');
-  assert.ok(!tek.includes('(satır sonu / boşluk) — sapma sayılmaz:'), 'kosulsuz sapma sayilmaz metni kaldi');
+  var_(
+    "{!sc.perServer && isRef ? ' — referansla aynı içerik, sapma sayılmaz:'",
+    'sapma sayilmaz yalniz referans surumunde',
+  );
+  assert.ok(
+    !tek.includes('(satır sonu / boşluk) — sapma sayılmaz:'),
+    'kosulsuz sapma sayilmaz metni kaldi',
+  );
   var_('const tumuSapiyor = !sc.perServer && n <= 1 && sc.deviatingCount > 0;');
-  var_(": tumuSapiyor ? 'bg-amber-50 text-amber-700 border-amber-200'", 'tum filo sapiyorken yesil');
+  var_(
+    ": tumuSapiyor ? 'bg-amber-50 text-amber-700 border-amber-200'",
+    'tum filo sapiyorken yesil',
+  );
   var_('{sc.hostWide && shown?.detailAvailable && (', 'eski veride sunucu geneli iddiasi');
-  var_('{sc.referenceHash || sc.referenceNorm ? (sc.referenceCount ?? sc.majorityCount) : sc.majorityCount}', 'startCustom adedi 0 gorunur');
+  var_(
+    '{sc.referenceHash || sc.referenceNorm ? (sc.referenceCount ?? sc.majorityCount) : sc.majorityCount}',
+    'startCustom adedi 0 gorunur',
+  );
 });

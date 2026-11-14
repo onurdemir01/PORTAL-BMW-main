@@ -252,7 +252,7 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
         const veriYok = !ekip.length && !!(o.veriYokNs && o.veriYokNs.length);
         return { ekip, ekipKaynak, ekipEposta: o.emails, ...(veriYok ? { ekipVeriYok: true } : {}) };
       })(),
-      locations: c && c.locations.length ? c.locations : (s ? s.locations : []),
+      locations: (() => { if (c && c.locations.length) return c.locations; if (s) return s.locations; return []; })(),
       yuk: c ? yukOzeti(c.trafik) : null,
       // Rapor okunduysa ve uygulama orada yoksa: canli Glomo envanterinde gorulmuyor.
       taramadaYok: raporVar && !c,

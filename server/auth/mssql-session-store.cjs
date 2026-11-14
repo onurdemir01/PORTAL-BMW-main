@@ -21,11 +21,11 @@ const DEFAULT_TTL_MS = 8 * 60 * 60 * 1000; // kunyesiz (eski) satirlar icin
 // Oturum cerezi artik cogunlukla tarayici-oturumu cerezi (`expires` yok), bu yuzden
 // cerezden turetmek kunyesiz satirlar icin geri dusustur.
 function expiryFrom(sess) {
-  const m = sess && sess.meta;
-  if (m && Number.isFinite(m.createdAt) && Number.isFinite(m.lastSeenAt)) {
+  const m = sess?.meta;
+  if (Number.isFinite(m?.createdAt) && Number.isFinite(m.lastSeenAt)) {
     return new Date(sessionPolicy.bitisler(m).absoluteExpiresAt);
   }
-  const e = sess && sess.cookie && sess.cookie.expires;
+  const e = sess?.cookie?.expires;
   if (e) { const d = new Date(e); if (!isNaN(d.getTime())) return d; }
   return new Date(Date.now() + DEFAULT_TTL_MS);
 }
@@ -35,11 +35,11 @@ function expiryFrom(sess) {
 // hatasinda eski sutun kumesine donulur ve bir kez loglanir.
 let kolonlarVar = true;
 function kolonHatasi(err) {
-  return /invalid column name/i.test(String(err && err.message));
+  return /invalid column name/i.test(String(err?.message));
 }
 function satirAlanlari(sess) {
-  const m = (sess && sess.meta) || {};
-  const u = sess && sess.user && sess.user.username;
+  const m = (sess?.meta) || {};
+  const u = sess?.user?.username;
   return {
     username: u ? String(u).toLowerCase() : null,
     createdAt: Number.isFinite(m.createdAt) ? new Date(m.createdAt) : null,
@@ -96,14 +96,14 @@ function createMssqlSessionStore(session) {
           console.warn("[SessionStore] portal_sessions yeni sutunlari yok — eski sema ile devam:", err.message);
           return dar();
         })
-        .then(() => cb && cb(null))
-        .catch((err) => { console.error("[SessionStore] set() basarisiz:", err.message); cb && cb(err); });
+        .then(() => cb?.(null))
+        .catch((err) => { console.error("[SessionStore] set() basarisiz:", err.message); cb?.(err); });
     }
 
     destroy(sid, cb) {
       db.query(`DELETE FROM portal_sessions WHERE sid = $1`, [sid])
-        .then(() => cb && cb(null))
-        .catch((err) => { console.error("[SessionStore] destroy() basarisiz:", err.message); cb && cb(err); });
+        .then(() => cb?.(null))
+        .catch((err) => { console.error("[SessionStore] destroy() basarisiz:", err.message); cb?.(err); });
     }
 
     // Faz D: bir kullanicinin acik oturumlari ("aktif oturumlarim", admin). Yalnizca
@@ -132,10 +132,10 @@ function createMssqlSessionStore(session) {
     // satir omru yalnizca kunye degisince degisir — o da `set` ile yazilir. Bu yuzden
     // burada DB'ye gidilmez (eskiden her istek bir UPDATE'ti).
     touch(sid, sess, cb) {
-      if (sess && sess.meta && Number.isFinite(sess.meta.createdAt)) return cb && cb(null);
+      if (Number.isFinite(sess?.meta?.createdAt)) return cb?.(null);
       db.query(`UPDATE portal_sessions SET expires = $1 WHERE sid = $2`, [expiryFrom(sess), sid])
-        .then(() => cb && cb(null))
-        .catch((err) => { console.warn("[SessionStore] touch() basarisiz (yoksayildi):", err.message); cb && cb(null); }); // touch hatasi oturumu dusurmesin
+        .then(() => cb?.(null))
+        .catch((err) => { console.warn("[SessionStore] touch() basarisiz (yoksayildi):", err.message); cb?.(null); }); // touch hatasi oturumu dusurmesin
     }
   }
 
@@ -194,7 +194,7 @@ async function rewriteRoleForUser(username, role) {
   for (const r of rows || []) {
     let sess;
     try { sess = JSON.parse(r.sess); } catch { continue; }
-    if (!sess || !sess.user || sess.user.role === role) continue;
+    if (!sess?.user || sess.user.role === role) continue;
     sess.user.role = role;
     try {
       await db.query(`UPDATE portal_sessions SET sess = $1 WHERE sid = $2`, [JSON.stringify(sess), r.sid]);

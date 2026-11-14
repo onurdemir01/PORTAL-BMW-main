@@ -250,7 +250,7 @@ function buildRouteStats(routeRows, spaRows) {
       byName: { ...b.byName },
       nameMismatch: b.nameMismatch,
       nameFalsePositive: b.nameFalsePositive,
-      clusters: [...b.clusters].filter(Boolean).sort(),
+      clusters: [...b.clusters].filter(Boolean).sort((a, b) => a.localeCompare(b)),
       clusterRows: [...b.clusterStats.entries()]
         .map(([cluster, c]) => ({
           cluster,

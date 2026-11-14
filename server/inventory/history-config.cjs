@@ -132,15 +132,15 @@ function normalizeRow(r) {
   }
   // Anahtar bozuksa/bossa koddaki DOGRULANMIS anahtara duselim — bos anahtarla
   // calismak tum satirlari tek bir anahtara toplar ve gecmisi bozar.
-  if (!Array.isArray(key) || key.length === 0) key = fallback ? fallback.key : null;
+  if (!Array.isArray(key) || key.length === 0) key = (fallback?.key ?? null);
   if (!key) return null;
   return {
     table: r.table_name,
-    label: r.label || (fallback && fallback.label) || r.table_name,
+    label: r.label || (fallback?.label) || r.table_name,
     mode: r.mode === 'native' ? 'native' : 'snapshot',
     key,
     volatile: Array.isArray(volatile) && volatile.length ? volatile : COMMON_VOLATILE,
-    dateColumn: fallback ? fallback.dateColumn : undefined,
+    dateColumn: fallback?.dateColumn,
   };
 }
 

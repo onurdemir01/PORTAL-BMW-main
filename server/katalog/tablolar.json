@@ -1615,7 +1615,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu",
-        "dosya": "server/db/mssql-setup.cjs:4329",
+        "dosya": "server/db/mssql-setup.cjs:4425",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
@@ -1945,7 +1945,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit ozet/listesi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1511"
+        "dosya": "server/audit/denetim.cjs:1580"
       }
     ],
     "saklama": "yok; kapanmis sunucunun satiri eski-sunucu temizliginde silinir",
@@ -2043,7 +2043,7 @@
       },
       {
         "ad": "Denetim yanitlari",
-        "dosya": "server/audit/denetim.cjs:165",
+        "dosya": "server/audit/denetim.cjs:177",
         "uzerinden": "server/audit/nginx-host-labels.cjs"
       }
     ],
@@ -3062,7 +3062,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml (Server Hub — Uygulama Envanteri) ham dosyaları; Portal /sw'den alıp yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1143",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1139",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Haftalık zamanlayıcı (ear-envanter-poller.cjs) veya elle / AWX'ten başlatılan koşu"
       }
@@ -3127,7 +3127,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1150",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1146",
         "nasil": "yoksa INSERT (tekilleştirme)",
         "ne_zaman": "Koşu alımında"
       },
@@ -4187,7 +4187,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ekip surumu",
-        "dosya": "server/audit/denetim.cjs:1969"
+        "dosya": "server/audit/denetim.cjs:1954"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4307,7 +4307,7 @@
       },
       {
         "ad": "Nginx Konsol / eski sunucu",
-        "dosya": "server/nginx-console/index.cjs:384"
+        "dosya": "server/nginx-console/index.cjs:396"
       },
       {
         "ad": "Envanter Degisim gecmisi",
@@ -4821,7 +4821,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (match_by)",
-        "dosya": "server/audit/denetim.cjs:744"
+        "dosya": "server/audit/denetim.cjs:760"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
@@ -5113,7 +5113,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi (RP eşleştirme)",
-        "dosya": "server/nginx-console/index.cjs:539"
+        "dosya": "server/nginx-console/index.cjs:726"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5437,7 +5437,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi",
-        "dosya": "server/nginx-console/index.cjs:539"
+        "dosya": "server/nginx-console/index.cjs:745"
       }
     ],
     "saklama": "DELETE TOP(5000) parti + commit; RETENTION_DAYS=3",
@@ -5522,7 +5522,7 @@
       },
       {
         "ad": "SPA raporu (intranet) - Nginx Konsol SPA keşfi (spaKesfiPaylas) üzerinden",
-        "dosya": "server/spa-report/intranet.cjs:315",
+        "dosya": "server/spa-report/intranet.cjs:309",
         "uzerinden": "server/nginx-console/index.cjs"
       }
     ],
@@ -6210,7 +6210,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub",
-        "dosya": "server/server-hub/index.cjs:47"
+        "dosya": "server/server-hub/index.cjs:89"
       }
     ],
     "saklama": "RETENTION_DAYS=30, DELETE TOP(5000)",

@@ -27,7 +27,7 @@ const BURASI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 
 const KOK = path.resolve(process.env.UI_TARAMA_KOK || BURASI);
 const arg = (ad, varsayilan = null) => {
   const i = process.argv.indexOf(ad);
-  return i < 0 ? varsayilan : process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true;
+  if (i < 0) return varsayilan; if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1]; return true;
 };
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5198);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9334);
@@ -237,13 +237,13 @@ console.log('\n[scalex-akis] kurgu / tema / adim                          tik  s
 for (const o of olcumler) {
   const bulgu = [
     o.tasmaX > 0 ? `tasma ${o.tasmaX}px` : '',
-    o.kontrast.length ? `kontrast<3: ${o.kontrast.map((k) => `${k.o} ${k.e.slice(0, 60)}`).join(' ; ')}` : '',
+    o.kontrast.length ? `kontrast<3: ${o.kontrast.map((k) => (String(k.o) + " " + k.e.slice(0, 60))).join(' ; ')}` : '',
     o.etiketsizGirdi.length ? `etiketsiz girdi ${o.etiketsizGirdi.length}` : '',
     o.adsizDugme.length ? `adsiz dugme ${o.adsizDugme.length}` : '',
     o.hamJson ? 'ham JSON' : '',
     o.konsol.length ? `konsol: ${o.konsol.join(' | ').slice(0, 160)}` : '',
   ].filter(Boolean).join(' | ');
-  console.log(`  ${`${o.kurgu} ${o.tema} ${o.adim}`.padEnd(52)} ${String(o.tik).padStart(3)} ${String(o.yukseklik).padStart(6)} ${String(o.kart).padStart(6)}  ${bulgu}`);
+  console.log(`  ${(String(o.kurgu) + " " + o.tema + " " + o.adim).padEnd(52)} ${String(o.tik).padStart(3)} ${String(o.yukseklik).padStart(6)} ${String(o.kart).padStart(6)}  ${bulgu}`);
 }
 console.log(`\n[scalex-akis] ${olcumler.length} olcum, ${hatalar.length} akis hatasi${hatalar.length ? ':\n  ' + hatalar.join('\n  ') : ''}`);
 console.log(`[scalex-akis] Ayrinti ve ekran goruntuleri: ${CIKTI}`);

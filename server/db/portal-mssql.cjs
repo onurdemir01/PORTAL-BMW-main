@@ -88,7 +88,7 @@ async function getPool() {
 // Izleme icin havuz dolulugu (metrics-lite). mssql, altta tarn havuzu (_pool.pool) kullanir.
 function poolStats() {
   try {
-    const p = _pool && _pool.pool;
+    const p = _pool?.pool;
     if (!p) return { connected: false };
     return {
       connected: true,
