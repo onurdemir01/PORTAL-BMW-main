@@ -26,8 +26,17 @@ const { execFileSync } = require('node:child_process');
 const KOK = path.join(__dirname, '..', '..');
 const P = require('../../scripts/paket.cjs');
 const { karar } = require('../../scripts/guvenlik-denetim.cjs');
-const PKG = JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8'));
-const KILIT = JSON.parse(fs.readFileSync(path.join(KOK, 'package-lock.json'), 'utf8'));
+// Girdi TAM manifesttir (gelistirme/; calisma zamani + gelistirme): budama ve turetme islevleri
+// gelistirme agacini gercekten ayiklamak zorunda. Kok manifest zaten turetilmis haldir
+// (scripts/manifest.cjs); onunla sinamak budamayi BOS gecirirdi.
+const PKG = {
+  ...JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8')),
+  ...(({ dependencies, devDependencies, overrides }) => ({ dependencies, devDependencies, overrides }))(
+    JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package.json'), 'utf8')),
+  ),
+};
+const KILIT = JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package-lock.json'), 'utf8'));
+assert.ok(Object.keys(PKG.devDependencies || {}).length > 10, 'tam manifestte gelistirme paketleri yok');
 const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8');
 
 test('PK1 calisma zamani package.json', () => {
@@ -247,6 +256,11 @@ test('PK8 dagitim betikleri sunucuda gelistirme paketi birakmaz', () => {
   const lib = oku('deploy/stage-lib.sh');
   const fn = lib.slice(lib.indexOf('stage_bagimlilik_ve_build() {'));
   assert.match(fn, /devDependencies \? 1 : 0/);
+  // Kaynak agac (gelistirme/ var): tam kurulum -> build -> calisma zamanina indirgeme, BU SIRAYLA.
+  assert.match(
+    fn,
+    /if \[\[ -f gelistirme\/package\.json \]\]; then\n[^\n]*\n\s*node scripts\/kur\.cjs \|\| exit 1\n\s*npm run build \|\| exit 1\n\s*node scripts\/kur\.cjs --calisma-zamani \|\| exit 1/,
+  );
   assert.match(
     fn,
     /npm ci --omit=dev --no-audit --no-fund \|\| exit 1\n\s*npm run build \|\| exit 1/,

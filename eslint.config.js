@@ -66,6 +66,7 @@ export default [
     ignores: [
       'dist/**',
       'node_modules/**',
+      'gelistirme/**',
       '.claude/worktrees/**',
       'server/ansible/scalex_file/scalex_app/files/**',
     ],

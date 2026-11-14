@@ -39,8 +39,12 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 ## Hızlı Başlangıç (Geliştirme)
 
 ```bash
-npm install
+npm run kur                    # tam kurulum (çalışma zamanı + geliştirme araçları)
 cp .env.example .env.local     # değerleri doldurun (aşağıya bakın)
+
+# Kökteki package.json YALNIZ çalışma zamanı paketlerini taşır: kökte düz `npm ci` / `npm install`
+# geliştirme araçlarını (vite, vitest, eslint) kurmaz. Tam manifest `gelistirme/` altındadır.
+# Paket ekleme / güncelleme: cd gelistirme && npm install <paket>  →  npm run manifest
 
 # Geliştirme modunda çalıştır (server + frontend paralel)
 npm run dev:all

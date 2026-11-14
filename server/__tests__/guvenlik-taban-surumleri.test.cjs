@@ -62,7 +62,10 @@ function buyukEsit(a, b) {
 }
 
 test('GT1 kilitteki her kopya guvenlik tabaninda', () => {
-  const kilit = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
+  // TAM kilit (gelistirme/): liste gelistirme paketlerini de (vite, vitest) kapsiyor.
+  const kilit = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'gelistirme', 'package-lock.json'), 'utf8'),
+  );
   const bulunan = {};
   const eksikler = [];
   for (const [yol, bilgi] of Object.entries(kilit.packages || {})) {
