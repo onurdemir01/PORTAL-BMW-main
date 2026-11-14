@@ -100,3 +100,47 @@ test('OW8 gizlenen sayisi SOYLENIYOR (gizle ama sayisini soyle)', () => {
   const idx = fs.readFileSync(path.join(ROOT, 'server/scalex/index.cjs'), 'utf8');
   assert.match(idx, /hiddenByOwnership:/, 'sahiplik yuzunden gizlenen sayisi bildirilmiyor');
 });
+
+// 2026-11-14 (uretim kaydi): `/stopped` yaniti satir basina ~60 AD grup DN'i tasiyordu; bes farkli
+// kullanicinin grup uyelikleri listeyi goren herkese gidiyordu ve yanitin %97'si bu alandi.
+test('OW-ISTEMCI stoppedByGroups tarayiciya gitmez; suzgec onu kullanmaya devam eder', () => {
+  const { istemciSatiri } = require('../state.cjs');
+  const GRUP = 'CN=ornek-ekip,OU=Gruplar,DC=ornek,DC=test';
+  const satir = {
+    id: 7,
+    appName: 'uygulama',
+    namespace: 'ns',
+    stoppedBy: 'ayse',
+    stoppedByGroups: [GRUP, 'CN=diger,OU=x'],
+    driftStatus: 'in_sync',
+    restoreAttempts: 0,
+  };
+  const giden = istemciSatiri(satir);
+  assert.ok(!('stoppedByGroups' in giden));
+  assert.ok(!JSON.stringify(giden).includes('CN='));
+  // Diger alanlar AYNEN (arayuz stoppedBy, driftStatus vb. gosteriyor).
+  const { stoppedByGroups: _g, ...beklenen } = satir;
+  assert.deepEqual(giden, beklenen);
+  // Girdi DEGISMEZ: sunucudaki suzgec ayni satiri sonra da okuyabilir.
+  assert.deepEqual(satir.stoppedByGroups, [GRUP, 'CN=diger,OU=x']);
+  // `null` (grup bilgisi yazilmamis eski kayit) da gitmez.
+  assert.ok(!('stoppedByGroups' in istemciSatiri({ id: 1, stoppedByGroups: null })));
+
+  // Rota: once SAHIPLIK SUZGECI (grup bilgisiyle), sonra alan cikarilir.
+  const rota = fs.readFileSync(path.join(ROOT, 'server', 'scalex', 'index.cjs'), 'utf8');
+  const i = rota.indexOf("'/stopped',");
+  const govde = rota.slice(i, rota.indexOf("router.post(\n    '/adopt'", i));
+  assert.ok(i > 0 && govde.length > 500, '/stopped rotasi bulunamadi');
+  assert.match(govde, /items: rows\.map\(state\.istemciSatiri\),/);
+  assert.doesNotMatch(govde, /items: rows,/);
+  assert.ok(
+    govde.indexOf('filterStoppedByOwnership(allowed') < govde.indexOf('rows.map(state.istemciSatiri)'),
+    'alan suzgecten ONCE cikarilirsa sahiplik suzgeci kor kalir',
+  );
+  // Ekibin kaydini gorme kurali alan cikarildiktan sonra da gecerli (suzgec ham satirla calisir).
+  const gorunen = filterStoppedByOwnership([row({ stoppedBy: 'ayse', stoppedByGroups: [GRUP] })], {
+    user: { username: 'mehmet', role: 'User', groups: [GRUP] },
+  }).map(istemciSatiri);
+  assert.equal(gorunen.length, 1);
+  assert.ok(!('stoppedByGroups' in gorunen[0]));
+});

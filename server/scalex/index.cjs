@@ -2207,7 +2207,8 @@ function initScaleX(app) {
       // dondugu icin bayrak orada kaybolur.
       res.json({
         ok: true,
-        items: rows,
+        // Suzgecler grup bilgisini KULLANDIKTAN sonra alan yanittan cikarilir (state.istemciSatiri).
+        items: rows.map(state.istemciSatiri),
         // GIZLENEN SAYISI IKI SUZGECI DE KAPSAR (yetki + sahiplik). Kullanici
         // "listede yok" ile "sana gosterilmiyor"u ayirt edebilmeli.
         hiddenCount: all.length - rows.length,

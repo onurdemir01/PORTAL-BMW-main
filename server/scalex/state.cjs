@@ -117,6 +117,17 @@ function normalizeRow(r) {
   };
 }
 
+/**
+ * Tarayiciya giden satir. `stoppedByGroups` (durduran kisinin AD grup uyelikleri) YALNIZ sunucudaki
+ * sahiplik suzgeci icindir (catalog.filterStoppedByOwnership); arayuz bu alani hic okumaz.
+ * 2026-11-14: `/stopped` yaniti satir basina ~60 grup DN'i tasiyordu (yanitin %97'si) ve bir
+ * kullanicinin grup uyeliklerini listeyi goren herkese aciyordu.
+ */
+function istemciSatiri(satir) {
+  const { stoppedByGroups: _gruplar, ...kalan } = satir;
+  return kalan;
+}
+
 // Bir `stop` islemi basariyla dogrulandiginda cagrilir.
 async function upsertStopped({
   env,
@@ -467,6 +478,7 @@ async function adopt({
 }
 
 module.exports = {
+  istemciSatiri,
   tryLockRestore,
   unlockRestore,
   listLockedRestores,
