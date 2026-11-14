@@ -157,7 +157,7 @@ export function OrtamOzeti({
                     </div>
                   </td>
                   <td className={`${TD} text-[12px]`}>
-                    {g.javalar.size ? [...g.javalar].sort().map((j) => <div key={j}>{j}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    {g.javalar.size ? [...g.javalar].sort((a, b) => a.localeCompare(b)).map((j) => <div key={j}>{j}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                   </td>
                   {jvmGoster && (
                   <td className={`${TD} text-[12px] tabular-nums`}>

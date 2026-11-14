@@ -49,8 +49,13 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
       if (!odak.length) return;
       const ilk = odak[0];
       const son = odak[odak.length - 1];
-      if (e.shiftKey && document.activeElement === ilk) (e.preventDefault(), son.focus());
-      else if (!e.shiftKey && document.activeElement === son) (e.preventDefault(), ilk.focus());
+      if (e.shiftKey && document.activeElement === ilk) {
+        e.preventDefault();
+        son.focus();
+      } else if (!e.shiftKey && document.activeElement === son) {
+        e.preventDefault();
+        ilk.focus();
+      }
     };
     window.addEventListener('keydown', tus);
     return () => {
@@ -66,7 +71,10 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
       .kurallar(false)
       .then((r) => {
         if (!canli) return;
-        if (r.ok) (setVeri(r), setHata(''));
+        if (r.ok) {
+          setVeri(r);
+          setHata('');
+        }
         else setHata(r.message || 'Kurallar okunamadı.');
       })
       .catch((e: unknown) => canli && setHata(e instanceof Error ? e.message : String(e)));

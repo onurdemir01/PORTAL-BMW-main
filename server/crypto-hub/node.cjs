@@ -636,7 +636,7 @@ function grupPlaniKur(okuma, grupId, yeni, opts = {}) {
     // Sozlesme 1.2: anahtarlar a.roller sirasiyla; bos_onay = degeri "" olan rollerin SIRALI listesi.
     yeniB64 = b64({
       degerler: Object.fromEntries(roller.map((r) => [r, yeni[r]])),
-      bos_onay: [...bosRoller].sort(),
+      bos_onay: [...bosRoller].sort((a, b) => a.localeCompare(b)),
     });
   }
   // Tutarsizlik onayi: SECILENLER su an farkli node'lardaysa, hepsi tek degere toplanacak.
@@ -652,7 +652,7 @@ function grupPlaniKur(okuma, grupId, yeni, opts = {}) {
   const satirOf = (e) => ({ d: e.deployment, c: e.container, e: e.env, r: e.rol, sha: e.sha });
   const sirala = (x, y) => `${x.d}/${x.c}/${x.e}`.localeCompare(`${y.d}/${y.c}/${y.e}`);
   const plan = secilenSatir.map(satirOf).sort(sirala);
-  const hedefler = [...new Set(plan.map((p) => p.d))].sort();
+  const hedefler = [...new Set(plan.map((p) => p.d))].sort((a, b) => a.localeCompare(b));
   if (hedefler.length > N.MAX_HEDEF) {
     return hata(400, 'node_girdi', METIN.girdi(`en çok ${N.MAX_HEDEF} deployment`));
   }

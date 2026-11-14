@@ -447,7 +447,7 @@ async function namespacesForCluster(env, tenant, user) {
   const ocpInventory = require('../logx/v2/ocp-inventory.cjs');
   const restrictions = require('../logx/v2/restrictions.cjs');
   const out = await ocpInventory.getNamespaces({ clusterNames }).catch(() => ({ items: [] }));
-  const all = [...new Set(out.items || [])].sort();
+  const all = [...new Set(out.items || [])].sort((a, b) => a.localeCompare(b));
   // filterAllowed birebir anahtar eslesmesi bekler; namespace cluster-bagimsiz secildigi
   // icin her namespace'i HER gercek cluster adiyla ayrica kontrol ederiz — bir tanesinde
   // bile acikca kisitlanmissa o namespace listeden dusurulur (fail-safe).
@@ -479,7 +479,7 @@ async function appsForNamespace(env, tenant, namespace, user) {
   const out = await ocpInventory
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
-  return [...new Set((out.items || []).map((i) => i.name))].sort();
+  return [...new Set((out.items || []).map((i) => i.name))].sort((a, b) => a.localeCompare(b));
 }
 
 function initOpsX(app) {

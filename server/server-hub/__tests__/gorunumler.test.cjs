@@ -152,6 +152,7 @@ test('G3 uclar: GET / PUT / DELETE, durum kodlari, denetim', async () => {
   sifirla();
   const denetim = [];
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
   app.use((req, _res, next) => {
     req.session = { user: { role: 'Admin', username: 'ayse' } };

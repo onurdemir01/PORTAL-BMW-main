@@ -98,7 +98,7 @@ function prune() {
     // Siralamada `...05815` < `...05815-2` cunku ayni onekte UZUN olan sonra gelir —
     // yani ayni saniye icinde uretilenler de dogru sirada.
     .filter((n) => n.startsWith(`${base}.`) && /\.\d{14}(-\d+)?$/.test(n))
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .reverse();
   for (const stale of rotated.slice(cfg.keep)) {
     try {

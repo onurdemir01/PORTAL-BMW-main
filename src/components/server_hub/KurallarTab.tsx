@@ -670,8 +670,8 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
   const [metin, setMetin] = useState(y.gecerli.join(', '));
   const [not, setNot] = useState('');
   const [gonderiliyor, setGonderiliyor] = useState(false);
-  const liste = [...new Set(metin.split(/[,\n]+/).map((x) => x.trim()).filter(Boolean))].sort();
-  const degisti = liste.join(',') !== [...y.gecerli].sort().join(',');
+  const liste = [...new Set(metin.split(/[,\n]+/).map((x) => x.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const degisti = liste.join(',') !== [...y.gecerli].sort((a, b) => a.localeCompare(b)).join(',');
   const kaydet = async (l: string[]) => {
     setGonderiliyor(true);
     try {
@@ -719,7 +719,7 @@ function KokYoksayBolumu({ y, kilitli, onKaydedildi }: { y: NonNullable<ShKurall
         <button type="button" className={BTN} style={btnStil(true)} disabled={kilitli || gonderiliyor || !degisti || not.trim().length < 3} onClick={() => kaydet(liste)}>
           Kaydet ({liste.length} ad)
         </button>
-        {[...y.gecerli].sort().join(',') !== [...y.varsayilan].sort().join(',') && (
+        {[...y.gecerli].sort((a, b) => a.localeCompare(b)).join(',') !== [...y.varsayilan].sort((a, b) => a.localeCompare(b)).join(',') && (
           <button type="button" className={BTN} style={btnStil()} disabled={kilitli || gonderiliyor || not.trim().length < 3} onClick={() => { setMetin(y.varsayilan.join(', ')); kaydet(y.varsayilan); }}>
             <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön
           </button>

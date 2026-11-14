@@ -193,7 +193,7 @@ const LegacyJvmSelectStep: React.FC<{
       )}
 
       <div className="space-y-3 max-h-[70vh] overflow-y-auto">
-        {Object.keys(grouped).sort().map((host) => (
+        {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((host) => (
           <div key={host}>
             <label className="text-xs font-medium text-[var(--text-secondary)]">{host}</label>
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">

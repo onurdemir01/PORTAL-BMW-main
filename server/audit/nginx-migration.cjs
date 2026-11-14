@@ -845,18 +845,18 @@ function buildMigration({
     };
     const finish = (row) => ({
       ...row,
-      services: [...row.services].sort(),
-      oldHosts: [...row.oldHosts].sort(),
-      locations: [...row.locations].sort(),
+      services: [...row.services].sort((a, b) => a.localeCompare(b)),
+      oldHosts: [...row.oldHosts].sort((a, b) => a.localeCompare(b)),
+      locations: [...row.locations].sort((a, b) => a.localeCompare(b)),
       locationCount: row.locations.size,
       // proxy_pass yazim bicim(ler)i: 'fqdn' | 'upstream'; ve yazilan ad(lar)
-      forms: [...row.forms].sort(),
-      written: [...row.written].sort(),
+      forms: [...row.forms].sort((a, b) => a.localeCompare(b)),
+      written: [...row.written].sort((a, b) => a.localeCompare(b)),
       paths: [...row.paths.values()]
         .map((x) => ({
           service: x.service,
           location: x.location,
-          hosts: [...x.hosts].sort(),
+          hosts: [...x.hosts].sort((a, b) => a.localeCompare(b)),
           ...newLocStatus(x.service, x.location),
           traffic: spaTrafikDurumu(
             trafIdx,
@@ -936,16 +936,16 @@ function buildMigration({
       .map((t) => ({
         service: t.service,
         location: t.location,
-        oldHosts: [...t.oldHosts].sort(),
-        targets: [...t.targets].sort(),
-        written: [...t.written].sort(),
+        oldHosts: [...t.oldHosts].sort((a, b) => a.localeCompare(b)),
+        targets: [...t.targets].sort((a, b) => a.localeCompare(b)),
+        written: [...t.written].sort((a, b) => a.localeCompare(b)),
         // 'spa' | 'spa-disi' (ad kalibina uymuyor) | 'cozulemedi' | 'include' (eski sunucuda zaten
         // include) | nginx -T'den: 'statik' | 'yonlendirme' | 'erisim-engeli' | 'diger'
-        siniflar: [...t.siniflar].sort(),
-        apps: [...t.apps].sort(),
+        siniflar: [...t.siniflar].sort((a, b) => a.localeCompare(b)),
+        apps: [...t.apps].sort((a, b) => a.localeCompare(b)),
         // 'config' (Nginx_Config_Audit) / 'nginx-T' (Nginx_Audit_Locations)
-        kaynaklar: [...t.kaynaklar].sort(),
-        davranislar: [...t.davranislar].sort(),
+        kaynaklar: [...t.kaynaklar].sort((a, b) => a.localeCompare(b)),
+        davranislar: [...t.davranislar].sort((a, b) => a.localeCompare(b)),
         eskide: true,
         ...newLocStatus(t.service, t.location),
         traffic: spaTrafikDurumu(trafIdx, t.service + '|' + t.location, t.defs),
@@ -979,7 +979,7 @@ function buildMigration({
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
       oldHostsSeen: [
         ...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h))),
-      ].sort(),
+      ].sort((a, b) => a.localeCompare(b)),
       serviceLocations,
       apps: appRows,
       nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),

@@ -255,7 +255,7 @@ export default function IntranetSpaPage() {
   const ekipler = useMemo(() => {
     const t = new Set<string>();
     for (const r of rows) for (const e of r.ekip) t.add(e);
-    return [...t].sort();
+    return [...t].sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
   const beyanYaz = useCallback(async (r: IntranetSatir, inUse: string | null, note: string) => {

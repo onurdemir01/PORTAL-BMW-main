@@ -25,7 +25,7 @@
     yt_re_kotu_yol: '\t//|/\.\.(/|\Z)|;'
     yt_re_cr: '\r'
     yt_re_k6_surum: '^v0[.](4[5-9]|5[0-9])[.][0-9]{1,2}\Z'
-    yt_re_proxy: '^http://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}\Z'
+    yt_re_proxy: '^https?://[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}\Z'
     yt_re_arac_dizin: '^/sw/BMW_PORTAL(_DEV)?(/[A-Za-z0-9._-]+)+/araclar/[0-9]{1,10}\Z'
     yt_derleme_hostlari: ['GBLABT02']
     yt_eski_k6_isareti: '/yeni-playbook-gerekli/k6'
@@ -64,7 +64,7 @@
               - ((yuk_proxy | default('') | string) == '') or ((yuk_proxy | default('') | string) is match(yt_re_proxy))
               - (yuk_cikti_kok | default('') | string) is match(yt_re_cikti_kok)
               - not ((yuk_cikti_kok | default('') | string) is search('[.][.]'))
-            fail_msg: "araclar girdileri gecersiz (yuk_run_id rakam; yuk_derleme_host GBLABT02 ya da DEV/TEST/QA nginx adi, EDU degil; yuk_k6_surum v0.45..v0.59; yuk_wrk_surum 4.2.0; yuk_proxy bos ya da http://<ad>:<port>; /sw koku); hicbir sey yapilmadi."
+            fail_msg: "araclar girdileri gecersiz (yuk_run_id rakam; yuk_derleme_host GBLABT02 ya da DEV/TEST/QA nginx adi, EDU degil; yuk_k6_surum v0.45..v0.59; yuk_wrk_surum 4.2.0; yuk_proxy bos ya da http(s)://<ad>:<port>; /sw koku); hicbir sey yapilmadi."
             quiet: true
           when: (yuk_islem | default('') | string) == 'araclar'
 

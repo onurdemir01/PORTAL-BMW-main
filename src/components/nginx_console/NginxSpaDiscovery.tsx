@@ -2118,14 +2118,14 @@ export default function NginxSpaDiscovery() {
     () =>
       ortam === 'tumu'
         ? data?.namespaces || []
-        : [...new Set(ortamApps.map((a) => a.namespace))].sort(),
+        : [...new Set(ortamApps.map((a) => a.namespace))].sort((a, b) => a.localeCompare(b)),
     [data, ortam, ortamApps],
   );
   const ortamCl = useMemo(
     () =>
       ortam === 'tumu'
         ? data?.clusters || []
-        : [...new Set(ortamApps.flatMap((a) => a.clusters))].sort(),
+        : [...new Set(ortamApps.flatMap((a) => a.clusters))].sort((a, b) => a.localeCompare(b)),
     [data, ortam, ortamApps],
   );
   const ortamSec = (v: string) => {

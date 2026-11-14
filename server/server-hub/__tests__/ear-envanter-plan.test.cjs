@@ -31,6 +31,7 @@ async function sunucu(fn) {
     { sunucu: 3, parti: 1, ornek: [] }
   );
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
   app.use(
     (req, res, next) => ((req.session = { user: { username: 'ayse', role: 'Admin' } }), next()),

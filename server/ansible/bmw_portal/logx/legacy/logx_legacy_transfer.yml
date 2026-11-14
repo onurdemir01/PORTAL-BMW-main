@@ -1138,7 +1138,7 @@
         path: "{{ part_files.files | map(attribute='path') | list }}"
         dest: "{{ staging_archive_path }}"
         format: zip
-        mode: "0775"
+        mode: "0770"
         force_archive: true
       register: combined_archive_result
       when:

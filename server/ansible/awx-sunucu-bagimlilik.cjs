@@ -206,7 +206,7 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
   const envAnahtarlari = Object.keys(env || {})
     // OPSX_AWX_SERVER_ID, SCALEX_..., FILEX_..., TELNET_... ve AWX_LOGX_SERVER_ID
     .filter((k) => /(^|_)AWX_(\w+_)?SERVER_ID$/.test(k) && String(env[k]).trim() === String(no))
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
   if (envAnahtarlari.length) {
     uyarilar.push({
       anahtar: 'env',

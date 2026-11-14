@@ -59,7 +59,7 @@ async function kopyala(liste: string[], ne: string) {
 }
 
 /** Uygulama listesinin benzersiz ekip e-postalari. */
-const epostalar = (apps: GecisUygulama[]) => [...new Set(apps.flatMap((a) => a.ekipEposta || []))].sort();
+const epostalar = (apps: GecisUygulama[]) => [...new Set(apps.flatMap((a) => a.ekipEposta || []))].sort((a, b) => a.localeCompare(b));
 
 function EkipHucre({ a }: { a: GecisUygulama }) {
   const ep = a.ekipEposta || [];
@@ -253,7 +253,7 @@ export default function GlomoGecisPlani() {
   useAsyncEffect(async () => { await yukle(); }, [yukle]);
 
   const apps = useMemo(() => data?.apps || [], [data]);
-  const ekipler = useMemo(() => [...new Set(apps.flatMap((a) => a.ekip))].sort(), [apps]);
+  const ekipler = useMemo(() => [...new Set(apps.flatMap((a) => a.ekip))].sort((a, b) => a.localeCompare(b)), [apps]);
   const suzulmus = useMemo(() => {
     const q = ara.trim().toLowerCase();
     return apps.filter((a) =>

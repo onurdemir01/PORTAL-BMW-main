@@ -370,6 +370,7 @@ async function sunucu(fn, { kurallar = [], notDurumu = null } = {}) {
   const gr = grafik();
   const audit = [];
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
   app.use(
     (req, res, next) => ((req.session = { user: { username: 'ayse', role: 'Admin' } }), next()),

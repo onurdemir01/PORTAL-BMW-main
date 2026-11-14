@@ -433,7 +433,7 @@ function YeniSenaryo({ onKapat, onKaydedildi }: { onKapat: () => void; onKaydedi
 /** HAR ayristirma ozeti: HAR basina elenen / tur / boyut sayilari ve toplam (OZET.txt'nin ekrandaki hali). */
 function HarOzetPaneli({ r, tur, onTur }: { r: SenaryoSonucu; tur: 'K' | 'B'; onTur: (t: 'K' | 'B') => void }) {
   const t = r.ozet.toplam;
-  const cipler = (c: Record<string, number>) => Object.keys(c).sort().map((k) => <Cip key={k} cerceve>{`${k} ${fmtNumber(c[k])}`}</Cip>);
+  const cipler = (c: Record<string, number>) => Object.keys(c).sort((a, b) => a.localeCompare(b)).map((k) => <Cip key={k} cerceve>{`${k} ${fmtNumber(c[k])}`}</Cip>);
   // OZET.txt'deki NOT satiri ASCII (el kiti); ekranda ayni bilgi Turkce cumleyle.
   const pay304 = t.k304Agirlik && t.kToplamAgirlik ? (100 * t.k304Agirlik) / t.kToplamAgirlik : 0;
   // Portal'a ozgu sayac (el kiti ';' atmaz, OZET.txt'de yok): oturum kimligi tasiyabilen yol parametresi atilan istek.

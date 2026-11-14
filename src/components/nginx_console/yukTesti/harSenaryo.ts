@@ -117,7 +117,7 @@ export function bicim(w: number): string {
 }
 const yuvarla6 = (x: number) => Number(x.toFixed(6));
 const iskelet = (yol: string) => Array.from(yol.replace(/[A-Za-z0-9]/g, 'x')).slice(0, 80).join('');
-const sirali = (c: Record<string, number>) => Object.keys(c).sort().map((k) => `${k}=${c[k]}`).join(' ');
+const sirali = (c: Record<string, number>) => Object.keys(c).sort((a, b) => a.localeCompare(b)).map((k) => `${k}=${c[k]}`).join(' ');
 const say = (c: Record<string, number>, k: string, n = 1) => { c[k] = (c[k] || 0) + n; };
 
 // ── urlsplit (Python 3.12) ───────────────────────────────────────────────────────────

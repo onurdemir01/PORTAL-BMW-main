@@ -667,7 +667,7 @@ const AUTOSTART_SEBEP_ETIKET: Record<string, string> = {
 function autoBilinmiyorKirilimi(by: Record<string, number> | null | undefined): string {
   if (!by || typeof by !== 'object') return '';
   const bilinen = Object.keys(AUTOSTART_SEBEP_ETIKET);
-  const sira = [...bilinen, ...Object.keys(by).filter((k) => !bilinen.includes(k)).sort()];
+  const sira = [...bilinen, ...Object.keys(by).filter((k) => !bilinen.includes(k)).sort((a, b) => a.localeCompare(b))];
   return sira
     .filter((k) => sayiMi(by[k]) && by[k] > 0)
     .map((k) => `${AUTOSTART_SEBEP_ETIKET[k] || k}: ${by[k]}`)
@@ -1931,7 +1931,7 @@ function HostsTab({
   const products = useMemo(() => {
     const s = new Set<string>();
     for (const h of data?.hosts || []) h.products.forEach((p) => s.add(p));
-    return [...s].sort();
+    return [...s].sort((a, b) => a.localeCompare(b));
   }, [data]);
   // Yazarken kutu takilmaz: suzme ertelenmis degerle (React 19), cizim siniri suzgec degisince 300'e doner.
   const qErtelenmis = useDeferredValue(q);
@@ -3958,10 +3958,10 @@ export function FindingsTab({
   const all = useMemo(() => data?.findings || [], [data?.findings]);
   const codes = useMemo(
     () =>
-      [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort(),
+      [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort((a, b) => a.localeCompare(b)),
     [all, area],
   );
-  const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort(), [all]);
+  const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort((a, b) => a.localeCompare(b)), [all]);
   // Yazarken kutu takilmaz: suzme ertelenmis degerle.
   const qErtelenmis = useDeferredValue(q);
   const rows = useMemo(() => {

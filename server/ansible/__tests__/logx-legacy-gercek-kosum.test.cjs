@@ -296,7 +296,7 @@ test(
       // Is BASARISIZ biter ama sonuc yine yayinlanmistir (yukarida okundu): portal sebebi gosterir.
       assert.notEqual(rc, 0);
     } finally {
-      fs.chmodSync(kilitli, 0o755);
+      fs.chmodSync(kilitli, 0o700);
       temizle(kok);
     }
   },

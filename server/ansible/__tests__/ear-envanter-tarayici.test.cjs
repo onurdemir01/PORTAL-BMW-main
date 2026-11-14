@@ -585,7 +585,7 @@ test(
       assert.match(u.uyarilar.join('\n'), /listelenemedi .*gizli/);
       assert.equal(yuk.durum, 'KISMI');
     } finally {
-      fs.chmodSync(gizli, 0o755);
+      fs.chmodSync(gizli, 0o700);
     }
   },
 );
@@ -1198,7 +1198,7 @@ test('ET16 Faz A: mod_cluster proxies / proxy-list, soket portlari, ofsetler, de
       const dk = yk.yapilandirma.find((k) => k.nesil === '8').deploymentlar.find((x) => x.ad === 'APP8.ear');
       assert.equal(dk.yol_durumu, 'OLCULEMEDI');
     } finally {
-      fs.chmodSync(kilitli, 0o755);
+      fs.chmodSync(kilitli, 0o700);
     }
   }
   const k7 = y.yapilandirma.find((k) => k.nesil === '7');

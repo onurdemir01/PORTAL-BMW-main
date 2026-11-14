@@ -53,7 +53,7 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
       ...(m.ocp_username ? { username: m.ocp_username } : {}),
     };
   });
-  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort();
+  const terminalHosts = [...new Set(items.map((i) => i.terminal_host))].sort((a, b) => a.localeCompare(b));
   return { terminal_host: terminalHosts[0], terminal_hosts: terminalHosts, ocp_clusters: items };
 }
 
@@ -173,7 +173,7 @@ async function selectClusters(requestRow, env, tenant, clusters) {
   const hosts = await resolveHostsOrThrow(env, tenant, clusters);
   // `terminalHost` (tekil) yalnizca geriye donuk uyum icin saklanir: bu alani okuyan eski
   // istek satirlari ve UI hala calissin diye. Gercek kaynak her launch'ta taze cozulur.
-  const terminalHost = [...new Set(Object.values(hosts))].sort()[0];
+  const terminalHost = [...new Set(Object.values(hosts))].sort((a, b) => a.localeCompare(b))[0];
 
   await requests.updateRequest(requestRow.request_id, {
     state: 'draft',
@@ -322,7 +322,7 @@ function normalizeDiscoveryResult(artifacts) {
   if (!artifacts || !Array.isArray(artifacts.clusters)) return artifacts;
   const clusters = artifacts.clusters.map((c) => {
     const cleaned = (c.namespaces || []).map(cleanNamespaceName).filter(Boolean);
-    return { ...c, namespaces: [...new Set(cleaned)].sort() };
+    return { ...c, namespaces: [...new Set(cleaned)].sort((a, b) => a.localeCompare(b)) };
   });
   return { ...artifacts, clusters };
 }

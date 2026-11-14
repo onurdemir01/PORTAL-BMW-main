@@ -74,7 +74,7 @@ function sahteOcKur() {
       '',
     ].join('\n'),
   );
-  fs.chmodSync(oc, 0o755);
+  fs.chmodSync(oc, 0o700);
   return { dir, oc };
 }
 
@@ -341,6 +341,7 @@ const { createRouter, _ic } = require('../index.cjs');
 let kimlik = { username: 'onur', role: 'Admin' };
 async function istek(method, yol) {
   const app = express();
+  app.disable('x-powered-by');
   app.use((req, _r, n) => {
     req.session = kimlik ? { user: kimlik } : {};
     n();

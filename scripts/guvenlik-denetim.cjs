@@ -32,7 +32,7 @@ function karar(audit, kilitPaketleri) {
     if (calisma || duzeltmeVar) dusuren.push(satir);
     else bilgi.push(satir);
   }
-  return { dusuren: dusuren.sort(), bilgi: bilgi.sort() };
+  return { dusuren: dusuren.sort((a, b) => a.localeCompare(b)), bilgi: bilgi.sort((a, b) => a.localeCompare(b)) };
 }
 
 function main() {

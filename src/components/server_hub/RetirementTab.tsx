@@ -658,7 +658,7 @@ export function CreateModal({ defaultDays, baslangic = null, onClose, onCreated 
   useAsyncEffect(async (alive) => { if (baslangic && alive()) await pick(baslangic.uygulama); }, [baslangic]);
   const key = (t: { host: string; appName: string; gen: number | null }) => `${t.host}|${t.appName}|${t.gen ?? ''}`;
   const selected = (disc?.targets || []).filter((t) => sel.has(key(t)));
-  const surumler = [...new Set((disc?.targets || []).map((t) => t.gen ?? 0))].sort();
+  const surumler = [...new Set((disc?.targets || []).map((t) => t.gen ?? 0))].sort((a, b) => a - b);
   const surumEtiket = (g: number) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen');
   const seciliSurumler = [...new Set(selected.map((t) => t.gen ?? 0))];
   const needsOco = selected.some((t) => t.env === 'PROD');

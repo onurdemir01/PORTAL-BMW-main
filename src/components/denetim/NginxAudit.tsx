@@ -197,7 +197,7 @@ export function NginxAudit() {
   }
 
   const envs = useMemo(
-    () => (data ? [...new Set(data.hosts.map((h) => h.env))].sort() : []),
+    () => (data ? [...new Set(data.hosts.map((h) => h.env))].sort((a, b) => a.localeCompare(b)) : []),
     [data],
   );
 

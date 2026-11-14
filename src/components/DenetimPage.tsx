@@ -1493,8 +1493,8 @@ function OcpCoverage() {
                         className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}
                         title={
                           (k
-                            ? `VAR: ${[...on].sort().join(', ')}` +
-                              (eksik.length ? `\nYOK: ${eksik.sort().join(', ')}` : '') +
+                            ? `VAR: ${[...on].sort((a, b) => a.localeCompare(b)).join(', ')}` +
+                              (eksik.length ? `\nYOK: ${eksik.sort((a, b) => a.localeCompare(b)).join(', ')}` : '') +
                               `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join('\n')}`
                             : `Bu ortamda hiç yok (${n} cluster tarandı)`) +
                           (veriYok.length ? `\n\nVeri yok (ölçülemedi, n'ye katılmadı): ${veriYok.join(', ')}` : '')

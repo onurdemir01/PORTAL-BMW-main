@@ -99,6 +99,7 @@ const { createRouter } = require('../index.cjs');
 
 async function istek(method, yol, govde) {
   const app = express();
+  app.disable('x-powered-by');
   app.use((req, _r, n) => {
     req.session = { user: { username: 'onur', role: 'Admin' } };
     n();

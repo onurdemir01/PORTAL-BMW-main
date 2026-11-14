@@ -131,7 +131,7 @@ export default function CokluKarsilastir({ kuyrukNotu = null, onKuyrukNotuKapat 
   }, [anahtar]);
 
   const secili = durum.kosular;
-  const hedefler = useMemo(() => [...new Set((kosular || []).map(hedefEtiketi).filter(Boolean))].sort(), [kosular]);
+  const hedefler = useMemo(() => [...new Set((kosular || []).map(hedefEtiketi).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [kosular]);
   const q = arama.trim().toLocaleLowerCase('tr');
   const liste = (kosular || []).filter((k) => (!hedef || hedefEtiketi(k) === hedef)
     && (!tarihten || (k.createdAt != null && k.createdAt.slice(0, 10) >= tarihten))

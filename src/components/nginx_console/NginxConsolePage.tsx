@@ -217,7 +217,7 @@ export default function NginxConsolePage() {
   const lastDump = useMemo(() => {
     const times = hosts.map((h) => h.seenAt || h.dumpedAt).filter(Boolean) as string[];
     if (!times.length) return null;
-    return fmtDateTime(times.sort().pop() as string);
+    return fmtDateTime(times.sort((a, b) => a.localeCompare(b)).pop() as string);
   }, [hosts]);
 
   return (

@@ -614,6 +614,7 @@ test('LJ9 kuyruk secenegi KAPALIYKEN pending iptal edilmez; ACIKKEN created a go
 async function uygulama({ db, requireAdmin } = {}) {
   const express = require('express');
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
   const kayit = [];
   const gercekApp = {

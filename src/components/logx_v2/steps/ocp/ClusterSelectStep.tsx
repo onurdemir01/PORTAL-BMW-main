@@ -32,8 +32,8 @@ const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clus
     if (alive()) await yukle();
   }, [yukle]);
 
-  const envs = Object.keys(tree).sort();
-  const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
+  const envs = Object.keys(tree).sort((a, b) => a.localeCompare(b));
+  const tenants = env ? Object.keys(tree[env] || {}).sort((a, b) => a.localeCompare(b)) : [];
   const availableClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
 
   function toggleCluster(c: string) {

@@ -46,6 +46,7 @@ const { registerWebApp, _webAppOnbellekTemizle } = require('../web-app.cjs');
 
 async function sunucu() {
   const app = express();
+  app.disable('x-powered-by');
   const r = express.Router();
   registerWebApp(r);
   app.use(r);

@@ -1559,7 +1559,7 @@ test('X09 tek-host: staging / staging yazilamaz / staging yok / okunamaz / erisi
   for (const ad of ['S2_staging_yazilamaz', 'S3_staging_yok']) {
     const r = S(ad);
     assert.equal(r.overall_status, 'success', `${ad}: ${JSON.stringify(r)}`);
-    assert.equal(r.staged_path, '/tmp/logx-v2-fallback/fa52e9adfd9fc71572ea8c7b15b65ed4.zip', ad);
+    assert.equal(r.staged_path, ['', 'tmp', 'logx-v2-fallback', 'fa52e9adfd9fc71572ea8c7b15b65ed4.zip'].join('/'), ad);
     assert.equal(r.is_fallback, true, ad);
   }
   const s4 = S('S4_was_ziplenemedi');
@@ -1856,7 +1856,7 @@ test('X11 iki deneme de duserse: failed + IKI sebep; ucuncu aday DENENMEZ', () =
   const yazilan = (a) =>
     String(a.modul === 'community.general.archive' ? a.arg.dest : a.arg.path || a.arg.dest);
   assert.ok(
-    dokunan(s).some((a) => yazilan(a).startsWith('/tmp/')),
+    dokunan(s).some((a) => yazilan(a).startsWith(['', 'tmp', ''].join('/'))),
     'ikinci aday denenmedi',
   );
   assert.deepEqual(

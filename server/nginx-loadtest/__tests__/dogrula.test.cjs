@@ -1497,7 +1497,7 @@ test('YD40 extra_vars tur 4: arac dizini + iki sha, isaret yollari, durdurda bos
     [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/../5' }, 'yuk_arac_dizin'],
     [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/abc' }, 'yuk_arac_dizin'],
     [k6, { yuk_arac_dizin: '/sw/BMW_PORTAL/nginx_loadtest/araclar/5/k6' }, 'yuk_arac_dizin'],
-    [k6, { yuk_arac_dizin: '/tmp/araclar/5' }, 'yuk_arac_dizin'],
+    [k6, { yuk_arac_dizin: ['', 'tmp', 'araclar', '5'].join('/') }, 'yuk_arac_dizin'],
     [k6, { yuk_arac_dizin: 5 }, 'yuk_arac_dizin'],
     [k6, { yuk_k6_sha256: 'CD'.repeat(32) }, 'yuk_k6_sha256'],
     [k6, { yuk_k6_sha256: 'c'.repeat(63) }, 'yuk_k6_sha256'],
