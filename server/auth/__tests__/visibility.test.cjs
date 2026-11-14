@@ -7,18 +7,33 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const db = require('../../db/index.cjs');
 const {
-  _decide: decide, _buildRuleIndex: buildRuleIndex, requireVisiblePrefix,
-  writeVisibility, readVisibility, DEFAULT_VISIBILITY,
+  _decide: decide,
+  _buildRuleIndex: buildRuleIndex,
+  requireVisiblePrefix,
+  writeVisibility,
+  readVisibility,
+  DEFAULT_VISIBILITY,
 } = require('../visibility.cjs');
 
 function mockRes() {
   return {
-    statusCode: 0, body: null, headers: {},
+    statusCode: 0,
+    body: null,
+    headers: {},
     // `setHeader`: oturum 401'leri `oturumYok(res)` ile imzalaniyor (P1-3).
     // Sahte res bunu tasimazsa gercek kod yolu TypeError ile duser.
-    setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; return this; },
-    status(c) { this.statusCode = c; return this; },
-    json(b) { this.body = b; return this; },
+    setHeader(k, v) {
+      this.headers[String(k).toLowerCase()] = v;
+      return this;
+    },
+    status(c) {
+      this.statusCode = c;
+      return this;
+    },
+    json(b) {
+      this.body = b;
+      return this;
+    },
   };
 }
 
@@ -31,7 +46,9 @@ test('disabled element herkese kapalı — admin dahil (global kill-switch)', ()
 });
 
 test('enabled element: admin her zaman görür (kurallardan bağımsız)', () => {
-  const idx = buildRuleIndex([{ element_key: 'page:x', principal_type: 'role', principal_id: 'Admin', allow: 0 }]);
+  const idx = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'Admin', allow: 0 },
+  ]);
   assert.equal(decide(EL(), idx, 'Admin', 'jdoe'), true);
 });
 
@@ -52,8 +69,12 @@ test('user allow, role deny → user allow kazanır', () => {
 });
 
 test('yalnızca role kuralı: allow → görünür, deny → gizli', () => {
-  const allow = buildRuleIndex([{ element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 1 }]);
-  const deny = buildRuleIndex([{ element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 0 }]);
+  const allow = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 1 },
+  ]);
+  const deny = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 0 },
+  ]);
   assert.equal(decide(EL({ default_visible: 0 }), allow, 'User', 'jdoe'), true);
   assert.equal(decide(EL({ default_visible: 1 }), deny, 'User', 'jdoe'), false);
 });
@@ -65,16 +86,52 @@ test('hiç kural yoksa default_visible geçerli', () => {
 });
 
 test('principal_id eşleşmesi büyük/küçük harf duyarsız', () => {
-  const idx = buildRuleIndex([{ element_key: 'page:x', principal_type: 'user', principal_id: 'JDoe', allow: 0 }]);
+  const idx = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'user', principal_id: 'JDoe', allow: 0 },
+  ]);
   // decide username'i lowercase bekler (resolveVisibility oyle gecirir)
   assert.equal(decide(EL(), idx, 'User', 'jdoe'), false);
+});
+
+test('email kurali group/role kurallarini ezer (vis-email-rule mutasyon oldurucu)', () => {
+  const denyOverGroup = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'group', principal_id: 'grp_ops', allow: 1 },
+    { element_key: 'page:x', principal_type: 'email', principal_id: 'jdoe@bank.tr', allow: 0 },
+  ]);
+  assert.equal(
+    decide(EL(), denyOverGroup, 'User', 'jdoe', new Set(['grp_ops']), 'jdoe@bank.tr'),
+    false,
+  );
+
+  const allowOverRole = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 0 },
+    { element_key: 'page:x', principal_type: 'email', principal_id: 'jdoe@bank.tr', allow: 1 },
+  ]);
+  assert.equal(decide(EL(), allowOverRole, 'User', 'jdoe', new Set(), 'jdoe@bank.tr'), true);
+});
+
+test('group kurallari birden fazla grupta allow onceligini korur (vis-group-break mutasyon oldurucu)', () => {
+  const mixed = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'group', principal_id: 'grp_a', allow: 0 },
+    { element_key: 'page:x', principal_type: 'group', principal_id: 'grp_b', allow: 1 },
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 0 },
+  ]);
+  assert.equal(decide(EL(), mixed, 'User', 'jdoe', new Set(['grp_a', 'grp_b'])), true);
+
+  const onlyDeny = buildRuleIndex([
+    { element_key: 'page:x', principal_type: 'group', principal_id: 'grp_a', allow: 0 },
+    { element_key: 'page:x', principal_type: 'role', principal_id: 'User', allow: 1 },
+  ]);
+  assert.equal(decide(EL(), onlyDeny, 'User', 'jdoe', new Set(['grp_a'])), false);
 });
 
 test('requireVisiblePrefix: exempt yol (ör. /health) auth/görünürlük kontrolüne girmeden geçer', () => {
   const mw = requireVisiblePrefix('Envanter', { exempt: ['/health'] });
   let nexted = false;
   const res = mockRes();
-  mw({ path: '/health', headers: {}, session: undefined }, res, () => { nexted = true; });
+  mw({ path: '/health', headers: {}, session: undefined }, res, () => {
+    nexted = true;
+  });
   assert.equal(nexted, true);
   assert.equal(res.statusCode, 0); // hic yanit yazilmadi
 });
@@ -84,7 +141,9 @@ test('requireVisiblePrefix: exempt olmayan yol, session/secret yoksa 401 (auth z
   let nexted = false;
   const res = mockRes();
   // getRequestUser: session yok + PORTAL_TRUSTED_HEADER_SECRET yok → null → 401
-  mw({ path: '/tables', headers: {}, session: undefined }, res, () => { nexted = true; });
+  mw({ path: '/tables', headers: {}, session: undefined }, res, () => {
+    nexted = true;
+  });
   assert.equal(nexted, false);
   assert.equal(res.statusCode, 401);
   // Bu yol da OTURUM 401'idir: imzasiz kalirsa istemci kapisi burada ateslenmez
@@ -113,7 +172,11 @@ test('writeVisibility(): bir sayfanin yazimi basarisiz olsa da digerleri yazilir
   });
   assert.equal(result.ok, false);
   assert.deepEqual(result.failed, ['Ansible']);
-  assert.deepEqual(written, ['Dashboard', 'LogX'], 'basarisiz sayfa disindaki yazimlar etkilenmemeli');
+  assert.deepEqual(
+    written,
+    ['Dashboard', 'LogX'],
+    'basarisiz sayfa disindaki yazimlar etkilenmemeli',
+  );
 });
 
 test('writeVisibility(): hicbir hata yoksa ok=true, failed=[]', async (t) => {
