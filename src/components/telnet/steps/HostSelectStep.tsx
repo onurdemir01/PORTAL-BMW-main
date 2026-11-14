@@ -112,7 +112,7 @@ const HostSelectStep: React.FC<{
       </div>
 
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {Object.keys(grouped).sort().map((envKey) => (
+        {Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((envKey) => (
           <div key={envKey}>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-medium text-[var(--text-secondary)]">{envKey}</label>

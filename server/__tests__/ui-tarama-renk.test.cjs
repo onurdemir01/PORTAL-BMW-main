@@ -14,7 +14,7 @@ const path = require('node:path');
 async function lumAl() {
   const m = await import(path.join(__dirname, '..', '..', 'scripts', 'ui-tarama', 'lib.mjs'));
   // DENETIM sayfa icinde calisan tek ifade; derlenebilmeli.
-  new Function(`return () => ${m.DENETIM}`);
+  assert.equal(typeof new Function(`return () => ${m.DENETIM}`), 'function');
   const satir = m.DENETIM.split('\n').find((x) => x.trim().startsWith('const lum ='));
   assert.ok(satir, 'DENETIM icinde lum yok');
   return new Function(`${satir.trim()}; return lum;`)();

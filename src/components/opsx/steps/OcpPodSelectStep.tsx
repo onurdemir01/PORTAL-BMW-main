@@ -256,7 +256,7 @@ const OcpPodSelectStep: React.FC<{
       <div className="space-y-3 max-h-[70vh] overflow-y-auto">
         {Object.keys(grouped).length === 0 ? (
           <p className="text-xs text-[var(--text-muted)] px-2 py-3 text-center">Aramayla eşleşen pod yok.</p>
-        ) : Object.keys(grouped).sort().map((label) => (
+        ) : Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map((label) => (
           <div key={label}>
             <label className="text-xs font-medium text-[var(--text-secondary)]">{label}</label>
             <div className="mt-1 space-y-1 border border-[var(--border)] rounded-xl p-1.5">

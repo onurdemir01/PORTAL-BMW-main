@@ -37,6 +37,7 @@ const { registerWebApp } = require('../web-app.cjs');
 
 async function getir() {
   const app = express();
+  app.disable('x-powered-by');
   const r = express.Router();
   registerWebApp(r);
   app.use(r);

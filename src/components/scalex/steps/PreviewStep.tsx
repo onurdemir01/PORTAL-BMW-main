@@ -89,7 +89,7 @@ const PreviewStep: React.FC<Props> = ({
 
   // HEDEF ANAHTARI: bağımlılık dizisinde nesne dizisi kullanılamaz (her render'da
   // yeni referans → sonsuz istek). Düz bir dizgeye indirgenir.
-  const hedefAnahtari = (selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`).sort().join("|");
+  const hedefAnahtari = (selectedTargets || []).map((t) => `${t.cluster}\u0000${t.name}`).sort((a, b) => a.localeCompare(b)).join("|");
 
   const istekAnahtari = [
     scope.env, scope.tenant, scope.namespace, scope.clusters.join(","), scope.apps?.join(","), hedefAnahtari,

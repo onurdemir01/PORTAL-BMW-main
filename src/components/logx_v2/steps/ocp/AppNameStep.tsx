@@ -98,7 +98,7 @@ export function groupApps(items: OcpAppItem[]): AppGroup[] {
   return [...byName.values()]
     .map((g) => ({
       name: g.name,
-      kinds: [...g.kinds].sort(),
+      kinds: [...g.kinds].sort((a, b) => a.localeCompare(b)),
       replicas: g.replicas,
       role: (g.roles.has('app') ? 'app' : g.roles.has('pod') ? 'pod' : 'network') as OcpRole,
     }))

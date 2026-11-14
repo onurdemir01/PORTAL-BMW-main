@@ -31,7 +31,7 @@ export interface KapsamDegeri {
 /** Sunucunun kapsam dizgisi: FILO | SORUNLU | ORTAM:A,B | WEB | FILO_WEB */
 export function kapsamDizgisi(k: KapsamDegeri): string {
   if (k.tur !== 'ORTAM') return k.tur;
-  return `ORTAM:${[...new Set(k.ortamlar.map((o) => o.trim().toUpperCase()).filter(Boolean))].sort().join(',')}`;
+  return `ORTAM:${[...new Set(k.ortamlar.map((o) => o.trim().toUpperCase()).filter(Boolean))].sort((a, b) => a.localeCompare(b)).join(',')}`;
 }
 export function kapsamAyristir(s: string | undefined): KapsamDegeri {
   if (s === 'SORUNLU' || s === 'WEB' || s === 'FILO_WEB') return { tur: s, ortamlar: [] };

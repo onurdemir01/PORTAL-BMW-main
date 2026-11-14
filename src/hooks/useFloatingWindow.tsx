@@ -43,7 +43,7 @@ export function useFloatingWindow(
   const autoHeight = !!opts.autoHeight;
   const initialH: number | 'auto' = autoHeight ? 'auto' : defaultSize.h;
   const [pos, setPos] = useState<FloatingPos>(() =>
-    centeredPos(defaultSize.w, autoHeight ? defaultSize.h : defaultSize.h),
+    centeredPos(defaultSize.w, defaultSize.h),
   );
   const [size, setSize] = useState<FloatingSize>({ w: defaultSize.w, h: initialH });
   const ref = useRef<HTMLDivElement>(null);

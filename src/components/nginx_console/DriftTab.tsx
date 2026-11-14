@@ -30,7 +30,7 @@ export function DriftTab({ onOpen }: { onOpen: (host: string) => void }) {
 
   const groups = useMemo(() => (data?.groups || []).filter((g) => g.dumped.length >= 2 && (!q || g.service.toLowerCase().includes(q.toLowerCase()) || g.hosts.some((h) => h.toLowerCase().includes(q.toLowerCase())))), [data, q]);
   const skipped = useMemo(() => (data?.groups || []).filter((g) => g.dumped.length < 2), [data]);
-  const envs = useMemo(() => [...new Set((data?.groups || []).map((g) => g.env))].sort(), [data]);
+  const envs = useMemo(() => [...new Set((data?.groups || []).map((g) => g.env))].sort((a, b) => a.localeCompare(b)), [data]);
   const toggle = (k: string) => { const s = new Set(open); s.has(k) ? s.delete(k) : s.add(k); setOpen(s); };
   const tot = (k: keyof NcDriftGroup['counts']) => groups.reduce((a, g) => a + g.counts[k], 0);
 

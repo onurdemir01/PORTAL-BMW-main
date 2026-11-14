@@ -195,10 +195,10 @@ function serverindex(sunucular) {
   return s.join('\n');
 }
 
-function yaz(f, icerik, mode = 0o644) {
+function yaz(f, icerik, mode = 0o600) {
   fs.mkdirSync(path.dirname(f), { recursive: true });
-  fs.writeFileSync(f, icerik, { mode });
-  fs.chmodSync(f, mode);
+  const safeMode = (mode & 0o100) ? 0o700 : 0o600;
+  fs.writeFileSync(f, icerik, { mode: safeMode });
 }
 
 class Dunya {

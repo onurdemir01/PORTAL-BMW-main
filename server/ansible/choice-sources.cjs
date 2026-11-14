@@ -302,11 +302,11 @@ const SOURCES = {
           const hosts = kurulu.get(a);
           const cls = kesifte.get(a);
           const parca = [
-            hosts ? `Sunucuda kurulu: ${[...hosts].sort().join(', ')}`
+            hosts ? `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`
               : sunucu ? 'Sunucuda kurulu değil' : 'Sunucu taraması okunamadı',
             ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
           ];
-          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort().join(', ')})`);
+          if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')})`);
           if (!isSpaApp(a)) parca.push('ad standardı dışı');
           return {
             value: a,
@@ -453,7 +453,7 @@ const SOURCES = {
             .filter(Boolean),
         ),
       ];
-      return svcs.sort().map((s) => ({ value: s, label: s }));
+      return svcs.sort((a, b) => Number(a > b) - Number(a < b)).map((s) => ({ value: s, label: s }));
     },
   },
 
@@ -524,8 +524,8 @@ const SOURCES = {
         if (conf) confs.add(conf);
       }
       const out = [];
-      for (const v of [...locs].sort()) out.push({ value: v, label: v, group: 'API yolu' });
-      for (const v of [...confs].sort())
+      for (const v of [...locs].sort((a, b) => Number(a > b) - Number(a < b))) out.push({ value: v, label: v, group: 'API yolu' });
+      for (const v of [...confs].sort((a, b) => Number(a > b) - Number(a < b)))
         out.push({ value: v, label: v, group: 'Konfigürasyon dosyası' });
       return out;
     },
@@ -768,7 +768,7 @@ function confZonelari(rows, hosts, conf) {
     if (T(r.ip_zone)) out.add(T(r.ip_zone));
     if (T(r.server_zone)) out.add(T(r.server_zone));
   }
-  return [...out].sort();
+  return [...out].sort((a, b) => Number(a > b) - Number(a < b));
 }
 
 /**
@@ -842,7 +842,7 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
       ? kokYol
       : '';
-  const deger = (set) => [...set].sort().join(' / ');
+  const deger = (set) => [...set].sort((a, b) => Number(a > b) - Number(a < b)).join(' / ');
   const uclar = [...uc.values()]
     .map((e) => ({
       yol: e.yol,
@@ -874,8 +874,8 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
     zoneBilgisi,
     zoneKirpildi: !!opts.zoneKirpildi,
     zonelar: {
-      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort(),
-      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort(),
+      ip: [...new Set([...ipZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
+      location: [...new Set([...locZ.values()].flatMap((s) => [...s]))].sort((a, b) => Number(a > b) - Number(a < b)),
     },
     // 'degisiklik' (rate_limit_change) | 'bilgi' (read: hicbir sey degismez, panel dili buna gore)
     mod: opts.mod === 'bilgi' ? 'bilgi' : 'degisiklik',

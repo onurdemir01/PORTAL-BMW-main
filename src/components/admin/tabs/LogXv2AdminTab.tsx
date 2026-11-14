@@ -53,7 +53,7 @@ function clusterColumns(
   // Sunucudaki `assertVaultKeysKnownOrThrow` ile AYNI küme: yalnızca AKTİF anahtarlar.
   const catalogNames = new Set(fromCatalog.map((k) => String(k || '').trim()).filter(Boolean));
   const inUse = clusterRows.map((r) => r.vault_credential_key).filter(Boolean) as string[];
-  const vaultKeys = [...new Set([...fromCatalog, ...inUse])].sort();
+  const vaultKeys = [...new Set([...fromCatalog, ...inUse])].sort((a, b) => a.localeCompare(b));
   return [
     { key: 'env', label: 'Ortam (env)', placeholder: 'dev' },
     { key: 'tenant', label: 'Tenant', placeholder: 'ark' },
@@ -103,7 +103,7 @@ function clusterColumns(
       placeholder: 'uxmid',
       suggestions: [
         ...new Set(vaultRows.map((r) => r.default_username).filter(Boolean) as string[]),
-      ].sort(),
+      ].sort((a, b) => a.localeCompare(b)),
       // `oc login --username`. Bu alan YOKKEN playbook değeri yalnızca AWX'teki
       // openshift_inventory_vars.yaml'dan okuyabiliyordu; o dosya AWX'te olmadığı için
       // 2026-08-09'da tüm cluster'lar "'username' is undefined" ile düştü.

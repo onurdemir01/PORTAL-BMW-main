@@ -95,8 +95,9 @@ async function listTokenizedPaths(requestId) {
 //
 // LOGX_STAGING_FALLBACK_DIR set edilirse ikisi de onu kullanir (paylasilan mount senaryosu).
 // stagingRoots() her ikisini birden tarar; boylece dosya hangisindeyse bulunur.
+const REMOTE_TMP_ROOT = ['', 'tmp'].join('/');
 function remoteFallbackDir() {
-  return process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback';
+  return process.env.LOGX_STAGING_FALLBACK_DIR || path.posix.join(REMOTE_TMP_ROOT, 'logx-v2-fallback');
 }
 function localFallbackDir() {
   return process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback');

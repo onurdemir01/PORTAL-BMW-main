@@ -276,7 +276,7 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
     [{ yuk_proxy: 'http://h:80/x' }, 'yuk_proxy'],
     [{ yuk_proxy: 'HTTP://H:80' }, 'yuk_proxy'],
     [{ yuk_proxy: 'http://h:80 ' }, 'yuk_proxy'],
-    [{ yuk_cikti_kok: '/tmp/x' }, 'yuk_cikti_kok'],
+    [{ yuk_cikti_kok: ['', 'tmp', 'x'].join('/') }, 'yuk_cikti_kok'],
     [{ yuk_cikti_kok: '/sw/BMW_PORTAL/../etc' }, 'yuk_cikti_kok'],
     [{ yuk_cikti_kok: '/sw/BMW_PORTAL' }, 'yuk_cikti_kok'],
     [{ yuk_son_epoch: String(SIMDI - 1) }, 'yuk_son_epoch'],

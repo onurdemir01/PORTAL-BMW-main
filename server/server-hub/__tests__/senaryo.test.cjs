@@ -386,7 +386,7 @@ test('SN3 uygulama toplamasi ve yapilabilecekler', () => {
   const a = filo({ ad: 'APP9' });
   const b = filo({ ad: 'APP9-T', gercek: 12 });
   const hosts = [
-    ...a.hosts.map((h) => (h.host === APP ? h : h)),
+    ...a.hosts,
     { ...b.hosts[0], host: 'APPSRV02', ips: [{ ip: '10.0.1.2' }] },
   ];
   const hv = new Map(a.veri.hostlar);

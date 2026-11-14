@@ -93,6 +93,7 @@ test('davranis: varlik oturumsuz servis edilir; html/api/eksik varlik oturumdan 
   fs.writeFileSync(path.join(prev, 'index.html'), 'ESKI-INDEX');
 
   const app = express();
+  app.disable('x-powered-by');
   app.use(statikOnceKatman(express.static(dist, { maxAge: '1y', immutable: true, index: false })));
   app.use(statikOnceKatman(express.static(prev, { maxAge: '1y', immutable: true, index: false })));
   let oturum = 0;

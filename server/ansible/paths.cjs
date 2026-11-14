@@ -107,7 +107,7 @@ function allPlaybookFiles() {
   for (const root of [LOCAL_PLAYBOOKS, AWX_TREE]) {
     if (fs.existsSync(root)) walk(root);
   }
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 /**

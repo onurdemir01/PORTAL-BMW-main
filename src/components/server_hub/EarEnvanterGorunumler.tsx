@@ -144,7 +144,7 @@ export function DurumSozlugu() {
 
 function SeciliTara({ hostlar, onTara }: { hostlar: string[]; onTara?: TaraAc }) {
   if (!onTara) return null;
-  const tekil = [...new Set(hostlar)].sort();
+  const tekil = [...new Set(hostlar)].sort((a, b) => a.localeCompare(b));
   return (
     <button type="button" className={BTN} style={btnStil(true)} onClick={() => onTara(tekil)}>
       Seçili sunucuları tara ({fmtNumber(tekil.length)})

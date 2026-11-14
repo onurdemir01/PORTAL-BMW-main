@@ -109,7 +109,7 @@ test('OR5 dump betigi (sahte nginx + dzdo): @@NGINX_T ok, @@LOADED nginx -T list
   fs.writeFileSync(`${pfx}/sbin/nginx`, `#!/bin/bash\ncase " $* " in *" -e "*) ;; *) echo "-e yok" >&2; exit 1;; esac\ncase " $* " in *" -T "*) echo "# configuration file ${pp}/nginx.conf:"; echo "x"; echo "# configuration file ${pp}/conf.d/A.conf:"; exit 0;; esac\necho "syntax is ok"; exit 0\n`);
   fs.writeFileSync(`${tmp}/bin/dzdo`, '#!/bin/bash\n[ "$1" = "-n" ] && shift\necho "DZDO" >> "$DZDO_LOG"\nexec "$@"\n');
   fs.writeFileSync(`${tmp}/bin/openssl`, '#!/bin/bash\necho "subject=CN=fake"; echo "issuer=CN=fake"; echo "notAfter=Sep 19 18:46:18 2027 GMT"; exit 0\n');
-  fs.chmodSync(`${pfx}/sbin/nginx`, 0o755); fs.chmodSync(`${tmp}/bin/dzdo`, 0o755); fs.chmodSync(`${tmp}/bin/openssl`, 0o755);
+  fs.chmodSync(`${pfx}/sbin/nginx`, 0o700); fs.chmodSync(`${tmp}/bin/dzdo`, 0o700); fs.chmodSync(`${tmp}/bin/openssl`, 0o700);
   const script = path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'nginx_console', 'files', 'nginx_console_dump.sh');
   const r = spawnSync('bash', [script], { encoding: 'utf8', env: { ...process.env, PATH: `${tmp}/bin:${process.env.PATH}`, NGINX_PREFIX: pp, NGINX_ERRLOG: `${tmp}/error.log`, DZDO_LOG: `${tmp}/dzdo.log` } });
   assert.equal(r.status, 0, r.stderr);

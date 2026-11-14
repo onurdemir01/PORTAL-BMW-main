@@ -193,13 +193,34 @@ for (const r of sonuclar) {
     continue;
   }
   const bulgu = [];
-  if (r.cokme) (say.cokme++, bulgu.push('COKME'));
-  if (r.tasmaX > 0) (say.tasma++, bulgu.push(`tasma ${r.tasmaX}px`));
-  if (r.kontrast.length) ((say.kontrast += r.kontrast.length), bulgu.push(`kontrast<3: ${r.kontrast.map((k) => k.o).join(',')}`));
-  if (r.etiketsizGirdi.length) ((say.etiketsiz += r.etiketsizGirdi.length), bulgu.push(`etiketsiz girdi ${r.etiketsizGirdi.length}`));
-  if (r.adsizDugme.length) ((say.adsiz += r.adsizDugme.length), bulgu.push(`adsiz dugme ${r.adsizDugme.length}`));
-  if (r.hamJson) (say.hamJson++, bulgu.push('ham JSON'));
-  if (r.konsol.length) ((say.konsol += r.konsol.length), bulgu.push(`konsol ${r.konsol.length}`));
+  if (r.cokme) {
+    say.cokme++;
+    bulgu.push('COKME');
+  }
+  if (r.tasmaX > 0) {
+    say.tasma++;
+    bulgu.push(`tasma ${r.tasmaX}px`);
+  }
+  if (r.kontrast.length) {
+    say.kontrast += r.kontrast.length;
+    bulgu.push(`kontrast<3: ${r.kontrast.map((k) => k.o).join(',')}`);
+  }
+  if (r.etiketsizGirdi.length) {
+    say.etiketsiz += r.etiketsizGirdi.length;
+    bulgu.push(`etiketsiz girdi ${r.etiketsizGirdi.length}`);
+  }
+  if (r.adsizDugme.length) {
+    say.adsiz += r.adsizDugme.length;
+    bulgu.push(`adsiz dugme ${r.adsizDugme.length}`);
+  }
+  if (r.hamJson) {
+    say.hamJson++;
+    bulgu.push('ham JSON');
+  }
+  if (r.konsol.length) {
+    say.konsol += r.konsol.length;
+    bulgu.push(`konsol ${r.konsol.length}`);
+  }
   if (bulgu.length) satirlar.push(`${yer}  ${bulgu.join(' | ')}`);
 }
 console.log(`\n[ui-tarama] ${sonuclar.length} olcum. Bulgu olan satirlar:\n` + (satirlar.join('\n') || '  (bulgu yok)'));

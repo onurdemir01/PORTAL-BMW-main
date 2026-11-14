@@ -57,7 +57,7 @@ const BEKLENEN = {
   'files/yuk_cpu_kaydedici.sh': '7579afa1198f7dacab79b7f3a61cc35bc604825e3bf4c07aed3b101ac5f7cfeb',
   'files/yuk_k6.js': 'fcaf5d1c5c4dd05a84696304aef6d8259ce90b52bcea02f773ae44902b99756b',
   'files/yuk_wrk.lua': 'a8244133543984dcba697e821de88506098e2c88ceae5c4314faf65057b8c00a',
-  'nginx_loadtest.yml': 'e0fb055faa7538c41df94c7f4ee717db71d9b64544a61a7b96c01f2c08ef5aae',
+  'nginx_loadtest.yml': '9cf9d67743faa95288504440e0beb2f608682513ae1f8c31ba5f447847f9ed4d',
 };
 
 function tumDosyalar(kok) {

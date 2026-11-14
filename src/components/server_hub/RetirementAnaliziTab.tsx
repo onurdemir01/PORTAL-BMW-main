@@ -724,10 +724,18 @@ function KararKarti({
       try {
         if (kararli) {
           const r = await serverHubApi.iliskiKarar(anahtar);
-          if (alive()) (setVeri(r), setVarlik(null), setHata(''));
+          if (alive()) {
+            setVeri(r);
+            setVarlik(null);
+            setHata('');
+          }
         } else {
           const r = await serverHubApi.iliskiVarlik(anahtar);
-          if (alive()) (setVarlik(r), setVeri(null), setHata(''));
+          if (alive()) {
+            setVarlik(r);
+            setVeri(null);
+            setHata('');
+          }
         }
       } catch (e) {
         if (alive()) setHata(hataMetni(e));
@@ -1051,7 +1059,10 @@ export default function RetirementAnaliziTab({
   useAsyncEffect(async (alive) => {
     try {
       const r = await serverHubApi.iliskiKararlar(false);
-      if (alive()) (setListe(r), setHata(''));
+      if (alive()) {
+        setListe(r);
+        setHata('');
+      }
     } catch (e) {
       if (alive()) setHata(hataMetni(e));
     }

@@ -100,7 +100,7 @@ export default function KosuListesi({ onAc, yenileAnahtari = 0, isAdmin = false,
     return () => window.clearInterval(z);
   }, [aktifVar, yukle]);
 
-  const hedefler = useMemo(() => [...new Set((kosular || []).map(hedefEtiketi).filter(Boolean))].sort(), [kosular]);
+  const hedefler = useMemo(() => [...new Set((kosular || []).map(hedefEtiketi).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [kosular]);
   const liste = (kosular || []).filter((k) => (suzgec === 'hepsi' || k.islem === suzgec) && (!hedef || hedefEtiketi(k) === hedef));
 
   // ── Coklu secim ve silme ──

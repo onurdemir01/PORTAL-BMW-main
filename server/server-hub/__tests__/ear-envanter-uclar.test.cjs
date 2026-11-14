@@ -58,6 +58,7 @@ async function sunucu(fn) {
     { id: 9, beklenen: (a.hedefler || []).length || 1000, partiSayisi: 1 }
   );
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json());
   app.use(
     (req, res, next) => ((req.session = { user: { username: 'ayse', role: 'Admin' } }), next()),

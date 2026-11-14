@@ -282,7 +282,7 @@ export default function ArkSpaRaporuPage() {
   const ekipler = useMemo(() => {
     const t = new Set<string>();
     for (const r of data?.rows || []) for (const e of r.team) t.add(e);
-    return [...t].sort();
+    return [...t].sort((a, b) => a.localeCompare(b));
   }, [data]);
 
   return (

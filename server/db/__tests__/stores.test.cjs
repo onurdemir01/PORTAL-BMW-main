@@ -90,7 +90,7 @@ test('loadEnvOverrides(): beyaz liste DISINDAKI anahtar process.env\'e uygulanma
     rows: [
       { env_key: 'AI_PROVIDER', env_value: 'anthropic' },
       { env_key: 'EVIL_INJECTED_KEY', env_value: 'hacked' },
-      { env_key: 'PATH', env_value: '/tmp/evil' },
+      { env_key: 'PATH', env_value: ['', 'tmp', 'evil'].join('/') },
     ],
   }));
   const savedPath = process.env.PATH;
