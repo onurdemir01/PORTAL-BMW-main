@@ -193,7 +193,7 @@ test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi bi
   const varsDir = path.join(tmp, 'bmw_portal', 'bmw_openshift_jobs', 'global_variables');
   const fixturePlaybook = path.join(appDir, 'app_hub_ocp.yml');
   const fakeOc = path.join(tmp, 'oc');
-  const jobId = Number(`${process.pid}${Date.now()}`.slice(-9));
+  const jobId = (process.pid % 100000) * 10000 + (Date.now() % 10000);
   const kubeconfig = `/tmp/app-hub-${jobId}-c1-demo.kubeconfig`;
   const scriptPrefix = `.app_hub_ocp.${jobId}.`;
   try {
