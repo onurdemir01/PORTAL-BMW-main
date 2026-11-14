@@ -131,6 +131,17 @@ describe('Toplu Auto-Start sekmesi', () => {
     expect(m.topluAutoStartOnayla).not.toHaveBeenCalled();
   });
 
+  it('TT1c oluşturma 5xx ile dönerse iş yeniden okunur ve izlenir (kör yeniden deneme yok)', async () => {
+    m.topluAutoStartOlustur.mockRejectedValue(Object.assign(new Error('Sunucu isteği işlerken hata verdi (HTTP 500).'), { status: 500 }));
+    m.topluAutoStartListe.mockResolvedValueOnce({ ok: true, aktif: null, son: [] }).mockResolvedValueOnce({ ok: true, aktif: isSatiri('PLANLANIYOR'), son: [] });
+    m.topluAutoStartDurum.mockResolvedValue({ ok: true, is: isSatiri('PLANLANIYOR'), ogeler: [] });
+    render(<TopluAutoStartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Planla (3 JVM)' }));
+    await waitFor(() => expect(m.topluAutoStartDurum).toHaveBeenCalledWith(7));
+    expect(String(toastM.error.mock.calls.at(-1)?.[0])).toMatch(/Toplu auto-start işi #7 kayıtlı \(PLANLANIYOR\) — aşağıda izleniyor; yeniden göndermeyin/);
+    await screen.findByText('Plan okunuyor (salt okunur)');
+  });
+
   it('TT1b limit aşılınca Planla kilitli ve neden yazılı', async () => {
     m.topluAutoStartAdaylar.mockResolvedValue({
       ok: true,

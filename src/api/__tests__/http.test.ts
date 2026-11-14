@@ -47,6 +47,28 @@ describe('safeJson ag gecidi davranisi', () => {
     expect(err.status).toBe(500);
   });
 
+  // HTTP2b — URETIM 2026-11-14 (Toplu Restart, 33 JVM): nginx 500 govdesini portalin index.html'iyle
+  // degistirdi; ekran "[<!doctype html> <html lang="tr"> ...]" gosterdi. Tam HTML belgesi sizmaz, mesaj
+  // kor "tekrar deneyin" demez (islem kismen yapilmis olabilir), durum ve teshis onizlemesi hatada kalir.
+  it.each([500, 501])('HTTP2b %i + tam HTML belgesi: onizleme yok, "durumu kontrol edin", htmlGovde', async (status) => {
+    const err = (await errorOf(htmlResponse(status))) as Error & { status?: number; htmlGovde?: boolean; bodyPreview?: string };
+    expect(err.message).not.toContain('<!doctype');
+    expect(err.message).not.toContain('<html');
+    expect(err.message).toContain(`HTTP ${status}`);
+    expect(err.message).toMatch(/durumu kontrol edin/);
+    expect(err.message).not.toMatch(/tekrar deneyin/);
+    expect(err.status).toBe(status);
+    expect(err.htmlGovde).toBe(true);
+    expect(err.bodyPreview).toContain('<!doctype html>');
+    const buyuk = (await errorOf(htmlResponse(status, '  <HTML>\n<body>x</body></HTML>'))) as Error & { htmlGovde?: boolean };
+    expect(buyuk.htmlGovde).toBe(true);
+  });
+
+  it('HTTP2c 4xx tam HTML belgesi eski davranista kalir (onizleme)', async () => {
+    const err = await errorOf(htmlResponse(400));
+    expect(err.message).toContain('<!doctype html>');
+  });
+
   // HTTP3 — JSON yolu bozulmadi: OK olmayan JSON yanitlari `_httpStatus` tasimali
   // (yoklama donguleri 403'te durmali, 502'de yeniden denemeli).
   it('HTTP3 JSON yanitlari `_httpStatus` tasimaya devam ediyor', async () => {

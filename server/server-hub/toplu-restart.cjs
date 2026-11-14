@@ -64,10 +64,11 @@ const TARAMA_ZAMAN_ASIMI_MS = 60 * 60 * 1000;
 const STATS_KEY = 'opsx_serverconfig_ops_result';
 const AKTIF = ['PLANLANIYOR', 'PLAN_HAZIR', 'CALISIYOR', 'IPTAL_ISTENDI'];
 const YURUYEN = ['PLANLANIYOR', 'CALISIYOR', 'IPTAL_ISTENDI'];
-// Oge durumlari: ADAY -> PLANLANIYOR (onizleme taramasi) -> PLAN_GECTI | DUSTU -> BEKLIYOR -> BASLATILIYOR ->
+// Oge durumlari: SECIM (istekle yazildi; taze degerlendirme yurutucude) -> ADAY | DUSTU; ADAY -> PLANLANIYOR (onizleme taramasi) -> PLAN_GECTI | DUSTU -> BEKLIYOR -> BASLATILIYOR ->
 // CALISIYOR (restart isi) -> TARANIYOR (dogrulama taramasi) -> KAPANDI | KAPANMADI | FAIL; ayrica ATLANDI
 // (onaydan sonra calistirilmadi: kopya korumasi / kilit / artik aday degil / prod), IPTAL, YARIM_KALDI.
-const KILITLI_OGE = ['ADAY', 'PLANLANIYOR', 'PLAN_GECTI', 'BEKLIYOR', 'BASLATILIYOR', 'CALISIYOR', 'TARANIYOR'];
+const SECIM = 'SECIM';
+const KILITLI_OGE = [SECIM, 'ADAY', 'PLANLANIYOR', 'PLAN_GECTI', 'BEKLIYOR', 'BASLATILIYOR', 'CALISIYOR', 'TARANIYOR'];
 const SUREN_OGE = ['BASLATILIYOR', 'CALISIYOR', 'TARANIYOR'];
 const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -78,6 +79,13 @@ const DIFF_MAX = 600;
 const BELIRSIZ_IZ = "AWX'te sürüyor olabilir";
 const YETIM_PENCERE_SAAT = 6;
 const TAKILI_MS = 10 * 60 * 1000;
+// Secimin taze degerlendirmeyle dogrulanmasi bu sure icinde basaramazsa ogeler DUSTU (is PLAN_HATA).
+const SECIM_ZAMAN_ASIMI_MS = 10 * 60 * 1000;
+const KILIT_PARALEL = 5;
+// Basarisiz dogrulama denemesinden sonra en erken yeniden deneme (TBMWANS zorlanirken her tick'te tum filoyu
+// okumasin; 10 sn'lik tick yerine 30 sn). Bellek ici: is id -> ms.
+const SECIM_YENIDEN_MS = 30 * 1000;
+const _secimSonraki = new Map();
 // Durdurmayi kanitlayan kill sonuclari (jboss_serverconfig_ops.yml): kill -9 gitti ya da surec kalmamis.
 const DURDU_KILL = ['KILL_OK', 'KILL_YOK'];
 const KAPANMADI_NOTU =
@@ -369,7 +377,7 @@ async function sayimYaz(isId) {
   await db().query(
     `UPDATE server_hub_toplu_isler SET
         aday = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1),
-        plan_gecti = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1 AND durum NOT IN ('ADAY', 'PLANLANIYOR', 'DUSTU')),
+        plan_gecti = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1 AND durum NOT IN ('SECIM', 'ADAY', 'PLANLANIYOR', 'DUSTU')),
         dusen = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1 AND durum IN ('DUSTU', 'ATLANDI')),
         ok_sayisi = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1 AND durum = 'KAPANDI'),
         skip_sayisi = (SELECT COUNT(*) FROM server_hub_toplu_ogeler WHERE is_id = $1 AND durum = 'KAPANMADI'),
@@ -410,21 +418,29 @@ async function ogeDurum(id, eski, yeni, alanlar = {}) {
 /**
  * Bu JVM bir toplu restart'in bekleyen / suren ogesi mi? Donus: 409 mesaji ya da null. Auto-start (tek satir,
  * /fix, Toplu Auto-Start) restart suren JVM'e dokunmasin. DB okunamazsa null (auto-start betigi canli okur).
+ * haricIs: secimi dogrulanan isin kendi ogeleri (SECIM) sayilmaz. yetimler: bir kez okunmus yetimRestartlar()
+ * listesi (secim dogrulamasinda oge basina yeniden okunmaz; okunmadiysa burada okunur).
  */
-async function topluKilidi(host, gen, jvm) {
+async function topluKilidi(host, gen, jvm, { haricIs = null, yetimler = null } = {}) {
   try {
+    const p = [TUR, String(host || '').toUpperCase(), Number(gen), String(jvm || '')];
+    let haric = '';
+    if (haricIs != null) {
+      p.push(Number(haricIs));
+      haric = ' AND o.is_id <> $5';
+    }
     const { rows } = await db().query(
       `SELECT TOP 1 o.is_id, o.durum FROM server_hub_toplu_ogeler o
          JOIN server_hub_toplu_isler i ON i.id = o.is_id
-        WHERE i.tur = $1 AND o.host = $2 AND o.gen = $3 AND o.jvm = $4 AND o.durum IN (${IN(KILITLI_OGE)})
+        WHERE i.tur = $1 AND o.host = $2 AND o.gen = $3 AND o.jvm = $4${haric} AND o.durum IN (${IN(KILITLI_OGE)})
         ORDER BY o.is_id DESC`,
-      [TUR, String(host || '').toUpperCase(), Number(gen), String(jvm || '')],
+      p,
     );
     const r = rows && rows[0];
     if (r)
       return `${jvm} toplu restart işi #${r.is_id} içinde (${r.durum}) — o iş bitene ya da iptal edilene kadar bu JVM'e iş açılmaz (iş açılmadı). Server Hub › Toplu Restart sekmesinden izleyin.`;
     const H = String(host || '').toUpperCase();
-    const y = (await yetimRestartlar()).find((x) => x.host === H && Number(x.gen) === Number(gen) && L(x.jvm) === L(jvm));
+    const y = (yetimler || (await yetimRestartlar())).find((x) => x.host === H && Number(x.gen) === Number(gen) && L(x.jvm) === L(jvm));
     if (!y) return null;
     return `${jvm} için toplu restart işi #${y.is_id} öğesinin sonucu bilinmiyor (${yetimMetni(y)}) — AWX işi bitene kadar bu JVM'e iş açılmaz (iş açılmadı).`;
   } catch (e) {
@@ -496,34 +512,22 @@ function secimiDuzle(secim, enCok) {
   return out;
 }
 
+/**
+ * Istek yalniz SECIMI kaydeder (uretim 2026-11-14: 33 JVM secilince POST HTTP 500 + nginx'in index.html'i dondu).
+ * Eskiden istek icinde tum filo taze okunuyor (getAssessment(true): TBMWANS'ta 8 agir sorgu, 30 sn
+ * requestTimeout), agir fark kolonlari ve oge basina SIRALI kilit sorgulari (her biri yetim restart'lar icin AWX'e
+ * de gidebilir) bekleniyordu; bir TBMWANS zaman asimi tum istegi 500'e ceviriyordu. Simdi is + ogeler (SECIM)
+ * hemen yazilir; taze degerlendirme, adaylarin yeniden turetilmesi, kilitler ve fark okumasi yurutucude
+ * (secimDogrula, tick). Kapilar AYNI: gecemeyen oge DUSTU olur ve nedeni yazilir; okuma hatasinda yurutucu
+ * yeniden dener (SECIM_ZAMAN_ASIMI_MS sonra DUSTU). Bu istekte kalan kapilar: limit, secim bicimi, aktif is.
+ */
 async function olustur(req, secim) {
   const enCok = await _d.ayarlar.limit('toplu_restart');
   const istek = secimiDuzle(secim, enCok);
   const akt = await aktifIs();
   if (akt) throw hata(409, `Toplu restart işi #${akt.id} hâlâ aktif (${akt.durum}) — önce o bitmeli ya da iptal edilmeli.`, 'aktif_is');
-  // Her oge TAZE degerlendirmeden yeniden turetilir: istemciden gelen liste yalniz SECIMDIR.
-  const a = await _d.getAssessment(true);
-  const agir = await farklariOku(istek.map((x) => x.host));
-  const { adaylar, dislananlar } = adaylariTuret(a, agir);
-  const byK = new Map(adaylar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
-  const disK = new Map(dislananlar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
-  const secilen = [];
-  for (const x of istek) {
-    const k = ogeAnahtari(x.host, x.gen, x.jvm);
-    const c = byK.get(k);
-    if (!c) {
-      const d = disK.get(k);
-      throw hata(400, `${x.host}/${x.jvm} artık aday değil${d ? ` (${d.neden})` : ' (tarama değişti)'} — listeyi yenileyin; iş açılmadı.`, 'aday_degil');
-    }
-    secilen.push(c);
-  }
-  // Baska bir toplu isin (restart ya da auto-start) ogesi ya da suren tek satir auto-start isi olan JVM secilemez.
-  for (const c of secilen) {
-    const k = (await topluKilidi(c.host, c.gen, c.jvm)) || (_d.surenIsKilidi ? await _d.surenIsKilidi(c.host, c.gen, c.jvm) : null);
-    if (k) throw hata(409, k, 'aktif_is');
-  }
-  const byHost = new Map((a.hosts || []).map((h) => [h.host, h]));
-  const sirali = siraKarisik(secilen);
+  // Siralama yalniz JVM adina bakar (kopyalar ardisik olmasin): secimden kurulabilir.
+  const sirali = siraKarisik(istek);
   const kim = M(req.session?.user?.username || 'unknown', 128);
   let isId;
   try {
@@ -544,19 +548,10 @@ async function olustur(req, secim) {
       const parca = sirali.slice(i, i + 100);
       const p = [];
       const v = parca.map((c, j) => {
-        const h = byHost.get(c.host) || {};
-        const tj = (h.jvms || []).find((x) => x.name === c.jvm && Number(x.gen) === c.gen) || {};
-        const ek = {
-          grp: c.grp || '',
-          fark: c.fark || '',
-          anahtarlar: c.anahtarlar || [],
-          // Onizleme taramasinin "gercekten yuklendi" kaniti icin ONCEKI deger (Date.now ile karsilastirilmaz).
-          loadedAt: h.loadedAt == null ? null : h.loadedAt,
-          processStart: tj.processStartEpoch == null ? null : tj.processStartEpoch,
-        };
-        p.push(isId, i + j + 1, c.host, M(c.env, 32) || null, c.gen, c.jvm, 'restart', 1, M(c.scanDate, 32) || null, ekYaz(ek));
+        // env / tarama tarihi / ek (grup, fark, onceki loaded_at / surec baslangici) secimDogrula'da yazilir.
+        p.push(isId, i + j + 1, c.host, null, c.gen, c.jvm, 'restart', 1, null, ekYaz({}));
         const b = p.length - 10;
-        return `(${Array.from({ length: 10 }, (_, n) => `$${b + n + 1}`).join(', ')}, 'ADAY')`;
+        return `(${Array.from({ length: 10 }, (_, n) => `$${b + n + 1}`).join(', ')}, '${SECIM}')`;
       });
       await db().query(
         `INSERT INTO server_hub_toplu_ogeler (is_id, sira, host, env, gen, jvm, eylem, calisiyor, tarama_scan_date, ek, durum) VALUES ${v.join(', ')}`,
@@ -576,7 +571,109 @@ async function olustur(req, secim) {
   }
   const hostlar = [...new Set(sirali.map((c) => c.host))];
   denetim(req, { op: 'toplu_restart_olustur', id: isId, adet: sirali.length, hostlar, jvmler: sirali.map((c) => `${c.host}/${c.jvm}`) });
-  return { id: isId, adet: sirali.length, hostSayisi: hostlar.length };
+  return { id: isId, adet: sirali.length, hostSayisi: hostlar.length, dogrulaniyor: true };
+}
+
+/** En cok n esli calisan fn; sonuc sirasi liste sirasi. */
+async function sinirliParalel(liste, n, fn) {
+  const out = new Array(liste.length);
+  let sonraki = 0;
+  const isci = async () => {
+    while (sonraki < liste.length) {
+      const k = sonraki;
+      sonraki += 1;
+      out[k] = await fn(liste[k]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(n, liste.length) }, isci));
+  return out;
+}
+
+/**
+ * Dogrulama basarisiz (taze okuma ya da beklenmeyen hata): SECIM_ZAMAN_ASIMI_MS icinde en erken
+ * SECIM_YENIDEN_MS sonra yeniden denenir (is hatasinda yazilir), sonra kalan SECIM ogeleri DUSTU (is PLAN_HATA).
+ * ne: hatanin turu (kullaniciya giden metin).
+ */
+async function secimOkunamadi(is, liste, e, ne = 'Taze değerlendirme okunamadı') {
+  const msg = M(e && e.message, 300) || 'bilinmeyen hata';
+  console.warn(`[TopluRestart] is #${is.id} secim dogrulanamadi:`, msg);
+  if (sureAsti(is.created_at, SECIM_ZAMAN_ASIMI_MS)) {
+    _secimSonraki.delete(is.id);
+    for (const o of liste)
+      await ogeDurum(o.id, [SECIM], 'DUSTU', { neden: M(`seçim doğrulanamadı: 10 dakikada başarılamadı — ${ne} (${msg}); JVM'e dokunulmadı`, 1000) });
+    return;
+  }
+  _secimSonraki.set(is.id, Date.now() + SECIM_YENIDEN_MS);
+  await db().query(`UPDATE server_hub_toplu_isler SET hata = $2 WHERE id = $1`, [
+    is.id,
+    M(`${ne} (${msg}) — yeniden deneniyor; hiçbir JVM'e dokunulmadı.`, 1000),
+  ]);
+}
+
+/**
+ * SECIM ogelerini TAZE degerlendirmeyle dogrular (eskiden olustur isteginde yapilan kapilarin AYNISI): aday
+ * yeniden turetilir (adaylariTuret: tazelik, sema, prod / ortam bilinmiyor / standalone, envanter, suren
+ * auto-start), baska toplu isin ogesi / sonucu bilinmeyen restart / suren auto-start kilidi. Gecen oge ADAY
+ * (taze degerlerle), gecemeyen DUSTU (nedeniyle). Donus: true (dogrulandi, plan devam eder) ya da false.
+ */
+async function secimDogrula(is, og) {
+  const liste = og.filter((o) => o.durum === SECIM);
+  if (!liste.length) return true;
+  let a;
+  let agir;
+  let yetimler;
+  try {
+    a = await _d.getAssessment(true);
+    agir = await farklariOku(liste.map((o) => o.host));
+    yetimler = await yetimRestartlar();
+  } catch (e) {
+    await secimOkunamadi(is, liste, e);
+    return false;
+  }
+  if (!(await kiraYenile(is.id))) return false;
+  const { adaylar, dislananlar } = adaylariTuret(a, agir);
+  const byK = new Map(adaylar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
+  const disK = new Map(dislananlar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
+  const byHost = new Map((a.hosts || []).map((h) => [h.host, h]));
+  const kararlar = await sinirliParalel(liste, KILIT_PARALEL, async (o) => {
+    const k = ogeAnahtari(o.host, o.gen, o.jvm);
+    const c = byK.get(k);
+    if (!c) {
+      const d = disK.get(k);
+      return { neden: `artık aday değil${d ? ` (${d.neden})` : ' (tarama değişti)'}` };
+    }
+    // Baska bir toplu isin (restart ya da auto-start) ogesi ya da suren tek satir auto-start isi olan JVM gecemez.
+    const kilit =
+      (await topluKilidi(c.host, c.gen, c.jvm, { haricIs: is.id, yetimler })) ||
+      (_d.surenIsKilidi ? await _d.surenIsKilidi(c.host, c.gen, c.jvm) : null);
+    return kilit ? { neden: kilit } : { c };
+  });
+  for (let i = 0; i < liste.length; i += 1) {
+    const o = liste[i];
+    const { c, neden } = kararlar[i];
+    if (!c) {
+      await ogeDurum(o.id, [SECIM], 'DUSTU', { neden: M(`seçim doğrulamasında düştü: ${neden}`, 1000) });
+      continue;
+    }
+    const h = byHost.get(c.host) || {};
+    const tj = (h.jvms || []).find((x) => x.name === c.jvm && Number(x.gen) === c.gen) || {};
+    const ek = {
+      grp: c.grp || '',
+      fark: c.fark || '',
+      anahtarlar: c.anahtarlar || [],
+      // Onizleme taramasinin "gercekten yuklendi" kaniti icin ONCEKI deger (Date.now ile karsilastirilmaz).
+      loadedAt: h.loadedAt == null ? null : h.loadedAt,
+      processStart: tj.processStartEpoch == null ? null : tj.processStartEpoch,
+    };
+    await ogeDurum(o.id, [SECIM], 'ADAY', {
+      jvm: c.jvm,
+      env: M(c.env, 32) || null,
+      tarama_scan_date: M(c.scanDate, 32) || null,
+      ek: ekYaz(ek),
+    });
+  }
+  if (is.hata) await db().query(`UPDATE server_hub_toplu_isler SET hata = NULL WHERE id = $1`, [is.id]);
+  return true;
 }
 
 const planEskiMi = (is) => !is.plan_bitis_at || Date.now() - new Date(is.plan_bitis_at).getTime() > PLAN_YAS_MS;
@@ -656,7 +753,7 @@ async function iptal(req, id) {
     );
     if (r.rowCount !== 1) throw hata(409, `Toplu iş #${id} bu arada değişti — sayfayı yenileyin.`, 'durum');
     await db().query(
-      `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('ADAY', 'PLAN_GECTI', 'BEKLIYOR')`,
+      `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('SECIM', 'ADAY', 'PLAN_GECTI', 'BEKLIYOR')`,
       [id],
     );
     await sayimYaz(id);
@@ -670,7 +767,7 @@ async function iptal(req, id) {
   );
   if (r.rowCount !== 1) throw hata(409, `Toplu iş #${id} bu arada değişti — sayfayı yenileyin.`, 'durum');
   await db().query(
-    `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi (çalıştırılmadı)', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('ADAY', 'BEKLIYOR')`,
+    `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi (çalıştırılmadı)', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('SECIM', 'ADAY', 'BEKLIYOR')`,
     [id],
   );
   await sayimYaz(id);
@@ -802,6 +899,21 @@ async function onizlemeIsle(is, liste, st) {
 }
 
 async function planIlerlet(is, og, iptalMi) {
+  // Secim once taze degerlendirmeyle dogrulanir (olustur istegi yalniz secimi yazar); basaramazsa sonraki tick.
+  // Beklenmeyen hata da (turetme / DB yazimi) ayni zaman asimina baglidir: is sonsuza dek PLANLANIYOR kalip
+  // JVM kilitlerini ve aktif is yuvasini tutamaz.
+  if (!iptalMi && og.some((o) => o.durum === SECIM)) {
+    if (Date.now() < (_secimSonraki.get(is.id) || 0)) return;
+    let tamam;
+    try {
+      tamam = await secimDogrula(is, og);
+    } catch (e) {
+      await secimOkunamadi(is, og.filter((o) => o.durum === SECIM), e, 'Seçim doğrulaması hata verdi');
+      tamam = false;
+    }
+    if (!tamam) return;
+    _secimSonraki.delete(is.id);
+  }
   const suren = new Map();
   for (const o of og.filter((x) => x.durum === 'PLANLANIYOR')) {
     const k = o.plan_job_id == null ? 'yok' : `${o.plan_awx_server_id}|${o.plan_job_id}`;
@@ -864,9 +976,13 @@ async function planBitir(is) {
   const og = await ogeler(is.id);
   const gecen = og.filter((o) => o.durum === 'PLAN_GECTI').length;
   const okunamadi = og.filter((o) => o.durum === 'DUSTU' && /^önizleme (başlatılamadı|taraması)|sonuç \(set_stats\) okunamadı|yüklemedi/.test(o.neden || '')).length;
+  const secimOkunamadi = og.filter((o) => o.durum === 'DUSTU' && /^seçim doğrulanamadı/.test(o.neden || '')).length;
   let durum = 'PLAN_HAZIR';
   let mesaj = null;
-  if (!gecen && og.length && okunamadi === og.length) {
+  if (!gecen && og.length && secimOkunamadi === og.length) {
+    durum = 'PLAN_HATA';
+    mesaj = "Taze değerlendirme okunamadı — seçim doğrulanamadı, hiçbir JVM'e dokunulmadı. Listeyi yenileyip yeniden deneyin.";
+  } else if (!gecen && og.length && okunamadi === og.length) {
     durum = 'PLAN_HATA';
     mesaj = 'Önizleme taraması hiçbir sunucuyu yükleyemedi — AWX işlerine bakın.';
   } else if (!gecen) {
@@ -1167,7 +1283,7 @@ async function uygulaBitir(is) {
   const iptalMi = son.durum === 'IPTAL_ISTENDI';
   if (iptalMi)
     await db().query(
-      `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi (çalıştırılmadı)', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('ADAY', 'PLAN_GECTI', 'BEKLIYOR')`,
+      `UPDATE server_hub_toplu_ogeler SET durum = 'IPTAL', neden = 'iptal edildi (çalıştırılmadı)', bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum IN ('SECIM', 'ADAY', 'PLAN_GECTI', 'BEKLIYOR')`,
       [is.id],
     );
   await sayimYaz(is.id);
@@ -1208,7 +1324,7 @@ async function yarimBirak(is) {
   if (r.rowCount !== 1) return;
   await db().query(
     `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME()
-      WHERE is_id = $1 AND durum IN ('ADAY', 'PLANLANIYOR', 'PLAN_GECTI', 'BEKLIYOR')`,
+      WHERE is_id = $1 AND durum IN ('SECIM', 'ADAY', 'PLANLANIYOR', 'PLAN_GECTI', 'BEKLIYOR')`,
     [is.id, 'Portal yeniden başladı — çalıştırılmadı'],
   );
   await db().query(
@@ -1257,7 +1373,7 @@ async function tick() {
         if (iptalMi) {
           if (!og.some((o) => o.durum === 'PLANLANIYOR')) await uygulaBitir(is);
           else await sayimYaz(is.id);
-        } else if (!og.some((o) => o.durum === 'ADAY' || o.durum === 'PLANLANIYOR')) await planBitir(is);
+        } else if (!og.some((o) => o.durum === SECIM || o.durum === 'ADAY' || o.durum === 'PLANLANIYOR')) await planBitir(is);
         else await sayimYaz(is.id);
         continue;
       }
@@ -1289,8 +1405,25 @@ function startPoller() {
 
 function mount(router, deps) {
   kur(deps);
-  const gonder = (res, err) =>
-    res.status(err.status || 500).json({ ok: false, message: err.message, ...(err.code ? { code: err.code } : {}) });
+  // 5xx (DB / degerlendirme hatasi): kurumsal nginx (proxy_intercept_errors + error_page 500) govdeyi kendi
+  // index.html'iyle degistirir; asil mesaj ne ekrana ne loga duserdi (uretim 2026-11-14, 33 JVM). Her 5xx
+  // loglanir; GET disi isteklerde util/nginx-red.cjs deseni: 424 + upstreamStatus + nginxRed (safeJson asil
+  // kodu ve mesaji tasir). GET (yoklama) 5xx'i eskisi gibi kalir.
+  const gonder = (req, res, err) => {
+    const status = err.status || 500;
+    if (status >= 500) {
+      console.error(`[TopluRestart] ${req.method} ${req.originalUrl || req.path} ${status}:`, err && err.message);
+      if (req.method !== 'GET' && req.method !== 'HEAD')
+        return res.status(424).json({
+          ok: false,
+          message: err.message,
+          code: err.code || 'toplu_sunucu_hatasi',
+          upstreamStatus: status,
+          nginxRed: true,
+        });
+    }
+    return res.status(status).json({ ok: false, message: err.message, ...(err.code ? { code: err.code } : {}) });
+  };
 
   router.get('/toplu-restart/adaylar', async (req, res) => {
     try {
@@ -1307,7 +1440,7 @@ function mount(router, deps) {
       const { adaylar, dislananlar } = adaylariTuret(a, agir);
       res.json({ ok: true, adaylar, dislananlar, limit, aktif: isSatiri(akt), latestScan: a.latestScan || null, schemaUnknown: a.schemaUnknown === true });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 
@@ -1317,7 +1450,7 @@ function mount(router, deps) {
       const akt = (rows || []).find((r) => AKTIF.includes(r.durum)) || (await aktifIs());
       res.json({ ok: true, aktif: isSatiri(akt), son: (rows || []).map(isSatiri) });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 
@@ -1329,7 +1462,7 @@ function mount(router, deps) {
       if (!is) return res.status(404).json({ ok: false, message: `Toplu iş #${id} yok.` });
       res.json({ ok: true, is: isSatiri(is), ogeler: (await ogeler(id)).map(ogeSatiri) });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 
@@ -1337,7 +1470,7 @@ function mount(router, deps) {
     try {
       res.json({ ok: true, ...(await olustur(req, req.body && req.body.secim)) });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 
@@ -1348,7 +1481,7 @@ function mount(router, deps) {
     try {
       res.json({ ok: true, ...(await onayla(req, id)) });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 
@@ -1358,7 +1491,7 @@ function mount(router, deps) {
     try {
       res.json({ ok: true, ...(await iptal(req, id)) });
     } catch (err) {
-      gonder(res, err);
+      gonder(req, res, err);
     }
   });
 }
@@ -1369,6 +1502,8 @@ module.exports = {
   PLAN_YAS_MS,
   AKTIF,
   KILITLI_OGE,
+  SECIM,
+  SECIM_ZAMAN_ASIMI_MS,
   SUREC_ID,
   STATS_KEY,
   KAPANMADI_NOTU,
@@ -1389,9 +1524,12 @@ module.exports = {
   iptal,
   tick,
   startPoller,
+  SECIM_YENIDEN_MS,
+  _secimBeklemeSifirlaForTest: () => _secimSonraki.clear(),
   _durdurForTest: () => {
     if (_timer) clearInterval(_timer);
     _timer = null;
     _ticking = false;
+    _secimSonraki.clear();
   },
 };

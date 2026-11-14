@@ -4,7 +4,10 @@
 // Guvenlik modeli (toplu-autostart.cjs basligi):
 //   TA1 adaylar: yalniz taze + sema bilinen + tanimli + calisan/durmus uyumsuz JVM; bayat / sema / UNAVAILABLE /
 //       olculemeyen / dogrulanmis / suren isli / bulgusu olmayan JVM disarida (nedeniyle)
-//   TA2 olustur: limit 400, aday olmayan 400, ayni JVM iki kez 400, aktif is 409; is + ogeler + denetim
+//   TA2 olustur: limit 400, ayni JVM iki kez 400, aktif is 409; istek taze OKUMAZ, ogeler SECIM; aday olmayan /
+//       eylemi ters secim yurutucunun secimDogrula adiminda DUSTU (nedeniyle); is + ogeler + denetim
+//   TA2c taze okuma hatasi: en erken 30 sn sonra yeniden denenir (is hatasi), 10 dk sonra DUSTU + PLAN_HATA;
+//       beklenmeyen hata (turetme) da ayni yol; SECIM kilitler
 //   TA3 plan: host basina TEK plan isi (plan_only true, target_host tek, jvm_items); PLAN -> gecti, SKIP -> dustu
 //       ("tarama eski"), FAIL -> dustu, set_stats yok -> dustu ("playbook guncel mi")
 //   TA4 onay: plan 15 dk'dan eskiyse PLAN_ESKIDI (409), onay olmadan uygulama yok
@@ -98,7 +101,7 @@ function sayimlar(id) {
   const n = (f) => og.filter(f).length;
   return {
     aday: og.length,
-    plan_gecti: n((o) => !['ADAY', 'PLANLANIYOR', 'DUSTU'].includes(o.durum)),
+    plan_gecti: n((o) => !['SECIM', 'ADAY', 'PLANLANIYOR', 'DUSTU'].includes(o.durum)),
     dusen: n((o) => o.durum === 'DUSTU'),
     ok_sayisi: n((o) => o.durum === 'OK'),
     skip_sayisi: n((o) => o.durum === 'SKIP'),
@@ -141,7 +144,7 @@ async function query(sql, p = []) {
     const r = DB.ogeler
       .filter((o) => {
         const i = DB.isler.find((x) => x.id === o.is_id);
-        return i && i.tur === p[0] && o.host === p[1] && o.gen === p[2] && o.jvm.toLowerCase() === String(p[3]).toLowerCase() && liste.includes(o.durum);
+        return i && i.tur === p[0] && o.host === p[1] && o.gen === p[2] && o.jvm.toLowerCase() === String(p[3]).toLowerCase() && liste.includes(o.durum) && (!/o\.is_id <> \$5/.test(q) || o.is_id !== p[4]);
       })
       .sort((a, b) => b.is_id - a.is_id)[0];
     return { rows: r ? [{ is_id: r.is_id, durum: r.durum }] : [] };
@@ -161,13 +164,14 @@ async function query(sql, p = []) {
     return { rows: [{ id: r.id }], rowCount: 1 };
   }
   if (/^INSERT INTO server_hub_toplu_ogeler/.test(q)) {
-    const n = (q.match(/'ADAY'\)/g) || []).length;
+    const durumlar_ = [...q.matchAll(/'(ADAY|SECIM)'\)/g)].map((x) => x[1]);
+    const n = durumlar_.length;
     for (let i = 0; i < n; i += 1) {
       const x = p.slice(i * 11, i * 11 + 11);
       DB.sira += 1;
       DB.ogeler.push({
         id: DB.sira, is_id: x[0], sira: x[1], host: x[2], env: x[3], gen: x[4], jvm: x[5], eylem: x[6], hedef: x[7],
-        tarama_degeri: x[8], calisiyor: x[9], tarama_scan_date: x[10], durum: 'ADAY', neden: null, plan_awx_server_id: null,
+        tarama_degeri: x[8], calisiyor: x[9], tarama_scan_date: x[10], durum: durumlar_[i], neden: null, plan_awx_server_id: null,
         plan_job_id: null, awx_server_id: null, awx_job_id: null, sonuc_satiri: null, dogrulandi: 0, baslama_at: null, bitis_at: null,
       });
     }
@@ -242,8 +246,8 @@ let limitDeger;
 let launchHata;
 const istek = (u = 'ayse') => ({ session: { user: { username: u, role: 'Admin' } } });
 
-function kurDeps() {
-  T.kur({
+function kurDepsNesnesi() {
+  return {
     launch: async (req, key, ad, ev, detail) => {
       if (launchHata) throw Object.assign(new Error(launchHata), { status: 500 });
       const jobId = 500 + launchlar.length;
@@ -259,10 +263,14 @@ function kurDeps() {
       return s ? `is #${s.jobId} suruyor` : null;
     },
     audit: (req, d) => denetimler.push({ user: req.session.user.username, ...d }),
-  });
+  };
+}
+function kurDeps() {
+  T.kur(kurDepsNesnesi());
 }
 
 beforeEach(() => {
+  T._secimBeklemeSifirlaForTest();
   DB.isler.length = 0;
   DB.ogeler.length = 0;
   DB.sira = 0;
@@ -331,25 +339,99 @@ test('TA2 olustur: limit, aday disi, cift secim, aktif is; kayit ve denetim', as
   limitDeger = 3;
   await assert.rejects(T.olustur(istek(), tum()), (e) => e.status === 400 && /en fazla 3 JVM/.test(e.message) && /Kurallar & Limitler/.test(e.message));
   limitDeger = 50;
-  await assert.rejects(T.olustur(istek(), [{ host: 'BAYAT01', gen: 7, jvm: 'ac9', eylem: 'ac' }]), (e) => e.status === 400 && /artık aday değil.*bayat/.test(e.message));
-  // istemci eylemi tersine ceviremez
-  await assert.rejects(T.olustur(istek(), [{ host: 'APP01', gen: 7, jvm: 'ac1', eylem: 'kapat' }]), (e) => e.status === 400);
   await assert.rejects(T.olustur(istek(), [tum()[0], tum()[0]]), (e) => e.status === 400 && /iki kez/.test(e.message));
   await assert.rejects(T.olustur(istek(), [{ host: 'APP01,APP02', gen: 7, jvm: 'ac1', eylem: 'ac' }]), (e) => e.status === 400);
+  await assert.rejects(T.olustur(istek(), [{ host: 'APP01', gen: 7, jvm: 'ac1', eylem: 'tersine' }]), (e) => e.status === 400);
   assert.equal(DB.isler.length, 0, 'reddedilen istek kayit acmamali');
-  const r = await T.olustur(istek(), tum());
-  assert.deepEqual([r.adet, r.hostSayisi], [4, 3]);
+  let okuma = 0;
+  const asil = A;
+  T.kur({ ...kurDepsNesnesi(), getAssessment: async () => ((okuma += 1), asil) });
+  // aday disi (bayat) + eylemi tersine cevrilmis secim: is acilir, ikisi taze degerlendirmede DUSTU
+  const secim = [...tum(), { host: 'BAYAT01', gen: 7, jvm: 'ac9', eylem: 'ac' }, { host: 'APP02', gen: 7, jvm: 'ac2', eylem: 'kapat' }];
+  secim.splice(2, 1);
+  const r = await T.olustur(istek(), secim);
+  assert.equal(okuma, 0, 'istek taze degerlendirme OKUMAZ (yurutucude)');
+  assert.deepEqual([r.adet, r.hostSayisi, r.dogrulaniyor], [5, 4, true]);
   assert.equal(DB.isler[0].durum, 'PLANLANIYOR');
   assert.equal(DB.isler[0].kira_id, T.SUREC_ID, 'olusturan surec kirayi almali');
-  assert.deepEqual(new Set(DB.ogeler.map((o) => o.durum)), new Set(['ADAY']));
+  assert.deepEqual(new Set(DB.ogeler.map((o) => o.durum)), new Set([T.SECIM]));
   assert.deepEqual(denetimler.map((d) => d.op), ['toplu_autostart_olustur']);
-  assert.deepEqual(denetimler[0].hostlar, ['APP01', 'APP02', 'APP03']);
+  assert.deepEqual(denetimler[0].hostlar, ['APP01', 'APP03', 'BAYAT01', 'APP02']);
   await assert.rejects(T.olustur(istek('mehmet'), tum().slice(0, 1)), (e) => e.status === 409);
   // filtreli tekil indeks (UX_shti_aktif) olmasa da uc aktif isi okuyup reddeder (iki katman)
   DB.uxYok = true;
   await assert.rejects(T.olustur(istek('mehmet'), tum().slice(0, 1)), (e) => e.status === 409 && /hâlâ aktif/.test(e.message));
+  DB.uxYok = false;
   assert.equal(DB.isler.length, 1);
   assert.equal(launchlar.length, 0, 'olusturma is BASLATMAZ (plan yurutucude)');
+  await T.tick();
+  assert.equal(okuma, 1);
+  const o = (jvm) => DB.ogeler.find((x) => x.jvm === jvm);
+  assert.equal(o('ac9').durum, 'DUSTU');
+  assert.match(o('ac9').neden, /^seçim doğrulamasında düştü: artık aday değil \(.*bayat/);
+  assert.equal(o('ac2').durum, 'DUSTU', 'istemci eylemi tersine ceviremez');
+  assert.match(o('ac2').neden, /artık aday değil \(eylem değişti\)/);
+  assert.deepEqual(['ac1', 'kapat1', 'kapat3'].map((j) => o(j).durum), ['PLANLANIYOR', 'PLANLANIYOR', 'PLANLANIYOR']);
+  assert.deepEqual([o('ac1').env, o('ac1').tarama_degeri, o('ac1').calisiyor], ['Test', 'false', 1], 'taze degerler dogrulamada yazilir');
+  assert.deepEqual(launchlar.map((l) => l.ev.target_host).sort(), ['APP01', 'APP03'], 'dusenlerin sunucusu planlanmaz');
+});
+
+test('TA2c taze degerlendirme okunamazsa yeniden denenir; 10 dk sonra DUSTU + PLAN_HATA; kendi SECIM i kilitlemez', async () => {
+  let dus = 'Timeout: Request failed to complete in 30000ms';
+  let okuma = 0;
+  T.kur({
+    ...kurDepsNesnesi(),
+    getAssessment: async () => {
+      okuma += 1;
+      if (dus === 'BOZUK') return { get hosts() { throw new TypeError('bozuk degerlendirme'); } };
+      if (dus) throw new Error(dus);
+      return A;
+    },
+  });
+  const uyari = console.warn;
+  console.warn = () => {};
+  try {
+    const r = await T.olustur(istek(), tum());
+    assert.match(await T.topluKilidi('APP01', 7, 'ac1'), /\(SECIM\)/, 'SECIM ogesi tek satir dugmesini kilitler');
+    assert.equal(await T.topluKilidi('APP01', 7, 'ac1', { haricIs: r.id }), null);
+    await T.tick();
+    assert.equal(DB.isler[0].durum, 'PLANLANIYOR');
+    assert.match(DB.isler[0].hata, /Taze değerlendirme okunamadı \(Timeout.*yeniden deneniyor/);
+    assert.ok(DB.ogeler.every((o) => o.durum === T.SECIM));
+    dus = null;
+    await T.tick();
+    assert.equal(okuma, 1, 'SECIM_YENIDEN_MS dolmadan yeniden okuma yok');
+    T._secimBeklemeSifirlaForTest();
+    await T.tick();
+    assert.equal(DB.isler[0].hata, null);
+    assert.equal(launchlar.length, 3);
+    DB.isler.length = 0;
+    DB.ogeler.length = 0;
+    dus = 'MSSQL bağlantısı yok';
+    await T.olustur(istek(), tum());
+    DB.isler[0].created_at = new Date(Date.now() - T.SECIM_ZAMAN_ASIMI_MS - 1000);
+    await T.tick();
+    assert.ok(DB.ogeler.every((o) => o.durum === 'DUSTU' && /^seçim doğrulanamadı: .*MSSQL/.test(o.neden)));
+    assert.equal(DB.isler[0].durum, 'PLAN_HATA');
+    assert.equal(launchlar.length, 3);
+    // beklenmeyen hata (turetme TypeError): is sonsuza dek PLANLANIYOR kalmaz
+    DB.isler.length = 0;
+    DB.ogeler.length = 0;
+    T._secimBeklemeSifirlaForTest();
+    dus = 'BOZUK';
+    await T.olustur(istek(), tum());
+    await T.tick();
+    assert.equal(DB.isler[0].durum, 'PLANLANIYOR');
+    assert.match(DB.isler[0].hata, /^Seçim doğrulaması hata verdi \(bozuk degerlendirme\) — yeniden deneniyor/);
+    T._secimBeklemeSifirlaForTest();
+    DB.isler[0].created_at = new Date(Date.now() - T.SECIM_ZAMAN_ASIMI_MS - 1000);
+    await T.tick();
+    assert.ok(DB.ogeler.every((o) => o.durum === 'DUSTU' && /Seçim doğrulaması hata verdi/.test(o.neden)));
+    assert.equal(DB.isler[0].durum, 'PLAN_HATA');
+    assert.equal(launchlar.length, 3);
+  } finally {
+    console.warn = uyari;
+  }
 });
 
 test('TA2b ortak kapilar (/jvm-autostart ile ayni): calisan JVM kapat, zaten hedefte, tanimsiz, olculemeyen', () => {
@@ -577,7 +659,7 @@ test('TA7c olusturma yarim kaldiysa (kira OLUSTURULUYOR) yurutucu ogeleri baslat
 
 test('TA8 kilit: toplu isin ogesi tek satir dugmesini kilitler; is bitince kalkar', async () => {
   const r = await T.olustur(istek(), tum().slice(0, 1));
-  assert.match(await T.topluKilidi('app01', 7, 'AC1'), new RegExp(`#${r.id} içinde \\(ADAY\\)`));
+  assert.match(await T.topluKilidi('app01', 7, 'AC1'), new RegExp(`#${r.id} içinde \\(SECIM\\)`));
   assert.equal(await T.topluKilidi('APP01', 7, 'kapat1'), null);
   await T.iptal(istek(), r.id);
   await T.tick();
@@ -660,6 +742,22 @@ test('TA10 HTTP: uclar router uzerinden (adaylar, olustur 400/409, onay confirme
     assert.equal((await post(`/toplu-autostart/${c.body.id}/onayla`, { confirmed: true })).status, 409, 'plan bitmeden onay yok');
     assert.equal((await post(`/toplu-autostart/${c.body.id}/iptal`, {})).body.durum, 'IPTAL_ISTENDI');
     assert.equal((await fetch(`${kok}/toplu-autostart/abc`).then(J)).status, 400);
+    // 5xx: POST 424 + upstreamStatus (nginx 500 govdesini yutar), loglanir; GET 5xx eskisi gibi
+    const hatalar = [];
+    const err = console.error;
+    console.error = (...x) => hatalar.push(x.join(' '));
+    DB.dus = 'Timeout: Request failed to complete in 30000ms';
+    try {
+      const h5 = await post('/toplu-autostart', { secim: tum() });
+      assert.equal(h5.status, 424);
+      assert.deepEqual([h5.body.upstreamStatus, h5.body.nginxRed], [500, true]);
+      assert.match(h5.body.message, /Timeout/);
+      assert.equal((await fetch(`${kok}/toplu-autostart`).then(J)).status, 500);
+    } finally {
+      DB.dus = null;
+      console.error = err;
+    }
+    assert.ok(hatalar.some((x) => x.startsWith('[TopluAutoStart] POST /api/server-hub/toplu-autostart 500:')), hatalar.join(' | '));
   } finally {
     srv.close();
   }

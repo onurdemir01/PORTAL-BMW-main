@@ -24,6 +24,7 @@ import { fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirsiz';
 
 /** Yoklama aralığı (sunucu yürütücüsü 10 sn'de bir ilerler). */
 export const YOKLAMA_MS = 5000;
@@ -47,6 +48,7 @@ const IS_ETIKET: Record<string, string> = {
   PLAN_ESKIDI: 'Önizleme eskidi (15 dk)',
 };
 export const OGE_ETIKET: Record<ShRestartOgeDurum, string> = {
+  SECIM: 'seçim doğrulanıyor (taze tarama)',
   ADAY: 'sırada (önizleme)',
   PLANLANIYOR: 'önizleme taranıyor',
   PLAN_GECTI: 'restart edilecek',
@@ -315,16 +317,34 @@ export default function TopluRestartTab() {
   const onizle = async () => {
     if (!secim.length || limitAsti || aktifVar) return;
     setGonderiliyor(true);
+    const baslangic = Date.now();
+    const oncekiSonId = izlenen;
     try {
       const r = await serverHubApi.topluRestartOlustur(secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm })));
       if (!r.ok || r.id == null) {
         toast.error(r.message || 'Toplu restart işi açılamadı.');
         return;
       }
-      toast.success(`Toplu restart #${r.id}: ${r.adet} JVM, ${r.hostSayisi} sunucu için önizleme taraması açıldı (salt okunur).`);
+      toast.success(
+        `Toplu restart #${r.id} açıldı: ${r.adet} JVM, ${r.hostSayisi} sunucu. Seçim taze taramayla doğrulanıyor; ardından salt okunur önizleme taraması açılır.`,
+      );
       setIzlenen(r.id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      const mesaj = e instanceof Error ? e.message : String(e);
+      if (!belirsizHataMi(e)) {
+        toast.error(mesaj);
+        return;
+      }
+      // 5xx / ağ geçidi / ağ hatası: iş yine de açılmış olabilir — kör yeniden deneme yerine durumu yeniden oku.
+      let okunan: ShRestartIs | null = null;
+      let okunamadi = false;
+      try {
+        okunan = belirsizSonrasiIs(await serverHubApi.topluRestartListe(), baslangic, oncekiSonId);
+      } catch {
+        okunamadi = true;
+      }
+      if (okunan) setIzlenen(okunan.id);
+      toast.error(belirsizMesaji('Toplu restart', mesaj, { is: okunan, okunamadi }));
     } finally {
       setGonderiliyor(false);
     }

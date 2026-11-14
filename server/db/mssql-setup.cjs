@@ -1215,7 +1215,8 @@ const TABLES = [
       )`,
   },
   {
-    // Toplu isin ogeleri (JVM basina satir). durum: ADAY | PLANLANIYOR | PLAN_GECTI | DUSTU | BEKLIYOR |
+    // Toplu isin ogeleri (JVM basina satir). durum: SECIM (istekle yazilan secim; yurutucu taze degerlendirmeyle
+    // ADAY ya da DUSTU yapar, 2026-11-14) | ADAY | PLANLANIYOR | PLAN_GECTI | DUSTU | BEKLIYOR |
     // BASLATILIYOR | CALISIYOR | OK | SKIP | FAIL | IPTAL | YARIM_KALDI. Ayni hostun ogeleri TEK AWX isinde
     // (plan_job_id / awx_job_id ortak). awx_job_id launch'tan SONRA yazilir: numarasi olmayan BASLATILIYOR oge
     // yeniden baslatmada YARIM_KALDI olur (AWX'e gitmis olabilir). RESTART: plan_job_id = onizleme taramasi,

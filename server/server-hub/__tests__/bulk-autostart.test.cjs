@@ -104,8 +104,11 @@ test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
   const blok = rotaBlogu(i);
   assert.match(blok, /sunucuYazmaKapisi\(a, h, host\)/, '/jvm-autostart ortak sunucu kapisini kullanmiyor');
   assert.match(blok, /jvmAutoStartKapisi\(j, \{ host, jvm, gen, enable \}\)/, '/jvm-autostart ortak JVM kapisini kullanmiyor');
-  // olustur: istemciden gelen secim TAZE degerlendirmeden yeniden turetilir
-  assert.match(fonksiyon(TOPLU, 'olustur'), /_d\.getAssessment\(true\)[\s\S]*adaylariTuret\(a\)/, 'secim taze taramadan turetilmiyor');
+  // Istemciden gelen secim TAZE degerlendirmeden yeniden turetilir: 2026-11-14'ten beri istekte degil, yurutucunun
+  // secimDogrula adiminda (istek yalniz secimi yazar; uretimde 33 JVM'lik istek taze okumada 500 donmustu).
+  assert.match(fonksiyon(TOPLU, 'secimDogrula'), /_d\.getAssessment\(true\)[\s\S]*adaylariTuret\(a\)[\s\S]*c\.action !== o\.eylem/, 'secim taze taramadan turetilmiyor');
+  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /secimDogrula\(is, og\)/, 'plan secimi dogrulamadan ilerliyor');
+  assert.doesNotMatch(fonksiyon(TOPLU, 'olustur'), /getAssessment/, 'istek yine tum filoyu taze okuyor');
 });
 
 test('BA9: kontrollu toplu - kirasi dusen is DEVAM ETTIRILMEZ (YARIM_KALDI)', () => {

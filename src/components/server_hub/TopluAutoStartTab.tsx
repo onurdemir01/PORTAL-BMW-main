@@ -24,6 +24,7 @@ import { fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirsiz';
 import { autoStartSonucYay } from './autoStartIsi';
 
 /** Yoklama aralığı (sunucu yürütücüsü 10 sn'de bir ilerler). */
@@ -48,6 +49,7 @@ const IS_ETIKET: Record<string, string> = {
   PLAN_ESKIDI: 'Plan eskidi (15 dk)',
 };
 const OGE_ETIKET: Record<ShTopluOgeDurum, string> = {
+  SECIM: 'seçim doğrulanıyor (taze tarama)',
   ADAY: 'sırada (plan)',
   PLANLANIYOR: 'canlı değer okunuyor',
   PLAN_GECTI: 'uygulanacak',
@@ -316,6 +318,8 @@ export default function TopluAutoStartTab() {
   const planla = async () => {
     if (!secim.length || limitAsti || aktifVar) return;
     setGonderiliyor(true);
+    const baslangic = Date.now();
+    const oncekiSonId = izlenen;
     try {
       const r = await serverHubApi.topluAutoStartOlustur(
         secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, eylem: x.eylem })),
@@ -324,10 +328,26 @@ export default function TopluAutoStartTab() {
         toast.error(r.message || 'Toplu iş açılamadı.');
         return;
       }
-      toast.success(`Toplu iş #${r.id}: ${r.adet} JVM, ${r.hostSayisi} sunucu için canlı değerler okunuyor (salt okunur plan).`);
+      toast.success(
+        `Toplu iş #${r.id} açıldı: ${r.adet} JVM, ${r.hostSayisi} sunucu. Seçim taze taramayla doğrulanıyor; ardından canlı değerler okunur (salt okunur plan).`,
+      );
       setIzlenen(r.id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      const mesaj = e instanceof Error ? e.message : String(e);
+      if (!belirsizHataMi(e)) {
+        toast.error(mesaj);
+        return;
+      }
+      // 5xx / ağ geçidi / ağ hatası: iş yine de açılmış olabilir — kör yeniden deneme yerine durumu yeniden oku.
+      let okunan: ShTopluIs | null = null;
+      let okunamadi = false;
+      try {
+        okunan = belirsizSonrasiIs(await serverHubApi.topluAutoStartListe(), baslangic, oncekiSonId);
+      } catch {
+        okunamadi = true;
+      }
+      if (okunan) setIzlenen(okunan.id);
+      toast.error(belirsizMesaji('Toplu auto-start', mesaj, { is: okunan, okunamadi }));
     } finally {
       setGonderiliyor(false);
     }
@@ -494,7 +514,7 @@ export default function TopluAutoStartTab() {
           </div>
           <div className="text-[12px] tabular-nums flex gap-3 flex-wrap" style={{ color: 'var(--text-secondary)' }}>
             <span>{fmtNumber(ogeler.length)} JVM</span>
-            <span>uygulanacak / uygulanan {fmtNumber(ogeler.length - say('DUSTU') - say('ADAY') - say('PLANLANIYOR'))}</span>
+            <span>uygulanacak / uygulanan {fmtNumber(ogeler.length - say('DUSTU') - say('SECIM') - say('ADAY') - say('PLANLANIYOR'))}</span>
             <span>düşen {fmtNumber(say('DUSTU'))}</span>
             <span style={{ color: 'var(--status-success)' }}>OK {fmtNumber(say('OK'))}</span>
             <span>zaten hedefte {fmtNumber(say('SKIP'))}</span>

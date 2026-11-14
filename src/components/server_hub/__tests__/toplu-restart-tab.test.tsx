@@ -273,6 +273,64 @@ describe('Toplu Restart sekmesi', () => {
     expect(screen.queryByText(/^Tamamlandı/)).toBeNull();
   });
 
+  it('TRT8 oluşturma 5xx / HTML ile dönerse kör yeniden deneme yok: iş yeniden okunur ve izlenir', async () => {
+    const hata5 = Object.assign(new Error('Sunucu isteği işlerken hata verdi (HTTP 500); ağ geçidi asıl hata mesajını bir HTML sayfasıyla değiştirdi.'), {
+      status: 500,
+      htmlGovde: true,
+    });
+    m.topluRestartOlustur.mockRejectedValue(hata5);
+    // ilk okuma (sekme açılışı) iş yok; hatadan sonraki okuma iş #9'u (PLANLANIYOR) bulur
+    m.topluRestartListe.mockResolvedValueOnce({ ok: true, aktif: null, son: [] }).mockResolvedValueOnce({ ok: true, aktif: isSatiri('PLANLANIYOR'), son: [] });
+    m.topluRestartDurum.mockResolvedValue({ ok: true, is: isSatiri('PLANLANIYOR'), ogeler: [oge(1, 'APP01', 'crm', 'SECIM', { planJobId: null })] });
+    const { unmount } = render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Önizle ve restart et (3 JVM)' }));
+    await waitFor(() => expect(m.topluRestartDurum).toHaveBeenCalledWith(9));
+    expect(m.topluRestartListe).toHaveBeenCalledTimes(2);
+    const mesaj = String(toastM.error.mock.calls.at(-1)?.[0]);
+    expect(mesaj).toMatch(/işi #9 kayıtlı \(PLANLANIYOR\) — aşağıda izleniyor; yeniden göndermeyin/);
+    expect(mesaj).not.toMatch(/<html|<!doctype/i);
+    await screen.findByText('seçim doğrulanıyor (taze tarama)');
+    unmount();
+    // iş açılmamış (doğrulandı) ve liste okunamadı durumları
+    toastM.error.mockReset();
+    m.topluRestartListe.mockReset();
+    m.topluRestartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI', { createdAt: '2020-01-01T00:00:00Z' })] });
+    m.topluRestartDurum.mockResolvedValue({ ok: true, is: isSatiri('BITTI', { createdAt: '2020-01-01T00:00:00Z' }), ogeler: [] });
+    const r2 = render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Önizle ve restart et (3 JVM)' }));
+    await waitFor(() => expect(toastM.error).toHaveBeenCalledTimes(1));
+    expect(String(toastM.error.mock.calls[0][0])).toMatch(/İş kaydı açılmadı \(doğrulandı/);
+    r2.unmount();
+    toastM.error.mockReset();
+    m.topluRestartListe.mockReset();
+    m.topluRestartListe.mockResolvedValueOnce({ ok: true, aktif: null, son: [] }).mockRejectedValueOnce(new Error('ağ yok'));
+    render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Önizle ve restart et (3 JVM)' }));
+    await waitFor(() => expect(toastM.error).toHaveBeenCalledTimes(1));
+    expect(String(toastM.error.mock.calls[0][0])).toMatch(/açılıp açılmadığı okunamadı — yeniden göndermeden önce/);
+  });
+
+  it('TRT8b istekten önce bilinen son iş (az önceki başarısız deneme, PLAN_HATA) "kayıtlı" sayılmaz', async () => {
+    m.topluRestartOlustur.mockRejectedValue(Object.assign(new Error('Sunucu isteği işlerken hata verdi (HTTP 500).'), { status: 500 }));
+    const onceki = isSatiri('PLAN_HATA', { createdAt: new Date().toISOString() });
+    m.topluRestartListe.mockResolvedValue({ ok: true, aktif: null, son: [onceki] });
+    m.topluRestartDurum.mockResolvedValue({ ok: true, is: onceki, ogeler: [] });
+    render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Önizle ve restart et (3 JVM)' }));
+    await waitFor(() => expect(toastM.error).toHaveBeenCalledTimes(1));
+    const mesaj = String(toastM.error.mock.calls[0][0]);
+    expect(mesaj).not.toMatch(/#9 kayıtlı/);
+    expect(mesaj).toMatch(/İş kaydı açılmadı \(doğrulandı/);
+  });
+
+  it('TRT9 kesin ret (4xx, örn. nginxRed 409) durumu yeniden okumaz; sunucunun mesajı gösterilir', async () => {
+    m.topluRestartOlustur.mockRejectedValue(Object.assign(new Error('Bu kaynağa erişiminiz kapalı.'), { status: 403, nginxRed: true }));
+    render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Önizle ve restart et (3 JVM)' }));
+    await waitFor(() => expect(toastM.error).toHaveBeenCalledWith('Bu kaynağa erişiminiz kapalı.'));
+    expect(m.topluRestartListe).toHaveBeenCalledTimes(1);
+  });
+
   describe('TRT7 onay bekleyen iş seyrek yoklanır (başka admin onaylar / iptal eder)', () => {
     beforeEach(() => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }));
     afterEach(() => vi.useRealTimers());

@@ -479,6 +479,8 @@ export interface ShTopluIs {
   bitisAt: string | null;
 }
 export type ShTopluOgeDurum =
+  // SECIM: istekle yazılan seçim; sunucu yürütücüsü taze taramayla doğrular (ADAY ya da DUSTU).
+  | 'SECIM'
   | 'ADAY'
   | 'PLANLANIYOR'
   | 'PLAN_GECTI'
@@ -540,6 +542,8 @@ export interface ShRestartAday {
   neden?: string;
 }
 export type ShRestartOgeDurum =
+  // SECIM: istekle yazılan seçim; sunucu yürütücüsü taze taramayla doğrular (ADAY ya da DUSTU).
+  | 'SECIM'
   | 'ADAY'
   | 'PLANLANIYOR'
   | 'PLAN_GECTI'

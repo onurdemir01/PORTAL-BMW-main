@@ -13,6 +13,8 @@
 // 30 saniye sonra ayni istek 200 donuyordu. Yani gecici ve KENDILIGINDEN gecen
 // bir durum, kullaniciya ham HTML olarak gosterildi.
 const GATEWAY_STATUSES = [502, 503, 504];
+/** Tam HTML belgesi (SPA kabugu ya da nginx hata sayfasi); parca HTML (`<h1>...`) degil. */
+const HTML_BELGE = /^\s*(<!doctype html|<html[\s>])/i;
 
 export async function safeJson(res: Response): Promise<any> {
   const contentType = res.headers.get('content-type') || '';
@@ -31,6 +33,21 @@ export async function safeJson(res: Response): Promise<any> {
         // GOSTERILMEZ ama konsol/teshis icin hatada durur — govdeyi mesajdan
         // cikarmak teshis ipucunu tamamen yok etmemeli.
         { status: res.status, gatewayUnavailable: true, bodyPreview: text.slice(0, 150) },
+      );
+    }
+    // 5xx + TAM HTML BELGESI (uretim 2026-11-14, Toplu Restart 33 JVM): kurumsal nginx
+    // (proxy_intercept_errors + error_page 500) sunucunun JSON hatasini portalin index.html'iyle
+    // degistiriyor. Onizleme ("[<!doctype html> <html lang="tr"> ...]") hicbir sey anlatmaz; asil
+    // mesaj sunucu logunda. Bu GECIT durumu degil (istek sunucuya ulasti, islem kismen yapilmis
+    // olabilir): kullaniciya kor "tekrar deneyin" denmez. `htmlGovde`: cagiran durumu yeniden
+    // okuyabilsin; `bodyPreview` teshis icin hatada durur.
+    if (res.status >= 500 && HTML_BELGE.test(text)) {
+      throw Object.assign(
+        new Error(
+          `Sunucu isteği işlerken hata verdi (HTTP ${res.status}); ağ geçidi asıl hata mesajını bir HTML sayfasıyla değiştirdi. ` +
+            'İşlem kısmen yapılmış olabilir — yeniden göndermeden önce ekranı yenileyip durumu kontrol edin; sürerse yöneticiye bildirin.',
+        ),
+        { status: res.status, htmlGovde: true, bodyPreview: text.slice(0, 150) },
       );
     }
     // DIGER DURUMLARDA ONIZLEME KALIR — bu fonksiyonun var olus sebebi o:
