@@ -44,9 +44,13 @@ test('SH2 production`da cerez YALNIZCA HTTPS uzerinde gider (secure)', () => {
   assert.doesNotMatch(b, /secure:\s*false/, 'secure sabit false — cerez duz HTTP`de gider');
   assert.match(
     b,
-    /secure:\s*process\.env\.NODE_ENV === 'production'/,
-    'secure ortama bagli degil — production`da duz HTTP`de sizabilir',
+    /secure:\s*oturumCerezi\.cookieSecure\(\)/,
+    'secure oturumCerezi.cookieSecure() ile ortama bagli degil',
   );
+  const { cookieSecure } = require('../oturum-cerezi.cjs');
+  assert.equal(cookieSecure({ NODE_ENV: 'production' }), true);
+  assert.equal(cookieSecure({ NODE_ENV: 'development', COOKIE_SECURE: 'true' }), true);
+  assert.equal(cookieSecure({ NODE_ENV: 'development' }), false);
 });
 
 test('SH3 CSRF yuzeyi dar (sameSite)', () => {
