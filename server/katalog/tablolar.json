@@ -4821,7 +4821,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (match_by)",
-        "dosya": "server/audit/denetim.cjs:744"
+        "dosya": "server/audit/denetim.cjs:760"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
