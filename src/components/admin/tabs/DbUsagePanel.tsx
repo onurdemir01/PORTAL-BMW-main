@@ -34,7 +34,8 @@ interface HkConfig {
   hour: number;
   checkIntervalMinutes: number;
   alertPercent: number;
-  webhookUrl: string;
+  /** Adresin kendisi (imzali) tarayiciya gelmez. */
+  webhookConfigured: boolean;
   logxBlobRetentionDays: number;
   logxRowRetentionDays: number;
   batchSize: number;
@@ -118,7 +119,7 @@ const DbUsagePanel: React.FC = () => {
           <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
             Veri ve log dosyalarının doluluğu; üst sınır tanımlıysa ona, yoksa diskteki boş alana göre.
             %{threshold} aşılınca Teams'e dosya başına günde bir uyarı gider
-            {config && !config.webhookUrl && <span className="text-amber-700"> (webhook tanımlı değil — yalnız burada ve sunucu logunda görünür)</span>}.
+            {config && !config.webhookConfigured && <span className="text-amber-700"> (webhook tanımlı değil — yalnız burada ve sunucu logunda görünür)</span>}.
           </p>
         </div>
         <button onClick={load} className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg" disabled={loading}>

@@ -425,6 +425,16 @@ function startScheduler() {
   setTimeout(() => tick().catch(() => {}), 20_000).unref?.();
 }
 
+/**
+ * Tarayiciya giden yapilandirma. Webhook adresi imza (sig=) tasir: adresi bilen herkes kanala
+ * kart gonderebilir. Ekranin tek ihtiyaci "tanimli mi" (2026-11-14: adres maskesiz donuyordu;
+ * ayni sir Admin > Sistem'de maskeleniyordu).
+ */
+function configForClient(cfg = getConfig()) {
+  const { webhookUrl, ...kalan } = cfg;
+  return { ...kalan, webhookConfigured: !!webhookUrl };
+}
+
 function initDbHousekeeping(app) {
   loadPersistedState().finally(startScheduler);
 
@@ -433,7 +443,7 @@ function initDbHousekeeping(app) {
     try {
       const usage = await readUsage();
       state.lastUsage = usage;
-      res.json({ ok: true, usage, config: getConfig(), state: stateForClient() });
+      res.json({ ok: true, usage, config: configForClient(), state: stateForClient() });
     } catch (e) {
       res.status(500).json({ ok: false, message: e.message, state: stateForClient() });
     }
@@ -464,6 +474,7 @@ module.exports = {
   runHousekeeping,
   readUsage,
   getConfig,
+  configForClient,
   // test
   fileCapMb,
   effectivePercent,
