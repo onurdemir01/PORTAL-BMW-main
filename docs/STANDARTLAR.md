@@ -2,8 +2,8 @@
 
 ## 1. Güvenlik ve Uyum İlkeleri
 
-- **En Az Ayrıcalık ve Varsayılan Güvenli Ayar:** Production varsayılanları (`COOKIE_SECURE`, `HSTS`, `TRUST_PROXY=loopback`, production'da `err.message` gizleme) açık opt-out gerektirir; geliştirme kısayolları production'da kapalıdır.
-- **İstek Doğrulama ve Başlık Güvenliği:** Tüm yanıtlar `guvenlikBasliklari()` üzerinden geçer (`CSP`, `Permissions-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, HTTPS'te `HSTS`). Rate-limit anahtarları sahteciliğe açık ham istemci başlıklarına (`x-portal-user`) güvenmez.
+- **En Az Ayrıcalık ve Varsayılan Güvenli Ayar:** Production varsayılanları (`COOKIE_SECURE`, tek atlamalı `TRUST_PROXY`, production'da `err.message` gizleme) açık opt-out gerektirir; `HSTS` bilinçli olarak opt-in'dir (`PORTAL_HSTS_MAX_AGE`); geliştirme kısayolları production'da kapalıdır.
+- **İstek Doğrulama ve Başlık Güvenliği:** Tüm yanıtlar `guvenlikBasliklari()` üzerinden geçer (`CSP`, `Permissions-Policy`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`; `HSTS` yalnız açıkça ayarlanırsa). Rate-limit anahtarları sahteciliğe açık ham istemci başlıklarına (`x-portal-user`) güvenmez.
 - **Hassas Veri Maskeleme:** Log katmanı (`server/log.cjs` `kimlikMaskele`) parola, token, cookie ve gizli alanları yazar yazmaz maskeler.
 
 ## 2. Kriptografi Standartları

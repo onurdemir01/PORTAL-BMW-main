@@ -55,15 +55,14 @@ function buildCsp(atalar) {
   return parts.join('; ');
 }
 
+// VARSAYILAN KAPALI (uretimde de). 2026-11-14'te uretim varsayilani 1 yil + includeSubDomains
+// yapilmisti; geri alindi: HSTS makine adinin TUM portlarini (includeSubDomains ile alt adlarini da)
+// tarayicida bir yil boyunca HTTPS'e zorlar ve geri alinmasi zordur. Ayni adda duz HTTP calisan
+// bir servis (baska port / ortam) varsa kirilir. Bunu ancak o makine adini bilen acabilir:
+// PORTAL_HSTS_MAX_AGE (Admin > Sistem). Belge: docs/OTURUM-YONETIMI.md.
 function hstsSuresi() {
-  const raw = process.env.PORTAL_HSTS_MAX_AGE;
-  if (raw !== undefined && String(raw).trim() !== '') {
-    const trimmed = String(raw).trim();
-    if (trimmed === '0') return 0;
-    const n = Number(trimmed);
-    return Number.isInteger(n) && n > 0 && n <= 63072000 ? n : 0;
-  }
-  return process.env.NODE_ENV === 'production' ? 31536000 : 0;
+  const n = Number(String(process.env.PORTAL_HSTS_MAX_AGE ?? '').trim() || 0);
+  return Number.isInteger(n) && n > 0 && n <= 63072000 ? n : 0;
 }
 
 function guvenlikBasliklari() {
@@ -81,7 +80,7 @@ function guvenlikBasliklari() {
     }
     const hsts = hstsSuresi();
     if (hsts && req.secure) {
-      res.setHeader('Strict-Transport-Security', `max-age=${hsts}; includeSubDomains`);
+      res.setHeader('Strict-Transport-Security', `max-age=${hsts}`);
     }
     next();
   };

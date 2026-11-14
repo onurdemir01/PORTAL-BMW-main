@@ -393,18 +393,25 @@ test('OS8 guvenlik basliklari', async () => {
   assert.equal(n['x-frame-options'], 'DENY');
   assert.equal(n['content-security-policy'], buildCsp("'none'"));
 
-  // HSTS: duz HTTP isteginde GONDERILMEZ; HTTPS (vekil) isteginde ve production'da varsayilan acik.
+  // HSTS: VARSAYILAN KAPALI (uretimde de); acikca ayarlanirsa yalniz HTTPS (vekil) isteginde.
   const h1 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' });
   assert.equal(h1['strict-transport-security'], null);
   const h2 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' }, { 'x-forwarded-proto': 'https' });
-  assert.equal(h2['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  assert.equal(h2['strict-transport-security'], 'max-age=31536000');
   const h3 = await al({ PORTAL_HSTS_MAX_AGE: 'abc', NODE_ENV: 'test' }, { 'x-forwarded-proto': 'https' });
   assert.equal(h3['strict-transport-security'], null);
   const hProd = await al(
     { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: undefined },
     { 'x-forwarded-proto': 'https' },
   );
-  assert.equal(hProd['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  // Uretimde ayar YOKKEN baslik gitmez: makine adinin butun portlarini bir yil HTTPS'e zorlamak
+  // ancak o adi bilenin kararidir (docs/OTURUM-YONETIMI.md, Admin > Sistem aciklamasi).
+  assert.equal(hProd['strict-transport-security'], null);
+  const hProdAcik = await al(
+    { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: '15552000' },
+    { 'x-forwarded-proto': 'https' },
+  );
+  assert.equal(hProdAcik['strict-transport-security'], 'max-age=15552000');
   const hProdOff = await al(
     { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: '0' },
     { 'x-forwarded-proto': 'https' },
