@@ -90,7 +90,7 @@ function ayarAdi(anahtar: string, limitler: ShLimit[]): string {
   if (anahtar === 'liste:kok_yoksay') return 'Kökte yok sayılan girdiler';
   if (anahtar.startsWith('limit:')) {
     const l = limitler.find((x) => x.ad === anahtar.slice(6));
-    return `${l ? l.etiket : anahtar.slice(6)} · tek seferde sunucu`;
+    return `${l ? l.etiket : anahtar.slice(6)} · tek seferde ${(l && l.birim) || 'sunucu'}`;
   }
   return anahtar;
 }
@@ -437,10 +437,10 @@ function LimitlerBolumu({ limitler, kilitli, onKaydedildi }: { limitler: ShLimit
   return (
     <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
       <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Tek seferde girilebilecek sunucu sayısı</h2>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Tek seferde girilebilecek sunucu / JVM sayısı</h2>
         <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu. Üst sınır, işin AWX’e taşıdığı veri ve süre yüzünden
-          sabittir.
+          Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu (Toplu Auto-Start / Toplu Restart: tek toplu işte en fazla JVM). Üst
+          sınır, işin AWX’e taşıdığı veri ve süre yüzünden sabittir.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -479,7 +479,7 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
         toast.error(r.message || 'Limit kaydedilemedi.');
         return;
       }
-      toast.success(`${l.etiket}: tek seferde en fazla ${fmtNumber(yeni)} sunucu.`);
+      toast.success(`${l.etiket}: tek seferde en fazla ${fmtNumber(yeni)} ${l.birim || 'sunucu'}.`);
       setNot('');
       onKaydedildi();
     } catch (e) {
@@ -511,7 +511,7 @@ function LimitSatiri({ l, kilitli, onKaydedildi }: { l: ShLimit; kilitli: boolea
             value={deger}
             disabled={kilitli || gonderiliyor}
             onChange={(e) => setDeger(e.target.value)}
-            aria-label={`${l.etiket} tek seferde en fazla sunucu`}
+            aria-label={`${l.etiket} tek seferde en fazla ${l.birim || 'sunucu'}`}
             aria-invalid={!gecerli}
             className="h-7 w-20 px-2 text-[12px] rounded-lg border tabular-nums"
             style={{ borderColor: gecerli ? 'var(--border)' : 'var(--status-danger)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}

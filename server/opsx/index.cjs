@@ -106,8 +106,10 @@ async function resolveTarget(platform) {
 // bir playbook tetikleyip polling yapan /api/opsx/status-check yaklasimi TERK EDILDI, cunku bu
 // deger zaten envanterde hazir.
 // KURULUM KOLU (2026-10-08, uretim: GBJBOP18 / GBCCSECURETRACKER). OpsX playbook'lari kurulumu
-// SURUME gore degil DIZINE gore secer: "7" kolu = /usr/jboss/AppServer (jboss-cli.sh, host=master),
-// "8" kolu = /usr/jboss8/AppServer (jboss-cli8.sh, host=primary, :9998). Standart disi bir sunucuda
+// SURUME gore degil DIZINE gore secer: "7" kolu = /usr/jboss/AppServer (jboss-cli.sh), "8" kolu =
+// /usr/jboss8/AppServer (jboss-cli8.sh, :9998). CLI adresindeki host adi 2026-11-14'ten beri sabit
+// (master/primary) degil, controller'dan :read-attribute(name=local-host-name) ile okunur (bkz.
+// bmw_portal/java_app_ops/README.md). Standart disi bir sunucuda
 // /usr/jboss altina da JBoss 8 kurulmus: envanter iki satir donduruyor, IKISI DE 8.x (8.0 ve 8.1).
 // Kol urun surumunden turetildigi icin iki satir AYNI kimligi aliyordu (GBJBOP18|8) - birine
 // tiklamak ikisini seciyordu - ve /usr/jboss kurulumu hic ayri hedeflenemiyordu.
@@ -480,6 +482,285 @@ async function appsForNamespace(env, tenant, namespace, user) {
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
   return [...new Set((out.items || []).map((i) => i.name))].sort();
+}
+
+// Legacy restart / stop / start isteginin dogrulamasi ve AWX girdisi (2026-11-14, POST /api/opsx/run'dan
+// cikarildi). Route ve Server Hub > Toplu Restart (topluRestartBaslat) AYNI fonksiyonu cagirir: anti-TOCTOU
+// (resolveLegacyTargets), server_config_map dogrulamasi, limit (+ DB_OPS_HOST) ve extra_vars tek yerde.
+// Hata: { status, message } ile firlatir (route 4xx/5xx olarak doner).
+function hataVer(status, message, code) {
+  return Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
+}
+
+async function legacyIstegiHazirla({ application, hosts, hostMajors, operation, serverConfigMap }, cfg, staticVars) {
+  if (!ALLOWED_OPERATIONS[operation]) throw hataVer(400, 'Geçersiz işlem.');
+  // ANTI-TOCTOU + jboss_version turetme: resolveLegacyTargets() (bkz. dosya basi) —
+  // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
+  const { requested, seciliEnvler, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors);
+
+  // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
+  // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
+  // calistirmasini denetim icin DB'ye kaydeder) kisitlar. limit sadece secilen hedef
+  // sunucularla sinirlanirsa (or. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
+  // icin o play "skipping: no hosts matched" ile sessizce atlanir — is'in kendisi
+  // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden GBLABT02 HER ZAMAN limit'e
+  // eklenir (zaten hedeflerden biriyse tekrar eklenmez).
+  const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
+  const limitValue = limitHosts.join(cfg.separator);
+
+  // restart/stop/start artik `application`in TEK bir server-config/server-group adi
+  // OLDUGUNU VARSAYMAZ (2026-08-17, kullanici istegi) — kullanici java_app_check.yml
+  // kesfinden HANGI JVM(ler)e (server-config) dokunulacagini acikca seciyor, serverConfigMap
+  // dump'daki pidMap ile AYNI sekil/desen: { HOST: [{name, jbossMajor}, ...] }.
+  // threaddump/heapdump BU DALA GIRMEZ (ayri /dump/legacy route'una gider, ayri pidMap
+  // dogrulamasi zaten var), o yuzden serverConfigMap SADECE restart/stop/start icin zorunlu.
+  let cleanServerConfigMap;
+  if (['restart', 'stop', 'start'].includes(operation)) {
+    if (
+      !serverConfigMap ||
+      typeof serverConfigMap !== 'object' ||
+      Array.isArray(serverConfigMap) ||
+      Object.keys(serverConfigMap).length === 0
+    ) {
+      throw hataVer(400, 'En az bir JVM (host + server-config) seçilmeli.');
+    }
+    const allowedHosts = new Set(requested);
+    cleanServerConfigMap = {};
+    for (const [host, items] of Object.entries(serverConfigMap)) {
+      const h = String(host || '')
+        .trim()
+        .toUpperCase();
+      if (!allowedHosts.has(h)) {
+        throw hataVer(400, `Bu host seçilen sunucular arasında değil: ${host}`);
+      }
+      if (!Array.isArray(items) || items.length === 0) continue;
+      const seen = new Set();
+      const cleanItems = [];
+      for (const it of items) {
+        const name = String(it?.name || '').trim();
+        const jbossMajor = String(it?.jbossMajor || '').trim();
+        // Bu deger playbook'ta jboss-cli komutuna DOGRUDAN shell enjekte edilir (bkz.
+        // jboss_serverconfig_ops.yml) — pid_map'teki PID dogrulamasiyla AYNI gerekce,
+        // sadece guvenli karakter kumesine izin verilir (Ansible tarafindaki
+        // "application" assert'iyle AYNI desen).
+        if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
+          throw hataVer(400, `Geçersiz server-config adı: ${it?.name}`);
+        }
+        if (jbossMajor !== '7' && jbossMajor !== '8') {
+          throw hataVer(400, `Geçersiz JBoss sürümü: ${it?.jbossMajor}`);
+        }
+        const dedupeKey = `${name}:${jbossMajor}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        cleanItems.push({ name, jbossMajor });
+      }
+      if (cleanItems.length) cleanServerConfigMap[h] = cleanItems;
+    }
+    if (Object.keys(cleanServerConfigMap).length === 0) {
+      throw hataVer(400, 'En az bir JVM (host + server-config) seçilmeli.');
+    }
+  }
+
+  // limit BURADA extra_vars'a KONMAZ — sartname onu ust seviyede istiyor.
+  const extraVars = {
+    ...staticVars,
+    [cfg.applicationKey]: String(application).trim(),
+    [cfg.operationKey]: operation,
+    ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
+    ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
+  };
+
+  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
+  return { requested, seciliEnvler, limitValue, extraVars, logSummary };
+}
+
+/**
+ * OpsX isini baslatir (2026-11-14, POST /api/opsx/run'dan cikarildi): extra_vars on kontrolu, AWX launch,
+ * ansible_job_history ve 'opsx_operation' denetimi. Route ve Toplu Restart AYNI fonksiyonu cagirir.
+ * Uretim onay kapisi BURADA DEGIL: cagiran once kapiyi gecirmeli (route opsxProductionKapisi; Toplu Restart
+ * uretimi hic baslatmaz - topluRestartBaslat).
+ */
+async function opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVars, limitValue, logSummary }) {
+  const runner = require('../ansible/runner.cjs');
+  // AWX'te "Prompt on launch" kapaliysa gonderilen extra_vars SESSIZCE yutulur ve
+  // playbook bos girdiyle calisir. LogX ile ORTAK kontrol (2026-08-09 olayi).
+  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+    serverId,
+    templateId,
+    extraVars,
+    { label: keyName },
+  );
+  // launchJobOnServer(serverId, templateId, extraVars, limit) — limit bos string
+  // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
+  // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.
+  // BELIRSIZ LAUNCH (2026-11-14 inceleme): POST /launch zaman asimi / 5xx / baglanti kopmasi AWX'te is
+  // OLUSTURMUS olabilir. AWX'in 4xx reddi kesin "baslamadi"dir; digerleri launchBelirsiz ile isaretlenir
+  // (Toplu Restart "dokunulmadi" demez, toplu isi durdurur). Route davranisi degismez.
+  let result;
+  try {
+    result = await runner.launchJobOnServer(serverId, templateId, extraVars, limitValue, req.session?.user);
+  } catch (e) {
+    const st = Number(e && e.status);
+    if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
+    throw e;
+  }
+
+  // ansible_job_history'ye kayit: Self Service'in kullandigi AYNI genel-amacli
+  // tablo. Bu, iki sey saglar: (a) job-status endpoint'i IDOR korumasi icin
+  // "bu job kime ait" sorusunu cevaplayabilir, (b) ilerde bir "OpsX Gecmisi"
+  // ekrani gerekirse veri zaten burada. `params` alanina extraVars'i OLDUGU GIBI
+  // yazariz — Self Service'teki gibi maskeleme YOK, cunku OpsX parametreleri
+  // (uygulama adi, sunucu listesi, islem) hassas veri tasimiyor.
+  try {
+    const db = require('../db/index.cjs');
+    await db.query(
+      `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        req.session?.user?.username || 'unknown',
+        serverId,
+        templateId,
+        `OpsX: ${plat}`,
+        result?.jobId,
+        result?.status || 'pending',
+        JSON.stringify({
+          platform: plat,
+          ...(limitValue ? { limit: limitValue } : {}),
+          ...extraVars,
+        }),
+      ],
+    );
+  } catch (e) {
+    console.warn('[OpsX] Gecmis kaydedilemedi:', e.message);
+  }
+
+  try {
+    require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {
+      detail: JSON.stringify({
+        platform: plat,
+        limit: limitValue || undefined,
+        extraVars,
+        jobId: result?.jobId ?? null,
+      }),
+    });
+  } catch {
+    /* denetim kaydi best-effort */
+  }
+
+  console.log(
+    `[OpsX] ${req.session?.user?.username} -> ${plat} ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
+  );
+  return { result };
+}
+
+// ── SERVER HUB > TOPLU RESTART (2026-11-14) ──────────────────────────────────────────────────────────
+// Kullanici: "JVM parametreleri calisan surectekinden FARKLI uyarilari ... bunlar icin de toplu restart et
+// sayfasi". Server Hub yurutucusu (server/server-hub/toplu-restart.cjs) her JVM icin bunu TEK TEK cagirir;
+// dogrulama / baslatma route ile AYNI fonksiyonlar (legacyIstegiHazirla + opsxIsiBaslat).
+//
+// URETIM HIC BASLATILMAZ: route'taki onay kapisi (opsxProductionKapisi) Smart bileti acar ve isi ONAYDAN
+// SONRA, zaman uyumsuz baslatir (is numarasi yok); Admin atlama / onay kapali yollari ise onaysiz kosar.
+// Ikisi de sirali toplu yurutmeyle bagdasmaz -> uretim (ve ortami bilinmeyen) istek burada REDDEDILIR,
+// ekran "prod - OpsX'ten tek tek" der. Kapi atlanmaz: o yol hic acilmaz.
+//
+// LIMIT: java_app_ops.yml `hosts: all`; sablonda Limit "Prompt on launch" kapaliysa AWX limit'i SESSIZCE
+// yutar ve is TUM envanterde kosar (bkz. project notu). Toplu yol limit'i kabul etmeyen sablonla BASLATMAZ.
+// METADATAHUB: main.yml bu dort hostta (Ansible `match` basa demirli: adla BASLAYAN her host) operation=
+// restart iken server_config_map'e BAKMADAN script tabanli TAM restart kosar -> toplu yoldan hic gitmez.
+const METADATAHUB_TAM_RESTART = Object.freeze(['GBABAT01', 'GBABAT02', 'GBABAP01', 'GBABAP02']);
+const metadatahubHostMu = (h) => {
+  const H = String(h || '').trim().toUpperCase();
+  return METADATAHUB_TAM_RESTART.some((x) => H.startsWith(x));
+};
+
+// AD KURALI (2026-11-14 inceleme): filo adlandirmasinda kisa adin ortam harfi P = PROD (server-hub assess.cjs
+// envOf ile AYNI desen). Envanter ortami yanlis "TEST" etiketli P-adli host toplu yoldan GECMEZ.
+const adKuraliProdMu = (h) => {
+  const m = /^[A-Z]{4,6}?(A?)([DTQPO])\d+$/.exec(String(h || '').trim().toUpperCase().split('.')[0]);
+  return !!m && m[2] === 'P';
+};
+
+/**
+ * Legacy sablonu limit'i kabul ediyor mu (ask_limit_on_launch)? Fail-closed: olculemezse ya da kapaliysa
+ * firlatir. Donus: { templateId, serverId, keyName }.
+ */
+async function legacyLimitKontrol() {
+  const { templateId, serverId, keyName } = await resolveTarget('legacy');
+  if (!templateId)
+    throw hataVer(
+      501,
+      `OpsX legacy işlemleri için AWX job template'i tanımlı değil (Admin › Playbook Kayıtları › "${keyName}").`,
+      'sablon_yok',
+    );
+  let st;
+  try {
+    st = await require('../ansible/runner.cjs').getTemplateLaunchSettingsOnServer(serverId, templateId);
+  } catch (e) {
+    throw hataVer(
+      503,
+      `AWX şablonunun "Limit" ayarı okunamadı (${e && e.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
+      'limit_olculemedi',
+    );
+  }
+  if (!st || st.askLimitOnLaunch !== true)
+    throw hataVer(
+      409,
+      `"${keyName}" AWX şablonunda Limit "Prompt on launch" kapalı — AWX limit'i yutar ve restart tüm envanterde çalışırdı; toplu restart başlatılmaz. Yönetici şablonda Limit'i "Prompt on launch" yapmalı.`,
+      'limit_kabul_edilmiyor',
+    );
+  return { templateId, serverId, keyName };
+}
+
+/**
+ * Toplu Restart'in TEK JVM restart'i. application = envanterdeki uygulama adi (JVM adiyla ayni olmali;
+ * resolveLegacyTargets dogrular), gen = kurulum kolu (deriveJbossVersion dogrular). Donus:
+ * { jobId, status, awxServerId, templateId, limit }. Hata: { status, code, message } ile firlatir;
+ * code 'uretim' / 'standalone' = bu JVM toplu yoldan gitmez (ekran nedeni yazar).
+ */
+async function topluRestartBaslat({ req, application, host, gen, jvm }) {
+  const H = String(host || '').trim().toUpperCase();
+  const g = String(gen);
+  if (metadatahubHostMu(H))
+    throw hataVer(
+      409,
+      `${H} standalone (metadatahub) — OpsX restart burada server-config yerine tam script restart'ı çalıştırır; OpsX'ten tek tek.`,
+      'standalone',
+    );
+  if (adKuraliProdMu(H))
+    throw hataVer(409, `${H} sunucu adı kuralına göre prod (ortam harfi P) — OpsX'ten tek tek (Smart onayı).`, 'uretim');
+  const { templateId, serverId, keyName } = await legacyLimitKontrol();
+  const opsxConfig = require('./config.cjs');
+  const cfg = (await opsxConfig.getConfig()).legacy;
+  const { vars: staticVars } = opsxConfig.parseExtraVarLines(cfg.extraVars);
+  const hz = await legacyIstegiHazirla(
+    {
+      application,
+      hosts: [H],
+      hostMajors: [g],
+      operation: 'restart',
+      serverConfigMap: { [H]: [{ name: String(jvm || ''), jbossMajor: g }] },
+    },
+    cfg,
+    staticVars,
+  );
+  const envler = hz.seciliEnvler || [];
+  if (!envler.length || envler.some((e) => !String(e || '').trim()))
+    throw hataVer(409, `${H} envanterde ortamı bilinmiyor — prod olabilir; OpsX'ten tek tek.`, 'uretim');
+  const u = require('./prod-approval.cjs').uretimIstegi([
+    { alan: 'ortam', deger: envler },
+    { alan: 'sunucu', deger: hz.requested },
+  ]);
+  if (u.uretim) throw hataVer(409, `prod (${u.sebep}) — OpsX'ten tek tek (Smart onayı).`, 'uretim');
+  const { result } = await opsxIsiBaslat({
+    req,
+    plat: 'legacy',
+    serverId,
+    templateId,
+    keyName,
+    extraVars: hz.extraVars,
+    limitValue: hz.limitValue,
+    logSummary: `${hz.logSummary} kaynak=server-hub-toplu-restart`,
+  });
+  return { jobId: result?.jobId ?? null, status: result?.status ?? null, awxServerId: serverId, templateId, limit: hz.limitValue };
 }
 
 function initOpsX(app) {
@@ -855,101 +1136,17 @@ function initOpsX(app) {
     let logSummary;
 
     if (plat === 'legacy') {
-      if (!ALLOWED_OPERATIONS[operation]) {
-        return res.status(400).json({ ok: false, message: 'Geçersiz işlem.' });
-      }
-      // ANTI-TOCTOU + jboss_version turetme: resolveLegacyTargets() (bkz. dosya basi) —
-      // dump endpoint'iyle PAYLASILAN, tek yerde tanimli dogrulama.
-      let jbossVersion;
+      // Dogrulama + extra_vars / limit kurulumu legacyIstegiHazirla()'da (2026-11-14): Server Hub > Toplu Restart
+      // AYNI fonksiyonu kullanir (kapilar birebir ayni kalsin diye tek yerde).
       try {
-        ({ requested, seciliEnvler, jbossVersion } = await resolveLegacyTargets(application, hosts, hostMajors));
+        ({ requested, seciliEnvler, limitValue, extraVars, logSummary } = await legacyIstegiHazirla(
+          { application, hosts, hostMajors, operation, serverConfigMap },
+          cfg,
+          staticVars,
+        ));
       } catch (err) {
         return res.status(err.status || 500).json({ ok: false, message: err.message });
       }
-
-      // AWX'in --limit alani PLAYBOOK GENELINDE gecerlidir — sadece ana islem play'ini
-      // degil, java_app_ops.yml'in sonundaki "DB Ops" play'ini de (hosts: GBLABT02, is
-      // calistirmasini denetim icin DB'ye kaydeder) kisitlar. limit sadece secilen hedef
-      // sunucularla sinirlanirsa (or. "GBCJAP01,GBCJAP03") GBLABT02 bu kumede olmadigi
-      // icin o play "skipping: no hosts matched" ile sessizce atlanir — is'in kendisi
-      // BASARILI olur ama denetim kaydi hic yazilmaz. Bu yuzden GBLABT02 HER ZAMAN limit'e
-      // eklenir (zaten hedeflerden biriyse tekrar eklenmez).
-      const limitHosts = requested.includes(DB_OPS_HOST) ? requested : [...requested, DB_OPS_HOST];
-      limitValue = limitHosts.join(cfg.separator);
-
-      // restart/stop/start artik `application`in TEK bir server-config/server-group adi
-      // OLDUGUNU VARSAYMAZ (2026-08-17, kullanici istegi) — kullanici java_app_check.yml
-      // kesfinden HANGI JVM(ler)e (server-config) dokunulacagini acikca seciyor, serverConfigMap
-      // dump'daki pidMap ile AYNI sekil/desen: { HOST: [{name, jbossMajor}, ...] }.
-      // threaddump/heapdump BU DALA GIRMEZ (ayri /dump/legacy route'una gider, ayri pidMap
-      // dogrulamasi zaten var), o yuzden serverConfigMap SADECE restart/stop/start icin zorunlu.
-      let cleanServerConfigMap;
-      if (['restart', 'stop', 'start'].includes(operation)) {
-        if (
-          !serverConfigMap ||
-          typeof serverConfigMap !== 'object' ||
-          Array.isArray(serverConfigMap) ||
-          Object.keys(serverConfigMap).length === 0
-        ) {
-          return res
-            .status(400)
-            .json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
-        }
-        const allowedHosts = new Set(requested);
-        cleanServerConfigMap = {};
-        for (const [host, items] of Object.entries(serverConfigMap)) {
-          const h = String(host || '')
-            .trim()
-            .toUpperCase();
-          if (!allowedHosts.has(h)) {
-            return res
-              .status(400)
-              .json({ ok: false, message: `Bu host seçilen sunucular arasında değil: ${host}` });
-          }
-          if (!Array.isArray(items) || items.length === 0) continue;
-          const seen = new Set();
-          const cleanItems = [];
-          for (const it of items) {
-            const name = String(it?.name || '').trim();
-            const jbossMajor = String(it?.jbossMajor || '').trim();
-            // Bu deger playbook'ta jboss-cli komutuna DOGRUDAN shell enjekte edilir (bkz.
-            // jboss_serverconfig_ops.yml) — pid_map'teki PID dogrulamasiyla AYNI gerekce,
-            // sadece guvenli karakter kumesine izin verilir (Ansible tarafindaki
-            // "application" assert'iyle AYNI desen).
-            if (!/^[A-Za-z0-9_.-]+$/.test(name)) {
-              return res
-                .status(400)
-                .json({ ok: false, message: `Geçersiz server-config adı: ${it?.name}` });
-            }
-            if (jbossMajor !== '7' && jbossMajor !== '8') {
-              return res
-                .status(400)
-                .json({ ok: false, message: `Geçersiz JBoss sürümü: ${it?.jbossMajor}` });
-            }
-            const dedupeKey = `${name}:${jbossMajor}`;
-            if (seen.has(dedupeKey)) continue;
-            seen.add(dedupeKey);
-            cleanItems.push({ name, jbossMajor });
-          }
-          if (cleanItems.length) cleanServerConfigMap[h] = cleanItems;
-        }
-        if (Object.keys(cleanServerConfigMap).length === 0) {
-          return res
-            .status(400)
-            .json({ ok: false, message: 'En az bir JVM (host + server-config) seçilmeli.' });
-        }
-      }
-
-      // limit BURADA extra_vars'a KONMAZ — sartname onu ust seviyede istiyor.
-      extraVars = {
-        ...staticVars,
-        [cfg.applicationKey]: String(application).trim(),
-        [cfg.operationKey]: operation,
-        ...(jbossVersion ? { jboss_version: jbossVersion } : {}),
-        ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
-      };
-
-      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
       // /api/opsx/run SADECE restart/rollout icin — threaddump/heapdump artik enabled:true
@@ -1089,70 +1286,9 @@ function initOpsX(app) {
       }
 
     try {
-      const runner = require('../ansible/runner.cjs');
-      // AWX'te "Prompt on launch" kapaliysa gonderilen extra_vars SESSIZCE yutulur ve
-      // playbook bos girdiyle calisir. LogX ile ORTAK kontrol (2026-08-09 olayi).
-      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
-        serverId,
-        templateId,
-        extraVars,
-        { label: keyName },
-      );
-      // launchJobOnServer(serverId, templateId, extraVars, limit) — limit bos string
-      // ise payload'a HIC eklenmez (bkz. runner.cjs: `if (limit) payload.limit = limit`),
-      // dolayisiyla Openshift govdesinde ust-seviye limit alani olusmaz.
-      const result = await runner.launchJobOnServer(
-        serverId,
-        templateId,
-        extraVars,
-        limitValue,
-        req.session?.user,
-      );
-
-      // ansible_job_history'ye kayit: Self Service'in kullandigi AYNI genel-amacli
-      // tablo. Bu, iki sey saglar: (a) job-status endpoint'i IDOR korumasi icin
-      // "bu job kime ait" sorusunu cevaplayabilir, (b) ilerde bir "OpsX Gecmisi"
-      // ekrani gerekirse veri zaten burada. `params` alanina extraVars'i OLDUGU GIBI
-      // yazariz — Self Service'teki gibi maskeleme YOK, cunku OpsX parametreleri
-      // (uygulama adi, sunucu listesi, islem) hassas veri tasimiyor.
-      try {
-        const db = require('../db/index.cjs');
-        await db.query(
-          `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            req.session?.user?.username || 'unknown',
-            serverId,
-            templateId,
-            `OpsX: ${plat}`,
-            result?.jobId,
-            result?.status || 'pending',
-            JSON.stringify({
-              platform: plat,
-              ...(limitValue ? { limit: limitValue } : {}),
-              ...extraVars,
-            }),
-          ],
-        );
-      } catch (e) {
-        console.warn('[OpsX] Gecmis kaydedilemedi:', e.message);
-      }
-
-      try {
-        require('../audit/index.cjs').auditPortal(req, 'opsx_operation', {
-          detail: JSON.stringify({
-            platform: plat,
-            limit: limitValue || undefined,
-            extraVars,
-            jobId: result?.jobId ?? null,
-          }),
-        });
-      } catch {
-        /* denetim kaydi best-effort */
-      }
-
-      console.log(
-        `[OpsX] ${req.session?.user?.username} -> ${plat} ${logSummary} template=${templateId} server=${serverId} job=${result?.jobId ?? '?'}`,
-      );
+      // Preflight + launch + ansible_job_history + denetim opsxIsiBaslat()'ta (2026-11-14): Toplu Restart ayni
+      // fonksiyonu kullanir.
+      const { result } = await opsxIsiBaslat({ req, plat, serverId, templateId, keyName, extraVars, limitValue, logSummary });
       res.json({
         ok: true,
         jobId: result?.jobId ?? null,
@@ -2352,4 +2488,12 @@ module.exports = {
   extractOpsxJvmResult,
   extractOpsxServerConfigResult,
   REGISTRY_KEYS,
+  // Server Hub > Toplu Restart (2026-11-14)
+  legacyIstegiHazirla,
+  opsxIsiBaslat,
+  legacyLimitKontrol,
+  topluRestartBaslat,
+  metadatahubHostMu,
+  adKuraliProdMu,
+  METADATAHUB_TAM_RESTART,
 };

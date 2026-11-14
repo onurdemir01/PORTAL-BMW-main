@@ -361,6 +361,12 @@ function assess(data, opts = {}) {
     // isaretini getirir (index.cjs ARG_FARK_IFADE): 0 fark yok, 1 fark var, 2 olculemedi ('reason=').
     if (r.jvm_arg_fark !== undefined) j.argFark = r.jvm_arg_fark == null ? null : Number(r.jvm_arg_fark);
     if (r.jvm_args_src !== undefined) j.jvmArgsSrc = nz(r.jvm_args_src);
+    // SUREC BASLANGICI (2026-11-14, Toplu Restart): restart kaniti icin restart ONCESI ve SONRASI tarama degeri
+    // karsilastirilir (Date.now ile DEGIL). Bos / sayi degilse null.
+    if (r.process_start_epoch !== undefined) {
+      const ps = Number(r.process_start_epoch);
+      j.processStartEpoch = r.process_start_epoch == null || r.process_start_epoch === '' || !Number.isFinite(ps) ? null : ps;
+    }
     // AGIR KOLONLAR yalniz tek sunucu ayrintisinda gelir; geldiyse beyaz liste maskesi.
     if (r.jvm_args !== undefined) j.jvmArgs = maskJvmArgs(nz(r.jvm_args));
     if (r.configured_jvm_args !== undefined)

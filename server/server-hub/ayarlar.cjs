@@ -40,7 +40,7 @@ function yoksayNormal(liste) {
 const YOKSAY_VARSAYILAN_METIN = yoksayNormal(KOK_YOKSAY_VARSAYILAN).join(',');
 
 /**
- * Sunucu sayisi limitleri. ust: Admin'in verebilecegi en buyuk deger (gerekce aciklamada).
+ * Sunucu (toplu_autostart / toplu_restart: JVM, birim alani) sayisi limitleri. ust: Admin'in verebilecegi en buyuk deger.
  * tara / reboot AWX isine target_hosts olarak gider; hazirlik is BASLATMAZ.
  */
 const LIMITLER = {
@@ -62,6 +62,24 @@ const LIMITLER = {
     varsayilan: 500,
     ust: 5000,
     aciklama: 'İş başlatmaz; son taramayı okur.',
+  },
+  // Toplu Auto-Start (2026-11-14, kullanici: "auto-start'lari toplu duzeltebilmek icin bir sayfa ve tek bir
+  // buton"). Birim JVM: host basina tek AWX isi acilir, hostlar SIRAYLA (toplu-autostart.cjs).
+  toplu_autostart: {
+    ad: 'Toplu Auto-Start',
+    varsayilan: 50,
+    ust: 500,
+    birim: 'JVM',
+    aciklama: 'Bir toplu auto-start işinde en fazla JVM; önce salt okunur plan, onaydan sonra host başına tek AWX işi, sırayla.',
+  },
+  // Toplu Restart (2026-11-14, JVM_PARAM_FARKI): birim JVM; JVM'ler TEK TEK restart edilir, her biri sonrasi
+  // sunucu yeniden taranir (toplu-restart.cjs). 50 JVM birkac saat surer; ust sinir bu yuzden dusuk.
+  toplu_restart: {
+    ad: 'Toplu Restart',
+    varsayilan: 50,
+    ust: 200,
+    birim: 'JVM',
+    aciklama: 'Bir toplu restart işinde en fazla JVM; önce salt okunur önizleme taraması, onaydan sonra JVM’ler tek tek (her restart sonrası sunucu yeniden taranır).',
   },
 };
 

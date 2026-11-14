@@ -94,6 +94,7 @@ function limitListesi(ayar) {
       aciklama: L.aciklama,
       varsayilan: L.varsayilan,
       ust: L.ust,
+      birim: L.birim || 'sunucu',
       gecerli: ayar.limitler[ad],
       degistiren: k ? k.updatedBy : null,
       zaman: k ? k.updatedAt : null,

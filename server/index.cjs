@@ -247,6 +247,20 @@ async function main() {
       optional: true,
     },
     {
+      // Server Hub > Toplu Auto-Start (2026-11-14): plan / uygulama yurutucusu (host basina tek is, sirayla).
+      // Uclar serverHub router'inda; launch oradan verilir. Kirasi dusmus is DEVAM ETTIRILMEZ (YARIM_KALDI).
+      name: 'topluAutoStart',
+      init: () => require('./server-hub/toplu-autostart.cjs').startPoller(),
+      optional: true,
+    },
+    {
+      // Server Hub > Toplu Restart (2026-11-14): onizleme / tek tek restart / dogrulama taramasi yurutucusu.
+      // Uclar serverHub router'inda. Kirasi dusmus is DEVAM ETTIRILMEZ (YARIM_KALDI).
+      name: 'topluRestart',
+      init: () => require('./server-hub/toplu-restart.cjs').startPoller(),
+      optional: true,
+    },
+    {
       name: 'cryptoHub',
       init: () => require('./crypto-hub/index.cjs').initCryptoHub(app),
       optional: true,

@@ -1185,6 +1185,72 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub TOPLU IS (2026-11-14, server/server-hub/toplu-autostart.cjs + toplu-restart.cjs). tur: AUTOSTART | RESTART.
+    // durum: PLANLANIYOR | PLAN_HAZIR | CALISIYOR | IPTAL_ISTENDI | BITTI | BITTI_HATALI | IPTAL | YARIM_KALDI |
+    // PLAN_HATA | PLAN_ESKIDI. Tur basina TEK aktif is: UX_shti_aktif (filtreli tekil). kira_id: yurutucu surecin
+    // kimligi; kirasi dusmus aktif is DEVAM ETTIRILMEZ (YARIM_KALDI).
+    name: 'server_hub_toplu_isler',
+    sql: `
+      CREATE TABLE server_hub_toplu_isler (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        tur            NVARCHAR(16)   NOT NULL,
+        durum          NVARCHAR(20)   NOT NULL,
+        olusturan      NVARCHAR(128)  NOT NULL,
+        onaylayan      NVARCHAR(128)  NULL,
+        iptal_eden     NVARCHAR(128)  NULL,
+        ust_sinir      INT NOT NULL DEFAULT 0,
+        aday           INT NOT NULL DEFAULT 0,
+        plan_gecti     INT NOT NULL DEFAULT 0,
+        dusen          INT NOT NULL DEFAULT 0,
+        ok_sayisi      INT NOT NULL DEFAULT 0,
+        skip_sayisi    INT NOT NULL DEFAULT 0,
+        fail_sayisi    INT NOT NULL DEFAULT 0,
+        kira_id        NVARCHAR(64)   NULL,
+        kira_bitis     DATETIME2 NULL,
+        hata           NVARCHAR(1000) NULL,
+        created_at     DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        plan_bitis_at  DATETIME2 NULL,
+        onay_at        DATETIME2 NULL,
+        bitis_at       DATETIME2 NULL
+      )`,
+  },
+  {
+    // Toplu isin ogeleri (JVM basina satir). durum: ADAY | PLANLANIYOR | PLAN_GECTI | DUSTU | BEKLIYOR |
+    // BASLATILIYOR | CALISIYOR | OK | SKIP | FAIL | IPTAL | YARIM_KALDI. Ayni hostun ogeleri TEK AWX isinde
+    // (plan_job_id / awx_job_id ortak). awx_job_id launch'tan SONRA yazilir: numarasi olmayan BASLATILIYOR oge
+    // yeniden baslatmada YARIM_KALDI olur (AWX'e gitmis olabilir). RESTART: plan_job_id = onizleme taramasi,
+    // awx_job_id = OpsX restart isi; ek JSON = grup, uygulama, MASKELI fark, tarama oncesi loaded_at / surec
+    // baslangici, dogrulama taramasi; ek durumlar TARANIYOR | KAPANDI | KAPANMADI | ATLANDI.
+    name: 'server_hub_toplu_ogeler',
+    sql: `
+      CREATE TABLE server_hub_toplu_ogeler (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        is_id               INT NOT NULL,
+        sira                INT NOT NULL,
+        host                NVARCHAR(128)  NOT NULL,
+        env                 NVARCHAR(32)   NULL,
+        gen                 INT NOT NULL,
+        jvm                 NVARCHAR(128)  NOT NULL,
+        eylem               NVARCHAR(40)   NOT NULL,
+        hedef               NVARCHAR(16)   NULL,
+        tarama_degeri       NVARCHAR(16)   NULL,
+        calisiyor           BIT NULL,
+        tarama_scan_date    NVARCHAR(32)   NULL,
+        durum               NVARCHAR(20)   NOT NULL,
+        neden               NVARCHAR(1000) NULL,
+        plan_awx_server_id  INT NULL,
+        plan_job_id         INT NULL,
+        awx_server_id       INT NULL,
+        awx_job_id          INT NULL,
+        sonuc_satiri        NVARCHAR(1000) NULL,
+        dogrulandi          BIT NOT NULL DEFAULT 0,
+        ek                  NVARCHAR(MAX)  NULL,
+        baslama_at          DATETIME2 NULL,
+        bitis_at            DATETIME2 NULL,
+        CONSTRAINT UQ_shto_is_jvm UNIQUE (is_id, host, gen, jvm)
+      )`,
+  },
+  {
     // Kosu basina host sonucu. veri_var: tarayici paketi okundu (KOK_YOK da bir cevaptir). Agac
     // satirlari DB'ye yazilmaz: /sw'deki ham dosyadan okunur (saklama suresi boyunca).
     name: 'ear_envanter_hostlari',
@@ -2690,6 +2756,27 @@ const ELEMENT_SEED = [
     route: '/server-hub',
     sort_order: 1,
     roles: ['Admin'],
+  },
+  {
+    // Server Hub > Toplu Auto-Start (2026-11-14): sekme gorunurluk anahtari, varsayilan KAPALI. Admin her
+    // zaman gorur (visibility.cjs); uclar zaten yalniz Admin (server-hub router'i), bu yuzden ayri bir Admin
+    // erisim paneli EKLENMEDI: anahtar baskasina acilsa bile veri donmez.
+    element_key: 'tab:serverhub:topluautostart',
+    element_type: 'tab',
+    parent_key: 'ServerHub',
+    label: 'Toplu Auto-Start',
+    sort_order: 30,
+    default_visible: 0,
+  },
+  {
+    // Server Hub > Toplu Restart (2026-11-14, JVM_PARAM_FARKI): Toplu Auto-Start ile ayni desen - sekme anahtari
+    // varsayilan KAPALI, Admin her zaman gorur, uclar yalniz Admin (server-hub router'i).
+    element_key: 'tab:serverhub:toplurestart',
+    element_type: 'tab',
+    parent_key: 'ServerHub',
+    label: 'Toplu Restart',
+    sort_order: 31,
+    default_visible: 0,
   },
   {
     // Crypto Hub (2026-09-25): Metaco + Wyden icin ortam secimi -> durum ve surumler
@@ -5866,6 +5953,11 @@ async function setupTables() {
     // Application Hub: son okuma uygulamaya gore, kaydin tekrari is numarasina gore aranir.
     { name: 'IX_ahoc_app', table: 'app_hub_ocp_canli', cols: 'uygulama, alinma DESC' },
     { name: 'IX_ahoc_job', table: 'app_hub_ocp_canli', cols: 'awx_server_id, awx_job_id' },
+    // Server Hub toplu is (2026-11-14): yurutucu durumla, ekran / kilit is + host ile, izleme is numarasiyla okur.
+    { name: 'IX_shti_durum', table: 'server_hub_toplu_isler', cols: 'durum, id' },
+    { name: 'IX_shto_is', table: 'server_hub_toplu_ogeler', cols: 'is_id, host, sira' },
+    { name: 'IX_shto_jvm', table: 'server_hub_toplu_ogeler', cols: 'host, gen, jvm, durum' },
+    { name: 'IX_shto_job', table: 'server_hub_toplu_ogeler', cols: 'awx_server_id, awx_job_id' },
   ];
   for (const { name, table, cols } of indexes) {
     try {
@@ -5924,6 +6016,27 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_nlko_calisan):', err.message);
+  }
+
+  // -- Server Hub toplu is: tur basina TEK aktif is (FILTRELI TEKIL, 2026-11-14) --
+  // Ucun "aktif is var mi" okumasina ek savunma: iki admin ayni anda olusturursa ikincisi UNIQUE ihlali alir ve
+  // 409 doner (server/server-hub/toplu-autostart.cjs).
+  try {
+    const exists = await pool
+      .request()
+      .query(
+        `SELECT 1 FROM sys.indexes WHERE name = 'UX_shti_aktif' AND object_id = OBJECT_ID('server_hub_toplu_isler')`,
+      );
+    if (!exists.recordset.length) {
+      await pool
+        .request()
+        .query(
+          `CREATE UNIQUE INDEX UX_shti_aktif ON server_hub_toplu_isler (tur) WHERE durum IN ('PLANLANIYOR', 'PLAN_HAZIR', 'CALISIYOR', 'IPTAL_ISTENDI')`,
+        );
+      console.log('[DB] Index olusturuldu: UX_shti_aktif (filtreli tekil)');
+    }
+  } catch (err) {
+    console.warn('[DB] Index olusturulamadi (UX_shti_aktif):', err.message);
   }
 
   // -- Yuk Testi kayitli test: ad silinmemislerde tekil (FILTRELI TEKIL, 2026-11-04) --

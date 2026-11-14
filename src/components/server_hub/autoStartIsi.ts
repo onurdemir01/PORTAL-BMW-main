@@ -86,6 +86,24 @@ export function autoStartBittiDinle(f: (e: AutoStartBitisi) => void): () => void
   };
 }
 
+/**
+ * Başka bir yoldan DOĞRULANAN sonucu (Toplu Auto-Start, 2026-11-14: sunucu tarafında yürüyen toplu işin OK/SKIP
+ * öğesi) bu modülün yoluna yayar: satır sonucu yazılır, bitiş dinleyicileri (açık sunucu paneli, Bulgular)
+ * tek JVM işindeki gibi hemen güncellenir. Süren tek JVM işi varsa ona dokunmaz.
+ */
+export function autoStartSonucYay(host: string, gen: number, jvm: string, sonuc: AutoStartSonucu): void {
+  const k = autoStartAnahtari(host, gen, jvm);
+  sonucYaz(k, sonuc);
+  const e: AutoStartBitisi = { anahtar: k, host, gen, jvm, sonuc };
+  bitisDinleyicileri.forEach((f) => {
+    try {
+      f(e);
+    } catch {
+      /* bir dinleyicinin hatası ötekileri durdurmasın */
+    }
+  });
+}
+
 /** Bu JVM için süren iş var mı (çift tık / iki ekrandan aynı anda koruması). */
 export const autoStartIsVar = (k: string): boolean => isler.has(k);
 

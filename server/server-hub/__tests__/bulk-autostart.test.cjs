@@ -1,20 +1,18 @@
-// server/server-hub/__tests__/bulk-autostart.test.cjs — TOPLU DUZELTME YOK (2026-10-01).
+// server/server-hub/__tests__/bulk-autostart.test.cjs - ESKI toplu duzeltme YOK, KONTROLLU toplu VAR.
 //
-// Kullanici: "jboss jvm auto start da toplu ac toplu kapat sakin getirme o cok riskli.
-// Ben oraya girdigim zaman satir satir hangi jvm'lerde auto start kapaliysa onun saginda
-// bir buton olsun ben tikladigimda acilsin veya ben tikladigimda kapansin. Toplu islem
-// sakin olmasin cok tehlikeli."
+// 2026-10-01 kullanici: "jboss jvm auto start da toplu ac toplu kapat sakin getirme o cok riskli ...
+// Toplu islem sakin olmasin cok tehlikeli." 2026-09-28'deki iki toplu dugme (eski BA1..BA6: /bulk-plan,
+// /bulk-fix) yanlis bir taramanin sonucunu tek tikla yuzlerce sunucuya yayiyordu: /fix korumasini N kez
+// cagirarak deliyordu.
 //
-// 2026-09-28'de iki toplu dugme (BA1..BA6) eklenmisti; kullanici karari tersine cevirdi.
-// Bu dosya artik ozelligin GERI GELMEDIGINI kilitler.
+// 2026-11-14 kullanici KARARI DEGISTI: "auto-start'lari toplu duzeltebilmek icin bir sayfa ve tek bir buton".
+// Secilen guvenlik modeli (toplu-autostart.cjs): yalniz TAZE taramadaki uyumsuz JVM'ler, /jvm-autostart ile
+// AYNI kapilar, ONCE salt okunur PLAN (canli deger CLI ile), onay, ust sinir (limit:toplu_autostart), host
+// basina TEK is (target_host yine tek sunucu), hostlar SIRAYLA, yeniden baslatmada sessiz yeniden kosma YOK.
 //
-// NEDEN TEHLIKELI (gerekcesi kayitta kalsin): toplu islem tek tiklamayla yuzlerce
-// sunucuda auto-start degistirir. Tarama yanlissa - ki Server Hub'in kendi gecmisinde
-// "ss pid'siz", "yetki yuzunden olculemedi" gibi durumlar var - YANLIS SONUC DA yuzlerce
-// sunucuya yayilir. Satir bazinda onay, hatanin yaricapini bir sunucuya indirir.
-//
-// TEK TEK DUZELTME ZATEN VAR: `POST /fix` tek host + tek JVM alir ve duzeltme playbook'u
-// virgullu hedef listesini BILEREK reddeder. Toplu uc o korumayi N kez cagirarak deliyordu.
+// Bu dosya: (BA1-BA3) ESKI tasarimin izleri geri gelmedi; (BA4) tek tek yol duruyor; (BA5) iki karar da kodda
+// yaziyor; (BA6-BA9) kontrollu toplunun guvenlik modeli kaynakta duruyor (davranis: toplu-autostart.test.cjs);
+// (SB*) satir bazinda tek JVM ucu.
 'use strict';
 
 const { test } = require('node:test');
@@ -31,6 +29,15 @@ const UI = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'ServerHubPage.tsx'),
   'utf8',
 );
+const TOPLU = fs.readFileSync(path.join(__dirname, '..', 'toplu-autostart.cjs'), 'utf8');
+const KAPI = fs.readFileSync(path.join(__dirname, '..', 'autostart-dogrulama.cjs'), 'utf8');
+/** Bir fonksiyonun govdesi: `function ad(` ile bir sonraki ust duzey kapanis satiri arasi. */
+function fonksiyon(src, ad) {
+  const i = src.indexOf(`function ${ad}(`);
+  assert.ok(i >= 0, `${ad} yok`);
+  const son = src.indexOf('\n}\n', i);
+  return src.slice(i, son > i ? son : undefined);
+}
 
 test('BA1: toplu duzeltme UCLARI YOK', () => {
   for (const yol of ['/bulk-plan', '/bulk-fix']) {
@@ -62,12 +69,51 @@ test('BA4: TEK TEK duzeltme ucu DURUYOR (ozellik kaldirilmadi, daraltildi)', () 
   }
 });
 
-test('BA5: tek hedef korumasi anlatiliyor (geri getirmek isteyen sebebi gorsun)', () => {
+test('BA5: iki karar da kodda anlatiliyor (kaldirma gerekcesi + kontrollu model)', () => {
+  assert.match(SRC, /TOPLU DUZELTME KALDIRILDI/, 'kaldirma gerekcesi kodda yazmiyor');
+  assert.match(SRC, /KONTROLLU TOPLU AUTO-START/, '2026-11-14 kontrollu toplu karari kodda yazmiyor');
+  assert.match(TOPLU, /YENIDEN BASLATMADA SESSIZ YENIDEN KOSMA YOK/, 'toplu modul basligi yeniden baslatma kuralini anlatmiyor');
+});
+
+test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uygulama yalniz onaydan sonra', () => {
+  assert.match(TOPLU, /_d\.ayarlar\.limit\('toplu_autostart'\)/, 'ust sinir Admin ayarindan okunmuyor');
+  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /plan_only: true/, 'plan isi plan_only: true acmiyor');
+  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /plan_only: false/, 'uygulama isi plan_only: false degil');
+  // uygulama ogesi yalniz CALISIYOR (onaylanmis) isin BEKLIYOR ogesinden sahiplenilir
+  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /durum = 'BEKLIYOR'[\s\S]*durum = 'CALISIYOR' AND kira_id/, 'uygulama onaysiz ise acilabiliyor');
+  assert.match(fonksiyon(TOPLU, 'onayla'), /durum !== 'PLAN_HAZIR'/, 'onay plan hazir olmadan veriliyor');
+  assert.match(fonksiyon(TOPLU, 'onayla'), /if \(planEskiMi\(is\)\) \{\s*await planEskit\(req, id\);\s*throw/, 'eski plan onaylanabiliyor');
+  assert.match(TOPLU, /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/);
+});
+
+test('BA7: kontrollu toplu - host basina TEK is, virgullu hedef YOK, hostlar SIRAYLA', () => {
+  assert.ok(!/join\(','\)/.test(TOPLU), 'toplu modul virgullu hedef listesi uretiyor');
+  for (const ad of ['planIlerlet', 'uygulaIlerlet']) assert.match(fonksiyon(TOPLU, ad), /target_host: host,/, `${ad} tek hedef gondermiyor`);
   assert.match(
-    SRC,
-    /toplu islem sakin olmasin|TOPLU DUZELTME KALDIRILDI/i,
-    'kaldirma gerekcesi kodda yazmiyor - bir sonraki gelistirici ayni seyi yeniden ekler',
+    fonksiyon(TOPLU, 'uygulaIlerlet'),
+    /NOT EXISTS \(SELECT 1 FROM server_hub_toplu_ogeler x[\s\S]*x\.host <> \$2 AND x\.durum IN \('BASLATILIYOR', 'CALISIYOR'\)/,
+    'baska host calisirken yeni host baslatilabiliyor (sira yok)',
   );
+});
+
+test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
+  const t = fonksiyon(TOPLU, 'adaylariTuret');
+  assert.match(t, /sunucuYazmaKapisi\(a, h, h\.host\)/, 'toplu aday sunucu kapisindan gecmiyor');
+  assert.match(t, /jvmAutoStartKapisi\(j,/, 'toplu aday JVM kapisindan gecmiyor');
+  const i = SRC.indexOf("router.post('/jvm-autostart'");
+  const blok = rotaBlogu(i);
+  assert.match(blok, /sunucuYazmaKapisi\(a, h, host\)/, '/jvm-autostart ortak sunucu kapisini kullanmiyor');
+  assert.match(blok, /jvmAutoStartKapisi\(j, \{ host, jvm, gen, enable \}\)/, '/jvm-autostart ortak JVM kapisini kullanmiyor');
+  // olustur: istemciden gelen secim TAZE degerlendirmeden yeniden turetilir
+  assert.match(fonksiyon(TOPLU, 'olustur'), /_d\.getAssessment\(true\)[\s\S]*adaylariTuret\(a\)/, 'secim taze taramadan turetilmiyor');
+});
+
+test('BA9: kontrollu toplu - kirasi dusen is DEVAM ETTIRILMEZ (YARIM_KALDI)', () => {
+  const t = fonksiyon(TOPLU, 'tick');
+  assert.match(t, /is\.kira_id !== SUREC_ID[\s\S]*yarimBirak\(is\)[\s\S]*continue;/, 'baska surecin isi ilerletiliyor');
+  const y = fonksiyon(TOPLU, 'yarimBirak');
+  assert.ok(!/_d\.launch|launch\(/.test(y), 'yarim birakma is baslatiyor');
+  assert.match(y, /awx_job_id IS NULL/, 'is numarasiz BASLATILIYOR oge ayrica isaretlenmiyor');
 });
 
 // ── SATIR BAZINDA AUTO-START (SB1..SB5, 2026-10-01) ─────────────────────────────────
@@ -114,11 +160,13 @@ test('SB3 ACIK ONAY sart (kazara gelen istek sunucuyu degistirmemeli)', () => {
 
 test('SB4 ZATEN ISTENEN DURUMDA is ACILMAZ', () => {
   // Gereksiz is acmak, degisiklik yonetimi acisindan gurultu; ustelik kullanici
-  // "olmadi galiba" deyip tekrar tiklar.
+  // "olmadi galiba" deyip tekrar tiklar. Kapi 2026-11-14'ten beri Toplu Auto-Start ile ORTAK fonksiyonda.
   const i = SRC.indexOf("router.post('/jvm-autostart'");
   const blok = rotaBlogu(i);
-  assert.match(blok, /if \(j\.autoStart === hedef\)/, 'mevcut durum kontrolu yok');
-  assert.match(blok, /zaten auto-start/, 'kullaniciya sebep soylenmiyor');
+  assert.match(blok, /jvmAutoStartKapisi\(j, /, 'uc JVM kapisini cagirmiyor');
+  const k = fonksiyon(KAPI, 'jvmAutoStartKapisi');
+  assert.match(k, /if \(j\.autoStart === hedef\)/, 'mevcut durum kontrolu yok');
+  assert.match(k, /zaten auto-start/, 'kullaniciya sebep soylenmiyor');
 });
 
 test('SB5 ekranda SATIR BAZINDA dugme var ve onay istiyor', () => {

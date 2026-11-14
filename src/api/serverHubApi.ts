@@ -417,6 +417,185 @@ export interface ShJobStatus {
   message?: string;
 }
 
+// ── Toplu Auto-Start (2026-11-14) ──────────────────────────────────────────────────
+export type ShTopluEylem = 'ac' | 'kapat';
+export interface ShTopluAday {
+  host: string;
+  env: string | null;
+  envGroup: string | null;
+  gen: number;
+  jvm: string;
+  eylem: ShTopluEylem;
+  action: string;
+  running: boolean;
+  autoStart: string;
+  scanDate: string | null;
+  /** yalniz dislananlarda */
+  neden?: string;
+}
+export interface ShTopluSecim {
+  host: string;
+  gen: number;
+  jvm: string;
+  eylem: ShTopluEylem;
+}
+export type ShTopluIsDurum =
+  | 'PLANLANIYOR'
+  | 'PLAN_HAZIR'
+  | 'CALISIYOR'
+  | 'IPTAL_ISTENDI'
+  | 'BITTI'
+  | 'BITTI_HATALI'
+  | 'IPTAL'
+  | 'YARIM_KALDI'
+  | 'PLAN_HATA'
+  | 'PLAN_ESKIDI';
+export interface ShTopluIs {
+  id: number;
+  durum: ShTopluIsDurum;
+  olusturan: string;
+  onaylayan: string | null;
+  iptalEden: string | null;
+  ustSinir: number;
+  aday: number;
+  planGecti: number;
+  dusen: number;
+  ok: number;
+  skip: number;
+  fail: number;
+  hata: string | null;
+  createdAt: string | null;
+  planBitisAt: string | null;
+  onayAt: string | null;
+  bitisAt: string | null;
+}
+export type ShTopluOgeDurum =
+  | 'ADAY'
+  | 'PLANLANIYOR'
+  | 'PLAN_GECTI'
+  | 'DUSTU'
+  | 'BEKLIYOR'
+  | 'BASLATILIYOR'
+  | 'CALISIYOR'
+  | 'OK'
+  | 'SKIP'
+  | 'FAIL'
+  | 'IPTAL'
+  | 'YARIM_KALDI';
+export interface ShTopluOge {
+  id: number;
+  sira: number;
+  host: string;
+  env: string | null;
+  gen: number;
+  jvm: string;
+  eylem: string;
+  hedef: 'true' | 'false' | null;
+  taramaDegeri: string | null;
+  calisiyor: boolean;
+  taramaScanDate: string | null;
+  durum: ShTopluOgeDurum;
+  neden: string | null;
+  planJobId: number | null;
+  awxServerId: number | null;
+  awxJobId: number | null;
+  sonucSatiri: string | null;
+  dogrulandi: boolean;
+  baslamaAt: string | null;
+  bitisAt: string | null;
+}
+export interface ShTopluAdaylar {
+  ok: boolean;
+  adaylar: ShTopluAday[];
+  dislananlar: ShTopluAday[];
+  limit: number;
+  aktif: ShTopluIs | null;
+  latestScan?: string | null;
+  schemaUnknown?: boolean;
+  message?: string;
+}
+
+// ── Toplu Restart (2026-11-14, JVM_PARAM_FARKI) ────────────────────────────────────
+export interface ShRestartAday {
+  host: string;
+  env: string | null;
+  envGroup: string | null;
+  gen: number;
+  jvm: string;
+  grp: string;
+  scanDate: string | null;
+  /** maskeli jvm_arg_diff ('<anahtar> running=.. configured=..; ...') */
+  fark: string;
+  anahtarlar: string[];
+  /** yalniz dislananlarda */
+  neden?: string;
+}
+export type ShRestartOgeDurum =
+  | 'ADAY'
+  | 'PLANLANIYOR'
+  | 'PLAN_GECTI'
+  | 'DUSTU'
+  | 'BEKLIYOR'
+  | 'BASLATILIYOR'
+  | 'CALISIYOR'
+  | 'TARANIYOR'
+  | 'KAPANDI'
+  | 'KAPANMADI'
+  | 'FAIL'
+  | 'ATLANDI'
+  | 'IPTAL'
+  | 'YARIM_KALDI';
+export interface ShRestartIs {
+  id: number;
+  durum: ShTopluIsDurum;
+  olusturan: string;
+  onaylayan: string | null;
+  iptalEden: string | null;
+  ustSinir: number;
+  aday: number;
+  planGecti: number;
+  dusen: number;
+  kapandi: number;
+  kapanmadi: number;
+  fail: number;
+  hata: string | null;
+  createdAt: string | null;
+  planBitisAt: string | null;
+  onayAt: string | null;
+  bitisAt: string | null;
+}
+export interface ShRestartOge {
+  id: number;
+  sira: number;
+  host: string;
+  env: string | null;
+  gen: number;
+  jvm: string;
+  grp: string;
+  uygulama: string | null;
+  fark: string;
+  farkSonra: string | null;
+  durum: ShRestartOgeDurum;
+  neden: string | null;
+  planJobId: number | null;
+  awxServerId: number | null;
+  restartJobId: number | null;
+  taramaJobId: number | null;
+  startState: string | null;
+  baslamaAt: string | null;
+  bitisAt: string | null;
+}
+export interface ShRestartAdaylar {
+  ok: boolean;
+  adaylar: ShRestartAday[];
+  dislananlar: ShRestartAday[];
+  limit: number;
+  aktif: ShRestartIs | null;
+  latestScan?: string | null;
+  schemaUnknown?: boolean;
+  message?: string;
+}
+
 // ── Kurallar & Limitler (2026-10-20) ─────────────────────────────────────────────────
 /** Bir tarama maddesinin bir ciktisi. kod null = "sorun yok" (bulgu uretilmez, degistirilemez). */
 export interface ShKuralCikti {
@@ -440,13 +619,15 @@ export interface ShKuralMadde {
   neTaranir: string;
   ciktilar: ShKuralCikti[];
 }
-export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik';
+export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik' | 'toplu_autostart' | 'toplu_restart';
 export interface ShLimit {
   ad: ShLimitAd;
   etiket: string;
   aciklama: string;
   varsayilan: number;
   ust: number;
+  /** Limitin birimi (2026-11-14): 'sunucu' ya da 'JVM' (Toplu Auto-Start). Eski sunucu yanitinda yok. */
+  birim?: string;
   gecerli: number;
   degistiren: string | null;
   zaman: string | null;
@@ -966,7 +1147,6 @@ export const serverHubApi = {
         reload: !!p.reload,
       }),
     ).then(safeJson),
-  // TOPLU AUTO-START: once plan (hicbir is baslatmaz), sonra onayli uygulama.
   // SATIR BAZINDA JVM auto-start (2026-10-01). Toplu uc kaldirildi; bu uc TEK (host, jvm)
   // alir ve sunucuda hedef son taramadan DOGRULANIR.
   jvmAutoStart: (p: {
@@ -986,6 +1166,42 @@ export const serverHubApi = {
   // siniflar.
   rebootReadiness: (hosts: string): Promise<ShReadiness> =>
     fetch(`${BASE}/reboot-readiness`, json({ hosts })).then(safeJson),
+  // TOPLU AUTO-START (2026-11-14): aday listesi (taze tarama), toplu is olustur (yurutucu once salt okunur PLAN
+  // isi acar), onay, iptal, durum. Uygulama sunucu tarafinda: host basina tek is, sirayla.
+  topluAutoStartAdaylar: (fresh = false): Promise<ShTopluAdaylar> =>
+    fetch(`${BASE}/toplu-autostart/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  topluAutoStartListe: (): Promise<{ ok: boolean; aktif: ShTopluIs | null; son: ShTopluIs[]; message?: string }> =>
+    fetch(`${BASE}/toplu-autostart`).then(safeJson),
+  topluAutoStartDurum: (
+    id: number,
+  ): Promise<{ ok: boolean; is?: ShTopluIs; ogeler?: ShTopluOge[]; message?: string }> =>
+    fetch(`${BASE}/toplu-autostart/${id}`).then(safeJson),
+  topluAutoStartOlustur: (
+    secim: ShTopluSecim[],
+  ): Promise<{ ok: boolean; id?: number; adet?: number; hostSayisi?: number; message?: string; code?: string }> =>
+    fetch(`${BASE}/toplu-autostart`, json({ secim })).then(safeJson),
+  topluAutoStartOnayla: (
+    id: number,
+  ): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
+    fetch(`${BASE}/toplu-autostart/${id}/onayla`, json({ confirmed: true })).then(safeJson),
+  topluAutoStartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
+    fetch(`${BASE}/toplu-autostart/${id}/iptal`, json({})).then(safeJson),
+  // TOPLU RESTART (2026-11-14): fark bulunan calisan JVM'ler; olustur -> salt okunur onizleme taramasi -> onay ->
+  // JVM'ler tek tek (OpsX legacy restart) + her biri sonrasi sunucu taramasi. Yurutme sunucu tarafinda.
+  topluRestartAdaylar: (fresh = false): Promise<ShRestartAdaylar> =>
+    fetch(`${BASE}/toplu-restart/adaylar${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  topluRestartListe: (): Promise<{ ok: boolean; aktif: ShRestartIs | null; son: ShRestartIs[]; message?: string }> =>
+    fetch(`${BASE}/toplu-restart`).then(safeJson),
+  topluRestartDurum: (id: number): Promise<{ ok: boolean; is?: ShRestartIs; ogeler?: ShRestartOge[]; message?: string }> =>
+    fetch(`${BASE}/toplu-restart/${id}`).then(safeJson),
+  topluRestartOlustur: (
+    secim: { host: string; gen: number; jvm: string }[],
+  ): Promise<{ ok: boolean; id?: number; adet?: number; hostSayisi?: number; message?: string; code?: string }> =>
+    fetch(`${BASE}/toplu-restart`, json({ secim })).then(safeJson),
+  topluRestartOnayla: (id: number): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
+    fetch(`${BASE}/toplu-restart/${id}/onayla`, json({ confirmed: true })).then(safeJson),
+  topluRestartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
+    fetch(`${BASE}/toplu-restart/${id}/iptal`, json({})).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
   // KURALLAR & LIMITLER (2026-10-20): tarama maddeleri + seviyeler (Admin degistirir), limitler.

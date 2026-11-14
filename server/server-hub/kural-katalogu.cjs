@@ -232,7 +232,8 @@ const MADDELER = [
           neden: 'Taramanın jvm_arg_diff alanı en az bir parametrede “running” ile “configured” değerini farklı buldu.',
           eksik: 'Değişiklik bilerek yapılmış ve restart planlanmış olabilir; parametre başlatma betiğinden (start.sh) ekleniyor olabilir.',
           kontrol: [
-            CLI7('/host=master/server-config=<JVM>/jvm=<JVM>:read-resource'),
+            CLI7(':read-attribute(name=local-host-name)') + '   # host controller adi (<HC>)',
+            CLI7('/host=<HC>/server-config=<JVM>/jvm=<JVM>:read-resource'),
             'ps -ef | grep -- "-D\\[Server:<JVM>\\]" | tr " " "\\n" | grep -- "^-"   # çalışan parametreler',
             'Server Hub > sunucu > JVM satırı > parametre farkı (maskeli ayrıntı)',
           ],

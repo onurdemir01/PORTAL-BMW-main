@@ -10,7 +10,7 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtNumber } from '@/utils/datetime';
 
 /** Sunucunun kod varsayılanları (server/server-hub/ayarlar.cjs LIMITLER ile aynı). */
-export const VARSAYILAN_LIMIT: Record<ShLimitAd, number> = { tara: 50, reboot: 50, hazirlik: 500 };
+export const VARSAYILAN_LIMIT: Record<ShLimitAd, number> = { tara: 50, reboot: 500, hazirlik: 500, toplu_autostart: 50, toplu_restart: 50 };
 
 export interface SunucuLimiti {
   /** null = henüz okunmadı (engelleme yapılmaz; sunucu yine uygular) */
