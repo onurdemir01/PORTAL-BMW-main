@@ -1,7 +1,9 @@
 // server/server-hub/retire-uclar.cjs - Server Hub > Retirement etiketleri uclari (2026-11-06).
 //
 // GET  /retire-etiketleri            etiketler (KESIN / SUPHELI) OZET: zincir nedenleri, sunucular, kopya
-//                                    sayisi, manuel kontrol durumu, kural seviyeleri; ?fresh=1 tazeler
+//                                    sayisi, manuel kontrol durumu, kural seviyeleri; ?fresh=1 tazeler;
+//                                    ?host=X yalniz o sunucuyu kopyalari arasinda tasiyan etiketler
+//                                    (sunucu Ayrinti penceresi; tum filo MB'larca inmez)
 // GET  /retire-etiketleri/ayrinti    ?anahtar= : tek etiket, eslenik kopyalarin TAMAMI (zincir)
 // PUT  /retire-kontrol               { anahtar, sonuc: DOGRULANDI | YANLIS_ALARM | GERI_AL, aciklama, imza }
 // GET  /retire-kontrol/gecmis        ?anahtar=  (bos: tum gecmis)
@@ -31,17 +33,35 @@ function kurallarListesi(ayar) {
   });
 }
 
-/** Degerlendirme + Admin kural seviyeleri + manuel kontroller -> etiketler (Uygulama 360 da kullanir). */
-function etiketHesabiKur({ getAssessment, ayarlar, kontrol }) {
+/** Manuel kontrollerin icerik imzasi (Map -> metin); null = okunamadi. */
+function kontrolImzasi(kontroller) {
+  if (kontroller === null || kontroller === undefined) return 'null';
+  if (!(kontroller instanceof Map)) return JSON.stringify(kontroller);
+  return JSON.stringify([...kontroller.entries()].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)));
+}
+
+/**
+ * Degerlendirme + Admin kural seviyeleri + manuel kontroller -> etiketler (Uygulama 360 da kullanir).
+ * HIZ (2026-11-14, B1): etiketle() tum filoyu dolasir; AYNI degerlendirme nesnesi, AYNI kural
+ * seviyeleri ve AYNI kontrol icerigiyle sonuc degismez (saf fonksiyon) -> son sonuc yeniden kullanilir.
+ * Girdilerden biri degisince (yeni tarama / seviye / kontrol yazimi) yeniden hesaplanir.
+ */
+function etiketHesabiKur({ getAssessment, ayarlar, kontrol, etiketleFn = etiketle }) {
+  let son = null; // { a, kurallarImza, kontrolImza, sonuc }
   return async function hesap(fresh) {
     const [a, ayar, kontroller] = await Promise.all([
       getAssessment(fresh === true),
       ayarlar.oku(),
       kontrol.kontrolleriOku(),
     ]);
+    const kurallarImza = JSON.stringify(ayar.etiketler || {});
+    const kontrolImza = kontrolImzasi(kontroller);
+    if (son && son.a === a && son.kurallarImza === kurallarImza && son.kontrolImza === kontrolImza)
+      return { a, ayar, kontroller, sonuc: son.sonuc };
     const sonuc = a.tableMissing
-      ? etiketle({ hosts: [], kurallar: ayar.etiketler, kontroller })
-      : etiketle({ hosts: a.hosts, kurallar: ayar.etiketler, kontroller });
+      ? etiketleFn({ hosts: [], kurallar: ayar.etiketler, kontroller })
+      : etiketleFn({ hosts: a.hosts, kurallar: ayar.etiketler, kontroller });
+    son = { a, kurallarImza, kontrolImza, sonuc };
     return { a, ayar, kontroller, sonuc };
   };
 }
@@ -53,6 +73,10 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
   router.get('/retire-etiketleri', async (req, res) => {
     try {
       const { a, ayar, kontroller, sonuc } = await hesap(req.query.fresh === '1');
+      // ?host=X: yalniz o sunucuyu tasiyan etiketler (istemcideki hostEtiketleri ile AYNI suzgec:
+      // e.hostlar.includes(host)). ozet filo geneli kalir.
+      const host = req.query.host ? String(req.query.host).trim().toUpperCase().slice(0, 64) : '';
+      const liste = host ? sonuc.etiketler.filter((e) => (e.hostlar || []).includes(host)) : sonuc.etiketler;
       res.json({
         ok: true,
         tableMissing: a.tableMissing === true,
@@ -66,7 +90,8 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
         kurallar: kurallarListesi(ayar),
         ozet: sonuc.ozet,
         // Liste kopyalari tasimaz (buyuk filoda MB'lar); acilan etiket ayrinti ucundan tam gelir.
-        etiketler: sonuc.etiketler.map(ozetle),
+        ...(host ? { host } : {}),
+        etiketler: liste.map(ozetle),
       });
     } catch (err) {
       res
@@ -145,4 +170,4 @@ function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
   });
 }
 
-module.exports = { mount, kurallarListesi, etiketHesabiKur };
+module.exports = { mount, kurallarListesi, etiketHesabiKur, kontrolImzasi };

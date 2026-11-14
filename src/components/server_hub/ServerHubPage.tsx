@@ -60,6 +60,18 @@ import KodRehberi from './KodRehberi';
 import { KodGorunurSaglayici, useKodGorunur, useKodGosterSecimi } from './kodGorunurlugu';
 import SunucuPaneli from './SunucuPaneli';
 import { useOnay } from '@/components/common/OnayPenceresi';
+import {
+  autoStartAnahtari,
+  autoStartBaslat,
+  isMetni,
+  kapatEngeli,
+  useAutoStartIsleri,
+  autoStartIsVar,
+  autoStartBittiDinle,
+  useAutoStartSonuclari,
+  type AutoStartIsDurumu,
+  type AutoStartBitisi,
+} from './autoStartIsi';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -2734,22 +2746,33 @@ function HostModal({
 }) {
   const { onayla, onayPenceresi } = useOnay();
   // v3 alanlari (runningKnown, runningSrc) yerel tipte ve istege bagli; API tipi aynen atanir.
-  const [d, setD] = useState<ShHostDetailV3 | null>(null);
+  // HIZ (2026-11-14, B3): ayni sunucu penceresi yeniden acilinca son ayrinti HEMEN gorunur (modul duzeyi
+  // onbellek); her acilista arkada tazelenir (sunucu onbellegi sicakken ucuz).
+  const [d, setD] = useState<ShHostDetailV3 | null>(() => shOnbellek.oku<ShHostDetailV3>(`host:${host}`));
   const [err, setErr] = useState('');
+  // Onbellekteki ayrinti gosterilirken arka plan tazelemesi duserse sessiz kalinmaz (inceleme 2026-11-14).
+  const [tazeHata, setTazeHata] = useState('');
   // "Ozet" (2026-11-07) Bulgular'daki sunucu panelinin aynisidir: tek kaynak, iki giris.
   const [tab, setTab] = useState<'ozet' | 'findings' | 'jvm' | 'web' | 'init' | 'ip'>('ozet');
-  const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
+  // HIZ (2026-11-14, B1): Ozet sekmesi yalniz BU sunucunun etiketlerini indirir (?host=; eskiden tum filo,
+  // 2000 sunucuda ~1,4 MB, her acilista). Son yanit modul duzeyinde tutulur: ayni pencere yeniden acilinca
+  // hemen gorunur, TAZE_MS'den eskiyse arkada tazelenir.
+  const retireAnahtar = `retire:${host}`;
+  const [retire, setRetire] = useState<ShRetireSonuc | null>(() => shOnbellek.oku<ShRetireSonuc>(retireAnahtar));
   const retireYukle = useCallback(async (fresh = false) => {
     try {
-      const r = await serverHubApi.retireEtiketleri(fresh);
-      if (r.ok) setRetire(r);
+      const r = await serverHubApi.retireEtiketleri(fresh, host);
+      if (r.ok) {
+        setRetire(r);
+        shOnbellek.yaz(`retire:${host}`, r);
+      }
     } catch {
       /* panel "Etiketler yukleniyor" der; pencerenin oteki sekmeleri etkilenmez */
     }
-  }, []);
+  }, [host]);
   useAsyncEffect(async () => {
-    if (tab === 'ozet' && !retire) await retireYukle();
-  }, [tab, retire, retireYukle]);
+    if (tab === 'ozet' && (!retire || shOnbellek.yas(retireAnahtar) > shOnbellek.TAZE_MS)) await retireYukle();
+  }, [tab, retire, retireYukle, retireAnahtar]);
   const [fix, setFix] = useState<{
     f: ShFinding;
     phase: 'ask' | 'planning' | 'planned' | 'applying';
@@ -2764,53 +2787,86 @@ function HostModal({
   //
   // ONAY TARAYICIDA: tek satir icin ayri bir plan turu, kullaniciyi her JVM'de iki tiklamaya
   // zorlardi. Yine de sessiz DEGIL - ne yapilacagi ve hangi sunucuda oldugu aciklanir.
-  const [asBusy, setAsBusy] = useState<string | null>(null);
+  //
+  // IS SURERKEN MESGUL (2026-11-14): dugme is TERMINAL olana kadar kapali kalir ve "#is · kosuyor" yazar
+  // (autoStartIsi.ts; ayni JVM icin ikinci is acilamaz, pencere kapanip acilsa da). Bitince betigin sonuc
+  // satiri (OK / SKIP / FAIL + mesaj) gosterilir; OK/SKIP'te CLI ile DOGRULANAN deger satira hemen yazilir
+  // (tarama beklenmez; sunucu da /host'ta ayni degeri tasir). Liste (overview) YENIDEN OKUNMAZ: is
+  // Server_Hub tablolarina yazmaz, tam filo okumasi yalniz bekletirdi.
+  const { addJob } = useJobTracker();
+  const asIsleri = useAutoStartIsleri();
   // OLCULEMEYEN JVM (v3, kural 7): dugme admine ACIK kalir; onay metni "calisma durumu
   // olculemedi" uyarisini tasir (bkz. autoStartOnayMetni).
   const jvmAutoStart = async (j: ShJvmV3) => {
     const ac = j.autoStart !== 'true';
-    const k = `${j.gen}|${j.name}`;
+    if (asIsleri.has(autoStartAnahtari(host, j.gen, j.name))) return;
     if (!(await onayla({ baslik: 'Auto-start', metin: autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true), onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat' }))) return;
-    setAsBusy(k);
-    try {
-      const r = await serverHubApi.jvmAutoStart({ host, gen: j.gen, jvm: j.name, enable: ac });
-      if (!r.ok) {
-        toast.error(r.message || 'İş başlatılamadı.');
-        return;
-      }
-      trackJob(
-        `Server Hub: auto-start ${ac ? 'AÇ' : 'KAPAT'} @ ${host}/${j.name}`,
-        { jobId: r.jobId ?? null, awxServerId: r.awxServerId ?? 0 },
-        (status) => {
-          if (status === 'successful') {
-            toast.success(`${j.name}: auto-start ${ac ? 'açıldı' : 'kapatıldı'}.`);
-            reload();
-            // TARAMA TAZELENIR: ekran eski degeri gostermeye devam ederse kullanici
-            // islemin olmadigini sanir ve ikinci kez tiklar.
-            serverHubApi
-              .host(host, true)
-              .then((x) => x.ok && setD(x.host))
-              .catch(() => {});
-          } else toast.error(`${j.name}: iş ${status}.`);
-        },
-      );
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAsBusy(null);
-    }
+    await autoStartBaslat({ host, gen: j.gen, jvm: j.name, ac, addJob });
   };
+  // BITIS HER ACIK PENCEREYE (inceleme 2026-11-14): eskiden sonuc, isi BASLATAN pencere ornegine bagliydi;
+  // pencere kapanip yeniden acilinca yeni ornek bitisi hic gormuyor, satir eski degere donuyordu. Simdi
+  // bu sunucuyu gosteren pencere (hangi ekrandan baslatilmis olursa olsun) bitisi dinler.
+  useEffect(
+    () =>
+      autoStartBittiDinle((e: AutoStartBitisi) => {
+        if (e.host !== host) return;
+        const son = e.sonuc;
+        if (son.deger) {
+          const deger = son.deger;
+          const at = new Date().toISOString();
+          setD((cur) =>
+            cur
+              ? {
+                  ...cur,
+                  jvms: cur.jvms.map((x) =>
+                    x.gen === e.gen && x.name === e.jvm
+                      ? {
+                          ...x,
+                          autoStart: deger,
+                          autoStartTarama: x.autoStartTarama ?? (x.autoStart !== deger ? x.autoStart : undefined),
+                          autoStartDogrulama: { jobId: son.jobId ?? 0, at },
+                        }
+                      : x,
+                  ),
+                }
+              : cur,
+          );
+        }
+        // Sunucu ayni dogrulanmis degeri /host'ta (JVM + bulgular) tasir. Taze filo okumasi GEREKMEZ.
+        serverHubApi
+          .host(host)
+          .then((x) => {
+            if (x.ok) {
+              setD(x.host);
+              setTazeHata('');
+              shOnbellek.yaz(`host:${host}`, x.host);
+            }
+          })
+          .catch(() => {});
+      }),
+    [host],
+  );
+  const asSonuclari = useAutoStartSonuclari();
 
   useEffect(() => {
     let alive = true;
+    const onceki = shOnbellek.oku<ShHostDetailV3>(`host:${host}`);
+    const dustu = (m: string) => {
+      if (!alive) return;
+      if (onceki) setTazeHata(m);
+      else setErr(m);
+    };
     serverHubApi
       .host(host)
       .then((r) => {
         if (!alive) return;
-        if (r.ok) setD(r.host);
-        else setErr(r.message || 'Sunucu verisi alınamadı.');
+        if (r.ok) {
+          setD(r.host);
+          setTazeHata('');
+          shOnbellek.yaz(`host:${host}`, r.host);
+        } else dustu(r.message || 'Sunucu verisi alınamadı.');
       })
-      .catch((e) => alive && setErr(e.message));
+      .catch((e) => dustu(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
@@ -2914,6 +2970,16 @@ function HostModal({
         </div>
       )}
       {!d && !err && <LoadingLogo compact />}
+      {d && tazeHata && (
+        <div
+          className="text-xs px-3 py-1.5 rounded-xl border"
+          style={{ color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }}
+          role="status"
+          data-testid="ayrinti-tazelenemedi"
+        >
+          Ayrıntı tazelenemedi — gösterilen veri bu sekmede daha önce okunmuş hâli ({tazeHata}).
+        </div>
+      )}
       {d && (
         <div className="space-y-3">
           {/* C3: bu sunucuda sema okunamadi - eylem yok; durum hucreleri sebebi soyler. */}
@@ -3076,6 +3142,11 @@ function HostModal({
                                     : 'var(--status-neutral)',
                               fontWeight: 600,
                             }}
+                            title={
+                              j.autoStartDogrulama
+                                ? `İş #${j.autoStartDogrulama.jobId} ile CLI'dan doğrulandı (${fmtDate(j.autoStartDogrulama.at)}); son tarama ${j.autoStartTarama === 'true' ? 'açık' : j.autoStartTarama === 'false' ? 'kapalı' : 'aynı değeri'} gösteriyor — bir sonraki taramada güncellenir.`
+                                : undefined
+                            }
                           >
                             {j.autoStart === 'true'
                               ? 'açık'
@@ -3083,14 +3154,54 @@ function HostModal({
                                 ? 'kapalı'
                                 : '?'}
                           </span>
+                          {j.autoStartDogrulama && (
+                            <span
+                              className="ml-1 text-[10px]"
+                              style={{ color: 'var(--text-muted)' }}
+                              data-testid="autostart-dogrulandi"
+                            >
+                              ✓ iş #{j.autoStartDogrulama.jobId} · tarama bekleniyor
+                            </span>
+                          )}
+                          {(() => {
+                            // Son is BASARISIZ bittiyse sebep satirda kalir (bildirim 12 sn'de kaybolur).
+                            const son = asSonuclari.get(autoStartAnahtari(host, j.gen, j.name));
+                            if (!son || son.tur !== 'fail' || asIsleri.has(autoStartAnahtari(host, j.gen, j.name))) return null;
+                            return (
+                              <span
+                                className="ml-1 text-[10px]"
+                                style={{ color: 'var(--status-danger)' }}
+                                data-testid="autostart-basarisiz"
+                                title={son.mesaj}
+                              >
+                                ✗ iş #{son.jobId ?? '?'} başarısız: {son.mesaj}
+                              </span>
+                            );
+                          })()}
                           {/* TEK SATIR, TEK TIK. Toplu islem 2026-10-01'de kaldirildi:
                               yanlis bir tarama sonucu yuzlerce sunucuya yayilirdi. Tur 4: tanimsiz
                               surec (UNAVAILABLE), sema okunamadi ya da bayat sunucuda dugme YOK
                               (sunucu 400 doner); sebep yazilir. */}
-                          {autoStartDugmesi(j, d).goster ? (
+                          {asIsleri.get(autoStartAnahtari(host, j.gen, j.name)) ? (
+                            <span
+                              className="ml-2 px-1.5 py-0.5 text-[10px] border rounded"
+                              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                              role="status"
+                              title="Auto-start işi sürüyor; bitene kadar bu JVM için yeni iş açılmaz. Sonuç burada ve bildirimde görünür."
+                            >
+                              {isMetni(asIsleri.get(autoStartAnahtari(host, j.gen, j.name))!)}
+                            </span>
+                          ) : autoStartDugmesi(j, d).goster && j.autoStart === 'true' && kapatEngeli(j) ? (
+                            <span
+                              className="ml-2 text-[10px]"
+                              style={{ color: 'var(--text-muted)' }}
+                              title={kapatEngeli(j)}
+                            >
+                              çalışıyor — kapatılamaz
+                            </span>
+                          ) : autoStartDugmesi(j, d).goster ? (
                             <button
                               onClick={() => jvmAutoStart(j)}
-                              disabled={asBusy === `${j.gen}|${j.name}`}
                               className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
                               style={{ borderColor: 'var(--border)' }}
                               title={
@@ -3102,11 +3213,7 @@ function HostModal({
                                 (jvmCalismaBilinir(j) ? '' : ' · çalışma durumu ölçülemedi')
                               }
                             >
-                              {asBusy === `${j.gen}|${j.name}`
-                                ? '…'
-                                : j.autoStart === 'true'
-                                  ? 'Kapat'
-                                  : 'Aç'}
+                              {j.autoStart === 'true' ? 'Kapat' : 'Aç'}
                             </button>
                           ) : (
                             <span
@@ -3655,7 +3762,7 @@ const autoStartFix = (f: ShFindingRow) =>
   !!f.fix && (f.fix.action === 'jboss_autostart_on' || f.fix.action === 'jboss_autostart_off');
 function bulguKolonlari(
   autoStartDuzelt: (f: { host: string; fix?: ShFix | null }) => void,
-  asBusy: string | null,
+  asBusy: ReadonlyMap<string, AutoStartIsDurumu>,
   kodGoster = true,
 ): EarKolon<ShFindingRow>[] {
   const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
@@ -3778,9 +3885,16 @@ function bulguKolonlari(
       suzgec: 'bit',
       deger: (f) => autoStartFix(f),
       hucre: (f) => {
+        if (f.autoStartDogrulama)
+          return (
+            <span style={soluk} data-testid="bulgu-autostart-dogrulandi" title="Auto-start işi CLI ile doğruladı; bulgu bir sonraki taramada kalkar.">
+              ✓ iş #{f.autoStartDogrulama.jobId} · tarama bekleniyor
+            </span>
+          );
         if (!autoStartFix(f) || !f.fix) return <span style={soluk}>—</span>;
         const k = `${f.host}|${f.fix.gen}|${f.fix.jvm}`;
         const ac = f.fix.action === 'jboss_autostart_on';
+        const is = asBusy.get(k);
         return (
           <button
             type="button"
@@ -3789,7 +3903,7 @@ function bulguKolonlari(
               e.stopPropagation();
               autoStartDuzelt(f);
             }}
-            disabled={asBusy === k}
+            disabled={!!is}
             title={
               ac
                 ? `${f.fix.jvm} için auto-start'ı AÇ (yalnız bu JVM)`
@@ -3798,7 +3912,7 @@ function bulguKolonlari(
             className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
             style={{ borderColor: 'var(--border)' }}
           >
-            {asBusy === k ? '…' : ac ? 'Auto-start AÇ' : 'Auto-start KAPAT'}
+            {is ? isMetni(is) : ac ? 'Auto-start AÇ' : 'Auto-start KAPAT'}
           </button>
         );
       },
@@ -3900,12 +4014,15 @@ export function FindingsTab({
   //
   // TOPLU ISLEM YOK (kullanici: "cok tehlikeli"): her satir kendi onayini ister, her tiklama
   // TEK (host, jvm) hedefler.
-  const [asBusy, setAsBusy] = useState<string | null>(null);
+  // IS TAKIBI (2026-11-14): eskiden yalniz "is baslatildi" toast'i vardi, sonuc HIC gosterilmiyordu. Simdi
+  // Ayrinti penceresiyle AYNI yol (autoStartIsi.ts): is bitene kadar dugme mesgul, sonuc OK/SKIP/FAIL + mesaj.
+  const { addJob } = useJobTracker();
+  const asBusy = useAutoStartIsleri();
   const autoStartDuzelt = useCallback(async (f: { host: string; fix?: ShFix | null }) => {
     const fix = f.fix;
     if (!fix || !fix.jvm || fix.gen == null) return;
     const ac = fix.action === 'jboss_autostart_on';
-    const k = `${f.host}|${fix.gen}|${fix.jvm}`;
+    if (autoStartIsVar(autoStartAnahtari(f.host, fix.gen, fix.jvm))) return;
     if (
       !(await onayla({
         baslik: 'Auto-start',
@@ -3916,25 +4033,8 @@ export function FindingsTab({
       }))
     )
       return;
-    setAsBusy(k);
-    try {
-      const r = await serverHubApi.jvmAutoStart({
-        host: f.host,
-        gen: fix.gen,
-        jvm: fix.jvm,
-        enable: ac,
-      });
-      if (!r.ok) {
-        toast.error(r.message || 'İş başlatılamadı.');
-        return;
-      }
-      toast.success(`${fix.jvm}: iş başlatıldı (#${r.jobId ?? '?'}). Tarama tazelenince durum güncellenir.`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAsBusy(null);
-    }
-  }, [onayla]);
+    await autoStartBaslat({ host: f.host, gen: fix.gen, jvm: fix.jvm, ac, addJob });
+  }, [onayla, addJob]);
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -3953,6 +4053,15 @@ export function FindingsTab({
   useAsyncEffect(async () => {
     if (gorunur && shOnbellek.yas('findings') > shOnbellek.TAZE_MS) await load();
   }, [gorunur, load]);
+  // Auto-start isi bitince (hangi ekrandan baslatilmis olursa olsun) liste tazelenir: sunucu dogrulanan
+  // bulgunun dugmesini kaldirip "is #N ile dogrulandi" isareti tasir. Taze filo okumasi DEGIL (onbellek).
+  useEffect(
+    () =>
+      autoStartBittiDinle((e) => {
+        if (e.sonuc.deger) void load();
+      }),
+    [load],
+  );
   // useMemo: `|| []` her render'da YENI dizi uretiyordu; asagidaki dort useMemo her seferinde
   // yeniden hesaplaniyordu (react-hooks/exhaustive-deps).
   const all = useMemo(() => data?.findings || [], [data?.findings]);

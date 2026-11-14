@@ -12,6 +12,9 @@
 //
 // ONBELLEK: grafik, degerlendirme nesnesi degisince ya da Uygulama Envanteri verisi VERI_MS'den eskiyse
 // yeniden kurulur (tek ucus). Okunamayan kaynak grafigi dusurmez; /durum bunu soyler.
+// BAYAT DONUS (2026-11-14, B2): yalniz /iliski/karar (sunucu Ayrinti penceresinin Analiz rozeti) var olan
+// grafigi HEMEN doner ve gerekiyorsa arkada TEK tazeleme baslatir; grafik BAYAT_GRAFIK_MS'den eskiyse
+// yine bekler. Yazma / imza dogrulayan uclar (PUT /iliski/kontrol, Retirement kapisi) bunu KULLANMAZ.
 'use strict';
 
 const { grafikKur, ara, varlik } = require('./iliski-grafigi.cjs');
@@ -19,6 +22,18 @@ const { dogrula } = require('./dogrulama.cjs');
 const { kararla, KARARLAR } = require('./senaryo.cjs');
 
 const VERI_MS = 60 * 1000;
+const BAYAT_GRAFIK_MS = 15 * 60 * 1000;
+/**
+ * Tarama imzasi: hangi tarama verisinden kuruldu (son tarama gunu, sunucu sayisi, en yeni loaded_at).
+ * Degerlendirme nesnesi yalniz onbellek tazelendigi icin degistiyse imza ayni kalir; yeni tarama
+ * yuklendiyse degisir ve bayat grafik DONMEZ (inceleme 2026-11-14: tarama sonrasi eski karar).
+ */
+function taramaImzasi(a) {
+  let enYeni = 0;
+  const hosts = (a && a.hosts) || [];
+  for (const h of hosts) if (typeof h.loadedAt === 'number' && h.loadedAt > enYeni) enYeni = h.loadedAt;
+  return `${(a && a.latestScan) || ''}|${hosts.length}|${enYeni}`;
+}
 const ANAHTAR_RE = /^(sunucu|jvm|was|web|vhost|ip|dns|app):[^\s]{1,390}$/;
 
 function iliskiHesabiKur({
@@ -26,15 +41,12 @@ function iliskiHesabiKur({
   iliskiVerisi = () => require('./iliski-verisi.cjs').iliskiVerisi(),
   simdi = Date.now,
 }) {
-  let durum = { a: null, veri: null, veriAt: 0, grafik: null, dogrulamalar: null, sureMs: null };
+  let durum = { a: null, veri: null, veriAt: 0, grafik: null, dogrulamalar: null, sureMs: null, kurulduAt: 0, imza: null };
   let ucus = null;
-  return async function hesap(fresh) {
-    const a = await getAssessment(fresh === true);
-    if (a.tableMissing) return { a, grafik: null };
-    const veriBayat = fresh === true || !durum.veri || simdi() - durum.veriAt > VERI_MS;
-    if (durum.grafik && durum.a === a && !veriBayat) return { a, ...durum };
+  /** Tek ucus kurulum; bitince (basari ya da hata) ucus kendini temizler. */
+  function kur(a, veriBayat) {
     if (ucus) return ucus;
-    ucus = (async () => {
+    const p = (async () => {
       const t0 = simdi();
       const veri = veriBayat ? await iliskiVerisi() : durum.veri;
       const grafik = grafikKur({ hosts: a.hosts, veri });
@@ -48,14 +60,41 @@ function iliskiHesabiKur({
         dogrulamalar,
         kararlar,
         sureMs: simdi() - t0,
+        kurulduAt: simdi(),
+        imza: taramaImzasi(a),
       };
       return { a, ...durum };
     })();
-    try {
-      return await ucus;
-    } finally {
-      ucus = null;
+    ucus = p;
+    const temizle = () => {
+      if (ucus === p) ucus = null;
+    };
+    p.then(temizle, temizle);
+    return p;
+  }
+  /**
+   * @param {boolean} fresh
+   * @param {{ bayatOlur?: boolean }} [opts]  bayatOlur: salt okuma ucu; var olan grafik hemen doner,
+   *   tazeleme arkada (bayat: true isaretli). Yalniz AYNI tarama verisinden kurulmus grafik (taramaImzasi);
+ *   yeni tarama yuklendiyse beklenir.
+   */
+  return async function hesap(fresh, opts) {
+    const a = await getAssessment(fresh === true);
+    if (a.tableMissing) return { a, grafik: null };
+    const veriBayat = fresh === true || !durum.veri || simdi() - durum.veriAt > VERI_MS;
+    if (durum.grafik && durum.a === a && !veriBayat) return { a, ...durum };
+    if (
+      opts &&
+      opts.bayatOlur === true &&
+      fresh !== true &&
+      durum.grafik &&
+      simdi() - durum.kurulduAt < BAYAT_GRAFIK_MS &&
+      durum.imza === taramaImzasi(a)
+    ) {
+      kur(a, veriBayat).catch((e) => console.warn('[ServerHub] iliski arka plan tazelemesi dustu:', e && e.message));
+      return { ...durum, bayat: true };
     }
+    return kur(a, veriBayat);
   };
 }
 
@@ -257,7 +296,8 @@ function mount(
         .status(400)
         .json({ ok: false, message: 'Anahtar app: / sunucu: / jvm: / was: ile başlamalı.' });
     try {
-      const h = await hesap(false);
+      // Analiz rozeti (salt okuma): var olan grafik hemen; eskiyse arkada tazelenir (B2).
+      const h = await hesap(false, { bayatOlur: true });
       if (!h.grafik) return okunamadi(res);
       const { uygulamalar, kopyalar } = h.kararlar;
       const ctx = await notBaglami(h);

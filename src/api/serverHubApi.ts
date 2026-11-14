@@ -54,6 +54,8 @@ export interface ShFinding {
   fix: ShFix | null;
   /** Yalniz sunucu ayrintisinda: neden / eksik olabilir / nasil kontrol edilir (katalogdan). */
   dogrulama?: ShDogrulama | null;
+  /** Auto-start duzeltmesi Portal isiyle CLI'dan dogrulandi (tarama bekleniyor): fix null gelir. */
+  autoStartDogrulama?: { jobId: number; at: string } | null;
   /** EAR alani bulgularinin konusu (Uygulama Envanteri). */
   ear?: { kok?: string; ad?: string; jboss?: string; neden?: string; girdiler?: ShKokGirdisi[]; uygulamalar?: string[] };
   logs?: ShFindingLog[];
@@ -108,6 +110,10 @@ export interface ShJvm {
   invStatus?: string | null;
   invAutoStart?: string;
   invJvmCount?: number;
+  /** 2026-11-14: Portal'ın auto-start işi CLI ile doğruladı, tarama henüz gelmedi. autoStart doğrulanan
+   *  değerdir; autoStartTarama taramadaki (eski) değer (yalnız farklıysa gelir). */
+  autoStartDogrulama?: { jobId: number; at: string } | null;
+  autoStartTarama?: 'true' | 'false' | 'unknown';
   mismatch?: string[];
   req24h: number | null;
   req7d: number | null;
@@ -354,6 +360,8 @@ export interface ShFindingRow {
   fixable: boolean;
   /** Düzeltme hedefi (gen, jvm…) — satır bazında işlem için gerekli. */
   fix?: ShFix | null;
+  /** Auto-start düzeltmesi Portal işiyle CLI'dan doğrulandı (tarama bekleniyor): fix null gelir. */
+  autoStartDogrulama?: { jobId: number; at: string } | null;
 }
 export interface ShFindingsResult {
   ok: boolean;
@@ -404,6 +412,8 @@ export interface ShJobStatus {
   status: string;
   output: string;
   result?: unknown;
+  /** 2026-11-14: Portal'ın açtığı auto-start işi bitince (doğrulandıysa yeni değer). */
+  autoStart?: { dogrulandi: boolean; deger: 'true' | 'false' | null };
   message?: string;
 }
 
@@ -1040,8 +1050,14 @@ export const serverHubApi = {
     ad: string,
   ): Promise<{ ok: boolean; uygulama?: Sh360Ayrinti; message?: string; _httpStatus?: number }> =>
     fetch(`${BASE}/uygulama-360/${encodeURIComponent(ad)}`).then(safeJson),
-  retireEtiketleri: (fresh = false): Promise<ShRetireSonuc> =>
-    fetch(`${BASE}/retire-etiketleri${fresh ? '?fresh=1' : ''}`).then(safeJson),
+  /** host verilirse yalnız o sunucuyu taşıyan etiketler iner (Ayrıntı penceresi; tüm filo MB'larca). */
+  retireEtiketleri: (fresh = false, host?: string): Promise<ShRetireSonuc> => {
+    const q = new URLSearchParams();
+    if (fresh) q.set('fresh', '1');
+    if (host) q.set('host', host);
+    const qs = q.toString();
+    return fetch(`${BASE}/retire-etiketleri${qs ? `?${qs}` : ''}`).then(safeJson);
+  },
   retireEtiketAyrinti: (
     anahtar: string,
   ): Promise<{ ok: boolean; etiket?: ShRetireEtiket; message?: string; _httpStatus?: number }> =>

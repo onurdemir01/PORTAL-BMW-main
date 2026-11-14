@@ -123,4 +123,87 @@ function assertRegistryPlaybook(serverId, templateId, key) {
   return assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK[key], { label: key });
 }
 
-module.exports = { assertTemplateAcceptsExtraVars, assertTemplatePlaybook, assertRegistryPlaybook, BEKLENEN_PLAYBOOK, findTemplate, promptKapaliHatasi };
+// -- TEK OKUMA (2026-11-14, Server Hub auto-start yavasligi) --
+// assertRegistryPlaybook + assertTemplateAcceptsExtraVars art arda cagrilinca findTemplate IKI KEZ
+// AWX'in TUM sablon listesini sayfa sayfa, sirayla okuyordu (2 x N istek, her launch'ta). Burada
+// sablon TEK `GET /api/v2/job_templates/<id>/` ile okunur (runner.getTemplateSummaryOnServer) ve ayni
+// metadata iki kontrole verilir. Liste okumasi yalniz tek okuma YOKSA ya da DUSERSE yedek yoldur.
+// Ek kazanc: tek okuma AWX_READ_ONLY_TEMPLATE_IDS liste suzgecine takilmaz (o suzgec liste ekrani
+// icindir); eskiden fix sablonu o listede yoksa iki kapi SESSIZCE devre disi kaliyordu (fail-open).
+// FAIL-OPEN korunur: metadata hic okunamazsa null doner, launch bloklanmaz.
+
+/**
+ * Sablon metadata'si: { id, name, playbook, ask_variables } ya da null. ask_variables alan yoksa
+ * null (bilinmiyor -> bloklamaz). Hata FIRLATMAZ.
+ */
+async function sablonOku(serverId, templateId) {
+  let runner = null;
+  try {
+    runner = require('./runner.cjs');
+  } catch {
+    return null;
+  }
+  if (runner && typeof runner.getTemplateSummaryOnServer === 'function') {
+    try {
+      const t = await runner.getTemplateSummaryOnServer(serverId, templateId);
+      if (t && typeof t === 'object')
+        return {
+          id: Number(t.id) || Number(templateId),
+          name: t.name || '',
+          playbook: t.playbook || '',
+          ask_variables: typeof t.askVariablesOnLaunch === 'boolean' ? t.askVariablesOnLaunch : null,
+        };
+    } catch {
+      // tek okuma dustu: liste yoluna dus (asagida)
+    }
+  }
+  return findTemplate(serverId, templateId);
+}
+
+/**
+ * Onceden okunmus metadata ile iki kontrol (ayni sira ve AYNI hatalar): once playbook, sonra
+ * extra_vars. tpl null -> hicbir sey yapmaz (fail-open). Senkron; hata FIRLATIR (409).
+ */
+function sablonKontrol(tpl, { templateId, key, extraVars }) {
+  if (!tpl) return;
+  const beklenen = String(BEKLENEN_PLAYBOOK[key] || '').trim().toLowerCase();
+  if (beklenen && tpl.playbook) {
+    const gercek = String(tpl.playbook).split('/').pop().toLowerCase();
+    if (gercek !== beklenen)
+      throw Object.assign(
+        new Error(
+          `Playbook Kayıtları › "${key || '?'}" satırındaki Template ID ${templateId} (${tpl.name || '?'}) ` +
+            `"${tpl.playbook}" koşturuyor; beklenen "${BEKLENEN_PLAYBOOK[key]}". Yanlış şablon eşlenmiş — iş BAŞLATILMADI. ` +
+            `Doğru Template ID'yi girin.`,
+        ),
+        { status: 409, code: 'awx_template_playbook_mismatch' },
+      );
+  }
+  const degiskenVar = !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
+  if (degiskenVar && tpl.ask_variables === false)
+    throw promptKapaliHatasi({
+      templateId,
+      templateName: tpl.name,
+      label: key,
+      degiskenSayisi: Object.keys(extraVars).length,
+    });
+}
+
+/** Kayit anahtarina gore TEK okumayla iki kontrol (assertRegistryPlaybook + assertTemplateAcceptsExtraVars). */
+async function assertRegistryTemplate(serverId, templateId, key, extraVars) {
+  const degiskenVar = !!extraVars && typeof extraVars === 'object' && Object.keys(extraVars).length > 0;
+  if (!BEKLENEN_PLAYBOOK[key] && !degiskenVar) return;
+  sablonKontrol(await sablonOku(serverId, templateId), { templateId, key, extraVars });
+}
+
+module.exports = {
+  assertTemplateAcceptsExtraVars,
+  assertTemplatePlaybook,
+  assertRegistryPlaybook,
+  assertRegistryTemplate,
+  sablonOku,
+  sablonKontrol,
+  BEKLENEN_PLAYBOOK,
+  findTemplate,
+  promptKapaliHatasi,
+};

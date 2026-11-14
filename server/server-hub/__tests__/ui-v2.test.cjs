@@ -770,10 +770,20 @@ test("D1-U07 auto-start onay metni olculemeyende 'calisma durumu olculemedi' der
     'onay metni yardimcidan (sema bayragiyla) gelmiyor',
   );
   assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'window.confirm'), [], 'tarayici onayi geri gelmis');
-  // Kural 7: olculemeyen satirda dugme admine KAPANMAZ - disabled yalniz is suruyorken.
+  // Kural 7: olculemeyen satirda dugme admine KAPANMAZ. 2026-11-14'ten beri is SURERKEN dugme yerine
+  // durum ("#is - kosuyor") cizilir (autoStartIsi.ts); dugmenin kendisinde olcum tabanli disabled YOK.
+  // Dugme blogunun TAMAMI (<button ... </button>) taranir: disabled= hangi niteligin ardina eklenirse
+  // eklensin yakalanir (inceleme 2026-11-14: yalniz onClick'ten sonraki metne bakmak kordu).
+  const tik = PAGE.indexOf('onClick={() => jvmAutoStart(j)}');
+  assert.ok(tik > 0, 'auto-start dugmesi bulunamadi');
+  const blok = PAGE.slice(PAGE.lastIndexOf('<button', tik), PAGE.indexOf('</button>', tik));
   assert.ok(
-    PAGE.includes('onClick={() => jvmAutoStart(j)} disabled={asBusy === `${j.gen}|${j.name}`}'),
-    'auto-start dugmesinin disabled kosulu degismis (olculemeyende admine kapanmamali)',
+    !/\bdisabled\s*=/.test(blok),
+    'auto-start dugmesine disabled kosulu eklenmis (olculemeyende admine kapanmamali)',
+  );
+  assert.ok(
+    PAGE.includes('{asIsleri.get(autoStartAnahtari(host, j.gen, j.name)) ? ('),
+    'is surerken dugme yerine durum cizilmiyor',
   );
 });
 
@@ -1827,7 +1837,8 @@ test("T4-D4 auto-start satir dugmesi: UNAVAILABLE / sema okunamadi / bayat sunuc
   assert.equal(y.length, 1, `satir dugmesi ${y.length} kez`);
   assert.deepEqual(y[0].gizli, []);
   assert.ok(y[0].kosullar.includes('autoStartDugmesi(j, d).goster ?'), `dugme yardimcinin kosulu altinda degil: [${y[0].kosullar.join(' / ')}]`);
-  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'autoStartDugmesi'), [['j', 'd'], ['j', 'd']], 'dugme ve sebep ayni (j, d) ile hesaplanmiyor');
+  // 2026-11-14: ucuncu cagri "calisan JVM'de Kapat yok" dalinin kosulu (yine ayni (j, d)).
+  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'autoStartDugmesi'), [['j', 'd'], ['j', 'd'], ['j', 'd']], 'dugme ve sebep ayni (j, d) ile hesaplanmiyor');
   // SUNUCU YANITI: gercek assess + hostDetail
   const { hostDetail } = require('../index.cjs');
   const hd = hostDetail(assess(tanimKur('UNAVAILABLE'), { now: Date.now() }).hosts[0]);
@@ -1843,8 +1854,13 @@ test("T4-D4 auto-start satir dugmesi: UNAVAILABLE / sema okunamadi / bayat sunuc
 
 // ── Kural 3: toplu JVM islemi yok ─────────────────────────────────────────────────────
 test('K3 toplu JVM islemi yok: auto-start cagrisi tek (host, jvm)', () => {
-  const cagri = PAGE.match(/serverHubApi\.jvmAutoStart\(/g) || [];
+  // 2026-11-14: API cagrisi tek yerde (autoStartIsi.ts autoStartBaslat); sayfa yalniz onu cagirir.
+  assert.equal((PAGE.match(/serverHubApi\.jvmAutoStart\(/g) || []).length, 0, 'sayfa API\'yi dogrudan cagiriyor (is takibi atlaniyor)');
+  const cagri = PAGE.match(/autoStartBaslat\(\{/g) || [];
   assert.equal(cagri.length, 2, 'auto-start cagrisi sayisi degisti (yalniz satir ve bulgu satiri)');
-  assert.ok(!/\.map\([^)]*jvmAutoStart/.test(PAGE), 'auto-start bir liste uzerinde donuyor');
-  assert.ok(!/for \([^)]*\) [^;]*jvmAutoStart/.test(PAGE), 'auto-start dongude cagriliyor');
+  assert.ok(!/\.map\([^)]*(jvmAutoStart|autoStartBaslat)/.test(PAGE), 'auto-start bir liste uzerinde donuyor');
+  assert.ok(!/for \([^)]*\) [^;]*(jvmAutoStart|autoStartBaslat)/.test(PAGE), 'auto-start dongude cagriliyor');
+  const IS = normalize(fs.readFileSync(path.join(ROOT, 'src', 'components', 'server_hub', 'autoStartIsi.ts'), 'utf8'));
+  assert.equal((IS.match(/serverHubApi\.jvmAutoStart\(/g) || []).length, 1, 'autoStartIsi tek (host, jvm) cagrisi yapmiyor');
+  assert.ok(/serverHubApi\.jvmAutoStart\(\{ host: p\.host, gen: p\.gen, jvm: p\.jvm, enable: p\.ac \}\)/.test(IS), 'cagri tek (host, gen, jvm) degil');
 });

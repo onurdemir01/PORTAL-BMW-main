@@ -67,7 +67,9 @@ test('TP5 HER baslatma noktasi korumayi isi baslatmadan ONCE cagirir', () => {
   const kaynak = (p) => fs.readFileSync(path.join(__dirname, '..', '..', ...p), 'utf8');
   const noktalar = [
     ...[...kaynak(['retirement', 'index.cjs']).matchAll(/assertRegistryPlaybook\([\s\S]{0,400}?launchJobOnServer\(/g)],
-    ...[...kaynak(['server-hub', 'index.cjs']).matchAll(/assertRegistryPlaybook\([\s\S]{0,400}?launchJobOnServer\(/g)],
+    // Server Hub (2026-11-14): sablon TEK okunur (launchHazirla -> sablonOku), iki kontrol sablonKontrol'de
+    // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla.
+    ...[...kaynak(['server-hub', 'index.cjs']).matchAll(/sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,400}?launchJobOnServer\(/g)],
   ];
   assert.equal(noktalar.length, 4, `korunan baslatma noktasi sayisi ${noktalar.length} (beklenen 4: retirement launch, web kapat, web geri ac, server hub launch)`);
   const ri = kaynak(['retirement', 'index.cjs']);

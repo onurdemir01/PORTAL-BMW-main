@@ -37,6 +37,7 @@ import {
   zincirKartlari,
 } from './retireEtiket';
 import DurumRozeti from './DurumRozeti';
+import { isMetni, type AutoStartIsDurumu } from './autoStartIsi';
 import AnalizRozeti, { sunucuAnahtari } from './AnalizRozeti';
 import { ozetKartlari, zincirRozetleri, type BolumId } from './sunucuOzet';
 
@@ -141,7 +142,8 @@ export default function SunucuPaneli({
   onEtiketDegisti: () => void;
   onRetirementAc?: (uygulama: string, not: string) => void;
   onAutoStart?: (f: { host: string; code: string; fix: ShFix }) => void;
-  asBusy?: string | null;
+  /** Süren auto-start işleri (autoStartIsi.ts; anahtar `${host}|${gen}|${jvm}`): iş bitene kadar düğme meşgul. */
+  asBusy?: ReadonlyMap<string, AutoStartIsDurumu> | null;
   /** Ayrıntı zaten okunduysa (Ayrıntı penceresi): panel yeniden istemez. */
   detay?: ShHostDetail | null;
   /** "Yeniden tara" düğmesi (verilmezse düğme yok). */
@@ -284,11 +286,11 @@ export default function SunucuPaneli({
                   type="button"
                   className={BTN}
                   style={btnStil()}
-                  disabled={asBusy === k}
+                  disabled={!!asBusy?.get(k)}
                   onClick={() => onAutoStart({ host, code: f.code, fix: f.fix })}
                 >
-                  {asBusy === k
-                    ? '…'
+                  {asBusy?.get(k)
+                    ? `${f.fix.jvm}: ${isMetni(asBusy.get(k)!)}`
                     : `${f.fix.jvm}: auto-start ${f.fix.action === 'jboss_autostart_on' ? 'AÇ' : 'KAPAT'}`}
                 </button>
               );
