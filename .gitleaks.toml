@@ -1,0 +1,22 @@
+title = "BMW Portal Enterprise Secret Scanning Policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic test fixtures and non-secret documentation/templates"
+paths = [
+  '''^\.env\.example$''',
+  '''^package-lock\.json$''',
+  '''^gelistirme/package-lock\.json$''',
+  '''^coverage/''',
+  '''^server/.*/__tests__/''',
+  '''^server/__tests__/''',
+  '''^src/.*/__tests__/''',
+  '''^src/__tests__/''',
+]
+regexes = [
+  '''replace-with-''',
+  '''example\.com''',
+  '''0{32,}''',
+]

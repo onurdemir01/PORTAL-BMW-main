@@ -792,8 +792,8 @@ const TABLES = [
   },
   {
     // JSON-dosya config depolarinin DB yansimasi (links/selfservice/duty-roster/ocp-clusters).
-    // Her store'un TUM icerigi tek bir JSON blob satiri olarak tutulur — DB kalici/merkezî
-    // kaynak, dosya hizli yerel cache + outage fallback (bkz. server/db/config-mirror.cjs).
+    // Her store'un TUM icerigi tek bir JSON blob satiri olarak tutulur; eski mirror yazicisi
+    // kaldirildi, mevcut store'lar artik dogrudan bu tabloyu kullanir.
     name: 'portal_config_blobs',
     sql: `
       CREATE TABLE portal_config_blobs (

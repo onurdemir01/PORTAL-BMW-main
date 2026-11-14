@@ -733,7 +733,7 @@
       }
     ],
     "saklama": "anlik goruntu (ad basina tek satir)",
-    "notlar": "Eski DB satiri kod varsayilanini ezebilir (admin ekrani kaldirilsa bile). config-mirror.cjs yazicisi artik hicbir yerden cagrilmiyor.",
+    "notlar": "Eski DB satiri kod varsayilanini ezebilir (admin ekrani kaldirilsa bile). Eski config-mirror yazicisi kaldirildi.",
     "kullanilmiyor": false,
     "guven": "KESIN"
   },

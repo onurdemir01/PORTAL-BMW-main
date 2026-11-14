@@ -1,0 +1,14 @@
+PROPRIETARY INTERNAL ENTERPRISE SOFTWARE NOTICE
+
+Copyright (c) 2026 Garanti BBVA Technology / BMW Portal. All rights reserved.
+
+This repository ("bmw-portal") contains proprietary, confidential internal
+banking infrastructure software (`"private": true`).
+
+Unauthorized copying, redistribution, modification, public disclosure, or use
+of this software, in whole or in part, via any medium, is strictly prohibited
+without prior written authorization from corporate Information Security and
+Platform Governance.
+
+Third-party open-source dependencies remain subject to their respective
+licenses, tracked in the CycloneDX SBOM (`npm run sbom`).
