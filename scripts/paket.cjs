@@ -69,6 +69,7 @@ const GELISTIRME_BETIKLERI = new Set([
   'scripts/kur.cjs',
   'scripts/kanca-kur.mjs',
   'scripts/arac-kontrol.cjs',
+  'scripts/kapsam-yayinla.cjs',
 ]);
 
 /** Kopyalanmayacak yol mu? `goreli` kok'e gore, `/` ayracli. */

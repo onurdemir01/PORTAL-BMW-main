@@ -1,0 +1,75 @@
+# Kurumsal SonarQube icin kapsam raporunu (kalite/kapsam/) main'e her push'tan sonra yeniler.
+# Neden repoda: kurumsal pipeline testleri kosturamiyor (docs/adr/0004-kapsam-raporu-repoda.md).
+# Kurum pipeline'a test + kapsam asamasi ekleyince bu is akisi ve kalite/kapsam/ kaldirilir.
+#
+# - Yalniz kalite/kapsam/ commit edilir; zorla push yok.
+# - GITHUB_TOKEN ile yapilan push yeni is akisi tetiklemez (dongu yok); commit mesaji ayrica
+#   [skip ci] tasir.
+# - Ust uste push'larda yalniz sonuncusu kosar (concurrency).
+name: Kapsam raporu (kurumsal SonarQube)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'scripts/run-tests.cjs'
+      - 'scripts/lcov-birlestir.cjs'
+      - 'scripts/kapsam-yayinla.cjs'
+      - 'vitest.config.ts'
+      - 'gelistirme/package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kapsam-raporu
+  cancel-in-progress: true
+
+jobs:
+  yenile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: gelistirme/package-lock.json
+
+      - name: Kurulum
+        run: npm run kur
+
+      - name: Kapsam (node:test + Vitest + birlestirme)
+        run: npm run test:coverage
+
+      - name: Raporu yaz ve dogrula
+        run: |
+          npm run kapsam:yayinla
+          npm run kapsam:dogrula
+
+      - name: Raporu commit et
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kalite/kapsam
+          if git diff --cached --quiet; then
+            echo "Rapor degismedi."
+            exit 0
+          fi
+          git commit -m "chore(kapsam): kurumsal SonarQube kapsam raporu tazelendi [skip ci]"
+          for deneme in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then exit 0; fi
+            sleep 15
+          done
+          echo "Rapor push edilemedi (main ust uste degisiyor); sonraki push yeniden dener."
+          exit 1

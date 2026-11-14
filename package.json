@@ -33,6 +33,8 @@
     "test:ui": "vitest run",
     "test:coverage": "node scripts/run-tests.cjs --coverage && vitest run --coverage && node scripts/lcov-birlestir.cjs",
     "test:mutation": "node scripts/mutasyon-testi.cjs",
+    "kapsam:yayinla": "node scripts/kapsam-yayinla.cjs",
+    "kapsam:dogrula": "node scripts/kapsam-yayinla.cjs --dogrula",
     "lint:ascii": "node scripts/check-ascii.cjs",
     "ui:tarama": "node scripts/ui-tarama/tarama.mjs",
     "fix:ascii": "node scripts/fix-ascii.cjs",
