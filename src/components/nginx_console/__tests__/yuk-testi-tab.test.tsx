@@ -74,61 +74,217 @@ import { render } from '@/test/test-utils';
 import type { NlKosuAyrinti } from '@/api/nginxLoadtestApi';
 
 const KOSU_LISTE = {
-  id: 17, islem: 'kosu', etiket: 'T0 — F5 öncesi', adim: 'R17', hedefHost: 'GBNGXT10', hedefIp: '10.1.2.3', vhost: 'glomo-test.fw.garantibbva.com.tr',
-  yukHost: 'GBNGXT34', senaryoId: 3, senaryoAd: 'GLOMO 3 HAR', durum: 'RUNNING', gecerlilik: null, createdBy: 'onur', createdAt: '2026-10-27T08:00:00Z',
-  startedAt: '2026-10-27T08:00:05Z', finishedAt: null, awxJobId: 4242,
+  id: 17,
+  islem: 'kosu',
+  etiket: 'T0 — F5 öncesi',
+  adim: 'R17',
+  hedefHost: 'GBNGXT10',
+  hedefIp: '10.1.2.3',
+  vhost: 'glomo-test.fw.garantibbva.com.tr',
+  yukHost: 'GBNGXT34',
+  senaryoId: 3,
+  senaryoAd: 'GLOMO 3 HAR',
+  durum: 'RUNNING',
+  gecerlilik: null,
+  createdBy: 'onur',
+  createdAt: '2026-10-27T08:00:00Z',
+  startedAt: '2026-10-27T08:00:05Z',
+  finishedAt: null,
+  awxJobId: 4242,
 };
-const PARAM = { hizlar: [100, 250, 400], tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, maxvu: 150, kip: 'yeni', ae: 'br' };
+const PARAM = {
+  hizlar: [100, 250, 400],
+  tekrar: 2,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  maxvu: 150,
+  kip: 'yeni',
+  ae: 'br',
+};
 const ON_KONTROL_UYARILI = {
-  ip_yerel: true, server_name_var: true, master_sayisi: 1, web_log_df: 40, log_dizini_okunur: true, log_format_ua: true, statik_direktif: false,
-  k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64), yollar_toplam: 264, yollar_200: 260,
-  ilk_hatalar: [{ yol: '/app-v1/assets/eski.js', status: '404' }], sikistirma: { statik: 0, dinamik: 200, sikistirmasiz: 64 },
+  ip_yerel: true,
+  server_name_var: true,
+  master_sayisi: 1,
+  web_log_df: 40,
+  log_dizini_okunur: true,
+  log_format_ua: true,
+  statik_direktif: false,
+  k6_var: true,
+  k6_surum: 'k6 v0.49.0',
+  k6_sha256: 'a'.repeat(64),
+  yollar_toplam: 264,
+  yollar_200: 260,
+  ilk_hatalar: [{ yol: '/app-v1/assets/eski.js', status: '404' }],
+  sikistirma: { statik: 0, dinamik: 200, sikistirmasiz: 64 },
 };
-const SENARYO = { id: 3, ad: 'GLOMO 3 HAR', aciklama: null, vhost: 'glomo-test.fw.garantibbva.com.tr', senaryoTur: 'K', yolSayisi: 264, sha256: 'b'.repeat(64), kaynak: 'har', createdBy: 'onur', createdAt: '2026-10-26T10:00:00Z' };
+const SENARYO = {
+  id: 3,
+  ad: 'GLOMO 3 HAR',
+  aciklama: null,
+  vhost: 'glomo-test.fw.garantibbva.com.tr',
+  senaryoTur: 'K',
+  yolSayisi: 264,
+  sha256: 'b'.repeat(64),
+  kaynak: 'har',
+  createdBy: 'onur',
+  createdAt: '2026-10-26T10:00:00Z',
+};
 const HEDEFLER = {
   ok: true,
   hedefler: [
-    { host: 'GBNGXT10', env: 'TEST', ipler: ['10.1.2.3', '10.1.2.4'], vhostlar: ['glomo-test.fw.garantibbva.com.tr'], vhostVerisi: true, uygun: true, neden: null },
-    { host: 'GBNGXP40', env: 'PROD', ipler: ['10.9.9.9'], vhostlar: [], vhostVerisi: false, uygun: false, neden: 'hedef_uretim' },
+    {
+      host: 'GBNGXT10',
+      env: 'TEST',
+      ipler: ['10.1.2.3', '10.1.2.4'],
+      vhostlar: ['glomo-test.fw.garantibbva.com.tr'],
+      vhostVerisi: true,
+      uygun: true,
+      neden: null,
+    },
+    {
+      host: 'GBNGXP40',
+      env: 'PROD',
+      ipler: ['10.9.9.9'],
+      vhostlar: [],
+      vhostVerisi: false,
+      uygun: false,
+      neden: 'hedef_uretim',
+    },
     // Taranmis, ama yalniz `server_name _;` / joker / regex: adlandirilmis vhost yok.
-    { host: 'GBNGXT20', env: 'TEST', ipler: ['10.2.2.2'], vhostlar: [], vhostVerisi: true, uygun: true, neden: null },
+    {
+      host: 'GBNGXT20',
+      env: 'TEST',
+      ipler: ['10.2.2.2'],
+      vhostlar: [],
+      vhostVerisi: true,
+      uygun: true,
+      neden: null,
+    },
     // Hic dokum yok (tarama verisi yok): vhost elle yazilir.
-    { host: 'GBNGXT21', env: 'TEST', ipler: ['10.2.2.3'], vhostlar: [], vhostVerisi: false, uygun: true, neden: null },
+    {
+      host: 'GBNGXT21',
+      env: 'TEST',
+      ipler: ['10.2.2.3'],
+      vhostlar: [],
+      vhostVerisi: false,
+      uygun: true,
+      neden: null,
+    },
   ],
   yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
   sinirlar: {
-    maxHiz: 450, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 199, maxButceSn: 2700,
-    baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50,
+    maxHiz: 450,
+    maxTekrar: 3,
+    sureMin: 40,
+    sureMax: 300,
+    isinmaMax: 60,
+    maxVu: 199,
+    maxButceSn: 2700,
+    baglantiMin: 1,
+    maxBaglanti: 199,
+    maxBaglantiSayisi: 5,
+    isParcacigiMin: 1,
+    maxIsParcacigi: 16,
+    serbestTavanRps: 200,
+    serbestMaxBaglanti: 50,
   },
-  varsayilan: { motor: 'k6', ...PARAM, baglantilar: [2, 4, 8], is_parcacigi: 2, serbest: { hizlar: [50, 100, 200], maxvu: 50 } },
+  varsayilan: {
+    motor: 'k6',
+    ...PARAM,
+    baglantilar: [2, 4, 8],
+    is_parcacigi: 2,
+    serbest: { hizlar: [50, 100, 200], maxvu: 50 },
+  },
   serbest: { acik: true, aglar: ['10.20.30.0/24'] },
   motorlar: ['k6', 'wrk'],
-  araclar: { hazir: true, aracId: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', kod: null, mesaj: null },
+  araclar: {
+    hazir: true,
+    aracId: 5,
+    k6Surum: 'v0.49.0',
+    wrkSurum: '4.2.0',
+    kod: null,
+    mesaj: null,
+  },
 };
 /** /ip-sinifi yanitlari (istemcinin normallestirdigi sekil). */
 const SUNUCU_SINIFI = (host: string, ip: string, o: Record<string, unknown> = {}) => ({
-  ok: true, tur: 'sunucu', ip, host, env: 'TEST', vhostlar: ['glomo-test.fw.garantibbva.com.tr'], vhostVerisi: true, hizSiniri: null, vuSiniri: null,
-  uygun: true, neden: null, kod: null, kaynaklar: ['dbo.nginx_inventory'], ...o,
+  ok: true,
+  tur: 'sunucu',
+  ip,
+  host,
+  env: 'TEST',
+  vhostlar: ['glomo-test.fw.garantibbva.com.tr'],
+  vhostVerisi: true,
+  hizSiniri: null,
+  vuSiniri: null,
+  uygun: true,
+  neden: null,
+  kod: null,
+  kaynaklar: ['dbo.nginx_inventory'],
+  ...o,
 });
-const SERBEST_SINIFI = (ip: string, ag = '10.20.30.0/24') => ({ ok: true, tur: 'serbest', ip, host: null, ag, digerSahipler: [] });
+const SERBEST_SINIFI = (ip: string, ag = '10.20.30.0/24') => ({
+  ok: true,
+  tur: 'serbest',
+  ip,
+  host: null,
+  ag,
+  digerSahipler: [],
+});
 /** Varsayilan siniflandirici: /hedefler adaylari sunucu, 10.20.30.0/24 serbest, digeri izinli ag disi (409). */
 function varsayilanSinif(ip: string) {
   const h = HEDEFLER.hedefler.find((x) => x.ipler.includes(ip));
-  if (h) return SUNUCU_SINIFI(h.host, ip, { env: h.env, vhostlar: h.vhostlar, vhostVerisi: h.vhostVerisi, uygun: h.uygun, neden: h.neden });
+  if (h)
+    return SUNUCU_SINIFI(h.host, ip, {
+      env: h.env,
+      vhostlar: h.vhostlar,
+      vhostVerisi: h.vhostVerisi,
+      uygun: h.uygun,
+      neden: h.neden,
+    });
   if (ip.startsWith('10.20.30.')) return SERBEST_SINIFI(ip);
-  return { ok: false, code: 'ip_izinli_agda_degil', message: `${ip} envanterdeki bir nginx sunucusuna ait değil ve izinli ağların (10.20.30.0/24) dışında.`, _httpStatus: 409 };
+  return {
+    ok: false,
+    code: 'ip_izinli_agda_degil',
+    message: `${ip} envanterdeki bir nginx sunucusuna ait değil ve izinli ağların (10.20.30.0/24) dışında.`,
+    _httpStatus: 409,
+  };
 }
 /** /ip-sinifi istegi 400 ms gecikmeli: bekleme siniri ondan genis. */
 const SINIF_BEKLE = { timeout: 3000 };
 const bekle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const api = vi.hoisted(() => ({
-  hedefler: vi.fn(), senaryolar: vi.fn(), senaryo: vi.fn(), senaryoKaydet: vi.fn(), senaryoSil: vi.fn(), onKontrol: vi.fn(),
-  baslat: vi.fn(), kosular: vi.fn(), kosu: vi.fn(), durum: vi.fn(), durdur: vi.fn(), yenidenOku: vi.fn(), karsilastir: vi.fn(), ipSinifi: vi.fn(),
-  araclar: vi.fn(), araclariHazirla: vi.fn(), aracGeriCek: vi.fn(),
+  hedefler: vi.fn(),
+  senaryolar: vi.fn(),
+  senaryo: vi.fn(),
+  senaryoKaydet: vi.fn(),
+  senaryoSil: vi.fn(),
+  onKontrol: vi.fn(),
+  baslat: vi.fn(),
+  kosular: vi.fn(),
+  kosu: vi.fn(),
+  durum: vi.fn(),
+  durdur: vi.fn(),
+  yenidenOku: vi.fn(),
+  karsilastir: vi.fn(),
+  ipSinifi: vi.fn(),
+  araclar: vi.fn(),
+  araclariHazirla: vi.fn(),
+  aracGeriCek: vi.fn(),
 }));
-vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({ ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()), nginxLoadtestApi: api }));
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
+vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({
+  ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()),
+  nginxLoadtestApi: api,
+}));
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+}));
 vi.mock('@/hooks/useToast', () => ({ toast }));
 
 import { YukTestiTab } from '../YukTestiTab';
@@ -139,23 +295,65 @@ import Karsilastir from '../yukTesti/Karsilastir';
 import OnKontrolPaneli from '../yukTesti/OnKontrolPaneli';
 import Senaryolar from '../yukTesti/Senaryolar';
 import {
-  KAPASITE_IPUCU, OKUNAMADI_ACIKLAMASI, SERBEST_CIP_IPUCU, SERBEST_UYARISI, SERBEST_VHOST_YARDIMI, VHOST_LISTEDE_YOK_NOTU, WRK_CIP_IPUCU, WRK_UYARISI,
-  cpuMsMetni, hostCpuIpucu, onKontrolDegerlendir, turCumlesi, turEtiketi,
+  KAPASITE_IPUCU,
+  OKUNAMADI_ACIKLAMASI,
+  SERBEST_CIP_IPUCU,
+  SERBEST_UYARISI,
+  SERBEST_VHOST_YARDIMI,
+  VHOST_LISTEDE_YOK_NOTU,
+  WRK_CIP_IPUCU,
+  WRK_UYARISI,
+  cpuMsMetni,
+  hostCpuIpucu,
+  onKontrolDegerlendir,
+  turCumlesi,
+  turEtiketi,
 } from '../yukTesti/yukTestiOrtak';
-import { adimNormalle, kosuNormalle, onKontrolNormalle, sonucOzetiNormalle } from '@/api/nginxLoadtestApi';
-import { BAGLANTI_IPUCU, BELLEK_NEDEN_METNI, NIC_IPUCU, TEST_TRAFIGI_IPUCU, bantMetni, bellekSizintiMetni, nicSecimMetni } from '../yukTesti/yukTestiOrtak';
+import {
+  adimNormalle,
+  kosuNormalle,
+  onKontrolNormalle,
+  sonucOzetiNormalle,
+} from '@/api/nginxLoadtestApi';
+import {
+  BAGLANTI_IPUCU,
+  BELLEK_NEDEN_METNI,
+  NIC_IPUCU,
+  TEST_TRAFIGI_IPUCU,
+  bantMetni,
+  bellekSizintiMetni,
+  nicSecimMetni,
+} from '../yukTesti/yukTestiOrtak';
 import { uyariAcikla } from '../yukTesti/nedenler';
 import { ALAN_ACIKLAMASI } from '../yukTesti/hazirAyarlar';
 
 function ayrinti(o: Partial<NlKosuAyrinti> = {}): NlKosuAyrinti {
   return {
-    ...(KOSU_LISTE as unknown as NlKosuAyrinti), hedefTuru: 'sunucu', motor: 'k6', serbestAg: null, planUyarilari: [],
-    parametreler: { motor: 'k6', ...PARAM } as NlKosuAyrinti['parametreler'], onKontrol: null,
-    gecersizNedenleri: [], sonucOzet: null, onKontrolKosuId: null, sunucuDegerlendirmesi: null, onKontrolYasSn: null, isDurumu: null, isHatasi: null,
-    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null }, durdurIsi: null, sonuclandirmaDenemesi: 0, aracId: null, aracSeti: null, sonucOzeti: null, ...o,
+    ...(KOSU_LISTE as unknown as NlKosuAyrinti),
+    hedefTuru: 'sunucu',
+    motor: 'k6',
+    serbestAg: null,
+    planUyarilari: [],
+    parametreler: { motor: 'k6', ...PARAM } as NlKosuAyrinti['parametreler'],
+    onKontrol: null,
+    gecersizNedenleri: [],
+    sonucOzet: null,
+    onKontrolKosuId: null,
+    sunucuDegerlendirmesi: null,
+    onKontrolYasSn: null,
+    isDurumu: null,
+    isHatasi: null,
+    analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null },
+    durdurIsi: null,
+    sonuclandirmaDenemesi: 0,
+    aracId: null,
+    aracSeti: null,
+    sonucOzeti: null,
+    ...o,
   };
 }
-const kosuYukle = (o: Partial<NlKosuAyrinti> = {}, adimlar: unknown[] = []) => api.kosu.mockResolvedValue({ ok: true, kosu: ayrinti(o), adimlar });
+const kosuYukle = (o: Partial<NlKosuAyrinti> = {}, adimlar: unknown[] = []) =>
+  api.kosu.mockResolvedValue({ ok: true, kosu: ayrinti(o), adimlar });
 /** Yeni koşu sekmesi + senaryo 3 secili (vhost oneri: senaryonun vhost'u). */
 async function yeniKosuAc() {
   render(<YukTestiTab isAdmin />);
@@ -163,9 +361,11 @@ async function yeniKosuAc() {
   fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
 }
 const hostSecici = () => screen.getByLabelText('Hedef sunucu (isteğe bağlı)');
-const okDugmesi = () => screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
+const okDugmesi = () =>
+  screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
 /** Sadelestirme (2026-11-02): teknik adim tablosu "Ayrıntı", ileri alanlar "Gelişmiş ayarlar" altinda (kapali). */
-const ayrintiAc = async () => fireEvent.click(await screen.findByRole('button', { name: /^Ayrıntı/ }));
+const ayrintiAc = async () =>
+  fireEvent.click(await screen.findByRole('button', { name: /^Ayrıntı/ }));
 const gelismisAc = () => fireEvent.click(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ }));
 
 beforeEach(() => {
@@ -175,7 +375,14 @@ beforeEach(() => {
   api.kosu.mockResolvedValue({ ok: true, kosu: ayrinti(), adimlar: [] });
   api.senaryolar.mockResolvedValue({ ok: true, senaryolar: [SENARYO] });
   api.hedefler.mockResolvedValue(HEDEFLER);
-  api.durum.mockResolvedValue({ ok: true, status: 'running', finished: false, output: 'PLAY [x]\n', result: null, kosuDurum: 'RUNNING' });
+  api.durum.mockResolvedValue({
+    ok: true,
+    status: 'running',
+    finished: false,
+    output: 'PLAY [x]\n',
+    result: null,
+    kosuDurum: 'RUNNING',
+  });
   api.ipSinifi.mockImplementation(async (ip: string) => varsayilanSinif(ip));
 });
 
@@ -202,7 +409,10 @@ describe('Yük Testi sekmesi — erişim', () => {
     expect(await screen.findByRole('tab', { name: /Yeni koşu/ })).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Koşu 17 ayrıntısı' }));
     expect(await screen.findByRole('button', { name: /Durdur/ })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: /İş çıktısı/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /İş çıktısı/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await waitFor(() => expect(api.durum).toHaveBeenCalledWith(17, 0, expect.anything()));
     fireEvent.click(screen.getByRole('tab', { name: /Senaryolar/ }));
     expect(await screen.findByRole('button', { name: /Yeni senaryo/ })).toBeTruthy();
@@ -211,12 +421,24 @@ describe('Yük Testi sekmesi — erişim', () => {
 });
 
 describe('Yük Testi — başlatma onayı', () => {
-  const onKontrol = () => ayrinti({ id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString() });
+  const onKontrol = () =>
+    ayrinti({ id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString() });
 
   it('YT3 hedef adı birebir yazılmadan düğme kapalı; yapıştırma kapalı; İptal kapatır', () => {
     const onOnay = vi.fn();
     const onKapat = vi.fn();
-    render(<BaslatOnayi onKontrol={onKontrol()} senaryo={null} uyarilar={[]} sunucuUyarilari={null} busy={false} hata={null} onOnay={onOnay} onKapat={onKapat} />);
+    render(
+      <BaslatOnayi
+        onKontrol={onKontrol()}
+        senaryo={null}
+        uyarilar={[]}
+        sunucuUyarilari={null}
+        busy={false}
+        hata={null}
+        onOnay={onOnay}
+        onKapat={onKapat}
+      />,
+    );
     const dugme = screen.getByRole('button', { name: /Yük testini başlat/ });
     const girdi = screen.getByLabelText(/hedef sunucunun adını yazın/);
     expect(dugme).toBeDisabled();
@@ -234,7 +456,8 @@ describe('Yük Testi — başlatma onayı', () => {
     fireEvent.change(girdi, { target: { value: 'GBNGXT10' } });
     expect(dugme).toBeEnabled();
     // Dogru yazimda uyusmazlik metni cizilmez: aria-describedby gorunmeyen id gostermez.
-    for (const id of (girdi.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean)) expect(document.getElementById(id)).not.toBeNull();
+    for (const id of (girdi.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean))
+      expect(document.getElementById(id)).not.toBeNull();
     expect(girdi).toHaveAccessibleDescription(/^Yapıştırma kapalı/);
     fireEvent.click(dugme);
     expect(onOnay).toHaveBeenCalledWith({ confirmText: 'GBNGXT10', uyariOnay: false });
@@ -244,8 +467,21 @@ describe('Yük Testi — başlatma onayı', () => {
 
   it('YT4 uyarı varsa onay kutusu zorunlu; gönderilen uyariOnay=true', () => {
     const onOnay = vi.fn();
-    render(<BaslatOnayi onKontrol={onKontrol()} senaryo={null} uyarilar={['4 / 264 yol 200 dönmedi']} sunucuUyarilari={null} busy={false} hata={null} onOnay={onOnay} onKapat={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText(/hedef sunucunun adını yazın/), { target: { value: 'GBNGXT10' } });
+    render(
+      <BaslatOnayi
+        onKontrol={onKontrol()}
+        senaryo={null}
+        uyarilar={['4 / 264 yol 200 dönmedi']}
+        sunucuUyarilari={null}
+        busy={false}
+        hata={null}
+        onOnay={onOnay}
+        onKapat={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/hedef sunucunun adını yazın/), {
+      target: { value: 'GBNGXT10' },
+    });
     const dugme = screen.getByRole('button', { name: /Yük testini başlat/ });
     expect(dugme).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Uyarıları okudum/ }));
@@ -257,12 +493,35 @@ describe('Yük Testi — başlatma onayı', () => {
 
 describe('Yük Testi — yeni koşu akışı', () => {
   it('YT5 ön kontrol -> uyarılı sonuç -> 409 uyari_onayi -> onaylı başlatma -> koşu ayrıntısı', async () => {
-    const okKayit = ayrinti({ id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString(), onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI) });
+    const okKayit = ayrinti({
+      id: 16,
+      islem: 'on_kontrol',
+      durum: 'DONE',
+      finishedAt: new Date().toISOString(),
+      onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI),
+    });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
-    api.kosu.mockImplementation(async (id: number) => ({ ok: true, kosu: id === 16 ? okKayit : ayrinti({ id: 18 }), adimlar: [] }));
-    api.durum.mockResolvedValue({ ok: true, status: 'successful', finished: true, output: 'PLAY RECAP\n', result: null, kosuDurum: 'DONE' });
+    api.kosu.mockImplementation(async (id: number) => ({
+      ok: true,
+      kosu: id === 16 ? okKayit : ayrinti({ id: 18 }),
+      adimlar: [],
+    }));
+    api.durum.mockResolvedValue({
+      ok: true,
+      status: 'successful',
+      finished: true,
+      output: 'PLAY RECAP\n',
+      result: null,
+      kosuDurum: 'DONE',
+    });
     api.baslat
-      .mockResolvedValueOnce({ ok: false, code: 'uyari_onayi', message: 'Uyarılar onaylanmalı.', uyarilar: ['Sunucu: /web_log %70'], _httpStatus: 409 })
+      .mockResolvedValueOnce({
+        ok: false,
+        code: 'uyari_onayi',
+        message: 'Uyarılar onaylanmalı.',
+        uyarilar: ['Sunucu: /web_log %70'],
+        _httpStatus: 409,
+      })
       .mockResolvedValueOnce({ ok: true, kosuId: 18, jobId: 901, awxServerId: 1 });
 
     await yeniKosuAc();
@@ -273,22 +532,39 @@ describe('Yük Testi — yeni koşu akışı', () => {
     const baslatDugmesi = screen.getByRole('button', { name: /Koşuyu başlat/ });
     expect(baslatDugmesi).toBeDisabled();
     // Siniflandirma (host secici yolu: hedefHost ile) bitince on kontrol acilir.
-    await waitFor(() => expect(screen.getByRole('button', { name: /Ön kontrolü başlat/ })).toBeEnabled(), SINIF_BEKLE);
+    await waitFor(
+      () => expect(screen.getByRole('button', { name: /Ön kontrolü başlat/ })).toBeEnabled(),
+      SINIF_BEKLE,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Ön kontrolü başlat/ }));
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
-      senaryoId: 3, hedefHost: 'GBNGXT10', hedefIp: '10.1.2.4', vhost: 'glomo-test.fw.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false, parametreler: { motor: 'k6', ...PARAM, protokol: 'h1' },
+      senaryoId: 3,
+      hedefHost: 'GBNGXT10',
+      hedefIp: '10.1.2.4',
+      vhost: 'glomo-test.fw.garantibbva.com.tr',
+      yukHost: 'GBNGXT34',
+      sni: false,
+      parametreler: { motor: 'k6', ...PARAM, protokol: 'h1' },
     });
     expect(await screen.findByText(/uyarı — başlatırken açıkça onaylamanız gerekir/)).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole('button', { name: /Koşuyu başlat/ }));
 
     const pencere = await screen.findByRole('dialog');
-    fireEvent.change(within(pencere).getByLabelText(/hedef sunucunun adını yazın/), { target: { value: 'GBNGXT10' } });
+    fireEvent.change(within(pencere).getByLabelText(/hedef sunucunun adını yazın/), {
+      target: { value: 'GBNGXT10' },
+    });
     fireEvent.click(within(pencere).getByRole('checkbox', { name: /Uyarıları okudum/ }));
     fireEvent.click(within(pencere).getByRole('button', { name: /Yük testini başlat/ }));
     await waitFor(() => expect(api.baslat).toHaveBeenCalledTimes(1));
-    expect(api.baslat.mock.calls[0][0]).toEqual({ onKontrolKosuId: 16, confirmText: 'GBNGXT10', uyariOnay: true });
+    expect(api.baslat.mock.calls[0][0]).toEqual({
+      onKontrolKosuId: 16,
+      confirmText: 'GBNGXT10',
+      uyariOnay: true,
+    });
     // Sunucu kendi uyarisini ekledi: pencere acik kalir, liste buyur, kutu yeniden isaretlenir.
     expect(await within(pencere).findByText('Sunucu: /web_log %70')).toBeTruthy();
     fireEvent.click(within(pencere).getByRole('button', { name: /Yük testini başlat/ }));
@@ -297,16 +573,34 @@ describe('Yük Testi — yeni koşu akışı', () => {
   });
 
   it('YT6 form ön kontrolden sonra değişirse Başlat kapanır', async () => {
-    const okKayit = ayrinti({ id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString(), onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }) });
+    const okKayit = ayrinti({
+      id: 16,
+      islem: 'on_kontrol',
+      durum: 'DONE',
+      finishedAt: new Date().toISOString(),
+      onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }),
+    });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
     api.kosu.mockResolvedValue({ ok: true, kosu: okKayit, adimlar: [] });
-    api.durum.mockResolvedValue({ ok: true, status: 'successful', finished: true, output: '', result: null, kosuDurum: 'DONE' });
+    api.durum.mockResolvedValue({
+      ok: true,
+      status: 'successful',
+      finished: true,
+      output: '',
+      result: null,
+      kosuDurum: 'DONE',
+    });
     await yeniKosuAc();
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: /Ön kontrolü başlat/ })).toBeEnabled(), SINIF_BEKLE);
+    await waitFor(
+      () => expect(screen.getByRole('button', { name: /Ön kontrolü başlat/ })).toBeEnabled(),
+      SINIF_BEKLE,
+    );
     fireEvent.click(screen.getByRole('button', { name: /Ön kontrolü başlat/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled(),
+    );
     fireEvent.change(screen.getByLabelText('Tekrar'), { target: { value: '3' } });
     expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeDisabled();
     expect(screen.getByText(/Form ön kontrolden sonra değişti/)).toBeTruthy();
@@ -333,7 +627,8 @@ describe('Yük Testi — yeni koşu akışı', () => {
 });
 
 describe('Yük Testi — durdur (2026-10-27)', () => {
-  const MESAJ_424 = "AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX HTTP 503. Uzaktaki k6 / kaydedici sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.";
+  const MESAJ_424 =
+    "AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX HTTP 503. Uzaktaki k6 / kaydedici sürüyor olabilir; Durdur'u yeniden deneyin. Kilitler koşunun süre sınırına kadar tutulur.";
   async function durdurOnayla(dugmeAdi = 'Durdur') {
     fireEvent.click(await screen.findByRole('button', { name: dugmeAdi }));
     const pencere = await screen.findByRole('dialog');
@@ -342,7 +637,15 @@ describe('Yük Testi — durdur (2026-10-27)', () => {
   }
 
   it('YT7 koşu: 424 durdur_baslatilamadi kalıcı hata kutusu (sunucu mesajı); 200 ama durdur işi yoksa da başarı denmez', async () => {
-    api.durdur.mockResolvedValueOnce({ ok: false, code: 'durdur_baslatilamadi', message: MESAJ_424, iptal: { canceled: true }, iptalHatasi: null, durdurHatasi: 'AWX HTTP 503', _httpStatus: 424 });
+    api.durdur.mockResolvedValueOnce({
+      ok: false,
+      code: 'durdur_baslatilamadi',
+      message: MESAJ_424,
+      iptal: { canceled: true },
+      iptalHatasi: null,
+      durdurHatasi: 'AWX HTTP 503',
+      _httpStatus: 424,
+    });
     render(<KosuAyrinti kosuId={17} isAdmin onGeri={vi.fn()} />);
     await durdurOnayla();
     await waitFor(() => expect(api.durdur).toHaveBeenCalledWith(17));
@@ -357,46 +660,103 @@ describe('Yük Testi — durdur (2026-10-27)', () => {
     fireEvent.click(within(kutu as HTMLElement).getByRole('button', { name: 'Kapat' }));
     expect(screen.queryByText(MESAJ_424)).toBeNull();
     // Eski sunucu: 200 ama kosunun durdur isi yok -> yine kalici hata, basari yok.
-    api.durdur.mockResolvedValueOnce({ ok: true, iptal: { canceled: true }, iptalHatasi: null, durdurIsi: null, durdurHatasi: 'AWX işi başlatılamadı: AWX HTTP 500' });
+    api.durdur.mockResolvedValueOnce({
+      ok: true,
+      iptal: { canceled: true },
+      iptalHatasi: null,
+      durdurIsi: null,
+      durdurHatasi: 'AWX işi başlatılamadı: AWX HTTP 500',
+    });
     await durdurOnayla();
-    expect(await screen.findByText(/^AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX işi başlatılamadı: AWX HTTP 500\./)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /^AWX işi iptal edildi, ancak durdurma işi başlatılamadı: AWX işi başlatılamadı: AWX HTTP 500\./,
+      ),
+    ).toBeTruthy();
     expect(toast.success).not.toHaveBeenCalled();
     // Yeniden deneme basarili: kalici kutu kalkar, basari bildirimi gelir.
-    api.durdur.mockResolvedValueOnce({ ok: true, iptal: { alreadyTerminal: true }, iptalHatasi: null, durdurIsi: { jobId: 915, awxServerId: 1 }, durdurHatasi: null });
+    api.durdur.mockResolvedValueOnce({
+      ok: true,
+      iptal: { alreadyTerminal: true },
+      iptalHatasi: null,
+      durdurIsi: { jobId: 915, awxServerId: 1 },
+      durdurHatasi: null,
+    });
     await durdurOnayla();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Durdurma işi AWX #915 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Durdurma işi AWX #915 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.',
+      ),
+    );
     expect(screen.queryByText(/durdurma işi başlatılamadı/)).toBeNull();
     // AWX iptali olmadi ama durdur isi basladi: sunucu kilidi kosu isinde birakir; basari denmez, uyari verilir.
     toast.success.mockReset();
-    api.durdur.mockResolvedValueOnce({ ok: true, iptal: null, iptalHatasi: 'AWX HTTP 403', durdurIsi: { jobId: 916, awxServerId: 1 }, durdurHatasi: null });
+    api.durdur.mockResolvedValueOnce({
+      ok: true,
+      iptal: null,
+      iptalHatasi: 'AWX HTTP 403',
+      durdurIsi: { jobId: 916, awxServerId: 1 },
+      durdurHatasi: null,
+    });
     await durdurOnayla();
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('Durdurma işi AWX #916 başlatıldı, ancak koşunun AWX işi iptal edilemedi: AWX HTTP 403. Kilitler koşu işi bitince bırakılır.'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        'Durdurma işi AWX #916 başlatıldı, ancak koşunun AWX işi iptal edilemedi: AWX HTTP 403. Kilitler koşu işi bitince bırakılır.',
+      ),
+    );
     expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('YT8 koşu: 409 baslatiliyor bilgi bildirimi; başarıda "Durdurma işi AWX #N başlatıldı"', async () => {
     api.durdur
-      .mockResolvedValueOnce({ ok: false, code: 'baslatiliyor', message: 'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.', _httpStatus: 409 })
-      .mockResolvedValueOnce({ ok: true, iptal: { canceled: true }, iptalHatasi: null, durdurIsi: { jobId: 913, awxServerId: 1 }, durdurHatasi: null });
+      .mockResolvedValueOnce({
+        ok: false,
+        code: 'baslatiliyor',
+        message: 'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.',
+        _httpStatus: 409,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        iptal: { canceled: true },
+        iptalHatasi: null,
+        durdurIsi: { jobId: 913, awxServerId: 1 },
+        durdurHatasi: null,
+      });
     render(<KosuAyrinti kosuId={17} isAdmin onGeri={vi.fn()} />);
     const pencere = await durdurOnayla();
     expect(within(pencere).getByText(/k6 ve CPU kaydedicisini sonlandırır/)).toBeTruthy();
-    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.'));
+    await waitFor(() =>
+      expect(toast.info).toHaveBeenCalledWith(
+        'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.',
+      ),
+    );
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).toBeNull();
     await durdurOnayla();
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Durdurma işi AWX #913 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Durdurma işi AWX #913 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.',
+      ),
+    );
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('YT9 ön kontrol: pencere ve bildirim yalnız AWX iptalini söyler (k6 / kaydedici yok)', async () => {
     kosuYukle({ id: 16, islem: 'on_kontrol', durum: 'RUNNING' });
-    api.durdur.mockResolvedValue({ ok: true, iptal: { canceled: true }, iptalHatasi: null, durdurIsi: null, durdurHatasi: null });
+    api.durdur.mockResolvedValue({
+      ok: true,
+      iptal: { canceled: true },
+      iptalHatasi: null,
+      durdurIsi: null,
+      durdurHatasi: null,
+    });
     render(<KosuAyrinti kosuId={16} isAdmin onGeri={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Durdur' }));
     const pencere = await screen.findByRole('dialog');
-    expect(within(pencere).getByRole('heading', { name: 'Ön kontrol #16 durdurulsun mu?' })).toBeTruthy();
+    expect(
+      within(pencere).getByRole('heading', { name: 'Ön kontrol #16 durdurulsun mu?' }),
+    ).toBeTruthy();
     expect(pencere.textContent).not.toMatch(/k6|kaydedici/i);
     expect(pencere.textContent).toMatch(/AWX işi iptal edilir/);
     fireEvent.click(within(pencere).getByRole('button', { name: 'Durdur' }));
@@ -405,23 +765,42 @@ describe('Yük Testi — durdur (2026-10-27)', () => {
   });
 
   it('YT10 iptal edilmiş koşuda Admin "Kalan süreçleri durdur" (aynı uç); başlıkta "Durdurma işi AWX #N"', async () => {
-    kosuYukle({ durum: 'CANCELED', finishedAt: '2026-10-27T08:20:00Z', durdurIsi: { awxServerId: 1, awxJobId: 912 } });
-    api.durdur.mockResolvedValue({ ok: true, iptal: { canceled: false, alreadyTerminal: true }, iptalHatasi: null, durdurIsi: { jobId: 914, awxServerId: 1 }, durdurHatasi: null });
+    kosuYukle({
+      durum: 'CANCELED',
+      finishedAt: '2026-10-27T08:20:00Z',
+      durdurIsi: { awxServerId: 1, awxJobId: 912 },
+    });
+    api.durdur.mockResolvedValue({
+      ok: true,
+      iptal: { canceled: false, alreadyTerminal: true },
+      iptalHatasi: null,
+      durdurIsi: { jobId: 914, awxServerId: 1 },
+      durdurHatasi: null,
+    });
     const { unmount } = render(<KosuAyrinti kosuId={17} isAdmin onGeri={vi.fn()} />);
     expect(await screen.findByText('Durdurma işi AWX #912')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Kalan süreçleri durdur' }));
     const pencere = await screen.findByRole('dialog');
-    expect(within(pencere).getByRole('heading', { name: 'Koşu #17: kalan süreçler durdurulsun mu?' })).toBeTruthy();
+    expect(
+      within(pencere).getByRole('heading', { name: 'Koşu #17: kalan süreçler durdurulsun mu?' }),
+    ).toBeTruthy();
     fireEvent.click(within(pencere).getByRole('button', { name: 'Kalan süreçleri durdur' }));
     await waitFor(() => expect(api.durdur).toHaveBeenCalledWith(17));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Durdurma işi AWX #914 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Durdurma işi AWX #914 başlatıldı; k6 ve kaydedici durdurulduğunda kilitler bırakılır.',
+      ),
+    );
     unmount();
     // Admin olmayan: bilgi var, dugme yok. FAILED kosu ve iptal edilmis on kontrol: dugme yok.
     const r1 = render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     expect(await screen.findByText('Durdurma işi AWX #912')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /durdur/i })).toBeNull();
     r1.unmount();
-    for (const o of [{ durum: 'FAILED' as const }, { islem: 'on_kontrol' as const, durum: 'CANCELED' as const }]) {
+    for (const o of [
+      { durum: 'FAILED' as const },
+      { islem: 'on_kontrol' as const, durum: 'CANCELED' as const },
+    ]) {
       kosuYukle({ ...o, finishedAt: '2026-10-27T08:20:00Z' });
       const r = render(<KosuAyrinti kosuId={17} isAdmin onGeri={vi.fn()} />);
       expect(await screen.findByRole('heading', { name: /#17/ })).toBeTruthy();
@@ -434,25 +813,44 @@ describe('Yük Testi — durdur (2026-10-27)', () => {
 describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
   it('YT11 koşunun "Ön kontrol" sekmesi ön kontrolü kendi durumuyla gösterir: "Onaylanan uyarılar", çağrı yok', async () => {
     kosuYukle({
-      durum: 'FAILED', finishedAt: '2026-10-27T08:30:00Z', isDurumu: 'FAIL', isHatasi: 'kos.sh rc 1', onKontrolKosuId: 16,
-      onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI), sunucuDegerlendirmesi: { engeller: [], uyarilar: ['4 / 264 yol 200 dönmedi'] },
+      durum: 'FAILED',
+      finishedAt: '2026-10-27T08:30:00Z',
+      isDurumu: 'FAIL',
+      isHatasi: 'kos.sh rc 1',
+      onKontrolKosuId: 16,
+      onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI),
+      sunucuDegerlendirmesi: { engeller: [], uyarilar: ['4 / 264 yol 200 dönmedi'] },
     });
     const { unmount } = render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     fireEvent.click(await screen.findByRole('tab', { name: 'Ön kontrol' }));
     expect(screen.getByText('Onaylanan uyarılar')).toBeTruthy();
     expect(screen.getByText('4 / 264 yol 200 dönmedi')).toBeTruthy();
     const panel = screen.getByRole('tabpanel');
-    expect(panel.textContent).not.toMatch(/Koşu başlatılamaz|başlatılabilir|Ön kontrol başarısız|açıkça onaylamanız/);
+    expect(panel.textContent).not.toMatch(
+      /Koşu başlatılamaz|başlatılabilir|Ön kontrol başarısız|açıkça onaylamanız/,
+    );
     unmount();
     // Bugunku kurallarla engel sayilan bulgu (kosu o gun baslamisti): baslik "Ön kontrol engelleri", "başlatılamaz" degil.
-    kosuYukle({ durum: 'DONE', finishedAt: '2026-10-27T08:30:00Z', onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI), sunucuDegerlendirmesi: { engeller: ['log dizini /web_log okunamıyor'], uyarilar: [] } });
+    kosuYukle({
+      durum: 'DONE',
+      finishedAt: '2026-10-27T08:30:00Z',
+      onKontrol: onKontrolNormalle(ON_KONTROL_UYARILI),
+      sunucuDegerlendirmesi: { engeller: ['log dizini /web_log okunamıyor'], uyarilar: [] },
+    });
     const r2 = render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     fireEvent.click(await screen.findByRole('tab', { name: 'Ön kontrol' }));
-    expect(within(screen.getByText('Ön kontrol engelleri').parentElement?.parentElement as HTMLElement).getByText('Log dizini /web_log okunamıyor')).toBeTruthy();
+    expect(
+      within(
+        screen.getByText('Ön kontrol engelleri').parentElement?.parentElement as HTMLElement,
+      ).getByText('Log dizini /web_log okunamıyor'),
+    ).toBeTruthy();
     expect(screen.getByRole('tabpanel').textContent).not.toMatch(/Koşu başlatılamaz/);
     r2.unmount();
     // Suren kosu, temiz on kontrol: "temiz" der ama "başlatılabilir" demez.
-    kosuYukle({ onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }), sunucuDegerlendirmesi: { engeller: [], uyarilar: [] } });
+    kosuYukle({
+      onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }),
+      sunucuDegerlendirmesi: { engeller: [], uyarilar: [] },
+    });
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     fireEvent.click(await screen.findByRole('tab', { name: 'Ön kontrol' }));
     expect(screen.getByText('Ön kontrol temiz — engel ya da uyarı yoktu.')).toBeTruthy();
@@ -460,18 +858,51 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
   });
 
   it('YT12 başarısız ön kontrolün asıl nedeni engelde; okunamayan log dizini "kaldı"', () => {
-    render(<OnKontrolPaneli kosu={{ durum: 'FAILED', onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, log_dizini_okunur: false }), isDurumu: 'FAIL', isHatasi: 'log dizini /web_log okunamiyor', sunucuDegerlendirmesi: null }} />);
+    render(
+      <OnKontrolPaneli
+        kosu={{
+          durum: 'FAILED',
+          onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, log_dizini_okunur: false }),
+          isDurumu: 'FAIL',
+          isHatasi: 'log dizini /web_log okunamiyor',
+          sunucuDegerlendirmesi: null,
+        }}
+      />,
+    );
     const engel = screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement;
-    expect(within(engel).getByText('Ön kontrol başarısız: log dizini /web_log okunamiyor')).toBeTruthy();
+    expect(
+      within(engel).getByText('Ön kontrol başarısız: log dizini /web_log okunamiyor'),
+    ).toBeTruthy();
     const satir = screen.getByText('Log dizini okunur').closest('li') as HTMLElement;
     expect(satir.textContent).toMatch(/kaldı$/);
   });
 
   it('YT14 adım tablosu: etiket ve sıra tekrar’la; uyarı çipi + ayrıntıda liste; pencere istemciden ise sunucu rps "—"', async () => {
-    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 100, rps_sunucu: 98, p95: 10, ...o });
+    const adim = (o: Record<string, unknown>) =>
+      adimNormalle({
+        senaryo: 'K',
+        kip: 'yeni',
+        ae: 'br',
+        gecerlilik: 'GECERLI',
+        gercek_rps: 100,
+        rps_sunucu: 98,
+        p95: 10,
+        ...o,
+      });
     kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [
-      adim({ tur: 'R17_K_yeni_br_100_r2', hiz: 100, deneme: 1, rps_sunucu: 100, ham: { uyarilar: ['diger_trafik_%50'], pencere_kaynak: 'istemci_saati' } }),
-      adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, deneme: 2, ham: { pencere_kaynak: 'log', uyarilar: [] } }),
+      adim({
+        tur: 'R17_K_yeni_br_100_r2',
+        hiz: 100,
+        deneme: 1,
+        rps_sunucu: 100,
+        ham: { uyarilar: ['diger_trafik_%50'], pencere_kaynak: 'istemci_saati' },
+      }),
+      adim({
+        tur: 'R17_K_yeni_br_100_r1',
+        hiz: 100,
+        deneme: 2,
+        ham: { pencere_kaynak: 'log', uyarilar: [] },
+      }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
@@ -481,14 +912,25 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
     expect(within(s2).getByTitle('R17_K_yeni_br_100_r2').textContent).toBe('2. tekrar');
     expect(s1.textContent).toContain('100 / 98');
     expect(within(s1).queryByTitle(/pencere istemci saatinden/)).toBeNull();
-    expect(within(s2).getByTitle('sunucu logunda bu adımın satırı yok; pencere istemci saatinden').textContent).toBe('—');
+    expect(
+      within(s2).getByTitle('sunucu logunda bu adımın satırı yok; pencere istemci saatinden')
+        .textContent,
+    ).toBe('—');
     // Sunucu hedefinde CPU kademesi etikette (serbestte yok: YT24).
     expect(screen.getByText('CPU-ms/istek @ 100/sn')).toBeTruthy();
     // Sadelestirme: cip ipucu duz cumle (ham kod ayrintida, parantez icinde).
-    expect(within(s2).getByTitle(/^Ölçüm sırasında hedefe başka trafik de geldi \(test isteklerinin %50’i kadar\)/).textContent).toBe('1 uyarı');
+    expect(
+      within(s2).getByTitle(
+        /^Ölçüm sırasında hedefe başka trafik de geldi \(test isteklerinin %50’i kadar\)/,
+      ).textContent,
+    ).toBe('1 uyarı');
     expect(within(s1).queryByText(/uyarı$/)).toBeNull();
     fireEvent.click(within(s2).getByRole('button', { name: 'R17_K_yeni_br_100_r2 ayrıntısı' }));
-    expect(within(screen.getByRole('list', { name: 'R17_K_yeni_br_100_r2 uyarıları' })).getByText('(diger_trafik_%50)')).toBeTruthy();
+    expect(
+      within(screen.getByRole('list', { name: 'R17_K_yeni_br_100_r2 uyarıları' })).getByText(
+        '(diger_trafik_%50)',
+      ),
+    ).toBeTruthy();
     // Grafik ipuclari tekrar'la (deneme 1 yazilmaz).
     const ipuclari = [...document.querySelectorAll('svg title')].map((t) => t.textContent || '');
     expect(ipuclari.some((t) => t.startsWith('100/sn · 1. tekrar · deneme 2:'))).toBe(true);
@@ -497,10 +939,27 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
   });
 
   it('YT15 OKUNAMADI: doğru metin (otomatik yeniden okuma yok); Admin "Sonucu yeniden oku" -> POST yeniden-oku', async () => {
-    kosuYukle({ durum: 'OKUNAMADI', gecerlilik: 'OKUNAMADI', finishedAt: '2026-10-27T08:40:00Z', gecersizNedenleri: ['sonuç 3 denemede okunamadı (Portal süreci okuma sırasında yeniden başlamış olabilir)'],
-      analiz: { nproc: null, cpuTlsliPay: null, uyarilar: [], okumaHatasi: 'kosu dizini okunamadi: /sw/BMW_PORTAL/nginx_loadtest/17 (ENOENT)' } });
+    kosuYukle({
+      durum: 'OKUNAMADI',
+      gecerlilik: 'OKUNAMADI',
+      finishedAt: '2026-10-27T08:40:00Z',
+      gecersizNedenleri: [
+        'sonuç 3 denemede okunamadı (Portal süreci okuma sırasında yeniden başlamış olabilir)',
+      ],
+      analiz: {
+        nproc: null,
+        cpuTlsliPay: null,
+        uyarilar: [],
+        okumaHatasi: 'kosu dizini okunamadi: /sw/BMW_PORTAL/nginx_loadtest/17 (ENOENT)',
+      },
+    });
     api.yenidenOku
-      .mockResolvedValueOnce({ ok: false, code: 'yeniden_okunamaz', message: 'Yalnız sonucu okunamamış koşular yeniden okunabilir.', _httpStatus: 409 })
+      .mockResolvedValueOnce({
+        ok: false,
+        code: 'yeniden_okunamaz',
+        message: 'Yalnız sonucu okunamamış koşular yeniden okunabilir.',
+        _httpStatus: 409,
+      })
       .mockResolvedValueOnce({ ok: true });
     const { unmount } = render(<KosuAyrinti kosuId={17} isAdmin onGeri={vi.fn()} />);
     expect(await screen.findByText(OKUNAMADI_ACIKLAMASI)).toBeTruthy();
@@ -509,7 +968,11 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
     expect(document.body.textContent).not.toMatch(/yeniden okumayı dener|okumayı yeniden dener/);
     const dugme = screen.getByRole('button', { name: 'Sonucu yeniden oku' });
     fireEvent.click(dugme);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Yalnız sonucu okunamamış koşular yeniden okunabilir.'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Yalnız sonucu okunamamış koşular yeniden okunabilir.',
+      ),
+    );
     const once = api.kosu.mock.calls.length;
     fireEvent.click(dugme);
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1));
@@ -532,13 +995,29 @@ describe('Yük Testi — koşu ayrıntısı (2026-10-27)', () => {
 describe('Yük Testi — senaryo (2026-10-27)', () => {
   it('YT19 HAR özetinde ";" parametresi atılan yol sayacı; gönderilen satırda ve özette oturum kimliği yok', async () => {
     const H = 'https://glomo-test.fw.garantibbva.com.tr';
-    const g = (url: string, mime = 'application/javascript') => ({ startedDateTime: '2026-10-26T10:00:00Z', request: { method: 'GET', url }, response: { status: 200, content: { size: 100, mimeType: mime } } });
-    const HAR = JSON.stringify({ log: { entries: [g(`${H}/glomo/a;jsessionid=8F3A2B9C/b.js`), g(`${H}/glomo/a/b.js`), g(`${H}/glomo/login.jsf;jsessionid=8F3A2B9C`, 'text/html')] } });
+    const g = (url: string, mime = 'application/javascript') => ({
+      startedDateTime: '2026-10-26T10:00:00Z',
+      request: { method: 'GET', url },
+      response: { status: 200, content: { size: 100, mimeType: mime } },
+    });
+    const HAR = JSON.stringify({
+      log: {
+        entries: [
+          g(`${H}/glomo/a;jsessionid=8F3A2B9C/b.js`),
+          g(`${H}/glomo/a/b.js`),
+          g(`${H}/glomo/login.jsf;jsessionid=8F3A2B9C`, 'text/html'),
+        ],
+      },
+    });
     api.senaryoKaydet.mockResolvedValue({ ok: true, id: 9 });
     render(<Senaryolar isAdmin />);
     fireEvent.click(await screen.findByRole('button', { name: /Yeni senaryo/ }));
-    fireEvent.change(screen.getByLabelText('Vhost (HAR’daki host)'), { target: { value: 'glomo-test.fw.garantibbva.com.tr' } });
-    fireEvent.change(screen.getByLabelText('HAR dosyası seç'), { target: { files: [new File([HAR], 'oturum.har', { type: 'application/json' })] } });
+    fireEvent.change(screen.getByLabelText('Vhost (HAR’daki host)'), {
+      target: { value: 'glomo-test.fw.garantibbva.com.tr' },
+    });
+    fireEvent.change(screen.getByLabelText('HAR dosyası seç'), {
+      target: { files: [new File([HAR], 'oturum.har', { type: 'application/json' })] },
+    });
     const sayac = await screen.findByText('“;” parametresi atılan yol');
     expect(sayac.textContent).toBe('“;” parametresi atılan yol 2');
     expect(screen.getByText(/“;” parametresi atılan 2/)).toBeTruthy();
@@ -546,20 +1025,36 @@ describe('Yük Testi — senaryo (2026-10-27)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Senaryoyu kaydet' }));
     await waitFor(() => expect(api.senaryoKaydet).toHaveBeenCalledTimes(1));
     const govde = api.senaryoKaydet.mock.calls[0][0];
-    expect(govde.satirlar.map((s: { yol: string; agirlik: number }) => [s.agirlik, s.yol])).toEqual([[2, '/glomo/a/b.js'], [1, '/glomo/login.jsf']]);
+    expect(govde.satirlar.map((s: { yol: string; agirlik: number }) => [s.agirlik, s.yol])).toEqual(
+      [
+        [2, '/glomo/a/b.js'],
+        [1, '/glomo/login.jsf'],
+      ],
+    );
     expect(JSON.stringify(govde).toLowerCase()).not.toContain('jsessionid');
     expect(govde.ozet.harlar[0].parametresiAtilan).toBe(2);
   });
 });
 
 describe('Yük Testi — liste ve karşılaştırma (2026-10-27)', () => {
-  const K = (id: number) => ({ ...KOSU_LISTE, id, durum: 'DONE', gecerlilik: 'GECERLI', etiket: `koşu ${id}`, finishedAt: '2026-10-27T09:00:00Z' });
+  const K = (id: number) => ({
+    ...KOSU_LISTE,
+    id,
+    durum: 'DONE',
+    gecerlilik: 'GECERLI',
+    etiket: `koşu ${id}`,
+    finishedAt: '2026-10-27T09:00:00Z',
+  });
 
   it('YT17 Karşılaştır seçicisi sunucudan islem=kosu, durum=DONE, limit=200 ister', async () => {
     api.kosular.mockResolvedValue({ ok: true, kosular: [K(30), K(29)], dahaVar: false });
     render(<Karsilastir />);
-    await waitFor(() => expect(api.kosular).toHaveBeenCalledWith({ islem: 'kosu', durum: 'DONE', limit: 200 }));
-    expect(await within(screen.getByLabelText('Referans koşu')).findByRole('option', { name: /#29/ })).toBeTruthy();
+    await waitFor(() =>
+      expect(api.kosular).toHaveBeenCalledWith({ islem: 'kosu', durum: 'DONE', limit: 200 }),
+    );
+    expect(
+      await within(screen.getByLabelText('Referans koşu')).findByRole('option', { name: /#29/ }),
+    ).toBeTruthy();
   });
 
   it('YT18 Koşular: dahaVar ise "Daha eski koşular" onceki=<en küçük id> ekler; tazeleme eski sayfayı silmez', async () => {
@@ -579,8 +1074,11 @@ describe('Yük Testi — liste ve karşılaştırma (2026-10-27)', () => {
     expect(await screen.findByRole('button', { name: 'Koşu 31 ayrıntısı' })).toBeTruthy();
     expect(api.kosular).toHaveBeenNthCalledWith(3, { limit: 200 });
     expect(screen.getByRole('button', { name: 'Koşu 28 ayrıntısı' })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /^Koşu \d+ ayrıntısı$/ }).map((b) => b.getAttribute('aria-label'))).toEqual(
-      ['Koşu 31 ayrıntısı', 'Koşu 30 ayrıntısı', 'Koşu 29 ayrıntısı', 'Koşu 28 ayrıntısı']);
+    expect(
+      screen
+        .getAllByRole('button', { name: /^Koşu \d+ ayrıntısı$/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['Koşu 31 ayrıntısı', 'Koşu 30 ayrıntısı', 'Koşu 29 ayrıntısı', 'Koşu 28 ayrıntısı']);
     // En eski sayfa "daha yok" dedi: tazeleme dugmeyi geri getirmez.
     expect(screen.queryByRole('button', { name: /Daha eski koşular/ })).toBeNull();
   });
@@ -588,53 +1086,151 @@ describe('Yük Testi — liste ve karşılaştırma (2026-10-27)', () => {
 
 // ── Tur 3: elle hedef IP (sunucu | serbest), wrk, D7 ─────────────────────────────────────
 const SERBEST_ON_KONTROL = {
-  ip_yerel: null, server_name_var: null, master_sayisi: null, web_log_df: null, log_dizini_okunur: null, log_format_ua: null, statik_direktif: null,
-  ip_yuk_makinesinde: false, serbest_ag: '10.20.30.0/24', k6_var: true, k6_surum: 'k6 v0.49.0', k6_sha256: 'a'.repeat(64), yollar_toplam: 264, yollar_200: 264,
-  ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 200, sikistirmasiz: 64 },
+  ip_yerel: null,
+  server_name_var: null,
+  master_sayisi: null,
+  web_log_df: null,
+  log_dizini_okunur: null,
+  log_format_ua: null,
+  statik_direktif: null,
+  ip_yuk_makinesinde: false,
+  serbest_ag: '10.20.30.0/24',
+  k6_var: true,
+  k6_surum: 'k6 v0.49.0',
+  k6_sha256: 'a'.repeat(64),
+  yollar_toplam: 264,
+  yollar_200: 264,
+  ilk_hatalar: [],
+  sikistirma: { statik: 0, dinamik: 200, sikistirmasiz: 64 },
 };
 /** Sunucunun kanonik wrk parametresi (tavan_rps sunucuda hesaplanir; hizlar / maxvu YOK). */
-const WRK_P = { motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tavan_rps: 450, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false, butceSn: 1380 };
-const tamamOnKontrol = (o: Partial<NlKosuAyrinti> = {}) => ayrinti({ id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString(), isDurumu: 'OK', ...o });
+const WRK_P = {
+  motor: 'wrk',
+  baglantilar: [2, 4, 8],
+  is_parcacigi: 2,
+  tavan_rps: 450,
+  tekrar: 2,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  kip: 'yeni',
+  ae: 'br',
+  sni: false,
+  butceSn: 1380,
+};
+const tamamOnKontrol = (o: Partial<NlKosuAyrinti> = {}) =>
+  ayrinti({
+    id: 16,
+    islem: 'on_kontrol',
+    durum: 'DONE',
+    finishedAt: new Date().toISOString(),
+    isDurumu: 'OK',
+    ...o,
+  });
 
 describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
   it('YT20 serbest: sınıflandırma serbest -> serbest vhost / varsayılanlar -> gövdede hedefHost null -> onay IP ister, İzinli ağ satırı', async () => {
     const okKayit = tamamOnKontrol({
-      hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.40', serbestAg: '10.20.30.0/24',
-      parametreler: { motor: 'k6', hizlar: [50, 100, 200], maxvu: 50, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', sni: false },
-      onKontrol: onKontrolNormalle(SERBEST_ON_KONTROL), sunucuDegerlendirmesi: { engeller: [], uyarilar: [SERBEST_UYARISI] },
+      hedefTuru: 'serbest',
+      hedefHost: null,
+      hedefIp: '10.20.30.40',
+      serbestAg: '10.20.30.0/24',
+      parametreler: {
+        motor: 'k6',
+        hizlar: [50, 100, 200],
+        maxvu: 50,
+        tekrar: 2,
+        isinma: 30,
+        sure: 120,
+        bosluk: 30,
+        bosta: 60,
+        kip: 'yeni',
+        ae: 'br',
+        sni: false,
+      },
+      onKontrol: onKontrolNormalle(SERBEST_ON_KONTROL),
+      sunucuDegerlendirmesi: { engeller: [], uyarilar: [SERBEST_UYARISI] },
     });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
-    api.kosu.mockImplementation(async (id: number) => ({ ok: true, kosu: id === 16 ? okKayit : ayrinti({ id: 18 }), adimlar: [] }));
-    api.durum.mockResolvedValue({ ok: true, status: 'successful', finished: true, output: '', result: null, kosuDurum: 'DONE' });
+    api.kosu.mockImplementation(async (id: number) => ({
+      ok: true,
+      kosu: id === 16 ? okKayit : ayrinti({ id: 18 }),
+      adimlar: [],
+    }));
+    api.durum.mockResolvedValue({
+      ok: true,
+      status: 'successful',
+      finished: true,
+      output: '',
+      result: null,
+      kosuDurum: 'DONE',
+    });
     api.baslat.mockResolvedValue({ ok: true, kosuId: 18, jobId: 901, awxServerId: 1 });
     await yeniKosuAc();
     // Once bir host secilir, sonra "elle yazacağım"a donulur: eski host ne siniflandirmaya ne govdeye gider.
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     fireEvent.change(hostSecici(), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
-    expect(await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE)).toBeTruthy();
-    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.40', { yukHost: 'GBNGXT34', hedefHost: null });
-    expect(screen.getByText(/^Hiçbir envanterde kayıtlı değil\. Hedefe bağlanılmaz \(SSH yok\)/)).toBeTruthy();
+    expect(
+      await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE),
+    ).toBeTruthy();
+    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.40', {
+      yukHost: 'GBNGXT34',
+      hedefHost: null,
+    });
+    expect(
+      screen.getByText(/^Hiçbir envanterde kayıtlı değil\. Hedefe bağlanılmaz \(SSH yok\)/),
+    ).toBeTruthy();
     expect(screen.getByText(SERBEST_VHOST_YARDIMI)).toBeTruthy();
-    expect(screen.getByLabelText('Host başlığı (vhost)')).toHaveValue('glomo-test.fw.garantibbva.com.tr');
+    expect(screen.getByLabelText('Host başlığı (vhost)')).toHaveValue(
+      'glomo-test.fw.garantibbva.com.tr',
+    );
     // Serbest varsayilanlari (kullanici alani degistirmedi) ve sinirlari.
     expect(screen.getByLabelText('Hızlar (istek/sn)')).toHaveValue('50 100 200');
     expect(screen.getByLabelText('En çok VU')).toHaveValue(50);
     expect(screen.getByText(/Sınırlar: hız ≤ 200\/sn, VU ≤ 50/)).toBeTruthy();
-    expect(screen.getByText('Serbest hedefte CPU kaydedici yok; bu süre beklenmez, yalnız süre bütçesine eklenir.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Serbest hedefte CPU kaydedici yok; bu süre beklenmez, yalnız süre bütçesine eklenir.',
+      ),
+    ).toBeTruthy();
     await waitFor(() => expect(okDugmesi()).toBeEnabled());
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     expect(api.onKontrol.mock.calls[0][0]).toEqual({
-      senaryoId: 3, hedefHost: null, hedefIp: '10.20.30.40', vhost: 'glomo-test.fw.garantibbva.com.tr', yukHost: 'GBNGXT34', sni: false,
-      parametreler: { motor: 'k6', hizlar: [50, 100, 200], maxvu: 50, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', protokol: 'h1' },
+      senaryoId: 3,
+      hedefHost: null,
+      hedefIp: '10.20.30.40',
+      vhost: 'glomo-test.fw.garantibbva.com.tr',
+      yukHost: 'GBNGXT34',
+      sni: false,
+      parametreler: {
+        motor: 'k6',
+        hizlar: [50, 100, 200],
+        maxvu: 50,
+        tekrar: 2,
+        isinma: 30,
+        sure: 120,
+        bosluk: 30,
+        bosta: 60,
+        kip: 'yeni',
+        ae: 'br',
+        protokol: 'h1',
+      },
     });
     // Serbest on kontrol paneli: yuk sunucusu satirlari ve bilgi.
     expect(await screen.findByText('IP yük sunucusunda yerel değil')).toBeTruthy();
     expect(screen.getByText('Yük sunucusu izin dosyası')).toBeTruthy();
     expect(screen.queryByText('IP hedefte yerel')).toBeNull();
-    expect(screen.getByText(/Serbest hedef: hedef sunucu denetlenmedi \(SSH yok\); yalnız yük sunucusu ve yollar denetlendi\./)).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
+    expect(
+      screen.getByText(
+        /Serbest hedef: hedef sunucu denetlenmedi \(SSH yok\); yalnız yük sunucusu ve yollar denetlendi\./,
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled(),
+    );
     expect(screen.getByText('Onay (hedef IP)')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Koşuyu başlat/ }));
     const pencere = await screen.findByRole('dialog');
@@ -642,8 +1238,14 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     const dugme = within(pencere).getByRole('button', { name: /Yük testini başlat/ });
     expect(within(pencere).getByText('Onay için hedef IP’yi yazın.')).toBeTruthy();
     expect(within(pencere).getByText('İzinli ağ')).toBeTruthy();
-    expect(within(pencere).getByText('10.20.30.0/24 (Portal) · 10.20.30.0/24 (yük sunucusu)')).toBeTruthy();
-    expect(within(pencere).getByText(/^Bu iş 10\.20\.30\.40 adresine gerçek trafik gönderir\. Hedef sunucuya bağlanılmaz/)).toBeTruthy();
+    expect(
+      within(pencere).getByText('10.20.30.0/24 (Portal) · 10.20.30.0/24 (yük sunucusu)'),
+    ).toBeTruthy();
+    expect(
+      within(pencere).getByText(
+        /^Bu iş 10\.20\.30\.40 adresine gerçek trafik gönderir\. Hedef sunucuya bağlanılmaz/,
+      ),
+    ).toBeTruthy();
     expect(within(pencere).getByText('Yapıştırma kapalı; IP birebir aynı olmalı.')).toBeTruthy();
     fireEvent.click(within(pencere).getByRole('checkbox', { name: /Uyarıları okudum/ }));
     // Host adi onay degildir (hedef sunucu yok).
@@ -656,60 +1258,123 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     fireEvent.change(girdi, { target: { value: '10.20.30.40' } });
     expect(dugme).toBeEnabled();
     fireEvent.click(dugme);
-    await waitFor(() => expect(api.baslat).toHaveBeenCalledWith({ onKontrolKosuId: 16, confirmText: '10.20.30.40', uyariOnay: true }));
+    await waitFor(() =>
+      expect(api.baslat).toHaveBeenCalledWith({
+        onKontrolKosuId: 16,
+        confirmText: '10.20.30.40',
+        uyariOnay: true,
+      }),
+    );
     expect(within(pencere).getByRole('button', { name: 'İptal' })).toBeTruthy();
   });
 
   // Tek basina ~3.2 sn (varsayilan sinir 5 sn): tam takim paralel kosarken sinir asiliyordu (2026-11-12).
   it('YT21 host seçici: hedefHost sorguda ve gövdede, IP adaylardan; paylaşılan VIP elle yazılınca ip_belirsiz; uygun:false düğmeyi kapatır', async () => {
-    const BELIRSIZ = '10.1.2.4 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
+    const BELIRSIZ =
+      '10.1.2.4 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
     // B3'ten beri sunucu olculmus limit icin uygun:false DONMEZ; ekranin genel uygun:false yolu ornek bir nedenle sinanir.
     const KAPALI_NEDENI = 'Hedef bu koşu için kapalı (örnek sunucu nedeni).';
     api.ipSinifi.mockImplementation(async (ip: string, o: { hedefHost?: string | null } = {}) => {
       // 10.1.2.4 paylasilan VIP: host secici yolunda (hedefHost) sunucu, elle yazilinca belirsiz.
-      if (ip === '10.1.2.4') return o.hedefHost === 'GBNGXT10' ? SUNUCU_SINIFI('GBNGXT10', ip) : { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 };
-      if (ip === '10.3.3.3') return SUNUCU_SINIFI('GBNGXT30', ip, { uygun: false, neden: KAPALI_NEDENI, kod: 'hedef_kapali' });
+      if (ip === '10.1.2.4')
+        return o.hedefHost === 'GBNGXT10'
+          ? SUNUCU_SINIFI('GBNGXT10', ip)
+          : { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 };
+      if (ip === '10.3.3.3')
+        return SUNUCU_SINIFI('GBNGXT30', ip, {
+          uygun: false,
+          neden: KAPALI_NEDENI,
+          kod: 'hedef_kapali',
+        });
       // Sunucunun diger uygun:false nedenleri (200): IP hostun aday listesinde degil; hedef kapisi (neden metni yoksa kod metni).
-      if (ip === '10.3.3.4') return SUNUCU_SINIFI('GBNGXT30', ip, { uygun: false, neden: "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9).", kod: 'ip_hedefte_yok' });
-      if (ip === '10.3.3.5') return SUNUCU_SINIFI('GBNGXT31', ip, { uygun: false, neden: null, kod: 'hedef_uretim' });
+      if (ip === '10.3.3.4')
+        return SUNUCU_SINIFI('GBNGXT30', ip, {
+          uygun: false,
+          neden: "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9).",
+          kod: 'ip_hedefte_yok',
+        });
+      if (ip === '10.3.3.5')
+        return SUNUCU_SINIFI('GBNGXT31', ip, { uygun: false, neden: null, kod: 'hedef_uretim' });
       return varsayilanSinif(ip);
     });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
-    api.kosu.mockResolvedValue({ ok: true, kosu: tamamOnKontrol({ onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }), sunucuDegerlendirmesi: { engeller: [], uyarilar: [] } }), adimlar: [] });
-    api.durum.mockResolvedValue({ ok: true, status: 'successful', finished: true, output: '', result: null, kosuDurum: 'DONE' });
+    api.kosu.mockResolvedValue({
+      ok: true,
+      kosu: tamamOnKontrol({
+        onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264 }),
+        sunucuDegerlendirmesi: { engeller: [], uyarilar: [] },
+      }),
+      adimlar: [],
+    });
+    api.durum.mockResolvedValue({
+      ok: true,
+      status: 'successful',
+      finished: true,
+      output: '',
+      result: null,
+      kosuDurum: 'DONE',
+    });
     await yeniKosuAc();
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     // Iki aday: IP otomatik secilmez; adaylardan biri tiklanir.
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('');
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.4' }));
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('10.1.2.4');
-    expect(await screen.findByText(/^Sunucu hedefi: GBNGXT10 \(TEST\) — CPU kaydedici ve nginx logu ölçülür/, {}, SINIF_BEKLE)).toBeTruthy();
-    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', { yukHost: 'GBNGXT34', hedefHost: 'GBNGXT10' });
+    expect(
+      await screen.findByText(
+        /^Sunucu hedefi: GBNGXT10 \(TEST\) — CPU kaydedici ve nginx logu ölçülür/,
+        {},
+        SINIF_BEKLE,
+      ),
+    ).toBeTruthy();
+    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', {
+      yukHost: 'GBNGXT34',
+      hedefHost: 'GBNGXT10',
+    });
     await waitFor(() => expect(okDugmesi()).toBeEnabled());
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
-    expect(api.onKontrol.mock.calls[0][0]).toMatchObject({ hedefHost: 'GBNGXT10', hedefIp: '10.1.2.4' });
-    await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
+    expect(api.onKontrol.mock.calls[0][0]).toMatchObject({
+      hedefHost: 'GBNGXT10',
+      hedefIp: '10.1.2.4',
+    });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled(),
+    );
     // Ayni IP elle: hedefHost'suz siniflandirma -> 409 ip_belirsiz -> mesaj, on kontrol kapali.
     fireEvent.change(hostSecici(), { target: { value: '' } });
     expect(screen.getByLabelText('Hedef IP')).toHaveValue('10.1.2.4');
     expect(await screen.findByText(BELIRSIZ, {}, SINIF_BEKLE)).toBeTruthy();
-    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', { yukHost: 'GBNGXT34', hedefHost: null });
+    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.4', {
+      yukHost: 'GBNGXT34',
+      hedefHost: null,
+    });
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeDisabled();
     // 200 ama uygun:false -> neden gorunur, on kontrol kapali.
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.3.3.3' } });
     expect(await screen.findByText(KAPALI_NEDENI, {}, SINIF_BEKLE)).toBeTruthy();
     expect(okDugmesi()).toBeDisabled();
-    expect(screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.')).toBeTruthy();
-    for (const [ip2, metin] of [['10.3.3.4', "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9)."], ['10.3.3.5', 'üretim (PROD) sinyali var — yük testi yapılamaz']]) {
+    expect(
+      screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.'),
+    ).toBeTruthy();
+    for (const [ip2, metin] of [
+      ['10.3.3.4', "10.3.3.4, GBNGXT30 için bilinen IP'lerden değil (10.3.3.9)."],
+      ['10.3.3.5', 'üretim (PROD) sinyali var — yük testi yapılamaz'],
+    ]) {
       fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: ip2 } });
       expect(await screen.findByText(metin, {}, SINIF_BEKLE)).toBeTruthy();
       expect(screen.getByText(metin).closest('[role="alert"]')).toBeTruthy();
       expect(okDugmesi()).toBeDisabled();
     }
     // 424: "Yeniden dene" ve dugme ACIK (karar sunucuda).
-    api.ipSinifi.mockImplementation(async () => ({ ok: false, code: 'envanter_bayat', message: 'Serbest hedef için envanter bayat: dbo.IPInventory son yükleme 2026-10-25 08:00:00 (72 saat önce, en çok 48); yükleyici / tarama işlerini kontrol edin.', _httpStatus: 424 }));
+    api.ipSinifi.mockImplementation(async () => ({
+      ok: false,
+      code: 'envanter_bayat',
+      message:
+        'Serbest hedef için envanter bayat: dbo.IPInventory son yükleme 2026-10-25 08:00:00 (72 saat önce, en çok 48); yükleyici / tarama işlerini kontrol edin.',
+      _httpStatus: 424,
+    }));
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
     expect(await screen.findByText(/envanter bayat/, {}, SINIF_BEKLE)).toBeTruthy();
     expect(okDugmesi()).toBeEnabled();
@@ -720,13 +1385,31 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
 
   it('YT22 wrk: SNI kapalı ve false, alanlar değişir, tavan satırı; gövdede motor wrk + bağlantılar (hizlar yok); onayda wrk yük satırı ve süre', async () => {
     const okKayit = tamamOnKontrol({
-      motor: 'wrk', parametreler: WRK_P as NlKosuAyrinti['parametreler'],
-      onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, yollar_200: 264, k6_var: null, k6_surum: null, k6_sha256: null, wrk_var: true, wrk_calisiyor: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer', wrk_sha256: 'e'.repeat(64) }),
+      motor: 'wrk',
+      parametreler: WRK_P as NlKosuAyrinti['parametreler'],
+      onKontrol: onKontrolNormalle({
+        ...ON_KONTROL_UYARILI,
+        yollar_200: 264,
+        k6_var: null,
+        k6_surum: null,
+        k6_sha256: null,
+        wrk_var: true,
+        wrk_calisiyor: true,
+        wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer',
+        wrk_sha256: 'e'.repeat(64),
+      }),
       sunucuDegerlendirmesi: { engeller: [], uyarilar: [WRK_UYARISI] },
     });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 900, awxServerId: 1 });
     api.kosu.mockResolvedValue({ ok: true, kosu: okKayit, adimlar: [] });
-    api.durum.mockResolvedValue({ ok: true, status: 'successful', finished: true, output: '', result: null, kosuDurum: 'DONE' });
+    api.durum.mockResolvedValue({
+      ok: true,
+      status: 'successful',
+      finished: true,
+      output: '',
+      result: null,
+      kosuDurum: 'DONE',
+    });
     await yeniKosuAc();
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
@@ -735,27 +1418,57 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     fireEvent.click(sni);
     expect(sni).toBeChecked();
     expect(screen.getByRole('radio', { name: 'k6 — açık döngü (sabit istek/sn)' })).toBeChecked();
-    fireEvent.click(screen.getByRole('radio', { name: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' }));
-    expect(screen.getByRole('radio', { name: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' })).toBeChecked();
+    fireEvent.click(
+      screen.getByRole('radio', { name: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' }),
+    );
+    expect(
+      screen.getByRole('radio', { name: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' }),
+    ).toBeChecked();
     // wrk SNI'yi Host basligina gore secemez: kutu kapali ve isaretsiz, govdede false.
     expect(sni).toBeDisabled();
     expect(sni).not.toBeChecked();
-    expect(screen.getByText('— wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).')).toBeTruthy();
+    expect(
+      screen.getByText('— wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).'),
+    ).toBeTruthy();
     // UV4: not tam opak (opacity 0.7 acik temada AA altinda kaliyordu).
-    expect((screen.getByText('— wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).').closest('label') as HTMLElement).style.opacity).toBe('');
+    expect(
+      (
+        screen
+          .getByText('— wrk SNI’yi Host başlığına göre seçemez (IP adresi SNI olarak gider).')
+          .closest('label') as HTMLElement
+      ).style.opacity,
+    ).toBe('');
     expect(screen.queryByLabelText('Hızlar (istek/sn)')).toBeNull();
     expect(screen.queryByLabelText('En çok VU')).toBeNull();
     expect(screen.getByLabelText('Bağlantılar')).toHaveValue('2 4 8');
     expect(screen.getByLabelText('İş parçacığı')).toHaveValue(2);
     // WR2: tavan ORTALAMA hizi sinirlar (kapali dongu istekleri kumeler; Portal burst'u okumaz): "aşamaz" denmez.
-    expect(screen.getByText('Ortalama toplam hız tavanı: 450 istek/sn (bağlantı başına bekleme ≈ 5 ms; genel üst sınır)')).toBeTruthy();
-    expect(screen.getByText('wrk kapalı döngüdür; Portal toplam hızı ORTALAMADA 450 istek/sn ile sınırlar. İlk 429 ya da 5xx yanıtta koşu durur (DUR).')).toBeTruthy();
-    expect(screen.getByText('Bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir: limit_req burst’ü bağlantı sayısından küçük ya da burst’süz yollarda 429 alınır ve koşu durur. Böyle yollarda k6 kullanın ya da küçük bağlantı sayılarıyla başlayın.')).toBeTruthy();
-    expect(screen.getByText(/^Kapalı döngü: her adımda sabit bağlantı sayısı.*\(ortalama toplam ≤ 450 istek\/sn\)\./)).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Ortalama toplam hız tavanı: 450 istek/sn (bağlantı başına bekleme ≈ 5 ms; genel üst sınır)',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'wrk kapalı döngüdür; Portal toplam hızı ORTALAMADA 450 istek/sn ile sınırlar. İlk 429 ya da 5xx yanıtta koşu durur (DUR).',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir: limit_req burst’ü bağlantı sayısından küçük ya da burst’süz yollarda 429 alınır ve koşu durur. Böyle yollarda k6 kullanın ya da küçük bağlantı sayılarıyla başlayın.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^Kapalı döngü: her adımda sabit bağlantı sayısı.*\(ortalama toplam ≤ 450 istek\/sn\)\./,
+      ),
+    ).toBeTruthy();
     expect(screen.getByText('6 (3 bağlantı kademesi × 2)')).toBeTruthy();
     // Is parcacigi baglantiyi bolmuyorsa alan hatasi ve on kontrol kapali.
     fireEvent.change(screen.getByLabelText('Bağlantılar'), { target: { value: '3 6 9' } });
-    expect(screen.getByText('Her bağlantı sayısı iş parçacığı sayısına tam bölünmeli.')).toBeTruthy();
+    expect(
+      screen.getByText('Her bağlantı sayısı iş parçacığı sayısına tam bölünmeli.'),
+    ).toBeTruthy();
     expect(okDugmesi()).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Bağlantılar'), { target: { value: '2 4 8' } });
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
@@ -763,19 +1476,42 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
     const govde = api.onKontrol.mock.calls[0][0];
     expect(govde.sni).toBe(false);
-    expect(govde.parametreler).toEqual({ motor: 'wrk', baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'yeni', ae: 'br', protokol: 'h1' });
+    expect(govde.parametreler).toEqual({
+      motor: 'wrk',
+      baglantilar: [2, 4, 8],
+      is_parcacigi: 2,
+      tekrar: 2,
+      isinma: 30,
+      sure: 120,
+      bosluk: 30,
+      bosta: 60,
+      kip: 'yeni',
+      ae: 'br',
+      protokol: 'h1',
+    });
     expect(govde.parametreler).not.toHaveProperty('hizlar');
     expect(govde.parametreler).not.toHaveProperty('tavan_rps');
     // wrk on kontrol paneli ve bilgi satiri.
     expect(await screen.findByText('Yük sunucusunda wrk')).toBeTruthy();
-    expect(screen.getByText(`wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer · sha256 ${'e'.repeat(12)}…`, { exact: false })).toBeTruthy();
+    expect(
+      screen.getByText(
+        `wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer · sha256 ${'e'.repeat(12)}…`,
+        { exact: false },
+      ),
+    ).toBeTruthy();
     // Onay isteyen wrk uyarisi (WR2): "ORTALAMADA ... aşmaz", tavanı "aşamaz" iddiasi yok.
     expect(screen.getByText(WRK_UYARISI)).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/tavanını \([^)]*\) aşamaz/);
-    await waitFor(() => expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Koşuyu başlat/ })).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole('button', { name: /Koşuyu başlat/ }));
     const pencere = await screen.findByRole('dialog');
-    expect(within(pencere).getByText('wrk · 2 · 4 · 8 bağlantı × 2 tekrar = 6 adım · 2 iş parçacığı · ortalama ≤ 450 istek/sn · yeni bağlantı · brotli (br)')).toBeTruthy();
+    expect(
+      within(pencere).getByText(
+        'wrk · 2 · 4 · 8 bağlantı × 2 tekrar = 6 adım · 2 iş parçacığı · ortalama ≤ 450 istek/sn · yeni bağlantı · brotli (br)',
+      ),
+    ).toBeTruthy();
     // Tahmini sure: 60 + 3 x 2 x (30 + 120 + 30 + 20) + 120 = 1380 sn.
     expect(within(pencere).getByText(/^≈ 23 dk 00 sn \(üst sınır/)).toBeTruthy();
     expect(within(pencere).queryByRole('alert')).toBeNull();
@@ -784,14 +1520,42 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
   it('YT23 sınıflandırma retleri ve ön kontrol host_uretim: mesaj görünür, düğme kapalı', async () => {
     // Sunucu ret govdesindeki `sahipler` NESNE dizisidir ({ host, env, nginx, kaynaklar }): ekran metni sunucu mesajindan,
     // nesne hicbir yerde "[object Object]" olarak cizilmez.
-    const SAHIP = (host: string, env: string) => ({ host, env, nginx: true, kaynaklar: ['tarama'] });
-    const RETLER: Record<string, { code: string; message: string; sahipler?: ReturnType<typeof SAHIP>[] }> = {
-      '10.4.4.1': { code: 'ip_belirsiz', message: '10.4.4.1 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.', sahipler: [SAHIP('GBNGXT10', 'TEST'), SAHIP('GBNGXT11', 'TEST')] },
-      '10.4.4.2': { code: 'ip_sahibi_cozulemedi', message: "10.4.4.2 adı çözülemeyen bir envanter kaydına ait (dbo.IPInventory); IP'nin sahibi bilinmediği için yük testi yapılmaz." },
-      '10.4.4.3': { code: 'serbest_kapali', message: '10.4.4.3 envanterdeki bir nginx sunucusuna ait değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).', sahipler: [] },
-      '10.4.4.4': { code: 'hedef_uretim', message: '10.4.4.4, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.', sahipler: [SAHIP('GBNGXP40', 'PROD')] },
+    const SAHIP = (host: string, env: string) => ({
+      host,
+      env,
+      nginx: true,
+      kaynaklar: ['tarama'],
+    });
+    const RETLER: Record<
+      string,
+      { code: string; message: string; sahipler?: ReturnType<typeof SAHIP>[] }
+    > = {
+      '10.4.4.1': {
+        code: 'ip_belirsiz',
+        message:
+          '10.4.4.1 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.',
+        sahipler: [SAHIP('GBNGXT10', 'TEST'), SAHIP('GBNGXT11', 'TEST')],
+      },
+      '10.4.4.2': {
+        code: 'ip_sahibi_cozulemedi',
+        message:
+          "10.4.4.2 adı çözülemeyen bir envanter kaydına ait (dbo.IPInventory); IP'nin sahibi bilinmediği için yük testi yapılmaz.",
+      },
+      '10.4.4.3': {
+        code: 'serbest_kapali',
+        message:
+          '10.4.4.3 envanterdeki bir nginx sunucusuna ait değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).',
+        sahipler: [],
+      },
+      '10.4.4.4': {
+        code: 'hedef_uretim',
+        message: '10.4.4.4, GBNGXP40 sunucusuna ait (ortamı PROD); yük testi yapılmaz.',
+        sahipler: [SAHIP('GBNGXP40', 'PROD')],
+      },
     };
-    api.ipSinifi.mockImplementation(async (ip: string) => (RETLER[ip] ? { ok: false, ...RETLER[ip], _httpStatus: 409 } : varsayilanSinif(ip)));
+    api.ipSinifi.mockImplementation(async (ip: string) =>
+      RETLER[ip] ? { ok: false, ...RETLER[ip], _httpStatus: 409 } : varsayilanSinif(ip),
+    );
     await yeniKosuAc();
     // Formda baska bir eksik de var (tekrar 9): IP reddi yine ONCE soylenir (parametre duzeltmek bu hedefi acmaz).
     expect(screen.getByLabelText('Tekrar')).toHaveAccessibleDescription(ALAN_ACIKLAMASI.tekrar);
@@ -804,14 +1568,23 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
       expect(await screen.findByText(r.message, {}, SINIF_BEKLE)).toBeTruthy();
       expect(screen.getByText(r.message).closest('[role="alert"]')).toBeTruthy();
       expect(okDugmesi()).toBeDisabled();
-      expect(screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.')).toBeTruthy();
+      expect(
+        screen.getByText('Hedef IP kullanılamaz — ayrıntı “Hedef ve yük sunucusu” bölümünde.'),
+      ).toBeTruthy();
       expect(screen.queryByText('Önce formdaki eksikleri giderin.')).toBeNull();
       expect(document.body.textContent).not.toContain('[object Object]');
     }
     fireEvent.change(screen.getByLabelText('Tekrar'), { target: { value: '2' } });
     // host_uretim on kontrolde (sinif serbest): mesaj + ayni girdiyle dugme kapali; Host basligi degisince acilir.
-    const HOST_URETIM = 'Host başlığı (glomo-test.fw.garantibbva.com.tr) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP40); bu adla yük testi yapılmaz.';
-    api.onKontrol.mockResolvedValueOnce({ ok: false, code: 'host_uretim', message: HOST_URETIM, sahipler: [SAHIP('GBNGXP40', 'PROD')], _httpStatus: 409 });
+    const HOST_URETIM =
+      'Host başlığı (glomo-test.fw.garantibbva.com.tr) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (GBNGXP40); bu adla yük testi yapılmaz.';
+    api.onKontrol.mockResolvedValueOnce({
+      ok: false,
+      code: 'host_uretim',
+      message: HOST_URETIM,
+      sahipler: [SAHIP('GBNGXP40', 'PROD')],
+      _httpStatus: 409,
+    });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
     fireEvent.click(okDugmesi());
@@ -819,7 +1592,9 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     expect(document.body.textContent).not.toContain('[object Object]');
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByText(/^Bu girdiyle ön kontrol reddedildi/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Host başlığı (vhost)'), { target: { value: 'glomo-test2.fw.garantibbva.com.tr' } });
+    fireEvent.change(screen.getByLabelText('Host başlığı (vhost)'), {
+      target: { value: 'glomo-test2.fw.garantibbva.com.tr' },
+    });
     expect(okDugmesi()).toBeEnabled();
   });
 
@@ -833,7 +1608,11 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     // Oneriler sunucunun server_name'leri (datalist); senaryonun vhost'u listede oldugu icin onerilir.
     expect(vhost.tagName).toBe('INPUT');
     expect(vhost).toHaveAttribute('list', 'yuk-vhost-oneriler');
-    expect([...document.querySelectorAll('#yuk-vhost-oneriler option')].map((o) => o.getAttribute('value'))).toEqual(['glomo-test.fw.garantibbva.com.tr']);
+    expect(
+      [...document.querySelectorAll('#yuk-vhost-oneriler option')].map((o) =>
+        o.getAttribute('value'),
+      ),
+    ).toEqual(['glomo-test.fw.garantibbva.com.tr']);
     expect(vhost).toHaveValue('glomo-test.fw.garantibbva.com.tr');
     expect(screen.queryByText(VHOST_LISTEDE_YOK_NOTU)).toBeNull();
     // UI4: gorunen satir (not > yardim) girdiye aria-describedby ile bagli; yalniz girdi (datalist degil).
@@ -849,23 +1628,72 @@ describe('Yük Testi — hedef IP ve sınıflandırma (2026-10-28)', () => {
     fireEvent.change(vhost, { target: { value: 'joker-alt.fw.garantibbva.com.tr' } });
     fireEvent.click(okDugmesi());
     await waitFor(() => expect(api.onKontrol).toHaveBeenCalledTimes(1));
-    expect(api.onKontrol.mock.calls[0][0]).toMatchObject({ hedefHost: 'GBNGXT10', hedefIp: '10.1.2.3', vhost: 'joker-alt.fw.garantibbva.com.tr' });
+    expect(api.onKontrol.mock.calls[0][0]).toMatchObject({
+      hedefHost: 'GBNGXT10',
+      hedefIp: '10.1.2.3',
+      vhost: 'joker-alt.fw.garantibbva.com.tr',
+    });
   });
 });
 
 describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
-  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 190, p95: 12, p50: 5, p99: 20, ...o });
-  const SERBEST_WRK = { hedefTuru: 'serbest' as const, hedefHost: null, hedefIp: '10.20.30.40', serbestAg: '10.20.30.0/24', motor: 'wrk' as const, parametreler: WRK_P as NlKosuAyrinti['parametreler'] };
+  const adim = (o: Record<string, unknown>) =>
+    adimNormalle({
+      senaryo: 'K',
+      kip: 'yeni',
+      ae: 'br',
+      gecerlilik: 'GECERLI',
+      gercek_rps: 190,
+      p95: 12,
+      p50: 5,
+      p99: 20,
+      ...o,
+    });
+  const SERBEST_WRK = {
+    hedefTuru: 'serbest' as const,
+    hedefHost: null,
+    hedefIp: '10.20.30.40',
+    serbestAg: '10.20.30.0/24',
+    motor: 'wrk' as const,
+    parametreler: WRK_P as NlKosuAyrinti['parametreler'],
+  };
 
   it('YT24 koşu ayrıntısı wrk + serbest: çipler, bağlantı birimi, CPU “—”, p95 alt metni; durdur yalnız yük sunucusunu söyler', async () => {
     // analiz.cjs serbest ciktisi: pencere_kaynak '-' (olcum penceresi kurulmaz), 429 nedeninde sunucu sayisi YOK,
     // kosu uyarilari serbest / wrk metinleri (ekran ham gosterir; adim uyarisi degil, genel listede).
-    const YENI_UYARILAR = ['serbest_kosuda_sunucu_dosyalari_yok_sayildi(4)', 'sunucu_olcumu_yok(serbest_hedef)', 'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)'];
-    kosuYukle({ id: 40, durum: 'DONE', gecerlilik: 'KISMI', finishedAt: '2026-10-28T09:00:00Z', ...SERBEST_WRK, analiz: { nproc: null, cpuTlsliPay: null, uyarilar: YENI_UYARILAR, okumaHatasi: null } }, [
-      adim({ tur: 'R40_K_yeni_br_2_r1', hiz: 2, ham: { pencere_kaynak: '-', uyarilar: [] } }), adim({ tur: 'R40_K_yeni_br_4_r1', hiz: 4, ham: { pencere_kaynak: '-', uyarilar: [] } }),
-      adim({ tur: 'R40_K_yeni_br_8_r1', hiz: 8, p95: 20, ham: { pencere_kaynak: '-', uyarilar: [] } }),
-      adim({ tur: 'R40_K_yeni_br_8_r2', hiz: 8, gecerlilik: 'GECERSIZ', nedenler: ['429(istemci=3)', 'wrk_rc=1'], n_429: 3, ham: { pencere_kaynak: '-', uyarilar: [] } }),
-    ]);
+    const YENI_UYARILAR = [
+      'serbest_kosuda_sunucu_dosyalari_yok_sayildi(4)',
+      'sunucu_olcumu_yok(serbest_hedef)',
+      'wrk_tls_payi_hesaplanmaz(oturum_devami_ya_da_tls13_olabilir)',
+    ];
+    kosuYukle(
+      {
+        id: 40,
+        durum: 'DONE',
+        gecerlilik: 'KISMI',
+        finishedAt: '2026-10-28T09:00:00Z',
+        ...SERBEST_WRK,
+        analiz: { nproc: null, cpuTlsliPay: null, uyarilar: YENI_UYARILAR, okumaHatasi: null },
+      },
+      [
+        adim({ tur: 'R40_K_yeni_br_2_r1', hiz: 2, ham: { pencere_kaynak: '-', uyarilar: [] } }),
+        adim({ tur: 'R40_K_yeni_br_4_r1', hiz: 4, ham: { pencere_kaynak: '-', uyarilar: [] } }),
+        adim({
+          tur: 'R40_K_yeni_br_8_r1',
+          hiz: 8,
+          p95: 20,
+          ham: { pencere_kaynak: '-', uyarilar: [] },
+        }),
+        adim({
+          tur: 'R40_K_yeni_br_8_r2',
+          hiz: 8,
+          gecerlilik: 'GECERSIZ',
+          nedenler: ['429(istemci=3)', 'wrk_rc=1'],
+          n_429: 3,
+          ham: { pencere_kaynak: '-', uyarilar: [] },
+        }),
+      ],
+    );
     const { unmount } = render(<KosuAyrinti kosuId={40} isAdmin={false} onGeri={vi.fn()} />);
     expect(await screen.findByRole('heading', { name: /Koşu #40/ })).toBeTruthy();
     await ayrintiAc();
@@ -875,10 +1703,14 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(screen.getByText('Bağlantılar · tekrar')).toBeTruthy();
     expect(screen.getByText('2 · 4 · 8 bağlantı × 2')).toBeTruthy();
     // UV4 (WR2): ipucu tavanin ORTALAMA oldugunu soyler ("toplam ≤" asilmaz gibi okutur).
-    expect(screen.getByText('2 · 4 · 8 bağlantı × 2').getAttribute('title')).toMatch(/ · ortalama toplam ≤ \d+ istek\/sn$/);
+    expect(screen.getByText('2 · 4 · 8 bağlantı × 2').getAttribute('title')).toMatch(
+      / · ortalama toplam ≤ \d+ istek\/sn$/,
+    );
     expect(screen.queryByText('Hızlar · tekrar')).toBeNull();
     expect(screen.getByText('p95 @ 8 bağlantı')).toBeTruthy();
-    expect(screen.getByText('istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması')).toBeTruthy();
+    expect(
+      screen.getByText('istemci (wrk, CO düzeltmeli), geçerli adımların ortalaması'),
+    ).toBeTruthy();
     // Serbestte CPU kademesi yok: etiket kademesiz, deger "—" (sunucu kipinde "CPU-ms/istek @ <kademe>", YT14).
     expect(screen.getByText('CPU-ms/istek')).toBeTruthy();
     expect(screen.queryByText(/CPU-ms\/istek @/)).toBeNull();
@@ -886,11 +1718,18 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(screen.getAllByText('serbest hedef: sunucu ölçümü yok')).toHaveLength(2);
     // Yeni analiz uyarilari genel listede (adim uyarisi katlamasinda degil): duz cumle + altinda ham kod.
     const kutu = screen.getByText('3 analiz uyarısı').closest('div.grid') as HTMLElement;
-    for (const u of YENI_UYARILAR) expect(within(kutu).getByText(`kod: ${u}`).closest('details')).toBeNull();
-    expect(within(kutu).getByText('Serbest hedefte sunucu ölçümü yok; dizindeki 4 sunucu dosyası yok sayıldı.')).toBeTruthy();
+    for (const u of YENI_UYARILAR)
+      expect(within(kutu).getByText(`kod: ${u}`).closest('details')).toBeNull();
+    expect(
+      within(kutu).getByText(
+        'Serbest hedefte sunucu ölçümü yok; dizindeki 4 sunucu dosyası yok sayıldı.',
+      ),
+    ).toBeTruthy();
     const tablo = screen.getByRole('table', { name: 'Adım sonuçları' });
     expect(within(tablo).getByRole('columnheader', { name: 'Bağlantı' })).toBeTruthy();
-    expect(within(tablo).getByRole('columnheader', { name: 'Bağlantı' }).getAttribute('title')).toContain('(kapalı döngü; ortalama toplam hız tavanlı)');
+    expect(
+      within(tablo).getByRole('columnheader', { name: 'Bağlantı' }).getAttribute('title'),
+    ).toContain('(kapalı döngü; ortalama toplam hız tavanlı)');
     expect(within(tablo).queryByRole('columnheader', { name: 'Hız' })).toBeNull();
     const satirlar = within(tablo).getAllByRole('row').slice(1);
     const [s1] = satirlar;
@@ -898,62 +1737,139 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(within(s1).getAllByTitle('serbest hedef: sunucu ölçümü yok')).toHaveLength(4);
     // Serbest adimda (pencere_kaynak '-') ipucu sunucu logundan SOZ ETMEZ: sunucu tarafi olcum hic yok.
     expect(within(tablo).queryAllByTitle(/sunucu logunda/)).toHaveLength(0);
-    for (const s of satirlar) expect(within(s).getAllByTitle('serbest hedef: sunucu ölçümü yok').length).toBeGreaterThanOrEqual(4);
+    for (const s of satirlar)
+      expect(
+        within(s).getAllByTitle('serbest hedef: sunucu ölçümü yok').length,
+      ).toBeGreaterThanOrEqual(4);
     // Serbest neden bicimi (429(istemci=N), wrk_rc=) duz cumleyle; sunucu sayisi yok (serbestte olculmez).
     const gecersiz = satirlar.find((s) => s.textContent?.includes('geçersiz')) as HTMLElement;
-    const ilk = 'Hedef 3 isteği 429 ile reddetti (hız sınırı: limit_req / limit_conn); ölçüm sınıra takıldı, hızı düşürün.';
+    const ilk =
+      'Hedef 3 isteği 429 ile reddetti (hız sınırı: limit_req / limit_conn); ölçüm sınıra takıldı, hızı düşürün.';
     const hucre = within(gecersiz).getByText(`${ilk} +1`);
-    expect(hucre.getAttribute('title')).toBe(`${ilk}\nwrk hata koduyla (1) bitti; bu adımın ölçümü tamamlanmadı.`);
+    expect(hucre.getAttribute('title')).toBe(
+      `${ilk}\nwrk hata koduyla (1) bitti; bu adımın ölçümü tamamlanmadı.`,
+    );
     expect(screen.getAllByText('ms · yatay: bağlantı')).toHaveLength(2);
     unmount();
     // Durdur: serbestte yalniz yuk sunucusundaki wrk (kaydedici yok); basari metni motorla.
     kosuYukle({ id: 40, durum: 'RUNNING', ...SERBEST_WRK });
-    api.durdur.mockResolvedValue({ ok: true, iptal: { canceled: true }, iptalHatasi: null, durdurIsi: { jobId: 920, awxServerId: 1 }, durdurHatasi: null });
+    api.durdur.mockResolvedValue({
+      ok: true,
+      iptal: { canceled: true },
+      iptalHatasi: null,
+      durdurIsi: { jobId: 920, awxServerId: 1 },
+      durdurHatasi: null,
+    });
     render(<KosuAyrinti kosuId={40} isAdmin onGeri={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Durdur' }));
     const pencere = await screen.findByRole('dialog');
-    expect(pencere.textContent).toMatch(/GBNGXT34 üzerindeki wrk’yi sonlandırır \(serbest hedefe bağlanılmaz; kaydedici yoktur\)/);
+    expect(pencere.textContent).toMatch(
+      /GBNGXT34 üzerindeki wrk’yi sonlandırır \(serbest hedefe bağlanılmaz; kaydedici yoktur\)/,
+    );
     expect(pencere.textContent).not.toMatch(/CPU kaydedicisini/);
     fireEvent.click(within(pencere).getByRole('button', { name: 'Durdur' }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Durdurma işi AWX #920 başlatıldı; wrk durdurulduğunda kilitler bırakılır.'));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        'Durdurma işi AWX #920 başlatıldı; wrk durdurulduğunda kilitler bırakılır.',
+      ),
+    );
   });
 
   it('YT25 Karşılaştır: farklı motor uyarısı; iki serbest koşu farklı IP -> farklı hedef; iş parçacığı uyarısı; wrk kademe birimi', async () => {
-    const K = (id: number, o: Record<string, unknown> = {}) => ({ ...KOSU_LISTE, id, durum: 'DONE', gecerlilik: 'GECERLI', etiket: `koşu ${id}`, hedefTuru: 'sunucu', motor: 'k6', ...o });
-    api.kosular.mockResolvedValue({
-      ok: true, dahaVar: false,
-      kosular: [K(30), K(31, { motor: 'wrk' }), K(32, { hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.40', motor: 'wrk' }), K(33, { hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.41', motor: 'wrk' }),
-        K(34, { motor: 'wrk' }), K(35, { gecerlilik: 'KISMI' }), K(36, { gecerlilik: 'GECERSIZ' }), K(37, { gecerlilik: 'OKUNAMADI' })],
+    const K = (id: number, o: Record<string, unknown> = {}) => ({
+      ...KOSU_LISTE,
+      id,
+      durum: 'DONE',
+      gecerlilik: 'GECERLI',
+      etiket: `koşu ${id}`,
+      hedefTuru: 'sunucu',
+      motor: 'k6',
+      ...o,
     });
-    api.kosu.mockImplementation(async (id: number) => ({ ok: true, kosu: ayrinti({ id, motor: 'wrk', parametreler: { ...WRK_P, is_parcacigi: id === 33 ? 4 : 2 } as NlKosuAyrinti['parametreler'] }), adimlar: [] }));
+    api.kosular.mockResolvedValue({
+      ok: true,
+      dahaVar: false,
+      kosular: [
+        K(30),
+        K(31, { motor: 'wrk' }),
+        K(32, { hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.40', motor: 'wrk' }),
+        K(33, { hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.41', motor: 'wrk' }),
+        K(34, { motor: 'wrk' }),
+        K(35, { gecerlilik: 'KISMI' }),
+        K(36, { gecerlilik: 'GECERSIZ' }),
+        K(37, { gecerlilik: 'OKUNAMADI' }),
+      ],
+    });
+    api.kosu.mockImplementation(async (id: number) => ({
+      ok: true,
+      kosu: ayrinti({
+        id,
+        motor: 'wrk',
+        parametreler: {
+          ...WRK_P,
+          is_parcacigi: id === 33 ? 4 : 2,
+        } as NlKosuAyrinti['parametreler'],
+      }),
+      adimlar: [],
+    }));
     api.karsilastir.mockResolvedValue({
-      ok: true, karar: 'NOTR', nedenler: ['referans=#32 aday=#33 senaryo=K kip=yeni ae=br'], kademe: { cpu: 4, p95: 8 },
+      ok: true,
+      karar: 'NOTR',
+      nedenler: ['referans=#32 aday=#33 senaryo=K kip=yeni ae=br'],
+      kademe: { cpu: 4, p95: 8 },
       tablo: [{ hiz: 4, ref: { p95: 10 }, aday: { p95: 10.2 }, farkYuzde: { p95: 2 } }],
-      ref: { id: 32, etiket: null, createdAt: null, motor: 'wrk', hedefTuru: 'serbest' }, aday: { id: 33, etiket: null, createdAt: null, motor: 'wrk', hedefTuru: 'serbest' },
+      ref: { id: 32, etiket: null, createdAt: null, motor: 'wrk', hedefTuru: 'serbest' },
+      aday: { id: 33, etiket: null, createdAt: null, motor: 'wrk', hedefTuru: 'serbest' },
     });
     render(<Karsilastir />);
     const ref = await screen.findByLabelText('Referans koşu');
-    expect(await within(ref).findByRole('option', { name: /^#33 · koşu 33 · 10\.20\.30\.41 \(serbest\) · wrk · / })).toBeTruthy();
+    expect(
+      await within(ref).findByRole('option', {
+        name: /^#33 · koşu 33 · 10\.20\.30\.41 \(serbest\) · wrk · /,
+      }),
+    ).toBeTruthy();
     // UI3: gecerlilik ekranin geri kalaniyla ayni Turkce etiketle (GECERLILIK tablosu), ham kod ("kismi") degil; GECERLI yazilmaz.
-    const secenek = (id: number) => within(ref).getAllByRole('option').find((o) => o.textContent?.startsWith(`#${id} `))?.textContent ?? '';
+    const secenek = (id: number) =>
+      within(ref)
+        .getAllByRole('option')
+        .find((o) => o.textContent?.startsWith(`#${id} `))?.textContent ?? '';
     expect(secenek(35)).toMatch(/ · kısmen geçerli$/);
     expect(secenek(36)).toMatch(/ · geçersiz$/);
     expect(secenek(37)).toMatch(/ · okunamadı$/);
-    expect(within(ref).getAllByRole('option').map((o) => o.textContent).join('\n')).not.toMatch(/kismi|gecersiz|okunamadi/);
+    expect(
+      within(ref)
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+        .join('\n'),
+    ).not.toMatch(/kismi|gecersiz|okunamadi/);
     expect(secenek(30)).not.toMatch(/geçerli$/);
     fireEvent.change(ref, { target: { value: '30' } });
     fireEvent.change(screen.getByLabelText('Aday koşu'), { target: { value: '31' } });
-    expect(screen.getByText('Koşular farklı yük araçlarıyla alınmış (k6 / wrk): karar VERİ YOK döner.')).toBeTruthy();
+    expect(
+      screen.getByText('Koşular farklı yük araçlarıyla alınmış (k6 / wrk): karar VERİ YOK döner.'),
+    ).toBeTruthy();
     expect(screen.queryByText(/farklı hedef, vhost ya da senaryoyla/)).toBeNull();
     expect(api.kosu).not.toHaveBeenCalled();
     // Iki serbest kosu: host yok (ikisi de null), IP farkli -> farkli hedef; serbest uyarisi.
     fireEvent.change(ref, { target: { value: '32' } });
     fireEvent.change(screen.getByLabelText('Aday koşu'), { target: { value: '33' } });
     expect(screen.queryByText(/farklı yük araçlarıyla/)).toBeNull();
-    expect(screen.getByText('İki koşu farklı hedef, vhost ya da senaryoyla yapılmış — karşılaştırma yalnız aynı ölçüm düzeninde anlamlıdır.')).toBeTruthy();
-    expect(screen.getByText('Bir koşu serbest hedefte (CPU ölçülmedi): KALICI verilmez; karar p95 ve hata oranına göre.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'İki koşu farklı hedef, vhost ya da senaryoyla yapılmış — karşılaştırma yalnız aynı ölçüm düzeninde anlamlıdır.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Bir koşu serbest hedefte (CPU ölçülmedi): KALICI verilmez; karar p95 ve hata oranına göre.',
+      ),
+    ).toBeTruthy();
     // Iki wrk kosusu: is parcacigi ayrintidan okunur (2 / 4).
-    expect(await screen.findByText('Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner.',
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Karşılaştır/ }));
     // Serbest tarafta CPU olculmez: karar basliginda "CPU kademesi" YAZILMAZ, p95 kademesi yazilir.
     expect(await screen.findByText(/^#32 → #33 · p95 kademesi 8 bağlantı$/)).toBeTruthy();
@@ -962,78 +1878,192 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(within(tablo).getByRole('columnheader', { name: 'Bağlantı' })).toBeTruthy();
     expect(within(tablo).getByText('4 bağlantı')).toBeTruthy();
     // Iki sunucu wrk kosusu: CPU kademesi yazilir; analiz CPU'suz yolu sectiyse ("CPU olculmedi (wrk, ...)") yazilmaz.
-    const SUNUCU = { ok: true as const, karar: 'NOTR' as const, kademe: { cpu: 4, p95: 8 }, tablo: [], ref: { id: 31, etiket: null, createdAt: null, motor: 'wrk' as const, hedefTuru: 'sunucu' as const }, aday: { id: 34, etiket: null, createdAt: null, motor: 'wrk' as const, hedefTuru: 'sunucu' as const } };
-    api.karsilastir.mockResolvedValueOnce({ ...SUNUCU, nedenler: ['referans=R31 aday=R34 senaryo=K kip=yeni ae=br'] });
+    const SUNUCU = {
+      ok: true as const,
+      karar: 'NOTR' as const,
+      kademe: { cpu: 4, p95: 8 },
+      tablo: [],
+      ref: {
+        id: 31,
+        etiket: null,
+        createdAt: null,
+        motor: 'wrk' as const,
+        hedefTuru: 'sunucu' as const,
+      },
+      aday: {
+        id: 34,
+        etiket: null,
+        createdAt: null,
+        motor: 'wrk' as const,
+        hedefTuru: 'sunucu' as const,
+      },
+    };
+    api.karsilastir.mockResolvedValueOnce({
+      ...SUNUCU,
+      nedenler: ['referans=R31 aday=R34 senaryo=K kip=yeni ae=br'],
+    });
     fireEvent.change(ref, { target: { value: '31' } });
     fireEvent.change(screen.getByLabelText('Aday koşu'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: /Karşılaştır/ }));
-    expect(await screen.findByText(/^#31 → #34 · CPU kademesi 4 bağlantı · p95 kademesi 8 bağlantı$/)).toBeTruthy();
-    api.karsilastir.mockResolvedValueOnce({ ...SUNUCU, nedenler: ['referans=R31 aday=R34 senaryo=K kip=yeni ae=br', 'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore'] });
+    expect(
+      await screen.findByText(/^#31 → #34 · CPU kademesi 4 bağlantı · p95 kademesi 8 bağlantı$/),
+    ).toBeTruthy();
+    api.karsilastir.mockResolvedValueOnce({
+      ...SUNUCU,
+      nedenler: [
+        'referans=R31 aday=R34 senaryo=K kip=yeni ae=br',
+        'CPU olculmedi (wrk, sunucu kaydi eksik): KALICI verilmez; karar p95 ve hata oranina gore',
+      ],
+    });
     fireEvent.click(screen.getByRole('button', { name: /Karşılaştır/ }));
     expect(await screen.findByText(/^#31 → #34 · p95 kademesi 8 bağlantı$/)).toBeTruthy();
     expect(screen.queryByText(/CPU kademesi/)).toBeNull();
   });
 
   it('YT28 ön kontrol paneli: D7 server_name satırı “uyarı” (kaldı değil); wrk satırı üç durumlu; serbestte yük sunucusu satırları', () => {
-    const satir = (ad: string) => (screen.getByText(ad).closest('li') as HTMLElement).textContent || '';
-    const panel = (ok: Record<string, unknown>, ek: Partial<NlKosuAyrinti> = {}) => render(<OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: onKontrolNormalle(ok), sunucuDegerlendirmesi: { engeller: [], uyarilar: [] }, ...ek }} />);
+    const satir = (ad: string) =>
+      (screen.getByText(ad).closest('li') as HTMLElement).textContent || '';
+    const panel = (ok: Record<string, unknown>, ek: Partial<NlKosuAyrinti> = {}) =>
+      render(
+        <OnKontrolPaneli
+          kosu={{
+            durum: 'DONE',
+            onKontrol: onKontrolNormalle(ok),
+            sunucuDegerlendirmesi: { engeller: [], uyarilar: [] },
+            ...ek,
+          }}
+        />,
+      );
     const r1 = panel({ ...ON_KONTROL_UYARILI, server_name_var: false });
     expect(satir('server_name nginx -T’de')).toMatch(/uyarı$/);
     expect(satir('Yük sunucusunda k6')).toMatch(/v0\.49\.0 · geçti$/);
     r1.unmount();
-    const wrk = { ...ON_KONTROL_UYARILI, k6_var: null, k6_surum: null, wrk_var: true, wrk_calisiyor: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer' };
+    const wrk = {
+      ...ON_KONTROL_UYARILI,
+      k6_var: null,
+      k6_surum: null,
+      wrk_var: true,
+      wrk_calisiyor: true,
+      wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer',
+    };
     const r2 = panel(wrk, { motor: 'wrk' });
     expect(satir('Yük sunucusunda wrk')).toMatch(/^Yük sunucusunda wrk4\.2\.0 · geçti$/);
     r2.unmount();
-    const r3 = panel({ ...wrk, wrk_var: false, wrk_surum: 'wrk  [epoll] Copyright (C) 2012 Will Glozer' }, { motor: 'wrk' });
+    const r3 = panel(
+      { ...wrk, wrk_var: false, wrk_surum: 'wrk  [epoll] Copyright (C) 2012 Will Glozer' },
+      { motor: 'wrk' },
+    );
     expect(satir('Yük sunucusunda wrk')).toMatch(/wrk çalışıyor, sürüm okunamadı · kaldı$/);
     r3.unmount();
-    const r4 = panel({ ...wrk, wrk_var: false, wrk_calisiyor: false, wrk_surum: null }, { motor: 'wrk' });
+    const r4 = panel(
+      { ...wrk, wrk_var: false, wrk_calisiyor: false, wrk_surum: null },
+      { motor: 'wrk' },
+    );
     expect(satir('Yük sunucusunda wrk')).toMatch(/^Yük sunucusunda wrkkaldı$/);
     r4.unmount();
-    const r5 = panel({ ...wrk, wrk_var: null, wrk_calisiyor: null, wrk_surum: null }, { motor: 'wrk' });
+    const r5 = panel(
+      { ...wrk, wrk_var: null, wrk_calisiyor: null, wrk_surum: null },
+      { motor: 'wrk' },
+    );
     expect(satir('Yük sunucusunda wrk')).toMatch(/ölçülemedi$/);
     r5.unmount();
     // Serbest: hedef satirlari yok; yuk sunucusu satirlari ve izin dosyasinda eslesen ag.
-    panel({ ip_yuk_makinesinde: false, serbest_ag: '10.20.30.0/24', k6_var: true, yollar_toplam: 2, yollar_200: 2 }, { hedefTuru: 'serbest' });
+    panel(
+      {
+        ip_yuk_makinesinde: false,
+        serbest_ag: '10.20.30.0/24',
+        k6_var: true,
+        yollar_toplam: 2,
+        yollar_200: 2,
+      },
+      { hedefTuru: 'serbest' },
+    );
     expect(satir('IP yük sunucusunda yerel değil')).toMatch(/geçti$/);
     expect(satir('Yük sunucusu izin dosyası')).toMatch(/10\.20\.30\.0\/24 · geçti$/);
-    for (const ad of ['IP hedefte yerel', 'server_name nginx -T’de', 'Tek nginx master', 'Log dizini okunur']) expect(screen.queryByText(ad)).toBeNull();
+    for (const ad of [
+      'IP hedefte yerel',
+      'server_name nginx -T’de',
+      'Tek nginx master',
+      'Log dizini okunur',
+    ])
+      expect(screen.queryByText(ad)).toBeNull();
   });
 
   it('YT27 Koşular: serbest satır IP etiketiyle ve çiplerle; hedef süzgecinde null / boş seçenek yok', async () => {
     api.kosular.mockResolvedValue({
-      ok: true, dahaVar: false,
+      ok: true,
+      dahaVar: false,
       kosular: [
-        { ...KOSU_LISTE, id: 41, durum: 'DONE', gecerlilik: 'GECERLI', hedefTuru: 'serbest', hedefHost: null, hedefIp: '10.20.30.40', motor: 'wrk' },
+        {
+          ...KOSU_LISTE,
+          id: 41,
+          durum: 'DONE',
+          gecerlilik: 'GECERLI',
+          hedefTuru: 'serbest',
+          hedefHost: null,
+          hedefIp: '10.20.30.40',
+          motor: 'wrk',
+        },
         { ...KOSU_LISTE, id: 40, durum: 'DONE', gecerlilik: 'GECERLI' },
       ],
     });
     render(<KosuListesi onAc={vi.fn()} />);
-    const satir = (await screen.findByRole('button', { name: 'Koşu 41 ayrıntısı' })).closest('tr') as HTMLElement;
+    const satir = (await screen.findByRole('button', { name: 'Koşu 41 ayrıntısı' })).closest(
+      'tr',
+    ) as HTMLElement;
     expect(within(satir).getByTitle('10.20.30.40').textContent).toBe('10.20.30.40');
     expect(within(satir).getByTitle(SERBEST_CIP_IPUCU).textContent).toBe('serbest');
     expect(within(satir).getByTitle(WRK_CIP_IPUCU).textContent).toBe('wrk');
-    const k6Satir = screen.getByRole('button', { name: 'Koşu 40 ayrıntısı' }).closest('tr') as HTMLElement;
+    const k6Satir = screen
+      .getByRole('button', { name: 'Koşu 40 ayrıntısı' })
+      .closest('tr') as HTMLElement;
     expect(within(k6Satir).queryByTitle(SERBEST_CIP_IPUCU)).toBeNull();
     expect(within(k6Satir).queryByTitle(WRK_CIP_IPUCU)).toBeNull();
     const suzgec = screen.getByLabelText('Hedef sunucu ya da IP');
-    expect(within(suzgec).getAllByRole('option').map((o) => [o.getAttribute('value'), o.textContent])).toEqual([['', 'Tüm hedefler'], ['10.20.30.40', '10.20.30.40'], ['GBNGXT10', 'GBNGXT10']]);
+    expect(
+      within(suzgec)
+        .getAllByRole('option')
+        .map((o) => [o.getAttribute('value'), o.textContent]),
+    ).toEqual([
+      ['', 'Tüm hedefler'],
+      ['10.20.30.40', '10.20.30.40'],
+      ['GBNGXT10', 'GBNGXT10'],
+    ]);
     fireEvent.change(suzgec, { target: { value: '10.20.30.40' } });
     expect(screen.getByRole('button', { name: 'Koşu 41 ayrıntısı' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Koşu 40 ayrıntısı' })).toBeNull();
   });
 
   it('YT29 (entegrasyon) plan uyarıları sunucunun onKontrolUyarilari’nda başta: panelde ve onayda TEK kez', () => {
-    const P1 = 'Host başlığı (yok.test.local) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.';
-    const P2 = 'Yük sunucusu (GBNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.';
+    const P1 =
+      'Host başlığı (yok.test.local) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.';
+    const P2 =
+      'Yük sunucusu (GBNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.';
     // GET /kosular/:id (sunucu sekli): planUyarilari ayrica VE onKontrolUyarilari = plan uyarilari basta + degerlendirme.
     const k = kosuNormalle({
-      ...KOSU_LISTE, id: 16, islem: 'on_kontrol', durum: 'DONE', finishedAt: new Date().toISOString(), hedefTuru: 'serbest', hedefHost: '', hedefIp: '10.20.30.40',
-      motor: 'k6', serbestAg: '10.20.30.0/24', planUyarilari: [P1, P2],
-      parametreler: { motor: 'k6', ...PARAM }, sonucOzet: { durum: 'OK', run_id: '16', islem: 'on_kontrol' },
-      onKontrol: { ip_yuk_makinesinde: false, serbest_ag: '10.20.30.0/24', k6_var: true, k6_surum: 'k6 v0.49.0', yollar_toplam: 2, yollar_200: 2 },
-      onKontrolEngelleri: [], onKontrolUyarilari: [P1, P2, SERBEST_UYARISI],
+      ...KOSU_LISTE,
+      id: 16,
+      islem: 'on_kontrol',
+      durum: 'DONE',
+      finishedAt: new Date().toISOString(),
+      hedefTuru: 'serbest',
+      hedefHost: '',
+      hedefIp: '10.20.30.40',
+      motor: 'k6',
+      serbestAg: '10.20.30.0/24',
+      planUyarilari: [P1, P2],
+      parametreler: { motor: 'k6', ...PARAM },
+      sonucOzet: { durum: 'OK', run_id: '16', islem: 'on_kontrol' },
+      onKontrol: {
+        ip_yuk_makinesinde: false,
+        serbest_ag: '10.20.30.0/24',
+        k6_var: true,
+        k6_surum: 'k6 v0.49.0',
+        yollar_toplam: 2,
+        yollar_200: 2,
+      },
+      onKontrolEngelleri: [],
+      onKontrolUyarilari: [P1, P2, SERBEST_UYARISI],
     });
     expect(k.planUyarilari).toEqual([P1, P2]);
     const d = onKontrolDegerlendir(k);
@@ -1043,7 +2073,18 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
     expect(screen.getByText('3 uyarı — başlatırken açıkça onaylamanız gerekir')).toBeTruthy();
     unmount();
     // Onay: ekranin listesi + sunucunun 409 uyari_onayi listesi (ayni metinler) birlesince de her uyari bir kez.
-    render(<BaslatOnayi onKontrol={k} senaryo={null} uyarilar={d.uyarilar} sunucuUyarilari={[P1, P2, SERBEST_UYARISI]} busy={false} hata={null} onOnay={vi.fn()} onKapat={vi.fn()} />);
+    render(
+      <BaslatOnayi
+        onKontrol={k}
+        senaryo={null}
+        uyarilar={d.uyarilar}
+        sunucuUyarilari={[P1, P2, SERBEST_UYARISI]}
+        busy={false}
+        hata={null}
+        onOnay={vi.fn()}
+        onKapat={vi.fn()}
+      />,
+    );
     for (const u of [P1, P2, SERBEST_UYARISI]) expect(screen.getAllByText(u)).toHaveLength(1);
     expect(screen.getByText('3 ön kontrol uyarısı')).toBeTruthy();
   });
@@ -1056,18 +2097,63 @@ describe('Yük Testi — wrk ve serbest kayıtlar (2026-10-28)', () => {
  * yine 0 / 0), engeller canli dogrula.onKontrolDegerlendir'den alindi (GET /kosular/:id sekli).
  */
 const HIC_YOL_YOK = {
-  ip_yerel: null, server_name_var: null, master_sayisi: null, web_log_df: null, log_dizini_okunur: null, log_format_ua: null, statik_direktif: null,
-  ip_yuk_makinesinde: null, serbest_ag: null, k6_var: null, k6_surum: null, k6_sha256: null,
-  wrk_var: true, wrk_calisiyor: true, wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer', wrk_sha256: 'f'.repeat(64),
-  yollar_toplam: 0, yollar_200: 0, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 0, sikistirmasiz: 0 },
+  ip_yerel: null,
+  server_name_var: null,
+  master_sayisi: null,
+  web_log_df: null,
+  log_dizini_okunur: null,
+  log_format_ua: null,
+  statik_direktif: null,
+  ip_yuk_makinesinde: null,
+  serbest_ag: null,
+  k6_var: null,
+  k6_surum: null,
+  k6_sha256: null,
+  wrk_var: true,
+  wrk_calisiyor: true,
+  wrk_surum: 'wrk 4.2.0 [epoll] Copyright (C) 2012 Will Glozer',
+  wrk_sha256: 'f'.repeat(64),
+  yollar_toplam: 0,
+  yollar_200: 0,
+  ilk_hatalar: [],
+  sikistirma: { statik: 0, dinamik: 0, sikistirmasiz: 0 },
 };
-const hicYolDenenmemis = (onKontrol: Record<string, unknown>, hata: string, engeller = ['hedef IP yük makinesinde yerel ya da ölçülemedi', 'ön kontrolde hiçbir yol denenmedi']) => kosuNormalle({
-  id: 16, islem: 'on_kontrol', durum: 'FAILED', hedefTuru: 'serbest', motor: 'wrk', hedefHost: null, hedefIp: '10.20.30.66', vhost: 'glomo-test.fw.garantibbva.com.tr',
-  yukHost: 'GBNGXT34', createdAt: '2026-10-28T08:00:00Z', finishedAt: '2026-10-28T08:02:00Z', parametreler: { ...WRK_P, tavan_rps: 200, kip: 'ka' },
-  planUyarilari: [], serbestAg: '10.20.30.0/24', onKontrol,
-  onKontrolEngelleri: engeller, onKontrolUyarilari: [SERBEST_UYARISI, WRK_UYARISI],
-  sonucOzet: { surum: 2, run_id: '16', islem: 'on_kontrol', hedef_turu: 'serbest', motor: 'wrk', durum: 'FAIL', hata },
-});
+const hicYolDenenmemis = (
+  onKontrol: Record<string, unknown>,
+  hata: string,
+  engeller = [
+    'hedef IP yük makinesinde yerel ya da ölçülemedi',
+    'ön kontrolde hiçbir yol denenmedi',
+  ],
+) =>
+  kosuNormalle({
+    id: 16,
+    islem: 'on_kontrol',
+    durum: 'FAILED',
+    hedefTuru: 'serbest',
+    motor: 'wrk',
+    hedefHost: null,
+    hedefIp: '10.20.30.66',
+    vhost: 'glomo-test.fw.garantibbva.com.tr',
+    yukHost: 'GBNGXT34',
+    createdAt: '2026-10-28T08:00:00Z',
+    finishedAt: '2026-10-28T08:02:00Z',
+    parametreler: { ...WRK_P, tavan_rps: 200, kip: 'ka' },
+    planUyarilari: [],
+    serbestAg: '10.20.30.0/24',
+    onKontrol,
+    onKontrolEngelleri: engeller,
+    onKontrolUyarilari: [SERBEST_UYARISI, WRK_UYARISI],
+    sonucOzet: {
+      surum: 2,
+      run_id: '16',
+      islem: 'on_kontrol',
+      hedef_turu: 'serbest',
+      motor: 'wrk',
+      durum: 'FAIL',
+      hata,
+    },
+  });
 /**
  * Izin bloguna HIC gelinmemis serbest on kontrol (UV1). Gercek erisilemezlik yolu (ansible-core 2.16.19 ile denendi):
  * ignore_unreachable altinda getent UNREACHABLE yok sayilir, 'Kosu dizini' set_fact duser, rescue yt_p3_hata yazar;
@@ -1075,36 +2161,76 @@ const hicYolDenenmemis = (onKontrol: Record<string, unknown>, hata: string, enge
  * 300 karakterde kesilir; "serbest izin listesi" gecmez), engeller canli dogrula.onKontrolDegerlendir'den. dzdo, kopya
  * kapisi ve "play tamamlanmadi" metinleri ayni `on_kontrol`u verir.
  */
-const IZIN_OLCULMEDI = { ...HIC_YOL_YOK, wrk_var: false, wrk_calisiyor: false, wrk_surum: null, wrk_sha256: null };
-const IZIN_OLCULMEDI_ENGELLERI = ['hedef IP yük makinesinde yerel ya da ölçülemedi', 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor', 'ön kontrolde hiçbir yol denenmedi'];
+const IZIN_OLCULMEDI = {
+  ...HIC_YOL_YOK,
+  wrk_var: false,
+  wrk_calisiyor: false,
+  wrk_surum: null,
+  wrk_sha256: null,
+};
+const IZIN_OLCULMEDI_ENGELLERI = [
+  'hedef IP yük makinesinde yerel ya da ölçülemedi',
+  'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor',
+  'ön kontrolde hiçbir yol denenmedi',
+];
 const IZIN_BLOGU_KOSMADI = [
   "yuk makinesi GBNGXT34: The task includes an option with an undefined variable. The error was: 'dict object' has no attribute 'getent_passwd'. 'dict object' has no attribute 'getent_passwd'\n\nThe error appears to be in '/runner/project/bmw_portal/nginx_loadtest/nginx_loadtest.yml': line 437,...",
   'yuk makinesi GBNGXT34: Timeout (12s) waiting for privilege escalation prompt: ; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
   'yuk makinesi GBNGXT34: betik/senaryo kopyasi dogrulanamadi (kopya ok, reddedilen on_kontrol.sh, senaryo sha256 esit, dizin sahibi/izni 1001/0700); hicbir sey calistirilmadi; yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
   'yuk makinesi GBNGXT34: play tamamlanmadi (erisilemedi ya da dustu); yuk makinesi: olculmedi; wrk yok ya da calistirilamiyor: /home/www/bin/wrk; hicbir yol denenmedi',
 ];
-const okSatirlari = () => [...document.querySelectorAll('ul[aria-label="Ön kontrol maddeleri"] li')].map((li) => li.textContent || '');
+const okSatirlari = () =>
+  [...document.querySelectorAll('ul[aria-label="Ön kontrol maddeleri"] li')].map(
+    (li) => li.textContent || '',
+  );
 const okSatiri = (ad: string) => okSatirlari().find((t) => t.startsWith(ad)) ?? '(yok)';
 
 describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
   it('YT30a (UI1) izin dosyası reddetti: yollar satırı “hiçbir yol denenmedi · kaldı”, izin satırı “kaldı”, ölçülmemiş sıkıştırma yok', () => {
-    const { unmount } = render(<OnKontrolPaneli kosu={hicYolDenenmemis(HIC_YOL_YOK, 'yuk makinesi: serbest izin listesi: dizin /etc/portal_yuktesti yok, www sahibi ya da grup/diger yazabilir; istek gonderilmedi; hicbir yol denenmedi')} />);
+    const { unmount } = render(
+      <OnKontrolPaneli
+        kosu={hicYolDenenmemis(
+          HIC_YOL_YOK,
+          'yuk makinesi: serbest izin listesi: dizin /etc/portal_yuktesti yok, www sahibi ya da grup/diger yazabilir; istek gonderilmedi; hicbir yol denenmedi',
+        )}
+      />,
+    );
     expect(okSatiri('Senaryo yolları 200')).toBe('Senaryo yolları 200hiçbir yol denenmedi · kaldı');
     expect(okSatiri('Yük sunucusu izin dosyası')).toBe('Yük sunucusu izin dosyasıkaldı');
     expect(okSatiri('IP yük sunucusunda yerel değil')).toMatch(/ölçülemedi$/);
     // Panel kendi engel kutusuyla celismez: engel "hiçbir yol denenmedi" der, satir "geçti" demez.
-    expect(within(screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement).getByText('Ön kontrolde hiçbir yol denenmedi')).toBeTruthy();
+    expect(
+      within(
+        screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement,
+      ).getByText('Ön kontrolde hiçbir yol denenmedi'),
+    ).toBeTruthy();
     expect(document.body.textContent).not.toContain('Sıkıştırma:');
     expect(screen.getByText(/^wrk 4\.2\.0 \[epoll\]/)).toBeTruthy();
     unmount();
     // Kontrol: denenen yollar eskisi gibi "N / N · geçti" ve sikistirma bilgisi yazilir.
-    render(<OnKontrolPaneli kosu={{ durum: 'DONE', hedefTuru: 'serbest', onKontrol: onKontrolNormalle(SERBEST_ON_KONTROL), sunucuDegerlendirmesi: { engeller: [], uyarilar: [SERBEST_UYARISI] } }} />);
+    render(
+      <OnKontrolPaneli
+        kosu={{
+          durum: 'DONE',
+          hedefTuru: 'serbest',
+          onKontrol: onKontrolNormalle(SERBEST_ON_KONTROL),
+          sunucuDegerlendirmesi: { engeller: [], uyarilar: [SERBEST_UYARISI] },
+        }}
+      />,
+    );
     expect(okSatiri('Senaryo yolları 200')).toBe('Senaryo yolları 200264 / 264 · geçti');
     expect(screen.getByText(/Sıkıştırma: statik 0, dinamik 200, sıkıştırmasız 64/)).toBeTruthy();
   });
 
   it('YT30b (UI1) IP yük sunucusunda yerel: yollar satırı “kaldı”; izin satırı eşleşen ağla “geçti”', () => {
-    render(<OnKontrolPaneli kosu={hicYolDenenmemis({ ...HIC_YOL_YOK, ip_yuk_makinesinde: true, serbest_ag: '10.20.30.0/24' }, 'yuk makinesi: hedef IP yuk makinesinde yerel ya da olculemedi (1); istek gonderilmedi; hicbir yol denenmedi')} />);
+    render(
+      <OnKontrolPaneli
+        kosu={hicYolDenenmemis(
+          { ...HIC_YOL_YOK, ip_yuk_makinesinde: true, serbest_ag: '10.20.30.0/24' },
+          'yuk makinesi: hedef IP yuk makinesinde yerel ya da olculemedi (1); istek gonderilmedi; hicbir yol denenmedi',
+        )}
+      />,
+    );
     expect(okSatiri('Senaryo yolları 200')).toBe('Senaryo yolları 200hiçbir yol denenmedi · kaldı');
     expect(okSatiri('IP yük sunucusunda yerel değil')).toMatch(/kaldı$/);
     expect(okSatiri('Yük sunucusu izin dosyası')).toMatch(/10\.20\.30\.0\/24 · geçti$/);
@@ -1112,10 +2238,37 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
   });
 
   it('YT30c (UI1) sunucu kipi, IP hedefte yerel değil (yollar atlanır, 0 / 0): yollar satırı “geçti” demez', () => {
-    const ok = { ...ON_KONTROL_UYARILI, ip_yerel: false, yollar_toplam: 0, yollar_200: 0, ilk_hatalar: [], sikistirma: { statik: 0, dinamik: 0, sikistirmasiz: 0 } };
-    render(<OnKontrolPaneli kosu={kosuNormalle({ id: 20, islem: 'on_kontrol', durum: 'FAILED', hedefTuru: 'sunucu', motor: 'k6', hedefHost: 'GBNGXT10', hedefIp: '10.1.2.3', onKontrol: ok,
-      onKontrolEngelleri: ['seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)', 'ön kontrolde hiçbir yol denenmedi'], onKontrolUyarilari: [],
-      sonucOzet: { durum: 'FAIL', hata: 'hedef IP 10.1.2.3 hedef sunucuda yerel degil; istek gonderilmedi; hicbir yol denenmedi' } })} />);
+    const ok = {
+      ...ON_KONTROL_UYARILI,
+      ip_yerel: false,
+      yollar_toplam: 0,
+      yollar_200: 0,
+      ilk_hatalar: [],
+      sikistirma: { statik: 0, dinamik: 0, sikistirmasiz: 0 },
+    };
+    render(
+      <OnKontrolPaneli
+        kosu={kosuNormalle({
+          id: 20,
+          islem: 'on_kontrol',
+          durum: 'FAILED',
+          hedefTuru: 'sunucu',
+          motor: 'k6',
+          hedefHost: 'GBNGXT10',
+          hedefIp: '10.1.2.3',
+          onKontrol: ok,
+          onKontrolEngelleri: [
+            'seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)',
+            'ön kontrolde hiçbir yol denenmedi',
+          ],
+          onKontrolUyarilari: [],
+          sonucOzet: {
+            durum: 'FAIL',
+            hata: 'hedef IP 10.1.2.3 hedef sunucuda yerel degil; istek gonderilmedi; hicbir yol denenmedi',
+          },
+        })}
+      />,
+    );
     expect(okSatiri('IP hedefte yerel')).toMatch(/kaldı$/);
     expect(okSatiri('Senaryo yolları 200')).toBe('Senaryo yolları 200hiçbir yol denenmedi · kaldı');
     expect(document.body.textContent).not.toContain('Sıkıştırma:');
@@ -1123,10 +2276,16 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
 
   it('YT30d (UV1) izin bloğuna hiç gelinmedi (erişilemedi / dzdo / kopya kapısı): izin satırı “ölçülemedi”, “kaldı” değil', () => {
     for (const hata of IZIN_BLOGU_KOSMADI) {
-      const { unmount } = render(<OnKontrolPaneli kosu={hicYolDenenmemis(IZIN_OLCULMEDI, hata, IZIN_OLCULMEDI_ENGELLERI)} />);
+      const { unmount } = render(
+        <OnKontrolPaneli kosu={hicYolDenenmemis(IZIN_OLCULMEDI, hata, IZIN_OLCULMEDI_ENGELLERI)} />,
+      );
       expect(okSatiri('Yük sunucusu izin dosyası')).toMatch(/ölçülemedi$/);
       // Asil neden engel kutusunda (Play 3 hatasi); satir operatoru izin dosyasina yoneltmez.
-      expect(within(screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement).getByText(/^Ön kontrol başarısız: yuk makinesi GBNGXT34: /)).toBeTruthy();
+      expect(
+        within(
+          screen.getByText('Koşu başlatılamaz').closest('[role="alert"]') as HTMLElement,
+        ).getByText(/^Ön kontrol başarısız: yuk makinesi GBNGXT34: /),
+      ).toBeTruthy();
       unmount();
     }
   });
@@ -1134,34 +2293,50 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
   it('YT31 (UI2) yeniden sınıflandırma sürerken ön kontrol düğmesi kapalı, “IP sınıflandırılıyor…” görünür, eski sınıf kutusu kalkar', async () => {
     await yeniKosuAc();
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
-    expect(await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE)).toBeTruthy();
+    expect(
+      await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE),
+    ).toBeTruthy();
     await waitFor(() => expect(okDugmesi()).toBeEnabled());
     // Ikinci IP'nin siniflandirmasi yavas: sinif bilinmeden form sinirlari ve varsayilanlar bilinmez (fail-closed).
-    api.ipSinifi.mockImplementation((ip: string) => new Promise((r) => setTimeout(() => r(SERBEST_SINIFI(ip)), 1500)));
+    api.ipSinifi.mockImplementation(
+      (ip: string) => new Promise((r) => setTimeout(() => r(SERBEST_SINIFI(ip)), 1500)),
+    );
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.41' } });
     expect(okDugmesi()).toBeDisabled();
     // Iki yerde: siniflandirma kutusu ve Plan'daki neden satiri.
     expect(screen.getAllByText('IP sınıflandırılıyor…')).toHaveLength(2);
     expect(screen.queryByText('Serbest hedef (10.20.30.0/24 izinli ağında)')).toBeNull();
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), { timeout: 4000 });
-    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.41', { yukHost: 'GBNGXT34', hedefHost: null });
+    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.20.30.41', {
+      yukHost: 'GBNGXT34',
+      hedefHost: null,
+    });
     expect(screen.getByText('Serbest hedef (10.20.30.0/24 izinli ağında)')).toBeTruthy();
     expect(screen.queryAllByText('IP sınıflandırılıyor…')).toHaveLength(0);
   }, 10000);
 
   it('YT32 (UI2) sıra dışı yanıt: geç gelen bayat A yanıtı B’nin sonucunu ezmez, ekran “sınıflandırılıyor”da takılmaz', async () => {
-    const BELIRSIZ = '10.1.2.9 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
+    const BELIRSIZ =
+      '10.1.2.9 birden çok nginx sunucusunda tanımlı (GBNGXT10, GBNGXT11); hedef sunucuyu listeden seçin.';
     api.ipSinifi.mockImplementation(async (ip: string) => {
-      if (ip === '10.1.2.9') { await bekle(1500); return { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 }; }
+      if (ip === '10.1.2.9') {
+        await bekle(1500);
+        return { ok: false, code: 'ip_belirsiz', message: BELIRSIZ, _httpStatus: 409 };
+      }
       return varsayilanSinif(ip);
     });
     await yeniKosuAc();
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.9' } });
     await bekle(600);
     // Bekci korlugu olmasin: A istegi (400 ms gecikmeli) gercekten ucusta, yaniti 1500 ms surer.
-    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.9', { yukHost: 'GBNGXT34', hedefHost: null });
+    expect(api.ipSinifi).toHaveBeenLastCalledWith('10.1.2.9', {
+      yukHost: 'GBNGXT34',
+      hedefHost: null,
+    });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
-    expect(await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE)).toBeTruthy();
+    expect(
+      await screen.findByText('Serbest hedef (10.20.30.0/24 izinli ağında)', {}, SINIF_BEKLE),
+    ).toBeTruthy();
     await bekle(1600); // A'nin bayat yaniti geldi
     expect(screen.queryByText(BELIRSIZ)).toBeNull();
     expect(screen.queryAllByText('IP sınıflandırılıyor…')).toHaveLength(0);
@@ -1170,11 +2345,31 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
   }, 10000);
 
   it('YT33 (SA2) Karşılaştır: iki wrk koşusunun hız tavanı farklıysa uyarı (referans / aday sırasıyla); aynı tavanda yok', async () => {
-    const K = (id: number) => ({ ...KOSU_LISTE, id, durum: 'DONE', gecerlilik: 'GECERLI', etiket: `koşu ${id}`, hedefTuru: 'sunucu', motor: 'wrk' });
+    const K = (id: number) => ({
+      ...KOSU_LISTE,
+      id,
+      durum: 'DONE',
+      gecerlilik: 'GECERLI',
+      etiket: `koşu ${id}`,
+      hedefTuru: 'sunucu',
+      motor: 'wrk',
+    });
     api.kosular.mockResolvedValue({ ok: true, dahaVar: false, kosular: [K(50), K(51), K(52)] });
     // 51: hedefe sonradan IP anahtarli bir zone eklendi (tavan 450 -> 90); 52: ayni tavan, farkli is parcacigi.
-    const P_: Record<number, { tavan_rps: number; is_parcacigi: number }> = { 50: { tavan_rps: 450, is_parcacigi: 2 }, 51: { tavan_rps: 90, is_parcacigi: 2 }, 52: { tavan_rps: 450, is_parcacigi: 4 } };
-    api.kosu.mockImplementation(async (id: number) => ({ ok: true, kosu: ayrinti({ id, motor: 'wrk', parametreler: { ...WRK_P, ...P_[id] } as NlKosuAyrinti['parametreler'] }), adimlar: [] }));
+    const P_: Record<number, { tavan_rps: number; is_parcacigi: number }> = {
+      50: { tavan_rps: 450, is_parcacigi: 2 },
+      51: { tavan_rps: 90, is_parcacigi: 2 },
+      52: { tavan_rps: 450, is_parcacigi: 4 },
+    };
+    api.kosu.mockImplementation(async (id: number) => ({
+      ok: true,
+      kosu: ayrinti({
+        id,
+        motor: 'wrk',
+        parametreler: { ...WRK_P, ...P_[id] } as NlKosuAyrinti['parametreler'],
+      }),
+      adimlar: [],
+    }));
     render(<Karsilastir />);
     const ref = await screen.findByLabelText('Referans koşu');
     await within(ref).findByRole('option', { name: /^#52 / });
@@ -1182,36 +2377,81 @@ describe('Yük Testi — tur 3 incelemesi (2026-10-28)', () => {
     // Ayni tavan (450 / 450): is parcacigi uyarisi gorunur (iki ayrinti da okundu), tavan uyarisi YOK.
     fireEvent.change(ref, { target: { value: '50' } });
     fireEvent.change(aday, { target: { value: '52' } });
-    expect(await screen.findByText('Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/^Farklı hız tavanı/)).toBeNull();
     // Farkli tavan (450 / 90): ayni baglanti kademesi farkli yuk.
     fireEvent.change(aday, { target: { value: '51' } });
-    expect(await screen.findByText('Farklı hız tavanı: referans 450 istek/sn, aday 90 istek/sn — wrk’de aynı bağlantı kademesi farklı yük demektir; aynı tavanla yeniden koşun.')).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Farklı hız tavanı: referans 450 istek/sn, aday 90 istek/sn — wrk’de aynı bağlantı kademesi farklı yük demektir; aynı tavanla yeniden koşun.',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/farklı iş parçacığı/)).toBeNull();
     // Sira referans / aday secimine gore.
     fireEvent.change(aday, { target: { value: '' } });
     fireEvent.change(ref, { target: { value: '51' } });
     fireEvent.change(aday, { target: { value: '50' } });
-    expect(await screen.findByText(/^Farklı hız tavanı: referans 90 istek\/sn, aday 450 istek\/sn — /)).toBeTruthy();
+    expect(
+      await screen.findByText(/^Farklı hız tavanı: referans 90 istek\/sn, aday 450 istek\/sn — /),
+    ).toBeTruthy();
     // Ayrintilar bir kez okunur (kosu basina).
     expect(api.kosu.mock.calls.map((c) => c[0]).sort()).toEqual([50, 51, 52]);
   });
 });
 
 describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
-  const AYAR = { derlemeHostlari: ['GBLABT02'], varsayilanDerlemeHost: 'GBLABT02', k6Surum: 'v0.49.0', wrkSurum: '4.2.0', proxyTanimli: false, proxy: null, proxyHatasi: null, k6ArsivSha256: null, wrkKaynakSha256: null, ozetEksikleri: [], isSuresiSn: 2400 };
+  const AYAR = {
+    derlemeHostlari: ['GBLABT02'],
+    varsayilanDerlemeHost: 'GBLABT02',
+    k6Surum: 'v0.49.0',
+    wrkSurum: '4.2.0',
+    proxyTanimli: false,
+    proxy: null,
+    proxyHatasi: null,
+    k6ArsivSha256: null,
+    wrkKaynakSha256: null,
+    ozetEksikleri: [],
+    isSuresiSn: 2400,
+  };
 
   it('YT44 YeniKosu: araçlar hazır değil -> hata kutusu + “Araçlar” düğmesi, ön kontrol kapalı', async () => {
-    api.araclar.mockResolvedValue({ ok: true, etkin: null, calisan: null, gecmis: [], ayar: AYAR, kapi: { kod: 'araclar_hazir_degil', mesaj: null } });
-    const mesaj = 'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).';
-    api.hedefler.mockResolvedValue({ ...HEDEFLER, araclar: { hazir: false, aracId: null, k6Surum: null, wrkSurum: null, kod: 'araclar_hazir_degil', mesaj } });
+    api.araclar.mockResolvedValue({
+      ok: true,
+      etkin: null,
+      calisan: null,
+      gecmis: [],
+      ayar: AYAR,
+      kapi: { kod: 'araclar_hazir_degil', mesaj: null },
+    });
+    const mesaj =
+      'Yük araçları henüz hazırlanmadı: Yük Testi › Araçlar bölümünden “Araçları hazırla” ile k6 ve wrk’yi /sw’ye hazırlayın (yalnız Admin).';
+    api.hedefler.mockResolvedValue({
+      ...HEDEFLER,
+      araclar: {
+        hazir: false,
+        aracId: null,
+        k6Surum: null,
+        wrkSurum: null,
+        kod: 'araclar_hazir_degil',
+        mesaj,
+      },
+    });
     await yeniKosuAc();
     fireEvent.change(hostSecici(), { target: { value: 'GBNGXT10' } });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.1.2.3' } });
-    const kutu = screen.getByText('Yük araçları hazır değil').closest('div[role="alert"]') as HTMLElement;
+    const kutu = screen
+      .getByText('Yük araçları hazır değil')
+      .closest('div[role="alert"]') as HTMLElement;
     expect(within(kutu).getByText(mesaj)).toBeTruthy();
     // Siniflandirma bitse de (form gecerli) dugme kapali kalir; neden arac kutusunu soyler.
-    await waitFor(() => expect(screen.getByText(/Sunucu hedefi: GBNGXT10/)).toBeTruthy(), SINIF_BEKLE);
+    await waitFor(
+      () => expect(screen.getByText(/Sunucu hedefi: GBNGXT10/)).toBeTruthy(),
+      SINIF_BEKLE,
+    );
     expect(okDugmesi()).toBeDisabled();
     expect(screen.getByText('Yük araçları hazır değil.')).toBeTruthy();
     expect(screen.queryByText(/^Araç seti #/)).toBeNull();
@@ -1238,28 +2478,74 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
   });
 
   it('YT45 ön kontrol paneli “Araç kopyası (sha256)”: geçti / kaldı / ölçülemedi; eski satırda (aracId null) YOK; glibc bilgisi', () => {
-    const satir = (ad: string) => (screen.getByText(ad).closest('li') as HTMLElement).textContent || '';
+    const satir = (ad: string) =>
+      (screen.getByText(ad).closest('li') as HTMLElement).textContent || '';
     const AD = 'Araç kopyası (sha256)';
-    const panel = (ok: Record<string, unknown>, ek: Partial<NlKosuAyrinti> = {}) => render(<OnKontrolPaneli kosu={{ durum: 'DONE', onKontrol: onKontrolNormalle(ok), sunucuDegerlendirmesi: { engeller: [], uyarilar: [] }, ...ek }} />);
+    const panel = (ok: Record<string, unknown>, ek: Partial<NlKosuAyrinti> = {}) =>
+      render(
+        <OnKontrolPaneli
+          kosu={{
+            durum: 'DONE',
+            onKontrol: onKontrolNormalle(ok),
+            sunucuDegerlendirmesi: { engeller: [], uyarilar: [] },
+            ...ek,
+          }}
+        />,
+      );
     const sha = 'c'.repeat(64);
-    const r1 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: sha, arac_glibc: '2.28' }, { aracId: 5 });
+    const r1 = panel(
+      { ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: sha, arac_glibc: '2.28' },
+      { aracId: 5 },
+    );
     expect(satir(AD)).toBe(`${AD}${'c'.repeat(12)}… · geçti`);
     // Satir motor satirindan hemen ONCE.
-    const adlar = within(screen.getByRole('list', { name: 'Ön kontrol maddeleri' })).getAllByRole('listitem').map((li) => li.textContent || '');
-    expect(adlar.findIndex((t) => t.startsWith(AD))).toBe(adlar.findIndex((t) => t.startsWith('Yük sunucusunda k6')) - 1);
+    const adlar = within(screen.getByRole('list', { name: 'Ön kontrol maddeleri' }))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent || '');
+    expect(adlar.findIndex((t) => t.startsWith(AD))).toBe(
+      adlar.findIndex((t) => t.startsWith('Yük sunucusunda k6')) - 1,
+    );
     expect(screen.getByText(/yük sunucusu glibc 2\.28/)).toBeTruthy();
     r1.unmount();
-    const r2 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: false, arac_hata: 'sha256 farkli (beklenen cccc..., bulunan dddd...)' }, { aracId: 5 });
+    const r2 = panel(
+      {
+        ...ON_KONTROL_UYARILI,
+        arac_dogrulandi: false,
+        arac_hata: 'sha256 farkli (beklenen cccc..., bulunan dddd...)',
+      },
+      { aracId: 5 },
+    );
     expect(satir(AD)).toBe(`${AD}sha256 farkli (beklenen cccc..., bulunan dddd...) · kaldı`);
     r2.unmount();
-    const r3 = panel({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: sha, arac_hata: 'glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor' }, { aracId: 5, motor: 'k6' });
-    expect(satir(AD)).toBe(`${AD}glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor · kaldı`);
+    const r3 = panel(
+      {
+        ...ON_KONTROL_UYARILI,
+        arac_dogrulandi: true,
+        arac_sha256: sha,
+        arac_hata: 'glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor',
+      },
+      { aracId: 5, motor: 'k6' },
+    );
+    expect(satir(AD)).toBe(
+      `${AD}glibc uyumsuz: makinede glibc 2.28, arac GLIBC_2.34 istiyor · kaldı`,
+    );
     r3.unmount();
     const r4 = panel(ON_KONTROL_UYARILI, { aracId: 5 });
     expect(satir(AD)).toBe(`${AD}ölçülemedi`);
     r4.unmount();
     // Serbest hedefte de (yuk sunucusu satirlari arasinda).
-    const r5 = panel({ ip_yuk_makinesinde: false, serbest_ag: '10.20.30.0/24', k6_var: true, yollar_toplam: 2, yollar_200: 2, arac_dogrulandi: true, arac_sha256: sha }, { hedefTuru: 'serbest', aracId: 5 });
+    const r5 = panel(
+      {
+        ip_yuk_makinesinde: false,
+        serbest_ag: '10.20.30.0/24',
+        k6_var: true,
+        yollar_toplam: 2,
+        yollar_200: 2,
+        arac_dogrulandi: true,
+        arac_sha256: sha,
+      },
+      { hedefTuru: 'serbest', aracId: 5 },
+    );
     expect(satir(AD)).toMatch(/geçti$/);
     r5.unmount();
     // Eski satir: arac alanlari dolu olsa da satir YOK.
@@ -1269,8 +2555,21 @@ describe('Yük Testi — araçlar (tur 4, 2026-11-02)', () => {
 
   it('YT45b koşu ayrıntısı: üst bilgide araç seti; “Ön kontrol” sekmesinde araç satırı (koşunun aracId’siyle)', async () => {
     kosuYukle({
-      durum: 'DONE', aracId: 5, aracSeti: { id: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', k6Sha256: 'c'.repeat(64), wrkSha256: 'e'.repeat(64), derlemeHost: 'GBLABT02' },
-      onKontrol: onKontrolNormalle({ ...ON_KONTROL_UYARILI, arac_dogrulandi: true, arac_sha256: 'c'.repeat(64) }),
+      durum: 'DONE',
+      aracId: 5,
+      aracSeti: {
+        id: 5,
+        k6Surum: 'v0.49.0',
+        wrkSurum: '4.2.0',
+        k6Sha256: 'c'.repeat(64),
+        wrkSha256: 'e'.repeat(64),
+        derlemeHost: 'GBLABT02',
+      },
+      onKontrol: onKontrolNormalle({
+        ...ON_KONTROL_UYARILI,
+        arac_dogrulandi: true,
+        arac_sha256: 'c'.repeat(64),
+      }),
     });
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     expect(await screen.findByText('Araç seti #5 (k6 v0.49.0 · wrk 4.2.0)')).toBeTruthy();
@@ -1291,24 +2590,50 @@ describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT5
     fireEvent.click(screen.getByRole('button', { name: '10.1.2.3' }));
     // Varsayilan hizlar 100 250 400: 400 > 300 -> uyari (sunucu metniyle ayni).
     const kutu = await screen.findByTestId('yuk-limit-uyarisi', undefined, SINIF_BEKLE);
-    expect(within(kutu).getByText('Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (300 r/s) aşıyor; 429 alınırsa koşu durur.')).toBeTruthy();
+    expect(
+      within(kutu).getByText(
+        'Seçilen hız (400/sn) hedefin ölçülmüş limit_req değerini (300 r/s) aşıyor; 429 alınırsa koşu durur.',
+      ),
+    ).toBeTruthy();
     // Daraltma YOK: alan hatasi yok, on kontrol dugmesi acik.
     expect(screen.queryByText(/Her hız 1–/)).toBeNull();
     await waitFor(() => expect(okDugmesi()).toBeEnabled(), SINIF_BEKLE);
     fireEvent.change(screen.getByLabelText('Hızlar (istek/sn)'), { target: { value: '100 250' } });
     expect(screen.queryByTestId('yuk-limit-uyarisi')).toBeNull();
     // 5000'e kadar hiz kabul (4 hane); 5001 alan hatasi.
-    fireEvent.change(screen.getByLabelText('Hızlar (istek/sn)'), { target: { value: '1000 5000' } });
+    fireEvent.change(screen.getByLabelText('Hızlar (istek/sn)'), {
+      target: { value: '1000 5000' },
+    });
     expect(screen.queryByText('Yalnız sayı yazın, boşlukla ayırın (ör. 100 250 400).')).toBeNull();
   });
 
   it('YT51 yük makinesi CPU kolonu ölçülmüş / kayıt beklenmiş koşuda; YÜK DOYDU rozeti ve düz Türkçe neden; ölçülmeyen adım “—”, kayıt beklenip ölçülemeyen “ölçülemedi” (B1)', async () => {
-    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 1000, rps_sunucu: 990, p95: 10, ...o });
+    const adim = (o: Record<string, unknown>) =>
+      adimNormalle({
+        senaryo: 'K',
+        kip: 'yeni',
+        ae: 'br',
+        gecerlilik: 'GECERLI',
+        gercek_rps: 1000,
+        rps_sunucu: 990,
+        p95: 10,
+        ...o,
+      });
     kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
       adim({ tur: 'R17_K_yeni_br_1000_r1', hiz: 1000, ham: { yuk_cpu_bosta: 64.2, uyarilar: [] } }),
-      adim({ tur: 'R17_K_yeni_br_5000_r1', hiz: 5000, gecerlilik: 'DOYMA', nedenler: ['doyma:yuk_cpu_bosta_%12.5(<%20)'], ham: { yuk_cpu_bosta: 12.5, uyarilar: [] } }),
+      adim({
+        tur: 'R17_K_yeni_br_5000_r1',
+        hiz: 5000,
+        gecerlilik: 'DOYMA',
+        nedenler: ['doyma:yuk_cpu_bosta_%12.5(<%20)'],
+        ham: { yuk_cpu_bosta: 12.5, uyarilar: [] },
+      }),
       adim({ tur: 'R17_K_yeni_br_2000_r1', hiz: 2000, ham: { uyarilar: [] } }),
-      adim({ tur: 'R17_K_yeni_br_3000_r1', hiz: 3000, ham: { uyarilar: ['yuk_cpu_olculemedi'], yuk_cpu_olculemedi: true } }),
+      adim({
+        tur: 'R17_K_yeni_br_3000_r1',
+        hiz: 3000,
+        ham: { uyarilar: ['yuk_cpu_olculemedi'], yuk_cpu_olculemedi: true },
+      }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
@@ -1317,16 +2642,42 @@ describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT5
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     expect(within(tablo).getByText('Yük mak. boşta CPU')).toBeTruthy();
     // B6: tek ondaliga asagi (sunucu nedeniyle ayni sayi; 19,96 '%20' yazilmaz). B1: kayit beklenip olcum yok -> ölçülemedi.
-    expect(within(tablo).getAllByTestId('yuk-cpu-bosta').map((h) => h.textContent)).toEqual(['%64,2', '—', 'ölçülemedi', '%12,5']);
+    expect(
+      within(tablo)
+        .getAllByTestId('yuk-cpu-bosta')
+        .map((h) => h.textContent),
+    ).toEqual(['%64,2', '—', 'ölçülemedi', '%12,5']);
     expect(within(tablo).getByText('YÜK DOYDU')).toBeTruthy();
-    expect(within(tablo).getByText('Yük makinesi doydu (boşta CPU %12,5): sonuç hedefin değil yük makinesinin sınırını gösterebilir.')).toBeTruthy();
+    expect(
+      within(tablo).getByText(
+        'Yük makinesi doydu (boşta CPU %12,5): sonuç hedefin değil yük makinesinin sınırını gösterebilir.',
+      ),
+    ).toBeTruthy();
   });
 
   it('YT53 (B1) yeni playbook, hiçbir adımda ölçüm yok: kolon görünür, her adım “ölçülemedi”', async () => {
-    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 100, rps_sunucu: 98, p95: 10, ...o });
+    const adim = (o: Record<string, unknown>) =>
+      adimNormalle({
+        senaryo: 'K',
+        kip: 'yeni',
+        ae: 'br',
+        gecerlilik: 'GECERLI',
+        gercek_rps: 100,
+        rps_sunucu: 98,
+        p95: 10,
+        ...o,
+      });
     kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
-      adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, ham: { uyarilar: [], yuk_cpu_olculemedi: true } }),
-      adim({ tur: 'R17_K_yeni_br_200_r1', hiz: 200, ham: { uyarilar: [], yuk_cpu_olculemedi: true } }),
+      adim({
+        tur: 'R17_K_yeni_br_100_r1',
+        hiz: 100,
+        ham: { uyarilar: [], yuk_cpu_olculemedi: true },
+      }),
+      adim({
+        tur: 'R17_K_yeni_br_200_r1',
+        hiz: 200,
+        ham: { uyarilar: [], yuk_cpu_olculemedi: true },
+      }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
@@ -1334,12 +2685,28 @@ describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT5
     expect(within(ozet).getAllByText('ölçülemedi')).toHaveLength(2);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
-    expect(within(tablo).getAllByTestId('yuk-cpu-bosta').map((h) => h.textContent)).toEqual(['ölçülemedi', 'ölçülemedi']);
+    expect(
+      within(tablo)
+        .getAllByTestId('yuk-cpu-bosta')
+        .map((h) => h.textContent),
+    ).toEqual(['ölçülemedi', 'ölçülemedi']);
   });
 
   it('YT52 eski koşu (yük makinesi kaydı yok): kolon ve rozet YOK (tablo birebir eskisi)', async () => {
-    const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'yeni', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 100, rps_sunucu: 98, p95: 10, ...o });
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, ham: { uyarilar: [] } })]);
+    const adim = (o: Record<string, unknown>) =>
+      adimNormalle({
+        senaryo: 'K',
+        kip: 'yeni',
+        ae: 'br',
+        gecerlilik: 'GECERLI',
+        gercek_rps: 100,
+        rps_sunucu: 98,
+        p95: 10,
+        ...o,
+      });
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [
+      adim({ tur: 'R17_K_yeni_br_100_r1', hiz: 100, ham: { uyarilar: [] } }),
+    ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
     expect(within(ozet).queryByText('Yük mak. boşta')).toBeNull();
@@ -1355,38 +2722,108 @@ describe('Yük Testi — 5000/sn, limit uyarısı, yük makinesi CPU (YT50–YT5
 // YT62 bellek sutunlari + "Nginx bellek (en yüksek)" kutusu + grafik, eski kosuda YOK; YT63 kip dogrulamasi blogu ve cipi
 // (sunucunun kipDogrulama'si), eski sunucu (alan yok) blok ve cip YOK.
 describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (YT60–YT63)', () => {
-  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
+  const adim = (o: Record<string, unknown>) =>
+    adimNormalle({
+      senaryo: 'K',
+      kip: 'ka',
+      ae: 'br',
+      gecerlilik: 'GECERLI',
+      gercek_rps: 90,
+      rps_sunucu: 90,
+      p95: 10,
+      ...o,
+    });
   const kip = (o: Record<string, unknown> = {}) => ({
     protokol: { istenen: 'h1', olculen: 'h1', uyumsuz: 0, durum: 'tamam' },
     baglanti: { istenen: 'ka', yeniBaglantiYuzde: 2, istekBaglanti: 50, durum: 'tamam' },
-    sikistirma: { istenen: 'br', n: 1000, dagilim: { br: 900, gzip: 0, deflate: 0, zstd: 0, yok: 100, diger: 0 }, yok1kbAlti: 80, kucukYuzde: 8, istenenYuzde: 97.8, durum: 'tamam' },
-    uyarilar: [], durum: 'tamam', ...o,
+    sikistirma: {
+      istenen: 'br',
+      n: 1000,
+      dagilim: { br: 900, gzip: 0, deflate: 0, zstd: 0, yok: 100, diger: 0 },
+      yok1kbAlti: 80,
+      kucukYuzde: 8,
+      istenenYuzde: 97.8,
+      durum: 'tamam',
+    },
+    uyarilar: [],
+    durum: 'tamam',
+    ...o,
   });
 
   it('YT60 tekrar "1. tekrar", adım uyarısı "90/sn adımının 2. tekrarında: …", sütun ipucu tekrarın anlamı', async () => {
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: ['R17_K_ka_br_90_r2: diger_trafik_%7'], okumaHatasi: null } }, [
-      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } }),
-      adim({ tur: 'R17_K_ka_br_90_r2', hiz: 90, ham: { uyarilar: ['diger_trafik_%7'] } }),
-    ]);
+    kosuYukle(
+      {
+        durum: 'DONE',
+        gecerlilik: 'GECERLI',
+        finishedAt: '2026-11-03T08:40:00Z',
+        analiz: {
+          nproc: 8,
+          cpuTlsliPay: null,
+          uyarilar: ['R17_K_ka_br_90_r2: diger_trafik_%7'],
+          okumaHatasi: null,
+        },
+      },
+      [
+        adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } }),
+        adim({ tur: 'R17_K_ka_br_90_r2', hiz: 90, ham: { uyarilar: ['diger_trafik_%7'] } }),
+      ],
+    );
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     const ozet = await screen.findByRole('table', { name: 'Adım sonuçları özeti' });
-    expect(within(ozet).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual(['90/sn1. tekrar', '90/sn2. tekrar']);
-    expect(within(ozet).getByText('Adım').closest('th')?.getAttribute('title')).toContain('Her hız, Tekrar sayısı kadar koşulur; tekrarlar arasındaki fark ölçümün tutarlılığını gösterir.');
+    expect(
+      within(ozet)
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => within(r).getAllByRole('cell')[0].textContent),
+    ).toEqual(['90/sn1. tekrar', '90/sn2. tekrar']);
+    expect(within(ozet).getByText('Adım').closest('th')?.getAttribute('title')).toContain(
+      'Her hız, Tekrar sayısı kadar koşulur; tekrarlar arasındaki fark ölçümün tutarlılığını gösterir.',
+    );
     fireEvent.click(screen.getByText(/Adım uyarıları — teknik adım tablosunda/));
-    expect(screen.getByText(/^90\/sn adımının 2\. tekrarında: Ölçüm sırasında hedefe başka trafik de geldi/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /^90\/sn adımının 2\. tekrarında: Ölçüm sırasında hedefe başka trafik de geldi/,
+      ),
+    ).toBeTruthy();
     // Adim listesinde olmayan TUR'un ham kodu da cozulur.
-    expect(turCumlesi('R17_K_yeni_br_250_r3', [], 'istek/sn')).toBe('250/sn adımının 3. tekrarında');
+    expect(turCumlesi('R17_K_yeni_br_250_r3', [], 'istek/sn')).toBe(
+      '250/sn adımının 3. tekrarında',
+    );
     expect(turEtiketi('R17_K_yeni_br_8_r1', [], 'bağlantı')).toBe('8 bağlantı · 1. tekrar');
     expect(turCumlesi('baska', [], 'istek/sn')).toBe('baska');
   });
 
   it('YT61 CPU-ms/istek iki ondalık + birim (tablo, kutu, grafik ipucu); kapasite ve host CPU ipuçları', async () => {
-    expect([cpuMsMetni(3.919), cpuMsMetni(0.5), cpuMsMetni(1234.5), cpuMsMetni(null)]).toEqual(['3,92 ms', '0,50 ms', '1.234,50 ms', '—']);
-    expect(hostCpuIpucu(8)).toBe('8 çekirdeğin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.');
-    expect(hostCpuIpucu(null)).toBe('Tüm çekirdeklerin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.');
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null } }, [
-      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, cpu_ms_istek: 3.919, kapasite_rps: 1633, host_cpu_ort: 40, ham: { uyarilar: [] } }),
+    expect([cpuMsMetni(3.919), cpuMsMetni(0.5), cpuMsMetni(1234.5), cpuMsMetni(null)]).toEqual([
+      '3,92 ms',
+      '0,50 ms',
+      '1.234,50 ms',
+      '—',
     ]);
+    expect(hostCpuIpucu(8)).toBe(
+      '8 çekirdeğin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.',
+    );
+    expect(hostCpuIpucu(null)).toBe(
+      'Tüm çekirdeklerin toplamı (%100 = tüm çekirdekler dolu); Nginx + işletim sistemi + diğer süreçler.',
+    );
+    kosuYukle(
+      {
+        durum: 'DONE',
+        gecerlilik: 'GECERLI',
+        finishedAt: '2026-11-03T08:40:00Z',
+        analiz: { nproc: 8, cpuTlsliPay: null, uyarilar: [], okumaHatasi: null },
+      },
+      [
+        adim({
+          tur: 'R17_K_ka_br_90_r1',
+          hiz: 90,
+          cpu_ms_istek: 3.919,
+          kapasite_rps: 1633,
+          host_cpu_ort: 40,
+          ham: { uyarilar: [] },
+        }),
+      ],
+    );
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
@@ -1400,27 +2837,64 @@ describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (Y
 
   it('YT62 bellek: tablo sütunları, kutu ve grafik yalnız ölçülmüş koşuda; boş bellek < %10 uyarı renginde; eski koşu birebir', async () => {
     kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
-      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [], bellek: { nginx_rss_ort_mb: 120.4, nginx_rss_max_mb: 130.6, hedef_bellek_yuzde: 61, hedef_bos_min_yuzde: 39, yuk_bellek_yuzde: 92.5, yuk_bos_min_yuzde: 7.5, arac_rss_max_mb: 310 } } }),
-      adim({ tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [], bellek: { nginx_rss_ort_mb: 140, nginx_rss_max_mb: 150.2, hedef_bellek_yuzde: 62, hedef_bos_min_yuzde: 38, yuk_bellek_yuzde: 50, yuk_bos_min_yuzde: 50, arac_rss_max_mb: 320 } } }),
+      adim({
+        tur: 'R17_K_ka_br_90_r1',
+        hiz: 90,
+        ham: {
+          uyarilar: [],
+          bellek: {
+            nginx_rss_ort_mb: 120.4,
+            nginx_rss_max_mb: 130.6,
+            hedef_bellek_yuzde: 61,
+            hedef_bos_min_yuzde: 39,
+            yuk_bellek_yuzde: 92.5,
+            yuk_bos_min_yuzde: 7.5,
+            arac_rss_max_mb: 310,
+          },
+        },
+      }),
+      adim({
+        tur: 'R17_K_ka_br_180_r1',
+        hiz: 180,
+        ham: {
+          uyarilar: [],
+          bellek: {
+            nginx_rss_ort_mb: 140,
+            nginx_rss_max_mb: 150.2,
+            hedef_bellek_yuzde: 62,
+            hedef_bos_min_yuzde: 38,
+            yuk_bellek_yuzde: 50,
+            yuk_bos_min_yuzde: 50,
+            arac_rss_max_mb: 320,
+          },
+        },
+      }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
-    for (const b of ['Nginx RSS', 'Hedef bellek', 'Yük mak. bellek']) expect(within(tablo).getByText(b)).toBeTruthy();
+    for (const b of ['Nginx RSS', 'Hedef bellek', 'Yük mak. bellek'])
+      expect(within(tablo).getByText(b)).toBeTruthy();
     expect(within(tablo).getByText('131 MB')).toBeTruthy();
     const yuk = within(tablo).getByText('%93');
     expect(yuk.getAttribute('style')).toContain('status-warning-text');
     const kutu = screen.getAllByText('Nginx bellek (en yüksek)').find((e) => e.tagName === 'DT');
     expect(kutu?.parentElement?.textContent).toContain('150 MB');
     expect(kutu?.parentElement?.textContent).toContain('180/sn · 1. tekrar');
-    expect(screen.getByRole('img', { name: /Nginx bellek \(en yüksek\): 90 istek\/sn/ })).toBeTruthy();
+    expect(
+      screen.getByRole('img', { name: /Nginx bellek \(en yüksek\): 90 istek\/sn/ }),
+    ).toBeTruthy();
     // Ayrinti satiri: ortalama / en yuksek, bos bellek, arac RSS.
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
-    expect(screen.getByText('Yük aracı RSS (en yüksek)').parentElement?.textContent).toContain('310 MB');
+    expect(screen.getByText('Yük aracı RSS (en yüksek)').parentElement?.textContent).toContain(
+      '310 MB',
+    );
   });
 
   it('YT62b eski koşu (bellek yok): bellek sütunu, kutusu ve grafiği YOK', async () => {
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } })]);
+    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-10-27T08:40:00Z' }, [
+      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] } }),
+    ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
@@ -1432,39 +2906,72 @@ describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (Y
     kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z' }, [
       adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, kipDogrulama: kip() }),
       adim({
-        tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [] },
+        tur: 'R17_K_ka_br_180_r1',
+        hiz: 180,
+        ham: { uyarilar: [] },
         kipDogrulama: kip({
           baglanti: { istenen: 'ka', yeniBaglantiYuzde: 35, istekBaglanti: 2.86, durum: 'uyari' },
-          sikistirma: { istenen: 'br', n: null, dagilim: null, yok1kbAlti: null, kucukYuzde: null, istenenYuzde: null, durum: 'olculmedi' },
-          uyarilar: ['kip_ka_yeni_baglanti_%35'], durum: 'uyari',
+          sikistirma: {
+            istenen: 'br',
+            n: null,
+            dagilim: null,
+            yok1kbAlti: null,
+            kucukYuzde: null,
+            istenenYuzde: null,
+            durum: 'olculmedi',
+          },
+          uyarilar: ['kip_ka_yeni_baglanti_%35'],
+          durum: 'uyari',
         }),
       }),
       adim({ tur: 'R17_K_ka_br_270_r1', hiz: 270, ham: { uyarilar: [] } }),
       adim({
-        tur: 'R17_K_ka_br_360_r1', hiz: 360, ham: { uyarilar: [] },
-        kipDogrulama: kip({ sikistirma: { istenen: 'br', n: null, dagilim: null, yok1kbAlti: null, kucukYuzde: null, istenenYuzde: null, durum: 'olculmedi' } }),
+        tur: 'R17_K_ka_br_360_r1',
+        hiz: 360,
+        ham: { uyarilar: [] },
+        kipDogrulama: kip({
+          sikistirma: {
+            istenen: 'br',
+            n: null,
+            dagilim: null,
+            yok1kbAlti: null,
+            kucukYuzde: null,
+            istenenYuzde: null,
+            durum: 'olculmedi',
+          },
+        }),
       }),
     ]);
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     expect(within(tablo).getByText('kip ✔')).toBeTruthy();
-    expect(within(tablo).getByText('kip uyarısı').getAttribute('title')).toContain('Keep-alive istendi ama isteklerin %35’i yeni bağlantıda gitti');
+    expect(within(tablo).getByText('kip uyarısı').getAttribute('title')).toContain(
+      'Keep-alive istendi ama isteklerin %35’i yeni bağlantıda gitti',
+    );
     // Eski sunucu (kipDogrulama yok): cip yok.
     // Eski koşu gibi sıkıştırma ölçülmemişse çip "kısmi" der, ölçülmeyeni ipucunda söyler.
-    expect(within(tablo).getByText('kip ✔ (kısmi)').getAttribute('title')).toBe('Kip doğrulaması: ölçülenler istendiği gibi; ölçülmeyen: sıkıştırma.');
+    expect(within(tablo).getByText('kip ✔ (kısmi)').getAttribute('title')).toBe(
+      'Kip doğrulaması: ölçülenler istendiği gibi; ölçülmeyen: sıkıştırma.',
+    );
     expect(within(tablo).getAllByText(/^kip /)).toHaveLength(3);
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
     const blok = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 kip doğrulaması' });
     expect(blok.textContent).toContain('HTTP/1.1');
-    expect(blok.textContent).toContain('isteklerin %2’i yeni bağlantıda · bağlantı başına 50 istek');
-    expect(blok.textContent).toContain('br %90 · sıkıştırmasız %10 — 1 KB üstü yanıtların %97,8’i br');
+    expect(blok.textContent).toContain(
+      'isteklerin %2’i yeni bağlantıda · bağlantı başına 50 istek',
+    );
+    expect(blok.textContent).toContain(
+      'br %90 · sıkıştırmasız %10 — 1 KB üstü yanıtların %97,8’i br',
+    );
     expect(blok.textContent).toContain('1 KB altı yanıtlar (%8) sıkıştırılmadan gelebilir');
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_180_r1 ayrıntısı' }));
     const blok2 = screen.getByRole('group', { name: 'R17_K_ka_br_180_r1 kip doğrulaması' });
     expect(within(blok2).getAllByText('ölçülmedi')).toHaveLength(2);
     expect(within(blok2).getAllByText('uyarı').length).toBe(1);
-    expect(within(blok2).getByRole('list', { name: 'R17_K_ka_br_180_r1 kip uyarıları' }).textContent).toContain('(kip_ka_yeni_baglanti_%35)');
+    expect(
+      within(blok2).getByRole('list', { name: 'R17_K_ka_br_180_r1 kip uyarıları' }).textContent,
+    ).toContain('(kip_ka_yeni_baglanti_%35)');
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_270_r1 ayrıntısı' }));
     expect(screen.queryByRole('group', { name: 'R17_K_ka_br_270_r1 kip doğrulaması' })).toBeNull();
   });
@@ -1477,66 +2984,191 @@ describe('Yük Testi — gösterim: tekrar, CPU-ms, bellek, kip doğrulaması (Y
 //        mini tablosu + olasi neden cumlesi; kosu duzeyi olasi sizinti kutusu
 //   YT66 eski kosu: kolon, kutu, grafik, bant / bellek bloklari YOK (adimNormalle ag / bellekDetay null)
 describe('Yük Testi — bant genişliği ve bellek ayrışımı (YT64–YT66)', () => {
-  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
-  const nic = (o: Record<string, unknown> = {}) => ({ rxOrtBps: 8e6, txOrtBps: 123.4e6, rxMaxBps: 9e6, txMaxBps: 130e6, hizMbps: 1000, kullanimMaxYuzde: 13, arayuz: 'bond0', secim: 'hedef_ip', ...o });
-  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({ t: 1, anonMb, shmemMb, fileMb: 20, pssMb: anonMb + shmemMb / 8, baglanti });
+  const adim = (o: Record<string, unknown>) =>
+    adimNormalle({
+      senaryo: 'K',
+      kip: 'ka',
+      ae: 'br',
+      gecerlilik: 'GECERLI',
+      gercek_rps: 90,
+      rps_sunucu: 90,
+      p95: 10,
+      ...o,
+    });
+  const nic = (o: Record<string, unknown> = {}) => ({
+    rxOrtBps: 8e6,
+    txOrtBps: 123.4e6,
+    rxMaxBps: 9e6,
+    txMaxBps: 130e6,
+    hizMbps: 1000,
+    kullanimMaxYuzde: 13,
+    arayuz: 'bond0',
+    secim: 'hedef_ip',
+    ...o,
+  });
+  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({
+    t: 1,
+    anonMb,
+    shmemMb,
+    fileMb: 20,
+    pssMb: anonMb + shmemMb / 8,
+    baglanti,
+  });
   const bd = (o: Record<string, unknown> = {}) => ({
-    t0: 1, anonOrtMb: 90, pssOrtMb: 99, baglantiOrt: 900, baglantiMax: 950, isciMax: 8, kapananMax: 0,
-    taban: nokta(40, 10, 4), son: nokta(95, 74, 900), dinlenme: nokta(48, 74, 6), dinlenmeSn: 19, nedenler: ['tampon', 'paylasilan'], ...o,
+    t0: 1,
+    anonOrtMb: 90,
+    pssOrtMb: 99,
+    baglantiOrt: 900,
+    baglantiMax: 950,
+    isciMax: 8,
+    kapananMax: 0,
+    taban: nokta(40, 10, 4),
+    son: nokta(95, 74, 900),
+    dinlenme: nokta(48, 74, 6),
+    dinlenmeSn: 19,
+    nedenler: ['tampon', 'paylasilan'],
+    ...o,
   });
 
   it('YT64 bantMetni: 1,23 Gbps / 12,4 Mbps / 850 kbps / <1 kbps / —; NIC secim metni', () => {
-    expect([bantMetni(1.234e9), bantMetni(12.44e6), bantMetni(1e6), bantMetni(850e3), bantMetni(999.4e3), bantMetni(120), bantMetni(0), bantMetni(null), bantMetni(-1)])
-      .toEqual(['1,23 Gbps', '12,4 Mbps', '1,0 Mbps', '850 kbps', '999 kbps', '<1 kbps', '0 kbps', '—', '—']);
+    expect([
+      bantMetni(1.234e9),
+      bantMetni(12.44e6),
+      bantMetni(1e6),
+      bantMetni(850e3),
+      bantMetni(999.4e3),
+      bantMetni(120),
+      bantMetni(0),
+      bantMetni(null),
+      bantMetni(-1),
+    ]).toEqual([
+      '1,23 Gbps',
+      '12,4 Mbps',
+      '1,0 Mbps',
+      '850 kbps',
+      '999 kbps',
+      '<1 kbps',
+      '0 kbps',
+      '—',
+      '—',
+    ]);
     expect(nicSecimMetni('hedef_ip')).toBe('hedef IP’nin arayüzü');
-    expect(nicSecimMetni('lo_disi_toplam(hedef_ip_lo_uzerinde)')).toBe('lo dışı tüm arayüzlerin toplamı (hedef IP lo üzerinde (DSR)); test dışı trafik de içerir');
+    expect(nicSecimMetni('lo_disi_toplam(hedef_ip_lo_uzerinde)')).toBe(
+      'lo dışı tüm arayüzlerin toplamı (hedef IP lo üzerinde (DSR)); test dışı trafik de içerir',
+    );
     expect(nicSecimMetni(null)).toBe('arayüz bilinmiyor');
   });
 
   it('YT65 ölçülmüş koşu: kolonlar, kutular, grafik, NIC ve bellek ayrışımı, sızıntı kutusu', async () => {
     const sonucOzeti = sonucOzetiNormalle({
-      adimSayisi: 2, gecerliAdimSayisi: 2, toplamIstek: 100, reloadlar: [],
-      agBosta: { hedef: { rxBps: 850e3, txBps: 2.5e6, sn: 58, hizMbps: 1000, arayuz: 'bond0', secim: 'hedef_ip' }, yuk: null },
+      adimSayisi: 2,
+      gecerliAdimSayisi: 2,
+      toplamIstek: 100,
+      reloadlar: [],
+      agBosta: {
+        hedef: {
+          rxBps: 850e3,
+          txBps: 2.5e6,
+          sn: 58,
+          hizMbps: 1000,
+          arayuz: 'bond0',
+          secim: 'hedef_ip',
+        },
+        yuk: null,
+      },
       bellekSizinti: { durum: 'olasi_sizinti', kaynak: 'anon', rssUyarisi: null },
     });
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', sonucOzeti }, [
-      adim({ tur: 'R17_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, ag: { testAlinanBps: 12.44e6, testGonderilenBps: 850e3, hedef: nic(), yuk: nic({ kullanimMaxYuzde: 82.4, hizMbps: 100, secim: 'ip_route', arayuz: 'eth0' }) }, bellekDetay: bd() }),
-      adim({ tur: 'R17_K_ka_br_180_r1', hiz: 180, ham: { uyarilar: [] }, ag: { testAlinanBps: 1.234e9, testGonderilenBps: null, hedef: null, yuk: null }, bellekDetay: null }),
-    ]);
+    kosuYukle(
+      { durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-03T08:40:00Z', sonucOzeti },
+      [
+        adim({
+          tur: 'R17_K_ka_br_90_r1',
+          hiz: 90,
+          ham: { uyarilar: [] },
+          ag: {
+            testAlinanBps: 12.44e6,
+            testGonderilenBps: 850e3,
+            hedef: nic(),
+            yuk: nic({ kullanimMaxYuzde: 82.4, hizMbps: 100, secim: 'ip_route', arayuz: 'eth0' }),
+          },
+          bellekDetay: bd(),
+        }),
+        adim({
+          tur: 'R17_K_ka_br_180_r1',
+          hiz: 180,
+          ham: { uyarilar: [] },
+          ag: { testAlinanBps: 1.234e9, testGonderilenBps: null, hedef: null, yuk: null },
+          bellekDetay: null,
+        }),
+      ],
+    );
     render(<KosuAyrinti kosuId={17} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     expect(within(tablo).getByText('Test alınan').getAttribute('title')).toBe(TEST_TRAFIGI_IPUCU);
     expect(within(tablo).getByText('Test gönderilen')).toBeTruthy();
-    expect(within(tablo).getAllByTestId('ag-alinan').map((e) => e.textContent)).toEqual(['12,4 Mbps', '1,23 Gbps']);
-    expect(within(tablo).getAllByTestId('ag-gonderilen').map((e) => e.textContent)).toEqual(['850 kbps', '—']);
-    expect(within(tablo).getAllByTestId('ag-gonderilen')[1].getAttribute('title')).toBe('ölçülmedi (wrk gönderilen baytı saymaz)');
+    expect(
+      within(tablo)
+        .getAllByTestId('ag-alinan')
+        .map((e) => e.textContent),
+    ).toEqual(['12,4 Mbps', '1,23 Gbps']);
+    expect(
+      within(tablo)
+        .getAllByTestId('ag-gonderilen')
+        .map((e) => e.textContent),
+    ).toEqual(['850 kbps', '—']);
+    expect(within(tablo).getAllByTestId('ag-gonderilen')[1].getAttribute('title')).toBe(
+      'ölçülmedi (wrk gönderilen baytı saymaz)',
+    );
     const kutu = screen.getAllByText('Test trafiği (en yüksek)').find((e) => e.tagName === 'DT');
     expect(kutu?.parentElement?.textContent).toContain('1,23 Gbps');
     expect(kutu?.parentElement?.textContent).toContain('180/sn · 1. tekrar');
     const bos = screen.getAllByText('Boşta NIC (hedef)').find((e) => e.tagName === 'DT');
     expect(bos?.parentElement?.textContent).toContain('850 kbps / 2,5 Mbps');
     expect(screen.getByText('850 kbps / 2,5 Mbps').getAttribute('title')).toBe(NIC_IPUCU);
-    expect(screen.getByRole('img', { name: /Test trafiği \(alınan\): 90 istek\/sn 12,4 Mbps/ })).toBeTruthy();
-    expect(screen.getByText(/^Olası sızıntı: worker Anon belleği adımlar boyunca sürekli arttı/)).toBeTruthy();
+    expect(
+      screen.getByRole('img', { name: /Test trafiği \(alınan\): 90 istek\/sn 12,4 Mbps/ }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/^Olası sızıntı: worker Anon belleği adımlar boyunca sürekli arttı/),
+    ).toBeTruthy();
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_90_r1 ayrıntısı' }));
     const ag = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 bant genişliği' });
-    expect(within(ag).getByText('Hedef NIC gelen / giden (ort.)').parentElement?.textContent).toContain('8,0 Mbps / 123,4 Mbps');
-    const yukEnCok = within(ag).getByText('Yük makinesi NIC en yüksek · kullanım').parentElement as HTMLElement;
+    expect(
+      within(ag).getByText('Hedef NIC gelen / giden (ort.)').parentElement?.textContent,
+    ).toContain('8,0 Mbps / 123,4 Mbps');
+    const yukEnCok = within(ag).getByText('Yük makinesi NIC en yüksek · kullanım')
+      .parentElement as HTMLElement;
     expect(yukEnCok.textContent).toContain('9,0 Mbps / 130,0 Mbps · %82,4 (100,0 Mbps arayüz)');
-    expect(within(yukEnCok).getByText(/%82,4/).getAttribute('style')).toContain('status-warning-text');
+    expect(within(yukEnCok).getByText(/%82,4/).getAttribute('style')).toContain(
+      'status-warning-text',
+    );
     const bel = screen.getByRole('group', { name: 'R17_K_ka_br_90_r1 bellek ayrışımı' });
     const satir = within(bel).getByText('Anon').closest('tr') as HTMLElement;
-    expect(within(satir).getAllByRole('cell').map((c) => c.textContent)).toEqual(['40 MB', '95 MB', '48 MB']);
-    expect(within(within(bel).getByText('Bağlantı').closest('tr') as HTMLElement).getAllByRole('cell').map((c) => c.textContent)).toEqual(['4', '900', '6']);
+    expect(
+      within(satir)
+        .getAllByRole('cell')
+        .map((c) => c.textContent),
+    ).toEqual(['40 MB', '95 MB', '48 MB']);
+    expect(
+      within(within(bel).getByText('Bağlantı').closest('tr') as HTMLElement)
+        .getAllByRole('cell')
+        .map((c) => c.textContent),
+    ).toEqual(['4', '900', '6']);
     expect(within(bel).getByText(/dinlenme \(\+19 sn\)/)).toBeTruthy();
-    const nedenler = within(bel).getByRole('list', { name: 'R17_K_ka_br_90_r1 olası bellek nedenleri' });
+    const nedenler = within(bel).getByRole('list', {
+      name: 'R17_K_ka_br_90_r1 olası bellek nedenleri',
+    });
     expect(nedenler.textContent).toContain(BELLEK_NEDEN_METNI.tampon);
     expect(nedenler.textContent).toContain(BELLEK_NEDEN_METNI.paylasilan);
     // Olcumu olmayan adim: bellek ayrisimi blogu yok, NIC "ölçülmedi".
     fireEvent.click(within(tablo).getByRole('button', { name: 'R17_K_ka_br_180_r1 ayrıntısı' }));
     expect(screen.queryByRole('group', { name: 'R17_K_ka_br_180_r1 bellek ayrışımı' })).toBeNull();
-    expect(within(screen.getByRole('group', { name: 'R17_K_ka_br_180_r1 bant genişliği' })).getByText('Hedef NIC gelen / giden (ort.)').parentElement?.textContent).toContain('ölçülmedi');
+    expect(
+      within(screen.getByRole('group', { name: 'R17_K_ka_br_180_r1 bant genişliği' })).getByText(
+        'Hedef NIC gelen / giden (ort.)',
+      ).parentElement?.textContent,
+    ).toContain('ölçülmedi');
   });
 
   it('YT66 eski koşu: bant / bellek ayrışımı kolonu, kutusu, grafiği ve blokları YOK', async () => {
@@ -1563,57 +3195,172 @@ describe('Yük Testi — bant genişliği ve bellek ayrışımı (YT64–YT66)',
 //   YT68 ekran: "RSS artışı Anon kaynaklı değil" kutusu, kullanim tam %70 uyari rengi YOK, grafik nokta ipucu Mbps'ten,
 //        "shutting down" satiri, Bağlantı satiri ipucu (internet RP)
 describe('Yük Testi — inceleme düzeltmeleri: bant / bellek (YT67–YT68)', () => {
-  const adim = (o: Record<string, unknown>) => adimNormalle({ senaryo: 'K', kip: 'ka', ae: 'br', gecerlilik: 'GECERLI', gercek_rps: 90, rps_sunucu: 90, p95: 10, ...o });
-  const nic = (o: Record<string, unknown> = {}) => ({ rxOrtBps: 8e6, txOrtBps: 123.4e6, rxMaxBps: 9e6, txMaxBps: 130e6, hizMbps: 1000, kullanimMaxYuzde: 13, arayuz: 'bond0', secim: 'hedef_ip', ...o });
-  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({ t: 1, anonMb, shmemMb, fileMb: 20, pssMb: anonMb + shmemMb / 8, baglanti });
+  const adim = (o: Record<string, unknown>) =>
+    adimNormalle({
+      senaryo: 'K',
+      kip: 'ka',
+      ae: 'br',
+      gecerlilik: 'GECERLI',
+      gercek_rps: 90,
+      rps_sunucu: 90,
+      p95: 10,
+      ...o,
+    });
+  const nic = (o: Record<string, unknown> = {}) => ({
+    rxOrtBps: 8e6,
+    txOrtBps: 123.4e6,
+    rxMaxBps: 9e6,
+    txMaxBps: 130e6,
+    hizMbps: 1000,
+    kullanimMaxYuzde: 13,
+    arayuz: 'bond0',
+    secim: 'hedef_ip',
+    ...o,
+  });
+  const nokta = (anonMb: number, shmemMb: number, baglanti: number) => ({
+    t: 1,
+    anonMb,
+    shmemMb,
+    fileMb: 20,
+    pssMb: anonMb + shmemMb / 8,
+    baglanti,
+  });
 
   it('YT67 bantMetni sınırları, sızıntı metinleri, neden cümleleri, normalleyiciler', () => {
-    expect([bantMetni(1e9), bantMetni(999.96e6), bantMetni(999.6e3), bantMetni(999.4e3), bantMetni(999.94e6), bantMetni(500)])
-      .toEqual(['1,00 Gbps', '1,00 Gbps', '1,0 Mbps', '999 kbps', '999,9 Mbps', '1 kbps']);
-    expect(bellekSizintiMetni({ durum: 'rss_artisi_anon_degil', kaynak: 'anon' })).toEqual({ ton: 'bilgi', metin: expect.stringMatching(/^RSS artışı Anon kaynaklı değil/) });
+    expect([
+      bantMetni(1e9),
+      bantMetni(999.96e6),
+      bantMetni(999.6e3),
+      bantMetni(999.4e3),
+      bantMetni(999.94e6),
+      bantMetni(500),
+    ]).toEqual(['1,00 Gbps', '1,00 Gbps', '1,0 Mbps', '999 kbps', '999,9 Mbps', '1 kbps']);
+    expect(bellekSizintiMetni({ durum: 'rss_artisi_anon_degil', kaynak: 'anon' })).toEqual({
+      ton: 'bilgi',
+      metin: expect.stringMatching(/^RSS artışı Anon kaynaklı değil/),
+    });
     const b = bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'baglanti_degisti' });
     expect(b?.ton).toBe('uyari');
-    expect(b?.metin).toContain('kaynağı belirsiz (bağlantı sayısı adımlar arasında değişti (rampa))');
+    expect(b?.metin).toContain(
+      'kaynağı belirsiz (bağlantı sayısı adımlar arasında değişti (rampa))',
+    );
     expect(b?.metin).not.toContain('sızıntı olasılığı düşük');
-    expect(bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'dinlenme_yok' })?.metin).toContain('bir adımda dinlenme ölçülmedi');
-    expect(bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'yeni_kod' })?.metin).toContain('Anon kuralı değerlendirilemedi');
+    expect(
+      bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'dinlenme_yok' })?.metin,
+    ).toContain('bir adımda dinlenme ölçülmedi');
+    expect(
+      bellekSizintiMetni({ durum: 'belirsiz', kaynak: 'anon', neden: 'yeni_kod' })?.metin,
+    ).toContain('Anon kuralı değerlendirilemedi');
     expect(bellekSizintiMetni({ durum: 'x', kaynak: null })).toBeNull();
     expect(BELLEK_NEDEN_METNI.anon_artti_dinlenme_yok).toMatch(/dinlenme ölçülmedi/);
     expect(BELLEK_NEDEN_METNI.isci_degisti).toMatch(/Worker süreçleri/);
     expect(BELLEK_NEDEN_METNI.artis_yok).toBe('Belirgin artış yok.');
     // normalleyiciler
-    expect(adim({ tur: 'R1_K_ka_br_90_r1', ham: { uyarilar: [] }, ag: { testAlinanBps: null, testGonderilenBps: null, hedef: null, yuk: null } }).ag).toBeNull();
-    expect(adim({ tur: 'R1_K_ka_br_90_r1', ham: { uyarilar: [] }, bellekDetay: { t0: 1, taban: nokta(1, 1, 1) } }).bellekDetay).toBeNull();
-    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'olasi_sizinti', kaynak: 'x', rssUyarisi: null } }).bellekSizinti).toEqual({ durum: 'olasi_sizinti', kaynak: null, rssUyarisi: null });
-    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' } }).bellekSizinti).toEqual({ durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' });
-    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'rss_artisi_anon_degil', kaynak: 'anon', rssUyarisi: null, neden: 'x' } }).bellekSizinti).not.toHaveProperty('neden');
-    expect(sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'bilinmeyen', kaynak: 'anon' } }).bellekSizinti).toBeNull();
-    expect(uyariAcikla('ag_kullanim_yuksek(yuk,%82.4)').cumle).toMatch(/^Yük makinesinin ağ arayüzü en yüksek %82,4/);
-    expect(uyariAcikla('ag_kullanim_yuksek(hedef,%71.0)').cumle).toMatch(/^Hedef sunucunun ağ arayüzü en yüksek %71/);
+    expect(
+      adim({
+        tur: 'R1_K_ka_br_90_r1',
+        ham: { uyarilar: [] },
+        ag: { testAlinanBps: null, testGonderilenBps: null, hedef: null, yuk: null },
+      }).ag,
+    ).toBeNull();
+    expect(
+      adim({
+        tur: 'R1_K_ka_br_90_r1',
+        ham: { uyarilar: [] },
+        bellekDetay: { t0: 1, taban: nokta(1, 1, 1) },
+      }).bellekDetay,
+    ).toBeNull();
+    expect(
+      sonucOzetiNormalle({
+        adimSayisi: 1,
+        bellekSizinti: { durum: 'olasi_sizinti', kaynak: 'x', rssUyarisi: null },
+      })?.bellekSizinti,
+    ).toEqual({ durum: 'olasi_sizinti', kaynak: null, rssUyarisi: null });
+    expect(
+      sonucOzetiNormalle({
+        adimSayisi: 1,
+        bellekSizinti: { durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' },
+      })?.bellekSizinti,
+    ).toEqual({ durum: 'belirsiz', kaynak: 'anon', rssUyarisi: 'r', neden: 'taban_yok' });
+    expect(
+      sonucOzetiNormalle({
+        adimSayisi: 1,
+        bellekSizinti: {
+          durum: 'rss_artisi_anon_degil',
+          kaynak: 'anon',
+          rssUyarisi: null,
+          neden: 'x',
+        },
+      })?.bellekSizinti,
+    ).not.toHaveProperty('neden');
+    expect(
+      sonucOzetiNormalle({ adimSayisi: 1, bellekSizinti: { durum: 'bilinmeyen', kaynak: 'anon' } })
+        ?.bellekSizinti,
+    ).toBeNull();
+    expect(uyariAcikla('ag_kullanim_yuksek(yuk,%82.4)').cumle).toMatch(
+      /^Yük makinesinin ağ arayüzü en yüksek %82,4/,
+    );
+    expect(uyariAcikla('ag_kullanim_yuksek(hedef,%71.0)').cumle).toMatch(
+      /^Hedef sunucunun ağ arayüzü en yüksek %71/,
+    );
   });
 
   it('YT68 ekran: Anon kaynaklı değil kutusu, %70 rengi, grafik ipucu, shutting down, Bağlantı ipucu', async () => {
     const sonucOzeti = sonucOzetiNormalle({
-      adimSayisi: 1, gecerliAdimSayisi: 1, toplamIstek: 100, reloadlar: [],
+      adimSayisi: 1,
+      gecerliAdimSayisi: 1,
+      toplamIstek: 100,
+      reloadlar: [],
       bellekSizinti: { durum: 'rss_artisi_anon_degil', kaynak: 'anon', rssUyarisi: null },
     });
     const bd = {
-      t0: 1, anonOrtMb: 90, pssOrtMb: 99, baglantiOrt: 900, baglantiMax: 950, isciMax: 8, kapananMax: 2,
-      taban: nokta(40, 10, 4), son: nokta(95, 74, 900), dinlenme: nokta(48, 74, 6), dinlenmeSn: 19, nedenler: ['reload'],
+      t0: 1,
+      anonOrtMb: 90,
+      pssOrtMb: 99,
+      baglantiOrt: 900,
+      baglantiMax: 950,
+      isciMax: 8,
+      kapananMax: 2,
+      taban: nokta(40, 10, 4),
+      son: nokta(95, 74, 900),
+      dinlenme: nokta(48, 74, 6),
+      dinlenmeSn: 19,
+      nedenler: ['reload'],
     };
-    kosuYukle({ durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-04T08:40:00Z', sonucOzeti }, [
-      adim({ tur: 'R18_K_ka_br_90_r1', hiz: 90, ham: { uyarilar: [] }, ag: { testAlinanBps: 12.44e6, testGonderilenBps: 850e3, hedef: nic({ kullanimMaxYuzde: 70 }), yuk: null }, bellekDetay: bd }),
-    ]);
+    kosuYukle(
+      { durum: 'DONE', gecerlilik: 'GECERLI', finishedAt: '2026-11-04T08:40:00Z', sonucOzeti },
+      [
+        adim({
+          tur: 'R18_K_ka_br_90_r1',
+          hiz: 90,
+          ham: { uyarilar: [] },
+          ag: {
+            testAlinanBps: 12.44e6,
+            testGonderilenBps: 850e3,
+            hedef: nic({ kullanimMaxYuzde: 70 }),
+            yuk: null,
+          },
+          bellekDetay: bd,
+        }),
+      ],
+    );
     render(<KosuAyrinti kosuId={18} isAdmin={false} onGeri={vi.fn()} />);
     await ayrintiAc();
     expect(screen.getByText(/^RSS artışı Anon kaynaklı değil/)).toBeTruthy();
     const grafik = screen.getByRole('img', { name: /Test trafiği \(alınan\)/ });
-    expect([...grafik.querySelectorAll('title')].map((e) => e.textContent).join('|')).toContain('12,4 Mbps');
+    expect([...grafik.querySelectorAll('title')].map((e) => e.textContent).join('|')).toContain(
+      '12,4 Mbps',
+    );
     const tablo = await screen.findByRole('table', { name: 'Adım sonuçları' });
     fireEvent.click(within(tablo).getByRole('button', { name: 'R18_K_ka_br_90_r1 ayrıntısı' }));
     const ag = screen.getByRole('group', { name: 'R18_K_ka_br_90_r1 bant genişliği' });
-    const hedefEnCok = within(ag).getByText('Hedef NIC en yüksek · kullanım').parentElement as HTMLElement;
-    expect(within(hedefEnCok).getByText(/%70 \(1,00 Gbps arayüz\)/).getAttribute('style') ?? '').not.toContain('status-warning-text');
+    const hedefEnCok = within(ag).getByText('Hedef NIC en yüksek · kullanım')
+      .parentElement as HTMLElement;
+    expect(
+      within(hedefEnCok)
+        .getByText(/%70 \(1,00 Gbps arayüz\)/)
+        .getAttribute('style') ?? '',
+    ).not.toContain('status-warning-text');
     const bel = screen.getByRole('group', { name: 'R18_K_ka_br_90_r1 bellek ayrışımı' });
     expect(within(bel).getByText('Pencerede en çok 2 “shutting down” worker.')).toBeTruthy();
     expect(within(bel).getByText('Bağlantı').getAttribute('title')).toBe(BAGLANTI_IPUCU);

@@ -227,12 +227,8 @@ const WorkloadStep: React.FC<Props> = ({
   // Yeniden kullanılabilirlik ölçütü `yenidenKullanilabilirSatirlar` içinde ve
   // KAPSAMI DA DOĞRULAR — başka bir namespace'in satırlarını göstermek, canlı
   // sanılan bayat veriyle işlem yaptırmak olurdu.
-  const devralinan = useMemo(
-    () => yenidenKullanilabilirSatirlar(scope, initialWorkloads, initialFetchedAt),
-    // Yalnızca MOUNT'ta değerlendirilir: sonraki render'larda `Date.now()` ilerler
-    // ve taze bir sonuç render sırasında bayatlayıp ekranı `select`e atardı.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+  const [devralinan] = useState(() =>
+    yenidenKullanilabilirSatirlar(scope, initialWorkloads, initialFetchedAt),
   );
   const [phase, setPhase] = useState<'select' | 'running' | 'done' | 'error'>(
     devralinan ? 'done' : 'select',
@@ -242,9 +238,9 @@ const WorkloadStep: React.FC<Props> = ({
   // ON-LISTE: paylasilan katalogdan gelen ad/tip listesi. Ekran bunu ANINDA acar;
   // canli sutunlar (replica, HPA, GitOps) kesif bitince dolar. Ad listesi yavas
   // degisir, canli veri degismez sayilamaz — bu yuzden yalnizca ADLAR onbellekten.
-  const [preview, setPreview] = useState<{ name: string; kind?: string | null; clusters: string[] }[]>(
-    [],
-  );
+  const [preview, setPreview] = useState<
+    { name: string; kind?: string | null; clusters: string[] }[]
+  >([]);
   const [previewHidden, setPreviewHidden] = useState(0);
   // Katalogun UC DURUMU. "hic taranmadi" / "tarandi, bos cikti" / "OKUNAMADI".
   // Ikisini birlestirmek uretimde iki ayri ariza uretti: bos bir namespace her
@@ -264,7 +260,7 @@ const WorkloadStep: React.FC<Props> = ({
   // DEVRALINAN SONUCTA ESKI DAMGA KORUNUR. `Date.now()` yazmak, onizlemeye
   // "su anda alindi" dedirtmek olurdu — oysa veri bir-iki dakika oncesine ait.
   // Damganin tek isi bunu SOYLEMEK.
-  const fetchedAtRef = useRef<number | null>(devralinan ? initialFetchedAt ?? null : null);
+  const fetchedAtRef = useRef<number | null>(devralinan ? (initialFetchedAt ?? null) : null);
   const [failedClusters, setFailedClusters] = useState<string[]>([]);
   const [problems, setProblems] = useState<{ cluster: string; detail: string }[]>([]);
   const [pdbWarning, setPdbWarning] = useState<string | null>(null);
@@ -334,15 +330,18 @@ const WorkloadStep: React.FC<Props> = ({
   // CANLI ALAN GELMEZ (replica, HPA, GitOps, `restorable`): bayat bir replica
   // sayisi yanlis isleme, bayat bir `restorable` `STATE;FAIL` ile dusen bir ise
   // yol acar. Onlar yalnizca "Kontrol et" ile canlidan gelir.
+  const scopeClustersKey = scope.clusters.join('\n');
+
   const loadCatalog = useCallback(async () => {
     setCatalogLoading(true);
     setCatalogError(null);
+    const clusters = scopeClustersKey ? scopeClustersKey.split('\n') : [];
     try {
       const r = await scalexApi.apps({
         env: scope.env,
         tenant: scope.tenant,
         namespace: scope.namespace,
-        clusters: scope.clusters,
+        clusters,
       });
       if (!aliveRef.current) return null;
       if (!r.ok) {
@@ -353,7 +352,7 @@ const WorkloadStep: React.FC<Props> = ({
         (r.items || []).map((it) => ({
           name: it.name,
           kind: it.kind ?? null,
-          clusters: r.clusters?.[it.name] || scope.clusters,
+          clusters: r.clusters?.[it.name] || clusters,
         })),
       );
       setPreviewHidden(r.hiddenCount || 0);
@@ -372,8 +371,7 @@ const WorkloadStep: React.FC<Props> = ({
     } finally {
       if (aliveRef.current) setCatalogLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope.env, scope.tenant, scope.namespace, scope.clusters.join(',')]);
+  }, [scope.env, scope.tenant, scope.namespace, scopeClustersKey]);
 
   /**
    * @param apps Bos dizi = TUM namespace taranir (katalog bos oldugunda tek
@@ -491,6 +489,11 @@ const WorkloadStep: React.FC<Props> = ({
     }
   }
 
+  const autoScanBridgeRef = useRef({ devralinan, scope, startDiscovery });
+  useEffect(() => {
+    autoScanBridgeRef.current = { devralinan, scope, startDiscovery };
+  });
+
   // MOUNT'TA KESIF YOK — YALNIZCA KATALOG.
   //
   // Eskiden burada kosulsuz `startDiscovery()` vardi: kullanici namespace'e
@@ -512,22 +515,26 @@ const WorkloadStep: React.FC<Props> = ({
       // DEVRALINAN SONUC VARSA TARAMA YOK. Katalog bos olsa bile elimizde TAZE
       // canli satirlar var; yeni bir AWX isi acmak, geri/ileri gezinmenin tam da
       // engellemek icin yazildigi seyi geri getirirdi.
-      if (devralinan) return;
+      const {
+        devralinan: curDevralinan,
+        scope: curScope,
+        startDiscovery: runDiscovery,
+      } = autoScanBridgeRef.current;
+      if (curDevralinan) return;
 
       const bos = !(r.items || []).length;
       if (!bos || r.scannedEmpty || r.scanUnknown || r.scannedAt) return;
 
       // HAFIZA BILESEN DISINDA: remount bunu sifirlamaz (bkz. `autoScanMemo`).
-      const anahtar = `${scope.env}|${scope.tenant}|${scope.clusters.join(',')}|${scope.namespace}`;
+      const anahtar = `${curScope.env}|${curScope.tenant}|${curScope.clusters.join(',')}|${curScope.namespace}`;
       if (autoScanMemo.has(anahtar)) return;
       autoScanMemo.set(anahtar, Date.now());
-      startDiscovery([]);
+      void runDiscovery([]);
     })();
     return () => {
       iptal = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadCatalog]);
+  }, [loadCatalog, autoScanMemo]);
 
   // AD BASINA TUM CLUSTER SATIRLARI. Suzgecler ve rozetler bu satirlarin BIRLESIMINE
   // bakar: bir uygulama bir cluster'da HPA'liysa "HPA var" suzgecinde gorunmelidir —
@@ -744,8 +751,7 @@ const WorkloadStep: React.FC<Props> = ({
           <p className="text-xs text-[var(--text-muted)]">
             {preview.length} uygulama kayıtlı
             {previewHidden > 0 && ` · ${previewHidden} tanesi yetki kısıtı nedeniyle gizli`}
-            {catalogMeta.fetchedAt &&
-              ` · kayıt ${fmtDateTime(catalogMeta.fetchedAt)}`}
+            {catalogMeta.fetchedAt && ` · kayıt ${fmtDateTime(catalogMeta.fetchedAt)}`}
             {catalogMeta.stale && ' · bayat'}
             {' · replica / HPA / geri alınabilirlik '}
             <strong>henüz okunmadı</strong>
@@ -769,13 +775,12 @@ const WorkloadStep: React.FC<Props> = ({
             ) : catalogMeta.scannedEmpty ? (
               <p className="text-[var(--text-secondary)]">
                 Bu namespace tarandı ve <strong>ölçeklenebilir uygulama bulunamadı</strong>
-                {catalogMeta.scannedAt && ` (${fmtDateTime(catalogMeta.scannedAt)})`}
-                .
+                {catalogMeta.scannedAt && ` (${fmtDateTime(catalogMeta.scannedAt)})`}.
               </p>
             ) : (
               <p className="text-[var(--text-secondary)]">
-                Bu namespace için kayıtlı liste yok. Tarama namespace'in tamamına bakar ve
-                sonucu kaydeder — <strong>sonraki açılışlar anında gelir</strong>.
+                Bu namespace için kayıtlı liste yok. Tarama namespace'in tamamına bakar ve sonucu
+                kaydeder — <strong>sonraki açılışlar anında gelir</strong>.
               </p>
             )}
           </div>
@@ -1153,7 +1158,11 @@ const WorkloadStep: React.FC<Props> = ({
   const askable = unreadableKinds.filter((k) => k.reason === 'no_permission');
   const paketUyusmuyor = !!pkg && pkg.running !== pkg.expected;
   const bilgiUyarisi = (askable.length > 0 ? 1 : 0) + (paketUyusmuyor ? 1 : 0);
-  const bilgiOzeti = ['veri kaynağı', askable.length > 0 ? 'eksik yetkiler' : '', paketUyusmuyor ? 'paket sürümü' : '']
+  const bilgiOzeti = [
+    'veri kaynağı',
+    askable.length > 0 ? 'eksik yetkiler' : '',
+    paketUyusmuyor ? 'paket sürümü' : '',
+  ]
     .filter(Boolean)
     .join(' · ');
   // Suzgec satiri: kullanici acana kadar kapali. ETKIN bir suzgec ya da gruplama varsa
@@ -1238,36 +1247,38 @@ const WorkloadStep: React.FC<Props> = ({
                 yapilacak bir sey yok. Sayaca katmak, cozulemeyecek bir eksik varmis
                 izlenimi verirdi. */}
             {askable.length > 0 && (
-                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                    <ExclamationTriangleIcon
-                      aria-hidden="true"
-                      className="w-4 h-4 flex-shrink-0 mt-0.5"
-                    />
-                    <div className="min-w-0">
-                      <span>
-                        <strong>{askable.length} nesne tipi</strong> okunamadı — bu tipler listede YOK,
-                        ama gerçekten olmadıkları anlamına gelmiyor. Kayıt yöneticiye iletildi.
-                      </span>
-                      <details className="mt-1">
-                        <summary className="cursor-pointer select-none underline">Hangi tipler?</summary>
-                        <span className="mt-1.5 block space-y-0.5">
-                          {askable.map((k) => (
-                            <span key={k.kind} className="block">
-                              <span className="font-mono">{k.display}</span>
-                              {' — '}
-                              <span className="font-mono">
-                                {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <ExclamationTriangleIcon
+                  aria-hidden="true"
+                  className="w-4 h-4 flex-shrink-0 mt-0.5"
+                />
+                <div className="min-w-0">
+                  <span>
+                    <strong>{askable.length} nesne tipi</strong> okunamadı — bu tipler listede YOK,
+                    ama gerçekten olmadıkları anlamına gelmiyor. Kayıt yöneticiye iletildi.
+                  </span>
+                  <details className="mt-1">
+                    <summary className="cursor-pointer select-none underline">
+                      Hangi tipler?
+                    </summary>
+                    <span className="mt-1.5 block space-y-0.5">
+                      {askable.map((k) => (
+                        <span key={k.kind} className="block">
+                          <span className="font-mono">{k.display}</span>
+                          {' — '}
+                          <span className="font-mono">
+                            {/* TAM KAYNAK ADI: RBAC kurallari tam adla yazilir. `sts` demek,
                                     kullanicinin platform ekibine yanlis metin goturmesi demek.
                                     Surum bildirmeyen eski paket `resource` gondermez -> kisa ada duser. */}
-                                {k.verb || 'list'} {k.resource || k.kind}
-                              </span>{' '}
-                              yetkisi yok.
-                            </span>
-                          ))}
+                            {k.verb || 'list'} {k.resource || k.kind}
+                          </span>{' '}
+                          yetkisi yok.
                         </span>
-                      </details>
-                    </div>
-                  </div>
+                      ))}
+                    </span>
+                  </details>
+                </div>
+              </div>
             )}
 
             {/* ── PAKET SURUMU ─────────────────────────────────────────────────────
@@ -1278,7 +1289,10 @@ const WorkloadStep: React.FC<Props> = ({
                 role="alert"
                 className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
               >
-                <ExclamationTriangleIcon aria-hidden="true" className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <ExclamationTriangleIcon
+                  aria-hidden="true"
+                  className="w-4 h-4 flex-shrink-0 mt-0.5"
+                />
                 <div className="flex-1 space-y-1.5">
                   <span>
                     AWX'te{' '}
@@ -1287,9 +1301,9 @@ const WorkloadStep: React.FC<Props> = ({
                         ? 'sürüm bildirmeyen eski bir paket'
                         : `${pkg.running} numaralı paket`}
                     </strong>{' '}
-                    koşuyor, portal <strong>{pkg.expected}</strong> bekliyor. Sonuçlar eksik ya da eski
-                    biçimde olabilir —<span className="font-mono"> scalex_app/</span> klasörünün güncel
-                    hâli AWX projesine yeniden kopyalanmalı.
+                    koşuyor, portal <strong>{pkg.expected}</strong> bekliyor. Sonuçlar eksik ya da
+                    eski biçimde olabilir —<span className="font-mono"> scalex_app/</span>{' '}
+                    klasörünün güncel hâli AWX projesine yeniden kopyalanmalı.
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <code className="font-mono text-[11px] bg-amber-100 rounded px-1.5 py-0.5 select-all">
@@ -1375,63 +1389,63 @@ const WorkloadStep: React.FC<Props> = ({
           hala tek tek taranamaz. Arama bir ADI bulmak icin iyi, bir DURUMU bulmak icin
           degil — "hangileri zaten 0?" sorusunun cevabi yoktu. */}
       {suzgecGorunur && (
-      <div id="scalex-suzgecler" className="flex flex-wrap items-center gap-2">
-        {WORKLOAD_FILTERS.map((f) => {
-          const active = filters.has(f.key);
-          const count = filterCounts[f.key] ?? 0;
-          return (
-            <button
-              key={f.key}
-              type="button"
-              disabled={busy || (!active && count === 0)}
-              aria-pressed={active}
-              title={f.title}
-              onClick={() =>
-                setFilters((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(f.key)) next.delete(f.key);
-                  else next.add(f.key);
-                  return next;
-                })
-              }
-              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors disabled:opacity-40 ${
-                active
-                  ? 'bg-[var(--accent)] text-[var(--text-on-accent)] border-[var(--accent)]'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-strong)]'
-              }`}
-            >
-              {/* TEK METIN DUGUMU: `{f.label} ({count})` seklinde yazmak "HPA var"i
+        <div id="scalex-suzgecler" className="flex flex-wrap items-center gap-2">
+          {WORKLOAD_FILTERS.map((f) => {
+            const active = filters.has(f.key);
+            const count = filterCounts[f.key] ?? 0;
+            return (
+              <button
+                key={f.key}
+                type="button"
+                disabled={busy || (!active && count === 0)}
+                aria-pressed={active}
+                title={f.title}
+                onClick={() =>
+                  setFilters((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(f.key)) next.delete(f.key);
+                    else next.add(f.key);
+                    return next;
+                  })
+                }
+                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors disabled:opacity-40 ${
+                  active
+                    ? 'bg-[var(--accent)] text-[var(--text-on-accent)] border-[var(--accent)]'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-[var(--border-strong)]'
+                }`}
+              >
+                {/* TEK METIN DUGUMU: `{f.label} ({count})` seklinde yazmak "HPA var"i
                   ayri bir metin dugumu yapiyor ve satirdaki ayni adli rozetle
                   cakisiyordu (testte "Found multiple elements" olarak yakalandi). */}
-              {`${f.label} (${count})`}
+                {`${f.label} (${count})`}
+              </button>
+            );
+          })}
+          {filters.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilters(new Set())}
+              disabled={busy}
+              className="text-xs text-[var(--accent)] hover:underline"
+            >
+              Süzgeçleri temizle
             </button>
-          );
-        })}
-        {filters.size > 0 && (
-          <button
-            type="button"
-            onClick={() => setFilters(new Set())}
-            disabled={busy}
-            className="text-xs text-[var(--accent)] hover:underline"
-          >
-            Süzgeçleri temizle
-          </button>
-        )}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-          Grupla
-          <select
-            value={groupMode}
-            disabled={busy}
-            onChange={(e) => setGroupMode(e.target.value as 'none' | 'kind' | 'status')}
-            aria-label="Listeyi grupla"
-            className="pf-input text-xs py-1"
-          >
-            <option value="none">Yok</option>
-            <option value="kind">Tipe göre</option>
-            <option value="status">Duruma göre</option>
-          </select>
-        </label>
-      </div>
+          )}
+          <label className="ml-auto flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+            Grupla
+            <select
+              value={groupMode}
+              disabled={busy}
+              onChange={(e) => setGroupMode(e.target.value as 'none' | 'kind' | 'status')}
+              aria-label="Listeyi grupla"
+              className="pf-input text-xs py-1"
+            >
+              <option value="none">Yok</option>
+              <option value="kind">Tipe göre</option>
+              <option value="status">Duruma göre</option>
+            </select>
+          </label>
+        </div>
       )}
 
       {/* TOPLU SECIM. Kullanici "ark test'te sunlari kapat" derken tek tek 40 kutu

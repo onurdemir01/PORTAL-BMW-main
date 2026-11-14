@@ -5,7 +5,7 @@
 //   /hysdeploy/<ns>/<app>/  ve  /usr/nginx/applications/<ns>/<app>/
 // olarak var mi? Her satir bir uygulama, her sutun bir YENI sunucu. Hesap sunucuda
 // (nginx-migration.cjs); burada yalnizca gosterim.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 // Ham tarih bicimlendirme YOK: bicim tek yerden gelir (bekci G19).
@@ -232,11 +232,17 @@ export default function NginxProdMigration() {
           setDelGuard(
             g.ok
               ? { state: 'ok', via: g.via, warning: g.warning }
-              : { state: 'blocked', code: g.code || '', measured: g.measured, message: g.message || '' },
+              : {
+                  state: 'blocked',
+                  code: g.code || '',
+                  measured: g.measured,
+                  message: g.message || '',
+                },
           );
         } else setDelGuard({ state: 'error', message: r.message || 'Koruma durumu okunamadı.' });
       } catch (e: unknown) {
-        if (alive()) setDelGuard({ state: 'error', message: e instanceof Error ? e.message : String(e) });
+        if (alive())
+          setDelGuard({ state: 'error', message: e instanceof Error ? e.message : String(e) });
       }
     },
     [delGuardKey, delGuardTick],
@@ -981,9 +987,9 @@ export default function NginxProdMigration() {
                 {delGuard?.state === 'ok' && (
                   <Note tone="info" title={NEW_FLEET_KEPT}>
                     İş <Code>new_fleet=false</Code> ile gönderilir; AWX bu değişkeni{' '}
-                    {delGuard.via === 'survey' ? 'survey sorusundan' : 'Prompt on launch ile'} alıyor.
-                    Portal bunu işi başlatmadan önce yeniden doğrular; AWX değişkeni yine de yok
-                    sayarsa işi hemen iptal eder.
+                    {delGuard.via === 'survey' ? 'survey sorusundan' : 'Prompt on launch ile'}{' '}
+                    alıyor. Portal bunu işi başlatmadan önce yeniden doğrular; AWX değişkeni yine de
+                    yok sayarsa işi hemen iptal eder.
                   </Note>
                 )}
                 {delGuard?.state === 'ok' && delGuard.warning && (
@@ -1994,10 +2000,9 @@ function LocationProgress({ g }: { g: NginxMigrationGroup }) {
       <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
         Sayım vhost başına farklı location; ad kalıbına uymayan, çözülemeyen, eski sunucuda include
         olan ve yalnız nginx -T taramasının gördüğü location'lar da dâhil — vhost'un tamamı (liste
-        aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun{' '}
-        <Code>{'<SERVIS>'}-PROD.conf</Code> vhost'unda aynı location var (config ya da nginx -T
-        taramasına göre). Uygulama satırlarındaki H/A/C ise dosyaların hazır olup olmadığını
-        gösterir.
+        aşağıda: “Tüm location'lar”). “Tanımlı” = yeni sunucunun <Code>{'<SERVIS>'}-PROD.conf</Code>{' '}
+        vhost'unda aynı location var (config ya da nginx -T taramasına göre). Uygulama
+        satırlarındaki H/A/C ise dosyaların hazır olup olmadığını gösterir.
       </div>
     </div>
   );
@@ -2057,8 +2062,10 @@ function GroupPanel({
   silmeKapali?: string;
   onDelete: (app: NginxMigrationApp) => void;
 }) {
-  const trackOf = (a: NginxMigrationApp) =>
-    tracking.get(trackKey(g.id, a.namespace, a.application)) || null;
+  const trackOf = useCallback(
+    (a: NginxMigrationApp) => tracking.get(trackKey(g.id, a.namespace, a.application)) || null,
+    [tracking, g.id],
+  );
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let list = g.apps.filter((a) => {
@@ -2132,14 +2139,12 @@ function GroupPanel({
       });
     }
     return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [g, onlyProblem, q, sortBy, tracking, trackFilter, sideFilter]);
+  }, [g, onlyProblem, q, sortBy, trackFilter, sideFilter, trackOf]);
   const trackTotals = useMemo(() => {
     const c = { planned: 0, migrated: 0, cancelled: 0, none: 0 };
     for (const a of g.apps) c[trackOf(a)?.state || 'none'] += 1;
     return c;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [g, tracking]);
+  }, [g, trackOf]);
   // Ekip bazli ozet (siralama 'ekip' iken baslikta gosterilir)
   const teamSummary = useMemo(() => {
     const m = new Map<string, number>();
@@ -2457,7 +2462,8 @@ function GroupPanel({
                             : `Eski sunucudaki ${a.paths.map((p) => p.service + '-PROD.conf ' + p.location).join(' / ')} tanımını (ve kullanılmayan upstream'i) kaldır — 23:00'e zamanlanır. ${NEW_FLEET_KEPT} Portal, AWX'in bunu kabul ettiğini doğrulayamazsa işi başlatmaz.`
                       }
                     >
-                      <TrashIcon className="w-3.5 h-3.5" /> {silmeKapali ? 'Eski filo kapalı' : 'Eski tanımı kaldır'}
+                      <TrashIcon className="w-3.5 h-3.5" />{' '}
+                      {silmeKapali ? 'Eski filo kapalı' : 'Eski tanımı kaldır'}
                     </button>
                   </td>
                   <td

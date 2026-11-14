@@ -26,7 +26,7 @@
 //      gövde GERÇEKTEN ölçülüp aynı sınırla karşılaştırılıyor ve kademeli uyarı veriliyor.
 //
 // D4 · ARAMA. Her tuş vuruşunda tüm ağaç yeniden süzülüyordu; debounce eklendi.
-import React, { useDeferredValue, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DocumentIcon,
@@ -276,9 +276,14 @@ const FileSelectionStep: React.FC<Props> = ({
 
   // D2 · Süzgeç etkinken gruplar AÇIK gösterilir (kullanıcı aradığını görsün), ama
   // artık bu "15.000 satırı DOM'a bas" anlamına GELMİYOR: liste sanallaştırılmış.
-  const isHostOpen = (host: string) => filtering || singleHost || openHosts.has(host);
-  const isDirOpen = (host: string, dir: string) =>
-    filtering || singleHost || openDirs.has(`${host}::${dir}`);
+  const isHostOpen = useCallback(
+    (host: string) => filtering || singleHost || openHosts.has(host),
+    [filtering, singleHost, openHosts],
+  );
+  const isDirOpen = useCallback(
+    (host: string, dir: string) => filtering || singleHost || openDirs.has(`${host}::${dir}`),
+    [filtering, singleHost, openDirs],
+  );
 
   // Ağaç -> düz satır listesi. Sanallaştırıcı yalnızca düz dizi ile çalışır; iç içe
   // kaydırma alanları kurmak (host başına bir tane) hem ölçüm hem klavye gezinmesi
@@ -310,8 +315,7 @@ const FileSelectionStep: React.FC<Props> = ({
       }
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, openHosts, openDirs, filtering, singleHost]);
+  }, [visible, isHostOpen, isDirOpen]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -405,9 +409,9 @@ const FileSelectionStep: React.FC<Props> = ({
         >
           Bu tarama AWX&apos;teki <strong>eski</strong> keşif playbook&apos;uyla yapıldı: yalnızca{' '}
           <code>log</code> ve <code>logs</code> dizinlerine bakıldı; <code>log1</code>,{' '}
-          <code>logs2</code> gibi numaralı log dizinleri <strong>taranmadı</strong>. Aradığınız dosya
-          listede yoksa yöneticinize bildirin (güncel <code>logx_legacy_discovery.yml</code> AWX
-          projesine kopyalanmalı).
+          <code>logs2</code> gibi numaralı log dizinleri <strong>taranmadı</strong>. Aradığınız
+          dosya listede yoksa yöneticinize bildirin (güncel <code>logx_legacy_discovery.yml</code>{' '}
+          AWX projesine kopyalanmalı).
         </div>
       )}
       {result.overall_status === 'partial' && (
@@ -556,7 +560,10 @@ const FileSelectionStep: React.FC<Props> = ({
             </p>
             {/* NEREYE bakildigi soylenir: "dosya yok" ancak kapsam biliniyorsa anlamlidir. */}
             {!filtering && result.log_dir_regex && (
-              <p className="mt-1 text-xs text-[var(--text-muted)]" data-testid="logx-tarama-kapsami">
+              <p
+                className="mt-1 text-xs text-[var(--text-muted)]"
+                data-testid="logx-tarama-kapsami"
+              >
                 Uygulamanın EAR klasörünün hemen altındaki <code>log</code>, <code>logs</code> ve
                 numaralı (<code>log1</code>, <code>logs2</code>…) dizinlere bakıldı.
               </p>

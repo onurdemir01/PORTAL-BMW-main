@@ -34,7 +34,7 @@ export function jvmTrafik(j: Pick<ShJvm, 'vhosts'>): 'ACTIVE' | 'NO_RECENT_TRAFF
  */
 export const autostartUyumsuz = (
   j: Pick<ShJvm, 'running' | 'autoStart'> & {
-    runningKnown?: boolean;
+    runningKnown?: boolean | null;
     source?: string | null;
     yalnizEnvanter?: boolean | null;
   },
@@ -118,7 +118,7 @@ export function ozetKartlari(d: ShHostDetail, etiketler: ShRetireEtiketHer[] | n
 /** Zincir kartının ilk satırı: JVM durumu, auto-start, EAR, web, trafik, parametre ve deployment. */
 export function zincirRozetleri(
   d: ShHostDetail,
-  j: ShJvm & { runningKnown?: boolean },
+  j: ShJvm & { runningKnown?: boolean | null },
   earSayisi: number,
   katman: string,
 ): { metin: string; ton: OzetTon; title?: string }[] {
@@ -128,7 +128,8 @@ export function zincirRozetleri(
     r.push({
       metin: YALNIZ_ENVANTER_ETIKETI,
       ton: 'notr',
-      title: "Uygulama yalnız MWAppsInventory'de: bu sunucunun taramasında JVM'i bulunamadı — eylem önerilmez",
+      title:
+        "Uygulama yalnız MWAppsInventory'de: bu sunucunun taramasında JVM'i bulunamadı — eylem önerilmez",
     });
     return r;
   }

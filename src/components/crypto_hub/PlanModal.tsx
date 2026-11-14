@@ -189,8 +189,12 @@ function VersionStep({
     const m = new Map<string, Set<KnownVersion['source']>>();
     for (const k of known) {
       if (!k.version) continue;
-      if (!m.has(k.version)) m.set(k.version, new Set());
-      m.get(k.version).add(k.source);
+      let sourceSet = m.get(k.version);
+      if (!sourceSet) {
+        sourceSet = new Set();
+        m.set(k.version, sourceSet);
+      }
+      sourceSet.add(k.source);
     }
     return [...m.entries()]
       .map(([version, kaynaklar]) => ({ version, kaynaklar: [...kaynaklar] }))

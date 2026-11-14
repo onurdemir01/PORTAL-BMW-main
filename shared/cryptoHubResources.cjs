@@ -164,7 +164,9 @@ function miktarYaDaNull(deger, tur) {
 function kiyasla(a, b) {
   const x = a.n * b.d;
   const y = b.n * a.d;
-  if (x < y) return -1; if (x > y) return 1; return 0;
+  if (x < y) return -1;
+  if (x > y) return 1;
+  return 0;
 }
 
 /** Iki miktar dizgesi ayni degeri mi gosteriyor? Ayristirilamayan taraf varsa false. */
@@ -311,7 +313,8 @@ const YOL_KAYDI = Object.freeze(
       is: 'aeron-cluster-archive',
       kap: 'backup',
       durum: 'kayitli',
-      kanit: 'wyden-1.5.13 charts/wyden-aeron/templates/backup-snapshot-deployment.yaml:6,39,107-108',
+      kanit:
+        'wyden-1.5.13 charts/wyden-aeron/templates/backup-snapshot-deployment.yaml:6,39,107-108',
       not: 'Archive Recreate stratejisiyle güncellenir: kısa kesinti olur.',
     },
     {
@@ -321,7 +324,8 @@ const YOL_KAYDI = Object.freeze(
       is: 'aeron-cluster-archive',
       kap: 'snapshot',
       durum: 'kayitli',
-      kanit: 'wyden-1.5.13 charts/wyden-aeron/templates/backup-snapshot-deployment.yaml:6,129,175-176',
+      kanit:
+        'wyden-1.5.13 charts/wyden-aeron/templates/backup-snapshot-deployment.yaml:6,129,175-176',
       not: 'Archive Recreate stratejisiyle güncellenir: kısa kesinti olur.',
     },
     {
@@ -331,7 +335,8 @@ const YOL_KAYDI = Object.freeze(
       is: 'storage',
       kap: 'storage',
       durum: 'kayitli',
-      kanit: 'wyden 1.2.4 charts/storage/templates/storage-statefulset.yaml:6,47,127-128 (daha yeni storage chart arşivde yok)',
+      kanit:
+        'wyden 1.2.4 charts/storage/templates/storage-statefulset.yaml:6,47,127-128 (daha yeni storage chart arşivde yok)',
       not: 'Storage (Hazelcast) sırayla yeniden başlar.',
     },
     {
@@ -361,7 +366,8 @@ const YOL_KAYDI = Object.freeze(
       is: 'wyden-ui',
       kap: 'ui',
       durum: 'tahmin',
-      kanit: 'wyden 1.2.4 charts/wyden-ui/templates/deployment.yaml resources OKUMUYOR; daha yeni sürüm arşivde yok',
+      kanit:
+        'wyden 1.2.4 charts/wyden-ui/templates/deployment.yaml resources OKUMUYOR; daha yeni sürüm arşivde yok',
       not: 'Chart’ın bu yolu okuduğu doğrulanmadı: gösterilir, yazılmaz.',
     },
   ].map((x) => Object.freeze(x)),
@@ -384,9 +390,7 @@ function isYukuKayitlari(app, release, kind, name) {
   const k = String(kind || '').toLowerCase();
   const n = String(name || '');
   if (!r || !n) return [];
-  return YOL_KAYDI.filter(
-    (x) => x.app === a && `${r}-${x.is}` === n && x.kind.toLowerCase() === k,
-  );
+  return YOL_KAYDI.filter((x) => x.app === a && `${r}-${x.is}` === n && x.kind.toLowerCase() === k);
 }
 
 /** Yaziya acik mi: yalniz kayitli. */
@@ -431,7 +435,11 @@ function degisiklikleriCoz(liste) {
         `${alan}: yeni değer standart biçimde değil (cpu: 1500m ya da 2; bellek: 512Mi ya da 4Gi): ${yeni.slice(0, 32)}`,
       );
     }
-    const eski = (() => { if (o.eski == null) return ''; if (typeof o.eski === 'string') return o.eski.trim(); return null; })();
+    const eski = (() => {
+      if (o.eski == null) return '';
+      if (typeof o.eski === 'string') return o.eski.trim();
+      return null;
+    })();
     if (eski === null || eski.length > 32) {
       throw hata('GIRDI_GECERSIZ', `${alan}: eski değer geçersiz.`);
     }
@@ -472,7 +480,7 @@ function degisiklikB64(kanonik) {
  * @param {boolean} [p.asim]   politika asimi istendi (yalniz Admin + gerekce)
  * @param {boolean} [p.admin]
  * @param {string}  [p.gerekce]
- * @returns {{ok:boolean, hatalar:Array<object>, uyarilar:Array<object>, kontroller:Array<object>, asimKullanildi:boolean, politikaIhlali:boolean}}
+ * @returns {{ok:boolean, hatalar:Array<{kod:string, asilabilir:boolean, mesaj:string}>, uyarilar:Array<{kod:string, durum:string, mesaj:string}>, kontroller:Array<{kontrol:string, durum:string}>, asimKullanildi:boolean, politikaIhlali:boolean}}
  */
 function dogrula(p) {
   const hatalar = [];
@@ -481,7 +489,7 @@ function dogrula(p) {
   const politika = [];
   const deg = Array.isArray(p?.degisiklikler) ? p.degisiklikler : [];
   const canli = p?.canli && typeof p.canli === 'object' ? p.canli : null;
-  const lr = (p?.limitRange) || { durum: 'olculemedi' };
+  const lr = p?.limitRange || { durum: 'olculemedi' };
   const yeniOf = (alan) => (deg.find((d) => d.alan === alan) || {}).yeni;
 
   // Etkin deger: degisen alan yeni degeriyle; degismeyen alan CANLIDAN (girilmeyen alan).
@@ -544,7 +552,9 @@ function dogrula(p) {
     if (taban?.n > 0n) {
       // yeni <= 2 x taban  ve  yeni >= taban / 2
       if (y.n * taban.d > BigInt(SINIRLAR.oranUst) * taban.n * y.d) {
-        politika.push(`${d.alan}: tek seferde en çok ${SINIRLAR.oranUst} kat artış (${tabanHam} → ${d.yeni}).`);
+        politika.push(
+          `${d.alan}: tek seferde en çok ${SINIRLAR.oranUst} kat artış (${tabanHam} → ${d.yeni}).`,
+        );
       }
       if (BigInt(SINIRLAR.oranAlt) * y.n * taban.d < taban.n * y.d) {
         politika.push(`${d.alan}: tek seferde en çok yarıya iniş (${tabanHam} → ${d.yeni}).`);
@@ -562,11 +572,11 @@ function dogrula(p) {
       }
     }
   }
-  const asimIstendi = !!(p?.asim);
-  const gerekce = String((p?.gerekce) || '').trim();
+  const asimIstendi = !!p?.asim;
+  const gerekce = String(p?.gerekce || '').trim();
   const asimGecerli =
     asimIstendi &&
-    !!(p?.admin) &&
+    !!p?.admin &&
     gerekce.length >= SINIRLAR.gerekceEnAz &&
     gerekce.length <= SINIRLAR.gerekceEnCok;
   if (asimIstendi && !asimGecerli) {
@@ -580,7 +590,11 @@ function dogrula(p) {
   }
   if (politika.length) {
     if (asimGecerli) {
-      uyarilar.push({ kod: 'POLITIKA', durum: 'asildi', mesaj: `Admin gerekçeyle aştı: ${politika.join(' ')}` });
+      uyarilar.push({
+        kod: 'POLITIKA',
+        durum: 'asildi',
+        mesaj: `Admin gerekçeyle aştı: ${politika.join(' ')}`,
+      });
       kontroller.push({ kontrol: 'politika', durum: 'uyari' });
     } else {
       for (const m of politika) hatalar.push({ kod: 'POLITIKA', asilabilir: true, mesaj: m });
@@ -596,7 +610,8 @@ function dogrula(p) {
     uyarilar.push({
       kod: 'LIMITRANGE',
       durum: 'olculemedi',
-      mesaj: 'LimitRange okunamadı (ölçülemedi) — sınırlar burada denetlenemedi; önizleme denetleyecek.',
+      mesaj:
+        'LimitRange okunamadı (ölçülemedi) — sınırlar burada denetlenemedi; önizleme denetleyecek.',
     });
   } else if (lr.durum === 'yok') {
     kontroller.push({ kontrol: 'limitrange', durum: 'yok' });
@@ -611,11 +626,19 @@ function dogrula(p) {
         if (!sinir) continue;
         if (k.ozellik === 'max' && kiyasla(y, sinir) > 0) {
           lrDur = true;
-          hatalar.push({ kod: 'LIMITRANGE', asilabilir: false, mesaj: `${d.alan} ${d.yeni} > LimitRange azami ${k.deger}.` });
+          hatalar.push({
+            kod: 'LIMITRANGE',
+            asilabilir: false,
+            mesaj: `${d.alan} ${d.yeni} > LimitRange azami ${k.deger}.`,
+          });
         }
         if (k.ozellik === 'min' && kiyasla(y, sinir) < 0) {
           lrDur = true;
-          hatalar.push({ kod: 'LIMITRANGE', asilabilir: false, mesaj: `${d.alan} ${d.yeni} < LimitRange asgari ${k.deger}.` });
+          hatalar.push({
+            kod: 'LIMITRANGE',
+            asilabilir: false,
+            mesaj: `${d.alan} ${d.yeni} < LimitRange asgari ${k.deger}.`,
+          });
         }
       }
     }
@@ -626,7 +649,11 @@ function dogrula(p) {
       const o = oran ? miktarYaDaNull(oran.deger, 'memory') : null;
       if (o && r && l && r.n > 0n && l.n * r.d * o.d > o.n * r.n * l.d) {
         lrDur = true;
-        hatalar.push({ kod: 'LIMITRANGE', asilabilir: false, mesaj: `${tur}: limits/requests oranı LimitRange azami oranı (${oran.deger}) aşıyor.` });
+        hatalar.push({
+          kod: 'LIMITRANGE',
+          asilabilir: false,
+          mesaj: `${tur}: limits/requests oranı LimitRange azami oranı (${oran.deger}) aşıyor.`,
+        });
       }
     }
     kontroller.push({ kontrol: 'limitrange', durum: lrDur ? 'dur' : 'gecti' });

@@ -7,7 +7,7 @@
 //   2) Portal talep satırı: GET /node-change/:id — onaydan sonra Portal'ın başlattığı işin
 //      ÖLÇÜLMÜŞ sonucu (NODESUM). Sonuç satırı gelmediyse ekran "başarılı" UYDURMAZ.
 // Kullanıcının ekranda beklemesi gerekmez; kapatılabilir, "Son talepler"den yeniden açılır.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import {
   cryptoNodeApi,
@@ -105,6 +105,11 @@ export function NodeTakip({
   const durum = talep?.durum || (onaysiz ? 'CALISIYOR' : yeniAcildi?.ok ? 'BEKLIYOR' : 'ACILIYOR');
   const kapali = talep ? !acikMi(talep.durum) || !!talep.kapandiAt : false;
 
+  const onDegistiRef = useRef(onDegisti);
+  useEffect(() => {
+    onDegistiRef.current = onDegisti;
+  }, [onDegisti]);
+
   // Portal talep satırı: kapanana dek aralıkla sorulur. Geçici ağ hatası takibi DURDURMAZ.
   useEffect(() => {
     if (kapali) return;
@@ -118,7 +123,7 @@ export function NodeTakip({
           setDetay(r);
           setHata('');
           if (!acikMi(r.talep.durum) || r.talep.kapandiAt) {
-            onDegisti?.();
+            onDegistiRef.current?.();
             return;
           }
         } else if (!r.ok) {
@@ -135,8 +140,7 @@ export function NodeTakip({
       iptal = true;
       if (zamanlayici) window.clearTimeout(zamanlayici);
     };
-    // onDegisti bilerek bağımlılık dışı: satır içi geri çağrı her render'da yenilenir.
-  }, [talepId, kapali, aralikMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [talepId, kapali, aralikMs]);
 
   // Smart onayı: yalnız talep onay beklerken.
   const smartId =
@@ -156,7 +160,8 @@ export function NodeTakip({
   );
   // Smart durumu önce ortak kancadan (canlı), yoksa Portal'ın talep yanıtındaki kayıttan.
   const smart = detay?.smart || null;
-  const durumAdi = sonDurum?.smartStateName || smart?.statusName || sonDurum?.status || smart?.status || '…';
+  const durumAdi =
+    sonDurum?.smartStateName || smart?.statusName || sonDurum?.status || smart?.status || '…';
   const kalan = sonDurum?.deadline
     ? kalanSure(sonDurum.deadline, sonDurum.serverNow, sonDurumAlindiMs, simdi)
     : kalanSure(smart?.sonTarih, null, null, simdi);
@@ -167,7 +172,8 @@ export function NodeTakip({
   const oneri = yeniAcildi?.esTalepOnerisi ?? detay?.esTalepOnerisi ?? null;
   const sonucVeri = detay?.sonuc ?? talep?.sonuc ?? null;
   const satirlar = sonucSatirlari(sonucVeri);
-  const sonuc = talep && kapali ? sonucMetni(talep.durum, talep.sonucKod, sonucVeri, !!talep.ocoNo) : null;
+  const sonuc =
+    talep && kapali ? sonucMetni(talep.durum, talep.sonucKod, sonucVeri, !!talep.ocoNo) : null;
 
   async function adminKapat() {
     if (kapatiliyor || !gerekceGecerli(kapatGerekce)) return;
@@ -202,8 +208,8 @@ export function NodeTakip({
           </div>
           {talep && (
             <div className="text-[11px] break-all" style={{ color: 'var(--text-muted)' }}>
-              {talep.grupBaslik ? `${talep.grupBaslik} [${talep.grup}]` : talep.grup} · {talep.lokasyon} · {talep.username} ·{' '}
-              {fmtDateTime(talep.createdAt)}
+              {talep.grupBaslik ? `${talep.grupBaslik} [${talep.grup}]` : talep.grup} ·{' '}
+              {talep.lokasyon} · {talep.username} · {fmtDateTime(talep.createdAt)}
             </div>
           )}
           {ocoNo && (
@@ -212,7 +218,9 @@ export function NodeTakip({
             </div>
           )}
         </div>
-        <NodeRozet ton={durumTonu(durum)}>{pencereBekliyor ? METIN.oco.onayliBekliyor : DURUM_ETIKETI[durum]}</NodeRozet>
+        <NodeRozet ton={durumTonu(durum)}>
+          {pencereBekliyor ? METIN.oco.onayliBekliyor : DURUM_ETIKETI[durum]}
+        </NodeRozet>
         <button
           type="button"
           className={NODE_BTN}
@@ -230,7 +238,10 @@ export function NodeTakip({
           {yeniAcildi.onaysiz
             ? METIN.onaysiz.basladi(yeniAcildi.jobId ?? '?')
             : yeniAcildi.oco
-              ? METIN.talepAcildiOco(yeniAcildi.externalTicketId || no, fmtDateTime(yeniAcildi.oco.sonBaslamaIso))
+              ? METIN.talepAcildiOco(
+                  yeniAcildi.externalTicketId || no,
+                  fmtDateTime(yeniAcildi.oco.sonBaslamaIso),
+                )
               : METIN.talepAcildi(yeniAcildi.externalTicketId || no)}
         </p>
       )}
@@ -243,18 +254,30 @@ export function NodeTakip({
       {admin && !kapali && talep && (
         <div className="space-y-1.5">
           {!kapatAcik ? (
-            <button type="button" className={NODE_BTN} style={nodeBtnStil()} onClick={() => setKapatAcik(true)}>
+            <button
+              type="button"
+              className={NODE_BTN}
+              style={nodeBtnStil()}
+              onClick={() => setKapatAcik(true)}
+            >
               {METIN.adminKapatDugme}
             </button>
           ) : (
             <div
               className="rounded-lg border px-3 py-2 space-y-1.5"
-              style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
+              style={{
+                borderColor: 'var(--status-warning)',
+                background: 'var(--status-warning-bg)',
+              }}
             >
               <p className="text-[11px]" style={{ color: 'var(--text-primary)' }}>
                 {METIN.adminKapatBilgi}
               </p>
-              <label htmlFor={`node-kapat-${talepId}`} className="block text-[11px] font-medium" style={{ color: 'var(--text-primary)' }}>
+              <label
+                htmlFor={`node-kapat-${talepId}`}
+                className="block text-[11px] font-medium"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 {METIN.adminKapatGerekce}
               </label>
               <input
@@ -262,7 +285,11 @@ export function NodeTakip({
                 type="text"
                 maxLength={GEREKCE_EN_COK}
                 className="w-full text-[12px] rounded-lg border px-2 py-1"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-primary)',
+                }}
                 value={kapatGerekce}
                 onChange={(e) => setKapatGerekce(e.target.value)}
               />
@@ -326,12 +353,19 @@ export function NodeTakip({
       )}
 
       {satirlar.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+        <div
+          className="overflow-x-auto rounded-lg border"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
           <table className="w-full text-[12px]">
             <thead>
               <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                 {METIN.sonucBasliklar.map((b) => (
-                  <th key={b} scope="col" className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                  <th
+                    key={b}
+                    scope="col"
+                    className="text-left font-medium px-2 py-1.5 whitespace-nowrap"
+                  >
                     {b}
                   </th>
                 ))}

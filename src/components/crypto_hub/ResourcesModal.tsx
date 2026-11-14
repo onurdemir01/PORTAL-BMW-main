@@ -53,21 +53,45 @@ const SM_BTN =
 const KUTU = 'rounded-lg border px-3 py-2 text-[12px]';
 const ton = (t: 'ok' | 'warn' | 'danger' | 'muted' | 'info'): React.CSSProperties => {
   if (t === 'ok')
-    return { color: 'var(--status-success)', borderColor: 'var(--status-success)', background: 'var(--status-success-bg, transparent)' };
+    return {
+      color: 'var(--status-success)',
+      borderColor: 'var(--status-success)',
+      background: 'var(--status-success-bg, transparent)',
+    };
   if (t === 'warn')
-    return { color: 'var(--status-warning)', borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg, transparent)' };
+    return {
+      color: 'var(--status-warning)',
+      borderColor: 'var(--status-warning)',
+      background: 'var(--status-warning-bg, transparent)',
+    };
   if (t === 'danger')
-    return { color: 'var(--status-danger)', borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)' };
+    return {
+      color: 'var(--status-danger)',
+      borderColor: 'var(--status-danger)',
+      background: 'var(--status-danger-bg)',
+    };
   if (t === 'info')
-    return { color: 'var(--text-primary)', borderColor: 'var(--border)', background: 'var(--bg-elevated)' };
-  return { color: 'var(--text-muted)', borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' };
+    return {
+      color: 'var(--text-primary)',
+      borderColor: 'var(--border)',
+      background: 'var(--bg-elevated)',
+    };
+  return {
+    color: 'var(--text-muted)',
+    borderColor: 'var(--border-subtle)',
+    background: 'var(--bg-elevated)',
+  };
 };
 const btn = (t?: 'primary' | 'danger'): React.CSSProperties =>
   t === 'primary'
     ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
     : t === 'danger'
       ? { background: 'var(--status-danger)', borderColor: 'var(--status-danger)', color: '#fff' }
-      : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
+      : {
+          borderColor: 'var(--border)',
+          background: 'var(--bg-surface)',
+          color: 'var(--text-primary)',
+        };
 
 const ETIKET: Record<CryptoResAlan, string> = {
   'requests.cpu': 'requests · cpu',
@@ -94,7 +118,10 @@ const DURUM_ETIKET: Record<string, string> = {
 };
 
 const SONUC_METNI: Record<string, { metin: string; t: 'ok' | 'warn' | 'danger' }> = {
-  uygulandi: { metin: 'Uygulandı: dosya yazıldı, helm upgrade geçti, gözlem temiz, eş dosyalar yazıldı.', t: 'ok' },
+  uygulandi: {
+    metin: 'Uygulandı: dosya yazıldı, helm upgrade geçti, gözlem temiz, eş dosyalar yazıldı.',
+    t: 'ok',
+  },
   uygulandi_sorunlu: {
     metin:
       'Uygulandı AMA sorun var (otomatik geri alma YOK) — ayrıntı aşağıda. Gerekirse "Geri al" ile eski değerleri aynı yoldan uygulayın.',
@@ -111,7 +138,8 @@ const SONUC_METNI: Record<string, { metin: string; t: 'ok' | 'warn' | 'danger' }
 
 /** Sonuç kodlarının ayrı açıklaması (RESEND kod alanı virgülle birden çok olabilir). */
 const KOD_METNI: Record<string, string> = {
-  GOZLEM: 'Gözlemde sorun görüldü (OOMKilled, CrashLoop, yeniden başlama, Pending ya da eski değerle koşan pod).',
+  GOZLEM:
+    'Gözlemde sorun görüldü (OOMKilled, CrashLoop, yeniden başlama, Pending ya da eski değerle koşan pod).',
   ES_YAZILAMADI:
     'Eş cluster dosyasına aynı düzenleme YAZILAMADI — aktif ve pasif dosya ayrıştı; devirde pasif taraf eski değerle açılır. Eş dosyayı ayrıca düzeltin.',
   KUME_GERI_ALINAMADI:
@@ -119,7 +147,8 @@ const KOD_METNI: Record<string, string> = {
 };
 
 /** Adım durumunun ekrandaki karşılığı: ölçülemedi SARI, atlanan bilgi, gerisi DUR. */
-const adimTon = (d: string) => (d === 'ok' ? 'gecti' : d === 'atlandi' ? 'bilgi' : d === 'olculemedi' ? 'olculemedi' : 'dur');
+const adimTon = (d: string) =>
+  d === 'ok' ? 'gecti' : d === 'atlandi' ? 'bilgi' : d === 'olculemedi' ? 'olculemedi' : 'dur';
 
 /** Değerin KAYNAĞI: dosya · chart varsayılanı · ölçülemedi (ve tanımsız). */
 type DosyaHucre = { deger: string; kaynak: 'dosya' | 'chart' | 'olculemedi' | 'tanimsiz' };
@@ -171,9 +200,19 @@ function KaynakEtiketi({ k }: { k: DosyaHucre['kaynak'] | 'canli' }) {
 
 function Durum({ d }: { d: string }) {
   const t = DURUM_TON[d] || 'muted';
-  const Icon = t === 'ok' ? CheckCircleIcon : t === 'danger' ? XCircleIcon : t === 'warn' ? ExclamationTriangleIcon : QuestionMarkCircleIcon;
+  const Icon =
+    t === 'ok'
+      ? CheckCircleIcon
+      : t === 'danger'
+        ? XCircleIcon
+        : t === 'warn'
+          ? ExclamationTriangleIcon
+          : QuestionMarkCircleIcon;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color: ton(t).color }}>
+    <span
+      className="inline-flex items-center gap-1 text-[11px] font-medium"
+      style={{ color: ton(t).color }}
+    >
       <Icon className="h-3.5 w-3.5" /> {DURUM_ETIKET[d] || d}
     </span>
   );
@@ -181,7 +220,10 @@ function Durum({ d }: { d: string }) {
 
 function Baslik({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+    <div
+      className="text-[11px] uppercase tracking-wide mb-1"
+      style={{ color: 'var(--text-muted)' }}
+    >
       {children}
     </div>
   );
@@ -201,9 +243,15 @@ async function isiBekle(
     if (!r.ok) return { result: null, hata: r.message || 'Sonuç okunamadı.' };
     if (r.result) return { result: r.result, hata: null };
     if (['failed', 'error', 'canceled'].includes(r.status))
-      return { result: null, hata: `İş ${r.status} durumunda bitti (#${jobId}); sonuç satırı gelmedi.` };
+      return {
+        result: null,
+        hata: `İş ${r.status} durumunda bitti (#${jobId}); sonuç satırı gelmedi.`,
+      };
     if (Date.now() > bitis)
-      return { result: null, hata: `İş hâlâ sürüyor (#${jobId}); Ansible ekranından izleyebilirsiniz.` };
+      return {
+        result: null,
+        hata: `İş hâlâ sürüyor (#${jobId}); Ansible ekranından izleyebilirsiniz.`,
+      };
     await new Promise((res) => setTimeout(res, 3000));
   }
 }
@@ -323,19 +371,14 @@ export function ResourcesModal({
   const riskli = !!kayit && riskliYol(kayit.yol);
 
   // Değişiklik listesi: yalnız dolu ve DOSYADAKİNDEN farklı alanlar. eski = dosyadaki değer.
-  const degisiklik: CryptoResChange[] = useMemo(() => {
-    const out: CryptoResChange[] = [];
-    for (const a of ALANLAR as CryptoResAlan[]) {
-      const y = yeni[a].trim();
-      if (!y) continue;
-      const eski = dosya[a].kaynak === 'dosya' ? dosya[a].deger : '';
-      if (eski && ayniMiktar(eski, y, turOf(a))) continue;
-      out.push({ alan: a, eski, yeni: y });
-    }
-    return out;
-    // dosya her render yeniden hesaplanir; icerigi res + kayit'a bagli
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yeni, res, kayit?.yol]);
+  const degisiklik: CryptoResChange[] = [];
+  for (const a of ALANLAR as CryptoResAlan[]) {
+    const y = yeni[a].trim();
+    if (!y) continue;
+    const eski = dosya[a].kaynak === 'dosya' ? dosya[a].deger : '';
+    if (eski && ayniMiktar(eski, y, turOf(a))) continue;
+    degisiklik.push({ alan: a, eski, yeni: y });
+  }
 
   const birimHatalari = (ALANLAR as CryptoResAlan[])
     .filter((a) => yeni[a].trim() && !standartMi(yeni[a].trim(), turOf(a)))
@@ -349,7 +392,10 @@ export function ResourcesModal({
 
   const canliDeger = (a: CryptoResAlan) => (canliKap ? canliKap[a] : null);
   const canliHarita = canliKap
-    ? (Object.fromEntries((ALANLAR as CryptoResAlan[]).map((a) => [a, canliKap[a]])) as Record<CryptoResAlan, string | null>)
+    ? (Object.fromEntries((ALANLAR as CryptoResAlan[]).map((a) => [a, canliKap[a]])) as Record<
+        CryptoResAlan,
+        string | null
+      >)
     : null;
   const yerel =
     degisiklik.length && !birimHatalari.length
@@ -404,12 +450,24 @@ export function ResourcesModal({
     const b = await isiBekle(s.awxServerId, s.jobId, 16, iptal);
     if (iptal.current) return;
     if (!b.result?.resources) {
-      setPlan({ asama: 'hata', res: null, hata: b.hata || 'Plan satırı gelmedi.', dogrulama: s.dogrulama || null, degisiklik });
+      setPlan({
+        asama: 'hata',
+        res: null,
+        hata: b.hata || 'Plan satırı gelmedi.',
+        dogrulama: s.dogrulama || null,
+        degisiklik,
+      });
       return;
     }
     setRiskliOnay(false);
     setBekleyenOnay(false);
-    setPlan({ asama: 'bitti', res: b.result.resources, hata: '', dogrulama: s.dogrulama || null, degisiklik });
+    setPlan({
+      asama: 'bitti',
+      res: b.result.resources,
+      hata: '',
+      dogrulama: s.dogrulama || null,
+      degisiklik,
+    });
   };
 
   const p = plan.res;
@@ -431,15 +489,28 @@ export function ResourcesModal({
     });
     setOnay(false);
     if (!s.ok || s.jobId == null || s.awxServerId == null) {
-      setUygula({ asama: 'hata', res: null, sonuc: null, hata: s.message || 'Uygulama başlatılamadı.' });
+      setUygula({
+        asama: 'hata',
+        res: null,
+        sonuc: null,
+        hata: s.message || 'Uygulama başlatılamadı.',
+      });
       return;
     }
     // Jeton TEK KULLANIMLIK: önizleme sonucu artık uygulanamaz.
-    setPlan((x) => ({ ...x, res: x.res ? { ...x.res, planJetonu: null, planJetonDurumu: 'kullanildi' } : x.res }));
+    setPlan((x) => ({
+      ...x,
+      res: x.res ? { ...x.res, planJetonu: null, planJetonDurumu: 'kullanildi' } : x.res,
+    }));
     const b = await isiBekle(s.awxServerId, s.jobId, 45, iptal);
     if (iptal.current) return;
     if (!b.result?.resources) {
-      setUygula({ asama: 'hata', res: null, sonuc: b.result, hata: b.hata || 'Sonuç satırı gelmedi.' });
+      setUygula({
+        asama: 'hata',
+        res: null,
+        sonuc: b.result,
+        hata: b.hata || 'Sonuç satırı gelmedi.',
+      });
       return;
     }
     setUygula({ asama: 'bitti', res: b.result.resources, sonuc: b.result, hata: '' });
@@ -465,9 +536,13 @@ export function ResourcesModal({
         const onceki = canliDeger(a);
         if (onceki) {
           y[a] = standartla(onceki, turOf(a)) || onceki;
-          notlar.push(`${ETIKET[a]} dosyada yoktu (chart varsayılanı); önceki çalışan değer (${onceki}) AÇIKÇA yazılacak.`);
+          notlar.push(
+            `${ETIKET[a]} dosyada yoktu (chart varsayılanı); önceki çalışan değer (${onceki}) AÇIKÇA yazılacak.`,
+          );
         } else {
-          notlar.push(`${ETIKET[a]} dosyada yoktu ve önceki çalışan değer bilinmiyor — elle girin.`);
+          notlar.push(
+            `${ETIKET[a]} dosyada yoktu ve önceki çalışan değer bilinmiyor — elle girin.`,
+          );
         }
       }
     }
@@ -479,9 +554,13 @@ export function ResourcesModal({
   };
 
   const lr = res?.limitRange;
-  const lrSatir = (lr?.kurallar || []).filter((k) => k.tur === 'Container' && (k.kaynak === 'cpu' || k.kaynak === 'memory'));
+  const lrSatir = (lr?.kurallar || []).filter(
+    (k) => k.tur === 'Container' && (k.kaynak === 'cpu' || k.kaynak === 'memory'),
+  );
   const heapCanli = heapTahminiMi(canliDeger('limits.memory'));
-  const heapYeni = yeni['limits.memory'].trim() ? heapTahminiMi(yeni['limits.memory'].trim()) : null;
+  const heapYeni = yeni['limits.memory'].trim()
+    ? heapTahminiMi(yeni['limits.memory'].trim())
+    : null;
   const sonucBilgi = uygula.res?.end ? SONUC_METNI[uygula.res.end.sonuc] : null;
 
   return (
@@ -495,8 +574,17 @@ export function ResourcesModal({
         subtitle={`${tenantLabel} · ${wlKind}`}
         footer={
           <div className="flex items-center gap-2 w-full flex-wrap">
-            <button type="button" className={SM_BTN} style={btn()} disabled={get.asama === 'calisiyor'} onClick={() => void oku()}>
-              <ArrowPathIcon className={`h-3.5 w-3.5 ${get.asama === 'calisiyor' ? 'animate-spin' : ''}`} /> Yeniden oku
+            <button
+              type="button"
+              className={SM_BTN}
+              style={btn()}
+              disabled={get.asama === 'calisiyor'}
+              onClick={() => void oku()}
+            >
+              <ArrowPathIcon
+                className={`h-3.5 w-3.5 ${get.asama === 'calisiyor' ? 'animate-spin' : ''}`}
+              />{' '}
+              Yeniden oku
             </button>
             <button
               type="button"
@@ -518,7 +606,12 @@ export function ResourcesModal({
               {uygula.asama === 'calisiyor' ? 'Uygulanıyor…' : 'Uygula…'}
             </button>
             <span className="flex-1" />
-            <button type="button" className="h-8 px-3 text-xs rounded-lg border" style={btn()} onClick={onClose}>
+            <button
+              type="button"
+              className="h-8 px-3 text-xs rounded-lg border"
+              style={btn()}
+              onClick={onClose}
+            >
               Kapat
             </button>
           </div>
@@ -533,7 +626,9 @@ export function ResourcesModal({
           {kapi.acik && tenant.resValuesPath && (
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               values dosyası (katalog): <code>{tenant.resValuesPath}</code> ·{' '}
-              {tenant.resValuesVerified ? 'doğrulandı' : 'doğrulanmadı — her önizleme canlıyla karşılaştırır'}
+              {tenant.resValuesVerified
+                ? 'doğrulandı'
+                : 'doğrulanmadı — her önizleme canlıyla karşılaştırır'}
             </div>
           )}
           {get.asama === 'calisiyor' && !res && (
@@ -548,7 +643,8 @@ export function ResourcesModal({
           )}
           {res && res.end?.sonuc === 'kismi' && (
             <div className={KUTU} style={ton('warn')}>
-              Ölçüm KISMİ: bazı parçalar okunamadı (aşağıda “ölçülemedi” yazanlar). Okunamayan parça “yok” sayılmaz.
+              Ölçüm KISMİ: bazı parçalar okunamadı (aşağıda “ölçülemedi” yazanlar). Okunamayan parça
+              “yok” sayılmaz.
             </div>
           )}
           {(res?.errors || []).map((e, i) => (
@@ -559,7 +655,10 @@ export function ResourcesModal({
 
           {res && (
             <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[12px] inline-flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+              <label
+                className="text-[12px] inline-flex items-center gap-1"
+                style={{ color: 'var(--text-secondary)' }}
+              >
                 kap
                 <select
                   aria-label="kap"
@@ -569,7 +668,11 @@ export function ResourcesModal({
                     setPlan({ asama: 'bos', res: null, hata: '', dogrulama: null, degisiklik: [] });
                   }}
                   className="h-7 text-[12px] rounded-lg border px-1"
-                  style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                  style={{
+                    borderColor: 'var(--border)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                  }}
                 >
                   {kapSecenekleri.map((k) => (
                     <option key={k} value={k}>
@@ -581,7 +684,13 @@ export function ResourcesModal({
               {kayit ? (
                 <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   values yolu <code>{kayit.yol}</code> ·{' '}
-                  {kayit.durum === 'kayitli' ? 'kayıtlı' : kayit.durum === 'olu' ? 'ÖLÜ ANAHTAR' : kayit.durum === 'kapsam_disi' ? 'kapsam dışı' : 'tahmin — yazılmaz'}
+                  {kayit.durum === 'kayitli'
+                    ? 'kayıtlı'
+                    : kayit.durum === 'olu'
+                      ? 'ÖLÜ ANAHTAR'
+                      : kayit.durum === 'kapsam_disi'
+                        ? 'kapsam dışı'
+                        : 'tahmin — yazılmaz'}
                 </span>
               ) : (
                 <span className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
@@ -589,7 +698,10 @@ export function ResourcesModal({
                 </span>
               )}
               {riskli && (
-                <span className="px-1.5 py-0.5 rounded border text-[10px] font-medium" style={ton('danger')}>
+                <span
+                  className="px-1.5 py-0.5 rounded border text-[10px] font-medium"
+                  style={ton('danger')}
+                >
                   riskli bileşen
                 </span>
               )}
@@ -612,10 +724,16 @@ export function ResourcesModal({
           )}
 
           {res && (
-            <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div
+              className="rounded-xl border overflow-x-auto"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                  <tr
+                    className="text-[11px] uppercase tracking-wide"
+                    style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}
+                  >
                     <th className="text-left font-medium px-3 py-2">Alan</th>
                     <th className="text-left font-medium px-3 py-2">Canlı (spec)</th>
                     <th className="text-left font-medium px-3 py-2">Dosya</th>
@@ -627,24 +745,42 @@ export function ResourcesModal({
                     const c = canliDeger(a);
                     const d = dosya[a];
                     return (
-                      <tr key={a} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                        <td className="px-3 py-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                      <tr
+                        key={a}
+                        className="border-t"
+                        style={{ borderColor: 'var(--border-subtle)' }}
+                      >
+                        <td
+                          className="px-3 py-2 text-[12px]"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
                           {ETIKET[a]}
                         </td>
-                        <td className="px-3 py-2 tabular-nums text-[12px]" data-testid={`canli-${a}`}>
+                        <td
+                          className="px-3 py-2 tabular-nums text-[12px]"
+                          data-testid={`canli-${a}`}
+                        >
                           {!canliOlculdu ? (
                             <KaynakEtiketi k="olculemedi" />
                           ) : !canliKap ? (
                             '—'
                           ) : c == null ? (
-                            <span style={{ color: 'var(--text-muted)' }}>yok (LimitRange varsayılanı)</span>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              yok (LimitRange varsayılanı)
+                            </span>
                           ) : (
                             <>
-                              {c} <span style={{ color: 'var(--text-muted)' }}>({bicimle(c, turOf(a))})</span>
+                              {c}{' '}
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                ({bicimle(c, turOf(a))})
+                              </span>
                             </>
                           )}
                         </td>
-                        <td className="px-3 py-2 tabular-nums text-[12px]" data-testid={`dosya-${a}`}>
+                        <td
+                          className="px-3 py-2 tabular-nums text-[12px]"
+                          data-testid={`dosya-${a}`}
+                        >
                           <span className="inline-flex items-center gap-1.5">
                             {d.kaynak === 'dosya' && d.deger} <KaynakEtiketi k={d.kaynak} />
                           </span>
@@ -657,11 +793,21 @@ export function ResourcesModal({
                             onChange={(e) => {
                               const v = e.target.value.replace(/\s/g, '');
                               setYeni((s) => ({ ...s, [a]: v }));
-                              setPlan({ asama: 'bos', res: null, hata: '', dogrulama: null, degisiklik: [] });
+                              setPlan({
+                                asama: 'bos',
+                                res: null,
+                                hata: '',
+                                dogrulama: null,
+                                degisiklik: [],
+                              });
                             }}
                             placeholder={turOf(a) === 'cpu' ? 'örn. 1500m' : 'örn. 4Gi'}
                             className="h-7 px-2 text-[12px] rounded-lg border w-28 tabular-nums"
-                            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                            style={{
+                              borderColor: 'var(--border)',
+                              background: 'var(--bg-surface)',
+                              color: 'var(--text-primary)',
+                            }}
                           />
                         </td>
                       </tr>
@@ -676,12 +822,18 @@ export function ResourcesModal({
             <div className="grid gap-2 md:grid-cols-2">
               <div className={KUTU} style={ton('info')}>
                 <Baslik>Yaklaşık JVM heap (bellek limiti × {Math.round(0.75 * 100)}%)</Baslik>
-                şu an: {heapCanli != null ? `~${heapCanli}Mi` : canliOlculdu ? 'limit yok' : 'ölçülemedi'}
+                şu an:{' '}
+                {heapCanli != null ? `~${heapCanli}Mi` : canliOlculdu ? 'limit yok' : 'ölçülemedi'}
                 {heapYeni != null && <> · yeni: ~{heapYeni}Mi</>}
               </div>
-              <div className={KUTU} style={ton(lr?.durum === 'olculemedi' ? 'warn' : 'info')} data-testid="limitrange">
+              <div
+                className={KUTU}
+                style={ton(lr?.durum === 'olculemedi' ? 'warn' : 'info')}
+                data-testid="limitrange"
+              >
                 <Baslik>LimitRange (Container)</Baslik>
-                {lr?.durum === 'olculemedi' && 'ölçülemedi — sınırlar burada denetlenemez (“yok” DEĞİL)'}
+                {lr?.durum === 'olculemedi' &&
+                  'ölçülemedi — sınırlar burada denetlenemez (“yok” DEĞİL)'}
                 {lr?.durum === 'yok' && 'yok (ölçüldü)'}
                 {lr?.durum === 'olculdu' &&
                   (lrSatir.length
@@ -708,7 +860,12 @@ export function ResourcesModal({
                 {(res.peers || []).length === 0 && 'eş kiracı yok'}
                 {(res.peers || []).map((e) => (
                   <div key={e.kiraci}>
-                    {e.kiraci}: {e.durum === 'tanimsiz' ? 'eş dosya tanımlı değil' : e.durum === 'olculemedi' ? `ölçülemedi (${e.mesaj})` : e.durum}
+                    {e.kiraci}:{' '}
+                    {e.durum === 'tanimsiz'
+                      ? 'eş dosya tanımlı değil'
+                      : e.durum === 'olculemedi'
+                        ? `ölçülemedi (${e.mesaj})`
+                        : e.durum}
                   </div>
                 ))}
               </div>
@@ -724,7 +881,8 @@ export function ResourcesModal({
               ))}
               {olcEksik.length > 0 && (
                 <div className={KUTU} style={ton('warn')}>
-                  Dosyadaki değer ölçülemedi ({olcEksik.join(', ')}): “eski” bilinmeden önizleme yapılmaz. Yeniden okuyun.
+                  Dosyadaki değer ölçülemedi ({olcEksik.join(', ')}): “eski” bilinmeden önizleme
+                  yapılmaz. Yeniden okuyun.
                 </div>
               )}
               {geriAlNotu && (
@@ -746,8 +904,13 @@ export function ResourcesModal({
               {admin && (yerel?.politikaIhlali || asim) && (
                 <div className={KUTU} style={ton('info')}>
                   <label className="inline-flex items-center gap-1.5">
-                    <input type="checkbox" checked={asim} onChange={(e) => setAsim(e.target.checked)} />
-                    Sınırı Admin olarak aş (oran / {Number(SINIRLAR.cpuLimitTavanM) / 1000} çekirdek / 32Gi / 512Mi) — Kubernetes kuralı ve LimitRange aşılamaz
+                    <input
+                      type="checkbox"
+                      checked={asim}
+                      onChange={(e) => setAsim(e.target.checked)}
+                    />
+                    Sınırı Admin olarak aş (oran / {Number(SINIRLAR.cpuLimitTavanM) / 1000} çekirdek
+                    / 32Gi / 512Mi) — Kubernetes kuralı ve LimitRange aşılamaz
                   </label>
                   {asim && (
                     <textarea
@@ -756,7 +919,11 @@ export function ResourcesModal({
                       onChange={(e) => setGerekce(e.target.value)}
                       placeholder={`Gerekçe (${SINIRLAR.gerekceEnAz}-${SINIRLAR.gerekceEnCok} karakter) — denetim kaydına girer`}
                       className="mt-1 w-full h-16 px-2 py-1 text-[12px] rounded-lg border"
-                      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+                      style={{
+                        borderColor: 'var(--border)',
+                        background: 'var(--bg-surface)',
+                        color: 'var(--text-primary)',
+                      }}
                     />
                   )}
                 </div>
@@ -776,14 +943,16 @@ export function ResourcesModal({
           )}
           {plan.asama === 'calisiyor' && (
             <div className="text-sm py-3 text-center" style={{ color: 'var(--text-muted)' }}>
-              Önizleme: bastion’da geçici kopya düzenleniyor, manifestler üretilip karşılaştırılıyor… (birkaç dakika sürebilir)
+              Önizleme: bastion’da geçici kopya düzenleniyor, manifestler üretilip
+              karşılaştırılıyor… (birkaç dakika sürebilir)
             </div>
           )}
           {p && <PlanGorunumu p={p} />}
 
           {uygula.asama === 'calisiyor' && (
             <div className={KUTU} style={ton('info')}>
-              Uygulanıyor: kilit → yedek → atomik yazım → helm upgrade --atomic → ~3 dk gözlem. Bu pencere açık kalabilir; iş AWX’te sürer.
+              Uygulanıyor: kilit → yedek → atomik yazım → helm upgrade --atomic → ~3 dk gözlem. Bu
+              pencere açık kalabilir; iş AWX’te sürer.
             </div>
           )}
           {uygula.asama === 'hata' && (
@@ -803,7 +972,12 @@ export function ResourcesModal({
                 .split(',')
                 .filter((k) => KOD_METNI[k])
                 .map((k) => (
-                  <div key={k} className={KUTU} style={ton('danger')} data-testid={`sonuc-kod-${k}`}>
+                  <div
+                    key={k}
+                    className={KUTU}
+                    style={ton('danger')}
+                    data-testid={`sonuc-kod-${k}`}
+                  >
                     <b>{k}</b> — {KOD_METNI[k]}
                   </div>
                 ))}
@@ -814,24 +988,35 @@ export function ResourcesModal({
               )}
               <Liste
                 baslik="Adımlar"
-                satirlar={uygula.res.steps.map((s) => ({ d: adimTon(s.durum), m: `${s.adim}: ${s.mesaj}` }))}
+                satirlar={uygula.res.steps.map((s) => ({
+                  d: adimTon(s.durum),
+                  m: `${s.adim}: ${s.mesaj}`,
+                }))}
               />
               <Liste
                 baslik="Gözlem (~3 dk)"
-                satirlar={uygula.res.obs.map((o) => ({ d: o.durum === 'sorun' ? 'dur' : o.durum, m: `${o.kontrol}: ${o.mesaj}` }))}
+                satirlar={uygula.res.obs.map((o) => ({
+                  d: o.durum === 'sorun' ? 'dur' : o.durum,
+                  m: `${o.kontrol}: ${o.mesaj}`,
+                }))}
               />
               {uygula.sonuc?.routes &&
-                uygula.sonuc.routes.once.filter((r) => !uygula.sonuc!.routes!.sonra.includes(r)).length > 0 && (
+                uygula.sonuc.routes.once.filter((r) => !uygula.sonuc!.routes!.sonra.includes(r))
+                  .length > 0 && (
                   <div className={KUTU} style={ton('danger')}>
                     Upgrade sonrası KAYBOLAN route:{' '}
-                    {uygula.sonuc.routes.once.filter((r) => !uygula.sonuc!.routes!.sonra.includes(r)).join(', ')}
+                    {uygula.sonuc.routes.once
+                      .filter((r) => !uygula.sonuc!.routes!.sonra.includes(r))
+                      .join(', ')}
                   </div>
                 )}
-              {uygula.res.end && ['uygulandi', 'uygulandi_sorunlu'].includes(uygula.res.end.sonuc) && (
-                <button type="button" className={SM_BTN} style={btn()} onClick={geriAl}>
-                  <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> Geri al (eski değerlerle önizle → onayla → uygula)
-                </button>
-              )}
+              {uygula.res.end &&
+                ['uygulandi', 'uygulandi_sorunlu'].includes(uygula.res.end.sonuc) && (
+                  <button type="button" className={SM_BTN} style={btn()} onClick={geriAl}>
+                    <ArrowUturnLeftIcon className="h-3.5 w-3.5" /> Geri al (eski değerlerle önizle →
+                    onayla → uygula)
+                  </button>
+                )}
             </div>
           )}
         </div>
@@ -857,7 +1042,12 @@ export function ResourcesModal({
                 Onayla ve uygula
               </button>
               <span className="flex-1" />
-              <button type="button" className="h-9 px-3 text-xs font-medium rounded-lg border" style={btn()} onClick={() => setOnay(false)}>
+              <button
+                type="button"
+                className="h-9 px-3 text-xs font-medium rounded-lg border"
+                style={btn()}
+                onClick={() => setOnay(false)}
+              >
                 İptal
               </button>
             </div>
@@ -865,7 +1055,8 @@ export function ResourcesModal({
         >
           <div className="space-y-3">
             <div className={KUTU} style={ton('danger')}>
-              Bu işlem values dosyasını <b>yazar</b> ve aynı işte <b>helm upgrade</b> koşar: aşağıdaki iş yükleri yeniden başlar.
+              Bu işlem values dosyasını <b>yazar</b> ve aynı işte <b>helm upgrade</b> koşar:
+              aşağıdaki iş yükleri yeniden başlar.
             </div>
             <div>
               <Baslik>Değişiklik</Baslik>
@@ -873,7 +1064,10 @@ export function ResourcesModal({
                 <div key={d.alan} className="text-[12px] tabular-nums">
                   {ETIKET[d.alan]}: {d.eski || 'dosyada yok'} → <b>{d.yeni}</b>
                   {d.alan === 'limits.memory' && heapTahminiMi(d.yeni) != null && (
-                    <span style={{ color: 'var(--text-muted)' }}> (heap ~{heapTahminiMi(d.yeni)}Mi)</span>
+                    <span style={{ color: 'var(--text-muted)' }}>
+                      {' '}
+                      (heap ~{heapTahminiMi(d.yeni)}Mi)
+                    </span>
                   )}
                 </div>
               ))}
@@ -883,7 +1077,9 @@ export function ResourcesModal({
               {p.affect.map((a, i) => (
                 <div key={i} className="text-[12px]">
                   {a.kind}/{a.ad} · {a.strateji} · replika {a.replika}
-                  {a.bekleyen && <b style={{ color: 'var(--status-warning)' }}> · bekleyen fark nedeniyle</b>}
+                  {a.bekleyen && (
+                    <b style={{ color: 'var(--status-warning)' }}> · bekleyen fark nedeniyle</b>
+                  )}
                   {a.riskli && <b style={{ color: 'var(--status-danger)' }}> · riskli</b>}
                 </div>
               ))}
@@ -893,26 +1089,38 @@ export function ResourcesModal({
                 <Baslik>Eş cluster dosyaları</Baslik>
                 {p.peers.map((e) => (
                   <div key={e.kiraci} className="text-[12px]">
-                    {e.kiraci}: {e.durum === 'tanimsiz' ? 'eş dosya tanımlı değil' : e.durum} {e.mesaj && `— ${e.mesaj}`}
+                    {e.kiraci}: {e.durum === 'tanimsiz' ? 'eş dosya tanımlı değil' : e.durum}{' '}
+                    {e.mesaj && `— ${e.mesaj}`}
                   </div>
                 ))}
               </div>
             )}
             {planRiskli && (
               <label className={`${KUTU} flex items-start gap-2`} style={ton('danger')}>
-                <input type="checkbox" aria-label="riskli bileşen onayı" checked={riskliOnay} onChange={(e) => setRiskliOnay(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  aria-label="riskli bileşen onayı"
+                  checked={riskliOnay}
+                  onChange={(e) => setRiskliOnay(e.target.checked)}
+                />
                 <span>
-                  <b>Riskli bileşen</b> (durumlu: aeron-cluster / storage / archive / indexer ya da StatefulSet / Recreate). Sıralı
-                  yeniden başlatma ya da kesinti olacağını, lider kontrolünü yaptığımı onaylıyorum.
+                  <b>Riskli bileşen</b> (durumlu: aeron-cluster / storage / archive / indexer ya da
+                  StatefulSet / Recreate). Sıralı yeniden başlatma ya da kesinti olacağını, lider
+                  kontrolünü yaptığımı onaylıyorum.
                 </span>
               </label>
             )}
             {planBekleyen && (
               <label className={`${KUTU} flex items-start gap-2`} style={ton('warn')}>
-                <input type="checkbox" aria-label="bekleyen fark onayı" checked={bekleyenOnay} onChange={(e) => setBekleyenOnay(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  aria-label="bekleyen fark onayı"
+                  checked={bekleyenOnay}
+                  onChange={(e) => setBekleyenOnay(e.target.checked)}
+                />
                 <span>
-                  Dosyada canlıya henüz uygulanmamış <b>başka kaynak farkları</b> var; onlar da bu upgrade ile uygulanacak.
-                  Onaylıyorum.
+                  Dosyada canlıya henüz uygulanmamış <b>başka kaynak farkları</b> var; onlar da bu
+                  upgrade ile uygulanacak. Onaylıyorum.
                 </span>
               </label>
             )}
@@ -966,7 +1174,10 @@ function PlanGorunumu({ p }: { p: CryptoResources }) {
           'Plan satırı (RESPLAN) gelmedi — sonuç ÖLÇÜLEMEDİ.'
         )}
       </div>
-      <Liste baslik="Kontroller" satirlar={p.checks.map((c) => ({ d: c.durum, m: `${c.kontrol}: ${c.mesaj}` }))} />
+      <Liste
+        baslik="Kontroller"
+        satirlar={p.checks.map((c) => ({ d: c.durum, m: `${c.kontrol}: ${c.mesaj}` }))}
+      />
       {p.diffs.length > 0 && (
         <div>
           <Baslik>Üretilen manifest farkı (yalnız hedef kap)</Baslik>
@@ -983,7 +1194,9 @@ function PlanGorunumu({ p }: { p: CryptoResources }) {
           {p.affect.map((a, i) => (
             <div key={i} className="text-[12px]">
               {a.kind}/{a.ad} · {a.strateji} · canlı replika {a.replika}
-              {a.bekleyen && <b style={{ color: 'var(--status-warning)' }}> · bekleyen fark nedeniyle</b>}
+              {a.bekleyen && (
+                <b style={{ color: 'var(--status-warning)' }}> · bekleyen fark nedeniyle</b>
+              )}
               {a.riskli && <b style={{ color: 'var(--status-danger)' }}> · riskli</b>}
             </div>
           ))}
@@ -1026,7 +1239,12 @@ function PlanGorunumu({ p }: { p: CryptoResources }) {
           <Baslik>Eş cluster dosyaları</Baslik>
           {p.peers.map((e) => (
             <div key={e.kiraci} className="text-[12px]">
-              {e.kiraci}: {e.durum === 'tanimsiz' ? 'eş dosya tanımlı değil' : e.durum === 'ayni' ? 'zaten hedef değerde' : e.durum}
+              {e.kiraci}:{' '}
+              {e.durum === 'tanimsiz'
+                ? 'eş dosya tanımlı değil'
+                : e.durum === 'ayni'
+                  ? 'zaten hedef değerde'
+                  : e.durum}
               {e.mesaj && ` — ${e.mesaj}`}
             </div>
           ))}

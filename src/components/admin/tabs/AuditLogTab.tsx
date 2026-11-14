@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { auditApi, type AuditLog } from "@/api/adminApi";
+import React, { useState, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { auditApi, type AuditLog } from '@/api/adminApi';
 import {
   ArrowPathIcon,
   FunnelIcon,
@@ -9,8 +9,8 @@ import {
   CheckCircleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-} from "@heroicons/react/24/outline";
-import { fmtDateTimeSeconds as formatDate } from "@/utils/datetime";
+} from '@heroicons/react/24/outline';
+import { fmtDateTimeSeconds as formatDate } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 
@@ -18,19 +18,18 @@ const PAGE_SIZE = 50;
 
 // K-03: Show Turkey local time (UTC+3)
 
-
 function resultBadge(result?: string) {
-  if (!result) return "bg-gray-100 text-gray-500";
-  if (result === "success") return "bg-green-50 text-green-700";
-  if (result.includes("error") || result === "unauthorized" || result === "unreachable")
-    return "bg-red-50 text-red-700";
-  return "bg-amber-50 text-amber-700";
+  if (!result) return 'bg-gray-100 text-gray-500';
+  if (result === 'success') return 'bg-green-50 text-green-700';
+  if (result.includes('error') || result === 'unauthorized' || result === 'unreachable')
+    return 'bg-red-50 text-red-700';
+  return 'bg-amber-50 text-amber-700';
 }
 
 // K-02: Row highlight for db_error
 function rowHighlight(result?: string): string {
-  if (result === "db_error" || result === "error") return "bg-red-50/40";
-  return "";
+  if (result === 'db_error' || result === 'error') return 'bg-red-50/40';
+  return '';
 }
 
 interface ChainResult {
@@ -47,21 +46,21 @@ const ROW_HEIGHT = 44;
 // Aksiyon adlari `<modul>_<olay>` deseninde. Onek bazli filtre, bir modulun TUM izini
 // aksiyon adlarini ezberlemeden getirir.
 const MODULE_PREFIXES = [
-  { prefix: "scalex_", label: "ScaleX" },
-  { prefix: "logx_", label: "LogX" },
-  { prefix: "opsx_", label: "OpsX" },
-  { prefix: "telnet_", label: "Telnet" },
-  { prefix: "filex_", label: "FileX" },
-  { prefix: "selfservice_", label: "Self Service" },
-  { prefix: "auth_", label: "Oturum" },
+  { prefix: 'scalex_', label: 'ScaleX' },
+  { prefix: 'logx_', label: 'LogX' },
+  { prefix: 'opsx_', label: 'OpsX' },
+  { prefix: 'telnet_', label: 'Telnet' },
+  { prefix: 'filex_', label: 'FileX' },
+  { prefix: 'selfservice_', label: 'Self Service' },
+  { prefix: 'auth_', label: 'Oturum' },
 ];
 
 // Iki denetim kaynagi: LogX akis kayitlari (logx_audit_logs) ve portal geneli
 // admin/CRUD/login kayitlari (portal_audit_logs) — ayni tablo gorunumuyle gosterilir.
-type AuditSource = "logx" | "portal";
+type AuditSource = 'logx' | 'portal';
 
 const AuditLogTab: React.FC = () => {
-  const [source, setSource] = useState<AuditSource>("portal");
+  const [source, setSource] = useState<AuditSource>('portal');
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +69,12 @@ const AuditLogTab: React.FC = () => {
   // yazmak gerekiyordu. `dateFrom`/`dateTo` da yoktu — olayin gununu bilen kullanici
   // 50'serlik sayfalari geriye dogru cevirmek zorundaydi.
   const [filters, setFilters] = useState({
-    username: "", targetHost: "", action: "", module: "", dateFrom: "", dateTo: "",
+    username: '',
+    targetHost: '',
+    action: '',
+    module: '',
+    dateFrom: '',
+    dateTo: '',
   });
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
@@ -100,20 +104,20 @@ const AuditLogTab: React.FC = () => {
         offset: (p - 1) * PAGE_SIZE,
       };
       let data: AuditLog[];
-      if (source === "portal") {
+      if (source === 'portal') {
         const qs = new URLSearchParams();
-        if (params.username) qs.set("username", params.username);
-        if (params.action) qs.set("action", params.action);
+        if (params.username) qs.set('username', params.username);
+        if (params.action) qs.set('action', params.action);
         // `targetHost` UZUN SURE GONDERILMIYORDU: kutu ekranda vardi, yazilan deger
         // sorguya hic girmiyordu — olu bir filtre.
-        if (params.targetHost) qs.set("targetHost", params.targetHost);
-        if (filters.module) qs.set("actionPrefix", filters.module);
-        if (filters.dateFrom) qs.set("dateFrom", filters.dateFrom);
+        if (params.targetHost) qs.set('targetHost', params.targetHost);
+        if (filters.module) qs.set('actionPrefix', filters.module);
+        if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
         // Bitis GUNUN SONUNU kapsamali: kullanici "2 Eylul" dediginde 2 Eylul'un
         // kayitlarini gormek ister, gun basina kadar olanlari degil.
-        if (filters.dateTo) qs.set("dateTo", `${filters.dateTo}T23:59:59.999`);
-        qs.set("limit", String(params.limit));
-        qs.set("offset", String(params.offset));
+        if (filters.dateTo) qs.set('dateTo', `${filters.dateTo}T23:59:59.999`);
+        qs.set('limit', String(params.limit));
+        qs.set('offset', String(params.offset));
         const r = await fetch(`/api/portal-audit?${qs.toString()}`);
         // Sunucunun metni `message` ya da `error` alaninda gelir; eskiden yalniz `error`
         // okunuyor, digerinde ekranda ciplak "HTTP 500" kaliyordu. JSON olmayan govde
@@ -139,7 +143,9 @@ const AuditLogTab: React.FC = () => {
     setVerifying(true);
     setChainResult(null);
     try {
-      const r = await fetch(source === "portal" ? "/api/portal-audit/verify" : "/api/logx/admin/audit/verify");
+      const r = await fetch(
+        source === 'portal' ? '/api/portal-audit/verify' : '/api/logx/admin/audit/verify',
+      );
       const data = await r.json();
       setChainResult(data);
     } catch {
@@ -149,9 +155,21 @@ const AuditLogTab: React.FC = () => {
     }
   }
 
-  useEffect(() => { setPage(1); setChainResult(null); load(1); }, [source]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
 
-  function applyFilters() { setPage(1); load(1); }
+  useEffect(() => {
+    setPage(1);
+    setChainResult(null);
+    void loadRef.current(1);
+  }, [source]);
+
+  function applyFilters() {
+    setPage(1);
+    load(1);
+  }
 
   // CSV: GORUNEN SAYFAYI disari verir — "tumunu indir" demek, 200 bin satirlik bir
   // sorguyu tarayiciya yuklemek olurdu. Filtreleri daraltip indirmek dogru yol.
@@ -159,14 +177,23 @@ const AuditLogTab: React.FC = () => {
   function exportCsv() {
     csvIndir(
       `denetim-${source}`,
-      ["zaman", "kullanici", "rol", "aksiyon", "sonuc", "hedef", "istemci_ip", "detay"],
+      ['zaman', 'kullanici', 'rol', 'aksiyon', 'sonuc', 'hedef', 'istemci_ip', 'detay'],
       logs.map((l) => [
-        formatDate(l.created_at), l.username, l.role, l.action,
-        l.result, l.target_host, l.client_ip, l.detail,
+        formatDate(l.created_at),
+        l.username,
+        l.role,
+        l.action,
+        l.result,
+        l.target_host,
+        l.client_ip,
+        l.detail,
       ]),
     );
   }
-  function goPage(p: number) { setPage(p); load(p); }
+  function goPage(p: number) {
+    setPage(p);
+    load(p);
+  }
 
   const virtualItems = rowVirtualizer.getVirtualItems();
   const totalSize = rowVirtualizer.getTotalSize();
@@ -177,16 +204,28 @@ const AuditLogTab: React.FC = () => {
         <div className="flex items-center gap-3">
           {/* Kaynak secici: Portal (admin/CRUD/login) | LogX (log akis kayitlari) */}
           <div className="flex gap-1 rounded-lg p-0.5 bg-gray-100">
-            {([["portal", "Portal"], ["logx", "LogX"]] as const).map(([id, label]) => (
-              <button key={id} onClick={() => setSource(id)}
+            {(
+              [
+                ['portal', 'Portal'],
+                ['logx', 'LogX'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setSource(id)}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                  source === id ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"
-                }`}>
+                  source === id
+                    ? 'bg-white shadow-sm text-gray-900'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
                 {label}
               </button>
             ))}
           </div>
-          <p className="text-sm text-gray-500">{logs.length} kayıt (Sayfa {page})</p>
+          <p className="text-sm text-gray-500">
+            {logs.length} kayıt (Sayfa {page})
+          </p>
           {/* K-02: db_error lejanti. Eski metin "● db_error kırmızı" idi: ic durum kodunu
               ve bir renk adini yan yana basiyor, ne anlama geldigini soylemiyordu. */}
           <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">
@@ -200,12 +239,12 @@ const AuditLogTab: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <ShieldCheckIcon className="w-4 h-4" />
-            {verifying ? "Kontrol ediliyor..." : "Zincir Doğrula"}
+            {verifying ? 'Kontrol ediliyor...' : 'Zincir Doğrula'}
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors
-              ${showFilters ? "bg-black text-white border-black" : "border-gray-200 hover:bg-gray-50"}`}
+              ${showFilters ? 'bg-black text-white border-black' : 'border-gray-200 hover:bg-gray-50'}`}
           >
             <FunnelIcon className="w-4 h-4" />
             Filtrele
@@ -222,21 +261,39 @@ const AuditLogTab: React.FC = () => {
 
       {/* Chain verify result */}
       {chainResult && (
-        <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${chainResult.ok ? "bg-green-50 border-green-100" : "bg-red-50 border-red-100"}`}>
-          {chainResult.ok
-            ? <CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-            : <ExclamationTriangleIcon className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
+        <div
+          className={`flex items-start gap-3 rounded-xl px-4 py-3 border ${chainResult.ok ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}
+        >
+          {chainResult.ok ? (
+            <CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+          ) : (
+            <ExclamationTriangleIcon className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          )}
           <div className="text-sm space-y-0.5">
-            {chainResult.ok
-              ? <span className="text-green-700"><strong>Zincir bütünlüğü doğrulandı.</strong> {chainResult.verified} kayıt kontrol edildi.</span>
-              : chainResult.broken === -1
-                ? <span className="text-red-700">Doğrulama sırasında hata oluştu.</span>
-                : <span className="text-red-700">
-                    <strong>Zincir kırık!</strong> {chainResult.verified} kayıttan {chainResult.broken} tanesi doğrulanamadı.
-                    {chainResult.firstBrokenId && <span> İlk sorunlu kayıt ID: <code className="bg-red-100 px-1 rounded">{chainResult.firstBrokenId}</code></span>}
-                  </span>}
+            {chainResult.ok ? (
+              <span className="text-green-700">
+                <strong>Zincir bütünlüğü doğrulandı.</strong> {chainResult.verified} kayıt kontrol
+                edildi.
+              </span>
+            ) : chainResult.broken === -1 ? (
+              <span className="text-red-700">Doğrulama sırasında hata oluştu.</span>
+            ) : (
+              <span className="text-red-700">
+                <strong>Zincir kırık!</strong> {chainResult.verified} kayıttan {chainResult.broken}{' '}
+                tanesi doğrulanamadı.
+                {chainResult.firstBrokenId && (
+                  <span>
+                    {' '}
+                    İlk sorunlu kayıt ID:{' '}
+                    <code className="bg-red-100 px-1 rounded">{chainResult.firstBrokenId}</code>
+                  </span>
+                )}
+              </span>
+            )}
             {(chainResult.legacyCount ?? 0) > 0 && (
-              <p className={`text-xs ${chainResult.ok ? "text-green-600" : "text-red-500"} opacity-80`}>
+              <p
+                className={`text-xs ${chainResult.ok ? 'text-green-600' : 'text-red-500'} opacity-80`}
+              >
                 {chainResult.legacyCount} eski-format kayıt doğrulama kapsamı dışında (v2 öncesi).
               </p>
             )}
@@ -247,15 +304,15 @@ const AuditLogTab: React.FC = () => {
       {/* Filters */}
       {showFilters && (
         <div className="bg-gray-50 rounded-xl p-4 grid grid-cols-3 gap-3">
-          {(["username", "targetHost", "action"] as const).map((key) => (
+          {(['username', 'targetHost', 'action'] as const).map((key) => (
             <div key={key}>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                {key === "targetHost" ? "Hedef Host" : key === "username" ? "Kullanıcı" : "Aksiyon"}
+                {key === 'targetHost' ? 'Hedef Host' : key === 'username' ? 'Kullanıcı' : 'Aksiyon'}
               </label>
               <input
                 type="text"
                 value={filters[key]}
-                onChange={(e) => setFilters(prev => ({ ...prev, [key]: e.target.value }))}
+                onChange={(e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }))}
                 placeholder="Tümü"
                 className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition"
               />
@@ -263,33 +320,59 @@ const AuditLogTab: React.FC = () => {
           ))}
           {/* MODUL IZI: bir aksiyon ONEKI. Portal kaynaginda calisir — LogX kaynaginda
               aksiyonlar zaten tek bir modulun. */}
-          {source === "portal" && (
+          {source === 'portal' && (
             <div>
-              <label htmlFor="audit-module" className="block text-xs font-medium text-gray-600 mb-1">Modül</label>
-              <select id="audit-module" value={filters.module}
+              <label
+                htmlFor="audit-module"
+                className="block text-xs font-medium text-gray-600 mb-1"
+              >
+                Modül
+              </label>
+              <select
+                id="audit-module"
+                value={filters.module}
                 onChange={(e) => setFilters((prev) => ({ ...prev, module: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition">
+                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition"
+              >
                 <option value="">Tümü</option>
-                {MODULE_PREFIXES.map((m) => <option key={m.prefix} value={m.prefix}>{m.label}</option>)}
+                {MODULE_PREFIXES.map((m) => (
+                  <option key={m.prefix} value={m.prefix}>
+                    {m.label}
+                  </option>
+                ))}
               </select>
             </div>
           )}
-          {source === "portal" && (["dateFrom", "dateTo"] as const).map((key) => (
-            <div key={key}>
-              <label htmlFor={`audit-${key}`} className="block text-xs font-medium text-gray-600 mb-1">
-                {key === "dateFrom" ? "Başlangıç" : "Bitiş"}
-              </label>
-              <input id={`audit-${key}`} type="date" value={filters[key]}
-                onChange={(e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }))}
-                className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition" />
-            </div>
-          ))}
+          {source === 'portal' &&
+            (['dateFrom', 'dateTo'] as const).map((key) => (
+              <div key={key}>
+                <label
+                  htmlFor={`audit-${key}`}
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                >
+                  {key === 'dateFrom' ? 'Başlangıç' : 'Bitiş'}
+                </label>
+                <input
+                  id={`audit-${key}`}
+                  type="date"
+                  value={filters[key]}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg outline-none focus:border-black transition"
+                />
+              </div>
+            ))}
           <div className="col-span-3 flex justify-end gap-2">
-            <button onClick={exportCsv} disabled={!logs.length}
-              className="px-4 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors disabled:opacity-50">
+            <button
+              onClick={exportCsv}
+              disabled={!logs.length}
+              className="px-4 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors disabled:opacity-50"
+            >
               CSV indir
             </button>
-            <button onClick={applyFilters} className="px-4 py-1.5 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition-colors">
+            <button
+              onClick={applyFilters}
+              className="px-4 py-1.5 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
+            >
               Uygula
             </button>
           </div>
@@ -300,7 +383,9 @@ const AuditLogTab: React.FC = () => {
       {error && (
         <div className="bg-red-50 rounded-xl p-4 text-sm text-red-700">
           {error}
-          <button onClick={() => load()} className="ml-3 underline">Tekrar dene</button>
+          <button onClick={() => load()} className="ml-3 underline">
+            Tekrar dene
+          </button>
         </div>
       )}
 
@@ -308,18 +393,26 @@ const AuditLogTab: React.FC = () => {
         <>
           <div className="rounded-xl border border-gray-100 overflow-hidden">
             {/* Table header */}
-            <div className="grid text-xs font-medium text-gray-500 bg-gray-50 border-b border-gray-100"
-              style={{ gridTemplateColumns: "160px 120px 160px 130px 100px 1fr" }}>
-              {["Zaman (TR)", "Kullanıcı", "Host", "Aksiyon", "Sonuç", "Detay"].map((h) => (
-                <div key={h} className="px-4 py-3">{h}</div>
+            <div
+              className="grid text-xs font-medium text-gray-500 bg-gray-50 border-b border-gray-100"
+              style={{ gridTemplateColumns: '160px 120px 160px 130px 100px 1fr' }}
+            >
+              {['Zaman (TR)', 'Kullanıcı', 'Host', 'Aksiyon', 'Sonuç', 'Detay'].map((h) => (
+                <div key={h} className="px-4 py-3">
+                  {h}
+                </div>
               ))}
             </div>
 
             {logs.length === 0 ? (
               <div className="py-10 text-center text-sm text-gray-400">Kayıt bulunamadı.</div>
             ) : (
-              <div ref={parentRef} className="overflow-auto" style={{ height: Math.min(logs.length * ROW_HEIGHT, 500) }}>
-                <div style={{ height: totalSize, width: "100%", position: "relative" }}>
+              <div
+                ref={parentRef}
+                className="overflow-auto"
+                style={{ height: Math.min(logs.length * ROW_HEIGHT, 500) }}
+              >
+                <div style={{ height: totalSize, width: '100%', position: 'relative' }}>
                   {virtualItems.map((virtualRow) => {
                     const log = logs[virtualRow.index];
                     return (
@@ -327,22 +420,44 @@ const AuditLogTab: React.FC = () => {
                         key={virtualRow.key}
                         className={`grid hover:bg-gray-50 transition-colors border-b border-gray-50 absolute top-0 left-0 w-full ${rowHighlight(log.result)}`}
                         style={{
-                          gridTemplateColumns: "160px 120px 160px 130px 100px 1fr",
+                          gridTemplateColumns: '160px 120px 160px 130px 100px 1fr',
                           height: ROW_HEIGHT,
                           transform: `translateY(${virtualRow.start}px)`,
                         }}
                       >
-                        <div className="px-4 flex items-center text-xs text-gray-500 whitespace-nowrap">{formatDate(log.created_at)}</div>
-                        <div className="px-4 flex items-center font-medium text-gray-900 text-sm truncate" title={log.username}>{log.username}</div>
-                        <div className="px-4 flex items-center text-gray-600 text-sm truncate" title={log.target_host || "—"}>{log.target_host || "—"}</div>
-                        <div className="px-4 flex items-center text-gray-600 font-mono text-xs truncate" title={log.action}>{log.action}</div>
+                        <div className="px-4 flex items-center text-xs text-gray-500 whitespace-nowrap">
+                          {formatDate(log.created_at)}
+                        </div>
+                        <div
+                          className="px-4 flex items-center font-medium text-gray-900 text-sm truncate"
+                          title={log.username}
+                        >
+                          {log.username}
+                        </div>
+                        <div
+                          className="px-4 flex items-center text-gray-600 text-sm truncate"
+                          title={log.target_host || '—'}
+                        >
+                          {log.target_host || '—'}
+                        </div>
+                        <div
+                          className="px-4 flex items-center text-gray-600 font-mono text-xs truncate"
+                          title={log.action}
+                        >
+                          {log.action}
+                        </div>
                         <div className="px-4 flex items-center">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${resultBadge(log.result)}`}>
-                            {log.result || "—"}
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${resultBadge(log.result)}`}
+                          >
+                            {log.result || '—'}
                           </span>
                         </div>
-                        <div className="px-4 flex items-center text-xs text-gray-500 truncate" title={log.detail || ""}>
-                          {log.detail || "—"}
+                        <div
+                          className="px-4 flex items-center text-xs text-gray-500 truncate"
+                          title={log.detail || ''}
+                        >
+                          {log.detail || '—'}
                         </div>
                       </div>
                     );

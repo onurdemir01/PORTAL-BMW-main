@@ -126,7 +126,9 @@ function GrupKarti({
             {g.id}
           </div>
         </div>
-        <NodeRozet ton="muted">{g.tur === 'uis' ? METIN.rozet.yeniTip : METIN.rozet.eskiTip}</NodeRozet>
+        <NodeRozet ton="muted">
+          {g.tur === 'uis' ? METIN.rozet.yeniTip : METIN.rozet.eskiTip}
+        </NodeRozet>
         {admin && g.roller.length > 0 && g.envler.length > 0 && (
           <button type="button" className={NODE_BTN} style={nodeBtnStil()} onClick={onOnizle}>
             {METIN.smartOnizle}
@@ -161,12 +163,19 @@ function GrupKarti({
 
       {uisTablo ? (
         <div className="space-y-1 min-w-0">
-          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div
+            className="overflow-x-auto rounded-lg border"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
             <table className="w-full text-[12px]" data-uis-tablo="">
               <thead>
                 <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                   {METIN.uisBasliklar.map((b) => (
-                    <th key={b} scope="col" className="text-left font-medium px-2 py-1.5 whitespace-nowrap">
+                    <th
+                      key={b}
+                      scope="col"
+                      className="text-left font-medium px-2 py-1.5 whitespace-nowrap"
+                    >
                       {b}
                     </th>
                   ))}
@@ -183,35 +192,55 @@ function GrupKarti({
                       className="border-t align-top"
                       style={{ borderColor: 'var(--border-subtle)' }}
                     >
-                      <td className="px-2 py-1.5 font-semibold whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                      <td
+                        className="px-2 py-1.5 font-semibold whitespace-nowrap"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
                         {b}
                       </td>
                       {!d ? (
-                        <td colSpan={4} className="px-2 py-1.5" style={{ color: 'var(--text-muted)' }}>
+                        <td
+                          colSpan={4}
+                          className="px-2 py-1.5"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
                           {METIN.bilesenYok}
                         </td>
                       ) : (
                         <>
-                          <td className="px-2 py-1.5 break-all" style={{ color: 'var(--text-primary)' }} title={d.ad}>
+                          <td
+                            className="px-2 py-1.5 break-all"
+                            style={{ color: 'var(--text-primary)' }}
+                            title={d.ad}
+                          >
                             {d.ad}
                           </td>
                           <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: st?.renk }}>
                             {st?.metin} · {d.hazir ?? '—'} / {d.istenen ?? '—'}
                           </td>
-                          <td className="px-2 py-1.5 break-all" style={{ color: 'var(--text-primary)' }}>
+                          <td
+                            className="px-2 py-1.5 break-all"
+                            style={{ color: 'var(--text-primary)' }}
+                          >
                             {depEnvAdlari(g, d.ad)}
                           </td>
                           <td className="px-2 py-1.5 break-all">
                             {!uisOkundu ? (
                               <span style={{ color: 'var(--text-muted)' }}>{METIN.okumaYok}</span>
                             ) : !d.nodeBagli ? (
-                              <span style={{ color: 'var(--text-muted)' }}>{METIN.baglantiYok}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                {METIN.baglantiYok}
+                              </span>
                             ) : (
-                              <span style={{ color: 'var(--text-primary)' }}>{mevcutNodeMetni(d, g.roller)}</span>
+                              <span style={{ color: 'var(--text-primary)' }}>
+                                {mevcutNodeMetni(d, g.roller)}
+                              </span>
                             )}
                             {d.envFrom && (
                               <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                                {d.envFrom === 'olculemedi' ? METIN.envFromOlculemedi : METIN.envFromVar}
+                                {d.envFrom === 'olculemedi'
+                                  ? METIN.envFromOlculemedi
+                                  : METIN.envFromVar}
                               </div>
                             )}
                           </td>
@@ -234,7 +263,11 @@ function GrupKarti({
           {g.deploymentlar.map((d) => {
             const st = DEP_DURUM[d.durum];
             return (
-              <li key={d.ad} className="text-[11px] break-all" style={{ color: 'var(--text-primary)' }}>
+              <li
+                key={d.ad}
+                className="text-[11px] break-all"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 {d.ad}{' '}
                 <span style={{ color: st?.renk }}>
                   · {st?.metin} · {d.hazir ?? '—'} / {d.istenen ?? '—'}
@@ -257,7 +290,11 @@ function GrupKarti({
             </div>
           ) : g.mevcutNode && !g.tutarsiz ? (
             roller.map((r) => (
-              <div key={r} className="text-[12px] break-all" style={{ color: 'var(--text-primary)' }}>
+              <div
+                key={r}
+                className="text-[12px] break-all"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 <b>{r}</b>: {g.mevcutNode?.maskeli[r] ?? '—'}
               </div>
             ))
@@ -340,24 +377,37 @@ function SmartOnizlemeModal({
       }
     >
       <div className="space-y-2 min-w-0">
-        {sonuc && !sonuc.ok && <Bant ton="danger">{sonuc.message || sonuc.hata || 'Önizleme yapılamadı.'}</Bant>}
+        {sonuc && !sonuc.ok && (
+          <Bant ton="danger">{sonuc.message || sonuc.hata || 'Önizleme yapılamadı.'}</Bant>
+        )}
         {sonuc?.ok && (
           <div className="space-y-1">
             <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
               Flow key: <b>{sonuc.flowKey || '—'}</b>
             </div>
             {sonuc.hata && <Bant ton="danger">{sonuc.hata}</Bant>}
-            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div
+              className="overflow-x-auto rounded-lg border"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
               <table className="w-full text-[12px]">
                 <thead>
                   <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
-                    <th scope="col" className="text-left font-medium px-2 py-1.5">ElementName</th>
-                    <th scope="col" className="text-left font-medium px-2 py-1.5">Değer</th>
+                    <th scope="col" className="text-left font-medium px-2 py-1.5">
+                      ElementName
+                    </th>
+                    <th scope="col" className="text-left font-medium px-2 py-1.5">
+                      Değer
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {Object.entries(sonuc.metadata || {}).map(([k, v]) => (
-                    <tr key={k} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <tr
+                      key={k}
+                      className="border-t align-top"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
                       <td className="px-2 py-1.5 break-all font-medium">{k}</td>
                       <td className="px-2 py-1.5 break-all whitespace-pre-wrap">{v}</td>
                     </tr>
@@ -429,6 +479,10 @@ export function NodePanel({
     okumaIsRef.current = okumaIs;
   }, [okumaIs]);
   const baslangicRef = useRef<NodeBaslangic | null | undefined>(baslangic);
+  const onBaslangicTuketildiRef = useRef(onBaslangicTuketildi);
+  useEffect(() => {
+    onBaslangicTuketildiRef.current = onBaslangicTuketildi;
+  }, [onBaslangicTuketildi]);
 
   const okumaBaslat = useCallback(async () => {
     if (okumaIsRef.current) return;
@@ -459,7 +513,12 @@ export function NodePanel({
         setHata('');
         setData(r);
         const ok = r.okuma;
-        if (ok?.durum === 'suruyor' && ok.jobId != null && ok.awxServerId != null && !okumaIsRef.current) {
+        if (
+          ok?.durum === 'suruyor' &&
+          ok.jobId != null &&
+          ok.awxServerId != null &&
+          !okumaIsRef.current
+        ) {
           setOkumaIs({ serverId: ok.awxServerId, jobId: ok.jobId });
         }
         // Ankara önerisinden gelindi: sihirbaz bu grupla bir kez açılır.
@@ -469,7 +528,7 @@ export function NodePanel({
           const es = b.esTalepId;
           if (es != null) setEsBag((x) => ({ ...x, [b.grup]: es }));
           setSihirbaz({ grupId: b.grup, esTalepId: b.esTalepId });
-          onBaslangicTuketildi?.();
+          onBaslangicTuketildiRef.current?.();
           if (ok?.durum !== 'taze') void okumaBaslat();
         }
         // Okuma bitti: sihirbazdaki grup artık değiştirilemiyorsa engel metniyle kapanır.
@@ -488,8 +547,7 @@ export function NodePanel({
         setHata(e instanceof Error ? e.message : String(e));
       }
     },
-    // okumaBaslat ve geri çağrılar bilerek dışarıda: ref'lerle okunuyorlar.
-    [tenantKey], // eslint-disable-line react-hooks/exhaustive-deps
+    [tenantKey, okumaBaslat],
   );
 
   useAsyncEffect(
@@ -590,7 +648,10 @@ export function NodePanel({
         style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-base font-semibold flex-1 min-w-0" style={{ color: 'var(--text-primary)' }}>
+          <h2
+            className="text-base font-semibold flex-1 min-w-0"
+            style={{ color: 'var(--text-primary)' }}
+          >
             {METIN.baslik}
           </h2>
           <button
@@ -695,7 +756,11 @@ export function NodePanel({
             <thead>
               <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
                 {METIN.gecmisBasliklar.map((b) => (
-                  <th key={b} scope="col" className="text-left font-medium px-3 py-2 whitespace-nowrap">
+                  <th
+                    key={b}
+                    scope="col"
+                    className="text-left font-medium px-3 py-2 whitespace-nowrap"
+                  >
                     {b}
                   </th>
                 ))}
@@ -703,12 +768,22 @@ export function NodePanel({
             </thead>
             <tbody>
               {gecmis.length === 0 && (
-                <TableEmptyRow colSpan={6} title="Talep yok" description="Bu kiracıda henüz node değişikliği talebi açılmamış." />
+                <TableEmptyRow
+                  colSpan={6}
+                  title="Talep yok"
+                  description="Bu kiracıda henüz node değişikliği talebi açılmamış."
+                />
               )}
               {gecmis.map((h) => (
-                <tr key={h.talepId} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                <tr
+                  key={h.talepId}
+                  className="border-t"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
                   <td className="px-3 py-2 whitespace-nowrap">{fmtDateTime(h.createdAt)}</td>
-                  <td className="px-3 py-2 break-all">{basliklar.get(h.grup) || talepGrupBasligi(h)}</td>
+                  <td className="px-3 py-2 break-all">
+                    {basliklar.get(h.grup) || talepGrupBasligi(h)}
+                  </td>
                   <td className="px-3 py-2 break-all">{h.yeniOzet || '—'}</td>
                   <td className="px-3 py-2 break-all">{h.username}</td>
                   <td className="px-3 py-2">
@@ -723,11 +798,20 @@ export function NodePanel({
                   </td>
                   <td className="px-3 py-2">
                     <NodeRozet ton={durumTonu(h.durum)}>
-                      {h.pencereBekliyor ? METIN.oco.onayliBekliyor : DURUM_ETIKETI[h.durum] || h.durum}
+                      {h.pencereBekliyor
+                        ? METIN.oco.onayliBekliyor
+                        : DURUM_ETIKETI[h.durum] || h.durum}
                     </NodeRozet>
                     {h.ocoNo && (
-                      <div className="mt-1 text-[11px] break-words" style={{ color: 'var(--text-muted)' }}>
-                        {METIN.oco.takip(h.ocoNo, fmtDateTime(h.ocoPencereBas), fmtDateTime(h.ocoPencereSon))}
+                      <div
+                        className="mt-1 text-[11px] break-words"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {METIN.oco.takip(
+                          h.ocoNo,
+                          fmtDateTime(h.ocoPencereBas),
+                          fmtDateTime(h.ocoPencereSon),
+                        )}
                       </div>
                     )}
                   </td>

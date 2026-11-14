@@ -17,7 +17,9 @@ import { parseResourceLines } from '../../server/crypto-hub/resources.cjs';
 
 const m = vi.hoisted(() => ({ run: vi.fn(), result: vi.fn() }));
 vi.mock('@/api/cryptoHubApi', () => ({ cryptoOpsApi: { run: m.run, result: m.result } }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: 'ali', role: 'User' } }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'ali', role: 'User' } }),
+}));
 
 const T = 'wyden_qa_h2';
 const TAB = '\t';
@@ -48,11 +50,32 @@ const BAS = [
   satir('RESREL', T, 'wydenapp', '1.5.19'),
   satir('RESLR', T, '-', '-', '-', '-', 'YOK'),
   satir('RESQUOTA', T, '-', '-', '-', 'YOK'),
-  satir('RESSRC', T, WYDEN.resValuesPath, 'okundu', 'dogrulanmadi', H('a'), '1234', 'evet', 'yalniz resources satirlari doner'),
+  satir(
+    'RESSRC',
+    T,
+    WYDEN.resValuesPath ?? '',
+    'okundu',
+    'dogrulanmadi',
+    H('a'),
+    '1234',
+    'evet',
+    'yalniz resources satirlari doner',
+  ),
 ];
 const CANLI = [
   satir('RESWL', T, 'Deployment', 'wydenapp-access-gateway', '2', '2', 'RollingUpdate', 'wydenapp'),
-  satir('RESLIVE', T, 'Deployment', 'wydenapp-access-gateway', 'app', 'kap', '500m', 'YOK', '2', '2Gi'),
+  satir(
+    'RESLIVE',
+    T,
+    'Deployment',
+    'wydenapp-access-gateway',
+    'app',
+    'kap',
+    '500m',
+    'YOK',
+    '2',
+    '2Gi',
+  ),
 ];
 const SON = (sonuc: string, kod: string) => satir('RESEND', T, 'resources_get', sonuc, kod);
 // Yardımcının gerçek çıktısı (bkz. dosya başı).
@@ -64,10 +87,20 @@ const TABLI = [
   ...['requests.cpu', 'requests.memory', 'limits.cpu', 'limits.memory'].map((a) =>
     satir('RESFILE', T, 'access-gateway', a, 'OKUNAMADI', '-'),
   ),
-  satir('RESERR', T, 'dosya', '1 satirda girintide TAB var (YAML gecersiz, helm de okuyamaz) - su ust anahtarlardaki degerler OKUNAMADI: access-gateway'),
+  satir(
+    'RESERR',
+    T,
+    'dosya',
+    '1 satirda girintide TAB var (YAML gecersiz, helm de okuyamaz) - su ust anahtarlardaki degerler OKUNAMADI: access-gateway',
+  ),
 ];
 const CANLI_COKTU = [
-  satir('RESERR', T, 'canli-oku', 'yardimci hatasi: JSONDecodeError: Expecting value: line 1 column 12 (char 11)'),
+  satir(
+    'RESERR',
+    T,
+    'canli-oku',
+    'yardimci hatasi: JSONDecodeError: Expecting value: line 1 column 12 (char 11)',
+  ),
 ];
 const DOSYA_OK = [
   satir('RESFILE', T, 'access-gateway', 'requests.cpu', '500m', '44'),
@@ -85,7 +118,15 @@ const sonuc = (lines: string[]) => ({
 
 function ac(lines: string[]) {
   m.result.mockResolvedValue(sonuc(lines));
-  render(<ResourcesModal tenant={WYDEN} tenantLabel="QA" kind="Deployment" name="wydenapp-access-gateway" onClose={() => {}} />);
+  render(
+    <ResourcesModal
+      tenant={WYDEN}
+      tenantLabel="QA"
+      kind="Deployment"
+      name="wydenapp-access-gateway"
+      onClose={() => {}}
+    />,
+  );
 }
 
 beforeEach(() => {
@@ -109,7 +150,8 @@ describe('Crypto Hub CPU/bellek: ölçülemedi ≠ chart varsayılanı / yok', (
   it('O2 girintide TAB: OKUNAMADI satırları "ölçülemedi"', async () => {
     ac([...BAS, ...CANLI, ...TABLI, SON('kismi', 'OLCULEMEDI')]);
     await screen.findByTestId('dosya-limits.cpu');
-    for (const a of ALANLAR) expect(screen.getByTestId(`dosya-${a}`)).toHaveTextContent('ölçülemedi');
+    for (const a of ALANLAR)
+      expect(screen.getByTestId(`dosya-${a}`)).toHaveTextContent('ölçülemedi');
   });
 
   it('O3 TAB başka bileşende ve bu bileşenin satırı yok: yine "ölçülemedi" (dosyada yok DEĞİL)', async () => {
@@ -132,7 +174,8 @@ describe('Crypto Hub CPU/bellek: ölçülemedi ≠ chart varsayılanı / yok', (
   it('O4 canlı yardımcısı düştü: canlı "ölçülemedi", "canlıda bu kap yok" DEĞİL', async () => {
     ac([...BAS, ...CANLI_COKTU, ...DOSYA_OK, SON('kismi', 'OLCULEMEDI')]);
     await screen.findByTestId('canli-limits.memory');
-    for (const a of ALANLAR) expect(screen.getByTestId(`canli-${a}`)).toHaveTextContent('ölçülemedi');
+    for (const a of ALANLAR)
+      expect(screen.getByTestId(`canli-${a}`)).toHaveTextContent('ölçülemedi');
     expect(screen.queryByText(/canlıda bu kap yok/)).toBeNull();
     expect(screen.getByText(/canlıda bu kap ölçülemedi/)).toBeInTheDocument();
   });
@@ -143,21 +186,55 @@ describe('Crypto Hub CPU/bellek: ölçülemedi ≠ chart varsayılanı / yok', (
       ...BAS,
       ...CANLI,
       ...DOSYA_OK,
-      satir('RESAFFECT', T, 'StatefulSet', 'wydenapp-aeron-cluster', 'RollingUpdate', '3', 'evet', 'bekleyen'),
+      satir(
+        'RESAFFECT',
+        T,
+        'StatefulSet',
+        'wydenapp-aeron-cluster',
+        'RollingUpdate',
+        '3',
+        'evet',
+        'bekleyen',
+      ),
       satir('RESPLAN', T, 'ok', '-', H('a'), H('d'), H('e'), 'abcdef0123456789', 'evet', H('f')),
       satir('RESEND', T, 'resources_plan', 'ok', '-'),
     ];
     const uyg = [
       satir('RESSTEP', T, 'upgrade', 'ok', 'gecti'),
       satir('RESSTEP', T, 'kume_geri_alma', 'olculemedi', 'helm history okunamadi'),
-      satir('RESSTEP', T, 'es_yazim', 'atlandi', 'wyden_qa_h3: es dosya onizlemeden sonra degisti - YAZILMADI'),
+      satir(
+        'RESSTEP',
+        T,
+        'es_yazim',
+        'atlandi',
+        'wyden_qa_h3: es dosya onizlemeden sonra degisti - YAZILMADI',
+      ),
       satir('RESEND', T, 'resources_apply', 'uygulandi_sorunlu', 'GOZLEM,ES_YAZILAMADI'),
     ];
     m.result
       .mockResolvedValueOnce(sonuc([...BAS, ...CANLI, ...DOSYA_OK, SON('ok', '-')]))
-      .mockResolvedValueOnce({ ...sonuc(plan), result: { ...sonuc(plan).result, resources: { ...parseResourceLines(plan), planJetonu: jeton, planBitis: Date.now() + 60000, planJetonDurumu: 'ok' } } })
+      .mockResolvedValueOnce({
+        ...sonuc(plan),
+        result: {
+          ...sonuc(plan).result,
+          resources: {
+            ...parseResourceLines(plan),
+            planJetonu: jeton,
+            planBitis: Date.now() + 60000,
+            planJetonDurumu: 'ok',
+          },
+        },
+      })
       .mockResolvedValueOnce(sonuc(uyg));
-    render(<ResourcesModal tenant={WYDEN} tenantLabel="QA" kind="Deployment" name="wydenapp-access-gateway" onClose={() => {}} />);
+    render(
+      <ResourcesModal
+        tenant={WYDEN}
+        tenantLabel="QA"
+        kind="Deployment"
+        name="wydenapp-access-gateway"
+        onClose={() => {}}
+      />,
+    );
     await screen.findByTestId('dosya-limits.memory');
     fireEvent.change(screen.getByLabelText('yeni limits.memory'), { target: { value: '3Gi' } });
     fireEvent.click(screen.getByRole('button', { name: 'Önizle' }));
@@ -169,15 +246,42 @@ describe('Crypto Hub CPU/bellek: ölçülemedi ≠ chart varsayılanı / yok', (
     fireEvent.click(screen.getByRole('button', { name: 'Onayla ve uygula' }));
     expect(await screen.findByTestId('sonuc-kod-ES_YAZILAMADI')).toHaveTextContent(/ayrıştı/);
     expect(screen.getByTestId('sonuc-kod-GOZLEM')).toBeInTheDocument();
-    expect(screen.getByText(/kume_geri_alma: helm history okunamadi/).closest('li')).toHaveTextContent('ölçülemedi');
+    expect(
+      screen.getByText(/kume_geri_alma: helm history okunamadi/).closest('li'),
+    ).toHaveTextContent('ölçülemedi');
   });
 
   it('O5b süresi dolmuş plan: jeton yok, "süresi doldu" yazılır, uygula kapalı', async () => {
-    const plan = [...BAS, ...CANLI, ...DOSYA_OK, satir('RESPLAN', T, 'ok', '-', H('a'), H('d'), H('e'), '-', 'hayir', H('f')), satir('RESEND', T, 'resources_plan', 'ok', '-')];
+    const plan = [
+      ...BAS,
+      ...CANLI,
+      ...DOSYA_OK,
+      satir('RESPLAN', T, 'ok', '-', H('a'), H('d'), H('e'), '-', 'hayir', H('f')),
+      satir('RESEND', T, 'resources_plan', 'ok', '-'),
+    ];
     m.result
       .mockResolvedValueOnce(sonuc([...BAS, ...CANLI, ...DOSYA_OK, SON('ok', '-')]))
-      .mockResolvedValueOnce({ ...sonuc(plan), result: { ...sonuc(plan).result, resources: { ...parseResourceLines(plan), planJetonu: null, planBitis: null, planJetonDurumu: 'suresi_doldu' } } });
-    render(<ResourcesModal tenant={WYDEN} tenantLabel="QA" kind="Deployment" name="wydenapp-access-gateway" onClose={() => {}} />);
+      .mockResolvedValueOnce({
+        ...sonuc(plan),
+        result: {
+          ...sonuc(plan).result,
+          resources: {
+            ...parseResourceLines(plan),
+            planJetonu: null,
+            planBitis: null,
+            planJetonDurumu: 'suresi_doldu',
+          },
+        },
+      });
+    render(
+      <ResourcesModal
+        tenant={WYDEN}
+        tenantLabel="QA"
+        kind="Deployment"
+        name="wydenapp-access-gateway"
+        onClose={() => {}}
+      />,
+    );
     await screen.findByTestId('dosya-limits.memory');
     fireEvent.change(screen.getByLabelText('yeni limits.memory'), { target: { value: '3Gi' } });
     fireEvent.click(screen.getByRole('button', { name: 'Önizle' }));
