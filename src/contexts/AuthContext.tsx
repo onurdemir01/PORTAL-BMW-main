@@ -1,7 +1,15 @@
-import React, { createContext, useState, useEffect, useCallback, useRef, useContext, useMemo } from "react";
-import { User } from "@/types";
-import { pageVisibilityApi, visibilityApi } from "@/api/adminApi";
-import { fetchSessionWithRetry } from "./sessionRestore";
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useContext,
+  useMemo,
+} from 'react';
+import { User } from '@/types';
+import { pageVisibilityApi, visibilityApi } from '@/api/adminApi';
+import { fetchSessionWithRetry } from './sessionRestore';
 import {
   kullaniciEtkinligiBildir,
   kullaniciEtkinligiSifirla,
@@ -9,9 +17,15 @@ import {
   oturumBittiAbone,
   oturumDurumunuBildir,
   type OturumBitisSebebi,
-} from "@/api/sessionGuard";
-import { bitisSebebi, oturumSaatiOlustur, tarayiciKanali, uyariHesapla, type OturumOzeti } from "./sessionClock";
-import ReloginOverlay from "@/components/ReloginOverlay";
+} from '@/api/sessionGuard';
+import {
+  bitisSebebi,
+  oturumSaatiOlustur,
+  tarayiciKanali,
+  uyariHesapla,
+  type OturumOzeti,
+} from './sessionClock';
+import ReloginOverlay from '@/components/ReloginOverlay';
 
 interface AuthContextType {
   user: User | null;
@@ -58,7 +72,7 @@ export const AuthContext = createContext<AuthContextType>({} as AuthContextType)
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
 
@@ -70,20 +84,20 @@ async function girisYanitiOku(res: Response): Promise<any> {
   } catch {
     throw new Error(
       res.status >= 500
-        ? "Portal şu an güncelleniyor ya da yanıt vermiyor. Birkaç saniye sonra tekrar deneyin."
-        : "Sunucudan beklenmeyen yanıt alındı. Lütfen tekrar deneyin.",
+        ? 'Portal şu an güncelleniyor ya da yanıt vermiyor. Birkaç saniye sonra tekrar deneyin.'
+        : 'Sunucudan beklenmeyen yanıt alındı. Lütfen tekrar deneyin.',
     );
   }
 }
 
 function kullaniciCikar(d: any): User {
   return {
-    username:    d.username,
-    role:        d.role,
+    username: d.username,
+    role: d.role,
     displayName: d.displayName || d.username,
-    mail:        d.mail || "",
-    photoUrl:    d.photoUrl || null,
-    authSource:  d.authSource || "local",
+    mail: d.mail || '',
+    photoUrl: d.photoUrl || null,
+    authSource: d.authSource || 'local',
   };
 }
 
@@ -91,7 +105,15 @@ function kullaniciCikar(d: any): User {
 // touchstart idi: kaydirarak okuyan ya da baska sekmeden donen kullanici "bosta" sayiliyordu.
 // `focus` YALNIZCA pencerenin kendisi icin sayilir (asagida): programatik odak — acilan /
 // kapanan pencere, autofocus — kullanici girdisi degildir.
-const ETKINLIK_OLAYLARI = ["pointerdown", "keydown", "wheel", "scroll", "touchstart", "mousemove", "focus"];
+const ETKINLIK_OLAYLARI = [
+  'pointerdown',
+  'keydown',
+  'wheel',
+  'scroll',
+  'touchstart',
+  'mousemove',
+  'focus',
+];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -136,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ayrica gitmez. Istemci bunun DISINDA hicbir kosulda kendi basina logout CAGIRMAZ.
   const logout = useCallback(async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch {
       // ignore network errors on logout
     }
@@ -183,7 +205,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
   // Dönüş: harita GERÇEKTEN yüklendi mi (401/503/motor-hatası → false).
   const refreshVisibility = useCallback((): Promise<boolean> => {
-    return visibilityApi.getResolved()
+    return visibilityApi
+      .getResolved()
       .then(({ version, visibility }) => {
         visibilityVersion.current = version;
         setVisibilityMap(visibility);
@@ -206,10 +229,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (async () => {
       const data = await fetchSessionWithRetry({
         cancelled: () => cancelled,
-        onRetry: (attempt) => { if (!cancelled) setRestoreAttempt(attempt); },
+        onRetry: (attempt) => {
+          if (!cancelled) setRestoreAttempt(attempt);
+        },
         onGiveUp: (attempts) =>
-          console.warn(`[Auth] /api/auth/me ${attempts} denemede yanit vermedi — ` +
-            "sunucu erisilemiyor olabilir; oturum acilmamis sayildi."),
+          console.warn(
+            `[Auth] /api/auth/me ${attempts} denemede yanit vermedi — ` +
+              'sunucu erisilemiyor olabilir; oturum acilmamis sayildi.',
+          ),
       });
       if (cancelled) return;
       if (data?.ok && data.user) {
@@ -219,7 +246,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     })();
 
-    pageVisibilityApi.get()
+    pageVisibilityApi
+      .get()
       .then(setPageVisibility)
       .catch(() => {})
       .finally(() => setPageVisibilityLoaded(true));
@@ -228,7 +256,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     void refreshVisibility();
 
     // Unmount sonrasi setState'i onler (StrictMode cift-mount dahil).
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refreshVisibility, saat]);
 
   // İlk yüklemede harita gelmezse BİR kez daha dener; o da başarısızsa `visibilityFailed`
@@ -260,44 +290,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 2026-10-02 (Faz B): kullanici giris ekranina ATILMAZ; uygulama yerinde kalir ve
   // ustte yeniden giris katmani acilir (AWS konsolu deseni) — acik form ve sihirbaz
   // durumu korunur. Sebep (bosta / mutlak) sunucunun basligindan gelir.
-  useEffect(() => oturumBittiAbone((sebep) => {
-    setUyariSurum(null);
-    // Sunucu sebebi yalnizca ILK istege soyler; diger sekmeler kendi saatinden cikarir.
-    setOturumDustu({ sebep: sebep ?? bitisSebebi(saat.durum(), Date.now()) });
-  }), [saat]);
+  useEffect(
+    () =>
+      oturumBittiAbone((sebep) => {
+        setUyariSurum(null);
+        // Sunucu sebebi yalnizca ILK istege soyler; diger sekmeler kendi saatinden cikarir.
+        setOturumDustu({ sebep: sebep ?? bitisSebebi(saat.durum(), Date.now()) });
+      }),
+    [saat],
+  );
 
   // Diger sekmeden cikis: bu sekme de giris ekranina duser (sunucuya ayrica gitmez).
-  useEffect(() => saat.cikisAbone(() => {
-    saat.sifirla();
-    setOturumDustu(null);
-    setUser(null);
-    setUyariSurum(null);
-  }), [saat]);
+  useEffect(
+    () =>
+      saat.cikisAbone(() => {
+        saat.sifirla();
+        setOturumDustu(null);
+        setUser(null);
+        setUyariSurum(null);
+      }),
+    [saat],
+  );
 
   // Diger sekmede giris yapildi: bu sekme giris ekranindaysa ya da yeniden giris
   // katmani aciksa oturumu sunucudan okuyup devam eder. Farkli kullanici ise TAM
   // yenileme — onceki kullanicinin ekran verisi yeni kullaniciya gorunmesin.
-  useEffect(() => saat.girisAbone(async (gelen) => {
-    const mevcut = userRef.current;
-    if (mevcut && !oturumDustuRef.current) return;
-    if (mevcut && gelen.toLowerCase() !== mevcut.username.toLowerCase()) {
-      window.location.reload();
-      return;
-    }
-    oturumDurumunuBildir(true);
-    try {
-      const r = await fetch("/api/auth/me");
-      const d = r.ok ? await r.json() : null;
-      if (!d?.ok || !d.user) return;
-      setOturumDustu(null);
-      setUser(kullaniciCikar(d.user));
-      void saat.tazele();
-      void refreshVisibility();
-    } catch {
-      /* ag hatasi: katman acik kalir, kullanici kendisi girer */
-    }
-  }), [saat]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  useEffect(
+    () =>
+      saat.girisAbone(async (gelen) => {
+        const mevcut = userRef.current;
+        if (mevcut && !oturumDustuRef.current) return;
+        if (mevcut && gelen.toLowerCase() !== mevcut.username.toLowerCase()) {
+          window.location.reload();
+          return;
+        }
+        oturumDurumunuBildir(true);
+        try {
+          const r = await fetch('/api/auth/me');
+          const d = r.ok ? await r.json() : null;
+          if (!d?.ok || !d.user) return;
+          setOturumDustu(null);
+          setUser(kullaniciCikar(d.user));
+          void saat.tazele();
+          void refreshVisibility();
+        } catch {
+          /* ag hatasi: katman acik kalir, kullanici kendisi girer */
+        }
+      }),
+    [saat, refreshVisibility],
+  );
 
   // Kapi "oturum VARDI ve OLDU" ayrimini yapabilsin diye istemcinin inancini
   // bildirir. Giris ekranindaki 401 bitmis bir oturum DEGILDIR; orada kapi
@@ -318,7 +359,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user) return;
     const id = window.setInterval(() => {
-      visibilityApi.getVersion()
+      if (typeof document !== 'undefined' && document.hidden) return;
+      visibilityApi
+        .getVersion()
         .then(({ version, unauthorized }) => {
           // Karar YALNIZCA sessionGuard'in (imzali 401). Eskiden burada ciplak 401
           // kullaniciyi dusuruyordu — kapinin "yalnizca imzali 401" kuralini atlayan
@@ -333,29 +376,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Tek element (page/tab/button/...) görünür mü? Registry'de OLMAYAN key → varsayılan
   // görünür (kayıtsız öğeyi yanlışlıkla gizlememek için — sunucu tarafı da aynı davranır).
-  const canSee = useCallback((elementKey: string): boolean => {
-    return elementKey in visibilityMap ? visibilityMap[elementKey] : true;
-  }, [visibilityMap]);
+  const canSee = useCallback(
+    (elementKey: string): boolean => {
+      return elementKey in visibilityMap ? visibilityMap[elementKey] : true;
+    },
+    [visibilityMap],
+  );
 
   // Geriye-uyumlu sayfa kontrolü — element motorunun üzerine kurulu. "Admin" sayfası her
   // zaman yalnızca Admin rolüne (motor da aynı sonucu verir; güvenlik için burada da sabit).
-  const canViewPage = useCallback((pageId: string): boolean => {
-    if (pageId === "Admin") return user?.role === "Admin";
-    return canSee(pageId);
-  }, [canSee, user]);
+  const canViewPage = useCallback(
+    (pageId: string): boolean => {
+      if (pageId === 'Admin') return user?.role === 'Admin';
+      return canSee(pageId);
+    },
+    [canSee, user],
+  );
 
   const girisIstegi = async (username: string, password: string, remember: boolean) => {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username.trim(), password, remember }),
     });
     const data = await girisYanitiOku(res);
     if (!data.ok) {
       // Sunucu bekleme suresi verdiyse (kullanici basina geri cekilme / IP siniri) giris
       // ekrani geri sayim gosterir.
-      const e = new Error(data.error || "Giriş başarısız") as Error & { retryAfter?: number; code?: string };
-      const ra = Number(data.retryAfter ?? res.headers.get("Retry-After"));
+      const e = new Error(data.error || 'Giriş başarısız') as Error & {
+        retryAfter?: number;
+        code?: string;
+      };
+      const ra = Number(data.retryAfter ?? res.headers.get('Retry-After'));
       if (ra > 0) e.retryAfter = ra;
       if (data.code) e.code = data.code;
       throw e;
@@ -372,7 +424,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (Number(data.closedOthers) > 0) {
       setGirisNotu(
         `Eşzamanlı oturum sınırı nedeniyle en eski ${data.closedOthers} oturumunuz kapatıldı. ` +
-          "Tanımadığınız bir giriş olduysa şifrenizi değiştirin.",
+          'Tanımadığınız bir giriş olduysa şifrenizi değiştirin.',
       );
     }
     setOturumDustu(null);
@@ -409,9 +461,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // baska bir sekme uzattiysa yeni bitisler gelir ve uyari kendiliginden kapanir.
   const [saatDurumu, setSaatDurumu] = useState(() => saat.durum());
   useEffect(() => saat.abone(setSaatDurumu), [saat]);
-  const uyariBilgisi = useMemo(() => (saatDurumu.bilinen ? uyariHesapla(saatDurumu) : null), [saatDurumu]);
+  const uyariBilgisi = useMemo(
+    () => (saatDurumu.bilinen ? uyariHesapla(saatDurumu) : null),
+    [saatDurumu],
+  );
   const timeoutExtendable = uyariBilgisi?.uzatilabilir ?? true;
-  const showTimeoutModal = !!user && !oturumDustu && !!uyariBilgisi && uyariSurum === saatDurumu.surum;
+  const showTimeoutModal =
+    !!user && !oturumDustu && !!uyariBilgisi && uyariSurum === saatDurumu.surum;
   useEffect(() => {
     if (!user || oturumDustu || !uyariBilgisi) return;
     const { bitis, uyariAni } = uyariBilgisi;
@@ -452,19 +508,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Programatik odak (acilan/kapanan pencere, autofocus) kullanici girdisi degildir;
       // yalnizca PENCERENIN odagi geri almasi (baska uygulamadan donus) sayilir. Bir OGENIN
       // odaklanmasinda hedef bir DOM dugumudur; pencerenin odaklanmasinda degildir.
-      if (e.type === "focus" && e.target instanceof Node) return;
+      if (e.type === 'focus' && e.target instanceof Node) return;
       etkin();
     };
     const gorunurluk = () => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== 'visible') return;
       // Sekmeye donus: once saati esitle (baska sekme uzatmis olabilir), sonra etkinlik.
       void saat.tazele().then(etkin);
     };
-    ETKINLIK_OLAYLARI.forEach((e) => window.addEventListener(e, handle, { passive: true, capture: true }));
-    document.addEventListener("visibilitychange", gorunurluk);
+    ETKINLIK_OLAYLARI.forEach((e) =>
+      window.addEventListener(e, handle, { passive: true, capture: true }),
+    );
+    document.addEventListener('visibilitychange', gorunurluk);
     return () => {
       ETKINLIK_OLAYLARI.forEach((e) => window.removeEventListener(e, handle, { capture: true }));
-      document.removeEventListener("visibilitychange", gorunurluk);
+      document.removeEventListener('visibilitychange', gorunurluk);
     };
   }, [user, oturumDustu, saat]);
 
@@ -473,13 +531,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Sunucu (henuz) yanit vermiyor: buyuk olasilikla release. Oturum DB'de duruyor;
     // login ekranina DUSURMEDEN beklenir, sunucu gelince kaldigi yerden devam eder.
     return (
-      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: 'var(--bg-base)' }}>
-        <div className="max-w-md w-full rounded-2xl border px-6 py-5 text-center" style={{ borderColor: 'var(--border-subtle, #ddd)', background: 'var(--bg-surface, #fff)' }}>
-          <div className="text-base font-semibold" style={{ color: 'var(--text-primary, #111)' }}>Portal şu an yanıt vermiyor</div>
+      <div
+        className="min-h-screen flex items-center justify-center px-6"
+        style={{ background: 'var(--bg-base)' }}
+      >
+        <div
+          className="max-w-md w-full rounded-2xl border px-6 py-5 text-center"
+          style={{
+            borderColor: 'var(--border-subtle, #ddd)',
+            background: 'var(--bg-surface, #fff)',
+          }}
+        >
+          <div className="text-base font-semibold" style={{ color: 'var(--text-primary, #111)' }}>
+            Portal şu an yanıt vermiyor
+          </div>
           <p className="mt-1.5 text-sm" style={{ color: 'var(--text-secondary, #444)' }}>
-            Büyük olasılıkla bir güncelleme yapılıyor. Oturumunuz korunuyor; bağlantı gelince kaldığınız yerden devam edeceksiniz.
+            Büyük olasılıkla bir güncelleme yapılıyor. Oturumunuz korunuyor; bağlantı gelince
+            kaldığınız yerden devam edeceksiniz.
           </p>
-          <p className="mt-2 text-xs tabular-nums" style={{ color: 'var(--text-muted, #777)' }}>yeniden deneniyor… ({restoreAttempt}. deneme)</p>
+          <p className="mt-2 text-xs tabular-nums" style={{ color: 'var(--text-muted, #777)' }}>
+            yeniden deneniyor… ({restoreAttempt}. deneme)
+          </p>
         </div>
       </div>
     );
@@ -488,9 +560,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider
       value={{
-        user, isAuthenticated: !!user, login, logout, showTimeoutModal, countdown, extendSession,
-        dismissTimeoutModal, timeoutExtendable, extendFailed, girisNotu, girisNotunuTemizle,
-        pageVisibility, pageVisibilityLoaded, canViewPage, canSee, visibilityReady, visibilityFailed, refreshVisibility,
+        user,
+        isAuthenticated: !!user,
+        login,
+        logout,
+        showTimeoutModal,
+        countdown,
+        extendSession,
+        dismissTimeoutModal,
+        timeoutExtendable,
+        extendFailed,
+        girisNotu,
+        girisNotunuTemizle,
+        pageVisibility,
+        pageVisibilityLoaded,
+        canViewPage,
+        canSee,
+        visibilityReady,
+        visibilityFailed,
+        refreshVisibility,
       }}
     >
       {children}

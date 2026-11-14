@@ -21,6 +21,7 @@
     "prebuild": "node scripts/arac-kontrol.cjs",
     "build": "vite build",
     "paket": "node scripts/paket.cjs",
+    "sbom": "node scripts/sbom-uretim.cjs",
     "guvenlik": "node scripts/guvenlik-denetim.cjs",
     "preview": "vite preview",
     "check:server": "node scripts/check-server.cjs",

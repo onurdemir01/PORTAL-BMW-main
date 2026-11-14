@@ -28,7 +28,9 @@ const api = vi.hoisted(() => ({
 vi.mock('@/api/ansibleApi', () => ({ ansibleApi: api }));
 // Pencere hatalari toast olarak cikar (FieldOverridesModal: kirmizi kutu gorunmuyordu).
 const toastHata = vi.hoisted(() => vi.fn());
-vi.mock('@/hooks/useToast', () => ({ toast: { error: toastHata, success: vi.fn(), info: vi.fn() } }));
+vi.mock('@/hooks/useToast', () => ({
+  toast: { error: toastHata, success: vi.fn(), info: vi.fn() },
+}));
 import FieldOverridesModal from '../FieldOverridesModal';
 import { SsErisimBolumu, ssErisimModu, grupEtiketi } from '../SsErisimBolumu';
 
@@ -45,12 +47,20 @@ const SS = {
   accessGroups: [] as string[],
 };
 
-function Kontrollu(props: { ilk?: string[]; search?: Parameters<typeof SsErisimBolumu>[0]['search'] }) {
+function Kontrollu(props: {
+  ilk?: string[];
+  search?: Parameters<typeof SsErisimBolumu>[0]['search'];
+}) {
   const React = require('react') as typeof import('react');
   const [v, setV] = React.useState({ mode: 'ekipler' as const, groups: props.ilk || [] });
   return (
     <>
-      <SsErisimBolumu mode={v.mode} groups={v.groups} onChange={setV as never} search={props.search} />
+      <SsErisimBolumu
+        mode={v.mode}
+        groups={v.groups}
+        onChange={setV as never}
+        search={props.search}
+      />
       <output data-testid="durum">{JSON.stringify(v)}</output>
     </>
   );
@@ -61,13 +71,22 @@ describe('Self Service erişimi', () => {
     Object.values(api).forEach((f) => f.mockReset());
     toastHata.mockReset();
     api.choiceSources.mockResolvedValue({ ok: true, sources: [] });
-    api.surveySpecAdmin.mockResolvedValue({ ok: true, fields: [], surveyEnabled: true, launchOptions: null, askVariables: false });
+    api.surveySpecAdmin.mockResolvedValue({
+      ok: true,
+      fields: [],
+      surveyEnabled: true,
+      launchOptions: null,
+      askVariables: false,
+    });
     api.getCustomization.mockResolvedValue({
       ok: true,
       customization: { fieldOverrides: [], rawExtraVars: '', launchOptionOverrides: {} },
     });
     api.saveCustomization.mockResolvedValue({ ok: true });
-    api.saveSsAccess.mockResolvedValue({ ok: true, item: { ...SS, enabled: true, accessMode: 'herkes' } });
+    api.saveSsAccess.mockResolvedValue({
+      ok: true,
+      item: { ...SS, enabled: true, accessMode: 'herkes' },
+    });
   });
 
   it('SEU1 mod kuralı sunucuyla aynı', () => {
@@ -83,7 +102,11 @@ describe('Self Service erişimi', () => {
   it('SEU2 LDAP tan seçilen grup DN olarak eklenir, çip CN gösterir, çıkarılabilir', async () => {
     vi.useFakeTimers();
     try {
-      const search = vi.fn().mockResolvedValue({ groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }] });
+      const search = vi
+        .fn()
+        .mockResolvedValue({
+          groups: [{ dn: DN, cn: 'GT-Middleware', description: 'Middleware ekibi' }],
+        });
       render(<Kontrollu search={search} />);
       fireEvent.change(screen.getByLabelText('LDAP grubu ara'), { target: { value: 'GT-Mid' } });
       await act(async () => {
@@ -111,7 +134,9 @@ describe('Self Service erişimi', () => {
   it('SEU3 arama düşerse "grup yok" denmez; Enter ile elle eklenir', async () => {
     vi.useFakeTimers();
     try {
-      const search = vi.fn().mockResolvedValue({ groups: [], error: 'LDAP grup araması yapılamadı: timeout' });
+      const search = vi
+        .fn()
+        .mockResolvedValue({ groups: [], error: 'LDAP grup araması yapılamadı: timeout' });
       render(<Kontrollu search={search} />);
       const kutu = screen.getByLabelText('LDAP grubu ara');
       fireEvent.change(kutu, { target: { value: 'GT-Network' } });
@@ -121,11 +146,15 @@ describe('Self Service erişimi', () => {
       expect(screen.getByTestId('ss-erisim-sonuc').textContent).toContain('timeout');
       expect(screen.getByTestId('ss-erisim-sonuc').textContent).not.toContain('bulunamadı');
       fireEvent.keyDown(kutu, { key: 'Enter' });
-      expect(JSON.parse(screen.getByTestId('durum').textContent || '{}').groups).toEqual(['GT-Network']);
+      expect(JSON.parse(screen.getByTestId('durum').textContent || '{}').groups).toEqual([
+        'GT-Network',
+      ]);
       // Aynı grup (harf farkıyla da) ikinci kez eklenmez
       fireEvent.change(kutu, { target: { value: 'gt-network' } });
       fireEvent.keyDown(kutu, { key: 'Enter' });
-      expect(JSON.parse(screen.getByTestId('durum').textContent || '{}').groups).toEqual(['GT-Network']);
+      expect(JSON.parse(screen.getByTestId('durum').textContent || '{}').groups).toEqual([
+        'GT-Network',
+      ]);
     } finally {
       vi.useRealTimers();
     }
@@ -141,7 +170,14 @@ describe('Self Service erişimi', () => {
 
     const onClose2 = vi.fn();
     const haber = vi.fn();
-    render(<FieldOverridesModal item={SS} ssErisimItem={SS} onClose={onClose2} onErisimKaydedildi={haber} />);
+    render(
+      <FieldOverridesModal
+        item={SS}
+        ssErisimItem={SS}
+        onClose={onClose2}
+        onErisimKaydedildi={haber}
+      />,
+    );
     expect(screen.getByTestId('ss-erisim-kapali')).toBeChecked();
     fireEvent.click(screen.getByTestId('ss-erisim-herkes'));
     fireEvent.click(await screen.findByRole('button', { name: 'Kaydet' }));
@@ -156,7 +192,9 @@ describe('Self Service erişimi', () => {
     fireEvent.click(screen.getByTestId('ss-erisim-ekipler'));
     expect(screen.getByTestId('ss-erisim-ekip-yok')).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Kaydet' }));
-    await waitFor(() => expect(toastHata).toHaveBeenCalledWith(expect.stringMatching(/hiç ekip eklenmedi/), 8000));
+    await waitFor(() =>
+      expect(toastHata).toHaveBeenCalledWith(expect.stringMatching(/hiç ekip eklenmedi/), 8000),
+    );
     expect(api.saveCustomization).not.toHaveBeenCalled();
     expect(api.saveSsAccess).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -169,13 +207,21 @@ describe('Self Service erişimi', () => {
     fireEvent.click(screen.getByTestId('ss-erisim-herkes'));
     fireEvent.click(await screen.findByRole('button', { name: 'Kaydet' }));
     await waitFor(() =>
-      expect(toastHata).toHaveBeenCalledWith('Alan ayarları kaydedildi, erişim kaydedilemedi: Kaydedilemedi: invalid column', 8000),
+      expect(toastHata).toHaveBeenCalledWith(
+        'Alan ayarları kaydedildi, erişim kaydedilemedi: Kaydedilemedi: invalid column',
+        8000,
+      ),
     );
     expect(onClose).not.toHaveBeenCalled();
   });
 
   it('SEU7 Self Service dışı çağıran bölümü görmez', async () => {
-    render(<FieldOverridesModal item={{ awxServerId: 2, awxTemplateId: 9, title: 'ScaleX' }} onClose={vi.fn()} />);
+    render(
+      <FieldOverridesModal
+        item={{ awxServerId: 2, awxTemplateId: 9, title: 'ScaleX' }}
+        onClose={vi.fn()}
+      />,
+    );
     await screen.findByRole('button', { name: 'Kaydet' });
     expect(screen.queryByTestId('ss-erisim')).toBeNull();
   });
@@ -185,9 +231,13 @@ describe('Self Service erişimi', () => {
     const ss = readFileSync(join(kok, 'SelfServicePage.tsx'), 'utf8');
     expect(ss).toMatch(/saveSsItem\(\{ \.\.\.draft, enabled: false,/);
     expect(ss).not.toMatch(/saveSsItem\(\{ \.\.\.draft, enabled: true/);
-    expect(ss.match(/<FieldOverridesModal item=\{fieldsItem\} ssErisimItem=\{fieldsItem\}/g)?.length).toBe(2);
+    expect(
+      ss.match(/<FieldOverridesModal\s+item=\{fieldsItem\}\s+ssErisimItem=\{fieldsItem\}/g)?.length,
+    ).toBe(2);
     const ap = readFileSync(join(kok, 'ansible', 'AnsiblePage.tsx'), 'utf8');
-    expect(ap).toMatch(/<FieldOverridesModal item=\{fieldsReviewItem\} ssErisimItem=\{fieldsReviewItem\}/);
+    expect(ap).toMatch(
+      /<FieldOverridesModal item=\{fieldsReviewItem\} ssErisimItem=\{fieldsReviewItem\}/,
+    );
     expect(ap).toMatch(/enabled: false,/);
   });
 });

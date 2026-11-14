@@ -1,13 +1,13 @@
 // src/api/adminApi.ts
-import { safeJson, okJson as katiJson } from "./http";
+import { safeJson, okJson as katiJson } from './http';
 
-const BASE_LOGX = "/api/logx";
+const BASE_LOGX = '/api/logx';
 
-function headers(role = "Admin"): Record<string, string> {
+function headers(role = 'Admin'): Record<string, string> {
   return {
-    "Content-Type": "application/json",
-    "x-portal-user": "admin",
-    "x-portal-role": role,
+    'Content-Type': 'application/json',
+    'x-portal-user': 'admin',
+    'x-portal-role': role,
   };
 }
 
@@ -17,7 +17,7 @@ const json = <T>(res: Response): Promise<T> => katiJson<T>(res);
 
 // Hata govdesinden kullaniciya gosterilecek metin (`message` once, sonra `error`).
 function hataMetni(d: unknown, res: Response): string {
-  const g = (d && typeof d === "object" ? d : {}) as { error?: string; message?: string };
+  const g = (d && typeof d === 'object' ? d : {}) as { error?: string; message?: string };
   return g.message || g.error || `Sunucu hatası (HTTP ${res.status}).`;
 }
 
@@ -30,7 +30,7 @@ const PV_TTL = 5 * 60_000;
 export const pageVisibilityApi = {
   async get(): Promise<Record<string, string[]>> {
     if (_pvCache && Date.now() - _pvCacheAt < PV_TTL) return _pvCache;
-    const res = await fetch("/api/visibility/pages");
+    const res = await fetch('/api/visibility/pages');
     const d: { ok: boolean; visibility: Record<string, string[]> } = await safeJson(res);
     _pvCache = d.visibility ?? {};
     _pvCacheAt = Date.now();
@@ -38,9 +38,9 @@ export const pageVisibilityApi = {
   },
 
   async update(visibility: Record<string, string[]>): Promise<void> {
-    const res = await fetch("/api/visibility/pages", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+    const res = await fetch('/api/visibility/pages', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ visibility }),
     });
     if (!res.ok) {
@@ -55,6 +55,8 @@ export const pageVisibilityApi = {
 // Kullanıcıya özel çözülmüş element→boolean haritası + versiyon. AuthContext bunu çeker;
 // `version`'ı poll'leyip değişince haritayı reload'suz tazeler (bkz. server/auth/visibility.cjs).
 
+let _versionInflight: Promise<{ version: number; unauthorized: boolean }> | null = null;
+
 export const visibilityApi = {
   // DİKKAT: burada `safeJson` DEĞİL `json` kullanılır — safeJson HTTP durumunu kontrol
   // etmez, yani 401/503 gövdesi de "başarılı" sayılırdı. Bu, AuthContext'in "harita
@@ -62,9 +64,14 @@ export const visibilityApi = {
   // Motor okunamadığında (`ok_engine === false`) da hata fırlatılır ki istemci
   // fail-closed davransın (sunucudaki requireVisible zaten öyle).
   async getResolved(): Promise<{ version: number; visibility: Record<string, boolean> }> {
-    const res = await fetch("/api/visibility/resolved");
-    const d = await json<{ ok: boolean; ok_engine?: boolean; version: number; visibility: Record<string, boolean> }>(res);
-    if (d.ok_engine === false) throw new Error("Görünürlük motoru şu an okunamıyor.");
+    const res = await fetch('/api/visibility/resolved');
+    const d = await json<{
+      ok: boolean;
+      ok_engine?: boolean;
+      version: number;
+      visibility: Record<string, boolean>;
+    }>(res);
+    if (d.ok_engine === false) throw new Error('Görünürlük motoru şu an okunamıyor.');
     return { version: d.version ?? 0, visibility: d.visibility ?? {} };
   },
 
@@ -81,17 +88,25 @@ export const visibilityApi = {
    * Artık 401 ayrı bir sonuç olarak döner. Kullanıcıyı düşürme kararı çağıranın DEĞİL,
    * `sessionGuard`ın (yalnızca imzalı 401; kapı kapanınca istek ağa hiç çıkmaz).
    */
-  async getVersion(): Promise<{ version: number; unauthorized: boolean }> {
-    const res = await fetch("/api/visibility/version");
-    if (res.status === 401) return { version: 0, unauthorized: true };
-    const d: { ok: boolean; version: number } = await safeJson(res);
-    return { version: d.version ?? 0, unauthorized: false };
+  getVersion(): Promise<{ version: number; unauthorized: boolean }> {
+    if (_versionInflight) return _versionInflight;
+    _versionInflight = (async () => {
+      try {
+        const res = await fetch('/api/visibility/version');
+        if (res.status === 401) return { version: 0, unauthorized: true };
+        const d: { ok: boolean; version: number } = await safeJson(res);
+        return { version: d.version ?? 0, unauthorized: false };
+      } finally {
+        _versionInflight = null;
+      }
+    })();
+    return _versionInflight;
   },
 
   // actions.md #19 (Bolum O.2) — ana menu grup YAPISI (DB-tabanli, eskiden Sidebar.tsx'te
   // sabit NAV_GROUPS idi). Admin-gated degil — herkes menuyu gormeli.
   async getNavGroups(): Promise<NavGroup[]> {
-    const res = await fetch("/api/visibility/nav-groups");
+    const res = await fetch('/api/visibility/nav-groups');
     const d: { ok: boolean; groups: NavGroup[] } = await safeJson(res);
     return d.groups ?? [];
   },
@@ -124,7 +139,7 @@ export interface PortalElement {
 export interface ElementRule {
   elementKey: string;
   // "email" (2026-09-26): LDAP kullanici adini bilmeden e-postayla yetki verebilmek icin.
-  principalType: "role" | "user" | "group" | "email";
+  principalType: 'role' | 'user' | 'group' | 'email';
   principalId: string;
   allow: boolean;
 }
@@ -139,17 +154,39 @@ async function okJson(res: Response) {
 
 // Denetim Erisimi (Admin, 2026-09-17): kullanici / AD grubu -> Denetim sekmeleri
 // E-POSTA DA OLABILIR (2026-10-01): Crypto Hub kurallari uretimde e-postayla giriliyor.
-export interface DenetimAccessGrant { principalType: 'user' | 'group' | 'email'; principalId: string; page: boolean; tabs: string[] }
+export interface DenetimAccessGrant {
+  principalType: 'user' | 'group' | 'email';
+  principalId: string;
+  page: boolean;
+  tabs: string[];
+}
 export const denetimAccessApi = {
   async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
-    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/denetim-access")) as never;
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = (await okJson(
+      await fetch('/api/visibility/denetim-access'),
+    )) as never;
     return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
   },
-  async set(body: { principalType: 'user' | 'group'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
-    await okJson(await fetch("/api/visibility/denetim-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  async set(body: {
+    principalType: 'user' | 'group';
+    principalId: string;
+    tabs: string[] | 'all';
+  }): Promise<void> {
+    await okJson(
+      await fetch('/api/visibility/denetim-access', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    );
   },
   async remove(principalType: 'user' | 'group', principalId: string): Promise<void> {
-    await okJson(await fetch(`/api/visibility/denetim-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+    await okJson(
+      await fetch(
+        `/api/visibility/denetim-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`,
+        { method: 'DELETE' },
+      ),
+    );
   },
 };
 
@@ -157,14 +194,31 @@ export const denetimAccessApi = {
 // Denetim'den farki sunucuda: secilmeyen sekmeye DENY yazilir (sekmeler varsayilan ACIK).
 export const nginxAccessApi = {
   async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
-    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/nginx-access")) as never;
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = (await okJson(
+      await fetch('/api/visibility/nginx-access'),
+    )) as never;
     return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
   },
-  async set(body: { principalType: 'user' | 'group'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
-    await okJson(await fetch("/api/visibility/nginx-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  async set(body: {
+    principalType: 'user' | 'group';
+    principalId: string;
+    tabs: string[] | 'all';
+  }): Promise<void> {
+    await okJson(
+      await fetch('/api/visibility/nginx-access', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    );
   },
   async remove(principalType: 'user' | 'group', principalId: string): Promise<void> {
-    await okJson(await fetch(`/api/visibility/nginx-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+    await okJson(
+      await fetch(
+        `/api/visibility/nginx-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`,
+        { method: 'DELETE' },
+      ),
+    );
   },
 };
 
@@ -172,68 +226,120 @@ export const nginxAccessApi = {
 // uygulama bazinda yetki. Nginx Hub panelinin AYNISI, "sekme" yerine "uygulama".
 export const cryptoAccessApi = {
   async list(): Promise<{ tabs: string[]; grants: DenetimAccessGrant[] }> {
-    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = await okJson(await fetch("/api/visibility/crypto-access")) as never;
+    const d: { ok: boolean; tabs: string[]; grants: DenetimAccessGrant[] } = (await okJson(
+      await fetch('/api/visibility/crypto-access'),
+    )) as never;
     return { tabs: d.tabs ?? [], grants: d.grants ?? [] };
   },
-  async set(body: { principalType: 'user' | 'group' | 'email'; principalId: string; tabs: string[] | 'all' }): Promise<void> {
-    await okJson(await fetch("/api/visibility/crypto-access", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+  async set(body: {
+    principalType: 'user' | 'group' | 'email';
+    principalId: string;
+    tabs: string[] | 'all';
+  }): Promise<void> {
+    await okJson(
+      await fetch('/api/visibility/crypto-access', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    );
   },
   async remove(principalType: 'user' | 'group' | 'email', principalId: string): Promise<void> {
-    await okJson(await fetch(`/api/visibility/crypto-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`, { method: "DELETE" }));
+    await okJson(
+      await fetch(
+        `/api/visibility/crypto-access?principalType=${principalType}&principalId=${encodeURIComponent(principalId)}`,
+        { method: 'DELETE' },
+      ),
+    );
   },
 };
 
 export const elementsApi = {
   async list(): Promise<{ elements: PortalElement[]; rules: ElementRule[] }> {
-    const res = await fetch("/api/visibility/elements");
-    const d: { ok: boolean; elements: PortalElement[]; rules: ElementRule[] } = await okJson(res) as never;
+    const res = await fetch('/api/visibility/elements');
+    const d: { ok: boolean; elements: PortalElement[]; rules: ElementRule[] } = (await okJson(
+      res,
+    )) as never;
     return { elements: d.elements ?? [], rules: d.rules ?? [] };
   },
   async create(el: Partial<PortalElement>): Promise<void> {
-    await okJson(await fetch("/api/visibility/elements", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(el),
-    }));
+    await okJson(
+      await fetch('/api/visibility/elements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(el),
+      }),
+    );
   },
   async update(key: string, el: Partial<PortalElement>): Promise<void> {
-    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(el),
-    }));
+    await okJson(
+      await fetch(`/api/visibility/elements/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(el),
+      }),
+    );
   },
   /** Sıkı öge: admin muafiyetini kaldırır — açık kural olmadan kimse göremez. */
   async setStrict(key: string, strict: boolean): Promise<void> {
-    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/strict`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ strict }),
-    }));
+    await okJson(
+      await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/strict`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strict }),
+      }),
+    );
   },
 
   async setEnabled(key: string, enabled: boolean): Promise<void> {
-    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/enabled`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }),
-    }));
+    await okJson(
+      await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/enabled`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      }),
+    );
   },
-  async setRules(key: string, rules: { principalType: "role" | "user" | "group" | "email"; principalId: string; allow: boolean }[]): Promise<void> {
-    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/rules`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rules }),
-    }));
+  async setRules(
+    key: string,
+    rules: {
+      principalType: 'role' | 'user' | 'group' | 'email';
+      principalId: string;
+      allow: boolean;
+    }[],
+  ): Promise<void> {
+    await okJson(
+      await fetch(`/api/visibility/elements/${encodeURIComponent(key)}/rules`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules }),
+      }),
+    );
   },
   async remove(key: string): Promise<void> {
-    await okJson(await fetch(`/api/visibility/elements/${encodeURIComponent(key)}`, { method: "DELETE" }));
+    await okJson(
+      await fetch(`/api/visibility/elements/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+    );
   },
 };
 
 // ── Role Overrides ────────────────────────────────────────────────────────────
 
 export interface RoleOverrideDetail {
-  username: string; role: string; sourceType: string; ldapRole: string | null;
-  isActive: boolean; createdBy: string | null; createdAt: string | null;
-  description: string; lastAppliedAt: string | null;
+  username: string;
+  role: string;
+  sourceType: string;
+  ldapRole: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  createdAt: string | null;
+  description: string;
+  lastAppliedAt: string | null;
 }
 
 export const roleApi = {
   async list(): Promise<Record<string, string>> {
-    const res = await fetch("/api/roles");
+    const res = await fetch('/api/roles');
     // KATI: okunamayan liste bos nesne donup "atama yok" diye gosterilmesin.
     const d: { ok: boolean; roles: Record<string, string> } = await katiJson(res);
     return d.roles ?? {};
@@ -241,16 +347,20 @@ export const roleApi = {
 
   // actions.md #14 — kaynak/aciklama/olusturan/son-uygulanma dahil tam satirlar.
   async detail(): Promise<RoleOverrideDetail[]> {
-    const res = await fetch("/api/roles/detail");
+    const res = await fetch('/api/roles/detail');
     const d: { ok: boolean; roles: RoleOverrideDetail[] } = await katiJson(res);
     return d.roles ?? [];
   },
 
   // sessionsRevoked: bu degisiklik sonrasi zorla sonlandirilan aktif oturum sayisi.
-  async set(username: string, role: "Admin" | "User", description?: string): Promise<{ sessionsRevoked: number }> {
+  async set(
+    username: string,
+    role: 'Admin' | 'User',
+    description?: string,
+  ): Promise<{ sessionsRevoked: number }> {
     const res = await fetch(`/api/roles/${encodeURIComponent(username)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role, description }),
     });
     if (!res.ok) {
@@ -262,7 +372,7 @@ export const roleApi = {
   },
 
   async remove(username: string): Promise<{ sessionsRevoked: number }> {
-    const res = await fetch(`/api/roles/${encodeURIComponent(username)}`, { method: "DELETE" });
+    const res = await fetch(`/api/roles/${encodeURIComponent(username)}`, { method: 'DELETE' });
     if (!res.ok) {
       const d = await safeJson(res).catch(() => ({}));
       throw new Error(hataMetni(d, res));
@@ -290,15 +400,21 @@ export interface AuditLog {
 }
 
 export const auditApi = {
-  async list(params?: { username?: string; targetHost?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLog[]> {
+  async list(params?: {
+    username?: string;
+    targetHost?: string;
+    action?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditLog[]> {
     const q = new URLSearchParams();
-    if (params?.username) q.set("username", params.username);
-    if (params?.targetHost) q.set("targetHost", params.targetHost);
-    if (params?.action) q.set("action", params.action);
-    if (params?.limit)  q.set("limit",  String(params.limit));
-    if (params?.offset) q.set("offset", String(params.offset));
+    if (params?.username) q.set('username', params.username);
+    if (params?.targetHost) q.set('targetHost', params.targetHost);
+    if (params?.action) q.set('action', params.action);
+    if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.offset) q.set('offset', String(params.offset));
 
-    const url = `${BASE_LOGX}/admin/audit${q.toString() ? "?" + q : ""}`;
+    const url = `${BASE_LOGX}/admin/audit${q.toString() ? '?' + q : ''}`;
     const res = await fetch(url, { headers: headers() });
     const d: { ok: boolean; logs?: AuditLog[] } = await json(res);
     return d.logs ?? [];

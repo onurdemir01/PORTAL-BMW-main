@@ -54,6 +54,7 @@ test('server/nginx-console/index: HTTP endpoints /hosts, /tree, /file, /compare,
       '@@END',
       '@@LOADED',
       '/usr/nginx/conf/nginx.conf',
+      ...(!extraUnused ? [`/usr/nginx/conf.d/${host}-local.conf`] : []),
       '@@END',
       '@@TREE',
       `${mainContent.length}\t2026-11-10T10:00:00Z\t${mainSha}\twww\t/usr/nginx/conf/nginx.conf`,
@@ -61,7 +62,9 @@ test('server/nginx-console/index: HTTP endpoints /hosts, /tree, /file, /compare,
         ? [
             `${unusedConf.length}\t2026-11-10T10:00:00Z\t${shaUnused}\twww\t/usr/nginx/conf.d/unused.conf`,
           ]
-        : []),
+        : [
+            `${unusedConf.length}\t2026-11-10T10:00:00Z\t${shaUnused}\twww\t/usr/nginx/conf.d/${host}-local.conf`,
+          ]),
       '@@END',
       `@@FILE /usr/nginx/conf/nginx.conf ${mainSha} ${mainContent.length}`,
       mainContent.trimEnd(),
@@ -72,7 +75,11 @@ test('server/nginx-console/index: HTTP endpoints /hosts, /tree, /file, /compare,
             unusedConf.trimEnd(),
             '@@END',
           ]
-        : []),
+        : [
+            `@@FILE /usr/nginx/conf.d/${host}-local.conf ${shaUnused} ${unusedConf.length}`,
+            unusedConf.trimEnd(),
+            '@@END',
+          ]),
       '@@CERT /usr/nginx/ssl/site.crt',
       'exists=1',
       'notAfter=Nov 10 10:00:00 2027 GMT',
@@ -122,6 +129,34 @@ test('server/nginx-console/index: HTTP endpoints /hosts, /tree, /file, /compare,
     '../inventory/mssql.cjs',
     {
       query: async (sqlText) => {
+        if (sqlText.includes('dbo.nginx_inventory')) {
+          return {
+            recordset: [
+              {
+                hostname: 'WEB01',
+                env: 'prod',
+                location: 'IST',
+                service: 'Portal',
+                services: 'Portal',
+                nginx_version: '1.24',
+                nginx_prefix: '/usr/nginx',
+                config_count: 2,
+                ip: '198.51.100.10',
+              },
+              {
+                hostname: 'WEB02',
+                env: 'prod',
+                location: 'IST',
+                service: 'Portal',
+                services: 'Portal',
+                nginx_version: '1.24',
+                nginx_prefix: '/usr/nginx',
+                config_count: 2,
+                ip: '198.51.100.11',
+              },
+            ],
+          };
+        }
         if (sqlText.includes('FROM dbo.Inventory') || sqlText.includes('Inventory')) {
           return {
             recordset: [
@@ -266,12 +301,39 @@ test('server/nginx-console/index: HTTP endpoints /hosts, /tree, /file, /compare,
     ).variants,
     2,
   );
-  assert.equal((await (await fetch(`${base}/api/nginx-console/certs`)).json()).certs.length, 2);
+  const fullCerts = await (await fetch(`${base}/api/nginx-console/certs`)).json();
+  assert.equal(fullCerts.certs.length, 2);
+  const pagedCerts = await (
+    await fetch(`${base}/api/nginx-console/certs?limit=1&offset=0&sort=daysLeft`)
+  ).json();
+  assert.equal(pagedCerts.certs.length, 1);
+  assert.equal(pagedCerts.totalCerts, 2);
+  assert.equal(pagedCerts.hasMore, true);
+  assert.equal(pagedCerts.summary.total, 2);
   assert.equal((await (await fetch(`${base}/api/nginx-console/ratelimit`)).json()).hosts.length, 1);
   const csvRes = await fetch(`${base}/api/nginx-console/ratelimit.csv`);
   assert.equal(csvRes.status, 200);
   assert.match(await csvRes.text(), /WEB01;api/);
-  assert.equal((await fetch(`${base}/api/nginx-console/drift`)).status, 200);
+  const fullDrift = await (await fetch(`${base}/api/nginx-console/drift`)).json();
+  assert.equal(fullDrift.ok, true);
+  assert.ok(fullDrift.totalGroups >= 1);
+  assert.equal(
+    fullDrift.groups[0].files.some((f) => f.status === 'local'),
+    true,
+  );
+  const filteredDrift = await (
+    await fetch(`${base}/api/nginx-console/drift?includeLocal=0&limit=1&offset=0`)
+  ).json();
+  assert.equal(filteredDrift.ok, true);
+  assert.ok(filteredDrift.totalGroups >= 1);
+  assert.ok(filteredDrift.groups.length <= 1);
+  assert.ok(filteredDrift.groups[0].counts.local >= 1);
+  for (const g of filteredDrift.groups) {
+    assert.equal(
+      (g.files || []).some((f) => f.status === 'local'),
+      false,
+    );
+  }
   const orp = await (await fetch(`${base}/api/nginx-console/orphans`)).json();
   assert.equal(orp.ok, true);
   assert.equal(orp.summary.unloaded, 1);

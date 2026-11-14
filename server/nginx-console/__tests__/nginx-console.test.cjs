@@ -180,7 +180,10 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
   // sekme kapisindan gecerek; davranisi admin-kapisi.test.cjs kosturarak dogrular)
   const nc = read('server/nginx-console/index.cjs');
   assert.match(nc, /router\.use\(adminKapisi\(\(\) => gorunurlukKapisi\)\);/);
-  assert.match(nc, /adminOkumaKapisi\(\{ okuma: ADMIN_DISI_OKUMA, mesaj: 'Nginx Hub yalnız Admin\.'/);
+  assert.match(
+    nc,
+    /adminOkumaKapisi\(\{\s*okuma: ADMIN_DISI_OKUMA,\s*mesaj: 'Nginx Hub yalnız Admin\.'/,
+  );
   const kapi = read('server/auth/admin-okuma-kapisi.cjs');
   assert.match(kapi, /if \(isAdmin\(req\)\) return next\(\);/);
   assert.match(kapi, /res\.status\(403\)\.json\(\{ ok: false, message: mesaj \}\)/);
@@ -554,12 +557,24 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
 test('GS13 ekran bos gorunumun SEBEBINI soyler ve kapsami gosterir', () => {
   const ui = gsNorm(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   assert.match(ui, /Hiçbir route bir iş yüküne eşlenemedi/, '"hepsi eslesmesiz" uyarisi yok');
-  assert.match(ui, /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/, 'bos gorunum sebebini soylemiyor');
+  assert.match(
+    ui,
+    /'Bu süzgeçlerle uygulama yok; '[\s\S]{0,20}toplam \{nf\(apps\.length\)\} uygulama var/,
+    'bos gorunum sebebini soylemiyor',
+  );
   assert.match(ui, /<Kapsam k=\{data\.coverage\} \/>/, 'kapsam paneli yok');
   // 2026-11-12: SPA kolonu kalkti; zayif kanit rozeti Uygulama hucresindeki SpaDurumRozeti'nde.
   // 2026-11-12: zayif kanit satirda degil, ayrinti panelinde (SPA kaniti satiri).
-  assert.match(ui, /a\.weakEvidence \? ' \(zayıf kanıt: route servis yerine ad eşleşmesiyle bağlandı\)'/, 'zayif kanit ayrinti panelinde yazmiyor');
-  assert.match(ui, /\{a\.spa !== 'evet' && \([\s\S]{0,200}?<SpaDurumRozeti a=\{a\} \/>/, 'SPA durum rozeti Uygulama hucresine baglanmiyor');
+  assert.match(
+    ui,
+    /a\.weakEvidence \? ' \(zayıf kanıt: route servis yerine ad eşleşmesiyle bağlandı\)'/,
+    'zayif kanit ayrinti panelinde yazmiyor',
+  );
+  assert.match(
+    ui,
+    /\{a\.spa !== 'evet' && \([\s\S]{0,200}?<SpaDurumRozeti a=\{a\} \/>/,
+    'SPA durum rozeti Uygulama hucresine baglanmiyor',
+  );
 });
 
 test('GS14 kisitli kosu OTEKI cluster lari kirmiziya boyamaz; hedeflenip sonuc vermeyen ise TARANAMADI', () => {
@@ -673,7 +688,10 @@ test('GS17 ekran: API hatasi "satir yok" gibi gorunmez; eksik taramada "kacirila
   // 2026-11-12: Kesif ozeti yerine ozet matrisi; eksik taramada sayilar NITELENIR.
   var_('eksikTarama={eksikTarama}', 'ozet matrisi eksik taramayi bilmiyor');
   const mat = gsNorm(read('src/components/nginx_console/SpaOzetMatrisi.tsx'));
-  assert.ok(mat.includes('Sayılar yalnız taranabilen kısımdan: {eksikTarama}.'), 'eksik taramada ozet nitelenmiyor');
+  assert.ok(
+    mat.includes('Sayılar yalnız taranabilen kısımdan: {eksikTarama}.'),
+    'eksik taramada ozet nitelenmiyor',
+  );
   var_("c.bucket !== 'guncel'", 'kapsam paneli ayrik kovaya gore listelemiyor');
 });
 
@@ -705,7 +723,12 @@ test('GS19-21 ekran: eski veri isareti kapsamdan; veri yokken "yok" denmez; hata
     'satir isareti yine global en yeni tarihle karsilastiriyor',
   );
   // veri yokken ozet matrisi hic cizilmez (satir yoksa null), tablo "Kesif verisi yok" der.
-  assert.ok(gsNorm(read('src/components/nginx_console/SpaOzetMatrisi.tsx')).includes('if (!satirlar.length) return null;'), 'veri yokken ozet sifirlarla ciziliyor');
+  assert.ok(
+    gsNorm(read('src/components/nginx_console/SpaOzetMatrisi.tsx')).includes(
+      'if (!satirlar.length) return null;',
+    ),
+    'veri yokken ozet sifirlarla ciziliyor',
+  );
   var_('Keşif verisi yok.', 'veri yok cumlesi yok');
   var_('{hata ? (', 'hata varken tablo "satir yok" diyor');
   var_('Veri okunamadı — sebep yukarıda.', 'tablo hata metni yok');
@@ -1006,7 +1029,14 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
     let m;
     // Secici, govdeden onceki son ';'ten sonrasidir (@import satiri ilk kurala yapismasin).
     while ((m = re.exec(css)))
-      if (m[1].split(';').pop().split(',').some((s) => s.trim() === sec)) l.push(m[2]);
+      if (
+        m[1]
+          .split(';')
+          .pop()
+          .split(',')
+          .some((s) => s.trim() === sec)
+      )
+        l.push(m[2]);
     return l;
   };
   const kural = (sec) => {
@@ -1021,7 +1051,8 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
   };
   const px = (v) => {
     const m = String(v || '').match(/^([\d.]+)(rem|px)$/);
-    if (m) return Number(m[1]) * (m[2] === 'rem' ? 16 : 1); return NaN;
+    if (m) return Number(m[1]) * (m[2] === 'rem' ? 16 : 1);
+    return NaN;
   };
 
   // YAPISKAN BASLIK + ILK KOLON, KAP SINIRI, KLAVYE ODAGI
@@ -1044,7 +1075,11 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
   assert.equal(oz(ik, 'flex-wrap'), 'wrap', 'ikinci satir sarmiyor: sigmayan rozet kaybolur');
   assert.equal(oz(ik, 'min-width'), 'min-content', 'genis tek rozet yan hucreye tasar');
   for (const yasak of ['overflow', 'overflow-x', 'text-overflow'])
-    assert.equal(oz(ik, yasak), null, `ikinci satir yine kirpiyor (${yasak}): rozet "..." arkasinda kalir`);
+    assert.equal(
+      oz(ik, yasak),
+      null,
+      `ikinci satir yine kirpiyor (${yasak}): rozet "..." arkasinda kalir`,
+    );
   const kisa = kural('.ng-spa-tablo .ng-kisa');
   assert.equal(oz(kisa, 'text-overflow'), 'ellipsis', 'duz metin kisalmiyor');
   assert.equal(oz(kisa, 'overflow'), 'hidden', 'duz metin kisalmiyor');
@@ -1052,7 +1087,11 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
   // ADRES: alan adi soneki kisalmaz; esneyen kolonun icerigi tabloyu genisletmez
   const son = kural('.ng-spa-tablo .ng-adres-son');
   assert.match(oz(son, 'flex') || '', /^0 0 /, 'alan adi soneki kisaliyor (flex-shrink 0 degil)');
-  assert.equal(oz(kural('.ng-spa-tablo .ng-adresler'), 'contain'), 'inline-size', 'adres kolonu tabloyu genisletir');
+  assert.equal(
+    oz(kural('.ng-spa-tablo .ng-adresler'), 'contain'),
+    'inline-size',
+    'adres kolonu tabloyu genisletir',
+  );
 
   // KONTRAST: ikincil metin her satir zemininde (iki tema) >= 4.5
   const tokenlar = (sec) => {
@@ -1120,7 +1159,10 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
     }
     for (const [ad, z] of Object.entries(ZEMINLER)) {
       const r = oran(renk(soluk[1], tok), renk(z, tok));
-      assert.ok(r >= 4.5, `${tema} tema SOLUK (namespace) / ${ad} zemin: kontrast ${r.toFixed(2)} < 4.5`);
+      assert.ok(
+        r >= 4.5,
+        `${tema} tema SOLUK (namespace) / ${ad} zemin: kontrast ${r.toFixed(2)} < 4.5`,
+      );
     }
   }
 });

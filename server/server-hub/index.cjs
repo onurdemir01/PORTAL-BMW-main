@@ -708,11 +708,8 @@ async function launch(req, keyName, templateName, extraVars, detail, hazir) {
   // YANLIS SABLON (2026-10-08 uretim olayi: server_hub_fix satirinda rollback sablonu vardi) ve
   // "Prompt on launch" kapali: AYNI iki kontrol, ama sablon TEK GET ile bir kez okunur (eskiden
   // findTemplate iki kez tum sablon listesini sayfa sayfa okuyordu).
-  require('../ansible/template-preflight.cjs').sablonKontrol(tpl, {
-    templateId,
-    key: keyName,
-    extraVars,
-  });
+  const preflight = require('../ansible/template-preflight.cjs');
+  preflight.sablonKontrol(tpl, { templateId, key: keyName, extraVars });
   const user = req.session?.user || {};
   // anketBellegi: survey_spec 2 dk hatirlanir (ayni sablon art arda baslatilinca ek GET yok).
   const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, {

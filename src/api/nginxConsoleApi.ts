@@ -467,11 +467,7 @@ export type NgSpaRpIstek =
  * ölçüm kaynağı olmayan tanım da var · ayrılamayan tanım da var · ortamın bir RP sunucusu taranmadı.
  */
 export type NgSpaRpIstekNeden =
-  | 'pencere'
-  | 'eslesmeyen-host'
-  | 'kaynak-yok'
-  | 'ayrilamaz'
-  | 'host-taranmadi';
+  'pencere' | 'eslesmeyen-host' | 'kaynak-yok' | 'ayrilamaz' | 'host-taranmadi';
 export type NgSpaTabloDurumu = 'var' | 'yok' | 'okunamadi';
 
 /** Internet RP sunucusu ve o günkü durumu. */
@@ -697,12 +693,22 @@ export interface NgSpaCoverage {
  * govdesi). Ekran bunu veri sanip `.filter`/`.map` uzerinde cokuyordu ya da "yok" diyordu; donus
  * ok=false + ne okunamadigi olur, ekran LoadError gosterir.
  */
-function listeli<T extends { ok: boolean; message?: string }>(alan: string, ne: string, nesne?: string) {
+function listeli<T extends { ok: boolean; message?: string }>(
+  alan: string,
+  ne: string,
+  nesne?: string,
+) {
   return (r: T): T => {
     const x = (r || {}) as unknown as Record<string, unknown>;
-    if (x.ok && Array.isArray(x[alan]) && (!nesne || (x[nesne] != null && typeof x[nesne] === 'object')))
+    if (
+      x.ok &&
+      Array.isArray(x[alan]) &&
+      (!nesne || (x[nesne] != null && typeof x[nesne] === 'object'))
+    )
       return r;
-    const message = x.ok ? `${ne} beklenen biçimde değil.` : String(x.message || `${ne} alınamadı.`);
+    const message = x.ok
+      ? `${ne} beklenen biçimde değil.`
+      : String(x.message || `${ne} alınamadı.`);
     return { ...(x as object), ok: false, [alan]: [], message } as unknown as T;
   };
 }
@@ -766,15 +772,32 @@ export const nginxConsoleApi = {
     fetch(
       `${BASE}/compare?path=${encodeURIComponent(path)}${hosts?.length ? `&hosts=${encodeURIComponent(hosts.join(','))}` : ''}`,
     ).then(safeJson),
-  certs: (host?: string): Promise<NcCertsResult> =>
-    fetch(`${BASE}/certs${host ? `?host=${encodeURIComponent(host)}` : ''}`)
+  certs: (
+    hostOrOpts?: string | { host?: string; limit?: number; offset?: number; sort?: 'daysLeft' },
+  ): Promise<NcCertsResult> => {
+    const opts = typeof hostOrOpts === 'string' ? { host: hostOrOpts } : hostOrOpts || {};
+    const u = new URLSearchParams();
+    if (opts.host) u.set('host', opts.host);
+    if (opts.limit != null) u.set('limit', String(opts.limit));
+    if (opts.offset != null) u.set('offset', String(opts.offset));
+    if (opts.sort) u.set('sort', opts.sort);
+    const qs = u.toString();
+    return fetch(`${BASE}/certs${qs ? '?' + qs : ''}`)
       .then(safeJson)
       .then(eskiGizliKaydet('certs'))
-      .then(listeli('certs', 'Sertifika listesi', 'summary')),
-  drift: (service?: string, env?: string): Promise<NcDriftResult> => {
+      .then(listeli('certs', 'Sertifika listesi', 'summary'));
+  },
+  drift: (
+    service?: string,
+    env?: string,
+    opts?: { includeLocal?: boolean; limit?: number; offset?: number },
+  ): Promise<NcDriftResult> => {
     const u = new URLSearchParams();
     if (service) u.set('service', service);
     if (env) u.set('env', env);
+    if (opts?.includeLocal === false) u.set('includeLocal', '0');
+    if (opts?.limit != null) u.set('limit', String(opts.limit));
+    if (opts?.offset != null) u.set('offset', String(opts.offset));
     const qs = u.toString();
     return fetch(`${BASE}/drift${qs ? '?' + qs : ''}`)
       .then(safeJson)
@@ -826,9 +849,7 @@ export const nginxConsoleApi = {
     Object.entries(q).forEach(([k, v]) => {
       if (v != null && v !== '') u.set(k, String(v));
     });
-    return fetch(`${BASE}/changes?${u.toString()}`)
-      .then(safeJson)
-      .then(eskiGizliKaydet('changes'));
+    return fetch(`${BASE}/changes?${u.toString()}`).then(safeJson).then(eskiGizliKaydet('changes'));
   },
   blob: (
     sha: string,
@@ -876,7 +897,14 @@ export interface NginxRateLimitHost {
    *  Hiçbiri EKSİK ile karıştırılmaz: eksik olan limit değil, ölçümdür.
    *  kapali = include bilerek yorumlu ve hiçbir estate zone'u yok (bulgu değil, seçim). */
   durum:
-    'standart' | 'farkli' | 'eksik' | 'kapali' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk';
+    | 'standart'
+    | 'farkli'
+    | 'eksik'
+    | 'kapali'
+    | 'bilinmiyor'
+    | 'kurulumyok'
+    | 'calismiyor'
+    | 'configbozuk';
   /** null = ölçülmedi */
   kurulu: boolean | null;
   /** null = ölçülmedi. false iken değerler DOSYADA yazandır, şu an uygulanmıyor. */

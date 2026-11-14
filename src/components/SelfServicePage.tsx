@@ -863,14 +863,14 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                 <p className="text-[12px] leading-relaxed text-emerald-900">
                   {ocoState.done?.kind === 'smart-first' ? (
                     <>
-                      Onayı <b>bugün, mesai içinde</b> verebilirsiniz; kesinti saatini beklemenize
-                      gerek yok. Onay verildiği anda iş {ocoState.done.runAtText} kesinti
-                      penceresine zamanlanır ve o saatte kendiliğinden çalışır. Onay pencere
-                      açıldıktan sonra gelirse ve pencere hâlâ açıksa iş hemen başlar.{' '}
-                      <b>Bu sayfayı kapatabilirsiniz</b> — Smart'ta birden fazla onaycı varsa hepsi
-                      onayladığında iş kendiliğinden başlar; onay için süre sınırı yok, en geç
-                      kesinti penceresinin sonuna kadar onaylanabilir. Durumu aşağıdaki kutudan ve
-                      "Taleplerim" panelinden izleyebilirsiniz.
+                      Onayı <b>bugün, mesai içinde</b> verebilirsiniz;{' '}
+                      <span>kesinti saatini beklemenize gerek yok.</span> Onay verildiği anda iş{' '}
+                      {ocoState.done.runAtText} kesinti penceresine zamanlanır ve o saatte
+                      kendiliğinden çalışır. Onay pencere açıldıktan sonra gelirse ve pencere hâlâ
+                      açıksa iş hemen başlar. <b>Bu sayfayı kapatabilirsiniz</b> — Smart'ta birden
+                      fazla onaycı varsa hepsi onayladığında iş kendiliğinden başlar; onay için süre
+                      sınırı yok, en geç kesinti penceresinin sonuna kadar onaylanabilir. Durumu
+                      aşağıdaki kutudan ve "Taleplerim" panelinden izleyebilirsiniz.
                     </>
                   ) : ocoState.done?.kind === 'awx' ? (
                     <>

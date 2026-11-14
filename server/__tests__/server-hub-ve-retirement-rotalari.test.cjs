@@ -419,6 +419,12 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
     {
       assertRegistryPlaybook: async () => {},
       assertTemplateAcceptsExtraVars: async () => {},
+      sablonOku: async (_sid, id) => ({
+        id: id || 401,
+        name: 'mock.yml',
+        ask_variables_on_launch: true,
+      }),
+      sablonKontrol: () => {},
     },
     backups,
   );
@@ -433,11 +439,16 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
             sunucular: {
               APP01:
                 Number(jid) === 9901
-                  ? { goruntu_ok: true, goruntu: ['BOOT|2026-11-14', 'JVM|7|orders-srv|STARTED'] }
+                  ? {
+                      goruntu_ok: true,
+                      goruntu: ['SURUM|1', 'BOOT|b1', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
+                    }
                   : {
                       once_var: true,
                       son_olculdu: true,
-                      islemler: ['SONUC|JVM|orders-srv|CHECK|OK'],
+                      goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
+                      son_goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
+                      islemler: [],
                       son_fark: [],
                     },
             },

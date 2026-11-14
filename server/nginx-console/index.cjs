@@ -315,7 +315,8 @@ function unutHost(host) {
   const H = String(host || '').toUpperCase();
   _summaries.delete(H);
   _full.delete(H);
-  for (let i = _ingestQueue.length - 1; i >= 0; i--) if (_ingestQueue[i].H === H) _ingestQueue.splice(i, 1);
+  for (let i = _ingestQueue.length - 1; i >= 0; i--)
+    if (_ingestQueue[i].H === H) _ingestQueue.splice(i, 1);
   _queued.delete(H);
   history.unut(H);
 }
@@ -619,13 +620,14 @@ async function spaKesfiHesapla() {
   })();
   const yoksaNull = (p) => p.then((r) => r.recordset || []).catch(() => null);
 
-  const [discHam, invHam, usageHam, runsHam, cfgHam, dirHam, upsHam, trfHam, katalogHam] = await Promise.all([
-    // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
-    // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
-    // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
-    // tasir; eskiligi kapsam panelinde yazar.
-    query(
-      `SELECT d.cluster, d.namespace, d.route, d.host, d.termination, d.workload_kind,
+  const [discHam, invHam, usageHam, runsHam, cfgHam, dirHam, upsHam, trfHam, katalogHam] =
+    await Promise.all([
+      // CLUSTER BASINA EN YENI TARAMA. Eskiden tek bir MAX(scan_date) aliniyordu: bugun
+      // login'i dusen bir cluster, dunku verisiyle birlikte ekrandan SILINIYORDU ve
+      // "SPA'si yok" gibi gorunuyordu. Simdi her cluster kendi son verisini, TARIHIYLE
+      // tasir; eskiligi kapsam panelinde yazar.
+      query(
+        `SELECT d.cluster, d.namespace, d.route, d.host, d.termination, d.workload_kind,
               d.workload, d.is_spa, d.signal, d.image, d.note,
               ${s.mb ? 'd.match_by' : 'CAST(NULL AS NVARCHAR(16)) AS match_by'},
               CONVERT(varchar(10), d.scan_date, 23) AS scan_date
@@ -634,29 +636,29 @@ async function spaKesfiHesapla() {
                  FROM dbo.BMW_Spa_Discovery
                 GROUP BY cluster) m
            ON m.cluster = d.cluster AND m.sd = d.scan_date`,
-    ).then((r) => r.recordset || []),
-    // ROUTE ENVANTERI + termination_type (Ag capraz kontrolu). OKUNAMADI ile KAYITLI DEGIL
-    // AYRI: eskiden hata [] olup TUM uygulamalar 'kayitli degil' gorunuyordu.
-    // YALNIZ ARK DB'DE (2026-11-12): ARK disi route'lar hic tasinmaz; asagidaki arkSuz JS
-    // suzgeci bekci olarak kalir (sonuc ayni). Kosul ayri dizgede: SR22 metin bekcisi sorgu
-    // govdesini birebir arar.
-    yoksaNull(
-      query(
-        `SELECT cluster_name, namespace_name, route_name, route_address, termination_type
+      ).then((r) => r.recordset || []),
+      // ROUTE ENVANTERI + termination_type (Ag capraz kontrolu). OKUNAMADI ile KAYITLI DEGIL
+      // AYRI: eskiden hata [] olup TUM uygulamalar 'kayitli degil' gorunuyordu.
+      // YALNIZ ARK DB'DE (2026-11-12): ARK disi route'lar hic tasinmaz; asagidaki arkSuz JS
+      // suzgeci bekci olarak kalir (sonuc ayni). Kosul ayri dizgede: SR22 metin bekcisi sorgu
+      // govdesini birebir arar.
+      yoksaNull(
+        query(
+          `SELECT cluster_name, namespace_name, route_name, route_address, termination_type
            FROM dbo.BMW_Openshift_Route_Inventory` + ` WHERE cluster_name IN (${arkInv.sqlText})`,
-        arkInv.params,
+          arkInv.params,
+        ),
       ),
-    ),
-    // OLCUM: CLUSTER BASINA EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
-    // satir tasimamak icin; ayni ders Route Trafigi'nde olculdu). Hata null: eskiden []
-    // olup TUM uygulamalar 'olcum yok' gorunuyordu.
-    // CLUSTER (dogrulama bulgusu, 2026-10-01): tablonun tekil anahtari (scan_date, cluster,
-    // namespace, app). Eskiden bolumleme (namespace, app) idi; ayni gunun prod1/prod2 satirlari
-    // arasinda secim BELIRSIZDI ve pasif cluster'in 0'i "istek yok" gosterebiliyordu. Cluster
-    // satirlari spa-discovery.cjs'te TOPLANIR.
-    yoksaNull(
-      query(
-        `SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note
+      // OLCUM: CLUSTER BASINA EN YENI satir - secim VERITABANINDA yapilir (yarim milyon
+      // satir tasimamak icin; ayni ders Route Trafigi'nde olculdu). Hata null: eskiden []
+      // olup TUM uygulamalar 'olcum yok' gorunuyordu.
+      // CLUSTER (dogrulama bulgusu, 2026-10-01): tablonun tekil anahtari (scan_date, cluster,
+      // namespace, app). Eskiden bolumleme (namespace, app) idi; ayni gunun prod1/prod2 satirlari
+      // arasinda secim BELIRSIZDI ve pasif cluster'in 0'i "istek yok" gosterebiliyordu. Cluster
+      // satirlari spa-discovery.cjs'te TOPLANIR.
+      yoksaNull(
+        query(
+          `SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note
            FROM (
              SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note,
                     ROW_NUMBER() OVER (PARTITION BY cluster, namespace, app ORDER BY scan_date DESC) AS rn
@@ -664,29 +666,31 @@ async function spaKesfiHesapla() {
               WHERE scan_date >= DATEADD(day, -7, CAST(GETDATE() AS DATE))
            ) t
           WHERE rn = 1`,
+        ),
       ),
-    ),
-    // CLUSTER DURUMU: cluster basina EN YENI kosu - taranamayan cluster'in sebebi burada.
-    s.run
-      ? query(
-          `SELECT cluster, durum, routes, svc_kip, svc_okunamayan_ns, spa, eslesmeyen, sebep,
+      // CLUSTER DURUMU: cluster basina EN YENI kosu - taranamayan cluster'in sebebi burada.
+      s.run
+        ? query(
+            `SELECT cluster, durum, routes, svc_kip, svc_okunamayan_ns, spa, eslesmeyen, sebep,
                   CONVERT(varchar(10), scan_date, 23) AS scan_date
              FROM (
                SELECT *, ROW_NUMBER() OVER (PARTITION BY cluster ORDER BY scan_date DESC, id DESC) AS rn
                  FROM dbo.BMW_Spa_Discovery_Run
              ) t
             WHERE rn = 1`,
-        )
-          .then((r) => r.recordset || [])
-          // OKUNAMADI ile YOK AYRI: null -> kapsam "okunamadi" der, tum uc nokta 500'e
-          // dusup ekran "satir yok" gostermez.
-          .catch(() => null)
-      : Promise.resolve([]),
-    // (1) RP TANIMLARI: LOC (include) + PRX (eski PROD proxy_pass). kind kolonlari yoksa
-    // NULL secilir - kolon yokken adini yazmak sorguyu derleme aninda dusururdu.
-    (() => { if (s.cfg) return yoksaNull(
-          query(
-            `SELECT host, vhost, service, env, location_path, application, namespace, status,
+          )
+            .then((r) => r.recordset || [])
+            // OKUNAMADI ile YOK AYRI: null -> kapsam "okunamadi" der, tum uc nokta 500'e
+            // dusup ekran "satir yok" gostermez.
+            .catch(() => null)
+        : Promise.resolve([]),
+      // (1) RP TANIMLARI: LOC (include) + PRX (eski PROD proxy_pass). kind kolonlari yoksa
+      // NULL secilir - kolon yokken adini yazmak sorguyu derleme aninda dusururdu.
+      (() => {
+        if (s.cfg)
+          return yoksaNull(
+            query(
+              `SELECT host, vhost, service, env, location_path, application, namespace, status,
                     ${
                       prxKolon === 4
                         ? 'kind, upstream_name, target_url'
@@ -696,71 +700,77 @@ async function spaKesfiHesapla() {
                FROM dbo.Nginx_Config_Audit
               WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Config_Audit)
                 AND host IN (${rpIn.sqlText})`,
-            rpIn.params,
-          ),
-        ); return Promise.resolve(null); })(),
-    // (2) YENI PROD DIZIN KURULUMU (GBNGXP4x/AP3x): conf_exists = tanim.
-    s.dir
-      ? yoksaNull(
-          query(
-            `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists, conf_name,
+              rpIn.params,
+            ),
+          );
+        return Promise.resolve(null);
+      })(),
+      // (2) YENI PROD DIZIN KURULUMU (GBNGXP4x/AP3x): conf_exists = tanim.
+      s.dir
+        ? yoksaNull(
+            query(
+              `SELECT host, namespace, application, hys_deployed, app_deployed, conf_exists, conf_name,
                     CONVERT(varchar(10), scan_date, 23) AS scan_date
                FROM dbo.Nginx_Intranet_Audit
               WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
                 AND host IN (${yeniIn.sqlText})`,
-            yeniIn.params,
-          ),
-        )
-      : Promise.resolve(null),
-    // (3) UPSTREAM TAKMA ADININ GERCEK SERVER'I (tum internet RP'ler; 2 gun saklama, ayri is).
-    s.ups
-      ? yoksaNull(
-          query(
-            `SELECT host, name, server, CONVERT(varchar(10), scan_date, 23) AS scan_date
+              yeniIn.params,
+            ),
+          )
+        : Promise.resolve(null),
+      // (3) UPSTREAM TAKMA ADININ GERCEK SERVER'I (tum internet RP'ler; 2 gun saklama, ayri is).
+      s.ups
+        ? yoksaNull(
+            query(
+              `SELECT host, name, server, CONVERT(varchar(10), scan_date, 23) AS scan_date
                FROM dbo.Nginx_Audit_Upstreams
               WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Upstreams)
                 AND host IN (${upsIn.sqlText})`,
-            upsIn.params,
-          ),
-        )
-      : Promise.resolve(null),
-    // (4) RP TRAFIGI. first_seen kolonu yoksa NULL secilir (CASE WHEN COL_LENGTH kalibi
-    // KULLANILMAZ: kolon yoksa SQL Server derleme aninda 'Invalid column name' verir).
-    // HOST KIPI SEMA DEGISTIRMEDI: satir turu location'in ilk karakterinden ayrilir ('/' =
-    // location kipi, '@' = host kipi; vhost '_' = kova). Eski analyzer '@' satiri yazmaz ->
-    // spa-rp.cjs hostKipi=false -> dizin tanimlari 'kaynak-yok' (eski davranis).
-    (() => { if (s.trf) return yoksaNull(
-          query(
-            `SELECT host, vhost, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
+              upsIn.params,
+            ),
+          )
+        : Promise.resolve(null),
+      // (4) RP TRAFIGI. first_seen kolonu yoksa NULL secilir (CASE WHEN COL_LENGTH kalibi
+      // KULLANILMAZ: kolon yoksa SQL Server derleme aninda 'Invalid column name' verir).
+      // HOST KIPI SEMA DEGISTIRMEDI: satir turu location'in ilk karakterinden ayrilir ('/' =
+      // location kipi, '@' = host kipi; vhost '_' = kova). Eski analyzer '@' satiri yazmaz ->
+      // spa-rp.cjs hostKipi=false -> dizin tanimlari 'kaynak-yok' (eski davranis).
+      (() => {
+        if (s.trf)
+          return yoksaNull(
+            query(
+              `SELECT host, vhost, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
                     ${s.fs ? 'first_seen' : 'CAST(NULL AS NVARCHAR(20)) AS first_seen'},
                     CONVERT(varchar(10), scan_date, 23) AS scan_date
                FROM dbo.Nginx_Spa_Traffic
               WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Spa_Traffic)
                 AND host IN (${trfIn.sqlText})`,
-            trfIn.params,
-          ),
-        ); return Promise.resolve(null); })(),
-    // CLUSTER KATALOGU (2026-10-06): uygulama basina "4/4 Tam / 3/4 Kismi" oraninin
-    // PAYDASI. Elle cluster listesi YOK - ortamin cluster'lari katalogdan okunur.
-    //
-    // DIKKAT: `ocp_cluster_index` PORTAL'IN KENDI veritabanindadir (server/db/mssql-setup.cjs),
-    // bu dosyadaki `query` ise ENVANTER (TBMWANS) baglantisidir. Ilk yazimda katalog o
-    // sorguyla okunuyordu; "invalid object name" ile dusup .catch'e giriyor ve kapsam HER
-    // SATIRDA sessizce "olculemedi" cikiyordu. Kanitlanmis erisimci kullanilir
-    // (getClusterTree; LogX v2, OpsX ve Self Servis secenek kaynaklari da ayni yeri okur).
-    // Okunamazsa null doner ve oran "olculemedi" olur - uydurma bir payda ile oran yazmak,
-    // var olmayan bir eksiklik raporlamak olurdu.
-    require('../logx/v2/admin.cjs')
-      .getClusterTree()
-      .then((tree) => {
-        const out = [];
-        for (const [env, tenants] of Object.entries(tree || {}))
-          for (const [tenant, clusters] of Object.entries(tenants || {}))
-            for (const cluster_name of clusters || []) out.push({ env, tenant, cluster_name });
-        return out;
-      })
-      .catch(() => null),
-  ]);
+              trfIn.params,
+            ),
+          );
+        return Promise.resolve(null);
+      })(),
+      // CLUSTER KATALOGU (2026-10-06): uygulama basina "4/4 Tam / 3/4 Kismi" oraninin
+      // PAYDASI. Elle cluster listesi YOK - ortamin cluster'lari katalogdan okunur.
+      //
+      // DIKKAT: `ocp_cluster_index` PORTAL'IN KENDI veritabanindadir (server/db/mssql-setup.cjs),
+      // bu dosyadaki `query` ise ENVANTER (TBMWANS) baglantisidir. Ilk yazimda katalog o
+      // sorguyla okunuyordu; "invalid object name" ile dusup .catch'e giriyor ve kapsam HER
+      // SATIRDA sessizce "olculemedi" cikiyordu. Kanitlanmis erisimci kullanilir
+      // (getClusterTree; LogX v2, OpsX ve Self Servis secenek kaynaklari da ayni yeri okur).
+      // Okunamazsa null doner ve oran "olculemedi" olur - uydurma bir payda ile oran yazmak,
+      // var olmayan bir eksiklik raporlamak olurdu.
+      require('../logx/v2/admin.cjs')
+        .getClusterTree()
+        .then((tree) => {
+          const out = [];
+          for (const [env, tenants] of Object.entries(tree || {}))
+            for (const [tenant, clusters] of Object.entries(tenants || {}))
+              for (const cluster_name of clusters || []) out.push({ env, tenant, cluster_name });
+          return out;
+        })
+        .catch(() => null),
+    ]);
   // YALNIZ ARK (kullanici, 2026-11-11): "SPA'ler sadece ve sadece ARK OpenShift cluster'larinda bulunuyor;
   // diger cluster'larla bir iliskisi, gosterimi vb. hicbir seyin olmasina gerek yok." Kesif isi butun jump
   // server'lari taradigi icin tablolarda hosting / wyden / metaco / ark_ai / cicd satirlari da var: hepsi
@@ -786,8 +796,12 @@ async function spaKesfiHesapla() {
   const ups = eskiSuz(upsHam);
   const trf = eskiSuz(trfHam);
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
-  const durum = (varMi, rows) =>
-    { if (sema === null) return 'okunamadi'; if (!varMi) return 'yok'; if (rows === null) return 'okunamadi'; return 'var'; };
+  const durum = (varMi, rows) => {
+    if (sema === null) return 'okunamadi';
+    if (!varMi) return 'yok';
+    if (rows === null) return 'okunamadi';
+    return 'var';
+  };
   const rpKaynak = {
     tablolar: {
       cfg: durum(s.cfg, cfg),
@@ -960,7 +974,13 @@ async function eskiAdaylarUcu(_req, res) {
 
 async function eskiTemizleUcu(req, res) {
   const istenen = Array.isArray(req.body?.hosts)
-    ? req.body.hosts.map((h) => String(h || '').trim().toUpperCase()).slice(0, 60)
+    ? req.body.hosts
+        .map((h) =>
+          String(h || '')
+            .trim()
+            .toUpperCase(),
+        )
+        .slice(0, 60)
     : [];
   const denetimKaydi = (result, detay) => {
     try {
@@ -1039,7 +1059,11 @@ const SEKME_YOLLARI = [
  */
 function adminKapisi(gorunurlukHazir) {
   const { adminOkumaKapisi } = require('../auth/admin-okuma-kapisi.cjs');
-  return adminOkumaKapisi({ okuma: ADMIN_DISI_OKUMA, mesaj: 'Nginx Hub yalnız Admin.', hazir: gorunurlukHazir });
+  return adminOkumaKapisi({
+    okuma: ADMIN_DISI_OKUMA,
+    mesaj: 'Nginx Hub yalnız Admin.',
+    hazir: gorunurlukHazir,
+  });
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────────────────
@@ -1251,11 +1275,31 @@ function initNginxConsole(app) {
         loaded: sm.loaded ?? null,
       }));
     const certs = aggregateCerts(dumps);
+    const sortMode = String(req.query.sort || '').trim();
+    const sorted =
+      sortMode === 'daysLeft'
+        ? [...certs].sort((a, b) => {
+            if (a.daysLeft == null && b.daysLeft == null) return 0;
+            if (a.daysLeft == null) return 1;
+            if (b.daysLeft == null) return -1;
+            return a.daysLeft - b.daysLeft;
+          })
+        : certs;
+    const rawLimit = req.query.limit != null ? Number(req.query.limit) : null;
+    const rawOffset = req.query.offset != null ? Number(req.query.offset) : 0;
+    const hasLimit = rawLimit != null && Number.isFinite(rawLimit) && rawLimit > 0;
+    const limit = hasLimit ? Math.min(10000, Math.floor(rawLimit)) : null;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+    const pagedCerts = limit != null ? sorted.slice(offset, offset + limit) : sorted;
     const now = Date.now();
     res.json({
       ok: true,
       hostsScanned: dumps.length,
-      certs,
+      certs: pagedCerts,
+      totalCerts: certs.length,
+      ...(limit != null
+        ? { limit, offset, hasMore: offset + pagedCerts.length < certs.length }
+        : {}),
       summary: {
         total: certs.length,
         expired: certs.filter((c) => c.daysLeft != null && c.daysLeft < 0).length,
@@ -1339,13 +1383,15 @@ function initNginxConsole(app) {
         .trim()
         .toLowerCase();
       const es = await eskiSunucu.suzgec(req);
-      const hosts = es.ayir(inv).filter(
-        (h) =>
-          (!svc ||
-            (h.services || []).map((x) => x.toUpperCase()).includes(svc) ||
-            String(h.service || '').toUpperCase() === svc) &&
-          (!env || String(h.env || '').toLowerCase() === env),
-      );
+      const hosts = es
+        .ayir(inv)
+        .filter(
+          (h) =>
+            (!svc ||
+              (h.services || []).map((x) => x.toUpperCase()).includes(svc) ||
+              String(h.service || '').toUpperCase() === svc) &&
+            (!env || String(h.env || '').toLowerCase() === env),
+        );
       const dumps = new Map();
       for (const h of hosts) {
         const sm = loadSummary(h.host);
@@ -1353,12 +1399,30 @@ function initNginxConsole(app) {
       }
       const r = computeDrift(hosts, dumps);
       if (svc) r.groups = r.groups.filter((g) => g.service === svc);
+      const includeLocalParam = req.query.includeLocal;
+      if (includeLocalParam === '0' || includeLocalParam === 'false') {
+        r.groups = r.groups.map((g) => ({
+          ...g,
+          files: (g.files || []).filter((f) => f.status !== 'local'),
+        }));
+      }
+      const totalGroups = r.groups.length;
+      const rawLimit = req.query.limit != null ? Number(req.query.limit) : null;
+      const rawOffset = req.query.offset != null ? Number(req.query.offset) : 0;
+      const hasLimit = rawLimit != null && Number.isFinite(rawLimit) && rawLimit > 0;
+      const limit = hasLimit ? Math.min(2000, Math.floor(rawLimit)) : null;
+      const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+      const pagedGroups = limit != null ? r.groups.slice(offset, offset + limit) : r.groups;
       res.json({
         ok: true,
-        ...r,
+        groups: pagedGroups,
+        totalGroups,
+        ...(limit != null
+          ? { limit, offset, hasMore: offset + pagedGroups.length < totalGroups }
+          : {}),
         services: [
           ...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase()))),
-        ].sort(),
+        ].sort((a, b) => a.localeCompare(b)),
         generatedAt: new Date().toISOString(),
         eskiGizli: es.bilgi(),
       });
@@ -1586,7 +1650,11 @@ function initNginxConsole(app) {
       return res
         .status(403)
         .json({ ok: false, message: 'Konfigürasyon değişikliği yalnız Admin.' });
-    const list = (() => { if (Array.isArray(req.body?.hosts)) return req.body.hosts; if (req.body?.host) return [req.body.host]; return []; })();
+    const list = (() => {
+      if (Array.isArray(req.body?.hosts)) return req.body.hosts;
+      if (req.body?.host) return [req.body.host];
+      return [];
+    })();
     const hosts = [
       ...new Set(
         list
@@ -1655,7 +1723,7 @@ function initNginxConsole(app) {
     if (conflicts.length)
       return res.status(409).json({
         ok: false,
-        message: `Ön kontrol: ${conflicts.map((c) => (String(c.host) + ": " + c.reason)).join('; ')}`,
+        message: `Ön kontrol: ${conflicts.map((c) => String(c.host) + ': ' + c.reason).join('; ')}`,
         conflicts,
         currentSha256: conflicts[0]?.currentSha256 || null,
       });

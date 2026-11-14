@@ -4185,7 +4185,7 @@
       },
       {
         "ad": "Nginx Konsol / eski sunucu",
-        "dosya": "server/nginx-console/index.cjs:384"
+        "dosya": "server/nginx-console/index.cjs:396"
       },
       {
         "ad": "Envanter Degisim gecmisi",
@@ -4991,7 +4991,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi (RP eşleştirme)",
-        "dosya": "server/nginx-console/index.cjs:539"
+        "dosya": "server/nginx-console/index.cjs:726"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5315,7 +5315,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi",
-        "dosya": "server/nginx-console/index.cjs:539"
+        "dosya": "server/nginx-console/index.cjs:745"
       }
     ],
     "saklama": "DELETE TOP(5000) parti + commit; RETENTION_DAYS=3",

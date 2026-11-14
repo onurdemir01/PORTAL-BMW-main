@@ -765,7 +765,15 @@ test('server/auth/visibility-routes & server/spa-report/index HTTP routes and he
 
   const base = `http://127.0.0.1:${srv.address().port}`;
 
-  assert.equal((await (await fetch(`${base}/api/visibility/version`)).json()).version, 3);
+  const verRes = await fetch(`${base}/api/visibility/version`);
+  assert.equal(verRes.status, 200);
+  assert.equal(verRes.headers.get('etag'), 'W/"vis-v3"');
+  assert.equal(verRes.headers.get('cache-control'), 'private, no-cache');
+  assert.equal((await verRes.json()).version, 3);
+  const notModRes = await fetch(`${base}/api/visibility/version`, {
+    headers: { 'if-none-match': 'W/"vis-v3"' },
+  });
+  assert.equal(notModRes.status, 304);
   assert.equal((await (await fetch(`${base}/api/visibility/resolved`)).json()).ok_engine, true);
   assert.equal(
     (await (await fetch(`${base}/api/visibility/nav-groups`)).json()).groups[0].pageKeys[0],

@@ -1,0 +1,66 @@
+name: CI Quality and Security Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: gelistirme/package-lock.json
+
+      - name: Install Dependencies
+        run: npm run kur
+
+      - name: Security Audit Gate
+        run: npm run guvenlik
+
+      - name: SBOM and License Compliance Gate
+        run: npm run sbom
+
+      - name: TypeScript, Lint, ASCII and Server Checks
+        run: |
+          npx tsc --noEmit
+          npm run lint:ascii
+          npm run lint
+          npm run check:server
+          npm run preflight
+
+      - name: Coverage Suite (Node + Vitest + LCOV Merge)
+        run: npm run test:coverage
+
+      - name: Mutation Testing Gate
+        run: npm run test:mutation
+
+      - name: Build and Runtime Package Verification
+        run: |
+          npm run build
+          rm -rf /tmp/bmw-paket-ci
+          npm run paket -- --cikti /tmp/bmw-paket-ci --derleme-yok
+          rm -rf /tmp/bmw-paket-ci
+
+      - name: Upload Security and Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-and-sbom-artifacts
+          path: |
+            coverage/lcov.info
+            coverage/sbom-runtime.cdx.json
+            coverage/sbom-full.cdx.json
+          if-no-files-found: ignore
