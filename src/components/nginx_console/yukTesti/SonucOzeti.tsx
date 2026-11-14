@@ -127,11 +127,11 @@ export function nedenGruplari(kosu: Pick<NlKosuAyrinti, 'gecersizNedenleri'>, ad
     const anlar: NlReloadAni[] = [];
     for (const tur of g.turlar) {
       const a = adimlar.find((x) => x.tur === tur);
-      for (const r of a?.reloadlar ?? []) anlar.push(r);
+      for (const r of a?.reloadlar ?? []) { anlar.push(r); }
     }
-    if (!anlar.length && ozet) for (const r of ozet.reloadlar) if (g.turlar.length ? r.etkilenenTurlar.some((t) => g.turlar.includes(t)) : r.faz === 'olcum') anlar.push(r);
+    if (!anlar.length && ozet) { for (const r of ozet.reloadlar) if (g.turlar.length ? r.etkilenenTurlar.some((t) => g.turlar.includes(t)) : r.faz === 'olcum') anlar.push(r); }
     const gorulen = new Set<string>();
-    g.reloadlar = anlar.filter((r) => { const k = `${r.t}|${r.tur}`; if (gorulen.has(k)) return false; gorulen.add(k); return true; }).sort((x, y) => x.t - y.t);
+    g.reloadlar = anlar.filter((r) => { const k = `${r.t}|${r.tur}`; if (gorulen.has(k)) { return false; } gorulen.add(k); return true; }).sort((x, y) => x.t - y.t);
   }
   return [...m.values()];
 }

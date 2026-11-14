@@ -119,7 +119,7 @@ function buildRuleIndex(rules) {
 // girilebilsin (ldap.cjs determineRole ile ayni tolerans).
 function groupKeysOf(user) {
   const out = new Set();
-  for (const g of Array.isArray(user && user.groups) ? user.groups : []) {
+  for (const g of Array.isArray(user?.groups) ? user.groups : []) {
     const dn = String(g || '').trim().toLowerCase();
     if (!dn) continue;
     out.add(dn);
@@ -147,8 +147,8 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
   // Yani "yalniz istedigim kisiler" kurali korunuyor, yoneticiler disinda.
   let strict = false;
   try {
-    const m = el.metadata ? (typeof el.metadata === 'string' ? JSON.parse(el.metadata) : el.metadata) : null;
-    strict = !!(m && m.strict);
+    const m = (() => { if (el.metadata) { if (typeof el.metadata === 'string') return JSON.parse(el.metadata); return el.metadata; } return null; })();
+    strict = !!(m?.strict);
   } catch { strict = false; }
 
   if (iz) iz.strict = strict;
@@ -170,7 +170,7 @@ function decide(el, ruleIndex, role, usernameLower, groupKeys, mailLower, iz) {
       return v;
     }
   }
-  if (groupKeys && groupKeys.size) {                     // 3b) grup kurali: bir allow yeter
+  if (groupKeys?.size) {                     // 3b) grup kurali: bir allow yeter
     let seen = false, allow = false, eslesen = null;
     for (const g of groupKeys) {
       const gKey = `${el.element_key}|group|${g}`;
@@ -213,7 +213,7 @@ function applyParentCascade(map, elements) {
     seen.add(key);
     const el = byKey.get(key);
     let out = map[key] ?? true;
-    if (out && el && el.parent_key && byKey.has(el.parent_key)) {
+    if (out && el?.parent_key && byKey.has(el.parent_key)) {
       out = visible(el.parent_key, seen);
     }
     resolved.set(key, out);
@@ -232,15 +232,15 @@ let _resolvedMemoVersion = _version;
 
 // Bir kullanici icin TUM elementlerin cozulmus gorunurluk haritasini doner.
 async function resolveVisibility(user) {
-  const role = (user && user.role) || 'User';
-  const usernameLower = ((user && user.username) || '').toLowerCase();
-  const mailLower = ((user && user.mail) || '').trim().toLowerCase();
+  const role = (user?.role) || 'User';
+  const usernameLower = ((user?.username) || '').toLowerCase();
+  const mailLower = ((user?.mail) || '').trim().toLowerCase();
 
   if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
   const groupKeys = groupKeysOf(user);
   const memoKey = `${role}|${usernameLower}|${mailLower}|${[...groupKeys].sort((a, b) => a.localeCompare(b)).join(',')}`;
   const hit = _resolvedMemo.get(memoKey);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
+  if (Date.now() - hit?.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
 
   let elements = [];
   let rules = [];
@@ -274,9 +274,9 @@ async function resolveVisibility(user) {
 async function explainVisibility(user, elementKey) {
   const { elements, rules } = await loadAll();
   const el = elements.find((e) => e.element_key === elementKey);
-  const role = (user && user.role) || 'User';
-  const usernameLower = ((user && user.username) || '').toLowerCase();
-  const mailLower = ((user && user.mail) || '').trim().toLowerCase();
+  const role = (user?.role) || 'User';
+  const usernameLower = ((user?.username) || '').toLowerCase();
+  const mailLower = ((user?.mail) || '').trim().toLowerCase();
   const groupKeys = groupKeysOf(user);
   if (!el) {
     return {

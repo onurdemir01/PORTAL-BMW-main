@@ -82,17 +82,13 @@ function nedenMetni(h) {
     }
     const kokHata = kokler.filter((k) => k && k.durum === 'HATA');
     for (const k of kokHata.slice(0, 2))
-      parca.push(`${k.yol} okunamadı${k.hata ? ` (${k.hata})` : ''}`);
+      parca.push(`${k.yol} okunamadı${k.hata ? (" (" + k.hata + ")") : ''}`);
     if (uyarilar.length)
       parca.push(
         uyarilar.length > 1 ? `${uyarilar[0]} (+${uyarilar.length - 1} uyarı)` : uyarilar[0],
       );
     if (h.hata) parca.push(kisa(h.hata, 200));
-    return parca.length
-      ? kisa(parca.join(' · '))
-      : durum === 'ZAMAN_ASIMI'
-        ? HOST_ACIKLAMA.ZAMAN_ASIMI
-        : 'kısmi tarandı; ayrıntı kaydı yok';
+    if (parca.length) return kisa(parca.join(' · ')); if (durum === 'ZAMAN_ASIMI') return HOST_ACIKLAMA.ZAMAN_ASIMI; return 'kısmi tarandı; ayrıntı kaydı yok';
   }
   if (h && h.hata) return kisa(h.hata);
   return HOST_ACIKLAMA[durum] || (durum ? `durum: ${durum}` : 'durum kaydı yok');

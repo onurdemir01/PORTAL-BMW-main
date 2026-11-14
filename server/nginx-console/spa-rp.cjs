@@ -347,7 +347,7 @@ function olcumDurumu(r, ekKismi, kovaVar) {
     for (const n of ekKismi || []) kismi.push(n);
   }
   const o = {
-    durum: req7 > 0 ? 'var' : kismi.length ? 'sifir-kismi' : 'sifir',
+    durum: (() => { if (req7 > 0) return 'var'; if (kismi.length) return 'sifir-kismi'; return 'sifir'; })(),
     req7,
     req24: num(r.req_24h),
     hc24: num(r.hc_24h),
@@ -415,7 +415,7 @@ function dizinTrafigi(host, adaylar, trfTablo, idx) {
     return o;
   }
   const hs = idx.host.get(host);
-  return { durum: 'olculemedi', neden: !hs ? 'host' : !hs.hk ? 'host-kipi-yok' : 'satir-yok' };
+  return { durum: 'olculemedi', neden: (() => { if (!hs) return 'host'; if (!hs.hk) return 'host-kipi-yok'; return 'satir-yok'; })() };
 }
 
 const OLCULDU = new Set(['var', 'sifir', 'sifir-kismi']);
@@ -663,7 +663,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   for (const r of satirlar('dir')) {
     const host = U(r.host);
     if (!host || !RP.prodNew.has(host) || !bit(r.conf_exists)) continue;
-    ekle(dizinSahip, `${host}|${U(`${L(r.application)}-${L(r.namespace)}`)}`, `${L(r.namespace)}|${L(r.application)}`);
+    ekle(dizinSahip, `${host}|${U((String(L(r.application)) + "-" + L(r.namespace)))}`, `${L(r.namespace)}|${L(r.application)}`);
   }
   for (const r of satirlar('dir')) {
     const host = U(r.host);
@@ -802,7 +802,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
   // Q01 (Glomo) ve Q02 (Glomo disi) es degil; PROD'da eski + yeni filo birlikte sayiliyordu. Servisin
   // sunucu kumesi o gun taranmis tanimlardan cikar (hicbir uygulamasi olmayan sunucu servise ait
   // sayilmaz); taranmayan sunucu "eksik" sayilmaz.
-  const kurulumOf = (h) => (RP.prodOld.has(h) ? 'eski' : RP.prodNew.has(h) ? 'yeni' : 'np');
+  const kurulumOf = (h) => { if (RP.prodOld.has(h)) return 'eski'; if (RP.prodNew.has(h)) return 'yeni'; return 'np'; };
   const esKey = (d) => `${d.env || '?'}|${d.servis || '?'}|${kurulumOf(d.host)}`;
   const servisHostlari = new Map();
   for (const m of detay.values())
@@ -964,15 +964,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     const rol = rolOf(h, RP);
     const hs = tIdx.host.get(h);
     const trafik =
-      tablolar.trf !== 'var'
-        ? 'olculemedi'
-        : !hs
-          ? rol === 'prod-yeni' && !tIdx.hostKipi
-            ? 'kaynak-yok'
-            : 'satir-yok'
-          : hs.satir > 0
-            ? 'var'
-            : 'hata';
+      (() => { if (tablolar.trf !== 'var') return 'olculemedi'; if (!hs) { if (rol === 'prod-yeni' && !tIdx.hostKipi) return 'kaynak-yok'; return 'satir-yok'; } if (hs.satir > 0) return 'var'; return 'hata'; })();
     const o = { host: h, env: rpEnvOf(h, RP), rol, taranan: taranan.has(h), trafik };
     if (hs && hs.hata) o.trafikHata = hs.hata;
     if (rol === 'prod-yeni' && hs) o.hostKipi = hs.hk;

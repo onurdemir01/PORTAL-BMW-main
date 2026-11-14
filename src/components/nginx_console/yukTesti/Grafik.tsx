@@ -17,7 +17,7 @@ const DURUM_ADI: Record<string, string> = { GECERLI: 'geçerli', DOYMA: 'doyma',
 
 /** 0'dan baslayan "guzel" eksen: adim 1 / 2 / 2,5 / 5 x 10^n, en cok ~5 cizgi. */
 export function eksenAdimlari(enBuyuk: number): number[] {
-  if (!(enBuyuk > 0)) return [0, 1];
+  if (!Number.isFinite(enBuyuk) || enBuyuk <= 0) return [0, 1];
   const kaba = (enBuyuk * 1.12) / 4;
   const us = 10 ** Math.floor(Math.log10(kaba));
   const adim = [1, 2, 2.5, 5, 10].map((k) => k * us).find((a) => a >= kaba) as number;

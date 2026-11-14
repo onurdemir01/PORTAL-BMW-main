@@ -141,11 +141,9 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
       const hits = list.filter((e) => e.serverName.toLowerCase().includes(needle));
       if (hits.length) { matched = { how: cand.how, nameForm: form, entries: hits }; break; }
     }
-    if (matched) break;
+    if (matched) { break; }
   }
-  const how = matched
-    ? `${matched.how} + server_name (${matched.nameForm})`
-    : hostOnly ? 'web sunucusu var, server_name tutmadı' : 'eşleşmedi';
+  const how = (() => { if (matched) return `${matched.how} + server_name (${matched.nameForm})`; if (hostOnly) return 'web sunucusu var, server_name tutmadı'; return 'eşleşmedi'; })();
   return {
     tier, how, matched: !!matched,
     web: matched ? matched.entries : [],
@@ -200,15 +198,9 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
   const satir = [];
   const t = topoloji || topolojiOf(domain, appHost, m);
   satir.push(
-    t.kaynak === 'domain'
-      ? `Topoloji ${t.tier}: envanterdeki domain ${domain}`
-      : t.kaynak === 'eşleşme'
-        ? `Topoloji ${t.tier}: envanterde domain yok; ${t.tier === '3-tier' ? 'web sunucusu ayrı bir host' : 'web sunucusu uygulamanın kendi sunucusu'}`
-        : t.kaynak === 'aday web sunucusu'
-          ? `Topoloji 3-tier: envanterde domain yok; ad kuralının ürettiği web sunucusu ${U(m.webHostCandidate)} envanterde var`
-          : 'Topoloji bilinmiyor: envanterde domain yok, web sunucusu da bulunamadı',
+    (() => { if (t.kaynak === 'domain') return `Topoloji ${t.tier}: envanterdeki domain ${domain}`; if (t.kaynak === 'eşleşme') return `Topoloji ${t.tier}: envanterde domain yok; ${t.tier === '3-tier' ? 'web sunucusu ayrı bir host' : 'web sunucusu uygulamanın kendi sunucusu'}`; if (t.kaynak === 'aday web sunucusu') return `Topoloji 3-tier: envanterde domain yok; ad kuralının ürettiği web sunucusu ${U(m.webHostCandidate)} envanterde var`; return 'Topoloji bilinmiyor: envanterde domain yok, web sunucusu da bulunamadı'; })(),
   );
-  const how = String((m && m.how) || '');
+  const how = String((m?.how) || '');
   const hub = /^Server Hub/.test(how);
   const form = (/server_name \(([^)]*)\)/.exec(how) || [])[1];
   const web = (m && m.web) || [];
@@ -222,19 +214,19 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
           ? `server_name ilk etiketi = "${app}" (Server Hub taraması; sertifika envanterinde yok)`
           : `server_name'de "${app}" geçiyor (${form || 'ad'}; sertifika envanteri)`);
       }
-      if (k.includes('ajp')) kaynaklar.add(`AJP/proxy hedefi bu uygulamanın JVM portu${w.ajpHedef ? ` (${w.ajpHedef})` : ''}`);
-      if (k.includes('mc')) kaynaklar.add(`mod_cluster balancer adı = uygulama adı${w.mcBalancer ? ` (balancer://${w.mcBalancer})` : ''}; aynı site ve ortamdaki web sunucusu`);
+      if (k.includes('ajp')) { kaynaklar.add(`AJP/proxy hedefi bu uygulamanın JVM portu${w.ajpHedef ? ' (' + w.ajpHedef + ')' : ''}`); }
+      if (k.includes('mc')) { kaynaklar.add(`mod_cluster balancer adı = uygulama adı${w.mcBalancer ? ' (balancer://' + w.mcBalancer + ')' : ''}; aynı site ve ortamdaki web sunucusu`); }
     }
     const kural = adKurali(appHost, h);
-    satir.push(`${kural || `${h}: ad kuralı dışında`} — ${[...kaynaklar].join(' · ')}`);
+    satir.push(`${kural || (h + ': ad kuralı dışında')} — ${[...kaynaklar].join(' · ')}`);
   }
   if (!web.length) {
     const adaylar = webHostAdaylari(appHost);
-    if (m && m.vhostCountOnHost > 0) {
+    if (m?.vhostCountOnHost > 0) {
       const kural = adKurali(appHost, m.webHostCandidate);
       satir.push(`${kural || U(m.webHostCandidate)} — orada ${m.vhostCountOnHost} vhost var ama hiçbirinin server_name'i "${app}" içermiyor; AJP / mod_cluster hedefi de yok`);
     } else {
-      satir.push(`Web sunucusu bulunamadı: ${adaylar.length ? `aday ${adaylar.map(U).join(', ')} ve ` : ''}${U(appHost)} için sertifika envanterinde de Server Hub taramasında da vhost yok`);
+      satir.push(`Web sunucusu bulunamadı: ${adaylar.length ? 'aday ' + adaylar.map(U).join(', ') + ' ve ' : ''}${U(appHost)} için sertifika envanterinde de Server Hub taramasında da vhost yok`);
     }
   }
   return satir;
@@ -284,8 +276,8 @@ async function tekCozum(ad, sunucular) {
     }
     return { ips: [...new Set(ips)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })) };
   } catch (e) {
-    const c = e && e.code;
-    return { hata: c === 'ENOTFOUND' || c === 'ENODATA' ? 'DNS kaydı yok' : c === 'ZAMAN_ASIMI' || c === 'ETIMEOUT' ? 'zaman aşımı' : String(c || (e && e.message) || e) };
+    const c = e?.code;
+    return { hata: (() => { if (c === 'ENOTFOUND' || c === 'ENODATA') return 'DNS kaydı yok'; if (c === 'ZAMAN_ASIMI' || c === 'ETIMEOUT') return 'zaman aşımı'; return String(c || (e?.message) || e); })() };
   }
 }
 
@@ -406,11 +398,11 @@ const _hesaplar = new Map();
 
 function webAppSonucu(key, taze) {
   const c = _hesaplar.get(key);
-  if (c && (c.bekliyor || (!taze && Date.now() - c.at < onbellekMs()))) return c.p;
+  if (c && (c.bekliyor || (!taze && Date.now() - c.at < onbellekMs()))) { return c.p; }
   const kayit = { at: Date.now(), bekliyor: true, p: null };
   kayit.p = webAppHesapla(key).then(
     (v) => { kayit.bekliyor = false; kayit.at = Date.now(); return v; },
-    (e) => { if (_hesaplar.get(key) === kayit) _hesaplar.delete(key); throw e; },
+    (e) => { if (_hesaplar.get(key) === kayit) { _hesaplar.delete(key); } throw e; },
   );
   _hesaplar.set(key, kayit);
   return kayit.p;
@@ -420,7 +412,7 @@ async function webAppHesapla(key) {
   const { query } = require('../inventory/mssql.cjs');
   const src = SOURCES[key];
   const [appRes, certRes] = await Promise.all([
-    query(`SELECT DISTINCT app, host, env, domain${src.genKolon ? `, ${src.genKolon}` : ''} FROM ${src.table}
+    query(`SELECT DISTINCT app, host, env, domain${src.genKolon ? ', ' + src.genKolon : ''} FROM ${src.table}
             WHERE app IS NOT NULL AND app <> ''`),
     query(`SELECT host, ip, port, server_name, conf_file, product, env
              FROM dbo.BMW_Certificates_Inventory`).catch(() => ({

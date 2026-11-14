@@ -34,7 +34,7 @@ function grupAnahtari(g) {
 
 function kullaniciGrupAnahtarlari(user) {
   const out = new Set();
-  for (const g of Array.isArray(user && user.groups) ? user.groups : []) {
+  for (const g of Array.isArray(user?.groups) ? user.groups : []) {
     const dn = grupAnahtari(g);
     if (!dn) continue;
     out.add(dn);
@@ -45,7 +45,7 @@ function kullaniciGrupAnahtarlari(user) {
 }
 
 function ssErisimModu(item) {
-  if (!item || !item.enabled) return 'kapali';
+  if (!item?.enabled) return 'kapali';
   const m = item.accessMode;
   if (m === undefined || m === null || m === '') return 'herkes';
   if (m === 'herkes' || m === 'ekipler') return m;
@@ -53,7 +53,7 @@ function ssErisimModu(item) {
 }
 
 function ssErisimVar(item, user) {
-  if (user && user.role === 'Admin') return true;
+  if (user?.role === 'Admin') return true;
   const mod = ssErisimModu(item);
   if (mod === 'herkes') return true;
   if (mod !== 'ekipler') return false;
@@ -80,9 +80,9 @@ function grupListesiOku(raw) {
 
 // Admin'in gonderdigi { mode, groups } -> kaydedilecek alanlar ya da { hata }.
 function ssErisimDogrula(govde) {
-  const mode = String((govde && govde.mode) || '').trim();
+  const mode = String((govde?.mode) || '').trim();
   if (!MODLAR.includes(mode)) return { hata: 'Geçersiz erişim türü (kapali | ekipler | herkes).' };
-  const ham = govde && govde.groups;
+  const ham = govde?.groups;
   if (ham !== undefined && !Array.isArray(ham)) return { hata: 'Ekip listesi bir dizi olmalı.' };
   const groups = [];
   const gorulen = new Set();
@@ -106,7 +106,7 @@ function ssErisimDogrula(govde) {
 // servisleri, grup listesi olmadan (hangi ekiplerin acik oldugu kullanicinin isi degil).
 function ssKullaniciListesi(items, user) {
   const liste = Array.isArray(items) ? items : [];
-  if (user && user.role === 'Admin') return liste;
+  if (user?.role === 'Admin') return liste;
   return liste
     .filter((i) => ssErisimVar(i, user))
     .map((i) => {

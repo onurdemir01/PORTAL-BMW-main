@@ -68,7 +68,7 @@ function lookupField(extraVars, field) {
 
 // Onay atlanmali mi? Atlaniyorsa hangi kural yuzunden atlandigi da doner (audit/log icin).
 function matchSkip(smartApproval, extraVars) {
-  const { rules } = parseSkipRules(smartApproval && smartApproval.skipWhen);
+  const { rules } = parseSkipRules(smartApproval?.skipWhen);
   for (const r of rules) {
     const actual = lookupField(extraVars, r.field);
     if (actual === undefined || actual === null) continue;
@@ -79,7 +79,7 @@ function matchSkip(smartApproval, extraVars) {
 }
 
 function isSmartRequired(smartApproval, extraVars) {
-  if (!smartApproval || !smartApproval.enabled) return false;
+  if (!smartApproval?.enabled) return false;
   return !matchSkip(smartApproval, extraVars).skip;
 }
 

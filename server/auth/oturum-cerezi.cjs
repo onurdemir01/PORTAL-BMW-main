@@ -81,7 +81,7 @@ function eskiCereziTasi(ad) {
 
 /** Istekte bir oturum cerezi var mi (hiz siniri anahtari, teshis). Ham deger doner. */
 function istektekiOturumCerezi(req) {
-  const baslik = req.headers && req.headers.cookie;
+  const baslik = req.headers?.cookie;
   return cerezOku(baslik, cerezAdi()) || cerezOku(baslik, ESKI_AD);
 }
 

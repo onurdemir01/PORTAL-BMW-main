@@ -111,7 +111,7 @@ async function ara(q) {
   const skor = (ad) => {
     const a = L(ad);
     const b = L(q);
-    return a === b ? 0 : a.startsWith(b) ? 1 : 2;
+    if (a === b) return 0; if (a.startsWith(b)) return 1; return 2;
   };
   const sirala = (x) => x.sort((a, b) => skor(a.ad) - skor(b.ad) || a.ad.localeCompare(b.ad, 'tr')).slice(0, 25);
   const sonuclar = [
@@ -144,7 +144,7 @@ async function kapasiteOku(hostlar) {
   const { sql } = mssql();
   const params = liste.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(128), value: h }));
   const r = await guvenli(
-    `SELECT * FROM dbo.Inventory WHERE UPPER(host) IN (${liste.map((_, i) => `@h${i}`).join(', ')})`,
+    `SELECT * FROM dbo.Inventory WHERE UPPER(host) IN (${liste.map((_, i) => ("@h" + i)).join(', ')})`,
     params,
   );
   for (const row of r.rows) {
@@ -362,7 +362,7 @@ async function wasOzetleri(hostlar) {
       `SELECT h.host, h.was_ozeti, h.taranma_utc FROM ear_envanter_hostlari h
          JOIN (SELECT host, MAX(kosu_id) AS k FROM ear_envanter_hostlari WHERE veri_var = 1 GROUP BY host) m
            ON m.host = h.host AND m.k = h.kosu_id
-        WHERE UPPER(h.host) IN (${liste.map((_, i) => `$${i + 1}`).join(', ')})`,
+        WHERE UPPER(h.host) IN (${liste.map((_, i) => ("$" + (i + 1))).join(', ')})`,
       liste,
     );
     for (const r of rows) {
@@ -452,13 +452,11 @@ async function wasDetay(ad) {
         envanterDurumu: nz(row.status),
         alan: nz(row.domain),
         kapasite: kap.harita.get(host) || null,
-        jvm: bilgi
-          ? {
+        jvm: (() => { if (bilgi) return {
               ...bilgi,
               jvmArgs: bilgi.jvmArgs ? maskJvmArgs(bilgi.jvmArgs) : null,
               taranma: e.taranma,
-            }
-          : null,
+            }; return null; })(),
         jvmToplandi: !!(bilgi && bilgi.jvmDurumu === 'OKUNDU'),
         web: m && Array.isArray(m.web) ? m.web.map((w) => ({ host: U(w.host), serverName: w.serverName || null, product: w.product || null, port: w.port || null, kaynak: w.kaynak || null })) : [],
         tier: m ? m.tier || null : null,
@@ -580,7 +578,7 @@ async function ocpDetay(ad) {
       routelar: (rr.adaylar || []).map((a) => ({ adres: a.url, ad: a.routeName || null, tls: a.termination || null, kanit: a.how === 'address' ? 'adres' : 'route adı' })),
       routeEslesme: rr.how || null,
       atfedilmeyenRoute: rr.atfedilmeyen || 0,
-      istek: ku ? { toplam: sayi(ku.req_total), gun: sayi(ku.window_days), olculdu: Number(ku.measured) === 1, tarih: ku.scan_date ? new Date(ku.scan_date).toISOString().slice(0, 10) : null } : null,
+      istek: (() => { if (ku) return { toplam: sayi(ku.req_total), gun: sayi(ku.window_days), olculdu: Number(ku.measured) === 1, tarih: ku.scan_date ? new Date(ku.scan_date).toISOString().slice(0, 10) : null }; return null; })(),
     });
   }
   yerler.sort((a, b) => String(a.ortam).localeCompare(String(b.ortam)) || a.cluster.localeCompare(b.cluster) || a.namespace.localeCompare(b.namespace));

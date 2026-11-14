@@ -188,10 +188,8 @@ function kapsam(runs, veriGunu) {
       else bucket = 'guncel';
       return {
         ...k,
-        reason: veriIleride
-          ? `veri (${dataDate}) durum kaydından (${k.runDate}) yeni — yükleme yarım kalmış olabilir` +
-            (k.reason ? `; ${k.reason}` : '')
-          : k.reason,
+        reason: (() => { if (veriIleride) return `veri (${dataDate}) durum kaydından (${k.runDate}) yeni — yükleme yarım kalmış olabilir` +
+            (k.reason ? `; ${k.reason}` : ''); return k.reason; })(),
         dataDate,
         bucket,
         stale,
@@ -326,13 +324,7 @@ function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak, katalog)
       // OKUNAMADI ile KAYITLI DEGIL AYRI: envanter sorgusu dustuyse null.
       const envVar = envanterOkunamadi ? null : envRoute.has(k1) || envAdres.has(k2);
       const c = L(d.cluster);
-      const invTt = envRouteC.has(`${c}|${k1}`)
-        ? envRouteC.get(`${c}|${k1}`)
-        : envRouteC.has(`${c}|${k2}`)
-          ? envRouteC.get(`${c}|${k2}`)
-          : envRoute.has(k1)
-            ? envRoute.get(k1)
-            : envAdres.get(k2);
+      const invTt = (() => { if (envRouteC.has(`${c}|${k1}`)) return envRouteC.get(`${c}|${k1}`); if (envRouteC.has(`${c}|${k2}`)) return envRouteC.get(`${c}|${k2}`); if (envRoute.has(k1)) return envRoute.get(k1); return envAdres.get(k2); })();
       // NULL KORUNUR (2026-10-01): '' = route'ta TLS yok ('diger'), NULL = bilinmiyor. Eski
       // T() ikisini de '' yapiyordu ve 'bilinmiyor' hic olusmuyordu.
       const termination = d.termination == null ? null : L(d.termination);
@@ -486,15 +478,7 @@ function agKarari(term) {
     else s.edge += 1;
   }
   const ag =
-    s.passthrough && s.reencrypt
-      ? 'karisik'
-      : s.passthrough
-        ? 'internet'
-        : s.reencrypt
-          ? 'intranet'
-          : s.edge || s.tlsYok
-            ? 'diger'
-            : 'bilinmiyor';
+    (() => { if (s.passthrough && s.reencrypt) return 'karisik'; if (s.passthrough) return 'internet'; if (s.reencrypt) return 'intranet'; if (s.edge || s.tlsYok) return 'diger'; return 'bilinmiyor'; })();
   // Yalniz sifirdan buyuk anahtarlar (yanit boyutu).
   const agSay = {};
   for (const [k, v] of Object.entries(s)) if (v) agSay[k] = v;
@@ -576,7 +560,7 @@ function uygulamalar(rows, coverage, opt = {}) {
   }
   const out = [...m.values()].map((a) => {
     const spa =
-      a.spaRoutes > 0 ? 'evet' : a.unmatchedRoutes === a.routeCount ? 'bilinmiyor' : 'hayir';
+      (() => { if (a.spaRoutes > 0) return 'evet'; if (a.unmatchedRoutes === a.routeCount) return 'bilinmiyor'; return 'hayir'; })();
     const clusters = [...a.clusters].sort();
     // CLUSTER KAPSAMI: payda ortamin katalogdaki TARANABILEN cluster'lari (bkz. kapsamOrani).
     // Ortam tek bir cluster ortamina cozulemiyorsa oran iddia EDILMEZ.
@@ -592,32 +576,14 @@ function uygulamalar(rows, coverage, opt = {}) {
         kapsamVar = clusters.filter((c) => envC.includes(L(c)) && oran.olculen.has(L(c))).length;
         kapsamBakilamayan = envC.filter((c) => oran.bakilamayan.has(c)).length;
         if (kapsamToplam > 0)
-          kapsamDurum = kapsamVar >= kapsamToplam ? 'tam' : kapsamVar > 0 ? 'kismi' : 'yok';
+          kapsamDurum = (() => { if (kapsamVar >= kapsamToplam) return 'tam'; if (kapsamVar > 0) return 'kismi'; return 'yok'; })();
       }
     }
     const { ag, agSay } = agKarari(a.term);
     // ENVANTER CAPRAZ KONTROLU (ag'i EZMEZ): okunamadi > celisik > uyumlu > envanterde yok.
     // Envanterde bulunup termination_type kolonu gelmeyen route karsilastirilamaz.
-    const agEnvanter = a.invOkunamadi
-      ? 'olculemedi'
-      : a.invCelisik.size
-        ? 'celisik'
-        : a.invKiyas.size
-          ? 'uyumlu'
-          : a.invBulundu.size
-            ? 'olculemedi'
-            : 'envanterde-yok';
-    const istek = opt.dynatraceOkunamadi
-      ? 'olculemedi'
-      : a.reqShown != null
-        ? a.reqShown > 0
-          ? 'var'
-          : a.usage.services === 0
-            ? 'servis-yok'
-            : 'yok'
-        : a.usage && !a.usage.measured
-          ? 'olculemedi'
-          : 'olcum-yok';
+    const agEnvanter = (() => { if (a.invOkunamadi) return 'olculemedi'; if (a.invCelisik.size) return 'celisik'; if (a.invKiyas.size) return 'uyumlu'; if (a.invBulundu.size) return 'olculemedi'; return 'envanterde-yok'; })();
+    const istek = (() => { if (opt.dynatraceOkunamadi) return 'olculemedi'; if (a.reqShown != null) { if (a.reqShown > 0) return 'var'; if (a.usage.services === 0) return 'servis-yok'; return 'yok'; } if (a.usage && !a.usage.measured) return 'olculemedi'; return 'olcum-yok'; })();
     const ek = {};
     if (a.invCelisik.size) ek.agCelisikRoute = a.invCelisik.size;
     return {
@@ -649,13 +615,7 @@ function uygulamalar(rows, coverage, opt = {}) {
       agSay,
       agEnvanter,
       ...ek,
-      inventory: a.invOkunamadi
-        ? 'olculemedi'
-        : a.invRoutes === a.routeCount
-          ? 'kayitli'
-          : a.invRoutes === 0
-            ? 'kayitli-degil'
-            : 'kismen',
+      inventory: (() => { if (a.invOkunamadi) return 'olculemedi'; if (a.invRoutes === a.routeCount) return 'kayitli'; if (a.invRoutes === 0) return 'kayitli-degil'; return 'kismen'; })(),
       invRoutes: a.invRoutes,
       routeCount: a.routeCount,
       hosts: [...a.hosts].sort(),
@@ -748,7 +708,7 @@ const YANIT_BOS_DIZI = new Set(['signals', 'staleClusters', 'notes', 'routes', '
 function yanitUygulamasi(a) {
   const o = {};
   for (const [k, v] of Object.entries(a)) {
-    if (Object.prototype.hasOwnProperty.call(YANIT_VARSAYILAN, k) && YANIT_VARSAYILAN[k] === v)
+    if (Object.hasOwn(YANIT_VARSAYILAN, k) && YANIT_VARSAYILAN[k] === v)
       continue;
     if (YANIT_BOS_DIZI.has(k) && Array.isArray(v) && !v.length) continue;
     o[k] = v;

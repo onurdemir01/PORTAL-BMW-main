@@ -628,9 +628,7 @@ function domainXml(deploymentlar, { ekGruplar = [], ek = '' } = {}) {
     .map(
       (x) =>
         `  <deployment name="${xmlKac(x.ad)}" runtime-name="${xmlKac(x.calisma || x.ad)}">` +
-        (x.yol
-          ? `<fs-${x.arsiv ? 'archive' : 'exploded'} path="${xmlKac(x.yol)}"${x.goreli ? ` relative-to="${x.goreli}"` : ''}/>`
-          : '<content sha1="0123456789abcdef"/>') +
+        (() => { if (x.yol) return `<fs-${x.arsiv ? 'archive' : 'exploded'} path="${xmlKac(x.yol)}"${x.goreli ? (" relative-to=\"" + x.goreli + "\"") : ''}/>`; return '<content sha1="0123456789abcdef"/>'; })() +
         '</deployment>',
     )
     .join('\n');
@@ -653,7 +651,7 @@ function domainXml(deploymentlar, { ekGruplar = [], ek = '' } = {}) {
 /** [{ ad, grup, auto }] -> host.xml; auto undefined -> nitelik YOK (JBoss varsayilani true). */
 function hostXml(sunucular, hostAdi = 'master') {
   const s = sunucular
-    .map((x) => `  <server name="${x.ad}" group="${x.grup}"${x.auto === undefined ? '' : ` auto-start="${x.auto}"`}><jvm name="default"/></server>`)
+    .map((x) => `  <server name="${x.ad}" group="${x.grup}"${x.auto === undefined ? '' : (" auto-start=\"" + x.auto + "\"")}><jvm name="default"/></server>`)
     .join('\n');
   return `<?xml version="1.0"?>\n<host name="${hostAdi}" xmlns="${NS}">\n<servers>\n${s}\n</servers>\n</host>\n`;
 }

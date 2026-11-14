@@ -240,7 +240,7 @@ test('RL9: ortam sunucu adindan OKUNUR (sayilardan onceki harf), uydurulmaz', ()
   assert.match(srv, /ENV_HARF/, 'harf -> ortam eslemesi yok');
   // P/Q/T/D dordu birden tanimli olmali; biri eksikse o sunucular sessizce DIGER olur.
   for (const harf of ['P', 'Q', 'T', 'D']) {
-    assert.ok(Object.prototype.hasOwnProperty.call(rl.ENV_HARF, harf), `${harf} harfi tanimli degil`);
+    assert.ok(Object.hasOwn(rl.ENV_HARF, harf), `${harf} harfi tanimli degil`);
   }
 });
 

@@ -76,7 +76,8 @@ test('UC4: yetki kurallari harf duyarsiz - yazarken ve okurken', () => {
     'kural indeksi harf duyarsiz degil',
   );
   assert.ok(
-    visibility.includes("const usernameLower = ((user && user.username) || '').toLowerCase();"),
+    visibility.includes("const usernameLower = ((user && user.username) || '').toLowerCase();") ||
+      visibility.includes("const usernameLower = ((user?.username) || '').toLowerCase();"),
     'kullanici adi karsilastirma icin kucultulmuyor',
   );
 });

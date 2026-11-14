@@ -327,7 +327,8 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   const srvm = flatten(read('../server/audit/nginx-migration.cjs'));
   assert.ok(
     srvm.includes('newLocRows') &&
-      srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'"),
+      (srvm.includes("'defined' : on.length === 0 ? 'none' : 'partial'") ||
+        srvm.includes("return 'defined'; if (on.length === 0) return 'none'; return 'partial';")),
     'yeni sunucu location durumu hesaplanmali',
   );
   const srv = read('../server/audit/denetim.cjs');

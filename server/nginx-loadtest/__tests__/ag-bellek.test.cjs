@@ -164,7 +164,7 @@ function bdetayEkle(k, d, { anon = null } = {}) {
   const ilk = Math.min(...k.zaman.map((x) => x[1]));
   const satir = ts.map((t) => {
     const yukte = k.aralik.some(([a, b]) => a <= t && t < b);
-    const an = anon ? anon(t, yukte) : yukte ? 95 * 1024 : 40 * 1024;
+    const an = (() => { if (anon) return anon(t, yukte); if (yukte) return 95 * 1024; return 40 * 1024; })();
     const sh = t >= ilk ? 74 * 1024 : 10 * 1024;
     return `${t}.250000,2,0,${an},${sh},${20 * 1024},${an + sh / 8},8000,,${yukte ? 900 : 4}`;
   });

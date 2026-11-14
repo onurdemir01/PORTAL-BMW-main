@@ -684,8 +684,7 @@ async function spaKesfiHesapla() {
       : Promise.resolve([]),
     // (1) RP TANIMLARI: LOC (include) + PRX (eski PROD proxy_pass). kind kolonlari yoksa
     // NULL secilir - kolon yokken adini yazmak sorguyu derleme aninda dusururdu.
-    s.cfg
-      ? yoksaNull(
+    (() => { if (s.cfg) return yoksaNull(
           query(
             `SELECT host, vhost, service, env, location_path, application, namespace, status,
                     ${
@@ -699,8 +698,7 @@ async function spaKesfiHesapla() {
                 AND host IN (${rpIn.sqlText})`,
             rpIn.params,
           ),
-        )
-      : Promise.resolve(null),
+        ); return Promise.resolve(null); })(),
     // (2) YENI PROD DIZIN KURULUMU (GBNGXP4x/AP3x): conf_exists = tanim.
     s.dir
       ? yoksaNull(
@@ -731,8 +729,7 @@ async function spaKesfiHesapla() {
     // HOST KIPI SEMA DEGISTIRMEDI: satir turu location'in ilk karakterinden ayrilir ('/' =
     // location kipi, '@' = host kipi; vhost '_' = kova). Eski analyzer '@' satiri yazmaz ->
     // spa-rp.cjs hostKipi=false -> dizin tanimlari 'kaynak-yok' (eski davranis).
-    s.trf
-      ? yoksaNull(
+    (() => { if (s.trf) return yoksaNull(
           query(
             `SELECT host, vhost, location, req_24h, req_7d, hc_24h, sampled, last_seen, error,
                     ${s.fs ? 'first_seen' : 'CAST(NULL AS NVARCHAR(20)) AS first_seen'},
@@ -742,8 +739,7 @@ async function spaKesfiHesapla() {
                 AND host IN (${trfIn.sqlText})`,
             trfIn.params,
           ),
-        )
-      : Promise.resolve(null),
+        ); return Promise.resolve(null); })(),
     // CLUSTER KATALOGU (2026-10-06): uygulama basina "4/4 Tam / 3/4 Kismi" oraninin
     // PAYDASI. Elle cluster listesi YOK - ortamin cluster'lari katalogdan okunur.
     //
@@ -791,7 +787,7 @@ async function spaKesfiHesapla() {
   const trf = eskiSuz(trfHam);
   // TABLO DURUMU: 'var' | 'yok' (OBJECT_ID NULL) | 'okunamadi' (sema ya da sorgu dustu).
   const durum = (varMi, rows) =>
-    sema === null ? 'okunamadi' : !varMi ? 'yok' : rows === null ? 'okunamadi' : 'var';
+    { if (sema === null) return 'okunamadi'; if (!varMi) return 'yok'; if (rows === null) return 'okunamadi'; return 'var'; };
   const rpKaynak = {
     tablolar: {
       cfg: durum(s.cfg, cfg),
@@ -1296,7 +1292,7 @@ function initNginxConsole(app) {
       // "tarama hic kosmadi" ayri seylerdir.
       const yok = /Invalid object name/i.test(err.message || '');
       res.status(yok ? 200 : 503).json({
-        ok: !yok ? false : true,
+        ok: yok,
         tableMissing: yok,
         hosts: [],
         summary: null,
@@ -1590,11 +1586,7 @@ function initNginxConsole(app) {
       return res
         .status(403)
         .json({ ok: false, message: 'Konfigürasyon değişikliği yalnız Admin.' });
-    const list = Array.isArray(req.body?.hosts)
-      ? req.body.hosts
-      : req.body?.host
-        ? [req.body.host]
-        : [];
+    const list = (() => { if (Array.isArray(req.body?.hosts)) return req.body.hosts; if (req.body?.host) return [req.body.host]; return []; })();
     const hosts = [
       ...new Set(
         list
@@ -1663,7 +1655,7 @@ function initNginxConsole(app) {
     if (conflicts.length)
       return res.status(409).json({
         ok: false,
-        message: `Ön kontrol: ${conflicts.map((c) => `${c.host}: ${c.reason}`).join('; ')}`,
+        message: `Ön kontrol: ${conflicts.map((c) => (String(c.host) + ": " + c.reason)).join('; ')}`,
         conflicts,
         currentSha256: conflicts[0]?.currentSha256 || null,
       });

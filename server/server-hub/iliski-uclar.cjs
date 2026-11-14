@@ -66,7 +66,7 @@ function iliskiHesabiKur({
  */
 function grupDurumu(g, kontroller) {
   const k = kontroller ? kontroller.get(g.anahtar) || null : null;
-  const durum = !kontroller ? 'BILINMIYOR' : !k ? 'BEKLIYOR' : k.imza !== g.imza ? 'VERI_DEGISTI' : k.sonuc;
+  const durum = (() => { if (!kontroller) return 'BILINMIYOR'; if (!k) return 'BEKLIYOR'; if (k.imza !== g.imza) return 'VERI_DEGISTI'; return k.sonuc; })();
   return {
     ...g,
     durum,

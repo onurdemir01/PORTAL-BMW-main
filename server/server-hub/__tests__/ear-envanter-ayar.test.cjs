@@ -63,7 +63,7 @@ test('EY2 dogrulama', () => {
   assert.equal(AYARLAR.p2_birim.dogrula('GUN'), null);
   assert.equal(kapsamDogrula('ORTAM: test , prod,TEST'), 'ORTAM:PROD,TEST');
   assert.equal(kapsamDogrula('SORUNLU'), 'SORUNLU');
-  for (const k of ['', 'ORTAM:', 'ORTAM:a;b', 'HEPSI', `ORTAM:${Array.from({ length: 21 }, (_, i) => `E${i}`).join(',')}`])
+  for (const k of ['', 'ORTAM:', 'ORTAM:a;b', 'HEPSI', `ORTAM:${Array.from({ length: 21 }, (_, i) => ("E" + i)).join(',')}`])
     assert.equal(kapsamDogrula(k), null, k);
   assert.equal(tarihDogrula('2026-02-28'), '2026-02-28');
   for (const t of ['2026-02-30', '2026-13-01', '26-01-01', '2019-12-31', ''])

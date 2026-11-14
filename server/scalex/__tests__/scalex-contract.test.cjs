@@ -826,16 +826,6 @@ test('WKM-P1 property: her gecerli girdi → ciktida name=kind cifti var', () =>
     'dc',
     'rollout',
   ];
-  const kindToExpected = {
-    deployment: 'deploy',
-    deploy: 'deploy',
-    statefulset: 'sts',
-    sts: 'sts',
-    deploymentconfig: 'dc',
-    dc: 'dc',
-    argorollout: 'rollout',
-    rollout: 'rollout',
-  };
 
   fc.assert(
     fc.property(

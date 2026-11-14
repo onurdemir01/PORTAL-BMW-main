@@ -72,7 +72,7 @@ function jsonListe(v) {
 const degiskenMetni = (r) =>
   (r.degiskenler || []).map((d) => `${d.harf}=${(d.hostlar || []).join(',')}`).join(' | ');
 const evet = (k) => (r) =>
-  r[k] === true || r[k] === 1 ? 'evet' : r[k] === false || r[k] === 0 ? 'hayır' : '';
+  { if (r[k] === true || r[k] === 1) return 'evet'; if (r[k] === false || r[k] === 0) return 'hayır'; return ''; };
 const tarih = (k) => (r) =>
   r[k] ? new Date(r[k]).toISOString().slice(0, 19).replace('T', ' ') : '';
 
@@ -256,7 +256,7 @@ function agacMetni({ host, kosu, uygulama, taranmaUtc }) {
     for (const s of liste) {
       const ad = String(s[0]).slice(String(s[0]).lastIndexOf('/') + 1);
       out.push(
-        `${sag(s[7], 10)} ${sol(s[2], 10)} ${sag(s[3], 5)} ${sag(s[4], 5)} ${sag(s[5], 12)} ${tarihMetni(s[6])} ${ad}${s[8] ? ` -> ${s[8]}` : ''}`,
+        `${sag(s[7], 10)} ${sol(s[2], 10)} ${sag(s[3], 5)} ${sag(s[4], 5)} ${sag(s[5], 12)} ${tarihMetni(s[6])} ${ad}${s[8] ? (" -> " + s[8]) : ''}`,
       );
     }
   }

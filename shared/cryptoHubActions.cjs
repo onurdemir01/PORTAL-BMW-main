@@ -443,16 +443,12 @@ function buildPlan(tenant, actionKey, params = {}, veri = {}) {
     // sessizce BASKA bir surume goturebilirdi. Tahmin etmektense ACMIYORUZ: ekran
     // sebebini yazar ve komutlar yine gosterilir.
     runnable: portaldanKosar,
-    runnableNote: portaldanKosar
-      ? 'Bu işlemi Portal çalıştırabilir: aşağıdaki panelden önce farkı görün, isterseniz ' +
+    runnableNote: (() => { if (portaldanKosar) return 'Bu işlemi Portal çalıştırabilir: aşağıdaki panelden önce farkı görün, isterseniz ' +
         'helm template ile oluşacak nesneleri önizleyin, sonra uygulayın. Sürüm DEĞİŞMEZ — ' +
-        'koşan sürüm hem Portal hem bastion tarafında ayrıca doğrulanır.'
-      : action.key === 'values_rollout'
-        ? 'Bu uygulamada chart, bastion diskindeki bir dizinden kuruluyor ve doğru dizin ' +
+        'koşan sürüm hem Portal hem bastion tarafında ayrıca doğrulanır.'; if (action.key === 'values_rollout') return 'Bu uygulamada chart, bastion diskindeki bir dizinden kuruluyor ve doğru dizin ' +
           'koşan sürüme bağlı; Portal tahmin etmemek için işlemi kendisi çalıştırmıyor. ' +
-          'Aşağıdaki komutlar elle koşulur.'
-        : "Bu işlem Portal'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. " +
-          'Yazan playbook bağlandığında onay bu ekrandan verilecek.',
+          'Aşağıdaki komutlar elle koşulur.'; return "Bu işlem Portal'dan henüz çalıştırılmıyor — komutlar şimdilik elle koşulur. " +
+          'Yazan playbook bağlandığında onay bu ekrandan verilecek.'; })(),
   };
 }
 

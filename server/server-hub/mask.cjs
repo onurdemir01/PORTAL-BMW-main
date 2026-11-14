@@ -52,7 +52,7 @@ const KATLAMA = Object.freeze({
 /** Anahtar kelime ERE'sinde i/s/k harflerini Unicode esdegerleriyle genisletir (harfler yalniz duz metin). */
 function katla(ere) {
   let o = '';
-  for (const c of ere) o += Object.prototype.hasOwnProperty.call(KATLAMA, c) ? KATLAMA[c] : c;
+  for (const c of ere) o += Object.hasOwn(KATLAMA, c) ? KATLAMA[c] : c;
   return o;
 }
 const ASCII_DISI = `${String.fromCharCode(0x80)}-${String.fromCharCode(0xffff)}`;

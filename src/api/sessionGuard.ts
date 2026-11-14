@@ -143,7 +143,7 @@ function basliklariYay(res: Response): void {
   if (!_baslikAboneleri.size || !res.headers) return;
   const idleExpiresAt = Number(res.headers.get(BASLIK_BOSTA));
   const absoluteExpiresAt = Number(res.headers.get(BASLIK_MUTLAK));
-  if (!(idleExpiresAt > 0) || !(absoluteExpiresAt > 0)) return;
+  if (!Number.isFinite(idleExpiresAt) || idleExpiresAt <= 0 || !Number.isFinite(absoluteExpiresAt) || absoluteExpiresAt <= 0) return;
   for (const fn of _baslikAboneleri) {
     try {
       fn({ idleExpiresAt, absoluteExpiresAt });

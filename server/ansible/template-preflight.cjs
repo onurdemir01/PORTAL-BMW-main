@@ -92,7 +92,7 @@ async function assertTemplatePlaybook(serverId, templateId, expectedPlaybook, { 
   const beklenen = String(expectedPlaybook || '').trim().toLowerCase();
   if (!beklenen) return;
   const tpl = await findTemplate(serverId, templateId);
-  if (!tpl || !tpl.playbook) return;
+  if (!tpl?.playbook) return;
   const gercek = String(tpl.playbook).split('/').pop().toLowerCase();
   if (gercek === beklenen) return;
   throw Object.assign(

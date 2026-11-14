@@ -802,14 +802,14 @@ function eylemRoute(fn) {
   return (req, res) =>
     fn(req, res).catch((err) => {
       const asil = err.status || 500;
-      const status = asil === 501 ? 409 : [502, 503, 504].includes(asil) ? 424 : asil;
+      const status = (() => { if (asil === 501) return 409; if ([502, 503, 504].includes(asil)) return 424; return asil; })();
       if (asil >= 500) console.error('[ScaleX]', err);
       const safeMsg =
         asil === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
       res.status(status).json({
         ok: false,
         message: safeMsg,
-        code: err.code || (asil === 501 ? 'scalex_not_configured' : status === 424 ? 'awx_unreachable' : undefined),
+        code: err.code || (() => { if (asil === 501) return 'scalex_not_configured'; if (status === 424) return 'awx_unreachable'; return undefined; })(),
         ...(status !== asil ? { upstreamStatus: asil } : {}),
       });
     });
@@ -1816,12 +1816,10 @@ function initScaleX(app) {
         verification,
         // ScaleX sablonu cozulemediyse HICBIR is baslayamaz (on kontrol dahil). Ekran bunu
         // "Calistir"dan once soyler; `/run` ayni metinle reddeder.
-        configError: gateCfg.hata
-          ? {
+        configError: (() => { if (gateCfg.hata) return {
               code: gateCfg.hata.status === 501 ? 'scalex_not_configured' : 'config_unreadable',
               message: gateCfg.hata.message,
-            }
-          : null,
+            }; return null; })(),
         hpaPinAllowed: launch.isHpaPinAllowed({
           action,
           targetReplicas,

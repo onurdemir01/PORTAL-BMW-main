@@ -64,7 +64,7 @@ async function dumpNav(title) {
       ORDER BY element_key`
   );
   if (orphans.length) {
-    console.log(`    (menu disi sayfalar: ${orphans.map((o) => `${o.element_key} -> ${o.route}`).join(', ')})`);
+    console.log(`    (menu disi sayfalar: ${orphans.map((o) => (String(o.element_key) + " -> " + o.route)).join(', ')})`);
   }
 }
 

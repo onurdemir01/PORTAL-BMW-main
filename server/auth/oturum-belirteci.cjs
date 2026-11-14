@@ -67,7 +67,7 @@ function belirtecKatmani({ ad, secret }) {
   return function belirtecKatmaniMw(req, res, next) {
     if (!req._oturumBelirtecleri) req._oturumBelirtecleri = new Map();
     const baslik = req.headers.cookie;
-    if (baslik && baslik.includes(ad)) {
+    if (baslik?.includes(ad)) {
       const parcalar = baslik.split(';');
       let degisti = false;
       for (let i = 0; i < parcalar.length; i++) {
@@ -84,7 +84,7 @@ function belirtecKatmani({ ad, secret }) {
           const belirtec = ham.slice(ONEK.length);
           const sid = kimlik(belirtec);
           req._oturumBelirtecleri.set(sid, belirtec);
-          parcalar[i] = ` ${ad}=${encodeURIComponent(`s:${imzala(sid, secret)}`)}`;
+          parcalar[i] = ` ${ad}=${encodeURIComponent(("s:" + imzala(sid, secret)))}`;
           degisti = true;
           continue;
         }

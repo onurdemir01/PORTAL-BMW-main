@@ -211,7 +211,7 @@ async function findByOcoRecordIds(ids) {
   for (const r of rows) {
     let pl;
     try { pl = JSON.parse(r.pending_launch_json); } catch { continue; }
-    const o = Number(pl && pl.ocoRecordId);
+    const o = Number(pl?.ocoRecordId);
     if (!want.has(o) || out.has(o)) continue;
     out.set(o, rowToTicket(r));
   }

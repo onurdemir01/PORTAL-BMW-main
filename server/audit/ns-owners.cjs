@@ -216,7 +216,7 @@ async function loadNamespaceOwners(query, { bekle = false } = {}) {
       if (_inflight || !geriCekilmede()) {
         const p = yenile(query);
         if (bekle) return p;
-        p.catch((e) => console.warn('[ns-owners] arka plan yenileme hatasi:', e && e.message));
+        p.catch((e) => console.warn('[ns-owners] arka plan yenileme hatasi:', e?.message));
       }
     }
     return yasli(_cache, _cacheAt, hatali);
@@ -239,7 +239,7 @@ function ownersFor(byNs, namespaces) {
     const ns = L(ns0);
     if (!ns) continue;
     const o = byNs.get(ns);
-    if (!o || !o.group) {
+    if (!o?.group) {
       if (!unknownNs.includes(ns)) unknownNs.push(ns);
       continue;
     }
@@ -300,7 +300,7 @@ function ownersForApp(owners, app, namespaces) {
     // YEDEK: namespace sahibi (namespace tablosu daha guncel; o yoksa uygulama satirinin
     // kendi yazdigi namespace sahibi).
     const n = byNs.get(ns);
-    const yedek = n && n.group ? n : a && a.group ? a : null;
+    const yedek = (() => { if (n && n.group) return n; if (a && a.group) return a; return null; })();
     if (!yedek) {
       const liste = nsOkunamadi ? veriYokNs : unknownNs;
       if (!liste.includes(ns)) liste.push(ns);

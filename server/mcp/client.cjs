@@ -303,9 +303,7 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
     _connecting = (async () => {
       // Varyantlar: baglanilmis URL biliniyorsa once o; yoksa verilen URL, sonra /mcp eki
       const base = url.replace(/\/+$/, '');
-      const variants = _connectedUrl
-        ? [_connectedUrl]
-        : (base.endsWith('/mcp') ? [base] : [base, `${base}/mcp`]);
+      const variants = (() => { if (_connectedUrl) return [_connectedUrl]; if (base.endsWith('/mcp')) return [base]; return [base, `${base}/mcp`]; })();
 
       let lastErr = null;
       for (const variant of variants) {

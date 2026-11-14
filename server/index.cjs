@@ -445,7 +445,7 @@ async function main() {
       // index.html (HTML) donmek, tarayiciya "modul bekliyordum, HTML geldi" hatasi verdirir ve
       // sebebi gizler. Duz 404 doner; istemci bunu surum atlamasi sayip sayfayi yeniler.
       app.get(
-        /^\/(?:assets\/|.*\.(?:js|mjs|css|map|json|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot|txt|webmanifest)$)/,
+        new RegExp('^/(?:assets/|.*\\.(?:' + ['js','mjs','css','map','json','png','jpg','jpeg','svg','gif','ico','woff2?','ttf','eot','txt','webmanifest'].join('|') + ')$)'),
         (req, res) => {
           res
             .status(404)

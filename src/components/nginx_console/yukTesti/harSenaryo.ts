@@ -191,10 +191,10 @@ function koseliDenetle(netloc: string) {
 }
 const asciiMi = (s: string) => { for (let i = 0; i < s.length; i += 1) if (s.charCodeAt(i) > 0x7f) return false; return true; };
 function netlocDenetle(netloc: string) {
-  if (!netloc || asciiMi(netloc)) return;
+  if (!netloc || asciiMi(netloc)) { return; }
   const n = netloc.replace(/[@:#?]/g, '');
   const n2 = n.normalize('NFKC');
-  if (n === n2) return;
+  if (n === n2) { return; }
   for (const c of '/?#@:') if (n2.includes(c)) throw new UrlHatasi();
 }
 /** urllib.parse.urlsplit + .hostname (yalniz bu dosyanin kullandigi alanlar). Hata: UrlHatasi. */
@@ -360,12 +360,12 @@ export function senaryoUret(harlar: HarGirdisi[], o: { host: string; buyukEsik?:
   const host = String(o.host || '').trim().toLowerCase();
   const buyukEsik = o.buyukEsik ?? VARSAYILAN_BUYUK_ESIK;
   const sorguAt = !!o.sorguAt;
-  if (!/^[a-z0-9.-]+$/.test(host)) return { ok: false, kod: KOD_KULLANIM, mesaj: 'Host geçersiz (yalnız küçük harf, rakam, nokta ve tire).' };
-  if (!(Number.isInteger(buyukEsik) && buyukEsik > 0)) return { ok: false, kod: KOD_KULLANIM, mesaj: 'Büyük dosya eşiği pozitif tam sayı olmalı.' };
-  if (!harlar.length) return { ok: false, kod: KOD_KULLANIM, mesaj: 'En az bir HAR dosyası seçin.' };
+  if (!/^[a-z0-9.-]+$/.test(host)) { return { ok: false, kod: KOD_KULLANIM, mesaj: 'Host geçersiz (yalnız küçük harf, rakam, nokta ve tire).' }; }
+  if (!Number.isInteger(buyukEsik) || buyukEsik <= 0) { return { ok: false, kod: KOD_KULLANIM, mesaj: 'Büyük dosya eşiği pozitif tam sayı olmalı.' }; }
+  if (!harlar.length) { return { ok: false, kod: KOD_KULLANIM, mesaj: 'En az bir HAR dosyası seçin.' }; }
   for (const h of harlar) {
     const w = h.agirlik ?? 1;
-    if (!(w > 0) || !Number.isFinite(w)) return { ok: false, kod: KOD_KULLANIM, mesaj: `Sayfa ağırlığı pozitif sayı olmalı: ${h.ad}` };
+    if (!Number.isFinite(w) || w <= 0) { return { ok: false, kod: KOD_KULLANIM, mesaj: `Sayfa ağırlığı pozitif sayı olmalı: ${h.ad}` }; }
   }
   const politika = sorguAt ? 'sorguyu_at_yolu_tut' : 'sorgulu_istegi_ele';
   const ozetMetni = ['# har_senaryo.py ozeti - yalniz sayilar (deger, baslik, cerez, sorgu yok)', `host=${host}`,

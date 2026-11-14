@@ -37,15 +37,16 @@ function findCommentStart(line) {
         continue;
       }
       if (ch === quote) quote = null;
-    } else {
-      if (ch === '"' || ch === "'" || ch === '`') quote = ch;
-      else if (ch === '/' && line[i + 1] === '/') {
-        if (i > 0 && line[i - 1] === ':') {
-          i++;
-          continue;
-        }
-        return i;
-      } else if (ch === '/' && line[i + 1] === '*') return i;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+    } else if (ch === '/' && line[i + 1] === '/') {
+      if (i > 0 && line[i - 1] === ':') {
+        i++;
+        continue;
+      }
+      return i;
+    } else if (ch === '/' && line[i + 1] === '*') {
+      return i;
     }
   }
   return -1;

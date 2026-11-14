@@ -46,7 +46,7 @@ export function UyariTuruOnayi({ baslik, turler, onayli, onDegisti }: { baslik: 
       <legend className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{baslik}</legend>
       {turler.map((t) => (
         <label key={t.kod} className="flex items-start gap-2 text-[12px] leading-5" style={{ color: 'var(--text-primary)' }}>
-          <input type="checkbox" className="mt-1" checked={onayli.has(t.kod)} onChange={(e) => { const n = new Set(onayli); if (e.target.checked) n.add(t.kod); else n.delete(t.kod); onDegisti(n); }} />
+          <input type="checkbox" className="mt-1" checked={onayli.has(t.kod)} onChange={(e) => { const n = new Set(onayli); if (e.target.checked) { n.add(t.kod); } else { n.delete(t.kod); } onDegisti(n); }} />
           <span className="min-w-0"><span className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>{t.kod}</span>{` ${t.ornek}`}{t.ogeler?.length ? <span style={{ color: 'var(--text-secondary)' }}>{` (öğe ${t.ogeler.join(', ')})`}</span> : null}</span>
         </label>
       ))}

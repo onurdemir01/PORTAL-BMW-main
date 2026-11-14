@@ -598,9 +598,9 @@ const SON_TEK = 'scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers
 const AYAR_GUNLERI = 'SELECT CONVERT(varchar(10), m.d, 23) AS d, CONVERT(varchar(10), (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Settings WHERE scan_date < m.d), 23) AS o FROM (SELECT MAX(scan_date) AS d FROM dbo.Nginx_Audit_Settings) AS m';
 const AYAR_VARLIK = (n) => 'SELECT h.host, CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @d, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS d_var, '
   + 'CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @o, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS o_var '
-  + `FROM (VALUES ${Array.from({ length: n }, (_, i) => `(@a${i})`).join(', ')}) AS h(host)`;
+  + `FROM (VALUES ${Array.from({ length: n }, (_, i) => '(@a' + i + ')').join(', ')}) AS h(host)`;
 const AYAR_LIMIT = (n) => "SELECT host, directive, value FROM dbo.Nginx_Audit_Settings WHERE scan_date = CONVERT(date, @g, 23) AND directive IN ('limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn') "
-  + `AND host IN (${Array.from({ length: n }, (_, i) => `@a${i}`).join(',')})`;
+  + `AND host IN (${Array.from({ length: n }, (_, i) => '@a' + i).join(',')})`;
 const LIMIT_DIREKTIF = new Set(['limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn']);
 
 /**
@@ -1609,11 +1609,13 @@ test('DG-H2 extra_vars yuk_protokol: 34. anahtar, her zaman metin; son kapi ihla
   assert.deepEqual([h2.yuk_protokol, h2.yuk_kip, h2.yuk_motor], ['h2', 'ka', 'k6']);
   assert.deepEqual(den(h2), []);
   // Eski (protokolsuz) kanonik nesne -> h1; wrk nesnesi -> h1.
-  const { protokol: _, ...eski } = dg.parametreler({}, { sni: false }).deger;
+  const eski = { ...dg.parametreler({}, { sni: false }).deger };
+  delete eski.protokol;
   assert.equal(evKur({ p: eski }).yuk_protokol, 'h1');
   assert.equal(evKur({ p: dg.parametreler({ motor: 'wrk' }, { sni: false }).deger }).yuk_protokol, 'h1');
   // Son kapi: anahtar yok, gecersiz deger, wrk + h2, h2 + yeni -> ihlal 'yuk_protokol'.
-  const { yuk_protokol: __, ...eksik } = h1;
+  const eksik = { ...h1 };
+  delete eksik.yuk_protokol;
   assert.deepEqual(den(eksik), ['yuk_protokol']);
   for (const v of ['h3', 'H2', '', 'h1 ', null, 2]) assert.deepEqual(den({ ...h1, yuk_protokol: v }), ['yuk_protokol'], JSON.stringify(v));
   const w = evKur({ p: dg.parametreler({ motor: 'wrk', kip: 'ka' }, { sni: false }).deger });
@@ -1626,7 +1628,8 @@ test('DG-H2 extra_vars yuk_protokol: 34. anahtar, her zaman metin; son kapi ihla
   assert.equal(d.yuk_protokol, 'h1');
   assert.deepEqual(den(d), []);
   assert.deepEqual(den({ ...d, yuk_protokol: 'h3' }), []);
-  const { yuk_protokol: ___, ...dEksik } = d;
+  const dEksik = { ...d };
+  delete dEksik.yuk_protokol;
   assert.deepEqual(den(dEksik), ['yuk_protokol']);
 });
 
@@ -1651,7 +1654,7 @@ test('DG-H3 onKontrolDegerlendir protokol: h1 cikti birebir; h2 TEK engel (h2 ic
   assert.deepEqual(e({ alpn_h2: false, yollar_h2: '0', yollar_yanitli: '4' }).engeller, [ALPN(0, 4)]);
   assert.deepEqual(e({ alpn_h2: false, yollar_h2: null, yollar_yanitli: undefined }).engeller, [ALPN('?', '?')]);
   // Olculemedi (fail-closed): alan yok (eski playbook), null, metin 'true' (yalniz gercek true gecer).
-  const { alpn_h2: _a, curl_h2: _c, protokol: _p, yollar_h2: _y, yollar_yanitli: _z, ...eskiPlaybook } = H2_TAM;
+  const eskiPlaybook = {};
   assert.deepEqual(dg.onKontrolDegerlendir({ ...YD21_TEMIZ, ...eskiPlaybook }, { protokol: 'h2' }).engeller, [OLCULEMEDI]);
   for (const v of [null, undefined, 'true', 1, '1']) assert.deepEqual(e({ alpn_h2: v }).engeller, [OLCULEMEDI], JSON.stringify(v));
   // curl h2'siz: curl metni (alpn ne olursa olsun); on kontrol h1 icin yapilmis: yapilmadi metni (curl / alpn'den once).

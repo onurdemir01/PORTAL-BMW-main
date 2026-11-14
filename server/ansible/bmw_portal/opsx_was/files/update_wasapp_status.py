@@ -75,30 +75,24 @@ def parola_al(stdin_mi):
     return os.environ.get("TBMWANS_PWD", "")
 
 
-def main(argv=None):
-    p = argparse.ArgumentParser(description="dbo.WASAppsInventory.status tek satir guncelleyici")
-    p.add_argument("--host", required=True)
-    p.add_argument("--app", required=True)
-    p.add_argument("--status", required=True)
-    p.add_argument("--pwd-stdin", action="store_true", help="parolayi stdin'in ilk satirindan oku")
-    try:
-        a = p.parse_args(argv)
-    except SystemExit:
-        satir("FAIL", "arguman hatasi (--host --app --status gerekli)")
-        return 2
-    if not AD.match(a.host) or not AD.match(a.app):
-        satir("FAIL", "gecersiz host/app (yalniz ^[A-Za-z0-9_.-]+$); DB'ye baglanilmadi")
-        return 2
-    if a.status not in DURUMLAR:
-        satir("FAIL", "status yalniz running|stopped olabilir (olculmus durum); DB'ye baglanilmadi")
-        return 2
-    parola = parola_al(a.pwd_stdin)
-    if not parola:
-        satir("FAIL", "parola bos (AWX credential tbmwans_pwd -> stdin); DB'ye baglanilmadi")
-        return 2
-    if pyodbc is None:
-        satir("FAIL", "pyodbc yok; DB'ye baglanilmadi")
-        return 2
+def _sessizce_kapat(*nesneler):
+    for nesne in nesneler:
+        if nesne is not None:
+            try:
+                nesne.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _sessizce_rollback(conn):
+    if conn is not None:
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _guncelle(a, parola):
     conn = None
     cur = None
     try:
@@ -123,20 +117,38 @@ def main(argv=None):
         satir("OK", "%s/%s -> status=%s (%d satir)" % (a.host, a.app, a.status, n))
         return 0
     except Exception as e:  # noqa: BLE001 - pyodbc.Error dahil her hata FAIL + geri alma
-        if conn is not None:
-            try:
-                conn.rollback()
-            except Exception:  # noqa: BLE001
-                pass
+        _sessizce_rollback(conn)
         satir("FAIL", "dbo.WASAppsInventory guncellenemedi: %s" % gizle(e, parola))
         return 1
     finally:
-        for nesne in (cur, conn):
-            if nesne is not None:
-                try:
-                    nesne.close()
-                except Exception:  # noqa: BLE001
-                    pass
+        _sessizce_kapat(cur, conn)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="dbo.WASAppsInventory.status tek satir guncelleyici")
+    p.add_argument("--host", required=True)
+    p.add_argument("--app", required=True)
+    p.add_argument("--status", required=True)
+    p.add_argument("--pwd-stdin", action="store_true", help="parolayi stdin'in ilk satirindan oku")
+    try:
+        a = p.parse_args(argv)
+    except SystemExit:
+        satir("FAIL", "arguman hatasi (--host --app --status gerekli)")
+        return 2
+    if not AD.match(a.host) or not AD.match(a.app):
+        satir("FAIL", "gecersiz host/app (yalniz ^[A-Za-z0-9_.-]+$); DB'ye baglanilmadi")
+        return 2
+    if a.status not in DURUMLAR:
+        satir("FAIL", "status yalniz running|stopped olabilir (olculmus durum); DB'ye baglanilmadi")
+        return 2
+    parola = parola_al(a.pwd_stdin)
+    if not parola:
+        satir("FAIL", "parola bos (AWX credential tbmwans_pwd -> stdin); DB'ye baglanilmadi")
+        return 2
+    if pyodbc is None:
+        satir("FAIL", "pyodbc yok; DB'ye baglanilmadi")
+        return 2
+    return _guncelle(a, parola)
 
 
 if __name__ == "__main__":

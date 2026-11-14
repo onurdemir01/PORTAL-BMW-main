@@ -24,7 +24,7 @@ const EYLEM_ALANLARI = ['action', 'op_selection'];
 
 /** Sablon yerel okuma destekliyor mu: { tur, eylemAlanlari, deger } ya da null. */
 function yerelOkumaOf(detail) {
-  return PLAYBOOK_RE.test(T(detail && detail.playbook))
+  return PLAYBOOK_RE.test(T(detail?.playbook))
     ? { tur: 'nginx-tanimlar', eylemAlanlari: EYLEM_ALANLARI, deger: 'read' }
     : null;
 }
@@ -143,7 +143,7 @@ async function satirlariOku(query, sql, E, S) {
   const tarihR = await query(
     `SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM dbo.Nginx_Config_Audit`,
   );
-  const tarih = (tarihR.recordset && tarihR.recordset[0] && tarihR.recordset[0].d) || null;
+  const tarih = (tarihR.recordset?.[0]?.d) || null;
   if (!tarih) return { tarih: null, rows: [] };
   const where = `scan_date = @d AND UPPER(env) = @e AND UPPER(service) = @s`;
   const p = [...params, { name: 'd', type: sql.NVarChar(10), value: tarih }];

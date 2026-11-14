@@ -140,7 +140,7 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
   // Kaynaklar (dbo.Inventory cpu/memory): ortam bazinda toplam vCPU / GB; verisi olmayanlar sayilir
   const res = useMemo(() => {
     const m = new Map<string, { n: number; cpu: number; mem: number; missing: number }>();
-    for (const h of hosts) { const k = h.env || '—'; const e = m.get(k) || { n: 0, cpu: 0, mem: 0, missing: 0 }; e.n += 1; e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.cpu == null && h.memoryGb == null) e.missing += 1; m.set(k, e); }
+    for (const h of hosts) { const k = h.env || '—'; const e = m.get(k) || { n: 0, cpu: 0, mem: 0, missing: 0 }; e.n += 1; e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.cpu == null && h.memoryGb == null) { e.missing += 1; } m.set(k, e); }
     return [...m.entries()].sort((a, b) => b[1].cpu - a[1].cpu);
   }, [hosts]);
   const totCpu = sum(hosts.map((h) => h.cpu)), totMem = sum(hosts.map((h) => h.memoryGb)), resMissing = hosts.filter((h) => h.cpu == null && h.memoryGb == null).length;
@@ -149,19 +149,19 @@ export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'in
   const prod = useMemo(() => hosts.filter((h) => isProdEnv(h.env)), [hosts]);
   const sites = useMemo(() => {
     const m = new Map<string, { n: number; online: number; cpu: number; mem: number; tFail: number }>();
-    for (const h of prod) { const k = siteOf(h) || 'Bilinmiyor'; const e = m.get(k) || { n: 0, online: 0, cpu: 0, mem: 0, tFail: 0 }; e.n += 1; if (isOnline(h, now)) e.online += 1; e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.nginxT === 'fail') e.tFail += 1; m.set(k, e); }
+    for (const h of prod) { const k = siteOf(h) || 'Bilinmiyor'; const e = m.get(k) || { n: 0, online: 0, cpu: 0, mem: 0, tFail: 0 }; e.n += 1; if (isOnline(h, now)) { e.online += 1; } e.cpu += sum([h.cpu]); e.mem += sum([h.memoryGb]); if (h.nginxT === 'fail') { e.tFail += 1; } m.set(k, e); }
     return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
   }, [prod, now]);
   const oss = hosts.filter((h) => parseNginxVersion(h.nginxVersion).type === 'Open Source').length;
   const versions = useMemo(() => {
     const m = new Map<string, { type: string; version: string; n: number }>();
-    for (const h of hosts) { const p = parseNginxVersion(h.nginxVersion); const key = `${p.type}|${p.version || '?'}${p.release ? ' ' + p.release : ''}`; const e = m.get(key) || { type: p.type, version: `${p.version || '?'}${p.release ? ` (${p.release})` : ''}`, n: 0 }; e.n += 1; m.set(key, e); }
+    for (const h of hosts) { const p = parseNginxVersion(h.nginxVersion); const key = `${p.type}|${p.version || '?'}${p.release ? ' ' + p.release : ''}`; const e = m.get(key) || { type: p.type, version: `${p.version || '?'}${p.release ? ' (' + p.release + ')' : ''}`, n: 0 }; e.n += 1; m.set(key, e); }
     return [...m.values()].sort((a, b) => b.n - a.n);
   }, [hosts]);
   const plus = hosts.filter((h) => parseNginxVersion(h.nginxVersion).type === 'NGINX Plus').length;
   const envs = useMemo(() => {
     const m = new Map<string, { n: number; online: number }>();
-    for (const h of hosts) { const k = h.env || '—'; const e = m.get(k) || { n: 0, online: 0 }; e.n += 1; if (isOnline(h, now)) e.online += 1; m.set(k, e); }
+    for (const h of hosts) { const k = h.env || '—'; const e = m.get(k) || { n: 0, online: 0 }; e.n += 1; if (isOnline(h, now)) { e.online += 1; } m.set(k, e); }
     return [...m.entries()].sort((a, b) => b[1].n - a[1].n);
   }, [hosts, now]);
   const soon = useMemo(() => (certs?.certs || []).filter((c) => c.daysLeft != null).sort((a, b) => (a.daysLeft as number) - (b.daysLeft as number)).slice(0, 5), [certs]);

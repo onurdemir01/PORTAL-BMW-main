@@ -25,11 +25,7 @@ async function resolveTarget() {
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.FILEX_AWX_SERVER_ID || '').trim());
   const serverId =
-    row.awxServerId != null
-      ? Number(row.awxServerId)
-      : Number.isInteger(envServer) && envServer >= 0
-        ? envServer
-        : 0;
+    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
   return { templateId: templateId || null, serverId };
 }
 

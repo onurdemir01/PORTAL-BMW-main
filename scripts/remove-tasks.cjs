@@ -52,13 +52,13 @@ async function rowCount(name) {
 
 async function main() {
   console.log(`[remove-tasks] APP_ENV=${process.env.APP_ENV || '(yok)'}  DB=${process.env.PORTAL_DB_DATABASE || process.env.MSSQL_DATABASE || '?'}`);
-  console.log(`[remove-tasks] mod: ${DRY_RUN ? 'DRY-RUN' : (DROP_TABLES ? 'TABLOLAR DAHIL SILME' : 'yalniz menu/gorunurluk (tablolar korunur)')}`);
+  console.log(`[remove-tasks] mod: ${(() => { if (DRY_RUN) return 'DRY-RUN'; if (DROP_TABLES) return 'TABLOLAR DAHIL SILME'; return 'yalniz menu/gorunurluk (tablolar korunur)'; })()}`);
 
   const hasTasks = await tableExists('portal_tasks');
   const hasComments = await tableExists('portal_task_comments');
   console.log(`\n--- Durum ---`);
-  console.log(`portal_tasks:          ${hasTasks ? `var (${await rowCount('portal_tasks')} kayit)` : 'yok'}`);
-  console.log(`portal_task_comments:  ${hasComments ? `var (${await rowCount('portal_task_comments')} kayit)` : 'yok'}`);
+  console.log(`portal_tasks:          ${hasTasks ? ("var (" + await rowCount('portal_tasks') + " kayit)") : 'yok'}`);
+  console.log(`portal_task_comments:  ${hasComments ? ("var (" + await rowCount('portal_task_comments') + " kayit)") : 'yok'}`);
 
   const { rows: elems } = await db.query(
     `SELECT element_key, element_type FROM portal_elements

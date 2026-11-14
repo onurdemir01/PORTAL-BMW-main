@@ -65,7 +65,7 @@ function eslenikAnahtarSaglayici(kosu) {
     const out = [];
     for (const [anahtar, k] of a.kopyaKarari) {
       const v = k[alan];
-      if (op === 'bos' ? v == null : op === 'dolu' ? v != null : kararlar && kararlar.includes(v))
+      if ((() => { if (op === 'bos') return v == null; if (op === 'dolu') return v != null; return kararlar && kararlar.includes(v); })())
         out.push(anahtar);
     }
     return out;
@@ -77,7 +77,7 @@ async function uygulamaEkleri(satirlar, kosu) {
   if (!satirlar.length) return satirlar;
   const anahtarlar = satirlar.map((r) => ({ kosu_id: r.kosu_id, host: r.host, uyg_no: r.uyg_no }));
   const { rows } = await db().query(
-    `SELECT w.kosu_id, w.host, w.uyg_no, w.ad, ${kolonlar.WAR_TEK.map((k) => `w.${k}`).join(', ')}
+    `SELECT w.kosu_id, w.host, w.uyg_no, w.ad, ${kolonlar.WAR_TEK.map((k) => ("w." + k)).join(', ')}
        FROM ear_envanter_warlari w
        JOIN OPENJSON($1) WITH (kosu_id INT, host NVARCHAR(128), uyg_no INT) k
          ON k.kosu_id = w.kosu_id AND k.host = w.host AND k.uyg_no = w.uyg_no
@@ -137,7 +137,7 @@ async function uygulamalar({ kosu, q, ortam, jboss, durum, servlet, f, s, limit,
     `WITH ${SON_CTE}
      SELECT ${UYG_SECIM}, COUNT(*) OVER() AS toplam
        FROM ${kolonlar.GORUNUMLER.uygulamalar.kaynak}
-      ${kos.where.length ? `WHERE ${kos.where.join('\n        AND ')}` : ''}
+      ${kos.where.length ? ("WHERE " + kos.where.join('\n        AND ')) : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [k, ...kos.params, ...sy.params],
@@ -159,7 +159,7 @@ async function warlar({ kosu, q, f, s, limit, offset } = {}) {
     `WITH ${SON_CTE}
      SELECT ${WAR_SECIM}, COUNT(*) OVER() AS toplam
        FROM ${kolonlar.GORUNUMLER.warlar.kaynak}
-      ${kos.where.length ? `WHERE ${kos.where.join('\n        AND ')}` : ''}
+      ${kos.where.length ? ("WHERE " + kos.where.join('\n        AND ')) : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [k, ...kos.params, ...sy.params],
@@ -216,9 +216,9 @@ async function kutuphaneler({ kosu, q, f, s, limit, offset } = {}) {
             COUNT(DISTINCT CONCAT(k.host, '|', k.uyg_no)) AS uygulama_sayisi, COUNT(*) AS kopya,
             COUNT(*) OVER() AS toplam
        FROM k JOIN ear_envanter_set_kutuphaneleri s ON s.iz = k.iz
-      ${kos.where.length ? `WHERE ${kos.where.join(' AND ')}` : ''}
+      ${kos.where.length ? ("WHERE " + kos.where.join(' AND ')) : ''}
       GROUP BY s.ad, s.surum
-      ${kos.having.length ? `HAVING ${kos.having.join(' AND ')}` : ''}
+      ${kos.having.length ? ("HAVING " + kos.having.join(' AND ')) : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [kosuNo(kosu), ...kos.params, ...sy.params],
@@ -293,7 +293,7 @@ async function degerler({ gorunum, kolon, kosu, q, f, ara }) {
     `WITH ${cte}
      SELECT TOP (${kolonlar.SINIR_SECENEK}) ${kol.ifade} AS deger, ${sayim} AS sayi, COUNT(*) OVER() AS farkli
        FROM ${kaynak}
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ${where.length ? ("WHERE " + where.join(' AND ')) : ''}
       GROUP BY ${kol.ifade}
       ORDER BY ${sayim} DESC, ${kol.ifade}`,
     params,

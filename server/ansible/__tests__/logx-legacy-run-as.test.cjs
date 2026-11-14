@@ -290,9 +290,9 @@ test('gecici dizin HER durumda SAHIBIYLE temizlenir (always: iki gorev)', () => 
 //   - salt okur: yonlendirme yalniz 2>/dev/null; yazan / yetki yukselten komut yok;
 //   - changed_when false, failed_when false (yoklama dusse de normal yorumlayici kesfi surer), kendi
 //     become'u yok; ardindaki set_fact YALNIZ ansible_python_interpreter'i, cikti varsa, yoklamadan kurar.
-const YAZAN_KOMUT = /(^|[\s;|&(`$])(rm|mv|cp|tee|chmod|chown|chgrp|mkdir|rmdir|touch|ln|dd|truncate|install|dzdo|sudo|su|kill|pkill|curl|wget|scp|rsync|crontab|systemctl|yum|dnf|rpm|pip3?|sh|bash|ksh|zsh|eval|exec|source)(\s|$)|sed\s+-i/;
+const YAZAN_KOMUT = new RegExp('(^|[\\s;|&(`$])(' + ['rm','mv','cp','tee','chmod','chown','chgrp','mkdir','rmdir','touch','ln','dd','truncate','install','dzdo','sudo','su','kill','pkill','curl','wget','scp','rsync','crontab','systemctl','yum','dnf','rpm','pip3?','sh','bash','ksh','zsh','eval','exec','source'].join('|') + ')(\\s|$)|sed\\s+-i');
 // Python -c metninde yazan / calistiran / ice aktaran her sey yasak (surum olcumu yalniz sys ister).
-const PY_YAZAN = /\b(open|exec|eval|compile|__import__|importlib|subprocess|shutil|socket|pathlib|write\w*|unlink|remove|rename|replace|mkdir|makedirs|chmod|chown|system|popen|spawn\w*|fork)\b|\bos\b/;
+const PY_YAZAN = new RegExp('\\b(' + ['open','exec','eval','compile','__import__','importlib','subprocess','shutil','socket','pathlib','write\\w*','unlink','remove','rename','replace','mkdir','makedirs','chmod','chown','system','popen','spawn\\w*','fork'].join('|') + ')\\b|\\bos\\b');
 // Modul ANAHTARI olarak (kisa ad ve ansible.legacy dahil): metin aramasi "- raw:" / "shell:" kisa adlarini kacirirdi.
 const modulAnahtari = (ad) => new RegExp('^( +)(?:- +)?(?:ansible\\.(?:builtin|legacy)\\.)?' + ad + ':(.*)$', 'gm');
 function yorumlayiciYoklamasi(f) {

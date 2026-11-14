@@ -30,9 +30,7 @@ const sayi = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v)
 const iso = (t) => {
   if (t == null) return null;
   const d =
-    t instanceof Date
-      ? t
-      : new Date(String(t).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(t)) ? '' : 'Z'));
+    (() => { if (t instanceof Date) return t; return new Date(String(t).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(t)) ? '' : 'Z')); })();
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 };
 

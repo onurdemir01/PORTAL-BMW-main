@@ -47,11 +47,7 @@ const TIMEOUT_VAR = spawnSync(BASH, ['-c', 'timeout 1 true && sleep 0'], { stdio
 // Betik uretimde RHEL 8/9 bash'inde (4.4 / 5.1) kosar ve bash 4 ister (mapfile). macOS'un 3.2'si
 // uretimi temsil etmez: orada kirmizi, betigin degil kabugun sucu olurdu.
 const KABUK_VAR = TIMEOUT_VAR && BASH_SURUM >= 4;
-const SKIP = KABUK_VAR
-  ? false
-  : !TIMEOUT_VAR
-    ? 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI'
-    : `bash ${BASH_SURUM} bulundu, betik bash 4+ ister (uretim RHEL 8/9: 4.4 / 5.1) - WAS betik davranis bekcileri KOSMADI. macOS: brew install bash`;
+const SKIP = (() => { if (KABUK_VAR) return false; if (!TIMEOUT_VAR) return 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI'; return `bash ${BASH_SURUM} bulundu, betik bash 4+ ister (uretim RHEL 8/9: 4.4 / 5.1) - WAS betik davranis bekcileri KOSMADI. macOS: brew install bash`; })();
 
 const SOAP_GIZLI = 'KzosKw0gizliSOAP';
 const SOAP_KULLANICI = 'srv_gizli_kullanici';

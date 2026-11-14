@@ -115,11 +115,7 @@ function shapeInventoryHosts(rows) {
       wasVersion: String(r?.was_version ?? '').trim(),
       status: String(r?.status ?? '').trim().toLowerCase(),
       selectable: linux && validHost,
-      reason: !linux
-        ? `İşletim sistemi ${os || 'bilinmiyor'} — bu sürümde yalnız Linux desteklenir.`
-        : !validHost
-          ? 'Sunucu adı beklenmeyen karakter içeriyor.'
-          : '',
+      reason: (() => { if (!linux) return `İşletim sistemi ${os || 'bilinmiyor'} — bu sürümde yalnız Linux desteklenir.`; if (!validHost) return 'Sunucu adı beklenmeyen karakter içeriyor.'; return ''; })(),
     });
   }
   return out.sort((a, b) => byText(a.host, b.host));
@@ -128,7 +124,7 @@ function shapeInventoryHosts(rows) {
 // Kod noktasi sirasi. localeCompare KULLANILMAZ: sonucu ICU/isletim sistemi diline gore
 // degisir ("GB;03" bir makinede once, digerinde sonra gelir).
 function byText(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
+  if (a < b) return -1; if (a > b) return 1; return 0;
 }
 
 // ── SIR MASKELEME ────────────────────────────────────────────────────────────
@@ -190,13 +186,13 @@ function normalizeServer(raw, { hostOk, hostReason, kimlik }) {
   // Bilinmeyen durum adi zaten yukarida OLCULEMEDI'ye dustu.
   const expected = classify(pids, ss);
   if (state !== expected) {
-    reason = `tutarsız ölçüm (bildirilen ${reported}, ps=${pids}, serverStatus=${ss})${reason ? ` — ${reason}` : ''}`;
+    reason = `tutarsız ölçüm (bildirilen ${reported}, ps=${pids}, serverStatus=${ss})${reason ? ' — ' + reason : ''}`;
     state = 'OLCULEMEDI';
   }
   // Host olculemediyse altindaki hicbir JVM olculmus sayilmaz.
   if (!hostOk) {
     state = 'OLCULEMEDI';
-    reason = `sunucu ölçülemedi${hostReason ? `: ${hostReason}` : ''}`;
+    reason = `sunucu ölçülemedi${hostReason ? ': ' + hostReason : ''}`;
   }
   return {
     server,
@@ -255,7 +251,8 @@ function parseDiscoverResult(raw, requestedHosts = []) {
       profiles: [],
     });
   }
-  return { hosts: hosts.sort((a, b) => byText(a.host, b.host)) };
+  hosts.sort((a, b) => byText(a.host, b.host));
+  return { hosts };
 }
 
 // Kesif sonucundaki TUM JVM'leri duz liste olarak verir (ic kullanim).
@@ -413,7 +410,7 @@ function gateOperation(target, operation) {
     return {
       ok: false,
       status: 409,
-      message: `${target.server} durumu ölçülemedi — gerçek durum bilinmiyor, işlem yapılmaz.${target.reason ? ` (${target.reason})` : ''}`,
+      message: `${target.server} durumu ölçülemedi — gerçek durum bilinmiyor, işlem yapılmaz.${target.reason ? ' (' + target.reason + ')' : ''}`,
     };
   }
   if (target.state === 'COKLU_SUREC') {
@@ -433,11 +430,7 @@ function gateOperation(target, operation) {
   const allowed = ALLOWED_BY_STATE[target.state] || [];
   if (!allowed.includes(operation)) {
     const neden =
-      target.state === 'STOPPED'
-        ? 'JVM zaten durmuş görünüyor'
-        : target.state === 'RUNNING'
-          ? 'JVM zaten çalışıyor'
-          : `JVM durumu ${target.state}`;
+      (() => { if (target.state === 'STOPPED') return 'JVM zaten durmuş görünüyor'; if (target.state === 'RUNNING') return 'JVM zaten çalışıyor'; return `JVM durumu ${target.state}`; })();
     return {
       ok: false,
       status: 409,
@@ -664,7 +657,7 @@ async function acquireLocks(db, keys, { lockId, holder, desc, isJobTerminal, ttl
     let row = null;
     if (!ok) {
       row = await readLock(db, key);
-      if (row && row.awx_job_id != null && row.awx_server_id != null && isJobTerminal) {
+      if (row?.awx_job_id != null && row.awx_server_id != null && isJobTerminal) {
         const js = await boundJobState(isJobTerminal, row);
         if (js.terminal && row.lock_id) {
           await releaseLockById(db, key, row.lock_id, js.finished);

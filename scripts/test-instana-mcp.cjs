@@ -44,7 +44,7 @@ async function main() {
   const tools = await instana.listTools(env);
   console.log(`✓ ${tools.length} tool listelendi (${Date.now() - t1}ms):`);
   for (const t of tools) {
-    console.log(`  - ${t.name}${t.description ? ` — ${String(t.description).slice(0, 80)}` : ''}`);
+    console.log(`  - ${t.name}${t.description ? (" — " + String(t.description).slice(0, 80)) : ''}`);
   }
 
   console.log('\n✓ TEST BASARILI — Instana MCP akisi uyumlu.');

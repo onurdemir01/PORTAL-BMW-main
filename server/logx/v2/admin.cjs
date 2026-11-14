@@ -9,8 +9,8 @@ const { maskeDeseniDenetle } = require('../maske-deseni.cjs');
 // MSSQL unique-constraint ihlali (2627 = PRIMARY/UNIQUE KEY, 2601 = unique index). Duplicate
 // ekleme yakalanmazsa yakalanmamis hata → 500. Bunu dostca 409'a ceviririz.
 function isUniqueViolation(err) {
-  const n = err && (err.number ?? (err.originalError && err.originalError.info && err.originalError.info.number));
-  return n === 2627 || n === 2601 || /duplicate key|cannot insert duplicate|unique/i.test((err && err.message) || '');
+  const n = (err?.number ?? (err?.originalError?.info?.number));
+  return n === 2627 || n === 2601 || /duplicate key|cannot insert duplicate|unique/i.test((err?.message) || '');
 }
 async function insertOrConflict(runQuery, dupMsg) {
   try {
@@ -175,7 +175,7 @@ function assertVaultKeyName(value) {
 }
 
 async function createVaultKey(data) {
-  const keyName = assertVaultKeyName(data && data.key_name);
+  const keyName = assertVaultKeyName(data?.key_name);
   const { rows } = await insertOrConflict(
     () => db.query(
       `INSERT INTO ocp_vault_key_catalog (key_name, default_username, description, is_active)
@@ -190,7 +190,7 @@ async function createVaultKey(data) {
 }
 
 async function updateVaultKey(id, data) {
-  const keyName = assertVaultKeyName(data && data.key_name);
+  const keyName = assertVaultKeyName(data?.key_name);
   const { rows } = await insertOrConflict(
     () => db.query(
       `UPDATE ocp_vault_key_catalog SET key_name=$1, default_username=$2, description=$3,

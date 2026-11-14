@@ -159,7 +159,7 @@ const topla = (r) => {
   }
   // Ayrinti paneli: tanim basina trafik 'olculemedi' nedeni (TRAFIK_NEDEN sozlugu).
   for (const m of (r.rpDetay || new Map()).values())
-    for (const d of m.values()) if (d.trafik && d.trafik.neden) GORULEN.trafikNeden.add(d.trafik.neden);
+    for (const d of m.values()) if (d.trafik?.neden) GORULEN.trafikNeden.add(d.trafik.neden);
   return r;
 };
 const run = (disc, kaynak, { inv = [], use = [], runs = [], katalog } = {}) =>
@@ -707,7 +707,7 @@ test('SR21b yanit butcesi GERCEKCI profilde: iki route, uzun FQDN, bes ortam, PR
           namespace_name: ns,
           route_name: app + suf,
           route_address: host,
-          termination_type: suf ? 'reencrypt' : i % 13 === 0 ? 'edge' : term,
+          termination_type: (() => { if (suf) return 'reencrypt'; if (i % 13 === 0) return 'edge'; return term; })(),
         });
       }
     }
@@ -1213,7 +1213,7 @@ test('SR39 karisik durum (K3): karar ve sayilar YALNIZ kendi ortamindan; baska o
   // Ayrinti paneli baska ortamin tanimini ve olcumunu YINE listeler (bilgi kaybolmaz).
   const t = rpTanimlari(rr.rpDetay, 'kart-test', 'kart-ui');
   assert.deepEqual(
-    t.map((d) => [d.env, d.trafik && d.trafik.req7]),
+    t.map((d) => [d.env, d.trafik?.req7]),
     [
       ['PROD', 900],
       ['TEST', 0],
@@ -2074,10 +2074,10 @@ test('SR23 ekran: uc yeni kolon ve suzgec, ayrinti paneli, Yenile onbellegi atla
   // OLCULEMEDI ile YOK/TANIMSIZ ayri etiketlenir - her etiket KENDI haritasinda aranir
   // (DURUM_ETIKETI'nde de "kismi" var; tum dosyada aramak bekciyi kor yapardi).
   const blok = (bas, son) => {
-    const i = ui.indexOf(bas);
-    const j = ui.indexOf(son, i + 1);
-    assert.ok(i >= 0 && j > i, `blok bulunamadi: ${bas}`);
-    return ui.slice(i, j);
+    const basIdx = ui.indexOf(bas);
+    const sonIdx = ui.indexOf(son, basIdx + 1);
+    assert.ok(basIdx >= 0 && sonIdx > basIdx, `blok bulunamadi: ${bas}`);
+    return ui.slice(basIdx, sonIdx);
   };
   const rpE = blok('const RP_ETIKET', 'const RPI_ETIKET');
   for (const k of [
@@ -2155,7 +2155,7 @@ test('SR35 kod sozlugu: uretilen her kod listede, listedeki her kod uretiliyor v
     for (const v of GORULEN[alan])
       assert.ok(liste.includes(v), `${alan}: '${v}' uretildi ama KODLAR listesinde yok`);
     for (const v of liste) {
-      if (ULASILAMAZ[alan] && ULASILAMAZ[alan].has(v)) continue;
+      if (ULASILAMAZ[alan]?.has(v)) continue;
       assert.ok(
         GORULEN[alan].has(v),
         `${alan}: '${v}' hicbir fixture'da uretilmedi (liste bayat ya da bekci eksik)`,
@@ -2164,10 +2164,10 @@ test('SR35 kod sozlugu: uretilen her kod listede, listedeki her kod uretiliyor v
   }
   const ui = normalize(read('src/components/nginx_console/NginxSpaDiscovery.tsx'));
   const blok = (bas, son) => {
-    const i = ui.indexOf(bas);
-    const j = ui.indexOf(son, i + 1);
-    assert.ok(i >= 0 && j > i, `blok bulunamadi: ${bas}`);
-    return ui.slice(i, j);
+    const basIdx = ui.indexOf(bas);
+    const sonIdx = ui.indexOf(son, basIdx + bas.length);
+    assert.ok(basIdx >= 0 && sonIdx > basIdx, `blok bulunamadi: ${bas}`);
+    return ui.slice(basIdx, sonIdx);
   };
   const kac = (s) => s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
   const anahtarVar = (s, k) => new RegExp(`[{,]\\s*'?${kac(k)}'?\\s*:`).test(s);

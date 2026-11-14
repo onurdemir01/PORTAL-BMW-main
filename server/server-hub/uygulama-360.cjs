@@ -80,11 +80,7 @@ function kopyaOf(h, j) {
     autoStart,
     // assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile ayni kosul (olculemeyen calisma karar vermez).
     autostartUyumsuz:
-      calisiyor === true && autoStart === 'false'
-        ? 'REBOOT_RISK'
-        : calisiyor === false && autoStart === 'true'
-          ? 'STOPPED_AUTOSTART_ON'
-          : null,
+      (() => { if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK'; if (calisiyor === false && autoStart === 'true') return 'STOPPED_AUTOSTART_ON'; return null; })(),
     trafik: j.trafficState || null,
     istek7g: olculen.length ? olculen.reduce((t, m) => t + m.v.req7d, 0) : null,
     tier: j.tier == null ? null : String(j.tier),
@@ -122,11 +118,7 @@ function ozetOf(ad, kopyalar, etiketler) {
   const trafikler = kopyalar.map((k) => k.trafik).filter(Boolean);
   // Trafik: biri ACTIVE ise var; hepsi olculup bos ise yok; aksi halde (olculemeyen ya da web katmani
   // eslenmeyen kopya) "olculemedi" — "yok" denmez.
-  const trafik = trafikler.includes('ACTIVE')
-    ? 'ACTIVE'
-    : trafikler.length === kopyalar.length && trafikler.every((t) => t === 'NO_RECENT_TRAFFIC')
-      ? 'NO_RECENT_TRAFFIC'
-      : 'OLCULEMEDI';
+  const trafik = (() => { if (trafikler.includes('ACTIVE')) return 'ACTIVE'; if (trafikler.length === kopyalar.length && trafikler.every((t) => t === 'NO_RECENT_TRAFFIC')) return 'NO_RECENT_TRAFFIC'; return 'OLCULEMEDI'; })();
   const istekler = kopyalar.map((k) => k.istek7g).filter((x) => x != null);
   const earli = kopyalar.filter((k) => k.ear !== null);
   const earAdlari = new Set(earli.flatMap((k) => k.ear.map((e) => U(e.ad))));
@@ -173,15 +165,13 @@ function ozetOf(ad, kopyalar, etiketler) {
         }
       : null,
     deployment: deps.length ? deps.reduce((a, b) => (DEP_SIRA[b] > DEP_SIRA[a] ? b : a)) : null,
-    ocp: ocpKop.length
-      ? {
+    ocp: (() => { if (ocpKop.length) return {
           yerler: [...yerler.values()].slice(0, 10),
           yerSayisi: yerler.size,
           // Bir grupta istek varsa toplam kesin; hepsi olculmediyse null ("yok" degil).
           istek: ist.some((x) => x != null) ? ist.reduce((t, x) => t + (x || 0), 0) : null,
           tasinmisOlabilir: ocpKop.some((k) => k.capraz.ocp.tasinmisOlabilir),
-        }
-      : null,
+        }; return null; })(),
     retirement: [...ret.values()].sort((a, b) => a.kayit - b.kayit || a.hedef - b.hedef),
     etiket: etiketler.length
       ? {

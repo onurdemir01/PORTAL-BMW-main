@@ -81,14 +81,12 @@ function createResponseCache({
         store.set(key, { at: Date.now(), body });
         stored = true;
       }
-    } else {
-      if (!uyarildi.has(key)) {
-        if (uyarildi.size >= MAX_ENTRIES) uyarildi.clear();
-        uyarildi.add(key);
-        console.warn(
-          `[response-cache] ${key}: govde ${body.length} > ${maxBodyBytes} karakter - onbellege ALINMADI (her istek yeniden hesaplanir)`,
-        );
-      }
+    } else if (!uyarildi.has(key)) {
+      if (uyarildi.size >= MAX_ENTRIES) uyarildi.clear();
+      uyarildi.add(key);
+      console.warn(
+        `[response-cache] ${key}: govde ${body.length} > ${maxBodyBytes} karakter - onbellege ALINMADI (her istek yeniden hesaplanir)`,
+      );
     }
     return { body, stored, tooBig: body.length > maxBodyBytes };
   }

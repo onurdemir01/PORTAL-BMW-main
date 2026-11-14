@@ -19,7 +19,7 @@ const { createApp } = require('../service.cjs');
 const { nginxRedCevirici } = require('../util/nginx-red.cjs');
 
 const sunucular = [];
-after(() => sunucular.forEach((s) => (s.closeAllConnections(), s.close())));
+after(() => sunucular.forEach((s) => { s.closeAllConnections(); return s.close(); }));
 
 async function kur() {
   const app = createApp();

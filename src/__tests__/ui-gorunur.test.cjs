@@ -21,13 +21,13 @@ const kural = (secici) => {
   return CSS.slice(i, CSS.indexOf('}', i));
 };
 const rem = (v) =>
-  v.endsWith('rem') ? parseFloat(v) * 16 : v.endsWith('px') ? parseFloat(v) : NaN;
+  { if (v.endsWith('rem')) return parseFloat(v) * 16; if (v.endsWith('px')) return parseFloat(v); return NaN; };
 /** `margin: 0 0.5rem` / `padding: a b c d` -> sol deger (px). */
 function sol(blok, ozellik) {
   const m = new RegExp(`\\n\\s*${ozellik}:\\s*([^;]+);`).exec(blok);
   if (!m) return 0;
   const p = m[1].trim().split(/\s+/);
-  return rem(p.length === 1 ? p[0] : p.length <= 3 ? p[1] : p[3]);
+  return rem((() => { if (p.length === 1) return p[0]; if (p.length <= 3) return p[1]; return p[3]; })());
 }
 
 test('GD1 menu metni eski x konumunda', () => {

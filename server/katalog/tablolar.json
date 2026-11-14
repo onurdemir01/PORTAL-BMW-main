@@ -1873,7 +1873,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit ozet/listesi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1509"
+        "dosya": "server/audit/denetim.cjs:1497"
       }
     ],
     "saklama": "yok; kapanmis sunucunun satiri eski-sunucu temizliginde silinir",
@@ -1971,7 +1971,7 @@
       },
       {
         "ad": "Denetim yanitlari",
-        "dosya": "server/audit/denetim.cjs:163",
+        "dosya": "server/audit/denetim.cjs:172",
         "uzerinden": "server/audit/nginx-host-labels.cjs"
       }
     ],
@@ -2990,7 +2990,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml (Server Hub — Uygulama Envanteri) ham dosyaları; Portal /sw'den alıp yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1143",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1139",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Haftalık zamanlayıcı (ear-envanter-poller.cjs) veya elle / AWX'ten başlatılan koşu"
       }
@@ -3055,7 +3055,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1150",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1146",
         "nasil": "yoksa INSERT (tekilleştirme)",
         "ne_zaman": "Koşu alımında"
       },
@@ -5400,7 +5400,7 @@
       },
       {
         "ad": "SPA raporu (intranet) - Nginx Konsol SPA keşfi (spaKesfiPaylas) üzerinden",
-        "dosya": "server/spa-report/intranet.cjs:315",
+        "dosya": "server/spa-report/intranet.cjs:309",
         "uzerinden": "server/nginx-console/index.cjs"
       }
     ],

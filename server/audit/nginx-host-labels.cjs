@@ -44,7 +44,7 @@ function dogrula(govde) {
  * @param etiketler Map<HOST, { mod, etiketler: string[], not, by, at }>
  */
 function etiketUygula(rows, etiketler) {
-  if (!etiketler || !etiketler.size) return rows;
+  if (!etiketler?.size) return rows;
   return rows.map((r) => {
     const e = etiketler.get(String(r.hostname || '').trim().toUpperCase());
     if (!e) return r;
@@ -120,14 +120,14 @@ function degisinceHaberVer(fn, anahtar) {
  */
 function tanimEtiketi(rows, m, anahtar, hostOf = (r) => r.host) {
   const k = new Map();
-  if (m && m.size)
+  if (m?.size)
     for (const r of rows || []) {
       const a = anahtar(r);
       const t = tekEtiket(m, hostOf(r));
       const v = k.get(a);
-      k.set(a, v === undefined ? t : v === t ? v : null);
+      k.set(a, (() => { if (v === undefined) return t; if (v === t) return v; return null; })());
     }
-  return (r) => (m && m.size ? k.get(anahtar(r)) || null : null);
+  return (r) => (m?.size ? k.get(anahtar(r)) || null : null);
 }
 
 /**
@@ -135,8 +135,8 @@ function tanimEtiketi(rows, m, anahtar, hostOf = (r) => r.host) {
  * Diger durumlarda null (coklu etiket / ustune ekle bir tanimin hangi servise ait oldugunu soylemez).
  */
 function tekEtiket(m, host) {
-  const e = m && m.get ? m.get(String(host || '').trim().toUpperCase()) : null;
-  return e && e.mod === 'degistir' && e.etiketler && e.etiketler.length === 1 ? String(e.etiketler[0]).toUpperCase() : null;
+  const e = (m?.get?.(String(host || '').trim().toUpperCase()) ?? null);
+  return e?.mod === 'degistir' && e.etiketler?.length === 1 ? String(e.etiketler[0]).toUpperCase() : null;
 }
 
 function degisti() {

@@ -90,11 +90,11 @@ const ADIMLAR = [
   },
   {
     ad: 'R45', aciklama: 'log/istemci farki sinirlari: %1.96 gecerli, %2.13 gecersiz',
-    uret: () => standart('R45', { ru: 22, kosuEk: (h, r) => (h === 100 ? { fark: r === 1 ? 1.02 : 0.979 } : {}) }).dosyalar(),
+    uret: () => standart('R45', { ru: 22, kosuEk: (h, r) => { if (h === 100) return { fark: r === 1 ? 1.02 : 0.979 }; return {}; } }).dosyalar(),
   },
   {
     ad: 'R46', aciklama: 'hata sinirlari: 0.001 gecerli, 0.0011 gecersiz',
-    uret: () => standart('R46', { ru: 22, kosuEk: (h, r) => (h === 100 ? { istemciAlan: { hata_orani: r === 1 ? '0.001' : '0.0011' } } : {}) }).dosyalar(),
+    uret: () => standart('R46', { ru: 22, kosuEk: (h, r) => { if (h === 100) return { istemciAlan: { hata_orani: r === 1 ? '0.001' : '0.0011' } }; return {}; } }).dosyalar(),
   },
   {
     ad: 'R47', aciklama: 'sunucu saati 15 sn ileride (saat_farki uyarisi)',
@@ -165,7 +165,7 @@ const ADIMLAR = [
     ad: 'R58', aciklama: "kosular ARASINDA 'shutting down' worker ve reload: arka plan bloklari bolunur",
     uret: () => standart('R58', {
       ru: 22,
-      kosuEk: (h, r) => (h === 100 && r === 1 ? { kapanan: [83, 86] } : h === 250 && r === 1 ? { reload: true, reloadOfs: 85 } : {}),
+      kosuEk: (h, r) => { if (h === 100 && r === 1) return { kapanan: [83, 86] }; if (h === 250 && r === 1) return { reload: true, reloadOfs: 85 }; return {}; },
     }).dosyalar(),
   },
 ];

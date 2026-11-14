@@ -388,7 +388,7 @@ function webZenginlestir(app, host, web, ctx) {
     let yeni = 0;
     for (const a of liste) {
       const k = anahtar(a);
-      const hedef = mevcut.has(k) ? k : (urunAilesi(a.product) !== 'RHA' ? kanonik.get(k) : undefined);
+      const hedef = (() => { if (mevcut.has(k)) return k; if (urunAilesi(a.product) !== 'RHA') return kanonik.get(k); return undefined; })();
       if (hedef && hedef !== k) mevcut.get(hedef).confFile = a.confFile;
       if (hedef) {
         const m = mevcut.get(hedef);
@@ -398,7 +398,7 @@ function webZenginlestir(app, host, web, ctx) {
       } else { mevcut.set(k, a); yeni += 1; }
     }
     return { ...wx, matched: true, web: [...mevcut.values()],
-      how: `${wx.matched ? `${wx.how} + ` : ''}${ozet} (${liste.length} vhost${yeni ? `, ${yeni} yalniz ${kisa} ile bulundu` : ''})` };
+      how: `${wx.matched ? (String(wx.how) + " + ") : ''}${ozet} (${liste.length} vhost${yeni ? (", " + yeni + " yalniz " + kisa + " ile bulundu") : ''})` };
   };
   // Tum filo yerine yalniz ADAY vhost'lar (bkz. vhostIndeksi) - sonuc ayni, is uygulama x vhost degil.
   const ipMap = ctx.ipMap || BOS_IP;
@@ -526,7 +526,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     // Apache, Jboss8'ler icin ... sadece Redhat Apache"). Yanlis aileden gelen vhost (bag turu ad/ajp/mc ne olursa
     // olsun) baska kurulumun onudur: listelenmez, otomatik kapatilmaz; sayisi webHow'da soylenir. Urunu bilinmeyen
     // girdi ve surumu bilinmeyen hedef eskisi gibi kalir.
-    const beklenenUrun = gen === 7 ? 'IHS' : gen === 8 ? 'RHA' : '';
+    const beklenenUrun = (() => { if (gen === 7) return 'IHS'; if (gen === 8) return 'RHA'; return ''; })();
     const yanlisUrun = (w) => !!beklenenUrun && !!urunAilesi(w.product) && urunAilesi(w.product) !== beklenenUrun;
     const elenenUrun = web.web.filter(yanlisUrun).length;
     if (elenenUrun) web.web = web.web.filter((w) => !yanlisUrun(w));
@@ -538,18 +538,18 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
         kaynak: w.kaynak || 'ad', ...(w.ajpHedef ? { ajpHedef: w.ajpHedef } : {}), ...(w.mcBalancer ? { mcBalancer: w.mcBalancer } : {}),
         trafik: trafikSinifi(vhostByKey.get(`${U(w.host)}|${String(w.serverName || '').trim().toLowerCase()}`)),
       })),
-      webHow: elenenUrun ? `${web.how} · JBoss ${gen} için ${elenenUrun} ${beklenenUrun === 'IHS' ? 'Red Hat Apache' : 'IBM HTTP Server'} vhost'u sayılmadı (JBoss ${gen} yalnız ${beklenenUrun === 'IHS' ? 'IBM HTTP Server' : 'Red Hat Apache'} arkasında çalışır)` : web.how,
+      webHow: (() => { if (elenenUrun) return `${web.how} · JBoss ${gen} için ${elenenUrun} ${beklenenUrun === 'IHS' ? 'Red Hat Apache' : 'IBM HTTP Server'} vhost'u sayılmadı (JBoss ${gen} yalnız ${beklenenUrun === 'IHS' ? 'IBM HTTP Server' : 'Red Hat Apache'} arkasında çalışır)`; return web.how; })(),
       // WEB BULUNAMADI UYARISI (2026-10-12, kullanici: "3-tier bir uygulamayi retire etmek
       // istedigimizde web vhost icin herhangi bir uyari vermedi"). Bos web listesi "web yok"
       // DEMEK DEGIL: retirement o vhost'u KAPATMAZ ve trafik kontrolu de yapamaz.
       webUyari: web.web.length ? null : webUyariMetni(web, host, hubVhostsByHost),
-      hub: j ? {
+      hub: (() => { if (j) return {
         running: Number(j.running) === 1,
         runningSrc,
         runningKnown: runningSrc !== 'UNMEASURED',
         autoStart: String(j.auto_start || 'unknown'),
         scanDate: j.scan_date ? new Date(j.scan_date).toISOString().slice(0, 10) : null,
-      } : null,
+      }; return null; })(),
     });
   }
   inPlaceIsaretle(targets);

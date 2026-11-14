@@ -21,7 +21,7 @@ function normElement(row) {
     strict: (() => {
       try {
         const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-        return !!(m && m.strict);
+        return !!(m?.strict);
       } catch { return false; }
     })(),
     description: row.description || null,
@@ -64,7 +64,7 @@ async function upsertElement(el) {
   const sortOrder = Number.isFinite(Number(el.sortOrder)) ? Number(el.sortOrder) : 0;
   const enabled = el.enabled === false ? 0 : 1;
   const defaultVisible = el.defaultVisible === false ? 0 : 1;
-  const metadata = el.metadata != null ? (typeof el.metadata === 'string' ? el.metadata : JSON.stringify(el.metadata)) : null;
+  const metadata = (() => { if (el.metadata != null) { if (typeof el.metadata === 'string') return el.metadata; return JSON.stringify(el.metadata); } return null; })();
   const description = el.description != null ? String(el.description).trim() || null : null;
 
   const exists = await db.query(`SELECT id FROM portal_elements WHERE element_key = $1`, [key]);
@@ -114,8 +114,8 @@ async function setElementRules(key, rules) {
 /** metadata'dan strict bayragi (string ya da nesne olabilir). */
 function isStrict(el) {
   try {
-    const m = el.metadata ? (typeof el.metadata === 'string' ? JSON.parse(el.metadata) : el.metadata) : null;
-    return !!(m && m.strict);
+    const m = (() => { if (el.metadata) { if (typeof el.metadata === 'string') return JSON.parse(el.metadata); return el.metadata; } return null; })();
+    return !!(m?.strict);
   } catch {
     return false;
   }

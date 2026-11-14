@@ -651,7 +651,7 @@ test('IG11 onbellek: ayni degerlendirmede yeniden kurulmaz; tek ucus; veri bayat
   const a = { tableMissing: false, hosts: [sunucu('S1', { jvms: [jvm('A')] })] };
   const hesap = iliskiHesabiKur({
     getAssessment: async () => a,
-    iliskiVerisi: async () => (okuma++, veri({})),
+    iliskiVerisi: async () => { okuma++; return veri({}); },
     simdi: () => simdi,
   });
   const [r1, r2] = await Promise.all([hesap(false), hesap(false)]);

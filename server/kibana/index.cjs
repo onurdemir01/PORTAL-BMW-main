@@ -17,9 +17,7 @@ function initKibana(app) {
       ok: true,
       configured,
       reachable,
-      message: configured
-        ? (reachable ? undefined : 'Kibana sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).')
-        : 'KIBANA_BASE_URL tanımlı değil — Kibana entegrasyonu devre dışı.',
+      message: (() => { if (configured) { if (reachable) return undefined; return 'Kibana sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; } return 'KIBANA_BASE_URL tanımlı değil — Kibana entegrasyonu devre dışı.'; })(),
     });
   });
 }

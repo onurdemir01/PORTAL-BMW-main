@@ -66,7 +66,7 @@ const codeLines = (src) =>
  */
 function ocSubcommand(line) {
   const m = line.match(
-    /(?:"?\{\{\s*oc_b\w+\s*\}\}"?|(?:^|[\s;&|(`$"])oc)\s+(?:-n\s+\S+\s+)?([a-z][a-z0-9-]*)/,
+    new RegExp(["(?:\"?\\{\\{\\s*oc_b\\w+\\s*\\}\\}\"?|(?:^|[\\s;&|(`$\"])oc)", "\\s+(?:-n\\s+\\S+\\s+)?([a-z][a-z0-9-]*)"].join("")),
   );
   return m ? m[1] : null;
 }

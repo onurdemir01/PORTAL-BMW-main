@@ -5,9 +5,6 @@ const fs = require('fs');
 const { Client } = require('ldapts');
 const { normalizeUsername } = require('./utils.cjs');
 
-const _cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000;
-
 function isConfigured() {
   return !!(process.env.LDAP_URL && process.env.LDAP_BASE_DN && process.env.LDAP_BIND_DN);
 }
@@ -70,7 +67,7 @@ function determineRole(memberOf) {
     .toLowerCase()
     .trim();
   const userGroup = (process.env.LDAP_USER_GROUP || '').toLowerCase().trim();
-  const groups = (Array.isArray(memberOf) ? memberOf : memberOf ? [memberOf] : []).map((g) =>
+  const groups = (() => { if (Array.isArray(memberOf)) return memberOf; if (memberOf) return [memberOf]; return []; })().map((g) =>
     String(g).toLowerCase(),
   );
 
@@ -148,17 +145,17 @@ const AD_KODLARI = {
 };
 
 function adHatasi(err) {
-  const m = /\bdata ([0-9a-f]{3})\b/i.exec(String((err && err.message) || ''));
-  const kod = m ? m[1].toLowerCase() : null;
+  const m = /\bdata ([0-9a-f]{3})\b/i.exec(String((err?.message) || ''));
+  const kod = (m?.[1].toLowerCase() ?? null);
   const [code, message] = (kod && AD_KODLARI[kod]) || ['kimlik', KIMLIK_MESAJI];
   return new GirisHatasi(code, message, code === 'kimlik' ? 401 : 403);
 }
 
 const AG_KODLARI = new Set(['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH']);
 function agHatasiMi(err) {
-  const msg = String((err && err.message) || '').toLowerCase();
+  const msg = String((err?.message) || '').toLowerCase();
   return (
-    AG_KODLARI.has(err && err.code) ||
+    AG_KODLARI.has(err?.code) ||
     msg.includes('connect') ||
     msg.includes('timeout') ||
     msg.includes('servis hesabı bağlanamadı')
@@ -187,7 +184,7 @@ async function authenticateLdap(username, password, lookup) {
   try {
     const { searchEntries } = await svcClient.search(baseDn, {
       // `lookup`: login-input.cjs'nin karari (or. UPN girildiyse userPrincipalName).
-      filter: `(${(lookup && lookup.attr) || searchAttr}=${escapeFilter((lookup && lookup.value) || username)})`,
+      filter: `(${(lookup?.attr) || searchAttr}=${escapeFilter((lookup?.value) || username)})`,
       scope: 'sub',
       attributes: USER_ATTRS,
     });
@@ -198,7 +195,7 @@ async function authenticateLdap(username, password, lookup) {
   }
   await svcClient.unbind().catch(() => {});
 
-  if (!userEntry || !userEntry.dn) throw new Error('ldap_user_not_found');
+  if (!userEntry?.dn) throw new Error('ldap_user_not_found');
 
   // ── Adim 3: Kullanici bind (sifre dogrulama) ────────────────────────────────
   const userClient = createClient();
@@ -258,11 +255,7 @@ async function authenticateLdap(username, password, lookup) {
   // loglaniyor — sessizce eksik grup listesiyle calisip "neden erisemiyorum"
   // sorusuna yol acmasin.
   const MAX_GROUPS = 200;
-  const rawGroups = Array.isArray(userEntry.memberOf)
-    ? userEntry.memberOf
-    : userEntry.memberOf
-      ? [userEntry.memberOf]
-      : [];
+  const rawGroups = (() => { if (Array.isArray(userEntry.memberOf)) return userEntry.memberOf; if (userEntry.memberOf) return [userEntry.memberOf]; return []; })();
   const allGroups = [...new Set(rawGroups.map((g) => String(g || '').trim()).filter(Boolean))];
   if (allGroups.length > MAX_GROUPS) {
     console.warn(
@@ -546,7 +539,7 @@ async function findLdapUserByUsername(username) {
       // ederken gruplari BOS varsayiyor ve grup kuraliyla yetkilendirilmis birine
       // "goremez" diyordu — yani yetki sorununu tesbit etmek icin kullanilan arac, tam
       // da o durumda YANLIS cevap veriyordu. authenticateLdap ile ayni bicim.
-      groups: (Array.isArray(user.memberOf) ? user.memberOf : user.memberOf ? [user.memberOf] : [])
+      groups: (() => { if (Array.isArray(user.memberOf)) return user.memberOf; if (user.memberOf) return [user.memberOf]; return []; })()
         .map((g) => String(g || '').trim())
         .filter(Boolean),
     };
@@ -557,6 +550,8 @@ async function findLdapUserByUsername(username) {
     await client.unbind().catch(() => {});
   }
 }
+
+const _cache = new Map();
 
 // Harf duyarsiz esitlik; BOS deger hicbir seyle eslesmez (asagidaki ?? / || notuna bak).
 function ayniAd(a, b) {

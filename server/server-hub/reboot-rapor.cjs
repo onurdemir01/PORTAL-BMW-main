@@ -62,7 +62,7 @@ function sunucuDegerlendir(onceSat, s) {
     }
   }
   const kritik = bulgu.some((b) => ['DOWN', 'NEW_KALAN', 'OLCULEMEDI'].includes(b.durum));
-  const sonuc = kritik ? 'PROBLEM' : bulgu.some((b) => b.durum === 'REBOOT_NOT_CONFIRMED') ? 'WARNING' : bulgu.length ? 'INFO' : 'OK';
+  const sonuc = (() => { if (kritik) return 'PROBLEM'; if (bulgu.some((b) => b.durum === 'REBOOT_NOT_CONFIRMED')) return 'WARNING'; if (bulgu.length) return 'INFO'; return 'OK'; })();
   return { sonuc, bulgu };
 }
 
@@ -97,9 +97,9 @@ function raporHtml(k) {
     "<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;background:#f5f7fa'><tr><td align='center'>",
     "<table role='presentation' class='shell' cellpadding='0' cellspacing='0' border='0' style='width:100%;max-width:960px;background:#ffffff'><tr><td class='pad' style='padding:24px 28px'>",
     '<h1>Patch Reboot | Durum Raporu</h1>'];
-  const ust = (faz) => `<div class='muted'>${e(faz)} &nbsp;·&nbsp; Kayıt: <b>#${e(k?.id)}</b>${k?.not ? ` &nbsp;·&nbsp; ${e(k.not)}` : ''} &nbsp;·&nbsp; ${hostlar.length} sunucu &nbsp;·&nbsp; ${e(k?.olusturan || '')}</div>`;
+  const ust = (faz) => `<div class='muted'>${e(faz)} &nbsp;·&nbsp; Kayıt: <b>#${e(k?.id)}</b>${k?.not ? (" &nbsp;·&nbsp; " + e(k.not)) : ''} &nbsp;·&nbsp; ${hostlar.length} sunucu &nbsp;·&nbsp; ${e(k?.olusturan || '')}</div>`;
   const kutular = (ogeler) => `<table role='presentation' class='summary' cellpadding='0' cellspacing='0'><tr>${ogeler.map(([l, v, fg, bg]) =>
-    `<td style='text-align:center;border:1px solid #e6e9ef;background:${bg};padding:13px 5px'><span style='display:block;font-size:24px;font-weight:bold;color:${fg}'>${v}</span><span style='font-size:12px;color:#596579'>${e(l)}</span></td>`).join('')}</tr></table>`;
+    ("<td style='text-align:center;border:1px solid #e6e9ef;background:" + bg + ";padding:13px 5px'><span style='display:block;font-size:24px;font-weight:bold;color:" + fg + "'>" + v + "</span><span style='font-size:12px;color:#596579'>" + e(l) + "</span></td>")).join('')}</tr></table>`;
 
   if (!sonraS) {
     // Yalniz "once" kaydi var: neyin kaydedildigini gosterir.
@@ -117,8 +117,7 @@ function raporHtml(k) {
     const deg = hostlar.map((h) => ({ h, ...sunucuDegerlendir(onceS[h]?.goruntu, sonraS[h]) }));
     const say = { PROBLEM: 0, WARNING: 0, INFO: 0, OK: 0 };
     for (const d of deg) say[d.sonuc] += 1;
-    const baslik = !deg.length ? 'Karşılaştırma için sunucu verisi bulunamadı.' : say.PROBLEM ? `${say.PROBLEM} sunucuda kritik durum tespit edildi.`
-      : say.WARNING ? `Kritik sorun yok; ${say.WARNING} sunucuda uyarı var.` : say.INFO ? `Kritik sorun ve uyarı yok; ${say.INFO} sunucuda bilgi kaydı var.` : 'Tüm sunucuların karşılaştırma sonucu normal.';
+    const baslik = (() => { if (!deg.length) return 'Karşılaştırma için sunucu verisi bulunamadı.'; if (say.PROBLEM) return `${say.PROBLEM} sunucuda kritik durum tespit edildi.`; if (say.WARNING) return `Kritik sorun yok; ${say.WARNING} sunucuda uyarı var.`; if (say.INFO) return `Kritik sorun ve uyarı yok; ${say.INFO} sunucuda bilgi kaydı var.`; return 'Tüm sunucuların karşılaştırma sonucu normal.'; })();
     p.push(ust('Otomatik düzeltme sonrası • Son kontrol'), `<p style='font-size:15px;margin:17px 0 14px'><b>${e(baslik)}</b></p>`,
       kutular([['Sunucu', deg.length, '#202938', '#f7f9fc'], ['Kritik', say.PROBLEM, '#a12631', '#fff0f0'], ['Uyarı', say.WARNING, '#805300', '#fff4df'], ['Bilgi', say.INFO, '#17549f', '#edf4ff'], ['Normal', say.OK, '#20633f', '#eaf6ee']]));
     const bulgular = deg.flatMap((d) => d.bulgu.map((b) => ({ ...b, h: d.h, hs: d.sonuc }))).sort((a, b) => SIRA[a.hs] - SIRA[b.hs] || a.h.localeCompare(b.h));
@@ -144,9 +143,9 @@ function raporHtml(k) {
         "<p class='note'><b>Önemli:</b> Komutun başarılı dönmesi, son görüntüde servis durumunun doğrulandığı anlamına gelmez. Nihai sonuç yukarıdaki karşılaştırmadır.</p>",
         "<table cellpadding='0' cellspacing='0'><tr><th>Sunucu</th><th>Servis / JVM</th><th>İşlem</th><th>Komut sonucu</th></tr>");
       for (const x of islemler.sort((a, b) => (a.sonuc === 'FAIL' ? 0 : 1) - (b.sonuc === 'FAIL' ? 0 : 1) || a.h.localeCompare(b.h))) {
-        const css = x.sonuc === 'OK' ? 'ok' : x.sonuc === 'FAIL' ? 'problem' : 'info';
-        const etiket = x.sonuc === 'OK' ? 'Komut başarılı' : x.sonuc === 'FAIL' ? 'Komut başarısız' : 'Gerek kalmadı';
-        p.push(`<tr><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servisAdi(x.ad ? `${x.urun}|${x.ad}` : x.urun))}</td><td>${x.islem === 'baslat' ? 'Başlat' : x.islem === 'durdur' ? 'Durdur' : e(x.islem)}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`);
+        const css = (() => { if (x.sonuc === 'OK') return 'ok'; if (x.sonuc === 'FAIL') return 'problem'; return 'info'; })();
+        const etiket = (() => { if (x.sonuc === 'OK') return 'Komut başarılı'; if (x.sonuc === 'FAIL') return 'Komut başarısız'; return 'Gerek kalmadı'; })();
+        p.push(`<tr><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servisAdi(x.ad ? (String(x.urun) + "|" + x.ad) : x.urun))}</td><td>${(() => { if (x.islem === 'baslat') return 'Başlat'; if (x.islem === 'durdur') return 'Durdur'; return e(x.islem); })()}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`);
       }
       p.push('</table>');
     }
@@ -156,7 +155,7 @@ function raporHtml(k) {
       p.push("<table role='presentation' class='healthy' cellpadding='0' cellspacing='0'>");
       for (let i = 0; i < normal.length; i += 3) {
         const satir = normal.slice(i, i + 3);
-        p.push(`<tr>${satir.map((h) => `<td style='width:33.33%;padding:7px 10px'>${e(h)}</td>`).join('')}${'<td style=\'width:33.33%\'>&nbsp;</td>'.repeat(3 - satir.length)}</tr>`);
+        p.push(`<tr>${satir.map((h) => ("<td style='width:33.33%;padding:7px 10px'>" + e(h) + "</td>")).join('')}${'<td style=\'width:33.33%\'>&nbsp;</td>'.repeat(3 - satir.length)}</tr>`);
       }
       p.push('</table>');
     } else p.push("<p class='muted'>Normal sınıfında sunucu bulunmuyor.</p>");

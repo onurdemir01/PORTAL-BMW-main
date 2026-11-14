@@ -28,7 +28,7 @@ const BILESEN_RE = /^[A-Za-z0-9_-]{1,63}(\.[A-Za-z0-9_-]{1,63}){0,3}$/;
 const KAP_RE = /^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$/;
 const STD_CPU = /^(?:[1-9][0-9]{0,5}m|[1-9][0-9]{0,2})$/;
 const STD_BELLEK = /^[1-9][0-9]{0,6}(?:Mi|Gi)$/;
-const MIKTAR_RE = /^\+?([0-9]+(?:\.[0-9]*)?|\.[0-9]+)(m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$/;
+const MIKTAR_RE = /^\+?(\d+(?:\.\d*)?|\.\d+)([mkMGTPE]|[KMGTPE]i)?$/;
 const IKILIK = Object.freeze({
   Ki: 1024n,
   Mi: 1024n ** 2n,
@@ -164,7 +164,7 @@ function miktarYaDaNull(deger, tur) {
 function kiyasla(a, b) {
   const x = a.n * b.d;
   const y = b.n * a.d;
-  return x < y ? -1 : x > y ? 1 : 0;
+  if (x < y) return -1; if (x > y) return 1; return 0;
 }
 
 /** Iki miktar dizgesi ayni degeri mi gosteriyor? Ayristirilamayan taraf varsa false. */
@@ -431,7 +431,7 @@ function degisiklikleriCoz(liste) {
         `${alan}: yeni değer standart biçimde değil (cpu: 1500m ya da 2; bellek: 512Mi ya da 4Gi): ${yeni.slice(0, 32)}`,
       );
     }
-    const eski = o.eski == null ? '' : typeof o.eski === 'string' ? o.eski.trim() : null;
+    const eski = (() => { if (o.eski == null) return ''; if (typeof o.eski === 'string') return o.eski.trim(); return null; })();
     if (eski === null || eski.length > 32) {
       throw hata('GIRDI_GECERSIZ', `${alan}: eski değer geçersiz.`);
     }
@@ -479,9 +479,9 @@ function dogrula(p) {
   const uyarilar = [];
   const kontroller = [];
   const politika = [];
-  const deg = Array.isArray(p && p.degisiklikler) ? p.degisiklikler : [];
-  const canli = p && p.canli && typeof p.canli === 'object' ? p.canli : null;
-  const lr = (p && p.limitRange) || { durum: 'olculemedi' };
+  const deg = Array.isArray(p?.degisiklikler) ? p.degisiklikler : [];
+  const canli = p?.canli && typeof p.canli === 'object' ? p.canli : null;
+  const lr = (p?.limitRange) || { durum: 'olculemedi' };
   const yeniOf = (alan) => (deg.find((d) => d.alan === alan) || {}).yeni;
 
   // Etkin deger: degisen alan yeni degeriyle; degismeyen alan CANLIDAN (girilmeyen alan).
@@ -539,9 +539,9 @@ function dogrula(p) {
   for (const d of deg) {
     const tur = turOf(d.alan);
     const y = miktar(d.yeni, tur);
-    const tabanHam = canli && canli[d.alan] != null ? canli[d.alan] : d.eski || null;
+    const tabanHam = canli?.[d.alan] != null ? canli[d.alan] : d.eski || null;
     const taban = tabanHam ? miktarYaDaNull(tabanHam, tur) : null;
-    if (taban && taban.n > 0n) {
+    if (taban?.n > 0n) {
       // yeni <= 2 x taban  ve  yeni >= taban / 2
       if (y.n * taban.d > BigInt(SINIRLAR.oranUst) * taban.n * y.d) {
         politika.push(`${d.alan}: tek seferde en çok ${SINIRLAR.oranUst} kat artış (${tabanHam} → ${d.yeni}).`);
@@ -562,18 +562,18 @@ function dogrula(p) {
       }
     }
   }
-  const asimIstendi = !!(p && p.asim);
-  const gerekce = String((p && p.gerekce) || '').trim();
+  const asimIstendi = !!(p?.asim);
+  const gerekce = String((p?.gerekce) || '').trim();
   const asimGecerli =
     asimIstendi &&
-    !!(p && p.admin) &&
+    !!(p?.admin) &&
     gerekce.length >= SINIRLAR.gerekceEnAz &&
     gerekce.length <= SINIRLAR.gerekceEnCok;
   if (asimIstendi && !asimGecerli) {
     hatalar.push({
       kod: 'YETKI',
       asilabilir: false,
-      mesaj: p && p.admin
+      mesaj: p?.admin
         ? `Sınır aşımı için ${SINIRLAR.gerekceEnAz}-${SINIRLAR.gerekceEnCok} karakter gerekçe zorunlu.`
         : 'Sınır aşımı yalnız Admin tarafından, gerekçe yazılarak yapılabilir.',
     });

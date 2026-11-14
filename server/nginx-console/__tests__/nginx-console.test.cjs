@@ -1021,7 +1021,7 @@ test('GS28 ekran CSS: yapiskan baslik ve ilk kolon, kap siniri + klavye odagi, i
   };
   const px = (v) => {
     const m = String(v || '').match(/^([\d.]+)(rem|px)$/);
-    return m ? Number(m[1]) * (m[2] === 'rem' ? 16 : 1) : NaN;
+    if (m) return Number(m[1]) * (m[2] === 'rem' ? 16 : 1); return NaN;
   };
 
   // YAPISKAN BASLIK + ILK KOLON, KAP SINIRI, KLAVYE ODAGI

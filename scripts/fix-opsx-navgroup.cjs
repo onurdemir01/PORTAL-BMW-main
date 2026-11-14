@@ -54,7 +54,7 @@ async function dumpNav(title) {
       current = r.grp;
       console.log(`${String(r.grp_order).padStart(2)}. ${r.grp_label}  (${r.grp})`);
     }
-    console.log(`      ${r.page ? `- ${r.page_label}  [${r.page}]` : '- (bos)'}`);
+    console.log(`      ${r.page ? ("- " + r.page_label + "  [" + r.page + "]") : '- (bos)'}`);
   }
 }
 

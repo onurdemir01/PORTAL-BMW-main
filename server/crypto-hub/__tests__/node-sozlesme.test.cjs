@@ -244,7 +244,7 @@ function tenantBloklari(text) {
     .map((blok) => {
       const o = { key: blok.split(/\s/)[0] };
       const m = /^\s*node_degisikligi_acik:[ \t]*(\S*)[ \t]*$/m.exec(blok);
-      if (m) o.node_degisikligi_acik = m[1] === 'true' ? true : m[1] === 'false' ? false : m[1];
+      if (m) o.node_degisikligi_acik = (() => { if (m[1] === 'true') return true; if (m[1] === 'false') return false; return m[1]; })();
       return o;
     });
 }

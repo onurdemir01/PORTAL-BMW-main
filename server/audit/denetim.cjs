@@ -23,6 +23,15 @@ const intranetKapsam = require('./intranet-kapsam.cjs');
 const { summarizeAudit, readLatestAuditDate } = require('./nginx-audit.cjs');
 // Tarama SAATI (2026-09-23): tablolarda `scanned_at` varsa okunur, yoksa null.
 const { scanStamp } = require('./scan-stamp.cjs');
+
+function hostOf(u) {
+  return String(u || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, "")
+    .split("/")[0]
+    .replace(/:\d+$/, "");
+}
 const {
   loadMigration,
   resolveTarget,
@@ -257,13 +266,6 @@ function initDenetim(app) {
             ),
           ]);
           const maps = buildResolverMaps(routes.recordset || [], ocp.recordset || []);
-          const hostOf = (u) =>
-            String(u || '')
-              .trim()
-              .toLowerCase()
-              .replace(/^[a-z]+:\/\//, '')
-              .split('/')[0]
-              .replace(/:\d+$/, '');
           prodProxyStats = { rows: 0, resolved: 0, unresolved: 0 };
           for (const r of es.ayir(prx.recordset || [])) {
             prodProxyStats.rows++;
@@ -553,7 +555,7 @@ function initDenetim(app) {
           const covered = new Set();
           for (const r of rows) {
             const c = r.envs.PROD;
-            if (c && c.namespace)
+            if (c?.namespace)
               covered.add(String(c.namespace).toLowerCase() + '/' + r.application.toLowerCase());
           }
           for (const [nsApp, e] of onNewProd) {
@@ -642,13 +644,9 @@ function initDenetim(app) {
       };
       for (const r of rows) {
         for (const c of Object.values(r.envs)) {
-          if (!c || !c.traffic) continue;
+          if (!c?.traffic) continue;
           trafficStats[
-            c.traffic.state === 'active'
-              ? 'active'
-              : c.traffic.state === 'idle'
-                ? 'idle'
-                : 'unknown'
+            (() => { if (c.traffic.state === 'active') return 'active'; if (c.traffic.state === 'idle') return 'idle'; return 'unknown'; })()
           ] += 1;
           if (c.traffic.state === 'unknown' && c.traffic.hosts > 0) trafficStats.kismi += 1;
         }
@@ -719,7 +717,7 @@ function initDenetim(app) {
     )
       .then((r) => r.recordset?.[0] || {})
       .catch(() => null);
-    if (s && s.oid) {
+    if (s?.oid) {
       _spaSema = s;
       _spaSemaAt = Date.now();
     }
@@ -1026,11 +1024,11 @@ function initDenetim(app) {
           return { type: byName, how: 'name' };
         }
         const set = routeByNs.get(nsLower);
-        if (set && set.size === 1) {
+        if (set?.size === 1) {
           matchStats.ns++;
           return { type: [...set][0], how: 'ns' };
         }
-        if (set && set.size > 1) {
+        if (set?.size > 1) {
           matchStats.conflict++;
           return { type: null, how: 'conflict' };
         }
@@ -1072,13 +1070,7 @@ function initDenetim(app) {
         // reencrypt -> intranet (nginx'e CIKAMAZ). Diger tipler (edge, tls yok)
         // bu kuralin disinda; "diger" olarak ayri tutulur, tahmin edilmez.
         const net =
-          type === 'passthrough'
-            ? 'internet'
-            : type === 'reencrypt'
-              ? 'intranet'
-              : type
-                ? 'diger'
-                : 'bilinmiyor';
+          (() => { if (type === 'passthrough') return 'internet'; if (type === 'reencrypt') return 'intranet'; if (type) return 'diger'; return 'bilinmiyor'; })();
         if (!ocp.has(env)) ocp.set(env, new Map());
         const k = app.toLowerCase();
         const prev = ocp.get(env).get(k);
@@ -1160,13 +1152,6 @@ function initDenetim(app) {
       const proxyStats = { rows: 0, resolved: 0, spa: 0, unresolved: 0 };
       {
         const maps = buildResolverMaps(routeRes.recordset || [], ocpRes.recordset || []);
-        const hostOf = (u) =>
-          String(u || '')
-            .trim()
-            .toLowerCase()
-            .replace(/^[a-z]+:\/\//, '')
-            .split('/')[0]
-            .replace(/:\d+$/, '');
         for (const r of proxyRes.recordset || []) {
           proxyStats.rows++;
           if (tierOfHost(r.host) === 'intranet') continue;
@@ -1576,7 +1561,7 @@ function initDenetim(app) {
     ttlMs: 10 * 60 * 1000,
     compute: () => loadNginxAudit(null),
     token: () => nginxAuditToken(anaHavuzSorgu),
-    maxAgeMs: (p) => (p && p.eskiGizli && p.eskiGizli.olculemedi ? 10 * 60 * 1000 : 60 * 60 * 1000),
+    maxAgeMs: (p) => (p?.eskiGizli?.olculemedi ? 10 * 60 * 1000 : 60 * 60 * 1000),
     checkMs: 5 * 60 * 1000,
     seri: 'tbmwans-agir',
   });

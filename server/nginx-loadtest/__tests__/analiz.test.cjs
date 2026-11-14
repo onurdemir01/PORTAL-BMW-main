@@ -1414,7 +1414,7 @@ function yukCpuEkle(dosyalar, bosta, { adim = null, host = 'ymak01', bilgi = tru
 
 test('AN-Y1 yuk makinesi bosta CPU esigi %20: %19,9 DOYMA + neden, %20,0 isaret yok; GECERSIZ onceligi; serbestte de', async () => {
   const k = standart('R96', { n429: 1 });
-  const bosta = (tur) => (tur.endsWith('_400_r1') ? 199 : tur.endsWith('_400_r2') ? 200 : tur.endsWith('_250_r1') ? 50 : 600);
+  const bosta = (tur) => { if (tur.endsWith('_400_r1')) return 199; if (tur.endsWith('_400_r2')) return 200; if (tur.endsWith('_250_r1')) return 50; return 600; };
   const { veri, analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, bosta) });
   assert.deepEqual(veri.yukKesitler.map((x) => [x.anahtar, x.bilgiVar]), [['R96_ymak01', true]]);
   const t = turla(a);
@@ -1616,7 +1616,7 @@ test('AN-Y9 (B1) olculemedi: son satir notta ve ozette; adim ham.yuk_cpu_olculem
 
 test('AN-Y7 YUK_DOYDU neden metni asagi yuvarlanir: %19,96 -> %19.9(<%20); %19,99 de %19.9', async () => {
   const k = standart('R118');
-  const bosta = (tur) => (tur.endsWith('_400_r1') ? 199.6 : tur.endsWith('_400_r2') ? 199.9 : 600);
+  const bosta = (tur) => { if (tur.endsWith('_400_r1')) return 199.6; if (tur.endsWith('_400_r2')) return 199.9; return 600; };
   const { analiz: a } = await t3Analiz(k, { donustur: (d) => yukCpuEkle(d, bosta, { olcek: 10 }) });
   const t = turla(a);
   for (const [tur, ham] of [['R118_K_yeni_br_400_r1', 19.96], ['R118_K_yeni_br_400_r2', 19.99]]) {

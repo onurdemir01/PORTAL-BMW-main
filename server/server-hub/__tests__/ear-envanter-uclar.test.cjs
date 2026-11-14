@@ -53,15 +53,12 @@ async function sunucu(fn) {
   const poller = require('../ear-envanter-poller.cjs');
   const asil = poller.kosuOlustur;
   const cagrilar = [];
-  poller.kosuOlustur = async (a) => (
-    cagrilar.push(a),
-    { id: 9, beklenen: (a.hedefler || []).length || 1000, partiSayisi: 1 }
-  );
+  poller.kosuOlustur = async (a) => { cagrilar.push(a); return { id: 9, beklenen: (a.hedefler || []).length || 1000, partiSayisi: 1 }; };
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
   app.use(
-    (req, res, next) => ((req.session = { user: { username: 'ayse', role: 'Admin' } }), next()),
+    (req, res, next) => { req.session = { user: { username: 'ayse', role: 'Admin' } }; return next(); },
   );
   const router = express.Router();
   require('../ear-envanter.cjs').mount(router, { launch: async () => ({}), audit: () => {} });

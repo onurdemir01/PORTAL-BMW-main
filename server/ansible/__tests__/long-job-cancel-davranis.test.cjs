@@ -195,11 +195,7 @@ function awxIstegi(req, res) {
     nq.set('page', String(page + 1));
     // job listesi GORELI, workflow listesi MUTLAK `next` doner (AWX ikisini de yapabilir).
     const next =
-      page * ps < rows.length
-        ? kind === 'job'
-          ? v2(`/api/v2/jobs/?${nq}`)
-          : `http://127.0.0.1:${awx.port}${v2(`/api/v2/workflow_jobs/?${nq}`)}`
-        : null;
+      (() => { if (page * ps < rows.length) { if (kind === 'job') return v2(`/api/v2/jobs/?${nq}`); return `http://127.0.0.1:${awx.port}${v2('/api/v2/workflow_jobs/?' + nq)}`; } return null; })();
     return send(200, { count: rows.length, next, results: rows.slice((page - 1) * ps, page * ps).map(awxJson) });
   }
   if (req.method === 'GET' && (m = yol.match(/^\/api\/v2\/(jobs|workflow_jobs)\/(\d+)\/$/))) {
@@ -618,11 +614,11 @@ async function uygulama({ db, requireAdmin } = {}) {
   app.use(express.json());
   const kayit = [];
   const gercekApp = {
-    get: (p, ...h) => (kayit.push({ m: 'get', p, h }), app.get(p, ...h)),
-    put: (p, ...h) => (kayit.push({ m: 'put', p, h }), app.put(p, ...h)),
-    post: (p, ...h) => (kayit.push({ m: 'post', p, h }), app.post(p, ...h)),
+    get: (p, ...h) => { kayit.push({ m: 'get', p, h }); return app.get(p, ...h); },
+    put: (p, ...h) => { kayit.push({ m: 'put', p, h }); return app.put(p, ...h); },
+    post: (p, ...h) => { kayit.push({ m: 'post', p, h }); return app.post(p, ...h); },
     // Iptal token'i silme ucu (DELETE /api/ansible/longjob-cancel/tokens/:serverId).
-    delete: (p, ...h) => (kayit.push({ m: 'delete', p, h }), app.delete(p, ...h)),
+    delete: (p, ...h) => { kayit.push({ m: 'delete', p, h }); return app.delete(p, ...h); },
   };
   const requireAuth = (_q, _s, n) => n();
   const adm = requireAdmin || ((_q, _s, n) => n());

@@ -62,8 +62,8 @@ function kurallarYaniti(ayar, a, gecmis) {
           degistiren: k ? k.updatedBy : null,
           zaman: k ? k.updatedAt : null,
           aciklama: k ? k.aciklama : '',
-          bulgu: olculdu ? (n ? n.bulgu : 0) : null,
-          sunucu: olculdu ? (n ? n.sunucu.size : 0) : null,
+          bulgu: (() => { if (olculdu) { if (n) return n.bulgu; return 0; } return null; })(),
+          sunucu: (() => { if (olculdu) { if (n) return n.sunucu.size; return 0; } return null; })(),
         };
       }),
     })),

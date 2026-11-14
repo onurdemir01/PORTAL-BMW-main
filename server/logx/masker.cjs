@@ -24,7 +24,7 @@ const RULES = [
   // Card numbers (13-16 digits, optionally separated by space/dash)
   { name: 'CARD',       re: /\b(?:\d[ -]?){13,16}\b/g,                               tag: '[CARD]'        },
   // Bearer tokens / JWT (Authorization header values)
-  { name: 'BEARER',     re: /Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi,                      tag: 'Bearer [TOKEN]'},
+  { name: 'BEARER',     re: /Bearer\s+[a-z0-9._~+/-]+=*/gi,                      tag: 'Bearer [TOKEN]'},
   // JWT standalone (three base64url segments)
   { name: 'JWT',        re: /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g,  tag: '[JWT]'         },
   // Authorization header value

@@ -71,7 +71,7 @@ function summarizeNginxInventory(recordset) {
   // (nginx-hosts.cjs, GBNGXT51=EDU istisnasi dahil) taniyorsa O esas alinir; tablo
   // degeri envRaw'da tutulur ve celisenler sayilir (envCorrected) - sessiz duzeltme yok.
   const { envOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
-  const toBucket = (e) => (e === 'PROD' ? 'production' : e === UNKNOWN_ENV ? null : 'non-production');
+  const toBucket = (e) => { if (e === 'PROD') return 'production'; if (e === UNKNOWN_ENV) return null; return 'non-production'; };
   let envCorrected = 0;
   const rows = (recordset || []).map((r) => {
     const hostname = norm(r.hostname);

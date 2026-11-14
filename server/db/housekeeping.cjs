@@ -191,7 +191,7 @@ function buildAlertCard(usage, files, cfg) {
     title: `${f.name} (${f.kind === 'log' ? 'log' : 'veri'})`,
     value:
       `%${f.alert_pct.toFixed(1)} — ${fmt(f.used_mb)} / ` +
-      (f.cap_mb ? `${fmt(f.cap_mb)} üst sınır` : f.volume_free_mb != null ? `disk boş ${fmt(f.volume_free_mb)}` : `${fmt(f.size_mb)} dosya`),
+      (() => { if (f.cap_mb) return `${fmt(f.cap_mb)} üst sınır`; if (f.volume_free_mb != null) return `disk boş ${fmt(f.volume_free_mb)}`; return `${fmt(f.size_mb)} dosya`; })(),
   }));
   if (usage.logReuseWait && usage.logReuseWait !== 'NOTHING') {
     facts.push({ title: 'Log neden boşalmıyor', value: usage.logReuseWait });

@@ -95,7 +95,7 @@ async function buildOcpTarget({ env, tenant, clusters, namespace, appName, cfg, 
     ...(perCluster ? { [cfg.terminalHostsKey]: uniqueHosts } : {}),
   };
 
-  const logSummary = `ns=${ns}${appN ? ` app_name=${appN}` : ''} clusters=${requested.join(',')} `
+  const logSummary = `ns=${ns}${appN ? (" app_name=" + appN) : ''} clusters=${requested.join(',')} `
                    + `terminal=${uniqueHosts.join('+')}`;
   return { extraVars, requested, hosts, logSummary };
 }

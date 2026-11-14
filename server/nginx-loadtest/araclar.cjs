@@ -99,7 +99,7 @@ function hata(status, code, message, ek) {
 }
 
 const sha = (v) => (v == null ? null : String(v).trim().toLowerCase() || null);
-const iso = (v) => (v == null || v === '' ? null : v instanceof Date ? v.toISOString() : String(v));
+const iso = (v) => { if (v == null || v === '') return null; if (v instanceof Date) return v.toISOString(); return String(v); };
 const sayiYaDaNull = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 function jsonOku(s) {
   if (s == null || s === '') return null;

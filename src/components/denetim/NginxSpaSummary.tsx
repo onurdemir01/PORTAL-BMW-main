@@ -192,7 +192,7 @@ function RouteListModal({ kaynak, onClose }: { kaynak: RouteKaynak; onClose: () 
         ? denetimApi.routesOfIp({ ip: kaynak.ip, env, kind: 'all' })
         : denetimApi.routesOfCluster({ cluster: kaynak.cluster, env, kind: 'all' });
     await istek
-      .then((r) => { if (!alive()) return; if (r.ok) setRows(r.rows); else setErr(r.message || 'Route listesi alınamadı.'); })
+      .then((r) => { if (!alive()) { return; } if (r.ok) { setRows(r.rows); } else { setErr(r.message || 'Route listesi alınamadı.'); } })
       .catch((e: unknown) => alive() && setErr(e instanceof Error ? e.message : String(e)));
   }, [kaynak.tur, anahtar, env]);
   const list = useMemo(() => {

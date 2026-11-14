@@ -182,11 +182,7 @@ function extractDiscoveryResult(rawArtifacts) {
     // kullanir. Bu liste "hangi namespace'ler GERCEKTEN tarandi" sorusunu
     // cevaplar — katalog supurmesi (`is_deleted=1`) yalnizca taranmis bir
     // namespace icin mesrudur.
-    namespaces: Array.isArray(raw.namespaces)
-      ? raw.namespaces.map((x) => String(x).trim()).filter(Boolean)
-      : String(raw.namespace || '').trim()
-        ? [String(raw.namespace).trim()]
-        : [],
+    namespaces: (() => { if (Array.isArray(raw.namespaces)) return raw.namespaces.map((x) => String(x).trim()).filter(Boolean); if (String(raw.namespace || '').trim()) return [String(raw.namespace).trim()]; return []; })(),
     platform: String(raw.platform || ''),
     environment: String(raw.environment || ''),
     catalogSource: String(raw.catalog_source || 'file'),
@@ -247,7 +243,7 @@ function extractDiscoveryResult(rawArtifacts) {
         kinds: msOrNull(d.kinds),
         // ucuncu bir deger var: onbellegin HIC sorulmadigi modlar ('-' → null).
         // `false` demek "onbellek vardi ama tutmadi" olurdu — ayri bir arizadir.
-        cached: d.cached === 'yes' ? true : d.cached === 'no' ? false : null,
+        cached: (() => { if (d.cached === 'yes') return true; if (d.cached === 'no') return false; return null; })(),
         setupMs: msOrNull(d.setup_ms),
         discoverMs: msOrNull(d.discover_ms),
         elapsedMs: msOrNull(d.elapsed_ms),
@@ -367,7 +363,7 @@ function extractDiscoveryResult(rawArtifacts) {
           // CronJob'a ozgu; digerlerinde null. `disc_val` bosluklari alt cizgiye
           // cevirdigi icin cron ifadesi geri cevrilir ("0_2_*_*_*" -> "0 2 * * *").
           schedule: d.schedule ? String(d.schedule).replace(/_/g, ' ') : null,
-          suspended: d.suspended === 'true' ? true : d.suspended === 'false' ? false : null,
+          suspended: (() => { if (d.suspended === 'true') return true; if (d.suspended === 'false') return false; return null; })(),
           // DaemonSet'e ozgu: dugum sayisi.
           desired: d.desired != null ? toInt(d.desired) : null,
           resource: d.resource || '',

@@ -27,7 +27,7 @@ async function kos(metadataFields, varsayilan) {
     sahte('../../ansible/runner.cjs', {
       getTemplateLaunchSettingsOnServer: async () => ({ askLimitOnLaunch: true }),
       prefillSurveyDefaultsOnServer: async (_s, _t, ev) => ev,
-      getTemplateVariableDefaultsOnServer: async () => { if (varsayilan instanceof Error) throw varsayilan; return varsayilan; },
+      getTemplateVariableDefaultsOnServer: async () => { if (varsayilan instanceof Error) { throw varsayilan; } return varsayilan; },
     }),
     sahte('../../ansible/change-gates.cjs', { openSmartTicket: async (a) => { yakalanan = a; return { ticketId: 'T', smartTicketId: 1 }; } }),
   ];

@@ -92,7 +92,7 @@ const kosuGeneliNedenler = (liste) => (Array.isArray(liste) ? liste : []).filter
 
 function kipOzeti(satir) {
   const d = satir.map((a) => (a.kipDogrulama && a.kipDogrulama.durum) || 'olculmedi');
-  return d.includes('uyari') ? 'uyari' : d.includes('tamam') ? 'tamam' : 'olculmedi';
+  if (d.includes('uyari')) return 'uyari'; if (d.includes('tamam')) return 'tamam'; return 'olculmedi';
 }
 
 function bellekArtisi(d) {
@@ -106,7 +106,7 @@ function bellekArtisi(d) {
 function raporSatiri(k, kombo, hiz, g, satir, ortak) {
   const gecerli = satir.filter((a) => GECERLI.has(a.gecerlilik));
   const doymamis = gecerli.filter((a) => !a.yukDoydu);
-  const kume = doymamis.length ? doymamis : gecerli.length ? gecerli : satir;
+  const kume = (() => { if (doymamis.length) return doymamis; if (gecerli.length) return gecerli; return satir; })();
   const al = (f, xs = kume) => xs.map(f);
   const ort = (alan) => ortalama(al((a) => a[alan]));
   const cpuVar = gecerli.length > 0;
@@ -136,7 +136,7 @@ function raporSatiri(k, kombo, hiz, g, satir, ortak) {
     tarih: m.createdAt,
     sureSn: ortak.sureSn,
     durum: m.durum,
-    gecerlilik: ortak.kosuNedenleri.length && m.gecerlilik === 'GECERSIZ' ? 'GECERSIZ' : durumKodu ? durumKodu[0] : null,
+    gecerlilik: (() => { if (ortak.kosuNedenleri.length && m.gecerlilik === 'GECERSIZ') return 'GECERSIZ'; if (durumKodu) return durumKodu[0]; return null; })(),
     tekrar: g.n_kosu,
     gecerliTekrar: g.n_gecerli,
     gercekRps: ort('gercekRps'),
@@ -155,10 +155,10 @@ function raporSatiri(k, kombo, hiz, g, satir, ortak) {
     n429: toplam(al((a) => a.n429, satir)),
     n5xx: toplam(al((a) => a.n5xx, satir)),
     atilan: toplam(al((a) => a.dropped, satir)),
-    cpuMsIstek: cpuVar ? (sonlu(g.cpu_ms_istek) > 0 ? g.cpu_ms_istek : null) : ortalama(al((a) => a.cpuMsIstek, satir)),
+    cpuMsIstek: (() => { if (cpuVar) { if (sonlu(g.cpu_ms_istek) > 0) return g.cpu_ms_istek; return null; } return ortalama(al((a) => a.cpuMsIstek, satir)); })(),
     kapasite: ortalama(al((a) => a.kapasiteRps, cpuVar ? satir.filter((a) => a.gecerlilik === 'GECERLI') : satir)),
     bellekMb: pss !== null ? pss : rss,
-    bellekKaynak: pss !== null ? 'pss' : rss !== null ? 'rss' : null,
+    bellekKaynak: (() => { if (pss !== null) return 'pss'; if (rss !== null) return 'rss'; return null; })(),
     bellekArtisiMb: ortalama(al((a) => bellekArtisi(a.bellekDetay))),
     bellekNedenleri: tekil(satir.flatMap((a) => (a.bellekDetay && Array.isArray(a.bellekDetay.nedenler) ? a.bellekDetay.nedenler : []))),
     bellekSizinti: ortak.bellekSizinti,

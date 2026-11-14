@@ -93,7 +93,7 @@ test('CS5 mapSurveySpec: kaynaga bagli alan secim kutusu olarak sunulur, choices
   const body = src.slice(i, i + 1800);
   assert.match(body, /ov\.choicesSource/, 'override choicesSource okunmuyor');
   // Coklu secim alani (AWX multiselect) kaynaga baglaninca coklu kalir; digerleri tekli secim.
-  assert.match(body, /type: choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type/, 'tip secim kutusuna cevrilmiyor');
+  assert.match(body, /type: (?:choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type|\(\(\) => \{ if \(choicesSource\) \{? if \(field\.type === 'multiselect'\) return 'multiselect'; return 'multiplechoice'; \}? return field\.type; \}\)\(\))/, 'tip secim kutusuna cevrilmiyor');
   assert.match(body, /\.\.\.\(choicesSource \? \{ choicesSource \} : \{\}\)/, 'choicesSource istemciye gitmiyor');
 });
 

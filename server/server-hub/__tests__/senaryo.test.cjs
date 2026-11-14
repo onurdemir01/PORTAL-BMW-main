@@ -138,20 +138,14 @@ function filo({
         : [],
   };
   const logOz =
-    log === 'YOK'
-      ? null
-      : { durum: log, gercek_7g: gercek, hc_7g: hc, hc_istemcileri: hc ? ['10.0.0.250'] : [] };
+    (() => { if (log === 'YOK') return null; return { durum: log, gercek_7g: gercek, hc_7g: hc, hc_istemcileri: hc ? ['10.0.0.250'] : [] }; })();
   const vhostW = {
     server_name: shV.serverName,
     aliases: [],
     adres: ['*:80'],
     belirsiz: false,
     hedefler:
-      esleme === 'KESIN'
-        ? [{ tur: 'proxy', sema: 'ajp', host: '10.0.1.1', port: 8109 }]
-        : esleme === 'GUCLU'
-          ? [{ tur: 'mc', sema: 'balancer', host: ad.toLowerCase(), port: null }]
-          : [],
+      (() => { if (esleme === 'KESIN') return [{ tur: 'proxy', sema: 'ajp', host: '10.0.1.1', port: 8109 }]; if (esleme === 'GUCLU') return [{ tur: 'mc', sema: 'balancer', host: ad.toLowerCase(), port: null }]; return []; })(),
     jk: [],
     log: logOz,
   };
@@ -168,11 +162,7 @@ function filo({
       }
     : null;
   const uzaklar =
-    baglanti === 'CAGIRAN'
-      ? [{ ip: '10.0.9.1', gozlem: 3 }]
-      : baglanti === 'WEB_AJP'
-        ? [{ ip: '10.0.0.10', gozlem: 2 }]
-        : [];
+    (() => { if (baglanti === 'CAGIRAN') return [{ ip: '10.0.9.1', gozlem: 3 }]; if (baglanti === 'WEB_AJP') return [{ ip: '10.0.0.10', gozlem: 2 }]; return []; })();
   const hv = new Map([
     [
       APP,
@@ -206,7 +196,7 @@ function filo({
               calisiyor: true,
               hata_sayisi: 0,
               mod_cluster: false,
-              vhostlar: esleme === 'YOK' ? [] : vhost2 ? [vhostW, vhost2] : [vhostW],
+              vhostlar: (() => { if (esleme === 'YOK') return []; if (vhost2) return [vhostW, vhost2]; return [vhostW]; })(),
               ana_hedefler: [],
               jk_global: [],
               workers: [],
@@ -639,7 +629,7 @@ test('SN8 grup kontrolu: imza, yalniz aday dogrulanir, VERI_DEGISTI, okunamadi',
   const bayrak = { gercek: 0 };
   const app = express();
   app.use(express.json());
-  app.use((req, _r, n) => ((req.session = { user: { username: 'onur', role: 'Admin' } }), n()));
+  app.use((req, _r, n) => { req.session = { user: { username: 'onur', role: 'Admin' } }; return n(); });
   const router = express.Router();
   require('../iliski-uclar.cjs').mount(router, {
     getAssessment: async () => ({ tableMissing: false, hosts: filo(bayrak).hosts }),

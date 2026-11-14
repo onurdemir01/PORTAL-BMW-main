@@ -53,8 +53,8 @@ const kosmadi = (w) => !!w && (w.status == null || w.status === 'pending') && w.
 // alma ara durumlari vb.) bilinmeyen sayilir ve hic birlesmez.
 const ONCELIK = { pending: 4, '': 4, failed: 3, skip: 2, manual: 1 };
 function oncelik(w) {
-  const s = w && w.status != null ? String(w.status) : '';
-  return Object.prototype.hasOwnProperty.call(ONCELIK, s) ? ONCELIK[s] : null;
+  const s = w?.status != null ? String(w.status) : '';
+  return Object.hasOwn(ONCELIK, s) ? ONCELIK[s] : null;
 }
 /** Is acilmis (jobId), dosyayi kapatan/kapatmis (running/ok) ya da durumu bilinmeyen girdi: HIC atilmaz. */
 const kalici = (w) => !w || w.jobId != null || w.status === 'running' || w.status === 'ok' || oncelik(w) == null;

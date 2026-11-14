@@ -31,7 +31,7 @@ const YOKSAY_AD_RE = /^[A-Za-z0-9._+@-][A-Za-z0-9._+@ -]{0,63}$/;
 const YOKSAY_SINIR = 50;
 /** Ad listesi -> tekil, sirali dizi; gecersiz ad varsa null. */
 function yoksayNormal(liste) {
-  const adlar = (Array.isArray(liste) ? liste : String(liste == null ? '' : liste).split(','))
+  const adlar = (() => { if (Array.isArray(liste)) return liste; return String(liste == null ? '' : liste).split(','); })()
     .map((x) => String(x).trim())
     .filter(Boolean);
   if (adlar.some((x) => !YOKSAY_AD_RE.test(x) || x === '.' || x === '..')) return null;

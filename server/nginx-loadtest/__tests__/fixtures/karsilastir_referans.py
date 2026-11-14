@@ -23,13 +23,15 @@ def yukle(yol):
     return mod
 
 
-def main(argv):
-    betik, kok, durumlar_yolu, cikti = argv
-    k = yukle(betik)
-    with open(betik, "rb") as f:
-        betik_sha = hashlib.sha256(f.read()).hexdigest()
-    with open(durumlar_yolu, encoding="utf-8") as f:
-        durumlar = json.load(f)
+def _adim_nproc(k, ad):
+    for kes in ad.kesitler:
+        v = k.sayi(kes["bilgi"].get("nproc"))
+        if v:
+            return v
+    return None
+
+
+def _adimlari_oku(k, kok):
     adimlar = {}
     kosular = []
     for d in sorted(os.listdir(kok)):
@@ -40,15 +42,21 @@ def main(argv):
         if ad.bos_mu():
             adimlar[d] = {"bos": True}
             continue
-        ks, tls, arka = k.adim_hesapla(ad)
-        nproc = None
-        for kes in ad.kesitler:
-            v = k.sayi(kes["bilgi"].get("nproc"))
-            if v:
-                nproc = v
-                break
+        ks, _, arka = k.adim_hesapla(ad)
+        nproc = _adim_nproc(k, ad)
         adimlar[d] = {"bos": False, "kosular": ks, "arka": arka, "nproc": nproc, "not": ad.not_}
         kosular.extend(ks)
+    return adimlar, kosular
+
+
+def main(argv):
+    betik, kok, durumlar_yolu, cikti = argv
+    k = yukle(betik)
+    with open(betik, "rb") as f:
+        betik_sha = hashlib.sha256(f.read()).hexdigest()
+    with open(durumlar_yolu, encoding="utf-8") as f:
+        durumlar = json.load(f)
+    adimlar, kosular = _adimlari_oku(k, kok)
     gruplar = k.grupla(kosular)
     gruplar_cikti = []
     for (ad, sen, kip, ae, hiz), o in gruplar.items():
