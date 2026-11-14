@@ -40,6 +40,7 @@ import DurumRozeti from './DurumRozeti';
 import { isMetni, type AutoStartIsDurumu } from './autoStartIsi';
 import AnalizRozeti, { sunucuAnahtari } from './AnalizRozeti';
 import { ozetKartlari, zincirRozetleri, type BolumId } from './sunucuOzet';
+import { jvmNesilEtiketi, jvmSayisiMetni } from './jvmNesil';
 
 const SIRA: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
 
@@ -333,7 +334,7 @@ export default function SunucuPaneli({
         })}
       </Bolum>
 
-      <Bolum baslik={`Uygulamalar (${kartlar.length} JVM)`} {...bolumProps('uygulamalar')} testId="bolum-uygulamalar">
+      <Bolum baslik={`Uygulamalar (${jvmSayisiMetni(kartlar.map((k) => k.jvm))})`} {...bolumProps('uygulamalar')} testId="bolum-uygulamalar">
         <div style={{ color: 'var(--text-muted)' }}>
           kaynak: JVM ve web — {kaynak}; EAR —{' '}
           {d.ear?.taranma
@@ -351,7 +352,7 @@ export default function SunucuPaneli({
             {/* ILK SATIR: rozetler (JVM · EAR · web · trafik); ayrinti tiklayinca. */}
             <div className="flex flex-wrap items-center gap-1.5">
               <b className="font-mono text-[11px] mr-1">{j.name}</b>
-              <span style={{ color: 'var(--text-muted)' }}>JBoss {j.gen || '?'}</span>
+              <span style={{ color: 'var(--text-muted)' }} data-testid="jvm-nesil">{jvmNesilEtiketi(j)}</span>
               {zincirRozetleri(d, j, earlar.length, katman).map((r) => (
                 <DurumRozeti key={r.metin} {...r} />
               ))}

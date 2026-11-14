@@ -12,6 +12,7 @@
 const express = require('express');
 const { assess, flattenFindings, parseTargets, hedefUserinfoSil } = require('./assess.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
+const CIFT = require('./cift-satir.cjs');
 // Admin ayarlari (2026-10-20): bulgu seviyesi degisiklikleri + tek seferde sunucu sayisi.
 const ayarlar = require('./ayarlar.cjs');
 // Uygulama Envanteri'nin son durumu (2026-11-06): EAR bulgulari ve retirement etiketleri.
@@ -19,6 +20,7 @@ const { earSonDurum } = require('./ear-hub-verisi.cjs');
 // Capraz kontrol verisi (2026-11-06): OpenShift envanteri, Dynatrace kullanimi, Retirement kayitlari.
 const { caprazVeri, caprazDurumu } = require('./capraz-veri.cjs');
 const { KODLAR } = require('./kural-katalogu.cjs');
+const { yalnizEnvanter } = require('./capraz.cjs');
 
 // ── KOLON LISTELERI (sozlesme v3 P9) ───────────────────────────────────────────────
 // Yildizli (tum kolon) SELECT YOK. Her tablo icin BEKLENEN kolonlar (sozlesme kayit_tipleri + DDL) ile
@@ -175,8 +177,11 @@ async function loadLatest() {
   const q = (table, ek = []) => {
     const cols = secilecekKolonlar(table, kol, SH_KOLONLAR[table]);
     if (!cols.length) return Promise.resolve([]);
+    // CIFT SATIR (2026-11-14): id, cift-satir.cjs'in "en son yukleme kalir" secimi icin; ayiklamadan sonra silinir.
+    // Sema okunamazsa (C3) id secilmez: kopyalardan HANGISININ kalacagi belirsizdir (assess C3'te eylem onermez).
+    const idEk = kol.ok && (kol.cols.get(table.toLowerCase()) || new Set()).has('id') ? [`t.[id] AS [${CIFT.ID_KOLON}]`] : [];
     return query(
-      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek].join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek, ...idEk].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -250,7 +255,7 @@ async function loadLatest() {
     )
     .catch(() => []);
   const kol = await kolP;
-  const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
+  const [hosts0, init0, jboss0, jvms0, web0, vhosts0, ips0, sshd0] = await Promise.all([
     q('dbo.Server_Hub_Hosts'),
     q('dbo.Server_Hub_Init'),
     q('dbo.Server_Hub_Jboss'),
@@ -263,6 +268,28 @@ async function loadLatest() {
     q('dbo.Server_Hub_Ips'),
     q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
+  // CIFT SATIR (uretim 2026-11-14): ayni host+gun icin dogal anahtari ayni satirlar tekillestirilir
+  // (en buyuk id kalir) ve sayilir; sayi summary.ciftSatir ile ekrana/loga cikar (cift-satir.cjs).
+  const tek = CIFT.tumunuTekillestir({
+    'dbo.Server_Hub_Hosts': hosts0,
+    'dbo.Server_Hub_Init': init0,
+    'dbo.Server_Hub_Jboss': jboss0,
+    'dbo.Server_Hub_Jvms': jvms0,
+    'dbo.Server_Hub_Web': web0,
+    'dbo.Server_Hub_Vhosts': vhosts0,
+    'dbo.Server_Hub_Ips': ips0,
+    'dbo.Server_Hub_Sshd': sshd0,
+  });
+  const {
+    'dbo.Server_Hub_Hosts': hosts,
+    'dbo.Server_Hub_Init': init,
+    'dbo.Server_Hub_Jboss': jboss,
+    'dbo.Server_Hub_Jvms': jvms,
+    'dbo.Server_Hub_Web': web,
+    'dbo.Server_Hub_Vhosts': vhosts,
+    'dbo.Server_Hub_Ips': ips,
+    'dbo.Server_Hub_Sshd': sshd,
+  } = tek.tablolar;
   const [mwApps, invEnv, loadIssues] = await Promise.all([mwAppsP, invEnvP, loadIssuesP]);
   return {
     tableMissing: false,
@@ -281,6 +308,8 @@ async function loadLatest() {
       invProductUnknown,
       // C3: kolon listesi okunamadi -> sema bilinmiyor (assess kapali kalir)
       schemaUnknown: !kol.ok,
+      // ayiklanan cift satir sayisi (toplam + tablo basina); 0 = temiz
+      ciftSatir: tek.ciftSatir,
     },
   };
 }
@@ -302,12 +331,15 @@ async function loadJvmAgir(host, opts) {
   const var_ = kol.cols.get('dbo.server_hub_jvms') || new Set();
   const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
   if (!agir.length) return new Map();
+  // CIFT SATIR (2026-11-14): ayni (gen, jvm) iki kez varsa Map.set SON satiri tutar; ORDER BY id ile
+  // son = en buyuk id = filo okumasinin (cift-satir.cjs) sectigi satir.
+  const sirala = var_.has('id') ? '\n     ORDER BY t.[id]' : '';
   const rows = await query(
     `SELECT t.[gen], t.[jvm], ${agir.map((c) => `t.[${c}]`).join(', ')} FROM dbo.Server_Hub_Jvms t
      JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts
             WHERE host = @h OR host LIKE @h + '.%' GROUP BY host) m
        ON m.host = t.host AND m.d = t.scan_date
-     WHERE t.host = @h OR t.host LIKE @h + '.%'`,
+     WHERE t.host = @h OR t.host LIKE @h + '.%'${sirala}`,
     [{ name: 'h', type: sql.NVarChar(64), value: host }],
   )
     .then((r) => r.recordset || [])
@@ -351,6 +383,22 @@ function semaKisaOnbellek() {
   return kayit.p;
 }
 
+// CIFT SATIR (2026-11-14): loadLatest'in ayikladigi cift satir sayisi summary.ciftSatir'a (overview
+// yanitina) yazilir; sayi DEGISTIGINDE bir kez loglanir (her 60 sn'lik tazelemede ayni satir tekrar etmez).
+let _sonCiftLog = '';
+function ciftSatirYayinla(value, data) {
+  const c = (data && data.ciftSatir) || { toplam: 0, tablolar: {} };
+  value.ciftSatir = c;
+  if (value.summary) value.summary.ciftSatir = c;
+  const imza = JSON.stringify(c);
+  if (imza === _sonCiftLog) return;
+  const onceVardi = _sonCiftLog !== '' && !/"toplam":0[,}]/.test(_sonCiftLog);
+  _sonCiftLog = imza;
+  if (c.toplam > 0)
+    console.warn(`[ServerHub] ${c.toplam} cift satir ayiklandi (en son yukleme tutuldu): ${JSON.stringify(c.tablolar)}`);
+  else if (onceVardi) console.log('[ServerHub] cift satir 0a indi (DB temiz)');
+}
+
 /** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
 function hesapla() {
   if (_ucus && _ucus.nesil === _nesil) return _ucus.p;
@@ -380,6 +428,7 @@ function hesapla() {
     };
     value.ear = { okunamadi: ear.okunamadi === true, hata: ear.hata || '', hostSayisi: ear.hostlar.length };
     value.capraz = caprazDurumu(capraz);
+    ciftSatirYayinla(value, data);
     _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
     if (Date.now() - t0 > YAVAS_MS)
       console.log(
@@ -465,10 +514,12 @@ function hostRow(h) {
     hostClass: h.hostClass || 'genel',
     wallS: h.wallS,
     cpuS: h.cpuS,
-    jvms: h.jvms.length,
+    // "Yalniz envanterde" satiri (2026-11-14) tarama JVM'i degil: sayaclara girmez, ayri sayilir.
+    jvms: h.jvms.filter((j) => !yalnizEnvanter(j)).length,
+    jvmsInventoryOnly: h.jvms.filter(yalnizEnvanter).length,
     // v3: calisma durumu OLCULEMEYEN JVM "calisiyor" da "kapali" da sayilmaz; ayri sayac
-    jvmsRunning: h.jvms.filter((j) => j.runningKnown !== false && j.running).length,
-    jvmsUnmeasured: h.jvms.filter((j) => j.runningKnown === false).length,
+    jvmsRunning: h.jvms.filter((j) => !yalnizEnvanter(j) && j.runningKnown !== false && j.running).length,
+    jvmsUnmeasured: h.jvms.filter((j) => !yalnizEnvanter(j) && j.runningKnown === false).length,
     // tazelik kapisi (bayat / son yuklemede disarida kalan sunucuda eylem yok)
     fresh: h.fresh !== false,
     vhosts: h.vhosts.length,
@@ -1173,6 +1224,11 @@ function initServerHub(app) {
       getAssessment: (fresh) => getAssessment(fresh === true),
       kontrol: require('./retire-kontrol.cjs'),
     }),
+  });
+
+  // ── KOPYA DURUMU (2026-11-14) ── kopya grubu basina "calisan x / y" (capraz.cjs kopyaGruplari; salt okunur).
+  require('./kopya-durumu.cjs').mount(router, {
+    getAssessment: (fresh) => getAssessment(fresh === true),
   });
 
   // ── ILISKI GRAFIGI (2026-11-07) ── varlik indeksi, kanitli kenarlar, capraz dogrulama (iliski-uclar.cjs).

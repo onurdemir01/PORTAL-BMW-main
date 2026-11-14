@@ -10,7 +10,9 @@
 //      route icin (2026-10-14; ortak kurucu ocp-kapsam.cjs).
 //   3) GET /api/denetim/init-scripts -> dbo.InitScriptsInventory[8] (check_initialize
 //      job'i doldurur). Init script'lerinin sunucular arasi sha512 sapmasi: hangi
-//      script kac AYRI surumle dagitilmis, hangi host'lar cogunluktan ayrilmis.
+//      script kac AYRI surumle dagitilmis, hangi host'lar referanstan ayrilmis.
+//      2026-11-14: + dbo.InitScriptsDetail (normallestirilmis sha512 / CR / durum) ve
+//      dbo.InitScriptsReference (ekip surumu); ikisi de yoksa eski davranis.
 //
 // Ikisi de SALT OKUNUR ve mevcut tablolari okur - yeni tablo/DDL GEREKTIRMEZ.
 'use strict';
@@ -1932,8 +1934,15 @@ function initDenetim(app) {
   // istisnasidir - sunucuya ozel olmasi TASARIM GEREGI (initialize.yaml:50 onu yeniden
   // kurulumda yedekten geri kopyalar). O yuzden ayrica isaretlenir ve sapma sayimina
   // KATILMAZ; yoksa neredeyse her sunucu yanlislikla "sapkin" gorunurdu.
+  //
+  // 2026-11-14: referans artik once EKIP SURUMU (dbo.InitScriptsReference, depo sablonlari),
+  // yoksa cogunluk; ve "yalniz bicim farki" (son satir sonu, CRLF, satir sonu boslugu) sapma
+  // sayilmaz - ayrinti scriptDeviationReport ustunde. appdomain.service sunucu GENELI tek
+  // dosyadir (hostWide) ama iki tabloya da yazilir: referansi iki tablodan birlikte, host basina
+  // bir kez hesaplanir ki ayni dosya bir sekmede "cogunluk", digerinde "farkli" gorunmesin.
+  // startRHA.sh / startLiberty.sh dagitiliyordu ama olculmuyordu; optional: yoksa uyari yok.
   const INIT_SCRIPTS = [
-    { key: 'appdomain_service', label: 'appdomain.service' },
+    { key: 'appdomain_service', label: 'appdomain.service', hostWide: true },
     { key: 'start_sh', label: 'start.sh' },
     { key: 'functions_sh', label: 'functions.sh' },
     { key: 'startCTG_sh', label: 'startCTG.sh' },
@@ -1946,6 +1955,8 @@ function initDenetim(app) {
     { key: 'exceptionList_ini', label: 'exceptionList.ini' },
     { key: 'startApplicationServers_jy', label: 'startApplicationServers.jy' },
     { key: 'stopApplicationServers_jy', label: 'stopApplicationServers.jy' },
+    { key: 'startRHA_sh', label: 'startRHA.sh', optional: true },
+    { key: 'startLiberty_sh', label: 'startLiberty.sh', optional: true },
     { key: 'startCustom_sh', label: 'startCustom.sh', perServer: true },
   ];
 
@@ -1953,6 +1964,9 @@ function initDenetim(app) {
     vhosting: 'dbo.InitScriptsInventory',
     vhosting8: 'dbo.InitScriptsInventory8',
   };
+  // Uzun bicimli ayrinti (norm/CR/durum) ve ekip referansi; ikisi de olmayabilir (eski veri).
+  const INIT_DETAIL_TABLE = 'dbo.InitScriptsDetail';
+  const INIT_REFERENCE_TABLE = 'dbo.InitScriptsReference';
 
   // -- 4) NGINX API ENVANTERI ---------------------------------------------------------
   // Kaynak: dbo.NginxRateLimitInventory (nginx_ratelimit_inventory job'i APPEND eder).
@@ -2233,13 +2247,257 @@ function initDenetim(app) {
   const SPECIAL_HOST_RE = /^(GBEVM|GBPRV)/i;
   const isSpecialHost = (h) => SPECIAL_HOST_RE.test(String(h || '').trim());
 
-  /**
-   * @param {object[]} raw satirlar
-   * @param {object[]} scripts script tanimlari
-   * @param {Map<string,string>} [majorityOverride] cogunluk disaridan verilirse (ozel
-   *   sunucular GENEL envanterin cogunluguna gore olculur; kendi aralarinda degil)
+  /*
+   * REFERANS VE BICIM FARKI (2026-11-14). Kullanici: "appdomain.service dagitilan surumle ayni
+   * ama farkli gorunuyor". Kok neden: ham sha512 gozle gorunmeyen bayt farklarini (son satir
+   * sonu, CRLF, satir sonu boslugu) da surum sayiyordu ve referans COGUNLUKTU - depo kopyasinin
+   * birebir aynisi azinlikta kalip "farkli surum" etiketi alabiliyordu.
+   * check_initialize artik her dosya icin ham + NORMALLESTIRILMIS sha512 + CR bayragi + durum
+   * (MISSING/UNREADABLE/ERROR) yazar (dbo.InitScriptsDetail), loader depo sablonlarindan ekip
+   * referansini hesaplar (dbo.InitScriptsReference). Kural (bmw_wds_scripts/initialize/README.md):
+   *   ham == referans ham (ya da referans normu)  -> uyumlu
+   *   ham farkli, norm == referans norm           -> "yalniz bicim farki" (sapma SAYILMAZ)
+   *   .sh/.jy ve dosyada CR var                   -> "CRLF" uyarisi (ayri sayilir; betik
+   *                                                  #!/bin/bash\r ile calismaz)
+   *   norm farkli                                 -> gercek sapma
+   * Referans onceligi: disaridan verilen (ozel sunucular / sunucu geneli dosya) > ekip > cogunluk.
+   * Detay/referans tablosu yoksa (eski veri) davranis birebir eskisi gibidir: ham hash + cogunluk.
    */
-  function scriptDeviationReport(raw, scripts, majorityOverride) {
+  const CR_SENSITIVE_RE = /\.(sh|jy)$/i;
+
+  /** Disaridan verilen referans: eski cagri bicimi duz hash dizgisi, yenisi {raw, norm, source}. */
+  function asReference(v) {
+    if (!v) return null;
+    if (typeof v === 'string') return { raw: v, norm: null, source: 'cogunluk' };
+    if (!v.raw && !v.norm) return null;
+    return { raw: v.raw || null, norm: v.norm || null, source: v.source || 'cogunluk' };
+  }
+
+  /** scriptStats -> Map(key -> referans); ozel sunucular ayni referansla olculsun diye. */
+  function referenceMap(scriptStats) {
+    return new Map(
+      scriptStats.map((sc) => [
+        sc.key,
+        sc.referenceHash || sc.referenceNorm
+          ? { raw: sc.referenceHash, norm: sc.referenceNorm, source: sc.referenceSource }
+          : sc.majorityHash,
+      ]),
+    );
+  }
+
+  /**
+   * @param {object[]} raw satirlar: {host, <key>: ham sha512}
+   * @param {object[]} scripts script tanimlari
+   * @param {Map<string, string|object>} [majorityOverride] referans disaridan verilirse (ozel
+   *   sunucular GENEL envanterin referansina gore olculur; kendi aralarinda degil)
+   * @param {object} [opts]
+   * @param {Map<string, object>} [opts.details] host -> {<key>: {norm, hasCr, state}}
+   * @param {Map<string, object>} [opts.teamRefs] key -> {raw, norm} (ekip surumu)
+   * @param {Map<string, object>} [opts.keyRefs] key -> hazir referans (sunucu geneli dosya)
+   */
+  function scriptDeviationReport(raw, scripts, majorityOverride, opts = {}) {
+    const details = opts.details || null;
+    const teamRefs = opts.teamRefs || null;
+    const keyRefs = opts.keyRefs || null;
+    // Ayrinti verisi, ekip referansi ve hazir referans YOKSA (eski veri ve Deployment
+    // Scripts): 2026-11-14 oncesi algoritma BIREBIR (kullanici karari) - eskiSapmaRaporu.
+    const dolu = (m) => !!(m && m.size);
+    if (!dolu(details) && !dolu(teamRefs) && !dolu(keyRefs)) {
+      return eskiSapmaRaporu(raw, scripts, majorityOverride);
+    }
+    const hostCount = raw.length;
+
+    const cellOf = (r, sc) => {
+      const host = String(r.host).trim();
+      const rawv = r[sc.key] ? String(r[sc.key]).trim() : '';
+      const d = details ? (details.get(host) || {})[sc.key] || null : null;
+      return {
+        host,
+        raw: rawv || null,
+        norm: d && d.norm ? String(d.norm).trim() : null,
+        hasCr: !!(d && (d.hasCr === true || d.hasCr === 1)),
+        state: d && d.state ? String(d.state).trim().toUpperCase() : null,
+      };
+    };
+    const isUnreadable = (c) => c.state === 'UNREADABLE' || c.state === 'ERROR';
+    const classify = (c, ref) => {
+      if (!c.raw) return isUnreadable(c) ? 'unreadable' : 'missing';
+      if (!ref) return 'ok';
+      if (c.raw === ref.raw || (ref.norm && c.raw === ref.norm)) return 'ok';
+      if (ref.norm && c.norm && c.norm === ref.norm) return 'format';
+      return 'deviation';
+    };
+    const crRisk = (c, sc) => !!c.raw && c.hasCr && CR_SENSITIVE_RE.test(sc.label);
+
+    // Ayni ham hash ayni icerik demektir: normu bilinmeyen kopya (ayrinti satiri eksik)
+    // normu bilinen ayni ham kopyanin normunu alir; yoksa ham ve norm anahtarlari karisip
+    // ayni icerik iki surum gorunurdu.
+    const normByRaw = (sc) => {
+      const m = new Map();
+      for (const r of raw) {
+        const c = cellOf(r, sc);
+        if (c.raw && c.norm && !m.has(c.raw)) m.set(c.raw, c.norm);
+      }
+      const t = teamRefs && teamRefs.get(sc.key);
+      if (t && t.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
+      for (const v of [keyRefs && keyRefs.get(sc.key), majorityOverride && majorityOverride.get(sc.key)]) {
+        const kr = asReference(v);
+        if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
+      }
+      return m;
+    };
+    const cellsOf = (sc) => {
+      const m = normByRaw(sc);
+      return (r) => {
+        const c = cellOf(r, sc);
+        if (c.raw && !c.norm && m.has(c.raw)) c.norm = m.get(c.raw);
+        return c;
+      };
+    };
+    const cellFns = new Map(scripts.map((sc) => [sc.key, cellsOf(sc)]));
+
+    const refOf = new Map();
+    const scriptStats = scripts.map((sc) => {
+      const cells = raw.map(cellFns.get(sc.key));
+      const groups = new Map();
+      const absent = [];
+      const unreadable = [];
+      for (const c of cells) {
+        if (!c.raw) {
+          (isUnreadable(c) ? unreadable : absent).push(c.host);
+          continue;
+        }
+        // Icerik surumu: norm biliniyorsa norm, yoksa (eski veri) ham hash.
+        const k = c.norm || c.raw;
+        if (!groups.has(k)) groups.set(k, { norm: c.norm, hosts: [], byRaw: new Map() });
+        const g = groups.get(k);
+        g.hosts.push(c.host);
+        if (!g.byRaw.has(c.raw)) g.byRaw.set(c.raw, []);
+        g.byRaw.get(c.raw).push(c.host);
+      }
+      let variants = [...groups.values()].map((g) => {
+        const rawVariants = [...g.byRaw.entries()]
+          .map(([hash, hosts]) => ({ hash, count: hosts.length, hosts: hosts.sort() }))
+          .sort((a, b) => b.count - a.count || a.hash.localeCompare(b.hash));
+        return {
+          hash: rawVariants[0].hash,
+          norm: g.norm || null,
+          count: g.hosts.length,
+          hosts: g.hosts.sort(),
+          rawVariants,
+          isReference: false,
+        };
+      });
+      variants.sort((a, b) => b.count - a.count || a.hash.localeCompare(b.hash));
+      const majority = variants[0] || null;
+
+      let ref = null;
+      if (!sc.perServer && majorityOverride && majorityOverride.has(sc.key)) {
+        // Ozel sunucular: GENEL envanterin referansi (yoksa null = olculemez, eski anlam).
+        ref = asReference(majorityOverride.get(sc.key));
+      } else if (!sc.perServer) {
+        ref =
+          asReference(keyRefs && keyRefs.get(sc.key)) ||
+          (teamRefs && teamRefs.get(sc.key) && teamRefs.get(sc.key).norm
+            ? { ...teamRefs.get(sc.key), source: 'ekip' }
+            : null) ||
+          (majority ? { raw: majority.hash, norm: majority.norm, source: 'cogunluk' } : null);
+      }
+      refOf.set(sc.key, ref);
+      if (ref) {
+        for (const v of variants) {
+          v.isReference =
+            v.rawVariants.some((rv) => rv.hash === ref.raw || (ref.norm && rv.hash === ref.norm)) ||
+            (!!ref.norm && v.norm === ref.norm);
+        }
+        // Referans grubu basa; geri kalan kalabaliktan aza.
+        variants = [...variants.filter((v) => v.isReference), ...variants.filter((v) => !v.isReference)];
+      }
+
+      const counts = { ok: 0, format: 0, deviation: 0 };
+      const crlfHosts = [];
+      for (const c of cells) {
+        const k = classify(c, ref);
+        if (k in counts) counts[k] += 1;
+        if (crRisk(c, sc)) crlfHosts.push(c.host);
+      }
+      return {
+        key: sc.key,
+        label: sc.label,
+        perServer: !!sc.perServer,
+        hostWide: !!sc.hostWide,
+        present: hostCount - absent.length - unreadable.length,
+        missing: absent.length,
+        missingHosts: absent.sort(),
+        unreadable: unreadable.length,
+        unreadableHosts: unreadable.sort(),
+        variantCount: variants.length,
+        rawVariantCount: variants.reduce((a, v) => a + v.rawVariants.length, 0),
+        majorityHash: majority ? majority.hash : null,
+        majorityCount: majority ? majority.count : 0,
+        referenceSource: ref ? ref.source : null,
+        referenceHash: ref ? ref.raw || null : null,
+        referenceNorm: ref ? ref.norm || null : null,
+        referenceCount: ref ? counts.ok + counts.format : 0,
+        formatOnlyCount: sc.perServer ? 0 : counts.format,
+        crlfCount: crlfHosts.length,
+        crlfHosts: crlfHosts.sort(),
+        deviatingCount: sc.perServer
+          ? majority
+            ? variants.slice(1).reduce((a, v) => a + v.count, 0)
+            : 0
+          : counts.deviation,
+        variants,
+      };
+    });
+
+    const hostRows = raw.map((r) => {
+      const deviations = [];
+      const formatOnly = [];
+      const crlf = [];
+      const missing = [];
+      const unreadable = [];
+      let customHash = null;
+      for (const sc of scripts) {
+        const c = cellFns.get(sc.key)(r);
+        // CR riski sunucuya ozel betikte de gercek: script satirindaki sayimla ayni olsun.
+        if (crRisk(c, sc)) crlf.push(sc.label);
+        if (sc.perServer) {
+          customHash = c.raw;
+          continue;
+        }
+        const k = classify(c, refOf.get(sc.key));
+        if (k === 'missing') missing.push(sc.label);
+        else if (k === 'unreadable') unreadable.push(sc.label);
+        else if (k === 'format') formatOnly.push(sc.label);
+        else if (k === 'deviation') deviations.push(sc.label);
+      }
+      return {
+        host: String(r.host).trim(),
+        deviations,
+        deviationCount: deviations.length,
+        formatOnly,
+        formatOnlyCount: formatOnly.length,
+        crlf,
+        crlfCount: crlf.length,
+        missing,
+        missingCount: missing.length,
+        unreadable,
+        unreadableCount: unreadable.length,
+        hasCustom: !!customHash,
+        customHash,
+      };
+    });
+    return { scriptStats, hostRows };
+  }
+
+  /**
+   * 2026-11-14 oncesi sapma hesabi, BIREBIR (ham hash + cogunluk). Yalniz yeni yanit alanlari
+   * notr degerlerle eklenir (bicim farki/CRLF/okunamaz = 0, referans = cogunluk) ki istemci tek
+   * sekil okusun. majorityOverride (ozel sunucular): deger duz hash ya da {raw} olabilir; anahtar
+   * VARSA degeri (null dahil) aynen kullanilir - eski Map.get anlami.
+   */
+  function eskiSapmaRaporu(raw, scripts, majorityOverride) {
     const hostCount = raw.length;
     const scriptStats = scripts.map((sc) => {
       const byHash = new Map();
@@ -2258,22 +2516,39 @@ function initDenetim(app) {
         .map(([hash, hosts]) => ({ hash, count: hosts.length, hosts: hosts.sort() }))
         .sort((a, b) => b.count - a.count || a.hash.localeCompare(b.hash));
       const majority = variants[0] || null;
+      const refSide = !sc.perServer && majority;
       return {
         key: sc.key,
         label: sc.label,
         perServer: !!sc.perServer,
+        hostWide: !!sc.hostWide,
         present: hostCount - absent.length,
         missing: absent.length,
         missingHosts: absent.sort(),
+        unreadable: 0,
+        unreadableHosts: [],
         variantCount: variants.length,
+        rawVariantCount: variants.length,
         majorityHash: majority ? majority.hash : null,
         majorityCount: majority ? majority.count : 0,
+        referenceSource: refSide ? 'cogunluk' : null,
+        referenceHash: refSide ? majority.hash : null,
+        referenceNorm: null,
+        referenceCount: refSide ? majority.count : 0,
+        formatOnlyCount: 0,
+        crlfCount: 0,
+        crlfHosts: [],
         deviatingCount: majority ? variants.slice(1).reduce((a, v) => a + v.count, 0) : 0,
         variants,
       };
     });
-    const majorityOf =
-      majorityOverride || new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
+    const overrideOf = (key) => {
+      const v = majorityOverride.get(key);
+      return v && typeof v === 'object' ? v.raw || null : v;
+    };
+    const majorityOf = majorityOverride
+      ? new Map(scripts.map((sc) => [sc.key, overrideOf(sc.key)]))
+      : new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
     const hostRows = raw.map((r) => {
       const deviations = [];
       const missing = [];
@@ -2295,8 +2570,14 @@ function initDenetim(app) {
         host: String(r.host).trim(),
         deviations,
         deviationCount: deviations.length,
+        formatOnly: [],
+        formatOnlyCount: 0,
+        crlf: [],
+        crlfCount: 0,
         missing,
         missingCount: missing.length,
+        unreadable: [],
+        unreadableCount: 0,
         hasCustom: !!customHash,
         customHash,
       };
@@ -2304,16 +2585,36 @@ function initDenetim(app) {
     return { scriptStats, hostRows };
   }
 
+  /** Yanittaki ust duzey referans kaynagi: 'ekip' (hepsi), 'karma' (bazisi), 'cogunluk'. */
+  function referenceSourceOf(scriptStats) {
+    const src = scriptStats
+      .filter((sc) => !sc.perServer && sc.referenceSource)
+      .map((sc) => sc.referenceSource);
+    if (!src.length) return null;
+    if (src.every((s) => s === 'ekip')) return 'ekip';
+    return src.includes('ekip') ? 'karma' : 'cogunluk';
+  }
+
   function scriptReportSummary(scripts, scriptStats, hostRows) {
     return {
       hosts: hostRows.length,
       scriptCount: scripts.length,
-      // "tam uyumlu" = perServer disindaki HER script'te cogunlukla ayni hash, hicbiri eksik degil
-      identicalHosts: hostRows.filter((r) => r.deviationCount === 0 && r.missingCount === 0).length,
+      // "tam uyumlu" = perServer disindaki HER script referansla ayni icerikte (yalniz bicim
+      // farki serbest), hicbiri eksik/okunamaz degil, CRLF'li betik yok
+      identicalHosts: hostRows.filter(
+        (r) =>
+          r.deviationCount === 0 &&
+          r.missingCount === 0 &&
+          (r.unreadableCount || 0) === 0 &&
+          (r.crlfCount || 0) === 0,
+      ).length,
       totalVariants: scriptStats
         .filter((sc) => !sc.perServer)
         .reduce((a, sc) => a + sc.variantCount, 0),
+      formatOnlyHosts: hostRows.filter((r) => (r.formatOnlyCount || 0) > 0).length,
+      crlfHosts: hostRows.filter((r) => (r.crlfCount || 0) > 0).length,
       customHosts: hostRows.filter((r) => r.hasCustom).length,
+      referenceSource: referenceSourceOf(scriptStats),
       scripts: scriptStats,
       hostRows,
     };
@@ -2404,9 +2705,146 @@ function initDenetim(app) {
     }
   });
 
+  /**
+   * Init Scripts ek verisi (2026-11-14): dbo.InitScriptsDetail (norm/CR/durum),
+   * dbo.InitScriptsReference (ekip surumu) ve sunucu geneli dosyalar icin OTEKI kokun satirlari.
+   * Hicbiri zorunlu degil: tablo yoksa bos doner, sorgu duserse `error` dolar ve ekran eski
+   * davranisla (ham hash + cogunluk) devam eder. Tablo/sutun adlari SABIT; kok ve script adlari
+   * bagli parametredir.
+   */
+  async function readInitExtras(query, sqlTypes, root, scripts) {
+    const out = {
+      details: new Map(),
+      otherDetails: new Map(),
+      otherRows: [],
+      teamRefs: new Map(),
+      detailAvailable: false,
+      detailExists: false,
+      error: null,
+    };
+    const keyOfLabel = new Map(scripts.map((sc) => [sc.label, sc.key]));
+    const hostWide = scripts.filter((sc) => sc.hostWide);
+    const otherRoot = Object.keys(INIT_TABLES).find((r) => r !== root);
+    const otherTable = INIT_TABLES[otherRoot];
+    const put = (map, host, key, val) => {
+      if (!map.has(host)) map.set(host, {});
+      map.get(host)[key] = val;
+    };
+    try {
+      const ex = await query(
+        `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS d, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS r, OBJECT_ID('${otherTable}') AS o`,
+      );
+      const e = (ex.recordset && ex.recordset[0]) || {};
+      out.detailExists = !!e.d;
+      if (e.d) {
+        const params = [
+          { name: 'root', type: sqlTypes.NVarChar, value: root },
+          { name: 'other', type: sqlTypes.NVarChar, value: otherRoot },
+          ...hostWide.map((sc, i) => ({ name: `hw${i}`, type: sqlTypes.NVarChar, value: sc.label })),
+        ];
+        const hwIn = hostWide.length ? hostWide.map((_, i) => `@hw${i}`).join(', ') : "''";
+        const dr = await query(
+          `SELECT host, root, script, norm_sha512, has_cr, state FROM ${INIT_DETAIL_TABLE}
+            WHERE root = @root OR (root = @other AND script IN (${hwIn}))`,
+          params,
+        );
+        for (const r of dr.recordset || []) {
+          const host = String(r.host || '').trim();
+          const key = keyOfLabel.get(String(r.script || '').trim());
+          if (!host || !key) continue;
+          const val = { norm: r.norm_sha512 || null, hasCr: r.has_cr, state: r.state || null };
+          if (String(r.root) === root) {
+            put(out.details, host, key, val);
+            if (val.norm || val.state) out.detailAvailable = true;
+          } else put(out.otherDetails, host, key, val);
+        }
+      }
+      if (e.r) {
+        const rr = await query(
+          `SELECT script, raw_sha512, norm_sha512 FROM ${INIT_REFERENCE_TABLE}
+            ORDER BY script, norm_sha512, raw_sha512`,
+        );
+        for (const r of rr.recordset || []) {
+          const key = keyOfLabel.get(String(r.script || '').trim());
+          // Dosya basina birden cok satir varsa ILK (sirali) kazanir: deterministik.
+          if (!key || !r.norm_sha512 || out.teamRefs.has(key)) continue;
+          out.teamRefs.set(key, {
+            raw: String(r.raw_sha512 || '').trim() || null,
+            norm: String(r.norm_sha512).trim(),
+          });
+        }
+      }
+      // OTEKI kokun satirlari yalniz ayrinti tablosu varken gerekir (sunucu geneli dosyanin
+      // ortak referansi); eski veride (yalniz iki genis tablo) hic okunmaz - davranis eskisi.
+      if (e.o && e.d && hostWide.length) {
+        const cr = await query(
+          `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${otherTable}')`,
+        );
+        const have = new Set((cr.recordset || []).map((r) => String(r.name)));
+        const cols = hostWide.map((sc) => sc.key).filter((k) => have.has(k));
+        if (have.has('host') && cols.length) {
+          const or = await query(`SELECT host, ${cols.join(', ')} FROM ${otherTable}`);
+          out.otherRows = (or.recordset || []).filter((r) => String(r.host || '').trim());
+        }
+      }
+    } catch (err) {
+      // Kismi okuma YARIM yeni yol uretmesin: ayrinti/referans/oteki kok tamamen birakilir,
+      // rapor eski yoldan (ham hash + cogunluk) cikar - ekrandaki "okunamadi" notuyla tutarli.
+      out.details = new Map();
+      out.otherDetails = new Map();
+      out.otherRows = [];
+      out.teamRefs = new Map();
+      out.detailAvailable = false;
+      out.error = (err && err.message) || String(err);
+    }
+    return out;
+  }
+
+  /**
+   * Verinin yasi (2026-11-14). AWX job 13418 /sw'ye yazamadigi icin tablolar haftalarca
+   * yenilenmemisti ve ekran bunu gostermiyordu. Kaynak onceligi: genis tablonun load_date
+   * sutunu (loader kosu basina tek SYSDATETIME yazar) > InitScriptsDetail.scan_date > yok.
+   * Zaman SQL Server'da metne cevrilir (saat dilimi kaymasi olmasin) ve yas AYNI saatle
+   * (SYSDATETIME) hesaplanir. Hata yutulur: yas bilinmezse ekran uyari gosterir.
+   */
+  async function readInitAge(query, sqlTypes, table, root, haveLoadDate, detailExists) {
+    const out = { loadedAt: null, ageMinutes: null, ageDays: null, ageSource: null };
+    const al = (rec, source) => {
+      const r = (rec && rec.recordset && rec.recordset[0]) || {};
+      if (!r.t) return false;
+      out.loadedAt = String(r.t);
+      const m = Number(r.m);
+      out.ageMinutes = Number.isFinite(m) ? Math.max(0, m) : null;
+      out.ageDays = out.ageMinutes === null ? null : Math.floor(out.ageMinutes / 1440);
+      out.ageSource = source;
+      return true;
+    };
+    try {
+      if (haveLoadDate) {
+        const r = await query(
+          `SELECT CONVERT(VARCHAR(19), MAX(load_date), 120) AS t,
+                  DATEDIFF(MINUTE, MAX(load_date), SYSDATETIME()) AS m FROM ${table}`,
+        );
+        if (al(r, 'load_date')) return out;
+      }
+      if (detailExists) {
+        const r = await query(
+          `SELECT CONVERT(VARCHAR(19), MAX(scan_date), 120) AS t,
+                  DATEDIFF(MINUTE, MAX(scan_date), SYSDATETIME()) AS m
+             FROM ${INIT_DETAIL_TABLE} WHERE root = @root`,
+          [{ name: 'root', type: sqlTypes.NVarChar, value: root }],
+        );
+        al(r, 'scan_date');
+      }
+    } catch {
+      /* yas bilinmiyor: ekran uyari gosterir */
+    }
+    return out;
+  }
+
   router.get('/init-scripts', async (req, res) => {
     try {
-      const { query } = require('../inventory/mssql.cjs');
+      const { query, sql } = require('../inventory/mssql.cjs');
       const rootParam = String(req.query.root || 'vhosting');
       const root = INIT_TABLES[rootParam] ? rootParam : 'vhosting';
       const table = INIT_TABLES[root];
@@ -2420,7 +2858,9 @@ function initDenetim(app) {
       );
       const have = new Set((colRes.recordset || []).map((r) => String(r.name)));
       const scripts = INIT_SCRIPTS.filter((sc) => have.has(sc.key));
-      const missingColumns = INIT_SCRIPTS.filter((sc) => !have.has(sc.key)).map((sc) => sc.label);
+      const missingColumns = INIT_SCRIPTS.filter((sc) => !sc.optional && !have.has(sc.key)).map(
+        (sc) => sc.label,
+      );
 
       if (!have.has('host') || scripts.length === 0) {
         return res.json({
@@ -2435,6 +2875,10 @@ function initDenetim(app) {
           missingColumns,
           scripts: [],
           hostRows: [],
+          loadedAt: null,
+          ageMinutes: null,
+          ageDays: null,
+          ageSource: null,
         });
       }
 
@@ -2443,14 +2887,54 @@ function initDenetim(app) {
       );
       const raw = (rowsRes.recordset || []).filter((r) => String(r.host || '').trim());
 
-      // Cogunluk GENEL envanterden; GBEVM*/GBPRV* ayni cogunluga gore olculup ayri raporlanir.
+      // Ayrinti (norm/CR/durum) ve ekip referansi: tablolar yoksa ya da okunamazsa ekran
+      // eskisi gibi (ham hash + cogunluk) calisir - bu yuzden hatalari YUTULUR ve bildirilir.
+      const ek = await readInitExtras(query, sql, root, scripts);
+      const age = await readInitAge(query, sql, table, root, have.has('load_date'), ek.detailExists);
+      const opts = { details: ek.details, teamRefs: ek.teamRefs, keyRefs: new Map() };
+
+      // Sunucu geneli dosya (appdomain.service): referans iki tablonun birlesiminden, host
+      // basina bir kez (once bu kokun satiri). Ekip referansi varsa zaten o kullanilir.
+      // YALNIZ ayrinti verisi varken: eski veride (iki genis tablo) her sekme kendi
+      // cogunluguna gore olculur - kullanici karari: eski yol birebir eskisi gibi kalir.
+      const hostWideScripts = ek.detailAvailable ? scripts.filter((s) => s.hostWide) : [];
+      for (const sc of hostWideScripts) {
+        const birlesik = new Map();
+        const birlesikDetay = new Map();
+        for (const [kaynak, detay] of [
+          [raw, ek.details],
+          [ek.otherRows, ek.otherDetails],
+        ]) {
+          for (const r of kaynak) {
+            const host = String(r.host || '').trim();
+            if (!host || isSpecialHost(host) || birlesik.has(host)) continue;
+            birlesik.set(host, { host, [sc.key]: r[sc.key] });
+            const d = detay && detay.get(host);
+            if (d && d[sc.key]) birlesikDetay.set(host, { [sc.key]: d[sc.key] });
+          }
+        }
+        const ortak = scriptDeviationReport([...birlesik.values()], [sc], undefined, {
+          details: birlesikDetay,
+          teamRefs: ek.teamRefs,
+        });
+        const st = ortak.scriptStats[0];
+        if (st && (st.referenceHash || st.referenceNorm)) {
+          opts.keyRefs.set(sc.key, {
+            raw: st.referenceHash,
+            norm: st.referenceNorm,
+            source: st.referenceSource,
+          });
+        }
+      }
+
+      // Referans GENEL envanterden; GBEVM*/GBPRV* ayni referansa gore olculup ayri raporlanir.
       const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
       const ozelRaw = raw.filter((r) => isSpecialHost(r.host));
-      const { scriptStats, hostRows } = scriptDeviationReport(genelRaw, scripts);
+      const { scriptStats, hostRows } = scriptDeviationReport(genelRaw, scripts, undefined, opts);
       let special = null;
       if (ozelRaw.length) {
-        const majorityOf = new Map(scriptStats.map((sc) => [sc.key, sc.majorityHash]));
-        const ozel = scriptDeviationReport(ozelRaw, scripts, majorityOf);
+        const majorityOf = referenceMap(scriptStats);
+        const ozel = scriptDeviationReport(ozelRaw, scripts, majorityOf, opts);
         special = scriptReportSummary(scripts, ozel.scriptStats, ozel.hostRows);
       }
       res.json({
@@ -2459,6 +2943,10 @@ function initDenetim(app) {
         roots: Object.keys(INIT_TABLES),
         missingColumns,
         ...scriptReportSummary(scripts, scriptStats, hostRows),
+        detailAvailable: ek.detailAvailable,
+        teamReferenceAvailable: ek.teamRefs.size > 0,
+        extrasError: ek.error,
+        ...age,
         special,
       });
     } catch (err) {

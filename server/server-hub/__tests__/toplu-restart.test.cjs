@@ -977,3 +977,30 @@ test('TR20 ad kurali: envanter TEST + ad prod -> OpsX ten tek tek', () => {
   assert.equal(T.restartKapisi(A, H('GBJBOT18', [j]), j), null);
   assert.equal(T.adKuraliProd('APP01'), false);
 });
+
+test('TR-CIFT savunma: ayni sunucuda ayni (gen, JVM) iki kayit -> aday degil, bir kez nedeniyle disarida', async () => {
+  // uretim 2026-11-14: GBSTPQ01/8/GBSTPMAINWEB taramada iki satir
+  A.hosts.push(H('CIFT01', [J('cift'), J('cift'), J('tek')]));
+  INV.set('cift', [{ host: 'CIFT01', kurulum: '8' }]);
+  INV.set('tek', [{ host: 'CIFT01', kurulum: '8' }]);
+  for (const j of ['cift', 'tek']) DIFF.set(`CIFT01|8|${j}`, '-Xmx running=2g configured=4g');
+  const agir = new Map();
+  for (const h of A.hosts) agir.set(h.host, await loadJvmAgir(h.host));
+  const { adaylar, dislananlar } = T.adaylariTuret(A, agir);
+  assert.ok(!adaylar.some((x) => x.jvm === 'cift'));
+  const cift = dislananlar.filter((x) => x.host === 'CIFT01' && x.jvm === 'cift');
+  assert.equal(cift.length, 1);
+  assert.match(cift[0].neden, /iki kez/);
+  assert.ok(adaylar.some((x) => x.host === 'CIFT01' && x.jvm === 'tek'), 'tekil JVM etkilenmemeli');
+});
+
+test('TR-GEN savunma: JBoss surumu 7/8 disi (gen 0) -> aday degil, nedeniyle disarida', async () => {
+  A.hosts.push(H('GEN01', [J('gensiz', { gen: 0 })]));
+  INV.set('gensiz', [{ host: 'GEN01', kurulum: '8' }]);
+  DIFF.set('GEN01|0|gensiz', '-Xmx running=2g configured=4g');
+  const agir = new Map();
+  for (const h of A.hosts) agir.set(h.host, await loadJvmAgir(h.host));
+  const { adaylar, dislananlar } = T.adaylariTuret(A, agir);
+  assert.ok(!adaylar.some((x) => x.jvm === 'gensiz'), 'gen 0 aday olmamali');
+  assert.match(dislananlar.find((x) => x.jvm === 'gensiz').neden, /7\/8/);
+});

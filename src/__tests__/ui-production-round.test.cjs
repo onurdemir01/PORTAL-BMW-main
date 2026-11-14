@@ -58,7 +58,9 @@ test('G13: kirpilmis hash KOPYALANABILIR', () => {
   const src = read('components/DenetimPage.tsx');
   // Bosluklar tekillenir: prettier ozellikleri ALT ALTA yazinca `[^>]*` satir
   // sonunda durup bekciyi kirmisti.
-  assert.match(src.replace(/\s+/g, ' '), /<CodeChip value=\{sc\.majorityHash\}[^>]*copyable/);
+  // 2026-11-14: Init referansi ekip surumu olabilir; refHashOf(sc) yoksa cogunluga duser.
+  assert.match(src.replace(/\s+/g, ' '), /<CodeChip value=\{refHashOf\(sc\)\}[^>]*copyable/);
+  assert.match(src, /return sc\.referenceHash \|\| sc\.referenceNorm \|\| sc\.majorityHash \|\| '';/);
 });
 
 // ── G2/G3: eylem hiyerarsisi ────────────────────────────────────────────────

@@ -64,6 +64,12 @@ export interface JbossJvm {
   /** Tarama ile envanter arasındaki çelişkiler ("durum: envanter running, tarama kapalı"). */
   uyumsuzluk?: string[];
   domain?: string | null;
+  /** 2026-11-14: taramada JVM'i olmayan, yalniz MWAppsInventory satiri (nesil yok, eylem yok). */
+  yalnizEnvanter?: boolean;
+  /** JVM'in eslendigi envanter uygulamasi (numarali / server-group eslesmesinde JVM adindan farkli). */
+  envanterUygulamasi?: string | null;
+  /** Esleme turu: 'ad' | 'ad-sayi' | 'grup' | 'domain'. */
+  envanterEslesmesi?: string | null;
 }
 
 export interface JbossSunucu {

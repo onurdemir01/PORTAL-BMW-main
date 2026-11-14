@@ -22,7 +22,7 @@
 'use strict';
 
 const { hedefSunucusu, ipSahipleri } = require('../retirement/discover.cjs');
-const { tabanAd } = require('./capraz.cjs');
+const { tabanAd, yalnizEnvanter } = require('./capraz.cjs');
 
 const U = (s) =>
   String(s == null ? '' : s)
@@ -280,6 +280,8 @@ function grafikKur({ hosts = [], veri = null } = {}) {
       'server_hub',
     );
     for (const j of h.jvms || []) {
+      // "Yalniz envanterde" satiri (2026-11-14) Server Hub kaniti degil: dugum / kenar uretmez.
+      if (yalnizEnvanter(j)) continue;
       const k = jvmEkle(
         h.host,
         Number.isFinite(j.gen) ? j.gen : null,
@@ -425,6 +427,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
   const shHedef = new Map(); // vhost anahtari -> Set(jvm)
   for (const h of hosts) {
     for (const j of h.jvms || []) {
+      if (yalnizEnvanter(j)) continue;
       const jk = A.jvm(h.host, Number.isFinite(j.gen) ? j.gen : null, j.name);
       for (const m of j.vhosts || []) {
         const vk = A.vhost(m.host, m.v.product, m.v.serverName, adresCoz(m.v.listen).port);

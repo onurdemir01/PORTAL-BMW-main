@@ -33,7 +33,14 @@ const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const { KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
 // Capraz kontroller (2026-11-06): kopyalar, ortamlar, OpenShift ve Retirement kaydi (capraz.cjs).
-const { caprazAnaliz, kopyaMetni, kalintiMetni, ocpMetni, celiskiMetni } = require('./capraz.cjs');
+const {
+  caprazAnaliz,
+  kopyaMetni,
+  kalintiMetni,
+  ocpMetni,
+  celiskiMetni,
+  yalnizEnvanter,
+} = require('./capraz.cjs');
 
 const SEV = { ok: 0, info: 1, warning: 2, danger: 3 };
 
@@ -234,6 +241,91 @@ function erisimNedeni(ham) {
   const t = String(ham || '');
   const n = ERISIM_NEDENLERI.filter(([re]) => re.test(t)).map(([, m]) => m);
   return n.length ? n.join(' + ') : 'hata bir dosyaya erişimden kaynaklanıyor (yetki ya da eksik dosya)';
+}
+
+// ── ENVANTER UYGULAMASI <-> TARAMA JVM'I (2026-11-14, uretim GBJIST02) ──────────────────────────
+// dbo.MWAppsInventory uygulama basina satir tutar (GBFACELIFTSUBE-T); JBoss 7 domain kurulumunda
+// tarama JVM'leri numarali gelir (GBFACELIFTSUBE-T1 / -T2). Yalniz BIREBIR ad eslesmesi yapildiginda
+// uygulama "taramada yok" sayilip gen 0 bir hayalet JVM satiri uretiliyordu ("JBoss 0"); satir
+// bulgulara, sayaclara, Kopya Durumu'na ve Uygulama 360'a siziyordu.
+// ESLEME SIRASI (sunucu basina):
+//   1) 'ad'       birebir ad (buyuk / kucuk harf duyarsiz) - bugunku kural
+//   2) 'ad-sayi'  ad + YALNIZ SAYI son eki, istege bagli tek ayirac (APP1, APP-1, APP_01, APP.2);
+//                 harf son eki (APPX) ESLESMEZ
+//   3) 'grup'     JVM server-group'u = uygulama adi ya da uygulama adi + _Group / -Group
+//   4) 'domain'   envanter satirinin domain alani = JVM server-group'u; YALNIZ o sunucuda bu domain'i
+//                 tasiyan tek uygulama varsa (paylasilan grup birden cok uygulamayi kapsamaz)
+// Bir uygulamaya BIREBIR ad ile eslenen JVM baska bir uygulamaya verilmez. 2-4'te ayni JVM'i iki
+// uygulama istiyorsa daha uzun (daha ozgul) uygulama adi alir. Eslesmeyen uygulama envanterde kalir
+// ama TARAMA JVM'I DEGILDIR (source 'envanter', yalnizEnvanter): eylem / kopya / sayac uretmez.
+const regexKacis = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * @param {Array<{ app: string, domain?: string }>} apps  sunucunun envanter uygulamalari
+ * @param {Array<{ name: string, group?: string, source?: string }>} jvms  sunucunun TARAMA JVM'leri
+ * @returns {Array<{ jvms: object[], tur: 'ad'|'ad-sayi'|'grup'|'domain'|null }>} apps ile ayni sirada
+ */
+function envanterEslestir(apps, jvms) {
+  const taranan = (jvms || []).filter((j) => j && j.name && j.source !== 'envanter');
+  // Ayni host + uygulama icin domain basina ayri envanter satiri gelebilir: esleme AD basina bir kez.
+  const adlar = new Map();
+  for (const a of apps || []) {
+    const ad = L(a && a.app);
+    if (!ad) continue;
+    if (!adlar.has(ad)) adlar.set(ad, { domainler: new Set(), jvms: [], tur: null });
+    if (L(a.domain)) adlar.get(ad).domainler.add(L(a.domain));
+  }
+  const alinan = new Set();
+  for (const [ad, x] of adlar) {
+    const hit = taranan.find((j) => L(j.name) === ad);
+    if (hit) {
+      x.jvms = [hit];
+      x.tur = 'ad';
+      alinan.add(hit);
+    }
+  }
+  const domainSayisi = new Map();
+  for (const x of adlar.values())
+    for (const d of x.domainler) domainSayisi.set(d, (domainSayisi.get(d) || 0) + 1);
+  const SIRA = ['ad-sayi', 'grup', 'domain'];
+  const talep = new Map();
+  for (const [ad, x] of adlar) {
+    if (x.tur) continue;
+    // Son ek 1-3 hane (APP2024 bir yil / baska uygulama, numara degil). Ad rakamla bitiyorsa ayirac
+    // ZORUNLU: APP1 + 2 = APP12 ile APP + 12 ayirt edilemez (APP1 -> APP1-2 / APP1_02 eslesir).
+    const sayiRe = new RegExp(`^${regexKacis(ad)}${/[0-9]$/.test(ad) ? '[-_.]' : '[-_.]?'}[0-9]{1,3}$`);
+    for (const j of taranan) {
+      if (alinan.has(j)) continue;
+      const g = L(j.group);
+      const tur = sayiRe.test(L(j.name))
+        ? 'ad-sayi'
+        : g && (g === ad || g === `${ad}_group` || g === `${ad}-group`)
+          ? 'grup'
+          : g && x.domainler.has(g) && domainSayisi.get(g) === 1
+            ? 'domain'
+            : null;
+      if (!tur) continue;
+      const o = talep.get(j);
+      // Daha uzun ad daha ozgul; esitlikte once gelen eslesme turu (ad-sayi > grup > domain).
+      if (
+        !o ||
+        ad.length > o.ad.length ||
+        (ad.length === o.ad.length && SIRA.indexOf(tur) < SIRA.indexOf(o.tur))
+      )
+        talep.set(j, { ad, tur });
+    }
+  }
+  for (const [j, { ad, tur }] of talep) {
+    const x = adlar.get(ad);
+    x.jvms.push(j);
+    // Birden cok tur: en zayif olan yazilir (ekranda "neden eslesti" sorusunun durust cevabi).
+    if (!x.tur || SIRA.indexOf(tur) > SIRA.indexOf(x.tur)) x.tur = tur;
+  }
+  for (const x of adlar.values())
+    x.jvms.sort((p, q) => (p.gen || 0) - (q.gen || 0) || L(p.name).localeCompare(L(q.name)));
+  return (apps || []).map((a) => {
+    const x = adlar.get(L(a && a.app));
+    return x ? { jvms: x.jvms, tur: x.tur } : { jvms: [], tur: null };
+  });
 }
 
 /**
@@ -540,8 +632,17 @@ function assess(data, opts = {}) {
     h.hasJboss = hasJboss;
     h.invApps = apps.length;
     h.invAppsSkipped = hasJboss ? 0 : (appsByHost.get(h.host) || []).length;
-    for (const a of apps) {
-      const hit = h.jvms.find((j) => L(j.name) === L(a.app));
+    // Esleme kurali: envanterEslestir (ad / ad-sayi / grup / domain). Eslesen her JVM envanter
+    // bilgisini bugunku gibi alir; eslesmeyen uygulama "yalniz envanterde" satiri olur.
+    const eslesmeler = envanterEslestir(apps, h.jvms);
+    for (let ai = 0; ai < apps.length; ai++) {
+      const a = apps[ai];
+      const es = eslesmeler[ai];
+      const coklu = es.tur !== 'ad';
+      // Numarali / grup eslesmesinde envanter durumu UYGULAMA duzeyindedir: biri calisiyorsa uygulama
+      // calisiyor. Olculemeyen JVM varsa karsilastirma kurulmaz.
+      const olculen = es.jvms.filter((j) => j.runningKnown !== false);
+      const grupCalisan = olculen.filter((j) => j.running).length;
       const invRunning = a.status === 'running';
       const invAuto = a.autoStarts.length
         ? a.autoStarts.every((x) => x === 'true')
@@ -550,19 +651,33 @@ function assess(data, opts = {}) {
             ? 'false'
             : 'karisik'
         : 'unknown';
-      if (hit) {
+      for (let hi = 0; hi < es.jvms.length; hi++) {
+        const hit = es.jvms[hi];
         hit.domain = a.domain || hit.domain || '';
         hit.tier = a.tier;
         hit.invStatus = a.status || null;
         hit.invAutoStart = invAuto;
         hit.invJvmCount = a.jvmCount;
+        hit.invApp = a.app;
+        hit.invMatch = es.tur;
         hit.mismatch = [];
         // OLCULEMEYEN calisma durumu envanterle "celisemez" (v3): running=0 + UNMEASURED
         // "kapali" demek degil.
-        if (a.status && hit.runningKnown !== false && hit.running !== invRunning)
-          hit.mismatch.push(
-            `durum: envanter ${a.status}, tarama ${hit.running ? 'çalışıyor' : 'kapalı'}`,
-          );
+        if (!coklu) {
+          if (a.status && hit.runningKnown !== false && hit.running !== invRunning)
+            hit.mismatch.push(
+              `durum: envanter ${a.status}, tarama ${hit.running ? 'çalışıyor' : 'kapalı'}`,
+            );
+        } else {
+          if (a.status && olculen.length === es.jvms.length && grupCalisan > 0 !== invRunning)
+            hit.mismatch.push(
+              `durum: envanter ${a.status} (${a.app}), taramada ${grupCalisan}/${es.jvms.length} JVM çalışıyor`,
+            );
+          // Bilgi notu: envanterin JVM sayisi ile eslesen tarama JVM'i sayisi farkli. Celiski DEGIL
+          // (mismatch / "envanterle" sayacina girmez); uygulama basina TEK not (ilk eslesen JVM'de).
+          if (hi === 0 && a.jvmCount > 0 && a.jvmCount !== es.jvms.length)
+            hit.invNot = `JVM sayısı: envanter ${a.jvmCount} (${a.app}), taramada eşleşen ${es.jvms.length} (${es.jvms.map((x) => x.name).join(', ')})`;
+        }
         // TANIMSIZ SUREC (T2-C2, tur 3 #8): cfg_src=UNAVAILABLE satirinda tanim kaynagi OKUNDU
         // ve bu JVM orada YOK. Yetkili kaynagin "tanimsiz" kaniti, yetkisiz envanterin
         // "auto-start kapali/acik" iddiasina yenilmez: envanter degeri yalniz invAutoStart'ta
@@ -577,8 +692,11 @@ function assess(data, opts = {}) {
           hit.autoStart !== invAuto
         )
           hit.mismatch.push(`auto-start: envanter ${invAuto}, tarama ${hit.autoStart}`);
-        // CLI auto-start okuyamadiysa ENVANTER kazanir (kullanici: "JVM bilgisi envanterden gelsin")
-        if (!tanimsizSurec && hit.autoStart === 'unknown' && invAuto !== 'unknown') {
+        // CLI auto-start okuyamadiysa ENVANTER kazanir (kullanici: "JVM bilgisi envanterden gelsin").
+        // YALNIZ birebir ad eslemesinde: numarali / grup / domain eslemesinde envanter degeri UYGULAMA
+        // duzeyindedir, tek JVM'in auto-start'i degildir; o JVM'e yazilirsa REBOOT_RISK /
+        // STOPPED_AUTOSTART_ON + jboss_autostart_* eylemi uretir. Orada deger invAutoStart'ta bilgi kalir.
+        if (!tanimsizSurec && !coklu && hit.autoStart === 'unknown' && invAuto !== 'unknown') {
           hit.autoStart = invAuto === 'karisik' ? 'unknown' : invAuto;
           hit.autoStartSource = 'envanter';
           // Envanter de cevap veremediyse SEBEBI yaz: "karisik" demek, ayni uygulamanin
@@ -588,8 +706,18 @@ function assess(data, opts = {}) {
         // Ne CLI ne envanter: sebep "ikisi de okunamadi".
         if (hit.autoStart === 'unknown' && !hit.autoStartReason)
           hit.autoStartReason = invAuto === 'unknown' ? 'envanterde-yok' : 'cli-okunamadi';
-      } else {
+      }
+      // YALNIZ ENVANTERDE: taramada bu uygulamayi tasiyan JVM yok. Satir BILGI icin kalir (gen 0
+      // uyumluluk icin), ama tarama JVM'i DEGILDIR: yalnizEnvanter / source 'envanter' olan satirda
+      // eylem, retire adayi, kopya grubu ve tarama sayaci uretilmez; ekran "JBoss 0" yerine
+      // "yalniz envanterde" yazar. Ayni uygulamanin ikinci envanter satiri (baska domain) ikinci satir
+      // uretmez.
+      if (
+        !es.jvms.length &&
+        !h.jvms.some((j) => j.source === 'envanter' && L(j.name) === L(a.app))
+      )
         h.jvms.push({
+          yalnizEnvanter: true,
           gen: 0,
           name: a.app,
           group: '',
@@ -622,7 +750,6 @@ function assess(data, opts = {}) {
                 ? 'envanterde-yok'
                 : null,
         });
-      }
     }
     for (const j of h.jvms) if (!j.source) j.source = 'cli';
     // TANIMSIZ SUREC (T2-C2): cfg_src=UNAVAILABLE = tanim kaynagi (CLI listesi ya da host XML)
@@ -789,6 +916,8 @@ function assess(data, opts = {}) {
       (x) =>
         x.issue &&
         x.issue !== 'HOST_DUPLICATE_SAME_MACHINE' &&
+        // cift satir ayiklandi (2026-11-14, loader bilgi satiri): sunucu YAZILDI, dislama degil
+        x.issue !== 'DUPLICATE_ROWS_DROPPED' &&
         (h.loadedAt != null
           ? x.runAt != null && x.runAt > h.loadedAt
           : !!(x.scanDate && h.scanDate && x.scanDate > h.scanDate)),
@@ -1487,6 +1616,25 @@ function assess(data, opts = {}) {
         `Taramada JBoss var (${h.products.filter((x) => /^JBOSS/i.test(x)).join(', ')}) ama JVM satırı gelmedi — JVM durumu ölçülemedi`,
       );
     for (const j of h.jvms) {
+      // YALNIZ ENVANTERDE (2026-11-14): tarama JVM'i degil (envanterEslestir). Calisma / auto-start
+      // degeri envanterden odunctur: REBOOT_RISK / STOPPED_AUTOSTART_ON / RETIRE_CANDIDATE ve
+      // eylemleri (jboss_autostart_* / jboss_retire, gen 0), retire adayi ve capraz bulgulari
+      // URETILMEZ. Tek bilgi bulgusu yazilir; Retirement kaydi bilgi olarak satirda kalir.
+      if (yalnizEnvanter(j)) {
+        const cx0 = capraz.jvm(h.host, j);
+        if (cx0 && cx0.retirement.length) j.retirement = cx0.retirement;
+        // Taramadan HIC JVM satiri gelmediyse (JVM_DATA_MISSING) "eslesmedi" denmez: olculemedi.
+        const taramaJvmYok = !h.jvms.some((x) => x.source === 'cli');
+        add(
+          'info',
+          'jvm',
+          'INV_ONLY_APP',
+          taramaJvmYok
+            ? `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
+            : `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
+        );
+        continue;
+      }
       const id = `JBoss${j.gen} ${j.name}`;
       // Tanim kaynaginda OLMAYAN JVM'e (cfg_src=UNAVAILABLE) auto-start eylemi ONERILMEZ (EK-6.7):
       // playbook onu host XML'de bulamaz. autoStart yukarida 'unknown'a sabitlendigi icin bu iki
@@ -1532,6 +1680,7 @@ function assess(data, opts = {}) {
         );
       if ((j.mismatch || []).length)
         add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
+      if (j.invNot) add('info', 'jvm', 'INV_JVM_COUNT', `${id}: ${j.invNot}`);
       // KRITIK (kullanici 2026-11-06: "jvm kapali auto start acik ise kritik").
       if (rk && !j.running && j.autoStart === 'true') {
         add(
@@ -2098,14 +2247,17 @@ function assess(data, opts = {}) {
   // ayrinti sayfasi ve "simdi tara" ozel sunucularda da calisir.
   const special = hosts.filter((h) => h.hostClass === 'ozel');
   const genel = hosts.filter((h) => h.hostClass !== 'ozel' && !h.taramadanDustu);
-  const jvms = genel.flatMap((h) => h.jvms);
+  // SAYACLAR YALNIZ TARAMA JVM'LERI (2026-11-14): "yalniz envanterde" satiri (yalnizEnvanter) JVM
+  // sayisina, calisan / kapali / auto-start sayaclarina girmez; ayri sayilir (fromInventory).
+  const jvmsTum = genel.flatMap((h) => h.jvms);
+  const jvms = jvmsTum.filter((j) => !yalnizEnvanter(j));
   const web = genel.flatMap((h) => h.web);
   const envGroups = ['Production', 'Non-Production', 'Bilinmiyor'];
   const byEnv = {};
   for (const g of envGroups) {
     const hs = genel.filter((h) => h.envGroup === g);
     if (!hs.length) continue;
-    const js = hs.flatMap((h) => h.jvms);
+    const js = hs.flatMap((h) => h.jvms).filter((j) => !yalnizEnvanter(j));
     byEnv[g] = {
       hosts: hs.length,
       danger: hs.filter((h) => h.status === 'danger').length,
@@ -2222,7 +2374,7 @@ function assess(data, opts = {}) {
       ),
       noLoad: genel.reduce((a, h) => a + h.findings.filter((f) => f.code === 'NO_LOAD').length, 0),
       mapped: jvms.filter((j) => j.req7d != null).length,
-      fromInventory: jvms.filter((j) => j.source === 'envanter').length,
+      fromInventory: jvmsTum.filter(yalnizEnvanter).length,
       autoStartFromInventory: jvms.filter((j) => j.autoStartSource === 'envanter').length,
       mismatched: jvms.filter((j) => (j.mismatch || []).length > 0).length,
       invApps: genel.reduce((a, h) => a + (h.invApps || 0), 0),
@@ -2282,7 +2434,7 @@ function assess(data, opts = {}) {
         a[pfx] = special.filter((h) => U(h.host).startsWith(pfx)).length;
         return a;
       }, {}),
-      jvms: special.reduce((a, h) => a + h.jvms.length, 0),
+      jvms: special.reduce((a, h) => a + h.jvms.filter((j) => !yalnizEnvanter(j)).length, 0),
     },
   };
   for (const h of genel) summary.hosts[h.status] += 1;
@@ -2358,7 +2510,8 @@ function assess(data, opts = {}) {
   // KALINTI satirlari (jbKalinti) CLI kartina girmez; yalniz kalinti satiri olan ve calisan
   // JVM'i olmayan sunucu JBoss sunucusu SAYILMAZ (ayri sayi: kalinti).
   const jbEtkin = (h) => h.jboss.filter((b) => !jbKalinti(b));
-  const yalnizKalinti = (h) => h.jboss.length > 0 && jbEtkin(h).length === 0 && !(h.jvms || []).length;
+  const yalnizKalinti = (h) =>
+    h.jboss.length > 0 && jbEtkin(h).length === 0 && !(h.jvms || []).some((j) => !yalnizEnvanter(j));
   const jbHostlari = urunHostlari('JBOSS').filter((h) => !yalnizKalinti(h));
   const jbAny = (h, d) => jbEtkin(h).some((b) => b.cli === d);
   summary.jbossCli = {
@@ -2426,7 +2579,8 @@ function assess(data, opts = {}) {
     if (p === 'JBOSS') {
       // JBoss icin olcut: JVM satiri geldi mi. "urun kurulu" demek yetmez - veri cekemediysek
       // o sunucu hakkinda hicbir sey bilmiyoruz.
-      for (const h of genel) if ((h.jvms || []).length) out.add(U(h.host));
+      // "Yalniz envanterde" satiri tarama verisi DEGILDIR (2026-11-14).
+      for (const h of genel) if ((h.jvms || []).some((j) => !yalnizEnvanter(j))) out.add(U(h.host));
       return out;
     }
     // `web` host basina GOMULU satirlardan geliyor (genel.flatMap) ve `host` alani
@@ -2531,7 +2685,7 @@ function assess(data, opts = {}) {
       scannedNotInInventoryHosts: jvmEnvDisiHost,
       // CLI'dan okunamayip ENVANTERDEN tamamlanan satirlar ayri durur: bunlar "bilgisini
       // cektik" sayilmaz, envanterden odunc alindi.
-      fromInventory: jvms.filter((j) => j.source === 'envanter').length,
+      fromInventory: jvmsTum.filter(yalnizEnvanter).length,
     },
   };
 
@@ -2621,4 +2775,5 @@ module.exports = {
   SPECIAL_HOST_RE,
   FRESH_MAX_DAYS,
   erisimKaynakli,
+  envanterEslestir,
 };

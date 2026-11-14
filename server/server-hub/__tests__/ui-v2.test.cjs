@@ -1830,7 +1830,12 @@ test("T4-D4 auto-start satir dugmesi: UNAVAILABLE / sema okunamadi / bayat sunuc
   assert.ok(katla(ad({ source: 'cli', cfgSrc: 'XML' }, { fresh: false }).neden).includes('bayat'));
   // kural 7 (v3): calismasi OLCULEMEYEN JVM'de dugme admine ACIK
   assert.equal(ad({ source: 'cli', cfgSrc: 'CLI_WILDCARD', runningKnown: false, runningSrc: 'UNMEASURED' }, taze).goster, true);
-  assert.equal(ad({ source: 'envanter', cfgSrc: null }, taze).goster, true);
+  // 2026-11-14 (uretim GBJIST02): "yalniz envanterde" satiri (gen 0, taramada JVM'i yok) tarama JVM'i
+  // degil; sunucu /jvm-autostart 400 doner (jvmAutoStartKapisi) - dugme YOK, sebep yazilir.
+  const ye = ad({ source: 'envanter', cfgSrc: null }, taze);
+  assert.equal(ye.goster, false, 'yalniz envanterdeki satira auto-start dugmesi gosterildi');
+  assert.ok(katla(ye.neden).includes('envanter'), `sebep: ${ye.neden}`);
+  assert.equal(ad({ yalnizEnvanter: true, source: 'envanter' }, taze).goster, false);
   assert.equal(ad({}, {}).goster, true, 'eski yanit (alan yok): dugme kaybolmamali');
   // YERLESIM (AST): JVM satirindaki dugme yardimcinin kosulu altinda, gizlenmeden
   const y = yerlesim(PAGE_RAW, PAGE_PATH, 'HostModal', 'button').filter((e) => e.ozellik.onClick === '() => jvmAutoStart(j)');

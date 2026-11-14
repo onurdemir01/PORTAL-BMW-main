@@ -108,6 +108,14 @@ function adaylariTuret(a, opts = {}) {
   const adaylar = [];
   const dislananlar = [];
   for (const h of (a && a.hosts) || []) {
+    // AYNI SUNUCUDA AYNI (gen, JVM adi) IKI KEZ (uretim 2026-11-14, GBSTPQ01/GBSTPMAINWEB): taramada iki
+    // kayit varsa hangisinin auto-start'i degisecek belirsizdir; ikisi de aday OLMAZ, nedeniyle disarida.
+    const tekrar = new Map();
+    for (const x of h.jvms || []) {
+      const k = ogeAnahtari(h.host, Number(x.gen), x.name);
+      tekrar.set(k, (tekrar.get(k) || 0) + 1);
+    }
+    const ikiKez = new Set();
     for (const tj of h.jvms || []) {
       const j = as ? as.uygulaJvm(h, tj) : tj;
       const rk = j.runningKnown !== false;
@@ -130,6 +138,17 @@ function adaylariTuret(a, opts = {}) {
         scanDate: h.scanDate || null,
       };
       const enable = action === 'jboss_autostart_on';
+      const tk = ogeAnahtari(h.host, Number(tj.gen), tj.name);
+      if ((tekrar.get(tk) || 0) > 1) {
+        if (!ikiKez.has(tk))
+          dislananlar.push({ ...satir, neden: 'Taramada bu sunucuda aynı adlı JVM iki kez var (iki kayıt) — hangisi olduğu belirsiz, iş açılmaz; sunucu ayrıntısından bakın.' });
+        ikiKez.add(tk);
+        continue;
+      }
+      if (!(satir.gen === 7 || satir.gen === 8)) {
+        dislananlar.push({ ...satir, neden: 'JBoss sürümü (7/8) taramada belirlenemedi — iş açılmaz.' });
+        continue;
+      }
       if (j.autoStartDogrulama && j.autoStart !== tarama) {
         dislananlar.push({ ...satir, neden: `iş #${j.autoStartDogrulama.jobId} ile doğrulandı — tarama bekleniyor` });
         continue;

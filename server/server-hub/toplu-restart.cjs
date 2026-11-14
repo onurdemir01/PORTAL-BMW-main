@@ -215,8 +215,26 @@ function adaylariTuret(a, agir) {
   const dislananlar = [];
   for (const h of (a && a.hosts) || []) {
     if (h.taramadanDustu) continue;
+    // Ayni sunucuda ayni (gen, JVM adi) iki kayit: hangisinin restart edilecegi belirsiz, aday olmaz.
+    const tekrar = new Map();
+    for (const x of h.jvms || []) {
+      const tk = ogeAnahtari(h.host, x.gen, x.name);
+      tekrar.set(tk, (tekrar.get(tk) || 0) + 1);
+    }
+    const ikiKez = new Set();
     for (const j of h.jvms || []) {
       if (!farkliCalisiyor(j)) continue;
+      const tk = ogeAnahtari(h.host, j.gen, j.name);
+      if ((tekrar.get(tk) || 0) > 1) {
+        if (!ikiKez.has(tk))
+          dislananlar.push({
+            host: h.host, env: h.env || null, envGroup: h.envGroup || null, gen: Number(j.gen), jvm: j.name, grp: j.group || '',
+            scanDate: h.scanDate || null, fark: '', anahtarlar: [],
+            neden: 'Taramada bu sunucuda aynı adlı JVM iki kez var (iki kayıt) — hangisi olduğu belirsiz, restart edilmez; sunucu ayrıntısından bakın.',
+          });
+        ikiKez.add(tk);
+        continue;
+      }
       const fo = farkOzeti(agir ? agirFark(agir, h.host, j.gen, j.name) : null);
       const satir = {
         host: h.host,

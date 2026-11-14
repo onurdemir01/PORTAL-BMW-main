@@ -710,3 +710,17 @@ test('TA13 onay aninda JVM kapisi: plandan sonra baslayan JVM in KAPAT ogesi dus
   assert.match(o.neden, /onay anında: kapat1 son taramada ÇALIŞIYOR/);
   assert.equal(DB.ogeler.find((x) => x.jvm === 'ac1').durum, 'BEKLIYOR');
 });
+
+test('TA14 savunma: ayni sunucuda ayni (gen, JVM) iki kayit ve gen 7/8 disi -> aday degil, nedeniyle disarida', () => {
+  // uretim 2026-11-14: GBSTPQ01/8/GBSTPMAINWEB taramada iki satir; Portal ikisini birden gonderip reddedildi
+  A.hosts.push(host('CIFT01', [J('cift', { running: true, gen: 8 }), J('cift', { running: true, gen: 8 }), J('tek', { running: true, gen: 8 })]));
+  A.hosts.push(host('GEN01', [J('gensiz', { running: true, gen: 0 })]));
+  const { adaylar, dislananlar } = T.adaylariTuret(A, { autoStart: katman });
+  assert.ok(!adaylar.some((x) => x.jvm === 'cift'), 'iki kez gorulen JVM aday olmamali');
+  const cift = dislananlar.filter((x) => x.host === 'CIFT01' && x.jvm === 'cift');
+  assert.equal(cift.length, 1, 'dislanan listesinde bir kez');
+  assert.match(cift[0].neden, /iki kez/);
+  assert.ok(adaylar.some((x) => x.host === 'CIFT01' && x.jvm === 'tek'), 'ayni sunucudaki tekil JVM etkilenmemeli');
+  assert.ok(!adaylar.some((x) => x.jvm === 'gensiz'));
+  assert.match(dislananlar.find((x) => x.jvm === 'gensiz').neden, /7\/8/);
+});

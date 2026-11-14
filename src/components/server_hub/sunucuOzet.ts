@@ -6,6 +6,7 @@
 // DURUM DİLİ: ölçülemeyen ya da okunamayan hiçbir şey yeşil / "yok" görünmez.
 import type { ShHostDetail, ShJvm, ShRetireEtiketHer } from '@/api/serverHubApi';
 import { deploymentMetni } from './retireEtiket';
+import { YALNIZ_ENVANTER_ETIKETI, yalnizEnvanterMi } from './jvmNesil';
 
 export type OzetTon = 'iyi' | 'uyari' | 'kotu' | 'notr';
 export type BolumId = 'neYapmali' | 'uygulamalar' | 'bulgular' | 'etiketler' | 'dogrulama';
@@ -27,17 +28,26 @@ export function jvmTrafik(j: Pick<ShJvm, 'vhosts'>): 'ACTIVE' | 'NO_RECENT_TRAFF
   return 'OLCULEMEDI';
 }
 
-/** assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile aynı koşul; ölçülemeyen çalışma karar vermez. */
+/**
+ * assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile aynı koşul; ölçülemeyen çalışma karar vermez.
+ * "Yalnız envanterde" satırı taranmış JVM değildir: değerleri envanterden ödünç, uyumsuzluk sayılmaz.
+ */
 export const autostartUyumsuz = (
-  j: Pick<ShJvm, 'running' | 'autoStart'> & { runningKnown?: boolean },
+  j: Pick<ShJvm, 'running' | 'autoStart'> & {
+    runningKnown?: boolean;
+    source?: string | null;
+    yalnizEnvanter?: boolean | null;
+  },
 ) =>
+  !yalnizEnvanterMi(j) &&
   j.runningKnown !== false &&
   ((j.running && j.autoStart === 'false') || (!j.running && j.autoStart === 'true'));
 
 export function ozetKartlari(d: ShHostDetail, etiketler: ShRetireEtiketHer[] | null): OzetKarti[] {
   const kritik = d.findings.filter((f) => f.severity === 'danger').length;
   const uyari = d.findings.filter((f) => f.severity === 'warning').length;
-  const jvms = d.jvms || [];
+  // Sayımlar yalnız taranmış JVM'ler üzerinden ("yalnız envanterde" satırı JVM değil).
+  const jvms = (d.jvms || []).filter((j) => !yalnizEnvanterMi(j));
   const tr = jvms.map(jvmTrafik);
   const aktif = tr.filter((t) => t === 'ACTIVE').length;
   const bos = tr.filter((t) => t === 'NO_RECENT_TRAFFIC').length;
@@ -113,6 +123,15 @@ export function zincirRozetleri(
   katman: string,
 ): { metin: string; ton: OzetTon; title?: string }[] {
   const r: { metin: string; ton: OzetTon; title?: string }[] = [];
+  // "Yalnız envanterde": taramada JVM'i yok; çalışma / auto-start rozeti basılmaz (envanter değeri ölçüm değil).
+  if (yalnizEnvanterMi(j)) {
+    r.push({
+      metin: YALNIZ_ENVANTER_ETIKETI,
+      ton: 'notr',
+      title: "Uygulama yalnız MWAppsInventory'de: bu sunucunun taramasında JVM'i bulunamadı — eylem önerilmez",
+    });
+    return r;
+  }
   r.push(
     j.runningKnown === false
       ? { metin: 'ölçülemedi', ton: 'notr', title: 'Süreç görünmüyor: kapalı sayılmaz' }

@@ -1615,7 +1615,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu",
-        "dosya": "server/db/mssql-setup.cjs:4318",
+        "dosya": "server/db/mssql-setup.cjs:4329",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
@@ -1901,19 +1901,19 @@
       {
         "tur": "portal",
         "ad": "Denetim > Nginx Audit: PUT/DELETE /api/denetim/nginx-audit/allowed (Admin)",
-        "dosya": "server/audit/denetim.cjs:1647",
-        "nasil": "tekil INSERT (varsa atla), DELETE by id (server/audit/denetim.cjs:1662)",
+        "dosya": "server/audit/denetim.cjs:1649",
+        "nasil": "tekil INSERT (varsa atla), DELETE by id (server/audit/denetim.cjs:1664)",
         "ne_zaman": "Admin elle ekler/siler"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Nginx Audit sapma hesabi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1503"
+        "dosya": "server/audit/denetim.cjs:1505"
       },
       {
         "ad": "GET /api/denetim/nginx-audit/allowed",
-        "dosya": "server/audit/denetim.cjs:1616"
+        "dosya": "server/audit/denetim.cjs:1618"
       }
     ],
     "saklama": "yok (elle yonetilen kucuk liste)",
@@ -1930,7 +1930,7 @@
       {
         "tur": "portal",
         "ad": "PUT/DELETE /api/denetim/nginx-audit/exceptions/:host (Admin)",
-        "dosya": "server/audit/denetim.cjs:1689",
+        "dosya": "server/audit/denetim.cjs:1691",
         "nasil": "host basina upsert (UPDATE yoksa INSERT :1694), DELETE (:1773)",
         "ne_zaman": "Admin elle"
       },
@@ -1945,7 +1945,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit ozet/listesi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1509"
+        "dosya": "server/audit/denetim.cjs:1511"
       }
     ],
     "saklama": "yok; kapanmis sunucunun satiri eski-sunucu temizliginde silinir",
@@ -2043,7 +2043,7 @@
       },
       {
         "ad": "Denetim yanitlari",
-        "dosya": "server/audit/denetim.cjs:163",
+        "dosya": "server/audit/denetim.cjs:165",
         "uzerinden": "server/audit/nginx-host-labels.cjs"
       }
     ],
@@ -4087,7 +4087,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Deployment Scripts (/api/denetim/deploy-scripts)",
-        "dosya": "server/audit/denetim.cjs:2324"
+        "dosya": "server/audit/denetim.cjs:2629"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4104,15 +4104,15 @@
       {
         "tur": "playbook",
         "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
-        "dosya": "bmw_wds_scripts/initialize/files/initiliaze_scripts_inventory.py:62",
-        "nasil": "TRUNCATE + yeniden yaz (INSERT :66)",
+        "dosya": "bmw_wds_scripts/initialize/files/initiliaze_scripts_inventory.py",
+        "nasil": "TRUNCATE + yeniden yaz; load_date sutunu varsa kosu zamani (sozlesme: docs/INIT-SCRIPTS-SOZLESME.md)",
         "ne_zaman": "bilinmiyor (AWX zamanlamasi depoda yok)"
       }
     ],
     "okuyanlar": [
       {
-        "ad": "Denetim > Init Script (/api/denetim/init-scripts)",
-        "dosya": "server/audit/denetim.cjs:1949"
+        "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ham sha512; load_date varsa veri yasi",
+        "dosya": "server/audit/denetim.cjs:1964"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4129,7 +4129,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
-        "dosya": "bmw_wds_scripts/initialize/files/initiliaze_scripts_inventory.py:14",
+        "dosya": "bmw_wds_scripts/initialize/files/initiliaze_scripts_inventory.py",
         "nasil": "TRUNCATE + yeniden yaz",
         "ne_zaman": "bilinmiyor"
       }
@@ -4137,13 +4137,63 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (vhosting8)",
-        "dosya": "server/audit/denetim.cjs:1950"
+        "dosya": "server/audit/denetim.cjs:1965"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
     "notlar": "",
     "kullanilmiyor": false,
     "guven": "KESIN"
+  },
+  {
+    "db": "TBMWANS",
+    "tablo": "InitScriptsDetail",
+    "amac": "Init script taramasinin uzun bicimi: host x kok (vhosting/vhosting8) x dosya basina ham sha512, normallestirilmis sha512 (CR/satir sonu boslugu/son bos satir atilmis), CR bayragi ve durum (OK/MISSING/UNREADABLE/ERROR). Portal 'yalniz bicim farki' ve 'CRLF' ayrimini buradan yapar.",
+    "alan": "Denetim",
+    "yazanlar": [
+      {
+        "tur": "playbook",
+        "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
+        "dosya": "(Ansible tarafi kullanicida; sozlesme docs/INIT-SCRIPTS-SOZLESME.md)",
+        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme \u00a73)",
+        "ne_zaman": "check_initialize her kostugunda (loader henuz uretimde degil)"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Denetim > Init Script (/api/denetim/init-scripts) - norm/CR/durum ve veri yasi",
+        "dosya": "server/audit/denetim.cjs:1968"
+      }
+    ],
+    "saklama": "anlik goruntu (her kosuda yeniden yazilir); scan_date = kosunun zaman damgasi",
+    "notlar": "2026-11-14 eklendi; Portal OPSIYONEL okur (sozlesme: docs/INIT-SCRIPTS-SOZLESME.md). Ansible tarafi kullanicida: yazan dosya/satir bilerek verilmedi (loader yeniden yaziliyor); tablo uretimde olusunca KESIN yapilip satir baglanir. Tablo yoksa ya da bu kokte satir yoksa Portal eski davranisa (ham hash + cogunluk) birebir duser.",
+    "kullanilmiyor": false,
+    "guven": "MAKUL"
+  },
+  {
+    "db": "TBMWANS",
+    "tablo": "InitScriptsReference",
+    "amac": "Init script ekip surumu: depodaki bmw_wds_scripts/initialize/files sablonlarinin ham ve normallestirilmis sha512'si. Portal referansi once buradan, yoksa cogunluktan alir.",
+    "alan": "Denetim",
+    "yazanlar": [
+      {
+        "tur": "playbook",
+        "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
+        "dosya": "(Ansible tarafi kullanicida; sozlesme docs/INIT-SCRIPTS-SOZLESME.md)",
+        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme \u00a74); referans dizini yok/bossa dokunulmaz",
+        "ne_zaman": "check_initialize her kostugunda (loader henuz uretimde degil)"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ekip surumu",
+        "dosya": "server/audit/denetim.cjs:1969"
+      }
+    ],
+    "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
+    "notlar": "2026-11-14 eklendi; Portal OPSIYONEL okur (sozlesme: docs/INIT-SCRIPTS-SOZLESME.md). Ansible tarafi kullanicida: yazan dosya/satir bilerek verilmedi (loader yeniden yaziliyor); tablo uretimde olusunca KESIN yapilip satir baglanir. Satiri olmayan dosyada (startWEB.sh, exceptionList.ini, stopApplicationServers.jy, startCustom.sh) referans cogunluktur.",
+    "kullanilmiyor": false,
+    "guven": "MAKUL"
   },
   {
     "db": "TBMWANS",
@@ -4771,7 +4821,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (match_by)",
-        "dosya": "server/audit/denetim.cjs:742"
+        "dosya": "server/audit/denetim.cjs:744"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
@@ -4841,7 +4891,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit (sunucu sayfası, dosya karşılaştırması)",
-        "dosya": "server/audit/denetim.cjs:1485"
+        "dosya": "server/audit/denetim.cjs:1487"
       },
       {
         "ad": "Nginx Audit değişim belirteci (önbellek)",
@@ -4877,7 +4927,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1519"
+        "dosya": "server/audit/denetim.cjs:1521"
       },
       {
         "ad": "Nginx sunucusu ölçülebilirlik durumu",
@@ -4926,7 +4976,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1523"
+        "dosya": "server/audit/denetim.cjs:1525"
       },
       {
         "ad": "Denetim > Nginx SPA > Production Taşımaları",
@@ -4962,11 +5012,11 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1521"
+        "dosya": "server/audit/denetim.cjs:1523"
       },
       {
         "ad": "Denetim > Nginx API Envanteri (servis sütunu)",
-        "dosya": "server/audit/denetim.cjs:2007"
+        "dosya": "server/audit/denetim.cjs:2021"
       },
       {
         "ad": "API envanteri özeti",
@@ -5011,7 +5061,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1527"
+        "dosya": "server/audit/denetim.cjs:1529"
       },
       {
         "ad": "Nginx Audit sıcak önbellek / değişim belirteci",
@@ -5055,7 +5105,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1525"
+        "dosya": "server/audit/denetim.cjs:1527"
       },
       {
         "ad": "Production Taşımaları",
@@ -5163,7 +5213,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (ortam özeti/matris, GET /api/denetim/nginx-spa, /nginx-spa-coverage, /nginx-proxy)",
-        "dosya": "server/audit/denetim.cjs:149"
+        "dosya": "server/audit/denetim.cjs:151"
       },
       {
         "ad": "Location Detayı",
@@ -5224,7 +5274,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (ortam özeti/kapsam)",
-        "dosya": "server/audit/denetim.cjs:493"
+        "dosya": "server/audit/denetim.cjs:495"
       },
       {
         "ad": "Self Servis seçenek kaynağı",
@@ -5270,7 +5320,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Envanteri (GET /api/denetim/nginx-inventory)",
-        "dosya": "server/audit/denetim.cjs:2189"
+        "dosya": "server/audit/denetim.cjs:2203"
       },
       {
         "ad": "Self Servis seçenek kaynağı nginx-hosts / nginx-services",
@@ -5378,7 +5428,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (yük durumu)",
-        "dosya": "server/audit/denetim.cjs:178",
+        "dosya": "server/audit/denetim.cjs:180",
         "uzerinden": "server/audit/nginx-migration.cjs"
       },
       {
@@ -5419,7 +5469,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx API Envanteri (GET /api/denetim/nginx-api, /nginx-api-locations)",
-        "dosya": "server/audit/denetim.cjs:1964"
+        "dosya": "server/audit/denetim.cjs:1978"
       },
       {
         "ad": "Self Servis seçenek kaynakları nginx-api-locations / nginx-api-gateway-confs",
@@ -5498,7 +5548,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA ozet/matris, route-stats, ocp-route-coverage",
-        "dosya": "server/audit/denetim.cjs:249"
+        "dosya": "server/audit/denetim.cjs:251"
       },
       {
         "ad": "Production Tasimalari",
@@ -5568,7 +5618,7 @@
       },
       {
         "ad": "Denetim SPA sahiplik",
-        "dosya": "server/audit/denetim.cjs:615",
+        "dosya": "server/audit/denetim.cjs:617",
         "uzerinden": "server/audit/ns-owners.cjs"
       },
       {
@@ -5610,7 +5660,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA ve Denetim > OpenShift (ocp-coverage)",
-        "dosya": "server/audit/denetim.cjs:1888"
+        "dosya": "server/audit/denetim.cjs:1890"
       },
       {
         "ad": "Self Servis seçenek kaynakları ocp-namespaces / ocp-spa-applications",

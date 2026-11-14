@@ -1534,7 +1534,8 @@ const SCRIPTS_AUDIT_META = {
     api: (root: string) => denetimApi.initScripts(root),
     csv: 'init',
     job: 'check_initialize',
-    intro: 'İnit script\'leri (/vhosting[8]/scripts/initialize) — sha512 çoğunluktan sapanlar.',
+    intro:
+      'İnit script\'leri (/vhosting[8]/scripts/initialize) — sha512 referanstan (ekip sürümü ya da çoğunluk) sapanlar.',
   },
   deploy: {
     api: (root: string) => denetimApi.deployScripts(root),
@@ -1589,12 +1590,24 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
 
   // startCustom.sh (sunucuya ozel) sutunu yalniz Init'te var
   const hasCustomCol = !!shown?.scripts.some((sc) => sc.perServer);
+  // Ekip surumu devredeyse "Referans" + kaynak cipi; degilse (eski veri, Deployment) eski
+  // "Cogunluk" basligi aynen kalir.
+  const ekipVar = shown?.referenceSource === 'ekip' || shown?.referenceSource === 'karma';
 
   const scripts = useMemo(() => {
     if (!shown) return [];
     const needle = q.trim().toLowerCase();
     return shown.scripts.filter((sc) => {
-      if (onlyDiff && !sc.perServer && sc.variantCount <= 1 && sc.missing === 0) return false;
+      if (
+        onlyDiff &&
+        !sc.perServer &&
+        sc.variantCount <= 1 &&
+        sc.deviatingCount === 0 &&
+        sc.missing === 0 &&
+        !sc.unreadable &&
+        !sc.crlfCount
+      )
+        return false;
       if (needle && !sc.label.toLowerCase().includes(needle)) return false;
       return true;
     });
@@ -1605,7 +1618,14 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
     const needle = q.trim().toLowerCase();
     return shown.hostRows
       .filter((h) => {
-        if (onlyDiff && h.deviationCount === 0 && h.missingCount === 0) return false;
+        if (
+          onlyDiff &&
+          h.deviationCount === 0 &&
+          h.missingCount === 0 &&
+          !h.unreadableCount &&
+          !h.crlfCount
+        )
+          return false;
         if (needle && !h.host.toLowerCase().includes(needle)) return false;
         return true;
       })
@@ -1716,6 +1736,15 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       'cogunluk_adet',
                       'sapan_adet',
                       'eksik_adet',
+                      ...(kind === 'init'
+                        ? [
+                            'referans_kaynak',
+                            'referans_hash',
+                            'bicim_farki_adet',
+                            'crlf_adet',
+                            'okunamayan_adet',
+                          ]
+                        : []),
                     ],
                     scripts.map((sc) => [
                       sc.label,
@@ -1725,6 +1754,15 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       sc.majorityCount,
                       sc.deviatingCount,
                       sc.missing,
+                      ...(kind === 'init'
+                        ? [
+                            sc.referenceSource || '',
+                            refHashOf(sc).slice(0, 16),
+                            sc.formatOnlyCount || 0,
+                            sc.crlfCount || 0,
+                            sc.unreadable || 0,
+                          ]
+                        : []),
                     ]),
                   )
                 : csvDownload(
@@ -1736,6 +1774,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       'eksik_adedi',
                       'eksik_scriptler',
                       'startCustom_var',
+                      ...(kind === 'init' ? ['bicim_farki', 'crlf', 'okunamayan'] : []),
                     ],
                     hostRows.map((h) => [
                       h.host,
@@ -1744,6 +1783,13 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       h.missingCount,
                       h.missing.join(' '),
                       h.hasCustom ? 'EVET' : 'HAYIR',
+                      ...(kind === 'init'
+                        ? [
+                            (h.formatOnly || []).join(' '),
+                            (h.crlf || []).join(' '),
+                            (h.unreadable || []).join(' '),
+                          ]
+                        : []),
                     ]),
                   )
             }
@@ -1765,12 +1811,45 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
         {data?.message && data.hosts === 0 && <span className="ml-1 text-amber-700">{data.message}</span>}
       </div>
 
+      {data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}
+
       {data && (
         <div className="grid gap-3 md:grid-cols-4">
           <Stat n={shown!.hosts} l="sunucu" />
-          <Stat n={shown!.identicalHosts} l="çoğunlukla birebir aynı" tone="ok" />
+          <Stat
+            n={shown!.identicalHosts}
+            l={
+              shown!.referenceSource === 'ekip'
+                ? 'ekip sürümüyle uyumlu'
+                : shown!.referenceSource === 'karma'
+                  ? 'referansla uyumlu'
+                  : 'çoğunlukla birebir aynı'
+            }
+            tone="ok"
+          />
           <Stat n={shown!.hosts - shown!.identicalHosts} l="en az bir script'te farklı" tone="warn" />
           <Stat n={shown!.totalVariants} l="toplam farklı sürüm" />
+        </div>
+      )}
+
+      {shown && ((shown.formatOnlyHosts || 0) > 0 || (shown.crlfHosts || 0) > 0) && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {(shown.formatOnlyHosts || 0) > 0 && (
+            <span
+              className="px-2 py-1 rounded-lg border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
+              title="İçerik referansla aynı; yalnız satır sonu (CRLF), satır sonu boşluğu ya da son boş satır farkı var. Sapma sayılmaz."
+            >
+              {fmtNumber(shown.formatOnlyHosts || 0)} sunucuda yalnız biçim farkı (sapma sayılmaz)
+            </span>
+          )}
+          {(shown.crlfHosts || 0) > 0 && (
+            <span
+              className="px-2 py-1 rounded-lg border bg-amber-50 text-amber-700 border-amber-200"
+              title=".sh/.jy dosyasında CR (Windows satır sonu) var: betik #!/bin/bash\r ile çalışmayabilir."
+            >
+              {fmtNumber(shown.crlfHosts || 0)} sunucuda CRLF'li betik
+            </span>
+          )}
         </div>
       )}
 
@@ -1792,7 +1871,7 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                   Farklı sürüm
                 </th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  Çoğunluk
+                  {ekipVar ? 'Referans' : 'Çoğunluk'}
                 </th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sapan</th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Yok</th>
@@ -1825,18 +1904,47 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       <VariantBadge sc={sc} />
                     </td>
                     <td className="px-3 py-2 text-xs text-[var(--text-secondary)] tabular-nums">
-                      {sc.majorityHash ? (
+                      {refHashOf(sc) ? (
                         // Kirpilmis hash okunabiliyordu ama KOPYALANAMIYORDU; oysa
                         // bu degerin tek isi baska bir yerdeki hash ile karsilastirilmak.
                         // CodeChip tam degeri `title`da tutar ve tiklayinca panoya yazar.
                         <span className="inline-flex items-center gap-1 min-w-0">
+                          {ekipVar && sc.referenceSource && !sc.perServer && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                                sc.referenceSource === 'ekip'
+                                  ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]'
+                              }`}
+                              title={
+                                sc.referenceSource === 'ekip'
+                                  ? 'Ekip sürümü: depodaki dosyanın (bmw_wds_scripts/initialize/files) normalleştirilmiş hash\'i'
+                                  : 'Ekip sürümü bilinmiyor; en yaygın sürüm referans alındı'
+                              }
+                            >
+                              {sc.referenceSource === 'ekip' ? 'ekip sürümü (depo)' : 'çoğunluk'}
+                            </span>
+                          )}
                           <CodeChip
-                            value={sc.majorityHash}
-                            label={`${sc.majorityHash.slice(0, 10)}…`}
+                            value={refHashOf(sc)}
+                            label={`${refHashOf(sc).slice(0, 10)}…`}
                             wrap="truncate"
                             copyable
                           />
-                          <span className="tabular-nums flex-shrink-0">· {sc.majorityCount}</span>
+                          <span className="tabular-nums flex-shrink-0">
+                            ·{' '}
+                            {sc.referenceHash || sc.referenceNorm
+                              ? (sc.referenceCount ?? sc.majorityCount)
+                              : sc.majorityCount}
+                          </span>
+                          {sc.hostWide && shown?.detailAvailable && (
+                            <span
+                              className="text-[10px] text-[var(--text-muted)] flex-shrink-0"
+                              title="Sunucu geneli tek dosya (/etc/systemd/system): referans /vhosting ve /vhosting8 birlikte, sunucu başına bir kez hesaplanır"
+                            >
+                              sunucu geneli
+                            </span>
+                          )}
                         </span>
                       ) : (
                         <span className="text-[var(--text-muted)]">—</span>
@@ -1850,6 +1958,19 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       ) : (
                         <span className="text-[var(--text-muted)]">0</span>
                       )}
+                      {!sc.perServer && (sc.formatOnlyCount || 0) > 0 && (
+                        <span
+                          className="ml-1.5 text-[var(--text-muted)]"
+                          title="Yalnız boşluk/satır sonu farkı: içerik aynı, sapma sayılmaz"
+                        >
+                          +{sc.formatOnlyCount} biçim
+                        </span>
+                      )}
+                      {(sc.crlfCount || 0) > 0 && (
+                        <span className="ml-1.5 text-amber-700" title="Betikte CR var: çalışmayabilir">
+                          {sc.crlfCount} CRLF
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs tabular-nums">
                       {sc.missing > 0 ? (
@@ -1857,13 +1978,25 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                       ) : (
                         <span className="text-[var(--text-muted)]">0</span>
                       )}
+                      {(sc.unreadable || 0) > 0 && (
+                        <span
+                          className="ml-1.5 text-amber-700"
+                          title="Dosya var ama tarama kullanıcısı okuyamıyor (ya da hash alınamadı)"
+                        >
+                          +{sc.unreadable} okunamıyor
+                        </span>
+                      )}
                     </td>
                   </tr>
                   {open === sc.key && (
                     <tr className="bg-[var(--bg-elevated)]/60">
                       <td colSpan={5} className="px-3 py-3">
                         <div className="space-y-2">
-                          {sc.variants.map((v, i) => (
+                          {sc.variants.map((v, i) => {
+                            // isReference yoksa (eski yanit / Deployment) ilk surum cogunluktur.
+                            const isRef = v.isReference ?? i === 0;
+                            const refIdx = sc.variants.filter((x, j) => (x.isReference ?? j === 0)).length;
+                            return (
                             <div
                               key={v.hash}
                               className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
@@ -1873,16 +2006,18 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                                   className={`text-[10px] px-1.5 py-0.5 rounded border ${
                                     sc.perServer
                                       ? 'bg-violet-50 text-violet-700 border-violet-200'
-                                      : i === 0
+                                      : isRef
                                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                         : 'bg-amber-50 text-amber-700 border-amber-200'
                                   }`}
                                 >
                                   {sc.perServer
                                     ? `sürüm ${i + 1}`
-                                    : i === 0
-                                      ? 'çoğunluk'
-                                      : `farklı sürüm ${i}`}
+                                    : isRef
+                                      ? sc.referenceSource === 'ekip'
+                                        ? 'ekip sürümü'
+                                        : 'çoğunluk'
+                                      : `farklı sürüm ${i + 1 - refIdx}`}
                                 </span>
                                 <span className="font-mono text-[11px] text-[var(--text-muted)] break-all">
                                   {v.hash.slice(0, 32)}…
@@ -1895,8 +2030,57 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                                 {v.hosts.slice(0, 40).join(', ')}
                                 {v.hosts.length > 40 && ` … (+${v.hosts.length - 40})`}
                               </div>
+                              {(v.rawVariants || []).length > 1 && (
+                                <div className="mt-2 space-y-1 border-t border-[var(--border-subtle)] pt-1.5">
+                                  <div className="text-[10px] text-[var(--text-muted)]">
+                                    Aynı içerik, {v.rawVariants!.length} farklı bayt biçimi (satır
+                                    sonu / boşluk)
+                                    {!sc.perServer && isRef
+                                      ? ' — referansla aynı içerik, sapma sayılmaz:'
+                                      : sc.perServer
+                                        ? ':'
+                                        : ' — içerik referanstan farklı, bu sunucular sapan sayılır:'}
+                                  </div>
+                                  {v.rawVariants!.map((rv) => (
+                                    <div key={rv.hash} className="flex items-start gap-2 text-[11px]">
+                                      <span className="font-mono text-[var(--text-muted)] flex-shrink-0">
+                                        {rv.hash.slice(0, 16)}…
+                                      </span>
+                                      <span className="tabular-nums text-[var(--text-muted)] flex-shrink-0">
+                                        {rv.count} sunucu
+                                      </span>
+                                      <span className="font-mono text-[var(--text-secondary)] break-words">
+                                        {rv.hosts.slice(0, 12).join(', ')}
+                                        {rv.hosts.length > 12 && ` … (+${rv.hosts.length - 12})`}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                            );
+                          })}
+                          {(sc.crlfHosts || []).length > 0 && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                              <b>CRLF:</b> {sc.crlfHosts!.slice(0, 40).join(', ')}
+                              {sc.crlfHosts!.length > 40 && ` … (+${sc.crlfHosts!.length - 40})`}
+                              <span className="ml-1">
+                                — betikte Windows satır sonu var, #!/bin/bash\r ile çalışmayabilir.
+                              </span>
+                            </div>
+                          )}
+                          {(sc.unreadableHosts || []).length > 0 && (
+                            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-[11px]">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200 mr-2">
+                                okunamıyor
+                              </span>
+                              <span className="font-mono text-[var(--text-secondary)] break-words">
+                                {sc.unreadableHosts!.slice(0, 40).join(', ')}
+                                {sc.unreadableHosts!.length > 40 &&
+                                  ` … (+${sc.unreadableHosts!.length - 40})`}
+                              </span>
+                            </div>
+                          )}
                           {sc.missing > 0 && (
                             <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2">
                               <div className="flex items-center gap-2">
@@ -1946,7 +2130,9 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
               <tr className="bg-[var(--bg-elevated)] border-b border-[var(--border-subtle)] text-left">
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Sunucu</th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">
-                  Çoğunluktan sapan
+                  {data?.referenceSource && data.referenceSource !== 'cogunluk'
+                    ? 'Referanstan sapan'
+                    : 'Çoğunluktan sapan'}
                 </th>
                 <th className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)]">Eksik</th>
                 {hasCustomCol && (
@@ -1964,25 +2150,42 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                     {h.host}
                   </td>
                   <td className="px-3 py-2">
-                    {h.deviationCount === 0 ? (
-                      <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">
-                        aynı
-                      </span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {h.deviations.map((d) => (
-                          <span
-                            key={d}
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
-                          >
-                            {d}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {h.deviationCount === 0 && !h.crlfCount && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-lg border bg-emerald-50 text-emerald-700 border-emerald-200">
+                          aynı
+                        </span>
+                      )}
+                      {h.deviations.map((d) => (
+                        <span
+                          key={d}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
+                        >
+                          {d}
+                        </span>
+                      ))}
+                      {(h.crlf || []).map((d) => (
+                        <span
+                          key={`crlf-${d}`}
+                          title="Betikte CR (Windows satır sonu) var: çalışmayabilir"
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-red-50 text-red-700 border-red-200"
+                        >
+                          {d} · CRLF
+                        </span>
+                      ))}
+                      {(h.formatOnly || []).map((d) => (
+                        <span
+                          key={`fmt-${d}`}
+                          title="Yalnız boşluk/satır sonu farkı: içerik referansla aynı, sapma sayılmaz"
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border)]"
+                        >
+                          {d} · biçim
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
-                    {h.missingCount === 0 ? (
+                    {h.missingCount === 0 && !h.unreadableCount ? (
                       <span className="text-xs text-[var(--text-muted)]">—</span>
                     ) : (
                       <div className="flex flex-wrap gap-1">
@@ -1992,6 +2195,15 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                             className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border)]"
                           >
                             {d}
+                          </span>
+                        ))}
+                        {(h.unreadable || []).map((d) => (
+                          <span
+                            key={`ur-${d}`}
+                            title="Dosya var ama tarama kullanıcısı okuyamıyor"
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
+                          >
+                            {d} · okunamıyor
                           </span>
                         ))}
                       </div>
@@ -2026,11 +2238,91 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
   );
 }
 
+/** Referans hash'i: ekip surumu (ham, yoksa norm) > cogunluk. Eski yanitta yalniz cogunluk. */
+function refHashOf(sc: InitScriptStat): string {
+  return sc.referenceHash || sc.referenceNorm || sc.majorityHash || '';
+}
+
+// Verinin yasi (2026-11-14): AWX job 13418 /sw'ye yazamadigi icin tablolar haftalarca
+// yenilenmedi ve ekran eski hash'leri guncel gibi gosterdi ("ayni surum ama farkli gorunuyor").
+// Yas her zaman gorunur; 2 gunden (48 saat) eski ya da bilinmiyorsa uyari tonunda.
+const INIT_STALE_DAYS = 2;
+function InitDataAge({ data, job }: { data: InitScriptsResult; job: string }) {
+  const days = data.ageDays;
+  const minutes = data.ageMinutes;
+  const known = !!data.loadedAt && days !== null && days !== undefined;
+  const old = known && (minutes ?? (days as number) * 1440) > INIT_STALE_DAYS * 1440;
+  const stale = !known || old;
+  const ne =
+    !known
+      ? ''
+      : (days as number) >= 1
+        ? `${days} gün önce`
+        : minutes !== null && minutes !== undefined && minutes >= 60
+          ? `${Math.floor(minutes / 60)} saat önce`
+          : 'az önce';
+  const kaynak =
+    data.referenceSource === 'ekip'
+      ? 'ekip sürümü (depo)'
+      : data.referenceSource === 'karma'
+        ? 'ekip sürümü (depoda olan dosyalar), diğerlerinde çoğunluk'
+        : 'çoğunluk (ekip sürümü henüz yüklenmedi)';
+  return (
+    <div
+      className={`rounded-xl border px-4 py-2.5 text-xs space-y-1 ${
+        stale
+          ? 'border-amber-200 bg-amber-50 text-amber-800'
+          : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)]'
+      }`}
+    >
+      <div>
+        {known ? (
+          <>
+            {old ? (
+              <>
+                <b>Veri {days} gün önce yüklendi — <code>{job}</code> işi çalışmıyor olabilir.</b>{' '}
+                Son yükleme: {data.loadedAt}. Sonuçlar güncel olmayabilir; AWX'te son koşunun
+                durumuna bakın.
+              </>
+            ) : (
+              <>
+                Veri <b>{ne}</b> yüklendi ({data.loadedAt}).
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            Verinin yaşı bilinmiyor (eski yükleyici); sonuçlar güncel olmayabilir.{' '}
+            <code>{job}</code> job'ı yeni haliyle bir kez çalışınca yükleme zamanı burada görünür.
+          </>
+        )}
+      </div>
+      {data.referenceSource && (
+        <div className={stale ? '' : 'text-[var(--text-muted)]'}>
+          Referans: {kaynak}.{' '}
+          {data.detailAvailable
+            ? 'Yalnız boşluk/satır sonu farkı olan kopyalar sapma sayılmaz.'
+            : 'Ayrıntı tablosu yok: ham sha512 karşılaştırılıyor, boşluk/satır sonu farkı da ayrı sürüm sayılır.'}
+        </div>
+      )}
+      {data.extrasError && (
+        <div>
+          Ayrıntı tabloları okunamadı ({data.extrasError}); ham hash ve çoğunlukla gösteriliyor.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VariantBadge({ sc }: { sc: InitScriptStat }) {
   const n = sc.variantCount;
+  // Tek surum ama referans (ekip surumu) o degil: tum filo sapiyor - yesil gosterilmez.
+  const tumuSapiyor = !sc.perServer && n <= 1 && sc.deviatingCount > 0;
   const cls = sc.perServer
     ? 'bg-violet-50 text-violet-700 border-violet-200'
-    : n <= 1
+    : tumuSapiyor
+      ? 'bg-amber-50 text-amber-700 border-amber-200'
+      : n <= 1
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
       : n <= 3
         ? 'bg-amber-50 text-amber-700 border-amber-200'
@@ -2038,6 +2330,7 @@ function VariantBadge({ sc }: { sc: InitScriptStat }) {
   return (
     <span className={`text-[11px] px-2 py-0.5 rounded-lg border tabular-nums ${cls}`}>
       {n === 0 ? 'hiç yok' : `${n} sürüm`}
+      {tumuSapiyor && ' · referans değil'}
     </span>
   );
 }

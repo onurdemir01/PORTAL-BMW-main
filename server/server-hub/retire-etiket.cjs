@@ -26,6 +26,7 @@
 
 const crypto = require('node:crypto');
 const { ETIKET_KURALLARI } = require('./kural-katalogu.cjs');
+const { yalnizEnvanter } = require('./capraz.cjs');
 
 const KURAL = new Map(ETIKET_KURALLARI.map((k) => [k.kural, k]));
 const SIRA = { KESIN: 2, SUPHELI: 1, KAPALI: 0 };
@@ -118,6 +119,8 @@ function indeksle(hostlar, adaylarOf) {
   for (const h of hostlar) {
     ix.host.set(h.host, h);
     for (const j of h.jvms || []) {
+      // "Yalniz envanterde" satiri (2026-11-14) kopya zincirine girmez: tarama JVM'i degil.
+      if (yalnizEnvanter(j)) continue;
       ekle(ix.jvm, `${h.env}|${L(j.name)}`, { h, j });
       if (!ix.jvmAd.has(`${h.host}|${L(j.name)}`)) ix.jvmAd.set(`${h.host}|${L(j.name)}`, j);
     }

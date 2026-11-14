@@ -177,7 +177,7 @@ const heap = (v) => {
 
 async function jbossDetay(adHam) {
   const { parseAppName, discover } = require('../retirement/discover.cjs');
-  const { tabanAd } = require('../server-hub/capraz.cjs');
+  const { tabanAd, yalnizEnvanter } = require('../server-hub/capraz.cjs');
   const base = parseAppName(adHam).base;
   const { sql } = mssql();
   const t = tablolar();
@@ -220,10 +220,15 @@ async function jbossDetay(adHam) {
       const agir = agirlar[i];
       const d = sh.hostDetail(h, agir);
       for (const j of d.jvms || []) {
-        if (U(tabanAd(j.name)) !== U(base)) continue;
+        // Numarali / grup eslesmesi (2026-11-14, assess envanterEslestir): GBFACELIFTSUBE-T1 JVM'i
+        // envanter uygulamasi GBFACELIFTSUBE-T'ye eslendiyse invApp tasir; uygulama ona gore secilir.
+        if (U(tabanAd(j.name)) !== U(base) && !(j.invApp && U(tabanAd(j.invApp)) === U(base))) continue;
         hub.jvmler.push({
           host: U(String(h.host).split('.')[0]),
           ad: j.name,
+          envanterUygulamasi: j.invApp || null,
+          envanterEslesmesi: j.invMatch || null,
+          yalnizEnvanter: yalnizEnvanter(j),
           nesil: Number(j.gen) || null,
           grup: j.group || null,
           calisiyor: j.runningKnown === false ? null : !!j.running,
@@ -242,7 +247,7 @@ async function jbossDetay(adHam) {
           // DURUM KANITI (kullanici, 2026-11-12: "1 calisiyor 1 kapali, dogru mu nasil anlarim"):
           // olcum yontemi (PS / CLI_STATUS / PS_ABSENT / UNMEASURED); taramada gorulmeyen,
           // yalniz MWAppsInventory'den eklenen JVM (gen 0) 'ENVANTER'.
-          durumKaynagi: Number(j.gen) === 0 && !j.runningSrc ? 'ENVANTER' : j.runningSrc || null,
+          durumKaynagi: yalnizEnvanter(j) || (Number(j.gen) === 0 && !j.runningSrc) ? 'ENVANTER' : j.runningSrc || null,
           envanterDurumu: j.invStatus || null,
           uyumsuzluk: Array.isArray(j.mismatch) ? j.mismatch : [],
           domain: j.domain || null,
@@ -255,7 +260,7 @@ async function jbossDetay(adHam) {
 
   const hubIx = new Map();
   for (const j of hub.jvmler) {
-    const k = `${j.host}|${L(j.ad)}`;
+    const k = `${j.host}|${L(j.envanterUygulamasi || j.ad)}`;
     if (!hubIx.has(k)) hubIx.set(k, []);
     hubIx.get(k).push(j);
   }

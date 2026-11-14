@@ -19,7 +19,7 @@
 // 400 gecersiz ad, 409 uygulama artik listede yok, 424 degerlendirme okunamadi.
 'use strict';
 
-const { tabanAd } = require('./capraz.cjs');
+const { tabanAd, uygTaban, yalnizEnvanter } = require('./capraz.cjs');
 const { ozetle } = require('./retire-etiket.cjs');
 
 const L = (s) =>
@@ -208,12 +208,17 @@ function ozetOf(ad, kopyalar, etiketler) {
  */
 function uygulamalar360(hosts, etiketler = []) {
   const gruplar = new Map();
+  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (GBFACELIFTSUBE-T1), satir invApp tabaniyla.
+  const adAnahtar = new Map();
   for (const h of hosts || []) {
     if (h.taramadanDustu) continue;
     for (const j of h.jvms || []) {
-      if (!j.name) continue;
-      const t = tabanAd(j.name);
+      // "Yalniz envanterde" satiri (2026-11-14) kopya degil: sayilara ve nesil listesine girmez.
+      if (!j.name || yalnizEnvanter(j)) continue;
+      // Numarali JVM'ler (APP-T1/-T2) envanter uygulamasi (invApp) uzerinden tek uygulamada toplanir.
+      const t = uygTaban(j);
       const k = U(t);
+      if (!adAnahtar.has(L(j.name))) adAnahtar.set(L(j.name), k);
       if (!gruplar.has(k)) gruplar.set(k, { ad: t, kopyalar: [] });
       gruplar.get(k).kopyalar.push(kopyaOf(h, j));
     }
@@ -221,7 +226,7 @@ function uygulamalar360(hosts, etiketler = []) {
   const etiketIx = new Map();
   for (const e of etiketler || []) {
     if (e.tur !== 'JVM') continue;
-    const k = U(tabanAd(e.ad));
+    const k = adAnahtar.get(L(e.ad)) || U(tabanAd(e.ad));
     if (!etiketIx.has(k)) etiketIx.set(k, []);
     etiketIx.get(k).push(e);
   }
