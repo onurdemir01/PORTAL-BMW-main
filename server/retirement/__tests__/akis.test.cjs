@@ -17,6 +17,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { normalize } = require('../../util/guard-text.cjs');
 
 const SRC = fs.readFileSync(
   path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'RetirementAkis.tsx'),
@@ -65,17 +66,29 @@ test('AK4 LB/IP/DNS asamasi VAR ve "elle" diyor', () => {
   // bekci kod yerine yorumu olcuyordu. Asama nesnesinin KENDISI aranir.
   const i = SRC.indexOf("ad: '⚑ LB / IP / DNS'");
   assert.ok(i > 0, 'LB/IP/DNS asama nesnesi bulunamadi');
-  assert.match(SRC.slice(i, i + 300), /durum: 'elle'/, 'LB/IP/DNS asamasi elle olarak isaretlenmemis');
+  assert.match(
+    SRC.slice(i, i + 300),
+    /durum: 'elle'/,
+    'LB/IP/DNS asamasi elle olarak isaretlenmemis',
+  );
 });
 
 test('AK5 NGINX vhost otomatik DEGIL - akista yazili', () => {
-  assert.match(SRC, /NGINX otomatik DEĞİL|NGINX otomatik DEGIL/, 'nginx istisnasi akista yazili degil');
+  assert.match(
+    SRC,
+    /NGINX otomatik DEĞİL|NGINX otomatik DEGIL/,
+    'nginx istisnasi akista yazili degil',
+  );
   assert.match(SRC, /ELLE \(NGINX\)/, 'manual vhost sayisi nginx olarak etiketlenmiyor');
 });
 
 test('AK6 GERI ALINDIYSA bekleme/DELETE atlanir, silme devre disi yazilir', () => {
   // Geri alinmis bir hedefte "38 gun kaldi" gostermek yanlis olurdu: silme kapisi kapali.
-  assert.match(SRC, /geri alındı — silme devre dışı/, 'geri alinmis hedefte silme devre disi yazilmiyor');
+  assert.match(
+    SRC,
+    /geri alındı — silme devre dışı/,
+    'geri alinmis hedefte silme devre disi yazilmiyor',
+  );
   const bekleme = SRC.slice(SRC.indexOf('const beklemeDurum'), SRC.indexOf('const beklemeBilgi'));
   assert.match(bekleme, /geriAlindi \? 'atlandi'/, 'geri alinmis hedefte bekleme atlanmiyor');
 });
@@ -90,7 +103,10 @@ test('AK7 UYGULANAN web sonucu sunucudan DONUYOR (akis onu okuyor)', () => {
 test('AK8 TAKILMIS gecis durumu icin "Durumu tazele" yolu var ve OLCER', () => {
   // Kullanici: "iptal ettigim kayda dokunamiyorum" - hedef 'stopping'de kalinca ne STOP
   // ne geri alma dugmesi gorunuyordu.
-  const ep = IDX.slice(IDX.indexOf("router.post('/:id/targets/:tid/refresh-status'"), IDX.indexOf('// ── GERI AL'));
+  const ep = IDX.slice(
+    IDX.indexOf("router.post('/:id/targets/:tid/refresh-status'"),
+    IDX.indexOf('// ── GERI AL'),
+  );
   assert.ok(ep.length > 0, 'refresh-status ucu yok');
   // OKUNAMADI != BASARISIZ: AWX okunamazsa hedefe DOKUNULMAZ
   assert.match(ep, /AWX işi okunamadı/, 'okunamayan is icin ayri yanit yok');
@@ -101,6 +117,11 @@ test('AK8 TAKILMIS gecis durumu icin "Durumu tazele" yolu var ve OLCER', () => {
   assert.match(ep, /TAZELE_ADIM\[t\.status\]/, 'gecis durumu kontrolu yok');
   assert.match(ep, /bir geçiş durumu değil/, 'gecis disi durumda ret mesaji yok');
   // Ekranda dugme
-  assert.match(TAB, /'planning', 'stopping', 'rolling_back', 'deleting'/, 'tazele dugmesi gecis durumlarina bagli degil');
-  assert.match(TAB, /Durumu tazele/, 'tazele dugmesi yok');
+  const tab = normalize(TAB);
+  assert.match(
+    tab,
+    /'planning', 'stopping', 'rolling_back', 'deleting'/,
+    'tazele dugmesi gecis durumlarina bagli degil',
+  );
+  assert.match(tab, /Durumu tazele/, 'tazele dugmesi yok');
 });

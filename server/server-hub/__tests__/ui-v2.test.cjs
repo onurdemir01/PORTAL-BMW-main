@@ -829,15 +829,20 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
     'onay dugmesi bulunamadi',
   );
   const dis = (dugme.match(/disabled=\{([^}]*\([^)]*\)[^}]*)\}/) || [])[1] || '';
+  const disNorm = dis
+    .replace(/\(\s+/g, '(')
+    .replace(/,\s+\)/g, ')')
+    .replace(/\s+\)/g, ')')
+    .trim();
   assert.ok(
     !/hubDurum|stopHubUyarisi|okunamadi/.test(dugme),
     'onay dugmesi hub durumuna bagli KAPANIYOR',
   );
   // TOPLU (2026-10-08): kapi her hedefte ayni yardimci - !ask.ts.every((t) => stopOnayAcikMi(...)).
   assert.ok(
-    dis === '' ||
-      /^!stopOnayAcikMi\(/.test(dis) ||
-      /^!ask\.ts\.every\(\(t\) => stopOnayAcikMi\(/.test(dis),
+    disNorm === '' ||
+      /^!stopOnayAcikMi\(/.test(disNorm) ||
+      /^!ask\.ts\.every\(\(t\) => stopOnayAcikMi\(/.test(disNorm),
     `onay dugmesinin kapisi beklenmedik: ${dis}`,
   );
   assert.ok(!/disabled=\{[^}]*hubDurum/.test(rm), 'onay dugmesi hub durumuna gore kapatiliyor');

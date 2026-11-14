@@ -18,18 +18,26 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { flatten } = require('../../util/guard-text.cjs');
 
 const { trafikSinifi } = require('../discover.cjs');
 const DISC = fs.readFileSync(path.join(__dirname, '..', 'discover.cjs'), 'utf8');
-const TAB = fs.readFileSync(
-  path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'RetirementTab.tsx'),
-  'utf8',
+const TAB = flatten(
+  fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'src', 'components', 'server_hub', 'RetirementTab.tsx'),
+    'utf8',
+  ),
 );
 
 test('TR1 ACTIVE -> trafik VAR, sayilar hc HARIC', () => {
   const r = trafikSinifi({
-    traffic_state: 'ACTIVE', traffic_reason: 'OK',
-    req_24h: 12, req_7d: 340, hc_24h: 2880, sampled: 0, scan_date: '2026-10-07',
+    traffic_state: 'ACTIVE',
+    traffic_reason: 'OK',
+    req_24h: 12,
+    req_7d: 340,
+    hc_24h: 2880,
+    sampled: 0,
+    scan_date: '2026-10-07',
   });
   assert.equal(r.durum, 'var');
   assert.equal(r.req7, 340);
@@ -39,21 +47,41 @@ test('TR1 ACTIVE -> trafik VAR, sayilar hc HARIC', () => {
 });
 
 test('TR2 NO_RECENT_TRAFFIC -> trafik YOK (olculdu)', () => {
-  const r = trafikSinifi({ traffic_state: 'NO_RECENT_TRAFFIC', traffic_reason: 'OK', req_24h: 0, req_7d: 0, hc_24h: 2880 });
+  const r = trafikSinifi({
+    traffic_state: 'NO_RECENT_TRAFFIC',
+    traffic_reason: 'OK',
+    req_24h: 0,
+    req_7d: 0,
+    hc_24h: 2880,
+  });
   assert.equal(r.durum, 'yok');
   assert.equal(r.req7, 0);
 });
 
 test('TR3 OLCULMEMIS durumlar "yok" SAYILMAZ', () => {
   // Server Hub degismezi: bu durumlarda sayilar -1. "yok" demek en pahali yanlis.
-  for (const st of ['UNVERIFIED', 'BUDGET_EXCEEDED', 'DEADLINE', 'DZDO_DENIED', 'EMPTY_LOG', 'NO_TIMESTAMP', '']) {
-    const r = trafikSinifi({ traffic_state: st, traffic_reason: 'LOCATION_LOG', req_24h: -1, req_7d: -1, hc_24h: -1 });
+  for (const st of [
+    'UNVERIFIED',
+    'BUDGET_EXCEEDED',
+    'DEADLINE',
+    'DZDO_DENIED',
+    'EMPTY_LOG',
+    'NO_TIMESTAMP',
+    '',
+  ]) {
+    const r = trafikSinifi({
+      traffic_state: st,
+      traffic_reason: 'LOCATION_LOG',
+      req_24h: -1,
+      req_7d: -1,
+      hc_24h: -1,
+    });
     assert.equal(r.durum, 'olculemedi', `${st} durumu "${r.durum}" sayildi`);
     assert.ok(r.sebep, `${st} icin sebep yazilmamis`);
   }
 });
 
-test('TR4 SATIR YOK -> olculemedi (tarama o vhost\'u gormemis)', () => {
+test("TR4 SATIR YOK -> olculemedi (tarama o vhost'u gormemis)", () => {
   const r = trafikSinifi(null);
   assert.equal(r.durum, 'olculemedi');
   assert.match(r.sebep, /kayit yok/i);
@@ -71,7 +99,13 @@ test('TR5 TUTARSIZ veri (ACTIVE ama -1) olculemedi sayilir', () => {
 test('TR6 sampled=1 ALT SINIR olarak isaretlenir', () => {
   // Log kuyrugu kesildi: gercek sayi DAHA BUYUK olabilir. "340 istek" demek,
   // olculenin tamami oldugu izlenimi verirdi.
-  const r = trafikSinifi({ traffic_state: 'ACTIVE', req_7d: 50, req_24h: 5, hc_24h: 100, sampled: 1 });
+  const r = trafikSinifi({
+    traffic_state: 'ACTIVE',
+    req_7d: 50,
+    req_24h: 5,
+    hc_24h: 100,
+    sampled: 1,
+  });
   assert.equal(r.sampled, true);
   assert.match(TAB, /tr\.sampled \? 'en az ' : ''/, 'ekran alt siniri belirtmiyor');
 });
@@ -93,14 +127,30 @@ test('TR7 kesif ve ekran: sorgu en yeni taramadan, onay ZORUNLU', () => {
   // Tablo okunamazsa HER vhost olculemedi olur - "yok" DEGIL
   assert.match(DISC, /trafikError = String/, 'okunamayan tablo bildirilmiyor');
   // server_name BUYUK/KUCUK HARF DUYARSIZ eslesmeli (Apache kasa korumuyor)
-  assert.match(DISC, /server_name \|\| ''\)\.trim\(\)\.toLowerCase\(\)/, 'vhost anahtari kasaya duyarli');
+  assert.match(
+    DISC,
+    /server_name \|\| ''\)\.trim\(\)\.toLowerCase\(\)/,
+    'vhost anahtari kasaya duyarli',
+  );
   // Ozet uc kovayi AYRI tutar
   assert.match(DISC, /olculemedi: tumWeb\.filter/, 'ozet olculemedi kovasi tutmuyor');
 
   // EKRAN: onay kutusu ZORUNLU, yalnizca uyari gostermek yetmez
-  assert.match(TAB, /if \(trafikli\.length && !trafikOnay\)/, 'onay kutusu kayit acmayi engellemiyor');
+  assert.match(
+    TAB,
+    /if \(trafikli\.length && !trafikOnay\)/,
+    'onay kutusu kayit acmayi engellemiyor',
+  );
   assert.match(TAB, /devam etmek istiyorum/, 'onay metni yok');
-  assert.match(TAB, /bu “istek yok” DEMEK DEĞİL/, 'olculemedi uyarisi "istek yok" ile karistirilabilir');
+  assert.match(
+    TAB,
+    /bu “istek yok” DEMEK DEĞİL/,
+    'olculemedi uyarisi "istek yok" ile karistirilabilir',
+  );
   // Yalniz SECILI hedefler sayilir
-  assert.match(TAB, /const trafikli = selected\.flatMap/, 'trafik tum hedeflerden sayiliyor (secili olmayan dahil)');
+  assert.match(
+    TAB,
+    /const trafikli = selected\.flatMap/,
+    'trafik tum hedeflerden sayiliyor (secili olmayan dahil)',
+  );
 });
