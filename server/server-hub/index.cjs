@@ -747,7 +747,11 @@ const isAdmin = (req) => req.session?.user?.role === 'Admin';
 // AUTO-START DOGRULAMA KATMANI (2026-11-14): Portal'in baslattigi auto-start isinin CLI ile
 // dogrulanmis sonucu, bir sonraki tarama gelene kadar /host ve "zaten" kapisinda gecerli
 // (autostart-dogrulama.cjs basligi).
-const { AUTOSTART_EYLEMLERI } = require('./autostart-dogrulama.cjs');
+const {
+  AUTOSTART_EYLEMLERI,
+  sunucuYazmaKapisi,
+  jvmAutoStartKapisi,
+} = require('./autostart-dogrulama.cjs');
 let _autoStart = require('./autostart-dogrulama.cjs').kur();
 
 const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -766,7 +770,10 @@ function isSonucuIsle(serverId, jobId, statusInfo) {
       extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') ||
       null;
     const as = _autoStart.isBitti(serverId, jobId, statusInfo.status, result);
-    if (as.kayitli) autoStart = { dogrulandi: as.dogrulandi === true, deger: as.deger || null };
+    // Toplu (liste kipi) host isi: oge basina sonuc; DB'ye toplu yurutucu ayrica yazar (AWX'ten okuyarak).
+    if (as.kayitli && as.toplu) autoStart = { toplu: true, ogeler: as.ogeler };
+    else if (as.kayitli)
+      autoStart = { dogrulandi: as.dogrulandi === true, deger: as.deger || null };
     else onbellekSil();
   }
   return { result, autoStart };
@@ -778,7 +785,19 @@ function isSonucuIsle(serverId, jobId, statusInfo) {
  * sorulur: terminal olduysa (istemci yoklamayi birakmis olabilir) sonucu islenir ve kilit kalkar.
  * Donus: null (serbest) ya da 409 mesaji.
  */
-async function surenIsKilidi(host, gen, jvm) {
+async function surenIsKilidi(host, gen, jvm, { topluHaric = false, restartHaric = false } = {}) {
+  // TOPLU AUTO-START (2026-11-14): JVM bir toplu isin bekleyen / calisan ogesiyse (DB) tek tek is acilmaz.
+  // Toplu yurutucu kendi ogeleri icin topluHaric ile cagirir (yalniz bellek kilidi).
+  if (!topluHaric) {
+    const tk = await require('./toplu-autostart.cjs').topluKilidi(host, gen, jvm);
+    if (tk) return tk;
+  }
+  // TOPLU RESTART (2026-11-14): restart'i bekleyen / suren JVM'de auto-start (tek satir, /fix, Toplu Auto-Start)
+  // acilmaz. Restart yurutucusu kendi ogeleri icin restartHaric ile cagirir.
+  if (!restartHaric) {
+    const rk = await require('./toplu-restart.cjs').topluKilidi(host, gen, jvm);
+    if (rk) return rk;
+  }
   const s = _autoStart.surenIs(host, gen, jvm);
   if (!s) return null;
   if (s.baslatiliyor)
@@ -1073,11 +1092,6 @@ function initServerHub(app) {
     }
   });
 
-  // -- TOPLU AUTO-START DUZELTMESI (kullanici, 2026-09-28; 2026-10-01'de KALDIRILDI, asagi) --
-  // "auto-start'i kapali olup JVM process'i acik olan TUM bulgulari tek tusla ac" ve
-  // tersi: "auto-start'i acik olup process'i kapali olanlari tek tusla kapat".
-  //
-  // ONCE PLAN, SONRA ONAY (kullanicinin secimi): plan HICBIR IS BASLATMAZ - liste zaten
   // ── ACILIS HAZIRLIGI (kullanici, 2026-10-01) ───────────────────────────────────────
   // "Ben sana sunucu listesi verdigimde o sunucularin sorunsuz acilip acilmayacagini bana
   // bir executive summary gibi vermeni istiyorum."
@@ -1151,17 +1165,9 @@ function initServerHub(app) {
       // Sema okunamadiysa running_src / cfg_src / auto_start kaniti secilmedi; bayat ya da son
       // yuklemede disarida kalan sunucunun auto-start degeri bugunu anlatmaz. Is ACILMAZ.
       // running_src=UNMEASURED BILEREK kapi degil (v3: tek-JVM dugmesi admine acik, onay uyarir).
-      if (a.schemaUnknown === true || h.schemaUnknown === true)
-        return res.status(400).json({
-          ok: false,
-          message:
-            'Server Hub şeması (sys.columns) okunamadı — eylem önerilmez; auto-start değiştirilemez, iş açılmadı. Sayfayı yenileyin.',
-        });
-      if (h.fresh !== true)
-        return res.status(400).json({
-          ok: false,
-          message: `${host} taraması bayat (bayat kanıt: ${h.scanDate || '?'}${h.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
-        });
+      // Kapilar Toplu Auto-Start ile ORTAK (autostart-dogrulama.cjs sunucuYazmaKapisi / jvmAutoStartKapisi).
+      const sk = sunucuYazmaKapisi(a, h, host);
+      if (sk) return res.status(sk.status).json({ ok: false, message: sk.message });
       const tj = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
       // SUREN IS KILIDI: ayni JVM'de Portal'in actigi is suruyorsa 409 (biten isin sonucu once islenir,
       // asagidaki "zaten" kapisi da onu gorur).
@@ -1173,35 +1179,10 @@ function initServerHub(app) {
       // Dogrulanmis auto-start (onceki is CLI ile geri okudu, tarama gelmedi) taramanin onune gecer:
       // "zaten" kapisi ayni isi ikinci kez acmasin (eskiden betik SKIP donuyordu, ekran yine "acildi").
       const j = tj ? _autoStart.uygulaJvm(h, tj) : tj;
-      if (!j)
-        return res.status(400).json({
-          ok: false,
-          message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.`,
-        });
-      // TANIMSIZ SUREC (EK-6.7, tur 3 #8): cfg_src=UNAVAILABLE JVM tanim kaynaginda YOK;
-      // auto-start'i olmayan bir sey degistirilemez (playbook da host XML'de bulamaz).
-      if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE')
-        return res.status(400).json({
-          ok: false,
-          message: `${jvm} (JBoss ${gen}) tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez, iş açılmadı.`,
-        });
-      // ZATEN ISTENEN DURUMDAYSA IS ACILMAZ. "unknown" ise ACILIR: olculemedigi icin
-      // kullanici bilerek bir tarafa cekmek isteyebilir.
-      const hedef = enable ? 'true' : 'false';
-      if (j.autoStart === hedef)
-        return res.status(400).json({
-          ok: false,
-          message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
-        });
-      // CALISAN JVM'DE KAPAT (2026-11-14, A2): server_hub_fix.sh calisan JVM'in auto-start'ini
-      // FORCE olmadan KAPATMAZ (FAIL "su an CALISIYOR"); Portal force gondermez. Eskiden is acilip ~1 dk
-      // sonra sebepsiz "failed" donuyordu. Calisma durumu OLCULEMEYEN JVM (runningKnown=false) kapi
-      // DEGIL (v3: dugme admine acik; betik canli durumu kendisi kontrol eder).
-      if (!enable && j.running === true && j.runningKnown !== false)
-        return res.status(400).json({
-          ok: false,
-          message: `${jvm} son taramada ÇALIŞIYOR — çalışan JVM'in auto-start'ı kapatılmaz (betik reddeder); iş açılmadı. Önce JVM'i durdurun, sonra sunucuyu yeniden tarayın.`,
-        });
+      // JVM kapilari (taramada yok / tanimsiz surec / ZATEN hedefte / calisan JVM'de kapat): Toplu Auto-Start
+      // ile AYNI fonksiyon, ayni mesajlar (autostart-dogrulama.cjs jvmAutoStartKapisi).
+      const jk = jvmAutoStartKapisi(j, { host, jvm, gen, enable });
+      if (jk) return res.status(jk.status).json({ ok: false, message: jk.message });
       const action = enable ? 'jboss_autostart_on' : 'jboss_autostart_off';
       if (!FIX_ACTIONS.has(action))
         return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
@@ -1230,14 +1211,49 @@ function initServerHub(app) {
 
   // TOPLU DUZELTME KALDIRILDI (kullanici, 2026-10-01): "jboss jvm auto start da toplu ac
   // toplu kapat sakin getirme o cok riskli... toplu islem sakin olmasin cok tehlikeli."
+  // Tek tiklamayla yuzlerce sunucuda auto-start degistirmek, yanlis bir taramanin sonucunu da
+  // yuzlerce sunucuya yayardi; eski toplu uc /fix korumasini N kez cagirarak deliyordu.
   //
-  // Tek tiklamayla yuzlerce sunucuda auto-start degistirmek, yanlis bir taramanin
-  // sonucunu da yuzlerce sunucuya yayardi. Dogrusu satir bazinda tek tek onay:
-  // `POST /fix` ZATEN bunu yapiyor (tek host + tek JVM) ve duzeltme playbook'u virgullu
-  // hedef listesini BILEREK reddediyor. Toplu uc o korumayi N kez cagirarak deliyordu.
-  //
-  // Geri getirmek isteyen once su soruyu cevaplasin: yanlis bir tarama sonucu kac
-  // sunucuya yayilir?
+  // KONTROLLU TOPLU AUTO-START (kullanici karari 2026-11-14: "auto-start'lari toplu duzeltebilmek icin
+  // bir sayfa ve tek bir buton"). Yukaridaki soruya cevap: yanlis tarama YAYILMAZ, cunku
+  //   - liste yalniz TAZE taramadaki uyumsuz JVM'ler, kapilar /jvm-autostart ile AYNI fonksiyon;
+  //   - ONCE salt okunur PLAN isi her JVM'in CANLI auto-start'ini CLI ile okur, artik uyumsuz olmayani dusurur;
+  //   - onay ekrani; ust sinir (limit:toplu_autostart, varsayilan 50 JVM);
+  //   - host basina TEK is (target_host yine TEK sunucu, virgul yok), hostlar SIRAYLA; FAIL durdurmaz, ozet kirmizi;
+  //   - Portal yeniden baslarsa is DEVAM ETTIRILMEZ (YARIM_KALDI).
+  // Ayrinti: toplu-autostart.cjs basligi.
+  require('./toplu-autostart.cjs').mount(router, {
+    launch,
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    autoStart: () => _autoStart,
+    ayarlar,
+    HOST_RE,
+    surenIsKilidi: (host, gen, jvm) => surenIsKilidi(host, gen, jvm, { topluHaric: true }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
+  });
+
+  // TOPLU RESTART (kullanici 2026-11-14: "JVM parametreleri calisan surectekinden FARKLI uyarilari ... bunlar icin de
+  // toplu restart et sayfasi"). Liste yalniz TAZE taramada fark bulunan calisan JVM'ler; once salt okunur onizleme
+  // taramasi, onay, sonra JVM'ler TEK TEK (OpsX legacy restart, route ile ayni fonksiyonlar), her restart'tan sonra
+  // sunucu yeniden taranir. Prod / ortami bilinmeyen sunucu toplu yoldan GITMEZ (OpsX'ten tek tek, Smart onayi).
+  // Ayrinti: toplu-restart.cjs basligi.
+  require('./toplu-restart.cjs').mount(router, {
+    launch,
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    onbellekSil,
+    loadJvmAgir,
+    autoStart: () => _autoStart,
+    ayarlar,
+    HOST_RE,
+    surenIsKilidi: (host, gen, jvm) => surenIsKilidi(host, gen, jvm, { restartHaric: true }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
+  });
 
   // Reboot Kontrolu (2026-10-08): once/sonra goruntu + otomatik duzeltme (reboot-check.cjs).
   require('./reboot-check.cjs').mount(router, { launch, HOST_RE, limit: ayarlar.limit });

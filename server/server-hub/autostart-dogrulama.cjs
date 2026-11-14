@@ -24,6 +24,12 @@
 // cagiran yeni is ACMAZ (iki kullanici / iki sekme zit yonde is acamasin; dogrulanan deger son biten
 // isi gostersin). Kilit is terminal olunca (job-status) ya da cagiranin AWX kontrolunde biter.
 //
+// TOPLU IS (2026-11-14, Toplu Auto-Start sekmesi, toplu-autostart.cjs): bir host isi BIRDEN COK JVM tasir
+// (action jboss_autostart_items, set_stats items[]). Ayri haritada tutulur ("serverId:jobId" -> tek JVM sozlesmesi
+// bozulmaz); surenIs iki haritayi da tarar (tek satir dugmesi toplu isin calisan JVM'ini 409 ile reddeder).
+// Ogenin dogrulanmasi isin GENEL durumuna bagli DEGIL: baska bir oge FAIL olunca is 'failed' biter ama bu
+// ogenin satiri OK/SKIP ise betik CLI ile geri okumustur (ogeSonuclari).
+//
 // SINIRLAR: yalniz bellek (Portal yeniden baslarsa katman bosalir -> eski davranis: tarama
 // degeri). Baskasinin AWX'ten elle kosturdugu is buraya girmez. FAIL/PLAN hicbir seyi
 // degistirmez. Kayit sayisi sinirli (en eskisi atilir).
@@ -43,9 +49,92 @@ function sonucSatiri(line) {
 
 const dogruMu = (v) => v === true || String(v).toLowerCase() === 'true';
 const sayiMi = (x) => typeof x === 'number' && Number.isFinite(x);
+const LISTE_EYLEMI = 'jboss_autostart_items';
+const jvmAnahtari = (gen, jvm) => `${Number(gen)}|${String(jvm || '').trim().toLowerCase()}`;
+
+/**
+ * Toplu (liste kipi) isin set_stats sonucunu ogelere esler. items: [{gen, jvm, action}].
+ * Donus: ayni sirada [{gen, jvm, action, durum: OK|SKIP|FAIL|PLAN|null, mesaj, dogrulandi}].
+ * dogrulandi: uygulama kipi (plan degil) + ayni eylem + OK|SKIP. Satiri olmayan oge durum null.
+ */
+function ogeSonuclari(items, result) {
+  const r = result && typeof result === 'object' ? result : null;
+  const listeMi = !!r && r.action === LISTE_EYLEMI && Array.isArray(r.items);
+  const plan = !r || dogruMu(r.plan_only);
+  const satirlar = new Map();
+  if (listeMi)
+    for (const x of r.items)
+      if (x && typeof x === 'object') satirlar.set(`${jvmAnahtari(x.gen, x.jvm)}|${String(x.action || '')}`, x);
+  return (items || []).map((m) => {
+    const x = satirlar.get(`${jvmAnahtari(m.gen, m.jvm)}|${m.action}`);
+    const s = x ? sonucSatiri(x.line) : null;
+    const durum = s && s.action === m.action ? s.durum : null;
+    return {
+      gen: Number(m.gen),
+      jvm: String(m.jvm || ''),
+      action: m.action,
+      durum,
+      mesaj: s ? s.mesaj : '',
+      dogrulandi: !plan && (durum === 'OK' || durum === 'SKIP'),
+    };
+  });
+}
+
+/**
+ * Sunucu duzeyi yazma kapisi (/jvm-autostart ve Toplu Auto-Start AYNI fonksiyon): sema okunamadi ya da bayat /
+ * son yuklemede disarida kalan sunucuda auto-start degistirilmez. Donus: null ya da { status, message }.
+ */
+function sunucuYazmaKapisi(a, h, host) {
+  if ((a && a.schemaUnknown === true) || (h && h.schemaUnknown === true))
+    return {
+      status: 400,
+      message:
+        'Server Hub şeması (sys.columns) okunamadı — eylem önerilmez; auto-start değiştirilemez, iş açılmadı. Sayfayı yenileyin.',
+    };
+  if (!h || h.fresh !== true)
+    return {
+      status: 400,
+      message: `${host} taraması bayat (bayat kanıt: ${(h && h.scanDate) || '?'}${h && h.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
+    };
+  return null;
+}
+
+/**
+ * JVM duzeyi auto-start kapisi (/jvm-autostart ve Toplu Auto-Start AYNI fonksiyon). j: dogrulama katmani
+ * uygulanmis JVM (uygulaJvm). Donus: null ya da { status, message }.
+ */
+function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
+  if (!j)
+    return { status: 400, message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.` };
+  // TANIMSIZ SUREC (EK-6.7, tur 3 #8): cfg_src=UNAVAILABLE JVM tanim kaynaginda YOK;
+  // auto-start'i olmayan bir sey degistirilemez (playbook da host XML'de bulamaz).
+  if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE')
+    return {
+      status: 400,
+      message: `${jvm} (JBoss ${gen}) tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez, iş açılmadı.`,
+    };
+  // ZATEN ISTENEN DURUMDAYSA IS ACILMAZ. "unknown" ise ACILIR: olculemedigi icin
+  // kullanici bilerek bir tarafa cekmek isteyebilir.
+  const hedef = enable ? 'true' : 'false';
+  if (j.autoStart === hedef)
+    return {
+      status: 400,
+      message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
+    };
+  // CALISAN JVM'DE KAPAT (2026-11-14, A2): server_hub_fix.sh calisan JVM'in auto-start'ini FORCE olmadan
+  // KAPATMAZ (FAIL "su an CALISIYOR"); Portal force gondermez. Calisma durumu OLCULEMEYEN JVM
+  // (runningKnown=false) kapi DEGIL (v3: dugme admine acik; betik canli durumu kendisi kontrol eder).
+  if (!enable && j.running === true && j.runningKnown !== false)
+    return {
+      status: 400,
+      message: `${jvm} son taramada ÇALIŞIYOR — çalışan JVM'in auto-start'ı kapatılmaz (betik reddeder); iş açılmadı. Önce JVM'i durdurun, sonra sunucuyu yeniden tarayın.`,
+    };
+  return null;
+}
 
 function kur({ simdi = Date.now } = {}) {
   const isler = new Map();
+  const topluIsler = new Map();
   const dogrulanan = new Map();
   const rezerve = new Set();
   const anahtar = (host, gen, jvm) =>
@@ -70,12 +159,43 @@ function kur({ simdi = Date.now } = {}) {
     sinirla(isler, IS_MAX);
   }
 
+  /** Toplu (liste kipi) host isi: items [{gen, jvm, action}]; h: is acilirkenki sunucu (tarama damgasi). */
+  function isKaydetToplu(serverId, jobId, { host, h, items }) {
+    if (jobId == null) return;
+    const liste = (items || []).filter((x) => x && AUTOSTART_EYLEMLERI.has(x.action));
+    if (!liste.length) return;
+    topluIsler.set(`${Number(serverId)}:${Number(jobId)}`, {
+      host: String(host || '').toUpperCase(),
+      items: liste.map((x) => ({ gen: Number(x.gen), jvm: String(x.jvm || ''), action: x.action })),
+      scanDate: (h && h.scanDate) || null,
+      loadedAt: h && sayiMi(h.loadedAt) ? h.loadedAt : null,
+      at: simdi(),
+    });
+    sinirla(topluIsler, IS_MAX);
+  }
+
+  function dogrulandiYaz(host, gen, jvm, hedef, jobId, scanDate, loadedAt) {
+    const ak = anahtar(host, gen, jvm);
+    dogrulanan.delete(ak);
+    dogrulanan.set(ak, { autoStart: hedef, jobId: Number(jobId), at: simdi(), scanDate, loadedAt });
+    sinirla(dogrulanan, DOGRULANAN_MAX);
+  }
+
   /**
    * Is terminal oldu. Donus: { kayitli } (bu katmanin isi mi), dogrulandiysa { deger, durum, mesaj }.
-   * Is bir kez islenir (kayit silinir).
+   * Toplu iste { kayitli, toplu: true, host, ogeler: ogeSonuclari(...) }. Is bir kez islenir (kayit silinir).
    */
   function isBitti(serverId, jobId, status, result) {
     const k = `${Number(serverId)}:${Number(jobId)}`;
+    const t = topluIsler.get(k);
+    if (t) {
+      topluIsler.delete(k);
+      const ogeler = ogeSonuclari(t.items, result);
+      for (const o of ogeler)
+        if (o.dogrulandi)
+          dogrulandiYaz(t.host, o.gen, o.jvm, o.action === 'jboss_autostart_on' ? 'true' : 'false', jobId, t.scanDate, t.loadedAt);
+      return { kayitli: true, toplu: true, host: t.host, ogeler };
+    }
     const m = isler.get(k);
     if (!m) return { kayitli: false };
     isler.delete(k);
@@ -90,16 +210,7 @@ function kur({ simdi = Date.now } = {}) {
       s.action === m.action &&
       (s.durum === 'OK' || s.durum === 'SKIP');
     if (!tamam) return { kayitli: true, dogrulandi: false, durum: s ? s.durum : null, mesaj: s ? s.mesaj : '' };
-    const ak = anahtar(m.host, m.gen, m.jvm);
-    dogrulanan.delete(ak);
-    dogrulanan.set(ak, {
-      autoStart: m.hedef,
-      jobId: Number(jobId),
-      at: simdi(),
-      scanDate: m.scanDate,
-      loadedAt: m.loadedAt,
-    });
-    sinirla(dogrulanan, DOGRULANAN_MAX);
+    dogrulandiYaz(m.host, m.gen, m.jvm, m.hedef, jobId, m.scanDate, m.loadedAt);
     return { kayitli: true, dogrulandi: true, deger: m.hedef, durum: s.durum, mesaj: s.mesaj };
   }
 
@@ -160,6 +271,12 @@ function kur({ simdi = Date.now } = {}) {
       const [serverId, jobId] = k.split(':').map(Number);
       return { baslatiliyor: false, serverId, jobId, action: m.action };
     }
+    for (const [k, t] of topluIsler) {
+      const o = t.items.find((x) => anahtar(t.host, x.gen, x.jvm) === ak);
+      if (!o) continue;
+      const [serverId, jobId] = k.split(':').map(Number);
+      return { baslatiliyor: false, serverId, jobId, action: o.action, toplu: true };
+    }
     return null;
   }
 
@@ -172,14 +289,24 @@ function kur({ simdi = Date.now } = {}) {
 
   return {
     isKaydet,
+    isKaydetToplu,
     isBitti,
     gecerli,
     uygulaJvm,
     uygulaBulgu,
     surenIs,
     rezervasyon,
-    _boyut: () => ({ isler: isler.size, dogrulanan: dogrulanan.size, rezerve: rezerve.size }),
+    _boyut: () => ({ isler: isler.size, topluIsler: topluIsler.size, dogrulanan: dogrulanan.size, rezerve: rezerve.size }),
   };
 }
 
-module.exports = { kur, sonucSatiri, AUTOSTART_EYLEMLERI, TTL_MS };
+module.exports = {
+  kur,
+  sonucSatiri,
+  ogeSonuclari,
+  sunucuYazmaKapisi,
+  jvmAutoStartKapisi,
+  AUTOSTART_EYLEMLERI,
+  LISTE_EYLEMI,
+  TTL_MS,
+};

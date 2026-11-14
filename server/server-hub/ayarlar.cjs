@@ -31,7 +31,10 @@ const YOKSAY_AD_RE = /^[A-Za-z0-9._+@-][A-Za-z0-9._+@ -]{0,63}$/;
 const YOKSAY_SINIR = 50;
 /** Ad listesi -> tekil, sirali dizi; gecersiz ad varsa null. */
 function yoksayNormal(liste) {
-  const adlar = (() => { if (Array.isArray(liste)) return liste; return String(liste == null ? '' : liste).split(','); })()
+  const adlar = (() => {
+    if (Array.isArray(liste)) return liste;
+    return String(liste == null ? '' : liste).split(',');
+  })()
     .map((x) => String(x).trim())
     .filter(Boolean);
   if (adlar.some((x) => !YOKSAY_AD_RE.test(x) || x === '.' || x === '..')) return null;
@@ -40,7 +43,7 @@ function yoksayNormal(liste) {
 const YOKSAY_VARSAYILAN_METIN = yoksayNormal(KOK_YOKSAY_VARSAYILAN).join(',');
 
 /**
- * Sunucu sayisi limitleri. ust: Admin'in verebilecegi en buyuk deger (gerekce aciklamada).
+ * Sunucu (toplu_autostart / toplu_restart: JVM, birim alani) sayisi limitleri. ust: Admin'in verebilecegi en buyuk deger.
  * tara / reboot AWX isine target_hosts olarak gider; hazirlik is BASLATMAZ.
  */
 const LIMITLER = {
@@ -48,20 +51,42 @@ const LIMITLER = {
     ad: 'Şimdi tara',
     varsayilan: 50,
     ust: 1000,
-    aciklama: 'server_hub_scan işini seçilen sunucularda başlatır; liste AWX işine target_hosts olarak gider.',
+    aciklama:
+      'server_hub_scan işini seçilen sunucularda başlatır; liste AWX işine target_hosts olarak gider.',
   },
   reboot: {
     ad: 'Reboot Kontrolü',
     // 2026-11-13 (kullanici): varsayilan 50 -> 500 (ust sinirla ayni).
     varsayilan: 500,
     ust: 500,
-    aciklama: 'reboot_check işi (önce / sonra); sonra fazı her sunucunun “önce” görüntüsünü AWX işine taşır, bu yüzden üst sınır daha düşük.',
+    aciklama:
+      'reboot_check işi (önce / sonra); sonra fazı her sunucunun “önce” görüntüsünü AWX işine taşır, bu yüzden üst sınır daha düşük.',
   },
   hazirlik: {
     ad: 'Açılış Hazırlığı',
     varsayilan: 500,
     ust: 5000,
     aciklama: 'İş başlatmaz; son taramayı okur.',
+  },
+  // Toplu Auto-Start (2026-11-14, kullanici: "auto-start'lari toplu duzeltebilmek icin bir sayfa ve tek bir
+  // buton"). Birim JVM: host basina tek AWX isi acilir, hostlar SIRAYLA (toplu-autostart.cjs).
+  toplu_autostart: {
+    ad: 'Toplu Auto-Start',
+    varsayilan: 50,
+    ust: 500,
+    birim: 'JVM',
+    aciklama:
+      'Bir toplu auto-start işinde en fazla JVM; önce salt okunur plan, onaydan sonra host başına tek AWX işi, sırayla.',
+  },
+  // Toplu Restart (2026-11-14, JVM_PARAM_FARKI): birim JVM; JVM'ler TEK TEK restart edilir, her biri sonrasi
+  // sunucu yeniden taranir (toplu-restart.cjs). 50 JVM birkac saat surer; ust sinir bu yuzden dusuk.
+  toplu_restart: {
+    ad: 'Toplu Restart',
+    varsayilan: 50,
+    ust: 200,
+    birim: 'JVM',
+    aciklama:
+      'Bir toplu restart işinde en fazla JVM; önce salt okunur önizleme taraması, onaydan sonra JVM’ler tek tek (her restart sonrası sunucu yeniden taranır).',
   },
 };
 
@@ -91,7 +116,12 @@ function satirlardan(rows) {
   for (const r of rows || []) {
     const anahtar = T(r.anahtar);
     const deger = T(r.deger);
-    const meta = { deger, aciklama: r.aciklama || '', updatedBy: r.updated_by || null, updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null };
+    const meta = {
+      deger,
+      aciklama: r.aciklama || '',
+      updatedBy: r.updated_by || null,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+    };
     if (anahtar.startsWith('seviye:')) {
       const kod = anahtar.slice('seviye:'.length);
       if (!KODLAR.has(kod) || !SEVIYELER.includes(deger)) continue;
@@ -197,7 +227,8 @@ async function seviyeYaz({ kod, seviye, aciklama, kim }) {
   const k = T(kod);
   const s = T(seviye);
   if (!KODLAR.has(k)) throw hata(400, `Bilinmeyen bulgu kodu: ${k || '(boş)'}`);
-  if (!SEVIYELER.includes(s)) throw hata(400, `Geçersiz seviye: ${s || '(boş)'} (kritik / uyarı / bilgi / sorun yok)`);
+  if (!SEVIYELER.includes(s))
+    throw hata(400, `Geçersiz seviye: ${s || '(boş)'} (kritik / uyarı / bilgi / sorun yok)`);
   return yaz(`seviye:${k}`, s, KODLAR.get(k).seviye, aciklama, kim);
 }
 
@@ -207,7 +238,10 @@ async function limitYaz({ ad, deger, aciklama, kim }) {
   if (!L) throw hata(400, `Bilinmeyen limit: ${a || '(boş)'}`);
   const n = Number(deger);
   if (!Number.isInteger(n) || n < 1 || n > L.ust)
-    throw hata(400, `${L.ad} için limit 1 ile ${L.ust} arasında bir tam sayı olmalı (gelen: ${T(deger) || '(boş)'}).`);
+    throw hata(
+      400,
+      `${L.ad} için limit 1 ile ${L.ust} arasında bir tam sayı olmalı (gelen: ${T(deger) || '(boş)'}).`,
+    );
   return yaz(`limit:${a}`, n, L.varsayilan, aciklama, kim);
 }
 
@@ -215,18 +249,30 @@ async function etiketYaz({ kural, seviye, aciklama, kim }) {
   const k = T(kural);
   const s = T(seviye);
   if (!KURAL.has(k)) throw hata(400, `Bilinmeyen etiket kuralı: ${k || '(boş)'}`);
-  if (!ETIKET_SEVIYELERI.includes(s)) throw hata(400, `Geçersiz etiket: ${s || '(boş)'} (KESIN / SUPHELI / KAPALI)`);
-  if (T(aciklama).length < 3) throw hata(400, 'Gerekçe zorunlu: etiket bir retire kararının girdisidir.');
+  if (!ETIKET_SEVIYELERI.includes(s))
+    throw hata(400, `Geçersiz etiket: ${s || '(boş)'} (KESIN / SUPHELI / KAPALI)`);
+  if (T(aciklama).length < 3)
+    throw hata(400, 'Gerekçe zorunlu: etiket bir retire kararının girdisidir.');
   return yaz(`etiket:${k}`, s, KURAL.get(k).varsayilan, aciklama, kim);
 }
 
 async function kokYoksayYaz({ liste, aciklama, kim }) {
   const l = yoksayNormal(liste);
-  if (!l) throw hata(400, 'Geçersiz ad: yalnız harf, rakam, . _ + @ - ve boşluk; en çok 64 karakter; "." ve ".." olmaz.');
-  if (l.length > YOKSAY_SINIR) throw hata(400, `Yok sayma listesi en çok ${YOKSAY_SINIR} ad olabilir (gelen: ${l.length}).`);
+  if (!l)
+    throw hata(
+      400,
+      'Geçersiz ad: yalnız harf, rakam, . _ + @ - ve boşluk; en çok 64 karakter; "." ve ".." olmaz.',
+    );
+  if (l.length > YOKSAY_SINIR)
+    throw hata(400, `Yok sayma listesi en çok ${YOKSAY_SINIR} ad olabilir (gelen: ${l.length}).`);
   // server_hub_ayarlar.deger NVARCHAR(256): sessiz kirpma olmasin.
-  if (l.join(',').length > 256) throw hata(400, `Yok sayma listesi virgüllerle birlikte en çok 256 karakter olabilir (gelen: ${l.join(',').length}).`);
-  if (T(aciklama).length < 3) throw hata(400, 'Gerekçe zorunlu: yok sayılan girdi bulgu ve etiket üretmez.');
+  if (l.join(',').length > 256)
+    throw hata(
+      400,
+      `Yok sayma listesi virgüllerle birlikte en çok 256 karakter olabilir (gelen: ${l.join(',').length}).`,
+    );
+  if (T(aciklama).length < 3)
+    throw hata(400, 'Gerekçe zorunlu: yok sayılan girdi bulgu ve etiket üretmez.');
   return yaz('liste:kok_yoksay', l.join(','), YOKSAY_VARSAYILAN_METIN, aciklama, kim);
 }
 

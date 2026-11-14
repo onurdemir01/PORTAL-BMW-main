@@ -814,6 +814,78 @@
   },
   {
     "db": "Portal",
+    "tablo": "server_hub_toplu_isler",
+    "amac": "Server Hub › Toplu Auto-Start (tur AUTOSTART) ve Toplu Restart (tur RESTART) toplu işleri: durum (plan / onay / çalışıyor / bitti / yarım kaldı), açan / onaylayan / iptal eden, sayımlar ve yürütücü kirası. Tür başına tek aktif iş (UX_shti_aktif).",
+    "alan": "Server Hub",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "Toplu Auto-Start uçları ve yürütücüsü",
+        "dosya": "server/server-hub/toplu-autostart.cjs:364",
+        "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:785)",
+        "ne_zaman": "Admin toplu iş açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
+      },
+      {
+        "tur": "portal",
+        "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
+        "dosya": "server/server-hub/toplu-restart.cjs:449",
+        "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:1048)",
+        "ne_zaman": "Admin toplu restart açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Toplu Auto-Start sekmesi (durum, liste)",
+        "dosya": "server/server-hub/toplu-autostart.cjs:179"
+      },
+      {
+        "ad": "Toplu Restart sekmesi (durum, liste)",
+        "dosya": "server/server-hub/toplu-restart.cjs:266"
+      }
+    ],
+    "saklama": "Silinmez (denetim izi; satır sayısı toplu iş başına bir).",
+    "notlar": "",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
+    "tablo": "server_hub_toplu_ogeler",
+    "amac": "Toplu işin JVM başına öğeleri: sunucu, JVM, hedef auto-start, plan ve uygulama AWX iş numaraları, sonuç satırı, doğrulandı bayrağı, düşme / hata nedeni.",
+    "alan": "Server Hub",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "Toplu Auto-Start uçları ve yürütücüsü",
+        "dosya": "server/server-hub/toplu-autostart.cjs:387",
+        "nasil": "toplu iş açılınca INSERT; plan / uygulama sonucu UPDATE (:792)",
+        "ne_zaman": "Toplu iş açılınca; yürütücü 10 sn'de bir"
+      },
+      {
+        "tur": "portal",
+        "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
+        "dosya": "server/server-hub/toplu-restart.cjs:480",
+        "nasil": "toplu iş açılınca INSERT (ek JSON: grup, uygulama, maskeli fark, önceki loaded_at / süreç başlangıcı); önizleme / restart / doğrulama taraması sonucu UPDATE (:1060)",
+        "ne_zaman": "Toplu restart açılınca; yürütücü 10 sn'de bir"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Toplu Auto-Start sekmesi ve tek JVM kilidi (/jvm-autostart, /fix 409)",
+        "dosya": "server/server-hub/toplu-autostart.cjs:287"
+      },
+      {
+        "ad": "Toplu Restart sekmesi ve JVM kilidi (auto-start uçları restart süren JVM'de 409)",
+        "dosya": "server/server-hub/toplu-restart.cjs:375"
+      }
+    ],
+    "saklama": "Silinmez (toplu iş başına en çok limit:toplu_autostart / limit:toplu_restart satır).",
+    "notlar": "",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
     "tablo": "splunk_products",
     "amac": "Splunk urun listesi (httpd, nginx, tomcat, jboss) icin dusunulmus tablo. Kurulumda doldurulur ama okunmuyor; Splunk ekrani listeyi ortam degiskeninden aliyor.",
     "alan": "Ayarlar",
@@ -2896,7 +2968,7 @@
       {
         "tur": "portal",
         "ad": "Kurulum seed",
-        "dosya": "server/db/mssql-setup.cjs:4447",
+        "dosya": "server/db/mssql-setup.cjs:4543",
         "nasil": "bossa 3 varsayilan grup INSERT",
         "ne_zaman": "Ilk kurulum"
       }
@@ -2945,7 +3017,7 @@
       {
         "tur": "portal",
         "ad": "Kurulum gocu (section -> group_id)",
-        "dosya": "server/db/mssql-setup.cjs:4463",
+        "dosya": "server/db/mssql-setup.cjs:4547",
         "nasil": "tek seferlik UPDATE (varsa)",
         "ne_zaman": "Kurulum/boot"
       }
@@ -3242,7 +3314,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub ayar gecmisi ekrani",
-        "dosya": "server/server-hub/ayarlar.cjs:236"
+        "dosya": "server/server-hub/ayarlar.cjs:254"
       }
     ],
     "saklama": "yok (sinirsiz buyur, kucuk)",

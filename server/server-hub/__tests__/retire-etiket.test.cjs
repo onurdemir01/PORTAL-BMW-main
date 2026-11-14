@@ -279,6 +279,17 @@ test('RE1 STOPPED_AUTOSTART_ON kritik; JVM_PARAM_FARKI yalniz calisan JVM + fark
     'kapali JVM parametre farki',
   );
   assert.equal(v({ jvm_arg_fark: 1, running_src: 'UNMEASURED' }).length, 0, 'olculemeyen JVM');
+  // SUREC BASLANGICI (2026-11-14, Toplu Restart kaniti): process_start_epoch JVM'e sayi olarak tasinir; bos / sayi
+  // degil -> null; kolon yoksa alan yok (restart kaniti "olculemedi" der, Date.now ile karsilastirilmaz).
+  const ps = (ek) => {
+    const d = r1Veri();
+    d.jvms = [J3(APP, 'calisan', { ...CALISAN, ...ek })];
+    return sunucu(A(d), APP).jvms.find((j) => j.name === 'calisan').processStartEpoch;
+  };
+  assert.equal(ps({ process_start_epoch: '1731571200' }), 1731571200);
+  assert.equal(ps({ process_start_epoch: null }), null);
+  assert.equal(ps({ process_start_epoch: 'x' }), null);
+  assert.equal(ps({}), undefined);
   // Filo isareti: 'reason=' (tarayici karsilastiramadi) fark sayilmaz; maskJvmArgDiff ile ayni bicim.
   const { ARG_FARK_IFADE } = require('../index.cjs');
   assert.match(

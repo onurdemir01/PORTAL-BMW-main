@@ -54,6 +54,9 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
+import TopluAutoStartTab from './TopluAutoStartTab';
+import TopluRestartTab from './TopluRestartTab';
+import { useAuth } from '@/contexts/AuthContext';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
 import RetirementAnaliziSekmesi from './RetirementAnaliziSekmesi';
@@ -1665,7 +1668,15 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 }
 
 type SekmeId =
-  'hosts' | 'findings' | 'uygulama360' | 'analiz' | 'readiness' | 'envanter' | 'kurallar';
+  | 'hosts'
+  | 'findings'
+  | 'uygulama360'
+  | 'analiz'
+  | 'readiness'
+  | 'envanter'
+  | 'kurallar'
+  | 'topluautostart'
+  | 'toplurestart';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
@@ -1673,6 +1684,13 @@ export default function ServerHubPage() {
   // 2026-11-11'de BMW Hub'a tasindi (kullanici: "Server Hub'i sadece envanterleme ve goruntuleme
   // amacli kullaniyoruz"); 2026-11-13'ten beri BMW Hub menusunde ayri sayfa (/retirement), gecis oraya.
   const navigate = useNavigate();
+  // TOPLU AUTO-START (2026-11-14): gorunurluk anahtari tab:serverhub:topluautostart (seed default_visible 0;
+  // Admin her zaman gorur). Uclar zaten yalniz Admin. AuthProvider yoksa (birim test) sekme gizli.
+  const { canSee } = useAuth();
+  const topluAutoStartGorur =
+    typeof canSee === 'function' && canSee('tab:serverhub:topluautostart');
+  // TOPLU RESTART (2026-11-14, JVM_PARAM_FARKI): ayni desen, anahtar tab:serverhub:toplurestart (default_visible 0).
+  const topluRestartGorur = typeof canSee === 'function' && canSee('tab:serverhub:toplurestart');
   const [tab, setTab] = useState<SekmeId>('hosts');
   // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
   // indirme yok). Gizli sekme yoklama yapmaz ve pencere acmaz (useSekmeGorunur).
@@ -1731,13 +1749,17 @@ export default function ServerHubPage() {
               ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx syntax ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
               : tab === 'envanter'
                 ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; otomatik planla (haftada / ayda bir) ya da elle.'
-                : tab === 'kurallar'
-                  ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
-                  : tab === 'uygulama360'
-                    ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
-                    : tab === 'analiz'
-                      ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
-                      : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
+                : tab === 'topluautostart'
+                  ? 'Taze taramada auto-start’ı uyumsuz JVM’ler (çalışıyor ama kapalı → AÇ, durmuş ama açık → KAPAT). Tek düğme önce canlı değeri salt okunur bir planla okur, onaydan sonra sunucu başına tek iş açar ve sunucuları sırayla işler.'
+                  : tab === 'toplurestart'
+                    ? 'Taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan çalışan JVM’ler. Tek düğme önce sunucuları salt okunur yeniden tarar, onaydan sonra JVM’leri tek tek restart eder ve her restart sonrası farkın kapandığını tarar. Prod sunucular OpsX’ten tek tek.'
+                    : tab === 'kurallar'
+                      ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                      : tab === 'uygulama360'
+                        ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
+                        : tab === 'analiz'
+                          ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                          : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1750,20 +1772,28 @@ export default function ServerHubPage() {
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'envanter', label: 'Uygulama Envanteri' },
               { id: 'kurallar', label: 'Kurallar & Limitler' },
+              { id: 'topluautostart', label: 'Toplu Auto-Start' },
+              { id: 'toplurestart', label: 'Toplu Restart' },
             ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => sekmeAc(t.id)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`}
-              style={{
-                background: tab === t.id ? 'var(--bg-surface)' : 'transparent',
-                color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+          )
+            .filter(
+              (t) =>
+                (t.id !== 'topluautostart' || topluAutoStartGorur) &&
+                (t.id !== 'toplurestart' || topluRestartGorur),
+            )
+            .map((t) => (
+              <button
+                key={t.id}
+                onClick={() => sekmeAc(t.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md ${tab === t.id ? 'shadow-sm' : ''}`}
+                style={{
+                  background: tab === t.id ? 'var(--bg-surface)' : 'transparent',
+                  color: tab === t.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
         </div>
       </div>
       <AnalizAcContext.Provider value={analizAc}>
@@ -1800,6 +1830,16 @@ export default function ServerHubPage() {
         {acilan.has('kurallar') && (
           <SekmeKabi id="kurallar" etkin={tab}>
             <KurallarTab />
+          </SekmeKabi>
+        )}
+        {topluAutoStartGorur && acilan.has('topluautostart') && (
+          <SekmeKabi id="topluautostart" etkin={tab}>
+            <TopluAutoStartTab />
+          </SekmeKabi>
+        )}
+        {topluRestartGorur && acilan.has('toplurestart') && (
+          <SekmeKabi id="toplurestart" etkin={tab}>
+            <TopluRestartTab />
           </SekmeKabi>
         )}
       </AnalizAcContext.Provider>
@@ -4319,13 +4359,22 @@ export function FindingsTab({
   }, [gorunur, load]);
   // Auto-start isi bitince (hangi ekrandan baslatilmis olursa olsun) liste tazelenir: sunucu dogrulanan
   // bulgunun dugmesini kaldirip "is #N ile dogrulandi" isareti tasir. Taze filo okumasi DEGIL (onbellek).
-  useEffect(
-    () =>
-      autoStartBittiDinle((e) => {
-        if (e.sonuc.deger) void load();
-      }),
-    [load],
-  );
+  // Toplu Auto-Start (2026-11-14) bir host isinde N JVM'i ayni anda yayar: olaylar 500 ms toplanir, TEK okuma.
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const birak = autoStartBittiDinle((e) => {
+      if (!e.sonuc.deger) return;
+      if (t) clearTimeout(t);
+      t = setTimeout(() => {
+        t = null;
+        void load();
+      }, 500);
+    });
+    return () => {
+      birak();
+      if (t) clearTimeout(t);
+    };
+  }, [load]);
   // useMemo: `|| []` her render'da YENI dizi uretiyordu; asagidaki dort useMemo her seferinde
   // yeniden hesaplaniyordu (react-hooks/exhaustive-deps).
   const all = useMemo(() => data?.findings || [], [data?.findings]);

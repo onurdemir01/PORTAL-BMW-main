@@ -62,8 +62,20 @@ function kurallarYaniti(ayar, a, gecmis) {
           degistiren: k ? k.updatedBy : null,
           zaman: k ? k.updatedAt : null,
           aciklama: k ? k.aciklama : '',
-          bulgu: (() => { if (olculdu) { if (n) return n.bulgu; return 0; } return null; })(),
-          sunucu: (() => { if (olculdu) { if (n) return n.sunucu.size; return 0; } return null; })(),
+          bulgu: (() => {
+            if (olculdu) {
+              if (n) return n.bulgu;
+              return 0;
+            }
+            return null;
+          })(),
+          sunucu: (() => {
+            if (olculdu) {
+              if (n) return n.sunucu.size;
+              return 0;
+            }
+            return null;
+          })(),
         };
       }),
     })),
@@ -94,6 +106,7 @@ function limitListesi(ayar) {
       aciklama: L.aciklama,
       varsayilan: L.varsayilan,
       ust: L.ust,
+      birim: L.birim || 'sunucu',
       gecerli: ayar.limitler[ad],
       degistiren: k ? k.updatedBy : null,
       zaman: k ? k.updatedAt : null,
@@ -134,7 +147,13 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
         kim: kim(req),
       });
       onbellekSil();
-      if (!r.degismedi) audit(req, { op: 'seviye_degistir', kod: String(req.params.kod), eski: r.eski, yeni: r.yeni });
+      if (!r.degismedi)
+        audit(req, {
+          op: 'seviye_degistir',
+          kod: String(req.params.kod),
+          eski: r.eski,
+          yeni: r.yeni,
+        });
       res.json({ ok: true, ...r });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -149,7 +168,8 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
         aciklama: req.body && req.body.aciklama,
         kim: kim(req),
       });
-      if (!r.degismedi) audit(req, { op: 'limit_degistir', ad: String(req.params.ad), eski: r.eski, yeni: r.yeni });
+      if (!r.degismedi)
+        audit(req, { op: 'limit_degistir', ad: String(req.params.ad), eski: r.eski, yeni: r.yeni });
       res.json({ ok: true, ...r });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -165,7 +185,13 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
         aciklama: req.body && req.body.aciklama,
         kim: kim(req),
       });
-      if (!r.degismedi) audit(req, { op: 'etiket_degistir', kural: String(req.params.kural), eski: r.eski, yeni: r.yeni });
+      if (!r.degismedi)
+        audit(req, {
+          op: 'etiket_degistir',
+          kural: String(req.params.kural),
+          eski: r.eski,
+          yeni: r.yeni,
+        });
       res.json({ ok: true, ...r });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
