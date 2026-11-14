@@ -23,8 +23,10 @@ const SIR_ANAHTARI =
 // Adi masum ama DEGERI sir tasiyan degisken.
 const SIR_DEGERI = [
   /\b(pwd|password|parola|sifre)\s*=\s*[^;\s"']+/i, // baglanti dizgisi: ...;PWD=...
+  /(?:^|[\s;|&"'])(?:export\s+)?[A-Za-z0-9_]*(?:password|passwd|pwd|parola|sifre|secret|token|api[_-]?key)[A-Za-z0-9_]*\s*=\s*[^\s"';]+/i, // export PGPASSWORD=..., MY_TOKEN=...
   /:\/\/[^/\s:@]+:[^@\s/]+@/, // kullanici:parola@host
   /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/i,
+  /\bBasic\s+[A-Za-z0-9+/]{8,}={0,2}\b/i, // Basic <base64>
   /[?&](sig|signature|token|access_token|api[_-]?key|code)=[^&\s"']{8,}/i, // imzali adres
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /--(password|passwd|pwd|token|secret|api-key)[= ]\S+/i, // komut satiri bayragi
@@ -73,11 +75,13 @@ function yamldanAyikla(metin) {
   const kalan = [];
   for (const b of bloklar) {
     const govde = b.satirlar.join('\n');
-    // Ic ice anahtar adlari: girintili `ad:` satirlari.
+    // Ic ice anahtar adlari: girintili `ad:` veya akis bicimi `{ ad: ... }` anahtarlari.
     const icAnahtar = b.satirlar
       .slice(1)
       .some((s) =>
-        SIR_ANAHTARI.test((/^[ \t]+(?:-[ \t]+)?["']?([\w.-]+)["']?[ \t]*:/.exec(s) || [])[1] || ''),
+        [...s.matchAll(/(?:^|[{\[, \t])["']?([A-Za-z_][\w.-]*)["']?[ \t]*:/g)].some((m) =>
+          SIR_ANAHTARI.test(m[1]),
+        ),
       );
     if (b.anahtar) {
       if (SIR_ANAHTARI.test(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);

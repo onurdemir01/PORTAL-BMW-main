@@ -364,7 +364,8 @@ function mountIntranet(router, deps) {
     try {
       res.json(await loadIntranet(String(req.query.fresh || '') === '1', deps));
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[IntranetSPA] rapor hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Intranet SPA raporu geçici olarak alınamadı.' });
     }
   });
 
@@ -384,7 +385,8 @@ function mountIntranet(router, deps) {
       onbellekSil();
       res.json({ ok: true, inUse, inUseBy: by, inUseAt: new Date().toISOString(), note });
     } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
+      console.error('[IntranetSPA] beyan yazma hatasi:', err.message);
+      res.status(500).json({ ok: false, message: 'Beyan güncellenemedi.' });
     }
   });
 }

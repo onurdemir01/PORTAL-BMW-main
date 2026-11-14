@@ -244,3 +244,30 @@ test('DG8 runner ham extra_vars`i arindirmadan yanita koymaz', () => {
     `extra_vars okumasi az bulundu (${okuyan.length}) - desen bayatlamis olabilir`,
   );
 });
+
+test('DG9 YAML akis nesnesi liste ogesi ({ password: ... }) ust blogu cikarir', () => {
+  const { awxDegiskenleriniAyikla } = require('../degisken-gizle.cjs');
+  const ham = [
+    'ortam: qa',
+    'hesaplar:',
+    "  - { user: 'app', password: 'GizliDeger99' }",
+    'surum: 2',
+  ].join('\n');
+  const r = awxDegiskenleriniAyikla(ham);
+  assert.deepEqual(r.gizlenen, ['hesaplar']);
+  assert.equal(r.metin, 'ortam: qa\nsurum: 2');
+  assert.ok(!r.metin.includes('GizliDeger99'));
+});
+
+test('DG10 Basic base64 ve kabuk/export env atamasi yakalanir', () => {
+  const { awxDegiskenleriniAyikla } = require('../degisken-gizle.cjs');
+  const ham = [
+    'ortam: test',
+    'yetki_basligi: "Basic dXNlcjpwYXNzd29yZDEyMw=="',
+    'komut: "export PGPASSWORD=supersecret && psql"',
+    'acik_alan: "merhaba"',
+  ].join('\n');
+  const r = awxDegiskenleriniAyikla(ham);
+  assert.deepEqual(r.gizlenen, ['yetki_basligi', 'komut']);
+  assert.equal(r.metin, 'ortam: test\nacik_alan: "merhaba"');
+});

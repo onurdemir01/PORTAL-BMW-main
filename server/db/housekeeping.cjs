@@ -354,7 +354,7 @@ async function runHousekeeping() {
     );
   } catch (e) {
     state.status = 'error';
-    state.lastError = e.message;
+    state.lastError = 'Veritabanı bakım çalışması tamamlanamadı.';
     console.error('[DBHousekeeping] hata:', e.message);
   } finally {
     state.finishedAt = new Date().toISOString();
@@ -445,7 +445,8 @@ function initDbHousekeeping(app) {
       state.lastUsage = usage;
       res.json({ ok: true, usage, config: configForClient(), state: stateForClient() });
     } catch (e) {
-      res.status(500).json({ ok: false, message: e.message, state: stateForClient() });
+      console.error('[DBHousekeeping] doluluk yaniti hatasi:', e.message);
+      res.status(500).json({ ok: false, message: 'Veritabanı doluluk bilgisi okunamadı.', state: stateForClient() });
     }
   });
 

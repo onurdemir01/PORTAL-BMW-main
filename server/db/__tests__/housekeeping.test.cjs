@@ -131,3 +131,9 @@ test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
   const panel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'admin', 'tabs', 'DbUsagePanel.tsx'), 'utf8');
   assert.doesNotMatch(panel, /webhookUrl/);
 });
+
+test('HK10 DB doluluk rota ve durum hatalarinda ham e.message istemciye donmez', () => {
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'housekeeping.cjs'), 'utf8');
+  assert.doesNotMatch(kaynak, /state\.lastError\s*=\s*e\.message/);
+  assert.doesNotMatch(kaynak, /res\.status\(500\)\.json\(\{[^}]*message:\s*e\.message/);
+});

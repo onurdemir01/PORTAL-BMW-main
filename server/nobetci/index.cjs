@@ -319,7 +319,7 @@ function initNobetci(app) {
       return res.json({ ok: true, source: "api", records, month: month || null });
     } catch (err) {
       console.warn("[Nobetci] list hatasi:", err.message);
-      return res.status(503).json({ ok: false, error: err.message });
+      return res.status(503).json({ ok: false, error: "Nöbet listesi geçici olarak alınamadı." });
     }
   });
 

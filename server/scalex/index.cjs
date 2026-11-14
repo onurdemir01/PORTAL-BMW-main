@@ -777,7 +777,8 @@ function asyncRoute(fn) {
     fn(req, res).catch((err) => {
       const status = err.status || 500;
       if (status >= 500) console.error('[ScaleX]', err);
-      res.status(status).json({ ok: false, message: err.message, code: err.code });
+      const safeMsg = status === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
+      res.status(status).json({ ok: false, message: safeMsg, code: err.code });
     });
 }
 
@@ -803,9 +804,11 @@ function eylemRoute(fn) {
       const asil = err.status || 500;
       const status = asil === 501 ? 409 : [502, 503, 504].includes(asil) ? 424 : asil;
       if (asil >= 500) console.error('[ScaleX]', err);
+      const safeMsg =
+        asil === 500 && !err.code ? 'Beklenmeyen bir sunucu hatası oluştu.' : err.message;
       res.status(status).json({
         ok: false,
-        message: err.message,
+        message: safeMsg,
         code: err.code || (asil === 501 ? 'scalex_not_configured' : status === 424 ? 'awx_unreachable' : undefined),
         ...(status !== asil ? { upstreamStatus: asil } : {}),
       });
