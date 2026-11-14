@@ -19,7 +19,7 @@ test('RR1 sorunsuz sunucu OK; surec sayisi zaten tasinmiyor (fark sayilmaz)', ()
 test('RR2 duzeltilen bilgi; duzeltmeye ragmen kapali kritik; fazladan calisan JVM kritik', () => {
   const ilk = ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appB|x', 'JVM|JBOSS8|appC|x'];
   const son = ['BOOT|b2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appB|x', 'JVM|JBOSS8|appC|x'];
-  const d = sunucuDegerlendir(ONCE, { once_var: true, son_olculdu: true, goruntu: ilk, son_goruntu: son });
+  const d = sunucuDegerlendir(ONCE, { once_var: true, son_olculdu: true, goruntu: ilk, son_goruntu: son, islemler: ['SONUC|baslat|NGINX||OK|ok'] });
   const by = Object.fromEntries(d.bulgu.map((b) => [b.servis, b.durum]));
   assert.equal(by.Nginx, 'DUZELTILDI');
   assert.equal(by['JBoss 8 JVM — appA'], 'DOWN');
@@ -58,4 +58,58 @@ test('RR5 yalniz once kaydi varsa "Reboot oncesi kayit" raporu (alinamayan kirmi
   assert.match(h, /Reboot öncesi kayıt/);
   assert.match(h, /1 \/ 2 sunucunun reboot öncesi görüntüsü kaydedildi/);
   assert.match(h, /Görüntü alınamadı/);
+});
+
+test('RR6 durustluk: "otomatik kapatildi" YALNIZ SONUC|durdur|..|OK ile; komutsuz kalkan/kapanan "kendiliginden"', () => {
+  // Uretim 2026-11-14: rapor betigin hic durdurmadigi urunler icin "otomatik kapatildi" yaziyordu.
+  const once = ['BOOT|b1||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
+  const ilk = ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|IHS||', 'JVM|JBOSS8|appA|x', 'JVM|JBOSS8|yeni|x', 'JVM|JBOSS8|yeni2|x'];
+  const son = ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
+  const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: ilk, son_goruntu: son, islemler: ['SONUC|durdur|JBOSS8|yeni|OK|stop', 'SONUC|durdur|JBOSS8|yeni2|FAIL|x'] });
+  const by = Object.fromEntries(d.bulgu.map((b) => [b.servis, b.durum]));
+  assert.equal(by['JBoss 8 JVM — yeni'], 'KAPATILDI');
+  assert.equal(by['JBoss 8 JVM — yeni2'], 'KOMUT_HATALI_KAPANDI', 'FAIL donen durdurma "otomatik kapatildi" ya da "komut calistirmadi" sayildi');
+  assert.equal(by['IBM HTTP Server (IHS)'], 'KENDILIGINDEN_KAPANDI', 'betik urunu hic durdurmaz; "otomatik kapatildi" yazilamaz');
+  const ac = sunucuDegerlendir(once, { son_olculdu: true, goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'], son_goruntu: son, islemler: ['SONUC|baslat|JBOSS8|appA|SKIP|kendiliginden kalkti'] });
+  assert.equal(ac.bulgu.find((b) => b.servis === 'JBoss 8 JVM — appA')?.durum, 'KENDILIGINDEN_ACILDI');
+});
+
+test('RR7 once goruntusu bos -> UYARI (ONCE_BOS); JVM satiri urunun calistigini kanitlar', () => {
+  const bos = sunucuDegerlendir(['BOOT|b1||'], { son_olculdu: true, goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'], son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'] });
+  assert.equal(bos.sonuc, 'WARNING');
+  assert.ok(bos.bulgu.some((b) => b.durum === 'ONCE_BOS'));
+  assert.ok(bos.bulgu.some((b) => b.durum === 'NEW_URUN'), 'once calismayan ama simdi calisan urun kontrol uyarisi degil');
+  const jvmli = sunucuDegerlendir(['BOOT|b1||', 'JVM|JBOSS8|appA|x'], { son_olculdu: true, goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'], son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'] });
+  assert.equal(jvmli.sonuc, 'OK', `JVM'i calisan urun "yeni" sayildi: ${JSON.stringify(jvmli.bulgu)}`);
+  const h = raporHtml({ id: 4, hosts: ['A'], once: { sonuc: { sunucular: { A: { goruntu_ok: true, goruntu: ['BOOT|b1||'] } } } }, sonra: {} });
+  assert.match(h, /izlenen ürün yok — uygulamalar kapalıyken mi alındı\?/);
+});
+
+test('RR8 yalniz SONUC satirinda gorulen (durulma goruntusunde acilip JVM planiyla kapatilan) JVM raporda gorunur', () => {
+  // Inceleme 2026-11-14 (B2): app2 ilk ve son goruntude yok, yalniz durul.psv'de vardi; JVM plani durdurdu.
+  const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'];
+  const ilk = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'];
+  const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: ilk, son_goruntu: ilk, islemler: ['SONUC|durdur|JBOSS8|app2|OK|stop'] });
+  const b = d.bulgu.find((x) => x.servis === 'JBoss 8 JVM — app2');
+  assert.equal(b?.durum, 'KAPATILDI', JSON.stringify(d.bulgu));
+  assert.match(b.aciklama, /durulma beklemesinde görüldü/);
+});
+
+test('RR9 komut FAIL donup oge yine de kalktiysa "komut calistirmadi" denmez (KOMUT_HATALI_ACILDI)', () => {
+  const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'];
+  const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'], son_goruntu: ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'], islemler: ['SONUC|baslat|JBOSS8|app1|FAIL|cli zaman asimi'] });
+  const b = d.bulgu.find((x) => x.servis === 'JBoss 8 JVM — app1');
+  assert.equal(b?.durum, 'KOMUT_HATALI_ACILDI');
+  assert.doesNotMatch(b.aciklama, /çalıştırmadan/);
+});
+
+test('RR10 eski surum once goruntusu (SURUM yok) JBoss bazinda karsilastirilmaz: ESKI_SURUM uyarisi, sahte DOWN/NEW yok', () => {
+  const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'URUN|NGINX||', 'JVM|JBOSS7|app1|jboss_home=/vhosting8/jboss/AppServer'];
+  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|NGINX||', 'JVM|JBOSS8|app1|jboss_home=/vhosting8/jboss/AppServer'];
+  const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: son, son_goruntu: son });
+  assert.deepEqual(d.bulgu.map((b) => b.durum), ['ESKI_SURUM']);
+  assert.equal(d.sonuc, 'WARNING');
+  const eskiSon = ['BOOT|b2||', ...once.slice(1)];
+  const ayni = sunucuDegerlendir(once, { son_olculdu: true, goruntu: eskiSon, son_goruntu: eskiSon });
+  assert.equal(ayni.sonuc, 'OK', 'iki taraf da eski surumken ESKI_SURUM denildi');
 });

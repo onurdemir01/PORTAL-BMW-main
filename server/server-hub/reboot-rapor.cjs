@@ -15,20 +15,46 @@
 //   * Duzeltilen (kapaliydi acildi / fazladan kapatildi), once calismayan yeni urun -> Bilgi
 //   * boot_id degismemis -> Uyari (reboot dogrulanamadi)
 //   * Olculemedi (sonuc gelmedi / son goruntu alinamadi) -> Kritik ("sorunsuz" SAYILMAZ)
+// DURUSTLUK (2026-11-14): "Otomatik kapatildi" YALNIZ o oge icin SONUC|durdur|...|OK varsa yazilir
+// (betik URUNU hic durdurmaz; JVM'i de ancak plan durdur dediyse). Komut yoksa "kendiliginden kapandi".
+// "Otomatik acildi" yalniz SONUC|baslat|...|OK ile; komutsuz kalkan oge "kendiliginden acildi". Komut FAIL donup
+// oge yine de kalktiysa / kapandiysa ayri sinif (KOMUT_HATALI_*): "komut calistirmadi" demek yanlis olurdu.
+// Yalniz SONUC satirinda gorunen oge (durulma goruntusunde gorulup kapatilan JVM) de listelenir.
+// Eski surum once goruntusu (SURUM satiri yok) -> JBoss satirlari karsilastirilmaz, Uyari (ESKI_SURUM).
+// Once goruntusu bos (BOOT var, izlenen satir yok) -> Uyari (ONCE_BOS); once calismayan ama simdi
+// calisan, kurala gore dokunulmayan oge -> Uyari (NEW_URUN, kontrol gerekli). Reboot oncesi urun
+// kumesi betikle ayni: URUN satirlari + JVM'i gorulen urunler.
 'use strict';
 
 const URUN_ADI = { NGINX: 'Nginx', RHA: 'Apache HTTP Server', IHS: 'IBM HTTP Server (IHS)', CTG: 'CTG', JBOSS7: 'JBoss 7', JBOSS8: 'JBoss 8', WAS: 'WebSphere' };
 const JVM_ADI = { JBOSS7: 'JBoss 7 JVM', JBOSS8: 'JBoss 8 JVM', WAS: 'WebSphere JVM' };
 
-function goruntu(satirlar) {
+const JB_SATIR = /^(URUN|JVM)\|JBOSS[78]\|/;
+function goruntu(satirlar, haricJb = false) {
   const g = { boot: null, urun: new Set(), jvm: new Set() };
   for (const l of Array.isArray(satirlar) ? satirlar : []) {
+    if (haricJb && JB_SATIR.test(String(l))) continue;
     const p = String(l).split('|');
     if (p[0] === 'BOOT') g.boot = p[1] || null;
     else if (p[0] === 'URUN' && p[1]) g.urun.add(p[1]);
     else if (p[0] === 'JVM' && p[1] && p[2]) g.jvm.add(`${p[1]}|${p[2]}`);
   }
   return g;
+}
+/** Reboot oncesi urun kumesi (reboot_duzelt.sh once_norm ile ayni): URUN satirlari + JVM'i gorulen urunler. */
+function onceGoruntu(satirlar, haricJb = false) {
+  const g = goruntu(satirlar, haricJb);
+  for (const k of g.jvm) g.urun.add(k.split('|')[0]);
+  return g;
+}
+/** SONUC satirlarindan "islem|urun|ad" -> sonuc (OK/FAIL/SKIP). */
+function islemSonuclari(satirlar) {
+  const m = new Map();
+  for (const l of Array.isArray(satirlar) ? satirlar : []) {
+    const q = String(l).split('|');
+    if (q[0] === 'SONUC') m.set(`${q[1]}|${q[2]}|${q[3] || ''}`, q[4]);
+  }
+  return m;
 }
 const servisAdi = (anahtar) => {
   const [u, ad] = anahtar.split('|');
@@ -39,37 +65,65 @@ const servisAdi = (anahtar) => {
 function sunucuDegerlendir(onceSat, s) {
   const bulgu = [];
   if (!s || s.sonuc_yok) return { sonuc: 'PROBLEM', bulgu: [{ durum: 'OLCULEMEDI', servis: 'Sistem kontrolü', aciklama: 'Sunucudan sonuç gelmedi (ulaşılamadı ya da kopya doğrulanamadı).', onceSonra: '—' }] };
-  const o = goruntu(onceSat);
-  const ilk = goruntu(s.goruntu);
-  const son = s.son_olculdu ? goruntu(s.son_goruntu) : null;
+  // Eski surum once goruntusu (SURUM yok + JBoss) yeni goruntuyle JBoss bazinda karsilastirilmaz (reboot-check.cjs).
+  const { nesilKarsilastirilamaz } = require('./reboot-check.cjs');
+  const haric = nesilKarsilastirilamaz(onceSat, s.son_olculdu ? s.son_goruntu : s.goruntu);
+  const o = onceGoruntu(onceSat, haric);
+  const ilk = goruntu(s.goruntu, haric);
+  const son = s.son_olculdu ? goruntu(s.son_goruntu, haric) : null;
+  const isl = islemSonuclari(s.islemler);
+  const onceHam = goruntu(onceSat);
+  if (o.boot && onceHam.urun.size === 0 && onceHam.jvm.size === 0)
+    bulgu.push({ durum: 'ONCE_BOS', servis: 'Sistem kontrolü', aciklama: 'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; hiçbir şey açılıp kapatılmadı. Uygulamalar zaten kapalıyken mi alındı? Elle kontrol edin.', onceSonra: '—' });
+  if (haric)
+    bulgu.push({ durum: 'ESKI_SURUM', servis: 'JBoss', aciklama: 'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss nesil kuralı değiştiği için JBoss ürün/JVM\'leri karşılaştırılmadı ve dokunulmadı. Elle kontrol edin.', onceSonra: '—' });
   if (o.boot && ilk.boot && o.boot !== 'bilinmiyor' && o.boot === ilk.boot)
     bulgu.push({ durum: 'REBOOT_NOT_CONFIRMED', servis: 'Sistem kontrolü', aciklama: 'Sunucunun boot kimliği değişmemiş; reboot doğrulanamadı.', onceSonra: '—' });
   if (!son) bulgu.push({ durum: 'OLCULEMEDI', servis: 'Sistem kontrolü', aciklama: 'Düzeltmeden sonraki son görüntü alınamadı; sorunsuz sayılmadı.', onceSonra: '—' });
   else {
-    const anahtarlar = new Set([...o.urun, ...ilk.urun, ...son.urun, ...[...o.jvm, ...ilk.jvm, ...son.jvm]]);
+    // Anahtarlar: once / ilk / son goruntu + SONUC satirlari. Yalniz durulma goruntusunde gorunup JVM planiyla
+    // kapatilan oge (ilk ve son goruntude yok) yalniz SONUC satirindan bilinir; atlanirsa yapilan islem gorunmezdi.
+    const islemAnahtar = [];
+    for (const l of Array.isArray(s.islemler) ? s.islemler : []) {
+      const q = String(l).split('|');
+      if (q[0] !== 'SONUC' || !URUN_ADI[q[2]]) continue;
+      if (haric && /^JBOSS[78]$/.test(q[2])) continue;
+      islemAnahtar.push(q[3] ? `${q[2]}|${q[3]}` : q[2]);
+    }
+    const anahtarlar = new Set([...o.urun, ...ilk.urun, ...son.urun, ...[...o.jvm, ...ilk.jvm, ...son.jvm], ...islemAnahtar]);
     for (const k of [...anahtarlar].sort()) {
       const jvm = k.includes('|');
       const var_ = (g) => (jvm ? g.jvm.has(k) : g.urun.has(k));
       const urun = k.split('|')[0];
       const once = var_(o); const ilkV = var_(ilk); const sonV = var_(son);
+      const ad = jvm ? k.split('|')[1] : '';
+      // komut: OK | FAIL | SKIP | undefined (hic kosmadi)
+      const komut = (islem) => isl.get(`${islem}|${urun}|${ad}`);
       if (once && sonV && ilkV) continue;
       if (once && !sonV) bulgu.push({ durum: 'DOWN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışıyordu; otomatik düzeltmeye rağmen çalışmıyor.', onceSonra: 'çalışıyordu → çalışmıyor' });
-      else if (once && !ilkV && sonV) bulgu.push({ durum: 'DUZELTILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası kapalıydı; otomatik açıldı.', onceSonra: 'kapalıydı → çalışıyor' });
+      else if (once && !ilkV && sonV && komut('baslat') === 'OK') bulgu.push({ durum: 'DUZELTILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası kapalıydı; otomatik açıldı.', onceSonra: 'kapalıydı → çalışıyor' });
+      else if (once && !ilkV && sonV && komut('baslat') === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_ACILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası kapalıydı; Portal açma komutu BAŞARISIZ döndü, son kontrolde çalışıyor.', onceSonra: 'kapalıydı → çalışıyor' });
+      else if (once && !ilkV && sonV) bulgu.push({ durum: 'KENDILIGINDEN_ACILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası ilk görüntüde kapalıydı; Portal açma komutu çalıştırmadan kalktı (auto-start).', onceSonra: 'kapalıydı → çalışıyor' });
       else if (!once && jvm && !o.urun.has(urun) && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Ürün reboot öncesi çalışmıyordu; dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
       else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu, şimdi çalışıyor; dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
       else if (!once && jvm && sonV) bulgu.push({ durum: 'NEW_KALAN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; kapatılması gerekirken hâlâ çalışıyor.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && ilkV && !sonV) bulgu.push({ durum: 'KAPATILDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; reboot sonrası açılmıştı, otomatik kapatıldı.', onceSonra: 'yoktu → kapatıldı' });
+      else if (!once && !sonV && komut('durdur') === 'OK') bulgu.push({ durum: 'KAPATILDI', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, otomatik kapatıldı.`, onceSonra: 'yoktu → kapatıldı' });
+      else if (!once && !sonV && komut('durdur') === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; Portal kapatma komutu BAŞARISIZ döndü, son kontrolde çalışmıyor.', onceSonra: 'yoktu → kapandı' });
+      else if (!once && (ilkV || komut('durdur')) && !sonV) bulgu.push({ durum: 'KENDILIGINDEN_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; reboot sonrası görülmüştü, son kontrolde çalışmıyor. Portal kapatma komutu çalıştırmadı.', onceSonra: 'yoktu → kapandı' });
     }
   }
   const kritik = bulgu.some((b) => ['DOWN', 'NEW_KALAN', 'OLCULEMEDI'].includes(b.durum));
-  const sonuc = kritik ? 'PROBLEM' : bulgu.some((b) => b.durum === 'REBOOT_NOT_CONFIRMED') ? 'WARNING' : bulgu.length ? 'INFO' : 'OK';
+  const sonuc = kritik ? 'PROBLEM' : bulgu.some((b) => DURUM[b.durum]?.[1] === 'warning') ? 'WARNING' : bulgu.length ? 'INFO' : 'OK';
   return { sonuc, bulgu };
 }
 
 const DURUM = {
   DOWN: ['Çalışmıyor (DOWN)', 'problem'], NEW_KALAN: ['Fazladan çalışıyor (NEW)', 'problem'], OLCULEMEDI: ['Ölçülemedi', 'problem'],
-  REBOOT_NOT_CONFIRMED: ['Reboot doğrulanamadı', 'warning'],
-  DUZELTILDI: ['Otomatik açıldı', 'info'], KAPATILDI: ['Otomatik kapatıldı', 'info'], NEW_URUN: ['Yeni süreç (NEW)', 'info'],
+  REBOOT_NOT_CONFIRMED: ['Reboot doğrulanamadı', 'warning'], ONCE_BOS: ['Önce görüntüsü boş', 'warning'], NEW_URUN: ['Yeni süreç (NEW) — kontrol gerekli', 'warning'],
+  DUZELTILDI: ['Otomatik açıldı', 'info'], KAPATILDI: ['Otomatik kapatıldı', 'info'],
+  KENDILIGINDEN_ACILDI: ['Kendiliğinden açıldı', 'info'], KENDILIGINDEN_KAPANDI: ['Kendiliğinden kapandı', 'info'],
+  KOMUT_HATALI_ACILDI: ['Açma komutu başarısız, sonra kalktı', 'info'], KOMUT_HATALI_KAPANDI: ['Kapatma komutu başarısız, sonra kapandı', 'info'],
+  ESKI_SURUM: ['JBoss karşılaştırılmadı (eski görüntü)', 'warning'],
 };
 const RENK = { problem: ['#fff0f0', '#a12631'], warning: ['#fff4df', '#805300'], info: ['#edf4ff', '#17549f'], ok: ['#eaf6ee', '#20633f'] };
 const SIRA = { PROBLEM: 0, WARNING: 1, INFO: 2, OK: 3 };
@@ -110,7 +164,9 @@ function raporHtml(k) {
     for (const h of hostlar) {
       const g = goruntu(onceS[h]?.goruntu);
       const ok = alinan.includes(h);
-      p.push(`<tr><td class='host'>${e(kisaHost(h))}</td><td>${ok ? e([...g.urun].map((u) => URUN_ADI[u] || u).join(', ') || 'izlenen ürün yok') : pill('problem', 'Görüntü alınamadı')}</td><td>${ok ? g.jvm.size : '—'}</td></tr>`);
+      const bos = ok && g.urun.size === 0 && g.jvm.size === 0;
+      const urunMetni = bos ? pill('warning', 'izlenen ürün yok — uygulamalar kapalıyken mi alındı?') : e([...onceGoruntu(onceS[h]?.goruntu).urun].map((u) => URUN_ADI[u] || u).join(', '));
+      p.push(`<tr><td class='host'>${e(kisaHost(h))}</td><td>${ok ? urunMetni : pill('problem', 'Görüntü alınamadı')}</td><td>${ok ? g.jvm.size : '—'}</td></tr>`);
     }
     p.push('</table>');
   } else {

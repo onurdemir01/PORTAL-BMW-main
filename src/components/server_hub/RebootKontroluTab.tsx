@@ -16,7 +16,15 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { DURUM, bilgiAyristir, goruntuAyristir, islemAyristir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, nesilKarsilastirilamaz, onceBos, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+
+// 2026-11-14 (ilk gerçek koşu): önce görüntüsü boş sunucu yeşil gösteriliyordu ve sonra "Sorunsuz" çıkıyordu.
+const ONCE_BOS_METNI = 'Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda hiçbir şeyi açıp kapatmaz.';
+/** Kaydın önce görüntüsü boş (BOOT var, izlenen satır yok) sunucuları. */
+function bosOnceSunuculari(k: RcKayit): string[] {
+  const s = k.once.sonuc?.sunucular || {};
+  return k.hosts.filter((h) => !!s[h]?.goruntu_ok && onceBos(goruntuAyristir(s[h]?.goruntu)));
+}
 
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const TON: Record<string, { renk: string; zemin: string }> = {
@@ -83,6 +91,7 @@ function sunucuRozeti(d: RcDegerlendirme | undefined) {
   if (!d) return <Rozet ton="muted">—</Rozet>;
   if (d.durum === 'sorunsuz') return <Rozet ton="ok">Sorunsuz</Rozet>;
   if (d.durum === 'sorunlu') return <Rozet ton="danger">{d.kalan} fark kaldı</Rozet>;
+  if (d.durum === 'kontrol') return <Rozet ton="warning">Kontrol gerekli</Rozet>;
   return <Rozet ton="warning">Ölçülemedi</Rozet>;
 }
 
@@ -107,8 +116,13 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
   const ig = goruntuAyristir(r?.goruntu);
   const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
-  const tablo = urunTablosu(og, ig, sg, islem);
+  // Eski sürüm önce görüntüsünde JBoss karşılaştırılmaz (nedeni d.neden'de yazılı).
+  const jbHaric = nesilKarsilastirilamaz(once, r?.son_olculdu ? r?.son_goruntu : r?.goruntu) ? new Set(['JBOSS7', 'JBOSS8']) : new Set<string>();
+  const tablo = urunTablosu(og, ig, sg, islem, jbHaric);
   const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
+  const uyari = d?.neden || [];
+  // Boş önce / eski sürüm zaten uyarı satırında yazılıysa plan notlarında tekrar edilmez.
+  const neden = nedenListesi(r?.plan, uyari.length ? ['BOS', 'ESKI'] : []);
   const reboot = rebootOldu(og, ig);
   return (
     <div className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -117,7 +131,7 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
         {sunucuRozeti(d)}
         {reboot === false && <Rozet ton="warning">reboot olmamış görünüyor</Rozet>}
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {islem.filter((x) => x.sonuc !== 'SKIP').length} işlem{d?.hatali ? ` (${d.hatali} başarısız)` : ''}{d?.sebep ? ` · ${d.sebep}` : ''}
+          {islem.filter((x) => x.sonuc !== 'SKIP').length} işlem{d?.hatali ? ` (${d.hatali} başarısız)` : ''}{d?.sebep && d.durum !== 'kontrol' ? ` · ${d.sebep}` : ''}
         </span>
         <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{acik ? '▴' : '▾'}</span>
       </button>
@@ -129,7 +143,26 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
             </div>
           )}
           {hata.map((b, i) => <div key={i} style={{ color: 'var(--status-danger)' }}>{b.mesaj}</div>)}
+          {uyari.map((x, i) => (
+            <div key={`k${i}`} className="flex items-start gap-1" style={{ color: 'var(--status-warning)' }}>
+              <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" /> <span>{x}</span>
+            </div>
+          ))}
           {!r?.son_olculdu && <div style={{ color: 'var(--status-warning)' }}>Son durum ölçülemedi — sorunsuz sayılmadı.</div>}
+          {r?.durulma === 'timeout' && (
+            <div style={{ color: 'var(--text-muted)' }}>JVM planından önce süreç listesi beklenen sürede durulmadı; plan son görüntüyle yapıldı.</div>
+          )}
+          {r?.durulma === 'error' && (
+            <div style={{ color: 'var(--status-warning)' }}>Durulma beklemesinde süreç listesi hiç okunamadı; JVM planı çalışmadı — JVM'ler açılıp kapatılmadı.</div>
+          )}
+          {neden.length > 0 && (
+            <div className="rounded border px-2 py-1" style={{ borderColor: 'var(--border-subtle)' }}>
+              <div className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>Plan notları — neden dokunulmadı / nasıl sayıldı</div>
+              <ul className="list-disc pl-4 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                {neden.map((x, i) => <li key={i}>{x}</li>)}
+              </ul>
+            </div>
+          )}
           {tablo.length === 0 ? <div style={{ color: 'var(--text-muted)' }}>Bu sunucuda izlenen ürün (Nginx, Apache, IHS, CTG, JBoss, WAS) yok.</div> : (
             <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
               {tablo.map((u) => (
@@ -139,6 +172,7 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
                     <span className="font-semibold w-36">{u.ad}</span>
                     <span style={{ color: u.durum === 'ok' ? 'var(--text-secondary)' : DURUM_RENK[u.durum] }}>{u.metin}</span>
                     <IslemNotu x={u.islem} />
+                    {u.onceCikarim && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>(önce görüntüsünde ürün satırı yoktu — JVM'inden çalışıyor sayıldı)</span>}
                   </div>
                   {(u.jvmAyni > 0 || u.jvmDegisim.length > 0) && (
                     <div className="pl-[10.5rem] mt-0.5 space-y-0.5">
@@ -167,7 +201,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
   const onceS = k.once.sonuc?.sunucular || {};
   const sonraS = k.sonra.sonuc?.sunucular || {};
   const deg = k.ozet?.sonra?.sunucu || {};
-  const sonraHazir = ['once_hazir', 'tamam', 'sorunlu', 'sonra_hata'].includes(k.durum);
+  const sonraHazir = SONRA_ACIK.includes(k.durum);
   const sonraHosts = Object.keys(deg).length ? Object.keys(deg) : [];
   return (
     <div className="space-y-4">
@@ -197,12 +231,14 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
             const g = goruntuAyristir(r?.goruntu);
             const oz = onceOzeti(g);
             const alindi = !!r?.goruntu_ok && g.bicimTamam;
+            const bos = alindi && onceBos(g);
             return (
-              <details key={h} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)' }}>
+              <details key={h} open={bos || undefined} className="rounded-lg border px-3 py-2" style={{ borderColor: bos ? 'var(--status-warning)' : 'var(--border-subtle)' }}>
                 <summary className="cursor-pointer flex items-center gap-2 text-sm">
                   <span className="font-mono font-semibold">{h}</span>
                   {k.durum === 'once_kosuyor' ? <Rozet ton="info"><span className="inline-flex items-center gap-1"><Doner /> alınıyor</span></Rozet>
-                    : alindi ? <Rozet ton="ok">{oz.length ? `${oz.length} ürün kaydedildi` : 'izlenen ürün yok'}</Rozet>
+                    : bos ? <Rozet ton="warning">izlenen ürün yok</Rozet>
+                    : alindi ? <Rozet ton="ok">{`${oz.length} ürün kaydedildi`}</Rozet>
                       : r?.goruntu_ok ? (
                         // BOOT satiri yok = gorutuyu ESKI playbook (patch-snapshot.sh) aldi. Yeni kayitta
                         // gorunuyorsa AWX projesindeki reboot_check.yml guncel degildir (2026-10-09, job 3391026).
@@ -212,9 +248,18 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
                       )
                         : <Rozet ton="danger">alınamadı</Rozet>}
                 </summary>
-                {alindi && oz.length > 0 ? (
+                {bos ? (
+                  <div className="mt-1 flex items-start gap-1 text-[12px]" style={{ color: 'var(--status-warning)' }}>
+                    <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-0.5 shrink-0" /> <span>{ONCE_BOS_METNI}</span>
+                  </div>
+                ) : alindi && oz.length > 0 ? (
                   <ul className="mt-1 text-[12px] space-y-0.5">
-                    {oz.map((o) => <li key={o.urun}>{o.ad}{o.jvm !== null ? <span style={{ color: 'var(--text-muted)' }}> · {o.jvm} JVM</span> : null}</li>)}
+                    {oz.map((o) => (
+                      <li key={o.urun}>
+                        {o.ad}{o.jvm !== null ? <span style={{ color: 'var(--text-muted)' }}> · {o.jvm} JVM</span> : null}
+                        {o.urunSatiriYok && <span style={{ color: 'var(--status-warning)' }}> · ürün satırı yok (JVM'inden çalışıyor sayılır)</span>}
+                      </li>
+                    ))}
                   </ul>
                 ) : r?.goruntu_hata ? <div className="mt-1 text-[11px]" style={{ color: 'var(--status-danger)' }}>{r.goruntu_hata}</div> : null}
               </details>
@@ -226,7 +271,13 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
       <section className="space-y-1.5">
         <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>
           2 · Reboot sonrası kontrol ve düzeltme {k.sonra.at ? `(${fmtDateTime(k.sonra.at)})` : ''}
-          {k.ozet?.sonra && <span className="ml-2" style={{ color: k.ozet.sonra.sorunsuz === k.ozet.sonra.toplam ? 'var(--status-success)' : 'var(--status-danger)' }}>{k.ozet.sonra.sorunsuz} / {k.ozet.sonra.toplam} sunucu sorunsuz</span>}
+          {k.ozet?.sonra && (
+            <span className="ml-2" style={{ color: k.ozet.sonra.sorunsuz === k.ozet.sonra.toplam ? 'var(--status-success)'
+              : k.ozet.sonra.sorunsuz + (k.ozet.sonra.kontrol || 0) === k.ozet.sonra.toplam ? 'var(--status-warning)' : 'var(--status-danger)' }}>
+              {k.ozet.sonra.sorunsuz} / {k.ozet.sonra.toplam} sunucu sorunsuz
+            </span>
+          )}
+          {k.ozet?.sonra?.kontrol ? <span className="ml-2" style={{ color: 'var(--status-warning)' }}>{k.ozet.sonra.kontrol} sunucuda kontrol gerekli</span> : null}
         </div>
         {k.durum === 'sonra_kosuyor' ? <IsCanli k={k} />
           : sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
@@ -319,6 +370,7 @@ export default function RebootKontroluTab() {
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 
+  const onayBos = secili ? bosOnceSunuculari(secili) : [];
   const inputStil: React.CSSProperties = { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' };
   return (
     <div className="space-y-4">
@@ -390,10 +442,18 @@ export default function RebootKontroluTab() {
           <p>Sunucuların reboot'u <b>tamamlandıysa</b> devam edin. Her sunucuda:</p>
           <ul className="list-disc pl-5 space-y-0.5">
             <li>Reboot öncesi çalışan <b>Nginx / Red Hat Apache / IBM Apache / CTG / JBoss / WAS</b> kapalıysa estate başlatma yoluyla <b>açılır</b>. Önce çalışmayan ürüne dokunulmaz.</li>
-            <li>JBoss ve WAS'ta önce çalışıp şimdi kapalı olan JVM <b>açılır</b>; önce çalışmayıp şimdi çalışan JVM <b>kapatılır</b>.</li>
+            <li>JBoss ve WAS'ta, ürünü reboot öncesi çalışıyor olan JVM'ler için: önce çalışıp şimdi kapalı olan JVM <b>açılır</b>; önce çalışmayıp şimdi çalışan JVM <b>kapatılır</b>. Ürünü reboot öncesi çalışmayanın JVM'lerine dokunulmaz.</li>
+            <li>JVM'lere geçmeden önce süreç listesinin durulması beklenir (sunucu başına en çok ~5 dk).</li>
             <li>Her JVM tek tek işlenir; sunucu grubu ya da domain durdurulmaz, süreç öldürülmez.</li>
           </ul>
           <p>Yalnız "önce" görüntüsü alınmış sunucular işlenir.</p>
+          {onayBos.length > 0 && (
+            <div role="alert" className="rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)', color: 'var(--status-warning)' }}>
+              <div className="flex items-center gap-1 font-semibold"><ExclamationTriangleIcon className="w-4 h-4" /> Önce görüntüsü boş sunucular ({onayBos.length})</div>
+              <div className="font-mono">{onayBos.join(', ')}</div>
+              <div>{ONCE_BOS_METNI} Sonuç "Kontrol gerekli" olur.</div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
