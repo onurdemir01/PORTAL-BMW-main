@@ -1422,7 +1422,7 @@ function initNginxConsole(app) {
           : {}),
         services: [
           ...new Set(inv.flatMap((h) => (h.services || []).map((x) => x.toUpperCase()))),
-        ].sort((a, b) => a.localeCompare(b)),
+        ].sort((a, b) => Number(a > b) - Number(a < b)),
         generatedAt: new Date().toISOString(),
         eskiGizli: es.bilgi(),
       });

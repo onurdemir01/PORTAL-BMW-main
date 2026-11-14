@@ -647,7 +647,7 @@ function logFields(job) {
 
 /** "Listede yok" teyidi: isin SU ANKI durumu. Okunamazsa Map'te YOK (= olculemedi). */
 function stateCheckBatch(keys) {
-  const ordered = [...new Set(keys)].sort((a, b) => a.localeCompare(b));
+  const ordered = [...new Set(keys)].sort((a, b) => Number(a > b) - Number(a < b));
   if (!ordered.length) {
     _stateCheckCursor = null;
     return [];

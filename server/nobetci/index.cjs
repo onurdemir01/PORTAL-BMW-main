@@ -6,10 +6,12 @@
 // dosyasinda init<Domain>(app) desenini kullanirken nobetci tek istisnaydi — artik ayni desene
 // uyar (bkz. server/dynatrace/index.cjs, server/duty-roster/index.cjs referans).
 //
-// GUVENLIK NOTU: /api/nobetci/today, /today/avatar, /list route'lari BILEREK auth-gate'siz
-// kalir — Dashboard nobetci widget'i tum kimliklenmis/kimliklenmemis kullanicilara acik olmasi
-// icin tasarlandi (bkz. server/duty-roster/index.cjs'deki "Nobet" sayfa-gorunurlugu MUAFIYET
-// notuyla tutarli). Yalniz admin cache-temizleme uclari (Finding 15) requireAdmin ile korunur.
+// GUVENLIK NOTU (2026-11-14): /api/nobetci/today, /today/avatar ve /list OTURUM ISTER. Eskiden
+// "kimliklenmemis kullaniciya da acik" diye bilerek kapisizdi; ama giris ekrani bu uclari hic
+// cagirmiyor (tek tuketici oturum sonrasi kabuk: AppContext, Nobet sayfasi) ve /list yuzlerce
+// kisinin adini, e-postasini, cep ve dahili numarasini agdaki herkese veriyordu. "Nobet" SAYFA
+// gorunurlugu muafiyeti aynen durur: oturumu olan her kullanici gorur.
+// Admin cache-temizleme uclari (Finding 15) requireAdmin ile korunur.
 'use strict';
 
 const https = require('https');
@@ -198,13 +200,15 @@ function formatPerson(obj) {
 
 function initNobetci(app) {
   let requireAdmin = (req, res, next) => res.status(403).json({ ok: false, error: "Auth modulu yok." });
+  let requireAuth = (req, res, next) => res.status(401).json({ ok: false, error: "Auth modulu yok." });
   try {
-    const { requireAdmin: ra } = require("../auth/index.cjs");
+    const { requireAdmin: ra, requireAuth: rk } = require("../auth/index.cjs");
     if (typeof ra === "function") requireAdmin = ra;
+    if (typeof rk === "function") requireAuth = rk;
   } catch { /* auth modulu yoksa deny kalir */ }
 
   // /api/nobetci/today — T31: liste+tarih karsilastirmasi
-  app.get("/api/nobetci/today", async (req, res) => {
+  app.get("/api/nobetci/today", requireAuth, async (req, res) => {
     if (NOBETCI_TODAY_CACHE.data && Date.now() - NOBETCI_TODAY_CACHE.ts < TODAY_TTL) {
       return res.json(NOBETCI_TODAY_CACHE.data);
     }
@@ -268,7 +272,7 @@ function initNobetci(app) {
   });
 
   // G-02: Nobetci avatar — ayri endpoint, binary JPEG olarak serve eder
-  app.get("/api/nobetci/today/avatar", (req, res) => {
+  app.get("/api/nobetci/today/avatar", requireAuth, (req, res) => {
     if (!_nobetciAvatarDataUrl) return res.status(404).end();
     const match = _nobetciAvatarDataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return res.status(404).end();
@@ -281,7 +285,7 @@ function initNobetci(app) {
 
   // /api/nobetci/list — T30: tum kayitlari dondur, startDate'e gore sirali (yeni→eski)
   // G-03: ?month=YYYY-MM filtresi
-  app.get("/api/nobetci/list", async (req, res) => {
+  app.get("/api/nobetci/list", requireAuth, async (req, res) => {
     try {
       const list = await getNobetList();
       const now = new Date();

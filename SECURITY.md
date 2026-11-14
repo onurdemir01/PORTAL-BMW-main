@@ -12,7 +12,7 @@ Bu depo kurumsal bankacılık iç altyapı portalına (`bmw-portal`) aittir. Tü
 
 ## Üretim Sertleştirme Gereksinimleri
 
-- **HTTP Güvenlik Başlıkları:** `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` ve production HTTPS isteklerinde `Strict-Transport-Security` (`includeSubDomains`) zorunludur (`server/auth/guvenlik-basliklari.cjs`).
+- **HTTP Güvenlik Başlıkları:** `Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` zorunludur (`server/auth/guvenlik-basliklari.cjs`). `Strict-Transport-Security` varsayılan kapalıdır ve `PORTAL_HSTS_MAX_AGE` ile açılır (makine adının tüm portlarını etkilediği için).
 - **Oturum Çerezleri:** Production'da `__Host-portal.sid`, `HttpOnly`, `SameSite=Lax` ve `Secure=true` zorunludur (`server/auth/oturum-cerezi.cjs`, `COOKIE_SECURE`).
 - **Log Maskeleme & Hata Gizliliği:** Loglarda parola, `Bearer`/`Basic` token, JWT, `Cookie`/`Set-Cookie` ve gizli sorgu parametreleri maskelenir (`server/log.cjs`). Production HTTP 5xx yanıtları iç stack/mesaj döndürmez; yalnızca `correlationId` döner.
 - **Gizli Bilgi Hijyeni:** `.env`, token, sertifika (`.pem`/`.key`/`.crt`), gerçek iç IP listeleri veya `.har` dosyaları repoya commit edilemez.

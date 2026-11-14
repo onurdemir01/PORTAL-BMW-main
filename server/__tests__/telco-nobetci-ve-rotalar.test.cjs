@@ -419,6 +419,9 @@ test('server/links & server/nobetci routes, cache/DB fallbacks, URL validation, 
       getRequestRole: (req) => req.headers['x-role'] || 'User',
       requireAdmin: (req, res, next) =>
         req.headers['x-role'] === 'Admin' ? next() : res.status(403).json({ ok: false }),
+      // Nobet uclari oturum ister (2026-11-14): `x-user: none` oturumsuz istegi temsil eder.
+      requireAuth: (req, res, next) =>
+        req.headers['x-user'] === 'none' ? res.status(401).json({ ok: false }) : next(),
     },
     backups,
   );
@@ -578,7 +581,10 @@ test('server/links & server/nobetci routes, cache/DB fallbacks, URL validation, 
     200,
   );
 
-  // Nobetci live, avatar, list, admin cache clear
+  // Nobetci live, avatar, list, admin cache clear. Oturumsuz istek uca ulasmaz.
+  for (const uc of ['/api/nobetci/today', '/api/nobetci/today/avatar', '/api/nobetci/list']) {
+    assert.equal((await fetch(`${base}${uc}`, { headers: { 'x-user': 'none' } })).status, 401, uc);
+  }
   r = await fetch(`${base}/api/nobetci/today`);
   let body = await r.json();
   assert.equal(body.source, 'api');

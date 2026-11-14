@@ -141,8 +141,16 @@ async function main() {
   //
   // Prod'da nginx arkasinda calisir - X-Forwarded-* header'larina guven (secure cookie ve
   // dogru client IP icin gerekli). Sabit ic IP kaynak kodda tutulmaz; TRUST_PROXY env
-  // uzerinden yapilandirilir (varsayilan: 'loopback').
+  // uzerinden yapilandirilir. Tanimsizsa uretimde TEK ATLAMA (1), gelistirmede 'loopback':
+  // nginx Node'a makinenin loopback OLMAYAN adresinden baglanir; 'loopback' varsayilani
+  // uretimde oturum cerezinin hic verilmemesi demekti (server/util/guvenlik-yardimci.cjs).
   app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
+  if (process.env.NODE_ENV === 'production' && !String(process.env.TRUST_PROXY || '').trim()) {
+    console.warn(
+      "[Guvenlik] TRUST_PROXY tanimli degil: tek atlama (1) varsayiliyor. nginx'i atlayan " +
+        'isteklere karsi ters vekil adresini TRUST_PROXY ile sabitleyin (.env.example).',
+    );
+  }
 
   // Her initX(app) kendi try/catch'i ile izole edilir — eskiden yalniz initMetrics/
   // initPortalAudit korunuyordu, digerlerinin (13+) beklenmedik hatasi butun main() zincirini

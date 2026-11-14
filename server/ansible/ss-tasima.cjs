@@ -29,7 +29,7 @@ function kararliJson(v) {
   if (Array.isArray(v)) return '[' + v.map(kararliJson).join(',') + ']';
   const anahtarlar = Object.keys(v)
     .filter((k) => v[k] !== undefined)
-    .sort((a, b) => a.localeCompare(b));
+    .sort((a, b) => Number(a > b) - Number(a < b));
   return '{' + anahtarlar.map((k) => JSON.stringify(k) + ':' + kararliJson(v[k])).join(',') + '}';
 }
 
@@ -130,7 +130,7 @@ function varsayilanNormalize(type, d) {
   }
   if (type === 'multiselect') {
     const l = (() => { if (Array.isArray(d)) return d.map((x) => String(x)); return String(d == null ? '' : d).split(/\r?\n/); })();
-    return l.filter((x) => x !== '').sort((a, b) => a.localeCompare(b)).join('\n');
+    return l.filter((x) => x !== '').sort((a, b) => Number(a > b) - Number(a < b)).join('\n');
   }
   return varsayilanMetni(d);
 }
@@ -301,7 +301,7 @@ function extraVarsAnahtarlari(detail) {
       obj = null;
     }
   }
-  return obj && typeof obj === 'object' && !Array.isArray(obj) ? Object.keys(obj).sort((a, b) => a.localeCompare(b)) : [];
+  return obj && typeof obj === 'object' && !Array.isArray(obj) ? Object.keys(obj).sort((a, b) => Number(a > b) - Number(a < b)) : [];
 }
 
 function templateKarsilastir(kaynak, hedef) {
@@ -328,7 +328,7 @@ function templateKarsilastir(kaynak, hedef) {
   satirlar.push(satir('project', 'Proje', (d) => (d.summary_fields?.project?.name) || ''));
   satirlar.push(
     satir('credentials', 'Kimlik bilgileri', (d) =>
-      ((d.summary_fields?.credentials) || []).map((c) => String((c?.name) || '')).sort((a, b) => a.localeCompare(b)).join(', '),
+      ((d.summary_fields?.credentials) || []).map((c) => String((c?.name) || '')).sort((a, b) => Number(a > b) - Number(a < b)).join(', '),
     ),
   );
   return satirlar;
@@ -810,7 +810,7 @@ function kayitSatiri(r) {
 function istemciKaydi(k) {
   if (!k) return null;
   const { onceki, uygulanan, hedefSurveyOnceki, ...geri } = k;
-  const anahtarlar = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o).sort((a, b) => a.localeCompare(b)) : []);
+  const anahtarlar = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o).sort((a, b) => Number(a > b) - Number(a < b)) : []);
   return {
     ...geri,
     ozet: {
@@ -871,7 +871,7 @@ function alanFarki(once, simdi) {
   const a = once && typeof once === 'object' ? once : {};
   const b = simdi && typeof simdi === 'object' ? simdi : {};
   const out = [];
-  for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort((a, b) => a.localeCompare(b))) {
+  for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort((a, b) => Number(a > b) - Number(a < b))) {
     if (kararliJson(a[k]) !== kararliJson(b[k])) out.push({ alan: k, once: a[k] === undefined ? null : a[k], simdi: b[k] === undefined ? null : b[k] });
   }
   return out;
