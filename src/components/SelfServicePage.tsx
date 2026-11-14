@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -146,13 +147,14 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   // diye günün nöbetçisi (bkz. server/nobetci/index.cjs, halihazırda Dashboard'da da
   // kullanılan public uç) burada da gösterilir (2026-08-20, kullanıcı talebi).
   const [onCall, setOnCall] = useState<NobetciResult | null>(null);
+  const pendingTicketId = pendingTicket?.id ?? null;
   useEffect(() => {
-    if (!pendingTicket) return;
+    if (pendingTicketId == null) return;
     nobetciApi
       .today()
       .then(setOnCall)
       .catch(() => {});
-  }, [pendingTicket?.id]);
+  }, [pendingTicketId]);
   const { addJob, jobs } = useJobTracker();
   // Modal açıkken CANLI çıktı burada (inline) gösterilir — bkz. OpsXWizardPage.tsx'teki
   // aynı desen. Modal kapatılırsa is arka planda takip edilmeye devam eder (alt çubuk).
@@ -1333,29 +1335,25 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
       .finally(() => setLoading(false));
   }, [item]);
 
-  useEffect(() => {
-    if (!selected || !selected.job_id) return;
-    let alive = true;
-    setLogLoading(true);
-    setLogErr('');
-    setLogOutput('');
-    ansibleApi
-      .ssJobStatus(selected.awx_server_id, selected.job_id)
-      .then((r) => {
-        if (!alive) return;
+  useAsyncEffect(
+    async (alive) => {
+      if (!selected || !selected.job_id || !alive()) return;
+      setLogLoading(true);
+      setLogErr('');
+      setLogOutput('');
+      try {
+        const r = await ansibleApi.ssJobStatus(selected.awx_server_id, selected.job_id);
+        if (!alive()) return;
         setLogStatus(r.status || selected.status);
         setLogOutput(r.output || r.resultTraceback || r.jobExplanation || '');
-      })
-      .catch((e) => {
-        if (alive) setLogErr(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (alive) setLogLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [selected]);
+      } catch (e) {
+        if (alive()) setLogErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive()) setLogLoading(false);
+      }
+    },
+    [selected],
+  );
 
   const statusBadge: Record<string, string> = {
     successful: 'bg-emerald-100 text-emerald-700',
@@ -1551,9 +1549,12 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) reload();
+    },
+    [reload],
+  );
   // Yalnizca YUKLENMIS liste bildirilir: mount anindaki bos [] ust bilesenin (sayfa
   // acilisinda URL slug'ini cozmek icin zaten yukledigi) listesini silip slug'i
   // "bilinmiyor"a dusuruyordu (2026-09-21).
@@ -1562,9 +1563,14 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
     onItems?.(isAdmin ? items : items.filter((i) => i.enabled));
   }, [items, isAdmin, onItems, loading]);
   // Menuden "Servis Ekle" secilince form acik gelsin
-  useEffect(() => {
-    if (selected === 'new') { setAddForm(true); setSaveError(''); }
-  }, [selected]);
+  const [prevSelected, setPrevSelected] = useState(selected);
+  if (selected !== prevSelected) {
+    setPrevSelected(selected);
+    if (selected === 'new') {
+      setAddForm(true);
+      setSaveError('');
+    }
+  }
 
   async function deleteItem(id: string) {
     if (!(await onayla({ baslik: 'Servisi kaldır', metin: 'Bu servis katalogdan kaldırılsın mı?', onayMetni: 'Kaldır', tehlikeli: true }))) return;
@@ -1896,26 +1902,23 @@ export default function SelfServicePage() {
   const [ssItems, setSsItems] = useState<AnsibleSsItem[]>([]);
   const onSsItems = useCallback((list: AnsibleSsItem[]) => setSsItems(list), []);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
+  useAsyncEffect(
+    async (alive) => {
       try {
         setLoading(true);
         // Menu icin servis listesi de ILK yuklemede beklenir: URL'deki slug ancak liste
         // gelince cozulur; yoksa sayfa bir an "tumu"ne dusup sonra servise atlardi.
         const [r, x] = await Promise.all([selfServiceApi.get(), ansibleApi.ssItems().catch(() => ({ items: [] as AnsibleSsItem[] }))]);
-        if (alive) setGroups(r.groups || []);
-        if (alive) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled));
+        if (alive()) setGroups(r.groups || []);
+        if (alive()) setSsItems(isAdmin ? x.items || [] : (x.items || []).filter((i) => i.enabled));
       } catch (e: unknown) {
-        if (alive) setErr(e instanceof Error ? e.message : String(e));
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
       } finally {
-        if (alive) setLoading(false);
+        if (alive()) setLoading(false);
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    },
+    [isAdmin],
+  );
 
   // 2026-09-21: Admin Merkezi ile AYNI kabuk (kullanici istegi) — solda bolumlu menu, sagda
   // baslik + tek cumle aciklamali icerik karti. "Ansible" etiketi hala DB'den (/api/selfservice

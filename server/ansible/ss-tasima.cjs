@@ -51,7 +51,7 @@ function adAnahtari(s) {
 /**
  * @param {Array<{id:string, kaynakAd:string}>} kartlar
  * @param {Array<{id:number, name:string}>} hedefTemplateleri
- * @param {Record<string, number>} elleSecimler  itemId -> hedef template id
+ * @param {Record<string, number|string>} elleSecimler  itemId -> hedef template id
  * @returns {Map<string, {toT:number|null, toAd:string, eslesme:'ad'|'elle'|null, neden:string|null, adaylar:Array<{id:number,name:string}>, cakisma:boolean}>}
  */
 function eslestir(kartlar, hedefTemplateleri, elleSecimler = {}) {

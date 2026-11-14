@@ -1,13 +1,13 @@
 // server/inventory/__tests__/history-routes.test.cjs
 //
-// NEDEN VAR: envanter geçmişi için beş yeni uç (server/inventory/index.cjs) ve beş
-// istemci fonksiyonu (src/api/inventoryApi.ts) AYNI ANDA yazıldı. İkisi ayrı dosyada
-// yaşadığı için biri yeniden adlandırılırsa diğeri sessizce 404 almaya başlar — ekran
-// "veri yok" der, hata vermez. Bu tür sessiz ayrışma tam olarak burada kilitleniyor.
+// NEDEN VAR: envanter gecmisi icin bes yeni uc (server/inventory/index.cjs) ve bes
+// istemci fonksiyonu (src/api/inventoryApi.ts) AYNI ANDA yazildi. Ikisi ayri dosyada
+// yasadigi icin biri yeniden adlandirilirsa digeri sessizce 404 almaya baslar — ekran
+// "veri yok" der, hata vermez. Bu tur sessiz ayrisma tam olarak burada kilitleniyor.
 //
-// Ek olarak yapılandırmanın kendisi doğrulanır: her tablo tanımının bir anahtarı olmalı
-// ve last_seen_at HER tabloda hash dışı bırakılmış olmalı (dahil edilseydi her satır
-// her gece "değişti" sayılırdı — bkz. history.cjs).
+// Ek olarak yapilandirmanin kendisi dogrulanir: her tablo taniminin bir anahtari olmali
+// ve last_seen_at HER tabloda hash disi birakilmis olmali (dahil edilseydi her satir
+// her gece "degisti" sayilirdi — bkz. history.cjs).
 'use strict';
 
 const test = require('node:test');

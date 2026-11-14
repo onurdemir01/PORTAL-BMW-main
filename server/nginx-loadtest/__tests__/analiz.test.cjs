@@ -1389,7 +1389,7 @@ test('AN-R2 degismez: reload nedeni <=> o TUR\'a yazilmis olcum olayi (kurgu fik
 // B2 karar nedeni (analiz.cjs YUK_DOYDU_KARARI ile BIREBIR; metin burada kilitli).
 const YUK_DOYDU_KARARI = 'Yük makinesi doydu: p95 karşılaştırılamadı; yük makinesini rahatlatın ya da hızı düşürüp yeniden koşun';
 /** zaman.csv'den TUR pencereleri; `bosta(tur)` o TUR'un [bas, bit] icinde saniyelik bosta orani (tik / 1000). */
-function yukCpuEkle(dosyalar, bosta, { adim = null, host = 'ymak01', bilgi = true, olcek = 1, atla = () => false } = {}) {
+function yukCpuEkle(dosyalar, bosta, { adim = null, host = 'ymak01', bilgi = true, olcek = 1, atla = (_t, _tur) => false } = {}) {
   const z = dosyalar.get('zaman.csv').icerik.trim().split('\n').slice(1).map((s) => s.split(','));
   const ad = adim || z[0][0].split('_')[0];
   const bas = Math.min(...z.map((x) => Number(x[1]))) - 30;
@@ -1641,7 +1641,7 @@ test('AN-Y7 YUK_DOYDU neden metni asagi yuvarlanir: %19,96 -> %19.9(<%20); %19,9
 // ---------------------------------------------------------------------------------------------
 
 /** Hedef bellek kaydi: sunucu_*.csv'nin ornek zamanlariyla bellek_<anahtar>.csv; `rss(t, i)` kB, son ornek `son`. */
-function bellekEkle(dosyalar, rss, { mt = 16000000, ma = () => 8000000, son = null } = {}) {
+function bellekEkle(dosyalar, rss, { mt = 16000000, ma = (_t) => 8000000, son = null } = {}) {
   const ad = [...dosyalar.keys()].find((x) => /^sunucu_.*\.csv$/.test(x));
   const anahtar = ad.slice('sunucu_'.length, -'.csv'.length);
   const ts = dosyalar.get(ad).icerik.trim().split('\n').slice(1).map((s) => Number(s.split(',')[0]));
@@ -1652,7 +1652,7 @@ function bellekEkle(dosyalar, rss, { mt = 16000000, ma = () => 8000000, son = nu
   return out;
 }
 /** yukcpu_*.csv'ye mem_total_kb, mem_available_kb, arac_rss_kb kolonlari (yukCpuEkle'den sonra). */
-function yukBellekEkle(dosyalar, { mt = 32000000, ma = () => 20000000, ar = () => 500000 } = {}) {
+function yukBellekEkle(dosyalar, { mt = 32000000, ma = (_t) => 20000000, ar = (_t) => 500000 } = {}) {
   const out = new Map(dosyalar);
   for (const [ad, f] of dosyalar) {
     if (!/^yukcpu_.*\.csv$/.test(ad)) continue;

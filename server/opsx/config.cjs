@@ -59,7 +59,7 @@ const SMART_DEFAULTS = Object.freeze({
 
 // Flow key SAFE_KEY'e uymak ZORUNDA DEGIL: gercek Smart flow adlari tire/nokta
 // icerebiliyor (or. "rff-request-flow.v1"). Yine de serbest metin degil - uzunluk ve
-// satir sonu siniri var, cunku bu deger bir dis servise URL/gövde icinde gidiyor.
+// satir sonu siniri var, cunku bu deger bir dis servise URL/govde icinde gidiyor.
 const SMART_KEY_RE = /^[A-Za-z0-9._:-]{1,200}$/;
 // ENTEGRASYON ANAHTARI (RFF token) AYRI DESEN (kullanici 2026-10-12: "= karakteri de gecerli
 // olmali"): token'lar base64 olabiliyor ('=' dolgusu, '+', '/'). Deger HTTP basligina

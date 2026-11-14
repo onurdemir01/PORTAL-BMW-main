@@ -156,9 +156,9 @@ const STATIK_UZANTI = ['.js', '.mjs', '.css', '.json', '.map', '.png', '.jpg', '
 // yol normallestirmesini sasirtmanin yolu. Statik bir dosya yolunda mesru karsiligi yok.
 const KODLU_TEHLIKE = /%(2e|2f|5c|00|0a|0d|25)/i;
 const BOZUK_YUZDE = /%(?![0-9A-Fa-f]{2})/;
+const { hasControlChars } = require('../util/control-chars.cjs');
 // Kontrol karakteri (CR/LF dahil): baslik / log enjeksiyonunun yolu.
-// eslint-disable-next-line no-control-regex
-const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
+const KONTROL_KARAKTERI = { test: (v) => hasControlChars(v) };
 
 const VARSAYILAN_YUK_HOSTLARI = Object.freeze(['GBNGXT34']);
 // Tur 4: yuk araclari her on kontrol / kosuda /sw'deki arac setinden kosu dizinine kopyalanir.

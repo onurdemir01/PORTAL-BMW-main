@@ -47,10 +47,12 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
     };
   }, []);
 
+  const clustersKey = clusters.join(',');
   const loadList = useCallback(async () => {
+    const clusterList = clustersKey ? clustersKey.split(',') : [];
     setLoading(true);
     try {
-      const r = await scalexApi.namespaces(env, tenant, clusters);
+      const r = await scalexApi.namespaces(env, tenant, clusterList);
       if (!aliveRef.current) return;
       if (r.ok) {
         setData(r);
@@ -61,10 +63,12 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
     } finally {
       if (aliveRef.current) setLoading(false);
     }
-  }, [env, tenant, clusters.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [env, tenant, clustersKey]);
 
   useEffect(() => {
-    loadList();
+    // Mikro-gorev zamanlamasi set-state-in-effect uyarisini onler; StrictMode cift
+    // baglamada iki cagri da kosar ve aliveRef'in ikinci baglamada true kaldigini dogrular.
+    void Promise.resolve().then(() => loadList());
   }, [loadList]);
 
   // TARAMA. Sonuc PAYLASILAN onbellege yazilir (sunucu tarafinda, durum ucunda) —

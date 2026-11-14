@@ -200,7 +200,7 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
       // SIMULASYON GERCEK KIMLIKLE YAPILIR (2026-09-29).
       //
       // Onceden hedef her zaman `role: 'User', groups: []` ile kuruluyordu. Yani bu uc,
-      // grup kuraliyla ya da Admin rolüyle yetkilendirilmis bir kullanici icin "goremez"
+      // grup kuraliyla ya da Admin roluyle yetkilendirilmis bir kullanici icin "goremez"
       // diyordu. "Neden erisemiyor?" sorusunu cevaplamak icin yazilmis arac, tam da o
       // soruda YANLIS cevap veriyordu.
       //

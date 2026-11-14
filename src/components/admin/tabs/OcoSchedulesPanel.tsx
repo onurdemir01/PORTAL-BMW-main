@@ -28,6 +28,10 @@ import { useOnay } from '@/components/common/OnayPenceresi';
 
 const PAGE_SIZE = 50;
 
+function isScheduledRunPast(runAt: string, status: string) {
+  return status === 'AWX_SCHEDULED' && new Date(runAt).getTime() <= Date.now();
+}
+
 const STATUS_META: Record<string, { label: string; className: string }> = {
   AWX_SCHEDULED: {
     label: "AWX'e zamanlandı",
@@ -105,9 +109,7 @@ export default function OcoSchedulesPanel() {
   // olacagini ACIKCA yaziyor - "iptal" kelimesi tek basina, calisan bir job'in da
   // durdurulacagini anlatmiyor.
   async function adminCancel(r: AdminOcoSchedule) {
-    const willStopJob =
-      r.status === 'LAUNCHED' ||
-      (r.status === 'AWX_SCHEDULED' && new Date(r.runAt).getTime() <= Date.now());
+    const willStopJob = r.status === 'LAUNCHED' || isScheduledRunPast(r.runAt, r.status);
     const msg = [
       `#${r.id} — ${r.templateName || 'servis'} (OCO ${r.ocoNumber}) iptal edilecek.`,
       r.awxScheduleId ? `AWX schedule #${r.awxScheduleId} SILINECEK.` : '',

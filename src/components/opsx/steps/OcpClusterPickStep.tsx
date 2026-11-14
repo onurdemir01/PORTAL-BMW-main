@@ -9,8 +9,9 @@
 // mümkün. "Tüm cluster'lar" seçilirse `cluster` alanı HİÇ gönderilmez (bkz. onSubmit) —
 // playbook bu durumda zaten KANITLI çalışan eski yönteme (oc_cluster/oc_environment'ın
 // çözdüğü grubun tamamını `hosts:` yapmak) geri döner, AWX limit'e hiç ihtiyaç duymaz.
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ServerStackIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { opsxApi } from "@/api/opsxApi";
 
 const ALL = "__all__";
@@ -31,19 +32,22 @@ const OcpClusterPickStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    opsxApi.getClusters()
-      .then((r) => {
-        const names = r.tree?.[env]?.[tenant] || [];
-        setClusters(names);
-        // tek seçenek varsa (ya da bağlantı gruptaki bir cluster'ı adlandırdıysa) önceden işaretle
-        const verilen = initialCluster ? names.find((n) => n.toLowerCase() === initialCluster.toLowerCase()) : undefined;
-        setSelected(verilen ?? (names.length === 1 ? names[0] : null));
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await opsxApi.getClusters();
+      if (!alive()) return;
+      const names = r.tree?.[env]?.[tenant] || [];
+      setClusters(names);
+      // tek seçenek varsa (ya da bağlantı gruptaki bir cluster'ı adlandırdıysa) önceden işaretle
+      const verilen = initialCluster ? names.find((n) => n.toLowerCase() === initialCluster.toLowerCase()) : undefined;
+      setSelected(verilen ?? (names.length === 1 ? names[0] : null));
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [env, tenant, initialCluster]);
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Cluster'lar yükleniyor...</div>;

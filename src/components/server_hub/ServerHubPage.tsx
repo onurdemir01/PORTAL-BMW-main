@@ -977,7 +977,14 @@ function Donut({
   const total = parts.reduce((a, p) => a + p.value, 0) || 1;
   const r = 40,
     c = 2 * Math.PI * r;
-  let acc = 0;
+  const activeParts = parts.filter((p) => p.value > 0);
+  const slices = activeParts.reduce<Array<{ part: typeof parts[number]; len: number; offset: number }>>((list, p) => {
+    const prev = list[list.length - 1];
+    const offset = prev ? prev.offset + prev.len : 0;
+    const len = (p.value / total) * c;
+    list.push({ part: p, len, offset });
+    return list;
+  }, []);
   return (
     <div className="flex items-center gap-3">
       <svg
@@ -988,31 +995,24 @@ function Donut({
         aria-label={typeof label === 'string' ? label : undefined}
       >
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--bg-elevated)" strokeWidth="12" />
-        {parts
-          .filter((p) => p.value > 0)
-          .map((p, i) => {
-            const len = (p.value / total) * c;
-            const el = (
-              <circle
-                key={i}
-                cx="50"
-                cy="50"
-                r={r}
-                fill="none"
-                stroke={p.color}
-                strokeWidth="12"
-                strokeDasharray={`${len} ${c - len}`}
-                strokeDashoffset={-acc}
-                transform="rotate(-90 50 50)"
-              >
-                <title>
-                  {p.title}: {p.value}
-                </title>
-              </circle>
-            );
-            acc += len;
-            return el;
-          })}
+        {slices.map((s, i) => (
+          <circle
+            key={i}
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke={s.part.color}
+            strokeWidth="12"
+            strokeDasharray={`${s.len} ${c - s.len}`}
+            strokeDashoffset={-s.offset}
+            transform="rotate(-90 50 50)"
+          >
+            <title>
+              {s.part.title}: {s.part.value}
+            </title>
+          </circle>
+        ))}
         <text
           x="50"
           y="47"

@@ -2068,8 +2068,8 @@ const TABLES = [
   },
   {
     // Nginx ARK SPA Raporu > LOCATION BAZLI ekip beyani (2026-10-01, kullanici):
-    // "aynı uygulamaya tanımlı 3 tane location bulunuyor. Birine kullanılmıyor dediğim
-    // zaman hepsine kullanılmıyor olarak işaretleniyor."
+    // "ayni uygulamaya tanimli 3 tane location bulunuyor. Birine kullanilmiyor dedigim
+    // zaman hepsine kullanilmiyor olarak isaretleniyor."
     //
     // Sebep: beyan nginx_migration_tracking.in_use alaninda tutuluyordu ve o tablo
     // UYGULAMA basina tek satir (UNIQUE(group_id, namespace, application)). Location
@@ -4787,7 +4787,7 @@ async function setupTables() {
   await seedPageVisibility(pool);
   await seedPortalElements(pool);
   await migratePageParentKeysToNavGroups(pool);
-  // 2026-09-19: Yardımcı Araçlar / Faydalı Linkler menuden kaldirildi (bkz. elements.ts)
+  // 2026-09-19: Yardimci Araclar / Faydali Linkler menuden kaldirildi (bkz. elements.ts)
   await removeKaynaklarNavGroup(pool);
   await moveToBmwHub(pool);
   await placeBmwHubFlowPages(pool);

@@ -1181,13 +1181,13 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
         isleyici = yukOrnekOkuyucu(ad, SATIR_TAVANI.yuk_cpu);
         break;
       case 'yuk_cpu_bilgi':
-        isleyici = yukBilgiOkuyucu(ad);
+        isleyici = yukBilgiOkuyucu();
         break;
       case 'hedef_cpu':
         isleyici = yukOrnekOkuyucu(ad, SATIR_TAVANI.hedef_cpu);
         break;
       case 'hedef_cpu_bilgi':
-        isleyici = yukBilgiOkuyucu(ad);
+        isleyici = yukBilgiOkuyucu();
         break;
       case 'bellek':
         isleyici = bellekOkuyucu(ad, SATIR_TAVANI.bellek);

@@ -2,7 +2,7 @@
 //
 // Kesinti penceresinin TEK dogru kaynagi kaydin kolonlaridir (run_at / window_end / oco_number):
 // OCO poller'i tetikleme ve EXPIRED kararini bunlarla verir, ScaleX "/oco-schedules/:id/update"
-// de YALNIZ bu kolonlari gunceller - pending_launch_json'a dokunmaz. Paket olduğu gibi
+// de YALNIZ bu kolonlari gunceller - pending_launch_json'a dokunmaz. Paket oldugu gibi
 // oynatilirsa OCO numarasi degistirilmis kayitta Smart bileti ESKI pencereyi tasir:
 //   * yeni pencere eskisinden sonraysa bilet ilk poller turunda TIMEOUT olur, is hic calismaz;
 //   * yeni pencere eskisinden onceyse onay isi AWX'te ESKI pencereye (vazgecilen OCO'nun

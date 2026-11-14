@@ -41,7 +41,7 @@ const INTRANET_HOSTS = new Set([
   'GBNGXAP51',
 ]);
 
-/** @returns {'DEV'|'TEST'|'QA'|'PROD'|'BILINMIYOR'} */
+/** @returns {'DEV'|'TEST'|'QA'|'EDU'|'PROD'|'BILINMIYOR'} */
 function envOfHost(host) {
   const h = String(host || '')
     .trim()

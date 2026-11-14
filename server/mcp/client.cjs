@@ -368,7 +368,7 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
     // taraf (`ai-analyst/orchestrator.cjs`) sonucu `truncate(8000)` ile kirpiyor
     // ama o kirpma PARSE'TAN SONRA calisiyor: 100 MB'lik bir arac yaniti once
     // TAM OLARAK parse edilip nesne grafigine donusuyor, sonra kirpiliyor.
-    // Kirpma belleği HIC kurtarmiyor — zarar o noktada zaten olusmus oluyor.
+    // Kirpma bellegi HIC kurtarmiyor — zarar o noktada zaten olusmus oluyor.
     //
     // Uzak MCP sunucusu (Dynatrace/Instana/Splunk) portalin denetiminde DEGIL.
     if (Buffer.byteLength(textContent, 'utf8') > MCP_RESULT_MAX_BYTES) {

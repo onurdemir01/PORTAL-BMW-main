@@ -674,7 +674,7 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
   // BAGLANTI (RecordModal): STOP dugmesi kontrollu acar; yanit/hata durumu yazar
   const rm = govde(RT_RAW, 'RecordModal');
   assert.ok(rm.includes('onClick={() => stopSor([t])}'), 'STOP dugmesi Server Hub denetimini atliyor');
-  // TOPLU (2026-10-08): "Seçilenleri onayla ve durdur" da ayni denetimli pencereden gecer.
+  // TOPLU (2026-10-08): "Secilenleri onayla ve durdur" da ayni denetimli pencereden gecer.
   assert.ok(rm.includes('onClick={() => stopSor(secili)}'), 'toplu STOP Server Hub denetimini atliyor');
   assert.ok(!rm.includes('onClick={() => setAsk({ t })}'), 'STOP dugmesi onayi denetimsiz aciyor');
   const i = rm.indexOf('const stopSor = (ts: RtTarget[]) => {');

@@ -1,10 +1,10 @@
-// server/oco/search.cjs — ekibin OCO'larını listeler (OCO Takvimi).
+// server/oco/search.cjs — ekibin OCO'larini listeler (OCO Takvimi).
 //
-// Kullanıcı (2026-09-28): "Ekibime ait production operational change order'ları listeleyen
-// bir endpoint göndereceğim. Portal'da solda 'OCO Takvimi' diye bir sekme oluştur ve
-// buradaki OCO'ları tarihlere ve başlığa işleyerek kronolojik listele."
+// Kullanici (2026-09-28): "Ekibime ait production operational change order'lari listeleyen
+// bir endpoint gonderecegim. Portal'da solda 'OCO Takvimi' diye bir sekme olustur ve
+// buradaki OCO'lari tarihlere ve basliga isleyerek kronolojik listele."
 //
-// Uç (kullanıcının verdiği):
+// Uc (kullanicinin verdigi):
 //   GET {OCO_API_URL}/ChangeManagement/ChangeManagementServiceRepository.svc/Change/
 //       SearchChangeOrderWithOffset/{skip}/?count=100&isAgentPatch=-1
 //       &changeEnvironment=-1&parameterChange=-1&responsibleGroupId={grup}
@@ -17,12 +17,12 @@
 // 'acan' pcabRequired=-1 tasir, 'sorumlu' tasimaz. Bir sorgu duserse digeri yine gosterilir ve
 // eksik olan SOYLENIR (`eksik`); ikisi de duserse hata.
 //
-// İSTEK DESENİ client.cjs İLE AYNI: undici dispatcher + kurumsal CA + boyut sınırı.
-// İkinci bir istek yolu açmak, TLS/proxy/timeout kurallarının bir gün ayrışması demekti.
+// ISTEK DESENI client.cjs ILE AYNI: undici dispatcher + kurumsal CA + boyut siniri.
+// Ikinci bir istek yolu acmak, TLS/proxy/timeout kurallarinin bir gun ayrismasi demekti.
 //
-// DÖNÜŞTÜRME BURADA BİTER: servis her kayıt için ~150 alan döndürüyor, ekranın 10 tanesi
-// işine yarıyor. Hepsini tarayıcıya taşımak 100 kayıtta megabaytlara çıkardı; üstelik
-// kullanılmayan alanlar (CreateUserId, SRM kimlikleri…) gereksiz veri yayılımıdır.
+// DONUSTURME BURADA BITER: servis her kayit icin ~150 alan donduruyor, ekranin 10 tanesi
+// isine yariyor. Hepsini tarayiciya tasimak 100 kayitta megabaytlara cikardi; ustelik
+// kullanilmayan alanlar (CreateUserId, SRM kimlikleri…) gereksiz veri yayilimidir.
 'use strict';
 
 const { getConfig } = require('./config.cjs');
@@ -30,20 +30,20 @@ const { parseOcoDate } = require('./window.cjs');
 
 const SEARCH_PATH =
   '/ChangeManagement/ChangeManagementServiceRepository.svc/Change/SearchChangeOrderWithOffset/';
-// Tek sayfada istenecek kayıt (servisin kendi üst sınırı; kullanıcının verdiği çağrıda 100).
+// Tek sayfada istenecek kayit (servisin kendi ust siniri; kullanicinin verdigi cagrida 100).
 const PAGE_SIZE = 100;
-// SONSUZ DÖNGÜ KAPISI: servis TotalCount'u yanlış verirse ya da hep aynı sayfayı
-// döndürürse, sayfa döngüsü sonsuza kadar sürerdi.
+// SONSUZ DONGU KAPISI: servis TotalCount'u yanlis verirse ya da hep ayni sayfayi
+// dondururse, sayfa dongusu sonsuza kadar surerdi.
 const MAX_PAGES = 20;
 const RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 
 /**
- * Ham OCO kaydını ekranın kullandığı alanlara indirger.
+ * Ham OCO kaydini ekranin kullandigi alanlara indirger.
  *
- * TARİHLER parseOcoDate ile çözülür: servis WCF biçimi (`/Date(1791309600000+0300)/`)
- * kullanıyor. `new Date(dizgi)` bunu ya reddeder ya da platforma göre başka yorumlar;
- * paranteze yazılan `+0300` yalnızca bilgi amaçlıdır, epoch zaten mutlaktır (iki kez
- * uygulanırsa tarih üç saat kayar).
+ * TARIHLER parseOcoDate ile cozulur: servis WCF bicimi (`/Date(1791309600000+0300)/`)
+ * kullaniyor. `new Date(dizgi)` bunu ya reddeder ya da platforma gore baska yorumlar;
+ * paranteze yazilan `+0300` yalnizca bilgi amaclidir, epoch zaten mutlaktir (iki kez
+ * uygulanirsa tarih uc saat kayar).
  */
 function normalizeOrder(r) {
   if (!r || typeof r !== 'object') return null;
@@ -63,8 +63,8 @@ function normalizeOrder(r) {
     statusCode: Number(r.OcoStatus) || 0,
     impactText: String(r.ChangeImpactText || '').trim(),
     processText: String(r.ProcessTypeText || '').trim(),
-    // "Evet"/"Hayır" metni servis tarafından geliyor; bayrağı da taşıyoruz ki ekran
-    // metne göre değil değere göre süzebilsin.
+    // "Evet"/"Hayir" metni servis tarafindan geliyor; bayragi da tasiyoruz ki ekran
+    // metne gore degil degere gore suzebilsin.
     pcabRequired: r.PcabRequired === true,
     plannedStart: iso(r.PlannedStartDate),
     plannedEnd: iso(r.PlannedEndDate),
@@ -74,7 +74,7 @@ function normalizeOrder(r) {
   };
 }
 
-/** Kronolojik sıra: planlanan başlangıca göre. Tarihsizler SONA, ama ATILMAZ. */
+/** Kronolojik sira: planlanan baslangica gore. Tarihsizler SONA, ama ATILMAZ. */
 function sortChronological(rows) {
   const t = (x) => (x.plannedStart ? Date.parse(x.plannedStart) : Number.POSITIVE_INFINITY);
   return [...rows].sort((a, b) => t(a) - t(b) || a.oco - b.oco);
@@ -150,21 +150,21 @@ function fail(message, status) {
 }
 
 /**
- * Arama ucunun KÖKÜ — `OCO_API_URL` bir kök adres DEĞİL.
+ * Arama ucunun KOKU — `OCO_API_URL` bir kok adres DEGIL.
  *
- * ÜRETİMDE ÖLÇÜLDÜ (kullanıcı, 2026-09-28): ayar şu şekilde girilmiş —
+ * URETIMDE OLCULDU (kullanici, 2026-09-28): ayar su sekilde girilmis —
  *   https://servicerepository/ChangeManagement/…ServiceRepository.svc/Change/
  *   getChangeOrderByWfInstanceId/?wfInstanceId=
- * yani DETAY UCUNUN TAM URL'İ, sorgu parametresi dahil (detay çağrısı numarayı sonuna
- * ekleyerek çalışıyor). Arama yolunu bu dizginin sonuna eklemek, yolu `wfInstanceId`
- * değerinin İÇİNE gömdü:
+ * yani DETAY UCUNUN TAM URL'I, sorgu parametresi dahil (detay cagrisi numarayi sonuna
+ * ekleyerek calisiyor). Arama yolunu bu dizginin sonuna eklemek, yolu `wfInstanceId`
+ * degerinin ICINE gomdu:
  *   …getChangeOrderByWfInstanceId/?wfInstanceId=%2FChangeManagement%2F…%2F0%2F&count=100…
- * Servis bunu ayrıştıramayıp HTTP 400 + "Request Error" döndürüyordu. Adres mesaja
- * yazılmasaydı bu tek bakışta görülemezdi.
+ * Servis bunu ayristiramayip HTTP 400 + "Request Error" donduruyordu. Adres mesaja
+ * yazilmasaydi bu tek bakista gorulemezdi.
  *
- * ÇÖZÜM: ayarın YOL ve SORGU kısmına güvenilmez. Servis kökü `.svc` segmentine kadar
- * kesilir; ayarda `.svc` yoksa yalnız origin alınır ve tam yol eklenir. İki durumda da
- * kullanıcının tarayıcıda çalıştırdığı adresin AYNISI üretilir.
+ * COZUM: ayarin YOL ve SORGU kismina guvenilmez. Servis koku `.svc` segmentine kadar
+ * kesilir; ayarda `.svc` yoksa yalniz origin alinir ve tam yol eklenir. Iki durumda da
+ * kullanicinin tarayicida calistirdigi adresin AYNISI uretilir.
  */
 function aramaKoku(baseUrl) {
   const u = new URL(baseUrl);
@@ -179,7 +179,7 @@ const ROL_ADI = { acan: 'açtığımız', sorumlu: 'bize açılan (sorumlu ekip)
 function sayfaUrl(cfg, skip, groupId, rol = 'sorumlu') {
   const u = new URL(`${aramaKoku(cfg.baseUrl)}${Number(skip) || 0}/`);
   u.searchParams.set('count', String(PAGE_SIZE));
-  // Kullanıcının verdiği çağrılardaki süzgeçler: -1 = "hepsi".
+  // Kullanicinin verdigi cagrilardaki suzgecler: -1 = "hepsi".
   if (rol === 'acan') u.searchParams.set('pcabRequired', '-1');
   u.searchParams.set('isAgentPatch', '-1');
   u.searchParams.set('changeEnvironment', '-1');
@@ -189,26 +189,26 @@ function sayfaUrl(cfg, skip, groupId, rol = 'sorumlu') {
 }
 
 /**
- * Arama ucunun HTTP hatasını anlatır.
+ * Arama ucunun HTTP hatasini anlatir.
  *
- * NEDEN AYRI BİR FONKSİYON: burada client.cjs'in `describeUpstreamError`'ı kullanılıyordu.
- * O metinler TEK BİR OCO KAYDI çeken uç için yazılmış; 400 alınca "…numarasını kabul
- * etmedi, numarayı kontrol edin" diyor. Arama ucunda kullanıcıya gösterilen sayı ise OCO
- * numarası değil GRUP KİMLİĞİ (6203) ve kullanıcının onu "kontrol etmesi" hiçbir işe
- * yaramıyor — mesaj, yanlış yere bakmayı öğütlüyordu (kullanıcı bildirimi, 2026-09-28).
+ * NEDEN AYRI BIR FONKSIYON: burada client.cjs'in `describeUpstreamError`'i kullaniliyordu.
+ * O metinler TEK BIR OCO KAYDI ceken uc icin yazilmis; 400 alinca "…numarasini kabul
+ * etmedi, numarayi kontrol edin" diyor. Arama ucunda kullaniciya gosterilen sayi ise OCO
+ * numarasi degil GRUP KIMLIGI (6203) ve kullanicinin onu "kontrol etmesi" hicbir ise
+ * yaramiyor — mesaj, yanlis yere bakmayi ogutluyordu (kullanici bildirimi, 2026-09-28).
  *
- * ÇAĞRILAN ADRES MESAJA YAZILIR: bu uçta sorunun iki apayrı kaynağı var ve ikisi de aynı
- * HTTP kodunu üretiyor — (a) OCO_API_URL yanlış/eksik girilmiş, (b) adres doğru ama servis
- * isteği reddediyor. Adres görünmeden ikisi ayırt edilemiyordu; tarayıcıda aynı adresi
- * açmak farkı bir bakışta gösteriyor.
+ * CAGRILAN ADRES MESAJA YAZILIR: bu ucta sorunun iki apayri kaynagi var ve ikisi de ayni
+ * HTTP kodunu uretiyor — (a) OCO_API_URL yanlis/eksik girilmis, (b) adres dogru ama servis
+ * istegi reddediyor. Adres gorunmeden ikisi ayirt edilemiyordu; tarayicida ayni adresi
+ * acmak farki bir bakista gosteriyor.
  */
 function aramaHatasi(statusCode, text, url, grup) {
   const { upstreamHint } = require('./client.cjs');
   const ipucu = upstreamHint(text);
   const ek = ipucu ? ` Servis notu: ${ipucu}` : '';
   const nerede = ` Çağrılan adres: ${url}`;
-  // Sunucu günlüğüne HAM gövdenin başı da düşer: ekrana taşınmayan WCF/IIS hata
-  // sayfalarında sebep çoğu zaman burada yazıyor.
+  // Sunucu gunlugune HAM govdenin basi da duser: ekrana tasinmayan WCF/IIS hata
+  // sayfalarinda sebep cogu zaman burada yaziyor.
   console.warn(
     `[OCO] arama HTTP ${statusCode} — ${url} — gövde: ${String(text || '')
       .slice(0, 300)
@@ -251,8 +251,8 @@ function aramaHatasi(statusCode, text, url, grup) {
 /**
  * Grubun actigi VE sorumlu oldugu TUM OCO'lari ceker (iki sorgu, sayfalayarak), OCO numarasina
  * gore birlestirir ve kronolojik dondurur. fetchPage(skip, rol) testler icindir.
- * @returns {{ rows: object[], total: number, fetched: number, truncated: boolean,
- *   kaynak: object, eksik: {rol: string, message: string}[] }}
+ * @returns {Promise<{ rows: object[], total: number, fetched: number, truncated: boolean,
+ *   kaynak: object, eksik: {rol: string, message: string}[] }>}
  */
 async function searchChangeOrders({ groupId, fetchPage, roller = ROLLER } = {}) {
   const cfg = getConfig();

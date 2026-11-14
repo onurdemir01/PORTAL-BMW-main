@@ -74,9 +74,11 @@ export default function AppLayout() {
   }, []);
 
   // Mobilde sayfa degisince nav'i kapat.
-  useEffect(() => {
+  const [prevPathname, setPrevPathname] = useState(location.pathname);
+  if (location.pathname !== prevPathname) {
+    setPrevPathname(location.pathname);
     if (isMobile) setNavOpen(false);
-  }, [location.pathname, isMobile]);
+  }
 
   return (
     <AppDataProvider>

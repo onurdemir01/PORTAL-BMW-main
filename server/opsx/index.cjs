@@ -2141,7 +2141,7 @@ function initOpsX(app) {
       // istiyorum"), bu yuzden ayni kapiya girer. Kullanici karari: pod listesi istek
       // anindaki haliyle DONDURULUR; onay geldiginde bulunamayan pod'lar atlanir.
       //
-      // BU KARARIN RISKI ACIKCA SOYLENDI ve kullanici bilerek sectı: onay gecikirse
+      // BU KARARIN RISKI ACIKCA SOYLENDI ve kullanici bilerek secti: onay gecikirse
       // pod'lar yenilenmis olabilir ve is "basarili" gorunup HICBIR SEY yapmamis olur.
       // O yuzden talep yanitinda bu durum YAZILI uyari olarak doner - sessiz bir
       // "tamamlandi" en kotu sonuc olurdu.

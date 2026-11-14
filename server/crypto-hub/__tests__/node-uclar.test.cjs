@@ -577,7 +577,7 @@ test('N10b okuma uclari: launch, ayni okuma tekrar, sonuc bellege; is gecmisi ad
     const once = h.d.smartCreated.length;
     r = await h.istek('POST', '/node-smart-onizle', K.nodecu, { tenant: T, grup: G_BTC });
     assert.equal(r.status, 403);
-    // Onizleme DEGER ALMAZ: govdede yeni yok, yeni ozet (önizleme).
+    // Onizleme DEGER ALMAZ: govdede yeni yok, yeni ozet (onizleme).
     r = await h.istek('POST', '/node-smart-onizle', K.admin, { tenant: T, grup: G_BTC });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.flowKey, 'FLOW_OPENSHIFT');

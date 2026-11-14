@@ -71,7 +71,7 @@ test('MT3 bu Node surumunde gercekten taklit eder', () => {
     );
     try {
       assert.equal(
-        require('./fixtures/modul-taklit-hedef.cjs').kim(),
+        require(hedef).kim(),
         'sahte',
         `Node ${process.versions.node} taklidi uygulamadi`,
       );

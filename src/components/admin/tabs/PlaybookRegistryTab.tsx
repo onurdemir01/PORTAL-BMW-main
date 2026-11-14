@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { playbookRegistryApi, type PlaybookRegistryEntry, type SilinenVarsayilan } from "@/api/playbookRegistryApi";
 import { ansibleApi, type AwxServer } from "@/api/ansibleApi";
@@ -83,10 +84,11 @@ export default function PlaybookRegistryTab() {
     }
   }
 
-  useEffect(() => {
-    reload();
+  useAsyncEffect(async (alive) => {
+    if (!alive()) return;
+    await reload();
     // AWX sunucu listesi — "hangi AWX'te" seçici için (yapılandırılmış olanlar).
-    ansibleApi.servers().then((r) => { if (r.ok) setServers(r.servers.filter((s) => s.configured)); }).catch(() => {});
+    ansibleApi.servers().then((r) => { if (alive() && r.ok) setServers(r.servers.filter((s) => s.configured)); }).catch(() => {});
   }, []);
 
   function serverName(id: number | null): string {

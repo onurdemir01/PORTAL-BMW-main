@@ -34,7 +34,7 @@ const STEP = read('components/logx_v2/steps/ocp/AppNameStep.tsx');
 test('AM1 tarama hafizasi SAYFA seviyesinde tanimli (remount sinirinin USTUNDE)', () => {
   assert.match(
     norm(PAGE),
-    /const autoScanMemoRef = useRef<Map<string, number>>\(new Map\(\)\)/,
+    /const \[autoScanMemo\] = useState<Map<string, number>>\(\(\) => new Map\(\)\)/,
     'sayfa seviyesinde tarama hafizasi yok — bilesen ici ref remount ile sifirlanir',
   );
 });
@@ -44,7 +44,7 @@ test('AM2 hafiza AppNameStep`e GERCEKTEN geciriliyor (tanim degil KULLANIM)', ()
   // kullanim silindiginde yesil kaldi. O yuzden prop GECISI aranir.
   assert.match(
     norm(PAGE),
-    /autoScanMemo=\{autoScanMemoRef\.current\}/,
+    /autoScanMemo=\{autoScanMemo\}/,
     'hafiza AppNameStep`e geciriliyor gorunmuyor — bilesen kendi ref`ine duser',
   );
 });

@@ -91,8 +91,7 @@ function ssErisimDogrula(govde) {
     const t = g.trim();
     if (!t) continue;
     if (t.length > GRUP_UZUNLUK) return { hata: `Ekip adı en fazla ${GRUP_UZUNLUK} karakter olabilir.` };
-    // eslint-disable-next-line no-control-regex
-    if (/[\u0000-\u001f\u007f]/.test(t)) return { hata: 'Ekip adında kontrol karakteri olamaz.' };
+    if (require('../util/control-chars.cjs').hasControlChars(t)) return { hata: 'Ekip adında kontrol karakteri olamaz.' };
     const k = grupAnahtari(t);
     if (gorulen.has(k)) continue;
     gorulen.add(k);

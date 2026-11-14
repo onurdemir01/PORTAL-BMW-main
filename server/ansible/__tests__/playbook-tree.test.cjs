@@ -72,7 +72,7 @@ test('AT3 goreli `../` yollari, dosyanin KENDI derinligiyle tutarli', () => {
     if (!/bmw_openshift_jobs/.test(src)) continue;
     // `bmw_portal/` icindeki klasor derinligi: logx/ocp/x.yml -> 2
     const depth = rel.split('/').length - 1;
-    // Repo koküne cikmak icin gereken `../` sayisi: derinlik + 1 (bmw_portal'in kendisi)
+    // Repo kokune cikmak icin gereken `../` sayisi: derinlik + 1 (bmw_portal'in kendisi)
     const needed = '../'.repeat(depth + 1);
     // IKI YAZIM DA GECERLI:
     //   playbook_dir ~ '/../../bmw_openshift_jobs/...'   (tercih edilen — tasinmaya dayanikli)

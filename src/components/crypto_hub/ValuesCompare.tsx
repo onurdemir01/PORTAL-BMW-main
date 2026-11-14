@@ -14,7 +14,8 @@
 // iki FARKLI parolayı "aynı" gösterirdi. Sunucu ham satırlarda karşılaştırıp yalnızca
 // gösterilen değeri maskeliyor; ekran onun sonucunu gösteriyor. İkinci bir karşılaştırma
 // kopyası burada tutulsaydı, bir gün maskeli veriyi karşılaştırır ve farkı sessizce yerdi.
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   EyeIcon,
   EyeSlashIcon,
@@ -54,9 +55,9 @@ export function ValuesCompare({
     if (r.errors?.length) setHata(r.errors.map((e) => `${e.stage}: ${e.message}`).join(' · '));
   };
 
-  useEffect(() => {
-    void getir(false);
-  }, [tenantKey, paths.join('|')]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async (alive) => {
+    if (alive()) await getir(false);
+  }, [tenantKey, paths.join('|')]);
 
   const k = sonuc?.compare;
 

@@ -15,7 +15,8 @@
 //
 // SUNUCUYA YİNE SADECE HOST ADI GİDER: bu modülün playbook'u JBoss majörünü hiç
 // almıyor (extra_vars'ta yok), o yüzden seçim gönderilirken adlar tekilleştirilir.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { filexApi, type FilexHost } from "@/api/filexApi";
 import { hostKey, majorOfHost, normalizeJbossVersion, parseHostKey } from "@/utils/jboss";
@@ -32,13 +33,17 @@ const HostSelectStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    filexApi.getHosts(app)
-      .then((r) => setHosts(r.hosts ?? []))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await filexApi.getHosts(app);
+      if (alive()) setHosts(r.hosts ?? []);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [app]);
 
   const filteredHosts = useMemo(() => {

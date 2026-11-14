@@ -1,4 +1,5 @@
-import React, { createContext, useState, useEffect, useCallback, useContext } from "react";
+import React, { createContext, useState, useCallback, useContext } from "react";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { nobetciApi, type NobetciResult } from "@/api/nobetciApi";
 import { dynatraceApi } from "@/api/dynatraceApi";
 import { ansibleApi } from "@/api/ansibleApi";
@@ -51,21 +52,22 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .finally(() => setNobetciL(false));
   }, []);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
+    if (!alive()) return;
     loadNobetci();
 
     dynatraceApi.health()
-      .then(setDtHealth)
+      .then((r) => { if (alive()) setDtHealth(r); })
       .catch(() => {})
-      .finally(() => setDtHealthL(false));
+      .finally(() => { if (alive()) setDtHealthL(false); });
 
     ansibleApi.ssItems()
-      .then((r) => setSelfSrvCount((r.items || []).length))
+      .then((r) => { if (alive()) setSelfSrvCount((r.items || []).length); })
       // OKUNAMADI != "0 servis". Eskiden hata yutuluyor, sayi 0 kaliyor ve Dashboard
       // "Yayinda servis yok" diyordu; oradaki "Katalog okunamadi" dali hic calisamiyordu.
-      .catch(() => setSelfSrvCount(null))
-      .finally(() => setSelfL(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => { if (alive()) setSelfSrvCount(null); })
+      .finally(() => { if (alive()) setSelfL(false); });
+  }, []);
 
   return (
     <AppContext.Provider value={{

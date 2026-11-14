@@ -180,6 +180,15 @@ function entityNames(list: unknown): string[] {
   return (list as Record<string, unknown>[]).map((e) => String(e.name || '')).filter(Boolean);
 }
 
+function ProblemDetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2 text-sm">
+      <span className="text-slate-400 w-28 flex-shrink-0">{label}</span>
+      <span className="text-slate-700 min-w-0">{children}</span>
+    </div>
+  );
+}
+
 // Problem detayını okunur bir panel + ham metin fallback olarak gösterir.
 function ProblemDetailBody({ text }: { text: string }) {
   const json = extractEmbeddedJson(text);
@@ -197,13 +206,6 @@ function ProblemDetailBody({ text }: { text: string }) {
   const evidence = evidenceLines(json);
   const dtUrl = extractDtUrl(text, String(json.problemId || ''));
 
-  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex gap-2 text-sm">
-      <span className="text-slate-400 w-28 flex-shrink-0">{label}</span>
-      <span className="text-slate-700 min-w-0">{children}</span>
-    </div>
-  );
-
   return (
     <div className="px-5 py-4 space-y-4 overflow-y-auto">
       <div className="flex items-center gap-2 flex-wrap">
@@ -217,11 +219,11 @@ function ProblemDetailBody({ text }: { text: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <Row label="Problem ID">{String(json.displayId || json.problemId || '—')}</Row>
-        <Row label="Etki seviyesi">{String(json.impactLevel || '—')}</Row>
-        {zones.length > 0 && <Row label="Yönetim bölgesi">{zones.join(', ')}</Row>}
-        <Row label="Başlangıç">{fmtEpoch(json.startTime)}</Row>
-        {Number(json.endTime) > 0 && <Row label="Bitiş">{fmtEpoch(json.endTime)}</Row>}
+        <ProblemDetailRow label="Problem ID">{String(json.displayId || json.problemId || '—')}</ProblemDetailRow>
+        <ProblemDetailRow label="Etki seviyesi">{String(json.impactLevel || '—')}</ProblemDetailRow>
+        {zones.length > 0 && <ProblemDetailRow label="Yönetim bölgesi">{zones.join(', ')}</ProblemDetailRow>}
+        <ProblemDetailRow label="Başlangıç">{fmtEpoch(json.startTime)}</ProblemDetailRow>
+        {Number(json.endTime) > 0 && <ProblemDetailRow label="Bitiş">{fmtEpoch(json.endTime)}</ProblemDetailRow>}
       </div>
 
       {rootCause && (
@@ -1255,9 +1257,12 @@ function SplunkTab() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    if (product) load();
-  }, [product, windowMinutes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(
+    async (alive) => {
+      if (product && alive()) load();
+    },
+    [product, windowMinutes],
+  );
 
   if (configured === false) {
     return (

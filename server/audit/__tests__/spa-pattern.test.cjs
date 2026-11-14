@@ -3,8 +3,8 @@
 // GUN ICINDE IKI KARAR (2026-09-28):
 //   1) Kural "-v0/-v1 ile de bitebilir" diye genisletildi (kullanici: "bazi SPA
 //      uygulamalarinin standarta uymayan kalibi var, bence genisletelim").
-//   2) Ayni gun GERI ALINDI (kullanici: "bu geliştirmeyi direkt geri alalım, -app-v ve
-//      -app-emb-v kuralı tekrar geçerli olsun"). Surum eki SPA'ya OZGU degil - bir API de
+//   2) Ayni gun GERI ALINDI (kullanici: "bu gelistirmeyi direkt geri alalim, -app-v ve
+//      -app-emb-v kurali tekrar gecerli olsun"). Surum eki SPA'ya OZGU degil - bir API de
 //      "-v1" ile biter; ada bakip SPA demek uydurma bir olcute guvenmekti.
 //
 // Buradaki bekciler iki seyi korur:

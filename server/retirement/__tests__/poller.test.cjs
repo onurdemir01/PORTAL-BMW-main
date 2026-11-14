@@ -18,7 +18,7 @@ const Module = require('node:module');
 
 // DB'yi require onbelleginde degistiririz: poller `require('../db/index.cjs')` cagiriyor.
 const DB_YOL = path.join(__dirname, '..', '..', 'db', 'index.cjs');
-const sahteDb = { query: async () => ({ rows: [], rowCount: 0 }) };
+const sahteDb = { query: async (_sql, _p) => ({ rows: [], rowCount: 0 }) };
 require.cache[Module._resolveFilename(DB_YOL, module)] = { id: DB_YOL, filename: DB_YOL, loaded: true, exports: sahteDb };
 
 const poller = require('../poller.cjs');

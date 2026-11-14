@@ -25,7 +25,7 @@ test('RL1: zone tanimi ve uygulama satirlari dogru ayristirilir', () => {
     rl.parseReqZone('$binary_remote_addr zone=request_limit:20m rate=500r/s'),
     { name: 'request_limit', size: '20m', rate: '500r/s', variable: '$binary_remote_addr' },
   );
-  // NGINX Plus kume senkronu: `sync` eki oranı bozmamali.
+  // NGINX Plus kume senkronu: `sync` eki orani bozmamali.
   assert.equal(rl.parseReqZone('$server_name zone=server_limit:50m rate=5000r/s sync').rate, '5000r/s');
   assert.deepEqual(rl.parseReqApply('zone=request_limit burst=200 nodelay'), { name: 'request_limit', burst: 200, nodelay: true });
   assert.equal(rl.parseReqApply('zone=request_limit').nodelay, false);

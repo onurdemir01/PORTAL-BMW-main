@@ -1,4 +1,4 @@
-// server/oco/__tests__/smart-first-scheduling.test.cjs — "ONAY ÖNCE, ZAMANLAMA SONRA" (2026-09-22).
+// server/oco/__tests__/smart-first-scheduling.test.cjs — "ONAY ONCE, ZAMANLAMA SONRA" (2026-09-22).
 //
 // Kullanici: "OCO 23:00'te, personel 15:00'te giriyor. Bugun Smart bileti 23:00'te aciliyor ve
 // personelin gece gelip onaylamasi gerekiyor — bu sacma. Onay mesai icinde alinsin, is onaydan

@@ -1548,7 +1548,7 @@ const YENI_KOLON_ADLARI = Object.keys(ESKI_SEMA).flatMap((t) =>
 
 /** SQL Server gibi davranan sahte sorgu: semada olmayan kolon/tablo -> istisna. */
 function sahteSorgu(sema, satirlar, kayit) {
-  return async (sqlText) => {
+  return async (sqlText, _params) => {
     const s = String(sqlText);
     kayit.push(s);
     if (/OBJECT_ID\('dbo\.Server_Hub_Hosts'\) AS oid/.test(s)) return { recordset: [{ oid: 1 }] };

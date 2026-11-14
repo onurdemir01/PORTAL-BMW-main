@@ -101,8 +101,8 @@ const temel = () => ({
   CIKTI: 'C:/sonuc/R17',
 });
 
-async function hataVerir(env, desen) {
-  await assert.rejects(() => yukle(env), (e) => desen.test(String(e.message)));
+async function hataVerir(env, desen, mesaj) {
+  await assert.rejects(() => yukle(env), (e) => desen.test(String(e.message)), mesaj);
 }
 
 test('K1 secenekler: hiz, sure, TLS 1.2, 429/http2 kesme esikleri, govde atilir, yonlendirme yok', async () => {

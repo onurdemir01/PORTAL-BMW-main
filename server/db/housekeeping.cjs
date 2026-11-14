@@ -257,7 +257,7 @@ async function checkAndAlert(usage) {
   const due = filesNeedingAlert(usage, cfg, state.alertsSent);
   if (!due.length) return 0;
   for (const f of due) {
-    console.warn(`[DBHousekeeping] DOLULUK UYARISI ${f.name}: %${f.alert_pct.toFixed(1)} (eşik %${cfg.alertPercent})`);
+    console.warn(`[DBHousekeeping] DOLULUK UYARISI ${f.name}: %${f.alert_pct.toFixed(1)} (esik %${cfg.alertPercent})`);
   }
   if (!cfg.webhookUrl) return 0; // webhook yoksa yalniz log + ekran
   await postTeams(cfg, buildAlertCard(usage, due, cfg));
@@ -297,7 +297,7 @@ async function runHousekeeping() {
     const pool = await getPool();
     if (!pool) throw new Error('Portal DB bağlantısı yok.');
 
-    // 1) Eski JSON blob'lari NULL — satir kalir (kim/ne zaman/hangi job), sadece gövde gider.
+    // 1) Eski JSON blob'lari NULL — satir kalir (kim/ne zaman/hangi job), sadece govde gider.
     state.logxBlobsCleared += await batched(
       pool,
       `UPDATE TOP (@n) logx_v2_jobs SET artifacts_json = NULL, extra_vars_redacted = NULL

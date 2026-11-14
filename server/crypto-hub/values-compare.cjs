@@ -1,12 +1,12 @@
-// server/crypto-hub/values-compare.cjs — cluster values dosyalarını karşılaştırır.
+// server/crypto-hub/values-compare.cjs — cluster values dosyalarini karsilastirir.
 //
-// NEDEN VAR (2026-09-27, kullanıcı): Wyden AKTİF-PASİF çalışıyor. Her ortam için ayrı
-// OpenShift cluster'larına özgü values dosyaları var (non-prod 2, prod 3). Bu dosyaların
-// birbirinden sessizce ayrışması, aktif-pasif devrinde uygulamanın BAŞKA bir
-// konfigürasyonla açılması demek.
+// NEDEN VAR (2026-09-27, kullanici): Wyden AKTIF-PASIF calisiyor. Her ortam icin ayri
+// OpenShift cluster'larina ozgu values dosyalari var (non-prod 2, prod 3). Bu dosyalarin
+// birbirinden sessizce ayrismasi, aktif-pasif devrinde uygulamanin BASKA bir
+// konfigurasyonla acilmasi demek.
 //
-// NEDEN SUNUCUDA: maskeleme burada. Karşılaştırma HAM veri üzerinde yapılmak ZORUNDA
-// (aşağıdaki maske notu), o yüzden ekranda yapılamaz.
+// NEDEN SUNUCUDA: maskeleme burada. Karsilastirma HAM veri uzerinde yapilmak ZORUNDA
+// (asagidaki maske notu), o yuzden ekranda yapilamaz.
 //
 // MASKE TUZAGI - BU MODULUN VAROLUS SEBEBI: maskValues bir sirri '****' ile degistirir.
 // Iki cluster'da FARKLI iki parola maskelendikten sonra IKISI DE '****' olur. Karsilastirma
@@ -14,15 +14,15 @@
 // `ayni` HAM degerlerden hesaplanir; maske yalnizca GOSTERILEN degeri degistirir. Boylece
 // "bu iki dosyada parola farkli" bilgisi, parolanin kendisi hic gosterilmeden raporlanir.
 //
-// NEDEN ANAHTAR BAZLI, SATIR BAZLI DEĞİL: sorulan soru "dosyalar birebir aynı mı" değil,
-// "hangi AYAR farklı". Satır bazlı diff, yalnızca sırası değişmiş iki dosyayı baştan aşağı
-// farklı gösterir ve gerçek farkı gürültüde kaybeder.
+// NEDEN ANAHTAR BAZLI, SATIR BAZLI DEGIL: sorulan soru "dosyalar birebir ayni mi" degil,
+// "hangi AYAR farkli". Satir bazli diff, yalnizca sirasi degismis iki dosyayi bastan asagi
+// farkli gosterir ve gercek farki gurultude kaybeder.
 'use strict';
 
 /**
- * YAML satırlarını "a.b.c" -> değer haritasına çevirir.
- * Tam bir YAML ayrıştırıcısı DEĞİL: girinti hiyerarşisini yol olarak kurar. Bu dosyalar
- * helm values'ı; liste elemanları ve çok satırlı bloklar karşılaştırmanın konusu değil.
+ * YAML satirlarini "a.b.c" -> deger haritasina cevirir.
+ * Tam bir YAML ayristiricisi DEGIL: girinti hiyerarsisini yol olarak kurar. Bu dosyalar
+ * helm values'i; liste elemanlari ve cok satirli bloklar karsilastirmanin konusu degil.
  */
 function anahtarla(lines) {
   const out = new Map();
@@ -43,8 +43,8 @@ function anahtarla(lines) {
   return out;
 }
 
-/** Dosya yolundan cluster adı: ".../1.8.2/cldev1/garanti_values.yaml" -> "cldev1".
- *  Alt dizin yoksa dosya adına düşer (eski düzen: sürüm dizininde tek dosya). */
+/** Dosya yolundan cluster adi: ".../1.8.2/cldev1/garanti_values.yaml" -> "cldev1".
+ *  Alt dizin yoksa dosya adina duser (eski duzen: surum dizininde tek dosya). */
 function clusterAdi(p) {
   const par = String(p || '')
     .split('/')
@@ -54,7 +54,7 @@ function clusterAdi(p) {
 
 /**
  * @param files [{ path, lines (HAM), error }]
- * @param sirRe sır anahtarı deseni (maskeli gösterim için) ya da null (ham gösterim)
+ * @param sirRe sir anahtari deseni (maskeli gosterim icin) ya da null (ham gosterim)
  * @returns {{ okunan, okunamayan, satirlar, farkliSayi, anahtarSayi, karsilastirilabilir }}
  */
 function karsilastir(files, sirRe) {
@@ -104,7 +104,7 @@ function karsilastir(files, sirRe) {
  * Kullanici (2026-09-28): karsilastirmada gorulen farki oteki cluster'a da yazabilmek.
  *
  * YALNIZ VAR OLAN ANAHTAR GUNCELLENIR. Olmayan anahtar EKLENMEZ: nereye, hangi girintiyle
- * ve hangi blogun altina ekleneceği bu dosyalarda tek bir dogru cevabi olmayan bir sorudur
+ * ve hangi blogun altina eklenecegi bu dosyalarda tek bir dogru cevabi olmayan bir sorudur
  * ve yanlis tahmin, values dosyasini sessizce bozar. Eklenemeyenler `atlanan` olarak
  * DONDURULUR - ekran bunlari "elle eklenmeli" diye gosterir, sessizce yutmaz.
  *
@@ -113,7 +113,7 @@ function karsilastir(files, sirRe) {
  *
  * @param lines hedef dosyanin HAM satirlari
  * @param secimler [{ anahtar: 'a.b.c', deger: 'x' }]
- * @returns { lines, degisen, atlanan, maskeli }
+ * @returns {{ lines: string[], degisen: any[], atlanan: any[], maskeli: boolean }}
  */
 function uygula(lines, secimler) {
   const kaynak = Array.isArray(lines) ? lines.map((x) => String(x == null ? '' : x)) : [];

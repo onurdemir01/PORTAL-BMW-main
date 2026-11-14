@@ -15,8 +15,9 @@
 //
 // SUNUCUYA YİNE SADECE HOST ADI GİDER: bu modülün playbook'u JBoss majörünü hiç
 // almıyor (extra_vars'ta yok), o yüzden seçim gönderilirken adlar tekilleştirilir.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { telnetApi, type TelnetHost } from "@/api/telnetApi";
 import { hostKey, majorOfHost, normalizeJbossVersion, parseHostKey } from "@/utils/jboss";
 import JbossTag from "@/components/common/JbossTag";
@@ -32,13 +33,17 @@ const HostSelectStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    telnetApi.getHosts(app)
-      .then((r) => setHosts(r.hosts ?? []))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await telnetApi.getHosts(app);
+      if (alive()) setHosts(r.hosts ?? []);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [app]);
 
   // Majör sürüm bazında filtrelenir (bkz. OpsX'in HostSelectStep.tsx dosya başı notu).

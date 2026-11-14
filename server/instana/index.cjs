@@ -3,7 +3,8 @@
 
 const { isConfigured, callTool, listTools } = require('./client.cjs');
 
-let _getTeamOwnership = async () => new Map();
+/** @type {(names: string[]) => Promise<Map<string, any>>} */
+let _getTeamOwnership = async (_names) => new Map();
 try {
   ({ getTeamOwnership: _getTeamOwnership } = require('../inventory/index.cjs'));
 } catch { /* inventory modulu yoksa takim sahipligi sessizce devre disi */ }

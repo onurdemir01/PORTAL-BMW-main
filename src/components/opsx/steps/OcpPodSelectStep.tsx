@@ -15,8 +15,9 @@
 //
 // Thread dump seçildiyse ayrıca "kaç dump, kaç saniye arayla" sorulur (varsayılan 1 dump,
 // beklemesiz; sınırlar backend ve playbook ile AYNI: 1-100 adet, 0-3600 sn).
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { OCP_TUM_PODLAR, opsxApi, type OpsxPod, type OpsxDumpType, type OpsxOcpPair } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
@@ -69,26 +70,31 @@ const OcpPodSelectStep: React.FC<{
   const [threadDumpInterval, setThreadDumpInterval] = useState(0);
 
   const namespaceList = useMemo(() => [...new Set(pairs.map((p) => p.namespace))], [pairs]);
-  const pairsKey = pairs.map((p) => p.namespace).sort().join(",");
+  const pairsJson = JSON.stringify(pairs);
 
   // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
-
+  useAsyncEffect(async (alive) => {
+    const targetPairs = JSON.parse(pairsJson) as OpsxOcpPair[];
     setLoading(true);
     setError(null);
     setWarning(null);
     setPods([]);
     setSelected(new Set());
 
-    async function poll(awxServerId: number, jobId: number) {
-      try {
-        const r = await opsxApi.ocpPodsStatus(awxServerId, jobId);
-        if (cancelled) return;
+    try {
+      const init = await opsxApi.discoverOcpPods(env, tenant, targetPairs);
+      if (!alive()) return;
+      if (init.jobId == null) {
+        setError(init.message || "Pod keşfi işi başlatılamadı.");
+        return;
+      }
+
+      while (alive()) {
+        const r = await opsxApi.ocpPodsStatus(init.awxServerId, init.jobId);
+        if (!alive()) return;
         if (!TERMINAL.has(r.status)) {
-          timer = window.setTimeout(() => poll(awxServerId, jobId), 3000);
-          return;
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          continue;
         }
         if (r.pods && r.pods.length > 0) {
           setPods(r.pods);
@@ -96,36 +102,14 @@ const OcpPodSelectStep: React.FC<{
         } else {
           setError(r.message || "Pod listesi alınamadı.");
         }
-        setLoading(false);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
+        return;
       }
+    } catch (err: unknown) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
     }
-
-    opsxApi.discoverOcpPods(env, tenant, pairs)
-      .then((r) => {
-        if (cancelled) return;
-        if (r.jobId == null) {
-          setError(r.message || "Pod keşfi işi başlatılamadı.");
-          setLoading(false);
-          return;
-        }
-        poll(r.awxServerId, r.jobId);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [env, tenant, pairsKey, nonce]);
+  }, [env, tenant, pairsJson, nonce]);
 
   const filteredPods = useMemo(() => {
     const q = search.trim().toLowerCase();

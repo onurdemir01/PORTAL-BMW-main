@@ -1,12 +1,12 @@
-// server/auth/__tests__/nginx-hub-access.test.cjs — Nginx Hub sekme bazlı erişim (2026-09-23).
+// server/auth/__tests__/nginx-hub-access.test.cjs — Nginx Hub sekme bazli erisim (2026-09-23).
 //
-// Kullanıcı: "Nginx Hub'a da istediğim kullanıcıları sokmak istiyorum ama yine sadece
-// istediğim sayfaları görsünler — CIS, SPA, API Envanteri, Envanter, Audit gibi."
+// Kullanici: "Nginx Hub'a da istedigim kullanicilari sokmak istiyorum ama yine sadece
+// istedigim sayfalari gorsunler — CIS, SPA, API Envanteri, Envanter, Audit gibi."
 //
-// Model Denetim ile aynıdır (kullanıcı kararı, 2026-09-23): sayfa da sekmeler de VARSAYILAN
-// KAPALI; erişim Admin > "Nginx Hub Erişimi" panelinden sayfa + seçilen sekmeler olarak verilir.
-// Varsayılan bir tur ÖNCE 1'di; kapatırken sayfaya zaten erişimi olanlar boş ekran görmesin
-// diye tek seferlik migration onlara tüm sekmeleri açar — o migration da burada kilitlidir.
+// Model Denetim ile aynidir (kullanici karari, 2026-09-23): sayfa da sekmeler de VARSAYILAN
+// KAPALI; erisim Admin > "Nginx Hub Erisimi" panelinden sayfa + secilen sekmeler olarak verilir.
+// Varsayilan bir tur ONCE 1'di; kapatirken sayfaya zaten erisimi olanlar bos ekran gormesin
+// diye tek seferlik migration onlara tum sekmeleri acar — o migration da burada kilitlidir.
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -166,8 +166,8 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
   for (const t of ['config', 'certs', 'changes', 'orphans', 'drift']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(con), `yol eşlemesinde ${t} yok`);
   }
-  // /hosts BİLEREK sayfa kapısında: dashboard/instances/config aynı listeyi okur. 2026-10-14'ten
-  // beri ADMIN_DISI_OKUMA'da da /hosts deseni var (salt okunur erişim); ölçüt metin değil EŞLEME.
+  // /hosts BILEREK sayfa kapisinda: dashboard/instances/config ayni listeyi okur. 2026-10-14'ten
+  // beri ADMIN_DISI_OKUMA'da da /hosts deseni var (salt okunur erisim); olcut metin degil ESLEME.
   const { _SEKME_YOLLARI } = require('../../nginx-console/index.cjs');
   assert.ok(
     !_SEKME_YOLLARI.some(([re]) => re.test('/hosts')),
@@ -211,7 +211,7 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     /HUB_AUDIT_TABS\.filter\(\(x\) =>[\s\S]{0,260}canSee\('tab:nginx:spadiscovery'\)[\s\S]{0,80}canSee\('tab:nginx:spa'\)/.test(page),
     'birleşik sekme iki görünürlük anahtarından birini okumuyor',
   );
-  // İçerik de kapalı olmalı: görünmeyen sekmenin bileşeni render EDİLMEMELİ.
+  // Icerik de kapali olmali: gorunmeyen sekmenin bileseni render EDILMEMELI.
   for (const t of RENDER_TABS) {
     if (t === 'spadiscovery') {
       // Birlesik sayfa: iki anahtardan biri yeterli, ama HICBIRI yoksa render EDILMEZ.
@@ -254,7 +254,7 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
     tab.includes('nginxAccessApi') && tab.includes('TabAccessPanel'),
     'panel/API bağlı değil',
   );
-  // Kullanıcının saydığı sekmeler etiketli olmalı (ekranda anlaşılır adlar).
+  // Kullanicinin saydigi sekmeler etiketli olmali (ekranda anlasilir adlar).
   for (const s of ['CIS', 'SPA', 'API Envanteri', 'Envanter', 'Audit']) {
     assert.ok(tab.includes(s), `etiket eksik: ${s}`);
   }

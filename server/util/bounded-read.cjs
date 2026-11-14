@@ -1,37 +1,37 @@
-// server/util/bounded-read.cjs — GÖVDEYİ SINIRLI OKU.
+// server/util/bounded-read.cjs — GOVDEYI SINIRLI OKU.
 //
 // NEDEN VAR
 // ─────────
-// Portal 2026-09'da **yedi kez** OOM ile çöktü (`FATAL ERROR: Reached heap
-// limit`, heap tavanı 2 GB). Yedisinin de kökü aynı sınıftı: bir HTTP gövdesinin
-// **sınırsız** tamponlanması —
+// Portal 2026-09'da **yedi kez** OOM ile coktu (`FATAL ERROR: Reached heap
+// limit`, heap tavani 2 GB). Yedisinin de koku ayni sinifti: bir HTTP govdesinin
+// **sinirsiz** tamponlanmasi —
 //
-//     let data = ''; res.on('data', (c) => { data += c; });   // ← sınır yok
-//     const text = await res.body.text();                     // ← sınır yok
+//     let data = ''; res.on('data', (c) => { data += c; });   // ← sinir yok
+//     const text = await res.body.text();                     // ← sinir yok
 //
-// Kapatılan yollar (PR #106/#108/#109/#112) tek tek düzeltildi ve **her seferinde
-// aynı iki hata tekrarlandı**:
+// Kapatilan yollar (PR #106/#108/#109/#112) tek tek duzeltildi ve **her seferinde
+// ayni iki hata tekrarlandi**:
 //
-//   1. `req.destroy()` **`end` olayını öldürür.** Yalnızca `end`'de çözmek
-//      promise'i SONSUZA DEK asılı bırakır — PR #106'da tam bu tuzağa düşüldü.
-//   2. `.text()` çağırıp **sonra** uzunluğa bakmak işe yaramaz: o noktada veri
+//   1. `req.destroy()` **`end` olayini oldurur.** Yalnizca `end`'de cozmek
+//      promise'i SONSUZA DEK asili birakir — PR #106'da tam bu tuzaga dusuldu.
+//   2. `.text()` cagirip **sonra** uzunluga bakmak ise yaramaz: o noktada veri
 //      **zaten bellektedir**.
 //
-// Bu dosya o dersleri TEK BİR DOĞRU UYGULAMADA topluyor. Yeni bir okuma yolu
-// yazarken buradan geçilir; altı ayrı yerde altı ayrı "sınır" yazmak, altı ayrı
-// biçimde yanlış yazmak demekti (nitekim öyle oldu).
+// Bu dosya o dersleri TEK BIR DOGRU UYGULAMADA topluyor. Yeni bir okuma yolu
+// yazarken buradan gecilir; alti ayri yerde alti ayri "sinir" yazmak, alti ayri
+// bicimde yanlis yazmak demekti (nitekim oyle oldu).
 //
-// ── ZAMAN AŞIMI TUZAĞI ──────────────────────────────────────────────────────
-// Node'un `timeout` seçeneği **hareketsizlik (socket idle)** zaman aşımıdır.
-// Sürekli akan bir yanıt o sayacı her chunk'ta sıfırlar → timeout **asla**
-// tetiklenmez ve tampon sınırsız büyür. Yani "timeout var" demek "sınır var"
-// DEMEK DEĞİLDİR. Bayt kapısı bundan bağımsız olarak şarttır.
+// ── ZAMAN ASIMI TUZAGI ──────────────────────────────────────────────────────
+// Node'un `timeout` secenegi **hareketsizlik (socket idle)** zaman asimidir.
+// Surekli akan bir yanit o sayaci her chunk'ta sifirlar → timeout **asla**
+// tetiklenmez ve tampon sinirsiz buyur. Yani "timeout var" demek "sinir var"
+// DEMEK DEGILDIR. Bayt kapisi bundan bagimsiz olarak sarttir.
 'use strict';
 
 /**
- * Tavanı aşan gövde için fırlatılan hata.
- * `tooLarge` işareti, çağıranın bunu "okunamadı"dan AYIRT etmesini sağlar —
- * ve bu red KALICIDIR: yanıt bir sonraki denemede küçülmez.
+ * Tavani asan govde icin firlatilan hata.
+ * `tooLarge` isareti, cagiranin bunu "okunamadi"dan AYIRT etmesini saglar —
+ * ve bu red KALICIDIR: yanit bir sonraki denemede kuculmez.
  */
 function tooLargeError(label, maxBytes) {
   return Object.assign(
@@ -43,14 +43,14 @@ function tooLargeError(label, maxBytes) {
 }
 
 /**
- * Node `http`/`https` yanıt akışını SINIRLI okur.
+ * Node `http`/`https` yanit akisini SINIRLI okur.
  *
- * Tavan aşılırsa akış **hemen kesilir** ve promise **hemen** reddedilir —
- * `end` beklenmez, çünkü `destroy()` sonrası `end` GELMEZ.
+ * Tavan asilirsa akis **hemen kesilir** ve promise **hemen** reddedilir —
+ * `end` beklenmez, cunku `destroy()` sonrasi `end` GELMEZ.
  *
  * @param {import('stream').Readable} response
  * @param {{ maxBytes: number, label: string, onAbort?: () => void }} opts
- *   `onAbort`: isteğin kendisini de kapatmak için (örn. `req.destroy()`).
+ *   `onAbort`: istegin kendisini de kapatmak icin (orn. `req.destroy()`).
  * @returns {Promise<string>}
  */
 function readResponseLimited(response, { maxBytes, label, onAbort } = {}) {
@@ -96,10 +96,10 @@ function readResponseLimited(response, { maxBytes, label, onAbort } = {}) {
 }
 
 /**
- * `undici` / `fetch` gövdesini SINIRLI okur.
+ * `undici` / `fetch` govdesini SINIRLI okur.
  *
- * `.text()` ÇAĞIRMAZ: o çağrı gövdenin tamamını belleğe alır ve uzunluğa
- * sonradan bakmak hiçbir şeyi kurtarmaz.
+ * `.text()` CAGIRMAZ: o cagri govdenin tamamini bellege alir ve uzunluga
+ * sonradan bakmak hicbir seyi kurtarmaz.
  *
  * @param {AsyncIterable<Buffer>} body
  * @param {{ maxBytes: number, label: string }} opts
@@ -120,11 +120,11 @@ async function readBodyLimited(body, { maxBytes, label } = {}) {
 }
 
 /**
- * Metni önce SINIRLA, sonra `JSON.parse` et.
+ * Metni once SINIRLA, sonra `JSON.parse` et.
  *
- * SIRA ÖNEMLİ: `JSON.parse` metnin **3-6 katı** büyüklükte bir nesne grafiği
- * üretir. Parse'tan SONRA kırpmak (repoda bir örneği vardı) belleği hiç
- * kurtarmaz — zarar o noktada zaten oluşmuştur.
+ * SIRA ONEMLI: `JSON.parse` metnin **3-6 kati** buyuklukte bir nesne grafigi
+ * uretir. Parse'tan SONRA kirpmak (repoda bir ornegi vardi) bellegi hic
+ * kurtarmaz — zarar o noktada zaten olusmustur.
  */
 function parseJsonLimited(text, { maxBytes, label } = {}) {
   const bayt = Buffer.byteLength(text || '', 'utf8');
@@ -133,14 +133,14 @@ function parseJsonLimited(text, { maxBytes, label } = {}) {
 }
 
 /**
- * Hata mesajina koymak icin gövdenin YALNIZCA BASINI okur.
+ * Hata mesajina koymak icin govdenin YALNIZCA BASINI okur.
  *
  * NEDEN AYRI BIR YARDIMCI: hata yollarinda tekrarlanan desen suydu —
  *
  *     const text = await res.text();                 // ← TAMAMI bellege alinir
  *     throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
  *
- * `slice(0, 200)` HICBIR SEY KURTARMAZ: o noktada gövdenin tamami zaten
+ * `slice(0, 200)` HICBIR SEY KURTARMAZ: o noktada govdenin tamami zaten
  * bellektedir. Bu dosyanin basindaki 2 numarali ders tam olarak budur, ve
  * portalda uc ayri yerde (Teams webhook hata yollari) aynen tekrarlaniyordu.
  * Araya giren bir kurumsal vekil sunucu bu uclara MB'larca HTML hata sayfasi

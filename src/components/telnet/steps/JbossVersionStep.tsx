@@ -5,8 +5,9 @@
 // MAJÖR SÜRÜM BAZINDA GRUPLANIR (bkz. OpsX'in JbossVersionStep.tsx dosya başı notu) —
 // aynı hata (bir minör sürüm seçilince diğer minör sürümdeki host'ların hiç görünmemesi)
 // burada da vardı, OpsX ile AYNI düzeltme uygulandı.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { telnetApi, type TelnetHost } from "@/api/telnetApi";
 import { majorOfHost, normalizeJbossVersion } from "@/utils/jboss";
 
@@ -22,13 +23,17 @@ const JbossVersionStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    telnetApi.getHosts(app)
-      .then((r) => setHosts(r.hosts ?? []))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await telnetApi.getHosts(app);
+      if (alive()) setHosts(r.hosts ?? []);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [app]);
 
   // Majör bazında gruplanir, ama gruptaki GERÇEK sürümler de gösterilir (OpsX'in

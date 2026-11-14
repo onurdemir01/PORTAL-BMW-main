@@ -254,6 +254,7 @@ test("EAX4 AWX kosusunun alimi awx-<is>/raw'dan", async () => {
 });
 
 test('EAX5 limitDenetimi', async () => {
+  /** @type {any} */
   let ayar = 'all';
   let okuma = 0;
   sahteModul(RUNNER_YOLU, {

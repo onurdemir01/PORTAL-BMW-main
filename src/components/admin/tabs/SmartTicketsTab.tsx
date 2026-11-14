@@ -4,7 +4,8 @@
 // (RequestsSidePanel) farki: TUM kullanicilarin talepleri + sunucu-tarafi filtre/sayfalama.
 // Tablo buyuyebilecegi icin filtreleme ve sayfalama SUNUCUDA yapilir (bkz.
 // server/ansible/runner.cjs GET /ss/smart-tickets/all).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
@@ -119,13 +120,14 @@ export default function SmartTicketsTab() {
     [offset, status, username, q],
   );
 
-  useEffect(() => {
-    load(0);
-    setOffset(0); /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [status]);
-  useEffect(() => {
-    load(offset);
-  }, []);
+  useAsyncEffect(
+    async (alive) => {
+      if (!alive()) return;
+      setOffset(0);
+      await load(0);
+    },
+    [status],
+  );
 
   function applyFilters() {
     setOffset(0);

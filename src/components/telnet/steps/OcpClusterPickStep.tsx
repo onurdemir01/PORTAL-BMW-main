@@ -8,8 +8,9 @@
 // yüzden burada "belirli bir cluster" seçimi sadece backend'in `ocp_clusters[]` VERİSİNİ
 // daraltması demektir (bkz. server/telnet/index.cjs). Yine de kullanıcı deneyimi OpsX
 // Openshift Rollout'la BİREBİR aynı olsun diye aynı bileşen deseni kullanılır.
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ServerStackIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { telnetApi } from "@/api/telnetApi";
 import { SourceNote } from '@/components/common/SourceNote';
 import { OCP_CLUSTER_INDEX } from '@/config/dataSources';
@@ -29,17 +30,20 @@ const OcpClusterPickStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    telnetApi.getClusters()
-      .then((r) => {
-        const names = r.tree?.[env]?.[tenant] || [];
-        setClusters(names);
-        setSelected(names.length === 1 ? names[0] : null);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await telnetApi.getClusters();
+      if (!alive()) return;
+      const names = r.tree?.[env]?.[tenant] || [];
+      setClusters(names);
+      setSelected(names.length === 1 ? names[0] : null);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [env, tenant]);
 
   if (loading) return <div className="py-8 text-center text-sm text-[var(--text-muted)]">Cluster'lar yükleniyor...</div>;

@@ -180,6 +180,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUyariSurum(null);
   }, [saat]);
 
+  // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
+  // Dönüş: harita GERÇEKTEN yüklendi mi (401/503/motor-hatası → false).
+  const refreshVisibility = useCallback((): Promise<boolean> => {
+    return visibilityApi.getResolved()
+      .then(({ version, visibility }) => {
+        visibilityVersion.current = version;
+        setVisibilityMap(visibility);
+        setVisibilityReady(true); // BAŞARILI yükleme → gated fetch'ler artık tetiklenebilir
+        setVisibilityFailed(false);
+        return true;
+      })
+      .catch(() => false); // açılışta authsız/401 olabilir — ready FALSE kalır, gated fetch atılmaz
+  }, []);
+
   // Restore session from backend on mount
   useEffect(() => {
     // Oturum geri yukleme GECICI hatalarda YENIDEN DENER. Eskiden tek istek atiliyor
@@ -211,25 +225,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .finally(() => setPageVisibilityLoaded(true));
 
     // Yeni element-bazlı çözülmüş görünürlük — canViewPage/canSee bunun üzerine kurulu.
-    refreshVisibility();
+    void refreshVisibility();
 
     // Unmount sonrasi setState'i onler (StrictMode cift-mount dahil).
     return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Çözülmüş görünürlük haritasını (element→bool) sunucudan tazeler + versiyonu kaydeder.
-  // Dönüş: harita GERÇEKTEN yüklendi mi (401/503/motor-hatası → false).
-  const refreshVisibility = useCallback((): Promise<boolean> => {
-    return visibilityApi.getResolved()
-      .then(({ version, visibility }) => {
-        visibilityVersion.current = version;
-        setVisibilityMap(visibility);
-        setVisibilityReady(true); // BAŞARILI yükleme → gated fetch'ler artık tetiklenebilir
-        setVisibilityFailed(false);
-        return true;
-      })
-      .catch(() => false); // açılışta authsız/401 olabilir — ready FALSE kalır, gated fetch atılmaz
-  }, []);
+  }, [refreshVisibility, saat]);
 
   // İlk yüklemede harita gelmezse BİR kez daha dener; o da başarısızsa `visibilityFailed`
   // işaretlenir ve route guard'ları korumalı sayfaları açmaz (fail-closed). Yalnızca

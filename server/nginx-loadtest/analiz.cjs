@@ -1434,7 +1434,7 @@ function bTtfbSatirlari(sat, ref, ady) {
 
 /**
  * CPU'suz karar yolu (PORTAL FARKLARI 9): ortak kademelerde bugunku p95 zarar hesabi (ayni esik, ayni
- * `p95 @..` satirlari) + bilgi satirlari (bayt, B TTFB). Zarar RET; yoksa NOTR + `cpuNotu`. CPU kazanci ve
+ * `p95` esigi) + bilgi satirlari (bayt, B TTFB). Zarar RET; yoksa NOTR + `cpuNotu`. CPU kazanci ve
  * p95 kazanci kurallari CPU olcusu ister: bu yol ASLA KALICI vermez.
  */
 function cpusuzKarar(bitir, b, cpuNotu) {

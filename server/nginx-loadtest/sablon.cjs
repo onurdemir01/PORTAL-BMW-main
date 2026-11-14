@@ -17,9 +17,9 @@
 
 const AD_MAX = 120;
 const GOVDE_MAX_BAYT = 16 * 1024;
+const { hasControlChars } = require('../util/control-chars.cjs');
 // dogrula.cjs KONTROL_KARAKTERI ile ayni sinif.
-// eslint-disable-next-line no-control-regex
-const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
+const KONTROL_KARAKTERI = { test: (v) => hasControlChars(v) };
 
 function hata(status, code, message) {
   return Object.assign(new Error(message), { status, code });

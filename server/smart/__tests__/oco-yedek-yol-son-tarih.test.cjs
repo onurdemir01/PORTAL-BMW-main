@@ -5,7 +5,7 @@
 // pencere saatinde OCO poller'i `launchOrRequestApproval(server, tpl, rec.pendingLaunch, ...)`
 // cagirir ve bilet ORADA acilir. `rec.pendingLaunch` kesinti penceresini (ocoWindowStartIso /
 // ocoWindowEndIso / ocoNumber) TASIR ama launchOrRequestApproval bunlari bilete AKTARMIYORDU:
-//   * bilet sinirsiz bekliyordu (ekranda "Süre sınırı yok"),
+//   * bilet sinirsiz bekliyordu (ekranda "Sure siniri yok"),
 //   * onay pencere kapandiktan GUNLER sonra gelse bile runner.cjs'in onay anindaki `nextRunAt`
 //     kapisi (yalniz ocoWindowStartIso && ocoWindowEndIso doluysa calisir) atlaniyor ve is
 //     OCO penceresi DISINDA prod'da kosuyordu.
@@ -204,7 +204,7 @@ test('OY3 guncellenmis kayit: bilet KAYDIN guncel penceresini ve numarasini tasi
   assert.equal(bozuk.ocoWindowEndIso, PENCERE_SON);
   assert.equal(bozuk.ocoWindowStartIso, PENCERE_BAS);
 
-  // Geri cagri yardimciyi kullanir (paket olduğu gibi oynatilmaz).
+  // Geri cagri yardimciyi kullanir (paket oldugu gibi oynatilmaz).
   const bas = RUNNER_SRC.indexOf("require('../oco/poller.cjs').startPoller(");
   assert.ok(bas > 0, 'OCO poller geri cagrisi bulunamadi');
   const geriCagri = RUNNER_SRC.slice(bas, RUNNER_SRC.indexOf('});', bas));

@@ -90,9 +90,9 @@ const SEKME = 'tab:nginx:yuktesti';
 const BASLATMA_PENCERESI_SN = 120;
 // Tutulan kosu kilidinin ek suresi (butce + bu kadar); poller ile ayni.
 const KILIT_EK_SN = 180;
+const { hasControlChars } = require('../util/control-chars.cjs');
 // Etiket duzenleme (PUT /kosular/:id/etiket): C0 / DEL / C1 kontrol karakteri ve satir / paragraf ayirici yok.
-// eslint-disable-next-line no-control-regex
-const ETIKET_YASAK = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+const ETIKET_YASAK = { test: (v) => hasControlChars(v, { c1: true, lineSep: true }) };
 const LISTE_ISLEMLERI = new Set(['kosu', 'on_kontrol']);
 const LISTE_DURUMLARI = new Set(['QUEUED', 'RUNNING', 'FINALIZING', 'DONE', 'FAILED', 'CANCELED', 'OKUNAMADI']);
 
