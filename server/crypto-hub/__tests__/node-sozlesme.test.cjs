@@ -34,17 +34,72 @@ const { CRYPTO_TENANTS } = require('../../../shared/cryptoHubTenants.cjs');
 
 // Sozlesme 2.3 (bagimsiz kopya: nodes.yml bu tablodan SAPARSA kirmizi).
 const ESKI = [
-  ['eski:solana-mainnet', 'solana-mainnet', 'eski-solana-mainnet', { rpc: ['SOLRPC', 'url'], ws: ['SOLWSRPC', 'url'] }],
-  ['eski:btc-mainnet', 'nbxplorer-mainnet', 'eski-nbxplorer-mainnet', { p2p: ['NBXPLORER_BTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_BTCRPCURL', 'url'] }],
-  ['eski:ltc-mainnet', 'nbxplorer-mainnet', 'eski-nbxplorer-mainnet', { p2p: ['NBXPLORER_LTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_LTCRPCURL', 'url'] }],
-  ['eski:btc-testnet', 'nbxplorer-testnet', 'eski-nbxplorer-testnet', { p2p: ['NBXPLORER_BTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_BTCRPCURL', 'url'] }],
-  ['eski:ethereum-mainnet', 'ethereum-mainnet', 'eski-ethereum-mainnet', { rpc: ['ETH_INDEXER_NODE_URI', 'url'] }],
-  ['eski:ethereum-testnet-sepolia', 'ethereum-testnet-sepolia', 'eski-ethereum-testnet-sepolia', { rpc: ['ETH_INDEXER_NODE_URI', 'url'] }],
-  ['eski:avalanche-c-chain-mainnet', 'avalanche-c-chain-mainnet', 'eski-avalanche-c-chain-mainnet', { rpc: ['ETH_INDEXER_NODE_URI', 'url'] }],
-  ['eski:polygon-mainnet', 'polygon-mainnet', 'eski-polygon-mainnet', { rpc: ['ETH_INDEXER_NODE_URI', 'url'] }],
-  ['eski:cardano-mainnet', 'cardano-mainnet', 'eski-cardano-mainnet', { ogmios: ['OGMIOS', 'url'] }],
-  ['eski:xrpl-mainnet', 'xrpl-mainnet', 'eski-xrpl-mainnet', { rpc: ['XRP_INDEXER_SERVER_URI', 'url'] }],
-  ['eski:polkadot-assethub', 'substrate-polkadot-assethub', 'eski-substrate-polkadot-assethub', { url: ['SIDECAR_URL', 'url'], auth: ['SIDECAR_AUTH_VALUE', 'sir'] }],
+  [
+    'eski:solana-mainnet',
+    'solana-mainnet',
+    'eski-solana-mainnet',
+    { rpc: ['SOLRPC', 'url'], ws: ['SOLWSRPC', 'url'] },
+  ],
+  [
+    'eski:btc-mainnet',
+    'nbxplorer-mainnet',
+    'eski-nbxplorer-mainnet',
+    { p2p: ['NBXPLORER_BTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_BTCRPCURL', 'url'] },
+  ],
+  [
+    'eski:ltc-mainnet',
+    'nbxplorer-mainnet',
+    'eski-nbxplorer-mainnet',
+    { p2p: ['NBXPLORER_LTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_LTCRPCURL', 'url'] },
+  ],
+  [
+    'eski:btc-testnet',
+    'nbxplorer-testnet',
+    'eski-nbxplorer-testnet',
+    { p2p: ['NBXPLORER_BTCNODEENDPOINT', 'hostport'], rpc: ['NBXPLORER_BTCRPCURL', 'url'] },
+  ],
+  [
+    'eski:ethereum-mainnet',
+    'ethereum-mainnet',
+    'eski-ethereum-mainnet',
+    { rpc: ['ETH_INDEXER_NODE_URI', 'url'] },
+  ],
+  [
+    'eski:ethereum-testnet-sepolia',
+    'ethereum-testnet-sepolia',
+    'eski-ethereum-testnet-sepolia',
+    { rpc: ['ETH_INDEXER_NODE_URI', 'url'] },
+  ],
+  [
+    'eski:avalanche-c-chain-mainnet',
+    'avalanche-c-chain-mainnet',
+    'eski-avalanche-c-chain-mainnet',
+    { rpc: ['ETH_INDEXER_NODE_URI', 'url'] },
+  ],
+  [
+    'eski:polygon-mainnet',
+    'polygon-mainnet',
+    'eski-polygon-mainnet',
+    { rpc: ['ETH_INDEXER_NODE_URI', 'url'] },
+  ],
+  [
+    'eski:cardano-mainnet',
+    'cardano-mainnet',
+    'eski-cardano-mainnet',
+    { ogmios: ['OGMIOS', 'url'] },
+  ],
+  [
+    'eski:xrpl-mainnet',
+    'xrpl-mainnet',
+    'eski-xrpl-mainnet',
+    { rpc: ['XRP_INDEXER_SERVER_URI', 'url'] },
+  ],
+  [
+    'eski:polkadot-assethub',
+    'substrate-polkadot-assethub',
+    'eski-substrate-polkadot-assethub',
+    { url: ['SIDECAR_URL', 'url'], auth: ['SIDECAR_AUTH_VALUE', 'sir'] },
+  ],
 ];
 
 test('CHN9 prod acilisi iki anahtar: NODE_PROD_ACIK == tenants.yml node_degisikligi_acik: true', (t) => {
@@ -65,7 +120,10 @@ test('CHN9 prod acilisi iki anahtar: NODE_PROD_ACIK == tenants.yml node_degisikl
     if (y.node_degisikligi_acik === true) acik.push(tn.key);
   }
   for (const y of liste.filter((x) => x && x.node_degisikligi_acik === true)) {
-    assert.ok(CRYPTO_TENANTS.find((x) => x.key === y.key && x.app === 'metaco'), `${y.key} Metaco degil ama acik`);
+    assert.ok(
+      CRYPTO_TENANTS.find((x) => x.key === y.key && x.app === 'metaco'),
+      `${y.key} Metaco degil ama acik`,
+    );
   }
   // Kume BIREBIR: test kiracisinda `true` da sapmadir (faz 1'de hepsi false; anahtar yalniz
   // prod acilisinin ikinci yeri, sozlesme 6.5 / 10).
@@ -77,8 +135,14 @@ test('CHN10 nodes.yml eski gruplari sozlesme 2.3 ile birebir; tek sir SIDECAR_AU
   const p = path.join(CH, 'vars', 'nodes.yml');
   assert.ok(fs.existsSync(p), 'vars/nodes.yml yok (A teslimi eksik)');
   // Kullanici karari 2026-11-03: node listesi (katalog) ve sir dosyasi TAMAMEN kalkti.
-  assert.ok(!fs.existsSync(path.join(CH, 'vars', 'node_sirlari.yml')), 'vars/node_sirlari.yml hala var');
-  assert.ok(!/^crypto_hub_nodes\s*:/m.test(oku(p)), 'nodes.yml crypto_hub_nodes anahtarini tasiyor');
+  assert.ok(
+    !fs.existsSync(path.join(CH, 'vars', 'node_sirlari.yml')),
+    'vars/node_sirlari.yml hala var',
+  );
+  assert.ok(
+    !/^crypto_hub_nodes\s*:/m.test(oku(p)),
+    'nodes.yml crypto_hub_nodes anahtarini tasiyor',
+  );
   const ops = oku(CH, 'crypto_hub_ops.yml');
   for (const kalinti of ['crypto_hub_node_id', 'node_sirlari', 'node_katalog', 'NODE_KATALOG']) {
     assert.ok(!ops.includes(kalinti), `crypto_hub_ops.yml '${kalinti}' iceriyor`);
@@ -104,20 +168,36 @@ test('CHN10 nodes.yml eski gruplari sozlesme 2.3 ile birebir; tek sir SIDECAR_AU
     const r = Object.fromEntries(g.roller.map((x) => [x.rol, [x.envler.join(','), x.bicim]]));
     assert.deepEqual(r, Object.fromEntries(Object.entries(roller)), `${grup} rol/env/bicim`);
   }
-  for (const g of eski) for (const r of g.roller) if (r.bicim === 'sir') sirEnvler.push(...r.envler);
-  assert.deepEqual([...new Set(sirEnvler)], ['SIDECAR_AUTH_VALUE'], 'sir rolu yalniz SIDECAR_AUTH_VALUE olmali');
+  for (const g of eski)
+    for (const r of g.roller) if (r.bicim === 'sir') sirEnvler.push(...r.envler);
+  assert.deepEqual(
+    [...new Set(sirEnvler)],
+    ['SIDECAR_AUTH_VALUE'],
+    'sir rolu yalniz SIDECAR_AUTH_VALUE olmali',
+  );
   // PS-1: uis kurali kullanicinin OLCTUGU haritayla birebir (uis_env_haritasi.md, 2026-11-02):
   // adapter/api NODE_ADDR, indexer NODE_URI_<ZA> yoksa NODE_ADDR, processor node env'i YOK.
-  assert.ok(!/crypto_hub_node_aileler/.test(oku(p)), 'eski aile modeli (ETH_INDEXER_NODE_URI/SOLRPC) geri geldi');
+  assert.ok(
+    !/crypto_hub_node_aileler/.test(oku(p)),
+    'eski aile modeli (ETH_INDEXER_NODE_URI/SOLRPC) geri geldi',
+  );
   assert.deepEqual(doc.crypto_hub_node_uis_kurali, {
     rol: 'rpc',
     bicim: 'url',
-    bilesenler: { adapter: ['NODE_ADDR'], api: ['NODE_ADDR'], indexer: ['NODE_URI_{ZA}', 'NODE_ADDR'], processor: [] },
+    bilesenler: {
+      adapter: ['NODE_ADDR'],
+      api: ['NODE_ADDR'],
+      indexer: ['NODE_URI_{ZA}', 'NODE_ADDR'],
+      processor: [],
+    },
   });
   for (const liste of Object.values(doc.crypto_hub_node_uis_kurali.bilesenler)) {
-    for (const e of liste) assert.ok(!N.YASAK_ENV_RE.test(e.replace('{ZA}', 'X')), `uis kurali yasak ad: ${e}`);
+    for (const e of liste)
+      assert.ok(!N.YASAK_ENV_RE.test(e.replace('{ZA}', 'X')), `uis kurali yasak ad: ${e}`);
   }
-  for (const g of eski) for (const r of g.roller) for (const e of r.envler) assert.ok(!N.YASAK_ENV_RE.test(e), `${g.grup}: yasak ad ${e}`);
+  for (const g of eski)
+    for (const r of g.roller)
+      for (const e of r.envler) assert.ok(!N.YASAK_ENV_RE.test(e), `${g.grup}: yasak ad ${e}`);
 });
 
 test('CHN12 yeni deger dogrulamasi Portal == Python: desenler, eslesme kipi, sabitler, ortak vektorler', (t) => {
@@ -128,19 +208,32 @@ test('CHN12 yeni deger dogrulamasi Portal == Python: desenler, eslesme kipi, sab
   assert.ok(fs.existsSync(vek), 'tests/deger_vektorleri.json yok (A teslimi eksik)');
   const src = oku(py);
   // Her desen TEK tanim, tek satir, r"..." kaynak metni Portal DESEN ile karakter karakter ayni.
-  const AD = { ascii: 'ASCII_RE', yasak: 'YASAK_RE', url: 'URL_RE', hostport: 'HOSTPORT_RE', sir: 'SIR_RE' };
+  const AD = {
+    ascii: 'ASCII_RE',
+    yasak: 'YASAK_RE',
+    url: 'URL_RE',
+    hostport: 'HOSTPORT_RE',
+    sir: 'SIR_RE',
+  };
   for (const [k, ad] of Object.entries(AD)) {
     const tanim = [...src.matchAll(new RegExp(`^${ad} = re\\.compile\\(r"([^"]*)"\\)$`, 'gm'))];
     assert.equal(tanim.length, 1, `${ad} betikte tek satirlik tek tanim degil`);
     assert.equal(tanim[0][1], N.DESEN[k], `${ad} kaynak metni Portal DESEN.${k} ile farkli`);
-    assert.equal(new RegExp(`^${ad}\\s*=`, 'm').test(src.replace(tanim[0][0], '')), false, `${ad} iki kez tanimli`);
+    assert.equal(
+      new RegExp(`^${ad}\\s*=`, 'm').test(src.replace(tanim[0][0], '')),
+      false,
+      `${ad} iki kez tanimli`,
+    );
   }
   assert.match(src, new RegExp(`^DEGER_EN_COK = ${N.DEGER_EN_COK}$`, 'm'), 'DEGER_EN_COK farkli');
   assert.ok(src.split('\n').includes(`BOS_MASKE = "${N.BOS_MASKE}"`), 'BOS_MASKE farkli');
   // Eslesme kipi: Python `$` sondaki \n'den once de eslesir -> fullmatch; yasak search.
   for (const ad of ['ASCII_RE', 'URL_RE', 'HOSTPORT_RE', 'SIR_RE']) {
     assert.ok(src.includes(`${ad}.fullmatch(`), `${ad}.fullmatch kullanilmiyor`);
-    assert.ok(!new RegExp(`${ad}\\.(match|search)\\(`).test(src), `${ad} match/search ile kullaniliyor (\\n kacagi)`);
+    assert.ok(
+      !new RegExp(`${ad}\\.(match|search)\\(`).test(src),
+      `${ad} match/search ile kullaniliyor (\\n kacagi)`,
+    );
   }
   assert.ok(src.includes('YASAK_RE.search('), 'YASAK_RE.search kullanilmiyor');
   const kod = /^NODESUM_KODLARI = \(([^)]*)\)/m.exec(src);
@@ -150,7 +243,10 @@ test('CHN12 yeni deger dogrulamasi Portal == Python: desenler, eslesme kipi, sab
   const ham = oku(vek);
   assert.ok(!ham.includes('\r'), 'deger_vektorleri.json CRLF');
   const liste = JSON.parse(ham);
-  assert.ok(Array.isArray(liste) && liste.length >= 36, `vektor sayisi az (${liste && liste.length})`);
+  assert.ok(
+    Array.isArray(liste) && liste.length >= 36,
+    `vektor sayisi az (${liste && liste.length})`,
+  );
   const nedenler = new Set();
   for (const v of liste) {
     const deger = v.uzunluk ? v.deger + 'a'.repeat(v.uzunluk - v.deger.length) : v.deger;
@@ -182,15 +278,35 @@ test("CHN13 runner poller kancasi: launchOncesi === 'crypto_hub_node' performSsL
   assert.ok(pencere > kanca, 'pencere karari kanca kosulunun icinde degil');
   assert.ok(ekle > pencere, 'pencere karari degeri cozmeden ONCE verilmeli');
   assert.ok(oco > ekle, 'schedule dali cryptoBilet ile kapali degil ya da kancadan once');
-  assert.equal(dilim.indexOf('createOcoAwxSchedule(') > oco, true, 'createOcoAwxSchedule kapali dalin disina cikti');
+  assert.equal(
+    dilim.indexOf('createOcoAwxSchedule(') > oco,
+    true,
+    'createOcoAwxSchedule kapali dalin disina cikti',
+  );
   assert.ok(launch > ekle, 'kanca performSsLaunch tan once degil');
-  assert.match(dilim.slice(launch, launch + 400), /extraVars: launchExtraVars,/, 'launch kancanin extra_vars ini kullanmiyor');
-  assert.match(dilim, /nodeMod\.gizliTemizle\(e\.message, gizliler\)/, 'launch hatasi gizliTemizle den gecmiyor');
+  assert.match(
+    dilim.slice(launch, launch + 400),
+    /extraVars: launchExtraVars,/,
+    'launch kancanin extra_vars ini kullanmiyor',
+  );
+  assert.match(
+    dilim,
+    /nodeMod\.gizliTemizle\(e\.message, gizliler\)/,
+    'launch hatasi gizliTemizle den gecmiyor',
+  );
   // AWX 4xx log satiri da gizlileri bilsin (awxRequestToServer opts.gizliler, JO12).
-  assert.match(dilim.slice(launch, launch + 500), /\n\s*gizliler,\n/, 'kanca gizlileri performSsLaunch a vermiyor');
+  assert.match(
+    dilim.slice(launch, launch + 500),
+    /\n\s*gizliler,\n/,
+    'kanca gizlileri performSsLaunch a vermiyor',
+  );
   const psBas = src.indexOf('async function performSsLaunch(');
   const ps = src.slice(psBas, src.indexOf('const jobId = data.id;', psBas));
-  assert.match(ps, /\/launch\/`,\s*payload,\s*gizliler\.length \? \{ gizliler \} : null,/, 'performSsLaunch gizlileri AWX istegine vermiyor');
+  assert.match(
+    ps,
+    /\/launch\/`,\s*payload,\s*gizliler\.length \? \{ gizliler \} : null,/,
+    'performSsLaunch gizlileri AWX istegine vermiyor',
+  );
   // Kanca YALNIZ bir yerde (genel eklenti mekanizmasi yok).
   assert.equal(src.split('launchOncesiDegerEkle(').length - 1, 1);
 });
@@ -211,8 +327,16 @@ test('CHN11 kaynak sozlugu + yasak adlar betik ile Portal arasinda birebir (PS-3
     assert.ok(m, `${ad} betikte bulunamadi`);
     return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
   };
-  assert.deepEqual(demet('KAYNAKLAR'), [...N.NODE_KAYNAKLARI], 'kaynak sozlugu betik/Portal farkli');
-  assert.deepEqual(demet('REFERANS_KAYNAKLAR'), [...N.REFERANS_KAYNAKLARI], 'referans kumesi betik/Portal farkli');
+  assert.deepEqual(
+    demet('KAYNAKLAR'),
+    [...N.NODE_KAYNAKLARI],
+    'kaynak sozlugu betik/Portal farkli',
+  );
+  assert.deepEqual(
+    demet('REFERANS_KAYNAKLAR'),
+    [...N.REFERANS_KAYNAKLARI],
+    'referans kumesi betik/Portal farkli',
+  );
   const y = /^YASAK_ENV_RE = re\.compile\(r"([^"]+)", re\.I\)/m.exec(src);
   assert.ok(y, 'YASAK_ENV_RE betikte bulunamadi');
   assert.equal(y[1], N.YASAK_ENV_RE.source, 'yasak ad deseni betik/Portal farkli');
@@ -244,7 +368,12 @@ function tenantBloklari(text) {
     .map((blok) => {
       const o = { key: blok.split(/\s/)[0] };
       const m = /^\s*node_degisikligi_acik:[ \t]*(\S*)[ \t]*$/m.exec(blok);
-      if (m) o.node_degisikligi_acik = (() => { if (m[1] === 'true') return true; if (m[1] === 'false') return false; return m[1]; })();
+      if (m)
+        o.node_degisikligi_acik = (() => {
+          if (m[1] === 'true') return true;
+          if (m[1] === 'false') return false;
+          return m[1];
+        })();
       return o;
     });
 }
@@ -268,7 +397,11 @@ function rolSatirlari(blok, ad) {
       .filter(Boolean),
     bicim: m[3],
   }));
-  assert.equal(roller.length, tire, `${ad}: rol satirlari beklenen {rol, envler, bicim} bicminde degil`);
+  assert.equal(
+    roller.length,
+    tire,
+    `${ad}: rol satirlari beklenen {rol, envler, bicim} bicminde degil`,
+  );
   return roller;
 }
 
@@ -276,7 +409,13 @@ function ogeler(govde, ilk) {
   return govde
     .split(new RegExp(`^\\s*-\\s*${ilk}:[ \\t]*`, 'm'))
     .slice(1)
-    .map((blok) => ({ ilk: blok.split('\n')[0].trim().replace(/^"(.*)"$/, '$1'), blok }));
+    .map((blok) => ({
+      ilk: blok
+        .split('\n')[0]
+        .trim()
+        .replace(/^"(.*)"$/, '$1'),
+      blok,
+    }));
 }
 
 function nodesYml(text) {
@@ -304,7 +443,11 @@ function nodesYml(text) {
         .map((s) => s.trim().replace(/^"(.*)"$/, '$1'))
         .filter(Boolean);
     }
-    out.crypto_hub_node_uis_kurali = { rol: skaler(u.govde, 'rol'), bicim: skaler(u.govde, 'bicim'), bilesenler };
+    out.crypto_hub_node_uis_kurali = {
+      rol: skaler(u.govde, 'rol'),
+      bicim: skaler(u.govde, 'bicim'),
+      bilesenler,
+    };
   } else out.crypto_hub_node_uis_kurali = null;
   return out;
 }
@@ -315,21 +458,44 @@ test('N15 DB: tablo, filtreli tekil indeks ayri blokta, genel indeksler, yetki o
   const i = SEED.indexOf("name: 'crypto_hub_node_changes'");
   assert.ok(i > 0, 'tablo tanimi yok');
   const tablo = SEED.slice(i, SEED.indexOf(')`,', i));
-  for (const kol of ['tenant_key', 'kilit', 'plan_sha', 'durum', 'smart_ticket_id', 'external_ticket_id', 'awx_job_id', 'sonuc_json', 'es_talep_id', 'kapandi_at']) {
+  for (const kol of [
+    'tenant_key',
+    'kilit',
+    'plan_sha',
+    'durum',
+    'smart_ticket_id',
+    'external_ticket_id',
+    'awx_job_id',
+    'sonuc_json',
+    'es_talep_id',
+    'kapandi_at',
+  ]) {
     assert.match(tablo, new RegExp(`\\b${kol}\\b`), `kolon yok: ${kol}`);
   }
   // Deger YALNIZ sifreli kolonda; eski node listesi kolonlari yeni kurulumda yok.
   assert.match(tablo, /^\s*yeni_deger_secret\s+NVARCHAR\(MAX\)\s+NULL,$/m);
   assert.ok(!/yeni_node_(id|ad)/.test(tablo), 'yeni kurulumda eski node kolonlari var');
   const digerleri = tablo.replace(/^\s*yeni_deger_secret\s+NVARCHAR\(MAX\)\s+NULL,$/m, '');
-  assert.ok(!/\bdeger\b|node_url|secret/i.test(digerleri), 'tabloda deger tasiyabilecek baska kolon');
+  assert.ok(
+    !/\bdeger\b|node_url|secret/i.test(digerleri),
+    'tabloda deger tasiyabilecek baska kolon',
+  );
   // Var olan tablo: kolon goc listesinde; eski yeni_node_id nullable (INSERT artik yazmiyor).
-  assert.match(SEED, /table: 'crypto_hub_node_changes',\s*col: 'yeni_deger_secret',\s*sql: 'ALTER TABLE crypto_hub_node_changes ADD yeni_deger_secret NVARCHAR\(MAX\) NULL'/);
-  assert.match(SEED, /COLUMN_NAME='yeni_node_id' AND IS_NULLABLE='NO'[^`]*ALTER TABLE crypto_hub_node_changes ALTER COLUMN yeni_node_id NVARCHAR\(64\) NULL/);
+  assert.match(
+    SEED,
+    /table: 'crypto_hub_node_changes',\s*col: 'yeni_deger_secret',\s*sql: 'ALTER TABLE crypto_hub_node_changes ADD yeni_deger_secret NVARCHAR\(MAX\) NULL'/,
+  );
+  assert.match(
+    SEED,
+    /COLUMN_NAME='yeni_node_id' AND IS_NULLABLE='NO'[^`]*ALTER TABLE crypto_hub_node_changes ALTER COLUMN yeni_node_id NVARCHAR\(64\) NULL/,
+  );
   assert.ok(!/DROP COLUMN yeni_node/.test(SEED), 'yikici goc (kolon dusurme)');
   // Tam yedek kolon adina gore maskeler: sifreli deger yedege de cikmaz.
   const { SECRET_COLUMN_RE } = require('../../db/full-backup.cjs');
-  assert.ok(SECRET_COLUMN_RE.test('yeni_deger_secret'), 'tam yedek yeni_deger_secret i maskelemiyor');
+  assert.ok(
+    SECRET_COLUMN_RE.test('yeni_deger_secret'),
+    'tam yedek yeni_deger_secret i maskelemiyor',
+  );
   assert.ok(SECRET_COLUMN_RE.test('pending_launch_json'));
   assert.ok(!/--/.test(tablo), '.cjs icindeki SQL de -- yorumu');
   const ux = SEED.indexOf('CREATE UNIQUE INDEX UX_chnc_acik');
@@ -342,9 +508,19 @@ test('N15 DB: tablo, filtreli tekil indeks ayri blokta, genel indeksler, yetki o
   const dongu = SEED.indexOf('for (const { name, table, cols } of indexes)');
   assert.ok(dongu > 0 && ux > dongu, 'tekil indeks genel dongunun disinda/sonrasinda olmali');
   const blok = SEED.slice(SEED.lastIndexOf('try {', ux), ux);
-  assert.match(blok, /sys\.indexes WHERE name = 'UX_chnc_acik'/, 'indeks varligi kontrol edilmiyor');
-  assert.match(SEED, /name: 'IX_chnc_ticket', table: 'crypto_hub_node_changes', cols: 'smart_ticket_id'/);
-  assert.match(SEED, /name: 'IX_chnc_tenant', table: 'crypto_hub_node_changes', cols: 'tenant_key, created_at DESC'/);
+  assert.match(
+    blok,
+    /sys\.indexes WHERE name = 'UX_chnc_acik'/,
+    'indeks varligi kontrol edilmiyor',
+  );
+  assert.match(
+    SEED,
+    /name: 'IX_chnc_ticket', table: 'crypto_hub_node_changes', cols: 'smart_ticket_id'/,
+  );
+  assert.match(
+    SEED,
+    /name: 'IX_chnc_tenant',\s*table: 'crypto_hub_node_changes',\s*cols: 'tenant_key, created_at DESC'/,
+  );
   const o = SEED.indexOf("element_key: 'cryptohub:node:degistir'");
   assert.ok(o > 0, 'yetki ogesi seed edilmiyor');
   const ob = SEED.slice(o, o + 400);
@@ -373,7 +549,8 @@ test('N15b /crypto-access: node sekmesi tek basina verilir, sayfa kurali yazilir
     [require.resolve('../../auth/elements.cjs')]: {
       listRules: async () => kurallar.map((r) => ({ ...r })),
       setElementRules: async (key, list) => {
-        for (let i = kurallar.length - 1; i >= 0; i -= 1) if (kurallar[i].elementKey === key) kurallar.splice(i, 1);
+        for (let i = kurallar.length - 1; i >= 0; i -= 1)
+          if (kurallar[i].elementKey === key) kurallar.splice(i, 1);
         for (const r of list) kurallar.push({ elementKey: key, ...r });
       },
     },
@@ -399,7 +576,13 @@ test('N15b /crypto-access: node sekmesi tek basina verilir, sayfa kurali yazilir
     new Promise((resolve, reject) => {
       const veri = body ? JSON.stringify(body) : null;
       const q = http.request(
-        { host: '127.0.0.1', port: srv.address().port, path: url, method, headers: { 'content-type': 'application/json' } },
+        {
+          host: '127.0.0.1',
+          port: srv.address().port,
+          path: url,
+          method,
+          headers: { 'content-type': 'application/json' },
+        },
         (res) => {
           let s = '';
           res.on('data', (c) => (s += c));
@@ -411,18 +594,37 @@ test('N15b /crypto-access: node sekmesi tek basina verilir, sayfa kurali yazilir
       q.end();
     });
   try {
-    let r = await istek('PUT', '/api/visibility/crypto-access', { principalType: 'email', principalId: 'Ali@X.test', tabs: ['node'] });
+    let r = await istek('PUT', '/api/visibility/crypto-access', {
+      principalType: 'email',
+      principalId: 'Ali@X.test',
+      tabs: ['node'],
+    });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const anahtarlar = kurallar.map((k) => k.elementKey).sort();
-    assert.deepEqual(anahtarlar, ['CryptoHub', 'cryptohub:node:degistir'], 'secilmeyen uygulamaya kural yazildi ya da sayfa kurali yok');
+    assert.deepEqual(
+      anahtarlar,
+      ['CryptoHub', 'cryptohub:node:degistir'],
+      'secilmeyen uygulamaya kural yazildi ya da sayfa kurali yok',
+    );
     r = await istek('GET', '/api/visibility/crypto-access');
     assert.deepEqual(r.body.tabs, ['metaco', 'wyden', 'node']);
     assert.deepEqual(r.body.grants[0].tabs, ['node']);
     assert.equal(r.body.grants[0].page, true);
-    r = await istek('PUT', '/api/visibility/crypto-access', { principalType: 'email', principalId: 'ali@x.test', tabs: ['metaco', 'node', 'kotu'] });
+    r = await istek('PUT', '/api/visibility/crypto-access', {
+      principalType: 'email',
+      principalId: 'ali@x.test',
+      tabs: ['metaco', 'node', 'kotu'],
+    });
     assert.equal(r.status, 200);
-    assert.deepEqual(kurallar.map((k) => k.elementKey).sort(), ['CryptoHub', 'cryptohub:app:metaco', 'cryptohub:node:degistir']);
-    r = await istek('DELETE', '/api/visibility/crypto-access?principalType=email&principalId=ali@x.test');
+    assert.deepEqual(kurallar.map((k) => k.elementKey).sort(), [
+      'CryptoHub',
+      'cryptohub:app:metaco',
+      'cryptohub:node:degistir',
+    ]);
+    r = await istek(
+      'DELETE',
+      '/api/visibility/crypto-access?principalType=email&principalId=ali@x.test',
+    );
     assert.equal(r.status, 200);
     assert.deepEqual(kurallar, [], 'silmede node kurali kaldi');
   } finally {
@@ -436,7 +638,7 @@ test('N15b /crypto-access: node sekmesi tek basina verilir, sayfa kurali yazilir
   }
 });
 
-test('N16 node uclari index.cjs router\'inda kimlik + gorunurluk kapisinin ARKASINDA baglanir', () => {
+test("N16 node uclari index.cjs router'inda kimlik + gorunurluk kapisinin ARKASINDA baglanir", () => {
   // node.cjs kapiyi import etmez (route-auth-order RO1b onu bu yuzden incelemez): koruma,
   // uclarin index.cjs'teki router.use(requireAuth) ve requireVisible('CryptoHub') SONRASI
   // baglanmasina dayanir. Sira bozulursa /nodes ve /node-change kimliksiz kalirdi.
@@ -448,7 +650,10 @@ test('N16 node uclari index.cjs router\'inda kimlik + gorunurluk kapisinin ARKAS
   assert.ok(gor > auth, "requireVisible('CryptoHub') kimlik kapisindan sonra degil");
   assert.ok(node > gor, 'node uclari kapilardan ONCE baglaniyor');
   const nodeSrc = oku(KOK, 'server', 'crypto-hub', 'node.cjs');
-  assert.ok(!/express\.Router\(|\bapp\.(get|post|use)\(/.test(nodeSrc), 'node.cjs kendi router/app baglantisini kuruyor');
+  assert.ok(
+    !/express\.Router\(|\bapp\.(get|post|use)\(/.test(nodeSrc),
+    'node.cjs kendi router/app baglantisini kuruyor',
+  );
 });
 
 test('N20 dogrudan yol sozlesmesi: yalniz kopru, gecmisIcin yok; smart-config uclari kapilardan sonra', () => {
@@ -458,7 +663,11 @@ test('N20 dogrudan yol sozlesmesi: yalniz kopru, gecmisIcin yok; smart-config uc
   assert.ok(bas > 0 && son > bas, 'dogrudanBaslat bulunamadi');
   const govde = src.slice(bas, son);
   assert.match(govde, /performSsLaunchOnServer\(/);
-  assert.doesNotMatch(govde.replace(/^\s*\/\/.*$/gm, ''), /launchJobOnServer|gecmisIcin/, 'degeri gizlemeyen yol kullanildi');
+  assert.doesNotMatch(
+    govde.replace(/^\s*\/\/.*$/gm, ''),
+    /launchJobOnServer|gecmisIcin/,
+    'degeri gizlemeyen yol kullanildi',
+  );
   assert.match(govde, /yutmaKorumasi: true/);
   const index = oku(KOK, 'server', 'crypto-hub', 'index.cjs');
   const auth = index.indexOf('router.use(requireAuth)');

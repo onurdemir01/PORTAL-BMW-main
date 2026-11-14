@@ -1615,7 +1615,7 @@
       {
         "tur": "portal",
         "ad": "Açılış tohumu",
-        "dosya": "server/db/mssql-setup.cjs:4318",
+        "dosya": "server/db/mssql-setup.cjs:4425",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Portal açılışında"
       },
