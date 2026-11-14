@@ -295,7 +295,7 @@ test('S18b webhook PUT: DB`ye sifreli, denetim kaydinda deger yok; GET maskeler'
     assert.equal(v.defined, true);
     assert.equal(v.source, 'db');
     assert.ok(!v.value.includes('GIZLI-IMZA') && !v.value.includes('logic.azure'), `GET duz deger dondu: ${v.value}`);
-    assert.equal(v.value, 'ht•••Zq');
+    assert.equal(v.value, '•••'); // 2026-11-14: uc karakterler de gitmez (SC-MASKE)
   } finally {
     db.query = asilSorgu;
     audit.auditPortal = asilDenetim;
@@ -358,4 +358,25 @@ test('S18d desen degismeden once DB`ye duz yazilmis webhook yuklemede aynen kull
     db.query = asil;
     geriYukle();
   }
+});
+
+// 2026-11-14: maske gizli degerin ilk ve son iki karakterini gosteriyordu.
+test('SC-MASKE gizli degerin hicbir parcasi ve uzunlugu tarayiciya gitmez', () => {
+  const { _maskValue: maskValue } = require('../system-config.cjs');
+  const { SECRET_PATTERN } = require('../../config/secret-pattern.cjs');
+  const ORNEKLER = ['ab', 'abcdef', 'Qx7-ornek-deger-Zz', 'x'.repeat(200)];
+  for (const anahtar of ['SMART_API_PASSWORD', 'SESSION_SECRET', 'AWX_1_TOKEN', 'CRYPTO_KEY', 'TEAMS_LONGJOB_WEBHOOK_URL']) {
+    assert.ok(SECRET_PATTERN.test(anahtar), `${anahtar} gizli sayilmiyor`);
+    const maskeler = ORNEKLER.map((d) => maskValue(anahtar, d));
+    // Her deger AYNI maskeye gider: uzunluk ve uc karakterler ele verilmez.
+    assert.deepEqual([...new Set(maskeler)], ['•••'], anahtar);
+    for (const d of ORNEKLER) {
+      const m = maskValue(anahtar, d);
+      for (const parca of [d.slice(0, 2), d.slice(-2)]) assert.ok(!m.includes(parca), `${anahtar}: "${parca}" maskede`);
+    }
+    assert.equal(maskValue(anahtar, ''), '', 'bos deger bos kalir (tanimsiz ile karismasin)');
+  }
+  // Gizli olmayan anahtar aynen doner.
+  assert.equal(maskValue('PORT', '3000'), '3000');
+  assert.equal(maskValue('MSSQL_SERVER', 'db.example.test'), 'db.example.test');
 });

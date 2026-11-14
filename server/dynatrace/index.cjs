@@ -134,14 +134,14 @@ function initDynatrace(app) {
       configured:  isConfigured(),
       reachable,
       mcpConnected,
-      environment: status.connectedUrl || status.configuredUrl,
+      environment: status.connectedUrl ? 'connected' : status.configuredUrl ? 'configured' : null,
       defaultAlias,
-      lastError:   status.lastError,
+      lastError:   status.lastError ? { message: 'Dynatrace MCP bağlantısı kurulamadı.', at: status.lastError.at } : null,
       message: mcpConnected
         ? undefined
         : !reachable
           ? 'Dynatrace MCP sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'
-          : `Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı${status.lastError ? `: ${status.lastError.message}` : '.'}`,
+          : 'Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı.',
     };
     _healthCacheAt = Date.now();
     res.json(_healthCache);
@@ -154,7 +154,8 @@ function initDynatrace(app) {
       const defaultAlias = await getDefaultAlias();
       res.json({ ok: true, aliases, defaultAlias, text: raw });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] getEnvironments hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace ortam listesi alınamadı.' });
     }
   });
 
@@ -164,7 +165,8 @@ function initDynatrace(app) {
       const tools = await listTools();
       res.json({ ok: true, tools });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] listTools hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace araç listesi alınamadı.' });
     }
   });
 
@@ -200,7 +202,7 @@ function initDynatrace(app) {
       res.json({ ok: true, source: 'mcp', ...payload, problems: filterProblems(payload.problems, req) });
     } catch (err) {
       console.error('[DT-MCP] list_problems hatasi:', err.message);
-      res.status(502).json({ ok: false, message: err.message });
+      res.status(502).json({ ok: false, message: 'Dynatrace problem listesi alınamadı.' });
     }
   });
 
@@ -212,7 +214,8 @@ function initDynatrace(app) {
       }, req.query.env || null);
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] problem_details hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace problem detayı alınamadı.' });
     }
   });
 
@@ -249,7 +252,7 @@ function initDynatrace(app) {
       res.json({ ok: true, source: 'mcp', ...payload });
     } catch (err) {
       console.error('[DT-MCP] list_events hatasi:', err.message);
-      res.status(502).json({ ok: false, message: err.message });
+      res.status(502).json({ ok: false, message: 'Dynatrace olay listesi alınamadı.' });
     }
   });
 
@@ -289,7 +292,8 @@ function initDynatrace(app) {
 
       res.json({ ok: true, entitySelector, entities: enriched, text });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] discover_entities hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace varlık araması başarısız oldu.' });
     }
   });
 
@@ -300,7 +304,8 @@ function initDynatrace(app) {
       }, req.query.env || null);
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] entity_details hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace varlık detayı alınamadı.' });
     }
   });
 
@@ -313,7 +318,8 @@ function initDynatrace(app) {
       const result = await callTool('dynatrace_managed_list_available_metrics', args, req.query.env || null);
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] list_metrics hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace metrik listesi alınamadı.' });
     }
   });
 
@@ -330,7 +336,8 @@ function initDynatrace(app) {
       const result = await callTool('dynatrace_managed_query_metrics_data', args, env || null);
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] query_metrics hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace metrik sorgusu başarısız oldu.' });
     }
   });
 
@@ -347,7 +354,8 @@ function initDynatrace(app) {
       const result = await callTool('dynatrace_managed_query_logs', args, env || null);
       res.json({ ok: true, text: asText(result) });
     } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
+      console.error('[DT-MCP] query_logs hatasi:', err.message);
+      res.status(502).json({ ok: false, message: 'Dynatrace log sorgusu başarısız oldu.' });
     }
   });
 

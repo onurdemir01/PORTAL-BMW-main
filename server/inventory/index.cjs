@@ -883,21 +883,7 @@ function initInventory(app) {
   }
 
   // ── Health ──────────────────────────────────────────────────────────────────
-  // E-08: server/port/db (no password); N-03: pool stats
-  router.get('/health', (req, res) => {
-    const server = process.env.MSSQL_SERVER || null;
-    const port = process.env.MSSQL_PORT || '1433';
-    const database = process.env.MSSQL_DATABASE || null;
-    res.json({
-      ok: true,
-      service: 'inventory',
-      mssqlAvailable: isAvailable(),
-      server,
-      port,
-      database,
-      pool: poolStats(),
-    });
-  });
+  router.get('/health', (req, res) => res.json(saglikYaniti(req)));
 
   // ── Table list (60 s cache, fallback on DB unavailability) ──────────────────
   // E-02: includes blocklisted and visibleToRole metadata (admin only)
@@ -2225,8 +2211,27 @@ async function getHostsForAiTools() {
   return result.recordset || [];
 }
 
+/**
+ * GET /api/inventory/health yaniti. Uc gorunurluk kapisindan MUAFTIR (probe) ve oturum istemez:
+ * oturumsuz / Admin olmayan cagirana YALNIZ "DB erisilebilir mi" doner. Veritabani sunucu adi,
+ * port, veritabani adi ve havuz sayilari (E-08 / N-03) yalniz Admin'e gider (2026-11-14: bu
+ * ayrintilar agdaki herkese aciktir).
+ */
+function saglikYaniti(req) {
+  const temel = { ok: true, service: 'inventory', mssqlAvailable: isAvailable() };
+  if (getRequestRole(req) !== 'Admin') return temel;
+  return {
+    ...temel,
+    server: process.env.MSSQL_SERVER || null,
+    port: process.env.MSSQL_PORT || '1433',
+    database: process.env.MSSQL_DATABASE || null,
+    pool: poolStats(),
+  };
+}
+
 module.exports = {
   initInventory,
+  _saglikYaniti: saglikYaniti,
   getTeamOwnership,
   getHostsForAiTools,
   // test-only: /query'nin SQL-injection sertlestirmesini, kayitli-sorgu upsert desenini ve

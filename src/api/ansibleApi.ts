@@ -14,7 +14,10 @@ export interface AwxTemplate {
   playbook: string;
   inventory: string;
   ask_variables: boolean;
+  /** Sablonun statik extra_vars metni; sir tasiyan degiskenler sunucuda CIKARILMISTIR. */
   variables: string;
+  /** Cikarilan ust seviye degisken adlari (degerleri tarayiciya gelmez; AWX sablondakini kullanir). */
+  hiddenVariables?: string[];
   labels: string[];
   isReadOnly: boolean;
   lastLaunch?: string | null;
@@ -63,6 +66,7 @@ export interface AwxTemplateDetail {
   credentials: { name: string; kind: string }[];
   extraVars: string;
   extraVarsParsed: Record<string, string>;
+  hiddenVariables?: string[];
   limit: string;
   verbosity: number;
   askVariables: boolean;

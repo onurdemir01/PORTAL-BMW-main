@@ -288,6 +288,13 @@ function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
                 : <span style={{ color: "var(--text-muted)" }}>{varCount} değişken · geçerli {format.toUpperCase()}</span>}
               <span style={{ color: "var(--text-muted)" }}>Opsiyonel alanlar da eklenebilir</span>
             </div>
+            {/* Sir tasiyan degiskenler sunucudan gelmez; kullanici "eksik" sanip elle yazmasin. */}
+            {(template.hiddenVariables?.length ?? 0) > 0 && (
+              <p className="text-[11px]" style={{ color: "var(--text-muted)" }} data-testid="gizli-degiskenler">
+                {template.hiddenVariables!.length} gizli değişken gösterilmiyor ({template.hiddenVariables!.join(", ")}).
+                AWX şablondaki değerlerini kullanır; değiştirmek için adını elle yazın.
+              </p>
+            )}
           </div>
 
           {/* Limit */}
@@ -519,12 +526,19 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
               )}
 
               {/* Extra vars */}
-              {detail.extraVars && (
+              {(detail.extraVars || (detail.hiddenVariables?.length ?? 0) > 0) && (
                 <section className="space-y-2">
                   <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Extra Vars {extraVarKeys.length > 0 ? `(${extraVarKeys.length} değişken)` : ""}</p>
-                  <pre className="text-xs font-mono rounded-xl p-3 overflow-auto max-h-48" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
-                    {detail.extraVars}
-                  </pre>
+                  {detail.extraVars && (
+                    <pre className="text-xs font-mono rounded-xl p-3 overflow-auto max-h-48" style={{ background: "var(--term-bg)", color: "var(--term-fg)" }}>
+                      {detail.extraVars}
+                    </pre>
+                  )}
+                  {(detail.hiddenVariables?.length ?? 0) > 0 && (
+                    <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      {detail.hiddenVariables!.length} gizli değişken gösterilmiyor ({detail.hiddenVariables!.join(", ")}).
+                    </p>
+                  )}
                 </section>
               )}
 

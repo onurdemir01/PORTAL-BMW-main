@@ -121,11 +121,12 @@ function createApp() {
   // common middlewares
   app.use(express.json({ limit: "2mb" }));
 
-  // L-02: CORS — allow Vite dev origin or env-configured origin
-  const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:3000";
+  // L-02: CORS — production'da acik CORS_ORIGIN yoksa tarayici capraz kokene kapatilir
+  const allowedOrigin =
+    process.env.CORS_ORIGIN || (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000");
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin === allowedOrigin) {
+    if (allowedOrigin && origin === allowedOrigin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");

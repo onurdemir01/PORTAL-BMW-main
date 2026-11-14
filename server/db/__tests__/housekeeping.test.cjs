@@ -93,3 +93,47 @@ test('HK8 getConfig: bos/NaN env varsayilana duser, sinirlar kelepcelenir', () =
     process.env = saved;
   }
 });
+
+// 2026-11-14: /api/admin/db-usage imzali webhook adresini maskesiz donduruyordu.
+test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
+  const ADRES = 'https://akis.example/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=ORNEKIMZA0123456789';
+  const onceki = { a: process.env.DB_USAGE_ALERT_WEBHOOK_URL, b: process.env.TEAMS_LONGJOB_WEBHOOK_URL };
+  try {
+    process.env.DB_USAGE_ALERT_WEBHOOK_URL = ADRES;
+    delete process.env.TEAMS_LONGJOB_WEBHOOK_URL;
+    assert.equal(hk.getConfig().webhookUrl, ADRES); // sunucu ici yol adresi kullanmaya devam eder
+    const c = hk.configForClient();
+    assert.equal(c.webhookConfigured, true);
+    assert.ok(!('webhookUrl' in c));
+    assert.ok(!JSON.stringify(c).includes('ORNEKIMZA') && !JSON.stringify(c).includes('akis.example'));
+    // Diger alanlar aynen (ekran bunlari gosteriyor).
+    const { webhookUrl: _w, ...beklenen } = hk.getConfig();
+    assert.deepEqual({ ...c, webhookConfigured: undefined }, { ...beklenen, webhookConfigured: undefined });
+    // Yedek kaynak (uzun is webhook'u) da ayni sekilde gizlenir.
+    delete process.env.DB_USAGE_ALERT_WEBHOOK_URL;
+    process.env.TEAMS_LONGJOB_WEBHOOK_URL = ADRES;
+    assert.deepEqual(
+      [hk.configForClient().webhookConfigured, JSON.stringify(hk.configForClient()).includes('sig=')],
+      [true, false],
+    );
+    delete process.env.TEAMS_LONGJOB_WEBHOOK_URL;
+    assert.equal(hk.configForClient().webhookConfigured, false);
+  } finally {
+    for (const [k, v] of [['DB_USAGE_ALERT_WEBHOOK_URL', onceki.a], ['TEAMS_LONGJOB_WEBHOOK_URL', onceki.b]]) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+  // Rota: istemciye giden TEK yapilandirma configForClient'tan gelir.
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'housekeeping.cjs'), 'utf8');
+  assert.match(kaynak, /res\.json\(\{ ok: true, usage, config: configForClient\(\), state: stateForClient\(\) \}\)/);
+  assert.doesNotMatch(kaynak, /res\.(json|send)\([^)]*getConfig\(\)/);
+  const panel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'src', 'components', 'admin', 'tabs', 'DbUsagePanel.tsx'), 'utf8');
+  assert.doesNotMatch(panel, /webhookUrl/);
+});
+
+test('HK10 DB doluluk rota ve durum hatalarinda ham e.message istemciye donmez', () => {
+  const kaynak = fs.readFileSync(path.join(__dirname, '..', 'housekeeping.cjs'), 'utf8');
+  assert.doesNotMatch(kaynak, /state\.lastError\s*=\s*e\.message/);
+  assert.doesNotMatch(kaynak, /res\.status\(500\)\.json\(\{[^}]*message:\s*e\.message/);
+});

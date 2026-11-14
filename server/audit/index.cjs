@@ -211,10 +211,15 @@ const portalChain = createAuditChain('portal_audit_logs');
 // Request'ten kimlik/IP cikaran kisa yol. Fire-and-forget — hicbir handler'i bloklamaz.
 // action: 'login', 'role_change', 'selfservice_update', 'ansible_launch' ... gibi
 // snake_case eylem adi. opts: { detail, result, targetHost, targetIp, username }.
+function hashSessionId(sid) {
+  if (!sid) return null;
+  return crypto.createHash('sha256').update(String(sid)).digest('hex').slice(0, 16);
+}
+
 function auditPortal(req, action, opts = {}) {
   const user = (req && (req.session?.user || req.user)) || {};
   portalChain.log({
-    sessionId: req?.sessionID || null,
+    sessionId: hashSessionId(req?.sessionID),
     username: opts.username || user.username || 'system',
     authSource: user.authSource || 'local',
     role: user.role || null,
@@ -333,6 +338,7 @@ function initPortalAudit(app) {
 module.exports = {
   createAuditChain,
   auditPortal,
+  hashSessionId,
   auditMutations,
   portalAudit: portalChain,
   initPortalAudit,
