@@ -1,13 +1,13 @@
-// server/inventory/history-scheduler.cjs — Envanter geçmişi günlük anlık görüntü zamanlayıcısı.
+// server/inventory/history-scheduler.cjs — Envanter gecmisi gunluk anlik goruntu zamanlayicisi.
 //
-// TASARIM: "her gün saat X'te çalıştır" yerine "bugün için henüz çalışmadıysa çalıştır"
-// denetimi yapılır ve bu denetim yarım saatte bir tekrarlanır. Sabit saatli bir kurulum,
-// Portal o saatte kapalıysa (release, restart, bakım) O GÜNÜ TAMAMEN KAYBEDERDİ ve
-// kaybedilen gün geriye dönük üretilemez. Bu kurgu kendi kendini onarır: sunucu gün
-// içinde ne zaman ayağa kalkarsa kalksın, o günün anlık görüntüsü alınır.
+// TASARIM: "her gun saat X'te calistir" yerine "bugun icin henuz calismadiysa calistir"
+// denetimi yapilir ve bu denetim yarim saatte bir tekrarlanir. Sabit saatli bir kurulum,
+// Portal o saatte kapaliysa (release, restart, bakim) O GUNU TAMAMEN KAYBEDERDI ve
+// kaybedilen gun geriye donuk uretilemez. Bu kurgu kendi kendini onarir: sunucu gun
+// icinde ne zaman ayaga kalkarsa kalksin, o gunun anlik goruntusu alinir.
 //
-// Anlık görüntü almak ucuzdur: değişiklik yoksa kaynak tablo + açık satırlar okunur ve
-// HİÇBİR ŞEY yazılmaz (bkz. history.cjs). Yine de günde bir kez çalışması yeterlidir.
+// Anlik goruntu almak ucuzdur: degisiklik yoksa kaynak tablo + acik satirlar okunur ve
+// HICBIR SEY yazilmaz (bkz. history.cjs). Yine de gunde bir kez calismasi yeterlidir.
 'use strict';
 
 const CHECK_MS = 30 * 60 * 1000; // yarim saat

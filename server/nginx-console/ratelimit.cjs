@@ -1,26 +1,26 @@
 // server/nginx-console/ratelimit.cjs — Nginx Hub › Rate Limit (2026-09-26, v2).
 //
-// KULLANICI DÜZELTMESİ: ilk sürüm yanlış kaynaktan besleniyordu.
-//   * dbo.NginxRateLimitInventory = APIGW'lerdeki API location'larının limitleri
-//   * İstenen = TÜM nginx sunucularındaki /usr/nginx/conf/rate_limits.conf değerleri
-// Kullanıcı: "bunlar birbirinden komple farklı; tüm Nginx'lerin taranmasını ve
-// rate_limits.conf içindeki değerleri görmek istiyorum. İstersen nginx -T çıktısıyla
-// runtime'da uygulanıp uygulanmadığını da test edebilirsin."
+// KULLANICI DUZELTMESI: ilk surum yanlis kaynaktan besleniyordu.
+//   * dbo.NginxRateLimitInventory = APIGW'lerdeki API location'larinin limitleri
+//   * Istenen = TUM nginx sunucularindaki /usr/nginx/conf/rate_limits.conf degerleri
+// Kullanici: "bunlar birbirinden komple farkli; tum Nginx'lerin taranmasini ve
+// rate_limits.conf icindeki degerleri gormek istiyorum. Istersen nginx -T ciktisiyla
+// runtime'da uygulanip uygulanmadigini da test edebilirsin."
 //
-// YENİ JOB GEREKMEDİ: nginx_audit zaten tüm filoda `nginx -T` koşuyor (yani DOSYAYI değil
-// ÇALIŞAN konfigürasyonu okuyor) ve limit_* direktiflerini dbo.Nginx_Audit_Settings'e
-// yazıyor. Yani "tanımlı mı" ile "runtime'da uygulanıyor mu" AYNI kaynaktan gelir.
+// YENI JOB GEREKMEDI: nginx_audit zaten tum filoda `nginx -T` kosuyor (yani DOSYAYI degil
+// CALISAN konfigurasyonu okuyor) ve limit_* direktiflerini dbo.Nginx_Audit_Settings'e
+// yaziyor. Yani "tanimli mi" ile "runtime'da uygulaniyor mu" AYNI kaynaktan gelir.
 //
-// OOM DERSİ (ilk sürüm): ekran ~50.000 location satırını tarayıcıya yığıyordu ve sayfa
-// çöküyordu. Bu sürüm SUNUCU BAŞINA tek satır üretir (~300 satır): soru zaten
-// "hangi sunucuda hangi limit var", location başına döküm değil.
+// OOM DERSI (ilk surum): ekran ~50.000 location satirini tarayiciya yigiyordu ve sayfa
+// cokuyordu. Bu surum SUNUCU BASINA tek satir uretir (~300 satir): soru zaten
+// "hangi sunucuda hangi limit var", location basina dokum degil.
 'use strict';
 
 const TABLE = 'dbo.Nginx_Audit_Settings';
 const LIMIT_FILE = '/usr/nginx/conf/rate_limits.conf';
 
-// Estate standardı — bmw_nginx/configuration_delivery/files/rate_limits.conf.
-// Üçü de http seviyesinde tanımlanır VE uygulanır; her server/location miras alır.
+// Estate standardi — bmw_nginx/configuration_delivery/files/rate_limits.conf.
+// Ucu de http seviyesinde tanimlanir VE uygulanir; her server/location miras alir.
 const ZONE_CATALOG = Object.freeze([
   { key: 'request_limit', kind: 'req', variable: '$binary_remote_addr', size: '20m', rate: '500r/s', burst: 200, nodelay: true,
     label: 'IP başına istek', desc: 'Aynı IP saniyede 500 istek (burst 200, nodelay)' },
@@ -129,12 +129,12 @@ function parseReqApply(value) {
 }
 
 /**
- * Sunucu başına durum. Üç ayrı soruyu AYRI AYRI cevaplar:
- *   tanimli  — zone `nginx -T` çıktısında var mı (limit_req_zone / limit_conn_zone)
- *   uygulanan— o zone GERÇEKTEN uygulanıyor mu (limit_req / limit_conn)
- *   standart — değer estate standardıyla aynı mı
- * "Tanımlı ama uygulanmamış" sessiz ve tehlikeli bir durumdur: zone bellekte durur,
- * hiçbir isteği sınırlamaz. Bu yüzden ayrı bir durum olarak gösterilir.
+ * Sunucu basina durum. Uc ayri soruyu AYRI AYRI cevaplar:
+ *   tanimli  — zone `nginx -T` ciktisinda var mi (limit_req_zone / limit_conn_zone)
+ *   uygulanan— o zone GERCEKTEN uygulaniyor mu (limit_req / limit_conn)
+ *   standart — deger estate standardiyla ayni mi
+ * "Tanimli ama uygulanmamis" sessiz ve tehlikeli bir durumdur: zone bellekte durur,
+ * hicbir istegi sinirlamaz. Bu yuzden ayri bir durum olarak gosterilir.
  */
 function hostStatus(h, olculdu = true, hostDurum = null) {
   // SUNUCU DURUMU OLCUMU BASTIRIR (2026-09-26, kullanici). nginx kurulu degilse ya da
@@ -399,7 +399,7 @@ function csvField(v) {
   return /[";\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
 }
 
-/** Rapor: sunucu başına tek satır (TR Excel: noktalı virgül + UTF-8 BOM). */
+/** Rapor: sunucu basina tek satir (TR Excel: noktali virgul + UTF-8 BOM). */
 function toCsv(hosts, scanDate) {
   const head = ['Tarama', 'Sunucu', 'Ortam', 'IP istek limiti/kullanıcı başına', 'Sunucu limiti', 'Concurrent bağlantı limiti/kullanıcı başına',
     'Uygulanan zone sayısı', 'rate_limits.conf yüklü', 'Durum', 'Eksikler', 'Farklar'];

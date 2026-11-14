@@ -103,10 +103,13 @@ export function NginxApiLocations() {
   // (bkz. server/audit/nginx-api-locations.cjs clusterBreakdown); burada yalniz cizilir.
 
   // Cok satirda tarayici zorlaniyor: once ilk dilim cizilir, kullanici isterse buyutur.
+  const filterKey = `${qDeferred}|${envFilter}|${onlyProblem ? 1 : 0}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
   const [limit, setLimit] = useState(300);
-  useEffect(() => {
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
     setLimit(300);
-  }, [qDeferred, envFilter, onlyProblem]);
+  }
 
   if (loading && !data)
     return <LoadingLogo />;

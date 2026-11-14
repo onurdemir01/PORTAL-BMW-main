@@ -270,7 +270,6 @@ export default function DutyRosterPage() {
 
   useEffect(() => {
     nobetciApi.today().then(setNobetci).catch(() => setNobetci({ ok: false, message: "Bağlanılamadı" }));
-    setNobetListLoading(true);
     nobetciApi.list()
       .then((r) => setNobetList(r.records ?? []))
       .catch(() => setNobetList([]))

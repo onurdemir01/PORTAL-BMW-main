@@ -1,4 +1,4 @@
-// server/spa-report/gecis.cjs — Nginx ARK SPA Raporu > "Glomo Geçiş Planı" (2026-10-13).
+// server/spa-report/gecis.cjs — Nginx ARK SPA Raporu > "Glomo Gecis Plani" (2026-10-13).
 //
 // Kullanici: "Glomo Production tasimalarimizin ilerlemesini gosteren Excel'i baska bir ekip
 // takvimlendirdi; calisma 5 dahil bitti, 6 ve 7 kaldi. Eksikler varsa calisma 7'ye gom.

@@ -89,7 +89,7 @@ function rowToTracking(r) {
     plannedDate: d(r.planned_date),
     migratedDate: d(r.migrated_date),
     note: r.note || null,
-    // EKIP BEYANI (2026-09-27): "Taşıma Planı" ekrani kaldirilinca bu bilgi yazilmaya
+    // EKIP BEYANI (2026-09-27): "Tasima Plani" ekrani kaldirilinca bu bilgi yazilmaya
     // devam ediyor ama gorunmuyordu. OLCUM DEGIL BEYANDIR: yuk gostergesi access log'dan
     // OLCULUR, bu ise ekibin "kullaniyoruz / kullanmiyoruz" dedigidir. Ikisi celisebilir
     // (yilda bir kosan bir is olcumde 'idle' gorunur ama ekip kullaniyordur) - o yuzden
@@ -518,7 +518,7 @@ function initNginxMigration(app) {
   // yazilir. Tek tek PUT atmak da mumkundu; tek ucta toplamanin sebebi: N istegin yarisinda
   // tarayici kapanirsa kayitlarin yarisi eski yarisi yeni kalirdi ve kullanici hangisinin
   // yazildigini bilemezdi. Burada her ogenin sonucu AYRI donuyor (yazilan / hata), ekran da
-  // ne olduğunu satir satir gosteriyor.
+  // ne oldugunu satir satir gosteriyor.
   // TARAMA TAZELEME (kullanici, 2026-09-24): "yeni gelen uygulamalar tasimalarda direkt
   // gozuksun ki tasinip tasinmadigini anlayabileyim". Ekran verisi nginx_config_audit
   // taramasindan gelir ve o is gunde bir kosar; yeni tanim ertesi gune kadar gorunmezdi.

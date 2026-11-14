@@ -1,7 +1,7 @@
 // server/__tests__/node-version-readiness.test.cjs — Node surumu hazirligi.
 //
 // Prod Node 20.20.2 kosuyor ve `npm ci` dokuz pakette EBADENGINE uyariyor. Uyarilarin
-// coğu gurultudur (vitest, jsdom, lint-staged... yalnizca gelistirici makinesinde
+// cogu gurultudur (vitest, jsdom, lint-staged... yalnizca gelistirici makinesinde
 // kosar) — AMA biri degil:
 //
 //   tedious (>=22) — MSSQL SURUCUSU. `mssql` uzerinden gelir ve portal HER DB

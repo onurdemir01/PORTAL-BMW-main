@@ -93,6 +93,7 @@ export default function EnvanterDegisim() {
   const [runs, setRuns] = useState<HistoryRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [nowMs] = useState(() => Date.now());
 
   useEffect(() => {
     inventoryApi
@@ -171,9 +172,9 @@ export default function EnvanterDegisim() {
       .filter((h) => {
         if (!h.run) return false;
         if (!h.lastChange) return true; // hiç değişiklik görülmemiş
-        return Date.now() - new Date(h.lastChange).getTime() > 7 * 86_400_000;
+        return nowMs - new Date(h.lastChange).getTime() > 7 * 86_400_000;
       });
-  }, [health, runs]);
+  }, [health, runs, nowMs]);
 
   const maxCount = Math.max(1, ...series.map((s) => s.count));
   const noData = !loading && !err && series.every((s) => s.count === 0) && runs.length === 0;

@@ -1,4 +1,4 @@
-// server/nginx-console/__tests__/drift.test.cjs — "Tutarlılık" (2026-09-22): ayni servis+ortam
+// server/nginx-console/__tests__/drift.test.cjs — "Tutarlilik" (2026-09-22): ayni servis+ortam
 // sunuculari arasinda dosya bazinda sha farki (GLOMO eski sunuculari vb.).
 'use strict';
 

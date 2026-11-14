@@ -30,7 +30,7 @@
 // OCP katalogundaki `env` SERBEST METIN (ocp_cluster_index.env NVARCHAR(30), admin
 // yaziyor): uretimde prod/PROD/prd gorulduo. was-state.cjs'teki ENV_MAP yalniz bu uc TAM
 // eslesmeyi biliyor; 'prod1' ya da 'prod-tr' gibi bir etiket oraya dusmez ve istek
-// PRODUCTION SAYILMAZDI - yani onaysiz koşardi. Bir onay kapisinin fail-open davranmasi,
+// PRODUCTION SAYILMAZDI - yani onaysiz kosardi. Bir onay kapisinin fail-open davranmasi,
 // kapiyi hic koymamaktan kotudur, bu yuzden DESEN eslemesi yapilir.
 //
 // YANLIS POZITIFE KARSI: `preprod` / `nonprod` icinde "prod" gecer ama uretim DEGILDIR;

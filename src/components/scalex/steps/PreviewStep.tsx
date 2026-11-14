@@ -3,10 +3,11 @@
 // `/preview` HİÇBİR ŞEY TETİKLEMEZ ve HİÇBİR ŞEY KAYDETMEZ; yalnızca hesaplar. Asıl
 // karar `/run`da YENİDEN verilir (Self Service'in `ss/oco/validate` deseni) — bu ekran
 // bir söz değil, bir tahmindir ve öyle davranılır.
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ExclamationTriangleIcon, CheckCircleIcon, ClockIcon, ShieldCheckIcon, ArrowUturnLeftIcon, NoSymbolIcon,
 } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import {
   scalexApi, type ScaleXAction, type ScaleXMode, type ScaleXPreview, type ScaleXScope, type ScaleXWorkload,
 } from "@/api/scalexApi";
@@ -95,10 +96,9 @@ const PreviewStep: React.FC<Props> = ({
     action, executionMode, targetReplicas ?? "", verificationTimeout, reloadKey,
   ].join("\u0001");
 
-  useEffect(() => {
-    let alive = true;
-    scalexApi
-      .preview({
+  useAsyncEffect(async (alive) => {
+    try {
+      const r = await scalexApi.preview({
         ...scope,
         action,
         executionMode,
@@ -110,15 +110,14 @@ const PreviewStep: React.FC<Props> = ({
         // önizleme "12 hedef" diyor, gereksiz yazılı onay istiyor ve
         // çalıştırmayla ayrışıyordu.
         targets: selectedTargets,
-      })
-      .then((r) => {
-        if (!alive) return;
-        setYanit(r.ok
-          ? { anahtar: istekAnahtari, preview: r, hata: null }
-          : { anahtar: istekAnahtari, preview: null, hata: r.message || "Önizleme alınamadı." });
-      })
-      .catch((e) => alive && setYanit({ anahtar: istekAnahtari, preview: null, hata: (e as Error).message }));
-    return () => { alive = false; };
+      });
+      if (!alive()) return;
+      setYanit(r.ok
+        ? { anahtar: istekAnahtari, preview: r, hata: null }
+        : { anahtar: istekAnahtari, preview: null, hata: r.message || "Önizleme alınamadı." });
+    } catch (e) {
+      if (alive()) setYanit({ anahtar: istekAnahtari, preview: null, hata: (e as Error).message });
+    }
     // `istekAnahtari` isteğin TÜM girdilerini taşır (kapsam, hedefler, işlem, kip, tazeleme).
   }, [istekAnahtari]);
 

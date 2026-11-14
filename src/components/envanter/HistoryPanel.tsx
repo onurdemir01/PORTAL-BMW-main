@@ -10,7 +10,8 @@
 // yazıldığı için geçmiş yalnızca Portal'ın gecelik anlık görüntüleri başladıktan
 // SONRASINI bilir. Panel bunu boş durumda açıkça söyler — kullanıcı "veri mi yok,
 // özellik mi bozuk" ikilemine düşmesin.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import {
   ClockIcon, ArrowsRightLeftIcon, MagnifyingGlassIcon, PlusCircleIcon,
   MinusCircleIcon, PencilSquareIcon, ArrowDownTrayIcon,
@@ -96,10 +97,10 @@ export default function HistoryPanel({
     } finally { setLoading(false); }
   }, [table, fromDate, toDate]);
 
-  useEffect(() => {
-    if (!open) return;
-    if (mode === "at") loadAt();
-    else loadDiff();
+  useAsyncEffect(async (alive) => {
+    if (!open || !alive()) return;
+    if (mode === "at") await loadAt();
+    else await loadDiff();
   }, [open, mode, loadAt, loadDiff]);
 
   // Sunucuda arama YOK: geçmiş satırları JSON olarak zaten bellekte, istemcide filtrelemek

@@ -88,6 +88,7 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
   const [output, setOutput]   = useState<string>("");
   const [changed, setChanged] = useState(false);
   const pollRef = useRef<number | null>(null);
+  const pollNextRef = useRef<() => void>(() => {});
   const outputRef = useRef<HTMLPreElement>(null);
 
   const poll = useCallback(() => {
@@ -99,11 +100,15 @@ function JobOutputModal({ jobId, templateName, onClose }: JobOutputModalProps) {
           .catch(() => {});
         const done = ["successful", "failed", "error", "canceled"].includes(s.status ?? "");
         if (!done) {
-          pollRef.current = window.setTimeout(poll, 3000);
+          pollRef.current = window.setTimeout(() => pollNextRef.current(), 3000);
         }
       })
-      .catch(() => { pollRef.current = window.setTimeout(poll, 5000); });
+      .catch(() => { pollRef.current = window.setTimeout(() => pollNextRef.current(), 5000); });
   }, [jobId]);
+
+  useEffect(() => {
+    pollNextRef.current = poll;
+  }, [poll]);
 
   useEffect(() => {
     poll();
@@ -766,15 +771,13 @@ function ServerPanel({ server, onLaunch, onInfo }: ServerPanelProps) {
     ansibleApi
       .templates(server.id)
       .then((r) => {
+        setPage(1);
         if (!r.ok) setError(r.message || "Şablonlar alınamadı");
         else setTemplates(r.templates);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [server.id]);
-
-  // Arama, tüm çekilen listeyi filtreler (sayfa bazlı değil) — arama değişince sayfa 1'e dön
-  useEffect(() => { setPage(1); }, [search, server.id]);
 
   const filtered = search
     ? (templates ?? []).filter(
@@ -818,7 +821,10 @@ function ServerPanel({ server, onLaunch, onInfo }: ServerPanelProps) {
           type="search"
           placeholder="Ara..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           className="rounded-xl border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-200 w-48"
         />
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   ChevronUpDownIcon, ChevronUpIcon, ChevronDownIcon, FunnelIcon,
 } from "@heroicons/react/24/outline";
@@ -55,8 +55,8 @@ const DynamicTable: React.FC<Props> = ({
 }) => {
   const [localSortCol, setLocalSortCol] = useState<string | null>(null);
   const [localSortDir, setLocalSortDir] = useState<SortDir>(null);
-  const [openFilterCol, setOpenFilterCol] = useState<string | null>(null);
-  const filterBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [openFilter, setOpenFilter] = useState<{ col: string; anchorEl: HTMLElement | null } | null>(null);
+  const openFilterCol = openFilter?.col ?? null;
 
   const serverMode = typeof onSort === "function";
   const displayed = visibleCols.filter((c) => columns.includes(c));
@@ -131,10 +131,6 @@ const DynamicTable: React.FC<Props> = ({
     );
   }
 
-  const openFilterAnchor = openFilterCol
-    ? { current: filterBtnRefs.current[openFilterCol] ?? null }
-    : null;
-
   return (
     <div className="overflow-x-auto rounded-xl border" style={{ borderColor: "var(--border)" }}>
       {/* Yapiskan baslik artik ortak `.pf-table-sticky` sinifindan (bkz. index.css).
@@ -162,8 +158,11 @@ const DynamicTable: React.FC<Props> = ({
                     </button>
                     {/* Filter trigger */}
                     <button
-                      ref={(el) => { filterBtnRefs.current[col] = el; }}
-                      onClick={(e) => { e.stopPropagation(); setOpenFilterCol(openFilterCol === col ? null : col); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const el = e.currentTarget;
+                        setOpenFilter((prev) => (prev?.col === col ? null : { col, anchorEl: el }));
+                      }}
                       className={`ml-1 p-0.5 rounded transition-colors ${
                         isFiltered
                           ? "bg-[rgb(var(--accent-rgb)_/_0.12)]"
@@ -219,15 +218,15 @@ const DynamicTable: React.FC<Props> = ({
       </table>
 
       {/* Column filter dropdown (portal-mounted via fixed position) */}
-      {openFilterCol && openFilterAnchor && (
+      {openFilter && (
         <ColumnFilterDropdown
           table={table}
-          col={openFilterCol}
-          selected={multiFilters[openFilterCol] || []}
+          col={openFilter.col}
+          selected={multiFilters[openFilter.col] || []}
           activeFilters={multiFilters}
-          anchorRef={openFilterAnchor as React.RefObject<HTMLElement | null>}
-          onApply={(vals) => onApplyColumnFilter(openFilterCol, vals)}
-          onClose={() => setOpenFilterCol(null)}
+          anchorEl={openFilter.anchorEl}
+          onApply={(vals) => onApplyColumnFilter(openFilter.col, vals)}
+          onClose={() => setOpenFilter(null)}
         />
       )}
     </div>

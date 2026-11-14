@@ -280,14 +280,16 @@ const DashboardPage: React.FC = () => {
   }, [visibilityReady, canViewPage]);
 
   useEffect(() => {
+    let alive = true;
     if (dtHealth?.mcpConnected && canViewPage('Performance')) {
       dynatraceApi
         .problems()
-        .then((p) => setDtProblems(p.problems ?? []))
+        .then((p) => { if (alive) setDtProblems(p.problems ?? []); })
         .catch(() => {});
     } else {
-      setDtProblems([]);
+      void Promise.resolve().then(() => { if (alive) setDtProblems([]); });
     }
+    return () => { alive = false; };
   }, [dtHealth, canViewPage]);
 
   const visibleTools = OTHER_TOOLS.filter((l) => canViewPage(l.pageId));

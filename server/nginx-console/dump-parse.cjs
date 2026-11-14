@@ -14,7 +14,7 @@ const { StringDecoder } = require('node:string_decoder');
  * (parseDumpFileSync) kullanilabiliyor — 30 MB'lik dokumu bellege almadan ozet
  * cikarmanin tek yolu bu (2026-09-22: 8 reverse-proxy dokumu tavani asiyordu).
  *
- * opts.skipFileContent: @@FILE bloklarinin ICERIGI saklanmaz (yalniz sha/size).
+ * opts.skipFileContent: file bloklarinin icerigi saklanmaz (yalniz sha/size).
  * Ozet ekranlarinin (host listesi, sertifika, tutarlilik) icerige ihtiyaci yok.
  */
 function parseDumpFrom(readLine, opts = {}) {
@@ -84,7 +84,7 @@ function parseDumpFrom(readLine, opts = {}) {
         const eq = v.indexOf('=');
         if (eq > 0) rec[v.slice(0, eq).trim()] = v.slice(eq + 1).trim();
       }
-      rec.exists = rec.exists === '1' || rec.exists === true;
+      rec.exists = String(rec.exists) === '1' || rec.exists === true;
       out.certs.set(p, normalizeCert(rec));
     }
   }

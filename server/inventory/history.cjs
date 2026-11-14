@@ -1,17 +1,17 @@
-// server/inventory/history.cjs — Envanter geçmişi: SCD-2 anlık görüntü motoru + sorgular.
+// server/inventory/history.cjs — Envanter gecmisi: SCD-2 anlik goruntu motoru + sorgular.
 //
-// MODEL. Her satır için bir GEÇERLİLİK ARALIĞI tutulur:
-//   valid_from  satırın bu hâliyle ilk görüldüğü an
-//   valid_to    bu hâlin sona erdiği an (NULL = hâlâ geçerli)
-// Bir satır T anında geçerlidir  ⟺  valid_from <= T AND (valid_to IS NULL OR valid_to > T)
+// MODEL. Her satir icin bir GECERLILIK ARALIGI tutulur:
+//   valid_from  satirin bu hâliyle ilk goruldugu an
+//   valid_to    bu hâlin sona erdigi an (NULL = hâlâ gecerli)
+// Bir satir T aninda gecerlidir  ⟺  valid_from <= T AND (valid_to IS NULL OR valid_to > T)
 //
-// NEDEN GÜNLÜK TAM KOPYA DEĞİL: envanter çoğu gün değişmez. Günlük tam kopyada 5.000
-// satırlık bir tablo yılda ~1,8 milyon satır üretirdi; burada YALNIZCA gerçek değişiklik
-// yazılır, yani depolama değişimle orantılıdır. Karşılığında sorgu biraz daha karmaşık
-// (yukarıdaki aralık koşulu) ama tek bir yardımcıda kapsanıyor.
+// NEDEN GUNLUK TAM KOPYA DEGIL: envanter cogu gun degismez. Gunluk tam kopyada 5.000
+// satirlik bir tablo yilda ~1,8 milyon satir uretirdi; burada YALNIZCA gercek degisiklik
+// yazilir, yani depolama degisimle orantilidir. Karsiliginda sorgu biraz daha karmasik
+// (yukaridaki aralik kosulu) ama tek bir yardimcida kapsaniyor.
 //
-// TEKRAR ÇALIŞTIRMA GÜVENLİ: aynı gün ikinci kez çalıştırılırsa hiçbir satır değişmemiş
-// görünür ve HİÇBİR ŞEY yazılmaz. Zamanlayıcı gecikse/iki kez tetiklense de geçmiş
+// TEKRAR CALISTIRMA GUVENLI: ayni gun ikinci kez calistirilirsa hicbir satir degismemis
+// gorunur ve HICBIR SEY yazilmaz. Zamanlayici gecikse/iki kez tetiklense de gecmis
 // bozulmaz.
 'use strict';
 
@@ -88,8 +88,8 @@ async function tableExists(name) {
 // ── Anlik goruntu alma ─────────────────────────────────────────────────────────
 
 /**
- * Tek bir tablonun anlik goruntusunu alir ve geçmişe YALNIZCA farki yazar.
- * @returns {{status:string, sourceRows:number, added:number, changed:number, removed:number, message?:string}}
+ * Tek bir tablonun anlik goruntusunu alir ve gecmise YALNIZCA farki yazar.
+ * @returns {Promise<{status:string, sourceRows:number, added:number, changed:number, removed:number, message?:string}>}
  */
 async function snapshotTable(def, now = new Date()) {
   const name = safeTableName(def);

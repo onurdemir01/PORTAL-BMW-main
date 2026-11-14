@@ -966,7 +966,7 @@ test('YD18 parametreler wrk: kanonik nesne, hesaplanan tavan, her mesaj; k6 serb
   assert.ok(Object.isFrozen(dg.VARSAYILAN.serbest) && Object.isFrozen(dg.VARSAYILAN.baglantilar));
   assert.deepEqual([[...dg.MOTORLAR], [...dg.HEDEF_TURLERI], dg.WRK_SURUM, dg.ESKI_K6_ISARETI, dg.ESKI_WRK_ISARETI],
     [['k6', 'wrk'], ['sunucu', 'serbest'], '4.2.0', '/yeni-playbook-gerekli/k6', '/yeni-playbook-gerekli/wrk']);
-  assert.equal(dg.VARSAYILAN_WRK, undefined);
+  assert.equal(/** @type {any} */ (dg).VARSAYILAN_WRK, undefined);
 });
 
 test('YD19 butceSn: adim sayisi motora gore; motor\'suz eski nesne k6', () => {

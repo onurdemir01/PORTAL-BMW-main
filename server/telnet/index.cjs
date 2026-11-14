@@ -423,6 +423,8 @@ function initTelnet(app) {
   // Not: `application` yalniz sunucu-tarafi anti-TOCTOU dogrulamasi icindir, extra_vars'a
   // KONMAZ (kullanici sartnamesi).
   app.post('/api/telnet/run', requireAuth, express.json({ limit: '64kb' }), async (req, res) => {
+    const runner = require('../ansible/runner.cjs');
+    const db = require('../db/index.cjs');
     const { platform, application, hosts, env, tenant, namespaces, cluster, ip, port } =
       req.body || {};
     const plat = platform === 'openshift' ? 'openshift' : 'legacy';
@@ -506,7 +508,7 @@ function initTelnet(app) {
       // (server/opsx/index.cjs resolveOpenshiftTargets) burada da uygulanir: gruptaki
       // HERHANGI bir gercek cluster icin kisitlama varsa TUM istek reddedilir (fail-safe).
       {
-        const restrictions = require('../logx/v2/restrictions.cjs');
+        const ocpRestrictions = require('../logx/v2/restrictions.cjs');
         const user = req.session?.user || {};
         const groupClusters = tree[envKey][tenantKey] || [];
         for (const ns of cleanNamespaces) {
@@ -514,13 +516,13 @@ function initTelnet(app) {
             const resourceKey = `${tenantKey}/${envKey}/${clusterName}/${ns}`;
             // LogX ile AYNI aciklayici ret (kural + izinliler + basvuru yolu). Karar
             // okunamazsa KAPALI kalir ama "kisitli" diye etiketlenmez.
-            const karar = await restrictions
+            const karar = await ocpRestrictions
               .evaluate('ocp_namespace', resourceKey, user)
               .catch(() => null);
             if (!karar || !karar.allowed) {
               const message = karar
-                ? restrictions.denyMessage(
-                    await restrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows),
+                ? ocpRestrictions.denyMessage(
+                    await ocpRestrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows),
                   )
                 : `"${ns}" namespace'i için erişim kontrolü yapılamadı; lütfen tekrar deneyin.`;
               return res.status(403).json({ ok: false, message });
@@ -622,7 +624,6 @@ function initTelnet(app) {
         target_port: portTrim,
       };
 
-      const runner = require('../ansible/runner.cjs');
       try {
         const result = await runner.launchJobOnServer(
           serverId,
@@ -634,7 +635,6 @@ function initTelnet(app) {
         rememberJobOwner(serverId, result?.jobId, req.session?.user?.username);
 
         try {
-          const db = require('../db/index.cjs');
           await db.query(
             `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
             [
@@ -747,7 +747,6 @@ function initTelnet(app) {
     const logSummary = `app=${String(application).trim()} limit=${limitValue} ip=${ipTrim} port=${portTrim}`;
 
     try {
-      const runner = require('../ansible/runner.cjs');
       const result = await runner.launchJobOnServer(
         serverId,
         templateId,
@@ -760,7 +759,6 @@ function initTelnet(app) {
       // ansible_job_history'ye kayit — OpsX ile AYNI genel-amacli tablo (job-status
       // endpoint'inin IDOR korumasi bu kayda bakar).
       try {
-        const db = require('../db/index.cjs');
         await db.query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [

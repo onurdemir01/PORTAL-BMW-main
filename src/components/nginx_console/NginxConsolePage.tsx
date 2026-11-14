@@ -160,7 +160,9 @@ export default function NginxConsolePage() {
       if (r.ok) { setHosts(r.hosts); setHostsErr(null); } else setHostsErr(r.message || 'Sunucu listesi alınamadı.');
     } catch (e) { setHostsErr(e instanceof Error ? e.message : String(e)); } finally { setHostsLoading(false); }
   }, []);
-  useEffect(() => { if (tab === 'dashboard' || tab === 'instances') loadHosts(); }, [tab, loadHosts]);
+  useAsyncEffect(async () => {
+    if (tab === 'dashboard' || tab === 'instances') await loadHosts();
+  }, [tab, loadHosts]);
   const refreshHosts = async (list: string[]) => {
     if (!list.length) return;
     try {
@@ -193,8 +195,11 @@ export default function NginxConsolePage() {
   const visibleIds = [...hubTabs, ...auditTabs].map((x) => x.id) as Tab[];
   // Acik sekme kapatildiysa ilk gorunur sekmeye gec (bos ekranda kalma).
   useEffect(() => {
-    if (visibleIds.length && !visibleIds.includes(tab)) setTab(visibleIds[0]);
-  }, [visibleIds.join(','), tab]);
+    const id = window.setTimeout(() => {
+      if (visibleIds.length && !visibleIds.includes(tab)) setTab(visibleIds[0]);
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [tab, visibleIds]);
 
   // HANGI IS BESLIYOR (kullanici, 2026-09-22): Nginx Hub'da uc ayri kaynak yan yana duruyor;
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
@@ -323,9 +328,19 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
     setTreeLoading(true);
     try { setTree(await nginxConsoleApi.tree(h)); } finally { setTreeLoading(false); }
   }, []);
-  useEffect(() => { if (cur) { setFile(null); setDraft(''); setMode('update'); loadTree(cur); } }, [cur, loadTree]);
+  useAsyncEffect(async () => {
+    if (!cur) return;
+    setFile(null);
+    setDraft('');
+    setMode('update');
+    await loadTree(cur);
+  }, [cur, loadTree]);
   // Dashboard/Instances'tan gelen sunucu (2026-09-21)
-  useEffect(() => { if (initialHost) setCur(initialHost); }, [initialHost]);
+  const [prevInitialHost, setPrevInitialHost] = useState(initialHost);
+  if (initialHost !== prevInitialHost) {
+    setPrevInitialHost(initialHost);
+    if (initialHost) setCur(initialHost);
+  }
 
   const openFile = async (p: string) => {
     if (!cur) return;
@@ -626,17 +641,25 @@ function TreeNode({ node, depth, onOpen, current, defaultOpen = false }: { node:
 }
 
 function NewFileModal({ open, onClose, host, prefix, hosts, onCreate }: { open: boolean; onClose: () => void; host: string | null; prefix: string; hosts: NcHost[]; onCreate: (path: string, content: string) => void }) {
-  const [p, setP] = useState('');
+  if (!open) return null;
+  return <NewFileModalBody onClose={onClose} host={host} prefix={prefix} hosts={hosts} onCreate={onCreate} />;
+}
+
+function NewFileModalBody({ onClose, host, prefix, hosts, onCreate }: { onClose: () => void; host: string | null; prefix: string; hosts: NcHost[]; onCreate: (path: string, content: string) => void }) {
+  const [p, setP] = useState(`${prefix}/conf.d/application-confs/`);
   const [srcHost, setSrcHost] = useState('');
   const [srcTree, setSrcTree] = useState<NcTree | null>(null);
   const [srcPath, setSrcPath] = useState('');
   const [content, setContent] = useState('');
-  useEffect(() => { if (open) { setP(`${prefix}/conf.d/application-confs/`); setSrcHost(''); setSrcTree(null); setSrcPath(''); setContent(''); } }, [open, prefix]);
-  useEffect(() => { if (srcHost) nginxConsoleApi.tree(srcHost).then(setSrcTree); else setSrcTree(null); }, [srcHost]);
+  const handleSrcHostChange = async (nextHost: string) => {
+    setSrcHost(nextHost);
+    if (!nextHost) { setSrcTree(null); return; }
+    setSrcTree(await nginxConsoleApi.tree(nextHost));
+  };
   const srcFiles = useMemo(() => { const out: string[] = []; const walk = (n: NcTreeDir) => { n.files.forEach((f) => out.push(f.path)); n.dirs.forEach(walk); }; if (srcTree?.tree) walk(srcTree.tree); return out; }, [srcTree]);
   const valid = /^\/usr\/nginx\/(conf\.d|conf)\/.+/.test(p) && !p.endsWith('/') && !p.includes('..');
   return (
-    <Modal open={open} onClose={onClose} title={`${host} · yeni konfigürasyon dosyası`} size="lg"
+    <Modal open onClose={onClose} title={`${host} · yeni konfigürasyon dosyası`} size="lg"
       footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border" style={{ borderColor: 'var(--border)' }}>İptal</button><button disabled={!valid} onClick={() => onCreate(p.trim(), content)} className="btn-primary px-3 py-1.5 text-xs rounded-lg disabled:opacity-40">Editöre al</button></div>}>
       <div className="space-y-3 text-xs">
         <label className="block">Dosya yolu (yalnız <Code>/usr/nginx/conf.d/</Code> ve <Code>/usr/nginx/conf/</Code> altı)
@@ -645,7 +668,7 @@ function NewFileModal({ open, onClose, host, prefix, hosts, onCreate }: { open: 
         <div className="rounded-lg border p-2 space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
           <div className="font-semibold">Başlangıç içeriği: başka sunucudan kopyala (isteğe bağlı)</div>
           <div className="flex gap-2">
-            <select value={srcHost} onChange={(e) => setSrcHost(e.target.value)} className="px-2 py-1 border rounded-lg" style={{ borderColor: 'var(--border)' }}>
+            <select value={srcHost} onChange={(e) => { void handleSrcHostChange(e.target.value); }} className="px-2 py-1 border rounded-lg" style={{ borderColor: 'var(--border)' }}>
               <option value="">— sunucu —</option>
               {hosts.map((h) => <option key={h.host} value={h.host}>{h.host}{h.service ? ` (${h.service})` : ''}</option>)}
             </select>

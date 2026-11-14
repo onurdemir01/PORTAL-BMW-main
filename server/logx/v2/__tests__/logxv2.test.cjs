@@ -430,7 +430,7 @@ test('requests.expireOldRequests(): 3 suresi dolmus istek icin dosya silme per-r
 
   // ── KURAL DEGISMEDI, VARSAYIM DEGISTI (2026-09-23) ──────────────────────────
   // Bu bekci eskiden `WHERE expires_at < GETUTCDATE() AND state <> 'expired'`
-  // arıyordu — yani UYGULAMA AYRINTISINI (toplu predikat) kilitliyordu, KURALI
+  // ariyordu — yani UYGULAMA AYRINTISINI (toplu predikat) kilitliyordu, KURALI
   // degil. `SELECT`e tur basina tavan konulunca o predikat SESSIZ BIR VERI
   // KAYBINA donustu: SELECT ilk N'i okur, UPDATE suresi dolmus HEPSINI 'expired'
   // yapar → okunmayan isteklerin staged dosyalari HIC SILINMEDEN yetim kalir ve

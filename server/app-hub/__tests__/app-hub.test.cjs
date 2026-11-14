@@ -303,7 +303,7 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
 
 // ── Router ve veri birlestirme: sahte TBMWANS / Portal DB / Server Hub ─────────────
 const SQL = { NVarChar: () => 'nvarchar' };
-const sorgu = { yanit: () => ({ recordset: [] }) };
+const sorgu = { yanit: /** @type {(t?: any, p?: any) => any} */ (() => ({ recordset: [] })) };
 sahte(require.resolve('../../inventory/mssql.cjs'), { sql: SQL, query: async (t, p) => sorgu.yanit(t, p) });
 sahte(require.resolve('../../db/index.cjs'), { query: async () => ({ rows: [] }) });
 sahte(require.resolve('../../config/apps-table.cjs'), { getAppsTable: () => 'MWAppsInventory', getWasAppsTable: () => 'WASAppsInventory' });

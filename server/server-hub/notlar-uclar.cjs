@@ -16,7 +16,8 @@ const N = require('./notlar.cjs');
 
 const ID_RE = /^\d{1,9}$/;
 
-function mount(router, { iliskiHesabi, audit = () => {} }) {
+/** @param {*} router @param {{ iliskiHesabi: any, audit?: (req: any, info: any) => void }} opts */
+function mount(router, { iliskiHesabi, audit = (_req, _info) => {} }) {
   const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
   const gonder = (res, err) =>
     res

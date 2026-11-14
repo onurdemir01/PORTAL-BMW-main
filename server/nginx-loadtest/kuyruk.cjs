@@ -77,9 +77,9 @@ const BASLANGIC_MAX_SAAT = 24;
 const BITIS_MAX_SAAT = 36;
 const AKTIF_KOSU = new Set(['QUEUED', 'RUNNING', 'FINALIZING']);
 const AKTIF_KUYRUK = new Set(['BEKLIYOR', 'CALISIYOR', 'DINLENME']);
+const { hasControlChars } = require('../util/control-chars.cjs');
 // dogrula.cjs KONTROL_KARAKTERI ile ayni sinif (etiket / ad).
-// eslint-disable-next-line no-control-regex
-const KONTROL_KARAKTERI = /[\u0000-\u001f\u007f]/;
+const KONTROL_KARAKTERI = { test: (v) => hasControlChars(v) };
 
 const SUREC_ID = crypto.randomUUID();
 let _timer = null;

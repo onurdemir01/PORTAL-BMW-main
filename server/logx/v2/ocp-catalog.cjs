@@ -56,7 +56,7 @@ async function safe(promise, fallback, label, sink) {
   }
 }
 
-const EMPTY = { items: [], cached: false, fetchedAt: null, stale: false };
+const EMPTY = { items: [], cached: false, fetchedAt: null, stale: false, source: null };
 
 // Donus: { items[], sources: { [ad]: 'inventory'|'discovery' }, cached, fetchedAt, stale }
 // `sources` onyuzun her satirin nereden geldigini rozetleyebilmesi icindir.

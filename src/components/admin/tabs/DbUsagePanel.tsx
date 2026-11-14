@@ -4,6 +4,7 @@
 // Kaynak: server/db/housekeeping.cjs — 2026-09-18'de veri dosyası %96'ya, log iki gün üst
 // üste %100'e geldiği için eklendi; eşik aşılınca aynı modül Teams'e de uyarı atar.
 import React, { useCallback, useEffect, useState } from "react";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { ArrowPathIcon, PlayIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { toast } from "@/hooks/useToast";
 import { fmtDateTime as fmt, fmtNumber } from "@/utils/datetime";
@@ -84,7 +85,7 @@ const DbUsagePanel: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useAsyncEffect(async (alive) => { if (alive()) await load(); }, [load]);
 
   // Temizlik calisirken 3 sn'de bir yenile
   useEffect(() => {

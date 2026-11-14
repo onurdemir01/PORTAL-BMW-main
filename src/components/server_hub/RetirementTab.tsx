@@ -498,7 +498,13 @@ export default function RetirementTab({ oneri = null }: { oneri?: { uygulama: st
     try { const r = await retirementApi.list(); if (r.ok) { setRows(r.records); setErr(''); } else setErr(r.message || 'Liste alınamadı.'); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); } finally { setLoading(false); }
   }, []);
-  useEffect(() => { load(); retirementApi.config().then((c) => c.ok && setCfg(c)).catch(() => {}); }, [load]);
+  useAsyncEffect(async (alive) => {
+    await load();
+    try {
+      const c = await retirementApi.config();
+      if (alive() && c.ok) setCfg(c);
+    } catch { /* yapilandirma opsiyonel */ }
+  }, [load]);
 
   return (
     <div className="space-y-3">
@@ -627,7 +633,7 @@ export function CreateModal({ defaultDays, baslangic = null, onClose, onCreated 
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (q.trim().length < 2) { setApps([]); return; }
+    if (q.trim().length < 2) return;
     const t = setTimeout(() => retirementApi.apps(q.trim()).then((r) => r.ok && setApps(r.apps)).catch(() => {}), 250);
     return () => clearTimeout(t);
   }, [q]);
@@ -709,7 +715,7 @@ export function CreateModal({ defaultDays, baslangic = null, onClose, onCreated 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <div className="relative">
             <label htmlFor="rt-cm-uygulama" className="text-[11px] font-semibold" style={etiket}>Uygulama (taban ad; -D/-T/-Q ortamları otomatik)</label>
-            <input id="rt-cm-uygulama" value={q} onChange={(e) => { setQ(e.target.value); setApp(''); setDisc(null); }} placeholder="CRM" className={INPUT} style={inputStyle} autoFocus />
+            <input id="rt-cm-uygulama" value={q} onChange={(e) => { const v = e.target.value; setQ(v); setApp(''); setDisc(null); if (v.trim().length < 2) setApps([]); }} placeholder="CRM" className={INPUT} style={inputStyle} autoFocus />
             {apps.length > 0 && !app && (
               <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-lg border shadow-sm text-xs" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
                 {apps.map((a) => <li key={a}><button onClick={() => pick(a)} className="w-full text-left px-2.5 py-1.5 hover:bg-[var(--bg-elevated)]">{a}</button></li>)}
@@ -938,7 +944,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
     try { const r = await retirementApi.get(id); if (r.ok) { setRec(r.record); setKuyruk({ zamanlayici: r.zamanlayici, isler: r.isler }); setErr(''); } else setErr(r.message || 'Kayıt alınamadı.'); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [id]);
-  useEffect(() => { load(); }, [load]);
+  useAsyncEffect(async () => { await load(); }, [load]);
   // IN-PLACE (2026-10-26): isaret kayitla saklanir (RtTarget.inPlace). Bu alandan ONCE acilmis kayitta null:
   // bugunku kesiften BIR kez, tembel hesaplanir (host|uygulama|surum). Kesif duserse bilgi "bilinmiyor" kalir.
   const [ipKesif, setIpKesif] = useState<InPlaceHarita | null>(null);

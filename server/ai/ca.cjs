@@ -55,7 +55,7 @@ function getFingerprint(pem) {
 // ONBELLEK ANAHTARI dosyanin KENDISINI de kapsar (yol + mtime + boyut):
 // sertifika DONUSUNDE (rotation) dosya degisir, anahtar degisir ve depo
 // YENIDEN kurulur. Yalnizca yolu anahtar yapmak, donmus bir sertifikayi
-// sureç omru boyunca ESKI haliyle kullanmak olurdu — TLS dogrulamasinin
+// surec omru boyunca ESKI haliyle kullanmak olurdu — TLS dogrulamasinin
 // sessizce bozulmasi demek.
 let _caCache = null; // { key, value }
 

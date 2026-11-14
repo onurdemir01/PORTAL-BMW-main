@@ -108,7 +108,7 @@ function checkPlaybookRevisions() {
     rev = require('./playbook-rev.cjs');
   } catch (e) {
     // Betik ya da bagimliliklari yoksa preflight'in KENDISI dusmemeli: bu kontrol
-    // dagitimin one sartı degil, kolaylastiricisi. Ama sessizce de gecmemeli.
+    // dagitimin one sarti degil, kolaylastiricisi. Ama sessizce de gecmemeli.
     warn(
       'Playbook surum damgasi DOGRULANAMADI',
       `scripts/playbook-rev.cjs okunamadi: ${e.message}`,

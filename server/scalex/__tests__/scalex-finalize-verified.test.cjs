@@ -2,7 +2,7 @@
 // GERI ALMA KARARI: "uygulandi mi" ile "OK mi" AYNI SORU DEGIL.
 //
 // URETIM (2026-09-17, AWX is #3326330). Kullanicinin cumlesi: "dedi ama ayakta
-// aslında" ve "sanki backend job ile ui anlasamadi".
+// aslinda" ve "sanki backend job ile ui anlasamadi".
 //
 //   * Betik: `STATE;OK;Deleted restore state ConfigMap ... after successful restore`
 //   * Cluster: DeploymentConfig replicas=1, readyReplicas=1, pod Running

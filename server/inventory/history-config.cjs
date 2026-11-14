@@ -1,42 +1,42 @@
-// server/inventory/history-config.cjs — Envanter geçmişi: hangi tablo, hangi anahtar.
+// server/inventory/history-config.cjs — Envanter gecmisi: hangi tablo, hangi anahtar.
 //
-// NEDEN VAR (2026-09-07, kullanıcı isteği): "20 Ağustos'ta tablo nasıl görünüyordu,
-// bugünle arasında ne fark var, hangi satırlar gelmiş" sorusu Portal'da cevaplanamıyordu.
-// Envanter tablolarını dolduran Ansible loader'ları (bmw_inventory/...) her çalıştırmada
-// TRUNCATE edip yeniden yazıyor; GEÇMİŞ HİÇBİR YERDE TUTULMUYOR. Elde yalnızca
-// created_at/updated_at/last_seen_at var — bunlar "hâlâ duran" satırlar için bilgi verir
-// ama KAYBOLAN satırlar tamamen yok olur. Bu yüzden geçmiş bugünden itibaren birikir;
-// geriye dönük veri üretilemez.
+// NEDEN VAR (2026-09-07, kullanici istegi): "20 Agustos'ta tablo nasil gorunuyordu,
+// bugunle arasinda ne fark var, hangi satirlar gelmis" sorusu Portal'da cevaplanamiyordu.
+// Envanter tablolarini dolduran Ansible loader'lari (bmw_inventory/...) her calistirmada
+// TRUNCATE edip yeniden yaziyor; GECMIS HICBIR YERDE TUTULMUYOR. Elde yalnizca
+// created_at/updated_at/last_seen_at var — bunlar "hâlâ duran" satirlar icin bilgi verir
+// ama KAYBOLAN satirlar tamamen yok olur. Bu yuzden gecmis bugunden itibaren birikir;
+// geriye donuk veri uretilemez.
 //
-// İKİ FARKLI TABLO TİPİ VAR:
+// IKI FARKLI TABLO TIPI VAR:
 //
-//   mode: "snapshot"  → Kaynak tablo TRUNCATE/upsert ediliyor, geçmişi yok.
-//                       Portal her gece SCD-2 (satır bazlı geçerlilik aralığı) yazar.
-//   mode: "native"    → Tablo ZATEN gün gün biriktiriyor (scan_date ile APPEND).
-//                       Kopyalamak veriyi iki kez saklamak olurdu; doğrudan okunur.
+//   mode: "snapshot"  → Kaynak tablo TRUNCATE/upsert ediliyor, gecmisi yok.
+//                       Portal her gece SCD-2 (satir bazli gecerlilik araligi) yazar.
+//   mode: "native"    → Tablo ZATEN gun gun biriktiriyor (scan_date ile APPEND).
+//                       Kopyalamak veriyi iki kez saklamak olurdu; dogrudan okunur.
 //
-// HASH'TEN DIŞLANAN KOLONLAR — EN KRİTİK AYAR:
-// last_seen_at HER başarılı taramada güncellenir. Hash'e dahil edilseydi her satır her
-// gece "değişti" sayılır, geçmiş tablosu her gece tüm envanter kadar büyür ve "ne
-// değişti" ekranı tamamen kullanılamaz hâle gelirdi. updated_at/created_at de verinin
-// KENDİSİ değil, verinin metaverisidir — aynı gerekçeyle dışlanır.
+// HASH'TEN DISLANAN KOLONLAR — EN KRITIK AYAR:
+// last_seen_at HER basarili taramada guncellenir. Hash'e dahil edilseydi her satir her
+// gece "degisti" sayilir, gecmis tablosu her gece tum envanter kadar buyur ve "ne
+// degisti" ekrani tamamen kullanilamaz hâle gelirdi. updated_at/created_at de verinin
+// KENDISI degil, verinin metaverisidir — ayni gerekceyle dislanir.
 'use strict';
 
 /**
- * Her tabloda hash DIŞINDA tutulan kolonlar. Liste iki tür kolonu kapsar ve ikisi de
- * aynı sonucu doğurur: dahil edilirlerse HER satır HER gece "değişti" sayılır, geçmiş
- * tablosu her gece tüm envanter kadar büyür ve "ne değişti" ekranı kullanılamaz olur.
+ * Her tabloda hash DISINDA tutulan kolonlar. Liste iki tur kolonu kapsar ve ikisi de
+ * ayni sonucu dogurur: dahil edilirlerse HER satir HER gece "degisti" sayilir, gecmis
+ * tablosu her gece tum envanter kadar buyur ve "ne degisti" ekrani kullanilamaz olur.
  *
- * 1) ZAMAN DAMGALARI — verinin kendisi değil, verinin metaverisi.
- *    last_seen_at her başarılı taramada güncellenir.
- *    loaded_at / inserted_at ise DEFAULT SYSUTCDATETIME() ile dolar; loader bu kolonları
- *    YAZMAZ ve tablo her çalıştırmada TRUNCATE edilip yeniden yazıldığı için değer her
- *    gece TAZEDİR. (2026-09-08'de dbo.Openshift_Inventory'de tam bu durum bulundu —
- *    `loaded_at` listede olmadığı için o tablonun geçmişi baştan bozuk toplanacaktı.)
+ * 1) ZAMAN DAMGALARI — verinin kendisi degil, verinin metaverisi.
+ *    last_seen_at her basarili taramada guncellenir.
+ *    loaded_at / inserted_at ise DEFAULT SYSUTCDATETIME() ile dolar; loader bu kolonlari
+ *    YAZMAZ ve tablo her calistirmada TRUNCATE edilip yeniden yazildigi icin deger her
+ *    gece TAZEDIR. (2026-09-08'de dbo.Openshift_Inventory'de tam bu durum bulundu —
+ *    `loaded_at` listede olmadigi icin o tablonun gecmisi bastan bozuk toplanacakti.)
  *
- * 2) YAPAY ANAHTAR — `id INT IDENTITY`. TRUNCATE + yeniden doldurmada numaralar baştan
- *    üretilir, yani aynı sunucu her gece başka bir id alır. Satır kimliği için zaten
- *    `key` alanındaki DOĞAL anahtar kullanılıyor; id'nin hash'te hiçbir işi yok.
+ * 2) YAPAY ANAHTAR — `id INT IDENTITY`. TRUNCATE + yeniden doldurmada numaralar bastan
+ *    uretilir, yani ayni sunucu her gece baska bir id alir. Satir kimligi icin zaten
+ *    `key` alanindaki DOGAL anahtar kullaniliyor; id'nin hash'te hicbir isi yok.
  *    (dbo.Openshift_Inventory ve dbo.WASAppsInventory'de var.)
  */
 const COMMON_VOLATILE = [
@@ -48,8 +48,8 @@ const COMMON_VOLATILE = [
   'inserted_at',
 ];
 
-// Anahtarlar loader'ların KENDİ DELETE/upsert ifadelerinden alındı — yani kaynağın
-// "aynı satır" tanımıyla birebir aynı. Tahmin edilmedi:
+// Anahtarlar loader'larin KENDI DELETE/upsert ifadelerinden alindi — yani kaynagin
+// "ayni satir" tanimiyla birebir ayni. Tahmin edilmedi:
 //   Inventory                     -> inventory_loader.py, old_by_key host ile kurulur
 //   MWAppsInventory               -> DELETE ... WHERE host=? AND app=? AND app_path=?
 //   BMW_Certificates_Inventory    -> DELETE ... WHERE env=? AND host=? AND conf_file=? AND cert_file=?
@@ -85,9 +85,9 @@ const TABLES = [
     volatile: COMMON_VOLATILE,
   },
   {
-    // Bu tablo TRUNCATE EDİLMİYOR: ratelimit_loader.py her taramada scan_date=bugün ile
-    // APPEND ediyor (ve yalnızca aynı günün satırlarını silip yeniden yazıyor). Yani
-    // geçmiş ZATEN DB'de. Snapshot almak aynı veriyi ikinci kez saklamak olurdu.
+    // Bu tablo TRUNCATE EDILMIYOR: ratelimit_loader.py her taramada scan_date=bugun ile
+    // APPEND ediyor (ve yalnizca ayni gunun satirlarini silip yeniden yaziyor). Yani
+    // gecmis ZATEN DB'de. Snapshot almak ayni veriyi ikinci kez saklamak olurdu.
     table: 'NginxRateLimitInventory',
     label: 'Nginx Rate Limit',
     mode: 'native',
@@ -130,7 +130,7 @@ function normalizeRow(r) {
   } catch {
     volatile = null;
   }
-  // Anahtar bozuksa/boşsa koddaki DOGRULANMIS anahtara duselim — bos anahtarla
+  // Anahtar bozuksa/bossa koddaki DOGRULANMIS anahtara duselim — bos anahtarla
   // calismak tum satirlari tek bir anahtara toplar ve gecmisi bozar.
   if (!Array.isArray(key) || key.length === 0) key = fallback ? fallback.key : null;
   if (!key) return null;
@@ -182,10 +182,10 @@ function invalidateCache() {
 }
 
 /**
- * Kaynak satır sayısı bir önceki başarılı çalıştırmaya göre bu oranın ALTINA düşerse
- * snapshot alınmaz. Bozuk/yarım bir tarama (ör. envanter job'ı hata alıp tabloyu yarım
- * doldurdu) binlerce satırı "silinmiş" diye geçmişe yazardı ve bu geri alınamazdı.
- * Loader'ların kendi eşik korumasıyla aynı mantık — bilinmezlik, veri kaybına yazılmaz.
+ * Kaynak satir sayisi bir onceki basarili calistirmaya gore bu oranin ALTINA duserse
+ * snapshot alinmaz. Bozuk/yarim bir tarama (or. envanter job'i hata alip tabloyu yarim
+ * doldurdu) binlerce satiri "silinmis" diye gecmise yazardi ve bu geri alinamazdi.
+ * Loader'larin kendi esik korumasiyla ayni mantik — bilinmezlik, veri kaybina yazilmaz.
  */
 const MIN_ROW_RATIO = 0.5;
 

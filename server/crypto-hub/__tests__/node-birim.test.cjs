@@ -268,7 +268,7 @@ test('N3 grupPlaniKur: kapilar, yeni deger sekli / bicimi / bos onayi / ayni deg
   assert.ok(!disari.includes(H.SIR), 'plan / ozet / maske ham deger tasiyor');
   assert.equal(dot.yeniOzet, 'auth=****; url=https://dot-c.node.invalid/****');
 
-  // Onizleme: deger almaz, ayni-deger / bos kontrolu yok, yeni ozet (önizleme).
+  // Onizleme: deger almaz, ayni-deger / bos kontrolu yok, yeni ozet (onizleme).
   const on = NODE.grupPlaniKur(okuma(), H.G_DOT, null, { onizleme: true, tutarsizlikOnay: true });
   assert.equal(on.ok, true, JSON.stringify(on));
   assert.equal(on.yeniOzet, 'auth=(önizleme); url=(önizleme)');

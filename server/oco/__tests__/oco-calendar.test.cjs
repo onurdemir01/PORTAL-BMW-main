@@ -1,7 +1,7 @@
 // server/oco/__tests__/oco-calendar.test.cjs — OCO Takvimi (2026-09-28, kullanici istegi).
 //
 // Kullanici: "Ekibime ait production operational change order'lari listeleyen bir endpoint
-// gondereceğim. Portal'da solda 'OCO Takvimi' diye bir sekme olustur ve buradaki OCO'lari
+// gonderecegim. Portal'da solda 'OCO Takvimi' diye bir sekme olustur ve buradaki OCO'lari
 // tarihlere ve basligi isleyerek kronolojik listele."
 //
 // OC1 WCF tarihi DOGRU cozulur: "/Date(1791309600000+0300)/" -> mutlak an. Saat dilimi

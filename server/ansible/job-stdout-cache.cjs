@@ -38,7 +38,7 @@ const MAX_BYTES_PER_JOB = 8 * 1024 * 1024;
 /** En fazla kac is ayni anda onbellekte. Es zamanli izlenen is sayisi kadar. */
 const MAX_ENTRIES = 40;
 
-/** Bosta kalma suresi. Bitmiş bir isin satiri burada cürümemeli. */
+/** Bosta kalma suresi. Bitmis bir isin satiri burada curumemeli. */
 const TTL_MS = 10 * 60 * 1000;
 
 /** Artimli cekimde kac satir bindirme istenir. Bkz. `birlestir`. */

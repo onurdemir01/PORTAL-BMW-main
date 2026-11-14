@@ -13,7 +13,7 @@
 //   - Herhangi bir sunucu RUNNING ise: "başlat" seçilemez.
 // Durum bilgisi eksik/beklenmedik bir değerse (envanterde status boşsa) fail-open
 // DAVRANILMAZ — hangi işlemin güvenli olduğunu bilmeden hiçbir işlem seçilemez.
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
   StopCircleIcon,
@@ -22,6 +22,7 @@ import {
   CircleStackIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { opsxApi, type OpsxOperation, type OpsxOperationDef } from '@/api/opsxApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 
@@ -64,30 +65,35 @@ const OperationStep: React.FC<{
   const [statusError, setStatusError] = useState<string | null>(null);
   const [checkNonce, setCheckNonce] = useState(0);
 
-  useEffect(() => {
-    opsxApi
-      .getOperations()
-      .then((r) => setOps(r.operations))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+  useAsyncEffect(async (alive) => {
+    try {
+      const r = await opsxApi.getOperations();
+      if (alive()) setOps(r.operations);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setStatusLoading(true);
     setStatusError(null);
-    opsxApi
-      .getHosts(application)
-      .then((r) => {
-        if (!r.ok) {
-          setStatusError('Sunucu durumu alınamadı.');
-          return;
-        }
-        const map: Record<string, string> = {};
-        for (const h of r.hosts) map[h.host] = h.status;
-        setStatuses(map);
-      })
-      .catch((err) => setStatusError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setStatusLoading(false));
+    try {
+      const r = await opsxApi.getHosts(application);
+      if (!alive()) return;
+      if (!r.ok) {
+        setStatusError('Sunucu durumu alınamadı.');
+        return;
+      }
+      const map: Record<string, string> = {};
+      for (const h of r.hosts) map[h.host] = h.status;
+      setStatuses(map);
+    } catch (err) {
+      if (alive()) setStatusError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setStatusLoading(false);
+    }
   }, [application, checkNonce]);
 
   const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === 'running'), [hosts, statuses]);

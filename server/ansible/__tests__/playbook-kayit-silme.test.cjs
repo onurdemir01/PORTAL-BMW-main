@@ -22,7 +22,7 @@ const SEED_ANAHTAR = new Set(PLAYBOOK_REGISTRY_SEED.map((r) => r.key_name));
 
 // -- Sahte db (playbook-registry.cjs '../db/index.cjs' ister) --
 const DB_YOL = require.resolve('../../db/index.cjs');
-const db = { cagrilar: [], yanit: () => ({ rows: [], rowCount: 0 }) };
+const db = { cagrilar: [], yanit: /** @type {(sql?: string, params?: any[]) => any} */ (() => ({ rows: [], rowCount: 0 })) };
 require.cache[DB_YOL] = {
   id: DB_YOL,
   filename: DB_YOL,

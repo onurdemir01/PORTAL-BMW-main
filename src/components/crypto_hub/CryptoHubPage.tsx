@@ -113,6 +113,42 @@ function Pill({
   );
 }
 
+function PickerAdim({
+  n,
+  label,
+  aktif,
+  tamam,
+}: {
+  n: number;
+  label: string;
+  aktif: boolean;
+  tamam: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-2">
+      <span
+        className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[11px] font-semibold"
+        style={
+          aktif || tamam
+            ? { background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
+            : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }
+        }
+      >
+        {n}
+      </span>
+      <span
+        className="text-[12px]"
+        style={{
+          color: aktif ? 'var(--accent)' : 'var(--text-muted)',
+          fontWeight: aktif ? 600 : 400,
+        }}
+      >
+        {label}
+      </span>
+    </li>
+  );
+}
+
 // ── Secim: uygulama -> domain -> ortam ────────────────────────────────────────────────
 function Picker({
   apps,
@@ -231,40 +267,6 @@ function Picker({
     </button>
   );
 
-  const Adim = ({
-    n,
-    label,
-    aktif,
-    tamam,
-  }: {
-    n: number;
-    label: string;
-    aktif: boolean;
-    tamam: boolean;
-  }) => (
-    <li className="flex items-center gap-2">
-      <span
-        className="h-6 w-6 rounded-full inline-flex items-center justify-center text-[11px] font-semibold"
-        style={
-          aktif || tamam
-            ? { background: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
-            : { background: 'var(--bg-elevated)', color: 'var(--text-muted)' }
-        }
-      >
-        {n}
-      </span>
-      <span
-        className="text-[12px]"
-        style={{
-          color: aktif ? 'var(--accent)' : 'var(--text-muted)',
-          fontWeight: aktif ? 600 : 400,
-        }}
-      >
-        {label}
-      </span>
-    </li>
-  );
-
   const geriBtn = (label: string, onClick: () => void) => (
     <button
       type="button"
@@ -301,11 +303,11 @@ function Picker({
       </header>
 
       <ol className="flex items-center justify-center gap-4">
-        <Adim n={1} label="Uygulama" aktif={!app} tamam={!!app} />
+        <PickerAdim n={1} label="Uygulama" aktif={!app} tamam={!!app} />
         <span style={{ color: 'var(--text-muted)' }}>›</span>
-        <Adim n={2} label="Domain" aktif={!!app && !dom} tamam={!!dom} />
+        <PickerAdim n={2} label="Domain" aktif={!!app && !dom} tamam={!!dom} />
         <span style={{ color: 'var(--text-muted)' }}>›</span>
-        <Adim n={3} label="Ortam" aktif={!!app && !!dom} tamam={false} />
+        <PickerAdim n={3} label="Ortam" aktif={!!app && !!dom} tamam={false} />
       </ol>
 
       {!app && (
@@ -964,6 +966,18 @@ function IslemKarti({
   );
 }
 
+function findCryptoScope(tenantKey: string, apps: CryptoApp[] | null) {
+  if (!tenantKey || !apps) return null;
+  for (const a of apps) {
+    for (const d of a.domains) {
+      const env = d.envs.find((e) => e.key === tenantKey);
+      if (env)
+        return { env, app: a.app, appLabel: a.label, domain: d.domain, domainLabel: d.label };
+    }
+  }
+  return null;
+}
+
 // ── Sayfa ─────────────────────────────────────────────────────────────────────────────
 export default function CryptoHubPage() {
   const { addJob } = useJobTracker();
@@ -1010,7 +1024,7 @@ export default function CryptoHubPage() {
     }
   }, []);
 
-  const load = useCallback(async (key: string, fresh = false) => {
+  async function load(key: string, fresh = false) {
     setLoading(true);
     setErr('');
     try {
@@ -1027,7 +1041,10 @@ export default function CryptoHubPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
+
+  /** URL'deki kiracı anahtarından kapsamı çöz. Anahtar bilinmiyorsa seçim ekranı açılır. */
+  const scope = findCryptoScope(tenantKey, apps);
 
   const pick = (env: CryptoEnvOption) => setParams({ t: env.key });
 
@@ -1066,19 +1083,6 @@ export default function CryptoHubPage() {
     }
   };
 
-  /** URL'deki kiracı anahtarından kapsamı çöz. Anahtar bilinmiyorsa seçim ekranı açılır. */
-  const scope = useMemo(() => {
-    if (!tenantKey || !apps) return null;
-    for (const a of apps) {
-      for (const d of a.domains) {
-        const env = d.envs.find((e) => e.key === tenantKey);
-        if (env)
-          return { env, app: a.app, appLabel: a.label, domain: d.domain, domainLabel: d.label };
-      }
-    }
-    return null;
-  }, [tenantKey, apps]);
-
   // NODE-ONLY: kullanici bu ortami yalniz "Indexer / Node" yetkisiyle goruyor; /overview
   // (app:metaco kapisi) CAGRILMAZ; Islemler'de yalniz node karti durur, sekme cubugu yok.
   const nodeOnly = scope?.env.nodeOnly === true;
@@ -1088,19 +1092,19 @@ export default function CryptoHubPage() {
 
   // URL'de gecerli bir kiraci varsa verisi yuklenir; kullanici menuden geri dondugunde
   // (t parametresi kalkinca) ekran temizlenir.
-  useEffect(() => {
-    if (!apps) return;
+  useAsyncEffect(async (alive) => {
+    if (!apps || !alive()) return;
     if (scope) {
       setTab(baslangicSekmesi(params.get('s'), sekmeler));
       if (nodeOnly) {
         setData(null);
         setErr('');
-      } else void load(scope.env.key);
+      } else await load(scope.env.key);
     } else {
       setData(null);
       setErr('');
     }
-  }, [scope?.env.key, apps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scope?.env.key, apps]);
 
   const notes = useMemo(() => data?.notes || [], [data]);
 

@@ -1602,7 +1602,8 @@ function initDenetim(app) {
   {
     const db = require('../db/index.cjs');
     let requireAdmin = (_req, res) => res.status(403).json({ ok: false, message: 'Yetki yok.' });
-    let getRequestUser = () => null;
+    /** @type {(req: any) => any} */
+    let getRequestUser = (_req) => null;
     try {
       const auth = require('../auth/index.cjs');
       if (typeof auth.requireAdmin === 'function') requireAdmin = auth.requireAdmin;

@@ -41,9 +41,11 @@ export default function LogAnalysisPanel({ initialText, autorun, disabled, hostH
   const [error, setError] = useState("");
   const autoranRef = useRef(false);
 
-  useEffect(() => {
-    if (initialText) setText(initialText);
-  }, [initialText]);
+  const [prevInitial, setPrevInitial] = useState(initialText);
+  if (initialText && initialText !== prevInitial) {
+    setPrevInitial(initialText);
+    setText(initialText);
+  }
 
   async function analyze(input?: string) {
     const lines = (input ?? text).split("\n").filter((l) => l.trim());

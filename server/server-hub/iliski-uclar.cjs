@@ -83,7 +83,7 @@ function mount(
     simdi,
     notDurumu = () => require('./notlar.cjs').notDurumu(),
     kontrol = require('./retire-kontrol.cjs'),
-    audit = () => {},
+    audit = (_req, _info) => {},
   },
 ) {
   const hesap = iliskiHesabiKur({

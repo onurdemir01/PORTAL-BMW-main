@@ -9,8 +9,9 @@
 // beklenir, seçili host'larda application adına uyan server-config'ler HOST BAZINDA
 // gruplu, GÜNCEL STARTED/STOPPED durumlarıyla listelenir.
 import { kurulumDizini } from "@/utils/jboss";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { opsxApi, type OpsxServerConfig, type OpsxServerConfigSelection, type OpsxOperation } from "@/api/opsxApi";
 
 const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
@@ -62,23 +63,32 @@ const ServerConfigSelectStep: React.FC<{
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [nonce, setNonce] = useState(0);
 
-  // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | undefined;
+  const hostsKey = hosts.join(",");
+  const hostMajorsKey = (hostMajors || []).join(",");
 
+  // Keşif job'ı: tetikle → terminal duruma gelene kadar poll et → listeyi göster.
+  useAsyncEffect(async (alive) => {
+    const targetHosts = hostsKey ? hostsKey.split(",") : [];
+    const targetMajors = hostMajorsKey ? hostMajorsKey.split(",") : undefined;
     setLoading(true);
     setError(null);
     setConfigs([]);
     setSelected(new Set());
 
-    async function poll(awxServerId: number, jobId: number) {
-      try {
-        const r = await opsxApi.legacyServerConfigStatus(awxServerId, jobId);
-        if (cancelled) return;
+    try {
+      const init = await opsxApi.discoverLegacyServerConfigs(application, targetHosts, targetMajors);
+      if (!alive()) return;
+      if (init.jobId == null) {
+        setError(init.message || "JVM keşfi işi başlatılamadı.");
+        return;
+      }
+
+      while (alive()) {
+        const r = await opsxApi.legacyServerConfigStatus(init.awxServerId, init.jobId);
+        if (!alive()) return;
         if (!TERMINAL.has(r.status)) {
-          timer = window.setTimeout(() => poll(awxServerId, jobId), 3000);
-          return;
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          continue;
         }
         if (r.serverConfigs) {
           setConfigs(r.serverConfigs);
@@ -98,36 +108,14 @@ const ServerConfigSelectStep: React.FC<{
         } else {
           setError(r.message || "JVM listesi alınamadı.");
         }
-        setLoading(false);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
+        return;
       }
+    } catch (err: unknown) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
     }
-
-    opsxApi.discoverLegacyServerConfigs(application, hosts, hostMajors)
-      .then((r) => {
-        if (cancelled) return;
-        if (r.jobId == null) {
-          setError(r.message || "JVM keşfi işi başlatılamadı.");
-          setLoading(false);
-          return;
-        }
-        poll(r.awxServerId, r.jobId);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [application, hosts.join(","), nonce]);
+  }, [application, hostsKey, hostMajorsKey, operation, nonce]);
 
   const grouped = useMemo(() => {
     const g: Record<string, OpsxServerConfig[]> = {};

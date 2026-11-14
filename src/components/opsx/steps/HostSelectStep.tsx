@@ -23,8 +23,9 @@
 // TÜRETİYORDU (`versionByHost` Map'i host adıyla anahtarlı) — çift kurulumlu bir
 // host'ta ikinci satır birincisini eziyor ve türetilen majör keyfi oluyordu. Artık
 // kullanıcının fiilen işaretlediği majörler gönderiliyor.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
 import { hostKey, kurulumDizini, kurulumOf, majorOfHost, normalizeJbossVersion, parseHostKey, standartDisiKurulum } from "@/utils/jboss";
 import JbossTag from "@/components/common/JbossTag";
@@ -40,13 +41,17 @@ const HostSelectStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    opsxApi.getHosts(app)
-      .then((r) => setHosts(r.hosts))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await opsxApi.getHosts(app);
+      if (alive()) setHosts(r.hosts);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [app]);
 
   // Bir önceki adımda seçilen JBoss MAJÖR sürümlerine (birden fazla olabilir) göre

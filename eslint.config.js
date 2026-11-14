@@ -42,6 +42,9 @@ export default [
       'no-useless-assignment': 'off',
       'preserve-caught-error': 'off',
       'no-irregular-whitespace': 'warn',
+      // React Compiler (babel-plugin-react-compiler) bu projede kullanilmiyor;
+      // @tanstack/react-virtual useVirtualizer bekci testleriyle zorunlu.
+      'react-hooks/incompatible-library': 'off',
     },
   },
   {

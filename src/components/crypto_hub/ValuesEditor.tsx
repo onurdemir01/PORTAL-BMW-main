@@ -14,6 +14,7 @@
 //  * Yazmadan önce satır bazlı FARK gösterilir ve dosyanın yedeği alınır.
 //  * Hedef dosya AÇIKÇA seçilir: hangi dosyaya yazıldığı hiçbir zaman örtük kalmaz.
 import React, { useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   EyeIcon, EyeSlashIcon, PencilSquareIcon, ArrowPathIcon, ExclamationTriangleIcon,
   DocumentCheckIcon, ArrowUturnLeftIcon,
@@ -82,7 +83,7 @@ export function ValuesEditor({ tenantKey, tenantLabel, release, files = [], comp
     if (reveal) setTaslak(t);
   };
 
-  React.useEffect(() => { void getir(false); }, [tenantKey, release]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async (alive) => { if (alive()) await getir(false); }, [tenantKey, release]);
 
   const fark = useMemo(() => (duzenle && metin != null ? diffLines(metin, taslak) : null), [duzenle, metin, taslak]);
   const degisti = duzenle && metin != null && taslak !== metin;

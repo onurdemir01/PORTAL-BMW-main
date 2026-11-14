@@ -14,7 +14,7 @@
 //   2. Tek bastion FAIL olunca Ansible "NO MORE HOSTS LEFT" ile KALAN PLAY'LERI ATLADI —
 //      PLAY RECAP'te `localhost ok=3` kaldi, yani TOPLAYICI PLAY HIC KOSMADI.
 //   3. `set_stats` yayinlanmadigi icin portal `logx_result` bulamadi ve genel
-//      "beklenmeyen bir hata" metnini bastı.
+//      "beklenmeyen bir hata" metnini basti.
 //
 // Playbook'taki "Clear any host errors so aggregation always runs" gorevinin yorumu
 // bunu ONLEDIGINI soyluyordu — ONLEMIYORDU: o gorev play 3'un ICINDE ve play 3 hic

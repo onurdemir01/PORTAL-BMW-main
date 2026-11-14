@@ -151,7 +151,7 @@ test('CH3: surum karsilastirmasi semantik', () => {
 });
 
 test('CH4: olculemedi ile "yeni surum yok" ayri', () => {
-  // Etiket listesi bos donduğunde ekran `measured:false` gorur; newer da bos olur ama bu
+  // Etiket listesi bos dondugunde ekran `measured:false` gorur; newer da bos olur ama bu
   // "guncelsiniz" ANLAMINA GELMEZ. Bekci: bos liste ASLA measured:true uretmemeli.
   const measured = (tags) => tags.length > 0;
   assert.equal(measured([]), false);

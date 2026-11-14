@@ -2,43 +2,43 @@
 //
 // NEDEN VAR
 // ─────────
-// ScaleX keşfinin ölçülen maliyeti (cluster başına ~110 `oc` çağrısı, ~30 sn):
+// ScaleX kesfinin olculen maliyeti (cluster basina ~110 `oc` cagrisi, ~30 sn):
 //
 //   ≈ 14  login/project/hpa/pdb/configmap/api-resources
-//   + G   API grubu başına 1 × `oc get --raw /apis/<gv>`    G ≈ 40-60  ← %45
-//   + 2E  ekstra CRD tipi başına probe + jsonpath           E ≈ 20     ← %35
+//   + G   API grubu basina 1 × `oc get --raw /apis/<gv>`    G ≈ 40-60  ← %45
+//   + 2E  ekstra CRD tipi basina probe + jsonpath           E ≈ 20     ← %35
 //
-// `G` ve `2E`'nin ikisi de NAMESPACE'TEN, UYGULAMADAN ve KULLANICIDAN BAĞIMSIZ.
-// Cluster'a bir operator kurulmadıkça aylarca değişmezler. Yani her keşifte
+// `G` ve `2E`'nin ikisi de NAMESPACE'TEN, UYGULAMADAN ve KULLANICIDAN BAGIMSIZ.
+// Cluster'a bir operator kurulmadikca aylarca degismezler. Yani her kesifte
 // yeniden hesaplamak saf israf.
 //
-// Kullanıcının direktifi: *"alabildiğin her bilgiyi DB'ye al, alamadıklarını
-// runtime'da ara; yetki testini ScaleX yapmasın, ayrı bir playbook olsun, admin
-// toplu koştursun, Denetim gibi ekran versin."*
+// Kullanicinin direktifi: *"alabildigin her bilgiyi DB'ye al, alamadiklarini
+// runtime'da ara; yetki testini ScaleX yapmasin, ayri bir playbook olsun, admin
+// toplu kostursun, Denetim gibi ekran versin."*
 //
-// ÜÇ DURUM AYRI TUTULUR — ikisini birleştirmek bu depoda iki ayrı arıza üretti
-// (`ocp-cache.cjs:241-262`'deki aynı ayrım):
+// UC DURUM AYRI TUTULUR — ikisini birlestirmek bu depoda iki ayri ariza uretti
+// (`ocp-cache.cjs:241-262`'deki ayni ayrim):
 //
-//   yok        → `null`                  → keşif ESKİ yolu koşar, önbellek dolar
-//   boş        → `{ kinds: [] }`         → cluster'da ekstra CRD YOK, doğrulanmış
-//   okunamadı  → `{ unreadable: true }`  → keşif ESKİ yolu koşar; "okunamadı"yı
-//                                          "CRD yok" saymak, ölçeklenebilir
-//                                          operator nesnelerini SESSİZCE listeden
-//                                          düşürmek olurdu
+//   yok        → `null`                  → kesif ESKI yolu kosar, onbellek dolar
+//   bos        → `{ kinds: [] }`         → cluster'da ekstra CRD YOK, dogrulanmis
+//   okunamadi  → `{ unreadable: true }`  → kesif ESKI yolu kosar; "okunamadi"yi
+//                                          "CRD yok" saymak, olceklenebilir
+//                                          operator nesnelerini SESSIZCE listeden
+//                                          dusurmek olurdu
 'use strict';
 
 const db = require('../db/index.cjs');
 
 /**
- * Önbellek ömrü. CRD listesi aylarca değişmez ama bir operator kurulumu onu
- * değiştirir; 30 gün, "hiç tazelenmesin" ile "her gün tazelensin" arasında
- * makul bir orta yol. Süresi dolan satır SİLİNMEZ — `stale: true` ile döner ve
- * ekran "N gün önce" yazar. Bayat liste, hiç liste olmamasından iyidir; keşif
- * yine de fail-safe yolu koşabilir.
+ * Onbellek omru. CRD listesi aylarca degismez ama bir operator kurulumu onu
+ * degistirir; 30 gun, "hic tazelenmesin" ile "her gun tazelensin" arasinda
+ * makul bir orta yol. Suresi dolan satir SILINMEZ — `stale: true` ile doner ve
+ * ekran "N gun once" yazar. Bayat liste, hic liste olmamasindan iyidir; kesif
+ * yine de fail-safe yolu kosabilir.
  */
 const CAPS_TTL_DAYS = 30;
 
-/** Tek bir cluster için saklanacak en fazla tip — bozuk bir tarama şişirmesin. */
+/** Tek bir cluster icin saklanacak en fazla tip — bozuk bir tarama sisirmesin. */
 const MAX_KINDS = 500;
 
 function satiriCevir(r) {
@@ -48,8 +48,8 @@ function satiriCevir(r) {
     env: r.env,
     tenant: r.tenant,
     clusterName: r.cluster_name,
-    // `null` (hiç taranmadı) ile `''` (tarandı, boş) AYRI. `String.split` boş
-    // string'te `['']` döndürdüğü için açıkça ayırmak ŞART.
+    // `null` (hic taranmadi) ile `''` (tarandi, bos) AYRI. `String.split` bos
+    // string'te `['']` dondurdugu icin acikca ayirmak SART.
     kinds: kindsCsv === null || kindsCsv === undefined
       ? null
       : String(kindsCsv).split(',').map((k) => k.trim()).filter(Boolean),
@@ -71,7 +71,7 @@ function satiriCevir(r) {
   };
 }
 
-/** Kapsam içindeki cluster'ların yetenek kayıtları. Okuma SINIRLI. */
+/** Kapsam icindeki cluster'larin yetenek kayitlari. Okuma SINIRLI. */
 async function list({ env, tenant, clusterNames } = {}) {
   const kosullar = [];
   const params = [];
@@ -97,13 +97,13 @@ async function list({ env, tenant, clusterNames } = {}) {
 }
 
 /**
- * Keşfe geçirilecek CRD listesi. Kapsamdaki TÜM cluster'lar için GÜVENİLİR bir
- * kayıt yoksa `null` döner ve keşif eski yolu koşar.
+ * Kesfe gecirilecek CRD listesi. Kapsamdaki TUM cluster'lar icin GUVENILIR bir
+ * kayit yoksa `null` doner ve kesif eski yolu kosar.
  *
- * NEDEN "HEPSİ" ŞARTI: keşif tek bir `SCALEX_EXTRA_KINDS` değeriyle koşuyor ve
- * o değer HER cluster'a gidiyor. Bir cluster'ın kaydı varken diğerininki yoksa,
- * eksik cluster o listeyle sınırlanır ve KENDİ CRD'leri sessizce kaybolur.
- * Kısmi önbellek, önbellek olmamasından TEHLİKELİDİR.
+ * NEDEN "HEPSI" SARTI: kesif tek bir `SCALEX_EXTRA_KINDS` degeriyle kosuyor ve
+ * o deger HER cluster'a gidiyor. Bir cluster'in kaydi varken digerininki yoksa,
+ * eksik cluster o listeyle sinirlanir ve KENDI CRD'leri sessizce kaybolur.
+ * Kismi onbellek, onbellek olmamasindan TEHLIKELIDIR.
  */
 async function kindsForScope({ env, tenant, clusterNames }) {
   if (!Array.isArray(clusterNames) || !clusterNames.length) return null;
@@ -126,30 +126,30 @@ async function kindsForScope({ env, tenant, clusterNames }) {
 }
 
 /**
- * CLUSTER BAŞINA yetenek haritası: `{ [clusterName]: string[] }`.
+ * CLUSTER BASINA yetenek haritasi: `{ [clusterName]: string[] }`.
  *
- * ── `kindsForScope` DURUYOR, BU ONUN YERİNE GEÇMİYOR ────────────────────────
- * O fonksiyon TEK bir birleşik liste döndürür ve keşif onu HER cluster'a
- * gönderir. Eski AWX paketleri yalnızca o biçimi (`scalex_extra_kinds`)
- * okuyabildiği için geriye uyumluluk adına korunuyor.
+ * ── `kindsForScope` DURUYOR, BU ONUN YERINE GECMIYOR ────────────────────────
+ * O fonksiyon TEK bir birlesik liste dondurur ve kesif onu HER cluster'a
+ * gonderir. Eski AWX paketleri yalnizca o bicimi (`scalex_extra_kinds`)
+ * okuyabildigi icin geriye uyumluluk adina korunuyor.
  *
- * ── "KISMİ ÖNBELLEK TEHLİKELİDİR" NOTU NEDEN ARTIK GEÇERLİ DEĞİL ────────────
- * Tehlike kısmi olmasından değil, **tek bir değerin her cluster'a gitmesinden**
- * geliyordu: bir cluster'ın kaydı yokken diğerininkiyle sınırlanmak, eksik
- * cluster'ın KENDİ CRD'lerini sessizce düşürürdü. Cluster başına harita o
- * mekanizmayı ortadan kaldırır — sözlükte OLMAYAN cluster hiçbir liste almaz ve
- * **yalnızca kendisi** eski (soğuk) yolu koşar. Tek eksik cluster artık tüm
- * kapsamı soğuk yola düşürmüyor.
+ * ── "KISMI ONBELLEK TEHLIKELIDIR" NOTU NEDEN ARTIK GECERLI DEGIL ────────────
+ * Tehlike kismi olmasindan degil, **tek bir degerin her cluster'a gitmesinden**
+ * geliyordu: bir cluster'in kaydi yokken digerininkiyle sinirlanmak, eksik
+ * cluster'in KENDI CRD'lerini sessizce dusururdu. Cluster basina harita o
+ * mekanizmayi ortadan kaldirir — sozlukte OLMAYAN cluster hicbir liste almaz ve
+ * **yalnizca kendisi** eski (soguk) yolu kosar. Tek eksik cluster artik tum
+ * kapsami soguk yola dusurmuyor.
  *
- * ── SÖZLÜĞE GİRMEYEN ÜÇ DURUM ──────────────────────────────────────────────
- *   hiç taranmamış (`kinds === null`) → kayıt yok, tahmin de yok
- *   okunamamış tarama               → "okunamadı" ≠ "CRD yok"
+ * ── SOZLUGE GIRMEYEN UC DURUM ──────────────────────────────────────────────
+ *   hic taranmamis (`kinds === null`) → kayit yok, tahmin de yok
+ *   okunamamis tarama               → "okunamadi" ≠ "CRD yok"
  *
- * "Tarandı ama BOŞ" (`kinds === []`) ARTIK SÖZLÜĞE GİRER ve boş bir liste olarak
- * gider. Değerin kendisi boş olduğu için betik onu "önbellek yok"tan ayıramaz;
- * ayrımı **anahtarın varlığı** taşır (`SCALEX_EXTRA_KINDS_SCANNED`). Bu ayrım
- * olmadan ekstra CRD'si olmayan bir cluster her keşifte ~50 `oc get --raw`
- * ödüyordu — ve sonuç her seferinde aynı: boş.
+ * "Tarandi ama BOS" (`kinds === []`) ARTIK SOZLUGE GIRER ve bos bir liste olarak
+ * gider. Degerin kendisi bos oldugu icin betik onu "onbellek yok"tan ayiramaz;
+ * ayrimi **anahtarin varligi** tasir (`SCALEX_EXTRA_KINDS_SCANNED`). Bu ayrim
+ * olmadan ekstra CRD'si olmayan bir cluster her kesifte ~50 `oc get --raw`
+ * oduyordu — ve sonuc her seferinde ayni: bos.
  */
 async function kindsPerCluster({ env, tenant, clusterNames }) {
   if (!Array.isArray(clusterNames) || !clusterNames.length) return {};
@@ -165,11 +165,11 @@ async function kindsPerCluster({ env, tenant, clusterNames }) {
 }
 
 /**
- * Bir cluster'ın tarama sonucunu yazar (upsert).
+ * Bir cluster'in tarama sonucunu yazar (upsert).
  *
- * `resourcesReadable === false` ise kayıt YİNE yazılır ama `kinds_csv` NULL
- * kalır: "okunamadı" bilgisi ekranda görünmeli, ama o satır keşfi
- * hızlandırmak için KULLANILMAMALI.
+ * `resourcesReadable === false` ise kayit YINE yazilir ama `kinds_csv` NULL
+ * kalir: "okunamadi" bilgisi ekranda gorunmeli, ama o satir kesfi
+ * hizlandirmak icin KULLANILMAMALI.
  */
 async function save({ env, tenant, clusterName, kinds, rbac, resourcesReadable, scannedBy, awxJobId }) {
   const okunabilir = resourcesReadable !== false;

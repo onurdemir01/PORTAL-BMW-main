@@ -21,7 +21,7 @@ const path = require('node:path');
 
 const RUNNER = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
 const SMART = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'client.cjs'), 'utf8');
-// Metadata isleyicisi 2026-10-08'de runner.cjs'ten ortak modüle tasindi (OpsX de kullaniyor).
+// Metadata isleyicisi 2026-10-08'de runner.cjs'ten ortak module tasindi (OpsX de kullaniyor).
 const META = fs.readFileSync(path.join(__dirname, '..', '..', 'smart', 'metadata.cjs'), 'utf8');
 
 test('A3: pendingLaunch.extraVars HAM donmuyor', () => {

@@ -16,8 +16,9 @@
 // `jbossMajorOf` ARTIK BURADA DEĞİL: aynı yardımcıyı Telnet bu dosyadan import
 // ediyordu — bir modülün sihirbaz adımı başka bir modülün adımına bağımlıydı.
 // Ortak yer: src/utils/jboss.ts (LogX, OpsX, Telnet ve FileX birlikte kullanır).
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { opsxApi, type OpsxHost } from "@/api/opsxApi";
 import { majorOfHost, normalizeJbossVersion } from "@/utils/jboss";
 
@@ -33,13 +34,17 @@ const JbossVersionStep: React.FC<{
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setLoading(true);
     setError(null);
-    opsxApi.getHosts(app)
-      .then((r) => setHosts(r.hosts))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+    try {
+      const r = await opsxApi.getHosts(app);
+      if (alive()) setHosts(r.hosts);
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, [app]);
 
   // Bu uygulamanın host'larında fiilen görülen MAJÖR sürümler (bkz. dosya başı notu) —

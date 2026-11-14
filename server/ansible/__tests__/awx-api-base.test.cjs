@@ -1,20 +1,20 @@
 // server/ansible/__tests__/awx-api-base.test.cjs
 //
-// NEDEN VAR (2026-09-08): Yeni bir AWX (maestro3) eklenirken token alınamadı:
-//   "AWX v2/tokens yanıtı JSON değil: <!doctype html> ... <title>Not Found</title>"
-// İlk teşhis "firewall" yönündeydi ama gelen şey Django'nun 404 SAYFASIYDI — yani
-// bağlantı kurulmuş, istek karşıya ulaşmış ve uygulama cevap vermişti. Firewall olsaydı
-// zaman aşımı veya bağlantı reddi olurdu.
+// NEDEN VAR (2026-09-08): Yeni bir AWX (maestro3) eklenirken token alinamadi:
+//   "AWX v2/tokens yaniti JSON degil: <!doctype html> ... <title>Not Found</title>"
+// Ilk teshis "firewall" yonundeydi ama gelen sey Django'nun 404 SAYFASIYDI — yani
+// baglanti kurulmus, istek karsiya ulasmis ve uygulama cevap vermisti. Firewall olsaydi
+// zaman asimi veya baglanti reddi olurdu.
 //
-// Gerçek sebep: AAP 2.5 ile controller API'si bir gateway'in arkasına alındı ve yolu
-// değişti — /api/v2/... yerine /api/controller/v2/... . Sunucu üzerinde doğrulandı:
+// Gercek sebep: AAP 2.5 ile controller API'si bir gateway'in arkasina alindi ve yolu
+// degisti — /api/v2/... yerine /api/controller/v2/... . Sunucu uzerinde dogrulandi:
 //   /api/v2/ping/            -> 404
 //   /api/controller/v2/ping/ -> 200
 //
-// Kodun 27 yerinde yol `/api/v2/...` olarak sabitti ve sunucu adresine önek yazmak
-// ÇÖZMÜYORDU: `new URL(mutlakYol, taban)` tabandaki yolu atar. Bu yüzden çeviri tek
-// noktada, istek katmanında yapılıyor. Bu test o çevirinin doğru ve YAN ETKİSİZ
-// olduğunu kilitler — mevcut AWX sunucularının davranışı değişmemeli.
+// Kodun 27 yerinde yol `/api/v2/...` olarak sabitti ve sunucu adresine onek yazmak
+// COZMUYORDU: `new URL(mutlakYol, taban)` tabandaki yolu atar. Bu yuzden ceviri tek
+// noktada, istek katmaninda yapiliyor. Bu test o cevirinin dogru ve YAN ETKISIZ
+// oldugunu kilitler — mevcut AWX sunucularinin davranisi degismemeli.
 'use strict';
 
 const test = require('node:test');

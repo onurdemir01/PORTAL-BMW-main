@@ -9,12 +9,13 @@ interface Props {
   selected: string[];
   /** Tablodaki TUM aktif kolon filtreleri; secenekler bunlara gore daralir. */
   activeFilters?: Record<string, string[]>;
-  anchorRef: React.RefObject<HTMLElement | null>;
+  anchorRef?: React.RefObject<HTMLElement | null>;
+  anchorEl?: HTMLElement | null;
   onApply: (values: string[]) => void;
   onClose: () => void;
 }
 
-export function ColumnFilterDropdown({ table, col, selected, activeFilters, anchorRef, onApply, onClose }: Props) {
+export function ColumnFilterDropdown({ table, col, selected, activeFilters, anchorRef, anchorEl, onApply, onClose }: Props) {
   const [search, setSearch]       = useState("");
   const [values, setValues]       = useState<{ value: string; count: number }[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -24,23 +25,26 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
   // Position dropdown below anchor
   const [pos, setPos] = useState({ top: 0, left: 0 });
   useEffect(() => {
-    if (anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
+    const el = anchorEl ?? anchorRef?.current ?? null;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      void Promise.resolve().then(() => setPos({ top: rect.bottom + 4, left: rect.left }));
     }
-  }, [anchorRef]);
+  }, [anchorEl, anchorRef]);
 
   // Close on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node) &&
-          anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const anchor = anchorEl ?? anchorRef?.current ?? null;
+      if (panelRef.current && !panelRef.current.contains(target) &&
+          anchor && !anchor.contains(target)) {
         onClose();
       }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [onClose, anchorRef]);
+  }, [onClose, anchorEl, anchorRef]);
 
   // Secenekleri getir. DIGER kolonlardaki aktif filtreler de gonderilir ki liste onlara
   // gore daralsin (product=IHS secildikten sonra host listesinde nginx sunuculari
@@ -48,13 +52,15 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
   // yalnizca zaten secili degerler kalir ve secim genisletilemezdi.
   const filterKey = JSON.stringify(activeFilters || {});
   useEffect(() => {
-    setLoading(true);
-    inventoryApi.distinct(table, col, search || undefined, activeFilters)
-      .then((r) => { if (r.ok) setValues(r.values); })
+    let alive = true;
+    const filters = filterKey ? (JSON.parse(filterKey) as Record<string, string[]>) : undefined;
+    void Promise.resolve().then(() => { if (alive) setLoading(true); });
+    inventoryApi.distinct(table, col, search || undefined, filters)
+      .then((r) => { if (alive && r.ok) setValues(r.values); })
       .catch(() => {})
-      .finally(() => setLoading(false));
-    // filterKey: nesne kimligi her render'da degisecegi icin ICERIGE gore bagimlilik.
-  }, [table, col, search, filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [table, col, search, filterKey]);
 
   function toggle(val: string) {
     setPending((prev) => {

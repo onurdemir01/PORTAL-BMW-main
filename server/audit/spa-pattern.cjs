@@ -13,8 +13,8 @@
 // Once "ad -v0/-v1 ile de bitebilir" diye genisletilmisti; boylece non-core-assets-v0,
 // doc-acceptance-frontend-v0, digital-fast-limit-cf-v0, disney-bonus-cfa-v0,
 // dlyd-prdct-rstrctring-v0 ve investor-dps-mngmnt-v0 tasima listesine giriyordu.
-// Kullanici ayni gun GERI ALDIRDI: "bu geliştirmeyi direkt geri alalım, -app-v ve
-// -app-emb-v kuralı tekrar geçerli olsun."
+// Kullanici ayni gun GERI ALDIRDI: "bu gelistirmeyi direkt geri alalim, -app-v ve
+// -app-emb-v kurali tekrar gecerli olsun."
 //
 // Gerekce, kuralin kendisinden daha onemli: SURUM EKI SPA'YA OZGU DEGIL. Bir API de
 // "-v1" ile biter; ada bakarak SPA demek, uydurma bir olcute guvenmekti. Yanlis alarm

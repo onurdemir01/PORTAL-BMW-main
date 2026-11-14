@@ -135,7 +135,7 @@ async function listByUsername(username, limit = 50) {
  * Kesisim SQL'de degil UYGULAMADA yapilir — `scalex_state_mirror`in
  * `stopped_by_groups` alanindaki desenle ayni. Gruplar JSON dizi olarak
  * saklaniyor; SQL tarafinda LIKE ile eslestirmek alt-dize tuzagina acik olurdu
- * ("GT-MW" araması "GT-MW-ADMIN"i de yakalar) ve sessizce FAZLA kayit gosterirdi.
+ * ("GT-MW" aramasi "GT-MW-ADMIN"i de yakalar) ve sessizce FAZLA kayit gosterirdi.
  *
  * Okuma SINIRLI (`TOP`): bu tablo buyuyor ve sinirsiz okuma bu depoda yedi
  * OOM'un sinifiydi.

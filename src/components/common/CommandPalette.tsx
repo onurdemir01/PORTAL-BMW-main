@@ -46,12 +46,20 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [prevOpen, setPrevOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setQuery("");
       setActiveIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }
+
+  useEffect(() => {
+    if (open) {
+      const t = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
     }
   }, [open]);
 
@@ -85,8 +93,6 @@ export function CommandPalette() {
     }
   }
 
-  useEffect(() => { setActiveIdx(0); }, [query]);
-
   if (!open || typeof document === "undefined") return null;
 
   // Kendine özgü "üstte hizalı" (pt-[15vh]) konumlandırma korunur — merkezde
@@ -114,7 +120,7 @@ export function CommandPalette() {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); }}
             onKeyDown={onKey}
             placeholder="Sayfa ara..."
             aria-label="Sayfa ara"

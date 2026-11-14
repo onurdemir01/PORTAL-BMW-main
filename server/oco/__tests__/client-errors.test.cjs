@@ -85,6 +85,6 @@ test('CE-WCF: WCF hata sayfasindan yalniz BASLIK tasinir, CSS ekrana dokulmez', 
   assert.doesNotMatch(h, /background-color|Verdana|margin-left/);
   // Basliksiz HTML sayfasi hic bir sey tasimaz (eski davranis korunur).
   assert.equal(upstreamHint('<html><body><h1>404</h1></body></html>'), '');
-  // JSON gövde ETKILENMEZ.
+  // JSON govde ETKILENMEZ.
   assert.equal(upstreamHint('{"Message":"grup bulunamadi"}'), 'grup bulunamadi');
 });

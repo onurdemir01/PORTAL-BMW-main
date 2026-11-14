@@ -9,8 +9,9 @@
 // GÖRÜLMÜŞ namespace'ler dropdown'da listelenir, bilinmiyorsa serbest yazılabilir.
 // "Ekle" ile listeye BİRİKTİRİLİR (birden fazla namespace seçilebilir) — OpsX'in
 // namespace/uygulama çifti biriktirme deseninin aynısı, sadece uygulama alanı yok.
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { telnetApi } from "@/api/telnetApi";
 import FilterableList from "@/components/common/FilterableList";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -31,23 +32,30 @@ const OcpTargetStep: React.FC<{
 
   const [namespaces, setNamespaces] = useState<string[]>([]);
 
-  useEffect(() => {
-    telnetApi.getClusters()
-      .then((r) => setTree(r.tree ?? {}))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false));
+  useAsyncEffect(async (alive) => {
+    try {
+      const r = await telnetApi.getClusters();
+      if (alive()) setTree(r.tree ?? {});
+    } catch (err) {
+      if (alive()) setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (alive()) setLoading(false);
+    }
   }, []);
 
   const envs = Object.keys(tree).sort();
   const tenants = env ? Object.keys(tree[env] || {}).sort() : [];
 
   // Ortam/tenant değişince namespace listesi yeniden çekilir; önceki seçimler sıfırlanır.
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setNamespace(""); setNamespaceOptions([]); setNamespaces([]);
     if (!env || !tenant) return;
-    telnetApi.getOcpNamespaces(env, tenant)
-      .then((r) => setNamespaceOptions(r.namespaces || []))
-      .catch(() => setNamespaceOptions([]));
+    try {
+      const r = await telnetApi.getOcpNamespaces(env, tenant);
+      if (alive()) setNamespaceOptions(r.namespaces || []);
+    } catch {
+      if (alive()) setNamespaceOptions([]);
+    }
   }, [env, tenant]);
 
   function addNamespace() {

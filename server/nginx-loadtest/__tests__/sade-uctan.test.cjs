@@ -118,7 +118,7 @@ async function k6Yukle(env) {
 }
 
 /** Fikstur satirini (kurgu.cjs istemci) k6 ozet verisine cevirip yuk_k6.js handleSummary ile CSV + JSON uretir. */
-async function k6IstemciDosyalari(dosyalar, k, { protokol, uyumsuz = () => 0 }) {
+async function k6IstemciDosyalari(dosyalar, k, { protokol, uyumsuz = (_tur) => 0 }) {
   const senaryo = path.join(KOK, 'K.tsv');
   fs.writeFileSync(senaryo, '1\t1\tjs\tkucuk\t/a.js\n');
   const out = new Map(dosyalar);

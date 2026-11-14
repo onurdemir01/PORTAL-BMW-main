@@ -88,7 +88,7 @@ test('requireVisiblePrefix: exempt olmayan yol, session/secret yoksa 401 (auth z
   assert.equal(nexted, false);
   assert.equal(res.statusCode, 401);
   // Bu yol da OTURUM 401'idir: imzasiz kalirsa istemci kapisi burada ateslenmez
-  // ve sayfa-onekli uclar 401 firtinasina katkı vermeye devam ederdi.
+  // ve sayfa-onekli uclar 401 firtinasina katki vermeye devam ederdi.
   assert.equal(res.headers['x-portal-session'], 'expired');
 });
 

@@ -14,7 +14,7 @@
 // resize, sadece tasima degil) o andan itibaren sabit bir piksel degerine gecer;
 // cagiran taraf bunu (size.h === "auto" mi degil mi) kullanarak icerideki terminali
 // "compact" (sabit) ya da "fill" (kalan alani doldur) modunda gosterebilir.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface FloatingSize {
   w: number;
@@ -59,6 +59,9 @@ export function useFloatingWindow(
     effMinH: number;
   } | null>(null);
 
+  const liveDragRef = useRef<{ left?: string; top?: string; width?: string; height?: string } | null>(null);
+  const onPointerUpRef = useRef<() => void>(() => {});
+
   const onPointerMove = useCallback((e: PointerEvent) => {
     const d = dragRef.current;
     const el = ref.current;
@@ -70,8 +73,11 @@ export function useFloatingWindow(
       const maxY = window.innerHeight - 40;
       const nx = Math.min(maxX, Math.max(-d.origW + 120, d.origX + dx));
       const ny = Math.min(maxY, Math.max(0, d.origY + dy));
-      el.style.left = `${nx}px`;
-      el.style.top = `${ny}px`;
+      const left = `${nx}px`;
+      const top = `${ny}px`;
+      el.style.left = left;
+      el.style.top = top;
+      liveDragRef.current = { ...(liveDragRef.current || {}), left, top };
     } else {
       const maxW = window.innerWidth - d.origX - MARGIN;
       const maxH = window.innerHeight - d.origY - MARGIN;
@@ -80,8 +86,11 @@ export function useFloatingWindow(
       // ANINDA ziplar (ilk piksel hareketinde) ve kullanicidan geri KUCULTULEMEZ hale gelir.
       const nw = Math.min(maxW, Math.max(d.effMinW, d.origW + dx));
       const nh = Math.min(maxH, Math.max(d.effMinH, d.origH + dy));
-      el.style.width = `${nw}px`;
-      el.style.height = `${nh}px`;
+      const width = `${nw}px`;
+      const height = `${nh}px`;
+      el.style.width = width;
+      el.style.height = height;
+      liveDragRef.current = { ...(liveDragRef.current || {}), width, height };
     }
   }, []);
 
@@ -100,10 +109,15 @@ export function useFloatingWindow(
       }
     }
     dragRef.current = null;
+    liveDragRef.current = null;
     document.body.style.userSelect = '';
     window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointerup', onPointerUpRef.current);
   }, [onPointerMove]);
+
+  useEffect(() => {
+    onPointerUpRef.current = onPointerUp;
+  }, [onPointerUp]);
 
   const startMove = useCallback(
     (e: React.PointerEvent) => {
@@ -201,34 +215,28 @@ export function useFloatingWindow(
   }, [autoHeight]);
 
   // NOT (stabilite duzeltmesi): boyutlandirma sirasinda `output` her poll tick'inde
-  // (~1.5-3sn) degisip JobTrackerBar/SurveyModal'i yeniden render ediyor — eger style
-  // burada `pos`/`size` REACT STATE'INDEN kurulsaydi (surukleme bitmeden bunlar hala
-  // ESKI degerlerde, cunku sadece pointerup'ta commit ediliyor), o render ELDEKI canli
-  // DOM mutasyonunu STATE'TEKI eski degerle EZERDI — tutamaci uzun sure birakmadan
-  // tutunca ekran "bazen boyutlanmiyor/zipliyor" hissi verirdi. Surukleme AKTIFKEN
-  // (dragRef.current dolu) stil, state yerine ref'in O ANKI DOM stilinden okunur.
-  const dragging = !!dragRef.current;
-  const liveEl = ref.current;
-  const style: React.CSSProperties =
-    dragging && liveEl
-      ? {
-          position: 'fixed',
-          left: liveEl.style.left,
-          top: liveEl.style.top,
-          width: liveEl.style.width,
-          height: liveEl.style.height,
-          maxWidth: 'calc(100vw - 2rem)',
-          maxHeight: 'calc(100vh - 2rem)',
-        }
-      : {
-          position: 'fixed',
-          left: pos.x,
-          top: pos.y,
-          width: size.w,
-          height: size.h,
-          maxWidth: 'calc(100vw - 2rem)',
-          maxHeight: 'calc(100vh - 2rem)',
-        };
+  // (~1.5-3sn) degisip JobTrackerBar/SurveyModal'i yeniden render ederse React
+  // `pos`/`size` state degerlerini yazabilir. useLayoutEffect boyama oncesinde aktif
+  // DOM mutasyonunu geri yukler — hem render icinde ref okunmaz hem de ziplanmaz.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const live = liveDragRef.current;
+    if (!dragRef.current || !el || !live) return;
+    if (live.left !== undefined) el.style.left = live.left;
+    if (live.top !== undefined) el.style.top = live.top;
+    if (live.width !== undefined) el.style.width = live.width;
+    if (live.height !== undefined) el.style.height = live.height;
+  });
+
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: pos.x,
+    top: pos.y,
+    width: size.w,
+    height: size.h,
+    maxWidth: 'calc(100vw - 2rem)',
+    maxHeight: 'calc(100vh - 2rem)',
+  };
 
   return { ref, pos, size, style, startMove, startResize, recenter };
 }

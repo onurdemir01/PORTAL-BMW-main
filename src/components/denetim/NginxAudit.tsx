@@ -12,6 +12,7 @@
 // Legacy denetiminden AYRIDIR: o, 12 prod sunucusunu servis tanesinde ve eslenik
 // karsilastirmasiyla olcer. Bu, tum filoyu sunucu tanesinde olcer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -63,7 +64,7 @@ export function NginxAudit() {
   const [allowedForm, setAllowedForm] = useState({ directive: '', value: '', note: '' });
   const [allowedBusy, setAllowedBusy] = useState(false);
   const loadAllowed = useCallback(async () => { try { const r = await denetimApi.nginxAuditAllowed(); if (r.ok) setAllowed(r.rows || []); } catch { /* panel bos kalir */ } }, []);
-  useEffect(() => { loadAllowed(); }, [loadAllowed]);
+  useAsyncEffect(async (alive) => { if (alive()) await loadAllowed(); }, [loadAllowed]);
   const addAllowed = async () => {
     if (!allowedForm.directive.trim() || !allowedForm.value.trim()) return;
     setAllowedBusy(true);

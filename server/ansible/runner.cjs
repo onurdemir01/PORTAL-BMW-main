@@ -558,7 +558,7 @@ async function getToken() {
 // Token uclari icin ayri (ve `AWX_RESPONSE_MAX_BYTES`ten cok daha kucuk) tavan:
 // gecerli bir token yaniti birkac yuz bayttir. 8 MB'lik bir esik, bir hata
 // sayfasini "normal" saymak olurdu. KULLANIMDAN ONCE tanimli — `const` TDZ'de
-// oldugu icin asagi konulmasi calisma zamaninda ise yarasa da okuyanı yanıltır.
+// oldugu icin asagi konulmasi calisma zamaninda ise yarasa da okuyani yaniltir.
 const AWX_TOKEN_MAX_BYTES = 256 * 1024;
 
 // OAuth2 password grant: POST /api/o/token/ (preferred) or /o/token/ (legacy)
@@ -2357,7 +2357,7 @@ function initAnsibleRunner(app) {
           ok: false,
           jobs: [],
           // SESSIZ DEGIL: ekran bu metni sunucu adiyla birlikte yaziyor
-          // (DashboardPage "erişilemedi" satiri), yani yavas sunucu GORUNUR kalir.
+          // (DashboardPage "erisilemedi" satiri), yani yavas sunucu GORUNUR kalir.
           error: `AWX ${Math.round(AWX_SUNUCU_SON_TARIH_MS / 1000)} sn içinde yanıt vermedi.`,
         })),
       ),

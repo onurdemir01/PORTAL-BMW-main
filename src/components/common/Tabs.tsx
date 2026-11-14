@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 interface Tab {
   label: string;
@@ -21,14 +21,9 @@ interface TabsProps {
 // PatternFly Tabs: gri metin, aktif sekme mavi + 3px alt cizgi, kapsayici alt kenarlik.
 const Tabs: React.FC<TabsProps> = ({ tabs, nested = false, variant = "underline", activeTab: controlledActive, onChange, size = "md" }) => {
   const [uncontrolledActive, setUncontrolledActive] = useState(0);
-  const activeTab = controlledActive ?? uncontrolledActive;
+  const rawActive = controlledActive ?? uncontrolledActive;
+  const activeTab = controlledActive === undefined && rawActive >= tabs.length ? 0 : rawActive;
   const setActiveTab = onChange ?? setUncontrolledActive;
-
-  useEffect(() => {
-    if (controlledActive === undefined && uncontrolledActive >= tabs.length) {
-      setUncontrolledActive(0);
-    }
-  }, [tabs, controlledActive, uncontrolledActive]);
 
   const tabButtons = (small: boolean) => tabs.map((tab, index) => (
     <button

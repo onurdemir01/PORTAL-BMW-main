@@ -248,7 +248,7 @@ const LogXWizardPage: React.FC = () => {
   // Sihirbazın kendi ömrü boyunca yaşayan bir Map bunu keser. `key={step}` bilerek
   // korunuyor: adım değişiminde state sıfırlamak İSTENEN davranış, sorun hafızanın
   // yanlış tarafta durmasıydı.
-  const autoScanMemoRef = useRef<Map<string, number>>(new Map());
+  const [autoScanMemo] = useState<Map<string, number>>(() => new Map());
 
   const refresh = useCallback(async (id: string) => {
     const r = await logxV2Api.getRequest(id);
@@ -415,7 +415,7 @@ const LogXWizardPage: React.FC = () => {
   // Tüm adım aksiyonları bundan geçer. Yeniden-giriş kilidi aynı aksiyonun in-flight iken
   // ikinci kez tetiklenmesini — dolayısıyla üst üste job açılmasını — KESİN engeller
   // (buton görsel disable'ından bağımsız güvence).
-  async function guarded(fn: () => Promise<void>) {
+  const guarded = useCallback(async (fn: () => Promise<void>) => {
     // Kilit `busy` state'i DEĞİL bir ref: `busy` render anında yakalanır, aynı tick'te gelen
     // iki tık ikisi de `false` görüp İKİ AWX job'ı açabilirdi. Ref anında görünür.
     if (busyRef.current) return;
@@ -430,7 +430,15 @@ const LogXWizardPage: React.FC = () => {
       busyRef.current = false;
       setBusy(false);
     }
-  }
+  }, []);
+
+  const handleAppDiscover = useCallback(() => {
+    if (!requestId || !activeNamespace) return;
+    return guarded(async () => {
+      await logxV2Api.discoverApps(requestId, [activeNamespace]);
+      await refresh(requestId);
+    });
+  }, [guarded, refresh, requestId, activeNamespace]);
 
   function restart() {
     setOnSecimUyari(null);
@@ -975,55 +983,44 @@ const LogXWizardPage: React.FC = () => {
           />
         )}
 
-        {step === 'ocp_app_name' &&
-          requestId &&
-          activeNamespace &&
-          (() => {
-            const input = request?.input as OcpInput | undefined;
-            return (
-              <AppNameStep
-                busy={busy}
-                env={input?.env}
-                tenant={input?.tenant}
-                clusters={input?.clusters}
-                namespace={activeNamespace}
-                reloadToken={appCacheToken}
-                // Otomatik tarama hafızası SAYFA seviyesinde tutulur — `key={step}`
-                // AppNameStep'i her adım değişiminde remount ettiği için bileşen içindeki
-                // bir ref sonsuz döngüyü engelleyemiyordu (bkz. autoScanMemoRef başlığı).
-                autoScanMemo={autoScanMemoRef.current}
-                initialSearch={
-                  ocpOnArama && ocpOnArama.namespace === activeNamespace ? ocpOnArama.app : undefined
+        {step === 'ocp_app_name' && requestId && activeNamespace && (
+          <AppNameStep
+            busy={busy}
+            env={(request?.input as OcpInput | undefined)?.env}
+            tenant={(request?.input as OcpInput | undefined)?.tenant}
+            clusters={(request?.input as OcpInput | undefined)?.clusters}
+            namespace={activeNamespace}
+            reloadToken={appCacheToken}
+            // Otomatik tarama hafızası SAYFA seviyesinde tutulur — `key={step}`
+            // AppNameStep'i her adım değişiminde remount ettiği için bileşen içindeki
+            // bir ref sonsuz döngüyü engelleyemiyordu (bkz. autoScanMemoRef başlığı).
+            autoScanMemo={autoScanMemo}
+            initialSearch={
+              ocpOnArama && ocpOnArama.namespace === activeNamespace ? ocpOnArama.app : undefined
+            }
+            onDiscover={handleAppDiscover}
+            // Sepette kalan yer: kullanıcı sunucudan 400 almadan önce ekranda görsün.
+            remainingSlots={MAX_OCP_TARGETS - targets.length}
+            // Seçim JOB BAŞLATMAZ: çiftler sepete eklenir ve NAMESPACE EKRANINA dönülür —
+            // kullanıcı başka bir namespace'ten de ekleyebilsin (2026-08-10 kullanıcı kararı).
+            onSubmit={(appNames) => {
+              setTargets((prev) => {
+                const next = [...prev];
+                for (const appName of appNames) {
+                  if (next.length >= MAX_OCP_TARGETS) break;
+                  if (
+                    next.some((t) => t.namespace === activeNamespace && t.appName === appName)
+                  )
+                    continue;
+                  next.push({ namespace: activeNamespace, appName });
                 }
-                onDiscover={() =>
-                  guarded(async () => {
-                    await logxV2Api.discoverApps(requestId, [activeNamespace]);
-                    await refresh(requestId);
-                  })
-                }
-                // Sepette kalan yer: kullanıcı sunucudan 400 almadan önce ekranda görsün.
-                remainingSlots={MAX_OCP_TARGETS - targets.length}
-                // Seçim JOB BAŞLATMAZ: çiftler sepete eklenir ve NAMESPACE EKRANINA dönülür —
-                // kullanıcı başka bir namespace'ten de ekleyebilsin (2026-08-10 kullanıcı kararı).
-                onSubmit={(appNames) => {
-                  setTargets((prev) => {
-                    const next = [...prev];
-                    for (const appName of appNames) {
-                      if (next.length >= MAX_OCP_TARGETS) break;
-                      if (
-                        next.some((t) => t.namespace === activeNamespace && t.appName === appName)
-                      )
-                        continue;
-                      next.push({ namespace: activeNamespace, appName });
-                    }
-                    return next;
-                  });
-                  setOcpOnArama(null);
-                  setChosenNamespace(null);
-                }}
-              />
-            );
-          })()}
+                return next;
+              });
+              setOcpOnArama(null);
+              setChosenNamespace(null);
+            }}
+          />
+        )}
 
         {step === 'ocp_app_discovering' &&
           requestId &&

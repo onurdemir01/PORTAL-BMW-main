@@ -14,7 +14,7 @@ for (const k of Object.keys(process.env)) {
   if (/^AWX_/.test(k) || /^(HTTPS?_PROXY|https?_proxy)$/.test(k)) delete process.env[k];
 }
 
-const awx = { srv: null, istekler: [], cevap: () => ({ durum: 404, govde: {} }) };
+const awx = { srv: null, istekler: [], cevap: (_req) => ({ durum: 404, govde: {} }) };
 
 before(async () => {
   awx.srv = http.createServer((req, res) => {

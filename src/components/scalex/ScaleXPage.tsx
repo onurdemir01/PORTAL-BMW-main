@@ -213,10 +213,13 @@ const ScaleXPage: React.FC = () => {
     runResult ?? (finished ? ((trackedJob?.result as ScaleXRunResult | null | undefined) ?? null) : null);
   useEffect(() => {
     if (!startedAt) return;
-    setElapsed(Date.now() - startedAt);
-    if (finished) return;
+    const initId = window.setTimeout(() => setElapsed(Date.now() - startedAt), 0);
+    if (finished) return () => window.clearTimeout(initId);
     const t = setInterval(() => setElapsed(Date.now() - startedAt), 1000);
-    return () => clearInterval(t);
+    return () => {
+      window.clearTimeout(initId);
+      clearInterval(t);
+    };
   }, [startedAt, finished]);
 
   // Sağlık kontrolü: iş bitince, yalnızca gerçek bir değişiklik yapıldıysa ve
@@ -265,7 +268,8 @@ const ScaleXPage: React.FC = () => {
   const pollFailed = !!trackedJob?.pollErr;
   useEffect(() => {
     if (!finished || pollFailed) return;
-    setStoppedReloadKey((k) => k + 1);
+    const t = window.setTimeout(() => setStoppedReloadKey((k) => k + 1), 0);
+    return () => window.clearTimeout(t);
   }, [finished, pollFailed]);
 
   // İş bitince çıktının TAMAMINI bir kez çek. Sonuç bu isteği BEKLEMEZ (yukarıda

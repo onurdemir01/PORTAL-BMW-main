@@ -34,7 +34,7 @@ function sahteDeps({ kayitlar = [], statusler = null, launchHata = null } = {}) 
       if (launchHata) throw new Error(launchHata);
       return { serverId: 1, jobId: 100 + kayit.launch.length };
     },
-    getStatus: async () => {
+    getStatus: async (_s, _j) => {
       const s = sirali[Math.min(kayit.getStatus, sirali.length - 1)];
       kayit.getStatus += 1;
       return s;

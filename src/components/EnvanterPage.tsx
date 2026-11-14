@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   MagnifyingGlassIcon,
   ArrowDownTrayIcon,
@@ -97,25 +98,29 @@ const EnvanterPage: React.FC = () => {
   // geçip önizleyebilir.
   const [viewAsRole, setViewAsRole] = useState<'User' | 'Admin'>('Admin');
 
-  useEffect(() => {
-    setTablesLoading(true);
-    Promise.all([
-      inventoryApi.tables(isAdmin ? viewAsRole : undefined),
-      inventoryApi.tableAliases().catch(() => ({ ok: false, aliases: {} })),
-    ])
-      .then(([tableRes, aliasRes]) => {
+  useAsyncEffect(
+    async (alive) => {
+      setTablesLoading(true);
+      try {
+        const [tableRes, aliasRes] = await Promise.all([
+          inventoryApi.tables(isAdmin ? viewAsRole : undefined),
+          inventoryApi.tableAliases().catch(() => ({ ok: false, aliases: {} })),
+        ]);
+        if (!alive()) return;
         const list = tableRes.tables ?? [];
         setAvailableTables(list);
         if (list.length > 0 && !list.includes(activeTable)) setActiveTable(list[0]);
         if (aliasRes.ok) setTableAliases(aliasRes.aliases || {});
-      })
-      .catch(() => {
+      } catch {
+        if (!alive()) return;
         setAvailableTables(['Inventory']);
         setActiveTable('Inventory');
-      })
-      .finally(() => setTablesLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewAsRole]);
+      } finally {
+        if (alive()) setTablesLoading(false);
+      }
+    },
+    [viewAsRole],
+  );
 
   // ── Published saved queries (preset bar) ─────────────────────────────────
   const [publishedQueries, setPublishedQueries] = useState<SavedQuery[]>([]);
@@ -218,29 +223,32 @@ const EnvanterPage: React.FC = () => {
   const dbOff = dbAvailable === false;
 
   // Reset state on table change
-  useEffect(() => {
-    if (!activeTable || dbOff) return;
-    let cancelled = false;
-    // Onceki tablonun havadaki veri yaniti artik "en son istek" sayilmaz.
-    requestSeq.current++;
-    setLoading(false);
-    setColumnsFor('');
-    setMultiFilters({});
-    setPendingFilterGroup(EMPTY_FILTER_GROUP);
-    setAppliedFilterGroup(EMPTY_FILTER_GROUP);
-    setSearch('');
-    setDebouncedSearch('');
-    setRows([]);
-    setPagination({ page: 1, pages: 1, total: 0, limit, exact: true, hasMore: false });
-    setError(null);
-    setOrderBy(null);
-    setOrderDir(null);
+  useAsyncEffect(
+    async (alive) => {
+      if (!activeTable || dbOff) return;
+      // Onceki tablonun havadaki veri yaniti artik "en son istek" sayilmaz.
+      requestSeq.current++;
+      setLoading(false);
+      setColumnsFor('');
+      setMultiFilters({});
+      setPendingFilterGroup(EMPTY_FILTER_GROUP);
+      setAppliedFilterGroup(EMPTY_FILTER_GROUP);
+      setSearch('');
+      setDebouncedSearch('');
+      setRows([]);
+      setPagination({ page: 1, pages: 1, total: 0, limit, exact: true, hasMore: false });
+      setError(null);
+      setOrderBy(null);
+      setOrderDir(null);
 
-    // Sunucu tercihleri kolonlardan once yuklenir ki prefsApi.get() dolu cache'ten okusun.
-    Promise.all([inventoryApi.columns(activeTable), prefsApi.getAll().catch(() => ({}))]).then(
-      ([r]) => {
+      // Sunucu tercihleri kolonlardan once yuklenir ki prefsApi.get() dolu cache'ten okusun.
+      try {
+        const [r] = await Promise.all([
+          inventoryApi.columns(activeTable),
+          prefsApi.getAll().catch(() => ({})),
+        ]);
         // Gec gelen ESKI tablonun kolonlari yeni tablonun ustune yazilmaz.
-        if (cancelled) return;
+        if (!alive()) return;
         if (r.ok) {
           const cols = r.columns.map((c) => c.COLUMN_NAME);
           setAllColumns(cols);
@@ -260,21 +268,16 @@ const EnvanterPage: React.FC = () => {
             setVisibleCols(cols.slice(0, 12));
           }
         }
-      },
-    )
-      .catch(() => {
+      } catch {
         /* kolonlar alinamazsa da veri istegi gider; hata veri yanitinda gorunur */
-      })
-      .finally(() => {
+      } finally {
         // Eskiden arama-debounce effect'i kolon sonucundan bagimsiz istek atiyordu; kolon
         // hatasinda da veri hatasi ekranda gorunsun diye hazir isareti her durumda konur.
-        if (!cancelled) setColumnsFor(activeTable);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTable, dbOff]);
+        if (alive()) setColumnsFor(activeTable);
+      }
+    },
+    [activeTable, dbOff],
+  );
 
   const fetchData = useCallback(
     async (page: number, exactCount = false) => {
@@ -311,9 +314,12 @@ const EnvanterPage: React.FC = () => {
   // Kolonlar aktif tabloya ait oldugunda TEK effect veri ister; filtre/siralama/limit/
   // geciktirilmis arama degisince fetchData kimligi degisir ve 1. sayfa yeniden istenir.
   const columnsReady = activeTable !== '' && columnsFor === activeTable;
-  useEffect(() => {
-    if (columnsReady) fetchData(1);
-  }, [columnsReady, fetchData]);
+  useAsyncEffect(
+    async (alive) => {
+      if (columnsReady && alive()) await fetchData(1);
+    },
+    [columnsReady, fetchData],
+  );
 
   // Search debounce — yalniz metin geciktirilir, istek yukaridaki effect'ten gider.
   useEffect(() => {

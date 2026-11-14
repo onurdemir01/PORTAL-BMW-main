@@ -1,8 +1,8 @@
 // server/inventory/__tests__/history-snapshot.test.cjs
 //
-// Envanter geçmişi (SCD-2) motorunun davranış testleri. DB yerine bellek içi sahte bir
-// `db` modülü enjekte edilir (history.cjs `require`'ı tembel yaptığı için mümkün) —
-// böylece gerçek MSSQL olmadan TÜM diff mantığı çalıştırılır.
+// Envanter gecmisi (SCD-2) motorunun davranis testleri. DB yerine bellek ici sahte bir
+// `db` modulu enjekte edilir (history.cjs `require`'i tembel yaptigi icin mumkun) —
+// boylece gercek MSSQL olmadan TUM diff mantigi calistirilir.
 'use strict';
 
 const test = require('node:test');

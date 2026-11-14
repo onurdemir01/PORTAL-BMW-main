@@ -262,18 +262,19 @@ async function uygulamaBeyaniYaz({ namespace: ns, application: app2, inUse, note
 
 function initSpaReport(app) {
   const { requireAuth } = require('../auth/index.cjs');
+  let requireVisible = null;
+  try {
+    ({ requireVisible } = require('../auth/visibility.cjs'));
+  } catch {
+    /* gorunurluk motoru yoksa yoksay */
+  }
   // GLOMO GECIS PLANI AYRI SAYFA (2026-10-13): /gecis uclari kendi gorunurluk anahtariyla
   // ('ArkGlomoGecis') ve rapor router'indan ONCE baglanir - rapor kapisi ('ArkSpaRaporu')
   // yalniz plani goren kullaniciyi disarida birakmasin. Plan canli raporu sunucu icinde okur.
   const gecisRouter = express.Router();
   gecisRouter.use(express.json({ limit: '256kb' }));
   gecisRouter.use('/gecis', requireAuth);
-  try {
-    const { requireVisible } = require('../auth/visibility.cjs');
-    gecisRouter.use('/gecis', requireVisible('ArkGlomoGecis'));
-  } catch {
-    /* gorunurluk motoru yoksa yoksay */
-  }
+  if (requireVisible) gecisRouter.use('/gecis', requireVisible('ArkGlomoGecis'));
   require('./gecis.cjs').mountGecis(gecisRouter, { loadReport });
   app.use('/api/spa-report', gecisRouter);
 
@@ -282,24 +283,14 @@ function initSpaReport(app) {
   const intranetRouter = express.Router();
   intranetRouter.use(express.json({ limit: '64kb' }));
   intranetRouter.use('/intranet', requireAuth);
-  try {
-    const { requireVisible } = require('../auth/visibility.cjs');
-    intranetRouter.use('/intranet', requireVisible('ArkIntranetSpa'));
-  } catch {
-    /* gorunurluk motoru yoksa yoksay */
-  }
+  if (requireVisible) intranetRouter.use('/intranet', requireVisible('ArkIntranetSpa'));
   require('./intranet.cjs').mountIntranet(intranetRouter, { loadBeyanlar, uygulamaBeyaniYaz });
   app.use('/api/spa-report', intranetRouter);
 
   const router = express.Router();
   router.use(express.json({ limit: '256kb' }));
   router.use(requireAuth);
-  try {
-    const { requireVisible } = require('../auth/visibility.cjs');
-    router.use(requireVisible('ArkSpaRaporu'));
-  } catch {
-    /* gorunurluk motoru yoksa yoksay */
-  }
+  if (requireVisible) router.use(requireVisible('ArkSpaRaporu'));
 
   router.get('/', async (req, res) => {
     try {

@@ -732,11 +732,9 @@ function nodeExtraVars({ tenantKey, grupId, talepId, plan, expect, newSha, hedef
   };
 }
 
+const { replaceControlCharsWithSpace } = require('../util/control-chars.cjs');
 const tekSatir = (s) =>
-  String(s == null ? '' : s)
-    // Kontrol karakterleri (TAB / satir sonu dahil) bilerek bosluga cevrilir.
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+  replaceControlCharsWithSpace(s)
     .replace(/\s{2,}/g, ' ')
     .trim();
 

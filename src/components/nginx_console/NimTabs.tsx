@@ -53,17 +53,21 @@ const sum = (xs: (number | null | undefined)[]) => xs.reduce<number>((a, x) => a
 function Donut({ parts, size = 104, label, sub }: { parts: { value: number; color: string; title: string }[]; size?: number; label: string; sub?: string }) {
   const total = parts.reduce((a, p) => a + p.value, 0) || 1;
   const r = 40, c = 2 * Math.PI * r;
-  let acc = 0;
+  const activeParts = parts.filter((p) => p.value > 0);
+  const slices = activeParts.reduce<Array<{ part: typeof parts[number]; len: number; offset: number }>>((list, p) => {
+    const prev = list[list.length - 1];
+    const offset = prev ? prev.offset + prev.len : 0;
+    const len = (p.value / total) * c;
+    list.push({ part: p, len, offset });
+    return list;
+  }, []);
   return (
     <div className="flex items-center gap-3">
       <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={label}>
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--bg-elevated)" strokeWidth="12" />
-        {parts.filter((p) => p.value > 0).map((p, i) => {
-          const len = (p.value / total) * c;
-          const el = <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={p.color} strokeWidth="12" strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-acc} transform="rotate(-90 50 50)"><title>{p.title}: {p.value}</title></circle>;
-          acc += len;
-          return el;
-        })}
+        {slices.map((s, i) => (
+          <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={s.part.color} strokeWidth="12" strokeDasharray={`${s.len} ${c - s.len}`} strokeDashoffset={-s.offset} transform="rotate(-90 50 50)"><title>{s.part.title}: {s.part.value}</title></circle>
+        ))}
         <text x="50" y="47" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--text-primary)">{label}</text>
         {sub && <text x="50" y="62" textAnchor="middle" fontSize="8" fill="var(--text-muted)">{sub}</text>}
       </svg>
@@ -124,11 +128,11 @@ const StatusCell = ({ online }: { online: boolean }) => (
 export function DashboardTab({ hosts, onGo }: { hosts: NcHost[]; onGo: (tab: 'instances' | 'certs' | 'changes' | 'config', host?: string) => void }) {
   const [certs, setCerts] = useState<NcCertsResult | null>(null);
   const [changes, setChanges] = useState<NcChange[]>([]);
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    nginxConsoleApi.certs().then((r) => r.ok && setCerts(r)).catch(() => {});
+    nginxConsoleApi.certs().then((r) => { if (r.ok) { setCerts(r); setNow(Date.now()); } }).catch(() => {});
     nginxConsoleApi.changes({ limit: 8 }).then((r) => r.ok && setChanges(r.changes || [])).catch(() => {});
   }, []);
-  const now = Date.now();
   const online = hosts.filter((h) => isOnline(h, now)).length;
   const tFail = hosts.filter((h) => h.nginxT === 'fail');
   const noDump = hosts.filter((h) => !h.dumpedAt).length;
@@ -327,7 +331,11 @@ export function InstancesTab({ hosts, loading, onRefreshHosts, onOpen, onReload 
   const [menu, setMenu] = useState<string | null>(null);
   // Durum suzgeci (kullanici, 2026-09-22): "offline'lari / surumu bilinmeyenleri nasil yakalarim?"
   const [only, setOnly] = useState<'all' | 'offline' | 'tfail' | 'nodump' | 'unknownver'>('all');
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const rows = useMemo(() => {
     const n = q.trim().toLowerCase();
     return hosts.filter((h) => {

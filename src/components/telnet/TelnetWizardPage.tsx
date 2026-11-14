@@ -105,7 +105,11 @@ const TelnetWizardPage: React.FC = () => {
   const jobFinished = !!trackedJob?.done;
   useEffect(() => {
     if (!jobStartedAt) return;
-    setElapsed(Date.now() - jobStartedAt);
+    const initId = window.setTimeout(() => setElapsed(Date.now() - jobStartedAt), 0);
+    return () => window.clearTimeout(initId);
+  }, [jobStartedAt, jobFinished]);
+  useEffect(() => {
+    if (!jobStartedAt) return;
     if (jobFinished) return;
     const t = setInterval(() => setElapsed(Date.now() - jobStartedAt), 1000);
     return () => clearInterval(t);

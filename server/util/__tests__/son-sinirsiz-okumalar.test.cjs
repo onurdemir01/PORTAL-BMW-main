@@ -3,7 +3,7 @@
 // GERIYE KALAN SINIRSIZ OKUMA YOLLARI (P0-1'in kuyrugu).
 //
 // Portal 2026-09'da yedi kez OOM ile coktu; hepsinin koku bir HTTP govdesinin
-// SINIRSIZ tamponlanmasiydi. Bes yol daha aciktı ve IKI SINIFTA toplaniyordu:
+// SINIRSIZ tamponlanmasiydi. Bes yol daha acikti ve IKI SINIFTA toplaniyordu:
 //
 //   A) Teams webhook HATA yollari (3 yer) — `await res.text()` sonra
 //      `.slice(0, 200)`. Kirpma TAMPONLAMADAN SONRA yapiliyordu, yani

@@ -12,7 +12,7 @@
 // Eslesmeyen istek dogrudan eski kapiya gider (Server Hub'in diger uclari yalniz ServerHub ile acilir).
 'use strict';
 
-function ekSayfaKapisi({ anahtar, ana, canSee, eslesir = () => true }) {
+function ekSayfaKapisi({ anahtar, ana, canSee, eslesir = (_req) => true }) {
   if (typeof ana !== 'function') throw new Error('ekSayfaKapisi: ana kapi yok');
   if (!anahtar) throw new Error('ekSayfaKapisi: anahtar yok');
   return async (req, res, next) => {

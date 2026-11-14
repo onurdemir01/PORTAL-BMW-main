@@ -146,12 +146,10 @@ const AdminPage: React.FC = () => {
   const orderedTabs = sections.flatMap((s) => s.tabs);
 
   // Aktif sekme gizlenmisse ilk gorunur sekmeye dus.
-  useEffect(() => {
-    if (!orderedTabs.length) return;
-    if (!orderedTabs.some((t) => t.id === activeTab)) setActiveTab(orderedTabs[0].id);
-  }, [orderedTabs, activeTab]);
+  const effectiveTab =
+    !orderedTabs.length || orderedTabs.some((t) => t.id === activeTab) ? activeTab : orderedTabs[0].id;
 
-  const current = TAB_BY_ID.get(activeTab);
+  const current = TAB_BY_ID.get(effectiveTab);
   const CurrentIcon = current?.icon;
 
   return (
@@ -176,7 +174,7 @@ const AdminPage: React.FC = () => {
                 <ul className="space-y-0.5">
                   {s.tabs.map((tab) => {
                     const Icon = tab.icon;
-                    const active = activeTab === tab.id;
+                    const active = effectiveTab === tab.id;
                     return (
                       <li key={tab.id}>
                         <button

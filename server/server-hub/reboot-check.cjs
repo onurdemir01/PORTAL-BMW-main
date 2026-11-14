@@ -1,4 +1,4 @@
-// server/server-hub/reboot-check.cjs — Server Hub > Reboot Kontrolü (2026-10-08).
+// server/server-hub/reboot-check.cjs — Server Hub > Reboot Kontrolu (2026-10-08).
 //
 // Kullanici: "reboot olacak bir sunucu var. calisma oncesi bu job'i calistirip sunucuda ne vardi ne
 // yoktu not aliyor. reboot sonrasi onceki durum ile karsilastiriyor; onceden varolan ancak acilmamis

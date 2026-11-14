@@ -620,7 +620,7 @@ test('P6 runner`a verilen ortam 11_run_phase_parallel launch blogu ile AYNI', ()
 
 // ── P7: EXECUTE TEK JUMP'TA DA ASYNC; PRECHECK TEK JUMP'TA SENKRON ──────────
 // Senkron execute'ta SSH koparsa sarmalayici runner'lari oldurur ve olcekleme
-// yarida kalir. Davranis olcumu: async yolun kanitı `async_status` gorevinin
+// yarida kalir. Davranis olcumu: async yolun kaniti `async_status` gorevinin
 // KOSMASI (atlanmamasi).
 test(
   'P7 execute tek jump`ta da async (SSH kopsa da runner surer), precheck senkron',

@@ -14,6 +14,7 @@
 //  3) İş AWX'te koşar; sonuç gelene kadar ekran "çalışıyor" der. Sonuç boş dönerse bu
 //     "sorun yok" DEĞİLDİR — hata satırları ayrıca gösterilir.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ArrowPathIcon,
   TrashIcon,
@@ -424,9 +425,9 @@ export function LogModal({
     if (r) setRes(r);
   }, [run, targets, tail, previous, container]);
 
-  useEffect(() => {
-    void getir(); /* ilk acilista otomatik getir */
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async (alive) => {
+    if (alive()) await getir(); /* ilk acilista otomatik getir */
+  }, []);
 
   const metin = (res?.logs || [])
     .map((l) => (targets.length > 1 ? `[${l.target}] ${l.line}` : l.line))
@@ -580,9 +581,9 @@ export function PodsTab({
     }
   }, [run]);
 
-  useEffect(() => {
-    void listele();
-  }, [tenantKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAsyncEffect(async (alive) => {
+    if (alive()) await listele();
+  }, [tenantKey]);
 
   const toggle = (name: string) =>
     setSec((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));

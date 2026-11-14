@@ -1,5 +1,5 @@
-// server/nginx-console/drift.cjs — "Tutarlılık" (2026-09-22): aynı servisin (ör. GLOMO) sunucuları
-// arasında konfigürasyon dosyaları birebir aynı mı? (SAF, test edilir.)
+// server/nginx-console/drift.cjs — "Tutarlilik" (2026-09-22): ayni servisin (or. GLOMO) sunuculari
+// arasinda konfigurasyon dosyalari birebir ayni mi? (SAF, test edilir.)
 //
 // Kullanici: "eski tip reverse proxy sunucularinda (GLOMO'nun eski sunuculari) konfigurasyonlarin
 // esit olup olmadigini gormek istiyorum." Eski Nginx Legacy sekmesi 2026-09-17'de kaldirilmisti;

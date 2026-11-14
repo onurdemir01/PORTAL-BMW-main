@@ -6,13 +6,14 @@
 //   * biri AWX'ten elle durdurmuştur  → cluster'da var, portalda yok
 // Ekran bunu GİZLEMEZ. Gizlemek "portal yanılıyor" demek olurdu; göstermek "birisi portal
 // dışından iş yapmış" demek — ikincisi kullanıcının bilmesi gereken şey.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
   ExclamationTriangleIcon,
   ArrowUturnLeftIcon,
 } from '@heroicons/react/24/outline';
+import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { scalexApi, type ScaleXStoppedItem } from '@/api/scalexApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { fmtRelative } from '@/utils/datetime';
@@ -140,11 +141,16 @@ const StoppedPanel: React.FC<Props> = ({
   const aliveRef = useRef(true);
   const { addJob } = useJobTracker();
 
+  const onSayimRef = useRef(onSayim);
+  useEffect(() => {
+    onSayimRef.current = onSayim;
+  }, [onSayim]);
+
   // `silent` OLMADAN her tazeleme paneli DOM'DAN KALDIRIYORDU: `loading` true olunca
   // asagidaki erken `return` tum govdeyi "yukleniyor…" ile degistiriyor. Sonuc, toplu
   // gerekce yazarken input'un REMOUNT olmasi ve kullanicinin IMLECI KAYBETMESI olurdu.
   // Bu yuzden `loading` yalnizca ILK yuklemede kullanilir; sonraki tazelemeler sessiz.
-  async function load(opts: { silent?: boolean } = {}) {
+  const load = useCallback(async (opts: { silent?: boolean } = {}) => {
     if (!opts.silent) setLoading(true);
     setError(null);
     // Hata metni NEYIN okunamadigini soyler: ScaleX acilisinda uc istek gider; ucu de
@@ -157,20 +163,20 @@ const StoppedPanel: React.FC<Props> = ({
         setHiddenCount(r.hiddenCount || 0);
         setHiddenByOwnership(r.hiddenByOwnership || 0);
         setTruncated(r.truncated === true);
-        onSayim?.((r.items || []).length);
+        onSayimRef.current?.((r.items || []).length);
       } else {
         setError(`Durdurulmuş uygulama listesi okunamadı: ${r.message || 'sunucu hata döndü'}`);
-        onSayim?.(null);
+        onSayimRef.current?.(null);
       }
     } catch (e) {
       if (aliveRef.current) {
         setError(`Durdurulmuş uygulama listesi okunamadı: ${(e as Error).message}`);
-        onSayim?.(null);
+        onSayimRef.current?.(null);
       }
     } finally {
       if (aliveRef.current && !opts.silent) setLoading(false);
     }
-  }
+  }, [env, tenant]);
 
   // Bilesen sokuldukten sonra `setState` yapmayalim: hem React uyarisi hem de
   // sokulmus bir panelin istegi bosa gider.
@@ -182,19 +188,20 @@ const StoppedPanel: React.FC<Props> = ({
   }, []);
 
   // Kapsam SECILMEDEN de yuklenir: panel ilk ekranda da gorunuyor.
-  useEffect(() => {
-    load();
-  }, [env, tenant]);
+  useAsyncEffect(async () => {
+    await load();
+  }, [load]);
 
   // DIS TETIKLEYICI: bir ScaleX isi bitince sayfa bu sayaci artirir ve liste
   // KENDILIGINDEN tazelenir. Once yalnizca `env`/`tenant` degisiminde yukleniyordu,
   // yani bir geri alma bittiginde panel ESKI halini gostermeye devam ediyordu ve
   // kullanici ayni satira tekrar basabiliyordu.
-  useEffect(() => {
-    if (!reloadKey) return;
-    load({ silent: true });
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [reloadKey]);
+  const lastReloadRef = useRef(0);
+  useAsyncEffect(async () => {
+    if (!reloadKey || reloadKey === lastReloadRef.current) return;
+    lastReloadRef.current = reloadKey;
+    await load({ silent: true });
+  }, [reloadKey, load]);
 
   // SUREN ISLEM VARKEN yoklama. Yalnizca kilitli satir varken kosar; yoksa hic
   // istek atilmaz — degismesi beklenmeyen bir listeyi surekli yoklamak bosa trafik.
@@ -207,8 +214,7 @@ const StoppedPanel: React.FC<Props> = ({
       load({ silent: true });
     }, 20_000);
     return () => clearInterval(t);
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [hasRestoring, env, tenant]);
+  }, [hasRestoring, load]);
 
   // GERCEK sapma taramasi: her kapsam (env/tenant/cluster/namespace) icin `state`
   // kesfi kosar, sunucu is bitince aynayi cluster gercegiyle karsilastirip

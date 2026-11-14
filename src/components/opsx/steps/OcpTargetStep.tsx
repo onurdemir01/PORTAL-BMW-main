@@ -28,6 +28,7 @@
 // bir uyarıyla düşer, kalan seçim elle yapılır. "Devam Et" yine kullanıcıya bırakılır.
 import React, { useEffect, useRef, useState } from "react";
 import { XMarkIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
+import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
 import FilterableList from "@/components/common/FilterableList";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -111,7 +112,7 @@ const OcpTargetStep: React.FC<{
   const groupClusters = env && tenant ? (tree[env]?.[tenant] || []) : [];
 
   // Ortam/cluster değişince namespace listesi yeniden çekilir; önceki secimler sıfırlanır.
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setNamespace(""); setSettledNamespace(""); setNamespaceLocked(false);
     setNamespaceOptions([]); setAppOptions([]);
     if (!env || !tenant) return;
@@ -138,9 +139,16 @@ const OcpTargetStep: React.FC<{
         setOnSecimUyari(`“${os.namespace}” bu cluster grubunun namespace envanterinde yok — yazılı olarak dolduruldu; doğrulayın.`);
       }
     };
-    opsxApi.getOcpNamespaces(env, tenant)
-      .then((r) => { setNamespaceOptions(r.namespaces || []); onSecimNamespace(r.namespaces || []); })
-      .catch(() => { setNamespaceOptions([]); onSecimNamespace([]); });
+    try {
+      const r = await opsxApi.getOcpNamespaces(env, tenant);
+      if (!alive()) return;
+      setNamespaceOptions(r.namespaces || []);
+      onSecimNamespace(r.namespaces || []);
+    } catch {
+      if (!alive()) return;
+      setNamespaceOptions([]);
+      onSecimNamespace([]);
+    }
   }, [env, tenant]);
 
   // namespace listeden seçilince (tıklama, anında) YA DA serbest yazımda kısa bir süre
@@ -151,7 +159,7 @@ const OcpTargetStep: React.FC<{
   }, [namespace]);
 
   // Namespace yerleşince uygulama dropdown'u otomatik dolar.
-  useEffect(() => {
+  useAsyncEffect(async (alive) => {
     setAppOptions([]);
     if (!env || !tenant || !settledNamespace) return;
     setAppsLoading(true);
@@ -170,10 +178,18 @@ const OcpTargetStep: React.FC<{
       setPairs((prev) => (prev.some((p) => p.namespace === ns && p.application === a) ? prev : [...prev, { namespace: ns, application: a }]));
       setSonEklenen(`${ns}-${a}`);
     };
-    opsxApi.getOcpApps(env, tenant, settledNamespace)
-      .then((r) => { setAppOptions(r.apps || []); onSecimUygulama(r.apps || []); })
-      .catch(() => { setAppOptions([]); onSecimUygulama([]); })
-      .finally(() => setAppsLoading(false));
+    try {
+      const r = await opsxApi.getOcpApps(env, tenant, settledNamespace);
+      if (!alive()) return;
+      setAppOptions(r.apps || []);
+      onSecimUygulama(r.apps || []);
+    } catch {
+      if (!alive()) return;
+      setAppOptions([]);
+      onSecimUygulama([]);
+    } finally {
+      if (alive()) setAppsLoading(false);
+    }
   }, [env, tenant, settledNamespace]);
 
   // Uygulama listesi `settledNamespace` için çekildi; çift de ONUNLA kurulur (yazım kipinde
