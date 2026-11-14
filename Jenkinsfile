@@ -50,7 +50,10 @@ pipeline {
       // asagidaki kurulum onu karsilar. `|| true` YOK: kurulum basarisizsa
       // Install asamasi dusmeli, yoksa yine sessiz atlamaya doneriz.
       steps {
-        sh 'node --version && npm ci --no-audit --no-fund'
+        // `npm run kur`: tam agac (calisma zamani + gelistirme) gelistirme/ altindan kurulur. Kokte
+        // `npm ci` yalniz calisma zamani paketlerini kurar (scripts/manifest.cjs); testler, lint ve
+        // build gelistirme araclarini ister.
+        sh 'node --version && npm run kur'
         sh 'ansible-playbook --version || python3 -m pip install --user ansible-core'
         sh 'ansible-playbook --version'
       }

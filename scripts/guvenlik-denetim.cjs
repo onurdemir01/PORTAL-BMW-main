@@ -15,6 +15,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const KOK = path.join(__dirname, '..');
+// TAM agac (calisma zamani + gelistirme) gelistirme/ altindadir; kok manifest yalniz calisma
+// zamanidir (scripts/manifest.cjs). Kapi tam agaca bakar: gelistirmede duzeltmesi yayimlanmis
+// bulgu da build'i durdurur.
+const TAM = path.join(KOK, 'gelistirme');
 
 /** Saf karar: audit JSON'u + kilit paketleri -> { dusuren, bilgi }. */
 function karar(audit, kilitPaketleri) {
@@ -33,7 +37,7 @@ function karar(audit, kilitPaketleri) {
 
 function main() {
   const r = spawnSync('npm', ['audit', '--json'], {
-    cwd: KOK,
+    cwd: TAM,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -49,7 +53,7 @@ function main() {
     process.exit(2);
   }
   const kilit =
-    JSON.parse(fs.readFileSync(path.join(KOK, 'package-lock.json'), 'utf8')).packages || {};
+    JSON.parse(fs.readFileSync(path.join(TAM, 'package-lock.json'), 'utf8')).packages || {};
   const { dusuren, bilgi } = karar(audit, kilit);
   for (const s of bilgi)
     console.log(`[guvenlik] bilgi (gelistirme, duzeltme yok, pakete girmez): ${s}`);

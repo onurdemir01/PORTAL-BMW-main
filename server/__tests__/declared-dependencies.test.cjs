@@ -20,7 +20,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
-const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+// 2026-11-14: kok package.json YALNIZ calisma zamani bagimliliklarini tasir; gelistirme araclari
+// TAM manifestte (gelistirme/package.json). `tamPkg` ikisini eski tek-manifest biciminde birlestirir.
+const tamPkg = () => {
+  const kok = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const tam = JSON.parse(fs.readFileSync(path.join(ROOT, 'gelistirme', 'package.json'), 'utf8'));
+  return { ...kok, devDependencies: tam.devDependencies || {} };
+};
+const pkg = tamPkg();
 const declared = new Set([
   ...Object.keys(pkg.dependencies || {}),
   ...Object.keys(pkg.devDependencies || {}),
@@ -104,12 +111,18 @@ test('DEP1 `server/` altinda require edilen her paket package.json`da BILDIRILMI
 test('DEP2 lock dosyasi package.json ile AYNI kok bagimliliklari tasiyor', () => {
   // `package.json`a elle eklenip `npm install` unutulursa `npm ci` "lock dosyasi
   // package.json ile senkron degil" diye DUSER — ama bu ancak CI'da gorunur.
-  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
-  const lockDeps = lock.packages?.['']?.dependencies || {};
+  // Iki cift de sinanir: kok (calisma zamani) ve gelistirme/ (tam).
   const drift = [];
-  for (const [name, range] of Object.entries(pkg.dependencies || {})) {
-    if (lockDeps[name] !== range) {
-      drift.push(`${name}: package.json=${range} lock=${lockDeps[name] ?? '(yok)'}`);
+  for (const dizin of ['', 'gelistirme']) {
+    const p = JSON.parse(fs.readFileSync(path.join(ROOT, dizin, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(ROOT, dizin, 'package-lock.json'), 'utf8'));
+    for (const alan of ['dependencies', 'devDependencies']) {
+      const lockDeps = lock.packages?.['']?.[alan] || {};
+      for (const [name, range] of Object.entries(p[alan] || {})) {
+        if (lockDeps[name] !== range) {
+          drift.push(`${dizin || '(kok)'} ${name}: package.json=${range} lock=${lockDeps[name] ?? '(yok)'}`);
+        }
+      }
     }
   }
   assert.deepEqual(
@@ -145,7 +158,7 @@ test('DEP3 `express-rate-limit` bildirimi DURUYOR (gerileme bekcisi)', () => {
 // Kaldirildiginda `tsc` hemen dustu (`children` ButtonProps'ta yok...) — yani
 // eksiklik sessiz DEGILDI, ama sebebi de gorunmuyordu.
 test('DEP4 React tip paketleri ACIKCA bildirilmis', () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pkg = tamPkg();
   const declared = { ...pkg.dependencies, ...pkg.devDependencies };
   for (const name of ['@types/react', '@types/react-dom']) {
     assert.ok(
@@ -158,7 +171,7 @@ test('DEP4 React tip paketleri ACIKCA bildirilmis', () => {
 test('DEP5 React tip paketleri React ile AYNI ana surumde', () => {
   // `@types/react@18` + `react@19` sessizce yanlis tipler uretir: kod derlenir ama
   // tipler gercegi anlatmaz (React 19'da `children` artik ortuk DEGIL).
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pkg = tamPkg();
   const major = (v) =>
     String(v)
       .replace(/^[^0-9]*/, '')
@@ -173,7 +186,7 @@ test('DEP5 React tip paketleri React ile AYNI ana surumde', () => {
 test('DEP6 kendi tiplerini getiren pakete AYRI bir @types EKLENMEMIS', () => {
   // `react-router-dom` v7 kendi tiplerini getiriyor; `@types/react-router-dom@5`
   // hem GEREKSIZ hem de v5 API'sini tarif ettigi icin CAKISMA riskiydi.
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pkg = tamPkg();
   const declared = { ...pkg.dependencies, ...pkg.devDependencies };
   const offenders = [];
   for (const name of Object.keys(declared)) {

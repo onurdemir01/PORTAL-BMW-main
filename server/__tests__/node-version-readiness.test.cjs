@@ -36,7 +36,8 @@ test('NV1 `engines` gercek uyumluluk araligi; guvenlik tabani ayri', () => {
     semver.minVersion(new semver.Range(cs.map((c) => c.value).join(' '))).version,
   );
   // (1) TAAHHUT DURUST: her hattin en eski surumu kilitteki HER paketin engines'ini karsilar.
-  const kilit = JSON.parse(read('package-lock.json')).packages;
+  // TAM kilit (gelistirme/): derleme ve test araclari da bu Node surumlerinde calismak zorunda.
+  const kilit = JSON.parse(read('gelistirme/package-lock.json')).packages;
   const karsilamayan = [];
   for (const [yol, bilgi] of Object.entries(kilit)) {
     const e = yol && bilgi.engines && bilgi.engines.node;
