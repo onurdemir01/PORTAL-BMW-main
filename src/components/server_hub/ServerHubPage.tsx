@@ -4,7 +4,15 @@
 // Nginx Hub gibi ama RAPOR gibi gozuksun: once genel durum bar ve yuvarlak grafiklerle".
 // Veri: gunluk server_hub_scan (dbo.Server_Hub_*), degerlendirme sunucuda (server/server-hub/assess.cjs).
 // Sunucu satiri -> "Simdi tara" (reboot oncesi tek sunucu) ve "Duzelt" (once PLAN, sonra onay).
-import React, { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ServerStackIcon,
   ArrowPathIcon,
@@ -60,6 +68,18 @@ import KodRehberi from './KodRehberi';
 import { KodGorunurSaglayici, useKodGorunur, useKodGosterSecimi } from './kodGorunurlugu';
 import SunucuPaneli from './SunucuPaneli';
 import { useOnay } from '@/components/common/OnayPenceresi';
+import {
+  autoStartAnahtari,
+  autoStartBaslat,
+  isMetni,
+  kapatEngeli,
+  useAutoStartIsleri,
+  autoStartIsVar,
+  autoStartBittiDinle,
+  useAutoStartSonuclari,
+  type AutoStartIsDurumu,
+  type AutoStartBitisi,
+} from './autoStartIsi';
 
 const SM_BTN =
   'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -199,7 +219,11 @@ type ShOverviewV3 = Omit<ShOverview, 'hosts' | 'summary'> & {
   hosts: ShHostRowV3[];
   summary: ShSummaryV3 | null;
 };
-type CalismaKaniti = { running: boolean; runningKnown?: boolean | null; runningSrc?: string | null };
+type CalismaKaniti = {
+  running: boolean;
+  runningKnown?: boolean | null;
+  runningSrc?: string | null;
+};
 
 /** Sayi alani GELDIYSE sayidir; gelmediyse (eski sunucu) "bilinmiyor" - asla 0 degil. */
 const sayiMi = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
@@ -209,7 +233,10 @@ const sayiMi = (n: unknown): n is number => typeof n === 'number' && Number.isFi
  * surecini gostermez; JVM'in "running=0" satiri o zaman "kapali" DEGIL "bilinmiyor"dur.
  * Alan yoksa (eski satir / eski sunucu) bilinen sayilir - C'nin NULL kurali ile ayni.
  */
-function jvmCalismaBilinir(j: { runningKnown?: boolean | null; runningSrc?: string | null }): boolean {
+function jvmCalismaBilinir(j: {
+  runningKnown?: boolean | null;
+  runningSrc?: string | null;
+}): boolean {
   if (j.runningKnown === false) return false;
   return String(j.runningSrc || '').toUpperCase() !== 'UNMEASURED';
 }
@@ -219,7 +246,10 @@ function jvmCalismaBilinir(j: { runningKnown?: boolean | null; runningSrc?: stri
  * okunamadiginda running_src hic secilmez ve running=0 satiri "bilinmiyor" gelir. Sebep o zaman
  * hidepid/ps korlugu DEGIL semadir; yanlis sebep operatoru yanlis yere baktirir.
  */
-function jvmDurumu(j: CalismaKaniti, sema = false): { metin: string; renk: string; aciklama: string } {
+function jvmDurumu(
+  j: CalismaKaniti,
+  sema = false,
+): { metin: string; renk: string; aciklama: string } {
   if (!jvmCalismaBilinir(j))
     return sema
       ? {
@@ -370,8 +400,7 @@ function urunInitBari(pi: NonNullable<ShSummaryV3['productInit']>[string]): {
     pay: pi.compliant,
     payda,
     metin: parca.join(' · '),
-    tone:
-      okunamadi != null && okunamadi > 0 ? 'warning' : pi.diffFiles ? 'warning' : 'ok',
+    tone: okunamadi != null && okunamadi > 0 ? 'warning' : pi.diffFiles ? 'warning' : 'ok',
   };
 }
 
@@ -453,7 +482,10 @@ function autoStartDugmesi(
   h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
 ): { goster: boolean; neden: string } {
   if (String(j.source || 'cli') === 'cli' && String(j.cfgSrc || '').toUpperCase() === 'UNAVAILABLE')
-    return { goster: false, neden: "tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez" };
+    return {
+      goster: false,
+      neden: "tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez",
+    };
   if (h?.schemaUnknown === true)
     return { goster: false, neden: 'Server Hub şeması okunamadı — eylemler kapalı' };
   if (h?.fresh === false)
@@ -462,10 +494,20 @@ function autoStartDugmesi(
 }
 
 /** IP "Kullanan" hucresi. 'unverified' BOSTA degildir ve urun adi da degildir. */
-function ipKullanan(usedBy: string): { etiket: string; renk: string; kalin: boolean; aciklama: string } {
+function ipKullanan(usedBy: string): {
+  etiket: string;
+  renk: string;
+  kalin: boolean;
+  aciklama: string;
+} {
   const u = String(usedBy || '').toLowerCase();
   if (u === 'none')
-    return { etiket: 'BOŞTA', renk: SEV.warning.color, kalin: true, aciklama: 'hiçbir vhost/soket kullanmıyor' };
+    return {
+      etiket: 'BOŞTA',
+      renk: SEV.warning.color,
+      kalin: true,
+      aciklama: 'hiçbir vhost/soket kullanmıyor',
+    };
   if (u === 'unverified')
     return {
       etiket: 'DOĞRULANAMADI',
@@ -475,9 +517,20 @@ function ipKullanan(usedBy: string): { etiket: string; renk: string; kalin: bool
         'Kullanım doğrulanamadı: web sunucusu ölçülemedi ya da soketler görünmüyor. Boşta SAYILMAZ.',
     };
   if (u === 'wildcard')
-    return { etiket: 'joker dinleyici (*)', renk: 'var(--text-primary)', kalin: false, aciklama: '' };
-  if (u === 'other') return { etiket: 'web dışı soket', renk: 'var(--text-primary)', kalin: false, aciklama: '' };
-  return { etiket: String(usedBy || '').toUpperCase(), renk: 'var(--text-primary)', kalin: false, aciklama: '' };
+    return {
+      etiket: 'joker dinleyici (*)',
+      renk: 'var(--text-primary)',
+      kalin: false,
+      aciklama: '',
+    };
+  if (u === 'other')
+    return { etiket: 'web dışı soket', renk: 'var(--text-primary)', kalin: false, aciklama: '' };
+  return {
+    etiket: String(usedBy || '').toUpperCase(),
+    renk: 'var(--text-primary)',
+    kalin: false,
+    aciklama: '',
+  };
 }
 
 /** Log kaniti OLCULDU mu: okundu VE sayi >= 0. -1 / null olcum DEGILDIR. */
@@ -567,14 +620,17 @@ function initDurumu(status: string): { etiket: string; renk: string } {
  * kodlari (SCHEMA_UNKNOWN, STALE_EVIDENCE) da burada olmali: bekci bunu GERCEK modulden okur.
  */
 const KOD_ETIKET: Record<string, string> = {
-  RUNNING_UNMEASURED: 'JVM çalışma durumu ölçülemedi (süreç görünmüyor ya da şema okunamadı) — kapalı sayılmadı',
+  RUNNING_UNMEASURED:
+    'JVM çalışma durumu ölçülemedi (süreç görünmüyor ya da şema okunamadı) — kapalı sayılmadı',
   TRAFFIC_UNVERIFIED: 'JVM kapalı, web trafiği doğrulanamadı — retire kanıtı yok',
   INIT_UNREADABLE: 'init script okunamadı — eksik ya da farklı sayılmadı',
   LOAD_EXCLUDED: 'sunucu son yüklemede yazılamadı — önceki tarama gösteriliyor, eylemler kapalı',
   JVM_DATA_MISSING: 'JBoss var ama taramada JVM verisi yok (ölçülemedi)',
-  JVM_INVENTORY_UNMEASURED: "tanımlı JVM envanteri ölçülemedi (CLI ve host XML okunamadı) — durmuş JVM'ler listede olmayabilir",
+  JVM_INVENTORY_UNMEASURED:
+    "tanımlı JVM envanteri ölçülemedi (CLI ve host XML okunamadı) — durmuş JVM'ler listede olmayabilir",
   // T2-C2 (cfg_src=UNAVAILABLE): tanim kaynagi OKUNDU; sorun erisim degil tanim.
-  JVM_UNDEFINED_PROCESS: "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — tanım listesi alındı; reboot sonrası kimin açacağı bilinmiyor",
+  JVM_UNDEFINED_PROCESS:
+    "çalışan JVM tanım kaynağında yok (ps'te tanımsız süreç) — tanım listesi alındı; reboot sonrası kimin açacağı bilinmiyor",
   SCAN_PARTIAL: 'tarama kısmi (zaman bütçesi ya da çıktı sigortası)',
   LOAD_DUPLICATE: 'aynı makine AWX envanterinde iki adla',
   // C1/C4: engel artik KATMAN genisliginde (ortam+site); hedef baska sunucuda olabilir.
@@ -588,9 +644,11 @@ const KOD_ETIKET: Record<string, string> = {
   CLI_FAIL: 'JBoss CLI okunamadı',
   CLI_SKIP: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)',
   CLI_DENIED: 'JBoss CLI yetki reddi (dzdo kuralı eksik)',
-  JBOSS_KALINTI: 'JBoss dizini var ama kullanılan kurulum yok (kalıntı) — JBoss CLI sayımına girmez',
+  JBOSS_KALINTI:
+    'JBoss dizini var ama kullanılan kurulum yok (kalıntı) — JBoss CLI sayımına girmez',
   // Acilis hazirligi sebep kodlari (bulgu degil; reboot-readiness.cjs SEMA / BAYAT)
-  SCHEMA_UNKNOWN: 'Server Hub şeması (sys.columns) okunamadı — tarayıcı şema sürümü bilinmiyor, eylemler kapalı',
+  SCHEMA_UNKNOWN:
+    'Server Hub şeması (sys.columns) okunamadı — tarayıcı şema sürümü bilinmiyor, eylemler kapalı',
   STALE_EVIDENCE: 'tarama bayat ya da son yükleme dışlandı — güncel durum bilinmiyor',
   REBOOT_RISK: 'JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz',
   STOPPED_AUTOSTART_ON: "JVM kapalı ama auto-start açık — reboot'ta açılır",
@@ -603,21 +661,28 @@ const KOD_ETIKET: Record<string, string> = {
   IP_UNUSED: 'boşta IP',
   // EK-6.13: assess.cjs'in urettigi kalan kodlar (bekci: kaynaktaki her add(..., 'KOD') etiketli).
   // Olculmus durumlar olculmus diye, olculemeyenler "bilinmiyor" diye yazilir (kural 6).
-  HOST_RESTART: 'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
-  RESTART_REQUIRED: "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
+  HOST_RESTART:
+    'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
+  RESTART_REQUIRED:
+    "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
   INIT_DIFF: 'init script filo çoğunluğundan farklı',
   INIT_DIFF_OLCUT_DISI: 'init script farklı (ölçüt dışı dosya — uyum sayımına katılmaz)',
-  INIT_HOST_SPECIFIC: 'sunucuya özel init dosyası çoğunluktan farklı — beklenen durum, uyumsuzluk sayılmaz',
-  INV_MISMATCH: 'JVM envanteri (MWAppsInventory) ile tarama çelişiyor (çalışma durumu ya da auto-start)',
-  STOPPED: 'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',
+  INIT_HOST_SPECIFIC:
+    'sunucuya özel init dosyası çoğunluktan farklı — beklenen durum, uyumsuzluk sayılmaz',
+  INV_MISMATCH:
+    'JVM envanteri (MWAppsInventory) ile tarama çelişiyor (çalışma durumu ya da auto-start)',
+  STOPPED:
+    'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',
   NOT_RUNNING: 'web sunucusu çalışmıyor (süreç listesinde görülmedi) ama vhost tanımları var',
   VHOST_IDLE: "JVM'e eşlenmemiş vhost'a 7 gündür istek yok (access log okundu)",
   // Retirement kurallari (2026-11-06). EAR alani Uygulama Envanteri'nin son taramasindan gelir.
-  JVM_PARAM_FARKI: "JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — restart'ta değişir",
+  JVM_PARAM_FARKI:
+    "JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — restart'ta değişir",
   EAR_WAR_YOK: 'EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir',
   KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
   EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
-  EAR_XML_OLCULEMEDI: 'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
+  EAR_XML_OLCULEMEDI:
+    'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
   // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; Uygulama Envanteri ayari).
   DEPLOY_YOK: 'JVM ayakta ama üzerinde hiçbir deployment yok — boşta çalışan JVM',
   DEPLOY_FAILED: 'deployment durumu FAILED — uygulama JVM’de çalışmıyor',
@@ -629,8 +694,10 @@ const KOD_ETIKET: Record<string, string> = {
   OCP_KOPYASI: "OpenShift'te de var (aynı ortam) — taşınmış olabilir",
   RETIRE_KAYDI_CELISKI: 'Retirement kaydıyla çelişiyor — STOP / silme yapıldı ama sunucu farklı',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
-  SSH_SESSIONS_NEAR: 'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
-  SSH_MAXSESSIONS_LOW: 'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
+  SSH_SESSIONS_NEAR:
+    'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',
+  SSH_MAXSESSIONS_LOW:
+    'sshd MaxSessions düşük (10 ya da altı, varsayılan) — Ansible delegate/forks ile tıkanabilir',
   SCAN_COST: "tarama 10 sn'den fazla CPU harcadı",
 };
 
@@ -667,7 +734,12 @@ const AUTOSTART_SEBEP_ETIKET: Record<string, string> = {
 function autoBilinmiyorKirilimi(by: Record<string, number> | null | undefined): string {
   if (!by || typeof by !== 'object') return '';
   const bilinen = Object.keys(AUTOSTART_SEBEP_ETIKET);
-  const sira = [...bilinen, ...Object.keys(by).filter((k) => !bilinen.includes(k)).sort((a, b) => a.localeCompare(b))];
+  const sira = [
+    ...bilinen,
+    ...Object.keys(by)
+      .filter((k) => !bilinen.includes(k))
+      .sort((a, b) => a.localeCompare(b)),
+  ];
   return sira
     .filter((k) => sayiMi(by[k]) && by[k] > 0)
     .map((k) => `${AUTOSTART_SEBEP_ETIKET[k] || k}: ${by[k]}`)
@@ -679,7 +751,8 @@ function autoBilinmiyorKirilimi(by: Record<string, number> | null | undefined): 
  * Sonuc YOKSA "hepsi yazildi" DENMEZ: kac sunucunun yazildigi bilinmiyordur.
  */
 function yukleyiciOzeti(result: unknown): { satirlar: string[]; sorun: boolean } {
-  let ld: unknown = result && typeof result === 'object' ? (result as { loader?: unknown }).loader : null;
+  let ld: unknown =
+    result && typeof result === 'object' ? (result as { loader?: unknown }).loader : null;
   if (typeof ld === 'string') {
     try {
       ld = JSON.parse(ld);
@@ -715,9 +788,7 @@ function yukleyiciOzeti(result: unknown): { satirlar: string[]; sorun: boolean }
     );
   }
   if (na > 0)
-    satirlar.push(
-      `${na} sunucu denenmedi (NOT_ATTEMPTED — yükleyici veritabanı hatasında durdu)`,
-    );
+    satirlar.push(`${na} sunucu denenmedi (NOT_ATTEMPTED — yükleyici veritabanı hatasında durdu)`);
   return { satirlar, sorun: ex > 0 || na > 0 };
 }
 
@@ -741,17 +812,35 @@ function TaramadanDusenBandi({ td }: { td: TaramadanDusen | null | undefined }) 
   return (
     <div
       className="rounded-xl border px-4 py-2 text-[12px]"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--bg-elevated)',
+        color: 'var(--text-secondary)',
+      }}
     >
-      <button type="button" onClick={() => setAcik((x) => !x)} className="font-semibold hover:underline" style={{ color: 'var(--text-primary)' }}>
+      <button
+        type="button"
+        onClick={() => setAcik((x) => !x)}
+        className="font-semibold hover:underline"
+        style={{ color: 'var(--text-primary)' }}
+      >
         {td.sayi} sunucu son taramada yok — sayılara ve bulgulara katılmadı {acik ? '▴' : '▾'}
       </button>
-      <span className="ml-2">(silinmiş ya da AWX envanterinden çıkmış olabilir; son görülme tarihi aşağıda)</span>
+      <span className="ml-2">
+        (silinmiş ya da AWX envanterinden çıkmış olabilir; son görülme tarihi aşağıda)
+      </span>
       {acik && (
-        <div className="mt-2 max-h-56 overflow-auto font-mono text-[11px] grid gap-x-4 gap-y-0.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))' }}>
+        <div
+          className="mt-2 max-h-56 overflow-auto font-mono text-[11px] grid gap-x-4 gap-y-0.5"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(16rem, 1fr))' }}
+        >
           {td.sunucular.map((s) => (
             <div key={s.host} title={(s.products || []).join(', ')}>
-              {s.host} <span style={{ color: 'var(--text-muted)' }}>· {s.scanDate ? fmtDate(s.scanDate) : '?'}{s.env ? ` · ${s.env}` : ''}</span>
+              {s.host}{' '}
+              <span style={{ color: 'var(--text-muted)' }}>
+                · {s.scanDate ? fmtDate(s.scanDate) : '?'}
+                {s.env ? ` · ${s.env}` : ''}
+              </span>
             </div>
           ))}
         </div>
@@ -832,7 +921,9 @@ function SemaBandi({ su }: { su: boolean | null | undefined }) {
  * EK-6.9: kesik liste katmandaki durmus JVM'in retire'ini JVM'in port bilgisinden (otoriter
  * cfg_ports dahil) BAGIMSIZ olarak engeller; aciklama engeli "portu bilinmeyen" ile daraltmaz.
  */
-function hedefKesikRozeti(kesik: boolean | null | undefined): { metin: string; aciklama: string } | null {
+function hedefKesikRozeti(
+  kesik: boolean | null | undefined,
+): { metin: string; aciklama: string } | null {
   if (kesik !== true) return null;
   return {
     metin: 'hedef listesi kesik',
@@ -859,7 +950,9 @@ function HedefKesikRozeti({ kesik }: { kesik: boolean | null | undefined }) {
  * hedef kaydi birakmayan bir mekanizmayla tasiniyor ya da vhost conf'u okunamadi / blogu
  * bulunamadi: hedef bilinmez. "Proxy yok" DEGIL; kesik liste de degil (liste tam, hedef yok).
  */
-function dinamikProxyRozeti(dinamik: boolean | null | undefined): { metin: string; aciklama: string } | null {
+function dinamikProxyRozeti(
+  dinamik: boolean | null | undefined,
+): { metin: string; aciklama: string } | null {
   if (dinamik !== true) return null;
   return {
     metin: 'dinamik proxy',
@@ -978,7 +1071,9 @@ function Donut({
   const r = 40,
     c = 2 * Math.PI * r;
   const activeParts = parts.filter((p) => p.value > 0);
-  const slices = activeParts.reduce<Array<{ part: typeof parts[number]; len: number; offset: number }>>((list, p) => {
+  const slices = activeParts.reduce<
+    Array<{ part: (typeof parts)[number]; len: number; offset: number }>
+  >((list, p) => {
     const prev = list[list.length - 1];
     const offset = prev ? prev.offset + prev.len : 0;
     const len = (p.value / total) * c;
@@ -1158,7 +1253,10 @@ function KapsamaSatiri({
         <td className="px-2.5 py-1.5 text-right" style={{ color: 'var(--text-muted)' }}>
           —
         </td>
-        <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: 'var(--text-muted)' }}>
+        <td
+          className="px-2.5 py-1.5 text-right tabular-nums"
+          style={{ color: 'var(--text-muted)' }}
+        >
           taramada {fmtNumber(tar)}
         </td>
       </tr>
@@ -1166,12 +1264,22 @@ function KapsamaSatiri({
   const p = env > 0 ? Math.round((tar / env) * 100) : 0;
   // RENK OLCUTU KAPSAMA: %100 yesil, %90+ sari, altinda kirmizi. Dusuk kapsama bir
   // "bulgu yok" degil, "bakamadik" demektir.
-  const renk = env === 0 ? 'var(--status-neutral)' : p >= 100 ? SEV.ok.color : p >= 90 ? SEV.warning.color : SEV.danger.color;
+  const renk =
+    env === 0
+      ? 'var(--status-neutral)'
+      : p >= 100
+        ? SEV.ok.color
+        : p >= 90
+          ? SEV.warning.color
+          : SEV.danger.color;
   return (
     <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
       <td className="px-2.5 py-1.5 font-semibold">{ad}</td>
       <td className="px-2.5 py-1.5 text-right tabular-nums">{fmtNumber(env)}</td>
-      <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk, fontWeight: 600 }}>
+      <td
+        className="px-2.5 py-1.5 text-right tabular-nums"
+        style={{ color: renk, fontWeight: 600 }}
+      >
         {fmtNumber(tar)}
       </td>
       <td className="px-2.5 py-1.5 text-right tabular-nums" style={{ color: renk }}>
@@ -1202,7 +1310,10 @@ function KapsamaSatiri({
 function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCoverage'] }) {
   if (!c) return null;
   return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{ borderColor: 'var(--border-subtle)' }}
+    >
       <div
         className="px-3 py-2 text-[12px] font-semibold border-b"
         style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
@@ -1224,11 +1335,35 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
         </thead>
         <tbody>
           <KapsamaSatiri ad="Sunucu (tümü)" env={c.hosts.inventory} tar={c.hosts.scanned} />
-          <KapsamaSatiri ad="JBoss" env={c.products.JBOSS.inventory} tar={c.products.JBOSS.scanned} eksikHosts={c.products.JBOSS.missingHosts} envBilinmiyor={c.products.JBOSS.inventoryUnknown} />
+          <KapsamaSatiri
+            ad="JBoss"
+            env={c.products.JBOSS.inventory}
+            tar={c.products.JBOSS.scanned}
+            eksikHosts={c.products.JBOSS.missingHosts}
+            envBilinmiyor={c.products.JBOSS.inventoryUnknown}
+          />
           <KapsamaSatiri ad="JVM" env={c.jvm.inventory} tar={c.jvm.scanned} birim="JVM" />
-          <KapsamaSatiri ad="Red Hat Apache" env={c.products.RHA.inventory} tar={c.products.RHA.scanned} eksikHosts={c.products.RHA.missingHosts} envBilinmiyor={c.products.RHA.inventoryUnknown} />
-          <KapsamaSatiri ad="IBM HTTP Server" env={c.products.IHS.inventory} tar={c.products.IHS.scanned} eksikHosts={c.products.IHS.missingHosts} envBilinmiyor={c.products.IHS.inventoryUnknown} />
-          <KapsamaSatiri ad="Nginx" env={c.products.NGINX.inventory} tar={c.products.NGINX.scanned} eksikHosts={c.products.NGINX.missingHosts} envBilinmiyor={c.products.NGINX.inventoryUnknown} />
+          <KapsamaSatiri
+            ad="Red Hat Apache"
+            env={c.products.RHA.inventory}
+            tar={c.products.RHA.scanned}
+            eksikHosts={c.products.RHA.missingHosts}
+            envBilinmiyor={c.products.RHA.inventoryUnknown}
+          />
+          <KapsamaSatiri
+            ad="IBM HTTP Server"
+            env={c.products.IHS.inventory}
+            tar={c.products.IHS.scanned}
+            eksikHosts={c.products.IHS.missingHosts}
+            envBilinmiyor={c.products.IHS.inventoryUnknown}
+          />
+          <KapsamaSatiri
+            ad="Nginx"
+            env={c.products.NGINX.inventory}
+            tar={c.products.NGINX.scanned}
+            eksikHosts={c.products.NGINX.missingHosts}
+            envBilinmiyor={c.products.NGINX.inventoryUnknown}
+          />
         </tbody>
       </table>
       <div className="px-3 py-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
@@ -1247,14 +1382,15 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
             Taramada toplam {fmtNumber(c.jvm.scannedTotal ?? 0)} JVM çıktı;{' '}
             {(c.jvm.scannedOverInventory || 0) > 0 && (
               <>
-                {fmtNumber(c.jvm.scannedOverInventory || 0)}’i envanterin o sunucu için yazdığı sayıdan <b>fazla</b>
+                {fmtNumber(c.jvm.scannedOverInventory || 0)}’i envanterin o sunucu için yazdığı
+                sayıdan <b>fazla</b>
                 {(c.jvm.scannedNotInInventory || 0) > 0 ? ', ' : ''}
               </>
             )}
             {(c.jvm.scannedNotInInventory || 0) > 0 && (
               <>
-                {fmtNumber(c.jvm.scannedNotInInventory || 0)}’i envanterde JBoss olarak <b>görünmeyen</b>{' '}
-                {fmtNumber(c.jvm.scannedNotInInventoryHosts || 0)} sunucuda
+                {fmtNumber(c.jvm.scannedNotInInventory || 0)}’i envanterde JBoss olarak{' '}
+                <b>görünmeyen</b> {fmtNumber(c.jvm.scannedNotInInventoryHosts || 0)} sunucuda
               </>
             )}{' '}
             — “veri çekilen”e sayılmadı; JVM envanteri eksik olabilir.{' '}
@@ -1262,8 +1398,8 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
         )}
         {c.jvm.fromInventory > 0 && (
           <>
-            {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b>{' '}
-            tamamlandı — &quot;veri çekilen&quot; sayısına dahil değil.
+            {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b> tamamlandı
+            — &quot;veri çekilen&quot; sayısına dahil değil.
           </>
         )}
       </div>
@@ -1304,17 +1440,32 @@ function ReadinessTab() {
   };
 
   const K: Record<string, { label: string; color: string; aciklama: string }> = {
-    blocked: { label: 'AÇILMAZ', color: SEV.danger.color, aciklama: 'yeniden başlatınca servis gelmez' },
-    unknown: { label: 'BİLİNMİYOR', color: SEV.warning.color, aciklama: 'ölçülemedi — "sorun yok" demek değil' },
+    blocked: {
+      label: 'AÇILMAZ',
+      color: SEV.danger.color,
+      aciklama: 'yeniden başlatınca servis gelmez',
+    },
+    unknown: {
+      label: 'BİLİNMİYOR',
+      color: SEV.warning.color,
+      aciklama: 'ölçülemedi — "sorun yok" demek değil',
+    },
     risk: { label: 'DİKKAT', color: SEV.info.color, aciklama: 'açılır ama sürpriz var' },
     ok: { label: 'HAZIR', color: SEV.ok.color, aciklama: 'bilinen engel yok' },
-    notScanned: { label: 'TARANMADI', color: 'var(--status-neutral)', aciklama: 'bu sunucu taramada yok' },
+    notScanned: {
+      label: 'TARANMADI',
+      color: 'var(--status-neutral)',
+      aciklama: 'bu sunucu taramada yok',
+    },
   };
   const s = r?.summary;
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div
+        className="rounded-xl border p-3 space-y-2"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
         <div className="text-xs font-semibold">Sunucu listesi</div>
         <textarea
           value={metin}
@@ -1325,7 +1476,12 @@ function ReadinessTab() {
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         />
         <div className="flex items-center gap-2">
-          <button onClick={calistir} disabled={busy || !metin.trim() || limitAsildi(hazirlikLimiti, girilen)} className={SM_BTN} style={smBtn(true)}>
+          <button
+            onClick={calistir}
+            disabled={busy || !metin.trim() || limitAsildi(hazirlikLimiti, girilen)}
+            className={SM_BTN}
+            style={smBtn(true)}
+          >
             {busy ? 'Bakılıyor…' : 'Açılır mı?'}
           </button>
           <LimitNotu limit={hazirlikLimiti} sayi={girilen} />
@@ -1346,12 +1502,14 @@ function ReadinessTab() {
                   {s.blocked} tanesi şu an yeniden başlatılırsa sorunsuz açılmaz.{' '}
                 </b>
               ) : (
-                <>Bilinen bir açılış engeli <b>yok</b>. </>
+                <>
+                  Bilinen bir açılış engeli <b>yok</b>.{' '}
+                </>
               )}
               {s.unknown > 0 && (
                 <>
-                  <b style={{ color: SEV.warning.color }}>{s.unknown} sunucuda ölçüm yapılamadı</b> —
-                  bunlar için güvence verilemez.{' '}
+                  <b style={{ color: SEV.warning.color }}>{s.unknown} sunucuda ölçüm yapılamadı</b>{' '}
+                  — bunlar için güvence verilemez.{' '}
                 </>
               )}
               {s.notScanned > 0 && (
@@ -1360,7 +1518,9 @@ function ReadinessTab() {
                   söylenemez.{' '}
                 </>
               )}
-              {s.risk > 0 && <>{s.risk} sunucuda açılışta sürpriz var (durdurulmuş JVM kalkar gibi).</>}
+              {s.risk > 0 && (
+                <>{s.risk} sunucuda açılışta sürpriz var (durdurulmuş JVM kalkar gibi).</>
+              )}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {(['blocked', 'unknown', 'risk', 'ok', 'notScanned'] as const).map((k) => (
@@ -1403,7 +1563,10 @@ function ReadinessTab() {
             </div>
           )}
 
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
             <table className="w-full text-xs border-collapse">
               <thead style={{ background: 'var(--bg-elevated)' }}>
                 <tr style={{ color: 'var(--text-muted)' }}>
@@ -1416,7 +1579,11 @@ function ReadinessTab() {
               </thead>
               <tbody>
                 {(r?.rows || []).map((x) => (
-                  <tr key={x.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                  <tr
+                    key={x.host}
+                    className="border-t"
+                    style={{ borderColor: 'var(--border-subtle)' }}
+                  >
                     <td className="px-2.5 py-1.5 font-mono font-semibold">{x.host}</td>
                     <td
                       className="px-2.5 py-1.5 font-semibold"
@@ -1426,7 +1593,9 @@ function ReadinessTab() {
                       {K[x.verdict].label}
                     </td>
                     <td className="px-2.5 py-1.5" style={{ color: 'var(--text-secondary)' }}>
-                      {x.note || x.reasons.map((y) => hazirlikSebebi(y)).join(' · ') || 'bilinen engel yok'}
+                      {x.note ||
+                        x.reasons.map((y) => hazirlikSebebi(y)).join(' · ') ||
+                        'bilinen engel yok'}
                     </td>
                   </tr>
                 ))}
@@ -1440,10 +1609,20 @@ function ReadinessTab() {
 }
 
 /** Admin'in degistirdigi seviye sayisi / ayarlar okunamadi (Kurallar & Limitler). */
-function SeviyeAyarBandi({ ayar }: { ayar?: { okunamadi: boolean; seviyeDegisen: number } | null }) {
+function SeviyeAyarBandi({
+  ayar,
+}: {
+  ayar?: { okunamadi: boolean; seviyeDegisen: number } | null;
+}) {
   if (!ayar || (!ayar.okunamadi && !ayar.seviyeDegisen)) return null;
   return (
-    <div className="text-[12px] rounded-lg border px-3 py-2" style={{ borderColor: ayar.okunamadi ? 'var(--status-warning)' : 'var(--border-subtle)', color: ayar.okunamadi ? 'var(--status-warning-text)' : 'var(--text-secondary)' }}>
+    <div
+      className="text-[12px] rounded-lg border px-3 py-2"
+      style={{
+        borderColor: ayar.okunamadi ? 'var(--status-warning)' : 'var(--border-subtle)',
+        color: ayar.okunamadi ? 'var(--status-warning-text)' : 'var(--text-secondary)',
+      }}
+    >
       {ayar.okunamadi
         ? 'Server Hub ayarları okunamadı: bu raporda varsayılan seviyeler uygulandı.'
         : `Bu raporda ${ayar.seviyeDegisen} bulgu kodunun seviyesi Admin tarafından değiştirildi (Kurallar & Limitler sekmesi). Değişen bulgular “seviye değiştirildi” işaretiyle görünür.`}
@@ -1455,7 +1634,11 @@ function SeviyeAyarBandi({ ayar }: { ayar?: { okunamadi: boolean; seviyeDegisen:
 function SeviyeDegistiIsareti({ d }: { d?: ShSeverity }) {
   if (!d) return null;
   return (
-    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }} title="Seviye Server Hub › Kurallar & Limitler'den değiştirildi">
+    <span
+      className="text-[10px]"
+      style={{ color: 'var(--text-muted)' }}
+      title="Seviye Server Hub › Kurallar & Limitler'den değiştirildi"
+    >
       seviye değiştirildi · varsayılan {SEV[d].label}
     </span>
   );
@@ -1468,7 +1651,11 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap"
       // --status-warning acik temada kendi zemininde ~2:1 (gercek Chrome olcumu, 2026-11-06): metin -text tokeni.
-      style={{ color: s === 'warning' ? 'var(--status-warning-text)' : t.color, background: t.bg, borderColor: t.color }}
+      style={{
+        color: s === 'warning' ? 'var(--status-warning-text)' : t.color,
+        background: t.bg,
+        borderColor: t.color,
+      }}
     >
       <I className="w-3 h-3" />
       {t.label}
@@ -1478,13 +1665,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 }
 
 type SekmeId =
-  | 'hosts'
-  | 'findings'
-  | 'uygulama360'
-  | 'analiz'
-  | 'readiness'
-  | 'envanter'
-  | 'kurallar';
+  'hosts' | 'findings' | 'uygulama360' | 'analiz' | 'readiness' | 'envanter' | 'kurallar';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
@@ -1551,12 +1732,12 @@ export default function ServerHubPage() {
               : tab === 'envanter'
                 ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; otomatik planla (haftada / ayda bir) ya da elle.'
                 : tab === 'kurallar'
-                ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
-                : tab === 'uygulama360'
-                ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
-                : tab === 'analiz'
-                ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
-                : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
+                  ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                  : tab === 'uygulama360'
+                    ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
+                    : tab === 'analiz'
+                      ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                      : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1586,41 +1767,41 @@ export default function ServerHubPage() {
         </div>
       </div>
       <AnalizAcContext.Provider value={analizAc}>
-      {acilan.has('hosts') && (
-        <SekmeKabi id="hosts" etkin={tab}>
-          <HostsTab onGoFindings={goFindings} />
-        </SekmeKabi>
-      )}
-      {acilan.has('findings') && (
-        <SekmeKabi id="findings" etkin={tab}>
-          <FindingsTab key={bulguNo} initial={findingsFilter} onRetirementAc={retirementAc} />
-        </SekmeKabi>
-      )}
-      {acilan.has('uygulama360') && (
-        <SekmeKabi id="uygulama360" etkin={tab}>
-          <Uygulama360Tab onRetirementAc={retirementAc} />
-        </SekmeKabi>
-      )}
-      {acilan.has('analiz') && (
-        <SekmeKabi id="analiz" etkin={tab}>
-          <RetirementAnaliziSekmesi onRetirementAc={retirementAc} baslangic={analizOneri} />
-        </SekmeKabi>
-      )}
-      {acilan.has('readiness') && (
-        <SekmeKabi id="readiness" etkin={tab}>
-          <ReadinessTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('envanter') && (
-        <SekmeKabi id="envanter" etkin={tab}>
-          <EarEnvanterTab />
-        </SekmeKabi>
-      )}
-      {acilan.has('kurallar') && (
-        <SekmeKabi id="kurallar" etkin={tab}>
-          <KurallarTab />
-        </SekmeKabi>
-      )}
+        {acilan.has('hosts') && (
+          <SekmeKabi id="hosts" etkin={tab}>
+            <HostsTab onGoFindings={goFindings} />
+          </SekmeKabi>
+        )}
+        {acilan.has('findings') && (
+          <SekmeKabi id="findings" etkin={tab}>
+            <FindingsTab key={bulguNo} initial={findingsFilter} onRetirementAc={retirementAc} />
+          </SekmeKabi>
+        )}
+        {acilan.has('uygulama360') && (
+          <SekmeKabi id="uygulama360" etkin={tab}>
+            <Uygulama360Tab onRetirementAc={retirementAc} />
+          </SekmeKabi>
+        )}
+        {acilan.has('analiz') && (
+          <SekmeKabi id="analiz" etkin={tab}>
+            <RetirementAnaliziSekmesi onRetirementAc={retirementAc} baslangic={analizOneri} />
+          </SekmeKabi>
+        )}
+        {acilan.has('readiness') && (
+          <SekmeKabi id="readiness" etkin={tab}>
+            <ReadinessTab />
+          </SekmeKabi>
+        )}
+        {acilan.has('envanter') && (
+          <SekmeKabi id="envanter" etkin={tab}>
+            <EarEnvanterTab />
+          </SekmeKabi>
+        )}
+        {acilan.has('kurallar') && (
+          <SekmeKabi id="kurallar" etkin={tab}>
+            <KurallarTab />
+          </SekmeKabi>
+        )}
       </AnalizAcContext.Provider>
     </div>
   );
@@ -1686,7 +1867,10 @@ function sunucuKolonlari(
       ],
       deger: (h) => h.status,
       hucre: (h) => (
-        <SevPill s={h.status} n={h.status === 'ok' ? undefined : h.counts.danger + h.counts.warning + h.counts.info} />
+        <SevPill
+          s={h.status}
+          n={h.status === 'ok' ? undefined : h.counts.danger + h.counts.warning + h.counts.info}
+        />
       ),
     },
     sayi('kritik', 'Kritik', 'Kritik bulgu sayısı.', (h) => h.counts.danger),
@@ -1724,8 +1908,11 @@ function sunucuKolonlari(
         </span>
       ),
     },
-    sayi('olculemeyen', 'Ölçülemeyen JVM', 'Çalışma durumu ölçülemeyen JVM (hidepid / ps körlüğü).', (h) =>
-      sayiMi(h.jvmsUnmeasured) ? (h.jvmsUnmeasured as number) : null,
+    sayi(
+      'olculemeyen',
+      'Ölçülemeyen JVM',
+      'Çalışma durumu ölçülemeyen JVM (hidepid / ps körlüğü).',
+      (h) => (sayiMi(h.jvmsUnmeasured) ? (h.jvmsUnmeasured as number) : null),
     ),
     sayi('vhost', 'vhost', 'Web sunucusu vhost sayısı.', (h) => h.vhosts, true),
     sayi('bostaIp', 'Boşta IP', 'Hiçbir şeyin dinlemediği ikincil IP.', (h) => h.unusedIps, true),
@@ -1736,7 +1923,11 @@ function sunucuKolonlari(
       suzgec: 'metin',
       deger: (h) => h.topFinding,
       hucre: (h) => (
-        <div className="truncate max-w-[28rem]" title={h.topFinding || ''} style={{ color: 'var(--text-secondary)' }}>
+        <div
+          className="truncate max-w-[28rem]"
+          title={h.topFinding || ''}
+          style={{ color: 'var(--text-secondary)' }}
+        >
           {h.topFinding || <span style={{ color: SEV.ok.color }}>temiz</span>}
         </div>
       ),
@@ -1762,7 +1953,12 @@ function sunucuKolonlari(
       suzgec: 'bit',
       varsayilan: false,
       deger: (h) => h.fresh !== false,
-      hucre: (h) => (h.fresh === false ? <span style={{ color: 'var(--status-warning-text)' }}>bayat</span> : 'taze'),
+      hucre: (h) =>
+        h.fresh === false ? (
+          <span style={{ color: 'var(--status-warning-text)' }}>bayat</span>
+        ) : (
+          'taze'
+        ),
     },
     {
       anahtar: 'seviyeSira',
@@ -1780,7 +1976,13 @@ function sunucuKolonlari(
       aciklama: 'Ayrıntı penceresi (JVM, web, init, IP) ve reboot öncesi tek sunucu tarama.',
       hucre: (h) => (
         <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button type="button" onClick={() => onAyrinti(h.host)} className={SM_BTN} style={smBtn()} title="Sunucu ayrıntısı: JVM, web, init, IP sekmeleri">
+          <button
+            type="button"
+            onClick={() => onAyrinti(h.host)}
+            className={SM_BTN}
+            style={smBtn()}
+            title="Sunucu ayrıntısı: JVM, web, init, IP sekmeleri"
+          >
             Ayrıntı
           </button>
           <button
@@ -1800,7 +2002,11 @@ function sunucuKolonlari(
 }
 /** Hazır görünümler (kişisel olanlar tarayıcıda). */
 const SUNUCU_GORUNUMLERI: EarGorunum[] = [
-  { ad: 'Kritik sunucular', aciklama: 'En az bir kritik bulgusu olan sunucular.', f: [{ k: 'durum', op: 'in', v: ['danger'] }] },
+  {
+    ad: 'Kritik sunucular',
+    aciklama: 'En az bir kritik bulgusu olan sunucular.',
+    f: [{ k: 'durum', op: 'in', v: ['danger'] }],
+  },
   {
     ad: 'Prod kritik',
     aciklama: 'Production ortamında kritik bulgusu olan sunucular.',
@@ -1809,10 +2015,28 @@ const SUNUCU_GORUNUMLERI: EarGorunum[] = [
       { k: 'ortam', op: 'in', v: ['PROD'] },
     ],
   },
-  { ad: 'Bayat tarama', aciklama: 'Taraması bayat ya da son yüklemede dışarıda kalan sunucular.', f: [{ k: 'taze', op: 'hayir' }], kolonlar: ['host', 'ortam', 'durum', 'tarama', 'taze', 'islem'] },
-  { ad: 'Ölçülemeyen JVM', aciklama: 'Çalışma durumu ölçülemeyen JVM’i olan sunucular.', f: [{ k: 'olculemeyen', op: 'min', v: 1 }] },
-  { ad: 'Boşta IP', aciklama: 'Kullanılmayan ikincil IP’si olan sunucular.', f: [{ k: 'bostaIp', op: 'min', v: 1 }] },
-  { ad: 'En çok bulgu', aciklama: 'Önem sırasına, sonra kritik sayısına göre.', f: [], s: 'kritik:desc' },
+  {
+    ad: 'Bayat tarama',
+    aciklama: 'Taraması bayat ya da son yüklemede dışarıda kalan sunucular.',
+    f: [{ k: 'taze', op: 'hayir' }],
+    kolonlar: ['host', 'ortam', 'durum', 'tarama', 'taze', 'islem'],
+  },
+  {
+    ad: 'Ölçülemeyen JVM',
+    aciklama: 'Çalışma durumu ölçülemeyen JVM’i olan sunucular.',
+    f: [{ k: 'olculemeyen', op: 'min', v: 1 }],
+  },
+  {
+    ad: 'Boşta IP',
+    aciklama: 'Kullanılmayan ikincil IP’si olan sunucular.',
+    f: [{ k: 'bostaIp', op: 'min', v: 1 }],
+  },
+  {
+    ad: 'En çok bulgu',
+    aciklama: 'Önem sırasına, sonra kritik sayısına göre.',
+    f: [],
+    s: 'kritik:desc',
+  },
 ];
 
 function HostsTab({
@@ -1827,13 +2051,17 @@ function HostsTab({
   // Admin'in kaydettigi ortak gorunumler (Gorunumler menusu).
   const ortakSunucu = useOrtakGorunumler('server-hub-sunucular', gorunur);
   // Sayfaya donuste son yanit hemen gorunur (logo yok); eskiyse arkada sessizce tazelenir.
-  const [data, setData] = useState<ShOverviewV3 | null>(() => shOnbellek.oku<ShOverviewV3>('overview'));
+  const [data, setData] = useState<ShOverviewV3 | null>(() =>
+    shOnbellek.oku<ShOverviewV3>('overview'),
+  );
   const [loading, setLoading] = useState(() => !shOnbellek.oku('overview'));
   const [err, setErr] = useState('');
   // Son tarama isinin yukleyici sonucu (D1-U04/U09): toast gecicidir, bant kalici.
-  const [yukleme, setYukleme] = useState<{ baslik: string; satirlar: string[]; sorun: boolean } | null>(
-    null,
-  );
+  const [yukleme, setYukleme] = useState<{
+    baslik: string;
+    satirlar: string[];
+    sorun: boolean;
+  } | null>(null);
   const [q, setQ] = useState('');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');
   const [product, setProduct] = useState('all');
@@ -2171,9 +2399,7 @@ function HostsTab({
                   <>
                     {' '}
                     ·{' '}
-                    <b
-                      title="RETIRE_CANDIDATE bulgusu duruyor ama aynı ortam+sitedeki web katmanında ölçülemeyen sunucu olduğu için retire eylemi önerilmedi."
-                    >
+                    <b title="RETIRE_CANDIDATE bulgusu duruyor ama aynı ortam+sitedeki web katmanında ölçülemeyen sunucu olduğu için retire eylemi önerilmedi.">
                       {s.jvm.retireBlockedByWebTier}
                     </b>{' '}
                     retire adayı eylemsiz (web katmanında ölçülemeyen sunucu var)
@@ -2258,7 +2484,11 @@ function HostsTab({
                     value={s.init.compliant}
                     total={s.init.hosts}
                     color={SEV.ok.color}
-                    restColor={initUyumMetni(s.init).tone === 'ok' ? undefined : SEV[initUyumMetni(s.init).tone].bg}
+                    restColor={
+                      initUyumMetni(s.init).tone === 'ok'
+                        ? undefined
+                        : SEV[initUyumMetni(s.init).tone].bg
+                    }
                   />
                 </div>
                 <div
@@ -2345,7 +2575,9 @@ function HostsTab({
                         · {w.notRunning} çalışmıyor
                         {sayiMi(w.notRunningUnmeasured) && (
                           <span
-                            style={w.notRunningUnmeasured ? { color: SEV.warning.color } : undefined}
+                            style={
+                              w.notRunningUnmeasured ? { color: SEV.warning.color } : undefined
+                            }
                             title={olculemeyenAciklama('web', sema)}
                           >
                             {' '}
@@ -2434,8 +2666,8 @@ function HostsTab({
             >
               <b>{nf(s.productOverlap.multi)}</b> sunucu birden fazla ürün taşıyor; o sunucular
               taşıdıkları <b>her</b> ürünün kartında sayılır — kartlar ayrık küme değildir ve
-              paydaların toplamı filo sayısından büyüktür. Init script tek bir dosya kümesidir:
-              aynı sunucunun uyumu, taşıdığı her ürünün barına aynı şekilde yansır.
+              paydaların toplamı filo sayısından büyüktür. Init script tek bir dosya kümesidir: aynı
+              sunucunun uyumu, taşıdığı her ürünün barına aynı şekilde yansır.
               {s.productOverlap.combos.length > 0 && (
                 <>
                   {' '}
@@ -2653,7 +2885,11 @@ function HostsTab({
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
-            disabled={busy != null || listedekiler.length === 0 || limitAsildi(taraLimiti, listedekiler.length)}
+            disabled={
+              busy != null ||
+              listedekiler.length === 0 ||
+              limitAsildi(taraLimiti, listedekiler.length)
+            }
             onClick={() => scanNow(listedekiler.map((h) => h.host))}
             className={SM_BTN}
             style={smBtn(true)}
@@ -2714,7 +2950,6 @@ function HostsTab({
   );
 }
 
-
 function HostModal({
   host,
   onClose,
@@ -2734,22 +2969,41 @@ function HostModal({
 }) {
   const { onayla, onayPenceresi } = useOnay();
   // v3 alanlari (runningKnown, runningSrc) yerel tipte ve istege bagli; API tipi aynen atanir.
-  const [d, setD] = useState<ShHostDetailV3 | null>(null);
+  // HIZ (2026-11-14, B3): ayni sunucu penceresi yeniden acilinca son ayrinti HEMEN gorunur (modul duzeyi
+  // onbellek); her acilista arkada tazelenir (sunucu onbellegi sicakken ucuz).
+  const [d, setD] = useState<ShHostDetailV3 | null>(() =>
+    shOnbellek.oku<ShHostDetailV3>(`host:${host}`),
+  );
   const [err, setErr] = useState('');
+  // Onbellekteki ayrinti gosterilirken arka plan tazelemesi duserse sessiz kalinmaz (inceleme 2026-11-14).
+  const [tazeHata, setTazeHata] = useState('');
   // "Ozet" (2026-11-07) Bulgular'daki sunucu panelinin aynisidir: tek kaynak, iki giris.
   const [tab, setTab] = useState<'ozet' | 'findings' | 'jvm' | 'web' | 'init' | 'ip'>('ozet');
-  const [retire, setRetire] = useState<ShRetireSonuc | null>(null);
-  const retireYukle = useCallback(async (fresh = false) => {
-    try {
-      const r = await serverHubApi.retireEtiketleri(fresh);
-      if (r.ok) setRetire(r);
-    } catch {
-      /* panel "Etiketler yukleniyor" der; pencerenin oteki sekmeleri etkilenmez */
-    }
-  }, []);
+  // HIZ (2026-11-14, B1): Ozet sekmesi yalniz BU sunucunun etiketlerini indirir (?host=; eskiden tum filo,
+  // 2000 sunucuda ~1,4 MB, her acilista). Son yanit modul duzeyinde tutulur: ayni pencere yeniden acilinca
+  // hemen gorunur, TAZE_MS'den eskiyse arkada tazelenir.
+  const retireAnahtar = `retire:${host}`;
+  const [retire, setRetire] = useState<ShRetireSonuc | null>(() =>
+    shOnbellek.oku<ShRetireSonuc>(retireAnahtar),
+  );
+  const retireYukle = useCallback(
+    async (fresh = false) => {
+      try {
+        const r = await serverHubApi.retireEtiketleri(fresh, host);
+        if (r.ok) {
+          setRetire(r);
+          shOnbellek.yaz(`retire:${host}`, r);
+        }
+      } catch {
+        /* panel "Etiketler yukleniyor" der; pencerenin oteki sekmeleri etkilenmez */
+      }
+    },
+    [host],
+  );
   useAsyncEffect(async () => {
-    if (tab === 'ozet' && !retire) await retireYukle();
-  }, [tab, retire, retireYukle]);
+    if (tab === 'ozet' && (!retire || shOnbellek.yas(retireAnahtar) > shOnbellek.TAZE_MS))
+      await retireYukle();
+  }, [tab, retire, retireYukle, retireAnahtar]);
   const [fix, setFix] = useState<{
     f: ShFinding;
     phase: 'ask' | 'planning' | 'planned' | 'applying';
@@ -2764,53 +3018,94 @@ function HostModal({
   //
   // ONAY TARAYICIDA: tek satir icin ayri bir plan turu, kullaniciyi her JVM'de iki tiklamaya
   // zorlardi. Yine de sessiz DEGIL - ne yapilacagi ve hangi sunucuda oldugu aciklanir.
-  const [asBusy, setAsBusy] = useState<string | null>(null);
+  //
+  // IS SURERKEN MESGUL (2026-11-14): dugme is TERMINAL olana kadar kapali kalir ve "#is · kosuyor" yazar
+  // (autoStartIsi.ts; ayni JVM icin ikinci is acilamaz, pencere kapanip acilsa da). Bitince betigin sonuc
+  // satiri (OK / SKIP / FAIL + mesaj) gosterilir; OK/SKIP'te CLI ile DOGRULANAN deger satira hemen yazilir
+  // (tarama beklenmez; sunucu da /host'ta ayni degeri tasir). Liste (overview) YENIDEN OKUNMAZ: is
+  // Server_Hub tablolarina yazmaz, tam filo okumasi yalniz bekletirdi.
+  const { addJob } = useJobTracker();
+  const asIsleri = useAutoStartIsleri();
   // OLCULEMEYEN JVM (v3, kural 7): dugme admine ACIK kalir; onay metni "calisma durumu
   // olculemedi" uyarisini tasir (bkz. autoStartOnayMetni).
   const jvmAutoStart = async (j: ShJvmV3) => {
     const ac = j.autoStart !== 'true';
-    const k = `${j.gen}|${j.name}`;
-    if (!(await onayla({ baslik: 'Auto-start', metin: autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true), onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat' }))) return;
-    setAsBusy(k);
-    try {
-      const r = await serverHubApi.jvmAutoStart({ host, gen: j.gen, jvm: j.name, enable: ac });
-      if (!r.ok) {
-        toast.error(r.message || 'İş başlatılamadı.');
-        return;
-      }
-      trackJob(
-        `Server Hub: auto-start ${ac ? 'AÇ' : 'KAPAT'} @ ${host}/${j.name}`,
-        { jobId: r.jobId ?? null, awxServerId: r.awxServerId ?? 0 },
-        (status) => {
-          if (status === 'successful') {
-            toast.success(`${j.name}: auto-start ${ac ? 'açıldı' : 'kapatıldı'}.`);
-            reload();
-            // TARAMA TAZELENIR: ekran eski degeri gostermeye devam ederse kullanici
-            // islemin olmadigini sanir ve ikinci kez tiklar.
-            serverHubApi
-              .host(host, true)
-              .then((x) => x.ok && setD(x.host))
-              .catch(() => {});
-          } else toast.error(`${j.name}: iş ${status}.`);
-        },
-      );
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAsBusy(null);
-    }
+    if (asIsleri.has(autoStartAnahtari(host, j.gen, j.name))) return;
+    if (
+      !(await onayla({
+        baslik: 'Auto-start',
+        metin: autoStartOnayMetni(host, j, ac, d?.schemaUnknown === true),
+        onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat',
+      }))
+    )
+      return;
+    await autoStartBaslat({ host, gen: j.gen, jvm: j.name, ac, addJob });
   };
+  // BITIS HER ACIK PENCEREYE (inceleme 2026-11-14): eskiden sonuc, isi BASLATAN pencere ornegine bagliydi;
+  // pencere kapanip yeniden acilinca yeni ornek bitisi hic gormuyor, satir eski degere donuyordu. Simdi
+  // bu sunucuyu gosteren pencere (hangi ekrandan baslatilmis olursa olsun) bitisi dinler.
+  useEffect(
+    () =>
+      autoStartBittiDinle((e: AutoStartBitisi) => {
+        if (e.host !== host) return;
+        const son = e.sonuc;
+        if (son.deger) {
+          const deger = son.deger;
+          const at = new Date().toISOString();
+          setD((cur) =>
+            cur
+              ? {
+                  ...cur,
+                  jvms: cur.jvms.map((x) =>
+                    x.gen === e.gen && x.name === e.jvm
+                      ? {
+                          ...x,
+                          autoStart: deger,
+                          autoStartTarama:
+                            x.autoStartTarama ?? (x.autoStart !== deger ? x.autoStart : undefined),
+                          autoStartDogrulama: { jobId: son.jobId ?? 0, at },
+                        }
+                      : x,
+                  ),
+                }
+              : cur,
+          );
+        }
+        // Sunucu ayni dogrulanmis degeri /host'ta (JVM + bulgular) tasir. Taze filo okumasi GEREKMEZ.
+        serverHubApi
+          .host(host)
+          .then((x) => {
+            if (x.ok) {
+              setD(x.host);
+              setTazeHata('');
+              shOnbellek.yaz(`host:${host}`, x.host);
+            }
+          })
+          .catch(() => {});
+      }),
+    [host],
+  );
+  const asSonuclari = useAutoStartSonuclari();
 
   useEffect(() => {
     let alive = true;
+    const onceki = shOnbellek.oku<ShHostDetailV3>(`host:${host}`);
+    const dustu = (m: string) => {
+      if (!alive) return;
+      if (onceki) setTazeHata(m);
+      else setErr(m);
+    };
     serverHubApi
       .host(host)
       .then((r) => {
         if (!alive) return;
-        if (r.ok) setD(r.host);
-        else setErr(r.message || 'Sunucu verisi alınamadı.');
+        if (r.ok) {
+          setD(r.host);
+          setTazeHata('');
+          shOnbellek.yaz(`host:${host}`, r.host);
+        } else dustu(r.message || 'Sunucu verisi alınamadı.');
       })
-      .catch((e) => alive && setErr(e.message));
+      .catch((e) => dustu(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
@@ -2914,6 +3209,16 @@ function HostModal({
         </div>
       )}
       {!d && !err && <LoadingLogo compact />}
+      {d && tazeHata && (
+        <div
+          className="text-xs px-3 py-1.5 rounded-xl border"
+          style={{ color: 'var(--status-warning)', borderColor: 'var(--status-warning)' }}
+          role="status"
+          data-testid="ayrinti-tazelenemedi"
+        >
+          Ayrıntı tazelenemedi — gösterilen veri bu sekmede daha önce okunmuş hâli ({tazeHata}).
+        </div>
+      )}
       {d && (
         <div className="space-y-3">
           {/* C3: bu sunucuda sema okunamadi - eylem yok; durum hucreleri sebebi soyler. */}
@@ -3052,7 +3357,10 @@ function HostModal({
                               "kapali" yazilmaz (runningKnown=false). Sema okunamadiysa (C3)
                               sebep hidepid DEGIL sema: ayrintinin schemaUnknown'u verilir. */}
                           <span
-                            style={{ color: jvmDurumu(j, d.schemaUnknown === true).renk, fontWeight: 600 }}
+                            style={{
+                              color: jvmDurumu(j, d.schemaUnknown === true).renk,
+                              fontWeight: 600,
+                            }}
                             title={
                               [
                                 jvmDurumu(j, d.schemaUnknown === true).aciklama,
@@ -3076,6 +3384,11 @@ function HostModal({
                                     : 'var(--status-neutral)',
                               fontWeight: 600,
                             }}
+                            title={
+                              j.autoStartDogrulama
+                                ? `İş #${j.autoStartDogrulama.jobId} ile CLI'dan doğrulandı (${fmtDate(j.autoStartDogrulama.at)}); son tarama ${j.autoStartTarama === 'true' ? 'açık' : j.autoStartTarama === 'false' ? 'kapalı' : 'aynı değeri'} gösteriyor — bir sonraki taramada güncellenir.`
+                                : undefined
+                            }
                           >
                             {j.autoStart === 'true'
                               ? 'açık'
@@ -3083,14 +3396,61 @@ function HostModal({
                                 ? 'kapalı'
                                 : '?'}
                           </span>
+                          {j.autoStartDogrulama && (
+                            <span
+                              className="ml-1 text-[10px]"
+                              style={{ color: 'var(--text-muted)' }}
+                              data-testid="autostart-dogrulandi"
+                            >
+                              ✓ iş #{j.autoStartDogrulama.jobId} · tarama bekleniyor
+                            </span>
+                          )}
+                          {(() => {
+                            // Son is BASARISIZ bittiyse sebep satirda kalir (bildirim 12 sn'de kaybolur).
+                            const son = asSonuclari.get(autoStartAnahtari(host, j.gen, j.name));
+                            if (
+                              !son ||
+                              son.tur !== 'fail' ||
+                              asIsleri.has(autoStartAnahtari(host, j.gen, j.name))
+                            )
+                              return null;
+                            return (
+                              <span
+                                className="ml-1 text-[10px]"
+                                style={{ color: 'var(--status-danger)' }}
+                                data-testid="autostart-basarisiz"
+                                title={son.mesaj}
+                              >
+                                ✗ iş #{son.jobId ?? '?'} başarısız: {son.mesaj}
+                              </span>
+                            );
+                          })()}
                           {/* TEK SATIR, TEK TIK. Toplu islem 2026-10-01'de kaldirildi:
                               yanlis bir tarama sonucu yuzlerce sunucuya yayilirdi. Tur 4: tanimsiz
                               surec (UNAVAILABLE), sema okunamadi ya da bayat sunucuda dugme YOK
                               (sunucu 400 doner); sebep yazilir. */}
-                          {autoStartDugmesi(j, d).goster ? (
+                          {asIsleri.get(autoStartAnahtari(host, j.gen, j.name)) ? (
+                            <span
+                              className="ml-2 px-1.5 py-0.5 text-[10px] border rounded"
+                              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                              role="status"
+                              title="Auto-start işi sürüyor; bitene kadar bu JVM için yeni iş açılmaz. Sonuç burada ve bildirimde görünür."
+                            >
+                              {isMetni(asIsleri.get(autoStartAnahtari(host, j.gen, j.name))!)}
+                            </span>
+                          ) : autoStartDugmesi(j, d).goster &&
+                            j.autoStart === 'true' &&
+                            kapatEngeli(j) ? (
+                            <span
+                              className="ml-2 text-[10px]"
+                              style={{ color: 'var(--text-muted)' }}
+                              title={kapatEngeli(j)}
+                            >
+                              çalışıyor — kapatılamaz
+                            </span>
+                          ) : autoStartDugmesi(j, d).goster ? (
                             <button
                               onClick={() => jvmAutoStart(j)}
-                              disabled={asBusy === `${j.gen}|${j.name}`}
                               className="ml-2 px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
                               style={{ borderColor: 'var(--border)' }}
                               title={
@@ -3102,11 +3462,7 @@ function HostModal({
                                 (jvmCalismaBilinir(j) ? '' : ' · çalışma durumu ölçülemedi')
                               }
                             >
-                              {asBusy === `${j.gen}|${j.name}`
-                                ? '…'
-                                : j.autoStart === 'true'
-                                  ? 'Kapat'
-                                  : 'Aç'}
+                              {j.autoStart === 'true' ? 'Kapat' : 'Aç'}
                             </button>
                           ) : (
                             <span
@@ -3655,7 +4011,7 @@ const autoStartFix = (f: ShFindingRow) =>
   !!f.fix && (f.fix.action === 'jboss_autostart_on' || f.fix.action === 'jboss_autostart_off');
 function bulguKolonlari(
   autoStartDuzelt: (f: { host: string; fix?: ShFix | null }) => void,
-  asBusy: string | null,
+  asBusy: ReadonlyMap<string, AutoStartIsDurumu>,
   kodGoster = true,
 ): EarKolon<ShFindingRow>[] {
   const soluk: React.CSSProperties = { color: 'var(--text-muted)' };
@@ -3718,7 +4074,9 @@ function bulguKolonlari(
       anahtar: 'kod',
       // Kodlar kapaliyken (2026-11-11) baslik, siralama, kolon suzgeci ve arama okunur ada gore.
       baslik: kodGoster ? 'Kod' : 'Bulgu türü',
-      aciklama: kodGoster ? 'Bulgu kodu ve okunur adı.' : 'Bulgunun türü (kodlar “Kodları göster” ile açılır).',
+      aciklama: kodGoster
+        ? 'Bulgu kodu ve okunur adı.'
+        : 'Bulgunun türü (kodlar “Kodları göster” ile açılır).',
       suzgec: 'secim',
       sirala: true,
       deger: (f) => (kodGoster ? f.code : kodAdi(f.code)),
@@ -3778,9 +4136,20 @@ function bulguKolonlari(
       suzgec: 'bit',
       deger: (f) => autoStartFix(f),
       hucre: (f) => {
+        if (f.autoStartDogrulama)
+          return (
+            <span
+              style={soluk}
+              data-testid="bulgu-autostart-dogrulandi"
+              title="Auto-start işi CLI ile doğruladı; bulgu bir sonraki taramada kalkar."
+            >
+              ✓ iş #{f.autoStartDogrulama.jobId} · tarama bekleniyor
+            </span>
+          );
         if (!autoStartFix(f) || !f.fix) return <span style={soluk}>—</span>;
         const k = `${f.host}|${f.fix.gen}|${f.fix.jvm}`;
         const ac = f.fix.action === 'jboss_autostart_on';
+        const is = asBusy.get(k);
         return (
           <button
             type="button"
@@ -3789,7 +4158,7 @@ function bulguKolonlari(
               e.stopPropagation();
               autoStartDuzelt(f);
             }}
-            disabled={asBusy === k}
+            disabled={!!is}
             title={
               ac
                 ? `${f.fix.jvm} için auto-start'ı AÇ (yalnız bu JVM)`
@@ -3798,7 +4167,7 @@ function bulguKolonlari(
             className="px-1.5 py-0.5 text-[10px] border rounded disabled:opacity-50"
             style={{ borderColor: 'var(--border)' }}
           >
-            {asBusy === k ? '…' : ac ? 'Auto-start AÇ' : 'Auto-start KAPAT'}
+            {is ? isMetni(is) : ac ? 'Auto-start AÇ' : 'Auto-start KAPAT'}
           </button>
         );
       },
@@ -3807,7 +4176,11 @@ function bulguKolonlari(
 }
 /** Hazır görünümler (kişisel olanlar tarayıcıda; görünüm tablonun süzgeci olur). */
 const BULGU_GORUNUMLERI: EarGorunum[] = [
-  { ad: 'Kritikler', aciklama: 'Yalnız kritik bulgular.', f: [{ k: 'onem', op: 'in', v: ['danger'] }] },
+  {
+    ad: 'Kritikler',
+    aciklama: 'Yalnız kritik bulgular.',
+    f: [{ k: 'onem', op: 'in', v: ['danger'] }],
+  },
   {
     ad: 'Prod kritikler',
     aciklama: 'Production ortamındaki kritik bulgular.',
@@ -3858,7 +4231,9 @@ export function FindingsTab({
   // Admin'in kaydettigi ortak gorunumler (Gorunumler menusu).
   const ortakBulgu = useOrtakGorunumler('server-hub-bulgular', gorunur);
   // Sayfaya / sekmeye donuste son yanit hemen gorunur; eskiyse arkada sessizce tazelenir.
-  const [data, setData] = useState<ShFindingsResult | null>(() => shOnbellek.oku<ShFindingsResult>('findings'));
+  const [data, setData] = useState<ShFindingsResult | null>(() =>
+    shOnbellek.oku<ShFindingsResult>('findings'),
+  );
   const [loading, setLoading] = useState(() => !shOnbellek.oku('findings'));
   const [q, setQ] = useState('');
   const [area, setArea] = useState<string>(initial?.area || 'all');
@@ -3900,41 +4275,30 @@ export function FindingsTab({
   //
   // TOPLU ISLEM YOK (kullanici: "cok tehlikeli"): her satir kendi onayini ister, her tiklama
   // TEK (host, jvm) hedefler.
-  const [asBusy, setAsBusy] = useState<string | null>(null);
-  const autoStartDuzelt = useCallback(async (f: { host: string; fix?: ShFix | null }) => {
-    const fix = f.fix;
-    if (!fix || !fix.jvm || fix.gen == null) return;
-    const ac = fix.action === 'jboss_autostart_on';
-    const k = `${f.host}|${fix.gen}|${fix.jvm}`;
-    if (
-      !(await onayla({
-        baslik: 'Auto-start',
-        metin:
-          `${f.host} üzerinde ${fix.jvm} (JBoss ${fix.gen}) için auto-start ` +
-          `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\nYalnız bu JVM etkilenir. Devam edilsin mi?`,
-        onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat',
-      }))
-    )
-      return;
-    setAsBusy(k);
-    try {
-      const r = await serverHubApi.jvmAutoStart({
-        host: f.host,
-        gen: fix.gen,
-        jvm: fix.jvm,
-        enable: ac,
-      });
-      if (!r.ok) {
-        toast.error(r.message || 'İş başlatılamadı.');
+  // IS TAKIBI (2026-11-14): eskiden yalniz "is baslatildi" toast'i vardi, sonuc HIC gosterilmiyordu. Simdi
+  // Ayrinti penceresiyle AYNI yol (autoStartIsi.ts): is bitene kadar dugme mesgul, sonuc OK/SKIP/FAIL + mesaj.
+  const { addJob } = useJobTracker();
+  const asBusy = useAutoStartIsleri();
+  const autoStartDuzelt = useCallback(
+    async (f: { host: string; fix?: ShFix | null }) => {
+      const fix = f.fix;
+      if (!fix || !fix.jvm || fix.gen == null) return;
+      const ac = fix.action === 'jboss_autostart_on';
+      if (autoStartIsVar(autoStartAnahtari(f.host, fix.gen, fix.jvm))) return;
+      if (
+        !(await onayla({
+          baslik: 'Auto-start',
+          metin:
+            `${f.host} üzerinde ${fix.jvm} (JBoss ${fix.gen}) için auto-start ` +
+            `${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\nYalnız bu JVM etkilenir. Devam edilsin mi?`,
+          onayMetni: ac ? 'Auto-start aç' : 'Auto-start kapat',
+        }))
+      )
         return;
-      }
-      toast.success(`${fix.jvm}: iş başlatıldı (#${r.jobId ?? '?'}). Tarama tazelenince durum güncellenir.`);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAsBusy(null);
-    }
-  }, [onayla]);
+      await autoStartBaslat({ host: f.host, gen: fix.gen, jvm: fix.jvm, ac, addJob });
+    },
+    [onayla, addJob],
+  );
 
   const load = useCallback(async (fresh = false) => {
     setLoading(true);
@@ -3953,15 +4317,29 @@ export function FindingsTab({
   useAsyncEffect(async () => {
     if (gorunur && shOnbellek.yas('findings') > shOnbellek.TAZE_MS) await load();
   }, [gorunur, load]);
+  // Auto-start isi bitince (hangi ekrandan baslatilmis olursa olsun) liste tazelenir: sunucu dogrulanan
+  // bulgunun dugmesini kaldirip "is #N ile dogrulandi" isareti tasir. Taze filo okumasi DEGIL (onbellek).
+  useEffect(
+    () =>
+      autoStartBittiDinle((e) => {
+        if (e.sonuc.deger) void load();
+      }),
+    [load],
+  );
   // useMemo: `|| []` her render'da YENI dizi uretiyordu; asagidaki dort useMemo her seferinde
   // yeniden hesaplaniyordu (react-hooks/exhaustive-deps).
   const all = useMemo(() => data?.findings || [], [data?.findings]);
   const codes = useMemo(
     () =>
-      [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort((a, b) => a.localeCompare(b)),
+      [...new Set(all.filter((f) => area === 'all' || f.area === area).map((f) => f.code))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
     [all, area],
   );
-  const products = useMemo(() => [...new Set(all.flatMap((f) => f.products))].sort((a, b) => a.localeCompare(b)), [all]);
+  const products = useMemo(
+    () => [...new Set(all.flatMap((f) => f.products))].sort((a, b) => a.localeCompare(b)),
+    [all],
+  );
   // Yazarken kutu takilmaz: suzme ertelenmis degerle.
   const qErtelenmis = useDeferredValue(q);
   const rows = useMemo(() => {
@@ -3982,7 +4360,10 @@ export function FindingsTab({
     () => new Map((data?.findings || []).map((f, i) => [f, `${f.host}|${f.code}|${i}`])),
     [data],
   );
-  const kolonlar = useMemo(() => bulguKolonlari(autoStartDuzelt, asBusy, kodGoster), [autoStartDuzelt, asBusy, kodGoster]);
+  const kolonlar = useMemo(
+    () => bulguKolonlari(autoStartDuzelt, asBusy, kodGoster),
+    [autoStartDuzelt, asBusy, kodGoster],
+  );
   const byCode = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of rows) m.set(f.code, (m.get(f.code) || 0) + 1);
@@ -4017,193 +4398,205 @@ export function FindingsTab({
       <TaramadanDusenBandi td={data?.taramadanDusen} />
       <SemaBandi su={data?.schemaUnknown} />
       <KodGorunurSaglayici goster={kodGoster} ad={kodAdi}>
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="sunucu ya da bulgu metni ara"
-          aria-label="ön süzgeç: sunucu ya da bulgu metni"
-          className="h-8 px-3 text-xs border rounded-lg w-64"
-          style={selStyle}
-        />
-        <select
-          value={area}
-          onChange={(e) => {
-            setArea(e.target.value);
-            setCode('all');
-          }}
-          className={sel}
-          style={selStyle}
-          aria-label="alan"
-        >
-          <option value="all">tüm alanlar</option>
-          {Object.entries(AREA_TR).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
-        <select
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className={sel}
-          style={selStyle}
-          aria-label="bulgu türü"
-        >
-          <option value="all">tüm bulgu türleri</option>
-          {(code !== 'all' && !codes.includes(code) ? [...codes, code] : codes).map((c) => (
-            <option key={c} value={c}>
-              {kodGoster ? kodEtiketi(c) : kodAdi(c)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sev}
-          onChange={(e) => setSev(e.target.value as 'all' | ShSeverity)}
-          className={sel}
-          style={selStyle}
-          aria-label="önem"
-        >
-          <option value="all">tüm önemler</option>
-          <option value="danger">kritik</option>
-          <option value="warning">uyarı</option>
-          <option value="info">bilgi</option>
-          <option value="ok">sorun yok (seviyesi değiştirilen)</option>
-        </select>
-        <select
-          value={product}
-          onChange={(e) => setProduct(e.target.value)}
-          className={sel}
-          style={selStyle}
-          aria-label="ürün"
-        >
-          <option value="all">tüm ürünler</option>
-          {products.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <select
-          value={fCls}
-          onChange={(e) => setFCls(e.target.value as 'genel' | 'ozel' | 'all')}
-          className={sel}
-          style={selStyle}
-          aria-label="envanter sınıfı"
-        >
-          <option value="genel">genel envanter</option>
-          <option value="ozel">GBEVM / GBPRV</option>
-          <option value="all">hepsi</option>
-        </select>
-        <select
-          value={envGroup}
-          onChange={(e) => setEnvGroup(e.target.value)}
-          className={sel}
-          style={selStyle}
-          aria-label="ortam"
-        >
-          <option value="all">tüm ortamlar</option>
-          <option value="Production">Production</option>
-          <option value="Non-Production">Non-Production</option>
-          <option value="Bilinmiyor">Bilinmiyor</option>
-        </select>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {fmtNumber(rows.length)} bulgu · {fmtNumber(new Set(rows.map((f) => f.host)).size)} sunucu
-          {data?.latestScan ? ` · son tarama ${data.latestScan}` : ''}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
-            <input type="checkbox" checked={kodGoster} onChange={(e) => setKodGoster(e.target.checked)} />
-            Kodları göster
-          </label>
-          <button
-            type="button"
-            onClick={() => setRehberAcik(true)}
-            className="px-2.5 py-1.5 text-xs border rounded-lg inline-flex items-center gap-1"
-            style={{ borderColor: 'var(--border)' }}
-            aria-haspopup="dialog"
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="sunucu ya da bulgu metni ara"
+            aria-label="ön süzgeç: sunucu ya da bulgu metni"
+            className="h-8 px-3 text-xs border rounded-lg w-64"
+            style={selStyle}
+          />
+          <select
+            value={area}
+            onChange={(e) => {
+              setArea(e.target.value);
+              setCode('all');
+            }}
+            className={sel}
+            style={selStyle}
+            aria-label="alan"
           >
-            <BookOpenIcon className="w-3.5 h-3.5" /> Kod rehberi
-          </button>
-          <button
-            onClick={() => load(true)}
-            className="px-2.5 py-1.5 text-xs border rounded-lg"
-            style={{ borderColor: 'var(--border)' }}
+            <option value="all">tüm alanlar</option>
+            {Object.entries(AREA_TR).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className={sel}
+            style={selStyle}
+            aria-label="bulgu türü"
           >
-            <ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} />{' '}
-            Yenile
-          </button>
-        </div>
-      </div>
-      {byCode.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {byCode.map(([c, n]) => (
-            <button
-              key={c}
-              onClick={() => setCode(code === c ? 'all' : c)}
-              title={kodGoster ? kodEtiketi(c) : c}
-              aria-pressed={code === c}
-              className="px-2 py-0.5 rounded-full border text-[11px]"
-              style={{
-                borderColor: code === c ? 'var(--accent)' : 'var(--border-subtle)',
-                background: 'var(--bg-surface)',
-                color: 'var(--text-secondary)',
-              }}
+            <option value="all">tüm bulgu türleri</option>
+            {(code !== 'all' && !codes.includes(code) ? [...codes, code] : codes).map((c) => (
+              <option key={c} value={c}>
+                {kodGoster ? kodEtiketi(c) : kodAdi(c)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sev}
+            onChange={(e) => setSev(e.target.value as 'all' | ShSeverity)}
+            className={sel}
+            style={selStyle}
+            aria-label="önem"
+          >
+            <option value="all">tüm önemler</option>
+            <option value="danger">kritik</option>
+            <option value="warning">uyarı</option>
+            <option value="info">bilgi</option>
+            <option value="ok">sorun yok (seviyesi değiştirilen)</option>
+          </select>
+          <select
+            value={product}
+            onChange={(e) => setProduct(e.target.value)}
+            className={sel}
+            style={selStyle}
+            aria-label="ürün"
+          >
+            <option value="all">tüm ürünler</option>
+            {products.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
+            value={fCls}
+            onChange={(e) => setFCls(e.target.value as 'genel' | 'ozel' | 'all')}
+            className={sel}
+            style={selStyle}
+            aria-label="envanter sınıfı"
+          >
+            <option value="genel">genel envanter</option>
+            <option value="ozel">GBEVM / GBPRV</option>
+            <option value="all">hepsi</option>
+          </select>
+          <select
+            value={envGroup}
+            onChange={(e) => setEnvGroup(e.target.value)}
+            className={sel}
+            style={selStyle}
+            aria-label="ortam"
+          >
+            <option value="all">tüm ortamlar</option>
+            <option value="Production">Production</option>
+            <option value="Non-Production">Non-Production</option>
+            <option value="Bilinmiyor">Bilinmiyor</option>
+          </select>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {fmtNumber(rows.length)} bulgu · {fmtNumber(new Set(rows.map((f) => f.host)).size)}{' '}
+            sunucu
+            {data?.latestScan ? ` · son tarama ${data.latestScan}` : ''}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <label
+              className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none"
+              style={{ color: 'var(--text-secondary)' }}
             >
-              {kodGoster ? c : kodAdi(c)} <b className="tabular-nums">{fmtNumber(n)}</b>
+              <input
+                type="checkbox"
+                checked={kodGoster}
+                onChange={(e) => setKodGoster(e.target.checked)}
+              />
+              Kodları göster
+            </label>
+            <button
+              type="button"
+              onClick={() => setRehberAcik(true)}
+              className="px-2.5 py-1.5 text-xs border rounded-lg inline-flex items-center gap-1"
+              style={{ borderColor: 'var(--border)' }}
+              aria-haspopup="dialog"
+            >
+              <BookOpenIcon className="w-3.5 h-3.5" /> Kod rehberi
             </button>
-          ))}
+            <button
+              onClick={() => load(true)}
+              className="px-2.5 py-1.5 text-xs border rounded-lg"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <ArrowPathIcon className={`w-3.5 h-3.5 inline ${loading ? 'animate-spin' : ''}`} />{' '}
+              Yenile
+            </button>
+          </div>
         </div>
-      )}
-      {/* SUTUN SUZGECLI TABLO (2026-11-07): ustteki seciciler on suzgectir; kolon dropdown'lari, siralama,
+        {byCode.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {byCode.map(([c, n]) => (
+              <button
+                key={c}
+                onClick={() => setCode(code === c ? 'all' : c)}
+                title={kodGoster ? kodEtiketi(c) : c}
+                aria-pressed={code === c}
+                className="px-2 py-0.5 rounded-full border text-[11px]"
+                style={{
+                  borderColor: code === c ? 'var(--accent)' : 'var(--border-subtle)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {kodGoster ? c : kodAdi(c)} <b className="tabular-nums">{fmtNumber(n)}</b>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* SUTUN SUZGECLI TABLO (2026-11-07): ustteki seciciler on suzgectir; kolon dropdown'lari, siralama,
           kolon secici, sayfa, kayitli gorunumler ve CSV (suzulenlerin tamami) tabloda. Satira tiklayinca
           sunucu paneli acilir. Sunucu paneli bu kabin GORUNEN genisligine sigar (100cqw). */}
-      <div style={{ containerType: 'inline-size' }}>
-        <EarTablo<ShFindingRow>
-          kimlik="server-hub-bulgular"
-          kolonlar={kolonlar}
-          satirlar={rows}
-          satirAnahtari={(f) => anahtarOf.get(f) || `${f.host}|${f.code}`}
-          satirEtiketi={(f) => `${f.host} · ${f.code}`}
-          gorunumler={BULGU_GORUNUMLERI}
-          ortak={ortakBulgu}
-          yerelCsv={`server_hub_bulgular_${new Date().toISOString().slice(0, 10)}`}
-          csvAdi="server_hub_bulgular_secili"
-          araEtiketi={kodGoster ? 'tabloda ara (sunucu, kod, bulgu)' : 'tabloda ara (sunucu, bulgu türü, bulgu)'}
-          bosMetin={
-            all.length
-              ? 'Süzgeçle eşleşen bulgu yok.'
-              : data?.tableMissing
-                ? "Bulgu yok: server_hub_scan job'ı henüz koşmadı."
-                : 'Bulgu yok.'
-          }
-          acilir={(f) => (
-            <PanelAcildi onAcildi={() => setPanelAcildi(true)}>
-              <div className="sticky left-3 py-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
-                <SunucuPaneli
-                  host={f.host}
-                  retire={retire}
-                  onEtiketDegisti={() => retireYukle(false)}
-                  onRetirementAc={onRetirementAc}
-                  onAutoStart={autoStartDuzelt}
-                  asBusy={asBusy}
-                />
-              </div>
-            </PanelAcildi>
-          )}
+        <div style={{ containerType: 'inline-size' }}>
+          <EarTablo<ShFindingRow>
+            kimlik="server-hub-bulgular"
+            kolonlar={kolonlar}
+            satirlar={rows}
+            satirAnahtari={(f) => anahtarOf.get(f) || `${f.host}|${f.code}`}
+            satirEtiketi={(f) => `${f.host} · ${f.code}`}
+            gorunumler={BULGU_GORUNUMLERI}
+            ortak={ortakBulgu}
+            yerelCsv={`server_hub_bulgular_${new Date().toISOString().slice(0, 10)}`}
+            csvAdi="server_hub_bulgular_secili"
+            araEtiketi={
+              kodGoster
+                ? 'tabloda ara (sunucu, kod, bulgu)'
+                : 'tabloda ara (sunucu, bulgu türü, bulgu)'
+            }
+            bosMetin={
+              all.length
+                ? 'Süzgeçle eşleşen bulgu yok.'
+                : data?.tableMissing
+                  ? "Bulgu yok: server_hub_scan job'ı henüz koşmadı."
+                  : 'Bulgu yok.'
+            }
+            acilir={(f) => (
+              <PanelAcildi onAcildi={() => setPanelAcildi(true)}>
+                <div className="sticky left-3 py-3" style={{ width: 'calc(100cqw - 1.5rem)' }}>
+                  <SunucuPaneli
+                    host={f.host}
+                    retire={retire}
+                    onEtiketDegisti={() => retireYukle(false)}
+                    onRetirementAc={onRetirementAc}
+                    onAutoStart={autoStartDuzelt}
+                    asBusy={asBusy}
+                  />
+                </div>
+              </PanelAcildi>
+            )}
+          />
+        </div>
+        <KodRehberi
+          acik={rehberAcik}
+          onKapat={rehberKapat}
+          ad={kodAdi}
+          listede={kodSayaci}
+          seciliKod={code}
+          onSec={(c) => {
+            setCode(c);
+            setRehberAcik(false);
+          }}
         />
-      </div>
-      <KodRehberi
-        acik={rehberAcik}
-        onKapat={rehberKapat}
-        ad={kodAdi}
-        listede={kodSayaci}
-        seciliKod={code}
-        onSec={(c) => {
-          setCode(c);
-          setRehberAcik(false);
-        }}
-      />
       </KodGorunurSaglayici>
     </div>
   );
@@ -4212,7 +4605,12 @@ export function FindingsTab({
 /** Bulgu tablosundaki kod hucresi: kodlar kapaliyken yalniz okunur ad (2026-11-11). */
 function KodHucresi({ kod, soluk }: { kod: string; soluk: React.CSSProperties }) {
   const goster = useKodGorunur();
-  if (!goster) return <span className="text-[12px]" title={kod}>{KOD_ETIKET[kod] || kod}</span>;
+  if (!goster)
+    return (
+      <span className="text-[12px]" title={kod}>
+        {KOD_ETIKET[kod] || kod}
+      </span>
+    );
   return (
     <span className="font-mono text-[11px]" title={kodEtiketi(kod)}>
       {kod}

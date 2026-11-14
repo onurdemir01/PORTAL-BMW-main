@@ -189,11 +189,7 @@ const say = (metin, alt) => metin.split(alt).length - 1;
  * parcasidir (yerel ayara / ICU'ya bagli toLocaleLowerCase kullanilmaz).
  */
 const katla = (s) =>
-  normalize(s)
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ı/g, 'i')
-    .toLowerCase();
+  normalize(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').toLowerCase();
 
 // ── Donen ogenin denetimi (jsx fabrikasi ciktisi) ──────────────────────────────────────
 /** Ogedeki tum duz metin (children agaci). Sahte modul (fonksiyon) atlanir. */
@@ -224,7 +220,8 @@ function gorunurlukSorunlari(el) {
   if (p['aria-hidden'] && String(p['aria-hidden']) !== 'false') s.push('aria-hidden');
   if (GIZLI_SINIF.test(` ${p.className || ''} `)) s.push(`className '${p.className}'`);
   const st = p.style || {};
-  if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === 0) s.push(`style ${JSON.stringify(st)}`);
+  if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === 0)
+    s.push(`style ${JSON.stringify(st)}`);
   return s;
 }
 
@@ -233,7 +230,16 @@ const _agaclar = new Map();
 function kaynakAgaci(raw, dosya) {
   if (!_agaclar.has(raw)) {
     const ts = tsYukle();
-    _agaclar.set(raw, ts.createSourceFile(path.basename(dosya), raw, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TSX));
+    _agaclar.set(
+      raw,
+      ts.createSourceFile(
+        path.basename(dosya),
+        raw,
+        ts.ScriptTarget.ES2020,
+        true,
+        ts.ScriptKind.TSX,
+      ),
+    );
   }
   return _agaclar.get(raw);
 }
@@ -273,12 +279,22 @@ function yerlesim(raw, dosya, fonksiyon, etiket) {
   const oluKod = ifadeler.slice(0, -1).some((s) => ts.isReturnStatement(s));
   const out = [];
   const gez = (n) => {
-    if ((ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) && n.tagName.getText(sf) === etiket) {
+    if (
+      (ts.isJsxSelfClosingElement(n) || ts.isJsxOpeningElement(n)) &&
+      n.tagName.getText(sf) === etiket
+    ) {
       const ozellik = {};
       for (const a of n.attributes.properties) {
         if (ts.isJsxAttribute(a)) {
           const ini = a.initializer;
-          ozellik[a.name.getText(sf)] = (() => { if (!ini) return true; if (ts.isJsxExpression(ini)) { if (ini.expression) return dugumMetni(sf, ini.expression); return ''; } return dugumMetni(sf, ini); })();
+          ozellik[a.name.getText(sf)] = (() => {
+            if (!ini) return true;
+            if (ts.isJsxExpression(ini)) {
+              if (ini.expression) return dugumMetni(sf, ini.expression);
+              return '';
+            }
+            return dugumMetni(sf, ini);
+          })();
         } else ozellik['...'] = dugumMetni(sf, a);
       }
       const kosullar = [];
@@ -293,7 +309,11 @@ function yerlesim(raw, dosya, fonksiyon, etiket) {
         if (ts.isBinaryExpression(p)) {
           const op = p.operatorToken.getText(sf);
           if (['&&', '||', '??'].includes(op))
-            kosullar.push(p.right === cocuk ? `${dugumMetni(sf, p.left)} ${op}` : `${op} ${dugumMetni(sf, p.right)}`);
+            kosullar.push(
+              p.right === cocuk
+                ? `${dugumMetni(sf, p.left)} ${op}`
+                : `${op} ${dugumMetni(sf, p.right)}`,
+            );
         } else if (ts.isConditionalExpression(p)) {
           if (p.whenTrue === cocuk) kosullar.push(`${dugumMetni(sf, p.condition)} ?`);
           else if (p.whenFalse === cocuk) kosullar.push(`${dugumMetni(sf, p.condition)} :`);
@@ -319,13 +339,28 @@ function yerlesim(raw, dosya, fonksiyon, etiket) {
 /** Tek ve gorunur yerlesim; beklenen kosullar ve ozellikler. Donen: o yerlesim. */
 function tekYerlesim(raw, dosya, fonksiyon, etiket, { kosullar = [], ozellik = {} } = {}) {
   const y = yerlesim(raw, dosya, fonksiyon, etiket);
-  assert.equal(y.length, 1, `${fonksiyon}: <${etiket}> ${y.length} kez basiliyor (1 bekleniyor) - gosterilmiyor ya da cift`);
+  assert.equal(
+    y.length,
+    1,
+    `${fonksiyon}: <${etiket}> ${y.length} kez basiliyor (1 bekleniyor) - gosterilmiyor ya da cift`,
+  );
   const [e] = y;
-  assert.deepEqual(e.kosullar, kosullar, `${fonksiyon}: <${etiket}> beklenmeyen kosul altinda: [${e.kosullar.join(' / ')}]`);
+  assert.deepEqual(
+    e.kosullar,
+    kosullar,
+    `${fonksiyon}: <${etiket}> beklenmeyen kosul altinda: [${e.kosullar.join(' / ')}]`,
+  );
   assert.deepEqual(e.gizli, [], `${fonksiyon}: <${etiket}> gizli: ${e.gizli.join(', ')}`);
-  assert.ok(e.anaDonus, `${fonksiyon}: <${etiket}> fonksiyonun ana return'unde degil (olu dal / erken donus)`);
+  assert.ok(
+    e.anaDonus,
+    `${fonksiyon}: <${etiket}> fonksiyonun ana return'unde degil (olu dal / erken donus)`,
+  );
   for (const [k, v] of Object.entries(ozellik))
-    assert.equal(e.ozellik[k], v, `${fonksiyon}: <${etiket} ${k}={${e.ozellik[k]}}> (beklenen {${v}})`);
+    assert.equal(
+      e.ozellik[k],
+      v,
+      `${fonksiyon}: <${etiket} ${k}={${e.ozellik[k]}}> (beklenen {${v}})`,
+    );
   return e;
 }
 /** Fonksiyon icindeki `ad(...)` cagrilarinin arguman metinleri (normalize). */
@@ -333,7 +368,8 @@ function cagrilar(raw, dosya, fonksiyon, ad) {
   const { ts, sf, fn } = ustFonksiyon(raw, dosya, fonksiyon);
   const out = [];
   const gez = (n) => {
-    if (ts.isCallExpression(n) && n.expression.getText(sf) === ad) out.push(n.arguments.map((a) => dugumMetni(sf, a)));
+    if (ts.isCallExpression(n) && n.expression.getText(sf) === ad)
+      out.push(n.arguments.map((a) => dugumMetni(sf, a)));
     ts.forEachChild(n, gez);
   };
   gez(fn.body);
@@ -343,7 +379,10 @@ function cagrilar(raw, dosya, fonksiyon, ad) {
 function okunanAnahtar(raw, dosya, fonksiyon, etiket, prop, nesne, kosullar = []) {
   const e = tekYerlesim(raw, dosya, fonksiyon, etiket, { kosullar });
   const m = /^(\w+)\??\.(\w+)$/.exec(String(e.ozellik[prop] || ''));
-  assert.ok(m && m[1] === nesne, `${fonksiyon}: <${etiket} ${prop}={${e.ozellik[prop]}}> '${nesne}.<alan>' okumuyor`);
+  assert.ok(
+    m && m[1] === nesne,
+    `${fonksiyon}: <${etiket} ${prop}={${e.ozellik[prop]}}> '${nesne}.<alan>' okumuyor`,
+  );
   return m[2];
 }
 
@@ -362,10 +401,15 @@ test("D1-U01 IP 'unverified' ayri etiket (DOGRULANAMADI) ve ayri renk; toUpperCa
   assert.ok(PAGE.includes('ipKullanan(ip.usedBy)'), 'IP tablosu yardimciyi kullanmiyor');
   // Ozet karti: total - unused 'unverified'i de icerir; o dilim "kullanimda" diye ADLANDIRILAMAZ.
   assert.ok(
-    !/\{ value: s\.ips\.total - s\.ips\.unused, color: SEV\.ok\.color, title: 'kullanımda',? \}/.test(PAGE),
+    !/\{ value: s\.ips\.total - s\.ips\.unused, color: SEV\.ok\.color, title: 'kullanımda',? \}/.test(
+      PAGE,
+    ),
     "dogrulanamayan IP ozet kartinda 'kullanimda' sayiliyor",
   );
-  assert.ok(PAGE.includes("title: 'boşta değil (doğrulanamayan dahil)'"), 'ozet karti dilim etiketi kayip');
+  assert.ok(
+    PAGE.includes("title: 'boşta değil (doğrulanamayan dahil)'"),
+    'ozet karti dilim etiketi kayip',
+  );
 });
 
 // ── D1-U02 log kaniti ─────────────────────────────────────────────────────────────────
@@ -417,7 +461,10 @@ test('D1-U03/U09 yeni bulgu kodlarinin etiketleri var ve listelerde kullaniliyor
   assert.equal(ke('BILINMEYEN_KOD_X'), 'BILINMEYEN_KOD_X', 'etiketsiz kod oldugu gibi kalmali');
   // Sunucu penceresi bulgu listesi + Bulgular sekmesi tablosu
   // Bulgular tablosu 2026-11-11'den beri KodHucresi bileseninde (kodlar kapaliyken yalniz ad: kodAdi).
-  assert.ok(say(PAGE, 'kodEtiketi(f.code)') + say(PAGE, 'kodEtiketi(kod)') >= 2, 'kod etiketi listelerde kullanilmiyor');
+  assert.ok(
+    say(PAGE, 'kodEtiketi(f.code)') + say(PAGE, 'kodEtiketi(kod)') >= 2,
+    'kod etiketi listelerde kullanilmiyor',
+  );
   assert.ok(say(PAGE, 'KOD_ETIKET[code] || code') >= 1, 'kodlar kapaliyken okunur ad yok');
 });
 
@@ -446,7 +493,14 @@ test('D1-U04/U09 tarama sonucu: yazilamayan sunucu sayisi + sebep, NOT_ATTEMPTED
   assert.match(t, /NOT_ATTEMPTED/);
   assert.match(t, /7\/10/);
   // JSON dizgisi olarak gelen sonuc da okunur
-  const s = yo({ loader: JSON.stringify({ hosts_total: 3, hosts_written: 3, hosts_excluded: 0, hosts_not_attempted: 0 }) });
+  const s = yo({
+    loader: JSON.stringify({
+      hosts_total: 3,
+      hosts_written: 3,
+      hosts_excluded: 0,
+      hosts_not_attempted: 0,
+    }),
+  });
   assert.equal(s.sorun, false);
   assert.ok(!s.satirlar.join(' ').includes('yazılamadı'));
   // Sonuc yoksa "hepsi yazildi" DENMEZ (kural 6)
@@ -516,10 +570,7 @@ test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmi
   assert.ok(PAGE.includes('productOverlap'), 'urun ortusmesi ekranda yok');
   // IKI IDDIA BIRDEN: kartlar ayrik degil VE paydalarin toplami filo sayisini asar.
   // Birini silip otekini birakmak sayilari yine yanlis okutur (mutasyon M3).
-  assert.ok(
-    /ayrık küme değildir/.test(PAGE),
-    'kartlarin ayrik olmadigi yazilmiyor',
-  );
+  assert.ok(/ayrık küme değildir/.test(PAGE), 'kartlarin ayrik olmadigi yazilmiyor');
   assert.ok(
     /paydaların toplamı filo sayısından büyüktür/.test(PAGE),
     'paydalarin toplaminin filo sayisini astigi yazilmiyor (sayilar sisik okunur)',
@@ -530,22 +581,47 @@ test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmi
   // SYNTAX_UNKNOWN kodlarinda). Kod filtresi geri gelirse bu korluk de geri gelir.
   assert.ok(
     !/area: 'web', code: 'SYNTAX_FAIL'/.test(PAGE),
-    "web karti yine tek koda filtreliyor: olculemeyen bulgular (SYNTAX_UNVERIFIED/UNKNOWN) tiklamayla ulasilamaz",
+    'web karti yine tek koda filtreliyor: olculemeyen bulgular (SYNTAX_UNVERIFIED/UNKNOWN) tiklamayla ulasilamaz',
   );
   const hd = fonksiyon(R, 'hubDurumu');
   const u = hd({ running: false, autoStart: 'true', scanDate: '2026-10-01', runningKnown: false });
   assert.match(u.metin, /bilinmiyor/);
   assert.ok(!/kapalı/.test(u.metin), "olculemeyen JVM 'kapali' gosteriliyor");
-  assert.equal(hd({ running: false, autoStart: 'true', scanDate: null, runningKnown: true }).metin, 'kapalı');
-  assert.equal(hd({ running: false, autoStart: 'true', scanDate: null }).metin, 'kapalı', 'alan yoksa eski davranis');
-  assert.equal(hd({ running: true, autoStart: 'true', scanDate: null, runningKnown: true }).metin, 'çalışıyor');
+  assert.equal(
+    hd({ running: false, autoStart: 'true', scanDate: null, runningKnown: true }).metin,
+    'kapalı',
+  );
+  assert.equal(
+    hd({ running: false, autoStart: 'true', scanDate: null }).metin,
+    'kapalı',
+    'alan yoksa eski davranis',
+  );
+  assert.equal(
+    hd({ running: true, autoStart: 'true', scanDate: null, runningKnown: true }).metin,
+    'çalışıyor',
+  );
   // Hucre hubHucresi uzerinden hubDurumu'nu kullanir (davranis: olculemeyen -> 'bilinmiyor').
   const hh = fonksiyon(R, 'hubHucresi');
-  assert.match(hh({ running: false, autoStart: 'true', scanDate: null, runningKnown: false }, false).metin, /^bilinmiyor · auto-start true$/);
-  assert.equal(hh({ running: true, autoStart: 'false', scanDate: null }, false).metin, 'çalışıyor · auto-start false');
-  assert.ok(RT.includes('<HubHucresi hub={t.hub} okunamadi={hubYok} />'), 'kesif tablosu hucre yardimcisini kullanmiyor');
-  assert.ok(govde(RT_RAW, 'HubHucresi').includes('hubHucresi(hub, okunamadi)'), 'HubHucresi yardimciyi kullanmiyor');
-  assert.ok(!/t\.hub\.running \? 'çalışıyor' : 'kapalı'/.test(RT), 'RetirementTab eski ikili metne donmus');
+  assert.match(
+    hh({ running: false, autoStart: 'true', scanDate: null, runningKnown: false }, false).metin,
+    /^bilinmiyor · auto-start true$/,
+  );
+  assert.equal(
+    hh({ running: true, autoStart: 'false', scanDate: null }, false).metin,
+    'çalışıyor · auto-start false',
+  );
+  assert.ok(
+    RT.includes('<HubHucresi hub={t.hub} okunamadi={hubYok} />'),
+    'kesif tablosu hucre yardimcisini kullanmiyor',
+  );
+  assert.ok(
+    govde(RT_RAW, 'HubHucresi').includes('hubHucresi(hub, okunamadi)'),
+    'HubHucresi yardimciyi kullanmiyor',
+  );
+  assert.ok(
+    !/t\.hub\.running \? 'çalışıyor' : 'kapalı'/.test(RT),
+    'RetirementTab eski ikili metne donmus',
+  );
 });
 
 // -- D1 (kural 6) RetirementTab: Server Hub OKUNAMADI != tarama yok --------------------
@@ -555,14 +631,35 @@ test("D1-U05 SH12 ve BA3 dizgileri korunur; RetirementTab olculemeyende 'bilinmi
 // alan adi iki tarafta ayrisirsa da kirmiziya doner.
 const { discover } = require('../../retirement/discover.cjs');
 const KESIF_ENVANTER = [
-  { app: 'CRM', host: 'GBCRAP01', env: 'Production', domain: '', jboss_version: '7.4', app_path: '/a', status: 'running' },
-  { app: 'CRM-T', host: 'GBCRAAT02', env: 'Test', domain: '', jboss_version: '8.0', app_path: '/b', status: 'running' },
+  {
+    app: 'CRM',
+    host: 'GBCRAP01',
+    env: 'Production',
+    domain: '',
+    jboss_version: '7.4',
+    app_path: '/a',
+    status: 'running',
+  },
+  {
+    app: 'CRM-T',
+    host: 'GBCRAAT02',
+    env: 'Test',
+    domain: '',
+    jboss_version: '8.0',
+    app_path: '/b',
+    status: 'running',
+  },
 ];
 const kesifDb = (jvmDussun) => ({
   sql: { NVarChar: () => 'nvarchar' },
   query: async (s) => {
     const q = String(s);
-    if (/sys\.columns/.test(q)) return { recordset: ['host', 'jvm', 'running', 'auto_start', 'scan_date', 'running_src'].map((name) => ({ name })) };
+    if (/sys\.columns/.test(q))
+      return {
+        recordset: ['host', 'jvm', 'running', 'auto_start', 'scan_date', 'running_src'].map(
+          (name) => ({ name }),
+        ),
+      };
     if (/dbo\.MWAppsInventory/.test(q)) return { recordset: KESIF_ENVANTER };
     if (/BMW_Certificates_Inventory/.test(q)) return { recordset: [] };
     if (/dbo\.Server_Hub_Jvms/.test(q)) {
@@ -597,7 +694,10 @@ test("D1 RetirementTab: Server Hub okunamadiysa her hedef 'Server Hub okunamadi'
   assert.equal(hh(null, false).metin, 'tarama yok', 'okunduysa ve satir yoksa tarama yok');
   assert.notEqual(ok.renk, hh(null, false).renk, 'okunamadi ile tarama yok ayni renkte');
   // okunamadi her zaman kazanir: hub satiri olsa bile (ornegin eski onbellek) olcum gosterilmez
-  assert.equal(hh({ running: true, autoStart: 'true', scanDate: null }, true).metin, 'Server Hub okunamadı');
+  assert.equal(
+    hh({ running: true, autoStart: 'true', scanDate: null }, true).metin,
+    'Server Hub okunamadı',
+  );
 
   // GERCEK discover(): Jvms sorgusu duserse -> her hedefte 'Server Hub okunamadi'
   const dus = await kesif(true);
@@ -605,7 +705,11 @@ test("D1 RetirementTab: Server Hub okunamadiysa her hedef 'Server Hub okunamadi'
   assert.equal(ho(dus), true, "discover hubUnavailable'i ekranin okudugu yerde tasimiyor");
   for (const t of dus.targets) {
     assert.equal(t.hub, null);
-    assert.equal(hh(t.hub, ho(dus)).metin, 'Server Hub okunamadı', `${t.host}: 'tarama yok' gosterildi`);
+    assert.equal(
+      hh(t.hub, ho(dus)).metin,
+      'Server Hub okunamadı',
+      `${t.host}: 'tarama yok' gosterildi`,
+    );
   }
   // Jvms okundu ama satir yok -> gercekten 'tarama yok'
   const bos = await kesif(false);
@@ -617,7 +721,11 @@ test("D1 RetirementTab: Server Hub okunamadiysa her hedef 'Server Hub okunamadi'
   for (const t of dus.targets) {
     const el = HH({ hub: t.hub, okunamadi: ho(dus) });
     assert.ok(el, `${t.host}: hub hucresi null`);
-    assert.equal(metinleri(el), 'Server Hub okunamadı', `${t.host}: hucre ekranda okunamadi demiyor`);
+    assert.equal(
+      metinleri(el),
+      'Server Hub okunamadı',
+      `${t.host}: hucre ekranda okunamadi demiyor`,
+    );
     assert.equal(el.props.title, ok.aciklama, 'hucrenin title aciklamasi yardimcinin degil');
     assert.deepEqual(gorunurlukSorunlari(el), [], 'hub hucresi gizli');
   }
@@ -630,15 +738,28 @@ test("D1 RetirementTab: Server Hub okunamadiysa her hedef 'Server Hub okunamadi'
 
   // BAGLANTI: hucre bayragi kesif yanitindan alir
   const cm = govde(RT_RAW, 'CreateModal');
-  assert.ok(cm.includes('const hubYok = hubOkunamadi(disc);'), 'kesif tablosu hubUnavailable okumuyor');
-  assert.ok(cm.includes('<HubHucresi hub={t.hub} okunamadi={hubYok} />'), 'hucre bayragi kullanmiyor');
-  assert.ok(!cm.includes('tarama yok'), "kesif tablosunda bayraktan bagimsiz 'tarama yok' dali geri gelmis");
+  assert.ok(
+    cm.includes('const hubYok = hubOkunamadi(disc);'),
+    'kesif tablosu hubUnavailable okumuyor',
+  );
+  assert.ok(
+    cm.includes('<HubHucresi hub={t.hub} okunamadi={hubYok} />'),
+    'hucre bayragi kullanmiyor',
+  );
+  assert.ok(
+    !cm.includes('tarama yok'),
+    "kesif tablosunda bayraktan bagimsiz 'tarama yok' dali geri gelmis",
+  );
 });
 
 test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; dugme kapanmaz', async () => {
   const sd = fonksiyon(R, 'stopHubDurumu');
   const su = fonksiyon(R, 'stopHubUyarisi');
-  assert.equal(sd(await kesif(true)), 'okunamadi', 'GERCEK discover hubUnavailable -> okunamadi degil');
+  assert.equal(
+    sd(await kesif(true)),
+    'okunamadi',
+    'GERCEK discover hubUnavailable -> okunamadi degil',
+  );
   assert.equal(sd(await kesif(false)), 'okundu');
   assert.equal(sd(null), 'okunamadi', 'yanit yok -> okunamadi');
   assert.equal(sd({ ok: false, message: 'x' }), 'okunamadi', 'kesif hatasi -> okunamadi');
@@ -657,38 +778,68 @@ test('D1 RetirementTab STOP onayi: Server Hub okunamadiysa uyari EKRANA cikar; d
   assert.equal(k.type, 'div');
   assert.equal(k.props.role, 'alert', 'okunamadi uyarisi alert degil');
   assert.equal(metinleri(k), u, 'kutunun metni stopHubUyarisi degil');
-  assert.deepEqual(gorunurlukSorunlari(k), [], 'uyari kutusu gizli (hidden / display:none / gizleyen sinif)');
+  assert.deepEqual(
+    gorunurlukSorunlari(k),
+    [],
+    'uyari kutusu gizli (hidden / display:none / gizleyen sinif)',
+  );
   assert.equal(SU({ durum: 'okundu' }), null, 'okunduysa kutu basildi');
   const dn = SU({ durum: 'denetleniyor' });
   assert.ok(dn && metinleri(dn) === d && dn.props.role !== 'alert', 'denetlenirken kutu yanlis');
   assert.deepEqual(gorunurlukSorunlari(dn), []);
   // YERLESIM (AST): onay penceresinde ({ask && ...}) TEK kez, kosulsuz ve gizlenmeden.
-  tekYerlesim(RT_RAW, RT_PATH, 'RecordModal', 'StopHubUyari', { kosullar: ['ask &&'], ozellik: { durum: 'hubDurum' } });
+  tekYerlesim(RT_RAW, RT_PATH, 'RecordModal', 'StopHubUyari', {
+    kosullar: ['ask &&'],
+    ozellik: { durum: 'hubDurum' },
+  });
 
   // BAGLANTI (RecordModal): STOP dugmesi kontrollu acar; yanit/hata durumu yazar
   const rm = govde(RT_RAW, 'RecordModal');
-  assert.ok(rm.includes('onClick={() => stopSor([t])}'), 'STOP dugmesi Server Hub denetimini atliyor');
+  assert.ok(
+    rm.includes('onClick={() => stopSor([t])}'),
+    'STOP dugmesi Server Hub denetimini atliyor',
+  );
   // TOPLU (2026-10-08): "Secilenleri onayla ve durdur" da ayni denetimli pencereden gecer.
-  assert.ok(rm.includes('onClick={() => stopSor(secili)}'), 'toplu STOP Server Hub denetimini atliyor');
+  assert.ok(
+    rm.includes('onClick={() => stopSor(secili)}'),
+    'toplu STOP Server Hub denetimini atliyor',
+  );
   assert.ok(!rm.includes('onClick={() => setAsk({ t })}'), 'STOP dugmesi onayi denetimsiz aciyor');
   const i = rm.indexOf('const stopSor = (ts: RtTarget[]) => {');
   assert.ok(i >= 0, 'stopSor yok');
   // prettier zinciri satirlara boler ('retirementApi\n.discover'); normalize sonrasi ' .' -> '.'
   const sor = rm.slice(i, rm.indexOf('};', i)).replace(/ \.(?=\w)/g, '.');
   assert.ok(sor.includes('retirementApi.discover(rec.app)'), 'onayda kesif okunmuyor');
-  assert.ok(sor.includes('setHubDurum(stopHubDurumu(d))'), 'kesif yaniti durum yardimcisindan gecmiyor');
-  assert.ok(sor.includes(".catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); })"), "kesif dusunce 'okunamadi' yazilmiyor");
+  assert.ok(
+    sor.includes('setHubDurum(stopHubDurumu(d))'),
+    'kesif yaniti durum yardimcisindan gecmiyor',
+  );
+  assert.ok(
+    sor.includes(".catch(() => { if (hubIstek.current === no) setHubDurum('okunamadi'); })"),
+    "kesif dusunce 'okunamadi' yazilmiyor",
+  );
   // Kural 7 deseni: uyari yalniz bilgi; onay dugmesi hub durumuna bagli KAPANMAZ
   // 2026-10-08: dugme artik TRAFIK kapisina bagli (istek varsa onay kutusu; olcum surerken
   // kilit - retirementTrafik.ts stopOnayAcikMi). Niyet AYNI kalir: Server Hub durumu dugmeyi
   // KAPATMAZ. Kontrol dugmenin `disabled` ifadesine bakar: yalniz stopOnayAcikMi, hub YOK.
   const oc = rm.indexOf('onClick={() => stopCalistir(ask.ts, true');
   const dugme = rm.slice(rm.lastIndexOf('<button', oc), rm.indexOf('</button>', oc));
-  assert.ok(oc > 0 && dugme.includes('onClick={() => stopCalistir(ask.ts, true'), 'onay dugmesi bulunamadi');
+  assert.ok(
+    oc > 0 && dugme.includes('onClick={() => stopCalistir(ask.ts, true'),
+    'onay dugmesi bulunamadi',
+  );
   const dis = (dugme.match(/disabled=\{([^}]*\([^)]*\)[^}]*)\}/) || [])[1] || '';
-  assert.ok(!/hubDurum|stopHubUyarisi|okunamadi/.test(dugme), 'onay dugmesi hub durumuna bagli KAPANIYOR');
+  assert.ok(
+    !/hubDurum|stopHubUyarisi|okunamadi/.test(dugme),
+    'onay dugmesi hub durumuna bagli KAPANIYOR',
+  );
   // TOPLU (2026-10-08): kapi her hedefte ayni yardimci - !ask.ts.every((t) => stopOnayAcikMi(...)).
-  assert.ok(dis === '' || /^!stopOnayAcikMi\(/.test(dis) || /^!ask\.ts\.every\(\(t\) => stopOnayAcikMi\(/.test(dis), `onay dugmesinin kapisi beklenmedik: ${dis}`);
+  assert.ok(
+    dis === '' ||
+      /^!stopOnayAcikMi\(/.test(dis) ||
+      /^!ask\.ts\.every\(\(t\) => stopOnayAcikMi\(/.test(dis),
+    `onay dugmesinin kapisi beklenmedik: ${dis}`,
+  );
   assert.ok(!/disabled=\{[^}]*hubDurum/.test(rm), 'onay dugmesi hub durumuna gore kapatiliyor');
 });
 
@@ -696,51 +847,105 @@ test("T2-D2 retirementApi: RtDiscovery.summary.hubUnavailable tipte; RetirementT
   const ts = tsYukle();
   const raw = fs.readFileSync(RT_API_PATH, 'utf8');
   const sf = kaynakAgaci(raw, RT_API_PATH);
-  const rd = sf.statements.find((s) => ts.isInterfaceDeclaration(s) && s.name.text === 'RtDiscovery');
+  const rd = sf.statements.find(
+    (s) => ts.isInterfaceDeclaration(s) && s.name.text === 'RtDiscovery',
+  );
   assert.ok(rd, 'retirementApi.ts RtDiscovery arayuzu yok');
   const sm = rd.members.find((m) => m.name && m.name.getText(sf) === 'summary');
-  assert.ok(sm && sm.type && ts.isTypeLiteralNode(sm.type), 'RtDiscovery.summary tip literali degil');
+  assert.ok(
+    sm && sm.type && ts.isTypeLiteralNode(sm.type),
+    'RtDiscovery.summary tip literali degil',
+  );
   const hu = sm.type.members.find((m) => m.name && m.name.getText(sf) === 'hubUnavailable');
   assert.ok(hu, 'RtDiscovery.summary.hubUnavailable tipte yok (ekran yerel tipe donmus olur)');
-  assert.ok(hu.questionToken, 'hubUnavailable istege bagli degil (eski sunucu yaniti alani tasimaz)');
+  assert.ok(
+    hu.questionToken,
+    'hubUnavailable istege bagli degil (eski sunucu yaniti alani tasimaz)',
+  );
   assert.equal(hu.type.getText(sf), 'boolean');
   const rt = kaynakAgaci(RT_RAW, RT_PATH);
-  const yerel = rt.statements.filter((s) => (ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)) && /^RtDiscovery/.test(s.name.text));
-  assert.deepEqual(yerel.map((s) => s.name.text), [], 'RetirementTab yerel RtDiscovery* tipi tanimliyor');
+  const yerel = rt.statements.filter(
+    (s) =>
+      (ts.isTypeAliasDeclaration(s) || ts.isInterfaceDeclaration(s)) &&
+      /^RtDiscovery/.test(s.name.text),
+  );
+  assert.deepEqual(
+    yerel.map((s) => s.name.text),
+    [],
+    'RetirementTab yerel RtDiscovery* tipi tanimliyor',
+  );
 });
 
 // ── D1-U06 JVM Durum hucresi ──────────────────────────────────────────────────────────
 test("D1-U06 JVM tablosu: runningKnown=false satirinda 'kapali' YOK, 'bilinmiyor (surec gorunmuyor)' VAR", () => {
   const jb = fonksiyon(P, 'jvmCalismaBilinir');
   assert.equal(jb({ running: false, runningKnown: false, runningSrc: 'UNMEASURED' }), false);
-  assert.equal(jb({ running: false, runningSrc: 'UNMEASURED' }), false, 'runningSrc tek basina yetmeli');
+  assert.equal(
+    jb({ running: false, runningSrc: 'UNMEASURED' }),
+    false,
+    'runningSrc tek basina yetmeli',
+  );
   assert.equal(jb({ running: false, runningKnown: true, runningSrc: 'PS_ABSENT' }), true);
-  assert.equal(jb({ running: true, runningKnown: true, runningSrc: 'PS' }), true, 'BLIND+PS bilinen');
-  assert.equal(jb({ running: false }), true, 'eski yanit (alan yok) bilinen sayilir (C: NULL bilinen)');
+  assert.equal(
+    jb({ running: true, runningKnown: true, runningSrc: 'PS' }),
+    true,
+    'BLIND+PS bilinen',
+  );
+  assert.equal(
+    jb({ running: false }),
+    true,
+    'eski yanit (alan yok) bilinen sayilir (C: NULL bilinen)',
+  );
   const jd = fonksiyon(P, 'jvmDurumu');
   const u = jd({ running: false, runningKnown: false, runningSrc: 'UNMEASURED' });
   assert.equal(u.metin, 'bilinmiyor (süreç görünmüyor)');
   assert.ok(!u.metin.includes('kapalı'));
   assert.equal(jd({ running: false, runningKnown: true, runningSrc: 'PS_ABSENT' }).metin, 'kapalı');
   assert.equal(jd({ running: true, runningKnown: true, runningSrc: 'PS' }).metin, 'çalışıyor');
-  assert.notEqual(u.renk, jd({ running: false, runningKnown: true }).renk, 'bilinmiyor kapali ile ayni renkte');
+  assert.notEqual(
+    u.renk,
+    jd({ running: false, runningKnown: true }).renk,
+    'bilinmiyor kapali ile ayni renkte',
+  );
   // T2-D2 (C3): sema okunamadiysa sebep hidepid DEGIL sema
   const s = jd({ running: false, runningKnown: false, runningSrc: null }, true);
   assert.equal(s.metin, 'bilinmiyor (şema okunamadı)');
-  assert.ok(!/süreç görünmüyor/.test(s.metin) && !/hidepid/.test(s.aciklama), 'sema bilinmiyorken hidepid sebebi gosterildi');
+  assert.ok(
+    !/süreç görünmüyor/.test(s.metin) && !/hidepid/.test(s.aciklama),
+    'sema bilinmiyorken hidepid sebebi gosterildi',
+  );
   assert.match(s.aciklama, /sys\.columns/);
-  assert.equal(jd({ running: false, runningKnown: true, runningSrc: 'PS_ABSENT' }, true).metin, 'kapalı', 'sema bayragi olculmus satiri degistirdi');
+  assert.equal(
+    jd({ running: false, runningKnown: true, runningSrc: 'PS_ABSENT' }, true).metin,
+    'kapalı',
+    'sema bayragi olculmus satiri degistirdi',
+  );
   // BAGLANTI (AST): HostModal'daki HER jvmDurumu cagrisi ayrintinin schemaUnknown'unu verir
   const c = cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'jvmDurumu');
   assert.ok(c.length >= 1, 'Durum hucresi jvmDurumu kullanmiyor');
-  for (const a of c) assert.deepEqual(a, ['j', 'd.schemaUnknown === true'], `jvmDurumu(${a.join(', ')}) sema bayragini vermiyor`);
-  assert.ok(!/j\.running \? 'çalışıyor' : 'kapalı'/.test(PAGE), 'Durum hucresi eski ikili metne donmus');
+  for (const a of c)
+    assert.deepEqual(
+      a,
+      ['j', 'd.schemaUnknown === true'],
+      `jvmDurumu(${a.join(', ')}) sema bayragini vermiyor`,
+    );
+  assert.ok(
+    !/j\.running \? 'çalışıyor' : 'kapalı'/.test(PAGE),
+    'Durum hucresi eski ikili metne donmus',
+  );
 });
 
 // ── D1-U07 tek-JVM auto-start onayi ───────────────────────────────────────────────────
 test("D1-U07 auto-start onay metni olculemeyende 'calisma durumu olculemedi' der; dugme acik kalir (kural 7)", () => {
   const om = fonksiyon(P, 'autoStartOnayMetni');
-  const j = { gen: 7, name: 'crm', autoStart: 'true', running: false, runningKnown: false, runningSrc: 'UNMEASURED' };
+  const j = {
+    gen: 7,
+    name: 'crm',
+    autoStart: 'true',
+    running: false,
+    runningKnown: false,
+    runningSrc: 'UNMEASURED',
+  };
   const t = om('GBAPPT01', j, false);
   assert.match(t, /çalışma durumu ölçülemedi/);
   assert.match(t, /süreç görünmüyor/);
@@ -763,11 +968,25 @@ test("D1-U07 auto-start onay metni olculemeyende 'calisma durumu olculemedi' der
     /\bmetin: autoStartOnayMetni\(host, j, ac, d\?\.schemaUnknown === true\)/,
     'onay metni yardimcidan (sema bayragiyla) gelmiyor',
   );
-  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'window.confirm'), [], 'tarayici onayi geri gelmis');
-  // Kural 7: olculemeyen satirda dugme admine KAPANMAZ - disabled yalniz is suruyorken.
+  assert.deepEqual(
+    cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'window.confirm'),
+    [],
+    'tarayici onayi geri gelmis',
+  );
+  // Kural 7: olculemeyen satirda dugme admine KAPANMAZ. 2026-11-14'ten beri is SURERKEN dugme yerine
+  // durum ("#is - kosuyor") cizilir (autoStartIsi.ts); dugmenin kendisinde olcum tabanli disabled YOK.
+  // Dugme blogunun TAMAMI (<button ... </button>) taranir: disabled= hangi niteligin ardina eklenirse
+  // eklensin yakalanir (inceleme 2026-11-14: yalniz onClick'ten sonraki metne bakmak kordu).
+  const tik = PAGE.indexOf('onClick={() => jvmAutoStart(j)}');
+  assert.ok(tik > 0, 'auto-start dugmesi bulunamadi');
+  const blok = PAGE.slice(PAGE.lastIndexOf('<button', tik), PAGE.indexOf('</button>', tik));
   assert.ok(
-    PAGE.includes('onClick={() => jvmAutoStart(j)} disabled={asBusy === `${j.gen}|${j.name}`}'),
-    'auto-start dugmesinin disabled kosulu degismis (olculemeyende admine kapanmamali)',
+    !/\bdisabled\s*=/.test(blok),
+    'auto-start dugmesine disabled kosulu eklenmis (olculemeyende admine kapanmamali)',
+  );
+  assert.ok(
+    PAGE.includes('{asIsleri.get(autoStartAnahtari(host, j.gen, j.name)) ? ('),
+    'is surerken dugme yerine durum cizilmiyor',
   );
 });
 
@@ -836,7 +1055,9 @@ test('D1-U10 init/web kartlari: okunamayan dosya ve olculemeyen sozdizimi AYRI, 
   assert.match(olcut.metin, /41 fark ölçüt dışı dosyada \(sayıma katılmaz\)/, olcut.metin);
   assert.ok(!/ölçüt:/.test(eski.metin), 'alan yokken olcut satiri uydurulmus');
   assert.ok(
-    !/ölçüt dışı/.test(iu({ hosts: 10, compliant: 10, diffFiles: 0, olcutDosyasi: 'start.sh' }).metin),
+    !/ölçüt dışı/.test(
+      iu({ hosts: 10, compliant: 10, diffFiles: 0, olcutDosyasi: 'start.sh' }).metin,
+    ),
     'olcut disi fark 0 iken satir basiliyor',
   );
   // (4) web: olculemeyen sayisi ayri, yokken null (satir hic basilmaz)
@@ -854,13 +1075,21 @@ test('D1-U10 init/web kartlari: okunamayan dosya ve olculemeyen sozdizimi AYRI, 
   assert.equal(wt({ hosts: 60, syntaxOk: 60, syntaxFail: 0, syntaxUnknown: 0 }), 'ok');
   assert.equal(wt({ hosts: 60, syntaxOk: 60, syntaxFail: 0 }), 'ok', 'eski yanit (alan yok)');
   // (5) YERLESIM: kartlar yardimcilari GERCEKTEN kullaniyor
-  for (const d of ['initUyumMetni(s.init).metin', 'initUyumMetni(s.init).tone', 'webKartTonu(w)', 'webSyntaxOlculemedi(w)'])
+  for (const d of [
+    'initUyumMetni(s.init).metin',
+    'initUyumMetni(s.init).tone',
+    'webKartTonu(w)',
+    'webSyntaxOlculemedi(w)',
+  ])
     assert.ok(PAGE.includes(d), `kart yardimciyi kullanmiyor: ${d}`);
   assert.ok(
     !/\{s\.init\.diffFiles\} dosya çoğunluktan farklı/.test(PAGE),
     'init karti eski satiri (okunamayani yutan) basmaya donmus',
   );
-  assert.ok(!/tone="ok"[\s\S]{0,120}onGoFindings\(\{ area: 'web'/.test(PAGE), 'web karti sabit yesil');
+  assert.ok(
+    !/tone="ok"[\s\S]{0,120}onGoFindings\(\{ area: 'web'/.test(PAGE),
+    'web karti sabit yesil',
+  );
 });
 
 // ── D1-U11 "bu satirlari hangi tarayici / hangi kullanici uretti" ──────────────────────
@@ -869,7 +1098,10 @@ test('D1-U10 init/web kartlari: okunamayan dosya ve olculemeyen sozdizimi AYRI, 
 // yazdigim surum mu, hangi kullaniciyla kostu" sorusu ancak AWX job logundan cevaplanabiliyordu.
 test('D1-U11 sunucu detayi tarayici surumunu ve kosan kullaniciyi yazar; alan yoksa UYDURMAZ', () => {
   const tk = fonksiyon(P, 'tarayiciKimligi');
-  const iki = tk({ scanVer: '2.1', note: 'kosan: was (was); faz=was; inv=GB01; kosan: www (www); faz=www' });
+  const iki = tk({
+    scanVer: '2.1',
+    note: 'kosan: was (was); faz=was; inv=GB01; kosan: www (www); faz=www',
+  });
   assert.match(iki, /tarayıcı v2\.1/);
   assert.match(iki, /koşan: was \(was\)/);
   assert.match(iki, /geçiş: was\+www/, iki);
@@ -887,7 +1119,10 @@ test('D1-U11 sunucu detayi tarayici surumunu ve kosan kullaniciyi yazar; alan yo
 // ── EK-2 bayat filo bandi ─────────────────────────────────────────────────────────────
 test("EK-2 staleFleet: kirmizi bant 'Son basarili yukleme N gun once - eylemler kapali'", () => {
   const bf = fonksiyon(P, 'bayatFiloMetni');
-  assert.equal(bf({ lastLoad: '2026-09-28', ageDays: 3 }), 'Son başarılı yükleme 3 gün önce — eylemler kapalı');
+  assert.equal(
+    bf({ lastLoad: '2026-09-28', ageDays: 3 }),
+    'Son başarılı yükleme 3 gün önce — eylemler kapalı',
+  );
   assert.equal(bf(null), null);
   assert.equal(bf(undefined), null);
   const x = bf({ lastLoad: null, ageDays: null });
@@ -913,7 +1148,11 @@ test('T2-D1 GeriAlmaBandi ve BayatFiloBandi: dolu veride oge doner (null degil),
   assert.ok(/(^|\s)truncate(\s|$)/.test(el.props.className), 'bant tek satir degil (truncate yok)');
   assert.deepEqual(gorunurlukSorunlari(el), [], 'geri alma bandi gizli');
   for (const bos of [{ allowed: true, v3Hosts: 0, message: '' }, null, undefined])
-    assert.equal(GA({ rb: bos }), null, `geri alma serbestken bant basildi: ${JSON.stringify(bos)}`);
+    assert.equal(
+      GA({ rb: bos }),
+      null,
+      `geri alma serbestken bant basildi: ${JSON.stringify(bos)}`,
+    );
 
   const BF = fonksiyon(P, 'BayatFiloBandi');
   const bf = fonksiyon(P, 'bayatFiloMetni');
@@ -925,22 +1164,51 @@ test('T2-D1 GeriAlmaBandi ve BayatFiloBandi: dolu veride oge doner (null degil),
   assert.equal(metinleri(b), bf(sf), 'bandin gorunen metni yardimcinin metni degil');
   assert.equal(b.props.style.borderColor, 'var(--status-danger)', 'bant kirmizi degil');
   assert.deepEqual(gorunurlukSorunlari(b), [], 'bayat filo bandi gizli');
-  for (const bos of [null, undefined]) assert.equal(BF({ sf: bos }), null, 'bayat degilken bant basildi');
+  for (const bos of [null, undefined])
+    assert.equal(BF({ sf: bos }), null, 'bayat degilken bant basildi');
 });
 
 test('T2-D1 bant yerlesimi (AST): Sunucular ve Bulgular sekmesinde TEK, kosulsuz, gizlenmeden, ana return icinde', () => {
-  tekYerlesim(PAGE_RAW, PAGE_PATH, 'HostsTab', 'BayatFiloBandi', { ozellik: { sf: 'data.staleFleet' } });
-  tekYerlesim(PAGE_RAW, PAGE_PATH, 'HostsTab', 'GeriAlmaBandi', { ozellik: { rb: 'data.rollback' } });
-  tekYerlesim(PAGE_RAW, PAGE_PATH, 'FindingsTab', 'BayatFiloBandi', { ozellik: { sf: 'data?.staleFleet' } });
+  tekYerlesim(PAGE_RAW, PAGE_PATH, 'HostsTab', 'BayatFiloBandi', {
+    ozellik: { sf: 'data.staleFleet' },
+  });
+  tekYerlesim(PAGE_RAW, PAGE_PATH, 'HostsTab', 'GeriAlmaBandi', {
+    ozellik: { rb: 'data.rollback' },
+  });
+  tekYerlesim(PAGE_RAW, PAGE_PATH, 'FindingsTab', 'BayatFiloBandi', {
+    ozellik: { sf: 'data?.staleFleet' },
+  });
   // kendi kendini sinama: yerlesim denetimi kosulu, gizli atayi ve olu donusu GERCEKTEN goruyor
   const dene = (kaynak) => yerlesim(kaynak, 'x.tsx', 'F', 'B')[0];
-  assert.deepEqual(dene('function F() {\n  return <div>{false && (\n    <B a={x.y} />\n  )}</div>;\n}\n').kosullar, ['false &&']);
-  assert.deepEqual(dene("function F() {\n  return <div className='p hidden'><B a={x.y} /></div>;\n}\n").gizli, ["className='p hidden'"]);
-  assert.deepEqual(dene("function F() {\n  return <div style={{ display: 'none' }}><B /></div>;\n}\n").gizli.length, 1);
-  assert.equal(dene('function F() {\n  return null;\n  return <div><B /></div>;\n}\n').anaDonus, false);
-  assert.deepEqual(dene('function F() {\n  return <div>{c ? <B /> : null}</div>;\n}\n').kosullar, ['c ?']);
-  assert.deepEqual(dene('function F() {\n  return <details><B /></details>;\n}\n').gizli, ['<details> (kapali)']);
-  assert.deepEqual(dene('function F() {\n  return <div><B /></div>;\n}\n'), { ozellik: {}, kosullar: [], gizli: [], anaDonus: true });
+  assert.deepEqual(
+    dene('function F() {\n  return <div>{false && (\n    <B a={x.y} />\n  )}</div>;\n}\n').kosullar,
+    ['false &&'],
+  );
+  assert.deepEqual(
+    dene("function F() {\n  return <div className='p hidden'><B a={x.y} /></div>;\n}\n").gizli,
+    ["className='p hidden'"],
+  );
+  assert.deepEqual(
+    dene("function F() {\n  return <div style={{ display: 'none' }}><B /></div>;\n}\n").gizli
+      .length,
+    1,
+  );
+  assert.equal(
+    dene('function F() {\n  return null;\n  return <div><B /></div>;\n}\n').anaDonus,
+    false,
+  );
+  assert.deepEqual(dene('function F() {\n  return <div>{c ? <B /> : null}</div>;\n}\n').kosullar, [
+    'c ?',
+  ]);
+  assert.deepEqual(dene('function F() {\n  return <details><B /></details>;\n}\n').gizli, [
+    '<details> (kapali)',
+  ]);
+  assert.deepEqual(dene('function F() {\n  return <div><B /></div>;\n}\n'), {
+    ozellik: {},
+    kosullar: [],
+    gizli: [],
+    anaDonus: true,
+  });
 });
 
 // -- Sunucu yaniti -> ekran (D2 EK-1 geri alma, D3 EK-2 Bulgular bandi, C3 sema, EK-3) --
@@ -951,12 +1219,52 @@ test('T2-D1 bant yerlesimi (AST): Sunucular ve Bulgular sekmesinde TEK, kosulsuz
 // tarafta ayrisirsa ya da bant kaldirilirsa KIRMIZI.
 const Module = require('node:module');
 const SH_SEMA = {
-  Server_Hub_Hosts: ['host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note', 'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at'],
+  Server_Hub_Hosts: [
+    'host',
+    'scan_date',
+    'products',
+    'wall_s',
+    'cpu_s',
+    'note',
+    'scan_ver',
+    'rec_counts',
+    'scan_errors',
+    'proc_visibility',
+    'sock_visibility',
+    'loaded_at',
+  ],
   Server_Hub_Init: ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
   Server_Hub_Jboss: ['host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note'],
-  Server_Hub_Jvms: ['host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports', 'running_src', 'cfg_src'],
+  Server_Hub_Jvms: [
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+    'running_src',
+    'cfg_src',
+  ],
   Server_Hub_Web: ['host', 'scan_date', 'product', 'running', 'syntax', 'detail'],
-  Server_Hub_Vhosts: ['host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log', 'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file'],
+  Server_Hub_Vhosts: [
+    'host',
+    'scan_date',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
+  ],
   Server_Hub_Ips: ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   Server_Hub_Sshd: ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
 };
@@ -966,7 +1274,9 @@ function tamSema() {
   const once = require.cache[yol];
   const { SH_KOLONLAR } = require('../index.cjs');
   if (!once) delete require.cache[yol];
-  return Object.fromEntries(Object.entries(SH_KOLONLAR).map(([t, c]) => [t.replace(/^dbo\./, ''), [...c]]));
+  return Object.fromEntries(
+    Object.entries(SH_KOLONLAR).map(([t, c]) => [t.replace(/^dbo\./, ''), [...c]]),
+  );
 }
 const gunOnce = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 const APP = 'GBCJAP01';
@@ -979,8 +1289,35 @@ const SENARYO = {
       sema: SH_SEMA,
       hostlar: [],
       satir: {
-        Server_Hub_Hosts: [{ host: APP, scan_date: gun, products: 'JBOSS7', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1', proc_visibility: 'FULL', sock_visibility: 'PID', loaded_at: `${gun}T06:00:00Z` }],
-        Server_Hub_Jvms: [{ host: APP, scan_date: gun, gen: 7, jvm: 'crm', grp: 'g', running: 0, auto_start: 'true', server_state: 'stopped', ports: '', running_src: 'PS_ABSENT', cfg_src: 'CLI_WILDCARD' }],
+        Server_Hub_Hosts: [
+          {
+            host: APP,
+            scan_date: gun,
+            products: 'JBOSS7',
+            wall_s: 1,
+            cpu_s: 0.1,
+            note: '',
+            scan_ver: '2.1',
+            proc_visibility: 'FULL',
+            sock_visibility: 'PID',
+            loaded_at: `${gun}T06:00:00Z`,
+          },
+        ],
+        Server_Hub_Jvms: [
+          {
+            host: APP,
+            scan_date: gun,
+            gen: 7,
+            jvm: 'crm',
+            grp: 'g',
+            running: 0,
+            auto_start: 'true',
+            server_state: 'stopped',
+            ports: '',
+            running_src: 'PS_ABSENT',
+            cfg_src: 'CLI_WILDCARD',
+          },
+        ],
       },
     };
   },
@@ -993,11 +1330,50 @@ const SENARYO = {
       hazirlik: `${APP},${WEB}`,
       satir: {
         Server_Hub_Hosts: [
-          { host: APP, scan_date: gun, products: 'JBOSS7', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1' },
-          { host: WEB, scan_date: gun, products: 'IHS', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1' },
+          {
+            host: APP,
+            scan_date: gun,
+            products: 'JBOSS7',
+            wall_s: 1,
+            cpu_s: 0.1,
+            note: '',
+            scan_ver: '2.1',
+          },
+          {
+            host: WEB,
+            scan_date: gun,
+            products: 'IHS',
+            wall_s: 1,
+            cpu_s: 0.1,
+            note: '',
+            scan_ver: '2.1',
+          },
         ],
-        Server_Hub_Jvms: [{ host: APP, scan_date: gun, gen: 7, jvm: 'crm', grp: 'g', running: 0, auto_start: 'true', server_state: 'stopped', ports: '', running_src: 'UNMEASURED' }],
-        Server_Hub_Web: [{ host: WEB, scan_date: gun, product: 'IHS', running: 0, syntax: 'OK', detail: '', running_src: 'UNMEASURED' }],
+        Server_Hub_Jvms: [
+          {
+            host: APP,
+            scan_date: gun,
+            gen: 7,
+            jvm: 'crm',
+            grp: 'g',
+            running: 0,
+            auto_start: 'true',
+            server_state: 'stopped',
+            ports: '',
+            running_src: 'UNMEASURED',
+          },
+        ],
+        Server_Hub_Web: [
+          {
+            host: WEB,
+            scan_date: gun,
+            product: 'IHS',
+            running: 0,
+            syntax: 'OK',
+            detail: '',
+            running_src: 'UNMEASURED',
+          },
+        ],
       },
     };
   },
@@ -1006,26 +1382,97 @@ const SENARYO = {
   ek3: () => {
     const gun = gunOnce(0);
     const v = (server_name, ek) => ({
-      host: WEB, scan_date: gun, product: 'IHS', listen: '10.0.0.1:443', server_name, aliases: '', access_log: `/l/${server_name}`,
-      proxy_targets: '', req_24h: 0, req_7d: 0, hc_24h: 3, shared: 0, sampled: 0, conf_file: `/c/${server_name}.conf`,
-      traffic_state: 'NO_RECENT_TRAFFIC', traffic_reason: 'OK', cover_from_epoch: 1, last_req_epoch: null, last_line_epoch: null, log_read_as: 'www', ...ek,
+      host: WEB,
+      scan_date: gun,
+      product: 'IHS',
+      listen: '10.0.0.1:443',
+      server_name,
+      aliases: '',
+      access_log: `/l/${server_name}`,
+      proxy_targets: '',
+      req_24h: 0,
+      req_7d: 0,
+      hc_24h: 3,
+      shared: 0,
+      sampled: 0,
+      conf_file: `/c/${server_name}.conf`,
+      traffic_state: 'NO_RECENT_TRAFFIC',
+      traffic_reason: 'OK',
+      cover_from_epoch: 1,
+      last_req_epoch: null,
+      last_line_epoch: null,
+      log_read_as: 'www',
+      ...ek,
     });
     const h = (host, products) => ({
-      host, scan_date: gun, products, wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1', rec_counts: '', scan_errors: '',
-      proc_visibility: 'FULL', sock_visibility: 'PID', loaded_at: `${gun}T06:00:00Z`,
+      host,
+      scan_date: gun,
+      products,
+      wall_s: 1,
+      cpu_s: 0.1,
+      note: '',
+      scan_ver: '2.1',
+      rec_counts: '',
+      scan_errors: '',
+      proc_visibility: 'FULL',
+      sock_visibility: 'PID',
+      loaded_at: `${gun}T06:00:00Z`,
     });
     return {
       sema: tamSema(),
       hostlar: [APP, WEB],
       satir: {
         Server_Hub_Hosts: [h(APP, 'JBOSS7'), h(WEB, 'IHS')],
-        Server_Hub_Jvms: [{ host: APP, scan_date: gun, gen: 7, jvm: 'crm', grp: 'g', running: 0, auto_start: 'false', server_state: 'stopped', ports: '', running_src: 'PS_ABSENT', cfg_src: 'CLI_WILDCARD' }],
-        Server_Hub_Web: [{ host: WEB, scan_date: gun, product: 'IHS', running: 1, syntax: 'OK', detail: '2 vhost', check_class: 'OK', syntax_verification: 'VERIFIED', run_as: 'www', check_rc: 0, vhost_trust: 'FULL', running_src: 'PS' }],
+        Server_Hub_Jvms: [
+          {
+            host: APP,
+            scan_date: gun,
+            gen: 7,
+            jvm: 'crm',
+            grp: 'g',
+            running: 0,
+            auto_start: 'false',
+            server_state: 'stopped',
+            ports: '',
+            running_src: 'PS_ABSENT',
+            cfg_src: 'CLI_WILDCARD',
+          },
+        ],
+        Server_Hub_Web: [
+          {
+            host: WEB,
+            scan_date: gun,
+            product: 'IHS',
+            running: 1,
+            syntax: 'OK',
+            detail: '2 vhost',
+            check_class: 'OK',
+            syntax_verification: 'VERIFIED',
+            run_as: 'www',
+            check_rc: 0,
+            vhost_trust: 'FULL',
+            running_src: 'PS',
+          },
+        ],
         Server_Hub_Vhosts: [
           v('crm.bmw.de'),
-          v('api.bmw.de', { proxy_targets: 'crm-vip.bmw.local:8180,~TRUNC', req_24h: 700, req_7d: 5000, traffic_state: 'ACTIVE' }),
+          v('api.bmw.de', {
+            proxy_targets: 'crm-vip.bmw.local:8180,~TRUNC',
+            req_24h: 700,
+            req_7d: 5000,
+            traffic_state: 'ACTIVE',
+          }),
         ],
-        Server_Hub_Ips: [{ host: APP, scan_date: gun, ip: '10.1.2.3', iface: 'eth0', used_by: 'other', is_primary: 1 }],
+        Server_Hub_Ips: [
+          {
+            host: APP,
+            scan_date: gun,
+            ip: '10.1.2.3',
+            iface: 'eth0',
+            used_by: 'other',
+            is_primary: 1,
+          },
+        ],
       },
     };
   },
@@ -1034,13 +1481,33 @@ const SENARYO = {
   dinamik: () => {
     const s = SENARYO.ek3();
     const ornek = s.satir.Server_Hub_Vhosts[0];
-    const v = (server_name, ek) => ({ ...ornek, server_name, access_log: `/l/${server_name}`, conf_file: `/c/${server_name}.conf`, ...ek });
+    const v = (server_name, ek) => ({
+      ...ornek,
+      server_name,
+      access_log: `/l/${server_name}`,
+      conf_file: `/c/${server_name}.conf`,
+      ...ek,
+    });
     const olcmedi = { req_24h: -1, req_7d: -1, hc_24h: -1 };
     s.satir.Server_Hub_Vhosts = [
       v('crm.bmw.de'),
-      v('api.bmw.de', { proxy_targets: '~DYNAMIC', req_24h: 700, req_7d: 5000, traffic_state: 'ACTIVE' }),
-      v('conf.bmw.de', { ...olcmedi, access_log: '', traffic_state: 'UNREADABLE', traffic_reason: 'CONF_UNREADABLE' }),
-      v('kosul.bmw.de', { ...olcmedi, traffic_state: 'UNVERIFIED', traffic_reason: 'CONDITIONAL_LOG' }),
+      v('api.bmw.de', {
+        proxy_targets: '~DYNAMIC',
+        req_24h: 700,
+        req_7d: 5000,
+        traffic_state: 'ACTIVE',
+      }),
+      v('conf.bmw.de', {
+        ...olcmedi,
+        access_log: '',
+        traffic_state: 'UNREADABLE',
+        traffic_reason: 'CONF_UNREADABLE',
+      }),
+      v('kosul.bmw.de', {
+        ...olcmedi,
+        traffic_state: 'UNVERIFIED',
+        traffic_reason: 'CONDITIONAL_LOG',
+      }),
     ];
     return s;
   },
@@ -1057,13 +1524,18 @@ async function sunucuyuKostur({ sema, satir, hostlar = [], hazirlik = null }) {
     if (/FROM sys\.columns c WHERE c\.object_id IN/.test(s)) {
       if (!sema) throw new Error('Timeout: sys.columns okunamadi (sahte)');
       const out = [];
-      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g)) for (const c of sema[m[1]] || []) out.push({ tbl: m[1], name: c });
+      for (const m of s.matchAll(/OBJECT_ID\('dbo\.(\w+)'\)/g))
+        for (const c of sema[m[1]] || []) out.push({ tbl: m[1], name: c });
       return { recordset: out };
     }
     const m = /FROM dbo\.(Server_Hub_\w+) t\b/.exec(s);
     if (m) {
       const sec = [...s.matchAll(/\bt\.\[?(\w+)\]?/g)].map((x) => x[1]);
-      return { recordset: (satir[m[1]] || []).map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => sec.includes(k)))) };
+      return {
+        recordset: (satir[m[1]] || []).map((r) =>
+          Object.fromEntries(Object.entries(r).filter(([k]) => sec.includes(k))),
+        ),
+      };
     }
     return { recordset: [] };
   };
@@ -1142,13 +1614,30 @@ test("D2 EK-1 geri alma bandi: /overview rollback.allowed=false iken tek satir '
   const gm = fonksiyon(P, 'geriAlmaMetni');
   assert.equal(gm(null), null);
   assert.equal(gm(undefined), null, 'alan yoksa (eski Portal yaniti) bant yok');
-  assert.equal(gm({ allowed: true, v3Hosts: 0, message: '' }), null, 'geri alma serbestken bant gosterildi');
-  assert.equal(gm({ allowed: false, v3Hosts: 3, message: 'X mesaji.' }), "Portal'ı geri almadan önce: X mesaji.");
-  assert.match(gm({ allowed: false, v3Hosts: 2, message: '' }), /^Portal'ı geri almadan önce: 2 sunucunun son taraması yeni tarayıcıdan/);
-  assert.match(gm({ allowed: false }), /^Portal'ı geri almadan önce: .*geri alınmamalı/, 'mesaj ve sayi yokken bant bos kaldi');
+  assert.equal(
+    gm({ allowed: true, v3Hosts: 0, message: '' }),
+    null,
+    'geri alma serbestken bant gosterildi',
+  );
+  assert.equal(
+    gm({ allowed: false, v3Hosts: 3, message: 'X mesaji.' }),
+    "Portal'ı geri almadan önce: X mesaji.",
+  );
+  assert.match(
+    gm({ allowed: false, v3Hosts: 2, message: '' }),
+    /^Portal'ı geri almadan önce: 2 sunucunun son taraması yeni tarayıcıdan/,
+  );
+  assert.match(
+    gm({ allowed: false }),
+    /^Portal'ı geri almadan önce: .*geri alınmamalı/,
+    'mesaj ve sayi yokken bant bos kaldi',
+  );
 
   const { o } = await sunucuYanitlari('bayat');
-  assert.ok(o.rollback && o.rollback.allowed === false, '/overview v3 veride rollback.allowed=false dondurmedi');
+  assert.ok(
+    o.rollback && o.rollback.allowed === false,
+    '/overview v3 veride rollback.allowed=false dondurmedi',
+  );
   const k = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'GeriAlmaBandi', 'rb', 'data');
   const el = fonksiyon(P, 'GeriAlmaBandi')({ rb: o[k] });
   assert.ok(el, `Sunucular sekmesi '${k}' okuyor; /overview yanitinda bu alan bant uretmiyor`);
@@ -1161,15 +1650,24 @@ test("D2 EK-1 geri alma bandi: /overview rollback.allowed=false iken tek satir '
 test('D3 EK-2 Bulgular sekmesi bandi: /findings staleFleet tasir ve sekme bandi o alani okur', async () => {
   const BF = fonksiyon(P, 'BayatFiloBandi');
   const { o, f } = await sunucuYanitlari('bayat');
-  assert.ok(o.staleFleet && o.staleFleet.ageDays > 2, '/overview bayat filoda staleFleet dondurmedi (duzenek)');
+  assert.ok(
+    o.staleFleet && o.staleFleet.ageDays > 2,
+    '/overview bayat filoda staleFleet dondurmedi (duzenek)',
+  );
   const beklenen = `Son başarılı yükleme ${o.staleFleet.ageDays} gün önce — eylemler kapalı`;
   // Sunucular sekmesi
   const kH = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'BayatFiloBandi', 'sf', 'data');
   const bH = BF({ sf: o[kH] });
-  assert.ok(bH && metinleri(bH).startsWith(beklenen), 'Sunucular sekmesinde bayat filo bandi cikmiyor');
+  assert.ok(
+    bH && metinleri(bH).startsWith(beklenen),
+    'Sunucular sekmesinde bayat filo bandi cikmiyor',
+  );
   // Bulgular sekmesi: veriyi /findings'ten alir
   const ft = govde(PAGE_RAW, 'FindingsTab');
-  assert.ok(ft.includes('serverHubApi.findings(fresh)'), 'Bulgular sekmesi veriyi /findings ten almiyor');
+  assert.ok(
+    ft.includes('serverHubApi.findings(fresh)'),
+    'Bulgular sekmesi veriyi /findings ten almiyor',
+  );
   const kF = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'FindingsTab', 'BayatFiloBandi', 'sf', 'data');
   assert.ok(
     Object.hasOwn(f, kF),
@@ -1177,7 +1675,10 @@ test('D3 EK-2 Bulgular sekmesi bandi: /findings staleFleet tasir ve sekme bandi 
   );
   assert.deepEqual(f[kF], o.staleFleet, '/findings ve /overview bayatligi farkli bildiriyor');
   const bF = BF({ sf: f[kF] });
-  assert.ok(bF && metinleri(bF).startsWith(beklenen), 'Bulgular sekmesinde bayat filo bandi cikmiyor');
+  assert.ok(
+    bF && metinleri(bF).startsWith(beklenen),
+    'Bulgular sekmesinde bayat filo bandi cikmiyor',
+  );
 });
 
 // ── T2-D2 C3 sema bilinmiyor ──────────────────────────────────────────────────────────
@@ -1201,13 +1702,24 @@ test("T2-D2 schemaUnknown: 'Tarayici sema surumu bilinmiyor; eylemler kapali' ba
 
   // YERLESIM (AST) + SUNUCU YANITI: her ekran kendi yanitinin alanini okur
   const { o, f, h } = await sunucuYanitlari('sema');
-  assert.equal(o.schemaUnknown, true, '/overview sema dusunce schemaUnknown=true dondurmedi (duzenek)');
+  assert.equal(
+    o.schemaUnknown,
+    true,
+    '/overview sema dusunce schemaUnknown=true dondurmedi (duzenek)',
+  );
   const kO = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'SemaBandi', 'su', 'data');
   const kF = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'FindingsTab', 'SemaBandi', 'su', 'data');
   const kH = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'HostModal', 'SemaBandi', 'su', 'd', ['d &&']);
-  assert.ok(SB({ su: o[kO] }), `Sunucular sekmesi '${kO}' okuyor; /overview yanitinda sema bandi cikmiyor`);
-  assert.ok(SB({ su: f[kF] }), `Bulgular sekmesi '${kF}' okuyor; /findings yanitinda sema bandi cikmiyor`);
-  for (const ad of [APP, WEB]) assert.ok(SB({ su: h[ad][kH] }), `${ad} ayrintisi '${kH}' tasimiyor - sema bandi cikmiyor`);
+  assert.ok(
+    SB({ su: o[kO] }),
+    `Sunucular sekmesi '${kO}' okuyor; /overview yanitinda sema bandi cikmiyor`,
+  );
+  assert.ok(
+    SB({ su: f[kF] }),
+    `Bulgular sekmesi '${kF}' okuyor; /findings yanitinda sema bandi cikmiyor`,
+  );
+  for (const ad of [APP, WEB])
+    assert.ok(SB({ su: h[ad][kH] }), `${ad} ayrintisi '${kH}' tasimiyor - sema bandi cikmiyor`);
 
   // Ayrintidaki JVM ve web satirlari: sebep SEMA, hidepid DEGIL; yine de "kapali/calismiyor" DEGIL.
   // HostModal'in cagrilarina verdigi bayrak ayni alani okur (AST).
@@ -1219,14 +1731,25 @@ test("T2-D2 schemaUnknown: 'Tarayici sema surumu bilinmiyor; eylemler kapali' ba
     return m[1];
   };
   const jvm = h[APP].jvms.find((j) => j.name === 'crm');
-  assert.ok(jvm && jvm.runningKnown === false, 'duzenek: sema bilinmiyorken durmus JVM bilinmiyor gelmedi');
+  assert.ok(
+    jvm && jvm.runningKnown === false,
+    'duzenek: sema bilinmiyorken durmus JVM bilinmiyor gelmedi',
+  );
   const jd = fonksiyon(P, 'jvmDurumu')(jvm, h[APP][bayrak('jvmDurumu')] === true);
-  assert.equal(jd.metin, 'bilinmiyor (şema okunamadı)', 'sema bilinmiyorken JVM satiri yanlis sebep gosteriyor');
+  assert.equal(
+    jd.metin,
+    'bilinmiyor (şema okunamadı)',
+    'sema bilinmiyorken JVM satiri yanlis sebep gosteriyor',
+  );
   assert.ok(!/hidepid/.test(jd.aciklama));
   const web = h[WEB].web.find((w) => w.product === 'IHS');
   assert.ok(web, 'duzenek: web satiri yok');
   const wd = fonksiyon(P, 'webDurumu')(web, h[WEB][bayrak('webDurumu')] === true);
-  assert.equal(wd.metin, 'bilinmiyor (şema okunamadı)', `sema bilinmiyorken web satiri: ${wd.metin}`);
+  assert.equal(
+    wd.metin,
+    'bilinmiyor (şema okunamadı)',
+    `sema bilinmiyorken web satiri: ${wd.metin}`,
+  );
 });
 
 // Sunucular sekmesinin ozet kartlari ve liste hucresi basliklari da olculemeyen sayaclarin
@@ -1251,7 +1774,8 @@ test('T2-D2 Sunucular sekmesi ozet/liste basliklari: sema bilinmiyorken olculeme
   const ilkler = [];
   const sabit = [];
   const gez = (n) => {
-    if (ts.isVariableDeclaration(n) && n.name.getText(sf) === 'sema') ilkler.push(n.initializer ? dugumMetni(sf, n.initializer) : '');
+    if (ts.isVariableDeclaration(n) && n.name.getText(sf) === 'sema')
+      ilkler.push(n.initializer ? dugumMetni(sf, n.initializer) : '');
     if (
       (ts.isStringLiteral(n) ||
         ts.isNoSubstitutionTemplateLiteral(n) ||
@@ -1268,16 +1792,34 @@ test('T2-D2 Sunucular sekmesi ozet/liste basliklari: sema bilinmiyorken olculeme
   assert.equal(ilkler.length, 1, `HostsTab 'sema' bayragi ${ilkler.length} kez tanimli`);
   const m = /^data\??\.(\w+) === true$/.exec(ilkler[0]);
   assert.ok(m, `HostsTab sema bayragi /overview alanindan gelmiyor: ${ilkler[0]}`);
-  assert.deepEqual(sabit, [], `HostsTab'da sema bayragindan bagimsiz sebep metni: ${sabit.join(' | ')}`);
+  assert.deepEqual(
+    sabit,
+    [],
+    `HostsTab'da sema bayragindan bagimsiz sebep metni: ${sabit.join(' | ')}`,
+  );
   const cs = cagrilar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'olcumSebebi');
-  assert.ok(cs.length >= 3, `olcumSebebi ${cs.length} yerde (donut dilimi, ortam basligi, liste hucresi bekleniyor)`);
-  for (const a of cs) assert.deepEqual(a, ['sema'], `olcumSebebi(${a.join(', ')}) sema bayragini vermiyor`);
-  const ca = cagrilar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'olculemeyenAciklama').map((a) => a.join(', '));
-  assert.deepEqual(ca.sort(), ["'jvm', sema", "'web', sema"], `olculemeyenAciklama cagrilari: ${ca.join(' / ')}`);
+  assert.ok(
+    cs.length >= 3,
+    `olcumSebebi ${cs.length} yerde (donut dilimi, ortam basligi, liste hucresi bekleniyor)`,
+  );
+  for (const a of cs)
+    assert.deepEqual(a, ['sema'], `olcumSebebi(${a.join(', ')}) sema bayragini vermiyor`);
+  const ca = cagrilar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'olculemeyenAciklama').map((a) =>
+    a.join(', '),
+  );
+  assert.deepEqual(
+    ca.sort(),
+    ["'jvm', sema", "'web', sema"],
+    `olculemeyenAciklama cagrilari: ${ca.join(' / ')}`,
+  );
 
   // SUNUCU YANITI: sema dusukken /overview bayragi true; okunan alan ayni ad
   const { o } = await sunucuYanitlari('sema');
-  assert.equal(o[m[1]], true, `/overview '${m[1]}' tasimiyor - basliklar hidepid sebebini gosterir`);
+  assert.equal(
+    o[m[1]],
+    true,
+    `/overview '${m[1]}' tasimiyor - basliklar hidepid sebebini gosterir`,
+  );
   const { o: ob } = await sunucuYanitlari('bayat');
   assert.notEqual(ob[m[1]], true, 'sema okunurken bayrak true');
 });
@@ -1286,10 +1828,17 @@ test('T2-D2 rollback.schemaUnknown: v3 sayimi yapilamadi - bant sebebi sema, "N 
   const gm = fonksiyon(P, 'geriAlmaMetni');
   const bosMesaj = gm({ allowed: false, v3Hosts: null, schemaUnknown: true, message: '' });
   assert.match(bosMesaj, /şeması okunamadı/);
-  assert.ok(!/yeni tarayıcıdan \(scan_ver dolu\)/.test(bosMesaj), 'sema bilinmiyorken v3 sunucu sayisi uyduruldu');
+  assert.ok(
+    !/yeni tarayıcıdan \(scan_ver dolu\)/.test(bosMesaj),
+    'sema bilinmiyorken v3 sunucu sayisi uyduruldu',
+  );
   assert.ok(!/Bazı sunucunun/.test(bosMesaj));
   const { o } = await sunucuYanitlari('sema');
-  assert.equal(o.rollback && o.rollback.schemaUnknown, true, '/overview rollback.schemaUnknown tasimiyor (duzenek)');
+  assert.equal(
+    o.rollback && o.rollback.schemaUnknown,
+    true,
+    '/overview rollback.schemaUnknown tasimiyor (duzenek)',
+  );
   const k = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'GeriAlmaBandi', 'rb', 'data');
   const el = P.GeriAlmaBandi({ rb: o[k] });
   assert.ok(el, 'sema bilinmiyorken geri alma bandi cikmiyor');
@@ -1302,19 +1851,37 @@ test('T2-D2 hazirlik sebep kodlari: SCHEMA_UNKNOWN / STALE_EVIDENCE ve her olcul
   const KOD = P.KOD_ETIKET;
   const hs = fonksiyon(P, 'hazirlikSebebi');
   const { KOD_ANLAMI, SEMA, BAYAT } = require('../reboot-readiness.cjs');
-  const gerekli = [SEMA.code, BAYAT.code, ...Object.entries(KOD_ANLAMI).filter(([, v]) => v.tip === 'unknown').map(([k]) => k)];
+  const gerekli = [
+    SEMA.code,
+    BAYAT.code,
+    ...Object.entries(KOD_ANLAMI)
+      .filter(([, v]) => v.tip === 'unknown')
+      .map(([k]) => k),
+  ];
   const eksik = gerekli.filter((k) => typeof KOD[k] !== 'string' || KOD[k].trim().length < 4);
-  assert.deepEqual(eksik, [], `ekran etiketi eksik (hazirlikta 'bilinmiyor' sayilan kod): ${eksik.join(', ')}`);
+  assert.deepEqual(
+    eksik,
+    [],
+    `ekran etiketi eksik (hazirlikta 'bilinmiyor' sayilan kod): ${eksik.join(', ')}`,
+  );
   assert.match(KOD.SCHEMA_UNKNOWN, /şema/i);
-  for (const k of gerekli) assert.equal(hs({ code: k, aciklama: '' }), KOD[k], `${k}: aciklama bossa ham kod basildi`);
-  assert.equal(hs({ code: 'SCHEMA_UNKNOWN', aciklama: ' sunucu metni ' }), 'sunucu metni', 'sunucunun aciklamasi kullanilmadi');
+  for (const k of gerekli)
+    assert.equal(hs({ code: k, aciklama: '' }), KOD[k], `${k}: aciklama bossa ham kod basildi`);
+  assert.equal(
+    hs({ code: 'SCHEMA_UNKNOWN', aciklama: ' sunucu metni ' }),
+    'sunucu metni',
+    'sunucunun aciklamasi kullanilmadi',
+  );
   assert.equal(hs({ code: 'YENI_X', aciklama: '' }), 'YENI_X', 'etiketsiz kod dusuruldu');
   // GERCEK /reboot-readiness (sema dusuk): her sebep ekranda etiketli
   const { hz } = await sunucuYanitlari('sema');
   assert.ok(hz && hz.rows && hz.rows.length === 2, '/reboot-readiness duzenegi');
   for (const r of hz.rows) {
     assert.equal(r.verdict, 'unknown', `${r.host}: sema bilinmiyorken kova ${r.verdict}`);
-    assert.ok(r.reasons.some((y) => y.code === 'SCHEMA_UNKNOWN'), `${r.host}: SCHEMA_UNKNOWN sebebi yok`);
+    assert.ok(
+      r.reasons.some((y) => y.code === 'SCHEMA_UNKNOWN'),
+      `${r.host}: SCHEMA_UNKNOWN sebebi yok`,
+    );
   }
   for (const t of hz.topReasons) {
     assert.ok(KOD[t.code], `hazirlik sebebi ${t.code} ekranda etiketsiz`);
@@ -1322,9 +1889,16 @@ test('T2-D2 hazirlik sebep kodlari: SCHEMA_UNKNOWN / STALE_EVIDENCE ve her olcul
   }
   // BAGLANTI (AST): Sebepler listesi ve satirlar yardimcidan gecer; sebep satirinin title'i kod etiketi
   const c = cagrilar(PAGE_RAW, PAGE_PATH, 'ReadinessTab', 'hazirlikSebebi');
-  assert.deepEqual(c.map((a) => a[0]).sort(), ['t', 'y'], `hazirlikSebebi cagrilari: ${JSON.stringify(c)}`);
+  assert.deepEqual(
+    c.map((a) => a[0]).sort(),
+    ['t', 'y'],
+    `hazirlikSebebi cagrilari: ${JSON.stringify(c)}`,
+  );
   assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'ReadinessTab', 'kodEtiketi'), [['t.code']]);
-  assert.ok(!/\{t\.aciklama\} —/.test(govde(PAGE_RAW, 'ReadinessTab')), 'Sebepler listesi ham aciklamaya donmus');
+  assert.ok(
+    !/\{t\.aciklama\} —/.test(govde(PAGE_RAW, 'ReadinessTab')),
+    'Sebepler listesi ham aciklamaya donmus',
+  );
 });
 
 // ── T2-D2 C4 targetsTruncated rozeti ve EK-3 unattributed ayrintisi ───────────────────
@@ -1338,12 +1912,30 @@ test("T2-D2 vhosts[].targetsTruncated: 'hedef listesi kesik' rozeti (sunucu yani
   // T3 #10 (EK-6.9): kesik liste durmus JVM'in retire'ini port bilgisinden BAGIMSIZ engeller;
   // aciklama engeli "portu bilinmeyen" JVM'lere daraltmaz ve engeli soyler.
   const ac = katla(rz.aciklama);
-  assert.ok(!ac.includes('portu bilinmeyen'), `rozet engeli portu bilinmeyen JVM'lere daraltiyor: ${rz.aciklama}`);
-  assert.ok(!/portu (bilinmeyen|olculemeyen|olculmemis|bilinmiyor)/.test(ac), `rozet engeli port kosuluna bagliyor: ${rz.aciklama}`);
-  assert.ok(ac.includes('port bilgisinden bagimsiz'), `rozet 'port bilgisinden bagimsiz' demiyor: ${rz.aciklama}`);
-  assert.ok(ac.includes('onerilmez'), `rozet retire engelini soylemiyor ('onerilmez' yok): ${rz.aciklama}`);
-  assert.ok(/katmandaki durmus jvm/.test(ac), `rozet engelin kapsamini (katmandaki durmus JVM) soylemiyor: ${rz.aciklama}`);
-  assert.ok(!/etkilemez/.test(ac), `rozet kesik listenin karari etkilemedigini soyluyor: ${rz.aciklama}`);
+  assert.ok(
+    !ac.includes('portu bilinmeyen'),
+    `rozet engeli portu bilinmeyen JVM'lere daraltiyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    !/portu (bilinmeyen|olculemeyen|olculmemis|bilinmiyor)/.test(ac),
+    `rozet engeli port kosuluna bagliyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    ac.includes('port bilgisinden bagimsiz'),
+    `rozet 'port bilgisinden bagimsiz' demiyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    ac.includes('onerilmez'),
+    `rozet retire engelini soylemiyor ('onerilmez' yok): ${rz.aciklama}`,
+  );
+  assert.ok(
+    /katmandaki durmus jvm/.test(ac),
+    `rozet engelin kapsamini (katmandaki durmus JVM) soylemiyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    !/etkilemez/.test(ac),
+    `rozet kesik listenin karari etkilemedigini soyluyor: ${rz.aciklama}`,
+  );
   for (const x of [false, null, undefined]) {
     assert.equal(hr(x), null);
     assert.equal(HR({ kesik: x }), null, `targetsTruncated=${x} iken rozet basildi`);
@@ -1365,24 +1957,59 @@ test("T2-D2 vhosts[].targetsTruncated: 'hedef listesi kesik' rozeti (sunucu yani
   const api = vh.find((x) => x.serverName === 'api.bmw.de');
   const crm = vh.find((x) => x.serverName === 'crm.bmw.de');
   assert.ok(api && crm, 'duzenek: vhost satirlari yok');
-  assert.ok(HR({ kesik: api[m[1]] }), `sunucu kesik listeyi '${m[1]}' alaninda tasimiyor - rozet cikmiyor`);
+  assert.ok(
+    HR({ kesik: api[m[1]] }),
+    `sunucu kesik listeyi '${m[1]}' alaninda tasimiyor - rozet cikmiyor`,
+  );
   assert.equal(HR({ kesik: crm[m[1]] }), null, 'kesiksiz listede rozet');
   assert.ok(!String(api.proxyTargets).includes('TRUNC'), 'kesik jetonu hedef olarak gosterildi');
 });
 
 test('T2-D2 TRAFFIC_UNATTRIBUTED: unattributed[].kind ve .target ayrinti panelinde; etiket katman genisliginde', async () => {
   const KOD = P.KOD_ETIKET;
-  assert.ok(!/bu sunucuya|sunucusuna/.test(KOD.TRAFFIC_UNATTRIBUTED), `etiket hala sunucuya ozel: ${KOD.TRAFFIC_UNATTRIBUTED}`);
+  assert.ok(
+    !/bu sunucuya|sunucusuna/.test(KOD.TRAFFIC_UNATTRIBUTED),
+    `etiket hala sunucuya ozel: ${KOD.TRAFFIC_UNATTRIBUTED}`,
+  );
   assert.match(KOD.TRAFFIC_UNATTRIBUTED, /katman/);
   const as = fonksiyon(P, 'atfedilemeyenSatiri');
   const TUR = P.ATF_TUR;
   for (const k of ['PORT', 'HEDEF', 'EKSIK']) assert.ok(TUR && TUR[k], `${k} turu etiketsiz`);
-  const hedefS = as({ host: 'GBCJWP01', serverName: 'api.bmw.de', port: 8180, target: 'crm-vip.bmw.local:8180', kind: 'HEDEF', req7d: 5000, trafficState: 'ACTIVE' });
-  assert.ok(hedefS.includes('crm-vip.bmw.local:8180') && hedefS.includes(TUR.HEDEF) && hedefS.includes('GBCJWP01/api.bmw.de'), hedefS);
+  const hedefS = as({
+    host: 'GBCJWP01',
+    serverName: 'api.bmw.de',
+    port: 8180,
+    target: 'crm-vip.bmw.local:8180',
+    kind: 'HEDEF',
+    req7d: 5000,
+    trafficState: 'ACTIVE',
+  });
+  assert.ok(
+    hedefS.includes('crm-vip.bmw.local:8180') &&
+      hedefS.includes(TUR.HEDEF) &&
+      hedefS.includes('GBCJWP01/api.bmw.de'),
+    hedefS,
+  );
   assert.ok(!hedefS.includes(':8180 (:8180)'), 'port iki kez');
-  const portS = as({ host: 'GBCJWP01', serverName: 'b', port: 8443, target: null, kind: 'PORT', req7d: -1, trafficState: null });
+  const portS = as({
+    host: 'GBCJWP01',
+    serverName: 'b',
+    port: 8443,
+    target: null,
+    kind: 'PORT',
+    req7d: -1,
+    trafficState: null,
+  });
   assert.ok(portS.includes(':8443') && portS.includes(TUR.PORT) && /ölçülemedi/.test(portS), portS);
-  const eksikS = as({ host: 'W', serverName: 'c', port: null, target: '~', kind: 'EKSIK', req7d: 0, trafficState: 'NO_RECENT_TRAFFIC' });
+  const eksikS = as({
+    host: 'W',
+    serverName: 'c',
+    port: null,
+    target: '~',
+    kind: 'EKSIK',
+    req7d: 0,
+    trafficState: 'NO_RECENT_TRAFFIC',
+  });
   assert.ok(eksikS.includes(TUR.EKSIK) && eksikS.includes('~'), eksikS);
   assert.ok(as({ kind: 'YENI', target: 'x:1' }).includes('YENI'), 'bilinmeyen tur dusuruldu');
 
@@ -1404,11 +2031,15 @@ test('T2-D2 TRAFFIC_UNATTRIBUTED: unattributed[].kind ve .target ayrinti panelin
   assert.ok(el, 'TRAFFIC_UNATTRIBUTED ayrinti paneli null');
   assert.deepEqual(gorunurlukSorunlari(el), []);
   const yazi = metinleri(el);
-  assert.ok(yazi.includes(`Atfedilemeyen proxy: ${liste.length}`), 'ozet satiri sayiyi gostermiyor');
+  assert.ok(
+    yazi.includes(`Atfedilemeyen proxy: ${liste.length}`),
+    'ozet satiri sayiyi gostermiyor',
+  );
   for (const x of liste) {
     assert.ok(TUR[x.kind], `sunucunun turu (${x.kind}) ekranda etiketsiz`);
     assert.ok(yazi.includes(TUR[x.kind]), `${x.kind} turu panelde yok`);
-    if (x.kind !== 'EKSIK') assert.ok(yazi.includes(String(x.target)), `${x.target} hedefi panelde yok`);
+    if (x.kind !== 'EKSIK')
+      assert.ok(yazi.includes(String(x.target)), `${x.target} hedefi panelde yok`);
   }
   assert.deepEqual([...new Set(liste.map((x) => x.kind))].sort(), ['EKSIK', 'HEDEF']);
   assert.ok(yazi.includes('crm-vip.bmw.local:8180'));
@@ -1422,12 +2053,61 @@ const { assess } = require('../assess.cjs');
 function tanimKur(cfgSrc) {
   const g = gunOnce(0);
   return {
-    hosts: [{ host: APP, scan_date: g, products: 'JBOSS7', wall_s: 1, cpu_s: 0.1, note: '', scan_ver: '2.1', rec_counts: '', scan_errors: '', proc_visibility: 'FULL', sock_visibility: 'PID', loaded_at: `${g}T06:00:00Z` }],
+    hosts: [
+      {
+        host: APP,
+        scan_date: g,
+        products: 'JBOSS7',
+        wall_s: 1,
+        cpu_s: 0.1,
+        note: '',
+        scan_ver: '2.1',
+        rec_counts: '',
+        scan_errors: '',
+        proc_visibility: 'FULL',
+        sock_visibility: 'PID',
+        loaded_at: `${g}T06:00:00Z`,
+      },
+    ],
     init: [],
-    jboss: [{ host: APP, scan_date: g, gen: 7, host_name: 'h', host_state: 'running', cli: cfgSrc === 'PS_ONLY' ? 'FAIL' : 'OK', note: '' }],
+    jboss: [
+      {
+        host: APP,
+        scan_date: g,
+        gen: 7,
+        host_name: 'h',
+        host_state: 'running',
+        cli: cfgSrc === 'PS_ONLY' ? 'FAIL' : 'OK',
+        note: '',
+      },
+    ],
     jvms: [
-      { host: APP, scan_date: g, gen: 7, jvm: 'tanimli', grp: 'g', running: 1, auto_start: 'true', server_state: 'running', ports: '8080', running_src: 'PS', cfg_src: cfgSrc === 'PS_ONLY' ? 'PS_ONLY' : 'CLI_WILDCARD' },
-      { host: APP, scan_date: g, gen: 7, jvm: 'hayalet', grp: '', running: 1, auto_start: '', server_state: 'running', ports: '8090', running_src: 'PS', cfg_src: cfgSrc },
+      {
+        host: APP,
+        scan_date: g,
+        gen: 7,
+        jvm: 'tanimli',
+        grp: 'g',
+        running: 1,
+        auto_start: 'true',
+        server_state: 'running',
+        ports: '8080',
+        running_src: 'PS',
+        cfg_src: cfgSrc === 'PS_ONLY' ? 'PS_ONLY' : 'CLI_WILDCARD',
+      },
+      {
+        host: APP,
+        scan_date: g,
+        gen: 7,
+        jvm: 'hayalet',
+        grp: '',
+        running: 1,
+        auto_start: '',
+        server_state: 'running',
+        ports: '8090',
+        running_src: 'PS',
+        cfg_src: cfgSrc,
+      },
     ],
     web: [],
     vhosts: [],
@@ -1445,15 +2125,22 @@ test("T2-D2 UNAVAILABLE/tanimsiz-surec: uretilen her kod ve auto-start sebebi et
   const kodlar = (r) => new Set(r.hosts[0].findings.map((f) => f.code));
   const ku = kodlar(u);
   const kp = kodlar(p);
-  for (const k of new Set([...ku, ...kp])) assert.ok(KOD[k], `${k} uretiliyor ama ekranda etiketi yok`);
+  for (const k of new Set([...ku, ...kp]))
+    assert.ok(KOD[k], `${k} uretiliyor ama ekranda etiketi yok`);
   const ozel = [...ku].filter((k) => !kp.has(k));
-  assert.ok(ozel.length >= 1, `UNAVAILABLE'a ozel bulgu kodu yok (kodlar: ${[...ku].join(',')}) - PS_ONLY ile ayni metin mi?`);
+  assert.ok(
+    ozel.length >= 1,
+    `UNAVAILABLE'a ozel bulgu kodu yok (kodlar: ${[...ku].join(',')}) - PS_ONLY ile ayni metin mi?`,
+  );
   // EK-6.7: UNAVAILABLE metninde "okunamadi", "cevap vermedi", "listede olmayabilir" GECMEZ;
   // tanim kaynagi OKUNDU, "olculemedi" de yanlis kok nedendir (T3 #10). Buyuk harf / isaretsiz
   // yazim da yakalanir (katla).
   const YASAK_UNAVAILABLE = ['okunamad', 'cevap vermedi', 'listede olmayabilir', 'olculemedi'];
   const yasakli = (s) => YASAK_UNAVAILABLE.filter((y) => katla(s).includes(y));
-  assert.ok(ku.has('JVM_UNDEFINED_PROCESS') && !kp.has('JVM_UNDEFINED_PROCESS'), `UNAVAILABLE JVM_UNDEFINED_PROCESS uretmiyor (EK-6.7): ${[...ku].join(',')}`);
+  assert.ok(
+    ku.has('JVM_UNDEFINED_PROCESS') && !kp.has('JVM_UNDEFINED_PROCESS'),
+    `UNAVAILABLE JVM_UNDEFINED_PROCESS uretmiyor (EK-6.7): ${[...ku].join(',')}`,
+  );
   for (const k of new Set([...ozel, 'JVM_UNDEFINED_PROCESS'])) {
     assert.deepEqual(yasakli(KOD[k]), [], `${k} etiketi yanlis kok neden soyluyor: ${KOD[k]}`);
     assert.match(katla(KOD[k]), /tanim/, `${k} etiketi 'tanimda yok' demiyor`);
@@ -1466,8 +2153,15 @@ test("T2-D2 UNAVAILABLE/tanimsiz-surec: uretilen her kod ve auto-start sebebi et
   }
   assert.ok(sebepler.has('tanimsiz-surec'), 'duzenek: tanimsiz-surec sebebi uretilmedi');
   for (const s of sebepler) assert.ok(SEBEP[s], `auto-start sebebi '${s}' ekranda etiketsiz`);
-  assert.ok(!/CLI|okunamad/.test(SEBEP['tanimsiz-surec']), `tanimsiz-surec etiketi yanlis: ${SEBEP['tanimsiz-surec']}`);
-  assert.deepEqual(yasakli(SEBEP['tanimsiz-surec']), [], `tanimsiz-surec etiketi yanlis kok neden: ${SEBEP['tanimsiz-surec']}`);
+  assert.ok(
+    !/CLI|okunamad/.test(SEBEP['tanimsiz-surec']),
+    `tanimsiz-surec etiketi yanlis: ${SEBEP['tanimsiz-surec']}`,
+  );
+  assert.deepEqual(
+    yasakli(SEBEP['tanimsiz-surec']),
+    [],
+    `tanimsiz-surec etiketi yanlis kok neden: ${SEBEP['tanimsiz-surec']}`,
+  );
   // kirilim: gercek ozet -> etiketli; etiketi olmayan yeni anahtar DUSURULMEZ; 0'lar yazilmaz
   const ku_ = kir(u.summary.jvm.autoUnknownBy);
   assert.ok(ku_.includes(`${SEBEP['tanimsiz-surec']}: 1`), ku_);
@@ -1476,8 +2170,14 @@ test("T2-D2 UNAVAILABLE/tanimsiz-surec: uretilen her kod ve auto-start sebebi et
   assert.equal(kir(null), '');
   // BAGLANTI (AST): ozet karti dilim basligi kirilimi yardimcidan alir
   const c = cagrilar(PAGE_RAW, PAGE_PATH, 'HostsTab', 'autoBilinmiyorKirilimi');
-  assert.ok(c.length >= 1 && c.every((a) => a[0] === 's.jvm.autoUnknownBy'), `kirilim cagrisi: ${JSON.stringify(c)}`);
-  assert.ok(!PAGE.includes("['cli-okunamadi', 'CLI cevap vermedi'],"), 'eski sabit uc-sebep listesi geri gelmis');
+  assert.ok(
+    c.length >= 1 && c.every((a) => a[0] === 's.jvm.autoUnknownBy'),
+    `kirilim cagrisi: ${JSON.stringify(c)}`,
+  );
+  assert.ok(
+    !PAGE.includes("['cli-okunamadi', 'CLI cevap vermedi'],"),
+    'eski sabit uc-sebep listesi geri gelmis',
+  );
 });
 
 // -- EK-6.13 (T3 #9): assess.cjs'in urettigi HER bulgu kodu ekranda etiketli ---------------
@@ -1502,13 +2202,21 @@ const KOD_DESEN = /^[A-Z][A-Z0-9_]*$/;
 function assessKodlari(raw, dosya = ASSESS_PATH) {
   const metin = normalize(raw);
   const metinKodlari = new Set();
-  for (const m of metin.matchAll(/(?<![\w$.])add\( ?'[^']*', ?'[^']*', ?'([A-Z][A-Z0-9_]*)'/g)) metinKodlari.add(m[1]);
+  for (const m of metin.matchAll(/(?<![\w$.])add\( ?'[^']*', ?'[^']*', ?'([A-Z][A-Z0-9_]*)'/g))
+    metinKodlari.add(m[1]);
   for (const m of metin.matchAll(/(?<![\w$.])code: ?'([A-Z][A-Z0-9_]*)'/g)) metinKodlari.add(m[1]);
   const sebepler = new Set();
-  for (const m of metin.matchAll(/autoStartReason(?: =| \|\|) '([a-z][a-z-]*)'/g)) sebepler.add(m[1]);
+  for (const m of metin.matchAll(/autoStartReason(?: =| \|\|) '([a-z][a-z-]*)'/g))
+    sebepler.add(m[1]);
 
   const ts = tsYukle();
-  const sf = ts.createSourceFile(path.basename(dosya), raw, ts.ScriptTarget.ES2020, true, ts.ScriptKind.JS);
+  const sf = ts.createSourceFile(
+    path.basename(dosya),
+    raw,
+    ts.ScriptTarget.ES2020,
+    true,
+    ts.ScriptKind.JS,
+  );
   const astKodlari = new Set();
   const dinamik = [];
   const yer = (n) =>
@@ -1542,33 +2250,78 @@ function assessKodlari(raw, dosya = ASSESS_PATH) {
       else if (ts.isTemplateExpression(n.initializer) || ts.isBinaryExpression(n.initializer))
         dinamik.push(`code: sablon/birlestirme: ${yer(n)}`);
     }
-    if (ts.isVariableDeclaration(n) && n.name.getText(sf) === 'AUTOSTART_SEBEP' && n.initializer && ts.isObjectLiteralExpression(n.initializer))
-      for (const o of n.initializer.properties) if (o.name) sebepler.add(ts.isStringLiteral(o.name) ? o.name.text : o.name.getText(sf));
+    if (
+      ts.isVariableDeclaration(n) &&
+      n.name.getText(sf) === 'AUTOSTART_SEBEP' &&
+      n.initializer &&
+      ts.isObjectLiteralExpression(n.initializer)
+    )
+      for (const o of n.initializer.properties)
+        if (o.name) sebepler.add(ts.isStringLiteral(o.name) ? o.name.text : o.name.getText(sf));
     ts.forEachChild(n, gez);
   };
   gez(sf);
-  return { kodlar: new Set([...metinKodlari, ...astKodlari]), metinKodlari, astKodlari, sebepler, dinamik };
+  return {
+    kodlar: new Set([...metinKodlari, ...astKodlari]),
+    metinKodlari,
+    astKodlari,
+    sebepler,
+    dinamik,
+  };
 }
 
 test('EK-6.13 tarayicinin kendisi: prettier bicimi, cift tirnak, code:, sablon dizge, takma ad ve yorum', () => {
   const o = (s) => assessKodlari(s, 'ornek.cjs');
-  const a = o("const add = () => 0;\nadd(\n  \"info\",\n  'jvm',\n  \"YENI_A\",\n  `metin`,\n);\n");
-  assert.deepEqual([...a.metinKodlari], ['YENI_A'], 'normalize taramasi satira bolunmus / cift tirnakli kodu gormedi');
+  const a = o('const add = () => 0;\nadd(\n  "info",\n  \'jvm\',\n  "YENI_A",\n  `metin`,\n);\n');
+  assert.deepEqual(
+    [...a.metinKodlari],
+    ['YENI_A'],
+    'normalize taramasi satira bolunmus / cift tirnakli kodu gormedi',
+  );
   assert.deepEqual([...a.astKodlari], ['YENI_A']);
   assert.deepEqual(a.dinamik, []);
-  assert.deepEqual([...o("F.push({ severity: 'info', code: 'YENI_B', text: 't' });\n").kodlar], ['YENI_B']);
-  assert.deepEqual([...o("const add = () => 0;\nadd('info', 'jvm', c ? 'YENI_C' : 'YENI_D', 't');\n").kodlar].sort(), ['YENI_C', 'YENI_D']);
+  assert.deepEqual(
+    [...o("F.push({ severity: 'info', code: 'YENI_B', text: 't' });\n").kodlar],
+    ['YENI_B'],
+  );
+  assert.deepEqual(
+    [
+      ...o("const add = () => 0;\nadd('info', 'jvm', c ? 'YENI_C' : 'YENI_D', 't');\n").kodlar,
+    ].sort(),
+    ['YENI_C', 'YENI_D'],
+  );
   // kod adi metinden okunamayan uretim KIRMIZI
-  assert.equal(o("const add = () => 0;\nadd('info', 'jvm', `RETIRE_${x}`, 't');\n").dinamik.length, 1, 'sablon dizge kod adi goruldu sayildi');
-  assert.equal(o("const add = () => 0;\nconst k = 'X_Y';\nadd('info', 'jvm', k, 't');\n").dinamik.length, 1, 'degiskenle verilen kod goruldu sayildi');
-  assert.equal(o("const add = () => 0;\nconst ekle = add;\nekle('info', 'jvm', 'GIZLI', 't');\n").dinamik.length, 1, 'takma ad goruldu sayildi');
-  assert.equal(o("F.push({ code: `X_${y}` });\n").dinamik.length, 1, 'code: sablon dizge goruldu sayildi');
+  assert.equal(
+    o("const add = () => 0;\nadd('info', 'jvm', `RETIRE_${x}`, 't');\n").dinamik.length,
+    1,
+    'sablon dizge kod adi goruldu sayildi',
+  );
+  assert.equal(
+    o("const add = () => 0;\nconst k = 'X_Y';\nadd('info', 'jvm', k, 't');\n").dinamik.length,
+    1,
+    'degiskenle verilen kod goruldu sayildi',
+  );
+  assert.equal(
+    o("const add = () => 0;\nconst ekle = add;\nekle('info', 'jvm', 'GIZLI', 't');\n").dinamik
+      .length,
+    1,
+    'takma ad goruldu sayildi',
+  );
+  assert.equal(
+    o('F.push({ code: `X_${y}` });\n').dinamik.length,
+    1,
+    'code: sablon dizge goruldu sayildi',
+  );
   // Set.add / dizi uyesi ve yorumdaki add( cagri sayilmaz; dogrudan aktarim (code: f.code) dinamik degil
-  const t = o("const s = new Set();\ns.add('A');\ngate.add(x);\n// add('info', 'jvm', yanlis)\nconst r = { code: f.code };\n");
+  const t = o(
+    "const s = new Set();\ns.add('A');\ngate.add(x);\n// add('info', 'jvm', yanlis)\nconst r = { code: f.code };\n",
+  );
   assert.deepEqual([...t.kodlar], []);
   assert.deepEqual(t.dinamik, []);
   // auto-start sebepleri: nesne anahtarlari ve atamalar
-  const s = o("const AUTOSTART_SEBEP = {\n  'cli-okunamadi': 'x',\n  \"yeni-sebep\": 'y',\n};\nj.autoStartReason = 'atanan';\nz(j.autoStartReason || 'varsayilan');\n");
+  const s = o(
+    "const AUTOSTART_SEBEP = {\n  'cli-okunamadi': 'x',\n  \"yeni-sebep\": 'y',\n};\nj.autoStartReason = 'atanan';\nz(j.autoStartReason || 'varsayilan');\n",
+  );
   assert.deepEqual([...s.sebepler].sort(), ['atanan', 'cli-okunamadi', 'varsayilan', 'yeni-sebep']);
 });
 
@@ -1576,13 +2329,32 @@ test("EK-6.13 assess.cjs'te uretilen HER bulgu kodu ve auto-start sebebi ekranda
   const KOD = P.KOD_ETIKET;
   const SEBEP = P.AUTOSTART_SEBEP_ETIKET;
   const { kodlar, sebepler, dinamik } = assessKodlari(fs.readFileSync(ASSESS_PATH, 'utf8'));
-  assert.deepEqual(dinamik, [], `kod adi metinden okunamayan bulgu uretimi - ekran etiketi denetlenemez: ${dinamik.join(' | ')}`);
+  assert.deepEqual(
+    dinamik,
+    [],
+    `kod adi metinden okunamayan bulgu uretimi - ekran etiketi denetlenemez: ${dinamik.join(' | ')}`,
+  );
   assert.ok(kodlar.size >= 30, `assess.cjs'te yalniz ${kodlar.size} kod bulundu - tarayici kor`);
-  const eksik = [...kodlar].filter((k) => typeof KOD[k] !== 'string' || KOD[k].trim().length < 4).sort();
-  assert.deepEqual(eksik, [], `assess.cjs bu kodlari uretiyor ama ekranda etiketi yok (EK-6.13): ${eksik.join(', ')}`);
-  assert.ok(sebepler.size >= 4, `assess.cjs'te yalniz ${sebepler.size} auto-start sebebi bulundu - tarayici kor`);
-  const sEksik = [...sebepler].filter((k) => typeof SEBEP[k] !== 'string' || SEBEP[k].trim().length < 4).sort();
-  assert.deepEqual(sEksik, [], `auto-start sebebi ekranda etiketsiz (EK-6.13): ${sEksik.join(', ')}`);
+  const eksik = [...kodlar]
+    .filter((k) => typeof KOD[k] !== 'string' || KOD[k].trim().length < 4)
+    .sort();
+  assert.deepEqual(
+    eksik,
+    [],
+    `assess.cjs bu kodlari uretiyor ama ekranda etiketi yok (EK-6.13): ${eksik.join(', ')}`,
+  );
+  assert.ok(
+    sebepler.size >= 4,
+    `assess.cjs'te yalniz ${sebepler.size} auto-start sebebi bulundu - tarayici kor`,
+  );
+  const sEksik = [...sebepler]
+    .filter((k) => typeof SEBEP[k] !== 'string' || SEBEP[k].trim().length < 4)
+    .sort();
+  assert.deepEqual(
+    sEksik,
+    [],
+    `auto-start sebebi ekranda etiketsiz (EK-6.13): ${sEksik.join(', ')}`,
+  );
   // kodEtiketi etiketli kodu "KOD - anlami" bicimiyle basar (ham kod tek basina kalmaz)
   const ke = fonksiyon(P, 'kodEtiketi');
   for (const k of kodlar) assert.equal(ke(k), `${k} — ${KOD[k]}`);
@@ -1592,14 +2364,46 @@ test("EK-6.13 assess.cjs'te uretilen HER bulgu kodu ve auto-start sebebi ekranda
   zengin.hosts[0].cpu_s = 12;
   zengin.jboss[0].host_state = 'restart-required';
   zengin.jvms[0].server_state = 'reload-required';
-  zengin.jvms.push({ host: APP, scan_date: gunOnce(0), gen: 7, jvm: 'durgun', grp: 'g', running: 0, auto_start: 'false', server_state: 'stopped', ports: '', running_src: 'PS_ABSENT', cfg_src: 'CLI_WILDCARD' });
-  zengin.sshd = [{ host: APP, scan_date: gunOnce(0), max_sessions: 10, max_startups: '10:30:100', active_sessions: 0 }];
+  zengin.jvms.push({
+    host: APP,
+    scan_date: gunOnce(0),
+    gen: 7,
+    jvm: 'durgun',
+    grp: 'g',
+    running: 0,
+    auto_start: 'false',
+    server_state: 'stopped',
+    ports: '',
+    running_src: 'PS_ABSENT',
+    cfg_src: 'CLI_WILDCARD',
+  });
+  zengin.sshd = [
+    {
+      host: APP,
+      scan_date: gunOnce(0),
+      max_sessions: 10,
+      max_startups: '10:30:100',
+      active_sessions: 0,
+    },
+  ];
   const uretilen = new Set();
-  for (const d of [zengin, tanimKur('PS_ONLY')]) for (const f of assess(d, { now: Date.now() }).hosts[0].findings) uretilen.add(f.code);
-  for (const k of ['HOST_RESTART', 'RESTART_REQUIRED', 'STOPPED', 'SSH_MAXSESSIONS_LOW', 'SCAN_COST', 'JVM_UNDEFINED_PROCESS'])
+  for (const d of [zengin, tanimKur('PS_ONLY')])
+    for (const f of assess(d, { now: Date.now() }).hosts[0].findings) uretilen.add(f.code);
+  for (const k of [
+    'HOST_RESTART',
+    'RESTART_REQUIRED',
+    'STOPPED',
+    'SSH_MAXSESSIONS_LOW',
+    'SCAN_COST',
+    'JVM_UNDEFINED_PROCESS',
+  ])
     assert.ok(uretilen.has(k), `duzenek: ${k} uretilmedi (${[...uretilen].join(',')})`);
   const gorulmeyen = [...uretilen].filter((k) => !kodlar.has(k));
-  assert.deepEqual(gorulmeyen, [], `assess bu kodlari uretiyor ama kaynak taramasi gormuyor: ${gorulmeyen.join(', ')}`);
+  assert.deepEqual(
+    gorulmeyen,
+    [],
+    `assess bu kodlari uretiyor ama kaynak taramasi gormuyor: ${gorulmeyen.join(', ')}`,
+  );
 
   // Kural 6: OLCULMUS durumu anlatan kodun etiketi "olculemedi / bilinmiyor" demez.
   const { KOD_ANLAMI } = require('../reboot-readiness.cjs');
@@ -1640,10 +2444,18 @@ test("K6 web running_src=UNMEASURED 'calismiyor' DEGIL", () => {
   assert.equal(wd({ running: false, runningSrc: 'PS_ABSENT' }).metin, 'çalışmıyor');
   assert.equal(wd({ running: false }).metin, 'çalışmıyor', 'eski yanit');
   assert.equal(wd({ running: true, runningSrc: 'PS' }).metin, 'çalışıyor');
-  assert.equal(wd({ running: false, runningSrc: 'UNMEASURED' }, true).metin, 'bilinmiyor (şema okunamadı)');
+  assert.equal(
+    wd({ running: false, runningSrc: 'UNMEASURED' }, true).metin,
+    'bilinmiyor (şema okunamadı)',
+  );
   const c = cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'webDurumu');
   assert.ok(c.length >= 1, 'web karti yardimciyi kullanmiyor');
-  for (const a of c) assert.deepEqual(a, ['w', 'd.schemaUnknown === true'], `webDurumu(${a.join(', ')}) sema bayragini vermiyor`);
+  for (const a of c)
+    assert.deepEqual(
+      a,
+      ['w', 'd.schemaUnknown === true'],
+      `webDurumu(${a.join(', ')}) sema bayragini vermiyor`,
+    );
 });
 
 // ── TUR 4 (EK-7.10 D acik isleri): reason, targetsDynamic, sampled, auto-start dugmesi ─────
@@ -1669,7 +2481,8 @@ function assessNedenleri(raw) {
     return null;
   };
   const gez = (n) => {
-    if (ts.isPropertyAssignment(n) && n.name.getText(sf) === 'neden') (lit(n.initializer) || []).forEach((x) => out.add(x));
+    if (ts.isPropertyAssignment(n) && n.name.getText(sf) === 'neden')
+      (lit(n.initializer) || []).forEach((x) => out.add(x));
     ts.forEachChild(n, gez);
   };
   gez(sf);
@@ -1682,45 +2495,100 @@ test("T4-D1 unattributed[].reason ekranda: HEDEF genel etiket + nedenin etiketi;
   const as = fonksiyon(P, 'atfedilemeyenSatiri');
   assert.ok(NEDEN && typeof NEDEN === 'object', 'ATF_NEDEN yok - reason ekranda gosterilmiyor');
   // genel HEDEF etiketi belirli bir kok neden IDDIA ETMEZ (neden ayrica yazilir)
-  assert.ok(!/cozulemedi|taranmamis|jvm|dinamik/.test(katla(TUR.HEDEF)), `HEDEF etiketi tek bir kok neden soyluyor: ${TUR.HEDEF}`);
+  assert.ok(
+    !/cozulemedi|taranmamis|jvm|dinamik/.test(katla(TUR.HEDEF)),
+    `HEDEF etiketi tek bir kok neden soyluyor: ${TUR.HEDEF}`,
+  );
   // assess kaynagindaki HER neden degismezi etiketli (yeni neden etiketsiz eklenirse KIRMIZI)
   const nedenler = assessNedenleri(fs.readFileSync(ASSESS_PATH, 'utf8'));
   for (const n of ['COZULEMEDI', 'DINAMIK', 'JVMSIZ', 'TARANMAMIS', 'CONF_OKUNAMADI'])
-    assert.ok(nedenler.has(n), `duzenek: assess kaynaginda '${n}' nedeni bulunamadi (${[...nedenler].join(',')}) - tarayici kor`);
-  for (const n of nedenler) assert.ok(typeof NEDEN[n] === 'string' && NEDEN[n].length > 4, `assess '${n}' nedenini uretiyor ama ekranda etiketi yok`);
+    assert.ok(
+      nedenler.has(n),
+      `duzenek: assess kaynaginda '${n}' nedeni bulunamadi (${[...nedenler].join(',')}) - tarayici kor`,
+    );
+  for (const n of nedenler)
+    assert.ok(
+      typeof NEDEN[n] === 'string' && NEDEN[n].length > 4,
+      `assess '${n}' nedenini uretiyor ama ekranda etiketi yok`,
+    );
   // her neden KENDI kok nedenini soyler; COZULEMEDI disindakiler "cozulemedi" demez
-  const satir = (reason) => as({ host: 'GBCJWP01', serverName: 'api.bmw.de', port: 8180, target: 'gbcjwp01.bmw.local:8180', kind: 'HEDEF', reason, req7d: 5000, trafficState: 'ACTIVE' });
-  for (const [n, kok] of [['JVMSIZ', 'jvm'], ['TARANMAMIS', 'taranmamis'], ['DINAMIK', 'dinamik'], ['CONF_OKUNAMADI', 'conf']]) {
+  const satir = (reason) =>
+    as({
+      host: 'GBCJWP01',
+      serverName: 'api.bmw.de',
+      port: 8180,
+      target: 'gbcjwp01.bmw.local:8180',
+      kind: 'HEDEF',
+      reason,
+      req7d: 5000,
+      trafficState: 'ACTIVE',
+    });
+  for (const [n, kok] of [
+    ['JVMSIZ', 'jvm'],
+    ['TARANMAMIS', 'taranmamis'],
+    ['DINAMIK', 'dinamik'],
+    ['CONF_OKUNAMADI', 'conf'],
+  ]) {
     const s = satir(n);
     assert.ok(s.includes(NEDEN[n]) && katla(s).includes(kok), `${n}: ${s}`);
-    assert.ok(!katla(s).includes('cozulemedi'), `${n} panelde 'cozulemedi' diye anlatildi (yanlis kok neden): ${s}`);
+    assert.ok(
+      !katla(s).includes('cozulemedi'),
+      `${n} panelde 'cozulemedi' diye anlatildi (yanlis kok neden): ${s}`,
+    );
     assert.ok(s.includes(TUR.HEDEF), `${n}: tur etiketi yok: ${s}`);
   }
   assert.ok(katla(satir('COZULEMEDI')).includes('cozulemedi'));
   assert.ok(satir('YENI_NEDEN').includes('YENI_NEDEN'), 'bilinmeyen neden dusuruldu');
   // reason'siz (eski sunucu) HEDEF: yalniz genel etiket, kok neden uydurulmaz
-  const eskiS = as({ host: 'W', serverName: 'a', port: null, target: 'balancer://x', kind: 'HEDEF', req7d: 5000, trafficState: 'ACTIVE' });
+  const eskiS = as({
+    host: 'W',
+    serverName: 'a',
+    port: null,
+    target: 'balancer://x',
+    kind: 'HEDEF',
+    req7d: 5000,
+    trafficState: 'ACTIVE',
+  });
   assert.ok(eskiS.includes(TUR.HEDEF) && !katla(eskiS).includes('cozulemedi'), eskiS);
   // PORT/EKSIK'te reason null: neden eklenmez
-  assert.ok(!as({ kind: 'PORT', port: 8443, reason: null }).includes('('), 'PORT satirina neden eklendi');
+  assert.ok(
+    !as({ kind: 'PORT', port: 8443, reason: null }).includes('('),
+    'PORT satirina neden eklendi',
+  );
   // KOD etiketi yeni nedenleri de anar (katman genisliginde)
   const ke = katla(P.KOD_ETIKET.TRAFFIC_UNATTRIBUTED);
-  for (const k of ['dinamik', 'taranmamis', 'conf', 'kesik', 'katman']) assert.ok(ke.includes(k), `TRAFFIC_UNATTRIBUTED etiketi '${k}' demiyor: ${P.KOD_ETIKET.TRAFFIC_UNATTRIBUTED}`);
+  for (const k of ['dinamik', 'taranmamis', 'conf', 'kesik', 'katman'])
+    assert.ok(
+      ke.includes(k),
+      `TRAFFIC_UNATTRIBUTED etiketi '${k}' demiyor: ${P.KOD_ETIKET.TRAFFIC_UNATTRIBUTED}`,
+    );
   // TIP: serverHubApi.ts reason alanini tasir (tsc ekranin x.reason okumasini da denetler)
   const API = normalize(fs.readFileSync(path.join(ROOT, 'src', 'api', 'serverHubApi.ts'), 'utf8'));
-  assert.match(API, /export interface ShUnattributed \{[^}]*reason\?: string \| null;/, 'ShUnattributed.reason tipte yok');
+  assert.match(
+    API,
+    /export interface ShUnattributed \{[^}]*reason\?: string \| null;/,
+    'ShUnattributed.reason tipte yok',
+  );
   // SUNUCU YANITI: gercek assess + hostDetail; DINAMIK ve CONF_OKUNAMADI kayitlari panelde nedenleriyle
   const { h } = await sunucuYanitlari('dinamik');
   const tu = h[APP].findings.filter((x) => x.code === 'TRAFFIC_UNATTRIBUTED');
   assert.equal(tu.length, 1, `duzenek: TRAFFIC_UNATTRIBUTED ${tu.length}`);
   const liste = tu[0].unattributed;
-  assert.deepEqual([...new Set(liste.map((x) => x.reason))].sort(), ['CONF_OKUNAMADI', 'DINAMIK'], JSON.stringify(liste));
+  assert.deepEqual(
+    [...new Set(liste.map((x) => x.reason))].sort(),
+    ['CONF_OKUNAMADI', 'DINAMIK'],
+    JSON.stringify(liste),
+  );
   const el = fonksiyon(P, 'AtfedilemeyenTrafik')({ f: tu[0] });
   assert.ok(el);
   assert.deepEqual(gorunurlukSorunlari(el), []);
   const yazi = metinleri(el);
-  for (const x of liste) assert.ok(yazi.includes(NEDEN[x.reason]), `${x.reason} nedeni panelde yok: ${yazi}`);
-  assert.ok(!katla(yazi).includes('cozulemedi'), `dinamik / conf okunamadi kaydi 'cozulemedi' diye anlatildi: ${yazi}`);
+  for (const x of liste)
+    assert.ok(yazi.includes(NEDEN[x.reason]), `${x.reason} nedeni panelde yok: ${yazi}`);
+  assert.ok(
+    !katla(yazi).includes('cozulemedi'),
+    `dinamik / conf okunamadi kaydi 'cozulemedi' diye anlatildi: ${yazi}`,
+  );
 });
 
 test("T4-D2 vhosts[].targetsDynamic: 'dinamik proxy' rozeti (sunucu yanitindan, gorunur); kesik rozeti dinamik vhost'ta cikmaz", async () => {
@@ -1730,15 +2598,24 @@ test("T4-D2 vhosts[].targetsDynamic: 'dinamik proxy' rozeti (sunucu yanitindan, 
   assert.ok(rz, 'targetsDynamic=true iken rozet bilgisi null');
   assert.equal(rz.metin, 'dinamik proxy');
   const ac = katla(rz.aciklama);
-  assert.ok(ac.includes('port bilgisinden bagimsiz'), `rozet 'port bilgisinden bagimsiz' demiyor: ${rz.aciklama}`);
-  assert.ok(ac.includes('onerilmez') && /katmandaki durmus jvm/.test(ac), `rozet retire engelini/kapsamini soylemiyor: ${rz.aciklama}`);
-  assert.ok(ac.includes('okunamad'), `rozet 'conf okunamadi / blok bulunamadi' tetikleyicisini anlatmiyor: ${rz.aciklama}`);
+  assert.ok(
+    ac.includes('port bilgisinden bagimsiz'),
+    `rozet 'port bilgisinden bagimsiz' demiyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    ac.includes('onerilmez') && /katmandaki durmus jvm/.test(ac),
+    `rozet retire engelini/kapsamini soylemiyor: ${rz.aciklama}`,
+  );
+  assert.ok(
+    ac.includes('okunamad'),
+    `rozet 'conf okunamadi / blok bulunamadi' tetikleyicisini anlatmiyor: ${rz.aciklama}`,
+  );
   for (const x of [false, null, undefined]) {
     assert.equal(dr(x), null);
     assert.equal(DR({ dinamik: x }), null, `targetsDynamic=${x} iken rozet basildi`);
   }
   const el = DR({ dinamik: true });
-  assert.ok(el, 'dinamik vhost\'ta rozet null dondu');
+  assert.ok(el, "dinamik vhost'ta rozet null dondu");
   assert.equal(metinleri(el), 'dinamik proxy');
   assert.equal(el.props.title, rz.aciklama);
   assert.deepEqual(gorunurlukSorunlari(el), [], 'rozet gizli');
@@ -1749,25 +2626,42 @@ test("T4-D2 vhosts[].targetsDynamic: 'dinamik proxy' rozeti (sunucu yanitindan, 
   const m = /^v\.(\w+)$/.exec(String(e.ozellik.dinamik));
   assert.ok(m, `rozet vhost alanini okumuyor: ${e.ozellik.dinamik}`);
   // TIP
-  assert.match(normalize(fs.readFileSync(path.join(ROOT, 'src', 'api', 'serverHubApi.ts'), 'utf8')), /export interface ShVhost \{[^}]*targetsDynamic\?: boolean;/, 'ShVhost.targetsDynamic tipte yok');
+  assert.match(
+    normalize(fs.readFileSync(path.join(ROOT, 'src', 'api', 'serverHubApi.ts'), 'utf8')),
+    /export interface ShVhost \{[^}]*targetsDynamic\?: boolean;/,
+    'ShVhost.targetsDynamic tipte yok',
+  );
   // SUNUCU YANITI
   const { h } = await sunucuYanitlari('dinamik');
   const vh = h[WEB].vhosts;
   const api = vh.find((x) => x.serverName === 'api.bmw.de');
   const crm = vh.find((x) => x.serverName === 'crm.bmw.de');
   assert.ok(api && crm, 'duzenek: vhost satirlari yok');
-  assert.ok(DR({ dinamik: api[m[1]] }), `sunucu dinamik proxy'yi '${m[1]}' alaninda tasimiyor - rozet cikmiyor`);
-  assert.equal(DR({ dinamik: crm[m[1]] }), null, 'dinamik olmayan vhost\'ta rozet');
-  assert.equal(fonksiyon(P, 'HedefKesikRozeti')({ kesik: api.targetsTruncated }), null, "dinamik vhost 'hedef listesi kesik' diye gosterildi");
+  assert.ok(
+    DR({ dinamik: api[m[1]] }),
+    `sunucu dinamik proxy'yi '${m[1]}' alaninda tasimiyor - rozet cikmiyor`,
+  );
+  assert.equal(DR({ dinamik: crm[m[1]] }), null, "dinamik olmayan vhost'ta rozet");
+  assert.equal(
+    fonksiyon(P, 'HedefKesikRozeti')({ kesik: api.targetsTruncated }),
+    null,
+    "dinamik vhost 'hedef listesi kesik' diye gosterildi",
+  );
 });
 
 test("T4-D3 sampled ('~') alt sinirin IKI sebebini soyler; '?' hucresi trafik sebebini gosterir, log OKUNDUYSA 'okunamadi' demez", async () => {
   const lk = fonksiyon(P, 'logKanitMetni');
   const s = lk({ read: true, req7d: 4, sampled: true });
   assert.match(s, /7g 4 \(alt sınır/);
-  assert.ok(katla(s).includes('trafigin bir kismi'), `alt sinirin 'trafigin bir kismi logda yok' sebebi yok: ${s}`);
+  assert.ok(
+    katla(s).includes('trafigin bir kismi'),
+    `alt sinirin 'trafigin bir kismi logda yok' sebebi yok: ${s}`,
+  );
   assert.ok(!katla(s).includes('log kuyrugu okundu'), `eski tek sebepli metin: ${s}`);
-  assert.ok(katla(P.ALT_SINIR_ACIKLAMA).includes('7 gunu kapsamadi') && katla(P.ALT_SINIR_ACIKLAMA).includes('trafigin bir kismi'));
+  assert.ok(
+    katla(P.ALT_SINIR_ACIKLAMA).includes('7 gunu kapsamadi') &&
+      katla(P.ALT_SINIR_ACIKLAMA).includes('trafigin bir kismi'),
+  );
   // LEJANT: '~' iki sebep; '?' "log okunamadi" diye DARALTILMAZ
   const sayfa = katla(PAGE_RAW);
   assert.ok(!sayfa.includes('kapsamadi (orneklem)'), "eski '~' lejanti (tek sebep) geri gelmis");
@@ -1776,69 +2670,203 @@ test("T4-D3 sampled ('~') alt sinirin IKI sebebini soyler; '?' hucresi trafik se
   // vhost hucresi aciklamasi: EK-7.2 DONUK tablonun her sebebi etiketli
   const va = fonksiyon(P, 'vhostTrafikAciklamasi');
   const ET = P.TRAFIK_SEBEP_ETIKET;
-  const UNVERIFIED = ['WINDOW_NOT_COVERED', 'EMPTY_LOG', 'NO_TIMESTAMP', 'NO_HOST_FIELD', 'LOG_OFF', 'PIPED_LOG_UNRESOLVED', 'UNSUPPORTED_LOG_TARGET', 'NO_VHOST_LOG', 'VHOST_INVENTORY_PARTIAL', 'LOCATION_LOG', 'INCLUDE_UNRESOLVED', 'CONDITIONAL_LOG'];
-  const UNREADABLE = ['CONF_UNREADABLE', 'READ_ERROR', 'DZDO_DENIED', 'PERM_DENIED', 'TIMEOUT', 'LOG_MISSING', 'BUDGET_EXCEEDED', 'DEADLINE'];
-  for (const rs of [...UNVERIFIED, ...UNREADABLE]) assert.ok(typeof ET[rs] === 'string' && ET[rs].length > 4, `${rs} sebebi ekranda etiketsiz`);
+  const UNVERIFIED = [
+    'WINDOW_NOT_COVERED',
+    'EMPTY_LOG',
+    'NO_TIMESTAMP',
+    'NO_HOST_FIELD',
+    'LOG_OFF',
+    'PIPED_LOG_UNRESOLVED',
+    'UNSUPPORTED_LOG_TARGET',
+    'NO_VHOST_LOG',
+    'VHOST_INVENTORY_PARTIAL',
+    'LOCATION_LOG',
+    'INCLUDE_UNRESOLVED',
+    'CONDITIONAL_LOG',
+  ];
+  const UNREADABLE = [
+    'CONF_UNREADABLE',
+    'READ_ERROR',
+    'DZDO_DENIED',
+    'PERM_DENIED',
+    'TIMEOUT',
+    'LOG_MISSING',
+    'BUDGET_EXCEEDED',
+    'DEADLINE',
+  ];
+  for (const rs of [...UNVERIFIED, ...UNREADABLE])
+    assert.ok(typeof ET[rs] === 'string' && ET[rs].length > 4, `${rs} sebebi ekranda etiketsiz`);
   // log OKUNDU ama sayi kanit degil: "okunamadi" denmez
-  for (const rs of ['CONDITIONAL_LOG', 'LOCATION_LOG', 'INCLUDE_UNRESOLVED', 'NO_HOST_FIELD', 'WINDOW_NOT_COVERED', 'EMPTY_LOG', 'NO_TIMESTAMP']) {
+  for (const rs of [
+    'CONDITIONAL_LOG',
+    'LOCATION_LOG',
+    'INCLUDE_UNRESOLVED',
+    'NO_HOST_FIELD',
+    'WINDOW_NOT_COVERED',
+    'EMPTY_LOG',
+    'NO_TIMESTAMP',
+  ]) {
     const t = va({ trafficState: 'UNVERIFIED', trafficReason: rs, sampled: false });
     assert.ok(!/okunamad|olculemedi/.test(katla(t)), `${rs}: log okundu ama '${t}'`);
     assert.ok(katla(t).includes('dogrulanamadi'), `${rs}: durum yazilmadi: ${t}`);
   }
   for (const rs of ['CONF_UNREADABLE', 'DZDO_DENIED', 'PERM_DENIED', 'READ_ERROR'])
-    assert.ok(/okunamad/.test(katla(va({ trafficState: 'UNREADABLE', trafficReason: rs }))), `${rs}: okunamadi denmedi`);
-  assert.ok(katla(va({ trafficState: 'ACTIVE', trafficReason: 'OK', sampled: true })).includes('alt sinir'), 'ACTIVE ~ alt sinir soylenmedi');
-  assert.equal(va({ trafficState: 'NO_RECENT_TRAFFIC', trafficReason: 'OK' }), '7 gündür istek yok (log okundu)');
-  assert.ok(va({ trafficState: 'UNVERIFIED', trafficReason: 'YENI_SEBEP' }).includes('YENI_SEBEP'), 'bilinmeyen sebep dusuruldu');
+    assert.ok(
+      /okunamad/.test(katla(va({ trafficState: 'UNREADABLE', trafficReason: rs }))),
+      `${rs}: okunamadi denmedi`,
+    );
+  assert.ok(
+    katla(va({ trafficState: 'ACTIVE', trafficReason: 'OK', sampled: true })).includes('alt sinir'),
+    'ACTIVE ~ alt sinir soylenmedi',
+  );
+  assert.equal(
+    va({ trafficState: 'NO_RECENT_TRAFFIC', trafficReason: 'OK' }),
+    '7 gündür istek yok (log okundu)',
+  );
+  assert.ok(
+    va({ trafficState: 'UNVERIFIED', trafficReason: 'YENI_SEBEP' }).includes('YENI_SEBEP'),
+    'bilinmeyen sebep dusuruldu',
+  );
   assert.equal(va({}), '', 'eski satir (alan yok): aciklama uydurulmaz');
   // BAGLANTI (AST): vhost tablosundaki hucre yardimciyi vhost nesnesiyle cagirir
-  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'vhostTrafikAciklamasi'), [['v']], 'vhost hucresi trafik aciklamasini gostermiyor');
+  assert.deepEqual(
+    cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'vhostTrafikAciklamasi'),
+    [['v']],
+    'vhost hucresi trafik aciklamasini gostermiyor',
+  );
   // SUNUCU YANITI: hostDetail vhost'u trafficState/trafficReason tasir
   const { h } = await sunucuYanitlari('dinamik');
   const kv = h[WEB].vhosts.find((x) => x.serverName === 'kosul.bmw.de');
   const t = va(kv);
-  assert.ok(katla(t).includes('kosullu') && !/okunamad/.test(katla(t)), `CONDITIONAL_LOG satiri: '${t}'`);
+  assert.ok(
+    katla(t).includes('kosullu') && !/okunamad/.test(katla(t)),
+    `CONDITIONAL_LOG satiri: '${t}'`,
+  );
   const cv = h[WEB].vhosts.find((x) => x.serverName === 'conf.bmw.de');
-  assert.ok(/conf/.test(katla(va(cv))) && /okunamad/.test(katla(va(cv))), `CONF_UNREADABLE satiri: '${va(cv)}'`);
+  assert.ok(
+    /conf/.test(katla(va(cv))) && /okunamad/.test(katla(va(cv))),
+    `CONF_UNREADABLE satiri: '${va(cv)}'`,
+  );
 });
 
 test("T4-D4 auto-start satir dugmesi: UNAVAILABLE / sema okunamadi / bayat sunucuda YOK (sebep yazilir); calismasi olculemeyen JVM'de VAR (kural 7)", () => {
   const ad = fonksiyon(P, 'autoStartDugmesi');
   const taze = { schemaUnknown: false, fresh: true };
   const u = ad({ source: 'cli', cfgSrc: 'UNAVAILABLE' }, taze);
-  assert.equal(u.goster, false, 'tanimsiz surece (UNAVAILABLE) auto-start dugmesi gosterildi - sunucu 400 doner');
+  assert.equal(
+    u.goster,
+    false,
+    'tanimsiz surece (UNAVAILABLE) auto-start dugmesi gosterildi - sunucu 400 doner',
+  );
   assert.ok(katla(u.neden).includes('tanim'), `sebep: ${u.neden}`);
-  assert.deepEqual(ad({ source: 'cli', cfgSrc: 'CLI_WILDCARD' }, { schemaUnknown: true, fresh: true }).goster, false, 'sema okunamadiyken dugme');
-  assert.ok(katla(ad({ source: 'cli', cfgSrc: 'XML' }, { schemaUnknown: true }).neden).includes('sema'));
-  assert.equal(ad({ source: 'cli', cfgSrc: 'XML' }, { fresh: false }).goster, false, 'bayat sunucuda dugme');
+  assert.deepEqual(
+    ad({ source: 'cli', cfgSrc: 'CLI_WILDCARD' }, { schemaUnknown: true, fresh: true }).goster,
+    false,
+    'sema okunamadiyken dugme',
+  );
+  assert.ok(
+    katla(ad({ source: 'cli', cfgSrc: 'XML' }, { schemaUnknown: true }).neden).includes('sema'),
+  );
+  assert.equal(
+    ad({ source: 'cli', cfgSrc: 'XML' }, { fresh: false }).goster,
+    false,
+    'bayat sunucuda dugme',
+  );
   assert.ok(katla(ad({ source: 'cli', cfgSrc: 'XML' }, { fresh: false }).neden).includes('bayat'));
   // kural 7 (v3): calismasi OLCULEMEYEN JVM'de dugme admine ACIK
-  assert.equal(ad({ source: 'cli', cfgSrc: 'CLI_WILDCARD', runningKnown: false, runningSrc: 'UNMEASURED' }, taze).goster, true);
+  assert.equal(
+    ad(
+      { source: 'cli', cfgSrc: 'CLI_WILDCARD', runningKnown: false, runningSrc: 'UNMEASURED' },
+      taze,
+    ).goster,
+    true,
+  );
   assert.equal(ad({ source: 'envanter', cfgSrc: null }, taze).goster, true);
   assert.equal(ad({}, {}).goster, true, 'eski yanit (alan yok): dugme kaybolmamali');
   // YERLESIM (AST): JVM satirindaki dugme yardimcinin kosulu altinda, gizlenmeden
-  const y = yerlesim(PAGE_RAW, PAGE_PATH, 'HostModal', 'button').filter((e) => e.ozellik.onClick === '() => jvmAutoStart(j)');
+  const y = yerlesim(PAGE_RAW, PAGE_PATH, 'HostModal', 'button').filter(
+    (e) => e.ozellik.onClick === '() => jvmAutoStart(j)',
+  );
   assert.equal(y.length, 1, `satir dugmesi ${y.length} kez`);
   assert.deepEqual(y[0].gizli, []);
-  assert.ok(y[0].kosullar.includes('autoStartDugmesi(j, d).goster ?'), `dugme yardimcinin kosulu altinda degil: [${y[0].kosullar.join(' / ')}]`);
-  assert.deepEqual(cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'autoStartDugmesi'), [['j', 'd'], ['j', 'd']], 'dugme ve sebep ayni (j, d) ile hesaplanmiyor');
+  assert.ok(
+    y[0].kosullar.includes('autoStartDugmesi(j, d).goster ?'),
+    `dugme yardimcinin kosulu altinda degil: [${y[0].kosullar.join(' / ')}]`,
+  );
+  // 2026-11-14: ucuncu cagri "calisan JVM'de Kapat yok" dalinin kosulu (yine ayni (j, d)).
+  assert.deepEqual(
+    cagrilar(PAGE_RAW, PAGE_PATH, 'HostModal', 'autoStartDugmesi'),
+    [
+      ['j', 'd'],
+      ['j', 'd'],
+      ['j', 'd'],
+    ],
+    'dugme ve sebep ayni (j, d) ile hesaplanmiyor',
+  );
   // SUNUCU YANITI: gercek assess + hostDetail
   const { hostDetail } = require('../index.cjs');
   const hd = hostDetail(assess(tanimKur('UNAVAILABLE'), { now: Date.now() }).hosts[0]);
-  assert.equal(ad(hd.jvms.find((j) => j.name === 'hayalet'), hd).goster, false, 'hostDetail cfgSrc/source tasimiyor: tanimsiz surece dugme');
-  assert.equal(ad(hd.jvms.find((j) => j.name === 'tanimli'), hd).goster, true, 'tanimli JVM dugmesi kayboldu');
+  assert.equal(
+    ad(
+      hd.jvms.find((j) => j.name === 'hayalet'),
+      hd,
+    ).goster,
+    false,
+    'hostDetail cfgSrc/source tasimiyor: tanimsiz surece dugme',
+  );
+  assert.equal(
+    ad(
+      hd.jvms.find((j) => j.name === 'tanimli'),
+      hd,
+    ).goster,
+    true,
+    'tanimli JVM dugmesi kayboldu',
+  );
   const b = tanimKur('UNAVAILABLE');
   b.hosts[0].scan_date = gunOnce(5);
   b.hosts[0].loaded_at = `${gunOnce(5)}T06:00:00Z`;
   const hb = hostDetail(assess(b, { now: Date.now() }).hosts[0]);
   assert.equal(hb.fresh, false, 'duzenek: 5 gun once taranmis sunucu taze sayildi');
-  assert.equal(ad(hb.jvms.find((j) => j.name === 'tanimli'), hb).goster, false, 'bayat sunucuda (hostDetail.fresh=false) dugme gosterildi');
+  assert.equal(
+    ad(
+      hb.jvms.find((j) => j.name === 'tanimli'),
+      hb,
+    ).goster,
+    false,
+    'bayat sunucuda (hostDetail.fresh=false) dugme gosterildi',
+  );
 });
 
 // ── Kural 3: toplu JVM islemi yok ─────────────────────────────────────────────────────
 test('K3 toplu JVM islemi yok: auto-start cagrisi tek (host, jvm)', () => {
-  const cagri = PAGE.match(/serverHubApi\.jvmAutoStart\(/g) || [];
+  // 2026-11-14: API cagrisi tek yerde (autoStartIsi.ts autoStartBaslat); sayfa yalniz onu cagirir.
+  assert.equal(
+    (PAGE.match(/serverHubApi\.jvmAutoStart\(/g) || []).length,
+    0,
+    "sayfa API'yi dogrudan cagiriyor (is takibi atlaniyor)",
+  );
+  const cagri = PAGE.match(/autoStartBaslat\(\{/g) || [];
   assert.equal(cagri.length, 2, 'auto-start cagrisi sayisi degisti (yalniz satir ve bulgu satiri)');
-  assert.ok(!/\.map\([^)]*jvmAutoStart/.test(PAGE), 'auto-start bir liste uzerinde donuyor');
-  assert.ok(!/for \([^)]*\) [^;]*jvmAutoStart/.test(PAGE), 'auto-start dongude cagriliyor');
+  assert.ok(
+    !/\.map\([^)]*(jvmAutoStart|autoStartBaslat)/.test(PAGE),
+    'auto-start bir liste uzerinde donuyor',
+  );
+  assert.ok(
+    !/for \([^)]*\) [^;]*(jvmAutoStart|autoStartBaslat)/.test(PAGE),
+    'auto-start dongude cagriliyor',
+  );
+  const IS = normalize(
+    fs.readFileSync(path.join(ROOT, 'src', 'components', 'server_hub', 'autoStartIsi.ts'), 'utf8'),
+  );
+  assert.equal(
+    (IS.match(/serverHubApi\.jvmAutoStart\(/g) || []).length,
+    1,
+    'autoStartIsi tek (host, jvm) cagrisi yapmiyor',
+  );
+  assert.ok(
+    /serverHubApi\.jvmAutoStart\(\{ host: p\.host, gen: p\.gen, jvm: p\.jvm, enable: p\.ac \}\)/.test(
+      IS,
+    ),
+    'cagri tek (host, gen, jvm) degil',
+  );
 });

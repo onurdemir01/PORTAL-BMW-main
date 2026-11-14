@@ -24,10 +24,29 @@ const KAYIT = {
   } } },
 };
 
+// 2026-11-14: önce görüntüsü boş sunucu + "kontrol gerekli" sonucu
+const BOS_KAYIT = {
+  ...KAYIT, id: 4, hosts: ['GBBOS01', 'GBJBOP18'], durum: 'kontrol',
+  once: { jobId: 1, serverId: 1, at: '2026-11-13T22:00:00Z', sonuc: { faz: 'once', sunucular: {
+    GBBOS01: { goruntu_ok: true, goruntu: ['BOOT|z1||'] },
+    GBJBOP18: { goruntu_ok: true, goruntu: O18 },
+  } } },
+  sonra: { jobId: 2, serverId: 1, at: '2026-11-14T06:00:00Z', sonuc: { faz: 'sonra', sunucular: {
+    GBBOS01: { once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|z2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appX|x'], son_goruntu: ['BOOT|z2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appX|x'],
+      plan: ['BILGI|BOS|||bos', 'BILGI|NEW|JBOSS8||reboot oncesi calismiyordu, simdi calisiyor - dokunulmadi', 'BILGI|NEW|JBOSS8|appX|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine dokunulmadi'], islemler: [] },
+    GBJBOP18: KAYIT.sonra.sonuc.sunucular.GBJBOP18,
+  } } },
+  ozet: { once: { alinan: 2, toplam: 2, job: 'successful', once_bos: ['GBBOS01'] }, sonra: { sorunsuz: 1, kontrol: 1, toplam: 2, job: 'successful', sunucu: {
+    GBBOS01: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0, neden: ['Reboot öncesi görüntüde izlenen ürün/JVM yoktu; bu sunucuda hiçbir şey açılıp kapatılmadı (uygulamalar zaten kapalıyken mi alındı?).'], sebep: 'x' },
+    GBJBOP18: { durum: 'sorunsuz', kalan: 0, islem: 1, hatali: 0 },
+  } } },
+};
+let AKTIF: typeof KAYIT | typeof BOS_KAYIT = KAYIT;
+
 vi.mock('@/api/rebootCheckApi', () => ({
   rebootCheckApi: {
-    list: vi.fn(async () => ({ ok: true, kayitlar: [KAYIT] })),
-    get: vi.fn(async () => ({ ok: true, kayit: KAYIT })),
+    list: vi.fn(async () => ({ ok: true, kayitlar: [AKTIF] })),
+    get: vi.fn(async () => ({ ok: true, kayit: AKTIF })),
     once: vi.fn(),
     sonra: (...a: unknown[]) => sonraMock(...(a as [])),
   },
@@ -49,6 +68,7 @@ import { serverHubApi } from '@/api/serverHubApi';
 
 describe('Reboot Kontrolü sekmesi', () => {
   it('RT1 kayıt açılır: önce ürünleri, sorunsuz/fark kaldı rozetleri, JVM satırı ve reboot doğrulaması görünür', async () => {
+    AKTIF = KAYIT;
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#3'));
     expect(await screen.findByText('2 ürün kaydedildi')).toBeTruthy();
@@ -63,6 +83,7 @@ describe('Reboot Kontrolü sekmesi', () => {
   });
 
   it('RT2 "sonra" yalnız onay penceresinden gider', async () => {
+    AKTIF = KAYIT;
     sonraMock.mockClear();
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#3'));
@@ -70,5 +91,52 @@ describe('Reboot Kontrolü sekmesi', () => {
     expect(sonraMock).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole('button', { name: 'Onayla ve başlat' }));
     await waitFor(() => expect(sonraMock).toHaveBeenCalledWith(3));
+  });
+});
+
+describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', () => {
+  it('RT3 boş önce yeşil DEĞİL uyarı; sonuç "Kontrol gerekli" + nedenler + "Neden dokunulmadı" listesi', async () => {
+    AKTIF = BOS_KAYIT;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#4'));
+    expect(await screen.findByText(/Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/)).toBeTruthy();
+    expect(screen.getByText('izlenen ürün yok')).toBeTruthy();
+    expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(3); // liste + ayrinti basligi + sunucu karti
+    expect(screen.getByText('1 sunucuda kontrol gerekli')).toBeTruthy();
+    expect(screen.getByText(/bu sunucuda hiçbir şey açılıp kapatılmadı \(uygulamalar/)).toBeTruthy();
+    expect(screen.getByText('Plan notları — neden dokunulmadı / nasıl sayıldı')).toBeTruthy();
+    // inceleme B6: bos-once nedeni uyari satirinda yaziliyken plan notlarinda TEKRAR edilmez
+    expect(screen.queryByText('Reboot öncesi görüntüde izlenen ürün/JVM yoktu — hiçbir şey açılıp kapatılmadı.')).toBeNull();
+    // inceleme B6: sorunsuz + kontrol = toplam -> kirmizi degil uyari rengi
+    expect((screen.getByText('1 / 2 sunucu sorunsuz') as HTMLElement).style.color).toBe('var(--status-warning)');
+    expect(screen.getByText(/^JBoss 8 \/ appX: ürün reboot öncesi görüntüde yoktu/)).toBeTruthy();
+    expect(screen.getByText('şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kurala göre dokunulmadı')).toBeTruthy();
+  });
+
+  it('RT4 onay penceresi önce görüntüsü boş sunucuları listeler; "kontrol" kaydında yeniden çalıştırılabilir', async () => {
+    AKTIF = BOS_KAYIT;
+    sonraMock.mockClear();
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#4'));
+    const dugme = await screen.findByRole('button', { name: /Reboot sonrası kontrol et ve düzelt/ });
+    expect((dugme as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(dugme);
+    expect(await screen.findByText('Önce görüntüsü boş sunucular (1)')).toBeTruthy();
+    expect(screen.getByText('GBBOS01', { selector: 'div.font-mono' })).toBeTruthy();
+    // inceleme B8: JVM kurali yalniz urunu reboot oncesi calisanlar icin; durulma beklemesi soylenir
+    expect(screen.getByText(/Ürünü reboot öncesi çalışmayanın JVM'lerine dokunulmaz/)).toBeTruthy();
+    expect(screen.getByText(/süreç listesinin durulması beklenir/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Onayla ve başlat' }));
+    await waitFor(() => expect(sonraMock).toHaveBeenCalledWith(4));
+  });
+
+  it('RT5 durulma=error notu görünür; tümü sorunlu iken özet kırmızı', async () => {
+    const s18 = { ...KAYIT.sonra.sonuc.sunucular.GBJBOP18, durulma: 'error' };
+    AKTIF = { ...KAYIT, id: 5, sonra: { ...KAYIT.sonra, sonuc: { faz: 'sonra', sunucular: { ...KAYIT.sonra.sonuc.sunucular, GBJBOP18: s18 } } } } as typeof KAYIT;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#5'));
+    fireEvent.click(await screen.findByText('Sorunsuz'));
+    expect(await screen.findByText(/JVM planı çalışmadı — JVM'ler açılıp kapatılmadı/)).toBeTruthy();
+    expect((screen.getByText('1 / 2 sunucu sorunsuz') as HTMLElement).style.color).toBe('var(--status-danger)');
   });
 });

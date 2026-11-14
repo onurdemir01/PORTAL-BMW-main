@@ -16,8 +16,17 @@ export interface RcSunucuSonuc {
   son_fark?: string[];
   son_olculdu?: boolean;
   sonuc_yok?: boolean;
+  /** JVM planı öncesi görüntü durulması: settled | timeout | error ('' = koşmadı). */
+  durulma?: string;
+  durulma_satir?: string;
 }
-export interface RcDegerlendirme { durum: 'sorunsuz' | 'sorunlu' | 'olculemedi'; sebep?: string; kalan?: number; islem?: number; hatali?: number }
+export interface RcDegerlendirme {
+  durum: 'sorunsuz' | 'sorunlu' | 'olculemedi' | 'kontrol';
+  sebep?: string; kalan?: number; islem?: number; hatali?: number;
+  /** Kontrol nedenleri (önce görüntüsü boş, eski sürüm, dokunulmayan öğe şimdi çalışıyor); fark kalsa da yazılır. */
+  neden?: string[];
+  durulma?: string;
+}
 export interface RcKayit {
   id: number;
   hosts: string[];
@@ -28,8 +37,8 @@ export interface RcKayit {
   once: { jobId: number | null; serverId: number | null; at: string | null; sonuc?: { faz?: string; sunucular?: Record<string, RcSunucuSonuc> } | null };
   sonra: { jobId: number | null; serverId: number | null; at: string | null; sonuc?: { faz?: string; sunucular?: Record<string, RcSunucuSonuc> } | null };
   ozet: {
-    once?: { alinan: number; toplam: number; job: string };
-    sonra?: { sorunsuz: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme> };
+    once?: { alinan: number; toplam: number; job: string; once_bos?: string[] };
+    sonra?: { sorunsuz: number; kontrol?: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme> };
   } | null;
   /** Kosan fazda AWX'in anlik is durumu (pending / waiting / running / okunamadi); yalniz ayrintida. */
   awxDurum?: string | null;

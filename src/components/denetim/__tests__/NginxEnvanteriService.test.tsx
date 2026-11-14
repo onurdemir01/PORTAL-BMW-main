@@ -4,7 +4,8 @@
 // tikladigimda ilgili servisin hangi sunucuda ve hangi versiyonda oldugunu gormek istiyorum").
 // Kilitlenen davranis:
 //   - satira tiklayinca o service'in sunuculari + her birinin nginx surumu acilir, tekrar tiklayinca kapanir
-//   - farkli nginx surumleri ozetlenir ve "N farkli nginx surumu" diye soylenir
+//   - farkli nginx surumleri surum rozetiyle (surum | sunucu sayisi) ozetlenir; uyari rengi yok
+//     (kullanici 2026-11-14: "surum uyumu diye bir sey yapmana gerek yok")
 //   - service listesi toplanmayan (too_many) sunucular ayrica not edilir (olculemedi != yok)
 //   - son guncelleme tarihi hafif vurgulu rozetle gosterilir
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -93,9 +94,12 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     expect(screen.getByText('GBNGXP01')).toBeTruthy();
     expect(screen.getByText('GBNGXP02')).toBeTruthy();
     expect(screen.getByText('10.1.1.2')).toBeTruthy();
-    expect(screen.getByText('1.24.0 · 1 sunucu')).toBeTruthy();
-    expect(screen.getByText('1.20.1 · 1 sunucu')).toBeTruthy();
-    expect(screen.getByText(/2 farklı nginx sürümü var/)).toBeTruthy();
+    const ozet = screen.getByTestId('service-surumleri');
+    const rozetler = within(ozet).getAllByTestId('surum-rozeti');
+    // yeniden eskiye; her rozet "surum + sayi"
+    expect(rozetler.map((r) => r.getAttribute('data-surum'))).toEqual(['1.24.0', '1.20.1']);
+    expect(rozetler.map((r) => r.textContent)).toEqual(['1.24.0, 1 sunucu', '1.20.1, 1 sunucu']);
+    expect(within(ozet).getByText('2 farklı sürüm')).toBeTruthy();
     expect(screen.getByText(/service listesi toplanmadı/)).toBeTruthy();
     expect(screen.getByText('GBNGXP09')).toBeTruthy();
 
@@ -103,7 +107,7 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     expect(screen.queryByText('10.1.1.2')).toBeNull();
   });
 
-  it('tek surumlu service icin "farkli surum" uyarisi yok', async () => {
+  it('tek surumlu service icin "farkli surum" notu yok', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByText("Service'ler"));
     // satirin herhangi bir yerine tiklamak da acar (yalniz ok dugmesi degil)
@@ -111,7 +115,7 @@ describe('NginxEnvanteri — service ayrintisi', () => {
     const tablo = screen.getByText('Sunucudaki service’ler'.replace('’', "'")).closest('table')!;
     expect(within(tablo).getByText('GBNGXP01')).toBeTruthy();
     expect(within(tablo).queryByText('GBNGXP02')).toBeNull();
-    expect(screen.queryByText(/farklı nginx sürümü var/)).toBeNull();
+    expect(screen.queryByText(/farklı sürüm/)).toBeNull();
   });
 
   it('son guncelleme tarihi rozetle gosterilir', async () => {

@@ -15,6 +15,17 @@
 //   - Sunucular: ortam / sürüm / etiket süzgeci, sıralanabilir kolonlar, service'ler çip olarak.
 //   - ELLE ETİKET (aynı gün, kullanıcı): conf.d adlarından gelen otomatik service listesinin yerine
 //     geçen ya da üstüne eklenen etiket (Admin yazar; bkz. NginxEtiketPenceresi).
+//
+// SÜRÜM GÖSTERİMİ + DİSK (kullanıcı, 2026-11-14: "versiyon gösterimleri göze güzel gözükmüyor ...
+// sürüm uyumu diye bir şey yapmana gerek yok ... sunucular kısmında disk kapasiteleri görünmüyor"):
+//   - "Sürüm uyumu" şeridi ve "en yaygın sürümden ayrışan" sarı vurgusu kaldırıldı; hiçbir sürüm
+//     "yanlış" diye boyanmaz.
+//   - Sürüm her yerde tek biçimde: SurumRozeti (eşit genişlikli rakam, major.minor koyu + yama soluk,
+//     sayı varsa aynı rozetin ikinci bölmesinde). Listeler yeniden eskiye sıralı, uzun liste "+N".
+//   - Sürümler sekmesinde nginx kartı major.minor ailesine göre gruplanır (SurumAileKarti).
+//   - Sunucular tablosuna /usr/nginx ve /web_log disk kolonları (sıralanabilir). nginx_metadata
+//     yalnız `df -hP` TOPLAM boyutunu ($2) yazar — kullanım/yüzde YOK; o yüzden doluluk çubuğu
+//     çizilmez (olmayan veriyi uydurmak olur). Çözülemeyen değer "—" + title'da ham değer.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
@@ -36,7 +47,7 @@ import {
   type NginxInvDist,
   type NginxInvHost,
 } from '@/api/denetimApi';
-import { Pill, Note } from './ui';
+import { Note } from './ui';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { NginxEtiketPenceresi } from './NginxEtiketPenceresi';
@@ -105,21 +116,298 @@ function OrtamRozeti({ ortam }: { ortam: string }) {
   );
 }
 
-function SurumCipi({ v, farkli, onClick, title }: { v: string; farkli?: boolean; onClick?: () => void; title?: string }) {
+// ── Sürüm ──────────────────────────────────────────────────────────────────────
+// nginx -v çıktısından gelen serbest metin: "1.24.0", "nginx/1.26.3", "1.25.1 (nginx-plus-r30)",
+// "unknown". major.minor = aile; geri kalanı yama + ek.
+const BILINMEYEN_SURUM = /^(unknown|\(bilinmiyor\)|n\/a|-)?$/i;
+export type SurumParca = { ham: string; aile: string; yama: string; ek: string; bilinmiyor: boolean };
+export function surumAyristir(v: string | null | undefined): SurumParca {
+  const ham = String(v ?? '').trim();
+  if (BILINMEYEN_SURUM.test(ham)) return { ham, aile: '', yama: '', ek: '', bilinmiyor: true };
+  const m = /^(?:nginx(?:-plus)?\/)?(\d+\.\d+)((?:\.\d+)*)(.*)$/i.exec(ham);
+  if (!m) return { ham, aile: ham, yama: '', ek: '', bilinmiyor: false };
+  return { ham, aile: m[1], yama: m[2], ek: m[3].trim(), bilinmiyor: false };
+}
+/** Yeniden eskiye; bilinmeyen en sonda. */
+export function surumKarsilastir(a: string, b: string): number {
+  const pa = surumAyristir(a);
+  const pb = surumAyristir(b);
+  if (pa.bilinmiyor !== pb.bilinmiyor) return pa.bilinmiyor ? 1 : -1;
+  const na = (pa.aile + pa.yama).split('.').map((x) => parseInt(x, 10));
+  const nb = (pb.aile + pb.yama).split('.').map((x) => parseInt(x, 10));
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (Number.isFinite(nb[i]) ? nb[i] : -1) - (Number.isFinite(na[i]) ? na[i] : -1);
+    if (d) return d;
+  }
+  return a.localeCompare(b);
+}
+const surumAnahtari = (v: string | null | undefined) => (surumAyristir(v).bilinmiyor ? '(bilinmiyor)' : String(v).trim());
+
+/** Sürüm metni: aile koyu, yama soluk, ek (nginx-plus vb.) yalnız title'da. */
+function SurumMetni({ v }: { v: string }) {
+  const p = surumAyristir(v);
+  if (p.bilinmiyor)
+    return (
+      <span className="italic" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-sans)' }}>
+        bilinmiyor
+      </span>
+    );
+  return (
+    <span>
+      <span style={{ color: 'var(--text-primary)' }} className="font-semibold">
+        {p.aile}
+      </span>
+      {p.yama && <span style={{ color: 'var(--text-muted)' }}>{p.yama}</span>}
+      {p.ek && (
+        <>
+          <span style={{ color: 'var(--text-muted)' }} aria-hidden="true">
+            *
+          </span>
+          <span className="sr-only"> {p.ek}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Tek sürüm rozeti; `sayi` verilirse aynı rozetin sağ bölmesinde sunucu sayısı. Rakamlar eşit
+ * genişlikte (font-mono + tabular-nums) ki alt alta gelen rozetler hizalı dursun. Renk YOK: hiçbir
+ * sürüm "doğru/yanlış" diye boyanmaz (kullanıcı, 2026-11-14: sürüm uyumu istenmiyor).
+ */
+function SurumRozeti({
+  v,
+  sayi,
+  onClick,
+  title,
+  aktif,
+}: {
+  v: string;
+  sayi?: number;
+  onClick?: () => void;
+  title?: string;
+  aktif?: boolean;
+}) {
+  const p = surumAyristir(v);
+  const ipucu = title ?? (p.ek ? p.ham : undefined);
+  const govde = (
+    <>
+      <span className="px-1.5 py-px">
+        <SurumMetni v={v} />
+      </span>
+      {sayi != null && (
+        <span
+          className="px-1.5 py-px border-l"
+          style={{
+            borderColor: 'var(--border-subtle)',
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-sans)',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          <span className="sr-only">, </span>
+          {nf(sayi)}
+          <span className="sr-only"> sunucu</span>
+        </span>
+      )}
+    </>
+  );
+  const cls =
+    'inline-flex items-stretch rounded-[var(--radius-sm)] border text-[11.5px] leading-[1.35rem] tabular-nums whitespace-nowrap overflow-hidden';
   const stil: React.CSSProperties = {
     fontFamily: 'var(--font-mono)',
-    borderColor: farkli ? 'var(--status-warning)' : 'var(--border-subtle)',
-    background: farkli ? 'var(--status-warning-bg)' : 'var(--bg-elevated)',
-    color: farkli ? 'var(--status-warning-text)' : 'var(--text-primary)',
+    borderColor: aktif ? 'var(--accent)' : 'var(--border-subtle)',
+    background: aktif ? 'var(--accent-bg)' : 'var(--bg-elevated)',
   };
-  const cls = 'inline-flex items-center px-1.5 py-0.5 rounded-md border text-[11.5px] whitespace-nowrap';
   return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} hover:underline`} style={stil} title={title}>
-      {v}
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${cls} transition-colors hover:border-[var(--border-strong)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]`}
+      style={stil}
+      title={ipucu}
+      data-testid="surum-rozeti"
+      data-surum={p.ham}
+    >
+      {govde}
     </button>
   ) : (
-    <span className={cls} style={stil} title={title}>
-      {v}
+    <span className={cls} style={stil} title={ipucu} data-testid="surum-rozeti" data-surum={p.ham}>
+      {govde}
+    </span>
+  );
+}
+
+/** Sürüm → sayı listesini yeniden eskiye rozetlerle verir; `sinir`dan fazlası "+N" ile açılır. */
+function SurumListesi({
+  items,
+  sinir = 4,
+  onSec,
+  baslik,
+  aktifSurum,
+}: {
+  items: [string, number][];
+  sinir?: number;
+  onSec?: (v: string) => void;
+  baslik?: (v: string, c: number) => string;
+  /** Sunucular'daki etkin sürüm süzgeci (surumAnahtari biçiminde); eşleşen rozet vurgulanır. */
+  aktifSurum?: string;
+}) {
+  const [hepsi, setHepsi] = useState(false);
+  const sirali = [...items].sort((a, b) => surumKarsilastir(a[0], b[0]));
+  if (!sirali.length) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  const gorunen = hepsi ? sirali : sirali.slice(0, sinir);
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {gorunen.map(([v, c]) => (
+        <SurumRozeti
+          key={v}
+          v={v}
+          sayi={c}
+          onClick={onSec ? () => onSec(v) : undefined}
+          title={baslik?.(v, c)}
+          aktif={!!aktifSurum && surumAnahtari(v) === aktifSurum}
+        />
+      ))}
+      {sirali.length > sinir && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setHepsi((x) => !x);
+          }}
+          className="text-[11px] px-1 tabular-nums hover:underline"
+          style={{ color: 'var(--accent)' }}
+          aria-label={hepsi ? 'Daha az sürüm göster' : `${sirali.length - sinir} sürüm daha göster`}
+        >
+          {hepsi ? 'daha az' : `+${sirali.length - sinir}`}
+        </button>
+      )}
+    </span>
+  );
+}
+
+const sayac = (degerler: (string | null | undefined)[]) => {
+  const m = new Map<string, number>();
+  for (const v of degerler) {
+    const k = surumAnahtari(v);
+    m.set(k, (m.get(k) || 0) + 1);
+  }
+  return [...m.entries()];
+};
+
+/**
+ * Sürümler sekmesi: nginx sürümleri major.minor ailesine göre. Aile satırı = pay çubuğu + sayı,
+ * altında o ailenin yamaları rozet olarak (tıklayınca Sunucular o sürüme süzülür).
+ */
+function SurumAileKarti({
+  items,
+  total,
+  onSec,
+  aktifSurum,
+}: {
+  items: NginxInvDist[];
+  total: number;
+  onSec: (v: string) => void;
+  aktifSurum?: string;
+}) {
+  // "unknown" / NULL / "(bilinmiyor)" sunucu tarafında ayrı kova olabilir; burada tek rozette toplanır.
+  const birlesik = new Map<string, number>();
+  for (const i of items) {
+    const k = surumAnahtari(i.value);
+    birlesik.set(k, (birlesik.get(k) || 0) + i.count);
+  }
+  const aileler = new Map<string, { aile: string; sayi: number; surumler: [string, number][] }>();
+  for (const [v, c] of birlesik) {
+    const p = surumAyristir(v);
+    const a = p.bilinmiyor ? '' : p.aile;
+    if (!aileler.has(a)) aileler.set(a, { aile: a, sayi: 0, surumler: [] });
+    const g = aileler.get(a)!;
+    g.sayi += c;
+    g.surumler.push([v, c]);
+  }
+  const sirali = [...aileler.values()].sort((x, y) =>
+    !x.aile ? 1 : !y.aile ? -1 : surumKarsilastir(`${x.aile}.0`, `${y.aile}.0`),
+  );
+  const max = Math.max(1, ...sirali.map((a) => a.sayi));
+  return (
+    <section
+      className="rounded-xl border p-4 md:col-span-2 xl:col-span-1 xl:row-span-2"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      data-testid="surum-aile-karti"
+    >
+      <header className="flex items-baseline justify-between gap-2 mb-3">
+        <h4 className="text-[13px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+          nginx sürümü
+        </h4>
+        <span className="text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+          {nf(sirali.filter((a) => a.aile).length)} aile · {nf(birlesik.size)} sürüm
+        </span>
+      </header>
+      {!sirali.length ? (
+        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Veri yok.</p>
+      ) : (
+        <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+          {sirali.map((a, sira) => {
+            const yuzde = total ? Math.round((a.sayi / total) * 100) : 0;
+            return (
+              <li key={a.aile || 'bilinmiyor'} className="py-2.5 first:pt-0 last:pb-0" style={{ borderColor: 'var(--border-subtle)' }} data-testid="surum-ailesi">
+                <div className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-3">
+                  <span className="text-[13px] font-semibold tabular-nums" style={{ fontFamily: 'var(--font-mono)', color: a.aile ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                    {a.aile || <span className="italic text-[12px] font-normal" style={{ fontFamily: 'var(--font-sans)' }}>bilinmiyor</span>}
+                  </span>
+                  <span className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }} aria-hidden="true">
+                    <span className="block h-full rounded-full" style={{ width: `${Math.max(2, (a.sayi / max) * 100)}%`, background: 'var(--nh-hub)', opacity: 0.7 }} />
+                  </span>
+                  <span className="text-[12px] tabular-nums text-right" style={{ color: 'var(--text-secondary)' }}>
+                    {nf(a.sayi)}
+                    <span className="ml-1.5 inline-block w-9 text-right" style={{ color: 'var(--text-muted)' }}>
+                      %{yuzde}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1.5 pl-0 sm:pl-[5.25rem]">
+                  <SurumListesi
+                    items={a.surumler}
+                    sinir={6}
+                    onSec={onSec}
+                    aktifSurum={aktifSurum}
+                    baslik={(v, c) => `${v}: ${nf(c)} sunucu — listele`}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ── Disk ───────────────────────────────────────────────────────────────────────
+/** GiB -> "512 MiB" / "50 GiB" / "7,5 GiB" / "1,5 TiB" (1 GiB altı MiB, "0 GiB" görünmesin). */
+function boyutYaz(g: number): string {
+  if (g > 0 && g < 1) return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 0 }).format(g * 1024)} MiB`;
+  if (g >= 1024) return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 }).format(g / 1024)} TiB`;
+  return `${new Intl.NumberFormat('tr-TR', { maximumFractionDigits: g < 10 ? 1 : 0 }).format(g)} GiB`;
+}
+
+/** Boyut hücresi (disk: df -hP toplam boyutu, bellek); çözülemezse "—" ve title'da neden. */
+function DiskHucresi({ v, yol, tur = 'disk boyutu' }: { v: string | null; yol: string; tur?: string }) {
+  const g = gib(v);
+  if (g == null) {
+    const ham = String(v ?? '').trim();
+    const neden = ham ? `${yol}: "${ham}" çözümlenemedi` : `${yol}: değer yok`;
+    return (
+      <span style={{ color: 'var(--text-muted)' }} title={neden}>
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">{neden}</span>
+      </span>
+    );
+  }
+  return (
+    <span title={`${yol} ${tur}: ${String(v).trim()}`} style={{ color: 'var(--text-primary)' }}>
+      {boyutYaz(g)}
     </span>
   );
 }
@@ -182,13 +470,11 @@ function DagilimKarti({
   items,
   total,
   onSec,
-  vurgu,
 }: {
   title: string;
   items: NginxInvDist[];
   total: number;
   onSec?: (v: string) => void;
-  vurgu?: (v: string) => boolean;
 }) {
   const [hepsi, setHepsi] = useState(false);
   const max = Math.max(1, ...items.map((i) => i.count));
@@ -214,10 +500,7 @@ function DagilimKarti({
                 <span className="flex items-baseline justify-between gap-2 text-[12px]">
                   <span
                     className="truncate"
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      color: vurgu?.(i.value) ? 'var(--status-warning-text)' : 'var(--text-primary)',
-                    }}
+                    style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}
                     title={i.value}
                   >
                     {i.value}
@@ -287,27 +570,18 @@ function ServiceSunuculari({
   hosts: NginxInvHost[];
   unlisted: string[];
 }) {
-  const surumler = new Map<string, number>();
-  for (const h of hosts) {
-    const v = h.nginx_version || '(bilinmiyor)';
-    surumler.set(v, (surumler.get(v) || 0) + 1);
-  }
-  const sirali = [...surumler.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const surumler = sayac(hosts.map((h) => h.nginx_version));
   const digerUnlisted = service === 'too_many' ? [] : unlisted;
   return (
     <div className="space-y-2.5 py-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
-          nginx sürümü:
+      <div className="flex flex-wrap items-center gap-2" data-testid="service-surumleri">
+        <span className={UST_ETIKET} style={{ color: 'var(--text-muted)' }}>
+          nginx
         </span>
-        {sirali.map(([v, c]) => (
-          <Pill key={v} tone={sirali.length > 1 ? 'warning' : 'info'}>
-            {v} · {nf(c)} sunucu
-          </Pill>
-        ))}
-        {sirali.length > 1 && (
-          <span className="text-[11px]" style={{ color: 'var(--status-warning-text)' }}>
-            Bu service&apos;in sunucularında {sirali.length} farklı nginx sürümü var.
+        <SurumListesi items={surumler} sinir={8} baslik={(v, c) => `${v}: ${nf(c)} sunucu`} />
+        {surumler.length > 1 && (
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            {surumler.length} farklı sürüm
           </span>
         )}
       </div>
@@ -334,8 +608,8 @@ function ServiceSunuculari({
                   <OrtamRozeti ortam={ortamOf(h)} />
                 </td>
                 <td className="px-3 py-1.5 whitespace-nowrap">{h.location || '—'}</td>
-                <td className="px-3 py-1.5 whitespace-nowrap" style={{ fontFamily: 'var(--font-mono)' }}>
-                  {h.nginx_version || '—'}
+                <td className="px-3 py-1.5 whitespace-nowrap">
+                  <SurumRozeti v={h.nginx_version || ''} />
                 </td>
                 <td className="px-3 py-1.5 whitespace-nowrap" title={h.kernel || ''}>
                   {h.os || '—'}
@@ -361,7 +635,7 @@ function ServiceSunuculari({
 }
 
 type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular';
-type SiraAnahtar = 'hostname' | 'ortam' | 'location' | 'nginx' | 'os' | 'cpu' | 'bellek' | 'konf';
+type SiraAnahtar = 'hostname' | 'ortam' | 'location' | 'nginx' | 'os' | 'cpu' | 'bellek' | 'diskNginx' | 'diskWebLog' | 'konf';
 
 function SiraTh({
   k,
@@ -369,12 +643,14 @@ function SiraTh({
   onSirala,
   children,
   sag,
+  title,
 }: {
   k: SiraAnahtar;
   sira: { k: SiraAnahtar; yon: 1 | -1 };
   onSirala: (k: SiraAnahtar) => void;
   children: React.ReactNode;
   sag?: boolean;
+  title?: string;
 }) {
   const aktif = sira.k === k;
   const Ok = aktif && sira.yon === -1 ? ChevronDownIcon : ChevronUpIcon;
@@ -383,6 +659,7 @@ function SiraTh({
       className={`sticky top-0 z-10 px-3 py-2 font-semibold whitespace-nowrap ${sag ? 'text-right' : 'text-left'}`}
       style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
       aria-sort={aktif ? (sira.yon === 1 ? 'ascending' : 'descending') : 'none'}
+      title={title}
     >
       <button
         type="button"
@@ -410,6 +687,8 @@ export function NginxEnvanteri() {
   const [sq, setSq] = useState('');
   const [ortamSuz, setOrtamSuz] = useState('');
   const [surumSuz, setSurumSuz] = useState('');
+  /** Süzgeç nginx sürümüne mi OS'a mı? Ayrı tutulur: "(bilinmiyor)" iki alanda da olabilir. */
+  const [surumTuru, setSurumTuru] = useState<'nginx' | 'os'>('nginx');
   const [etiketliSuz, setEtiketliSuz] = useState(false);
   const [sira, setSira] = useState<{ k: SiraAnahtar; yon: 1 | -1 }>({ k: 'hostname', yon: 1 });
   const [etiketHost, setEtiketHost] = useState<NginxInvHost | null>(null);
@@ -473,12 +752,6 @@ export function NginxEnvanteri() {
 
   const hostByName = useMemo(() => new Map((data?.hosts ?? []).map((h) => [h.hostname, h])), [data]);
 
-  // En yaygın nginx sürümü: "uyum" ölçütü (en yeni değil, filonun çoğunluğu).
-  const anaSurum = useMemo(
-    () => (data?.versions.nginx ?? []).find((v) => v.value !== '(bilinmiyor)')?.value || '',
-    [data],
-  );
-
   const ortamlar = useMemo(() => {
     const m = new Map<
       string,
@@ -491,7 +764,7 @@ export function NginxEnvanteri() {
       g.hosts.push(h);
       const lok = h.location && h.location !== '(bilinmiyor)' ? h.location : 'lokasyonsuz';
       g.lok.set(lok, (g.lok.get(lok) || 0) + 1);
-      const v = h.nginx_version || '(bilinmiyor)';
+      const v = surumAnahtari(h.nginx_version);
       g.surum.set(v, (g.surum.get(v) || 0) + 1);
       const os = h.os || '(bilinmiyor)';
       g.os.set(os, (g.os.get(os) || 0) + 1);
@@ -509,14 +782,15 @@ export function NginxEnvanteri() {
     const needle = q.trim().toLowerCase();
     const rows = data.hosts.filter((h) => {
       if (ortamSuz && ortamOf(h) !== ortamSuz) return false;
-      if (surumSuz && (h.nginx_version || '(bilinmiyor)') !== surumSuz && (h.os || '(bilinmiyor)') !== surumSuz) return false;
+      if (surumSuz && (surumTuru === 'os' ? (h.os || '(bilinmiyor)') !== surumSuz : surumAnahtari(h.nginx_version) !== surumSuz))
+        return false;
       if (etiketliSuz && !h.etiket) return false;
       if (!needle) return true;
       return `${h.hostname} ${h.fqdn || ''} ${ortamOf(h)} ${h.location || ''} ${h.services || ''} ${h.ip || ''} ${h.nginx_version || ''} ${h.os || ''}`
         .toLowerCase()
         .includes(needle);
     });
-    const deger = (h: NginxInvHost): string | number => {
+    const deger = (h: NginxInvHost): string | number | null => {
       switch (sira.k) {
         case 'ortam':
           return ORTAM_SIRA.indexOf(ortamOf(h) as (typeof ORTAM_SIRA)[number]);
@@ -524,6 +798,10 @@ export function NginxEnvanteri() {
           return h.location || '';
         case 'nginx':
           return h.nginx_version || '';
+        case 'diskNginx':
+          return gib(h.disk_usr_nginx);
+        case 'diskWebLog':
+          return gib(h.disk_web_log);
         case 'os':
           return h.os || '';
         case 'cpu':
@@ -539,13 +817,17 @@ export function NginxEnvanteri() {
     return [...rows].sort((a, b) => {
       const x = deger(a);
       const y = deger(b);
+      // Değeri olmayan (disk "—") her iki yönde de en altta kalır.
+      if (x == null || y == null) return x == null && y == null ? a.hostname.localeCompare(b.hostname) : x == null ? 1 : -1;
       const c =
-        typeof x === 'number' && typeof y === 'number'
-          ? x - y
-          : String(x).localeCompare(String(y), 'tr', { numeric: true });
+        sira.k === 'nginx'
+          ? -surumKarsilastir(String(x), String(y))
+          : typeof x === 'number' && typeof y === 'number'
+            ? x - y
+            : String(x).localeCompare(String(y), 'tr', { numeric: true });
       return c * sira.yon || a.hostname.localeCompare(b.hostname);
     });
-  }, [data, q, ortamSuz, surumSuz, etiketliSuz, sira]);
+  }, [data, q, ortamSuz, surumSuz, surumTuru, etiketliSuz, sira]);
 
   const serviceRows = useMemo(() => {
     if (!data) return [];
@@ -583,12 +865,11 @@ export function NginxEnvanteri() {
   const lokasyonSayi = new Set(
     data.hosts.map((h) => h.location).filter((l) => l && l !== '(bilinmiyor)'),
   ).size;
-  const anaSayi = data.versions.nginx.find((v) => v.value === anaSurum)?.count || 0;
-  const anaYuzde = n ? Math.round((anaSayi / n) * 100) : 0;
 
-  const sunuculariAc = (o: { ortam?: string; surum?: string }) => {
+  const sunuculariAc = (o: { ortam?: string; surum?: string; os?: string }) => {
     setOrtamSuz(o.ortam ?? '');
-    setSurumSuz(o.surum ?? '');
+    setSurumSuz(o.os ?? o.surum ?? '');
+    setSurumTuru(o.os != null ? 'os' : 'nginx');
     setEtiketliSuz(false);
     setQ('');
     setView('sunucular');
@@ -698,7 +979,11 @@ export function NginxEnvanteri() {
               t.memory.unparsed ? `${t.memory.unparsed} sunucunun bellek değeri çözümlenemedi, toplama dahil değil` : undefined,
               !!t.memory.unparsed,
             )}
-            {kpi('nginx sürümü', nf(t.nginxVersions), 'farklı sürüm sayısı')}
+            {kpi(
+              'nginx sürümü',
+              nf(data.hosts.length ? new Set(data.hosts.map((h) => surumAnahtari(h.nginx_version))).size : t.nginxVersions),
+              'farklı sürüm sayısı (unknown/boş tek "bilinmiyor" sayılır)',
+            )}
             {kpi(
               '/usr/nginx',
               <>
@@ -720,43 +1005,6 @@ export function NginxEnvanteri() {
             {kpi('işletim sistemi', nf(t.osVersions), 'farklı OS sürümü')}
           </dl>
         </div>
-
-        {/* Sürüm uyumu: en yaygın sürüm ve ondan ayrışanlar; çip Sunucular'ı o sürüme süzer. */}
-        {anaSurum && (
-          <div
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 border-t"
-            style={{ borderColor: 'var(--border-subtle)' }}
-            data-testid="surum-uyumu"
-          >
-            <span className={UST_ETIKET} style={{ color: 'var(--text-muted)' }}>
-              nginx sürüm uyumu
-            </span>
-            <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-              <span className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-inset)' }} aria-hidden="true">
-                <span className="block h-full rounded-full" style={{ width: `${anaYuzde}%`, background: 'var(--nh-hub)' }} />
-              </span>
-              <span>
-                <b className="tabular-nums" style={{ color: 'var(--text-primary)' }}>%{anaYuzde}</b> en yaygın sürümde
-              </span>
-              <SurumCipi v={anaSurum} onClick={() => sunuculariAc({ surum: anaSurum })} title={`${anaSayi} sunucu — listele`} />
-            </span>
-            {data.versions.nginx.length > 1 && (
-              <span className="inline-flex flex-wrap items-center gap-1.5 text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                ayrışan:
-                {data.versions.nginx
-                  .filter((v) => v.value !== anaSurum)
-                  .slice(0, 6)
-                  .map((v) => (
-                    <span key={v.value} className="inline-flex items-center gap-1">
-                      <SurumCipi v={v.value} farkli onClick={() => sunuculariAc({ surum: v.value })} title={`${v.count} sunucu — listele`} />
-                      <span className="tabular-nums">×{v.count}</span>
-                    </span>
-                  ))}
-                {data.versions.nginx.length > 7 && <span>+{data.versions.nginx.length - 7}</span>}
-              </span>
-            )}
-          </div>
-        )}
       </section>
 
       {data.etiketHatasi && (
@@ -809,7 +1057,6 @@ export function NginxEnvanteri() {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {ortamlar.map((o) => {
               const lokMax = Math.max(1, ...o.lok.values());
-              const surumler = [...o.surum.entries()].sort((a, b) => b[1] - a[1]);
               const osler = [...o.os.entries()].sort((a, b) => b[1] - a[1]);
               return (
                 <article
@@ -856,18 +1103,13 @@ export function NginxEnvanteri() {
                     </div>
                     <div>
                       <div className={UST_ETIKET} style={{ color: 'var(--text-muted)' }}>nginx</div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {surumler.map(([v, c]) => (
-                          <span key={v} className="inline-flex items-center gap-1 text-[12px]" style={{ color: 'var(--text-muted)' }}>
-                            <SurumCipi
-                              v={v}
-                              farkli={!!anaSurum && v !== anaSurum}
-                              onClick={() => sunuculariAc({ ortam: o.ortam, surum: v })}
-                              title={`${ortamAdi(o.ortam)} · ${v}: ${c} sunucu — listele`}
-                            />
-                            <span className="tabular-nums">×{c}</span>
-                          </span>
-                        ))}
+                      <div className="mt-1.5">
+                        <SurumListesi
+                          items={[...o.surum.entries()]}
+                          onSec={(v) => sunuculariAc({ ortam: o.ortam, surum: v })}
+                          aktifSurum={surumTuru === 'nginx' && ortamSuz === o.ortam ? surumSuz : undefined}
+                          baslik={(v, c) => `${ortamAdi(o.ortam)} · ${v}: ${nf(c)} sunucu — listele`}
+                        />
                       </div>
                     </div>
                     <div>
@@ -914,14 +1156,13 @@ export function NginxEnvanteri() {
       {/* ── SÜRÜMLER ───────────────────────────────────────────────────────────── */}
       {view === 'versiyon' && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <DagilimKarti
-            title="nginx sürümü"
+          <SurumAileKarti
             items={data.versions.nginx}
             total={n}
-            onSec={(v) => sunuculariAc({ surum: v })}
-            vurgu={(v) => !!anaSurum && v !== anaSurum}
+            onSec={(v) => sunuculariAc({ surum: surumAnahtari(v) })}
+            aktifSurum={surumTuru === 'nginx' && !ortamSuz ? surumSuz : undefined}
           />
-          <DagilimKarti title="İşletim sistemi" items={data.versions.os} total={n} onSec={(v) => sunuculariAc({ surum: v })} />
+          <DagilimKarti title="İşletim sistemi" items={data.versions.os} total={n} onSec={(v) => sunuculariAc({ os: v })} />
           <DagilimKarti title="Çekirdek (kernel)" items={data.versions.kernel} total={n} />
           <DagilimKarti title="Mimari" items={data.versions.architecture} total={n} />
           <DagilimKarti title="nginx kullanıcısı" items={data.other.nginxUser} total={n} />
@@ -961,7 +1202,7 @@ export function NginxEnvanteri() {
                     s.hosts,
                     s.ortamSet.join(' '),
                     (s.hostnames ?? []).join(' '),
-                    [...new Set(s.hs.map((h) => h.nginx_version || '(bilinmiyor)'))].join(' '),
+                    [...new Set(s.hs.map((h) => surumAnahtari(h.nginx_version)))].sort(surumKarsilastir).join(' '),
                   ]),
                 )
               }
@@ -989,7 +1230,7 @@ export function NginxEnvanteri() {
               <tbody>
                 {serviceRows.map((s) => {
                   const acik = acikService.has(s.service);
-                  const surumSet = [...new Set(s.hs.map((h) => h.nginx_version || '(bilinmiyor)'))];
+                  const surumler = sayac(s.hs.map((h) => h.nginx_version));
                   return (
                     <React.Fragment key={s.service}>
                       <tr
@@ -1029,14 +1270,7 @@ export function NginxEnvanteri() {
                           </span>
                         </td>
                         <td className="px-4 py-2">
-                          <span className="flex flex-wrap gap-1">
-                            {surumSet.slice(0, 3).map((v) => (
-                              <SurumCipi key={v} v={v} farkli={!!anaSurum && v !== anaSurum} />
-                            ))}
-                            {surumSet.length > 3 && (
-                              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>+{surumSet.length - 3}</span>
-                            )}
-                          </span>
+                          <SurumListesi items={surumler} sinir={3} baslik={(v, c) => `${v}: ${nf(c)} sunucu`} />
                         </td>
                       </tr>
                       {acik && (
@@ -1177,7 +1411,15 @@ export function NginxEnvanteri() {
                   style={{ borderColor: 'var(--accent)', background: 'var(--accent-bg)', color: 'var(--text-primary)' }}
                   data-testid="surum-suzgeci"
                 >
-                  sürüm: <span style={{ fontFamily: 'var(--font-mono)' }}>{surumSuz}</span>
+                  {surumTuru === 'os' ? (
+                    <>
+                      OS: <span>{surumSuz}</span>
+                    </>
+                  ) : (
+                    <>
+                      nginx: <SurumRozeti v={surumSuz} />
+                    </>
+                  )}
                   <button type="button" onClick={() => setSurumSuz('')} aria-label="Sürüm süzgecini kaldır" className="p-0.5 rounded-full hover:bg-[var(--bg-elevated)]">
                     <XMarkIcon className="w-3.5 h-3.5" />
                   </button>
@@ -1196,6 +1438,8 @@ export function NginxEnvanteri() {
                   <SiraTh sira={sira} onSirala={siralaTiklandi} k="os">OS</SiraTh>
                   <SiraTh sira={sira} onSirala={siralaTiklandi} k="cpu" sag>CPU</SiraTh>
                   <SiraTh sira={sira} onSirala={siralaTiklandi} k="bellek" sag>Bellek</SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="diskNginx" sag title="/usr/nginx disk boyutu (df -hP toplam)">/usr/nginx</SiraTh>
+                  <SiraTh sira={sira} onSirala={siralaTiklandi} k="diskWebLog" sag title="/web_log disk boyutu (df -hP toplam)">/web_log</SiraTh>
                   <SiraTh sira={sira} onSirala={siralaTiklandi} k="konf" sag>Konf.</SiraTh>
                   <th className="sticky top-0 z-10 px-3 py-2 font-semibold text-left whitespace-nowrap" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
                     Service / etiket
@@ -1227,21 +1471,29 @@ export function NginxEnvanteri() {
                       {h.location || '—'}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
-                      {h.nginx_version ? (
-                        <SurumCipi
-                          v={h.nginx_version}
-                          farkli={!!anaSurum && h.nginx_version !== anaSurum}
-                          title={anaSurum && h.nginx_version !== anaSurum ? `Filonun çoğu ${anaSurum}` : undefined}
-                        />
-                      ) : (
-                        '—'
-                      )}
+                      <SurumRozeti
+                        v={h.nginx_version || ''}
+                        onClick={() => {
+                          setSurumSuz(surumAnahtari(h.nginx_version));
+                          setSurumTuru('nginx');
+                        }}
+                        title={`${h.nginx_version || 'bilinmiyor'} — bu sürüme süz`}
+                        aktif={surumTuru === 'nginx' && surumSuz === surumAnahtari(h.nginx_version)}
+                      />
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap" title={h.kernel || ''} style={{ color: 'var(--text-secondary)' }}>
                       {h.os || '—'}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{h.cpu ?? '—'}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{h.memory || '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="bellek">
+                      <DiskHucresi v={h.memory} yol="bellek" tur="toplam" />
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="disk-usr-nginx">
+                      <DiskHucresi v={h.disk_usr_nginx} yol="/usr/nginx" />
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap" data-testid="disk-web-log">
+                      <DiskHucresi v={h.disk_web_log} yol="/web_log" />
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums">{h.config_count ?? '—'}</td>
                     <td className="px-3 py-2 min-w-[14rem]">
                       <ServisCipleri h={h} />
@@ -1271,7 +1523,7 @@ export function NginxEnvanteri() {
                 ))}
                 {!hostRows.length && (
                   <tr>
-                    <td colSpan={isAdmin ? 10 : 9} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
+                    <td colSpan={isAdmin ? 12 : 11} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
                       Süzgece uyan sunucu yok.
                     </td>
                   </tr>

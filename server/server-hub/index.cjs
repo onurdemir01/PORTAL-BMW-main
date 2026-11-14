@@ -28,31 +28,97 @@ const { KODLAR } = require('./kural-katalogu.cjs');
 // name" tum Promise.all'i reddederdi.
 const SH_KOLONLAR = Object.freeze({
   'dbo.Server_Hub_Hosts': [
-    'host', 'scan_date', 'products', 'wall_s', 'cpu_s', 'note',
-    'scan_ver', 'rec_counts', 'scan_errors', 'proc_visibility', 'sock_visibility', 'loaded_at',
+    'host',
+    'scan_date',
+    'products',
+    'wall_s',
+    'cpu_s',
+    'note',
+    'scan_ver',
+    'rec_counts',
+    'scan_errors',
+    'proc_visibility',
+    'sock_visibility',
+    'loaded_at',
   ],
   'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
   'dbo.Server_Hub_Jboss': [
-    'host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note',
-    'mgmt_cfg', 'mgmt_state', 'cli_rescue', 'cli_run_as', 'host_config', 'dc_role',
+    'host',
+    'scan_date',
+    'gen',
+    'host_name',
+    'host_state',
+    'cli',
+    'note',
+    'mgmt_cfg',
+    'mgmt_state',
+    'cli_rescue',
+    'cli_run_as',
+    'host_config',
+    'dc_role',
   ],
   // FILO sorgusu: jvm_args / configured_jvm_args / jvm_arg_diff YOK (agir; yalniz tek
   // sunucu ayrintisinda, maskeli - JVM_AGIR_KOLONLAR).
   'dbo.Server_Hub_Jvms': [
-    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
-    'running_src', 'cfg_src', 'state_src', 'config_changed', 'config_risk',
-    'config_mtime_epoch', 'process_start_epoch', 'os_startup', 'reboot_expected',
-    'reboot_status', 'cfg_ports', 'cfg_ports_src', 'jvm_arg_status', 'jvm_args_src',
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
+    'running_src',
+    'cfg_src',
+    'state_src',
+    'config_changed',
+    'config_risk',
+    'config_mtime_epoch',
+    'process_start_epoch',
+    'os_startup',
+    'reboot_expected',
+    'reboot_status',
+    'cfg_ports',
+    'cfg_ports_src',
+    'jvm_arg_status',
+    'jvm_args_src',
   ],
   'dbo.Server_Hub_Web': [
-    'host', 'scan_date', 'product', 'running', 'syntax', 'detail',
-    'check_class', 'syntax_verification', 'run_as', 'check_rc', 'vhost_trust', 'running_src',
+    'host',
+    'scan_date',
+    'product',
+    'running',
+    'syntax',
+    'detail',
+    'check_class',
+    'syntax_verification',
+    'run_as',
+    'check_rc',
+    'vhost_trust',
+    'running_src',
   ],
   'dbo.Server_Hub_Vhosts': [
-    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
-    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
-    'traffic_state', 'traffic_reason', 'cover_from_epoch', 'last_req_epoch',
-    'last_line_epoch', 'log_read_as',
+    'host',
+    'scan_date',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
+    'traffic_state',
+    'traffic_reason',
+    'cover_from_epoch',
+    'last_req_epoch',
+    'last_line_epoch',
+    'log_read_as',
   ],
   'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
@@ -73,12 +139,32 @@ const SH_ESKI_KOLONLAR = Object.freeze({
   'dbo.Server_Hub_Init': ['host', 'scan_date', 'root', 'file', 'status', 'sha512'],
   'dbo.Server_Hub_Jboss': ['host', 'scan_date', 'gen', 'host_name', 'host_state', 'cli', 'note'],
   'dbo.Server_Hub_Jvms': [
-    'host', 'scan_date', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports',
+    'host',
+    'scan_date',
+    'gen',
+    'jvm',
+    'grp',
+    'running',
+    'auto_start',
+    'server_state',
+    'ports',
   ],
   'dbo.Server_Hub_Web': ['host', 'scan_date', 'product', 'running', 'syntax', 'detail'],
   'dbo.Server_Hub_Vhosts': [
-    'host', 'scan_date', 'product', 'listen', 'server_name', 'aliases', 'access_log',
-    'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file',
+    'host',
+    'scan_date',
+    'product',
+    'listen',
+    'server_name',
+    'aliases',
+    'access_log',
+    'proxy_targets',
+    'req_24h',
+    'req_7d',
+    'hc_24h',
+    'shared',
+    'sampled',
+    'conf_file',
   ],
   'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],
@@ -149,18 +235,34 @@ function onbellekSil() {
   _nesil += 1;
 }
 
+// YUKLEME IZI (sozlesme v3): sunucu basina EN YENI scan_date'in LoadIssues satirlari.
+// Ayni (host, scan_date) icin loader yalniz son kosunun satirlarini tutar. Tablo henuz
+// yoksa (DDL kosmamis) bos liste: LOAD_EXCLUDED uretilmez, uclar dusmez.
+function loadIssuesOku(query) {
+  return query(
+    `SELECT li.host, li.scan_date, li.issue, li.detail, li.run_at FROM dbo.Server_Hub_LoadIssues li
+     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_LoadIssues GROUP BY host) m
+       ON m.host = li.host AND m.d = li.scan_date`,
+  )
+    .then((r) => r.recordset || [])
+    .catch(() => []);
+}
+
 async function loadLatest() {
   const { query } = require('../inventory/mssql.cjs');
   const ex = await query(`SELECT OBJECT_ID('dbo.Server_Hub_Hosts') AS oid`);
   if (!ex.recordset?.[0]?.oid) return { tableMissing: true, data: null };
-  const kol = await shKolonlari(query);
+  // PARALEL (2026-11-14, B4): sema, MWAppsInventory, Inventory (kolon -> satir zinciri) ve LoadIssues
+  // birbirini beklemez; 8 tablo sorgusu yalniz semayi bekler. Eskiden 5-6 sirali DB tur yolculugu
+  // vardi; soguk onbellekte her Ayrinti acilisi bunu bekliyordu.
+  const kolP = shKolonlari(query);
   // her sunucunun SON taramasi (gun): Hosts tablosundaki max scan_date. Kolonlar acikca
   // (sys.columns ile kesisim); [koseli] ad: 'file' SQL Server'da ayrilmis sozcuk.
   const q = (table, ek = []) => {
     const cols = secilecekKolonlar(table, kol, SH_KOLONLAR[table]);
     if (!cols.length) return Promise.resolve([]);
     return query(
-      `SELECT ${[...cols.map((c) => ("t.[" + c + "]")), ...ek].join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => 't.[' + c + ']'), ...ek].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -169,7 +271,7 @@ async function loadLatest() {
   // job'inin veritabanindan cek." dbo.MWAppsInventory uygulama basina satir tutar: status
   // (running/stopped), jvm_count, autostarts ("true false ..."), env, tier. Server Hub'in kendi CLI
   // taramasiyla BIRLESTIRILIR: CLI yoksa envanter, ikisi de varsa celiski bulgusu.
-  const mwApps = await query(
+  const mwAppsP = query(
     `SELECT host, app, env, domain, status, jvm_count, autostarts, tier FROM dbo.MWAppsInventory WHERE host IS NOT NULL AND app IS NOT NULL`,
   )
     .then((r) => r.recordset || [])
@@ -179,6 +281,8 @@ async function loadLatest() {
   // urunu goremediyse (yetki/yol) sessizce "urun yok" demek yerine kapsam farki raporlanir.
   // Kolon adlari kuruluma gore degisebildigi icin once sys.columns'a bakilir; olmayan kolon sorguya
   // girmez (eksik kolon tum sorguyu dusururdu).
+  // LoadIssues sorgusu asagida tanimli ama BURADA baslar (paralel).
+  const loadIssuesP = loadIssuesOku(query);
   const invCols = await query(
     `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`,
   )
@@ -218,7 +322,7 @@ async function loadLatest() {
   ]
     .filter(Boolean)
     .join(', ');
-  const invEnv = await query(`SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`)
+  const invEnvP = query(`SELECT ${invSelect} FROM dbo.Inventory WHERE host IS NOT NULL`)
     .then((r) =>
       (r.recordset || []).map((row) => {
         const products = [];
@@ -231,29 +335,23 @@ async function loadLatest() {
       }),
     )
     .catch(() => []);
+  const kol = await kolP;
   const [hosts, init, jboss, jvms, web, vhosts, ips, sshd] = await Promise.all([
     q('dbo.Server_Hub_Hosts'),
     q('dbo.Server_Hub_Init'),
     q('dbo.Server_Hub_Jboss'),
     q(
       'dbo.Server_Hub_Jvms',
-      kol.ok && (kol.cols.get('dbo.server_hub_jvms') || new Set()).has('jvm_arg_diff') ? [ARG_FARK_IFADE] : [],
+      kol.ok && (kol.cols.get('dbo.server_hub_jvms') || new Set()).has('jvm_arg_diff')
+        ? [ARG_FARK_IFADE]
+        : [],
     ),
     q('dbo.Server_Hub_Web'),
     q('dbo.Server_Hub_Vhosts'),
     q('dbo.Server_Hub_Ips'),
     q('dbo.Server_Hub_Sshd').catch(() => []), // tablo eski taramada yoksa
   ]);
-  // YUKLEME IZI (sozlesme v3): sunucu basina EN YENI scan_date'in LoadIssues satirlari.
-  // Ayni (host, scan_date) icin loader yalniz son kosunun satirlarini tutar. Tablo henuz
-  // yoksa (DDL kosmamis) bos liste: LOAD_EXCLUDED uretilmez, uclar dusmez.
-  const loadIssues = await query(
-    `SELECT li.host, li.scan_date, li.issue, li.detail, li.run_at FROM dbo.Server_Hub_LoadIssues li
-     JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_LoadIssues GROUP BY host) m
-       ON m.host = li.host AND m.d = li.scan_date`,
-  )
-    .then((r) => r.recordset || [])
-    .catch(() => []);
+  const [mwApps, invEnv, loadIssues] = await Promise.all([mwAppsP, invEnvP, loadIssuesP]);
   return {
     tableMissing: false,
     data: {
@@ -293,7 +391,7 @@ async function loadJvmAgir(host, opts) {
   const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
   if (!agir.length) return new Map();
   const rows = await query(
-    `SELECT t.[gen], t.[jvm], ${agir.map((c) => ("t.[" + c + "]")).join(', ')} FROM dbo.Server_Hub_Jvms t
+    `SELECT t.[gen], t.[jvm], ${agir.map((c) => 't.[' + c + ']').join(', ')} FROM dbo.Server_Hub_Jvms t
      JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts
             WHERE host = @h OR host LIKE @h + '.%' GROUP BY host) m
        ON m.host = t.host AND m.d = t.scan_date
@@ -303,7 +401,13 @@ async function loadJvmAgir(host, opts) {
     .then((r) => r.recordset || [])
     .catch(() => []);
   const out = new Map();
-  for (const r of rows) out.set(`${Number(r.gen)}|${String(r.jvm || '').trim().toLowerCase()}`, r);
+  for (const r of rows)
+    out.set(
+      `${Number(r.gen)}|${String(r.jvm || '')
+        .trim()
+        .toLowerCase()}`,
+      r,
+    );
   return out;
 }
 
@@ -318,6 +422,29 @@ function jvmAgirSemasi() {
 }
 loadJvmAgir.semaOku = jvmAgirSemasi;
 
+// AYRINTI ICIN SEMA ONBELLEGI (2026-11-14, B3): /host/:host her acilista sys.columns'u yeniden
+// okuyordu. Yalniz BASARILI okuma 60 sn tutulur; okunamadi ({ ok:false }, C3) onbellege ALINMAZ,
+// bir sonraki acilis yeniden dener. Filo okumasi (loadLatest) bunu KULLANMAZ: orada sema her tam
+// okumada tazedir (C3 notu yukarida).
+const SEMA_MS = 60 * 1000;
+let _semaBellek = null; // { at, p }
+function semaKisaOnbellek() {
+  if (_semaBellek && Date.now() - _semaBellek.at < SEMA_MS) return _semaBellek.p;
+  const kayit = { at: Date.now(), p: jvmAgirSemasi() };
+  _semaBellek = kayit;
+  kayit.p.then(
+    (k) => {
+      if (!k || !k.ok) {
+        if (_semaBellek === kayit) _semaBellek = null;
+      }
+    },
+    () => {
+      if (_semaBellek === kayit) _semaBellek = null;
+    },
+  );
+  return kayit.p;
+}
+
 /** Tam okuma + degerlendirme (tek ucus; nesil eskiyse sonuc onbellege yazilmaz). */
 function hesapla() {
   if (_ucus && _ucus.nesil === _nesil) return _ucus.p;
@@ -326,25 +453,33 @@ function hesapla() {
     const t0 = Date.now();
     // Uygulama Envanteri (Portal DB) ve capraz kontrol kaynaklari paralel okunur; okunamazsa
     // { okunamadi } doner, degerlendirme dusmez (o kaynaga dayanan bulgu uretilmez).
-    const [{ tableMissing, data }, ear, capraz] = await Promise.all([
+    // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
+    // ayarlar.oku ayni Promise.all'da (2026-11-14): ayri bir sirali tur yolculugu degil.
+    const [{ tableMissing, data }, ear, capraz, ayar] = await Promise.all([
       loadLatest(),
       earSonDurum(),
       caprazVeri(),
+      ayarlar.oku(),
     ]);
     const t1 = Date.now();
-    // Seviye degisiklikleri bulgu uretilirken uygulanir; ayarlar okunamazsa varsayilanlar (ekran soyler).
-    const ayar = await ayarlar.oku();
     const value = tableMissing
       ? { tableMissing: true, hosts: [], summary: null, latestScan: null }
       : {
           tableMissing: false,
-          ...assess({ ...data, ear, capraz }, { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay }),
+          ...assess(
+            { ...data, ear, capraz },
+            { seviyeler: ayar.seviyeler, kokYoksay: ayar.kokYoksay },
+          ),
         };
     value.ayar = {
       okunamadi: ayar.okunamadi === true,
       seviyeDegisen: Object.keys(ayar.seviyeler).length,
     };
-    value.ear = { okunamadi: ear.okunamadi === true, hata: ear.hata || '', hostSayisi: ear.hostlar.length };
+    value.ear = {
+      okunamadi: ear.okunamadi === true,
+      hata: ear.hata || '',
+      hostSayisi: ear.hostlar.length,
+    };
     value.capraz = caprazDurumu(capraz);
     _sonOlcum = { db: t1 - t0, assess: Date.now() - t1 };
     if (Date.now() - t0 > YAVAS_MS)
@@ -394,7 +529,8 @@ async function getAssessment(fresh, olcum) {
 /** Server-Timing basligi (DevTools > Network > Timing): kaynak ve sureler. */
 function sureBasligi(res, o) {
   const parca = [`sh;desc="${o.kaynak || 'taze'}"`];
-  if (o.kaynak === 'taze') parca.push(`db;dur=${Number(o.db) || 0}`, `assess;dur=${Number(o.assess) || 0}`);
+  if (o.kaynak === 'taze')
+    parca.push(`db;dur=${Number(o.db) || 0}`, `assess;dur=${Number(o.assess) || 0}`);
   res.set('Server-Timing', parca.join(', '));
 }
 
@@ -543,8 +679,23 @@ async function resolveByKey(keyName) {
   };
 }
 
-async function launch(req, keyName, templateName, extraVars, detail) {
-  const { templateId, serverId } = await resolveByKey(keyName);
+/**
+ * Launch hazirligi (2026-11-14, A4): kayit + AWX sablon metadata'si TEK okumayla. Yazma uclari bunu
+ * degerlendirme okumasiyla AYNI ANDA baslatir (AWX gecikmesi DB okumasinin arkasina saklanir);
+ * kapilardan biri reddederse sonuc kullanilmaz. Hata FIRLATMAZ (templateId null / tpl null doner);
+ * sablon yoksa 501 yine launch() icinde, kapilardan SONRA atilir.
+ */
+function launchHazirla(keyName) {
+  return (async () => {
+    const { templateId, serverId } = await resolveByKey(keyName);
+    if (!templateId) return { templateId: null, serverId, tpl: null };
+    const tpl = await require('../ansible/template-preflight.cjs').sablonOku(serverId, templateId);
+    return { templateId, serverId, tpl };
+  })().catch(() => ({ templateId: null, serverId: null, tpl: null }));
+}
+
+async function launch(req, keyName, templateName, extraVars, detail, hazir) {
+  const { templateId, serverId, tpl } = await (hazir || launchHazirla(keyName));
   if (!templateId) {
     throw Object.assign(
       new Error(
@@ -554,16 +705,19 @@ async function launch(req, keyName, templateName, extraVars, detail) {
     );
   }
   const runner = require('../ansible/runner.cjs');
-  // YANLIS SABLON (2026-10-08 uretim olayi: server_hub_fix satirinda rollback sablonu vardi).
-  await require('../ansible/template-preflight.cjs').assertRegistryPlaybook(serverId, templateId, keyName);
-  await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
-    serverId,
+  // YANLIS SABLON (2026-10-08 uretim olayi: server_hub_fix satirinda rollback sablonu vardi) ve
+  // "Prompt on launch" kapali: AYNI iki kontrol, ama sablon TEK GET ile bir kez okunur (eskiden
+  // findTemplate iki kez tum sablon listesini sayfa sayfa okuyordu).
+  require('../ansible/template-preflight.cjs').sablonKontrol(tpl, {
     templateId,
+    key: keyName,
     extraVars,
-    { label: keyName },
-  );
+  });
   const user = req.session?.user || {};
-  const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
+  // anketBellegi: survey_spec 2 dk hatirlanir (ayni sablon art arda baslatilinca ek GET yok).
+  const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, {
+    anketBellegi: true,
+  });
   try {
     const db = require('../db/index.cjs');
     await db.query(
@@ -593,13 +747,73 @@ async function launch(req, keyName, templateName, extraVars, detail) {
 
 const isAdmin = (req) => req.session?.user?.role === 'Admin';
 
+// AUTO-START DOGRULAMA KATMANI (2026-11-14): Portal'in baslattigi auto-start isinin CLI ile
+// dogrulanmis sonucu, bir sonraki tarama gelene kadar /host ve "zaten" kapisinda gecerli
+// (autostart-dogrulama.cjs basligi).
+const { AUTOSTART_EYLEMLERI } = require('./autostart-dogrulama.cjs');
+let _autoStart = require('./autostart-dogrulama.cjs').kur();
+
+const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+
+/**
+ * AWX is sonucu (set_stats). /job-status ve suren-is kilidi AYNI okumayi kullanir; auto-start isiyse
+ * dogrulama katmanina islenir, degilse onbellek silinir (A6).
+ */
+function isSonucuIsle(serverId, jobId, statusInfo) {
+  let result = null;
+  let autoStart = null;
+  if (IS_TERMINAL.has(statusInfo.status)) {
+    const { extractStatsKey } = require('../opsx/index.cjs');
+    result =
+      extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') ||
+      extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') ||
+      null;
+    const as = _autoStart.isBitti(serverId, jobId, statusInfo.status, result);
+    if (as.kayitli) autoStart = { dogrulandi: as.dogrulandi === true, deger: as.deger || null };
+    else onbellekSil();
+  }
+  return { result, autoStart };
+}
+
+/**
+ * SUREN IS KILIDI (inceleme 2026-11-14): ayni JVM icin Portal'in actigi is hala suruyorsa yeni is ACILMAZ
+ * (iki kullanici / iki sekme zit yonde; istemci kilidi tarayici basina). Kayitli is icin AWX'e BIR KEZ
+ * sorulur: terminal olduysa (istemci yoklamayi birakmis olabilir) sonucu islenir ve kilit kalkar.
+ * Donus: null (serbest) ya da 409 mesaji.
+ */
+async function surenIsKilidi(host, gen, jvm) {
+  const s = _autoStart.surenIs(host, gen, jvm);
+  if (!s) return null;
+  if (s.baslatiliyor)
+    return `${jvm} için auto-start işi şu an başlatılıyor — iş açılmadı. Birkaç saniye sonra yeniden deneyin.`;
+  try {
+    const st = await require('../ansible/runner.cjs').getJobStatusOnServer(s.serverId, s.jobId);
+    if (st && IS_TERMINAL.has(st.status)) {
+      isSonucuIsle(s.serverId, s.jobId, st);
+      return null;
+    }
+  } catch {
+    /* AWX okunamadi: kilit kalir (guvenli taraf); mesaj isi soyler */
+  }
+  return `${jvm} için auto-start işi #${s.jobId} hâlâ sürüyor — bitene kadar yeni iş açılmaz (iş açılmadı). Sonucu iş çubuğundan ya da AWX'ten izleyin.`;
+}
+
+/** /findings satirlari (flattenFindings) icin dogrulama katmani; katman bossa ayni dizi. */
+function bulgulariKatmanla(hosts, satirlar) {
+  if (_autoStart._boyut().dogrulanan === 0) return satirlar;
+  const byHost = new Map((hosts || []).map((h) => [h.host, h]));
+  return satirlar.map((f) => _autoStart.uygulaBulgu(byHost.get(f.host), f));
+}
+
 // ── RETIREMENT KAPISI ICIN ANALIZ KARARI (Faz 3 golge, 2026-11-11) ──────────────────────────────
 // docs/RETIREMENT-MOTOR-BIRLESTIRME.md: Retirement kaydi acilirken her hedefin Analiz kopya karari.
 // Router kurulduysa AYNI hesap (onbellek + tek ucus) kullanilir; kurulmadiysa (test / router'siz) yenisi.
 let _iliskiHesabi = null;
 async function retirementAnalizi(hedefler) {
   if (!_iliskiHesabi) {
-    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({ getAssessment: (f) => getAssessment(f === true) });
+    _iliskiHesabi = require('./iliski-uclar.cjs').iliskiHesabiKur({
+      getAssessment: (f) => getAssessment(f === true),
+    });
   }
   const h = await _iliskiHesabi(false);
   if (!h.grafik || !h.kararlar) return { okunamadi: true, hedefler: [] };
@@ -612,7 +826,13 @@ async function retirementAnalizi(hedefler) {
       appName: t.appName,
       gen,
       karar: k ? k.karar : 'BULUNAMADI',
-      ana: k ? (k.maddeler.find((m) => m.etki === 'ENGELLER') || k.maddeler.find((m) => m.etki === 'EKSIK') || {}).kod || null : null,
+      ana: k
+        ? (
+            k.maddeler.find((m) => m.etki === 'ENGELLER') ||
+            k.maddeler.find((m) => m.etki === 'EKSIK') ||
+            {}
+          ).kod || null
+        : null,
     };
   });
   return { okunamadi: false, hedefler: out };
@@ -724,7 +944,7 @@ function initServerHub(app) {
         staleFleet: a.staleFleet || null,
         schemaUnknown: a.schemaUnknown === true,
         taramadanDusen: a.summary?.taramadanDusen || null,
-        findings: flattenFindings(a.hosts),
+        findings: bulgulariKatmanla(a.hosts, flattenFindings(a.hosts)),
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message || 'Bulgular alınamadı.' });
@@ -742,9 +962,15 @@ function initServerHub(app) {
       const h = a.hosts.find((x) => x.host === host);
       if (!h)
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
-      // jvm_args ailesi yalniz burada (tek sunucu) okunur ve maskelenir (P9 / kural 9)
-      const agir = await loadJvmAgir(host).catch(() => new Map());
-      res.json({ ok: true, host: hostDetail(h, agir) });
+      // jvm_args ailesi yalniz burada (tek sunucu) okunur ve maskelenir (P9 / kural 9). Sema 60 sn
+      // onbellekten (yalniz basarili okuma).
+      const agir = await loadJvmAgir(host, { kol: semaKisaOnbellek() }).catch(() => new Map());
+      const detay = hostDetail(h, agir);
+      // Dogrulanmis auto-start (is CLI ile geri okudu, tarama henuz gelmedi) taramanin onune gecer.
+      detay.jvms = detay.jvms.map((j) => _autoStart.uygulaJvm(h, j));
+      // Ayni pencerenin Bulgular / Ozet sekmesi de ayni dogrulanmis degeri gorsun (dugme gizlenir).
+      detay.findings = detay.findings.map((f) => _autoStart.uygulaBulgu(h, f));
+      res.json({ ok: true, host: detay });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -794,6 +1020,8 @@ function initServerHub(app) {
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
     try {
+      // AWX sablon okumasi degerlendirmeyle AYNI ANDA (kapilar yine taze veriye bakar).
+      const hazir = launchHazirla(REGISTRY_KEYS.fix);
       const a = await getAssessment(true);
       const h = a.hosts.find((x) => x.host === host);
       if (!h)
@@ -802,26 +1030,46 @@ function initServerHub(app) {
         (f) => f.fix && f.code === code && JSON.stringify(f.fix) === fixKey,
       );
       if (!finding)
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            message:
-              'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.',
-          });
+        return res.status(400).json({
+          ok: false,
+          message:
+            'Bu bulgu için tanımlı bir düzeltme yok ya da tarama verisi değişti — sayfayı yenileyin.',
+        });
       const fix = finding.fix;
       if (!FIX_ACTIONS.has(fix.action))
         return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
       const extraVars = { target_host: host, action: fix.action, plan_only: !confirmed, reload };
       for (const k of ['gen', 'jvm', 'product', 'file', 'line', 'server_name'])
         if (fix[k] != null) extraVars[k] = fix[k];
-      const r = await launch(
-        req,
-        REGISTRY_KEYS.fix,
-        `Server Hub: ${confirmed ? 'düzelt' : 'plan'} ${fix.action} @ ${host}`,
-        extraVars,
-        { op: confirmed ? 'fix' : 'plan', host, code, fix },
-      );
+      // Auto-start uygulamasi: ayni JVM'de suren is varsa yeni is yok (bkz. surenIsKilidi).
+      const asUygula = confirmed && AUTOSTART_EYLEMLERI.has(fix.action);
+      if (asUygula) {
+        const kilit = await surenIsKilidi(host, fix.gen, fix.jvm);
+        if (kilit)
+          return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+      }
+      const birak = asUygula ? _autoStart.rezervasyon(host, fix.gen, fix.jvm) : () => {};
+      let r;
+      try {
+        r = await launch(
+          req,
+          REGISTRY_KEYS.fix,
+          `Server Hub: ${confirmed ? 'düzelt' : 'plan'} ${fix.action} @ ${host}`,
+          extraVars,
+          { op: confirmed ? 'fix' : 'plan', host, code, fix },
+          hazir,
+        );
+        if (confirmed)
+          _autoStart.isKaydet(r.awxServerId, r.jobId, {
+            host,
+            gen: fix.gen,
+            jvm: fix.jvm,
+            action: fix.action,
+            h,
+          });
+      } finally {
+        birak();
+      }
       res.json({ ok: true, ...r, planOnly: !confirmed });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -885,17 +1133,19 @@ function initServerHub(app) {
     const enable = req.body?.enable === true;
     // ACIK ONAY SART: istemciden kazara gelen bir istek sunucuda bir sey DEGISTIRMEMELI.
     if (req.body?.confirmed !== true)
-      return res
-        .status(400)
-        .json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
+      return res.status(400).json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
     if (!HOST_RE.test(host))
       return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
-    if (!JVM_RE.test(jvm))
-      return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
+    if (!JVM_RE.test(jvm)) return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
     if (!Number.isInteger(gen))
       return res.status(400).json({ ok: false, message: 'Geçersiz JBoss sürümü (gen).' });
     try {
+      const t0 = Date.now();
+      // HIZ (2026-11-14, A4/A5): AWX sablon okumasi (kayit + tek GET) degerlendirmeyle AYNI ANDA
+      // baslar. Degerlendirme BILEREK taze (fresh) kalir: yazma kapilari son DB durumuna bakar.
+      const hazir = launchHazirla(REGISTRY_KEYS.fix);
       const a = await getAssessment(true);
+      const t1 = Date.now();
       const h = (a.hosts || []).find((x) => x.host === host);
       if (!h)
         return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
@@ -915,7 +1165,17 @@ function initServerHub(app) {
           ok: false,
           message: `${host} taraması bayat (bayat kanıt: ${h.scanDate || '?'}${h.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
         });
-      const j = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
+      const tj = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
+      // SUREN IS KILIDI: ayni JVM'de Portal'in actigi is suruyorsa 409 (biten isin sonucu once islenir,
+      // asagidaki "zaten" kapisi da onu gorur).
+      if (tj) {
+        const kilit = await surenIsKilidi(host, gen, jvm);
+        if (kilit)
+          return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+      }
+      // Dogrulanmis auto-start (onceki is CLI ile geri okudu, tarama gelmedi) taramanin onune gecer:
+      // "zaten" kapisi ayni isi ikinci kez acmasin (eskiden betik SKIP donuyordu, ekran yine "acildi").
+      const j = tj ? _autoStart.uygulaJvm(h, tj) : tj;
       if (!j)
         return res.status(400).json({
           ok: false,
@@ -934,18 +1194,37 @@ function initServerHub(app) {
       if (j.autoStart === hedef)
         return res.status(400).json({
           ok: false,
-          message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor — iş açılmadı.`,
+          message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
+        });
+      // CALISAN JVM'DE KAPAT (2026-11-14, A2): server_hub_fix.sh calisan JVM'in auto-start'ini
+      // FORCE olmadan KAPATMAZ (FAIL "su an CALISIYOR"); Portal force gondermez. Eskiden is acilip ~1 dk
+      // sonra sebepsiz "failed" donuyordu. Calisma durumu OLCULEMEYEN JVM (runningKnown=false) kapi
+      // DEGIL (v3: dugme admine acik; betik canli durumu kendisi kontrol eder).
+      if (!enable && j.running === true && j.runningKnown !== false)
+        return res.status(400).json({
+          ok: false,
+          message: `${jvm} son taramada ÇALIŞIYOR — çalışan JVM'in auto-start'ı kapatılmaz (betik reddeder); iş açılmadı. Önce JVM'i durdurun, sonra sunucuyu yeniden tarayın.`,
         });
       const action = enable ? 'jboss_autostart_on' : 'jboss_autostart_off';
       if (!FIX_ACTIONS.has(action))
         return res.status(400).json({ ok: false, message: 'Bilinmeyen eylem.' });
-      const r = await launch(
-        req,
-        REGISTRY_KEYS.fix,
-        `Server Hub: ${action} @ ${host}/${jvm}`,
-        { target_host: host, action, plan_only: false, reload: false, gen, jvm },
-        { op: 'jvm-autostart', host, fix: { action, gen, jvm } },
-      );
+      // Launch suresince ayni JVM'e ikinci istek kilide takilir (kayit henuz yok).
+      const birak = _autoStart.rezervasyon(host, gen, jvm);
+      let r;
+      try {
+        r = await launch(
+          req,
+          REGISTRY_KEYS.fix,
+          `Server Hub: ${action} @ ${host}/${jvm}`,
+          { target_host: host, action, plan_only: false, reload: false, gen, jvm },
+          { op: 'jvm-autostart', host, fix: { action, gen, jvm } },
+          hazir,
+        );
+        _autoStart.isKaydet(r.awxServerId, r.jobId, { host, gen, jvm, action, h });
+      } finally {
+        birak();
+      }
+      res.set('Server-Timing', `assess;dur=${t1 - t0}, launch;dur=${Date.now() - t1}`);
       res.json({ ok: true, ...r, action, host, jvm, gen });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
@@ -969,7 +1248,10 @@ function initServerHub(app) {
   // Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR tarama (ear-envanter.cjs).
   require('./ear-envanter.cjs').mount(router, {
     launch,
-    audit: (req, detail) => require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) }),
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
   });
 
   // ── KURALLAR & LIMITLER (2026-10-20) ───────────────────────────────────────────────
@@ -984,7 +1266,9 @@ function initServerHub(app) {
     onbellekSil,
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -995,7 +1279,9 @@ function initServerHub(app) {
   require('./gorunumler.cjs').mount(router, {
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1016,7 +1302,9 @@ function initServerHub(app) {
     getAssessment: (fresh) => getAssessment(fresh === true),
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1028,7 +1316,9 @@ function initServerHub(app) {
     iliskiHesabi,
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         // denetim kaydi yazilamadi: islem yine tamam
       }
@@ -1042,7 +1332,9 @@ function initServerHub(app) {
     kontrol: require('./retire-kontrol.cjs'),
     audit: (req, detail) => {
       try {
-        require('../audit/index.cjs').auditPortal(req, 'server_hub', { detail: JSON.stringify(detail) });
+        require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+          detail: JSON.stringify(detail),
+        });
       } catch {
         /* best-effort */
       }
@@ -1060,9 +1352,16 @@ function initServerHub(app) {
     try {
       const fresh = req.query.fresh === '1';
       const [et, h] = await Promise.all([etiketHesabi(fresh), iliskiHesabi(fresh)]);
-      if (!h.grafik || !h.kararlar) return res.status(424).json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
+      if (!h.grafik || !h.kararlar)
+        return res
+          .status(424)
+          .json({ ok: false, message: 'Analiz hesaplanamadı (Server Hub tabloları okunamadı).' });
       const { karsilastir } = require('./karsilastirma.cjs');
-      res.json({ ok: true, latestScan: h.a && h.a.latestScan ? h.a.latestScan : null, ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }) });
+      res.json({
+        ok: true,
+        latestScan: h.a && h.a.latestScan ? h.a.latestScan : null,
+        ...karsilastir({ etiketler: et.sonuc.etiketler, gruplar: h.kararlar.gruplar }),
+      });
     } catch (e) {
       res.status(424).json({ ok: false, message: e.message || 'Karşılaştırma yapılamadı.' });
     }
@@ -1079,17 +1378,18 @@ function initServerHub(app) {
         runner.getJobStatusOnServer(serverId, jobId),
         runner.getJobOutputOnServer(serverId, jobId),
       ]);
-      const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
-      let result = null;
-      if (TERMINAL.has(statusInfo.status)) {
-        const { extractStatsKey } = require('../opsx/index.cjs');
-        result =
-          extractStatsKey(statusInfo.artifacts, 'server_hub_fix_result') ||
-          extractStatsKey(statusInfo.artifacts, 'server_hub_scan_result') ||
-          null;
-        onbellekSil(); // tarama/duzeltme bitti -> sonraki okuma taze (suren eski okuma da yazilmaz)
-      }
-      res.json({ ok: true, status: statusInfo.status, output: outputInfo.output || '', result });
+      // AUTO-START ISI (2026-11-14, A6): server_hub_fix Server_Hub tablolarina YAZMAZ; onbellegi
+      // silmek yalniz herkesi (diger kullanicilar dahil) tam filo okumasini beklemeye zorluyordu.
+      // Sonuc dogrulama katmanina yazilir. Diger isler (tarama, Reboot Kontrolu, eslesmeyen is)
+      // eskisi gibi siler: sonraki okuma taze (suren eski okuma da yazilmaz). Bkz. isSonucuIsle.
+      const { result, autoStart } = isSonucuIsle(serverId, jobId, statusInfo);
+      res.json({
+        ok: true,
+        status: statusInfo.status,
+        output: outputInfo.output || '',
+        result,
+        ...(autoStart ? { autoStart } : {}),
+      });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
     }
@@ -1117,9 +1417,12 @@ module.exports = {
   ARG_FARK_IFADE,
   CACHE_MS,
   BAYAT_MS,
+  _autoStart,
   _onbellekSifirlaForTest: () => {
     _cache = { at: 0, value: null };
     _nesil = 0;
     _ucus = null;
+    _semaBellek = null;
+    _autoStart = require('./autostart-dogrulama.cjs').kur();
   },
 };
