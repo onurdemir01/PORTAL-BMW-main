@@ -62,7 +62,8 @@ function reportOnce(message, err) {
   broken = true;
   try {
     // Orijinal stderr'e yazilir: sarmalayiciyi kullanmak sonsuz donguye girerdi.
-    process.stderr.write(`[log] dosya loglamasi devre disi: ${message}: ${err?.message || err}\n`);
+    const rawMsg = err?.message || err;
+    process.stderr.write(`[log] dosya loglamasi devre disi: ${message}: ${kimlikMaskele(String(rawMsg))}\n`);
   } catch {
     /* stderr de yoksa yapacak bir sey yok */
   }
@@ -158,13 +159,32 @@ function writeLine(line) {
   }
 }
 
-// URL ICINDEKI KIMLIK BILGISI MASKELENIR (2026-10-23). `sema://kullanici:sifre@sunucu` bicimi
-// loga ASLA acik yazilmaz: Smart istemcisi proxy adresini her cagrida logluyordu ve Node'un
-// yamasiz surumleri (22.22.2, CVE-2026-48615) tunel hatalarinda proxy kimligini mesaja koyar.
-// Yalniz parola maskelenir; sema, kullanici ve sunucu teshis icin kalir.
+// Log maskeleme kurallari (OWASP / BDDK / KVKK uyumu):
+//   1) URL kimlik bilgisi (`sema://kullanici:sifre@sunucu`) -> parola maskelenir
+//   2) Bearer / Basic Authorization belirtecleri
+//   3) JWT (`eyJ...eyJ...sig`)
+//   4) Cookie / Set-Cookie oturum degerleri (`__Host-portal.sid`, `connect.sid`, vb.)
+//   5) Query string / KV / JSON gizli alanlar (password, pwd, token, secret, api_key, sig vb.)
 const URL_KIMLIK = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/gi;
+const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi;
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
+const COOKIE_HDR_RE = /\b(Set-Cookie|Cookie)\s*:\s*([^\r\n]+)/gi;
+const SID_KV_RE = /\b(__Host-portal\.sid|connect\.sid)=([^;\s,&]+)/gi;
+const SECRET_KV_RE =
+  /([?&"']?\b(?:password|passwd|pwd|parola|sifre|secret|token|access_token|refresh_token|api[_-]?key|apikey|client_secret|authorization|sig)\b["']?\s*(?:=|:)\s*["']?)([^"'\s&;,}]{1,})/gi;
+
 function kimlikMaskele(metin) {
-  return typeof metin === 'string' ? metin.replace(URL_KIMLIK, '$1$2:***@') : metin;
+  if (typeof metin !== 'string') return metin;
+  return metin
+    .replace(URL_KIMLIK, '$1$2:***@')
+    .replace(COOKIE_HDR_RE, '$1: [MASKED]')
+    .replace(SID_KV_RE, '$1=[MASKED]')
+    .replace(AUTH_SCHEME, '$1 ***')
+    .replace(JWT_RE, 'eyJ***')
+    .replace(SECRET_KV_RE, (m, prefix, val) => {
+      if (val === '***' || val === '[MASKED]' || /^(?:Bearer|Basic)$/i.test(val)) return m;
+      return `${prefix}***`;
+    });
 }
 
 // `console.*` argumanlarini tek bir satira cevirir. `util.format` kullanilmaz:

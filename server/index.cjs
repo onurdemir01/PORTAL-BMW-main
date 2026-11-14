@@ -46,6 +46,7 @@ const TELAFI = telafiKorumalariniKur();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { resolveTrustProxy, globalErrorMiddleware } = require('./util/guvenlik-yardimci.cjs');
 
 // A0: yakalanmamis promise reddi / istisna GUARD'i — Express'in kendi hata-yakalama
 // zincirinin (asagidaki A1) GORMEDIGI hatalar icindir: bir middleware/route disinda
@@ -138,12 +139,10 @@ async function main() {
   // review.md #7 — dogrulandi, hicbir route 2mb'yi asan govde talep etmiyor; duty-roster
   // import zaten kendi route-seviyesi 2mb limitini tasiyor).
   //
-  // Prod'da nginx arkasinda calisir — X-Forwarded-* header'larina guven (secure cookie ve
-  // dogru client IP icin gerekli). Tek-hop, ayni-host topoloji (bkz. deploy/BMW_Portal-D.conf:
-  // nginx 10.151.162.147:443 → 127.0.0.1:3000/10.151.162.147:3000) topolojik olarak `1`
-  // (tek-hop guven) ile de yanlis degildi, ama IP-pinli hale getirmek Node'a nginx'i atlayan
-  // bir istek gelme ihtimaline karsi savunma-derinligi saglar (review.md #1).
-  app.set('trust proxy', 'loopback, 10.151.162.147');
+  // Prod'da nginx arkasinda calisir - X-Forwarded-* header'larina guven (secure cookie ve
+  // dogru client IP icin gerekli). Sabit ic IP kaynak kodda tutulmaz; TRUST_PROXY env
+  // uzerinden yapilandirilir (varsayilan: 'loopback').
+  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
 
   // Her initX(app) kendi try/catch'i ile izole edilir — eskiden yalniz initMetrics/
   // initPortalAudit korunuyordu, digerlerinin (13+) beklenmedik hatasi butun main() zincirini
@@ -472,11 +471,7 @@ async function main() {
   // proxy'sinin index.html govdesini almisti — istek Express'e hic ulasmamisti; ama
   // gercek bir route-ici uncaught hatasi ayni sekilde HTML sizdirabilirdi, bu artik
   // engellenir). Tum route'lardan SONRA kayitlidir (Express hata-middleware kurali).
-  app.use((err, req, res, next) => {
-    console.error(`[Server] ${req.method} ${req.originalUrl} hata:`, err);
-    if (res.headersSent) return next(err);
-    res.status(err.status || 500).json({ ok: false, error: 'Sunucu hatası', detail: err.message });
-  });
+  app.use(globalErrorMiddleware());
 
   /* ===================== LISTEN ===================== */
   const server = app.listen(PORT, () => {
