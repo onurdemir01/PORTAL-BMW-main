@@ -114,6 +114,16 @@ const canMock = supportsModuleMocks();
 
 let files = all;
 const args = ['--test'];
+if (process.argv.includes('--coverage')) {
+  fs.mkdirSync(path.join(ROOT, 'coverage'), { recursive: true });
+  args.push(
+    '--experimental-test-coverage',
+    '--test-reporter=spec',
+    '--test-reporter-destination=stdout',
+    '--test-reporter=lcov',
+    '--test-reporter-destination=coverage/node-lcov.info',
+  );
+}
 if (canMock) {
   args.unshift('--experimental-test-module-mocks');
 } else if (needsMocks.length) {
