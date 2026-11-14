@@ -44,3 +44,13 @@ server/data/
 # gecici dogrulama sunucusu (repoya girmemeli)
 .mockserver.tmp.cjs
 .test_e2e.tmp.cjs
+
+# Test coverage ve yerel ajan/denetim ciktilari
+coverage/
+*.har
+.agentic-security/
+.design/
+.no-amnesia/
+.omq/
+.vitest/
+.workspace/
