@@ -26,17 +26,20 @@
 set -u
 export LC_ALL=C
 
-: "${OC_BIN:?}" "${NS:?}" "${APP:?}"
+: "${OC_BIN:?}" "${NS:?}" "${APP:?}" "${KUBECONFIG:?}"
 
 err() { printf 'ERR\t%s\n' "$*" | tr -d '\r' | head -c 600; echo; }
 note() { printf 'NOTE\t%s\n' "$*"; }
 
 if [[ ! "$NS" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then err "gecersiz namespace"; exit 2; fi
 if [[ ! "$APP" =~ ^[A-Za-z0-9]([-A-Za-z0-9._]*[A-Za-z0-9])?$ ]]; then err "gecersiz uygulama adi"; exit 2; fi
+if [[ ! "$KUBECONFIG" =~ ^/tmp/app-hub-[A-Za-z0-9._-]+\.kubeconfig$ ]]; then err "gecersiz kubeconfig yolu"; exit 2; fi
 if [[ -z "${OCP_URL:-}" ]]; then err "Cluster icin API adresi / kimlik bilgisi cozulemedi."; exit 3; fi
 
 OC() { timeout -k 5 60 "$OC_BIN" "$@" 2>/tmp/.apphub_err.$$ </dev/null; }
-trap 'rm -f /tmp/.apphub_err.$$' EXIT
+temizle() { rm -f -- /tmp/.apphub_err.$$ "$KUBECONFIG"; }
+trap temizle EXIT
+trap 'exit 143' TERM INT
 
 if ! OC login --server="$OCP_URL" --username="${OCP_USER:-}" --password="${OCP_PASS:-}" \
      --insecure-skip-tls-verify=true >/dev/null; then

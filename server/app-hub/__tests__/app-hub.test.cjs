@@ -20,7 +20,7 @@ const express = require('express');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const BETIK = path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'files', 'app_hub_ocp.sh');
-const PLAYBOOK = path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
+const PLAYBOOK = process.env.APP_HUB_PLAYBOOK || path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
 
 function sahte(yol, exp) {
   const m = new Module(yol, null);
@@ -30,6 +30,7 @@ function sahte(yol, exp) {
 }
 
 const bashVar = spawnSync('bash', ['-c', 'command -v awk timeout cut >/dev/null && echo ok'], { encoding: 'utf8' }).stdout.trim() === 'ok';
+const ansibleVar = spawnSync('ansible-playbook', ['--version'], { encoding: 'utf8' }).status === 0;
 
 function sahteOcKur() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apphub-oc-'));
@@ -60,7 +61,7 @@ function sahteOcKur() {
       `D="${dir.replace(/\\/g, '/')}"`,
       'echo "$1 $2" >> "$D/calls.txt"',
       'case "$1" in',
-      '  login) exit 0 ;;',
+      '  login) : > "$KUBECONFIG"; [ -n "${APP_HUB_FAKE_SLEEP:-}" ] && sleep "$APP_HUB_FAKE_SLEEP"; exit 0 ;;',
       '  get)',
       '    case "$2" in',
       '      deployment) cat "$D/dep.txt" ;;',
@@ -77,15 +78,19 @@ function sahteOcKur() {
   return { dir, oc };
 }
 
-function betikKos(env) {
+function betikKos(env, sureSiniri = false) {
   const { dir, oc } = sahteOcKur();
+  const kubeconfig = `/tmp/app-hub-test-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.kubeconfig`;
   try {
-    const r = spawnSync('bash', [BETIK.replace(/\\/g, '/')], {
+    const betik = BETIK.replace(/\\/g, '/');
+    const r = spawnSync(sureSiniri ? 'timeout' : 'bash', sureSiniri ? ['-k', '5', '1', 'bash', betik] : [betik], {
       encoding: 'utf8',
-      env: { ...process.env, OC_BIN: oc.replace(/\\/g, '/'), OCP_URL: 'https://api.x:6443', OCP_USER: 'u', OCP_PASS: 'p', NS: 'musteri', APP: 'musteri-api', ...env },
+      env: { ...process.env, OC_BIN: oc.replace(/\\/g, '/'), OCP_URL: 'https://api.x:6443', OCP_USER: 'u', OCP_PASS: 'p', NS: 'musteri', APP: 'musteri-api', KUBECONFIG: kubeconfig, ...env },
     });
+    assert.equal(fs.existsSync(kubeconfig), false, 'betik kendi kubeconfig dosyasini temizlemedi');
     return { ...r, calls: fs.readFileSync(path.join(dir, 'calls.txt'), 'utf8') };
   } finally {
+    fs.rmSync(kubeconfig, { force: true });
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -123,13 +128,18 @@ test('AH2 betik: tur, pod -> node, rollout CRD yoksa NOTE (hata degil), yalniz l
   assert.ok(!/OCP_PASS|--password=p\b/.test(r.stdout));
 });
 
-test('AH3 betik: gecersiz namespace / ad -> ERR, oc HIC cagrilmaz', { skip: !bashVar && 'bash/awk yok' }, () => {
-  for (const env of [{ NS: 'Kotu NS' }, { APP: 'a;rm -rf /' }, { OCP_URL: '' }]) {
+test('AH3 betik: gecersiz namespace / ad / kubeconfig -> ERR, oc HIC cagrilmaz', { skip: !bashVar && 'bash/awk yok' }, () => {
+  for (const env of [{ NS: 'Kotu NS' }, { APP: 'a;rm -rf /' }, { KUBECONFIG: '/etc/passwd' }, { OCP_URL: '' }]) {
     const r = betikKos(env);
     assert.notEqual(r.status, 0);
     assert.match(r.stdout, /^ERR\t/m);
     assert.equal(r.calls.trim(), '', `oc cagrildi: ${r.calls}`);
   }
+});
+
+test('AH3b betik: graceful TERM yolunda kosuya ozel kubeconfig temizlenir', { skip: !bashVar && 'bash/timeout yok' }, () => {
+  const r = betikKos({ APP_HUB_FAKE_SLEEP: '2' }, true);
+  assert.notEqual(r.status, 0, 'sure siniri betigi durdurmadi');
 });
 
 test('AH4 betik kaynagi: oc yalniz login ve get ile cagrilir (metin bekcisi)', () => {
@@ -158,6 +168,92 @@ test('AH5 playbook: # yorum yok, kimlik gorevleri no_log, set_stats fail oncesi,
   assert.ok(iStats > 0 && iFail > iStats, 'set_stats fail oncesinde degil');
   assert.match(s, /app_hub_targets \| length <= 20/);
   assert.match(s, /checksum/);
+});
+
+test('AH5b playbook: gecici kimlik ve betik normal/rescue yolunda temizlenir, kalinti fail-closed', () => {
+  const s = fs.readFileSync(PLAYBOOK, 'utf8');
+  const okuma = s.split('- name: "Okuma"')[1]?.split('- name: "Application Hub OCP - sonuclari topla ve yayinla"')[0] || '';
+  const always = okuma.split('\n      always:\n');
+  assert.equal(always.length, 2, 'temizlik block always sinirinda degil');
+  const normal = always[0];
+  const temizlik = always[1];
+  assert.ok(!normal.includes('Gecici kubeconfig dosyalari silinir'), 'kubeconfig temizligi normal block icinde kaldi');
+  assert.match(temizlik, /Gecici kubeconfig dosyalari silinir/);
+  assert.match(temizlik, /Betik silinir/);
+  assert.match(temizlik, /my_targets \| default\(\[\]\)/, 'erken hata yolunda tanimsiz my_targets korunmuyor');
+  assert.match(temizlik, /Gecici kubeconfig temizligi dogrulanir/);
+  assert.match(temizlik, /Gecici betik temizligi dogrulanir/);
+  assert.match(temizlik, /Gecici dosyalar kaldiysa host basarisiz/);
+  assert.match(temizlik, /selectattr\('stat\.exists', 'equalto', true\) \| list \| length == 0/, 'kalinti fail-closed exact denetlenmiyor');
+});
+
+test('AH5c playbook: hedef okumasi sonrasi sentetik hata kubeconfig ve betigi birakmaz', { skip: !ansibleVar && 'ansible-playbook yok' }, () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'apphub-cleanup-'));
+  const appDir = path.join(tmp, 'bmw_portal', 'app_hub');
+  const varsDir = path.join(tmp, 'bmw_portal', 'bmw_openshift_jobs', 'global_variables');
+  const fixturePlaybook = path.join(appDir, 'app_hub_ocp.yml');
+  const fakeOc = path.join(tmp, 'oc');
+  const kubeconfig = '/tmp/app-hub-991234-c1-demo.kubeconfig';
+  const oncekiBetikler = new Set(fs.readdirSync('/var/tmp').filter((x) => /^\.app_hub_ocp\..*\.sh$/.test(x)));
+  try {
+    fs.mkdirSync(path.join(appDir, 'files'), { recursive: true });
+    fs.mkdirSync(varsDir, { recursive: true });
+    fs.copyFileSync(BETIK, path.join(appDir, 'files', 'app_hub_ocp.sh'));
+    fs.writeFileSync(path.join(varsDir, 'credentials.yaml'), '---\n');
+    fs.writeFileSync(
+      fakeOc,
+      [
+        '#!/bin/bash',
+        'if [ "$1" = login ]; then : > "$KUBECONFIG"; exit 0; fi',
+        'if [ "$1" = get ]; then exit 0; fi',
+        'exit 9',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    const marker = '        - name: "Bastion sonuclari"';
+    const kaynak = fs.readFileSync(PLAYBOOK, 'utf8');
+    assert.ok(kaynak.includes(marker), 'sentetik hata noktasi bulunamadi');
+    fs.writeFileSync(
+      fixturePlaybook,
+      kaynak.replace(
+        marker,
+        '        - name: "Sentetik kubeconfig kalintisi"\n          ansible.builtin.copy:\n            dest: "' + kubeconfig + '"\n            content: "fixture"\n            mode: "0600"\n\n' +
+          '        - name: "Sentetik okuma sonrasi hata"\n          ansible.builtin.fail:\n            msg: "fixture failure"\n\n' + marker,
+      ),
+    );
+    const extra = JSON.stringify({
+      terminal_hosts: ['localhost'],
+      ocp_clusters: [{ cluster_name: 'c1', terminal_host: 'localhost', api_url: 'https://api.example', username: 'u' }],
+      app_hub_targets: [{ cluster: 'c1', namespace: 'demo' }],
+      app_hub_app: 'demo',
+      oc_binary: fakeOc,
+      tower_job_id: 991234,
+    });
+    const r = spawnSync('ansible-playbook', [fixturePlaybook, '-i', 'localhost,', '--connection=local', '-e', extra], { encoding: 'utf8' });
+    assert.notEqual(r.status, 0, `sentetik hata job'u dusurmedi:\n${r.stdout}\n${r.stderr}`);
+    assert.match(r.stdout, /TASK \[Gecici kubeconfig dosyalari silinir\]/);
+    assert.match(r.stdout, /TASK \[Betik silinir\]/);
+    assert.equal(fs.existsSync(kubeconfig), false, 'kubeconfig sentetik hata sonrasi kaldi');
+    const sonrakiBetikler = fs.readdirSync('/var/tmp').filter((x) => /^\.app_hub_ocp\..*\.sh$/.test(x));
+    assert.deepEqual(sonrakiBetikler.filter((x) => !oncekiBetikler.has(x)), [], 'gecici betik sentetik hata sonrasi kaldi');
+
+    const cleanupMarker = '        - name: "Gecici kubeconfig dosyalari silinir"';
+    const cleanupStart = fs.readFileSync(fixturePlaybook, 'utf8').split(cleanupMarker);
+    assert.equal(cleanupStart.length, 2, 'kubeconfig cleanup mutation noktasi tek degil');
+    const cleanupMutation = path.join(appDir, 'app_hub_ocp_cleanup_mutation.yml');
+    fs.writeFileSync(
+      cleanupMutation,
+      cleanupStart[0] + cleanupMarker + cleanupStart[1].replace('            state: absent', '            state: touch'),
+    );
+    const m = spawnSync('ansible-playbook', [cleanupMutation, '-i', 'localhost,', '--connection=local', '-e', extra], { encoding: 'utf8' });
+    assert.notEqual(m.status, 0, 'cleanup no-op mutasyonu job basarisi olmamali');
+    assert.match(m.stdout, /Application Hub gecici kimlik veya betik dosyasi temizlenemedi/);
+    assert.equal(fs.existsSync(kubeconfig), true, `cleanup mutasyonu gercek kalinti uretmedi:\n${m.stdout}\n${m.stderr}`);
+  } finally {
+    fs.rmSync(kubeconfig, { force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 const C = require('../canli.cjs');
