@@ -19,16 +19,22 @@ const URETIM_ADI = '__Host-portal.sid';
 // `__Host-` YALNIZCA Secure cerezle calisir; cerez de yalnizca production'da Secure
 // (server/auth/index.cjs). Gelistirmede secilseydi tarayici cerezi REDDEDER ve kimse giris
 // yapamazdi — bu yuzden production disinda `__Host-` acik verilse bile eski ada dusulur.
+function cookieSecure() {
+  if (process.env.NODE_ENV === 'production') return true;
+  const raw = String(process.env.COOKIE_SECURE || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
 function cerezAdi() {
-  const uretim = process.env.NODE_ENV === 'production';
+  const guvenli = cookieSecure();
   const acik = String(process.env.SESSION_COOKIE_NAME || '').trim();
   if (/^__Host-[A-Za-z0-9._-]{1,56}$/.test(acik)) {
-    if (uretim) return acik;
-    console.warn(`[Auth] SESSION_COOKIE_NAME=${acik} yalnizca production'da (HTTPS) kullanilabilir; ${ESKI_AD} kullaniliyor.`);
+    if (guvenli) return acik;
+    console.warn(`[Auth] SESSION_COOKIE_NAME=${acik} yalnizca HTTPS (production veya COOKIE_SECURE=1) ile kullanilabilir; ${ESKI_AD} kullaniliyor.`);
     return ESKI_AD;
   }
   if (/^[A-Za-z0-9._-]{1,64}$/.test(acik)) return acik;
-  return uretim ? URETIM_ADI : ESKI_AD;
+  return guvenli ? URETIM_ADI : ESKI_AD;
 }
 
 function cerezOku(baslik, ad) {
@@ -44,7 +50,7 @@ function cerezOku(baslik, ad) {
 // `Secure` tasimayan Set-Cookie tarayicida REDDEDILIR: cikista sunucu oturumu siler ama
 // tarayici cerezi tutmaya devam ederdi (her istekte olu bir kimlik tasinir).
 function silmeSecenekleri() {
-  return { path: '/', httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' };
+  return { path: '/', httpOnly: true, sameSite: 'lax', secure: cookieSecure() };
 }
 
 /** Oturum cerez(ler)ini siler: gecerli ad + (farkliysa) eski ad. */
@@ -99,6 +105,7 @@ module.exports = {
   cerezOku,
   cerezleriSil,
   silmeSecenekleri,
+  cookieSecure,
   ESKI_AD,
   URETIM_ADI,
 };

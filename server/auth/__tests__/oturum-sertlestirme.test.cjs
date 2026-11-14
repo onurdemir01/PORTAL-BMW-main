@@ -331,7 +331,12 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
 });
 
 test('OS8 guvenlik basliklari', async () => {
-  const { guvenlikBasliklari, cerceveAtalari } = require('../guvenlik-basliklari.cjs');
+  const {
+    guvenlikBasliklari,
+    cerceveAtalari,
+    buildCsp,
+    PERMISSIONS_POLICY,
+  } = require('../guvenlik-basliklari.cjs');
   // Deger tablosu: bozuk deger korumayi KAPATMAZ, guvenli varsayilana duser.
   const fa = (v) => ortam({ PORTAL_FRAME_ANCESTORS: v }, () => cerceveAtalari());
   assert.equal(fa(undefined), "'self'");
@@ -351,34 +356,77 @@ test('OS8 guvenlik basliklari', async () => {
   const al = async (env, headers = {}) =>
     ortamA(env, async () => {
       const r = await fetch(`${url}/x`, { headers });
-      return Object.fromEntries(['content-security-policy', 'x-frame-options', 'x-content-type-options', 'referrer-policy', 'strict-transport-security'].map((k) => [k, r.headers.get(k)]));
+      return Object.fromEntries(
+        [
+          'content-security-policy',
+          'x-frame-options',
+          'x-content-type-options',
+          'referrer-policy',
+          'permissions-policy',
+          'strict-transport-security',
+        ].map((k) => [k, r.headers.get(k)]),
+      );
     });
 
-  const v = await al({ PORTAL_FRAME_ANCESTORS: undefined, PORTAL_HSTS_MAX_AGE: undefined });
-  assert.equal(v['content-security-policy'], "frame-ancestors 'self'");
+  const v = await al({
+    NODE_ENV: 'test',
+    PORTAL_FRAME_ANCESTORS: undefined,
+    PORTAL_HSTS_MAX_AGE: undefined,
+  });
+  assert.equal(v['content-security-policy'], buildCsp("'self'"));
   assert.equal(v['x-frame-options'], 'SAMEORIGIN');
   assert.equal(v['x-content-type-options'], 'nosniff');
   assert.equal(v['referrer-policy'], 'strict-origin-when-cross-origin');
-  assert.equal(v['strict-transport-security'], null, 'HSTS varsayilan olarak acik — ayni addaki HTTP servisleri kirar');
+  assert.equal(v['permissions-policy'], PERMISSIONS_POLICY);
+  assert.equal(v['strict-transport-security'], null, 'test ortaminda HSTS varsayilan kapali olmali');
 
   // Koken listesi: CSP yeter; X-Frame-Options EKLENMEZ (mesru cerceveyi engellerdi).
-  const l = await al({ PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr" });
-  assert.equal(l['content-security-policy'], "frame-ancestors 'self' https://pano.kurum.com.tr");
+  const l = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: "'self' https://pano.kurum.com.tr" });
+  assert.equal(l['content-security-policy'], buildCsp("'self' https://pano.kurum.com.tr"));
   assert.equal(l['x-frame-options'], null);
-  const k = await al({ PORTAL_FRAME_ANCESTORS: '*' });
-  assert.equal(k['content-security-policy'], null);
+  const k = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: '*' });
+  assert.equal(k['content-security-policy'], buildCsp(null));
+  assert.doesNotMatch(k['content-security-policy'], /frame-ancestors/);
   assert.equal(k['x-frame-options'], null);
   assert.equal(k['x-content-type-options'], 'nosniff', 'cerceve korumasi kapaninca digerleri de gitti');
-  const n = await al({ PORTAL_FRAME_ANCESTORS: "'none'" });
+  const n = await al({ NODE_ENV: 'test', PORTAL_FRAME_ANCESTORS: "'none'" });
   assert.equal(n['x-frame-options'], 'DENY');
+  assert.equal(n['content-security-policy'], buildCsp("'none'"));
 
-  // HSTS: acik olsa da duz HTTP isteginde GONDERILMEZ; HTTPS (vekil) isteginde gonderilir.
+  // HSTS: duz HTTP isteginde GONDERILMEZ; HTTPS (vekil) isteginde ve production'da varsayilan acik.
   const h1 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' });
   assert.equal(h1['strict-transport-security'], null);
   const h2 = await al({ PORTAL_HSTS_MAX_AGE: '31536000' }, { 'x-forwarded-proto': 'https' });
-  assert.equal(h2['strict-transport-security'], 'max-age=31536000');
-  const h3 = await al({ PORTAL_HSTS_MAX_AGE: 'abc' }, { 'x-forwarded-proto': 'https' });
+  assert.equal(h2['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  const h3 = await al({ PORTAL_HSTS_MAX_AGE: 'abc', NODE_ENV: 'test' }, { 'x-forwarded-proto': 'https' });
   assert.equal(h3['strict-transport-security'], null);
+  const hProd = await al(
+    { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: undefined },
+    { 'x-forwarded-proto': 'https' },
+  );
+  assert.equal(hProd['strict-transport-security'], 'max-age=31536000; includeSubDomains');
+  const hProdOff = await al(
+    { NODE_ENV: 'production', PORTAL_HSTS_MAX_AGE: '0' },
+    { 'x-forwarded-proto': 'https' },
+  );
+  assert.equal(hProdOff['strict-transport-security'], null);
+
+  // COOKIE_SECURE destegi (NODE_ENV=production veya COOKIE_SECURE=true/1)
+  ortam({ NODE_ENV: 'development', COOKIE_SECURE: undefined }, () => {
+    assert.equal(cerez.cookieSecure(), false);
+  });
+  ortam({ NODE_ENV: 'development', COOKIE_SECURE: 'true' }, () => {
+    assert.equal(cerez.cookieSecure(), true);
+  });
+  ortam({ NODE_ENV: 'development', COOKIE_SECURE: '1' }, () => {
+    assert.equal(cerez.cookieSecure(), true);
+  });
+  ortam({ NODE_ENV: 'production', COOKIE_SECURE: undefined }, () => {
+    assert.equal(cerez.cookieSecure(), true);
+  });
+  ortam({ NODE_ENV: 'production', COOKIE_SECURE: 'false' }, () => {
+    assert.equal(cerez.cookieSecure(), true);
+  });
 
   // Dogrulama (Admin kaydi).
   assert.equal(oturumAyariHatasi('PORTAL_FRAME_ANCESTORS', "'self' https://pano.kurum.com.tr"), null);
@@ -396,7 +444,8 @@ test('OS8 guvenlik basliklari', async () => {
   const gUrl = dinle(gercek);
   const r = await fetch(`${gUrl}/api/test/yol`);
   assert.equal(r.status, 200);
-  assert.equal(r.headers.get('content-security-policy'), "frame-ancestors 'self'", 'createApp guvenlik basliklarini baglamiyor');
+  assert.equal(r.headers.get('content-security-policy'), buildCsp("'self'"), 'createApp guvenlik basliklarini baglamiyor');
+  assert.equal(r.headers.get('permissions-policy'), PERMISSIONS_POLICY);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   const html = await fetch(`${gUrl}/sayfa`);
   assert.equal(html.headers.get('x-frame-options'), 'SAMEORIGIN', 'belge yanitinda cerceve korumasi yok');

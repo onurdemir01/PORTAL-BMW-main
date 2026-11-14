@@ -275,7 +275,7 @@ function initNobetci(app) {
     const [, mime, data] = match;
     const buf = Buffer.from(data, "base64");
     res.setHeader("Content-Type", mime);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, max-age=300");
     res.end(buf);
   });
 

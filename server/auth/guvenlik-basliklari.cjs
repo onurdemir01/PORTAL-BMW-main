@@ -36,27 +36,55 @@ function cerceveAtalari() {
   return ogeler.join(' ');
 }
 
+const PERMISSIONS_POLICY = 'geolocation=(), microphone=(), camera=(), payment=(), usb=()';
+const CSP_BASE_DIRECTIVES = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+];
+
+function buildCsp(atalar) {
+  const parts = [...CSP_BASE_DIRECTIVES];
+  if (atalar) parts.push(`frame-ancestors ${atalar}`);
+  return parts.join('; ');
+}
+
 function hstsSuresi() {
-  const n = Number(process.env.PORTAL_HSTS_MAX_AGE);
-  return Number.isInteger(n) && n > 0 && n <= 63072000 ? n : 0;
+  const raw = process.env.PORTAL_HSTS_MAX_AGE;
+  if (raw !== undefined && String(raw).trim() !== '') {
+    const trimmed = String(raw).trim();
+    if (trimmed === '0') return 0;
+    const n = Number(trimmed);
+    return Number.isInteger(n) && n > 0 && n <= 63072000 ? n : 0;
+  }
+  return process.env.NODE_ENV === 'production' ? 31536000 : 0;
 }
 
 function guvenlikBasliklari() {
   return function guvenlikBasliklariMw(req, res, next) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
     const atalar = cerceveAtalari();
+    res.setHeader('Content-Security-Policy', buildCsp(atalar));
     if (atalar) {
-      res.setHeader('Content-Security-Policy', `frame-ancestors ${atalar}`);
       // X-Frame-Options yalnizca iki degeri ifade edebilir; koken listesi varsa CSP yeter
       // (XFO eklemek listedeki mesru cerceveyi eski kuralla ENGELLERDI).
       if (atalar === "'self'") res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       else if (atalar === "'none'") res.setHeader('X-Frame-Options', 'DENY');
     }
     const hsts = hstsSuresi();
-    if (hsts && req.secure) res.setHeader('Strict-Transport-Security', `max-age=${hsts}`);
+    if (hsts && req.secure) {
+      res.setHeader('Strict-Transport-Security', `max-age=${hsts}; includeSubDomains`);
+    }
     next();
   };
 }
 
-module.exports = { guvenlikBasliklari, cerceveAtalari, hstsSuresi };
+module.exports = { guvenlikBasliklari, cerceveAtalari, hstsSuresi, buildCsp, PERMISSIONS_POLICY };

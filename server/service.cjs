@@ -5,10 +5,23 @@ const { ipKeyGenerator } = require("express-rate-limit");
 const compression = require("compression");
 
 const { oturumHizAnahtari } = require("./auth/oturum-cerezi.cjs");
+const { trustedHeaderUser } = require("./auth/utils.cjs");
 const { originKontrolu } = require("./auth/origin-kontrolu.cjs");
 const { guvenlikBasliklari } = require("./auth/guvenlik-basliklari.cjs");
 const { brotliGovdeReddi } = require("./auth/brotli-govde-reddi.cjs");
 const { nginxRedCevirici } = require("./util/nginx-red.cjs");
+const { kimlikMaskele } = require("./log.cjs");
+
+// Rate-limit anahtari: IP yerine SESSION (kullanici) bazli. Cookie yoksa yalnizca
+// kriptografik olarak dogrulanmis ic-servis basligi varsa kullanici anahtari uretir;
+// aksi halde sahtelenebilir x-portal-user basligini yoksayip IPv6-guvenli IP anahtari doner.
+function sessionOrIpKey(req) {
+  const oturum = oturumHizAnahtari(req);
+  if (oturum) return oturum;
+  const hdrUser = trustedHeaderUser(req);
+  if (hdrUser && hdrUser.username) return `usr:${String(hdrUser.username).slice(0, 64)}`;
+  return ipKeyGenerator(req.ip || req.socket?.remoteAddress || "unknown");
+}
 
 function createApp() {
   const app = express();
@@ -68,7 +81,9 @@ function createApp() {
         if (_401Sayac.size < 50) _401Sayac.set(yol, (_401Sayac.get(yol) || 0) + 1);
         _401Toplam++;
       } else if (res.statusCode >= 400) {
-        console.warn(`[API hata] ${res.statusCode} ${req.method} ${req.originalUrl}:`, JSON.stringify(body));
+        const maskedUrl = kimlikMaskele(String(req.originalUrl || ''));
+        const maskedBody = kimlikMaskele(JSON.stringify(body));
+        console.warn(`[API hata] ${res.statusCode} ${req.method} ${maskedUrl}:`, maskedBody);
       }
       return origJson(body);
     };
@@ -142,22 +157,6 @@ function createApp() {
   });
   app.use("/api/auth/login", loginLimiter);
 
-  // Rate-limit anahtari: IP yerine SESSION (kullanici) bazli. Kurumsal agda binlerce kullanici
-  // ayni NAT/proxy IP'sinden gelir → salt-IP limiti hepsini birlikte banlar (yanlis pozitif).
-  // apiLimiter session middleware'inden ONCE calistigi icin `connect.sid` cookie'sini ham
-  // header'dan okuruz (her oturum benzersiz) → kullanici basina ayri butce. Cookie yoksa
-  // (login oncesi) IP'ye duser; login'in kendi limiti zaten var.
-  function sessionOrIpKey(req) {
-    // Cerez adi ortama gore degisir (uretimde `__Host-portal.sid`, gecis suresince eski
-    // `connect.sid` de) — tek yerden okunur (server/auth/oturum-cerezi.cjs).
-    const oturum = oturumHizAnahtari(req);
-    if (oturum) return oturum;
-    const hdrUser = req.headers["x-portal-user"];
-    if (hdrUser) return `usr:${String(hdrUser).slice(0, 64)}`;
-    // IPv6-guvenli IP anahtari (express-rate-limit helper'i — ERR_ERL_KEY_GEN_IPV6 onler).
-    return ipKeyGenerator(req.ip || req.socket?.remoteAddress || "unknown");
-  }
-
   const apiLimiter = rateLimit({
     windowMs: 60_000,
     max: parseInt(process.env.API_RATE_LIMIT_PER_MIN || "300", 10), // kullanici(oturum) basina
@@ -198,4 +197,4 @@ function createApp() {
   return app;
 }
 
-module.exports = { createApp };
+module.exports = { createApp, sessionOrIpKey };
