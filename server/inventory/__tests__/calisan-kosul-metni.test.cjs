@@ -98,7 +98,10 @@ function regexpMetinlerindeGeriAlma(kaynak) {
             j += 1;
           }
         }
-        if (/(^|[^\\])(\\\\)*\\b/.test(icerik)) {
+        // `String.raw` sablonunda ters bolu KACIS DEGILDIR: `\b` oldugu gibi desene gider ve
+        // kelime siniridir (dogru kullanim). Yalniz islenen metin sabitleri sorunludur.
+        const hamSablon = c === '`' && /String\.raw$/.test(kaynak.slice(0, i));
+        if (!hamSablon && /(^|[^\\])(\\\\)*\\b/.test(icerik)) {
           bulgular.push(kaynak.slice(0, bas).split('\n').length);
         }
         i = j;
@@ -146,4 +149,10 @@ test('CK5: RegExp metin argumanlarinda geri alma karakteri yok (ve tarayici kor 
   assert.deepEqual(regexpMetinlerindeGeriAlma(`new RegExp('@' + ad + '${bs}${bs}b', 'g')`), []);
   assert.deepEqual(regexpMetinlerindeGeriAlma(`new RegExp(/${bs}b/.source + a)`), []);
   assert.deepEqual(regexpMetinlerindeGeriAlma(`// new RegExp('${bs}b')`), []);
+  // String.raw: ters bolu ham kalir, `\b` kelime siniridir. Ayni cagridaki ISLENEN sabit yine yakalanir.
+  assert.deepEqual(regexpMetinlerindeGeriAlma(`new RegExp(String.raw\`${bs}bTABLE\` + a)`), []);
+  assert.deepEqual(
+    regexpMetinlerindeGeriAlma(`new RegExp(String.raw\`${bs}bX\` + '${bs}b' + String.raw\`${bs}d\`)`),
+    [1],
+  );
 });
