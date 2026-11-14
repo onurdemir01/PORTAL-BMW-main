@@ -693,12 +693,12 @@ test('ES15 uclar: listeleme uclari eskiGizli yazar ve suzgec ozetten once uygula
   const den = fs.readFileSync(path.join(__dirname, '..', '..', 'audit', 'denetim.cjs'), 'utf8');
   for (const s of [
     'hosts: suz(hosts.recordset || []),',
-    'summarize(es.ayir(aggRes.recordset || []), es.ayir(srvRes.recordset || []), etk.m)',
+    /summarize\(\s*es\.ayir\(aggRes\.recordset \|\| \[\]\),\s*es\.ayir\(srvRes\.recordset \|\| \[\]\),\s*etk\.m,?\s*\)/,
     'summarizeLocations(es.ayir(r.recordset || []))',
     'es.ayir(r.recordset || [], (x) => x.hostname)',
     'const raw = es.ayir(rowsRes.recordset || []);',
   ])
-    assert.ok(den.includes(s), s);
+    assert.ok(typeof s === 'string' ? den.includes(s) : s.test(den), String(s));
   const rl = fs.readFileSync(path.join(__dirname, '..', 'ratelimit.cjs'), 'utf8');
   assert.ok(rl.indexOf("typeof suz === 'function'") < rl.indexOf('const ozet = summarize(hosts);'));
 });

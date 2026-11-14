@@ -35,12 +35,20 @@ const sahte = {
       return { recordset: veri.apps || [] };
     }
     if (t.includes('FROM dbo.BMW_Certificates_Inventory')) return { recordset: veri.certs || [] };
-    if (t.includes('sys.columns')) return { recordset: [{ name: 'host' }, { name: 'jvm' }, { name: 'ports' }, { name: 'cfg_ports' }] };
+    if (t.includes('sys.columns'))
+      return {
+        recordset: [{ name: 'host' }, { name: 'jvm' }, { name: 'ports' }, { name: 'cfg_ports' }],
+      };
     if (t.includes('FROM dbo.Server_Hub_Vhosts')) return { recordset: veri.vhosts || [] };
     return { recordset: [] };
   },
 };
-require.cache[Module._resolveFilename(MSSQL, module)] = { id: MSSQL, filename: MSSQL, loaded: true, exports: sahte };
+require.cache[Module._resolveFilename(MSSQL, module)] = {
+  id: MSSQL,
+  filename: MSSQL,
+  loaded: true,
+  exports: sahte,
+};
 
 const { registerWebApp, _webAppOnbellekTemizle } = require('../web-app.cjs');
 
@@ -53,10 +61,20 @@ async function sunucu() {
   const s = app.listen(0);
   await new Promise((ok) => s.once('listening', ok));
   const taban = `http://127.0.0.1:${s.address().port}/web-app?source=mw`;
-  return { getir: (ek = '') => fetch(taban + ek).then(async (x) => ({ status: x.status, j: await x.json() })), kapat: () => s.close() };
+  return {
+    getir: (ek = '') =>
+      fetch(taban + ek).then(async (x) => ({ status: x.status, j: await x.json() })),
+    kapat: () => s.close(),
+  };
 }
 
-const uygulamalar = (n) => Array.from({ length: n }, (_, i) => ({ app: `app${String(i).padStart(4, '0')}`, host: `GBCJAP${String(i % 90 + 10)}`, env: 'PROD', domain: 'fw.garanti.com.tr' }));
+const uygulamalar = (n) =>
+  Array.from({ length: n }, (_, i) => ({
+    app: `app${String(i).padStart(4, '0')}`,
+    host: `GBCJAP${String((i % 90) + 10)}`,
+    env: 'PROD',
+    domain: 'fw.garanti.com.tr',
+  }));
 
 beforeEach(() => {
   _webAppOnbellekTemizle();
@@ -70,15 +88,25 @@ test('WO1 ayni anda gelen istekler TEK hesap bekler; suren hesap varken "Yenile"
   appGecikme = 50;
   const s = await sunucu();
   try {
-    const [a, b, c] = await Promise.all([s.getir(), s.getir('&q=app0001'), s.getir('&onlyUnmatched=1')]);
+    const [a, b, c] = await Promise.all([
+      s.getir(),
+      s.getir('&q=app0001'),
+      s.getir('&onlyUnmatched=1'),
+    ]);
     assert.equal(appOkuma, 1, `envanter ${appOkuma} kez okundu`);
     assert.equal(a.j.total, 3);
     assert.equal(b.j.rows.length, 1);
     assert.equal(c.j.total, 3);
     // Kullanici "Yenile"ye art arda basar: her basis ayri bir agir hesap baslatmamali.
-    await Promise.all([s.getir('&fresh=1'), s.getir('&fresh=1&q=app0002'), s.getir('&fresh=1&onlyUnmatched=1')]);
+    await Promise.all([
+      s.getir('&fresh=1'),
+      s.getir('&fresh=1&q=app0002'),
+      s.getir('&fresh=1&onlyUnmatched=1'),
+    ]);
     assert.equal(appOkuma, 2, `art arda Yenile ${appOkuma - 1} hesap baslatti`);
-  } finally { s.kapat(); }
+  } finally {
+    s.kapat();
+  }
 });
 
 test('WO2 arama ve suzme onbellekten: DB yeniden okunmaz, sayaclar tam kume uzerinden', async () => {
@@ -88,11 +116,16 @@ test('WO2 arama ve suzme onbellekten: DB yeniden okunmaz, sayaclar tam kume uzer
     assert.equal(ilk.j.shown, 3);
     const ara = await s.getir('&q=APP0002');
     assert.equal(appOkuma, 1, 'arama DB okumasi tetiklememeli');
-    assert.deepEqual(ara.j.rows.map((r) => r.app), ['app0002']);
+    assert.deepEqual(
+      ara.j.rows.map((r) => r.app),
+      ['app0002'],
+    );
     assert.equal(ara.j.total, 3);
     assert.equal(ara.j.shown, 1);
     assert.equal(ara.j.hesaplandi, ilk.j.hesaplandi);
-  } finally { s.kapat(); }
+  } finally {
+    s.kapat();
+  }
 });
 
 test('WO3 fresh=1 onbellegi atlar ve yeni veriyi getirir', async () => {
@@ -107,7 +140,9 @@ test('WO3 fresh=1 onbellegi atlar ve yeni veriyi getirir', async () => {
     assert.equal(yeni.j.total, 5);
     const sonra = await s.getir();
     assert.equal(sonra.j.total, 5, 'taze hesap onbellege yazilmali');
-  } finally { s.kapat(); }
+  } finally {
+    s.kapat();
+  }
 });
 
 test('WO4 hata onbellege yazilmaz: sonraki istek yeniden dener', async () => {
@@ -122,7 +157,9 @@ test('WO4 hata onbellege yazilmaz: sonraki istek yeniden dener', async () => {
     assert.equal(ok.status, 200);
     assert.equal(ok.j.total, 3);
     assert.equal(appOkuma, 2);
-  } finally { s.kapat(); }
+  } finally {
+    s.kapat();
+  }
 });
 
 test('WO5 capped yalniz suzulen kume CAP (1000) ustundeyse', async () => {
@@ -137,13 +174,18 @@ test('WO5 capped yalniz suzulen kume CAP (1000) ustundeyse', async () => {
     assert.equal(fazla.j.shown, 1000);
     assert.equal(fazla.j.capped, true);
     assert.equal(fazla.j.rows[0].app, 'app0000', 'kirpma alfabetik siradan sonra');
-  } finally { s.kapat(); }
+  } finally {
+    s.kapat();
+  }
 });
 
 test('WO6 uzun hesap olay dongusune nefes aldirir', async () => {
   const asil = global.setImmediate;
   let sayac = 0;
-  global.setImmediate = (...a) => { sayac += 1; return asil(...a); };
+  global.setImmediate = (...a) => {
+    sayac += 1;
+    return asil(...a);
+  };
   const s = await sunucu();
   try {
     veri = { apps: uygulamalar(10) };
@@ -154,14 +196,26 @@ test('WO6 uzun hesap olay dongusune nefes aldirir', async () => {
     sayac = 0;
     await s.getir('&fresh=1');
     assert.ok(sayac - az >= 4, `1000 satirda yalniz ${sayac - az} ek nefes (beklenen >= 4)`);
-  } finally { global.setImmediate = asil; s.kapat(); }
+  } finally {
+    global.setImmediate = asil;
+    s.kapat();
+  }
 });
 
 test('WO7 Denetim yanit onbellegi /web-app i ATLAR (kendi onbellegi var; ikinci katman bayat varyant + bellek)', () => {
   const fs = require('node:fs');
   const src = fs.readFileSync(path.join(__dirname, '..', 'denetim.cjs'), 'utf8');
-  const kod = src.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  assert.match(kod, /router\.use\(\(req, res, next\) => \(req\.path === '\/web-app' \? next\(\) : responseCache\.middleware\(req, res, next\)\)\);/,
-    'yanit onbellegi /web-app icin de devrede');
-  assert.ok(!/router\.use\(responseCache\.middleware\);/.test(kod), 'yanit onbellegi kosulsuz takili');
+  const kod = src
+    .split('\n')
+    .filter((l) => !/^\s*\/\//.test(l))
+    .join('\n');
+  assert.match(
+    kod,
+    /router\.use\(\s*\(req, res, next\) =>\s*\(?req\.path === '\/web-app' \? next\(\) : responseCache\.middleware\(req, res, next\),?\)?,?\s*\);/,
+    'yanit onbellegi /web-app icin de devrede',
+  );
+  assert.ok(
+    !/router\.use\(responseCache\.middleware\);/.test(kod),
+    'yanit onbellegi kosulsuz takili',
+  );
 });

@@ -305,8 +305,8 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
     'hAC hucresi Sorunsuz yazmamali',
   );
   assert.ok(
-    den.includes('uppercase tracking-wide opacity-70">Eski</span>') &&
-      den.includes('uppercase tracking-wide opacity-70">Yeni</span>'),
+    /uppercase tracking-wide opacity-70">\s*Eski\s*<\/span>/.test(den) &&
+      /uppercase tracking-wide opacity-70">\s*Yeni\s*<\/span>/.test(den),
     'PROD hucresinde Eski/Yeni ayri kutular yok',
   );
   // Production Tasimalari: grup sekmeleri, location ilerlemesi, "Bu ekran ne gosteriyor" yok

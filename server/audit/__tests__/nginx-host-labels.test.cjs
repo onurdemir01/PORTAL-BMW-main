@@ -41,8 +41,14 @@ const satirlar = () => [
 
 test('NL2 degistir otomatik listenin yerine gecer; ozet buna uyar', () => {
   const etiketler = new Map([
-    ['GBNGXP09', { mod: 'degistir', etiketler: ['glomo', 'mobile'], not: null, by: 'onur', at: null }],
-    ['GBNGXP01', { mod: 'degistir', etiketler: ['glomo'], not: 'eski-ad aslinda glomo', by: 'onur', at: null }],
+    [
+      'GBNGXP09',
+      { mod: 'degistir', etiketler: ['glomo', 'mobile'], not: null, by: 'onur', at: null },
+    ],
+    [
+      'GBNGXP01',
+      { mod: 'degistir', etiketler: ['glomo'], not: 'eski-ad aslinda glomo', by: 'onur', at: null },
+    ],
   ]);
   const rows = et.etiketUygula(satirlar(), etiketler);
   assert.equal(rows[0].services, 'glomo,mobile');
@@ -51,17 +57,31 @@ test('NL2 degistir otomatik listenin yerine gecer; ozet buna uyar', () => {
   const s = summarizeNginxInventory(rows);
   const glomo = s.byService.find((x) => x.service === 'glomo');
   assert.equal(glomo.hosts, 3);
-  assert.equal(s.byService.find((x) => x.service === 'eski-ad'), undefined, 'degistirilen otomatik ad sayimda kaldi');
-  assert.deepEqual(s.totals.servicesUnlisted, [], 'etiketlenen too_many sunucusu hala listelenmedi sayiliyor');
+  assert.equal(
+    s.byService.find((x) => x.service === 'eski-ad'),
+    undefined,
+    'degistirilen otomatik ad sayimda kaldi',
+  );
+  assert.deepEqual(
+    s.totals.servicesUnlisted,
+    [],
+    'etiketlenen too_many sunucusu hala listelenmedi sayiliyor',
+  );
 });
 
 test('NL3 ekle otomatik listeyi korur', () => {
-  const rows = et.etiketUygula(satirlar(), new Map([['GBNGXP02', { mod: 'ekle', etiketler: ['mobile', 'glomo'] }]]));
+  const rows = et.etiketUygula(
+    satirlar(),
+    new Map([['GBNGXP02', { mod: 'ekle', etiketler: ['mobile', 'glomo'] }]]),
+  );
   assert.equal(rows[2].services, 'glomo,mobile');
   assert.deepEqual(rows[2].etiket.oto, ['glomo']);
   assert.equal(rows[2].etiket.mod, 'ekle');
   // too_many sunucusuna ekle: liste toplanmadi bilgisi kaybolmaz
-  const r9 = et.etiketUygula(satirlar(), new Map([['GBNGXP09', { mod: 'ekle', etiketler: ['glomo'] }]]))[0];
+  const r9 = et.etiketUygula(
+    satirlar(),
+    new Map([['GBNGXP09', { mod: 'ekle', etiketler: ['glomo'] }]]),
+  )[0];
   assert.equal(r9.services, 'too_many,glomo');
   assert.equal(r9.service_count, 7);
 });
@@ -78,10 +98,17 @@ test('NL5 kablolama', () => {
   const d = oku('server/audit/denetim.cjs');
   assert.match(d, /router\.put\('\/nginx-inventory\/labels\/:host', requireAdmin,/);
   assert.match(d, /router\.delete\('\/nginx-inventory\/labels\/:host', requireAdmin,/);
-  const blok = d.slice(d.indexOf("'/nginx-inventory/labels/:host'"), d.indexOf("router.delete('/nginx-audit/exceptions/:host'"));
-  assert.equal((blok.match(/responseCache\.clear\(\)/g) || []).length, 2, 'yazinca onbellek temizlenmiyor');
+  const blok = d.slice(
+    d.indexOf("'/nginx-inventory/labels/:host'"),
+    d.indexOf("router.delete('/nginx-audit/exceptions/:host'"),
+  );
+  assert.equal(
+    (blok.match(/responseCache\.clear\(\)/g) || []).length,
+    2,
+    'yazinca onbellek temizlenmiyor',
+  );
   // envanter ucu etiketi uygular; okunamazsa sayfa dusmez
-  assert.match(d, /et\.etiketUygula\(es\.ayir\(r\.recordset/);
+  assert.match(d, /et\.etiketUygula\(\s*es\.ayir\(\s*r\.recordset/);
   assert.match(d, /\{ m: etiketler, hata: etiketHatasi \} = await et\.etiketHaritasi\(\)/);
   assert.match(oku('server/db/mssql-setup.cjs'), /CREATE TABLE nginx_host_labels \(/);
   assert.match(oku('server/nginx-console/eski-sunucu.cjs'), /\{ tablo: 'nginx_host_labels' \}/);
@@ -107,7 +134,16 @@ test('NL6 etiketHaritasi onbellekli, firlatmaz; yazinca bosalir ve haber verir',
   const r0 = await et.etiketHaritasi(kotu);
   assert.equal(r0.m.size, 0);
   assert.match(r0.hata, /baglanti yok/);
-  const db = sahteDb([{ host: 'gbngxp01', kip: 'ekle', etiketler: 'glomo,mobile', note: null, updated_by: 'onur', updated_at: null }]);
+  const db = sahteDb([
+    {
+      host: 'gbngxp01',
+      kip: 'ekle',
+      etiketler: 'glomo,mobile',
+      note: null,
+      updated_by: 'onur',
+      updated_at: null,
+    },
+  ]);
   const r1 = await et.etiketHaritasi(db);
   assert.equal(r1.hata, null);
   assert.deepEqual(r1.m.get('GBNGXP01').etiketler, ['glomo', 'mobile']);
@@ -126,7 +162,11 @@ test('NL6 etiketHaritasi onbellekli, firlatmaz; yazinca bosalir ve haber verir',
   assert.deepEqual(et.etkinListe(['a'], null), ['a']);
   assert.deepEqual(et.etkinListe(['a'], { mod: 'ekle', etiketler: ['b', 'a'] }), ['a', 'b']);
   assert.deepEqual(et.etkinListe(['a'], { mod: 'degistir', etiketler: ['b'] }), ['b']);
-  assert.deepEqual(et.etkinListe(['GLOMO'], { mod: 'ekle', etiketler: ['glomo', 'x'] }), ['GLOMO', 'x'], 'ekle harf duyarsiz tekil');
+  assert.deepEqual(
+    et.etkinListe(['GLOMO'], { mod: 'ekle', etiketler: ['glomo', 'x'] }),
+    ['GLOMO', 'x'],
+    'ekle harf duyarsiz tekil',
+  );
   const s0 = et.surum();
   await et.etiketSil(db, 'GBNGXP01');
   assert.equal(et.surum(), s0 + 1, 'surum artmali');
@@ -142,22 +182,56 @@ test('NL7 SPA RP servisi etikete uyar', () => {
     ['GBNGXP03', { mod: 'ekle', etiketler: ['glomo'] }],
     ['GBNGXP05', { mod: 'degistir', etiketler: ['webforms'] }],
   ]);
-  assert.deepEqual(servisOf('ESKI-AD', 'gbngxp01', RP, m), { servis: 'GLOMO', servisKaynak: 'etiket', servisOto: 'ESKI-AD' });
-  assert.deepEqual(servisOf('GLOMO', 'GBNGXP01', RP, m), { servis: 'GLOMO' }, 'ayni ad etiket diye isaretlenmemeli');
-  assert.deepEqual(servisOf('ESKI-AD', 'GBNGXP02', RP, m), { servis: 'ESKI-AD' }, 'coklu etiket tanim adini ezmemeli');
-  assert.deepEqual(servisOf('ESKI-AD', 'GBNGXP03', RP, m), { servis: 'ESKI-AD' }, 'ustune ekle tanim adini ezmemeli');
-  assert.deepEqual(servisOf('', 'GBNGXP05', RP, m), { servis: 'WEBFORMS', servisKaynak: 'etiket' }, 'etiket gruptan once');
-  assert.deepEqual(servisOf('', 'GBNGXP05', RP, new Map()), { servis: 'Diger', servisKaynak: 'grup' });
+  assert.deepEqual(servisOf('ESKI-AD', 'gbngxp01', RP, m), {
+    servis: 'GLOMO',
+    servisKaynak: 'etiket',
+    servisOto: 'ESKI-AD',
+  });
+  assert.deepEqual(
+    servisOf('GLOMO', 'GBNGXP01', RP, m),
+    { servis: 'GLOMO' },
+    'ayni ad etiket diye isaretlenmemeli',
+  );
+  assert.deepEqual(
+    servisOf('ESKI-AD', 'GBNGXP02', RP, m),
+    { servis: 'ESKI-AD' },
+    'coklu etiket tanim adini ezmemeli',
+  );
+  assert.deepEqual(
+    servisOf('ESKI-AD', 'GBNGXP03', RP, m),
+    { servis: 'ESKI-AD' },
+    'ustune ekle tanim adini ezmemeli',
+  );
+  assert.deepEqual(
+    servisOf('', 'GBNGXP05', RP, m),
+    { servis: 'WEBFORMS', servisKaynak: 'etiket' },
+    'etiket gruptan once',
+  );
+  assert.deepEqual(servisOf('', 'GBNGXP05', RP, new Map()), {
+    servis: 'Diger',
+    servisKaynak: 'grup',
+  });
   assert.deepEqual(servisOf('X', 'GBNGXP01', RP), { servis: 'X' }, 'harita yoksa eski davranis');
 });
 
 test('NL8 kablolama: diger ekranlar ayni haritayi okur', () => {
   const nc = oku('server/nginx-console/index.cjs');
-  const inv = nc.slice(nc.indexOf('async function inventoryHosts()'), nc.indexOf('async function resolveByKey'));
+  const inv = nc.slice(
+    nc.indexOf('async function inventoryHosts()'),
+    nc.indexOf('async function resolveByKey'),
+  );
   assert.match(inv, /et\.etiketHaritasi\(\)/, 'Nginx Hub sunucu listesi/drift etiketi okumuyor');
   assert.match(inv, /et\.etkinListe\(h\.services, e\)/);
-  assert.match(nc, /etiketler: \(await require\('\.\.\/audit\/nginx-host-labels\.cjs'\)\.etiketHaritasi\(\)\)\.m/, 'SPA etiketi okumuyor');
-  assert.match(nc, /degisinceHaberVer\(\(\) => \{\s*spaCache\.clear\(\);\s*_spaMemo = null;/, 'SPA onbellegi etiket degisince bosalmiyor');
+  assert.match(
+    nc,
+    /etiketler: \(await require\('\.\.\/audit\/nginx-host-labels\.cjs'\)\.etiketHaritasi\(\)\)\.m/,
+    'SPA etiketi okumuyor',
+  );
+  assert.match(
+    nc,
+    /degisinceHaberVer\(\(\) => \{\s*spaCache\.clear\(\);\s*_spaMemo = null;/,
+    'SPA onbellegi etiket degisince bosalmiyor',
+  );
   const rp = oku('server/nginx-console/spa-rp.cjs');
   assert.match(rp, /servisOf\(r\.service, host, RP, cfgEtiket\(r\) \|\| ''\)/);
   assert.match(rp, /servisOf\('', host, RP, dirEtiket\(r\) \|\| ''\)/);
@@ -185,22 +259,49 @@ test('NL9 API Envanteri etikete uyar; Denetim SPA tanim basina etiketi kullanir,
   assert.deepEqual(h1.services, ['glomo']);
   assert.deepEqual(h1.etiket.oto, ['eski-ad']);
   assert.equal('etiket' in s.byHost.find((x) => x.host === 'GBNGXP02'), false);
-  assert.deepEqual(summarize(rec, srv).byHost.find((x) => x.host === 'GBNGXP01').services, ['eski-ad'], 'harita yoksa eski davranis');
+  assert.deepEqual(
+    summarize(rec, srv).byHost.find((x) => x.host === 'GBNGXP01').services,
+    ['eski-ad'],
+    'harita yoksa eski davranis',
+  );
   assert.equal(et.tekEtiket(m, ' gbngxp01 '), 'GLOMO');
   assert.equal(et.tekEtiket(new Map([['H', { mod: 'ekle', etiketler: ['x'] }]]), 'H'), null);
-  assert.equal(et.tekEtiket(new Map([['H', { mod: 'degistir', etiketler: ['x', 'y'] }]]), 'H'), null);
+  assert.equal(
+    et.tekEtiket(new Map([['H', { mod: 'degistir', etiketler: ['x', 'y'] }]]), 'H'),
+    null,
+  );
   // kablolama: dolu servis adi degismez, trafik anahtari ham r.service ile kalir
   const d = oku('server/audit/denetim.cjs');
   assert.match(d, /const servisAdi = \(r\) => tanimEt\(r\) \|\| r\.service \|\| '\(bilinmiyor\)';/);
-  assert.equal((d.match(/spaTrafikAnahtari\(r\.service, r\.env, r\.location_path\)/g) || []).length, 2);
+  assert.equal(
+    (d.match(/spaTrafikAnahtari\(r\.service, r\.env, r\.location_path\)/g) || []).length,
+    2,
+  );
   assert.match(d, /addSvc\(e, app\.toLowerCase\(\), r\.service, covTanim\(r\)\)/);
-  assert.match(d, /addSvc\('PROD', String\(res\.application\)\.toLowerCase\(\), r\.service, covTanim\(r\)\)/);
+  assert.match(
+    d,
+    /addSvc\('PROD', String\(res\.application\)\.toLowerCase\(\), r\.service, covTanim\(r\)\)/,
+  );
   assert.equal(Buffer.from(d).includes(0), false, 'denetim.cjs ham NUL bayti tasimamali');
-  assert.match(d, /summarize\(es\.ayir\(aggRes\.recordset \|\| \[\]\), es\.ayir\(srvRes\.recordset \|\| \[\]\), etk\.m\)/);
-  assert.match(d, /degisinceHaberVer\(\(\) => responseCache\.clear\(\), 'denetim-yanit'\)/);
+  assert.match(
+    d,
+    /summarize\(\s*es\.ayir\(aggRes\.recordset \|\| \[\]\),\s*es\.ayir\(srvRes\.recordset \|\| \[\]\),\s*etk\.m,?\s*\)/,
+  );
+  assert.match(
+    d,
+    /degisinceHaberVer\(\s*\(\) => responseCache\.clear\(\),\s*'denetim-yanit',?\s*\)/,
+  );
   // nginx-migration / nginx_ops / tasima: conf.d adi otomasyon sozlesmesi, etiket girmez
-  for (const f of ['server/audit/nginx-migration.cjs', 'server/nginx-migration/index.cjs', 'server/selfservice/nginx-tanim-okuma.cjs']) {
-    assert.doesNotMatch(oku(f), /nginx-host-labels/, `${f} etiket okumamali (otomasyon sozlesmesi)`);
+  for (const f of [
+    'server/audit/nginx-migration.cjs',
+    'server/nginx-migration/index.cjs',
+    'server/selfservice/nginx-tanim-okuma.cjs',
+  ]) {
+    assert.doesNotMatch(
+      oku(f),
+      /nginx-host-labels/,
+      `${f} etiket okumamali (otomasyon sozlesmesi)`,
+    );
   }
 });
 
@@ -224,8 +325,16 @@ test('NL10 tanim basina etiket: aynalar anlasmazsa conf.d adi kalir', () => {
   assert.equal(f(rows[4]), 'GLOMO');
   assert.equal(et.tanimEtiketi(rows, new Map(), (r) => r.service)(rows[0]), null);
   const { _servisOf: servisOf } = require('../../nginx-console/spa-rp.cjs');
-  assert.deepEqual(servisOf('X', 'GBRVP01', { groups: [] }, ''), { servis: 'X' }, 'cozulmus bos etiket ham adi korur');
-  assert.deepEqual(servisOf('X', 'GBRVP01', { groups: [] }, 'glomo'), { servis: 'GLOMO', servisKaynak: 'etiket', servisOto: 'X' });
+  assert.deepEqual(
+    servisOf('X', 'GBRVP01', { groups: [] }, ''),
+    { servis: 'X' },
+    'cozulmus bos etiket ham adi korur',
+  );
+  assert.deepEqual(servisOf('X', 'GBRVP01', { groups: [] }, 'glomo'), {
+    servis: 'GLOMO',
+    servisKaynak: 'etiket',
+    servisOto: 'X',
+  });
 });
 
 test('NL11 yarisma: okuma surerken yazma olursa eski harita onbellege girmez; SPA ayrinti ucu null ozete dusmez', async () => {
@@ -235,18 +344,39 @@ test('NL11 yarisma: okuma surerken yazma olursa eski harita onbellege girmez; SP
     query: async (q) => {
       if (/^SELECT host, kip/.test(q)) {
         await new Promise((r) => (birak = r));
-        return { rows: [{ host: 'H1', kip: 'degistir', etiketler: 'eski', note: null, updated_by: null, updated_at: null }] };
+        return {
+          rows: [
+            {
+              host: 'H1',
+              kip: 'degistir',
+              etiketler: 'eski',
+              note: null,
+              updated_by: null,
+              updated_at: null,
+            },
+          ],
+        };
       }
       return { rows: [] };
     },
   };
   const okuma = et.etiketHaritasi(db);
   await new Promise((r) => setImmediate(r));
-  await et.etiketYaz({ query: async () => ({ rows: [] }) }, 'H1', { mod: 'degistir', etiketler: ['yeni'], not: null }, 'x');
+  await et.etiketYaz(
+    { query: async () => ({ rows: [] }) },
+    'H1',
+    { mod: 'degistir', etiketler: ['yeni'], not: null },
+    'x',
+  );
   birak();
   assert.deepEqual((await okuma).m.get('H1').etiketler, ['eski']);
   let n = 0;
-  const db2 = { query: async () => { n += 1; return { rows: [] }; } };
+  const db2 = {
+    query: async () => {
+      n += 1;
+      return { rows: [] };
+    },
+  };
   await et.etiketHaritasi(db2);
   assert.equal(n, 1, 'eski harita onbellege yazilmis (yeniden okunmadi)');
   et._sifirla();
