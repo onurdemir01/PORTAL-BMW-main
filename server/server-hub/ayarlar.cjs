@@ -67,17 +67,18 @@ const LIMITLER = {
   // buton"). Birim JVM: host basina tek AWX isi acilir, hostlar SIRAYLA (toplu-autostart.cjs).
   toplu_autostart: {
     ad: 'Toplu Auto-Start',
-    varsayilan: 50,
-    ust: 500,
+    varsayilan: 500,
+    ust: 2000,
     birim: 'JVM',
     aciklama: 'Bir toplu auto-start işinde en fazla JVM; önce salt okunur plan, onaydan sonra host başına tek AWX işi, sırayla.',
   },
   // Toplu Restart (2026-11-14, JVM_PARAM_FARKI): birim JVM; JVM'ler TEK TEK restart edilir, her biri sonrasi
-  // sunucu yeniden taranir (toplu-restart.cjs). 50 JVM birkac saat surer; ust sinir bu yuzden dusuk.
+  // sunucu yeniden taranir (toplu-restart.cjs). Sinir guvenlik degil sure icin: 50 JVM birkac saat surer
+  // (kullanici 2026-11-14: ozel bir sebebi yoksa yukseltelim -> 200 / 500).
   toplu_restart: {
     ad: 'Toplu Restart',
-    varsayilan: 50,
-    ust: 200,
+    varsayilan: 200,
+    ust: 500,
     birim: 'JVM',
     aciklama: 'Bir toplu restart işinde en fazla JVM; önce salt okunur önizleme taraması, onaydan sonra JVM’ler tek tek (her restart sonrası sunucu yeniden taranır).',
   },

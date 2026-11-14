@@ -168,7 +168,7 @@ test('KR3 ayarlar: okuma, okunamadi, yazma, gecmis, dogrulama', async () => {
   satir('limit:hazirlik', 'x');
   let a = await ayarlar.oku(true);
   assert.deepEqual(a.seviyeler, { REBOOT_RISK: 'warning' }, 'gecersiz satir yok sayilmali');
-  assert.deepEqual(a.limitler, { tara: 50, reboot: 200, hazirlik: 500, toplu_autostart: 50, toplu_restart: 50 });
+  assert.deepEqual(a.limitler, { tara: 50, reboot: 200, hazirlik: 500, toplu_autostart: 500, toplu_restart: 200 });
   assert.equal(a.kayitlar['seviye:REBOOT_RISK'].updatedBy, 'ayse');
 
   // okunamadi: varsayilan + bayrak; onbellege alinmaz
@@ -350,7 +350,7 @@ test('KR4 uclar: kurallar listesi + sayim, seviye degisikligi degerlendirmeye ya
     assert.deepEqual([l.status, l.body.yeni], [200, '200']);
     assert.equal((await put(`${kok}/kurallar/limit/tara`, { deger: 5000 })).status, 400);
     const lim = await fetch(`${kok}/limitler`).then(J);
-    assert.deepEqual(lim.body.limitler.map((x) => [x.ad, x.gecerli, x.varsayilan, x.ust, x.birim]), [['tara', 200, 50, 1000, 'sunucu'], ['reboot', 500, 500, 500, 'sunucu'], ['hazirlik', 500, 500, 5000, 'sunucu'], ['toplu_autostart', 50, 50, 500, 'JVM'], ['toplu_restart', 50, 50, 200, 'JVM']]);
+    assert.deepEqual(lim.body.limitler.map((x) => [x.ad, x.gecerli, x.varsayilan, x.ust, x.birim]), [['tara', 200, 50, 1000, 'sunucu'], ['reboot', 500, 500, 500, 'sunucu'], ['hazirlik', 500, 500, 5000, 'sunucu'], ['toplu_autostart', 500, 500, 2000, 'JVM'], ['toplu_restart', 200, 200, 500, 'JVM']]);
     assert.equal(lim.body.limitler[0].degistiren, 'ayse');
   });
   tarama = null;

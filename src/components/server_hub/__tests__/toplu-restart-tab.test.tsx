@@ -241,7 +241,7 @@ describe('Toplu Restart sekmesi', () => {
     const seed = fs.readFileSync(path.join(kok, 'server', 'db', 'mssql-setup.cjs'), 'utf8');
     expect(seed).toMatch(/element_key: 'tab:serverhub:toplurestart',\s*element_type: 'tab',\s*parent_key: 'ServerHub',[\s\S]{0,80}default_visible: 0/);
     const ay = fs.readFileSync(path.join(kok, 'server', 'server-hub', 'ayarlar.cjs'), 'utf8');
-    expect(ay).toMatch(/toplu_restart: \{\s*ad: 'Toplu Restart',\s*varsayilan: 50,/);
+    expect(ay).toMatch(/toplu_restart: \{\s*ad: 'Toplu Restart',\s*varsayilan: 200,/);
     const tab = fs.readFileSync(path.join(kok, 'src', 'components', 'server_hub', 'TopluRestartTab.tsx'), 'utf8');
     expect(tab).not.toMatch(/Vazge/);
   });
