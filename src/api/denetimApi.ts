@@ -781,10 +781,24 @@ export interface OcpCoverageResult {
   message?: string;
 }
 
+export interface InitScriptRawVariant {
+  hash: string;
+  count: number;
+  hosts: string[];
+}
+
 export interface InitScriptVariant {
   hash: string;
   count: number;
   hosts: string[];
+  /**
+   * 2026-11-14 (Init): normallestirilmis sha512 (CR, satir sonu boslugu, son bos satirlar
+   * atilmis). Ayni normdaki kopyalar TEK icerik surumudur; ham farklari `rawVariants`.
+   */
+  norm?: string | null;
+  rawVariants?: InitScriptRawVariant[];
+  /** Bu surum referansla (ekip surumu ya da cogunluk) ayni icerikte mi. */
+  isReference?: boolean;
 }
 
 export interface InitScriptStat {
@@ -800,6 +814,22 @@ export interface InitScriptStat {
   majorityCount: number;
   deviatingCount: number;
   variants: InitScriptVariant[];
+  /** Sunucu geneli dosya (appdomain.service): referans iki kokten birlikte hesaplanir. */
+  hostWide?: boolean;
+  /** Var ama tarama kullanicisi okuyamiyor (ya da hash alinamadi). */
+  unreadable?: number;
+  unreadableHosts?: string[];
+  rawVariantCount?: number;
+  /** 'ekip' = depodaki surum (dbo.InitScriptsReference), 'cogunluk' = en yaygin surum. */
+  referenceSource?: 'ekip' | 'cogunluk' | string | null;
+  referenceHash?: string | null;
+  referenceNorm?: string | null;
+  referenceCount?: number;
+  /** Icerik referansla ayni, yalniz bosluk/satir sonu farki (sapma SAYILMAZ). */
+  formatOnlyCount?: number;
+  /** .sh/.jy dosyasinda CR var: betik #!/bin/bash\r ile calismayabilir. */
+  crlfCount?: number;
+  crlfHosts?: string[];
 }
 
 export interface InitScriptHostRow {
@@ -810,6 +840,12 @@ export interface InitScriptHostRow {
   missingCount: number;
   hasCustom: boolean;
   customHash: string | null;
+  formatOnly?: string[];
+  formatOnlyCount?: number;
+  crlf?: string[];
+  crlfCount?: number;
+  unreadable?: string[];
+  unreadableCount?: number;
 }
 
 export interface InitScriptsResult {
@@ -827,6 +863,23 @@ export interface InitScriptsResult {
   message?: string;
   /** Deployment Scripts: son tarama gunu (uzun tablo scan_date) */
   scanDate?: string | null;
+  /** Init (2026-11-14): yalniz bicim farki / CRLF'li betik olan sunucu sayisi. */
+  formatOnlyHosts?: number;
+  crlfHosts?: number;
+  /** 'ekip' (hepsi depo surumu), 'karma' (bazilari), 'cogunluk'. */
+  referenceSource?: 'ekip' | 'karma' | 'cogunluk' | string | null;
+  detailAvailable?: boolean;
+  teamReferenceAvailable?: boolean;
+  /** Ayrinti/referans tablolari okunamadi; ekran ham hash + cogunlukla calisiyor. */
+  extrasError?: string | null;
+  /**
+   * Init (2026-11-14): son yukleme zamani (SQL Server saatiyle 'YYYY-MM-DD HH:MM:SS') ve
+   * yasi. ageSource null = yas bilinmiyor (eski yukleyici). Alan HIC yoksa eski sunucu.
+   */
+  loadedAt?: string | null;
+  ageMinutes?: number | null;
+  ageDays?: number | null;
+  ageSource?: 'load_date' | 'scan_date' | string | null;
   /**
    * 2026-09-24: GBEVM / GBPRV onekli sunucular genel envanterden AYRI raporlanir.
    * Cogunluk genel envanterden hesaplanir, bu sunucular AYNI cogunluga gore olculur.

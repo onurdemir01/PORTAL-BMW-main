@@ -2779,6 +2779,17 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Server Hub > Kopya Durumu (2026-11-14, kopya-durumu.cjs): salt okunur kopya grubu ozeti ("calisan x / y").
+    // Bulgular sekmesi gibi varsayilan ACIK (Bulgular'in ayri anahtari yok: ServerHub sayfasini goren gorur);
+    // anahtar yalniz Admin'in sekmeyi gizleyebilmesi icin. Uc zaten yalniz Admin (server-hub router'i).
+    element_key: 'tab:serverhub:kopyadurumu',
+    element_type: 'tab',
+    parent_key: 'ServerHub',
+    label: 'Kopya Durumu',
+    sort_order: 29,
+    default_visible: 1,
+  },
+  {
     // Crypto Hub (2026-09-25): Metaco + Wyden icin ortam secimi -> durum ve surumler
     // (faz 1 salt okunur). Prod islemleri sonraki fazlarda OCO + Smart onayina baglanacak.
     element_key: 'CryptoHub',

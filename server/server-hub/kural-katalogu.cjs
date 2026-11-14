@@ -205,6 +205,8 @@ const MADDELER = [
     neTaranir: 'Middleware envanterinin (MWAppsInventory) çalışma durumu ve auto-start bilgisi taramayla aynı mı.',
     ciktilar: [
       { kod: 'INV_MISMATCH', kosul: 'Envanter çalışma durumu ya da auto-start’ta taramayla çelişiyor.', seviye: 'info' },
+      { kod: 'INV_JVM_COUNT', kosul: 'Numaralı / server-group eşleşmesinde envanterin JVM sayısı eşleşen tarama JVM sayısından farklı (bilgi notu, çelişki sayılmaz).', seviye: 'info' },
+      { kod: 'INV_ONLY_APP', kosul: 'Envanterdeki uygulamanın bu sunucunun taramasında JVM’i yok (ad, ad + numara ya da server-group eşleşmedi): satır “yalnız envanterde”, eylem önerilmez.', seviye: 'info' },
       { kod: null, kosul: 'Envanter ve tarama tutarlı.', seviye: 'ok' },
     ],
   },
@@ -489,7 +491,7 @@ const MADDELER = [
         dogrulama: {
           neden: 'Eşlenik kopyalar aynı davranmalı: biri kapalıysa ya da reboot’ta farklı davranacaksa ya bu kopya bırakılmış (retire ediliyor) ya da bir arıza / unutulmuş ayar var.',
           eksik: 'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; kopyalardan biri bakımda olabilir.',
-          kontrol: [...DURUM_KONTROL, 'Öteki kopyaların sunucusunda aynı komutu çalıştır; uygulama sahibine aktif / pasif mi diye sor'],
+          kontrol: [...DURUM_KONTROL, 'Öteki kopyaların sunucusunda aynı komutu çalıştır; uygulama sahibine aktif / pasif mi diye sor', 'Server Hub › Kopya Durumu sekmesinde grubun bütün kopyaları tek satırda (çalışan x / y)'],
         },
       },
       {

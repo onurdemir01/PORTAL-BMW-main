@@ -79,6 +79,8 @@ export interface ShHostRow {
   wallS: number | null;
   cpuS: number | null;
   jvms: number;
+  /** 2026-11-14: yalniz envanterdeki uygulama satiri (jvms sayisina girmez). */
+  jvmsInventoryOnly?: number;
   jvmsRunning: number;
   vhosts: number;
   unusedIps: number;
@@ -96,6 +98,11 @@ export interface ShJvm {
   ports: number[];
   /** 2026-09-22: 'cli' (JBoss CLI taramasi) | 'envanter' (dbo.MWAppsInventory) */
   source?: string;
+  /** 2026-11-14: taramada JVM'i yok, satir yalniz envanterden (gen 0; ekranda "yalniz envanterde"). */
+  yalnizEnvanter?: boolean;
+  /** Eslenen envanter uygulamasi ve esleme turu ('ad' | 'ad-sayi' | 'grup' | 'domain'). */
+  invApp?: string;
+  invMatch?: string | null;
   /** v3 JVM.cfg_src: CLI_WILDCARD | XML | PS_ONLY | UNAVAILABLE (tanim kaynagi okundu, JVM orada
    *  tanimli degil - auto-start'i yok, /jvm-autostart 400). */
   cfgSrc?: string | null;
@@ -320,6 +327,8 @@ export interface ShSummary {
       scannedNotInInventoryHosts?: number;
     };
   };
+  /** Cift satir (2026-11-14): loadLatest'in dogal anahtarla ayikladigi satir sayisi (en son yukleme kaldi). */
+  ciftSatir?: { toplam: number; tablolar: Record<string, number> };
 }
 /** EK-2: son basarili yukleme FRESH_MAX_DAYS'ten eskiyse /overview ve /findings bunu tasir. */
 export type ShStaleFleet = { lastLoad?: string | null; ageDays?: number | null } | null;
@@ -778,6 +787,65 @@ export interface Sh360Kopya {
 export interface Sh360Ayrinti extends Sh360Ozet {
   kopyalar: Sh360Kopya[];
   etiketler: ShRetireEtiketOzet[];
+}
+// KOPYA DURUMU (2026-11-14, server/server-hub/kopya-durumu.cjs): kopya grubu (ortam + nesil + JVM adı) başına satır.
+export type ShKopyaDurum = 'calisiyor' | 'kapali' | 'bilinmiyor';
+export interface ShKopya {
+  host: string;
+  /** Son bilinen çalışma (bayat sunucuda da); null = ölçülemedi. Sayım `durum`dan yapılır. */
+  running: boolean | null;
+  durum: ShKopyaDurum;
+  autoStart: string;
+  serverState: string;
+  fresh: boolean;
+  scanDate: string | null;
+  /** KOPYA_TUTARSIZ ile aynı sapma nedenleri: 'calisma' | 'autostart'. */
+  sapma: string[];
+  retirement: ShRetirementBaglam[];
+  ocp: { namespace: string; cluster: string }[];
+}
+export interface ShKopyaGrubu {
+  anahtar: string;
+  app: string;
+  env: string;
+  gen: number;
+  total: number;
+  running: number;
+  stopped: number;
+  /** Bayat sunucudaki ya da çalışması ölçülemeyen kopya (kapalı sayılmaz). */
+  unknown: number;
+  /** Sıralama oranı çalışan / (çalışan + kapalı); hiç ölçülemeyen grupta null. */
+  oran?: number | null;
+  calismaTutarsiz: boolean;
+  autoStartTutarsiz: boolean;
+  tutarsiz: boolean;
+  autoStartUyumsuz: number;
+  autoStartAcik: number;
+  autoStartKapali: number;
+  stoppedHosts: string[];
+  /** Taramadan düşen sunucudaki kopyalar: toplama girmez, ayrıca yazılır. */
+  dusen?: { host: string; scanDate: string | null }[];
+  retirement: ShRetirementBaglam[];
+  ocp: { namespace: string; cluster: string }[];
+  copies: ShKopya[];
+}
+export interface ShKopyaDurumuSonuc {
+  ok: boolean;
+  message?: string;
+  tableMissing?: boolean;
+  latestScan?: string | null;
+  staleFleet?: ShStaleFleet;
+  capraz?: ShCaprazDurumu | null;
+  eslesme?: {
+    kural: string;
+    kacirabilir: string;
+    aktifPasif: string;
+    bayat: string;
+    dusen?: string;
+    digerSinirlar?: string;
+  };
+  gruplar: ShKopyaGrubu[];
+  ozet?: { grup: number; tutarsiz: number; prodTutarsiz: number; calismaTutarsiz: number; autoStartTutarsiz: number };
 }
 export interface Sh360Sonuc {
   ok: boolean;
@@ -1259,6 +1327,9 @@ export const serverHubApi = {
     fetch(`${BASE}/siniflar`, put(s)).then((r) => okJson(r)),
   sinifSil: (ad: string): Promise<{ ok: boolean; okunamadi: boolean; siniflar: ShSinif[] }> =>
     fetch(`${BASE}/siniflar/${encodeURIComponent(ad)}`, { method: 'DELETE' }).then((r) => okJson(r)),
+  // KOPYA DURUMU (2026-11-14)
+  kopyaDurumu: (fresh = false): Promise<ShKopyaDurumuSonuc> =>
+    fetch(`${BASE}/kopya-durumu${fresh ? '?fresh=1' : ''}`).then(safeJson),
   // UYGULAMA 360 (2026-11-07)
   uygulamalar360: (fresh = false): Promise<Sh360Sonuc> =>
     fetch(`${BASE}/uygulamalar-360${fresh ? '?fresh=1' : ''}`).then(safeJson),

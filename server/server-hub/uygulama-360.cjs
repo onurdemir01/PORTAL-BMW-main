@@ -19,7 +19,7 @@
 // 400 gecersiz ad, 409 uygulama artik listede yok, 424 degerlendirme okunamadi.
 'use strict';
 
-const { tabanAd } = require('./capraz.cjs');
+const { tabanAd, uygTaban, yalnizEnvanter } = require('./capraz.cjs');
 const { ozetle } = require('./retire-etiket.cjs');
 
 const L = (s) =>
@@ -79,8 +79,11 @@ function kopyaOf(h, j) {
     calisiyor,
     autoStart,
     // assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile ayni kosul (olculemeyen calisma karar vermez).
-    autostartUyumsuz:
-      (() => { if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK'; if (calisiyor === false && autoStart === 'true') return 'STOPPED_AUTOSTART_ON'; return null; })(),
+    autostartUyumsuz: (() => {
+      if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK';
+      if (calisiyor === false && autoStart === 'true') return 'STOPPED_AUTOSTART_ON';
+      return null;
+    })(),
     trafik: j.trafficState || null,
     istek7g: olculen.length ? olculen.reduce((t, m) => t + m.v.req7d, 0) : null,
     tier: j.tier == null ? null : String(j.tier),
@@ -118,7 +121,12 @@ function ozetOf(ad, kopyalar, etiketler) {
   const trafikler = kopyalar.map((k) => k.trafik).filter(Boolean);
   // Trafik: biri ACTIVE ise var; hepsi olculup bos ise yok; aksi halde (olculemeyen ya da web katmani
   // eslenmeyen kopya) "olculemedi" — "yok" denmez.
-  const trafik = (() => { if (trafikler.includes('ACTIVE')) return 'ACTIVE'; if (trafikler.length === kopyalar.length && trafikler.every((t) => t === 'NO_RECENT_TRAFFIC')) return 'NO_RECENT_TRAFFIC'; return 'OLCULEMEDI'; })();
+  const trafik = (() => {
+    if (trafikler.includes('ACTIVE')) return 'ACTIVE';
+    if (trafikler.length === kopyalar.length && trafikler.every((t) => t === 'NO_RECENT_TRAFFIC'))
+      return 'NO_RECENT_TRAFFIC';
+    return 'OLCULEMEDI';
+  })();
   const istekler = kopyalar.map((k) => k.istek7g).filter((x) => x != null);
   const earli = kopyalar.filter((k) => k.ear !== null);
   const earAdlari = new Set(earli.flatMap((k) => k.ear.map((e) => U(e.ad))));
@@ -165,13 +173,17 @@ function ozetOf(ad, kopyalar, etiketler) {
         }
       : null,
     deployment: deps.length ? deps.reduce((a, b) => (DEP_SIRA[b] > DEP_SIRA[a] ? b : a)) : null,
-    ocp: (() => { if (ocpKop.length) return {
+    ocp: (() => {
+      if (ocpKop.length)
+        return {
           yerler: [...yerler.values()].slice(0, 10),
           yerSayisi: yerler.size,
           // Bir grupta istek varsa toplam kesin; hepsi olculmediyse null ("yok" degil).
           istek: ist.some((x) => x != null) ? ist.reduce((t, x) => t + (x || 0), 0) : null,
           tasinmisOlabilir: ocpKop.some((k) => k.capraz.ocp.tasinmisOlabilir),
-        }; return null; })(),
+        };
+      return null;
+    })(),
     retirement: [...ret.values()].sort((a, b) => a.kayit - b.kayit || a.hedef - b.hedef),
     etiket: etiketler.length
       ? {
@@ -198,12 +210,17 @@ function ozetOf(ad, kopyalar, etiketler) {
  */
 function uygulamalar360(hosts, etiketler = []) {
   const gruplar = new Map();
+  // JVM adi -> uygulama anahtari: etiketler JVM adiyla gelir (GBFACELIFTSUBE-T1), satir invApp tabaniyla.
+  const adAnahtar = new Map();
   for (const h of hosts || []) {
     if (h.taramadanDustu) continue;
     for (const j of h.jvms || []) {
-      if (!j.name) continue;
-      const t = tabanAd(j.name);
+      // "Yalniz envanterde" satiri (2026-11-14) kopya degil: sayilara ve nesil listesine girmez.
+      if (!j.name || yalnizEnvanter(j)) continue;
+      // Numarali JVM'ler (APP-T1/-T2) envanter uygulamasi (invApp) uzerinden tek uygulamada toplanir.
+      const t = uygTaban(j);
       const k = U(t);
+      if (!adAnahtar.has(L(j.name))) adAnahtar.set(L(j.name), k);
       if (!gruplar.has(k)) gruplar.set(k, { ad: t, kopyalar: [] });
       gruplar.get(k).kopyalar.push(kopyaOf(h, j));
     }
@@ -211,7 +228,7 @@ function uygulamalar360(hosts, etiketler = []) {
   const etiketIx = new Map();
   for (const e of etiketler || []) {
     if (e.tur !== 'JVM') continue;
-    const k = U(tabanAd(e.ad));
+    const k = adAnahtar.get(L(e.ad)) || U(tabanAd(e.ad));
     if (!etiketIx.has(k)) etiketIx.set(k, []);
     etiketIx.get(k).push(e);
   }
@@ -276,12 +293,10 @@ function mount(router, { etiketHesabi }) {
       const { a, sonuc } = await etiketHesabi(false);
       const u = a.tableMissing ? null : uygulamalar360(a.hosts, sonuc.etiketler).ayrinti(ad);
       if (!u)
-        return res
-          .status(409)
-          .json({
-            ok: false,
-            message: `${ad} artık listede yok (tarama değişmiş olabilir); liste yenilendi.`,
-          });
+        return res.status(409).json({
+          ok: false,
+          message: `${ad} artık listede yok (tarama değişmiş olabilir); liste yenilendi.`,
+        });
       res.json({
         ok: true,
         latestScan: a.latestScan || null,

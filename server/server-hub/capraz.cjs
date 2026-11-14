@@ -55,12 +55,80 @@ function tabanAd(ad) {
 }
 
 const taze = (h) => !h.taramadanDustu && h.fresh !== false;
+/**
+ * YALNIZ ENVANTERDE (2026-11-14, uretim GBJIST02): assess.cjs taramada JVM'i bulunamayan
+ * MWAppsInventory uygulamasini gen 0 satir olarak tutar (source 'envanter'). Bu satir TARAMA JVM'I
+ * DEGILDIR: kopya grubu, kalinti / OpenShift / Retirement celiskisi, Uygulama 360 kopyasi, retire
+ * etiketi ve iliski grafigi onu atlar. TEK yuklem; tuketiciler bunu cagirir.
+ */
+const yalnizEnvanter = (j) => !!j && (j.yalnizEnvanter === true || j.source === 'envanter');
 const bilinen = (j) => j.runningKnown !== false;
+/**
+ * Tarama JVM'inin UYGULAMA taban adi. assess.cjs envanterEslestir numarali / grup eslesmesinde JVM'e
+ * envanter uygulamasini (invApp) yazar: GBFACELIFTSUBE-T1 -> invApp GBFACELIFTSUBE-T -> taban
+ * GBFACELIFTSUBE. JVM adi (-T1) standart ortam eki tasimadigi icin tabanAd(j.name) onu ayri
+ * uygulama sayiyordu (prod kopyasi bulunamaz -> yanlis ORTAM_KALINTISI / R10).
+ */
+const uygTaban = (j) => tabanAd((j && j.invApp) || (j && j.name));
 const yolAdi = (y) =>
   String(y || '')
     .replace(/\/+$/, '')
     .split('/')
     .pop();
+
+/**
+ * KOPYA GRUBU (TEK kural; KOPYA_TUTARSIZ bulgusu ve Server Hub > Kopya Durumu sekmesi ayni fonksiyonu
+ * kullanir): ayni ortam (ORTAM_GRUBU'nda tanimli) + ayni JBoss nesli + ayni JVM adi (buyuk / kucuk harf
+ * duyarsiz). Farkli JVM adiyla kurulmus kopyalar (or. PAY1 / PAY2) ayni grup SAYILMAZ.
+ * Taramadan dusen sunucu varsayilan olarak girmez (dusenDahil=true yalniz Kopya Durumu'nun "taramadan
+ * dustu" notu icin; sayima girmez); bayatDahil=false iken bayat sunucu da girmez (karar kumesi).
+ * @returns {Map<string, Array<{ h: object, j: object }>>} anahtar `${env}|${gen}|${ad}`
+ */
+function kopyaGruplari(hostlar, { bayatDahil = false, dusenDahil = false } = {}) {
+  const ix = new Map();
+  for (const h of hostlar || []) {
+    if (!ORTAM_GRUBU[h.env]) continue;
+    if (h.taramadanDustu ? !dusenDahil : !bayatDahil && !taze(h)) continue;
+    for (const j of h.jvms || []) {
+      if (!j.name || yalnizEnvanter(j)) continue;
+      const k = `${h.env}|${Number(j.gen) || 0}|${L(j.name)}`;
+      if (!ix.has(k)) ix.set(k, []);
+      ix.get(k).push({ h, j });
+    }
+  }
+  return ix;
+}
+
+/**
+ * Kopya grubunun karari. grup: TAZE kopyalar (kopyaGruplari varsayilani). Ikiden az sunucuda null.
+ * Sapan kopya: calisma (calisan kopya varken kapali olan; olculemeyen kapali SAYILMAZ) ve auto-start
+ * (azinlik; esitlikte 'false' olan).
+ */
+function kopyaKarari(grup) {
+  if (new Set(grup.map((c) => c.h.host)).size < 2) return null;
+  const olculen = grup.filter((c) => bilinen(c.j));
+  const acik = olculen.filter((c) => c.j.running);
+  const kapali = olculen.filter((c) => !c.j.running);
+  const as = grup.filter((c) => c.j.autoStart === 'true' || c.j.autoStart === 'false');
+  const t = as.filter((c) => c.j.autoStart === 'true').length;
+  const f = as.length - t;
+  const cogunluk = t >= f ? 'true' : 'false';
+  return {
+    calisan: acik.length,
+    kapali: kapali.length,
+    olculemeyen: grup.length - olculen.length,
+    autoStartAcik: t,
+    autoStartKapali: f,
+    calismaTutarsiz: acik.length > 0 && kapali.length > 0,
+    autoStartTutarsiz: t > 0 && f > 0,
+    nedenler: (c) => {
+      const n = [];
+      if (acik.length && kapali.includes(c)) n.push('calisma');
+      if (t && f && as.includes(c) && c.j.autoStart !== cogunluk) n.push('autostart');
+      return n;
+    },
+  };
+}
 
 /**
  * @param {object[]} hostlar  assess sunuculari (env, fresh, taramadanDustu, jvms)
@@ -93,39 +161,39 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
   // ── Retirement indeksi: host|uygulama -> hedefler ─────────────────────────────
   const retIx = new Map();
   for (const t of ret || []) ekle(retIx, `${kisaHost(t.host)}|${L(t.uygulama)}`, t);
+  // Retirement hedefinin uygulamasi MWAppsInventory adidir (or. GBFACELIFTSUBE-T); numarali / grup
+  // eslesmesiyle baglanan tarama JVM'i (GBFACELIFTSUBE-T1) o kayda invApp uzerinden de baglanir.
   const retOf = (h, j) =>
-    (retIx.get(`${h.host}|${L(j.name)}`) || []).filter(
-      (t) => t.gen == null || t.gen === (Number(j.gen) || 0),
-    );
+    [
+      ...new Set([
+        ...(retIx.get(`${h.host}|${L(j.name)}`) || []),
+        ...((j.invApp && retIx.get(`${h.host}|${L(j.invApp)}`)) || []),
+      ]),
+    ].filter((t) => t.gen == null || t.gen === (Number(j.gen) || 0));
 
-  // ── Tek gecis: kopya gruplari, taban ad gruplari ────────────────────────────────
-  const kopyaIx = new Map();
+  // ── Tek gecis: kopya gruplari (kopyaGruplari: Kopya Durumu sekmesiyle TEK kural), taban ad gruplari ──
+  const kopyaIx = kopyaGruplari(canli);
+  // Bulgu metnindeki payda Kopya Durumu sekmesiyle AYNI: bayat kopya toplamda, "bilinmiyor" olarak.
+  const kopyaTumIx = kopyaGruplari(canli, { bayatDahil: true });
   const tabanIx = new Map();
   for (const h of canli)
     for (const j of h.jvms || []) {
       if (!j.name) continue;
-      if (taze(h) && ORTAM_GRUBU[h.env])
-        ekle(kopyaIx, `${h.env}|${Number(j.gen) || 0}|${L(j.name)}`, { h, j });
-      ekle(tabanIx, U(tabanAd(j.name)), { h, j });
-      const r = retOf(h, j);
-      if (r.length)
-        al(h, j).retirement = r.map((t) => ({ kayit: t.kayit, hedef: t.hedef, durum: t.durum }));
+      // Retirement kaydi bilgi olarak satira baglanir; taban ad indeksine (kalinti) yalniz tarama JVM'i.
+      const r0 = retOf(h, j);
+      if (r0.length)
+        al(h, j).retirement = r0.map((t) => ({ kayit: t.kayit, hedef: t.hedef, durum: t.durum }));
+      if (yalnizEnvanter(j)) continue;
+      ekle(tabanIx, U(uygTaban(j)), { h, j });
     }
 
   // ── kopya: ayni ortamda sapan kopya ─────────────────────────────────────────
-  for (const grup of kopyaIx.values()) {
-    if (new Set(grup.map((c) => c.h.host)).size < 2) continue;
-    const olculen = grup.filter((c) => bilinen(c.j));
-    const acik = olculen.filter((c) => c.j.running);
-    const kapali = olculen.filter((c) => !c.j.running);
-    const as = grup.filter((c) => c.j.autoStart === 'true' || c.j.autoStart === 'false');
-    const t = as.filter((c) => c.j.autoStart === 'true').length;
-    const f = as.length - t;
-    const cogunluk = t >= f ? 'true' : 'false';
+  for (const [kopyaAnahtari, grup] of kopyaIx) {
+    const karar = kopyaKarari(grup);
+    if (!karar) continue;
+    const toplam = (kopyaTumIx.get(kopyaAnahtari) || grup).length;
     for (const c of grup) {
-      const nedenler = [];
-      if (acik.length && kapali.includes(c)) nedenler.push('calisma');
-      if (t && f && as.includes(c) && c.j.autoStart !== cogunluk) nedenler.push('autostart');
+      const nedenler = karar.nedenler(c);
       if (!nedenler.length) continue;
       al(c.h, c.j).kopya = {
         nedenler,
@@ -138,6 +206,11 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
             autoStart: x.j.autoStart || 'unknown',
           })),
         kopyaSayisi: grup.length,
+        // Bulgu metni "x/y kopya calisiyor" (2026-11-14): y = bayat dahil toplam (Kopya Durumu ile ayni);
+        // olculemeyen ve bayat kopya "bilinmiyor", kapali sayilmaz.
+        calisanSayisi: karar.calisan,
+        toplamSayisi: toplam,
+        bilinmeyenSayisi: toplam - karar.calisan - karar.kapali,
       };
     }
   }
@@ -157,7 +230,11 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
     if (prod.some((c) => c.j.running)) continue;
     if (!prod.length && envanterProd.has(taban)) continue;
     const prodRet = prod.flatMap((c) => retOf(c.h, c.j)).filter((x) => KAPATILMIS.has(x.durum));
-    const neden = (() => { if (prodRet.length) return 'PROD_RETIRE'; if (prod.length) return 'PROD_KAPALI'; return 'PROD_YOK'; })();
+    const neden = (() => {
+      if (prodRet.length) return 'PROD_RETIRE';
+      if (prod.length) return 'PROD_KAPALI';
+      return 'PROD_YOK';
+    })();
     const ocpProd = ocp
       ? (ocp.get(normAd(taban)) || []).filter((x) => NS_GRUBU[x.ortam] === 'prod')
       : null;
@@ -165,7 +242,7 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
       al(c.h, c.j).kalinti = {
         neden,
         // Metinde bu kopyanin kendi yazimi (indeks anahtari buyuk harf).
-        taban: tabanAd(c.j.name),
+        taban: uygTaban(c.j),
         prodKopyalar: prod
           .slice(0, 10)
           .map((p) => ({ host: p.h.host, autoStart: p.j.autoStart || 'unknown' })),
@@ -182,8 +259,8 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
       const grup = ORTAM_GRUBU[h.env];
       if (!grup || !taze(h)) continue;
       for (const j of h.jvms || []) {
-        if (!j.name) continue;
-        const taban = tabanAd(j.name);
+        if (!j.name || yalnizEnvanter(j)) continue;
+        const taban = uygTaban(j);
         const hits = (ocp.get(normAd(taban)) || []).filter((x) => NS_GRUBU[x.ortam] === grup);
         if (!hits.length) continue;
         // Dynatrace: (namespace, uygulama) basina bir olcum; ayni cift iki cluster'da olsa da bir kez.
@@ -231,7 +308,10 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
       const ear = paket ? earOf(h.host) : null;
       const earDiskte = (ear && (ear.uygulamalar || []).find((u) => U(u.ad) === U(paket))) || null;
       const jvmler = (h.jvms || []).filter(
-        (j) => L(j.name) === L(t.uygulama) && (t.gen == null || t.gen === (Number(j.gen) || 0)),
+        (j) =>
+          !yalnizEnvanter(j) &&
+          (L(j.name) === L(t.uygulama) || (!!j.invApp && L(j.invApp) === L(t.uygulama))) &&
+          (t.gen == null || t.gen === (Number(j.gen) || 0)),
       );
       const ozet = { kayit: t.kayit, hedef: t.hedef, durum: t.durum, durduruldu: t.durduruldu };
       for (const j of jvmler) {
@@ -260,11 +340,20 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
 }
 
 // ── Bulgu metinleri (assess.cjs yazar; ekran ve CSV ayni metni gosterir) ──────────
-const AS_TR = (v) => { if (v === 'true') return 'açık'; if (v === 'false') return 'kapalı'; return 'bilinmiyor'; };
+const AS_TR = (v) => {
+  if (v === 'true') return 'açık';
+  if (v === 'false') return 'kapalı';
+  return 'bilinmiyor';
+};
 const fazlasi = (toplam, gosterilen) => (toplam > gosterilen ? ` +${toplam - gosterilen}` : '');
 
 function kopyaMetni(j, k) {
   const parca = [];
+  // "x/y kopya calisiyor" (2026-11-14; kullanici: "prod'da toplam 5 makinede sadece birinde acik").
+  if (typeof k.calisanSayisi === 'number')
+    parca.push(
+      `${k.calisanSayisi}/${k.toplamSayisi || k.kopyaSayisi} kopya çalışıyor${k.bilinmeyenSayisi ? ` (${k.bilinmeyenSayisi} bilinmiyor)` : ''}`,
+    );
   if (k.nedenler.includes('calisma')) parca.push('bu kopya kapalı, aynı ortamda çalışan kopya var');
   if (k.nedenler.includes('autostart'))
     parca.push(
@@ -273,15 +362,23 @@ function kopyaMetni(j, k) {
   const d = k.digerleri
     .map(
       (x) =>
-        `${x.host} (${(() => { if (x.calisiyor == null) return 'ölçülemedi'; if (x.calisiyor) return 'çalışıyor'; return 'kapalı'; })()}, auto-start ${AS_TR(x.autoStart)})`,
+        `${x.host} (${(() => {
+          if (x.calisiyor == null) return 'ölçülemedi';
+          if (x.calisiyor) return 'çalışıyor';
+          return 'kapalı';
+        })()}, auto-start ${AS_TR(x.autoStart)})`,
     )
     .join(', ');
   return `${parca.join('; ')} — öteki kopyalar: ${d}${fazlasi(k.kopyaSayisi - 1, k.digerleri.length)}`;
 }
 
 function kalintiMetni(k) {
-  const neden =
-    (() => { if (k.neden === 'PROD_YOK') return "prod'da kopyası yok (tarama ve envanter)"; if (k.neden === 'PROD_RETIRE') return `prod kopyası Retirement ile durduruldu (#${k.retirement.join(', #')})`; return `prod kopyaları kapalı: ${k.prodKopyalar.map((p) => p.host).join(', ')}`; })();
+  const neden = (() => {
+    if (k.neden === 'PROD_YOK') return "prod'da kopyası yok (tarama ve envanter)";
+    if (k.neden === 'PROD_RETIRE')
+      return `prod kopyası Retirement ile durduruldu (#${k.retirement.join(', #')})`;
+    return `prod kopyaları kapalı: ${k.prodKopyalar.map((p) => p.host).join(', ')}`;
+  })();
   const o = k.ocpProd && k.ocpProd[0];
   const ocp = o
     ? ` — OpenShift prod'da var (${o.namespace} @ ${o.cluster}${fazlasi(k.ocpProd.length, 1)}): uygulama taşınmış olabilir`
@@ -292,7 +389,11 @@ function kalintiMetni(k) {
 function ocpMetni(o) {
   const e = o.eslesme[0];
   const yer = `${e.namespace} @ ${e.cluster}${fazlasi(o.eslesmeSayisi, 1)}`;
-  const istek = (() => { if (o.kullanimOkunamadi) return 'Dynatrace okunamadı'; if (o.istek == null) return 'Dynatrace isteği ölçülemedi'; return `Dynatrace ${o.pencereGun || 7} gün: ${o.istek} istek`; })();
+  const istek = (() => {
+    if (o.kullanimOkunamadi) return 'Dynatrace okunamadı';
+    if (o.istek == null) return 'Dynatrace isteği ölçülemedi';
+    return `Dynatrace ${o.pencereGun || 7} gün: ${o.istek} istek`;
+  })();
   const ad = o.ad.jboss === o.ad.ocp ? '' : ` (ad eşleşmesi: ${o.ad.jboss} ↔ ${o.ad.ocp})`;
   const tasinma = o.tasinmisOlabilir
     ? " — JBoss kopyası boşta, uygulama OpenShift'e taşınmış olabilir"
@@ -306,13 +407,17 @@ function celiskiMetni(c) {
   if (c.nedenler.includes('autostart')) p.push("auto-start AÇIK (reboot'ta geri gelir)");
   if (c.nedenler.includes('paket')) p.push(`paket özgün adıyla diskte (${c.paket})`);
   const ne = c.durum === 'deleted' ? 'silindi' : 'STOP edildi';
-  return `Retirement #${c.kayit} hedefi ${ne}${c.durduruldu ? (" (" + c.durduruldu + ")") : ''} ama ${p.join(', ')}`;
+  return `Retirement #${c.kayit} hedefi ${ne}${c.durduruldu ? ' (' + c.durduruldu + ')' : ''} ama ${p.join(', ')}`;
 }
 
 module.exports = {
   caprazAnaliz,
+  kopyaGruplari,
+  kopyaKarari,
   tabanAd,
+  uygTaban,
   normAd,
+  yalnizEnvanter,
   kopyaMetni,
   kalintiMetni,
   ocpMetni,

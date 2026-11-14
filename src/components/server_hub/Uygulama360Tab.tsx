@@ -23,6 +23,7 @@ import { EarTablo, type EarKolon } from './EarTablo';
 import { BTN, btnStil, EtiketRozeti } from './RetireEtiketleri';
 import { ETIKET_SEVIYE, KONTROL_DURUM, konuMetni, retirementMetni } from './retireEtiket';
 import SunucuPaneli from './SunucuPaneli';
+import { jvmNesilEtiketi } from './jvmNesil';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { useOrtakGorunumler } from './ortakGorunumler';
 import Rozet from './DurumRozeti';
@@ -427,7 +428,7 @@ function UygulamaAyrinti({
                   {c.kopyalar.map((k) => (
                     <span key={`${k.gen}|${k.ad}`} className="block mt-1">
                       <span className="block text-[10px]" style={MUTED}>
-                        JBoss {k.gen} · {k.ad}
+                        {jvmNesilEtiketi(k)} · {k.ad}
                         {k.tier ? ` · tier ${k.tier}` : ''}
                       </span>
                       <span className="flex flex-wrap gap-1 mt-0.5">

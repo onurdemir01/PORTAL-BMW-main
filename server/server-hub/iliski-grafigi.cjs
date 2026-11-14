@@ -22,7 +22,7 @@
 'use strict';
 
 const { hedefSunucusu, ipSahipleri } = require('../retirement/discover.cjs');
-const { tabanAd } = require('./capraz.cjs');
+const { tabanAd, yalnizEnvanter } = require('./capraz.cjs');
 
 const U = (s) =>
   String(s == null ? '' : s)
@@ -139,7 +139,12 @@ class Grafik {
         null,
       );
       const aileler = new Set(e.yontemler.map((y) => y.aile));
-      e.durum = (() => { if (e.celiski) return 'CELISKI'; if (aileler.size >= 2) return 'DOGRULANDI'; if (e.yontemler.length) return 'TEK_KAYNAK'; return null; })();
+      e.durum = (() => {
+        if (e.celiski) return 'CELISKI';
+        if (aileler.size >= 2) return 'DOGRULANDI';
+        if (e.yontemler.length) return 'TEK_KAYNAK';
+        return null;
+      })();
     }
     return this;
   }
@@ -274,6 +279,8 @@ function grafikKur({ hosts = [], veri = null } = {}) {
       'server_hub',
     );
     for (const j of h.jvms || []) {
+      // "Yalniz envanterde" satiri (2026-11-14) Server Hub kaniti degil: dugum / kenar uretmez.
+      if (yalnizEnvanter(j)) continue;
       const k = jvmEkle(
         h.host,
         Number.isFinite(j.gen) ? j.gen : null,
@@ -419,6 +426,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
   const shHedef = new Map(); // vhost anahtari -> Set(jvm)
   for (const h of hosts) {
     for (const j of h.jvms || []) {
+      if (yalnizEnvanter(j)) continue;
       const jk = A.jvm(h.host, Number.isFinite(j.gen) ? j.gen : null, j.name);
       for (const m of j.vhosts || []) {
         const vk = A.vhost(m.host, m.v.product, m.v.serverName, adresCoz(m.v.listen).port);
@@ -597,7 +605,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
             y(
               'mod_cluster',
               adTutar ? 'GUCLU' : 'ZAYIF',
-              `mod_cluster: ${s.ad} profili ${m.host}'a kaydoluyor${adTutar ? (", balancer " + m.balancer) : ''}`,
+              `mod_cluster: ${s.ad} profili ${m.host}'a kaydoluyor${adTutar ? ', balancer ' + m.balancer : ''}`,
             ),
           );
         }
@@ -629,7 +637,11 @@ function grafikKur({ hosts = [], veri = null } = {}) {
         dd.veri.dinleniyor = dd.veri.dinleniyor === true || p.dinleniyor === true;
       }
       for (const u of p.uzaklar) {
-        const sahip = (() => { if (/^127\.|^::1$/.test(u.ip)) return host; if (ipMap.get(u.ip) && ipMap.get(u.ip).size === 1) return [...ipMap.get(u.ip)][0]; return null; })();
+        const sahip = (() => {
+          if (/^127\.|^::1$/.test(u.ip)) return host;
+          if (ipMap.get(u.ip) && ipMap.get(u.ip).size === 1) return [...ipMap.get(u.ip)][0];
+          return null;
+        })();
         const kaynak = sahip ? A.sunucu(sahip) : A.ip(u.ip);
         if (!sahip) g.dugum(A.ip(u.ip), 'ip', u.ip, {});
         for (const hd of hedefler)
@@ -657,7 +669,14 @@ function ara(g, metinHam, sinir = 50) {
   for (const d of g.dugumler.values()) {
     const ad = L(d.ad);
     if (!ad.includes(q) && !d.anahtar.toLowerCase().includes(q)) continue;
-    out.push({ d, tam: (() => { if (ad === q) return 0; if (ad.startsWith(q)) return 1; return 2; })() });
+    out.push({
+      d,
+      tam: (() => {
+        if (ad === q) return 0;
+        if (ad.startsWith(q)) return 1;
+        return 2;
+      })(),
+    });
   }
   out.sort(
     (a, b) =>

@@ -106,6 +106,13 @@ function sunucuYazmaKapisi(a, h, host) {
 function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
   if (!j)
     return { status: 400, message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin.` };
+  // YALNIZ ENVANTERDE (2026-11-14): MWAppsInventory satiri, taramada JVM'i yok (gen 0). Playbook'un
+  // degistirecegi bir JVM tanimi bilinmiyor: is ACILMAZ.
+  if (j.yalnizEnvanter === true || j.source === 'envanter')
+    return {
+      status: 400,
+      message: `${host} üzerinde ${jvm} yalnız envanterde (MWAppsInventory) — taramada JVM'i yok, auto-start değiştirilemez; iş açılmadı.`,
+    };
   // TANIMSIZ SUREC (EK-6.7, tur 3 #8): cfg_src=UNAVAILABLE JVM tanim kaynaginda YOK;
   // auto-start'i olmayan bir sey degistirilemez (playbook da host XML'de bulamaz).
   if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE')

@@ -56,6 +56,7 @@ import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
 import TopluAutoStartTab from './TopluAutoStartTab';
 import TopluRestartTab from './TopluRestartTab';
+import KopyaDurumuTab from './KopyaDurumuTab';
 import { useAuth } from '@/contexts/AuthContext';
 import EarEnvanterTab from './EarEnvanterTab';
 import Uygulama360Tab from './Uygulama360Tab';
@@ -70,6 +71,7 @@ import * as shOnbellek from './shOnbellek';
 import KodRehberi from './KodRehberi';
 import { KodGorunurSaglayici, useKodGorunur, useKodGosterSecimi } from './kodGorunurlugu';
 import SunucuPaneli from './SunucuPaneli';
+import { jvmNesilEtiketi, jvmSayisiMetni } from './jvmNesil';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import {
   autoStartAnahtari,
@@ -458,7 +460,7 @@ function jvmSayimMetni(h: { jvms: number; jvmsRunning: number; jvmsUnmeasured?: 
  */
 function autoStartOnayMetni(
   host: string,
-  j: { gen: number; name: string } & CalismaKaniti,
+  j: { gen: number; name: string; source?: string; yalnizEnvanter?: boolean } & CalismaKaniti,
   ac: boolean,
   sema = false,
 ): string {
@@ -467,7 +469,7 @@ function autoStartOnayMetni(
     : `UYARI: bu JVM'in çalışma durumu ölçülemedi (${sema ? 'Server Hub şeması okunamadı' : 'süreç görünmüyor'}) — çalışıyor da olabilir, kapalı da. ` +
       'Kararı bunu bilerek verin.\n\n';
   return (
-    `${host} üzerinde ${j.name} (JBoss ${j.gen}) için auto-start ${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\n` +
+    `${host} üzerinde ${j.name} (${jvmNesilEtiketi(j)}) için auto-start ${ac ? 'AÇILACAK' : 'KAPATILACAK'}.\n\n` +
     uyari +
     'Yalnız bu JVM etkilenir. Devam edilsin mi?'
   );
@@ -481,9 +483,15 @@ function autoStartOnayMetni(
  * Calisma durumu OLCULEMEYEN JVM'de dugme ACIK kalir (v3, kural 7): onay metni uyarir.
  */
 function autoStartDugmesi(
-  j: { source?: string; cfgSrc?: string | null },
+  j: { source?: string; cfgSrc?: string | null; yalnizEnvanter?: boolean },
   h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
 ): { goster: boolean; neden: string } {
+  // YALNIZ ENVANTERDE (2026-11-14): taramada JVM'i yok (MWAppsInventory satiri); sunucu 400 doner.
+  if (j.yalnizEnvanter === true || j.source === 'envanter')
+    return {
+      goster: false,
+      neden: "yalnız envanterde — taramada JVM'i yok, auto-start değiştirilemez",
+    };
   if (String(j.source || 'cli') === 'cli' && String(j.cfgSrc || '').toUpperCase() === 'UNAVAILABLE')
     return {
       goster: false,
@@ -674,6 +682,9 @@ const KOD_ETIKET: Record<string, string> = {
     'sunucuya özel init dosyası çoğunluktan farklı — beklenen durum, uyumsuzluk sayılmaz',
   INV_MISMATCH:
     'JVM envanteri (MWAppsInventory) ile tarama çelişiyor (çalışma durumu ya da auto-start)',
+  INV_JVM_COUNT: 'envanterin JVM sayısı taramada eşleşen JVM sayısından farklı (bilgi notu)',
+  INV_ONLY_APP:
+    "uygulama yalnız envanterde (MWAppsInventory) — taramada JVM'i bulunamadı; eylem önerilmez",
   STOPPED:
     'JVM kapalı, auto-start kapalı; web katmanı eşlenemedi — trafiği bilinmiyor, retire önerilmez',
   NOT_RUNNING: 'web sunucusu çalışmıyor (süreç listesinde görülmedi) ama vhost tanımları var',
@@ -848,6 +859,34 @@ function TaramadanDusenBandi({ td }: { td: TaramadanDusen | null | undefined }) 
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Cift satir (2026-11-14): DB'de ayni tarama satiri iki kez vardi; ekran tek satir gosterir ama bunu SOYLER. */
+function CiftSatirBandi({
+  c,
+}: {
+  c: { toplam: number; tablolar: Record<string, number> } | null | undefined;
+}) {
+  if (!c || !(c.toplam > 0)) return null;
+  const ayrinti = Object.entries(c.tablolar || {})
+    .map(([t, n]) => `${t.replace(/^Server_Hub_/, '')} ${n}`)
+    .join(', ');
+  return (
+    <div
+      className="rounded-xl border px-4 py-2 text-[12px]"
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--bg-elevated)',
+        color: 'var(--text-secondary)',
+      }}
+      title="Aynı sunucu, aynı gün ve aynı anahtar için veritabanında birden fazla satır var; en son yüklenen kullanıldı. Kalıcı temizlik: Server Hub README 'Çift satır'."
+    >
+      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+        {c.toplam} çift tarama satırı ayıklandı
+      </span>
+      <span className="ml-2">(en son yükleme kullanıldı{ayrinti ? `; ${ayrinti}` : ''})</span>
     </div>
   );
 }
@@ -1401,8 +1440,8 @@ function KapsamaPaneli({ c }: { c: NonNullable<ShOverview['summary']>['scanCover
         )}
         {c.jvm.fromInventory > 0 && (
           <>
-            {c.jvm.fromInventory} JVM’in bilgisi sunucudan okunamadı, <b>envanterden</b> tamamlandı
-            — &quot;veri çekilen&quot; sayısına dahil değil.
+            {c.jvm.fromInventory} uygulama <b>yalnız envanterde</b> (taramada JVM’i bulunamadı) —
+            &quot;veri çekilen&quot; sayısına dahil değil.
           </>
         )}
       </div>
@@ -1670,6 +1709,7 @@ function SevPill({ s, n }: { s: ShSeverity; n?: number }) {
 type SekmeId =
   | 'hosts'
   | 'findings'
+  | 'kopyadurumu'
   | 'uygulama360'
   | 'analiz'
   | 'readiness'
@@ -1691,6 +1731,9 @@ export default function ServerHubPage() {
     typeof canSee === 'function' && canSee('tab:serverhub:topluautostart');
   // TOPLU RESTART (2026-11-14, JVM_PARAM_FARKI): ayni desen, anahtar tab:serverhub:toplurestart (default_visible 0).
   const topluRestartGorur = typeof canSee === 'function' && canSee('tab:serverhub:toplurestart');
+  // KOPYA DURUMU (2026-11-14): anahtar tab:serverhub:kopyadurumu, Bulgular gibi varsayilan ACIK (seed default_visible 1);
+  // AuthProvider yoksa (birim test) Bulgular gibi gorunur.
+  const kopyaDurumuGorur = typeof canSee !== 'function' || canSee('tab:serverhub:kopyadurumu');
   const [tab, setTab] = useState<SekmeId>('hosts');
   // HIZ (2026-11-05): ziyaret edilen sekme sokulmez, gizlenir (veri / suzgec / kaydirma kalir; yeniden
   // indirme yok). Gizli sekme yoklama yapmaz ve pencere acmaz (useSekmeGorunur).
@@ -1707,6 +1750,7 @@ export default function ServerHubPage() {
     code?: string;
     product?: string;
     envGroup?: string;
+    q?: string;
   } | null>(null);
   // RETIREMENT ETIKETINDEN KAYIT (2026-11-06): KESIN + DOGRULANDI etiket Retirement kayit formunu
   // uygulama adi ve kontrol notuyla acar (kayit acmak yine kullanicinin onayidir). Retirement artik
@@ -1723,7 +1767,13 @@ export default function ServerHubPage() {
     setTab('analiz');
     setAcilan((s) => (s.has('analiz') ? s : new Set(s).add('analiz')));
   }, []);
-  const goFindings = (f: { area?: string; code?: string; product?: string; envGroup?: string }) => {
+  const goFindings = (f: {
+    area?: string;
+    code?: string;
+    product?: string;
+    envGroup?: string;
+    q?: string;
+  }) => {
     setFindingsFilter(f);
     setBulguNo((n) => n + 1);
     sekmeAc('findings');
@@ -1753,13 +1803,15 @@ export default function ServerHubPage() {
                   ? 'Taze taramada auto-start’ı uyumsuz JVM’ler (çalışıyor ama kapalı → AÇ, durmuş ama açık → KAPAT). Tek düğme önce canlı değeri salt okunur bir planla okur, onaydan sonra sunucu başına tek iş açar ve sunucuları sırayla işler.'
                   : tab === 'toplurestart'
                     ? 'Taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan çalışan JVM’ler. Tek düğme önce sunucuları salt okunur yeniden tarar, onaydan sonra JVM’leri tek tek restart eder ve her restart sonrası farkın kapandığını tarar. Prod sunucular OpsX’ten tek tek.'
-                    : tab === 'kurallar'
-                      ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
-                      : tab === 'uygulama360'
-                        ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
-                        : tab === 'analiz'
-                          ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
-                          : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
+                    : tab === 'kopyadurumu'
+                      ? 'Aynı uygulamanın kopyaları kaç sunucuda çalışıyor: aynı ortam + JBoss nesli + JVM adı başına “çalışan x / y”, kapalı sunucular ve auto-start farkı. Varsayılan yalnız tutarsız gruplar; prod önce.'
+                      : tab === 'kurallar'
+                        ? 'Hangi maddeler taranıyor, hangi çıktı kritik / uyarı / bilgi / sorun yok sayılıyor; seviyeleri ve tek seferde girilebilecek sunucu sayısını buradan değiştirin.'
+                        : tab === 'uygulama360'
+                          ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
+                          : tab === 'analiz'
+                            ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                            : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-0.5" style={{ background: 'var(--bg-elevated)' }}>
@@ -1767,6 +1819,7 @@ export default function ServerHubPage() {
             [
               { id: 'hosts', label: 'Sunucular' },
               { id: 'findings', label: 'Bulgular' },
+              { id: 'kopyadurumu', label: 'Kopya Durumu' },
               { id: 'uygulama360', label: 'Uygulama 360' },
               { id: 'analiz', label: 'Retirement Analizi' },
               { id: 'readiness', label: 'Açılış Hazırlığı' },
@@ -1779,7 +1832,8 @@ export default function ServerHubPage() {
             .filter(
               (t) =>
                 (t.id !== 'topluautostart' || topluAutoStartGorur) &&
-                (t.id !== 'toplurestart' || topluRestartGorur),
+                (t.id !== 'toplurestart' || topluRestartGorur) &&
+                (t.id !== 'kopyadurumu' || kopyaDurumuGorur),
             )
             .map((t) => (
               <button
@@ -1805,6 +1859,14 @@ export default function ServerHubPage() {
         {acilan.has('findings') && (
           <SekmeKabi id="findings" etkin={tab}>
             <FindingsTab key={bulguNo} initial={findingsFilter} onRetirementAc={retirementAc} />
+          </SekmeKabi>
+        )}
+        {kopyaDurumuGorur && acilan.has('kopyadurumu') && (
+          <SekmeKabi id="kopyadurumu" etkin={tab}>
+            <KopyaDurumuTab
+              onGoFindings={goFindings}
+              onRetirement={() => navigate('/retirement')}
+            />
           </SekmeKabi>
         )}
         {acilan.has('uygulama360') && (
@@ -2270,6 +2332,7 @@ function HostsTab({
       {/* EK-2: son basarili yukleme bayatsa KIRMIZI bant - sunucu tum fix eylemlerini kapatir. */}
       <BayatFiloBandi sf={data.staleFleet} />
       <TaramadanDusenBandi td={data.summary?.taramadanDusen} />
+      <CiftSatirBandi c={data.summary?.ciftSatir} />
       {/* C3: sys.columns okunamadi - tarayici sema surumu bilinmiyor, tum eylemler kapali. */}
       <SemaBandi su={data.schemaUnknown} />
       {/* EK-1: v3 tarayici verisi varken Portal eski surume geri ALINMAZ - tek satir uyari. */}
@@ -2377,7 +2440,7 @@ function HostsTab({
                 {(s.jvm.fromInventory ?? 0) > 0 && (
                   <>
                     {' '}
-                    · <b>{s.jvm.fromInventory}</b> JVM envanterden
+                    · <b>{s.jvm.fromInventory}</b> uygulama yalnız envanterde
                   </>
                 )}
                 {(s.jvm.mismatched ?? 0) > 0 && (
@@ -3205,7 +3268,7 @@ function HostModal({
   const tabs = [
     { id: 'ozet', label: 'Özet' },
     { id: 'findings', label: `Bulgular${d ? ` · ${d.findings.length}` : ''}` },
-    { id: 'jvm', label: `JVM${d ? ` · ${d.jvms.length}` : ''}` },
+    { id: 'jvm', label: d ? `JVM · ${jvmSayisiMetni(d.jvms).replace(/ JVM/, '')}` : 'JVM' },
     { id: 'web', label: `Web / vhost${d ? ` · ${d.vhosts.length}` : ''}` },
     { id: 'init', label: `Init${d ? ` · ${d.init.length}` : ''}` },
     { id: 'ip', label: `IP${d ? ` · ${d.ips.length}` : ''}` },
@@ -3387,7 +3450,9 @@ function HostModal({
                         className="border-t"
                         style={{ borderColor: 'var(--border-subtle)' }}
                       >
-                        <td className="px-2.5 py-1.5">JBoss {j.gen}</td>
+                        <td className="px-2.5 py-1.5" data-testid="jvm-nesil">
+                          {jvmNesilEtiketi(j)}
+                        </td>
                         <td className="px-2.5 py-1.5 font-mono font-semibold">{j.name}</td>
                         <td className="px-2.5 py-1.5" style={{ color: 'var(--text-muted)' }}>
                           {j.group || '—'}
@@ -4262,7 +4327,13 @@ export function FindingsTab({
   initial,
   onRetirementAc,
 }: {
-  initial?: { area?: string; code?: string; product?: string; envGroup?: string } | null;
+  initial?: {
+    area?: string;
+    code?: string;
+    product?: string;
+    envGroup?: string;
+    q?: string;
+  } | null;
   /** KESIN + DOGRULANDI retirement etiketinden Retirement sayfasinda (/retirement) kayit acar (2026-11-06). */
   onRetirementAc?: (uygulama: string, not: string) => void;
 }) {
@@ -4275,7 +4346,8 @@ export function FindingsTab({
     shOnbellek.oku<ShFindingsResult>('findings'),
   );
   const [loading, setLoading] = useState(() => !shOnbellek.oku('findings'));
-  const [q, setQ] = useState('');
+  // Kopya Durumu sekmesinden gecis uygulama adiyla arar (2026-11-14).
+  const [q, setQ] = useState(initial?.q || '');
   const [area, setArea] = useState<string>(initial?.area || 'all');
   const [code, setCode] = useState<string>(initial?.code || 'all');
   const [sev, setSev] = useState<'all' | ShSeverity>('all');

@@ -6,6 +6,7 @@ import type { JbossDetay, JbossSunucu } from '@/api/appHubApi';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import JvmParamDuzenle from './JvmParamDuzenle';
+import { YALNIZ_ENVANTER_ETIKETI } from '@/components/server_hub/jvmNesil';
 import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH } from './ortak';
 import { OrtamOzeti, satirAnahtarlari } from './OrtamOzeti';
 
@@ -145,7 +146,18 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
                 <div key={`${j.ad}-${j.nesil}`} className="rounded p-3 space-y-2" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-[13px]" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{j.ad}</span>
-                    {j.nesil && <Hap ton="bilgi">JBoss {j.nesil}</Hap>}
+                    {j.yalnizEnvanter ? (
+                      <Hap ton="notr" title="Server Hub taramasında bu uygulamanın JVM'i bulunamadı; satır yalnız MWAppsInventory'den.">
+                        {YALNIZ_ENVANTER_ETIKETI}
+                      </Hap>
+                    ) : (
+                      j.nesil && <Hap ton="bilgi">JBoss {j.nesil}</Hap>
+                    )}
+                    {j.envanterUygulamasi && j.envanterUygulamasi.toLowerCase() !== j.ad.toLowerCase() && (
+                      <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        envanter: {j.envanterUygulamasi}
+                      </span>
+                    )}
                     <CalismaHap calisiyor={j.calisiyor} />
                     <Hap ton={j.autoStart === 'true' || j.autoStart === 'yes' ? 'iyi' : j.autoStart === 'unknown' ? 'notr' : 'uyari'}>
                       auto-start: {j.autoStart}
