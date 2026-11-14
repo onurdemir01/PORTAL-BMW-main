@@ -460,7 +460,7 @@ function imzaOf(g, kararlar, anahtar) {
       .map((e) => `${e.tur}|${e.kaynak === anahtar ? e.hedef : e.kaynak}|${e.durum}`)
       .sort();
   else return null;
-  return crypto.createHash('md5').update(JSON.stringify(govde)).digest('hex');
+  return crypto.createHash('sha256').update(JSON.stringify(govde)).digest('hex').slice(0, 32);
 }
 
 /**
