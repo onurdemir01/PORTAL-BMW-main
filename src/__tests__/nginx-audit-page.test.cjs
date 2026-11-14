@@ -242,8 +242,9 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   // internet SPA'larinin nginx SERVISI (vhost) kirilimi (2026-09-17): sunucu hesaplar, ekran bolunmus cubuk cizer
   assert.ok(
     covSrv.includes('internetServices,') &&
-      covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service)") &&
-      covSrv.includes('addSvc(e, app.toLowerCase(), r.service)'),
+      // 2026-11-13: addSvc dorduncu arguman (RP tanimi) aldi; kirilimin iki kaynagi ayni.
+      covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service, ") &&
+      covSrv.includes('addSvc(e, app.toLowerCase(), r.service, '),
     'servis kirilimi hesaplanmali (include vhost + PROD proxy vhost)',
   );
   assert.ok(
