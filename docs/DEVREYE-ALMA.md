@@ -84,7 +84,7 @@ Repo'daki dosya **yalnızca referanstır**; portal onu çalıştırmaz.
 ## 5. Dağıtım
 
 ```bash
-npm ci
+npm run kur           # tam kurulum (kökte düz `npm ci` yalnız çalışma zamanını kurar)
 npm run preflight     # EKSIK varsa burada dur
 npm test
 npm run test:ui

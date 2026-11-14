@@ -61,6 +61,11 @@ const GELISTIRME_BETIKLERI = new Set([
   'scripts/ui-tarama',
   'scripts/paket.cjs',
   'scripts/guvenlik-denetim.cjs',
+  // Kok manifest / gelistirici kurulumu (gelistirme/ dizini pakete girmez).
+  'scripts/manifest.cjs',
+  'scripts/kur.cjs',
+  'scripts/kanca-kur.mjs',
+  'scripts/arac-kontrol.cjs',
 ]);
 
 /** Kopyalanmayacak yol mu? `goreli` kok'e gore, `/` ayracli. */

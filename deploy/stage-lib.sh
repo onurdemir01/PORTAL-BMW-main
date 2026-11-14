@@ -80,23 +80,31 @@ stage_swap_and_start() {
   return 0
 }
 
-# BAGIMLILIK + BUILD (2026-11-12). Iki tur agac gelir:
-#   - CALISMA ZAMANI PAKETI (`npm run paket` ciktisi; package.json'da devDependencies YOK, dist/
-#     onceden derlenmis): yalniz calisma zamani kurulur, `npm run build` dist DOGRULAMASIDIR.
-#   - KAYNAK AGAC (git klonu / eski bicim zip; gelistirme araclari var): tam kurulum + vite build,
-#     ardindan gelistirme paketleri silinir (`npm prune --omit=dev`).
-# Iki durumda da sunucuda gelistirme paketi (vite, eslint, test araclari) KALMAZ: kurumsal
+# BAGIMLILIK + BUILD (2026-11-12; kaynak agac duzeni 2026-11-14). Uc tur agac gelir:
+#   - KAYNAK AGAC (git klonu; `gelistirme/` VAR): kok manifest yalniz calisma zamanidir, tam agac
+#     gelistirme/ altindadir (scripts/manifest.cjs). Tam kurulum + vite build, ardindan gelistirme
+#     agaci kaldirilip kokte yalniz calisma zamani kurulur (scripts/kur.cjs).
+#   - CALISMA ZAMANI PAKETI (`npm run paket` ciktisi; `gelistirme/` YOK, dist/ onceden derlenmis):
+#     yalniz calisma zamani kurulur, `npm run build` dist DOGRULAMASIDIR.
+#   - ESKI DUZEN KAYNAK (2026-11-14 oncesi zip; devDependencies kok package.json'da): tam kurulum +
+#     vite build, ardindan `npm prune --omit=dev`.
+# Uc durumda da sunucuda gelistirme paketi (vite, eslint, test araclari) KALMAZ: kurumsal
 # bagimlilik taramasi ile sunucudaki agac ayni olur.
 stage_bagimlilik_ve_build() {
   local kok="$1"
   (
     cd "$kok" || exit 1
-    if node -e "process.exit(require('./package.json').devDependencies ? 1 : 0)"; then
+    if [[ -f gelistirme/package.json ]]; then
+      echo "[stage] kaynak agac: tam kurulum (gelistirme/) + build + calisma zamanina indirgeme"
+      node scripts/kur.cjs || exit 1
+      npm run build || exit 1
+      node scripts/kur.cjs --calisma-zamani || exit 1
+    elif node -e "process.exit(require('./package.json').devDependencies ? 1 : 0)"; then
       echo "[stage] calisma zamani paketi: npm ci --omit=dev + dist dogrulama"
       npm ci --omit=dev --no-audit --no-fund || exit 1
       npm run build || exit 1
     else
-      echo "[stage] kaynak agac: npm ci + build + npm prune --omit=dev"
+      echo "[stage] eski duzen kaynak agac: npm ci + build + npm prune --omit=dev"
       npm ci --no-audit --no-fund || exit 1
       npm run build || exit 1
       npm prune --omit=dev --no-audit --no-fund || exit 1

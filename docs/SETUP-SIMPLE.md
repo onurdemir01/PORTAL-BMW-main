@@ -17,7 +17,7 @@ gelistirme akisini anlatir.
 ## Kurulum
 
 ```bash
-npm ci
+npm run kur     # tam kurulum; kokte duz `npm ci` gelistirme araclarini KURMAZ (gelistirme/README.md)
 cp .env.example .env.local
 # .env.local: PORT=5055 + NODE_ENV=development yapin (vite :3000, /api proxy → :5055)
 ```
