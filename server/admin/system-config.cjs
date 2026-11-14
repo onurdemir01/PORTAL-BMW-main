@@ -16,11 +16,13 @@ const {
 const { SECRET_PATTERN } = require('../config/secret-pattern.cjs');
 const { oturumAyariHatasi } = require('../auth/oturum-ayarlari.cjs');
 
+// Gizli deger tarayiciya HICBIR parcasiyla gitmez (2026-11-14: ilk ve son iki karakter
+// gosteriliyordu; kisa bir parolanin ucte biri, bir belirtecin oneki demekti). "Tanimli mi"
+// sorusunun cevabi yanittaki `defined` alanidir; maske uzunlugu da degeri ele vermez.
 function maskValue(key, value) {
   if (!value) return "";
   if (!SECRET_PATTERN.test(key)) return value;
-  if (value.length <= 6) return "•••";
-  return `${value.slice(0, 2)}•••${value.slice(-2)}`;
+  return "•••";
 }
 
 function initSystemConfig(app) {
@@ -91,4 +93,4 @@ function initSystemConfig(app) {
   console.log("[SystemConfig] admin env endpoints mounted at /api/admin/system-config");
 }
 
-module.exports = { initSystemConfig };
+module.exports = { initSystemConfig, _maskValue: maskValue };
