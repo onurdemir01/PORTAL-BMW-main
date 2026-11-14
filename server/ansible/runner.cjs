@@ -17,6 +17,7 @@ const ssErisim = require('./ss-erisim.cjs');
 
 // parseSimpleYaml ve Smart metadata isleyicisi: server/smart/metadata.cjs (OpsX ile ORTAK).
 const { parseSimpleYaml, buildSmartMetadata } = require('../smart/metadata.cjs');
+const { awxDegiskenleriniAyikla, sablonDegiskenAlanlari } = require('./degisken-gizle.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -338,7 +339,8 @@ async function listTemplatesForServer(server) {
     playbook: t.playbook,
     inventory: t.summary_fields?.inventory?.name || '',
     ask_variables: t.ask_variables_on_launch || false,
-    variables: t.extra_vars || '',
+    // Sir tasiyan degiskenler tarayiciya GITMEZ; adlari hiddenVariables'ta (degisken-gizle.cjs).
+    ...sablonDegiskenAlanlari(t.extra_vars),
     labels: (t.summary_fields?.labels?.results || []).map((l) => l.name),
     isReadOnly: allowedIds.length === 0 || allowedIds.includes(t.id),
     lastLaunch: t.summary_fields?.recent_jobs?.[0]?.finished || null,
@@ -906,7 +908,8 @@ async function listTemplates() {
     playbook: t.playbook,
     inventory: t.summary_fields?.inventory?.name || '',
     ask_variables: t.ask_variables_on_launch || false,
-    variables: t.extra_vars || '',
+    // Sir tasiyan degiskenler tarayiciya GITMEZ; adlari hiddenVariables'ta (degisken-gizle.cjs).
+    ...sablonDegiskenAlanlari(t.extra_vars),
     labels: (t.summary_fields?.labels?.results || []).map((l) => l.name),
     isReadOnly: allowedIds.length === 0 || allowedIds.includes(t.id),
     lastLaunch: t.summary_fields?.recent_jobs?.[0]?.finished || null,
@@ -4069,7 +4072,8 @@ function initAnsibleRunner(app) {
       // gizlenmis gercek survey alanlari yerine yanlislikla ham extra_vars pseudo-alanlarini
       // duzenleyebilir hale gelirdi.
       if (!specHadFields) {
-        const defaults = parseSimpleYaml(detail.extra_vars || '');
+        // Sir tasiyan degisken sozde-alan olarak (varsayilan degeriyle) kullaniciya ACILMAZ.
+        const defaults = parseSimpleYaml(awxDegiskenleriniAyikla(detail.extra_vars).metin);
         fields = Object.keys(defaults)
           .map((name) => {
             const ov = (overrides.fieldOverrides || []).find((o) => o.fieldName === name) || {};
@@ -4145,6 +4149,7 @@ function initAnsibleRunner(app) {
         description: f.description,
       }));
 
+      const degiskenler = awxDegiskenleriniAyikla(detail.extra_vars);
       res.json({
         ok: true,
         template: {
@@ -4159,8 +4164,9 @@ function initAnsibleRunner(app) {
             name: c.name,
             kind: c.kind || c.credential_type_name || '',
           })),
-          extraVars: detail.extra_vars || '',
-          extraVarsParsed: parseSimpleYaml(detail.extra_vars || ''),
+          extraVars: degiskenler.metin,
+          extraVarsParsed: parseSimpleYaml(degiskenler.metin),
+          hiddenVariables: degiskenler.gizlenen,
           limit: detail.limit || '',
           verbosity: detail.verbosity ?? 0,
           askVariables: !!detail.ask_variables_on_launch,
