@@ -238,7 +238,7 @@ async function resolveVisibility(user) {
 
   if (_resolvedMemoVersion !== _version) { _resolvedMemo = new Map(); _resolvedMemoVersion = _version; }
   const groupKeys = groupKeysOf(user);
-  const memoKey = `${role}|${usernameLower}|${mailLower}|${[...groupKeys].sort((a, b) => a.localeCompare(b)).join(',')}`;
+  const memoKey = `${role}|${usernameLower}|${mailLower}|${[...groupKeys].sort((a, b) => Number(a > b) - Number(a < b)).join(',')}`;
   const hit = _resolvedMemo.get(memoKey);
   if (Date.now() - hit?.at < CACHE_TTL_MS) return { version: _version, visibility: hit.visibility };
 

@@ -833,18 +833,18 @@ function buildMigration({
     };
     const finish = (row) => ({
       ...row,
-      services: [...row.services].sort((a, b) => a.localeCompare(b)),
-      oldHosts: [...row.oldHosts].sort((a, b) => a.localeCompare(b)),
-      locations: [...row.locations].sort((a, b) => a.localeCompare(b)),
+      services: [...row.services].sort((a, b) => Number(a > b) - Number(a < b)),
+      oldHosts: [...row.oldHosts].sort((a, b) => Number(a > b) - Number(a < b)),
+      locations: [...row.locations].sort((a, b) => Number(a > b) - Number(a < b)),
       locationCount: row.locations.size,
       // proxy_pass yazim bicim(ler)i: 'fqdn' | 'upstream'; ve yazilan ad(lar)
-      forms: [...row.forms].sort((a, b) => a.localeCompare(b)),
-      written: [...row.written].sort((a, b) => a.localeCompare(b)),
+      forms: [...row.forms].sort((a, b) => Number(a > b) - Number(a < b)),
+      written: [...row.written].sort((a, b) => Number(a > b) - Number(a < b)),
       paths: [...row.paths.values()]
         .map((x) => ({
           service: x.service,
           location: x.location,
-          hosts: [...x.hosts].sort((a, b) => a.localeCompare(b)),
+          hosts: [...x.hosts].sort((a, b) => Number(a > b) - Number(a < b)),
           ...newLocStatus(x.service, x.location),
           traffic: spaTrafikDurumu(
             trafIdx,
@@ -918,16 +918,16 @@ function buildMigration({
       .map((t) => ({
         service: t.service,
         location: t.location,
-        oldHosts: [...t.oldHosts].sort((a, b) => a.localeCompare(b)),
-        targets: [...t.targets].sort((a, b) => a.localeCompare(b)),
-        written: [...t.written].sort((a, b) => a.localeCompare(b)),
+        oldHosts: [...t.oldHosts].sort((a, b) => Number(a > b) - Number(a < b)),
+        targets: [...t.targets].sort((a, b) => Number(a > b) - Number(a < b)),
+        written: [...t.written].sort((a, b) => Number(a > b) - Number(a < b)),
         // 'spa' | 'spa-disi' (ad kalibina uymuyor) | 'cozulemedi' | 'include' (eski sunucuda zaten
         // include) | nginx -T'den: 'statik' | 'yonlendirme' | 'erisim-engeli' | 'diger'
-        siniflar: [...t.siniflar].sort((a, b) => a.localeCompare(b)),
-        apps: [...t.apps].sort((a, b) => a.localeCompare(b)),
+        siniflar: [...t.siniflar].sort((a, b) => Number(a > b) - Number(a < b)),
+        apps: [...t.apps].sort((a, b) => Number(a > b) - Number(a < b)),
         // 'config' (Nginx_Config_Audit) / 'nginx-T' (Nginx_Audit_Locations)
-        kaynaklar: [...t.kaynaklar].sort((a, b) => a.localeCompare(b)),
-        davranislar: [...t.davranislar].sort((a, b) => a.localeCompare(b)),
+        kaynaklar: [...t.kaynaklar].sort((a, b) => Number(a > b) - Number(a < b)),
+        davranislar: [...t.davranislar].sort((a, b) => Number(a > b) - Number(a < b)),
         eskide: true,
         ...newLocStatus(t.service, t.location),
         traffic: spaTrafikDurumu(trafIdx, t.service + '|' + t.location, t.defs),
@@ -961,7 +961,7 @@ function buildMigration({
       newHostsScanned: newHosts.filter((h) => scannedHosts.has(h)),
       oldHostsSeen: [
         ...new Set((proxyRows || []).map((r) => H(r.host)).filter((h) => oldSet.has(h))),
-      ].sort((a, b) => a.localeCompare(b)),
+      ].sort((a, b) => Number(a > b) - Number(a < b)),
       serviceLocations,
       apps: appRows,
       nonSpa: [...nonSpa.values()].map(finish).sort((a, b) => a.target.localeCompare(b.target)),

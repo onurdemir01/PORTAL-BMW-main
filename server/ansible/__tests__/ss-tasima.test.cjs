@@ -466,3 +466,26 @@ test('ST18 runner: liste yazim korumasi, onbellek silme, deneme denetimi redakte
   const d = src.slice(b, b + 500);
   assert.match(d, /extraVars: redactExtraVarsForHistory\(extraVars, specFields, overrides\)/, 'deneme denetimi gizli alanlari duz yaziyor');
 });
+
+// 2026-11-14 gerilemesi: kararliJson'un anahtar siralamasi `localeCompare`e cevrilmisti. Plan
+// ozeti (sha256) bu metinden uretilir, DB'ye yazilir ve istemcinin geri yolladigi degerle
+// karsilastirilir: sira degisirse suren tasimalar "plan degisti" ile reddedilir; `localeCompare`
+// ayrica surecin yerel ayarina baglidir (makineden makineye farkli ozet). Sira KOD BIRIMI
+// sirasidir (Array.prototype.sort varsayilani) ve SABIT kalir.
+test('ST-HASH kararliJson anahtar sirasi kod birimi sirasi; ozet sabit', () => {
+  const { kararliJson, sha } = require('../ss-tasima.cjs');
+  // Buyuk / kucuk harf, rakam, alt cizgi, tire ve Turkce harf: kod birimi sirasi ile yerel
+  // siralamanin AYRISTIGI anahtarlar.
+  const veri = { Zeta: 1, alfa: 2, _x: 3, 10: 4, 9: 5, 'ı': 6, 'İ': 7, B: { z: 1, A: 2, 'ç': 3 }, 'a-b': 8, ab: 9 }; // ascii-ok
+  const BEKLENEN =
+    '{"10":4,"9":5,"B":{"A":2,"z":1,"ç":3},"Zeta":1,"_x":3,"a-b":8,"ab":9,"alfa":2,"İ":7,"ı":6}'; // ascii-ok
+  assert.equal(kararliJson(veri), BEKLENEN);
+  // 2026-11-10 surumundeki (varsayilan `.sort()`) kodla uretilen ozet: bu deger DEGISMEZ.
+  assert.equal(sha(veri), 'd43c1ac5e2e91c20ed0f20cfbe417e6f106c59dcc5395e5d0bf6e8fc17ee72ee');
+  // Anahtarlarin yazilis sirasi ozeti degistirmez.
+  const ters = Object.fromEntries(Object.entries(veri).reverse());
+  assert.equal(sha(ters), sha(veri));
+  // Yerel ayara bagli siralama BU metni vermez (bekci kor degil).
+  const yerel = Object.keys(veri).sort((a, b) => a.localeCompare(b));
+  assert.notDeepEqual(yerel, Object.keys(veri).sort((a, b) => Number(a > b) - Number(a < b)));
+});
