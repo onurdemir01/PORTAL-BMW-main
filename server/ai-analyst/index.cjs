@@ -6,7 +6,13 @@
 'use strict';
 
 const express = require('express');
-const { isConfigured, getProvider, activeModel, checkRateLimit, getFeatureLimits } = require('../ai/provider.cjs');
+const {
+  isConfigured,
+  getProvider,
+  activeModel,
+  checkRateLimit,
+  getFeatureLimits,
+} = require('../ai/provider.cjs');
 const aiAnalyzer = require('../logx/ai-analyzer.cjs');
 const { orchestrate } = require('./orchestrator.cjs');
 const history = require('./history.cjs');
@@ -16,7 +22,9 @@ function initAiAnalyst(app) {
   try {
     const { requireAuth: ra } = require('../auth/index.cjs');
     if (typeof ra === 'function') requireAuth = ra;
-  } catch { /* auth modulu yoksa passthrough */ }
+  } catch {
+    /* auth modulu yoksa passthrough */
+  }
 
   const router = express.Router();
   router.use(express.json({ limit: '1mb' }));
@@ -25,7 +33,9 @@ function initAiAnalyst(app) {
   try {
     const { requireVisiblePrefix } = require('../auth/visibility.cjs');
     router.use(requireVisiblePrefix('AI Analist', { exempt: ['/health'] }));
-  } catch { /* motor yoksa yoksay */ }
+  } catch {
+    /* motor yoksa yoksay */
+  }
 
   // ── Saglik/yapilandirma ─────────────────────────────────────────────────────
   router.get('/health', requireAuth, (req, res) => {
@@ -35,7 +45,8 @@ function initAiAnalyst(app) {
       provider: getProvider(),
       model: activeModel(),
       features: getFeatureLimits(),
-      message: isConfigured() ? undefined
+      message: isConfigured()
+        ? undefined
         : 'AI sağlayıcı anahtarı tanımlı değil (ANTHROPIC_API_KEY / OPENAI_API_KEY) — AI Analist devre dışı.',
     });
   });
@@ -46,7 +57,12 @@ function initAiAnalyst(app) {
   // bagli kalir (bkz. server/logx/index.cjs).
   router.post('/analyze-logs', requireAuth, async (req, res) => {
     if (!isConfigured()) {
-      return res.status(503).json({ ok: false, message: 'AI sağlayıcı anahtarı tanımlı değil (ANTHROPIC_API_KEY / OPENAI_API_KEY).' });
+      return res
+        .status(503)
+        .json({
+          ok: false,
+          message: 'AI sağlayıcı anahtarı tanımlı değil (ANTHROPIC_API_KEY / OPENAI_API_KEY).',
+        });
     }
     const { lines, context } = req.body || {};
     if (!Array.isArray(lines) || lines.length === 0) {
@@ -56,16 +72,31 @@ function initAiAnalyst(app) {
     const startedAt = Date.now();
     try {
       const result = await aiAnalyzer.analyze(lines, context || '', username);
-      history.logUsage({
-        username, feature: 'logs', provider: getProvider(), model: activeModel(),
-        latencyMs: Date.now() - startedAt, toolCalls: 0, ok: true,
-      }).catch(() => {});
+      history
+        .logUsage({
+          username,
+          feature: 'logs',
+          provider: getProvider(),
+          model: activeModel(),
+          latencyMs: Date.now() - startedAt,
+          toolCalls: 0,
+          ok: true,
+        })
+        .catch(() => {});
       res.json({ ok: true, ...result });
     } catch (err) {
-      history.logUsage({
-        username, feature: 'logs', provider: getProvider(), model: activeModel(),
-        latencyMs: Date.now() - startedAt, toolCalls: 0, ok: false, error: err.message,
-      }).catch(() => {});
+      history
+        .logUsage({
+          username,
+          feature: 'logs',
+          provider: getProvider(),
+          model: activeModel(),
+          latencyMs: Date.now() - startedAt,
+          toolCalls: 0,
+          ok: false,
+          error: err.message,
+        })
+        .catch(() => {});
       const status = err.status || 500;
       const isProviderQuota = status === 429 && /AI API 429/.test(err.message || '');
       const message = isProviderQuota
@@ -86,16 +117,27 @@ function initAiAnalyst(app) {
 
     const username = req.session?.user?.username || 'anonymous';
     if (checkRateLimit(username, 'chat')) {
-      return res.status(429).json({ ok: false, message: 'Saatlik AI Analist limitine ulaşıldı (20 istek/saat).' });
+      return res
+        .status(429)
+        .json({ ok: false, message: 'Saatlik AI Analist limitine ulaşıldı (20 istek/saat).' });
     }
 
-    const { messages, sources = { dynatrace: true, instana: false }, instanaEnv = 'nonprod' } = req.body || {};
+    const {
+      messages,
+      sources = { dynatrace: true, instana: false },
+      instanaEnv = 'nonprod',
+    } = req.body || {};
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ ok: false, message: 'messages dizisi zorunlu.' });
     }
     // Sadece role+string content kabul edilir; gecmis 20 mesajla sinirlanir
     const cleanMessages = messages
-      .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string' && m.content.trim())
+      .filter(
+        (m) =>
+          (m?.role === 'user' || m?.role === 'assistant') &&
+          typeof m?.content === 'string' &&
+          m.content.trim(),
+      )
       .slice(-20)
       .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
     if (cleanMessages.length === 0 || cleanMessages[cleanMessages.length - 1].role !== 'user') {
@@ -124,7 +166,10 @@ function initAiAnalyst(app) {
       'X-Accel-Buffering': 'no',
     });
     let closed = false;
-    req.on('close', () => { closed = true; });
+    // Node 20+ 'req' akisi govde okununca 'close' yayar; istemci kopusu 'res' uzerinden izlenir.
+    res.on('close', () => {
+      if (!res.writableEnded) closed = true;
+    });
     // emit sarici: SSE'ye yazarken asistan metnini ve arac cagrilarini da toplar —
     // akis bitince sohbet gecmisine (ai_messages) ve kullanim kaydina (ai_usage_log) yazilir.
     const assistantParts = [];
@@ -134,7 +179,9 @@ function initAiAnalyst(app) {
       if (event?.type === 'tool_call') {
         toolCallCount++;
         if (conversationId) {
-          history.appendMessage(conversationId, 'tool', JSON.stringify(event.args || {}), event.name).catch(() => {});
+          history
+            .appendMessage(conversationId, 'tool', JSON.stringify(event.args || {}), event.name)
+            .catch(() => {});
         }
       }
       if (closed) return;
@@ -144,14 +191,29 @@ function initAiAnalyst(app) {
 
     const role = req.session?.user?.role || 'User';
     const startedAt = Date.now();
-    console.log(`[AI-Analyst] ${username} → analiz basladi (dt:${!!sources.dynatrace}, instana:${!!sources.instana}/${instanaEnv})`);
+    console.log(
+      `[AI-Analyst] ${username} → analiz basladi (dt:${!!sources.dynatrace}, instana:${!!sources.instana}/${instanaEnv})`,
+    );
     try {
-      await orchestrate({ messages: cleanMessages, sources, instanaEnv, emit, user: { username, role } });
+      await orchestrate({
+        messages: cleanMessages,
+        sources,
+        instanaEnv,
+        emit,
+        user: { username, role },
+      });
       emit({ type: 'done' });
-      history.logUsage({
-        username, feature: 'chat', provider: getProvider(), model: activeModel(),
-        latencyMs: Date.now() - startedAt, toolCalls: toolCallCount, ok: true,
-      }).catch(() => {});
+      history
+        .logUsage({
+          username,
+          feature: 'chat',
+          provider: getProvider(),
+          model: activeModel(),
+          latencyMs: Date.now() - startedAt,
+          toolCalls: toolCallCount,
+          ok: true,
+        })
+        .catch(() => {});
     } catch (err) {
       console.error('[AI-Analyst] hata:', err.message);
       const isQuota = /AI API 429/.test(err.message || '');
@@ -162,13 +224,23 @@ function initAiAnalyst(app) {
           : err.message,
       });
       emit({ type: 'done' });
-      history.logUsage({
-        username, feature: 'chat', provider: getProvider(), model: activeModel(),
-        latencyMs: Date.now() - startedAt, toolCalls: toolCallCount, ok: false, error: err.message,
-      }).catch(() => {});
+      history
+        .logUsage({
+          username,
+          feature: 'chat',
+          provider: getProvider(),
+          model: activeModel(),
+          latencyMs: Date.now() - startedAt,
+          toolCalls: toolCallCount,
+          ok: false,
+          error: err.message,
+        })
+        .catch(() => {});
     } finally {
       if (conversationId && assistantParts.length) {
-        history.appendMessage(conversationId, 'assistant', assistantParts.join('\n')).catch(() => {});
+        history
+          .appendMessage(conversationId, 'assistant', assistantParts.join('\n'))
+          .catch(() => {});
       }
       if (!closed) res.end();
     }
@@ -209,7 +281,8 @@ function initAiAnalyst(app) {
   // ── Kullanim ozeti (admin) — ai_usage_log gunluk toplamlari ─────────────────
   router.get('/usage', requireAuth, async (req, res) => {
     const role = req.session?.user?.role || 'User';
-    if (role !== 'Admin') return res.status(403).json({ ok: false, message: 'Admin yetkisi gerekli.' });
+    if (role !== 'Admin')
+      return res.status(403).json({ ok: false, message: 'Admin yetkisi gerekli.' });
     try {
       res.json({ ok: true, summary: await history.usageSummary(req.query.days) });
     } catch (e) {

@@ -30,6 +30,8 @@
     "format": "prettier --write .",
     "pretest:ui": "node scripts/arac-kontrol.cjs",
     "test:ui": "vitest run",
+    "test:coverage": "node scripts/run-tests.cjs --coverage && vitest run --coverage && node scripts/lcov-birlestir.cjs",
+    "test:mutation": "node scripts/mutasyon-testi.cjs",
     "lint:ascii": "node scripts/check-ascii.cjs",
     "ui:tarama": "node scripts/ui-tarama/tarama.mjs",
     "fix:ascii": "node scripts/fix-ascii.cjs",
