@@ -57,16 +57,18 @@ function RenkAciklama() {
   return <div className="flex flex-wrap gap-3 text-[11px]" style={{ color: 'var(--text-secondary)' }}>{kutu('eklenen')}{kutu('yorumlanan')}{kutu('kalkan')}</div>;
 }
 
+const planSatirGorunumu = (no: number, metin: string, renk?: string, zemin?: string) => (
+  <div className="flex font-mono text-[11px] leading-5" style={{ background: zemin }}>
+    <span className="shrink-0 w-14 pr-2 text-right select-none" style={{ color: 'var(--text-muted)' }}>{no || ''}</span>
+    <span className="whitespace-pre pr-3" style={{ color: renk || 'var(--text-primary)' }}>{metin}</span>
+  </div>
+);
+
 /** mod_jk satirlari ONCE / SONRA (onayda vhost ile AYNI koşuda uygulanir). */
 function JkOnceSonra({ deg }: { deg?: JkDeg[] }) {
   if (!deg || !deg.length) return null;
   const dosyalar = [...new Set(deg.map((d) => d.dosya))];
-  const satir = (no: number, metin: string, renk?: string, zemin?: string) => (
-    <div className="flex font-mono text-[11px] leading-5" style={{ background: zemin }}>
-      <span className="shrink-0 w-14 pr-2 text-right select-none" style={{ color: 'var(--text-muted)' }}>{no || ''}</span>
-      <span className="whitespace-pre pr-3" style={{ color: renk || 'var(--text-primary)' }}>{metin}</span>
-    </div>
-  );
+  const satir = planSatirGorunumu;
   return (
     <div className="space-y-2">
       <div className="font-semibold" style={{ color: 'var(--text-muted)' }}>mod_jk satırları — onayda vhost ile birlikte değişir</div>
@@ -78,7 +80,7 @@ function JkOnceSonra({ deg }: { deg?: JkDeg[] }) {
             <div className="grid gap-2 md:grid-cols-2">
               <div className="rounded-lg border overflow-auto max-h-[40vh]" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
                 <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>ÖNCE</div>
-                {l.map((d, i) => <div key={i}>{d.once ? satir(d.no, d.once) : satir(0, '', undefined, undefined)}</div>)}
+                {l.map((d, i) => <div key={i}>{d.once ? satir(d.no, d.once) : satir(0, '')}</div>)}
               </div>
               <div className="rounded-lg border overflow-auto max-h-[40vh]" style={{ borderColor: 'var(--status-warning)', background: 'var(--bg-elevated)' }}>
                 <div className="sticky top-0 px-2 py-1 text-[11px] font-semibold border-b" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)' }}>SONRA</div>
@@ -123,15 +125,10 @@ function JkBaglantilari({ jk }: { jk?: JkSatiri[] }) {
 function OnceSonra({ v }: { v: VhostPlanDurumu }) {
   const satirlar = v.satirlar || [];
   const { kip, hedef } = v.kip || { kip: 'bilinmiyor' as Kip };
-  if (!satirlar.length) return <div style={{ color: 'var(--status-warning-text)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>;
+  if (!satirlar.length) { return <div style={{ color: 'var(--status-warning-text)' }}>Plan blok satırı döndürmedi (eski server_hub_fix sürümü?) — kapatılacak blok gösterilemiyor.</div>; }
   const gruplar = bloklaraBol(satirlar);
   const sutun = 'rounded-lg border overflow-auto max-h-[55vh]';
-  const satir = (no: number, metin: string, renk?: string, zemin?: string) => (
-    <div className="flex font-mono text-[11px] leading-5" style={{ background: zemin }}>
-      <span className="shrink-0 w-14 pr-2 text-right select-none" style={{ color: 'var(--text-muted)' }}>{no || ''}</span>
-      <span className="whitespace-pre pr-3" style={{ color: renk || 'var(--text-primary)' }}>{metin}</span>
-    </div>
-  );
+  const satir = planSatirGorunumu;
   return (
     <div className="space-y-3">
       {gruplar.length > 1 && <div style={{ color: 'var(--text-secondary)' }}>Bu ServerName dosyada <b>{gruplar.length} ayrı blokta</b> geçiyor (ör. :80 ve :443); hepsi işlenir.</div>}
@@ -1294,7 +1291,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         title: `Retirement: silme ön kontrolü ${t.appName} @ ${t.host}`,
         fetchStatus: async () => {
           const st = await retirementApi.jobStatus(id, t.id, r.awxServerId, r.jobId as number);
-          if (!st.ok) throw new Error(st.message || 'Durum okunamadı.');
+          if (!st.ok) { throw new Error(st.message || 'Durum okunamadı.'); }
           if (TERMINAL.has(st.status) && !done) { done = true; await load(); setSilmeListe(t.id); }
           return { status: st.status, output: st.output || '', result: st.result };
         },
@@ -1462,7 +1459,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                   const gecisIsi = GECIS.has(t.status) && isId != null && (t.awxIsleri || []).some((x) => x.adim === gecisAdimi(t.status));
                   return (
                     <React.Fragment key={t.id}>
-                      <tr data-tid={t.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: secili ? SECILI_ZEMIN : acik ? ACIK_ZEMIN : undefined }}>
+                      <tr data-tid={t.id} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)', background: (() => { if (secili) return SECILI_ZEMIN; if (acik) return ACIK_ZEMIN; return undefined; })() }}>
                         <td className="pl-2.5 pr-0 py-1.5" style={acik || secili ? { boxShadow: 'inset 2px 0 0 var(--accent)' } : undefined}>
                           {topluVar && (adim.tur === 'baslat' || adim.tur === 'onayla') && (
                             <div className="h-5 flex items-center"><input type="checkbox" className="accent-[var(--accent)]" aria-label={`${t.host} birlikte çalıştırılacaklara ekle`} checked={secili}

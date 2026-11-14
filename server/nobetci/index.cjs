@@ -334,7 +334,7 @@ function initNobetci(app) {
     const dbCached = await dbCacheRead('nobetci_list');
     res.json({
       ok: true,
-      currentSource: memoryFresh ? 'api_live' : (dbCached ? 'db_fallback' : 'none'),
+      currentSource: (() => { if (memoryFresh) return 'api_live'; if (dbCached) return 'db_fallback'; return 'none'; })(),
       memoryFresh,
       dbLastSyncedAt: dbCached?.fetchedAt || null,
       config: {

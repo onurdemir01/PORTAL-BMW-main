@@ -42,7 +42,7 @@ test('AD1 ozet temiz: kapatilabilir', async () => {
 
 test('AD2 her engel sayilir ve kapatmayi engeller', async () => {
   for (const e of _ENGELLER) {
-    const db = sahteDb((sql) => (sql === e.sql ? { rows: [{ n: 3 }] } : /COUNT|CASE WHEN/.test(sql) ? bos() : { rows: [] }));
+    const db = sahteDb((sql) => { if (sql === e.sql) return { rows: [{ n: 3 }] }; if (/COUNT|CASE WHEN/.test(sql)) return bos(); return { rows: [] }; });
     const o = await bagimlilikOzeti(1, { db, env: {} });
     assert.equal(o.kapatilabilir, false, e.anahtar);
     assert.deepEqual(o.engeller.map((x) => [x.anahtar, x.adet]), [[e.anahtar, 3]]);

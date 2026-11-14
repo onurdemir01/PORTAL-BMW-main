@@ -211,7 +211,7 @@ function parseNodeLines(lines) {
       .replace(/\r$/, '')
       .split('\t');
     const tur = f[0];
-    if (!Object.prototype.hasOwnProperty.call(ALAN, tur)) continue;
+    if (!Object.hasOwn(ALAN, tur)) continue;
     if (f.length < ALAN[tur]) {
       out.hatalar.push({ stage: 'ayristir', message: `${tur} satırı eksik alanlı (${f.length})` });
       continue;
@@ -336,7 +336,7 @@ const ayniKume = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
  * ayrisirdi: ekran "degistirilebilir" der, sunucu reddederdi).
  */
 function grupAnalizi(parsed, grupId) {
-  const g = parsed && parsed.gruplar && parsed.gruplar.get(grupId);
+  const g = parsed?.gruplar?.get(grupId);
   if (!g) return null;
   const deps = parsed.deps.filter((d) => d.grup === grupId);
   const allow = parsed.allow.filter((a) => a.grup === grupId);
@@ -431,11 +431,11 @@ function grupAnalizi(parsed, grupId) {
 function nodeDep(d, a) {
   const istenen = d.replicas;
   const hazir = d.ready == null ? 0 : d.ready;
-  const mevcut = (a.depNodelari && a.depNodelari.get(d.ad)) || null;
+  const mevcut = (a.depNodelari?.get(d.ad)) || null;
   return {
     ad: d.ad,
     bilesen: d.bilesen,
-    durum: istenen === 0 ? 'stopped' : istenen != null && hazir >= istenen ? 'running' : 'degraded',
+    durum: (() => { if (istenen === 0) return 'stopped'; if (istenen != null && hazir >= istenen) return 'running'; return 'degraded'; })(),
     istenen,
     hazir,
     gitops: d.gitops,
@@ -464,7 +464,7 @@ function gruplariKur(parsed, { nodeAcik, talepYetkisi, bekleyenler } = {}) {
       bilesenler = Object.fromEntries(N.UIS_BILESENLER.map((b) => [b, null]));
       for (const d of deploymentlar) if (d.bilesen && d.bilesen in bilesenler) bilesenler[d.bilesen] = d;
     }
-    const bekleyen = (bekleyenler && bekleyenler.get(g.kilit)) || null;
+    const bekleyen = (bekleyenler?.get(g.kilit)) || null;
     let engel = null;
     if (!nodeAcik) engel = METIN.kapali;
     else if (!talepYetkisi) engel = METIN.yetkiYok;
@@ -497,7 +497,7 @@ function gruplariKur(parsed, { nodeAcik, talepYetkisi, bekleyenler } = {}) {
       okumaBekleniyor: false,
     });
   }
-  return out.sort((x, y) => (x.tur === y.tur ? x.id.localeCompare(y.id) : x.tur === 'uis' ? -1 : 1));
+  return out.sort((x, y) => { if (x.tur === y.tur) return x.id.localeCompare(y.id); if (x.tur === 'uis') return -1; return 1; });
 }
 
 /** Okuma yokken: tarama Components listesinden yeni tip gruplar (envler bos). */
@@ -530,14 +530,8 @@ function taramadanGruplar(tenant, components, { nodeAcik, talepYetkisi, bekleyen
       const kilit = `uis-${g.zincir}`;
       const bilesenler = Object.fromEntries(N.UIS_BILESENLER.map((b) => [b, null]));
       for (const d of g.deps) bilesenler[d.bilesen] = d;
-      const bekleyen = (bekleyenler && bekleyenler.get(kilit)) || null;
-      const engel = !nodeAcik
-        ? METIN.kapali
-        : !talepYetkisi
-          ? METIN.yetkiYok
-          : bekleyen
-            ? METIN.bekleyen(N.talepNoMetni(bekleyen.externalTicketId, bekleyen.talepId))
-            : null;
+      const bekleyen = (bekleyenler?.get(kilit)) || null;
+      const engel = (() => { if (!nodeAcik) return METIN.kapali; if (!talepYetkisi) return METIN.yetkiYok; if (bekleyen) return METIN.bekleyen(N.talepNoMetni(bekleyen.externalTicketId, bekleyen.talepId)); return null; })();
       return {
         id: g.id,
         tur: 'uis',
@@ -577,7 +571,7 @@ const ONIZLEME_MASKE = '(önizleme)';
  *          ve bos kontrolu yapilmaz, yeni ozet her rol icin ONIZLEME_MASKE.
  */
 function grupPlaniKur(okuma, grupId, yeni, opts = {}) {
-  const parsed = okuma && okuma.parsed;
+  const parsed = okuma?.parsed;
   const a = parsed ? grupAnalizi(parsed, grupId) : null;
   if (!a) return hata(400, 'node_girdi', METIN.girdi('grup son okumada yok'));
   if (a.izinYok) return hata(409, 'node_izin_yok', METIN.aileYok);
@@ -662,7 +656,7 @@ function grupPlaniKur(okuma, grupId, yeni, opts = {}) {
   for (const p of a.literal.map(satirOf).sort(sirala)) expect[`${p.d}/${p.c}/${p.e}`] = p.sha;
   const etiket = (ad) => {
     const d = a.deps.find((x) => x.ad === ad);
-    return (d && d.bilesen) || ad;
+    return (d?.bilesen) || ad;
   };
   const secilenler = hedefler.map(etiket);
   const secilmeyenler = a.secilebilir.filter((x) => !hedefler.includes(x)).map(etiket);
@@ -750,7 +744,7 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx', o
   const turAd = g.tur === 'uis' ? 'Yeni tip' : 'Eski tip';
   const hedefler = plani.hedefler.map((d) => `${tenant.namespace},${d}`).join(';');
   const ger = tekSatir(gerekce);
-  const secilenler = plani.secilenler && plani.secilenler.length ? plani.secilenler : plani.hedefler;
+  const secilenler = plani.secilenler?.length ? plani.secilenler : plani.hedefler;
   const secilmeyenler = plani.secilmeyenler || [];
   // PS1: kisa alan (opsx.islem, OpsX sablonunda ACIKLAMA) 400 karakter. Degisecek bilesen
   // listesi ASLA kesilmez; yeni MASKELI ozet en cok 160 karakter (iki rol x 200 karakterlik maske
@@ -759,7 +753,7 @@ function ozetKur({ tenant, plani, gerekce, username, esTalep, kaynak = 'opsx', o
   const ISLEM_SINIRI = 400;
   const bosRoller = Array.isArray(plani.bosRoller) ? plani.bosRoller : [];
   // Bas bosluk tekSatir'in trim'inden ONCE eklenir ("...] -> yeni", "]-> " degil).
-  const zorunlu = ` -> ${tekSatir(`${kirp(plani.yeniOzet, 160)} | Bileşenler: ${secilenler.join(', ')}`)}`;
+  const zorunlu = ` -> ${tekSatir(kirp(plani.yeniOzet, 160) + ' | Bileşenler: ' + secilenler.join(', '))}`;
   let onek = tekSatir(
     `Crypto Hub Indexer/Node Change — ${tenant.key} (${tenant.appLabel} · ${tenant.envLabel}) — ${lok} — ${g.baslik} [${g.id}]`,
   );
@@ -852,7 +846,7 @@ function cryptoNodeMetadata(raw, ctx, ozet, sablonVarsayilan, anahtarlar = {}) {
   const metaGorunum = {
     ...(sablonVarsayilan && typeof sablonVarsayilan === 'object' ? sablonVarsayilan : {}),
     ...sabit,
-    ...(sabit.email ? {} : { email: (ctx && ctx.email) || '' }),
+    ...(sabit.email ? {} : { email: (ctx?.email) || '' }),
     oc_environment: ozet.ortam,
     [ck]: ozet.cluster,
     [ik]: ozet.hedefler,
@@ -949,7 +943,7 @@ async function indeksVarMi(db, simdi = Date.now()) {
     const r = await db.query(
       `SELECT 1 AS v FROM sys.indexes WHERE name = 'UX_chnc_acik' AND is_unique = 1 AND has_filter = 1 AND object_id = OBJECT_ID('crypto_hub_node_changes')`,
     );
-    ok = !!(r && r.rows && r.rows.length);
+    ok = !!(r?.rows?.length);
   } catch (e) {
     console.warn('[CryptoHub] node talep indeksi okunamadi:', e.message);
     ok = false;
@@ -970,7 +964,7 @@ async function ocoKolonOku(db, simdi = Date.now()) {
     const r = await db.query(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA IN ('dbo', SCHEMA_NAME()) AND ((TABLE_NAME = 'crypto_hub_node_changes' AND COLUMN_NAME IN ('oco_no', 'oco_pencere_bas', 'oco_pencere_son')) OR (TABLE_NAME = 'smart_tickets' AND COLUMN_NAME = 'approved_at'))`,
     );
-    const ok = new Set(((r && r.rows) || []).map((x) => x.COLUMN_NAME)).size === 4;
+    const ok = new Set(((r?.rows) || []).map((x) => x.COLUMN_NAME)).size === 4;
     _ocoKolon = { at: simdi, ok };
     return ok;
   } catch (e) {
@@ -1003,7 +997,7 @@ const KAPALI_DURUMLAR = [
   'HATA',
 ];
 
-const tarih = (x) => (x == null ? null : x instanceof Date ? x.toISOString() : String(x));
+const tarih = (x) => { if (x == null) return null; if (x instanceof Date) return x.toISOString(); return String(x); };
 const zamanMs = (x) => (x instanceof Date ? x.getTime() : Date.parse(String(x || '')));
 
 function talepOzeti(r) {
@@ -1068,7 +1062,7 @@ async function talepKapat(db, id, sonuc, denetim = null) {
           durum: sonuc.durum,
           kod: sonuc.kod || null,
           awx: denetim.awx || null,
-          satirlar: sonuc.json && sonuc.json.ozet ? sonuc.json.ozet : null,
+          satirlar: sonuc.json?.ozet ? sonuc.json.ozet : null,
           yol: denetim.yol || 'tarama',
         }),
       });
@@ -1084,7 +1078,7 @@ function sonucOzeti(p, awxDurum) {
   const sinir = (x) => (Array.isArray(x) ? x.slice(0, 200) : []);
   return {
     awx: awxDurum || null,
-    sum: p ? p.sum : null,
+    sum: (p?.sum ?? null),
     degisiklikler: p ? sinir(p.degisiklikler) : [],
     rollout: p ? sinir(p.rollout) : [],
     verify: p ? sinir(p.verify) : [],
@@ -1120,13 +1114,13 @@ function isSonucu(row, statusInfo) {
   let p = null;
   try {
     const { extractStatsKey } = require('../opsx/index.cjs');
-    const stats = extractStatsKey(statusInfo && statusInfo.artifacts, 'crypto_hub_ops_result');
-    p = parseNodeLines(stats && stats.lines);
+    const stats = extractStatsKey(statusInfo?.artifacts, 'crypto_hub_ops_result');
+    p = parseNodeLines(stats?.lines);
   } catch {
     p = null;
   }
-  const json = sonucOzeti(p, statusInfo && statusInfo.status);
-  const s = p && p.sum;
+  const json = sonucOzeti(p, statusInfo?.status);
+  const s = p?.sum;
   // Basari YALNIZ bu talebin satiriyla (talep no + plan_sha BIREBIR) sayilir. Betik girdiyi
   // okuyamazsa plan_sha / talep yerine '-' basar: o durumda olumsuz sonuc yine kabul edilir.
   const olumsuz = s && s.sonuc !== 'ok' && s.sonuc !== 'geri_alindi';
@@ -1146,7 +1140,7 @@ async function biletiBul(db, talepId) {
     `SELECT TOP 1 id, external_ticket_id FROM smart_tickets WHERE pending_launch_json LIKE $1 ORDER BY id DESC`,
     [`%"crypto_hub_node_talep":${Number(talepId)}[,}]%`],
   );
-  return r && r.rows && r.rows[0] ? r.rows[0] : null;
+  return r?.rows?.[0] ? r.rows[0] : null;
 }
 
 /**
@@ -1221,11 +1215,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
     60000;
   const sinirAsildi =
     yasDk >
-    (dogrudan
-      ? DOGRUDAN_TAKILDI_DK
-      : Number.isFinite(pencereSinirDk)
-        ? Math.max(N.TAKILDI_DK, pencereSinirDk)
-        : N.TAKILDI_DK);
+    (() => { if (dogrudan) return DOGRUDAN_TAKILDI_DK; if (Number.isFinite(pencereSinirDk)) return Math.max(N.TAKILDI_DK, pencereSinirDk); return N.TAKILDI_DK; })();
   // Kolon bu okumada gelmediyse pencere bilinmiyor: sema okunamamis olabilir. "Kolon yok" kesinlesmeden
   // karar verilmez; gecici bir hata onayli talebi pencereden gunler once kapatirdi. Sonraki tur bakar.
   const pencereBilinmiyor =
@@ -1311,7 +1301,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
     // AWX kalici hata (is silinmis / sunucu kaldirilmis): sinir asildiysa TAKILDI.
     return takildi ? takildiKapat('awx_okunamadi', null) : 'calisiyor';
   }
-  if (!st || !TERMINAL.includes(st.status)) return 'calisiyor';
+  if (!TERMINAL.includes(st?.status)) return 'calisiyor';
   const s = isSonucu(row, st);
   await talepKapat(db, row.id, s, { ...denetim, awx: st.status });
   return 'kapandi';
@@ -1324,7 +1314,7 @@ async function nodeSonuclariniTara() {
     `SELECT ${await sutunlar(db)} FROM crypto_hub_node_changes WHERE kapandi_at IS NULL`,
   );
   let n = 0;
-  for (const row of (r && r.rows) || []) {
+  for (const row of (r?.rows) || []) {
     try {
       if ((await satiriIlerlet(db, row, 'tarama')) === 'kapandi') n += 1;
     } catch (e) {
@@ -1339,7 +1329,7 @@ async function nodeSonuclariniTara() {
 function okumaKarari({ tenant, gorunen, nodeGorunen }) {
   if (!tenant) return hata(400, 'node_girdi', METIN.girdi('bilinmeyen kiracı'));
   if (tenant.app !== 'metaco') return hata(400, 'node_girdi', METIN.girdi('kiracı Metaco değil'));
-  if (!((gorunen && gorunen.has('metaco')) || nodeGorunen)) {
+  if (!((gorunen?.has('metaco')) || nodeGorunen)) {
     return hata(403, 'node_okuma_yetki_yok', METIN.okumaYetkiYok);
   }
   if (!N.nodeAcikMi(tenant)) return hata(403, 'node_kapali', METIN.kapali);
@@ -1377,7 +1367,7 @@ function initCryptoHubNode(router, deps) {
     const reg = require('../ansible/playbook-registry.cjs');
     const row = await reg.getByKey(OPS_KEY).catch(() => null);
     const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-    const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+    const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
     return { templateId, serverId };
   }
 
@@ -1387,12 +1377,12 @@ function initCryptoHubNode(router, deps) {
     const bitti = TERMINAL.includes(st.status);
     if (!bitti) return { status: st.status, bitti };
     const is = OKUMA_ISLERI.get(tenant.key);
-    if (is && Number(is.jobId) === Number(jobId) && Number(is.serverId) === Number(serverId)) {
+    if (Number(is?.jobId) === Number(jobId) && Number(is.serverId) === Number(serverId)) {
       OKUMA_ISLERI.delete(tenant.key);
     }
     const { extractStatsKey } = require('../opsx/index.cjs');
     const stats = extractStatsKey(st.artifacts, 'crypto_hub_ops_result');
-    const p = parseNodeLines(stats && stats.lines);
+    const p = parseNodeLines(stats?.lines);
     if (!p) return { status: st.status, bitti, okuma: null };
     if (p.tenantKey && p.tenantKey !== tenant.key) {
       throw Object.assign(new Error('İş çıktısı kayıtlı ortamla uyuşmuyor.'), { status: 403 });
@@ -1427,7 +1417,7 @@ function initCryptoHubNode(router, deps) {
     ]);
     const bekleyenler = new Map();
     const onaylilar = new Set();
-    for (const r of (acik && acik.rows) || []) {
+    for (const r of (acik?.rows) || []) {
       const pencereBekliyor = await pencereBekleyenMi(r);
       if (pencereBekliyor) onaylilar.add(Number(r.id));
       bekleyenler.set(r.kilit, {
@@ -1439,7 +1429,7 @@ function initCryptoHubNode(router, deps) {
         pencereBekliyor,
       });
     }
-    const gecmis = ((son && son.rows) || [])
+    const gecmis = ((son?.rows) || [])
       .map(talepOzeti)
       .map((x) => ({ ...x, pencereBekliyor: onaylilar.has(x.talepId) }));
     return { bekleyenler, gecmis };
@@ -1479,8 +1469,8 @@ function initCryptoHubNode(router, deps) {
     const opts = { nodeAcik, talepYetkisi: talepYetkisi && !gecmisOkunamadi, bekleyenler };
     const gruplar = okuma
       ? gruplariKur(okuma.parsed, opts)
-      : taramadanGruplar(tenant, veri && veri.components, opts);
-    const scanDate = veri && veri.scannedAt ? tarih(veri.scannedAt) : null;
+      : taramadanGruplar(tenant, veri?.components, opts);
+    const scanDate = veri?.scannedAt ? tarih(veri.scannedAt) : null;
     const esKey = N.esKiraciOf(tenant.key);
     // Yalniz ekran metinleri icin: gercek karar talep aninda yeniden okunur.
     let smartMod = 'onay';
@@ -1516,11 +1506,11 @@ function initCryptoHubNode(router, deps) {
         eski: !scanDate || simdi - zamanMs(scanDate) > 24 * 60 * 60 * 1000,
       },
       okuma: {
-        durum: suren ? 'suruyor' : !okuma ? 'yok' : simdi - okuma.at <= N.OKUMA_TAZE_MS ? 'taze' : 'bayat',
+        durum: (() => { if (suren) return 'suruyor'; if (!okuma) return 'yok'; if (simdi - okuma.at <= N.OKUMA_TAZE_MS) return 'taze'; return 'bayat'; })(),
         at: okuma ? new Date(okuma.at).toISOString() : null,
-        username: okuma ? okuma.username : null,
-        jobId: suren ? suren.jobId : okuma ? okuma.jobId : null,
-        awxServerId: suren ? suren.serverId : okuma ? okuma.serverId : null,
+        username: (okuma?.username ?? null),
+        jobId: (() => { if (suren) return suren.jobId; if (okuma) return okuma.jobId; return null; })(),
+        awxServerId: (() => { if (suren) return suren.serverId; if (okuma) return okuma.serverId; return null; })(),
         eksik: okuma ? okuma.eksik : false,
         araclar: okuma
           ? { stdinEnv: okuma.parsed.araclar.stdinEnv, patchFile: okuma.parsed.araclar.patchFile }
@@ -1529,20 +1519,20 @@ function initCryptoHubNode(router, deps) {
       gruplar,
       gecmis: gecmis.map((x) => ({
         ...x,
-        grupBaslik: (okuma && okuma.parsed.gruplar.get(x.grup) && okuma.parsed.gruplar.get(x.grup).baslik) || null,
+        grupBaslik: (okuma?.parsed?.gruplar?.get(x.grup)?.baslik) || null,
       })),
       gecmisOkunamadi,
     });
   });
 
   router.post('/node-read', async (req, res) => {
-    const tenant = tenantOf(req.body && req.body.tenant);
+    const tenant = tenantOf(req.body?.tenant);
     const g = await kapi(req, res, tenant);
     if (!g) return;
     const ben = kullanici(req);
     const simdi = Date.now();
     const suren = OKUMA_ISLERI.get(tenant.key);
-    if (suren && simdi - suren.at <= OKUMA_IS_MS) {
+    if (simdi - suren?.at <= OKUMA_IS_MS) {
       return res.json({ ok: true, jobId: suren.jobId, awxServerId: suren.serverId, devam: true });
     }
     try {
@@ -1567,7 +1557,7 @@ function initCryptoHubNode(router, deps) {
         '',
         ben,
       );
-      const jobId = result && result.jobId != null ? Number(result.jobId) : null;
+      const jobId = result?.jobId != null ? Number(result.jobId) : null;
       if (jobId != null) {
         OKUMA_ISLERI.set(tenant.key, { serverId, jobId, at: simdi, username: ben.username || null });
         RES.isKaydet(serverId, jobId, {
@@ -1585,7 +1575,7 @@ function initCryptoHubNode(router, deps) {
             templateId,
             `Crypto Hub: node_env_get @ ${tenant.key}`,
             jobId,
-            (result && result.status) || 'pending',
+            (result?.status) || 'pending',
             JSON.stringify(await gecmisIcin(serverId, templateId, ev)),
           ],
         );
@@ -1655,7 +1645,7 @@ function initCryptoHubNode(router, deps) {
     const sut = await sutunlar(db);
     try {
       const r = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
-      row = r && r.rows && r.rows[0];
+      row = r?.rows?.[0];
     } catch (e) {
       return res.status(503).json({ ok: false, message: 'Talep okunamadı, lütfen tekrar deneyin.' });
     }
@@ -1667,7 +1657,7 @@ function initCryptoHubNode(router, deps) {
       try {
         if (await satiriIlerlet(db, row, 'ekran')) {
           const r2 = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
-          if (r2 && r2.rows && r2.rows[0]) row = r2.rows[0];
+          if (r2?.rows?.[0]) row = r2.rows[0];
         }
       } catch (e) {
         console.warn('[CryptoHub] node talebi ilerletilemedi:', id, e.message);
@@ -1683,7 +1673,7 @@ function initCryptoHubNode(router, deps) {
           smart = {
             status: t.status,
             statusName: t.smartStateName || null,
-            sonTarih: deadline ? deadline.toISOString() : null,
+            sonTarih: (deadline?.toISOString() ?? null),
             hata: t.errorMessage || null,
             approvedAt: tarih(t.approvedAt),
             pencereBekliyor: onayliBekliyor(t),
@@ -1718,7 +1708,7 @@ function initCryptoHubNode(router, deps) {
     }
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return cevap(res, hata(400, 'node_girdi', METIN.girdi('talep no')));
-    const gerekce = tekSatir(req.body && req.body.gerekce);
+    const gerekce = tekSatir(req.body?.gerekce);
     if (gerekce.length < N.GEREKCE_EN_AZ || gerekce.length > N.GEREKCE_EN_COK) {
       return cevap(res, hata(400, 'node_gerekce', METIN.gerekce));
     }
@@ -1727,7 +1717,7 @@ function initCryptoHubNode(router, deps) {
     const sut = await sutunlar(db);
     try {
       const r = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
-      row = r && r.rows && r.rows[0];
+      row = r?.rows?.[0];
     } catch {
       return res.status(503).json({ ok: false, message: 'Talep okunamadı, lütfen tekrar deneyin.' });
     }
@@ -1804,7 +1794,7 @@ function initCryptoHubNode(router, deps) {
     let son = row;
     try {
       const r2 = await db.query(`SELECT ${sut} FROM crypto_hub_node_changes WHERE id = $1`, [id]);
-      if (r2 && r2.rows && r2.rows[0]) son = r2.rows[0];
+      if (r2?.rows?.[0]) son = r2.rows[0];
     } catch {
       /* eski satir doner */
     }
@@ -1830,7 +1820,7 @@ async function pencereBekleyenMi(r) {
  * TASINMAZ: Ankara degerini kullanici sihirbazda yeniden yazar; bag esTalepId ile kurulur.
  */
 function esOnerisi(tenant, grupId, talepId) {
-  const esKey = tenant ? N.esKiraciOf(tenant.key) : null;
+  const esKey = (N.esKiraciOf(tenant?.key) ?? null);
   const es = esKey ? tenantOf(esKey) : null;
   if (!es) return null;
   return {
@@ -1905,7 +1895,7 @@ function ocoDenetim(oco) {
  * @returns {Promise<{status:number, body:object}>}
  */
 async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
-  const body = (req && req.body) || {};
+  const body = (req?.body) || {};
   const red = (h) => ({
     status: h.status,
     body: {
@@ -1983,7 +1973,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
   const reg = require('../ansible/playbook-registry.cjs');
   const regRow = await reg.getByKey(OPS_KEY).catch(() => null);
   const templateId = regRow && regRow.enabled !== false ? reg.getEffectiveTemplateId(regRow) : null;
-  const serverId = regRow && regRow.awxServerId != null ? Number(regRow.awxServerId) : 0;
+  const serverId = regRow?.awxServerId != null ? Number(regRow.awxServerId) : 0;
   if (!templateId) return { status: 501, body: { ok: false, message: METIN.templateYok } };
   // 8
   const db = require('../db/index.cjs');
@@ -2006,8 +1996,8 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     } catch {
       return { status: 503, body: { ok: false, message: 'İstanbul talebi okunamadı, lütfen tekrar deneyin.' } };
     }
-    const row = r && r.rows && r.rows[0];
-    if (!row || row.tenant_key !== kaynak || row.grup !== grupId) {
+    const row = r?.rows?.[0];
+    if (row?.tenant_key !== kaynak || row?.grup !== grupId) {
       return red(hata(400, 'node_girdi', METIN.girdi('İstanbul talebi bu grupla eşleşmiyor')));
     }
     esTalep = { id: esId, externalTicketId: row.external_ticket_id || null };
@@ -2022,7 +2012,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
           `SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = $1 AND grup = $2 AND created_at >= DATEADD(day, -${Number(N.ES_TALEP_GUN)}, SYSUTCDATETIME()) AND durum NOT IN ('REDDEDILDI', 'HATA', 'IPTAL') AND id NOT IN (SELECT es_talep_id FROM crypto_hub_node_changes WHERE es_talep_id IS NOT NULL AND tenant_key = $3) ORDER BY created_at DESC, id DESC`,
           [kaynak, grupId, tenant.key],
         );
-        const x = r && r.rows && r.rows[0];
+        const x = r?.rows?.[0];
         if (x) esTalep = { id: Number(x.id), externalTicketId: x.external_ticket_id || null };
       } catch (e) {
         console.warn('[CryptoHub] Istanbul talebi baglanamadi (Ankara talebi bagsiz acilir):', e.message);
@@ -2040,7 +2030,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
     try {
       const cfgMod = require('../opsx/config.cjs');
       const cfg = await cfgMod.getConfig();
-      anahtarlar = { ...anahtarlar, ...((cfg && cfg.openshift) || {}) };
+      anahtarlar = { ...anahtarlar, ...((cfg?.openshift) || {}) };
       // OpsX ile ayni sabit ek degiskenler (opsx/index.cjs parseExtraVarLines(cfg.extraVars)).
       anahtarlar.staticVars =
         typeof cfgMod.parseExtraVarLines === 'function' ? cfgMod.parseExtraVarLines(anahtarlar.extraVars).vars : {};
@@ -2110,23 +2100,23 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         kod.planSha,
         gerekce,
         username,
-        esTalep ? esTalep.id : null,
+        (esTalep?.id ?? null),
         yeniSifreli,
         dogrudan ? ONAYSIZ_KOD : null,
         ...(oco ? [oco.ocoNumber, oco.windowStart, oco.windowEnd] : []),
       ],
     );
-    talepId = Number(r && r.rows && r.rows[0] && r.rows[0].id);
+    talepId = Number(r?.rows?.[0] && r.rows[0].id);
     if (!Number.isInteger(talepId) || talepId <= 0) throw new Error('talep numarası dönmedi');
   } catch (e) {
-    if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message))) {
+    if (/2627|2601|duplicate|UNIQUE/i.test(String((e?.number ?? '')) + String(e?.message))) {
       let no = N.talepNoMetni(null, null);
       try {
         const a = await db.query(
           `SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = $1 AND kilit = $2 AND kapandi_at IS NULL`,
           [tenant.key, plani.grup.kilit],
         );
-        const x = a && a.rows && a.rows[0];
+        const x = a?.rows?.[0];
         if (x) no = N.talepNoMetni(x.external_ticket_id, Number(x.id));
       } catch {
         /* numara okunamadi - mesaj 'Portal #?' ile doner */
@@ -2245,10 +2235,10 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         },
       };
     }
-    await kapat('HATA', 'SMART_HATA', bosSonuc({ hata: kirp(e && e.message, 500) }));
+    await kapat('HATA', 'SMART_HATA', bosSonuc({ hata: kirp(e?.message, 500) }));
     return {
       status: 502,
-      body: { ok: false, blocked: 'crypto_node_smart_hata', message: METIN.smartHata(e && e.message) },
+      body: { ok: false, blocked: 'crypto_node_smart_hata', message: METIN.smartHata(e?.message) },
     };
   }
   // 14
@@ -2384,7 +2374,7 @@ async function dogrudanBaslat({
     await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoDegisti }));
     return ret(409, 'crypto_node_smart_degisti', METIN.ocoDegisti);
   }
-  if (oco && Date.now() > oco.sonBaslamaMs) {
+  if (Date.now() > oco?.sonBaslamaMs) {
     await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoSonPay(oco.sonBaslamaText) }));
     return ret(409, 'node_oco_son_baslama', METIN.ocoSonPay(oco.sonBaslamaText));
   }
@@ -2393,7 +2383,7 @@ async function dogrudanBaslat({
   try {
     hazir = await launchOncesiDegerEkle({ id: null, pendingLaunch: { extraVars: tamExtraVars } }, { db });
   } catch (e) {
-    const m = kirp(e && e.message, 500);
+    const m = kirp(e?.message, 500);
     await kapat('HATA', 'DOGRUDAN_HAZIRLIK', bosSonuc({ hata: m }));
     return ret(409, 'crypto_node_dogrudan_hazirlik', METIN.dogrudanHazirlik(m));
   }
@@ -2460,14 +2450,14 @@ async function dogrudanBaslat({
     });
   } catch (e) {
     // Token ucu hatasi sunucu yanitindan parca tasir: kullaniciya ve sonuc_json'a sabit metin.
-    const m = e && e.postOncesi === true ? METIN.awxOturum : gizliTemizle(e && e.message, hazir.gizliler);
+    const m = e?.postOncesi === true ? METIN.awxOturum : gizliTemizle(e?.message, hazir.gizliler);
     if (kesinRet(e)) {
       await kapat('HATA', 'DOGRUDAN_HATA', bosSonuc({ hata: m }));
       return ret(409, 'crypto_node_dogrudan_hata', METIN.dogrudanHata(m));
     }
     // Yutma korumasi iptal edemedi: is KOSUYOR ve numarasi belli. Baglanmazsa sonucu hic okunmaz,
     // kilit 90 dk sonra is surerken acilirdi.
-    const kosan = e && e.code === 'awx_prompt_on_launch_disabled' ? Number(e.jobId) : 0;
+    const kosan = e?.code === 'awx_prompt_on_launch_disabled' ? Number(e.jobId) : 0;
     if (Number.isInteger(kosan) && kosan > 0) {
       await jobBagla(kosan);
       return {
@@ -2486,7 +2476,7 @@ async function dogrudanBaslat({
     console.warn('[CryptoHub] node isi belirsiz:', talepId, m);
     return ret(424, 'crypto_node_dogrudan_belirsiz', METIN.dogrudanBelirsiz(talepId));
   }
-  const jobId = sonuc && sonuc.jobId != null ? Number(sonuc.jobId) : null;
+  const jobId = sonuc?.jobId != null ? Number(sonuc.jobId) : null;
   if (!Number.isInteger(jobId) || jobId <= 0) {
     return ret(424, 'crypto_node_dogrudan_belirsiz', METIN.dogrudanBelirsiz(talepId));
   }
@@ -2512,7 +2502,7 @@ async function dogrudanBaslat({
         externalTicketId: null,
         onaysiz: true,
         awxJobId: jobId,
-        esTalepId: esTalep ? esTalep.id : null,
+        esTalepId: (esTalep?.id ?? null),
         ...ocoDenetim(oco),
       }),
     });
@@ -2547,8 +2537,8 @@ const B64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
  * @returns {Promise<{extraVars: object, gizliler: string[]}>}
  */
 async function launchOncesiDegerEkle(ticket, { db } = {}) {
-  const pl = (ticket && ticket.pendingLaunch) || {};
-  const ev = (pl && pl.extraVars) || {};
+  const pl = (ticket?.pendingLaunch) || {};
+  const ev = (pl?.extraVars) || {};
   const talepId = Number(ev.crypto_hub_node_talep);
   const gecerliNo = Number.isInteger(talepId) && talepId > 0;
   const red = (neden) => {
@@ -2563,7 +2553,7 @@ async function launchOncesiDegerEkle(ticket, { db } = {}) {
       `SELECT id, tenant_key, grup, plan_sha, smart_ticket_id, kapandi_at, yeni_deger_secret FROM crypto_hub_node_changes WHERE id = $1`,
       [talepId],
     );
-    row = r && r.rows && r.rows[0];
+    row = r?.rows?.[0];
   } catch {
     red('kayit okunamadi');
   }

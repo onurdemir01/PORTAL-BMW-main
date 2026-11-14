@@ -115,12 +115,21 @@ test('RC5 reboot sonrasi: "once" goruntusu Portal\'dan rc_once ile gider; gorunt
   } finally { d.geri(); }
 });
 
-test('RC6 once job bitince sonuc kayda yazilir: goruntu alinan varsa once_hazir, hic yoksa once_hata', async () => {
-  const sahte = (yol, exp) => {
-    const p = require.resolve(yol); const eski = require.cache[p];
-    const m = new Module(p, null); m.loaded = true; m.exports = exp; require.cache[p] = m;
-    return () => { if (eski) require.cache[p] = eski; else delete require.cache[p]; };
+function sahteModulEnjekte(yol, exp) {
+  const p = require.resolve(yol);
+  const eski = require.cache[p];
+  const m = new Module(p, null);
+  m.loaded = true;
+  m.exports = exp;
+  require.cache[p] = m;
+  return () => {
+    if (eski) require.cache[p] = eski;
+    else delete require.cache[p];
   };
+}
+
+test('RC6 once job bitince sonuc kayda yazilir: goruntu alinan varsa once_hazir, hic yoksa once_hata', async () => {
+  const sahte = sahteModulEnjekte;
   for (const [sunucular, beklenen] of [
     [{ A: { goruntu_ok: true, goruntu: ['BOOT|b||'] } }, 'once_hazir'],
     [{ A: { goruntu_ok: false, goruntu: [] } }, 'once_hata'],
@@ -145,11 +154,7 @@ test('RC6 once job bitince sonuc kayda yazilir: goruntu alinan varsa once_hazir,
 
 test('RC7 is SURERKEN AWX anlik durumu ve faz baslangici doner; okunamazsa "okunamadi" (bitti SAYILMAZ)', async () => {
   // Kullanici (2026-10-09): "'Suruyor' kelimesi isin gercekten calisip calismadigini anlamaya yetmiyor"
-  const sahte = (yol, exp) => {
-    const p = require.resolve(yol); const eski = require.cache[p];
-    const m = new Module(p, null); m.loaded = true; m.exports = exp; require.cache[p] = m;
-    return () => { if (eski) require.cache[p] = eski; else delete require.cache[p]; };
-  };
+  const sahte = sahteModulEnjekte;
   for (const [runner, beklenen] of [
     [{ getJobStatusOnServer: async () => ({ status: 'running' }) }, 'running'],
     [{ getJobStatusOnServer: async () => { throw new Error('AWX yok'); } }, 'okunamadi'],

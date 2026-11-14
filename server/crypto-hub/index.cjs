@@ -648,7 +648,7 @@ async function loadTenant(tenant) {
     ready: r.ready == null ? null : Number(r.ready),
     image: r.image || '',
     version: r.version || '',
-    state: r.want === 0 ? 'stopped' : Number(r.ready) >= Number(r.want) ? 'running' : 'degraded',
+    state: (() => { if (r.want === 0) return 'stopped'; if (Number(r.ready) >= Number(r.want)) return 'running'; return 'degraded'; })(),
   }));
 
   const releases = rel.map((r) => ({
@@ -1167,7 +1167,7 @@ function initCryptoHub(app) {
         kayit,
         asim: d.asimKullanildi,
         dogrulama: d,
-        canliKaynagi: canliSunucu ? 'sunucu' : params.live ? 'istemci' : 'olculemedi',
+        canliKaynagi: (() => { if (canliSunucu) return 'sunucu'; if (params.live) return 'istemci'; return 'olculemedi'; })(),
       };
     }
     if (params.action === 'resources_apply') {
@@ -1497,11 +1497,7 @@ function initCryptoHub(app) {
               degisiklikler: params.changes || (kaynak.plan && kaynak.plan.degisiklikler),
               asim: params.action === 'resources_plan' ? kaynak.asim : kaynak.plan.asim,
               gerekce:
-                params.action === 'resources_plan'
-                  ? kaynak.asim
-                    ? params.reason
-                    : undefined
-                  : kaynak.plan.gerekce || undefined,
+                (() => { if (params.action === 'resources_plan') { if (kaynak.asim) return params.reason; return undefined; } return kaynak.plan.gerekce || undefined; })(),
               riskliOnay: params.riskyAck || undefined,
               bekleyenOnay: params.acceptPending || undefined,
             }),

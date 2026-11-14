@@ -84,11 +84,7 @@ async function resolveByKey(keyName) {
   // Satirda awx_server_id yoksa OPSX_AWX_SERVER_ID, o da yoksa 0 (ilk/varsayilan sunucu).
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
   const serverId =
-    row.awxServerId != null
-      ? Number(row.awxServerId)
-      : Number.isInteger(envServer) && envServer >= 0
-        ? envServer
-        : 0;
+    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
   return { templateId: templateId || null, serverId, keyName };
 }
 
@@ -185,7 +181,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
     : null;
 
   let jbossMajors;
-  if (claimed && claimed.length) {
+  if (claimed?.length) {
     // ANTI-TOCTOU: istemcinin iddia ettigi her major, secilen sunuculardan EN AZ
     // BIRINDE gercekten kurulu olmali. Aksi halde kullanici envanterde hic olmayan
     // bir majore islem yaptirabilirdi.
@@ -193,7 +189,7 @@ function deriveJbossVersion(appHosts, requestedHosts, claimedMajors) {
     if (bogus.length) {
       throw Object.assign(
         new Error(
-          `Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => `JBoss ${m}`).join(', ')}`,
+          `Seçilen sunucularda bulunmayan JBoss sürümü: ${bogus.map((m) => ("JBoss " + m)).join(', ')}`,
         ),
         { status: 400 },
       );
@@ -949,7 +945,7 @@ function initOpsX(app) {
         ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
       };
 
-      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
+      logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? (" jboss_version=" + jbossVersion) : ''}`;
     } else {
       // ── Openshift ───────────────────────────────────────────────────────────
       // /api/opsx/run SADECE restart/rollout icin — threaddump/heapdump artik enabled:true
@@ -2167,7 +2163,7 @@ function initOpsX(app) {
           },
         });
         if (!kapi.proceed) {
-          if (kapi.body && kapi.body.pendingApproval) {
+          if (kapi.body?.pendingApproval) {
             kapi.body.staleWarning =
               'Pod adları istek anındaki haliyle donduruldu. Onay gecikirse bu podlar ' +
               'yenilenmiş olabilir; iş o podları bulamazsa atlar. Onay sonrası iş çıktısını ' +

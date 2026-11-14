@@ -63,8 +63,7 @@ function extractLogxResultFromArtifacts(rawArtifacts) {
 
   // Common AWX set_stats shape: artifacts.data.logx_result
   if (
-    artifacts.data &&
-    artifacts.data.logx_result &&
+    artifacts.data?.logx_result &&
     typeof artifacts.data.logx_result === 'object'
   ) {
     return artifacts.data.logx_result;
@@ -72,9 +71,7 @@ function extractLogxResultFromArtifacts(rawArtifacts) {
 
   // Some controller versions may nest stats payload under ansible_stats.data
   if (
-    artifacts.ansible_stats &&
-    artifacts.ansible_stats.data &&
-    artifacts.ansible_stats.data.logx_result &&
+    artifacts.ansible_stats?.data?.logx_result &&
     typeof artifacts.ansible_stats.data.logx_result === 'object'
   ) {
     return artifacts.ansible_stats.data.logx_result;
@@ -101,8 +98,7 @@ function summarizeArtifactKeys(rawArtifacts) {
   const dataKeys =
     artifacts.data && typeof artifacts.data === 'object' ? Object.keys(artifacts.data) : [];
   const statsDataKeys =
-    artifacts.ansible_stats &&
-    artifacts.ansible_stats.data &&
+    artifacts.ansible_stats?.data &&
     typeof artifacts.ansible_stats.data === 'object'
       ? Object.keys(artifacts.ansible_stats.data)
       : [];
@@ -165,13 +161,7 @@ function assertAlternatifAyniIs(tpl, alternative, configuredServerId, templateId
   const beklenen = path.basename(String(expectedPlaybookPath || '')).trim().toLowerCase();
   const gercek = tpl ? path.basename(String(tpl.playbook || '')).trim().toLowerCase() : '';
   if (beklenen && gercek && beklenen === gercek) return;
-  const neden = !beklenen
-    ? `"${keyName}" kaydında playbook yolu boş`
-    : !tpl
-      ? `AWX ${alternative} üzerindeki template okunamadı`
-      : !gercek
-        ? `AWX ${alternative} üzerindeki template'in playbook alanı boş`
-        : `AWX ${alternative} üzerindeki template başka bir playbook koşuyor ('${gercek}', beklenen '${beklenen}')`;
+  const neden = (() => { if (!beklenen) return `"${keyName}" kaydında playbook yolu boş`; if (!tpl) return `AWX ${alternative} üzerindeki template okunamadı`; if (!gercek) return `AWX ${alternative} üzerindeki template'in playbook alanı boş`; return `AWX ${alternative} üzerindeki template başka bir playbook koşuyor ('${gercek}', beklenen '${beklenen}')`; })();
   throw Object.assign(
     new Error(
       `Template #${templateId} kayıtlı AWX ${configuredServerId} üzerinde çalıştırılamadı; AWX ${alternative} üzerindeki ` +
@@ -206,7 +196,7 @@ const LAUNCH_COOLDOWN_MS = 60_000;
 // icinde mi? `finishedAt` yoksa pencere UYGULANMAZ — zamani bilinmeyen bir isi
 // gerekcesiz engellemek, kullaniciyi calisan bir yoldan mahrum birakirdi.
 function isWithinCooldown(lastTerminalJob, now = Date.now()) {
-  if (!lastTerminalJob || !lastTerminalJob.finishedAt) return false;
+  if (!lastTerminalJob?.finishedAt) return false;
   const finished = new Date(lastTerminalJob.finishedAt).getTime();
   if (!Number.isFinite(finished)) return false;
   const age = now - finished;
@@ -272,7 +262,7 @@ async function launchJob(requestId, jobType, extraVars, limit = '') {
   if (isWithinCooldown(lastTerminal)) return lastTerminal;
 
   const registryRow = await playbookRegistry.getByKey(keyName);
-  if (!registryRow || !registryRow.enabled) {
+  if (!registryRow?.enabled) {
     throw Object.assign(
       new Error(
         `"${keyName}" playbook kaydı bulunamadı veya devre dışı — admin panelinden yapılandırılmalı.`,

@@ -117,7 +117,7 @@ test('BT3 DB`deki ozet cereze konamaz — gecerli anahtar bilinse bile', async (
   // Kontrol: imzalama gercekten express-session'in kabul ettigi bicimde (eski tur kimlikle calisir).
   const eskiSid = 'A'.repeat(32);
   await new Promise((res) => store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'eski' } }, res));
-  const { body: b3 } = await ben(url, `connect.sid=${encodeURIComponent(`s:${bel.imzala(eskiSid, secret)}`)}`);
+  const { body: b3 } = await ben(url, `connect.sid=${encodeURIComponent(("s:" + bel.imzala(eskiSid, secret)))}`);
   assert.deepEqual(b3.user, { username: 'eski' }, 'imzalama yardimcisi express-session ile uyumsuz — BT3 hicbir sey olcmuyor');
 });
 
@@ -125,7 +125,7 @@ test('BT4 eski bicimli oturumlar ayni anahtarla surer; anahtar degisirse (eskisi
   const store = new session.MemoryStore();
   const eskiSid = 'Zx9'.padEnd(32, 'q');
   await new Promise((res) => store.set(eskiSid, { cookie: { path: '/' }, user: { username: 'onceki' } }, res));
-  const c = `connect.sid=${encodeURIComponent(`s:${bel.imzala(eskiSid, 'degismeyen')}`)}`;
+  const c = `connect.sid=${encodeURIComponent(("s:" + bel.imzala(eskiSid, 'degismeyen')))}`;
   const ayni = uygulama(store, 'degismeyen');
   const { r, body } = await ben(ayni, c);
   assert.deepEqual(body.user, { username: 'onceki' }, 'gecis mevcut oturumu dusurdu');

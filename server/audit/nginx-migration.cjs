@@ -407,7 +407,7 @@ function spaTrafikDurumu(idx, key, defs) {
   const kh = idx.anahtarHata.get(key) || new Map();
   const tanim = new Map(); // HOST -> Set(VHOST)
   for (const d of defs || []) {
-    const h = H(d && d.host);
+    const h = H(d?.host);
     if (!h) continue;
     if (!tanim.has(h)) tanim.set(h, new Set());
     tanim.get(h).add(H(d.vhost) || '*');
@@ -475,7 +475,7 @@ function spaTrafikDurumu(idx, key, defs) {
     else if (pencere < PENCERE_TAM_SA) kismi.push('pencere');
   }
   const o = {
-    state: req7 > 0 ? 'active' : kismi.length ? 'unknown' : 'idle',
+    state: (() => { if (req7 > 0) return 'active'; if (kismi.length) return 'unknown'; return 'idle'; })(),
     req24,
     req7,
     hc24,
@@ -515,7 +515,7 @@ function spaTrafikBirlesik(list, tanimSunucu) {
   girdi.forEach((t, i) => {
     if (t) return;
     olculmeyen += 1;
-    olculmeyenSunucu += Math.max(1, Number(tanimSunucu && tanimSunucu[i]) || 0);
+    olculmeyenSunucu += Math.max(1, Number(tanimSunucu?.[i]) || 0);
   });
   if (xs.length === 1 && !olculmeyen) return xs[0];
   const olculen = xs.filter((t) => t.hosts > 0);
@@ -532,11 +532,7 @@ function spaTrafikBirlesik(list, tanimSunucu) {
       firstSeen = t.firstSeen || null;
     }
   }
-  const state = xs.some((t) => t.state === 'active')
-    ? 'active'
-    : olculmeyen || xs.some((t) => t.state === 'unknown')
-      ? 'unknown'
-      : 'idle';
+  const state = (() => { if (xs.some((t) => t.state === 'active')) return 'active'; if (olculmeyen || xs.some((t) => t.state === 'unknown')) return 'unknown'; return 'idle'; })();
   const o = {
     state,
     req24: top('req24'),
@@ -580,7 +576,7 @@ function auditVhost(locConf, srvConf) {
 /** nginx_config_scan.sh ile ayni: "GLOMO-PROD" -> "GLOMO"; kalibi tutmazsa dosya adinin kendisi. */
 function servisOfVhost(vhost) {
   const m = /^(.*)-([A-Za-z0-9]*)$/.exec(String(vhost || ''));
-  return m && m[1] ? m[1] : String(vhost || '');
+  return m?.[1] ? m[1] : String(vhost || '');
 }
 /** Location yazimi tek bicim: iki tarayici bosluklari farkli birakabilir ("=  /x" / "= /x"). */
 const locNorm = (x) => String(x || '').replace(/\s+/g, ' ').trim();
@@ -706,7 +702,7 @@ function buildMigration({
       if (!oldSet.has(host)) continue;
       // proxy_pass'te yazan ad (FQDN ya da ciplak upstream adi) - ekranda "yazim" olarak gorunur
       const written = hostOf(r.upstream_name);
-      const form = written ? (written.includes('.') ? 'fqdn' : 'upstream') : 'none';
+      const form = (() => { if (written) { if (written.includes('.')) return 'fqdn'; return 'upstream'; } return 'none'; })();
       // Gercek arka uc: upstream server satiri > proxy_ssl_name > yazilan ad
       let target = upsServer.get(host + '|' + written) || '';
       let targetSource = 'upstream-server';
@@ -754,7 +750,7 @@ function buildMigration({
         row.paths.get(pk).defs.push({ host, vhost: r.vhost });
         tumEkle(svc, loc, host, r.vhost, {
           target, written,
-          sinif: map === apps ? 'spa' : map === unresolved ? 'cozulemedi' : 'spa-disi',
+          sinif: (() => { if (map === apps) return 'spa'; if (map === unresolved) return 'cozulemedi'; return 'spa-disi'; })(),
           namespace: extra.namespace, application: extra.application,
         });
       };
@@ -813,11 +809,9 @@ function buildMigration({
         const ad = !(res.namespace && res.application) && isSpaLabel(target) ? deriveFromName(target) : null;
         Object.assign(bilgi, {
           target, written,
-          sinif: res.namespace && res.application
-            ? (isSpaApp(res.application) ? 'spa' : 'spa-disi')
-            : isSpaLabel(target) ? 'cozulemedi' : 'spa-disi',
-          namespace: res.namespace || (ad && ad.namespace) || null,
-          application: res.application || (ad && ad.application) || null,
+          sinif: (() => { if (res.namespace && res.application) { if (isSpaApp(res.application)) return 'spa'; return 'spa-disi'; } if (isSpaLabel(target)) return 'cozulemedi'; return 'spa-disi'; })(),
+          namespace: res.namespace || (ad?.namespace) || null,
+          application: res.application || (ad?.application) || null,
         });
       } else {
         bilgi.sinif = DAVRANIS_SINIFI[a.behaviour] || 'diger';
@@ -834,13 +828,7 @@ function buildMigration({
       const on = newHosts.filter((h) => have.has(h));
       const known = newHosts.filter((h) => newLocHosts.has(h) || scannedHosts.has(h));
       const status =
-        known.length === 0
-          ? 'not-scanned'
-          : on.length === newHosts.length
-            ? 'defined'
-            : on.length === 0
-              ? 'none'
-              : 'partial';
+        (() => { if (known.length === 0) return 'not-scanned'; if (on.length === newHosts.length) return 'defined'; if (on.length === 0) return 'none'; return 'partial'; })();
       return { newHosts: on, newStatus: status };
     };
     const finish = (row) => ({
@@ -886,13 +874,7 @@ function buildMigration({
       // eklendi, ilk tarama gelene kadar) hazirligi ENGELLEMEZ — aksi halde tum liste "kismi"ye
       // dusup ozet %0 gosteriyordu; taranmayanlar grupta ayrica (newHostsScanned) gorunur.
       const status =
-        scanned === 0
-          ? 'not-scanned'
-          : readyHosts === scanned
-            ? 'ready'
-            : readyHosts === 0
-              ? 'missing'
-              : 'partial';
+        (() => { if (scanned === 0) return 'not-scanned'; if (readyHosts === scanned) return 'ready'; if (readyHosts === 0) return 'missing'; return 'partial'; })();
       return { ...finish(row), perHost, readyHosts, scannedHosts: scanned, status };
     });
     const order = { missing: 0, partial: 1, 'not-scanned': 2, ready: 3 };
@@ -1099,7 +1081,7 @@ async function loadMigration({ query, sql, hasProxyColumns }) {
       : Promise.resolve([]),
     // YUK OLCUMU (2026-09-27): trafik ESKI sunuculardan okunur - is su an oradan akiyor.
     // Tablo yoksa ekran eskisi gibi calisir, gosterge gorunmez (uydurma yapmaz).
-    trfSema && trfSema.trf
+    trfSema?.trf
       ? query(spaTrafikSorgusu(!!trfSema.fs, ` AND host IN (${oldIn.sqlText})`), oldIn.params)
           .then((r) => r.recordset || [])
           .catch(() => [])

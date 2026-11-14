@@ -278,13 +278,7 @@ function yerlesim(raw, dosya, fonksiyon, etiket) {
       for (const a of n.attributes.properties) {
         if (ts.isJsxAttribute(a)) {
           const ini = a.initializer;
-          ozellik[a.name.getText(sf)] = !ini
-            ? true
-            : ts.isJsxExpression(ini)
-              ? ini.expression
-                ? dugumMetni(sf, ini.expression)
-                : ''
-              : dugumMetni(sf, ini);
+          ozellik[a.name.getText(sf)] = (() => { if (!ini) return true; if (ts.isJsxExpression(ini)) { if (ini.expression) return dugumMetni(sf, ini.expression); return ''; } return dugumMetni(sf, ini); })();
         } else ozellik['...'] = dugumMetni(sf, a);
       }
       const kosullar = [];
@@ -1178,7 +1172,7 @@ test('D3 EK-2 Bulgular sekmesi bandi: /findings staleFleet tasir ve sekme bandi 
   assert.ok(ft.includes('serverHubApi.findings(fresh)'), 'Bulgular sekmesi veriyi /findings ten almiyor');
   const kF = okunanAnahtar(PAGE_RAW, PAGE_PATH, 'FindingsTab', 'BayatFiloBandi', 'sf', 'data');
   assert.ok(
-    Object.prototype.hasOwnProperty.call(f, kF),
+    Object.hasOwn(f, kF),
     `/findings yaniti '${kF}' tasimiyor (anahtarlar: ${Object.keys(f).join(',')}) - Bulgular sekmesindeki EK-2 bandi hic gorunmez`,
   );
   assert.deepEqual(f[kF], o.staleFleet, '/findings ve /overview bayatligi farkli bildiriyor');

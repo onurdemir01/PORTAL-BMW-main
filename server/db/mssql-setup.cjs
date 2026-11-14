@@ -3444,13 +3444,11 @@ async function seedPortalElements(pool) {
         .query(`SELECT 1 FROM portal_elements WHERE element_key = @k`);
       if (exists.recordset.length) continue;
       const restricted = Array.isArray(el.roles);
-      const defaultVisible = restricted
-        ? 0
-        : el.default_visible != null
-          ? el.default_visible
-            ? 1
-            : 0
-          : 1;
+      let elVis = 1;
+      if (el.default_visible != null) {
+        elVis = el.default_visible ? 1 : 0;
+      }
+      const defaultVisible = restricted ? 0 : elVis;
       await pool
         .request()
         .input('k', el.element_key)
@@ -4172,8 +4170,8 @@ async function silinenVarsayilanAnahtarlari(pool) {
     return new Set((r.recordset || []).map((x) => x.key_name));
   } catch (err) {
     // 208 = tablo yok (oturum dilinden bagimsiz); metin yalniz yedek.
-    const no = err && (err.number ?? (err.originalError && err.originalError.info && err.originalError.info.number));
-    if (no === 208 || /Invalid object name/i.test(String(err && err.message))) return new Set();
+    const no = err?.number ?? err?.originalError?.info?.number;
+    if (no === 208 || /Invalid object name/i.test(String(err?.message))) return new Set();
     console.warn('[DB] Silinen varsayilan playbook kayitlari okunamadi; seed bu acilista atlandi:', err.message);
     return null;
   }
@@ -4857,7 +4855,7 @@ async function setupTables() {
       UPDATE user_role_overrides SET username = LOWER(username)
        WHERE username <> LOWER(username)
          AND NOT EXISTS (SELECT 1 FROM user_role_overrides b WHERE b.username = LOWER(user_role_overrides.username))`);
-    if (upd.rowsAffected && upd.rowsAffected[0]) {
+    if (upd.rowsAffected?.[0]) {
       console.log(
         `[DB] user_role_overrides: ${upd.rowsAffected[0]} kullanici adi kucuk harfe cevrildi.`,
       );
@@ -4865,7 +4863,7 @@ async function setupTables() {
     const vis = await pool.request().query(`
       UPDATE portal_element_visibility SET principal_id = LOWER(principal_id)
        WHERE principal_type <> 'role' AND principal_id <> LOWER(principal_id)`);
-    if (vis.rowsAffected && vis.rowsAffected[0]) {
+    if (vis.rowsAffected?.[0]) {
       console.log(
         `[DB] portal_element_visibility: ${vis.rowsAffected[0]} principal kucuk harfe cevrildi.`,
       );

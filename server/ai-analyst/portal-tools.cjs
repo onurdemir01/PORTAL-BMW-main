@@ -114,8 +114,8 @@ async function formatAnalyzeResult({ hostname, logFilePath, rawLines, context, u
   const analysis = await aiAnalyzer.analyze(rawLines, context || `Host: ${hostname}, dosya: ${logFilePath}`, username);
   return `[${hostname}:${logFilePath}] LogX AI analizi (${analysis.provider}/${analysis.model}, ` +
     `${analysis.maskedCount} PII maskelendi):\nÖZET: ${analysis.summary}\nSEVİYE: ${analysis.severity}\n` +
-    (analysis.possibleCauses?.length ? `OLASI NEDENLER:\n${analysis.possibleCauses.map((c) => `- ${c}`).join('\n')}\n` : '') +
-    (analysis.recommendations?.length ? `ÖNERİLER:\n${analysis.recommendations.map((r) => `- ${r}`).join('\n')}` : '');
+    (analysis.possibleCauses?.length ? `OLASI NEDENLER:\n${analysis.possibleCauses.map((c) => ("- " + c)).join('\n')}\n` : '') +
+    (analysis.recommendations?.length ? `ÖNERİLER:\n${analysis.recommendations.map((r) => ("- " + r)).join('\n')}` : '');
 }
 
 function formatRawTemplateResult(label, output) {
@@ -429,11 +429,7 @@ function makeJobResultTool() {
       }
       const output = await runnerMod.getJobOutput(id);
       const rawLines = String(output.output || '').split('\n');
-      const text = pending.mode === 'analyze'
-        ? await formatAnalyzeResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, rawLines, context: pending.context, username: pending.username })
-        : pending.mode === 'raw-template'
-          ? formatRawTemplateResult(pending.label, output.output)
-          : formatFetchResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, grepPattern: pending.grepPattern, safeLines: pending.safeLines, rawLines });
+      const text = (await (async () => { if (pending.mode === 'analyze') return await formatAnalyzeResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, rawLines, context: pending.context, username: pending.username }); if (pending.mode === 'raw-template') return formatRawTemplateResult(pending.label, output.output); return formatFetchResult({ hostname: pending.hostname, logFilePath: pending.logFilePath, grepPattern: pending.grepPattern, safeLines: pending.safeLines, rawLines }); })());
       return { text };
     },
   };

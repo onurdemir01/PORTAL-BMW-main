@@ -60,6 +60,12 @@ const EMPTY = { items: [], cached: false, fetchedAt: null, stale: false, source:
 
 // Donus: { items[], sources: { [ad]: 'inventory'|'discovery' }, cached, fetchedAt, stale }
 // `sources` onyuzun her satirin nereden geldigini rozetleyebilmesi icindir.
+function addClusterToMap(clusterMap, name, cluster) {
+  if (!cluster) return;
+  if (!clusterMap[name]) clusterMap[name] = [];
+  if (!clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
+}
+
 async function getNamespaces({ env, tenant, clusterNames }) {
   const clusters = [
     ...new Set((clusterNames || []).map((c) => String(c || '').trim()).filter(Boolean)),
@@ -83,11 +89,7 @@ async function getNamespaces({ env, tenant, clusterNames }) {
   // Ad → hangi cluster'larda VAR. Coklu cluster seciminde onyuz bunu rozetle gosterir
   // ("bu namespace yalnizca gbocpprod2'de") ve cluster suzgeci bunun uzerinden calisir.
   const clusterMap = {};
-  const addCluster = (name, cluster) => {
-    if (!cluster) return;
-    if (!clusterMap[name]) clusterMap[name] = [];
-    if (!clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
-  };
+  const addCluster = (name, cluster) => addClusterToMap(clusterMap, name, cluster);
 
   // ONCE envanter: ayni ad iki kaynakta da varsa envanter kazanir (birincil kaynak).
   for (const ns of inv.items || []) {
@@ -152,11 +154,7 @@ async function getApps({ env, tenant, clusterNames, namespace }) {
   // Ad → cluster listesi (bkz. getNamespaces'teki ayni harita). Pod adlari cluster'a gore
   // FARKLI oldugu icin bu bilgi uygulama ekraninda ozellikle degerli.
   const clusterMap = {};
-  const addCluster = (name, cluster) => {
-    if (!cluster) return;
-    if (!clusterMap[name]) clusterMap[name] = [];
-    if (!clusterMap[name].includes(cluster)) clusterMap[name].push(cluster);
-  };
+  const addCluster = (name, cluster) => addClusterToMap(clusterMap, name, cluster);
 
   for (const it of inv.items || []) {
     if (!it?.name) continue;

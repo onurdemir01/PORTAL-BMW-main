@@ -164,7 +164,7 @@ test('YK4 bayat kilit: bagli is terminalse devralinir; okunamazsa ya da surerse 
   assert.equal((await AL(db, keys, 'eski')).ok, true);
   await kl.bindLocks(db, keys, 'eski', { awxServerId: 1, awxJobId: 50 });
   const sorulan = [];
-  const surer = await AL(db, keys, 'yeni', { isJobTerminal: async (sid, jid) => (sorulan.push([sid, jid]), { terminal: false }) });
+  const surer = await AL(db, keys, 'yeni', { isJobTerminal: async (sid, jid) => { sorulan.push([sid, jid]); return { terminal: false }; } });
   assert.equal(surer.ok, false);
   assert.deepEqual(sorulan, [[1, 50]]);
   const okunamaz = await AL(db, keys, 'yeni', { isJobTerminal: async () => { throw new Error('AWX yok'); } });
@@ -312,7 +312,7 @@ test('YK11 casLock: suresi dolmus kilit yalniz ise bagli degilse devralinir', as
   await kl.bindLocks(db, keys, 'eski', { awxServerId: 3, awxJobId: 900, bagTuru: 'kosu' });
   db.simdi += 80 * 60000; // TTL doldu, is AWX'te HALA suruyor (uzun pending)
   const sorulan = [];
-  const surer = async (sid, jid) => (sorulan.push([sid, jid]), { terminal: false, status: 'running' });
+  const surer = async (sid, jid) => { sorulan.push([sid, jid]); return { terminal: false, status: 'running' }; };
   let r = await AL(db, keys, 'yeni', { isJobTerminal: surer });
   assert.equal(r.ok, false, 'suresi dolan ama suren ise bagli kilit AWX\'e sorulmadan devralindi');
   assert.deepEqual(sorulan, [[3, 900]]);

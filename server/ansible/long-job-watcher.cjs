@@ -159,7 +159,7 @@ async function tick(deps = {}) {
           runner: deps.runner,
         });
       } catch (e) {
-        console.error('[LongJobWatcher] tarama-bitmiyor alarmi verilemedi:', e && e.message);
+        console.error('[LongJobWatcher] tarama-bitmiyor alarmi verilemedi:', e?.message);
       }
     }
     return { skipped: 'in-flight' };
@@ -170,7 +170,7 @@ async function tick(deps = {}) {
     await tickInner(deps);
     _tickInfo.error = null;
   } catch (e) {
-    _tickInfo.error = e && e.message ? e.message : String(e);
+    _tickInfo.error = e?.message ? e.message : String(e);
     throw e;
   } finally {
     _inFlight = false;
@@ -232,7 +232,7 @@ async function tickInner(deps) {
     // Eskiden burada recordSkippedTick + return vardi: tarama hatasi YALNIZ durum ekranina
     // dusuyordu. Simdi her sunucu "taranamadi" sayilip runCycle'a verilir: dogrulama
     // kayitlari korunur (complete:false) ve tarama sagligi sayaci ilerler (Teams + denetim).
-    const m = e && e.message ? e.message : String(e);
+    const m = e?.message ? e.message : String(e);
     console.error('[LongJobWatcher] AWX taramasi basarisiz:', m);
     scan = failedScanOf(runner, `AWX taraması başarısız: ${m}`);
   }
@@ -276,7 +276,7 @@ async function tickInner(deps) {
   // Artik calismayan job'lari Set'ten temizle (sinirsiz buyumesin) — YALNIZ job listesi
   // tam taranan sunucularda; tarama hatasinda silmek ayni isi yeniden bildirirdi.
   const complete = new Set(
-    (scan.servers || []).filter((s) => s.complete && s.complete.job).map((s) => Number(s.serverId)),
+    (scan.servers || []).filter((s) => s.complete?.job).map((s) => Number(s.serverId)),
   );
   for (const key of _notified) {
     const sid = Number(key.split(':')[0]);

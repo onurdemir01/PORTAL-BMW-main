@@ -88,7 +88,7 @@ async function ingestDump(parsed) {
     const db = require('../db/index.cjs');
     // 1) blob'lar (yalniz icerigi dokumde olanlar; 512 KB ustu icerik yok -> yalniz sha izlenir)
     let newBlobs = 0;
-    for (const [p, f] of parsed.files) {
+    for (const f of parsed.files.values()) {
       if (f.sha256 && putBlob(f.sha256, f.content)) newBlobs++;
     }
     // 2) onceki durum

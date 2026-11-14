@@ -69,18 +69,16 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     const rs = resByHost.get(h.host) || new Map();
     for (const item of ITEMS) {
       const r = rs.get(item.id);
-      const exNote = excHostAll.has(h.host) ? excHostAll.get(h.host)
-        : (excHost.has(`${h.host}|${item.id}`) ? excHost.get(`${h.host}|${item.id}`) : (excGlobal.has(item.id) ? excGlobal.get(item.id) : null));
-      const exScope = excHostAll.has(h.host) ? 'hostAll'
-        : (excHost.has(`${h.host}|${item.id}`) ? 'host' : (excGlobal.has(item.id) ? 'global' : null));
+      const exNote = (() => { if (excHostAll.has(h.host)) return excHostAll.get(h.host); if (excHost.has(`${h.host}|${item.id}`)) return excHost.get(`${h.host}|${item.id}`); if (excGlobal.has(item.id)) return excGlobal.get(item.id); return null; })();
+      const exScope = (() => { if (excHostAll.has(h.host)) return 'hostAll'; if (excHost.has(`${h.host}|${item.id}`)) return 'host'; if (excGlobal.has(item.id)) return 'global'; return null; })();
       const o = ovr.get(item.id) || null;
-      const observed = r ? (r.observed == null ? '' : String(r.observed)) : '';
+      const observed = (() => { if (r) { if (r.observed == null) return ''; return String(r.observed); } return ''; })();
       let status; let source;
       // ISTISNA HER SEYDEN ONCE (2026-09-22): madde istisnaya alindiysa tarama verisi olmasa da
       // "istisna" gorunur; boylece madde detayinda filo genelinde tek bir durum okunur.
       if (exScope) {
         status = 'EXCEPTED';
-        source = exScope === 'hostAll' ? 'istisna (sunucu komple)' : exScope === 'host' ? 'istisna (bu sunucu)' : 'istisna (tüm filo)';
+        source = (() => { if (exScope === 'hostAll') return 'istisna (sunucu komple)'; if (exScope === 'host') return 'istisna (bu sunucu)'; return 'istisna (tüm filo)'; })();
       }
       else if (!r) { status = 'NODATA'; source = 'tarama yok'; }
       else if (o) { status = o.values.some((v) => sameVal(observed, v)) ? 'PASS' : 'FAIL'; source = o.values.length > 1 ? `kurum referansı (${o.values.length} kabul edilen değer)` : 'kurum referansı'; }
@@ -101,7 +99,7 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
         id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored,
         rationale: item.rationale || null, check: item.check || null,
         status, source, observed, detail: r ? r.detail || '' : '', measurable,
-        expected: o ? expectedText(item.id) : item.expects, expectedSource: o ? 'kurum' : (item.expects ? 'CIS' : null),
+        expected: o ? expectedText(item.id) : item.expects, expectedSource: (() => { if (o) return 'kurum'; if (item.expects) return 'CIS'; return null; })(),
         exceptionNote: exNote, counts, fix: item.fix,
       });
     }
@@ -137,8 +135,8 @@ function scoreAll({ results = [], hosts = [], exceptions = [], overrides = [] } 
     return { id: item.id, title: item.title, section: item.section, level: item.level, scored: item.scored, pass, fail, excepted: exc, other, fix: item.fix, observedValues,
       rationale: item.rationale || null, check: item.check || null,
       hosts: cells.map((c, i) => ({ host: list[i].host, status: c.status, observed: c.observed, detail: c.detail, exceptionNote: c.exceptionNote })),
-      expected: expectedText(item.id) ?? item.expects, expectedSource: ovr.has(item.id) ? 'kurum' : (item.expects ? 'CIS' : null),
-      expectedValues: ovr.has(item.id) ? ovr.get(item.id).values : (item.expects ? [item.expects] : []),
+      expected: expectedText(item.id) ?? item.expects, expectedSource: (() => { if (ovr.has(item.id)) return 'kurum'; if (item.expects) return 'CIS'; return null; })(),
+      expectedValues: (() => { if (ovr.has(item.id)) return ovr.get(item.id).values; if (item.expects) return [item.expects]; return []; })(),
       exception: excGlobal.has(item.id) ? { scope: 'global', note: excGlobal.get(item.id) } : null };
   }).sort((a, b) => cmpItemId(a.id, b.id));
 

@@ -215,7 +215,7 @@ export function NginxAudit() {
       if (onlyProblem && h.issues === 0) return false;
       if (issue === 'tfail' && h.status === 'ok') return false;
       if (issue === 'compliance' && !(h.compliance != null && h.compliance < 90)) return false;
-      if (issue && issue !== 'tfail' && issue !== 'compliance' && !(Number(h[issue]) > 0)) return false;
+      if (issue && issue !== 'tfail' && issue !== 'compliance' && (Number(h[issue]) || 0) <= 0) return false;
       return true;
     });
     // Kullanicinin actigi siralama, suzgecin ortuk siralamasini EZER.

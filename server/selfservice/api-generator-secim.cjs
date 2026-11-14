@@ -28,7 +28,7 @@ const ISLEMLER = ['rate_limit_change', 'read'];
 const KAYNAK = 'nginx-api-gateway-confs';
 
 function apiGeneratorMi(detail) {
-  return PLAYBOOK_RE.test(T(detail && detail.playbook));
+  return PLAYBOOK_RE.test(T(detail?.playbook));
 }
 
 // Kaynak parametreleri: ortam zorunlu; site (production'da Pendik / Ankara) listeyi daraltir. Kanal

@@ -305,13 +305,13 @@ function kuyrukSorgusu(D, sql, params = []) {
     case 'kosuKilidi':
       return { rows: (D.kosular || []).filter((k) => k.id === Number(params[0])).map((k) => ({ kilit_id: k.kilit_id ?? null, durum: k.durum })) };
     case 'kilitTutuluyor': {
-      const t = (r) => (typeof r.locked_until === 'number' ? r.locked_until : r.locked_until == null ? null : new Date(r.locked_until).getTime());
+      const t = (r) => { if (typeof r.locked_until === 'number') return r.locked_until; if (r.locked_until == null) return null; return new Date(r.locked_until).getTime(); };
       const n = [...(D.kilitler ? D.kilitler.values() : [])].filter((r) => r.lock_id === params[0] && r.held && t(r) != null && t(r) >= D.simdi - 12 * 3600000
         && (t(r) >= D.simdi || (var_(q, 'OR awx_job_id IS NOT NULL') && r.awx_job_id != null))).length;
       return { rows: [{ n }], rowCount: 1 };
     }
     case 'hedefKilitli': {
-      const t = (r) => (typeof r.locked_until === 'number' ? r.locked_until : r.locked_until == null ? null : new Date(r.locked_until).getTime());
+      const t = (r) => { if (typeof r.locked_until === 'number') return r.locked_until; if (r.locked_until == null) return null; return new Date(r.locked_until).getTime(); };
       const r = D.kilitler ? D.kilitler.get(params[0]) : null;
       const n = r && r.held && t(r) != null && t(r) >= D.simdi - 12 * 3600000 && (t(r) >= D.simdi || r.awx_job_id != null) ? 1 : 0;
       return { rows: [{ n }], rowCount: 1 };

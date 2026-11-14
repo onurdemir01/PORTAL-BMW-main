@@ -20,12 +20,12 @@ function yukle(sablonlar) {
   require.cache[runnerPath] = new Module(runnerPath, null);
   require.cache[runnerPath].exports = {
     getServers: () => [{ id: 1 }],
-    listTemplatesForServer: async () => { if (sablonlar instanceof Error) throw sablonlar; return sablonlar; },
+    listTemplatesForServer: async () => { if (sablonlar instanceof Error) { throw sablonlar; } return sablonlar; },
   };
   require.cache[runnerPath].loaded = true;
   delete require.cache[prePath];
   const m = require('../template-preflight.cjs');
-  return { m, restore: () => { if (saved) require.cache[runnerPath] = saved; else delete require.cache[runnerPath]; delete require.cache[prePath]; } };
+  return { m, restore: () => { if (saved) { require.cache[runnerPath] = saved; } else { delete require.cache[runnerPath]; } delete require.cache[prePath]; } };
 }
 const T = (id, playbook, name = `tpl${id}`) => ({ id, name, playbook, ask_variables: true });
 

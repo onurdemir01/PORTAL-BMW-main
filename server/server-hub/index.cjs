@@ -160,7 +160,7 @@ async function loadLatest() {
     const cols = secilecekKolonlar(table, kol, SH_KOLONLAR[table]);
     if (!cols.length) return Promise.resolve([]);
     return query(
-      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek].join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => ("t.[" + c + "]")), ...ek].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -293,7 +293,7 @@ async function loadJvmAgir(host, opts) {
   const agir = JVM_AGIR_KOLONLAR.filter((c) => var_.has(c));
   if (!agir.length) return new Map();
   const rows = await query(
-    `SELECT t.[gen], t.[jvm], ${agir.map((c) => `t.[${c}]`).join(', ')} FROM dbo.Server_Hub_Jvms t
+    `SELECT t.[gen], t.[jvm], ${agir.map((c) => ("t.[" + c + "]")).join(', ')} FROM dbo.Server_Hub_Jvms t
      JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts
             WHERE host = @h OR host LIKE @h + '.%' GROUP BY host) m
        ON m.host = t.host AND m.d = t.scan_date

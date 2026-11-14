@@ -302,8 +302,7 @@ const SOURCES = {
           const hosts = kurulu.get(a);
           const cls = kesifte.get(a);
           const parca = [
-            hosts ? `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`
-              : sunucu ? 'Sunucuda kurulu değil' : 'Sunucu taraması okunamadı',
+            (() => { if (hosts) return `Sunucuda kurulu: ${[...hosts].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')}`; if (sunucu) return 'Sunucuda kurulu değil'; return 'Sunucu taraması okunamadı'; })(),
             ocpde.has(a) ? "OpenShift'te var" : 'OpenShift envanterinde yok',
           ];
           if (cls) parca.push(`SPA Keşfi: konteynerde nginx (${[...cls].sort((a, b) => Number(a > b) - Number(a < b)).join(', ')})`);
@@ -453,7 +452,8 @@ const SOURCES = {
             .filter(Boolean),
         ),
       ];
-      return svcs.sort((a, b) => Number(a > b) - Number(a < b)).map((s) => ({ value: s, label: s }));
+      svcs.sort((a, b) => Number(a > b) - Number(a < b));
+      return svcs.map((s) => ({ value: s, label: s }));
     },
   },
 
@@ -726,7 +726,7 @@ function kokYolu(locs, zonlar) {
   const say = new Map();
   for (const z of zonlar || []) {
     const m = /^(.*)_(?:rate|location)_limit$/.exec(String(z || '').trim());
-    if (!m || !m[1].includes('/')) continue;
+    if (!m?.[1].includes('/')) continue;
     const govde = m[1].startsWith('/') ? m[1] : `/${m[1]}`;
     say.set(govde, (say.get(govde) || 0) + 1);
   }
@@ -979,12 +979,12 @@ async function loadChoiceDetails(sourceName, params, value) {
  */
 function paramsFromValues(choicesSource, values) {
   const out = {};
-  const map = (choicesSource && choicesSource.params) || {};
+  const map = (choicesSource?.params) || {};
   for (const [param, fieldName] of Object.entries(map)) {
-    out[param] = values ? values[String(fieldName)] : undefined;
+    out[param] = values?.[String(fieldName)];
   }
   // Sabit secenekler (admin ekraninda girilen; or. tenant=ark) parametrelere eklenir.
-  for (const [k, v] of Object.entries((choicesSource && choicesSource.options) || {})) {
+  for (const [k, v] of Object.entries((choicesSource?.options) || {})) {
     if (String(v ?? '').trim()) out[k] = String(v).trim();
   }
   return out;
@@ -995,7 +995,7 @@ function paramsFromValues(choicesSource, values) {
  * cevap vermezse {status:503} (fail-closed). Bos choicesSource -> dogrulama yok.
  */
 async function assertValueInSource(choicesSource, value, values, label) {
-  if (!choicesSource || !choicesSource.source) return;
+  if (!choicesSource?.source) return;
   let choices;
   try {
     choices = await loadChoices(choicesSource.source, paramsFromValues(choicesSource, values));

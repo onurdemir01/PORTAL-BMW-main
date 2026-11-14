@@ -610,7 +610,11 @@ function AdimTablosu({ adimlar, aktif, birim, serbest, nginxsiz = false, nproc =
   const [acik, setAcik] = useState<Set<string>>(new Set());
   const sirali = adimSirala(adimlar);
   const cokSeri = new Set(adimlar.map(seriAdi)).size > 1;
-  const degistir = (k: string) => setAcik((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const degistir = (k: string) => setAcik((s) => {
+    const n = new Set(s);
+    if (n.has(k)) { n.delete(k); } else { n.add(k); }
+    return n;
+  });
   // Yuk makinesi CPU kolonu yalniz olculmus adim varsa (eski kosuda tablo BIREBIR eskisi).
   const yukCpu = yukCpuKolonuVar(adimlar);
   const bellek = bellekKolonuVar(adimlar);

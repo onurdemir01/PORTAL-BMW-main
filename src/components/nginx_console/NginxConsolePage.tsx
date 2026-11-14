@@ -124,7 +124,7 @@ function lineDiff(a: string, b: string): { added: number; removed: number; hunks
   out.forEach((l, k) => { if (l[0] !== ' ') for (let c = k - 2; c <= k + 2; c++) keep.add(c); });
   const hunks: string[] = [];
   let last = -2;
-  out.forEach((l, k) => { if (!keep.has(k)) return; if (k !== last + 1 && hunks.length) hunks.push('…'); hunks.push(l); last = k; });
+  out.forEach((l, k) => { if (!keep.has(k)) { return; } if (k !== last + 1 && hunks.length) { hunks.push('…'); } hunks.push(l); last = k; });
   return { added, removed, hunks };
 }
 
@@ -180,7 +180,7 @@ export default function NginxConsolePage() {
       }
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
   };
-  const go = (t: Tab, host?: string) => { if (host) setFocusHost(host.toUpperCase()); setTab(t); };
+  const go = (t: Tab, host?: string) => { if (host) { setFocusHost(host.toUpperCase()); } setTab(t); };
 
   // SEKME BAZLI GORUNURLUK (2026-09-23, kullanici: "istedigim kullanicilar yalniz istedigim
   // sekmeleri gorsun"). Varsayilan ACIK; Admin > Nginx Hub Erisimi bir kisiyi/grubu secilen
@@ -216,8 +216,9 @@ export default function NginxConsolePage() {
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
     const times = hosts.map((h) => h.seenAt || h.dumpedAt).filter(Boolean) as string[];
-    if (!times.length) return null;
-    return fmtDateTime(times.sort((a, b) => a.localeCompare(b)).pop() as string);
+    if (!times.length) { return null; }
+    times.sort((a, b) => a.localeCompare(b));
+    return fmtDateTime(times.pop() as string);
   }, [hosts]);
 
   return (
@@ -411,11 +412,11 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
   };
 
   const doPush = async (force = false) => {
-    if (!cur) return;
+    if (!cur) { return; }
     const p = mode === 'create' ? newPath.trim() : file?.path || '';
     const targets = [...pubHosts];
     const expectedSha: Record<string, string> = {};
-    for (const h of targets) { const sha = h === cur && file ? file.sha256 : pubShas[h]?.sha256; if (sha) expectedSha[h] = sha; }
+    for (const h of targets) { const sha = h === cur && file ? file.sha256 : pubShas[h]?.sha256; if (sha) { expectedSha[h] = sha; } }
     setBusy(true);
     try {
       const r = await nginxConsoleApi.push({ hosts: targets, path: p, mode, content: draft, expectedSha, force });

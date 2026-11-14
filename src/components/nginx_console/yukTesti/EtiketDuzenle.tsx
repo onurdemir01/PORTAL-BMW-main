@@ -58,7 +58,7 @@ export default function EtiketDuzenle({ kosuId, etiket, onKaydedildi }: { kosuId
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1" onClick={durdur} onKeyDown={durdur} role="group" aria-label={`Koşu ${kosuId} etiketi`}>
       <input autoFocus value={deger} onChange={(e) => setDeger(e.target.value)} aria-label="Yeni etiket" maxLength={ETIKET_MAX + 10} className={`${GIRDI_TABAN} h-7 w-56`} style={girdiStili(!!yerel || !!hata)}
-        onKeyDown={(e) => { if (e.key === 'Enter') void kaydet(); if (e.key === 'Escape') setAcik(false); }} placeholder="ör. A3 brotli 4" />
+        onKeyDown={(e) => { if (e.key === 'Enter') { void kaydet(); } if (e.key === 'Escape') { setAcik(false); } }} placeholder="ör. A3 brotli 4" />
       <button type="button" className={TBL_BTN} style={smBtn(true)} disabled={!!yerel || mesgul} onClick={() => void kaydet()}>Kaydet</button>
       <button type="button" className={TBL_BTN} style={smBtn()} onClick={() => setAcik(false)}>İptal</button>
       {(yerel || hata) && <span role="alert" className="w-full text-[11px]" style={{ color: 'var(--status-danger-text)' }}>{yerel || hata}</span>}

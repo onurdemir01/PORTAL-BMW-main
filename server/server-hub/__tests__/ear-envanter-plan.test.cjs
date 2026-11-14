@@ -25,16 +25,13 @@ async function sunucu(fn) {
   ayar.onbellekSil();
   const asil = { kosuOlustur: poller.kosuOlustur, kapsamOnizleme: poller.kapsamOnizleme };
   const cagrilar = [];
-  poller.kosuOlustur = async (a) => (cagrilar.push(a), { id: 9, beklenen: 3, partiSayisi: 1 });
-  poller.kapsamOnizleme = async (kapsam, kip) => (
-    cagrilar.push({ onizleme: kapsam, kip }),
-    { sunucu: 3, parti: 1, ornek: [] }
-  );
+  poller.kosuOlustur = async (a) => { cagrilar.push(a); return { id: 9, beklenen: 3, partiSayisi: 1 }; };
+  poller.kapsamOnizleme = async (kapsam, kip) => { cagrilar.push({ onizleme: kapsam, kip }); return { sunucu: 3, parti: 1, ornek: [] }; };
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
   app.use(
-    (req, res, next) => ((req.session = { user: { username: 'ayse', role: 'Admin' } }), next()),
+    (req, res, next) => { req.session = { user: { username: 'ayse', role: 'Admin' } }; return next(); },
   );
   const router = express.Router();
   require('../ear-envanter.cjs').mount(router, { launch: async () => ({}), audit: () => {} });

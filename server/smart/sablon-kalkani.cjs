@@ -55,7 +55,7 @@ const RANGE_UST_SINIR = 10000;
 const KALKAN_ISARETI = Symbol.for('portal.smartSablonKalkani');
 
 function anahtar(val) {
-  return typeof val === 'symbol' ? val : String(val);
+  return typeof val === 'symbol' ? '' : String(val);
 }
 
 function guvensizMi(deger) {
@@ -133,7 +133,7 @@ function sinirliRange(asilRange) {
 }
 
 function ortamSertlestir(env) {
-  const kendi = (nesne, ad) => Object.prototype.hasOwnProperty.call(nesne, ad);
+  const kendi = (nesne, ad) => Object.hasOwn(nesne, ad);
   env.getFilter = function getFilter(name) {
     if (!kendi(this.filters, name) || !this.filters[name]) {
       throw new Error('filter not found: ' + name);

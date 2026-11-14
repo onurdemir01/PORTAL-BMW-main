@@ -98,9 +98,13 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
         m.set(md.alan, g);
       }
     }
-    return [...m.values()]
-      .map((g) => ({ ...g, kodlar: g.kodlar.sort((a, b) => SIRA[a.gecerli] - SIRA[b.gecerli] || ad(a.kod).localeCompare(ad(b.kod), 'tr')) }))
-      .sort((a, b) => a.alanAd.localeCompare(b.alanAd, 'tr'));
+    const sonuc = [...m.values()].map((g) => {
+      const kodlar = [...g.kodlar];
+      kodlar.sort((a, b) => SIRA[a.gecerli] - SIRA[b.gecerli] || ad(a.kod).localeCompare(ad(b.kod), 'tr'));
+      return { ...g, kodlar };
+    });
+    sonuc.sort((a, b) => a.alanAd.localeCompare(b.alanAd, 'tr'));
+    return sonuc;
   }, [veri, ara, yalnizListede, listede, ad]);
   const kodSayisi = gruplar.reduce((t, g) => t + g.kodlar.length, 0);
 

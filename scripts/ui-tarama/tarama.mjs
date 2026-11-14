@@ -26,7 +26,7 @@ import { sekme, DENETIM, sleep } from './lib.mjs';
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const arg = (ad, varsayilan = null) => {
   const i = process.argv.indexOf(ad);
-  return i < 0 ? varsayilan : process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true;
+  if (i < 0) return varsayilan; if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1]; return true;
 };
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5199);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9333);

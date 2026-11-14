@@ -300,7 +300,7 @@ async function notDurum(id, durum, { kim }) {
   await db()
     .query(GECMIS_SQL, [
       once.id,
-      durum === 'SIL' ? 'SIL' : durum === 'ARSIV' ? 'ARSIV' : 'GERI_AL',
+      (() => { if (durum === 'SIL') return 'SIL'; if (durum === 'ARSIV') return 'ARSIV'; return 'GERI_AL'; })(),
       JSON.stringify(once),
       kim,
     ])

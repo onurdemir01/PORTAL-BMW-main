@@ -125,7 +125,7 @@ function hedefAyristir(t) {
   const m6 = /^\[([0-9A-Fa-f:.]+)\](?::(\d+))?$/.exec(s);
   if (m6) return { host: m6[1].toLowerCase(), port: m6[2] ? Number(m6[2]) : null };
   const m = s.match(/^\[?([^\]:]+)\]?(?::(\d+))?$/);
-  return m ? { host: shortHost(m[1]), port: m[2] ? Number(m[2]) : null } : null;
+  if (m) return { host: shortHost(m[1]), port: m[2] ? Number(m[2]) : null }; return null;
 }
 
 /** "host:port,host2:port2" -> [{host, port}] */
@@ -178,15 +178,13 @@ function hedefListesi(raw) {
   const eksik = hepsi.some((p) => p.includes('~') && !dinamikMi(p));
   // gosterim: sira korunur (tarayici jetonu basa yazar); kesik parca yerine sonda '~'
   const gosterim =
-    eksik || dinamik
-      ? [
+    (() => { if (eksik || dinamik) return [
           ...hepsi
             .map((p) => p.trim())
             .filter((p) => p && (!p.includes('~') || dinamikMi(p)))
             .map((p) => (dinamikMi(p) ? DINAMIK_JETON : p)),
           ...(eksik ? ['~'] : []),
-        ].join(',')
-      : temiz;
+        ].join(','); return temiz; })();
   return { parcalar, eksik, dinamik, gosterim };
 }
 
@@ -520,7 +518,7 @@ function assess(data, opts = {}) {
     h.invProducts = invProductsByHost.get(U(h.host)) || [];
     h.env = envOf(h.host);
     h.envGroup =
-      h.env === 'PROD' ? 'Production' : h.env === 'BILINMIYOR' ? 'Bilinmiyor' : 'Non-Production';
+      (() => { if (h.env === 'PROD') return 'Production'; if (h.env === 'BILINMIYOR') return 'Bilinmiyor'; return 'Non-Production'; })();
     // JBOSS OLMAYAN SUNUCU (kullanici, 2026-09-24): "JBoss olmayan sunuculara bakmani istemiyorum".
     // Eskiden dbo.MWAppsInventory'deki her uygulama icin JVM satiri uretiliyordu; JBoss kurulu
     // OLMAYAN sunucularda bunlarin auto-start'i dogal olarak okunamiyor ve ekran "bilinmiyor"
@@ -537,13 +535,7 @@ function assess(data, opts = {}) {
     for (const a of apps) {
       const hit = h.jvms.find((j) => L(j.name) === L(a.app));
       const invRunning = a.status === 'running';
-      const invAuto = a.autoStarts.length
-        ? a.autoStarts.every((x) => x === 'true')
-          ? 'true'
-          : a.autoStarts.every((x) => x === 'false')
-            ? 'false'
-            : 'karisik'
-        : 'unknown';
+      const invAuto = (() => { if (a.autoStarts.length) { if (a.autoStarts.every((x) => x === 'true')) return 'true'; if (a.autoStarts.every((x) => x === 'false')) return 'false'; return 'karisik'; } return 'unknown'; })();
       if (hit) {
         hit.domain = a.domain || hit.domain || '';
         hit.tier = a.tier;
@@ -610,11 +602,7 @@ function assess(data, opts = {}) {
           mismatch: [],
           autoStartSource: 'envanter',
           autoStartReason:
-            invAuto === 'karisik'
-              ? 'envanter-celiskili'
-              : invAuto === 'unknown'
-                ? 'envanterde-yok'
-                : null,
+            (() => { if (invAuto === 'karisik') return 'envanter-celiskili'; if (invAuto === 'unknown') return 'envanterde-yok'; return null; })(),
         });
       }
     }
@@ -1088,15 +1076,7 @@ function assess(data, opts = {}) {
   };
   /** Bulgu metni parcasi: hangi web sunucusu/vhost, nereye. */
   const atfMetni = (x) =>
-    x.tur === 'EKSIK'
-      ? `${x.host}/${x.serverName || '?'} → hedef listesi kesik`
-      : x.tur === 'HEDEF' && x.neden === 'DINAMIK'
-        ? `${x.host}/${x.serverName || '?'} → dinamik proxy (hedef kaydı yok)`
-        : x.tur === 'HEDEF' && x.neden === 'CONF_OKUNAMADI'
-          ? `${x.host}/${x.serverName || '?'} → hedef bilinmiyor (vhost conf'u okunamadı)`
-          : x.tur === 'HEDEF'
-            ? `${x.host}/${x.serverName || '?'} → ${x.target} (${HEDEF_NEDEN_METNI[x.neden] || 'hedefi bilinmiyor'})`
-            : `${x.host}/${x.serverName || '?'} → :${x.port}`;
+    { if (x.tur === 'EKSIK') return `${x.host}/${x.serverName || '?'} → hedef listesi kesik`; if (x.tur === 'HEDEF' && x.neden === 'DINAMIK') return `${x.host}/${x.serverName || '?'} → dinamik proxy (hedef kaydı yok)`; if (x.tur === 'HEDEF' && x.neden === 'CONF_OKUNAMADI') return `${x.host}/${x.serverName || '?'} → hedef bilinmiyor (vhost conf'u okunamadı)`; if (x.tur === 'HEDEF') return `${x.host}/${x.serverName || '?'} → ${x.target} (${HEDEF_NEDEN_METNI[x.neden] || 'hedefi bilinmiyor'})`; return `${x.host}/${x.serverName || '?'} → :${x.port}`; };
 
   // ── WEB KATMANI (S3: tierMeasured) ───────────────────────────────────────────────
   // JVM'in ortam+sitesindeki WEB satiri olan, envanterde web urunu tasiyan ya da web urunu
@@ -1462,7 +1442,7 @@ function assess(data, opts = {}) {
           'warning',
           'jvm',
           'JVM_UNDEFINED_PROCESS',
-          `JBoss ${g}: tanım kaynağı okundu${kaynaklar.size ? ` (${[...kaynaklar].join(', ')})` : ''}, çalışan ${ad} tanımda yok (ps'te tanımsız süreç)`,
+          `JBoss ${g}: tanım kaynağı okundu${kaynaklar.size ? (" (" + [...kaynaklar].join(', ') + ")") : ''}, çalışan ${ad} tanımda yok (ps'te tanımsız süreç)`,
           null,
           { undefinedJvms: adlar.slice(0, 50) },
         );
@@ -1637,15 +1617,13 @@ function assess(data, opts = {}) {
         trafficState: ts || null,
       };
       // Kanit: hangi web sunucusu, hangi vhost, hangi access log (kullanici istegi)
-      const kanit = j.vhosts.length
-        ? ` [${j.matchKind === 'proxy' ? 'proxy hedefi' : j.matchKind === 'web-app' ? 'Web-App ilişkisi' : j.matchKind}: ${j.vhosts
+      const kanit = (() => { if (j.vhosts.length) return ` [${(() => { if (j.matchKind === 'proxy') return 'proxy hedefi'; if (j.matchKind === 'web-app') return 'Web-App ilişkisi'; return j.matchKind; })()}: ${j.vhosts
             .map(
               (m) =>
-                `${m.host}/${m.v.serverName || '?'}${m.v.accessLog ? ' → ' + m.v.accessLog : ''}`,
+                (String(m.host) + "/" + (m.v.serverName || '?') + (m.v.accessLog ? ' → ' + m.v.accessLog : '')),
             )
             .slice(0, 2)
-            .join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`
-        : '';
+            .join(', ')}${j.vhosts.length > 2 ? ' +' + (j.vhosts.length - 2) : ''}]`; return ''; })();
       const durmus = rk && !j.running;
       // ETIKET ADAYLARI: R1 kapali + auto-start acik + trafik yok; R2 kapali + auto-start kapali +
       // trafik var (IHS acik). Engel (bayat / esleme / olculemeyen katman) adayi dusurmez: etiket
@@ -1672,7 +1650,7 @@ function assess(data, opts = {}) {
           'warning',
           'jvm',
           'RETIRE_CANDIDATE',
-          `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}${engel ? ` — eylem önerilmez: ${engel.metin}` : ''}`,
+          `${id} kapalı ve web katmanında 7 gündür istek yok (hc.jsp/hc.html hariç) — retire adayı${kanit}${engel ? (" — eylem önerilmez: " + engel.metin) : ''}`,
           engel ? null : { action: 'jboss_retire', gen: j.gen, jvm: j.name },
           { ...logKanit, retireBlock: engel ? engel.kod : null },
         );
@@ -1725,7 +1703,7 @@ function assess(data, opts = {}) {
               .slice(0, 3)
               .map(
                 (x) =>
-                  `${atfMetni(x)} ${x.trafficState || (x.req7d > 0 ? 'ACTIVE' : 'ölçülemedi')}`,
+                  (String(atfMetni(x)) + " " + (x.trafficState || (x.req7d > 0 ? 'ACTIVE' : 'ölçülemedi'))),
               )
               .join(', ')}${atf.length > 3 ? ' +' + (atf.length - 3) : ''}) — retire önerilmez`,
             null,
@@ -1737,11 +1715,7 @@ function assess(data, opts = {}) {
     // ya da EAR_VERI_MAX_GUN'den eskiyse bulgu ve etiket URETILMEZ; h.ear nedenini tasir (ekran soyler).
     const ear = earByHost.get(h.host) || null;
     const earYas = ear && ear.taranma ? Math.floor((now - Date.parse(ear.taranma)) / GUN_MS) : null;
-    h.ear = !earVeri || earVeri.okunamadi
-      ? { durum: 'OKUNAMADI' }
-      : !ear
-        ? { durum: 'YOK' }
-        : {
+    h.ear = (() => { if (!earVeri || earVeri.okunamadi) return { durum: 'OKUNAMADI' }; if (!ear) return { durum: 'YOK' }; return {
             durum: earYas == null || earYas > EAR_VERI_MAX_GUN ? 'ESKI' : 'VAR',
             taranma: ear.taranma,
             yasGun: earYas,
@@ -1749,7 +1723,7 @@ function assess(data, opts = {}) {
             uygulamalar: ear.uygulamalar.map((u) => ({ kok: u.kok, ad: u.ad, jboss: u.jboss, durum: u.durum, warSayisi: u.warSayisi, xml: u.xml })),
             // Faz 2: null = deployment kontrolu kapali / olculmedi.
             deployment: ear.deployment || null,
-          };
+          }; })();
     // Retirement'la kapatilmis hedefin JVM'i taramada yok ama paketi ozgun adiyla diskte (capraz.cjs;
     // yalniz taze Uygulama Envanteri verisiyle): EAR konusu.
     for (const c of capraz.host(h.host)) {
@@ -1778,11 +1752,7 @@ function assess(data, opts = {}) {
           const dep = (x.deploymentlar || []).map((d) => d.ad).filter(Boolean);
           const gruplar = [...new Set((x.deploymentlar || []).flatMap((d) => (d.gruplar || []).map((g) => g.ad)))];
           const metin =
-            x.neden === 'GRUPTA_YOK'
-              ? `deployment tanımlı (${dep.slice(0, 3).join(', ') || '?'}) ama hiçbir server-group'a atanmamış`
-              : x.neden === 'SUNUCU_YOK'
-                ? `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`
-                : `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`;
+            (() => { if (x.neden === 'GRUPTA_YOK') return `deployment tanımlı (${dep.slice(0, 3).join(', ') || '?'}) ama hiçbir server-group'a atanmamış`; if (x.neden === 'SUNUCU_YOK') return `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`; return `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`; })();
           add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}`, null, { ear: { ...konu, neden: x.neden || 'TANIM_YOK' } });
           h.retireAdaylari.push({ kural: 'R5', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok, neden: x.neden || 'TANIM_YOK' });
         } else if (x && x.durum === 'OLCULEMEDI') {
@@ -1861,7 +1831,7 @@ function assess(data, opts = {}) {
             'KOK_EAR_DISI',
             `${kok} altında .ear ile bitmeyen ${gl.length} girdi: ${gl
               .slice(0, 5)
-              .map((g) => `${g.ad} (${TIP[g.tip] || '?'}${g.hedef ? ' → ' + g.hedef : ''})`)
+              .map((g) => (String(g.ad) + " (" + (TIP[g.tip] || '?') + (g.hedef ? ' → ' + g.hedef : '') + ")"))
               .join(', ')}${gl.length > 5 ? ' +' + (gl.length - 5) : ''}${kesik}`,
             null,
             { ear: { kok, girdiler: gl.slice(0, 100) } },

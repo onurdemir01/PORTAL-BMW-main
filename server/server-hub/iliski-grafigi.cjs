@@ -139,13 +139,7 @@ class Grafik {
         null,
       );
       const aileler = new Set(e.yontemler.map((y) => y.aile));
-      e.durum = e.celiski
-        ? 'CELISKI'
-        : aileler.size >= 2
-          ? 'DOGRULANDI'
-          : e.yontemler.length
-            ? 'TEK_KAYNAK'
-            : null;
+      e.durum = (() => { if (e.celiski) return 'CELISKI'; if (aileler.size >= 2) return 'DOGRULANDI'; if (e.yontemler.length) return 'TEK_KAYNAK'; return null; })();
     }
     return this;
   }
@@ -603,7 +597,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
             y(
               'mod_cluster',
               adTutar ? 'GUCLU' : 'ZAYIF',
-              `mod_cluster: ${s.ad} profili ${m.host}'a kaydoluyor${adTutar ? `, balancer ${m.balancer}` : ''}`,
+              `mod_cluster: ${s.ad} profili ${m.host}'a kaydoluyor${adTutar ? (", balancer " + m.balancer) : ''}`,
             ),
           );
         }
@@ -635,11 +629,7 @@ function grafikKur({ hosts = [], veri = null } = {}) {
         dd.veri.dinleniyor = dd.veri.dinleniyor === true || p.dinleniyor === true;
       }
       for (const u of p.uzaklar) {
-        const sahip = /^127\.|^::1$/.test(u.ip)
-          ? host
-          : ipMap.get(u.ip) && ipMap.get(u.ip).size === 1
-            ? [...ipMap.get(u.ip)][0]
-            : null;
+        const sahip = (() => { if (/^127\.|^::1$/.test(u.ip)) return host; if (ipMap.get(u.ip) && ipMap.get(u.ip).size === 1) return [...ipMap.get(u.ip)][0]; return null; })();
         const kaynak = sahip ? A.sunucu(sahip) : A.ip(u.ip);
         if (!sahip) g.dugum(A.ip(u.ip), 'ip', u.ip, {});
         for (const hd of hedefler)
@@ -667,7 +657,7 @@ function ara(g, metinHam, sinir = 50) {
   for (const d of g.dugumler.values()) {
     const ad = L(d.ad);
     if (!ad.includes(q) && !d.anahtar.toLowerCase().includes(q)) continue;
-    out.push({ d, tam: ad === q ? 0 : ad.startsWith(q) ? 1 : 2 });
+    out.push({ d, tam: (() => { if (ad === q) return 0; if (ad.startsWith(q)) return 1; return 2; })() });
   }
   out.sort(
     (a, b) =>

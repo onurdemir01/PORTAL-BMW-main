@@ -104,7 +104,7 @@ const YUK_K6 = process.env.YUK_K6 || path.join(__dirname, '..', '..', 'ansible',
 let k6Sira = 0;
 async function k6Yukle(env) {
   globalThis.__k6 = {
-    http: { get: () => ({ status: 200, proto: 'HTTP/2.0', headers: {} }), CookieJar: class {} },
+    http: { get: () => ({ status: 200, proto: 'HTTP/2.0', headers: {} }), CookieJar: function CookieJar() {} },
     metrics: { Counter: class { add() {} } },
     data: { SharedArray: function (ad, fn) { return fn(); } },
   };

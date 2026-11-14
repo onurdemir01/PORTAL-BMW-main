@@ -63,11 +63,11 @@ function computeDrift(hosts, dumps, opts = {}) {
       const present = [...m.keys()].sort();
       const missing = g.dumped.filter((H) => !m.has(H));
       const variants = new Map();
-      for (const [H, v] of m) { if (!variants.has(v.sha)) variants.set(v.sha, []); variants.get(v.sha).push(H); }
+      for (const [H, v] of m) { if (!variants.has(v.sha)) { variants.set(v.sha, []); } variants.get(v.sha).push(H); }
       const vlist = [...variants.entries()].map(([sha, hs]) => ({ sha, hosts: hs.sort(), size: m.get(hs[0]).size, mtime: hs.map((x) => m.get(x).mtime).sort().pop() || null })).sort((a, b) => b.hosts.length - a.hosts.length || a.sha.localeCompare(b.sha));
       const local = present.every((H) => expectedLocal(path, H)) || (missing.length > 0 && present.length === 1 && expectedLocal(path, present[0]));
       let status;
-      if (local) status = 'local';
+      if (local) { status = 'local'; }
       else if (vlist.length > 1) status = 'differ';
       else if (missing.length > 0) status = 'missing';
       else status = 'same';

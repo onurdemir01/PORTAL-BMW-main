@@ -123,7 +123,7 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
   // eslesmeyi tercih et; yalniz o sunucuda yoksa '-prod' eksiz yazima dus. Bir sunucudaki kesin
   // satir diger sunucunun gecerli fallback satirini bastirmamali.
   const satirlar = beklenenHost.map((h) => kesinByHost.get(h) || ekProdByHost.get(h)).filter(Boolean);
-  const eslesme = satirlar.some((r) => !kesinByHost.has(U(r.host))) ? 'ek-prod' : satirlar.length ? 'kesin' : '';
+  const eslesme = (() => { if (satirlar.some((r) => !kesinByHost.has(U(r.host)))) return 'ek-prod'; if (satirlar.length) return 'kesin'; return ''; })();
   const taranan = beklenenHost.filter((h) => idx.taranan.has(h));
   const taranmayan = beklenenHost.filter((h) => !idx.taranan.has(h));
   const byHost = new Map(satirlar.map((r) => [U(r.host), r]));
@@ -134,13 +134,7 @@ function kurulumHesapla(env, ns, app, idx, hosts) {
       : { host: h, site: siteOfHost(h) || '', hys: false, app: false, conf: false, status: 'YOK' };
   });
   const tam = sunucular.filter((s) => s.status === 'OK').length;
-  const durum = !taranan.length
-    ? 'olculemedi'
-    : tam === taranan.length
-      ? 'tamam'
-      : satirlar.length
-        ? 'kismi'
-        : 'yok';
+  const durum = (() => { if (!taranan.length) return 'olculemedi'; if (tam === taranan.length) return 'tamam'; if (satirlar.length) return 'kismi'; return 'yok'; })();
   return {
     durum,
     tam,
@@ -212,15 +206,13 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
         istek: a.istek || 'olcum-yok',
         // SAYI YALNIZ OLCULDUYSE (reqShown null = olculemedi / olcum yok).
         req: a.reqShown == null ? null : Number(a.reqShown),
-        dynatrace: u
-          ? {
+        dynatrace: (() => { if (u) return {
               scanDate: u.scanDate || null,
               windowDays: u.windowDays || null,
               services: u.services == null ? null : Number(u.services),
               note: u.note || '',
               olcum: u.olcum || '',
-            }
-          : null,
+            }; return null; })(),
         ekip: o.groups,
         ekipEposta: o.emails,
         // ekip ile AYNI SIRADA kaynak (SI51_AGILE ... / NAMESPACE); bos = kaynak bilinmiyor.
@@ -331,7 +323,7 @@ async function loadIntranet(fresh, deps) {
             CONVERT(varchar(10), scan_date, 23) AS scan_date
        FROM dbo.Nginx_Intranet_Audit
       WHERE scan_date = (SELECT MAX(scan_date) FROM dbo.Nginx_Intranet_Audit)
-        AND host IN (${hosts.map((_, i) => `@h${i}`).join(', ')})`,
+        AND host IN (${hosts.map((_, i) => ("@h" + i)).join(', ')})`,
     hosts.map((h, i) => ({ name: `h${i}`, type: sql.NVarChar(64), value: h })),
   )
     .then((r) => r.recordset || [])

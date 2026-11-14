@@ -88,7 +88,7 @@ function kontrol(username) {
  */
 function ayniHataliSifre(username, password) {
   const v = kayitlar.get(anahtar(username));
-  if (!v || !v.sonOzet) return 0;
+  if (!v?.sonOzet) return 0;
   const kalan = v.sonOzetAn + AYNI_SIFRE_PENCERE_MS - saat();
   if (kalan <= 0) return 0;
   const ozet = sifreOzeti(username, password);
@@ -103,7 +103,7 @@ function hataKaydet(username, password) {
   const k = anahtar(username);
   const now = saat();
   const eski = kayitlar.get(k);
-  const fails = eski && now - eski.lastFail < PENCERE_MS ? eski.fails + 1 : 1;
+  const fails = now - eski?.lastFail < PENCERE_MS ? eski.fails + 1 : 1;
   const max = esik();
   let lockedUntil = 0;
   if (fails >= max) {

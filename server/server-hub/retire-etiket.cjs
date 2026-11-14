@@ -38,11 +38,7 @@ const U = (s) =>
     .trim()
     .toUpperCase();
 const nesilOfKok = (kok) =>
-  /\/vhosting8\/?$/.test(String(kok || ''))
-    ? '8'
-    : /\/vhosting\/?$/.test(String(kok || ''))
-      ? '7'
-      : '?';
+  { if (/\/vhosting8\/?$/.test(String(kok || ''))) return '8'; if (/\/vhosting\/?$/.test(String(kok || ''))) return '7'; return '?'; };
 const iz = (v) => crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
 // R10 R2'den sonra gelir (dizgi siralamasi 'R10' < 'R2' derdi).
 const kuralSirasi = (a, b) => Number(String(a).slice(1)) - Number(String(b).slice(1));
@@ -70,7 +66,7 @@ function jvmKopyasi(h, j, adaylar) {
       host: m.host,
       vhost: (m.v && m.v.serverName) || m.serverName || '',
       trafik: (m.v && m.v.trafficState) || m.trafficState || null,
-      istek7g: m.v ? (m.v.req7d == null ? null : m.v.req7d) : m.req7d == null ? null : m.req7d,
+      istek7g: (() => { if (m.v) { if (m.v.req7d == null) return null; return m.v.req7d; } if (m.req7d == null) return null; return m.req7d; })(),
       log: (m.v && m.v.accessLog) || '',
       tur: m.kind || null,
     })),
@@ -96,7 +92,7 @@ function earKopyasi(h, u, adaylar, jvmAdIndeksi) {
       return {
         ad: x.ad,
         autoStart: x.auto_start !== false,
-        calisiyor: !sj ? null : sj.runningKnown === false ? null : !!sj.running,
+        calisiyor: (() => { if (!sj) return null; if (sj.runningKnown === false) return null; return !!sj.running; })(),
       };
     }),
     taranma: ear.taranma || null,
@@ -209,10 +205,7 @@ function retirementOf(kopyalar) {
 /** Kanit imzasi: kopyalarin karar veren alanlari + kurallar (sayilar ve tarihler GIRMEZ). */
 function kanitImzasi(konu, kopyalar, kurallar) {
   const satir = (k) =>
-    konu.tur === 'JVM'
-      ? [k.host, k.gen, k.calisiyor, k.autoStart, k.trafik, k.esleme, !!k.engel, k.taze]
-      : konu.tur === 'EAR'
-        ? [
+    { if (konu.tur === 'JVM') return [k.host, k.gen, k.calisiyor, k.autoStart, k.trafik, k.esleme, !!k.engel, k.taze]; if (konu.tur === 'EAR') return [
             k.host,
             k.kok,
             k.durum,
@@ -220,8 +213,7 @@ function kanitImzasi(konu, kopyalar, kurallar) {
             k.xml,
             k.xmlNeden,
             k.jvmler.map((j) => [j.ad, j.calisiyor]),
-          ]
-        : [k.host, k.kok, k.tip, k.hedef];
+          ]; return [k.host, k.kok, k.tip, k.hedef]; };
   return iz({ anahtar: konu.anahtar, kurallar, kopyalar: kopyalar.map(satir) });
 }
 
@@ -270,13 +262,7 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
           notlar.push(`${h.host}: JBoss ${j.gen} kopyası çalışıyor — uygulama taşınmış olabilir`);
     const imza = kanitImzasi(konu, kopyalar, kl);
     const kayit = kontroller ? kontroller.get(konu.anahtar) || null : null;
-    const durum = !kontroller
-      ? 'BILINMIYOR'
-      : !kayit
-        ? 'BEKLIYOR'
-        : kayit.imza !== imza
-          ? 'VERI_DEGISTI'
-          : kayit.sonuc;
+    const durum = (() => { if (!kontroller) return 'BILINMIYOR'; if (!kayit) return 'BEKLIYOR'; if (kayit.imza !== imza) return 'VERI_DEGISTI'; return kayit.sonuc; })();
     etiketler.push({
       anahtar: konu.anahtar,
       tur: konu.tur,

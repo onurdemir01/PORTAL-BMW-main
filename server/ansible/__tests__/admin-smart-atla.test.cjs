@@ -20,7 +20,7 @@ const denetim = [];
 function sahte(yol, exp) {
   const m = new Module(yol, null); m.loaded = true; m.exports = exp; require.cache[yol] = m;
 }
-sahte(USERS, { getPrefs: async () => { if (prefHata) throw prefHata; return prefs; } });
+sahte(USERS, { getPrefs: async () => { if (prefHata) { throw prefHata; } return prefs; } });
 sahte(AUDIT, { auditPortal: (_req, action, o) => denetim.push({ action, ...o }) });
 
 const atla = require('../admin-smart-atla.cjs');

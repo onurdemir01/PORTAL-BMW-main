@@ -1481,11 +1481,7 @@ function OcpCoverage() {
                   // Artik kac cluster'da oldugu yazili; kismi kapsam sari.
                   const { k, n, on, all, beklenmeyen, veriYok } = coverageOf(r, e);
                   const partial = k > 0 && n > 0 && k < n;
-                  const cls = !k
-                    ? 'bg-red-50 text-red-600 border-red-200'
-                    : partial
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  const cls = (() => { if (!k) return 'bg-red-50 text-red-600 border-red-200'; if (partial) return 'bg-amber-50 text-amber-700 border-amber-200'; return 'bg-emerald-50 text-emerald-700 border-emerald-200'; })();
                   const eksik = all.filter((c) => !on.has(c));
                   return (
                     <td key={e} className="px-3 py-2">

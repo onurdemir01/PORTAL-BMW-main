@@ -128,13 +128,9 @@ async function _tickBody() {
         .markState(ticket.id, {
           status: 'TIMEOUT',
           smartStateName: ticket.smartStateName,
-          errorMessage: sonBaslamaMesaji
-            ? sonBaslamaMesaji
-            : pencereKapandi
-            ? `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`
-            : islemKurali
-              ? `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`
-              : `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`,
+          errorMessage:
+            sonBaslamaMesaji ||
+            (() => { if (pencereKapandi) return `Kesinti penceresi (${new Date(winEndIso).toISOString()}) kapandi, Smart onayi gelmedi - is tetiklenmedi.`; if (islemKurali) return `Production islemleri icin onay suresi ${Math.round(timeoutMinutes)} dakikadir; bu surede Smart onayi gelmedi - is tetiklenmedi. Smart'taki kayit acik kalabilir, sonradan onaylansa da is BASLAMAZ; islemi yeniden baslatip yeni talep acin.`; return `${Math.round(timeoutMinutes)} dakika icinde Smart onayi alinmadi - talep iptal edildi, otomasyon tetiklenmedi.`; })(),
           resolved: true,
           expected: 'PENDING', // arada iptal edildiyse CANCELLED korunur
         })

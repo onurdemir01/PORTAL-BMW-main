@@ -14,15 +14,17 @@
 -- Idempotent: birden fazla kez calistirilabilir.
 
 SET NOCOUNT ON;
+DECLARE @envGroup VARCHAR(32) = 'navgroup:envanter';
+DECLARE @pageType VARCHAR(16) = 'page';
 BEGIN TRANSACTION;
 
 -- 1) Yeni nav grubu (yoksa olustur)
-IF NOT EXISTS (SELECT 1 FROM portal_elements WHERE element_key = 'navgroup:envanter')
+IF NOT EXISTS (SELECT 1 FROM portal_elements WHERE element_key = @envGroup)
 BEGIN
     INSERT INTO portal_elements
         (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible)
     VALUES
-        ('navgroup:envanter', 'nav_group', NULL, N'Envanter', NULL, 2, 1, 1);
+        (@envGroup, 'nav_group', NULL, N'Envanter', NULL, 2, 1, 1);
     PRINT '[+] navgroup:envanter olusturuldu';
 END
 ELSE
@@ -63,6 +65,6 @@ SELECT g.sort_order AS grup_sira,
        p.element_key AS sayfa
   FROM portal_elements g
   LEFT JOIN portal_elements p
-         ON p.parent_key = g.element_key AND p.element_type = 'page'
+         ON p.parent_key = g.element_key AND p.element_type = @pageType
  WHERE g.element_type = 'nav_group'
- ORDER BY g.sort_order, p.sort_order;
+ ORDER BY g.sort_order ASC, p.sort_order ASC;

@@ -260,7 +260,8 @@ function aggregateCerts(dumps, now = Date.now()) {
 }
 
 /** Yedek/eski kopya kalibi: deployment yedegi <conf>_<job_no>, .bak/.old/.orig/~, .console_backup/ */
-const BACKUP_RE = /(\/\.console_backup\/|_[0-9]{2,}$|\.(bak|old|orig|save|backup|disabled|off)(\.[0-9]+)?$|~$|\.rpm(new|save)$)/i;
+const BACKUP_EXT_PARCA = "\\.(bak|old|orig|save|backup|disabled|off)(\\.[0-9]+)?$";
+const BACKUP_RE = new RegExp(`(\\/\\.console_backup\\/|_[0-9]{2,}$|${BACKUP_EXT_PARCA}|~$|\\.rpm(new|save)$)`, "i");
 
 /**
  * "Kullanilmayan" (2026-09-22): kullanici "sertifika hicbir konfigurasyonda kullanilmiyor ama
@@ -272,7 +273,7 @@ const BACKUP_RE = /(\/\.console_backup\/|_[0-9]{2,}$|\.(bak|old|orig|save|backup
 function orphansOf(summary, now = Date.now()) {
   const loaded = Array.isArray(summary.loaded) ? new Set(summary.loaded) : null;
   const known = !!loaded && (summary.nginxT?.status !== 'fail' || loaded.size > 0);
-  const out = { host: summary.host, known, reason: known ? null : (Array.isArray(summary.loaded) ? 'nginx -T basarisiz (yuklenen liste alinamadi)' : 'eski dokum: yuklenen dosya listesi yok - "Yenile" ile yeni dokum alin'), unloaded: [], backups: [], certs: [], ssl: [] };
+  const out = { host: summary.host, known, reason: (() => { if (known) return null; if (Array.isArray(summary.loaded)) return 'nginx -T basarisiz (yuklenen liste alinamadi)'; return 'eski dokum: yuklenen dosya listesi yok - "Yenile" ile yeni dokum alin'; })(), unloaded: [], backups: [], certs: [], ssl: [] };
   if (!known) return out;
   const isKey = (p) => /(\.key$|private)/i.test(p);
   for (const f of summary.tree || []) {
@@ -284,12 +285,22 @@ function orphansOf(summary, now = Date.now()) {
   }
   // sertifika: her kullanimi yuklenmeyen dosyada (ya da hic kullanim yok)
   const usesByCert = new Map();
-  for (const u of summary.certUses || []) { if (!usesByCert.has(u.cert)) usesByCert.set(u.cert, []); usesByCert.get(u.cert).push(u); }
+  for (const u of summary.certUses || []) {
+    if (!usesByCert.has(u.cert)) {
+      usesByCert.set(u.cert, []);
+    }
+    usesByCert.get(u.cert).push(u);
+  }
   const referenced = new Set();
   for (const c of summary.certs || []) {
     const uses = usesByCert.get(c.path) || [];
     const loadedUses = uses.filter((u) => loaded.has(u.conf));
-    for (const u of uses) { referenced.add(u.cert); if (u.key && u.key !== '?') referenced.add(u.key); }
+    for (const u of uses) {
+      referenced.add(u.cert);
+      if (u.key && u.key !== '?') {
+        referenced.add(u.key);
+      }
+    }
     if (loadedUses.length > 0) continue;
     out.certs.push({ path: c.path, exists: c.exists, cn: c.cn, issuerCn: c.issuerCn, notAfter: c.notAfter, daysLeft: daysLeft(c.notAfter, now), usedBy: uses.map((u) => u.conf) });
   }

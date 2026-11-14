@@ -175,7 +175,7 @@ function hostStatus(h, olculdu = true, hostDurum = null) {
   }
   // Satir HIC yoksa sebep yazilir: toggle satiri eklemez, elle duzeltilmesi gerekir.
   if (eksikler.length && h.include === 'missing') eksikler.unshift('nginx.conf\'ta rate_limits.conf include satırı yok');
-  const durum = eksikler.length ? 'eksik' : farklar.length ? 'farkli' : 'standart';
+  const durum = (() => { if (eksikler.length) return 'eksik'; if (farklar.length) return 'farkli'; return 'standart'; })();
   return { durum, eksikler, farklar };
 }
 
@@ -291,7 +291,7 @@ async function loadRateLimits({ scanDate, suz } = {}) {
       env: envOfHost(h.host),
       // Ayri gercekler, ayri alanlar: "kurulu mu", "calisiyor mu", "konfigurasyon gecerli mi".
       kurulu: d ? d.durum !== 'kurulumyok' : null,
-      calisiyor: d ? (d.runState === 'running' ? true : d.runState === 'stopped' ? false : null) : null,
+      calisiyor: (() => { if (d) { if (d.runState === 'running') return true; if (d.runState === 'stopped') return false; return null; } return null; })(),
       hostDurum: d ? d.durum : 'bilinmiyor',
       hostDurumLabel: d ? d.label : 'ölçülmedi',
       hostDurumHint: d ? d.hint : 'Bu sunucu için tarama kaydı yok.',
@@ -366,7 +366,7 @@ function emptySummary() {
 function kapaliMesaji(s) {
   if (!s || !s.kapali) return undefined;
   const hepsi = s.kapali === s.hosts;
-  return `${hepsi ? 'Tüm sunucularda' : `${s.kapali} sunucuda`} rate limit bilerek kapatılmış: `
+  return `${hepsi ? 'Tüm sunucularda' : s.kapali + ' sunucuda'} rate limit bilerek kapatılmış: `
     + 'nginx.conf\'ta rate_limits.conf include satırı yorumlu (#include). Bu sunucular eksik sayılmaz. '
     + 'Yeniden açmak için configuration_delivery\'de rate_limit_enabled = true.';
 }
@@ -407,7 +407,7 @@ function toCsv(hosts, scanDate) {
   for (const h of hosts) {
     lines.push([
       scanDate, h.host, h.env, h.requestRate, h.serverRate, h.connLimit,
-      h.applied.length, h.fileLoaded ? 'evet' : h.durum === 'kapali' ? 'hayır (bilerek kapalı)' : 'HAYIR',
+      h.applied.length, (() => { if (h.fileLoaded) return 'evet'; if (h.durum === 'kapali') return 'hayır (bilerek kapalı)'; return 'HAYIR'; })(),
       { standart: 'standart', farkli: 'FARKLI', eksik: 'EKSİK', kapali: 'Kapalı (bilerek)', bilinmiyor: 'ölçülmedi',
       kurulumyok: 'NGINX KURULU DEĞİL', calismiyor: 'nginx ÇALIŞMIYOR', configbozuk: 'KONFİGÜRASYON GEÇERSİZ' }[h.durum]
       + (h.calisiyor === false && h.durum !== 'kurulumyok' ? ' (nginx çalışmıyor)' : ''),

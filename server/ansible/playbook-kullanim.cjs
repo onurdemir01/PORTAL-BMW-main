@@ -63,7 +63,7 @@ const KULLANIM = Object.freeze({
 // Anahtari kullanan ozelligin adi; Portal kodu kullanmiyorsa null.
 function kullananOzellik(keyName) {
   const k = String(keyName || '');
-  return Object.prototype.hasOwnProperty.call(KULLANIM, k) ? KULLANIM[k] : null;
+  return Object.hasOwn(KULLANIM, k) ? KULLANIM[k] : null;
 }
 
 module.exports = { KULLANIM, kullananOzellik };

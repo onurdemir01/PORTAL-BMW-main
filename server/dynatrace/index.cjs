@@ -135,14 +135,10 @@ function initDynatrace(app) {
       configured:  isConfigured(),
       reachable,
       mcpConnected,
-      environment: status.connectedUrl ? 'connected' : status.configuredUrl ? 'configured' : null,
+      environment: (() => { if (status.connectedUrl) return 'connected'; if (status.configuredUrl) return 'configured'; return null; })(),
       defaultAlias,
       lastError:   status.lastError ? { message: 'Dynatrace MCP bağlantısı kurulamadı.', at: status.lastError.at } : null,
-      message: mcpConnected
-        ? undefined
-        : !reachable
-          ? 'Dynatrace MCP sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'
-          : 'Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı.',
+      message: (() => { if (mcpConnected) return undefined; if (!reachable) return 'Dynatrace MCP sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; return 'Sunucuya TCP erişimi var ama MCP bağlantısı kurulamadı.'; })(),
     };
     _healthCacheAt = Date.now();
     res.json(_healthCache);

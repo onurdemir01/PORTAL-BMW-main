@@ -91,7 +91,7 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
         setResult(r);
         setPhase("done");
         const kalan = r.validUntil ? Date.parse(r.validUntil) - Date.now() : 0;
-        if (!(kalan > 0)) setExpired(true);
+        if (!Number.isFinite(kalan) || kalan <= 0) setExpired(true);
         else expiryTimer = window.setTimeout(() => setExpired(true), Math.min(kalan, 2147483000));
       } catch (e: unknown) {
         if (!cancelled) fail(errText(e));

@@ -213,7 +213,7 @@ test('SA7 analiz: kanit yok ya da uyusmuyor -> GECERSIZ sunucu_ayari_kanitsiz', 
   await denet(await analiz(degis('seviye', 'seviye\t'), h1), 'sunucu_ayari_kanitsiz(seviye)');
   await denet(await analiz(degis('static', 'static\t0'), h1), 'sunucu_ayari_kanitsiz(static)');
   await denet(await analiz(degis('dizin', 'dizin\t/usr/nginx/applications/baska'), h1), 'sunucu_ayari_kanitsiz(dizin)');
-  await denet(await analiz(K.map((s) => (s.startsWith('br_uretilen') ? 'br_uretilen\t0' : s.startsWith('atlanan') ? 'atlanan\t0' : s)), h1), 'sunucu_ayari_kanitsiz(dosya)');
+  await denet(await analiz(K.map((s) => { if (s.startsWith('br_uretilen')) return 'br_uretilen\t0'; if (s.startsWith('atlanan')) return 'atlanan\t0'; return s; }), h1), 'sunucu_ayari_kanitsiz(dosya)');
   await denet(await analiz(degis('seviye', 'seviye\t1').map((s) => (s.startsWith('dosya_seviye') ? 'dosya_seviye\t9' : s)), { ...h1, sunucuAyar: { seviye: null, static: true, dizin: DIZIN }, ae: 'identity' }), 'sunucu_ayari_kanitsiz(ae,seviye)');
   await denet(await analiz(degis('ae', 'ae\tbr').concat(['static\tacik']), sa({ protokol: 'h2' })), 'sunucu_ayari_kanitsiz(http2)');
 });
@@ -240,7 +240,7 @@ test('SA7b static kosu: disk kaniti ve dosya seviyesi denetlenir', async () => {
   assert.deepEqual(await sonuc1([...idn, 'dosya_seviye\t9'], idSec), ['GECERLI', null, 'uyumlu']);
   assert.deepEqual(await sonuc1([...idn, 'dosya_seviye\t6'], idSec), kanitsiz('dosya_seviye'));
   // Static kapali: iki alan aranmaz (betik `disk_kanit yok`, bos dosya_seviye yazar).
-  const kapali = K.map((s) => (s.startsWith('static') ? 'static\t0' : s.startsWith('disk_kanit') ? 'disk_kanit\tyok' : s.startsWith('dosya_seviye') ? 'dosya_seviye\t' : s));
+  const kapali = K.map((s) => { if (s.startsWith('static')) return 'static\t0'; if (s.startsWith('disk_kanit')) return 'disk_kanit\tyok'; if (s.startsWith('dosya_seviye')) return 'dosya_seviye\t'; return s; });
   assert.deepEqual(await sonuc1(kapali, sa({ protokol: 'h1', sunucuAyar: { seviye: 6, static: false, dizin: DIZIN } })), ['GECERLI', null, 'uyumlu']);
 });
 

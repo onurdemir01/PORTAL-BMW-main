@@ -104,12 +104,8 @@ async function update(id, fields) {
   const displayName = fields.displayName !== undefined ? String(fields.displayName).trim() : row.display_name;
   const description = fields.description !== undefined ? String(fields.description) : row.description;
   const category = fields.category !== undefined ? String(fields.category) : row.category;
-  const awxTemplateId = fields.awxTemplateId !== undefined
-    ? (fields.awxTemplateId === null || fields.awxTemplateId === '' ? null : Number(fields.awxTemplateId))
-    : row.awx_template_id;
-  const awxServerId = fields.awxServerId !== undefined
-    ? (fields.awxServerId === null || fields.awxServerId === '' ? null : Number(fields.awxServerId))
-    : row.awx_server_id;
+  const awxTemplateId = (() => { if (fields.awxTemplateId !== undefined) { if (fields.awxTemplateId === null || fields.awxTemplateId === '') return null; return Number(fields.awxTemplateId); } return row.awx_template_id; })();
+  const awxServerId = (() => { if (fields.awxServerId !== undefined) { if (fields.awxServerId === null || fields.awxServerId === '') return null; return Number(fields.awxServerId); } return row.awx_server_id; })();
   const enabled = fields.enabled !== undefined ? !!fields.enabled : row.enabled;
   const sourceType = fields.sourceType !== undefined ? String(fields.sourceType) : row.source_type;
   const isReadonly = fields.isReadonly !== undefined ? !!fields.isReadonly : row.is_readonly;

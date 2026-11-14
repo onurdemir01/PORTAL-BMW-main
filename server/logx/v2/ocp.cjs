@@ -36,7 +36,7 @@ function buildOcpExtraVars({ env, tenant, clusters, hosts, meta }) {
   // kalir (playbook'ta "sahipsiz cluster" kovasina duser).
   const names = [...new Set((clusters || []).map((n) => String(n || '').trim()).filter(Boolean))];
   const items = names.map((name) => {
-    const m = (meta && meta[name]) || {};
+    const m = (meta?.[name]) || {};
     return {
       env,
       tenant,

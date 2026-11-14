@@ -20,7 +20,7 @@ test('VE1: e-posta kurali kullanici kuralindan SONRA, grup kuralindan ONCE', () 
   assert.ok(iUser < iMail, 'kullanici adi kurali e-postadan once degerlendirilmeli');
   assert.ok(iMail < iGroup, 'e-posta kurali grup kuralindan once degerlendirilmeli');
   // Eslestirme kucuk harf uzerinden yapilmali; aksi halde "Ad.Soyad@..." eslesmez.
-  assert.match(SRC, /mailLower = \(\(user && user\.mail\) \|\| ''\)\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(SRC, /mailLower = \(\((?:user && user\.mail|user\?\.mail)\) \|\| ''\)\.trim\(\)\.toLowerCase\(\)/);
   // Memo anahtari e-postayi da icermeli; yoksa iki kullanici ayni onbellegi paylasir.
   assert.match(SRC, /memoKey = `\$\{role\}\|\$\{usernameLower\}\|\$\{mailLower\}\|/);
 });

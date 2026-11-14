@@ -402,7 +402,7 @@ test(
       // YARISTIR ve her kosuda tetiklenmez - sonuca bakarak degil, yola bakarak olculur.
       for (const h of ['sunucu-a', 'sunucu-b'])
         assert.ok(
-          cikti.includes(`"path": "${path.join(staging, `logx-lg4-iki-host-${h}`)}"`),
+          cikti.includes(`"path": "${path.join(staging, ("logx-lg4-iki-host-" + h))}"`),
           `${h}: ise ozel dizin sunucu adini tasimiyor`,
         );
       assert.equal(sonuc.overall_status, 'success', JSON.stringify(sonuc).slice(0, 800));
@@ -821,7 +821,7 @@ const ornekleriOku = () =>
  */
 function ornekle(kok, sonuc) {
   const o = JSON.parse(JSON.stringify(sonuc).split(kok).join(''), (k, v) =>
-    k === 'size_bytes' ? (Number(v) > 0 ? 1 : 0) : v,
+    { if (k === 'size_bytes') { if (Number(v) > 0) return 1; return 0; } return v; },
   );
   if (Array.isArray(o.hosts))
     o.hosts.sort((a, b) => String(a.host).localeCompare(String(b.host), 'en'));

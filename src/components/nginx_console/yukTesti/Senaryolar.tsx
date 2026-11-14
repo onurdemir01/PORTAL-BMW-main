@@ -376,7 +376,7 @@ function YeniSenaryo({ onKapat, onKaydedildi }: { onKapat: () => void; onKaydedi
                   <span className="tabular-nums" style={{ color: 'var(--text-secondary)' }}>{fmtNumber(Math.round(d.boyut / 1024))} KB</span>
                   <label className="flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
                     sayfa ağırlığı
-                    <input value={d.agirlik} onChange={(e) => setDosyalar((l) => l.map((x, j) => (j === i ? { ...x, agirlik: e.target.value } : x)))} inputMode="decimal" className={`${GIRDI_TABAN} h-7 w-16 tabular-nums`} style={girdiStili(!(Number(d.agirlik.replace(',', '.')) > 0))} aria-label={`HAR ${i + 1} sayfa ağırlığı`} />
+                    <input value={d.agirlik} onChange={(e) => setDosyalar((l) => l.map((x, j) => (j === i ? { ...x, agirlik: e.target.value } : x)))} inputMode="decimal" className={`${GIRDI_TABAN} h-7 w-16 tabular-nums`} style={girdiStili(Number.isNaN(Number(d.agirlik.replace(',', '.'))) || Number(d.agirlik.replace(',', '.')) <= 0)} aria-label={`HAR ${i + 1} sayfa ağırlığı`} />
                   </label>
                   <button type="button" onClick={() => setDosyalar((l) => l.filter((_, j) => j !== i))} className={LINK} style={{ color: 'var(--text-secondary)' }} aria-label={`${d.ad} çıkar`}>çıkar</button>
                 </li>

@@ -240,7 +240,7 @@ async function cleanupExpiredDownloads() {
   const tokens = rows.map((r) => r.token);
   for (const parca of chunk(tokens)) {
     await db.query(
-      `DELETE FROM logx_v2_downloads WHERE token IN (${parca.map((_, i) => `$${i + 1}`).join(',')})`,
+      `DELETE FROM logx_v2_downloads WHERE token IN (${parca.map((_, i) => ("$" + (i + 1))).join(',')})`,
       parca
     );
   }

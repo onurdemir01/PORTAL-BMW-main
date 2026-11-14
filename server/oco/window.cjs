@@ -95,11 +95,7 @@ function evaluateWindow({ startDate, endDate, now = new Date() }) {
     canRunNow: phase === 'inside',
     canSchedule: phase === 'before',
     message:
-      phase === 'expired'
-        ? 'OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz.'
-        : phase === 'inside'
-          ? `OCO kesinti penceresi AÇIK (${fmt(windowStart)} — ${fmt(windowEnd)}). İşlem şimdi çalıştırılabilir.`
-          : `OCO'da belirtilen kesinti ${fmt(windowStart)} tarihinde başlıyor.`,
+      (() => { if (phase === 'expired') return 'OCO kaydınızı kaçırdınız. Lütfen yeni bir OCO veya Problem kaydı açarak tekrar işlem deneyiniz.'; if (phase === 'inside') return `OCO kesinti penceresi AÇIK (${fmt(windowStart)} — ${fmt(windowEnd)}). İşlem şimdi çalıştırılabilir.`; return `OCO'da belirtilen kesinti ${fmt(windowStart)} tarihinde başlıyor.`; })(),
   };
 }
 

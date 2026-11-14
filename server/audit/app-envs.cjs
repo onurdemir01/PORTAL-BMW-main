@@ -121,7 +121,7 @@ function registerAppEnvs(router) {
         entry.envs[p.env].rows++;
 
         // Ad <-> env sutunu celiskisi
-        const group = Object.prototype.hasOwnProperty.call(COLUMN_ENV_GROUP, envCol)
+        const group = Object.hasOwn(COLUMN_ENV_GROUP, envCol)
           ? COLUMN_ENV_GROUP[envCol] : undefined;
         if (group === undefined || group === null) {
           // undefined = hic gorulmemis env degeri, null = bilinen ama ad kuralinin

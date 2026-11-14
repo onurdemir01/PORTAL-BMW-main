@@ -21,8 +21,8 @@ function yukle(baslangic = null, { okumaHatasi = false } = {}) {
   require.cache[dbPath].exports = {
     query: async (sql, p) => {
       sorgular.push(sql);
-      if (/^SELECT/.test(sql)) { if (okumaHatasi) throw new Error('db yok'); return { rows: blob ? [{ data: blob, updated_at: null }] : [] }; }
-      if (/^UPDATE/.test(sql)) { if (!blob) return { rowCount: 0 }; blob = p[0]; return { rowCount: 1 }; }
+      if (/^SELECT/.test(sql)) { if (okumaHatasi) { throw new Error('db yok'); } return { rows: blob ? [{ data: blob, updated_at: null }] : [] }; }
+      if (/^UPDATE/.test(sql)) { if (!blob) { return { rowCount: 0 }; } blob = p[0]; return { rowCount: 1 }; }
       if (/^INSERT/.test(sql)) { blob = p[1]; return { rowCount: 1 }; }
       if (/^DELETE/.test(sql)) { blob = null; return { rowCount: 1 }; }
       return { rows: [] };
@@ -31,12 +31,12 @@ function yukle(baslangic = null, { okumaHatasi = false } = {}) {
   require.cache[dbPath].loaded = true;
   delete require.cache[ayarPath];
   const m = require('../ayar.cjs');
-  return { m, sorgular, restore: () => { if (saved) require.cache[dbPath] = saved; else delete require.cache[dbPath]; delete require.cache[ayarPath]; } };
+  return { m, sorgular, restore: () => { if (saved) { require.cache[dbPath] = saved; } else { delete require.cache[dbPath]; } delete require.cache[ayarPath]; } };
 }
 function envIle(to, cc, fn) {
   const e = [process.env.RETIREMENT_SCC_MAIL_TO, process.env.RETIREMENT_SCC_MAIL_CC];
-  if (to == null) delete process.env.RETIREMENT_SCC_MAIL_TO; else process.env.RETIREMENT_SCC_MAIL_TO = to;
-  if (cc == null) delete process.env.RETIREMENT_SCC_MAIL_CC; else process.env.RETIREMENT_SCC_MAIL_CC = cc;
+  if (to == null) { delete process.env.RETIREMENT_SCC_MAIL_TO; } else { process.env.RETIREMENT_SCC_MAIL_TO = to; }
+  if (cc == null) { delete process.env.RETIREMENT_SCC_MAIL_CC; } else { process.env.RETIREMENT_SCC_MAIL_CC = cc; }
   return Promise.resolve(fn()).finally(() => {
     if (e[0] === undefined) delete process.env.RETIREMENT_SCC_MAIL_TO; else process.env.RETIREMENT_SCC_MAIL_TO = e[0];
     if (e[1] === undefined) delete process.env.RETIREMENT_SCC_MAIL_CC; else process.env.RETIREMENT_SCC_MAIL_CC = e[1];

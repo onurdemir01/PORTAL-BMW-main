@@ -280,7 +280,7 @@ test('TK7 aksan zemini (satir-ici) ustunde sabit beyaz metin yok (koyu temada 1.
 // 1.45:1 ile gecti. Kosullu dal da ayni kurala tabidir.
 test('TK7b kosullu stil degerinde de aksan zemini + sabit beyaz metin yok', () => {
   const ZEMIN = /background(Color)?:[^,}]*['"]var\(--accent\)['"]/;
-  const BEYAZ = /(?<![A-Za-z-])color:[^,}]*['"](#fff|#ffffff|white)['"]/i;
+  const BEYAZ = /(?<![a-z-])color:[^,}]*['"](#fff|#ffffff|white)['"]/i;
   const ihlal = [];
   for (const [f, s] of KAPSAM_ICI) {
     for (const m of acilisEtiketleri(s)) {

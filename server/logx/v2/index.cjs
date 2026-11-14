@@ -147,18 +147,14 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
       // kullanilir — iki durum da tek kod yolundan gecsin diye once normalize edilir.
       const art = jobAfter.artifacts || {};
       const files =
-        Array.isArray(art.staged_files) && art.staged_files.length
-          ? art.staged_files.filter((f) => f && f.staged_path)
-          : art.staged_path
-            ? [
+        (() => { if (Array.isArray(art.staged_files) && art.staged_files.length) return art.staged_files.filter((f) => f && f.staged_path); if (art.staged_path) return [
                 {
                   staged_path: art.staged_path,
                   filename: art.filename,
                   size_bytes: art.size_bytes,
                   is_fallback: art.is_fallback,
                 },
-              ]
-            : [];
+              ]; return []; })();
       if (files.length) {
         // Ayni arsiv icin ikinci kez token uretmeyi onle: iki es zamanli /jobs/:id/status
         // poll'u ayni terminal gecisini yakalayabilir (index.cjs:47 guard'i yarisa acik).

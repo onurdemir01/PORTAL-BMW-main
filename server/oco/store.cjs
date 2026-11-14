@@ -323,7 +323,7 @@ async function markApprovalResolved(id, { status, message }) {
 // status 'LAUNCHED' (awxJobId) ya da 'AWX_SCHEDULED' (awxScheduleId + yeni OCO numarasi / pencere).
 async function markRetriggered(id, { status, awxJobId, awxScheduleId, ocoNumber, runAt, windowEnd, message }) {
   if (status !== 'LAUNCHED' && status !== 'AWX_SCHEDULED') throw new Error(`markRetriggered: gecersiz durum ${status}`);
-  const t = (d) => (d == null ? null : d instanceof Date ? d : new Date(d));
+  const t = (d) => { if (d == null) return null; if (d instanceof Date) return d; return new Date(d); };
   const { rows } = await db.query(
     `UPDATE oco_scheduled_launches
         SET status = $2, awx_job_id = $3, awx_schedule_id = COALESCE($4, awx_schedule_id),

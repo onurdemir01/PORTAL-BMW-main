@@ -703,7 +703,7 @@ test("T2-C2 UNAVAILABLE + cli=OK: metin 'okunamadi/cevap vermedi' demez, JVM adi
   assert.equal(aue[0].autoStartReason, 'tanimsiz-surec');
   assert.ok(!normalize(aue[0].text).includes('okunamad'), aue[0].text);
   // eylem yok: tanimsiz surece auto-start acma/kapama onerilmez
-  assert.ok(!sunucu(u, APP).findings.some((f) => f.fix && f.fix.jvm === 'hayalet'), 'tanimsiz surece eylem');
+  assert.ok(!sunucu(u, APP).findings.some((f) => f.fix?.jvm === 'hayalet'), 'tanimsiz surece eylem');
 
   // ── PS_ONLY (CLI dustu, XML yok): eski metin KORUNUR ──
   const p = kos('PS_ONLY', 'FAIL');
@@ -750,7 +750,7 @@ test("T3-C8 UNAVAILABLE + envanter auto-start 'false'/'true': deger EZMEZ (unkno
     const kodlar = sunucu(r, APP).findings.filter((f) => f.text.includes('hayalet')).map((f) => f.code).sort();
     assert.deepEqual(kodlar, ['AUTOSTART_UNKNOWN', 'JVM_UNDEFINED_PROCESS'], `inv=${inv}: kodlar`);
     assert.equal(bul(r, APP, 'AUTOSTART_UNKNOWN')[0].autoStartReason, 'tanimsiz-surec');
-    assert.ok(!sunucu(r, APP).findings.some((f) => f.fix && f.fix.jvm === 'hayalet'), `inv=${inv}: tanimsiz surece eylem`);
+    assert.ok(!sunucu(r, APP).findings.some((f) => f.fix?.jvm === 'hayalet'), `inv=${inv}: tanimsiz surece eylem`);
     assert.ok(!bul(r, APP, 'INV_MISMATCH').some((f) => /auto-start/.test(f.text)), `inv=${inv}: tanimsiz surecte auto-start celiskisi`);
     assert.equal(r.summary.jvm.autoStartFromInventory, 0, `inv=${inv}: envanterden auto-start sayildi`);
     assert.equal(r.summary.jvm.autoUnknownBy['tanimsiz-surec'], 1);
@@ -1437,7 +1437,7 @@ test('D1-C26 ortak 43 maske vakasi (14 sozlesme + M1-M3 + Unicode + jvm_arg_diff
   for (const v of VAKALAR) {
     const girdi = sekme(v.girdi);
     const beklenen = sekme(v.beklenen);
-    assert.ok(Object.prototype.hasOwnProperty.call(ISLEV, v.tur), `vaka ${v.no}: bilinmeyen tur ${v.tur}`);
+    assert.ok(Object.hasOwn(ISLEV, v.tur), `vaka ${v.no}: bilinmeyen tur ${v.tur}`);
     const cikti = ISLEV[v.tur](girdi);
     assert.equal(cikti, beklenen, `vaka ${v.no}`);
     // -D belirtecleri jvm_args beyaz listesinden de ayni sonucu almali
@@ -1878,8 +1878,8 @@ test('C7 /findings staleFleet tasir (HTTP): bayat filoda /overview ile AYNI, taz
   await httpIle(async (kok) => {
     const o = await (await fetch(`${kok}/overview?fresh=1`)).json();
     const f = await (await fetch(`${kok}/findings?fresh=1`)).json();
-    assert.ok(o.staleFleet && o.staleFleet.ageDays === 5, 'duzenek: /overview bayat demiyor');
-    assert.ok(Object.prototype.hasOwnProperty.call(f, 'staleFleet'), '/findings staleFleet alanini tasimiyor');
+    assert.ok(o.staleFleet?.ageDays === 5, 'duzenek: /overview bayat demiyor');
+    assert.ok(Object.hasOwn(f, 'staleFleet'), '/findings staleFleet alanini tasimiyor');
     assert.deepEqual(f.staleFleet, o.staleFleet, '/findings ve /overview bayatligi farkli bildiriyor');
   });
   aktifSorgu = sahteSorgu(V3_SEMA, v3Satirlar(gunumuz), []);
@@ -1913,7 +1913,7 @@ test("T3-C8b /jvm-autostart: UNAVAILABLE JVM 400 'tanim kaynaginda yok' (envante
       fetch(`${kok}/jvm-autostart`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ host: APP, gen: 7, confirmed: true, ...body }),
+        body: JSON.stringify(Object.assign({ host: APP, gen: 7, confirmed: true }, body)),
       });
     for (const enable of [true, false]) {
       const r = await post({ jvm: 'hayalet', enable });

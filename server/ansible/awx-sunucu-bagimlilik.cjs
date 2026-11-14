@@ -163,10 +163,10 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
   for (const e of ENGELLER) {
     try {
       const { rows } = await db.query(e.sql, [no]);
-      const n = Number(rows && rows[0] && rows[0].n) || 0;
+      const n = Number(rows?.[0]?.n) || 0;
       if (n > 0) engeller.push({ anahtar: e.anahtar, baslik: e.baslik, adet: n, ipucu: e.ipucu });
     } catch (err) {
-      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String((err && err.message) || err) });
+      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String((err?.message) || err) });
     }
   }
 
@@ -176,7 +176,7 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
       const adlar = (rows || []).map((r) => String(r[alan] == null ? '' : r[alan])).filter(Boolean);
       if (adlar.length) uyarilar.push({ anahtar, baslik, adet: adlar.length, ornekler: adlar.slice(0, 20), ipucu });
     } catch (err) {
-      okunamayan.push({ anahtar, baslik, hata: String((err && err.message) || err) });
+      okunamayan.push({ anahtar, baslik, hata: String((err?.message) || err) });
     }
   };
   await liste(
@@ -217,7 +217,7 @@ async function bagimlilikOzeti(no, { db, env = process.env, sunucuUrl = '' } = {
     });
   }
   const host = urlHost(sunucuUrl);
-  if (host && urlHost(env && env.AWX_URL) === host) {
+  if (host && urlHost(env?.AWX_URL) === host) {
     uyarilar.push({
       anahtar: 'awx_url',
       baslik: 'Eski tek-sunucu AWX_URL bu sunucuyu gösteriyor',

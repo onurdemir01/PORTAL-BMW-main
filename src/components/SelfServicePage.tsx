@@ -1796,8 +1796,11 @@ function AnsibleSection({ isAdmin, selected = null, onItems, onSelect }: {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {visibleItems
-            .sort((a, b) => a.order - b.order)
+          {(() => {
+            const siraliItems = [...visibleItems];
+            siraliItems.sort((a, b) => a.order - b.order);
+            return siraliItems;
+          })()
             .map((item) => (
               <div
                 key={item.id}

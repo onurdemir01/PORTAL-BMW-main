@@ -101,7 +101,7 @@ async function kayit(id) {
 
 /** Kosan faz bittiyse AWX sonucunu okuyup kayda yazar (okunamazsa hicbir sey yazmaz). */
 async function ilerlet(r) {
-  const faz = r.status === 'once_kosuyor' ? 'once' : r.status === 'sonra_kosuyor' ? 'sonra' : null;
+  const faz = (() => { if (r.status === 'once_kosuyor') return 'once'; if (r.status === 'sonra_kosuyor') return 'sonra'; return null; })();
   if (!faz) return r;
   const jobId = faz === 'once' ? r.once_job_id : r.sonra_job_id;
   const serverId = faz === 'once' ? r.once_server_id : r.sonra_server_id;
@@ -125,7 +125,7 @@ async function ilerlet(r) {
     const deg = sonraDegerlendir(sonuc?.sunucular || {}, jsonOku(r.sonra_hedef_json) || hedefler);
     const d = Object.values(deg);
     const sorunsuz = d.filter((x) => x.durum === 'sorunsuz').length;
-    const durum = d.length && sorunsuz === d.length ? 'tamam' : sonuc ? 'sorunlu' : 'sonra_hata';
+    const durum = (() => { if (d.length && sorunsuz === d.length) return 'tamam'; if (sonuc) return 'sorunlu'; return 'sonra_hata'; })();
     const ozet = {
       ...(jsonOku(r.ozet_json) || {}),
       sonra: { sorunsuz, toplam: d.length, job: info.status, sunucu: deg },

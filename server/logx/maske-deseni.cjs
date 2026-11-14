@@ -39,7 +39,7 @@ function niceleyiciOku(desen, i) {
     const m = /^\{(\d+)(,(\d*))?\}/.exec(desen.slice(i));
     if (!m) return null;
     const alt = Number(m[1]);
-    const ust = m[2] ? (m[3] === '' ? Infinity : Number(m[3])) : alt;
+    const ust = (() => { if (m[2]) { if (m[3] === '') return Infinity; return Number(m[3]); } return alt; })();
     return { sinirsiz: ust === Infinity || ust - alt >= 100, son: i + m[0].length };
   }
   return null;
@@ -84,11 +84,11 @@ function icIceSinirsizNiceleyici(desen) {
     } else if (c === ')') {
       const grup = yigin.length > 1 ? yigin.pop() : { sinirsizIcerir: false };
       const q = niceleyiciOku(s, i + 1);
-      if (q && q.sinirsiz && grup.sinirsizIcerir) {
+      if (q?.sinirsiz && grup.sinirsizIcerir) {
         return `iç içe sınırsız niceleyici (konum ${i}): sınırsız tekrar içeren bir grup yeniden sınırsız tekrarlanıyor`;
       }
       const ust = yigin[yigin.length - 1];
-      ust.sinirsizIcerir = ust.sinirsizIcerir || grup.sinirsizIcerir || Boolean(q && q.sinirsiz);
+      ust.sinirsizIcerir = ust.sinirsizIcerir || grup.sinirsizIcerir || Boolean(q?.sinirsiz);
       if (q) {
         i = s[q.son] === '?' || s[q.son] === '+' ? q.son + 1 : q.son;
       } else {
@@ -160,7 +160,7 @@ function davranisDenetle(pattern, flags, { sureMs = DAVRANIS_SURE_MS } = {}) {
       resourceLimits: { maxOldGenerationSizeMb: 64 },
     });
     worker.on('message', (m) => {
-      if (m && m.hazir) {
+      if (m?.hazir) {
         sayac = setTimeout(
           () =>
             sonuc({
@@ -169,7 +169,7 @@ function davranisDenetle(pattern, flags, { sureMs = DAVRANIS_SURE_MS } = {}) {
             }),
           sureMs,
         );
-      } else if (m && m.bitti) {
+      } else if (m?.bitti) {
         sonuc({ ok: true });
       }
     });

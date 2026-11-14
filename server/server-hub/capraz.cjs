@@ -157,7 +157,7 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
     if (prod.some((c) => c.j.running)) continue;
     if (!prod.length && envanterProd.has(taban)) continue;
     const prodRet = prod.flatMap((c) => retOf(c.h, c.j)).filter((x) => KAPATILMIS.has(x.durum));
-    const neden = prodRet.length ? 'PROD_RETIRE' : prod.length ? 'PROD_KAPALI' : 'PROD_YOK';
+    const neden = (() => { if (prodRet.length) return 'PROD_RETIRE'; if (prod.length) return 'PROD_KAPALI'; return 'PROD_YOK'; })();
     const ocpProd = ocp
       ? (ocp.get(normAd(taban)) || []).filter((x) => NS_GRUBU[x.ortam] === 'prod')
       : null;
@@ -260,7 +260,7 @@ function caprazAnaliz(hostlar, { capraz = null, envanter = [], earOf = () => nul
 }
 
 // ── Bulgu metinleri (assess.cjs yazar; ekran ve CSV ayni metni gosterir) ──────────
-const AS_TR = (v) => (v === 'true' ? 'açık' : v === 'false' ? 'kapalı' : 'bilinmiyor');
+const AS_TR = (v) => { if (v === 'true') return 'açık'; if (v === 'false') return 'kapalı'; return 'bilinmiyor'; };
 const fazlasi = (toplam, gosterilen) => (toplam > gosterilen ? ` +${toplam - gosterilen}` : '');
 
 function kopyaMetni(j, k) {
@@ -273,7 +273,7 @@ function kopyaMetni(j, k) {
   const d = k.digerleri
     .map(
       (x) =>
-        `${x.host} (${x.calisiyor == null ? 'ölçülemedi' : x.calisiyor ? 'çalışıyor' : 'kapalı'}, auto-start ${AS_TR(x.autoStart)})`,
+        `${x.host} (${(() => { if (x.calisiyor == null) return 'ölçülemedi'; if (x.calisiyor) return 'çalışıyor'; return 'kapalı'; })()}, auto-start ${AS_TR(x.autoStart)})`,
     )
     .join(', ');
   return `${parca.join('; ')} — öteki kopyalar: ${d}${fazlasi(k.kopyaSayisi - 1, k.digerleri.length)}`;
@@ -281,11 +281,7 @@ function kopyaMetni(j, k) {
 
 function kalintiMetni(k) {
   const neden =
-    k.neden === 'PROD_YOK'
-      ? "prod'da kopyası yok (tarama ve envanter)"
-      : k.neden === 'PROD_RETIRE'
-        ? `prod kopyası Retirement ile durduruldu (#${k.retirement.join(', #')})`
-        : `prod kopyaları kapalı: ${k.prodKopyalar.map((p) => p.host).join(', ')}`;
+    (() => { if (k.neden === 'PROD_YOK') return "prod'da kopyası yok (tarama ve envanter)"; if (k.neden === 'PROD_RETIRE') return `prod kopyası Retirement ile durduruldu (#${k.retirement.join(', #')})`; return `prod kopyaları kapalı: ${k.prodKopyalar.map((p) => p.host).join(', ')}`; })();
   const o = k.ocpProd && k.ocpProd[0];
   const ocp = o
     ? ` — OpenShift prod'da var (${o.namespace} @ ${o.cluster}${fazlasi(k.ocpProd.length, 1)}): uygulama taşınmış olabilir`
@@ -296,11 +292,7 @@ function kalintiMetni(k) {
 function ocpMetni(o) {
   const e = o.eslesme[0];
   const yer = `${e.namespace} @ ${e.cluster}${fazlasi(o.eslesmeSayisi, 1)}`;
-  const istek = o.kullanimOkunamadi
-    ? 'Dynatrace okunamadı'
-    : o.istek == null
-      ? 'Dynatrace isteği ölçülemedi'
-      : `Dynatrace ${o.pencereGun || 7} gün: ${o.istek} istek`;
+  const istek = (() => { if (o.kullanimOkunamadi) return 'Dynatrace okunamadı'; if (o.istek == null) return 'Dynatrace isteği ölçülemedi'; return `Dynatrace ${o.pencereGun || 7} gün: ${o.istek} istek`; })();
   const ad = o.ad.jboss === o.ad.ocp ? '' : ` (ad eşleşmesi: ${o.ad.jboss} ↔ ${o.ad.ocp})`;
   const tasinma = o.tasinmisOlabilir
     ? " — JBoss kopyası boşta, uygulama OpenShift'e taşınmış olabilir"
@@ -314,7 +306,7 @@ function celiskiMetni(c) {
   if (c.nedenler.includes('autostart')) p.push("auto-start AÇIK (reboot'ta geri gelir)");
   if (c.nedenler.includes('paket')) p.push(`paket özgün adıyla diskte (${c.paket})`);
   const ne = c.durum === 'deleted' ? 'silindi' : 'STOP edildi';
-  return `Retirement #${c.kayit} hedefi ${ne}${c.durduruldu ? ` (${c.durduruldu})` : ''} ama ${p.join(', ')}`;
+  return `Retirement #${c.kayit} hedefi ${ne}${c.durduruldu ? (" (" + c.durduruldu + ")") : ''} ama ${p.join(', ')}`;
 }
 
 module.exports = {

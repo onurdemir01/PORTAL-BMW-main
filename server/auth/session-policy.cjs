@@ -56,7 +56,7 @@ function policy() {
 
 // Oturumun MUTLAK siniri: "beni hatirla" ise hatirlama suresi, degilse mutlak sure.
 function mutlakMs(meta, p = policy()) {
-  return meta && meta.remember && p.rememberEnabled ? p.rememberMs : p.absoluteMs;
+  return meta?.remember && p.rememberEnabled ? p.rememberMs : p.absoluteMs;
 }
 
 // Bitis zamanlari (epoch ms). Bosta kalma bitisi mutlak siniri asamaz.
@@ -124,7 +124,7 @@ function yeniMeta(req, { remember = false } = {}, now = saat()) {
     lastSeenAt: now,
     remember: !!remember,
     ip: String(req.ip || '').slice(0, 64),
-    ua: String((req.headers && req.headers['user-agent']) || '').slice(0, 200),
+    ua: String((req.headers?.['user-agent']) || '').slice(0, 200),
   };
 }
 
@@ -132,9 +132,9 @@ function yeniMeta(req, { remember = false } = {}, now = saat()) {
 // Mutlak sure girisin kendisinden sayilir (`loginAt`) — eski cerez zaten 8 sa ile
 // sinirliydi, yani 12 sa'lik sinir kimseyi erken atmaz.
 function eksikMetaTamamla(sess, now = saat()) {
-  if (sess.meta && Number.isFinite(sess.meta.createdAt) && Number.isFinite(sess.meta.lastSeenAt))
+  if (Number.isFinite(sess.meta?.createdAt) && Number.isFinite(sess.meta.lastSeenAt))
     return false;
-  const giris = Date.parse(sess.user && sess.user.loginAt);
+  const giris = Date.parse(sess.user?.loginAt);
   const createdAt = Number.isFinite(giris) && giris <= now ? giris : now;
   sess.meta = { id: kisaKimlik(), createdAt, lastSeenAt: now, remember: false, ip: '', ua: '' };
   return true;
@@ -145,7 +145,7 @@ function eksikMetaTamamla(sess, now = saat()) {
 // tarayicinin ne zaman unutacagini belirler. `rolling: true` ile her yanitta yeniden
 // gonderilir — eski 8 sa'lik kalici cerezler ilk yanitta bu modele gecer.
 function cerezAyarla(sess, p = policy(), now = saat()) {
-  if (!sess || !sess.cookie || !sess.meta) return;
+  if (!sess?.cookie || !sess.meta) return;
   if (sess.meta.remember && p.rememberEnabled) {
     // `maxAge` degil `expires`: express-session maxAge'i kendi saatiyle tarihe cevirir;
     // sinir mutlak bir AN oldugu icin dogrudan o an yazilir.
@@ -194,7 +194,7 @@ function oturumuBitir(req, res, sebep, next) {
   try {
     const m = req.session.meta || {};
     require('../audit/index.cjs').auditPortal(req, 'session_expired', {
-      username: req.session.user && req.session.user.username,
+      username: req.session.user?.username,
       detail: `reason=${sebep} id=${m.id || '-'} ageMin=${Math.round((saat() - (m.createdAt || saat())) / 60000)}`,
     });
   } catch {
@@ -216,7 +216,7 @@ function basliklariYaz(res, meta, p) {
 function oturumYaptirimi() {
   return function oturumYaptirimiMw(req, res, next) {
     const sess = req.session;
-    if (!sess || !sess.user) return next();
+    if (!sess?.user) return next();
     const now = saat();
     const p = policy();
     eksikMetaTamamla(sess, now);

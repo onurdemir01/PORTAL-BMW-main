@@ -36,7 +36,7 @@ function slowHttpThresholdMs() {
 /** Rota KALIBI: '/api/oco' + '/calendar'. Rota eslesmediyse yalniz baseUrl (ham URL degil). */
 function routeOf(req) {
   const base = typeof req.baseUrl === "string" ? req.baseUrl : "";
-  const rp = req.route && typeof req.route.path === "string" ? req.route.path : "";
+  const rp = typeof req.route?.path === "string" ? req.route.path : "";
   return (base + rp) || "?";
 }
 
@@ -91,7 +91,7 @@ function tbmwansPoolStats() {
 // tarn'in gercek API'sidir (size/used/pending ozellikleri tarn'da YOKTUR).
 function tarnPoolStats(connectionPool) {
   try {
-    const p = connectionPool && connectionPool.pool;
+    const p = connectionPool?.pool;
     if (!p) return null;
     const num = (fn) => (typeof p[fn] === "function" ? p[fn]() : null);
     const used = num("numUsed");
