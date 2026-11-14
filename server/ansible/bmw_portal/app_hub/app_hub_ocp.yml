@@ -208,24 +208,6 @@
             and (oc_bin | default('') | trim | length > 0)
             and ((app_hub_stat.stat.checksum | default('')) == (hostvars['localhost'].app_hub_src_sha1 | default('x')))
 
-        - name: "Gecici kubeconfig dosyalari silinir"
-          ansible.builtin.file:
-            path: "/tmp/app-hub-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace }}.kubeconfig"
-            state: absent
-          loop: "{{ my_targets }}"
-          loop_control:
-            label: "{{ item.cluster }}/{{ item.namespace }}"
-          changed_when: false
-          failed_when: false
-
-        - name: "Betik silinir"
-          ansible.builtin.file:
-            path: "{{ app_hub_script }}"
-            state: absent
-          changed_when: false
-          failed_when: false
-          when: app_hub_script | length > 0
-
         - name: "Bastion sonuclari"
           ansible.builtin.set_fact:
             app_hub_results: >-
@@ -266,6 +248,60 @@
         - name: "Hata kaydedilir (host ayakta kalir)"
           ansible.builtin.set_fact:
             host_blocked_reason: "{{ ansible_failed_result.msg | default('Bu bastion uzerinde okuma tamamlanamadi.') | string | truncate(300) }}"
+
+      always:
+        - name: "Gecici kubeconfig dosyalari silinir"
+          ansible.builtin.file:
+            path: "/tmp/app-hub-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace }}.kubeconfig"
+            state: absent
+          loop: "{{ my_targets | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster }}/{{ item.namespace }}"
+          changed_when: false
+          failed_when: false
+
+        - name: "Betik silinir"
+          ansible.builtin.file:
+            path: "{{ app_hub_script }}"
+            state: absent
+          changed_when: false
+          failed_when: false
+          when: app_hub_script | length > 0
+
+        - name: "Gecici kubeconfig temizligi dogrulanir"
+          ansible.builtin.stat:
+            path: "/tmp/app-hub-{{ tower_job_id | default(awx_job_id | default('manual')) }}-{{ item.cluster | regex_replace('[^A-Za-z0-9._-]', '-') }}-{{ item.namespace }}.kubeconfig"
+          loop: "{{ my_targets | default([]) }}"
+          loop_control:
+            label: "{{ item.cluster }}/{{ item.namespace }}"
+          register: app_hub_kubeconfig_after
+          changed_when: false
+          failed_when: false
+
+        - name: "Gecici betik temizligi dogrulanir"
+          ansible.builtin.stat:
+            path: "{{ app_hub_script }}"
+          register: app_hub_script_after
+          changed_when: false
+          failed_when: false
+          when: app_hub_script | length > 0
+
+        - name: "Gecici dosyalar kaldiysa host basarisiz"
+          ansible.builtin.assert:
+            that:
+              - >-
+                app_hub_kubeconfig_after.results | default([])
+                | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined') | list | length
+                == my_targets | default([]) | length
+              - >-
+                app_hub_kubeconfig_after.results | default([])
+                | selectattr('stat', 'defined') | selectattr('stat.exists', 'defined')
+                | selectattr('stat.exists', 'equalto', true) | list | length == 0
+              - >-
+                (app_hub_script | length == 0)
+                or ((app_hub_script_after.stat.exists | default(true)) == false)
+            fail_msg: "Application Hub gecici kimlik veya betik dosyasi temizlenemedi."
+            quiet: true
 
 - name: "Application Hub OCP - sonuclari topla ve yayinla"
   hosts: localhost
