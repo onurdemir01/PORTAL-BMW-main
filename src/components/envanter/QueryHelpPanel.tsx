@@ -22,7 +22,7 @@ export default function QueryHelpPanel({ onInsertExample }: { onInsertExample: (
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([inventoryApi.tables(), inventoryApi.tableAliases()])
+    void Promise.all([inventoryApi.tables(), inventoryApi.tableAliases()])
       .then(([tr, ar]) => {
         setTables(tr.tables || []);
         setAliases(ar.aliases || {});

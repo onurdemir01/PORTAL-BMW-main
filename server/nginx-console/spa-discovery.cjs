@@ -27,6 +27,7 @@
 const { isSpaApp } = require('../audit/spa-pattern.cjs');
 const { envOfNamespace } = require('../audit/ocp-platforms.cjs');
 const { rpUygula } = require('./spa-rp.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const L = (s) =>
   String(s == null ? '' : s)
@@ -398,10 +399,10 @@ function buildSpaDiscovery(discovery, inventory, usage, runs, rpKaynak, katalog)
     // nin nereden geldigi. Ek sorgu yok; yukaridaki sonuclardan turetilir.
     rpKapsam: { ...rp.kapsam, envanterOkunamadi, dynatraceOkunamadi },
     platformHidden: { routes: platform.routes, namespaces: platform.namespaces.size },
-    namespaces: [...new Set(apps.map((a) => a.namespace).filter(Boolean))].sort(),
+    namespaces: [...new Set(apps.map((a) => a.namespace).filter(Boolean))].sort(varsayilanSira),
     coverage,
-    clusters: [...new Set(rows.map((r) => r.cluster).filter(Boolean))].sort(),
-    envs: [...new Set(rows.map((r) => r.env).filter(Boolean))].sort(),
+    clusters: [...new Set(rows.map((r) => r.cluster).filter(Boolean))].sort(varsayilanSira),
+    envs: [...new Set(rows.map((r) => r.env).filter(Boolean))].sort(varsayilanSira),
     summary: {
       routes: rows.length,
       spa: spaSatir.length,
@@ -561,7 +562,7 @@ function uygulamalar(rows, coverage, opt = {}) {
   const out = [...m.values()].map((a) => {
     const spa =
       (() => { if (a.spaRoutes > 0) return 'evet'; if (a.unmatchedRoutes === a.routeCount) return 'bilinmiyor'; return 'hayir'; })();
-    const clusters = [...a.clusters].sort();
+    const clusters = [...a.clusters].sort(varsayilanSira);
     // CLUSTER KAPSAMI: payda ortamin katalogdaki TARANABILEN cluster'lari (bkz. kapsamOrani).
     // Ortam tek bir cluster ortamina cozulemiyorsa oran iddia EDILMEZ.
     let kapsamDurum = 'olculemedi';
@@ -599,7 +600,7 @@ function uygulamalar(rows, coverage, opt = {}) {
       spa,
       // KANIT: nginx-start.sh (guclu) / image (zayif). Yalniz 'ad' eslesmesiyle bulunduysa
       // (servis okunamadi, ayni adli is yukune dusuldu) kanit zayiftir ve oyle gosterilir.
-      signals: [...a.signals].sort(),
+      signals: [...a.signals].sort(varsayilanSira),
       weakEvidence: spa === 'evet' && a.matchBy.size > 0 && !a.matchBy.has('selector'),
       // AD KALIBI: uygulama adi `-app-v` / `-app-emb-v` kuralina uyuyor mu. Gercekten SPA
       // olup UYMAYANLAR eski (ada dayali) yontemle bulunamiyordu - sayfanin varlik sebebi.
@@ -618,12 +619,12 @@ function uygulamalar(rows, coverage, opt = {}) {
       inventory: (() => { if (a.invOkunamadi) return 'olculemedi'; if (a.invRoutes === a.routeCount) return 'kayitli'; if (a.invRoutes === 0) return 'kayitli-degil'; return 'kismen'; })(),
       invRoutes: a.invRoutes,
       routeCount: a.routeCount,
-      hosts: [...a.hosts].sort(),
-      routes: [...a.routes].sort(),
+      hosts: [...a.hosts].sort(varsayilanSira),
+      routes: [...a.routes].sort(varsayilanSira),
       clusters,
       // ESKI VERI: bu cluster'in son kosusu basarisiz, satir onceki bir kosudan.
       staleClusters: clusters.filter((c) => eski.get(c)?.stale),
-      notes: [...a.notes].sort(),
+      notes: [...a.notes].sort(varsayilanSira),
     };
   });
   const SPA_SIRA = { evet: 0, bilinmiyor: 1, hayir: 2 };

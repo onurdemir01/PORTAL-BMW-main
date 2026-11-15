@@ -44,7 +44,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
-    inventoryApi.savedQueries().then((r) => setSavedQueries(r.queries || []));
+    void inventoryApi.savedQueries().then((r) => setSavedQueries(r.queries || []));
   }, []);
 
   function flash(msg: string) {

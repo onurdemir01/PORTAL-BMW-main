@@ -17,6 +17,7 @@
 
 const crypto = require('crypto');
 const { getEffectiveTable, effectiveSnapshotTables, MIN_ROW_RATIO } = require('./history-config.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const INSERT_BATCH = 200; // MSSQL'de 2100 parametre siniri var; 200 x 5 = 1000, guvenli.
 
@@ -58,7 +59,7 @@ function sha256(s) {
 function contentOf(row, volatile) {
   const skip = new Set((volatile || []).map((c) => c.toLowerCase()));
   const out = {};
-  for (const k of Object.keys(row).sort()) {
+  for (const k of Object.keys(row).sort(varsayilanSira)) {
     if (skip.has(k.toLowerCase())) continue;
     out[k] = normValue(row[k]);
   }

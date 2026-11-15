@@ -25,6 +25,7 @@
 
 const alim = require('./ear-envanter-alim.cjs');
 const ayar = require('./ear-envanter-ayar.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const REGISTRY_KEY = 'server_hub_ear_envanter';
 const TEMPLATE_ADI = 'Server Hub — Uygulama Envanteri';
@@ -231,8 +232,8 @@ function hedefleriDuzle(liste) {
     if (o) harita.get(h).add(o);
   }
   const hedefler = [...harita.keys()]
-    .sort()
-    .map((host) => ({ host, ortam: M([...harita.get(host)].sort().join(','), 128) }));
+    .sort(varsayilanSira)
+    .map((host) => ({ host, ortam: M([...harita.get(host)].sort(varsayilanSira).join(','), 128) }));
   return { hedefler, gecersiz };
 }
 

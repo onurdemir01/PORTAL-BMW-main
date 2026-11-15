@@ -5,6 +5,7 @@ const adminData = require('../logx/v2/admin.cjs');
 const ocp = require('../logx/v2/ocp.cjs');
 const gates = require('../ansible/change-gates.cjs');
 const config = require('./config.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const ACTIONS = Object.freeze(['stop', 'restore', 'scale']);
 const MODES = Object.freeze(['dry_run', 'apply']);
@@ -357,7 +358,7 @@ function buildClusterAppMap(targets, allowedApps) {
     byCluster.get(cluster).add(name);
   }
   const out = {};
-  for (const [cluster, set] of byCluster) out[cluster] = [...set].sort().join(',');
+  for (const [cluster, set] of byCluster) out[cluster] = [...set].sort(varsayilanSira).join(',');
   return out;
 }
 
@@ -371,7 +372,7 @@ function buildClusterAppMap(targets, allowedApps) {
 function isFullProduct(clusterAppMap, clusters, apps) {
   const c = Object.keys(clusterAppMap);
   if (c.length !== clusters.length) return false;
-  const beklenen = [...apps].sort().join(',');
+  const beklenen = [...apps].sort(varsayilanSira).join(',');
   return c.every((k) => clusterAppMap[k] === beklenen);
 }
 

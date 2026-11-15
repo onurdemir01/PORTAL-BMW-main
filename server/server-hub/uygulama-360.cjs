@@ -21,6 +21,7 @@
 
 const { tabanAd, uygTaban, yalnizEnvanter } = require('./capraz.cjs');
 const { ozetle } = require('./retire-etiket.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const L = (s) =>
   String(s == null ? '' : s)
@@ -153,8 +154,8 @@ function ozetOf(ad, kopyalar, etiketler) {
     ortamlar,
     kopyaSayisi: kopyalar.length,
     sunucuSayisi: new Set(kopyalar.map((k) => k.host)).size,
-    nesiller: [...new Set(kopyalar.map((k) => k.gen))].sort(),
-    tier: [...new Set(kopyalar.map((k) => k.tier).filter(Boolean))].sort(),
+    nesiller: [...new Set(kopyalar.map((k) => k.gen))].sort(varsayilanSira),
+    tier: [...new Set(kopyalar.map((k) => k.tier).filter(Boolean))].sort(varsayilanSira),
     calisan: say((k) => k.calisiyor === true),
     kapali: say((k) => k.calisiyor === false),
     olculemeyen: say((k) => k.calisiyor === null),

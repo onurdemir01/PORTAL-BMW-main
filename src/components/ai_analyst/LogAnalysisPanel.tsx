@@ -308,7 +308,7 @@ export default function LogAnalysisPanel({
                   ]
                     .filter(Boolean)
                     .join('\n\n');
-                  navigator.clipboard.writeText(txt);
+                  void navigator.clipboard.writeText(txt);
                 }}
                 className="flex items-center gap-1 hover:text-gray-600 transition"
               >

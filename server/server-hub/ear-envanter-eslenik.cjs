@@ -20,6 +20,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const db = () => require('../db/index.cjs');
 const alim = () => require('./ear-envanter-alim.cjs');
@@ -119,7 +120,7 @@ function degiskenler(kopyalar, anahtarOf) {
     for (const k of ks) harfOf.set(kopyaAnahtari(k), h);
     return {
       harf: h,
-      hostlar: [...new Set(ks.map((k) => k.host))].sort(),
+      hostlar: [...new Set(ks.map((k) => k.host))].sort(varsayilanSira),
       kopya_sayisi: ks.length,
     };
   });
@@ -200,7 +201,7 @@ function analizEt(kopyalar, { tumu = false } = {}) {
     bilinen,
     (k) => `${k.ad}\u0000${ortamOf(k.ortam)}\u0000${k.jboss}`,
   ).values()) {
-    const hostlar = [...new Set(ks.map((k) => k.host))].sort();
+    const hostlar = [...new Set(ks.map((k) => k.host))].sort(varsayilanSira);
     if (hostlar.length < 2 && !tumu) continue;
     const s = hostlar.length < 2 ? { kutuphane: null, yapi: null, karar: 'TEK' } : karsilastir(ks);
     const d = degiskenler(ks, tamAnahtar);
@@ -215,7 +216,7 @@ function analizEt(kopyalar, { tumu = false } = {}) {
       kopya_sayisi: ks.length,
       hostlar,
       eksik: ks.filter((k) => k.durum !== 'TAM').map((k) => `${k.host}:${k.durum}`),
-      kipler: [...new Set(ks.map((k) => k.kip))].sort(),
+      kipler: [...new Set(ks.map((k) => k.kip))].sort(varsayilanSira),
       ...tarihFarki(ks),
       degiskenler: d.liste,
       kopyalar: ks
@@ -227,7 +228,7 @@ function analizEt(kopyalar, { tumu = false } = {}) {
 
   const ortamlarArasi = [];
   for (const ks of grupla(bilinen, (k) => `${k.ad}\u0000${k.jboss}`).values()) {
-    const ortamlar = [...new Set(ks.map((k) => ortamOf(k.ortam)))].sort();
+    const ortamlar = [...new Set(ks.map((k) => ortamOf(k.ortam)))].sort(varsayilanSira);
     if (ortamlar.length < 2) continue;
     const s = karsilastir(ks);
     const d = degiskenler(ks, (k) => k.tamImza);
@@ -235,10 +236,10 @@ function analizEt(kopyalar, { tumu = false } = {}) {
     const cogunluk = d.liste[0] ? d.liste[0].harf : null;
     const ortamDetay = ortamlar.map((o) => {
       const oks = ks.filter((k) => ortamOf(k.ortam) === o);
-      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort();
+      const harfler = [...new Set(oks.map((k) => d.harfOf.get(kopyaAnahtari(k))))].sort(varsayilanSira);
       return {
         ortam: o,
-        hostlar: [...new Set(oks.map((k) => k.host))].sort(),
+        hostlar: [...new Set(oks.map((k) => k.host))].sort(varsayilanSira),
         harfler,
         eksik: oks.filter((k) => k.durum !== 'TAM').length,
       };
@@ -258,7 +259,7 @@ function analizEt(kopyalar, { tumu = false } = {}) {
           ? []
           : ortamDetay.filter((o) => o.harfler.some((h) => h !== cogunluk)).map((o) => o.ortam),
       eksik: ks.filter((k) => k.durum !== 'TAM').map((k) => `${k.host}:${k.durum}`),
-      kipler: [...new Set(ks.map((k) => k.kip))].sort(),
+      kipler: [...new Set(ks.map((k) => k.kip))].sort(varsayilanSira),
       ...tarihFarki(ks),
       degiskenler: d.liste,
       kopyalar: ks
@@ -300,7 +301,7 @@ function analizEt(kopyalar, { tumu = false } = {}) {
       karar: null,
       host_sayisi: new Set(ks.map((k) => k.host)).size,
       kopya_sayisi: ks.length,
-      hostlar: [...new Set(ks.map((k) => k.host))].sort(),
+      hostlar: [...new Set(ks.map((k) => k.host))].sort(varsayilanSira),
       kopyalar: ks.map((k) => kopyaOzeti(k, null)).sort((a, b) => kucukBuyuk(a.anahtar, b.anahtar)),
     });
   ortamYok.sort((a, b) => kucukBuyuk(a.uygulama, b.uygulama) || kucukBuyuk(a.jboss, b.jboss));
@@ -321,7 +322,7 @@ function farkSatirlari(kopyalar) {
   const satirlar = [];
   const konumlar = new Set();
   for (const k of kopyalar) for (const konum of k.konumlar.keys()) konumlar.add(konum);
-  for (const konum of [...konumlar].sort()) {
+  for (const konum of [...konumlar].sort(varsayilanSira)) {
     const olan = kopyalar.filter((k) => k.konumlar.has(konum));
     if (olan.length !== kopyalar.length) {
       satirlar.push({
@@ -347,7 +348,7 @@ function farkSatirlari(kopyalar) {
         libler.get(ad).set(k.anahtar, v);
       }
     }
-    for (const ad of [...libler.keys()].sort()) {
+    for (const ad of [...libler.keys()].sort(varsayilanSira)) {
       const her = libler.get(ad);
       const degerler = Object.fromEntries(
         kopyalar.map((k) => [k.anahtar, her.get(k.anahtar) || null]),
@@ -413,8 +414,8 @@ function yapiFarki(a, b) {
   }
   for (const yol of B.keys()) if (!A.has(yol)) yalnizB.push(yol);
   return {
-    yalnizA: yalnizA.sort(),
-    yalnizB: yalnizB.sort(),
+    yalnizA: yalnizA.sort(varsayilanSira),
+    yalnizB: yalnizB.sort(varsayilanSira),
     tipFarkli: tipFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
     boyutFarkli: boyutFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
   };

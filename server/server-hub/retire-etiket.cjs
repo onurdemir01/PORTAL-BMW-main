@@ -325,7 +325,7 @@ function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
       a.tur.localeCompare(b.tur) ||
       U(a.ad).localeCompare(U(b.ad)),
   );
-  const say = (f) => etiketler.filter(f).length;
+  const say = (f) => etiketler.filter((e) => f(e)).length;
   return {
     etiketler,
     ozet: {

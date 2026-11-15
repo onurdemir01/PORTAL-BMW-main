@@ -298,7 +298,7 @@ function startScheduler() {
 }
 
 function initDbFullBackup(app) {
-  loadPersistedState().finally(startScheduler);
+  void loadPersistedState().finally(startScheduler);
 
   app.get('/api/admin/db-full-backup/status', (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });

@@ -9,6 +9,7 @@
 //   inventory.json  uygulamanin tum alanlari (agac satirlari haric), yapay zeka analizi icin.
 // ZIP yeni bagimlilik olmadan server/util/zip-yazici.cjs ile; tum arsiv bellekte, sinirli.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const BOM = '\uFEFF';
 
@@ -245,7 +246,7 @@ function agacMetni({ host, kosu, uygulama, taranmaUtc }) {
     `# alanlar: inode mod uid gid boyut mtime(UTC) ad [-> bag]; arsiv icindeki girisler ARSIV!/yol`,
   ];
   if (!satirlar.length) out.push('# agac satiri yok (OZET kipinde agac tutulmaz)');
-  for (const d of [...dizinler.keys()].sort()) {
+  for (const d of [...dizinler.keys()].sort(varsayilanSira)) {
     out.push('', `${d}:`);
     const liste = dizinler
       .get(d)

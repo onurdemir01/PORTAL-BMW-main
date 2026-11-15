@@ -34,6 +34,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 const TABLO_RE = /^(dbo\.)?[A-Za-z_][A-Za-z0-9_]*$/;
@@ -315,7 +316,7 @@ async function suzgec(req) {
     bilgi() {
       return {
         sayi: gizli.size,
-        hostlar: [...gizli].sort().slice(0, 200),
+        hostlar: [...gizli].sort(varsayilanSira).slice(0, 200),
         gun: d.gun,
         gosteriliyor: goster,
         olculemedi: !d.ok,

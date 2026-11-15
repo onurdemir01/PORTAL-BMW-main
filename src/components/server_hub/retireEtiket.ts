@@ -154,7 +154,8 @@ export function hizliSuz<T extends ShRetireEtiketHer>(etiketler: T[], h: HizliSu
     yanlis: (e) => e.durum === 'YANLIS_ALARM',
     hepsi: () => true,
   };
-  return etiketler.filter(f[h] || acik);
+  const sec = f[h] || acik;
+  return etiketler.filter((e) => sec(e));
 }
 
 /** Zincir özeti (sütun süzgeci): kanıt tam / kesinden indi / şüpheli + neden. */

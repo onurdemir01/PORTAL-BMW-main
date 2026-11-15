@@ -24,6 +24,7 @@
 'use strict';
 
 const db = require('../../db/index.cjs');
+const { varsayilanSira } = require('../../util/siralama.cjs');
 
 const MANUAL_ACTIONS = ['v2_legacy_manual_app', 'v2_legacy_manual_host'];
 
@@ -97,7 +98,7 @@ function aggregate(rows) {
     app: g.app,
     count: g.count,
     userCount: g.users.size,
-    users: [...g.users].sort(),
+    users: [...g.users].sort(varsayilanSira),
     firstSeen: g.firstSeen ? g.firstSeen.toISOString() : null,
     lastSeen: g.lastSeen ? g.lastSeen.toISOString() : null,
   }));

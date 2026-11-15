@@ -48,6 +48,7 @@ const {
 } = require('./nginx-migration.cjs');
 const { buildRouteStats } = require('./route-stats.cjs');
 const { loadNamespaceOwners, ownersForApp } = require('./ns-owners.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 // Proxy (production) kolonlari DDL ile eklendi mi?
 //
@@ -345,7 +346,7 @@ function initDenetim(app) {
       for (const r of raw) {
         seenEnvs.add(normEnv(r.env));
       }
-      const envList = [...CANON, ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort()];
+      const envList = [...CANON, ...[...seenEnvs].filter((e) => !CANON.includes(e)).sort(varsayilanSira)];
 
       // Teshis: her env jetonu icin kac satir, hangi host'lar, hangi vhost dosyalari.
       // "PROD nicin bos" gibi sorular bu tabloya bakilarak cevaplanir.
@@ -391,8 +392,8 @@ function initDenetim(app) {
         return {
           env: e,
           rows: st ? st.rows : 0,
-          hosts: st ? [...st.hosts].sort() : [],
-          vhosts: st ? [...st.vhosts].sort() : [],
+          hosts: st ? [...st.hosts].sort(varsayilanSira) : [],
+          vhosts: st ? [...st.vhosts].sort(varsayilanSira) : [],
         };
       });
 
@@ -586,7 +587,7 @@ function initDenetim(app) {
               appDeployed: true,
               inOcpInventory: true,
               locationPath: '',
-              hosts: [...e.hosts].sort(),
+              hosts: [...e.hosts].sort(varsayilanSira),
             };
           }
         } catch (e) {
@@ -679,7 +680,7 @@ function initDenetim(app) {
         scanDate: effectiveDate,
         scannedAt: await scanStamp(query, 'dbo.Nginx_Config_Audit'),
         availableDates: (datesRes.recordset || []).map((x) => x.d),
-        services: [...new Set(rows.map((r) => r.service))].sort(), // NEW_ONLY satirlari dahil
+        services: [...new Set(rows.map((r) => r.service))].sort(varsayilanSira), // NEW_ONLY satirlari dahil
         envs: envList,
         envStats,
         rows,
@@ -1109,7 +1110,7 @@ function initDenetim(app) {
       // Eksik uygulama satiri: ad + namespace'ler + ekip (OwnerCell ile ayni sekil)
       const detailOf = (env, name, extra) => {
         const v = (ocp.get(env) || new Map()).get(String(name).toLowerCase());
-        const nss = v ? [...v.nss].sort() : [];
+        const nss = v ? [...v.nss].sort(varsayilanSira) : [];
         return {
           app: name,
           namespaces: nss,
@@ -2160,8 +2161,8 @@ function initDenetim(app) {
         schemaReady: true,
         scanDate: effectiveDate,
         scannedAt: await scanStamp(query, 'dbo.NginxRateLimitInventory'),
-        envs: [...new Set(rows.map((x) => x.env))].sort(),
-        services: [...new Set(rows.map((x) => x.service))].filter(Boolean).sort(),
+        envs: [...new Set(rows.map((x) => x.env))].sort(varsayilanSira),
+        services: [...new Set(rows.map((x) => x.service))].filter(Boolean).sort(varsayilanSira),
         totals: {
           rows: rows.length,
           vhosts: new Set(rows.map((x) => x.vhost)).size,
@@ -2472,9 +2473,9 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length - unreadable.length,
         missing: absent.length,
-        missingHosts: absent.sort(),
+        missingHosts: absent.sort(varsayilanSira),
         unreadable: unreadable.length,
-        unreadableHosts: unreadable.sort(),
+        unreadableHosts: unreadable.sort(varsayilanSira),
         variantCount: variants.length,
         rawVariantCount: variants.reduce((a, v) => a + v.rawVariants.length, 0),
         majorityHash: majority ? majority.hash : null,
@@ -2485,7 +2486,7 @@ function initDenetim(app) {
         referenceCount: ref ? counts.ok + counts.format : 0,
         formatOnlyCount: sc.perServer ? 0 : counts.format,
         crlfCount: crlfHosts.length,
-        crlfHosts: crlfHosts.sort(),
+        crlfHosts: crlfHosts.sort(varsayilanSira),
         deviatingCount: sc.perServer
           ? majority
             ? variants.slice(1).reduce((a, v) => a + v.count, 0)
@@ -2568,7 +2569,7 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length,
         missing: absent.length,
-        missingHosts: absent.sort(),
+        missingHosts: absent.sort(varsayilanSira),
         unreadable: 0,
         unreadableHosts: [],
         variantCount: variants.length,
@@ -2710,7 +2711,7 @@ function initDenetim(app) {
       // Uzun tablo -> Init ile ayni "host basina satir" sekli; script listesi VERIDEN.
       const names = [
         ...new Set(rows.map((r) => String(r.script || '').trim()).filter(Boolean)),
-      ].sort();
+      ].sort(varsayilanSira);
       const scripts = names.map((n) => ({ key: n, label: n }));
       const byHost = new Map();
       let scanDate = null;

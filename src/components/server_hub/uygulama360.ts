@@ -50,7 +50,10 @@ const SUZ: Record<U360Hizli, (u: Sh360Ozet) => boolean> = {
   ocp: (u) => !!u.ocp,
   retirement: (u) => u.retirement.length > 0 || u.celiski > 0,
 };
-export const u360Suz = (l: Sh360Ozet[], h: U360Hizli) => l.filter(SUZ[h] || SUZ.hepsi);
+export const u360Suz = (l: Sh360Ozet[], h: U360Hizli) => {
+  const sec = SUZ[h] || SUZ.hepsi;
+  return l.filter((x) => sec(x));
+};
 export const u360Say = (l: Sh360Ozet[]) =>
   Object.fromEntries(U360_HIZLI.map((h) => [h.id, l.filter(SUZ[h.id]).length])) as Record<
     U360Hizli,

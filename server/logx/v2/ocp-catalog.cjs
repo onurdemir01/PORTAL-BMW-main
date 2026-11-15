@@ -24,6 +24,7 @@
 
 const inventory = require('./ocp-inventory.cjs');
 const cache = require('./ocp-cache.cjs');
+const { varsayilanSira } = require('../../util/siralama.cjs');
 
 // Iki kaynagin tazelik bilgisini birlestirir: en YENI zaman damgasi gosterilir,
 // bayatlik ise "herhangi biri bayatsa bayat" kuralindadir (iyimser gosterip kullaniciyi
@@ -111,7 +112,7 @@ async function getNamespaces({ env, tenant, clusterNames }) {
   const anyCache = cachedPerCluster.find((c) => c.cached) || EMPTY;
   const freshness = mergeFreshness(inv, anyCache);
   return {
-    items: Object.keys(sources).sort(),
+    items: Object.keys(sources).sort(varsayilanSira),
     sources,
     counts,
     // Okunamayan kaynaklarin ADLARI. Bos dizi = iki kaynak da okundu, liste

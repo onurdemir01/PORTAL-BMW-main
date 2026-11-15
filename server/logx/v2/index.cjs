@@ -15,6 +15,7 @@ const owners = require('./owners.cjs');
 const adminData = require('./admin.cjs');
 const cleanup = require('./cleanup.cjs');
 const audit = require('../audit.cjs');
+const { varsayilanSira } = require('../../util/siralama.cjs');
 
 // `groups` SART (2026-10-01): kisitlamalarin grup izinleri `user.groups`'tan okunur
 // (restrictions.cjs). Bu alan eskiden ATILIYORDU ve grup izinleri HICBIR ZAMAN
@@ -1393,7 +1394,7 @@ function initLogXv2(app) {
       res.json({
         ok: true,
         labels: [...etiket.entries()]
-          .map(([label, k]) => ({ label, sources: [...k].sort() }))
+          .map(([label, k]) => ({ label, sources: [...k].sort(varsayilanSira) }))
           .sort((a, b) => a.label.localeCompare(b.label)),
       });
     }),

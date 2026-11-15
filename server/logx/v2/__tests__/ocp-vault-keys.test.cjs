@@ -167,10 +167,10 @@ test('on kontrol: katalogda olmayan anahtar 400 doner, mesaj cluster + anahtar a
 
 test('on kontrol: katalogdaki anahtar gecer', async () => {
   await withKnownKeys(['uxmid_gar'], async () => {
-    await ocp.assertVaultKeysKnownOrThrow({
+    await assert.doesNotReject(ocp.assertVaultKeysKnownOrThrow({
       gbocpcicd2: { vault_credential_key: 'uxmid_gar' },
       gbocpcicd3: { vault_credential_key: 'uxmid_gar' },
-    });
+    }));
   });
 });
 
@@ -179,11 +179,11 @@ test('on kontrol: BOS anahtar hata DEGILDIR (asamali gecis yolu korunur)', async
   // o cluster icin alanlar gonderilmez ve playbook eski inventory yoluna duser. Bu kontrol
   // o yolu KAPATMAMALI — yoksa bugun calisan cluster'lar bir anda 400 almaya baslardi.
   await withKnownKeys([], async () => {
-    await ocp.assertVaultKeysKnownOrThrow({
+    await assert.doesNotReject(ocp.assertVaultKeysKnownOrThrow({
       eski_cluster: { vault_credential_key: '', api_url: '' },
       bos_cluster: {},
       null_cluster: { vault_credential_key: null },
-    });
+    }));
   });
 });
 
@@ -191,7 +191,7 @@ test('on kontrol: katalog OKUNAMAZSA is engellenmez (kolaylik kontrolu, guvenlik
   const orig = adminData.listActiveVaultKeyNames;
   adminData.listActiveVaultKeyNames = async () => { throw new Error('DB dustu'); };
   try {
-    await ocp.assertVaultKeysKnownOrThrow({ c1: { vault_credential_key: 'her_neyse' } });
+    await assert.doesNotReject(ocp.assertVaultKeysKnownOrThrow({ c1: { vault_credential_key: 'her_neyse' } }));
   } finally {
     adminData.listActiveVaultKeyNames = orig;
   }

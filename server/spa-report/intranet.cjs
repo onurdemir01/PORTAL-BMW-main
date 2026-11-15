@@ -44,6 +44,7 @@
 
 const { intranetHosts, envOfHost, siteOfHost } = require('../audit/nginx-hosts.cjs');
 const { platformOfCluster } = require('../audit/ocp-platforms.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const TTL_MS = 60 * 1000;
 let _cache = { at: 0, value: null };
@@ -174,14 +175,14 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
   const icinde = adaylar.filter((a) => {
     const cl = (a.clusters || []).map(L);
     if (cl.some((c) => platformOfCluster(c) === platform)) return true;
-    const p = [...new Set(cl.map((c) => platformOfCluster(c) || 'bilinmiyor'))].sort().join('+') || 'cluster-yok';
+    const p = [...new Set(cl.map((c) => platformOfCluster(c) || 'bilinmiyor'))].sort(varsayilanSira).join('+') || 'cluster-yok';
     if (!disi.has(p)) disi.set(p, { platform: p, uygulama: 0, clusters: new Set() });
     disi.get(p).uygulama += 1;
     for (const c of cl) disi.get(p).clusters.add(c);
     return false;
   });
   const platformDisi = [...disi.values()]
-    .map((d) => ({ platform: d.platform, uygulama: d.uygulama, clusters: [...d.clusters].sort() }))
+    .map((d) => ({ platform: d.platform, uygulama: d.uygulama, clusters: [...d.clusters].sort(varsayilanSira) }))
     .sort((a, b) => b.uygulama - a.uygulama || a.platform.localeCompare(b.platform));
 
   const rows = icinde
@@ -258,7 +259,7 @@ function buildIntranetRapor({ apps, ownersByNs, owners, beyanlar, coverage, dirR
   const envler = [...new Set(rows.map((r) => r.env))].sort((a, b) => sira(a) - sira(b) || a.localeCompare(b));
   const envs = envler.map((env) => {
     const rs = rows.filter((r) => r.env === env);
-    const say = (f) => rs.filter(f).length;
+    const say = (f) => rs.filter((r) => f(r)).length;
     return {
       env,
       uygulama: rs.length,

@@ -57,7 +57,7 @@ export default function AppEnvs() {
   // Select'in onChange'inden geliyor.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.appEnvs(source);
         if (!alive) return;

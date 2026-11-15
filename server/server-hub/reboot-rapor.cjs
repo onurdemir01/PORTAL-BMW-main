@@ -25,6 +25,7 @@
 // calisan, kurala gore dokunulmayan oge -> Uyari (NEW_URUN, kontrol gerekli). Reboot oncesi urun
 // kumesi betikle ayni: URUN satirlari + JVM'i gorulen urunler.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const URUN_ADI = {
   NGINX: 'Nginx',
@@ -139,7 +140,7 @@ function sunucuDegerlendir(onceSat, s) {
       ...[...o.jvm, ...ilk.jvm, ...son.jvm],
       ...islemAnahtar,
     ]);
-    for (const k of [...anahtarlar].sort()) {
+    for (const k of [...anahtarlar].sort(varsayilanSira)) {
       const jvm = k.includes('|');
       const var_ = (g) => (jvm ? g.jvm.has(k) : g.urun.has(k));
       const urun = k.split('|')[0];

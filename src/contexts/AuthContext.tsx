@@ -226,7 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Ayrim sunucuda zaten var: 401 = oturum yok (kesin), 5xx/ag hatasi = gecici.
     // Denemeler surerken `loading` true kaldigi icin kullanici login ekrani GORMEZ.
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const data = await fetchSessionWithRetry({
         cancelled: () => cancelled,
         onRetry: (attempt) => {

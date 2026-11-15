@@ -301,7 +301,7 @@ const OpsXWizardPage: React.FC = () => {
         timer = window.setTimeout(tick, 5000);
       }
     }
-    tick();
+    void tick();
     return () => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
@@ -594,7 +594,7 @@ const OpsXWizardPage: React.FC = () => {
 
   function submitOcpCluster(cluster: string) {
     if (!ocOperationPending) return;
-    runOpenshift(ocOperationPending, cluster);
+    void runOpenshift(ocOperationPending, cluster);
   }
 
   const canGoBack = backTargetFor(step) !== null;

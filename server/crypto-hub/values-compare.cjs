@@ -18,6 +18,7 @@
 // "hangi AYAR farkli". Satir bazli diff, yalnizca sirasi degismis iki dosyayi bastan asagi
 // farkli gosterir ve gercek farki gurultude kaybeder.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 /**
  * YAML satirlarini "a.b.c" -> deger haritasina cevirir.
@@ -66,7 +67,7 @@ function karsilastir(files, sirRe) {
     .map((f) => ({ path: f.path, cluster: clusterAdi(f.path), error: f.error }));
 
   const haritalar = okunan.map((f) => anahtarla(f.lines));
-  const anahtarlar = [...new Set(haritalar.flatMap((h) => [...h.keys()]))].sort();
+  const anahtarlar = [...new Set(haritalar.flatMap((h) => [...h.keys()]))].sort(varsayilanSira);
 
   const tumu = anahtarlar.map((a) => {
     const ham = haritalar.map((h) => (h.has(a) ? h.get(a) : null));

@@ -9,6 +9,7 @@
 'use strict';
 
 const { envOfHost, siteOfHost, orderEnvs, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 /**
  * Sunucunun SERVISI (kullanici, 2026-09-17: "sunucular mblcustomers / customers / mcustomers
@@ -35,7 +36,7 @@ function servicesOfHosts(serverRows) {
     e.services.add(svc);
     for (const n of String(r.server_name || '').split(/\s+/)) if (n) e.names.add(n);
   }
-  return new Map([...m.entries()].map(([h, e]) => [h, { services: [...e.services].sort(), names: [...e.names].sort() }]));
+  return new Map([...m.entries()].map(([h, e]) => [h, { services: [...e.services].sort(varsayilanSira), names: [...e.names].sort(varsayilanSira) }]));
 }
 
 /**

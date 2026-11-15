@@ -100,7 +100,7 @@ export function PortalLogo({
   useEffect(() => {
     if (BOOT_KNOWS) return;   // sunucu zaten soyledi — istek atma
     let alive = true;
-    hasCustomLogo().then((v) => {
+    void hasCustomLogo().then((v) => {
       if (alive) setLogoSrc(v ? "/api/branding/logo" : null);
     });
     return () => { alive = false; };

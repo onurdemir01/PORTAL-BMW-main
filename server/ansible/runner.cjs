@@ -3916,7 +3916,8 @@ function initAnsibleRunner(app) {
       }
     }
     const newItem = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      // Kimlik tahmin edilemez olsun (S2245): ayni bicim, kriptografik rastgelelik.
+      id: `${Date.now()}-${require('node:crypto').randomBytes(6).toString('hex')}`,
       title: trimmedTitle,
       description: trimmedDescription,
       awxServerId: serverId,
@@ -5569,6 +5570,7 @@ function initAnsibleRunner(app) {
     // Is AWX'te baslatildi/zamanlandi mi? Sonraki DB yazimi patlarsa bilet ERROR'a CEKILMEZ
     // (is kosuyor; ERROR "baslamadi" anlamina gelirdi).
     let basladi = false;
+    /** @type {{status: 'SCHEDULED'|'LAUNCHED'|null, jobId: number|null, awxScheduleId: number|null, runAtText: string|null}} */
     const sonuc = { status: null, jobId: null, awxScheduleId: null, runAtText: null };
     try {
       const ticket = await smartStore.getTicket(denetim.ticketId);

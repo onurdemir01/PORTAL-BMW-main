@@ -74,7 +74,7 @@ export function NginxApiEnvanteri() {
   // setState tamamen mesru.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.nginxApi();
         if (!alive) return;

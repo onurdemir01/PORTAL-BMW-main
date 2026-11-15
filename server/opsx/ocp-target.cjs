@@ -9,6 +9,7 @@
 // Bastion cozumlemesi LogX ile AYNI kapidan gecer (logx/v2/admin.cjs resolveTerminalHosts):
 // once cluster satirinin kendi terminal_host'u, yoksa tenant/env yedek eslemesi.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 // Girdi dogrulamasi + bastion cozumlemesi + extra_vars uretimi. Hata durumunda
 // `status` tasiyan Error firlatir (cagiran res.status(err.status).json(...) yapar).
@@ -64,7 +65,7 @@ async function buildOcpTarget({ env, tenant, clusters, namespace, appName, cfg, 
     );
   }
 
-  const uniqueHosts = [...new Set(requested.map((c) => hosts[c]))].sort();
+  const uniqueHosts = [...new Set(requested.map((c) => hosts[c]))].sort(varsayilanSira);
   const perCluster = cfg.clusterListStyle === 'perCluster';
 
   if (!perCluster && uniqueHosts.length > 1) {

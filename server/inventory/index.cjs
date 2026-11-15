@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { getPool, isAvailable, query, sql, poolStats } = require('./mssql.cjs');
 const { getRequestUser, getRequestRole } = require('../auth/index.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 // actions.md #20 (Bolum P) — salt-okunur havuz tanimli degilse bu uyariyi SADECE BIR KEZ logla.
 let _warnedSharedPoolFallback = false;
@@ -531,7 +532,7 @@ async function reloadSavedQueriesCache() {
 // bir varsayimdir. writeSavedQueries'in "degisti mi?" karsilastirmasi bu yuzden anahtarlari
 // once siralayip stringify eder — alan tanimlama sirasindan tamamen bagimsiz.
 function stableStringify(obj) {
-  return JSON.stringify(obj, Object.keys(obj).sort());
+  return JSON.stringify(obj, Object.keys(obj).sort(varsayilanSira));
 }
 
 // UPDATE-once → 0 satirsa INSERT deseni (kod tabaninda zaten yerlesik — bkz. setAlias/
@@ -619,6 +620,40 @@ async function loadSavedQueriesStore() {
 }
 
 // ── Security ─────────────────────────────────────────────────────────────────
+const KELIME = /\w/;
+
+/**
+ * `s[i]`den baslayan nesne adinin kac noktali oldugu (`[A].B . C` -> 2). Ilk parca en az bir kelime
+ * karakteri ister (eski desendeki `\w+`). DOGRUSAL: her karakter en fazla bir kez okunur. Eski desen
+ * `(?:\s*\.\s*\[?\w*\]?){3,}` ic ice nicelikleriyle kullanicinin yazdigi uzun SQL'de geri izlemeye
+ * aciktir (SonarQube S5852, 2026-11-15).
+ */
+function nesneNoktaSayisi(s, i) {
+  if (s[i] === '[') i++;
+  if (!KELIME.test(s[i] || '')) return 0;
+  let nokta = 0;
+  for (;;) {
+    while (i < s.length && KELIME.test(s[i])) i++;
+    if (s[i] === ']') i++;
+    let j = i;
+    while (s[j] === ' ') j++;
+    if (s[j] !== '.') return nokta;
+    nokta++;
+    i = j + 1;
+    while (s[i] === ' ') i++;
+    if (s[i] === '[') i++;
+  }
+}
+
+/** Buyuk harfe cevrilmis, bosluklari teke indirilmis SQL'de 4 parcali (3+ noktali) FROM / JOIN adi var mi. */
+function linkedServerAdiVar(cleaned) {
+  const bas = /\b(?:FROM|JOIN) /g;
+  for (let m = bas.exec(cleaned); m; m = bas.exec(cleaned)) {
+    if (nesneNoktaSayisi(cleaned, m.index + m[0].length) >= 3) return true;
+  }
+  return false;
+}
+
 function isSelectOnly(sqlText) {
   const cleaned = sqlText.replace(/\s+/g, ' ').trim().toUpperCase();
   if (!cleaned.startsWith('SELECT')) return false;
@@ -633,7 +668,7 @@ function isSelectOnly(sqlText) {
   // tablo-whitelist'i bunu yakalayamaz (son segment tesaduefen izinli bir tabloyla
   // eslesebilir). Yerel referanslar en fazla tek nokta icerir (dbo.Tablo) — 3+ nokta
   // hep linked-server'dir (kurumsal AI kod incelemesi, review.md #6).
-  if (/\b(?:FROM|JOIN)\s+\[?\w+\]?(?:\s*\.\s*\[?\w*\]?){3,}/.test(cleaned)) return false;
+  if (linkedServerAdiVar(cleaned)) return false;
   return true;
 }
 
@@ -2233,6 +2268,7 @@ module.exports = {
   // test-only: /query'nin SQL-injection sertlestirmesini, kayitli-sorgu upsert desenini ve
   // WHERE-builder arayuzunu (ai_review_3 fazi) DB gerektirmeden dogrulamak icin acildi.
   _isSelectOnly: isSelectOnly,
+  _linkedServerAdiVar: linkedServerAdiVar,
   _extractReferencedTables: extractReferencedTables,
   _writeSavedQueries: writeSavedQueries,
   _buildAdvancedWhereClause: buildAdvancedWhereClause,

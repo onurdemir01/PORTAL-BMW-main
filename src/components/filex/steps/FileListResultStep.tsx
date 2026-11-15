@@ -33,7 +33,7 @@ const CopyButton: React.FC<{ value: string }> = ({ value }) => {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
+      onClick={() => { void navigator.clipboard.writeText(value).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
       title="sha512 değerini kopyala"
       className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
     >

@@ -82,7 +82,7 @@ export default function InventoryGapsTab() {
   // istegin sonucu artik olmayan bir bilesene yazilmaz.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await logxV2Api.admin.inventoryGaps();
         if (alive) setRows(r.rows || []);

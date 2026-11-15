@@ -9,6 +9,7 @@
 // normalize edilir (bosluk/harf) ve BOS olanlar '(bilinmiyor)' kovasina duser: sessizce
 // atmak sunucu sayilarini oldugundan kucuk gosterirdi.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const UNKNOWN = '(bilinmiyor)';
 
@@ -114,7 +115,7 @@ function summarizeNginxInventory(recordset) {
   // oldugunu gormek istiyorum"): uyelik KURALI burada (splitServices) kalir; ekran sunucu
   // ayrintisini (nginx surumu, OS, IP) `hosts` satirlarindan bu adlarla bulur.
   const byService = [...svcMap.values()]
-    .map((s) => ({ service: s.service, hosts: s.hosts.size, envs: [...s.envs].sort(), hostnames: [...s.hosts].sort() }))
+    .map((s) => ({ service: s.service, hosts: s.hosts.size, envs: [...s.envs].sort(varsayilanSira), hostnames: [...s.hosts].sort(varsayilanSira) }))
     .sort((a, b) => b.hosts - a.hosts || a.service.localeCompare(b.service));
   // LISTESI TOPLANMAYAN SUNUCULAR: nginx_metadata betigi 5'ten fazla service'i olan sunucuda
   // listeyi yazmaz, `services=too_many` yazar. Bu sunucularda herhangi bir service OLABILIR;

@@ -42,6 +42,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { maskJvmArgs, maskText, degerAcik } = require('./mask.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const BASLA = Buffer.from('@@EAR_ENVANTER_BASLA@@');
 const BITTI = Buffer.from('@@EAR_ENVANTER_BITTI@@');
@@ -312,7 +313,7 @@ function teknoloji(liste) {
   const al = (...adlar) => {
     const out = new Set();
     for (const a of adlar) for (const s of surumler.get(a) || []) out.add(s);
-    return M([...out].sort().join(', '), 64) || null;
+    return M([...out].sort(varsayilanSira).join(', '), 64) || null;
   };
   const boot = al('spring-boot');
   const fw = al('spring-core');
@@ -867,7 +868,7 @@ function webCoz(buf) {
 const birlesik = (degerler, n) => {
   const s = new Set();
   for (const v of degerler) if (v) for (const p of String(v).split(', ')) s.add(p);
-  return M([...s].sort().join(', '), n) || null;
+  return M([...s].sort(varsayilanSira).join(', '), n) || null;
 };
 
 /**

@@ -263,7 +263,7 @@ const FileXWizardPage: React.FC = () => {
             busy={busy}
             onSubmit={(h) => {
               setHosts(h);
-              runQuery(h);
+              void runQuery(h);
             }}
           />
         )}

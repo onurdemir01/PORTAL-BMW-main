@@ -419,7 +419,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'LogX',
     description: 'Ana staging dizinine erişilemediğinde kullanılan yerel yedek dizin.',
     required: false,
-    example: '/tmp/logx-fallback',
+    example: '/opt/bmw-portal/logx-fallback',
     usedIn: 'server/logx/v2/downloads.cjs',
   },
   {

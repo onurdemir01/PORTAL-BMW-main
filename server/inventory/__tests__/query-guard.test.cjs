@@ -220,3 +220,30 @@ test('GF4 CALISAN KOSUL yanitta doner ve ekranda gosterilir', () => {
   assert.match(ui, /setAppliedWhere\(r\.appliedWhere \?\? null\)/, 'ekran kosulu almiyor');
   assert.match(ui, /Çalışan koşul/, 'kosul ekranda gosterilmiyor');
 });
+
+// 2026-11-15 (SonarQube S5852): 4 parcali ad kontrolu eski regex yerine DOGRUSAL tarayicida.
+test('linked-server tarayicisi eski desenle ayni karari verir ve uzun girdide dogrusal kalir', () => {
+  const { _linkedServerAdiVar: tara } = require('../index.cjs');
+  const ESKI = /\b(?:FROM|JOIN)\s+\[?\w+\]?(?:\s*\.\s*\[?\w*\]?){3,}/;
+  const ornekler = [
+    'SELECT * FROM A.B.C.D', 'SELECT * FROM [A].[B].[C].[D]', 'SELECT * FROM A . B . C . D',
+    'SELECT * FROM A..C.D', 'SELECT * FROM DBO.USERS', 'SELECT * FROM A.B.C', 'SELECT * FROM .A.B.C',
+    'SELECT * FROM [A]', 'SELECT * FROM X JOIN S.D.O.T ON 1=1', 'SELECT A.B.C.D FROM T', 'SELECT * FROM',
+    'SELECT * FROM [].A.B.C', 'SELECT * FROM A.B.C.D.E', 'SELECT * FROM A.[B C].D.E',
+  ];
+  // Rastgele kisa girdiler: eski desenle ayni sonuc.
+  let t = 1234567;
+  const r = () => ((t = (t * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const harf = ['A', 'B', '.', ' ', '[', ']', '_', '1', 'FROM ', 'JOIN '];
+  for (let n = 0; n < 3000; n++) ornekler.push('SELECT * ' + Array.from({ length: 4 + Math.floor(r() * 14) }, () => harf[Math.floor(r() * harf.length)]).join(''));
+  for (const s of ornekler) {
+    const c = s.replace(/\s+/g, ' ').trim();
+    assert.equal(tara(c), ESKI.test(c), c);
+  }
+  // Geri izlemeye zorlayan uzun girdi dogrusal surede biter.
+  const uzun = 'SELECT * FROM A' + ' . ['.repeat(20000) + '!';
+  const t0 = process.hrtime.bigint();
+  assert.equal(tara(uzun), true);
+  assert.equal(tara('SELECT * FROM A' + ' .'.repeat(2) + '!'.repeat(50000)), false);
+  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 200, 'tarama dogrusal degil');
+});

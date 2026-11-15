@@ -11,6 +11,7 @@
 // MASKE: betik JVM env degerlerini zaten maskeler; burada ayrica maskJvmArgs uygulanir
 // (iki katman). secretKeyRef / configMapKeyRef degeri hic okunmaz, yalniz referans adi.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const REGISTRY_KEY = 'app_hub_ocp_canli';
 const STATS_KEY = 'app_hub_ocp_result';
@@ -163,7 +164,7 @@ async function hedefleriKur(ad, yerler, secim) {
   return {
     extraVars: {
       ...runtime,
-      terminal_hosts: [...terminal].sort(),
+      terminal_hosts: [...terminal].sort(varsayilanSira),
       ocp_clusters: ocpClusters,
       app_hub_app: ad,
       app_hub_targets: hedefler.filter((h) => varOlan.has(L(h.cluster))).map((h) => ({ cluster: h.cluster, namespace: h.namespace })),

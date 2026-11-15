@@ -168,7 +168,7 @@ const AuditLogTab: React.FC = () => {
 
   function applyFilters() {
     setPage(1);
-    load(1);
+    void load(1);
   }
 
   // CSV: GORUNEN SAYFAYI disari verir — "tumunu indir" demek, 200 bin satirlik bir
@@ -192,7 +192,7 @@ const AuditLogTab: React.FC = () => {
   }
   function goPage(p: number) {
     setPage(p);
-    load(p);
+    void load(p);
   }
 
   const virtualItems = rowVirtualizer.getVirtualItems();

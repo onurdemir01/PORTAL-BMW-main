@@ -253,7 +253,7 @@ function pumpIngest() {
   const job = _ingestQueue.shift();
   if (!job) return;
   _ingestBusy = true;
-  (async () => {
+  void (async () => {
     const { H, mtimeMs } = job;
     try {
       const st = statDump(H);
