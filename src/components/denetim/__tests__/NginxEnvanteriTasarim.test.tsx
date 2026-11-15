@@ -10,7 +10,7 @@
 //   ET6 Admin olmayan kullanıcıda düzenle düğmesi yok
 //   ET7 Sunucular'da /usr/nginx ve /web_log disk boyutu; çözülemeyen "—" + title; sıralanır
 //   ET8 sürüm ayrıştırma / sıralama (aile, yama, ek, bilinmiyor)
-//   ET9 unknown + (bilinmiyor) tek rozet; nginx/OS süzgeci karışmaz; Sunucular rozeti süzer; 1 GiB altı MiB
+//   ET9 unknown + (bilinmiyor) tek satır; nginx/OS süzgeci karışmaz; Sunucular rozeti süzer; 1 GiB altı MiB
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -86,8 +86,9 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const kart = screen.getByTestId('surum-aile-karti');
     expect(within(kart).getAllByTestId('surum-ailesi').map((a) => a.textContent!.slice(0, 4))).toEqual(['1.24', '1.20']);
+    // her tam sürüm kendi satırında: [sürüm | çubuk | sayı | %]
     const rozet = within(kart).getByTitle('1.20.1: 1 sunucu — listele');
-    expect(rozet.textContent).toBe('1.20.1, 1 sunucu');
+    expect(rozet.textContent).toBe('1.20.1: 1 sunucu%20');
     fireEvent.click(rozet);
     expect(satirAdlari()).toEqual(['GBNGXQ01']);
     fireEvent.click(screen.getByRole('button', { name: 'Sürüm süzgecini kaldır' }));
@@ -186,18 +187,19 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     await screen.findByTestId('filo-ozeti');
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const kart = screen.getByTestId('surum-aile-karti');
-    const bilinmeyen = within(kart).getAllByTestId('surum-rozeti').filter((r) => r.textContent!.startsWith('bilinmiyor'));
+    const bilinmeyen = within(kart).getAllByTestId('dagilim-satiri').filter((r) => r.textContent!.startsWith('bilinmiyor'));
     expect(bilinmeyen).toHaveLength(1);
-    expect(bilinmeyen[0].textContent).toBe('bilinmiyor, 2 sunucu');
+    expect(bilinmeyen[0].getAttribute('data-anahtar')).toBe('(bilinmiyor)');
+    expect(bilinmeyen[0].textContent).toBe('bilinmiyor: 2 sunucu%40');
     expect(within(kart).getByText(/3 sürüm/)).toBeTruthy();
-    fireEvent.click(bilinmeyen[0]);
+    fireEvent.click(within(bilinmeyen[0]).getByRole('button'));
     expect(satirAdlari()).toEqual(['GBNGXT02', 'XYZWEB01']);
     expect(within(screen.getByTestId('surum-suzgeci')).getByTestId('surum-rozeti')).toBeTruthy();
     expect(within(screen.getAllByTestId('sunucu-satiri')[0]).getByTestId('disk-usr-nginx').textContent).toBe('512 MiB');
 
     // OS "(bilinmiyor)" yalnız OS'u boş sunucuyu getirir (nginx'i unknown olanı değil)
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
-    fireEvent.click(screen.getByTitle('(bilinmiyor) — sunucuları listele'));
+    fireEvent.click(screen.getByTitle('(bilinmiyor): 1 sunucu — listele'));
     expect(satirAdlari()).toEqual(['GBNGXT02']);
     expect(screen.getByTestId('surum-suzgeci').textContent).toContain('OS:');
 
