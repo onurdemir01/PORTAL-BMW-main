@@ -33,7 +33,7 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K10 | Mutasyon testi | `npm run test:mutation` | CI | ≥ %85 mutant öldürülür |
 | K11 | SBOM ve lisans | `npm run sbom` | CI | 0 lisans ihlali |
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |
-| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, güvenilirlik / güvenlik / bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
+| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, güvenilirlik A (MQR: kod kokularının güvenilirlik etkisi dahil), güvenlik / bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 

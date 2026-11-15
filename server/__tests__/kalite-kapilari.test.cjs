@@ -167,7 +167,9 @@ const TABAN = {
     duplicated_lines_density: ['GT', 3],
     bugs: ['GT', 0],
     vulnerabilities: ['GT', 0],
-    reliability_rating: ['GT', 1],
+    // MQR guvenilirlik notu (2026-11-15): kod kokularinin guvenilirlik etkisini de sayar; standart
+    // reliability_rating ile esdeger metrik oldugundan ikisi birden kurulamaz, siki olan secildi.
+    software_quality_reliability_rating: ['GT', 1],
     security_rating: ['GT', 1],
     sqale_rating: ['GT', 1],
     security_hotspots_reviewed: ['LT', 100],
