@@ -323,7 +323,7 @@ const AiAnalystPage: React.FC = () => {
                   value={conversationId ?? ''}
                   onChange={(e) => {
                     const v = e.target.value;
-                    if (v) loadConversation(Number(v));
+                    if (v) void loadConversation(Number(v));
                     else newConversation();
                   }}
                   disabled={running}

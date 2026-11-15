@@ -218,7 +218,7 @@ function hashSessionId(sid) {
 
 function auditPortal(req, action, opts = {}) {
   const user = (req && (req.session?.user || req.user)) || {};
-  portalChain.log({
+  void portalChain.log({
     sessionId: hashSessionId(req?.sessionID),
     username: opts.username || user.username || 'system',
     authSource: user.authSource || 'local',

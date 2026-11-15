@@ -20,6 +20,7 @@
 // gibi gosterilmez. Kapasite ALANI TOPLAMDIR (Inventory.cpu cekirdek, memory MB): kullanim
 // degildir, ekran da oyle yazar.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const L = (s) =>
   String(s == null ? '' : s)
@@ -129,7 +130,7 @@ async function ara(q) {
         ad: g.ad,
         tip: 'jboss',
         ozet: `${g.hostlar.size} sunucu`,
-        varyantlar: [...g.varyant].sort(),
+        varyantlar: [...g.varyant].sort(varsayilanSira),
       })),
     ),
     ...sirala(wa.rows.map((r) => ({ ad: String(r.app), tip: 'was', ozet: `${r.n} sunucu` }))),
@@ -232,7 +233,7 @@ async function jbossDetay(adHam) {
         : null;
     const agirlar = await sinirliParalel(hedefHostlar, JVM_AGIR_ESZAMAN, (h) =>
       Promise.resolve()
-        .then(() => (kolP ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
+        .then(() => (kolP !== null ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
         .catch(() => new Map()),
     );
     for (let i = 0; i < hedefHostlar.length; i++) {
@@ -325,7 +326,7 @@ async function jbossDetay(adHam) {
         maxHeap: heap(r.max_heap),
         autoStartEnvanter: nz(r.autostarts),
         jvmler: jvms,
-        domainler: [...domainler].sort(),
+        domainler: [...domainler].sort(varsayilanSira),
         web: (tg && tg.web) || [],
         webUyari: (tg && tg.webUyari) || null,
         kapasite: kap.harita.get(host) || null,
@@ -358,18 +359,18 @@ async function jbossDetay(adHam) {
   const webSunuculari = [...webIx.values()]
     .map((g) => ({
       ...g,
-      vhostlar: [...g.vhostlar].sort(),
-      uygulamaSunuculari: [...g.uygulamaSunuculari].sort(),
+      vhostlar: [...g.vhostlar].sort(varsayilanSira),
+      uygulamaSunuculari: [...g.uygulamaSunuculari].sort(varsayilanSira),
       istek7g: g.olculdu ? g.istek7g : null,
     }))
     .sort((a, b) => a.host.localeCompare(b.host));
 
-  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort();
+  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort(varsayilanSira);
   const ortamlar = [...new Set(sunucular.map((s) => s.ortam).filter(Boolean))];
   return {
     tip: 'jboss',
     ad: base,
-    varyantlar: [...new Set(mw.rows.map((r) => String(r.app)))].sort(),
+    varyantlar: [...new Set(mw.rows.map((r) => String(r.app)))].sort(varsayilanSira),
     ozet: {
       sunucuSayisi: hostlar.length,
       ortamlar,
@@ -544,8 +545,8 @@ async function wasDetay(ad) {
     }
   const webSunuculari = [...webIx.values()].map((g) => ({
     ...g,
-    vhostlar: [...g.vhostlar].sort(),
-    uygulamaSunuculari: [...g.uygulamaSunuculari].sort(),
+    vhostlar: [...g.vhostlar].sort(varsayilanSira),
+    uygulamaSunuculari: [...g.uygulamaSunuculari].sort(varsayilanSira),
     istek7g: null,
   }));
   return {
@@ -554,7 +555,7 @@ async function wasDetay(ad) {
     ozet: {
       sunucuSayisi: hostlar.length,
       ortamlar: [...new Set(sunucular.map((s) => s.ortam).filter(Boolean))],
-      surumler: [...new Set(sunucular.map((s) => s.wasSurum).filter(Boolean))].sort(),
+      surumler: [...new Set(sunucular.map((s) => s.wasSurum).filter(Boolean))].sort(varsayilanSira),
       webSunucuSayisi: webSunuculari.length,
       toplamCpu: sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.cpu) || 0), 0) || null,
       toplamBellekGb:

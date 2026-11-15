@@ -901,12 +901,9 @@ describe('WorkloadStep - hedef bazli secim', () => {
     fireEvent.click(screen.getByText('Devam'));
 
     const t = onSubmit.mock.calls[0][0].targets;
-    assert2(t.length === 2, `varsayilanda ${t.length} hedef — ikisi de dahil olmaliydi`);
-    assert2(
-      t.some((x: { cluster: string }) => x.cluster === 'c1') &&
-        t.some((x: { cluster: string }) => x.cluster === 'c2'),
-      'her iki cluster dahil degil',
-    );
+    expect(t.length === 2, `varsayilanda ${t.length} hedef — ikisi de dahil olmaliydi`).toBe(true);
+    expect(t.some((x: { cluster: string }) => x.cluster === 'c1') &&
+        t.some((x: { cluster: string }) => x.cluster === 'c2'), 'her iki cluster dahil degil',).toBe(true);
   });
 
   it('HB2 bir cluster HARIC tutulabiliyor', async () => {
@@ -920,8 +917,8 @@ describe('WorkloadStep - hedef bazli secim', () => {
     fireEvent.click(screen.getByText('Devam'));
 
     const t = onSubmit.mock.calls[0][0].targets;
-    assert2(t.length === 1, `haric tutmadan sonra ${t.length} hedef — 1 olmaliydi`);
-    assert2(t[0].cluster === 'c1', `yanlis cluster kaldi: ${t[0].cluster}`);
+    expect(t.length === 1, `haric tutmadan sonra ${t.length} hedef — 1 olmaliydi`).toBe(true);
+    expect(t[0].cluster === 'c1', `yanlis cluster kaldi: ${t[0].cluster}`).toBe(true);
   });
 
   it('HB3 HARIC tutulan hedefin TIPI de gonderilmiyor', async () => {
@@ -936,10 +933,7 @@ describe('WorkloadStep - hedef bazli secim', () => {
     fireEvent.click(screen.getByText('Devam'));
 
     const k = onSubmit.mock.calls[0][0].clusterWorkloadKinds;
-    assert2(
-      !k.some((x: { cluster: string }) => x.cluster === 'c2'),
-      'haric tutulan cluster tip haritasinda hala var',
-    );
+    expect(!k.some((x: { cluster: string }) => x.cluster === 'c2'), 'haric tutulan cluster tip haritasinda hala var',).toBe(true);
   });
 
   it('HB4 sayac CARPIM degil GERCEK hedef sayisi gosteriyor', async () => {
@@ -964,10 +958,6 @@ describe('WorkloadStep - hedef bazli secim', () => {
   });
 });
 
-/** Vitest `expect` yerine acik mesajli kisa yardimci. */
-function assert2(kosul: boolean, mesaj: string) {
-  if (!kosul) throw new Error(mesaj);
-}
 
 // ── PR-0: YOKLAMA RITMI ─────────────────────────────────────────────────────
 //

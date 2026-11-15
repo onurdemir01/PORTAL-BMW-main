@@ -890,7 +890,7 @@ function WebSonucCip({ l, onAc }: { l: { w: RtWeb2; i: number }[]; onAc?: (i: nu
   if (!l.length) return null;
   const d = (w: RtWeb2) =>
     WEB_DURUM[w.status] || { etiket: w.status, ton: 'notr' as Ton, oncelik: 3 };
-  const enKotu = l.reduce((a, b) => (d(b.w).oncelik > d(a.w).oncelik ? b : a));
+  const enKotu = l.reduce((a, b) => (d(b.w).oncelik > d(a.w).oncelik ? b : a), l[0]);
   const v = d(enKotu.w);
   const ipucu = l
     .map(
@@ -4589,7 +4589,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                         disabled={busy != null}
                         onClick={() => {
                           setSilmeListe(null);
-                          silmeOnKontrol(t);
+                          void silmeOnKontrol(t);
                         }}
                         className={`${SM_BTN} disabled:opacity-50`}
                         style={smBtn(true)}

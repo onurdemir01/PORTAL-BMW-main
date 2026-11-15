@@ -180,7 +180,7 @@ function KontrolHucre({ a, onKontrol }: { a: GecisUygulama; onKontrol: KontrolFn
 
 function Satir({ a, onKullanim, onKontrol }: { a: GecisUygulama; onKullanim: KullanimFn; onKontrol: KontrolFn }) {
   const [kisi, setKisi] = useState(a.katilimci);
-  const kisiKaydet = () => { if (kisi.trim() !== a.katilimci.trim()) onKullanim(a, 'yes', kisi.trim()); };
+  const kisiKaydet = () => { if (kisi.trim() !== a.katilimci.trim()) void onKullanim(a, 'yes', kisi.trim()); };
   return (
     <tr className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
       <td className="px-2 py-1.5">

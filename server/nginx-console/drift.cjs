@@ -14,6 +14,7 @@
 'use strict';
 
 const { BACKUP_RE } = require('./dump-parse.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const norm = (s) => String(s || '').trim().toUpperCase();
 
@@ -60,7 +61,7 @@ function computeDrift(hosts, dumps, opts = {}) {
       }
     }
     for (const [path, m] of byPath) {
-      const present = [...m.keys()].sort();
+      const present = [...m.keys()].sort(varsayilanSira);
       const missing = g.dumped.filter((H) => !m.has(H));
       const variants = new Map();
       for (const [H, v] of m) { if (!variants.has(v.sha)) { variants.set(v.sha, []); } variants.get(v.sha).push(H); }

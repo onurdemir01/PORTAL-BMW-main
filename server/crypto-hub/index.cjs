@@ -28,6 +28,7 @@ const CLOSED_MSG = "Production ortamları Crypto Hub'da şimdilik kapalı.";
 const { ACTIONS, actionOf, buildPlan } = require('../../shared/cryptoHubActions.cjs');
 const KR = require('../../shared/cryptoHubResources.cjs');
 const RES = require('./resources.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const OPS_KEY = 'crypto_hub_ops';
 
@@ -638,7 +639,7 @@ async function loadTenant(tenant) {
     [...comp, ...rel, ...tag, ...note]
       .map((r) => r.scanned_at)
       .filter(Boolean)
-      .sort()
+      .sort(varsayilanSira)
       .pop() || null;
 
   const components = comp.map((r) => ({

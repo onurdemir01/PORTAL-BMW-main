@@ -25,6 +25,7 @@
 // ODM ve Alpha ad kuralinda hic karsiligi olmayan ortamlar - celiski DEGIL, "kapsam
 // disi" sayilir.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const SOURCES = {
   mw:  { table: 'dbo.MWAppsInventory',  label: 'JBoss uygulamalari' },
@@ -171,7 +172,7 @@ function registerAppEnvs(router) {
         patterns,
         rows,
         nonStandard: [...nonStandard.values()]
-          .map((e) => ({ app: e.app, reason: e.reason, hosts: [...e.hosts].sort(sortTr), envColumn: [...e.envColumn].filter(Boolean).sort() }))
+          .map((e) => ({ app: e.app, reason: e.reason, hosts: [...e.hosts].sort(sortTr), envColumn: [...e.envColumn].filter(Boolean).sort(varsayilanSira) }))
           .sort((a, b) => a.app.localeCompare(b.app, 'tr')),
         conflicts: [...conflicts.values()]
           .map((c) => ({ ...c, hosts: [...c.hosts].sort(sortTr) }))

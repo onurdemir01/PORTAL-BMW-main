@@ -244,7 +244,7 @@ const DashboardPage: React.FC = () => {
           },
         )
         .catch(() => {});
-    load();
+    void load();
     const iv = setInterval(load, 25_000);
     return () => {
       alive = false;
@@ -271,7 +271,7 @@ const DashboardPage: React.FC = () => {
           setAwxJobsLoaded(true);
           setAwxJobsFetchError(e instanceof Error ? e.message : 'İstek başarısız.');
         });
-    load();
+    void load();
     const iv = setInterval(load, 15_000);
     return () => {
       alive = false;

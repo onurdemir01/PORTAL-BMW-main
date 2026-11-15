@@ -45,7 +45,7 @@ test('ask_variables=false + DOLU extra_vars → 409 ile reddedilir (proxy 5xx go
 
 test('ask_variables=true → launch bloklanmaz', async () => {
   await withTemplates([{ id: 42, name: 'ok', ask_variables: true }], async () => {
-    await preflight.assertTemplateAcceptsExtraVars(1, 42, VARS);
+    await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(1, 42, VARS));
   });
 });
 
@@ -69,11 +69,11 @@ test('extra_vars BOSSA kontrol hic calismaz (AWX\'e gidilmez)', async () => {
 test('FAIL-OPEN: template metadata alinamazsa mesru is DURDURULMAZ', async () => {
   // Sunucu listede yok
   await withTemplates([], async () => {
-    await preflight.assertTemplateAcceptsExtraVars(99, 42, VARS);
+    await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(99, 42, VARS));
   });
   // Template listede yok
   await withTemplates([{ id: 7, ask_variables: false }], async () => {
-    await preflight.assertTemplateAcceptsExtraVars(1, 42, VARS);
+    await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(1, 42, VARS));
   });
   // AWX patliyor
   const origServers = runner.getServers;
@@ -81,7 +81,7 @@ test('FAIL-OPEN: template metadata alinamazsa mesru is DURDURULMAZ', async () =>
   runner.getServers = () => [{ id: 1 }];
   runner.listTemplatesForServer = async () => { throw new Error('AWX 500'); };
   try {
-    await preflight.assertTemplateAcceptsExtraVars(1, 42, VARS);
+    await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(1, 42, VARS));
   } finally {
     runner.getServers = origServers;
     runner.listTemplatesForServer = origList;
@@ -90,6 +90,6 @@ test('FAIL-OPEN: template metadata alinamazsa mesru is DURDURULMAZ', async () =>
 
 test('ask_variables tanimsizsa (eski AWX yaniti) bloklanmaz — yalniz KESIN false engeller', async () => {
   await withTemplates([{ id: 42, name: 'eski' }], async () => {
-    await preflight.assertTemplateAcceptsExtraVars(1, 42, VARS);
+    await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(1, 42, VARS));
   });
 });

@@ -158,6 +158,7 @@ const STATIK_UZANTI = ['.js', '.mjs', '.css', '.json', '.map', '.png', '.jpg', '
 const KODLU_TEHLIKE = /%(2e|2f|5c|00|0a|0d|25)/i;
 const BOZUK_YUZDE = /%(?![0-9A-Fa-f]{2})/;
 const { hasControlChars } = require('../util/control-chars.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 // Kontrol karakteri (CR/LF dahil): baslik / log enjeksiyonunun yolu.
 const KONTROL_KARAKTERI = { test: (v) => hasControlChars(v) };
 
@@ -191,7 +192,7 @@ const WRK_SNI_MESAJI = "wrk SNI'yi Host başlığına göre seçemez (IP adresi 
 // Plan uyarilari (serbest hedefte Host basligi uyarilari, sunucu hedefinde limitUyarilari; satirda saklanir,
 // kosu aninda yeniden kurulur).
 // Host listeleri sirali, ilk 5 (metin deterministik: saklanan liste ile yeniden kurulan karsilastirilir).
-const ilkBesHost = (P) => [...new Set(P)].sort().slice(0, 5).join(', ');
+const ilkBesHost = (P) => [...new Set(P)].sort(varsayilanSira).slice(0, 5).join(', ');
 const HOST_TARAMADA_YOK_UYARISI = (vhost) => `Host başlığı (${vhost}) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.`;
 const HOST_URETIMDE_DE_VAR_UYARISI = (vhost, P) => `Host başlığı (${vhost}) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (${ilkBesHost(P)}): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.`;
 const YUK_MAKINESI_HAVUZDA_UYARISI = (vhost, yukHost) => `Host başlığı (${vhost}) yük sunucusunun (${yukHost}) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.`;
@@ -701,7 +702,7 @@ function hostOrtami(host, k) {
   if (!satirlar.length) {
     return ret('hedef_envanterde_yok', "dbo.Inventory'de kayıtlı değil", `${host} dbo.Inventory'de kayıtlı değil (ortam kanıtlanamıyor).`, adEnv);
   }
-  const envler = [...new Set(satirlar.map((v) => envFromInventory(v)))].sort();
+  const envler = [...new Set(satirlar.map((v) => envFromInventory(v)))].sort(varsayilanSira);
   if (envler.some((e) => !IZINLI_ORTAM.has(e))) {
     const ham = satirlar.map((v) => (v == null || String(v).trim() === '' ? '(boş)' : String(v).trim()));
     const metin = [...new Set(ham)].join(' / ');
@@ -777,7 +778,7 @@ function vhostlar(serverNameleri = []) {
       if (v && gecerliVhost(v) && v !== 'localhost') set.add(v);
     }
   }
-  return [...set].sort();
+  return [...set].sort(varsayilanSira);
 }
 
 function hizDegeri(rate) {
@@ -1565,7 +1566,7 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
         throw okunamadi('dbo.Nginx_Audit_Servers', e);
       }
     }
-    adayHostlar = [...new Set([...nginx.keys(), ...taramaHostlari])].filter(Boolean).sort();
+    adayHostlar = [...new Set([...nginx.keys(), ...taramaHostlari])].filter(Boolean).sort(varsayilanSira);
   }
   const temel = [...new Set([
     ...(hostlar ? hostlar.map(hostNormalle).filter(Boolean) : adayHostlar),
@@ -1786,12 +1787,12 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
   // TEK HEDEF MODELI (2026-11-13): her sahip (nginx olsun olmasin) hostOrtami kuralindan gecmeli. `nginx` alani
   // yalniz bilgi (nginx_inventory ya da son taramada listen'i bu IP); hedefte nginx'i playbook olcer.
   const ortamlar = new Map();
-  const sahipler = [...sahipMap.keys()].sort().map((h) => {
+  const sahipler = [...sahipMap.keys()].sort(varsayilanSira).map((h) => {
     const kaynaklar = sahipMap.get(h);
     const nginx = k.nginx.has(h) || kaynaklar.has('tarama');
     const o = hostOrtami(h, k);
     ortamlar.set(h, o);
-    return { host: h, env: o.env, nginx, kaynaklar: [...kaynaklar].sort() };
+    return { host: h, env: o.env, nginx, kaynaklar: [...kaynaklar].sort(varsayilanSira) };
   });
   const ek = { sahipler: sahipler.slice(0, 10) };
   if (yukHost && sahipler.some((s) => s.host === yukHost)) {
@@ -1885,7 +1886,7 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
   }
   const uretimMi = (h) => !IZINLI_ORTAM.has(envOfHost(h))
     || !!uretimIsareti({ host: h, nginxEnv: k.nginx.get(h)?.env ?? null, invEnv: k.inv.get(h) ?? null });
-  const P = [...birlesim].filter(uretimMi).sort();
+  const P = [...birlesim].filter(uretimMi).sort(varsayilanSira);
   const N = [...guncel].filter((h) => !P.includes(h));
   const S = new Set([...P, ...N]);
   if (P.length && !N.length) {

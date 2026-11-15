@@ -44,7 +44,7 @@ function ExposeConfigPanel({
 
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await ansibleApi.servers();
         if (alive && r.ok) setServers(r.servers || []);
@@ -209,7 +209,7 @@ export function NginxInternetExpose() {
   // setState tamamen mesru.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await nginxExposeApi.apis();
         if (!alive) return;

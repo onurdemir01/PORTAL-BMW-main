@@ -362,7 +362,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                 {itemOpen.exception ? (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span title={itemOpen.exception.note}>tüm filo için istisna — {itemOpen.exception.note}</span>
-                    {isAdmin && excById.get(itemOpen.id) && <button onClick={() => { dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="underline text-[11px]" style={{ color: 'var(--status-danger)' }}>istisnadan çıkar</button>}
+                    {isAdmin && excById.get(itemOpen.id) && <button onClick={() => { void dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="underline text-[11px]" style={{ color: 'var(--status-danger)' }}>istisnadan çıkar</button>}
                   </div>
                 ) : <span style={{ color: 'var(--text-muted)' }}>yok</span>}
               </Box>
@@ -400,7 +400,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => { setRule({ kind: 'override', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '', values: itemOpen.observedValues || [] }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>{(ovrByItem.get(itemOpen.id) || []).length ? 'Kabul edilen değer ekle' : 'Kendi referansımı tanımla'}</button>
                 {excById.get(itemOpen.id)
-                  ? <button onClick={() => { dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--status-danger)' }}>İstisnadan çıkar (madde yeniden sayılsın)</button>
+                  ? <button onClick={() => { void dropRule('exception', excById.get(itemOpen.id)!.id); setItemOpen(null); }} disabled={busy} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)', color: 'var(--status-danger)' }}>İstisnadan çıkar (madde yeniden sayılsın)</button>
                   : <button onClick={() => { setRule({ kind: 'exception', itemId: itemOpen.id, title: itemOpen.title, value: '', note: '' }); setItemOpen(null); }} className="px-2.5 py-1.5 border rounded-lg" style={{ borderColor: 'var(--border)' }}>Tüm filoda istisnaya al</button>}
               </div>
             )}
@@ -414,7 +414,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
                       .sort((a, b) => (a.status === 'FAIL' ? 0 : a.status === 'EXCEPTED' ? 2 : 1) - (b.status === 'FAIL' ? 0 : b.status === 'EXCEPTED' ? 2 : 1) || a.host.localeCompare(b.host))
                       .map((h) => (
                         <tr key={h.host} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-                          <td className="px-2 py-1 font-mono"><button className="underline" style={{ color: 'var(--accent)' }} onClick={() => { setItemOpen(null); openHost(h.host); }}>{h.host.toLowerCase()}</button></td>
+                          <td className="px-2 py-1 font-mono"><button className="underline" style={{ color: 'var(--accent)' }} onClick={() => { setItemOpen(null); void openHost(h.host); }}>{h.host.toLowerCase()}</button></td>
                           <td className="px-2 py-1"><Pill tone={STATUS_TONE[h.status] || 'neutral'}>{STATUS_TR[h.status] || h.status}</Pill></td>
                           <td className="px-2 py-1 font-mono"><div className="max-w-[16rem] truncate" title={h.observed}>{h.observed || '—'}</div></td>
                           <td className="px-2 py-1"><div className="max-w-[22rem] truncate" title={h.exceptionNote || h.detail}>{h.status === 'EXCEPTED' ? <i>{h.exceptionNote}</i> : h.detail}</div></td>

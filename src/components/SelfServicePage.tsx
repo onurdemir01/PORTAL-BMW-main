@@ -827,7 +827,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
                       type="button"
                       onClick={() => {
                         const no = ocoState.done?.externalTicketId;
-                        if (no) navigator.clipboard?.writeText(no);
+                        if (no) void navigator.clipboard?.writeText(no);
                       }}
                       className="ml-auto text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition"
                       title="Smart kayıt numarasını kopyala"
@@ -1407,7 +1407,7 @@ function HistoryModal({ onClose, item }: { onClose: () => void; item?: AnsibleSs
   const [logErr, setLogErr] = useState('');
 
   useEffect(() => {
-    ansibleApi
+    void ansibleApi
       .history(30)
       .then((r) => setHistory((r.history || []).filter((h) => !item || servisinIsiMi(item, h))))
       .finally(() => setLoading(false));

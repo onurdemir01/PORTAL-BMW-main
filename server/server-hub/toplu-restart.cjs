@@ -975,7 +975,7 @@ async function planIlerlet(is, og, iptalMi) {
 async function planBitir(is) {
   const og = await ogeler(is.id);
   const gecen = og.filter((o) => o.durum === 'PLAN_GECTI').length;
-  const okunamadi = og.filter((o) => o.durum === 'DUSTU' && /^önizleme (başlatılamadı|taraması)|sonuç \(set_stats\) okunamadı|yüklemedi/.test(o.neden || '')).length;
+  const okunamadi = og.filter((o) => o.durum === 'DUSTU' && /(?:^önizleme (?:başlatılamadı|taraması))|sonuç \(set_stats\) okunamadı|yüklemedi/.test(o.neden || '')).length;
   const secimOkunamadi = og.filter((o) => o.durum === 'DUSTU' && /^seçim doğrulanamadı/.test(o.neden || '')).length;
   let durum = 'PLAN_HAZIR';
   let mesaj = null;

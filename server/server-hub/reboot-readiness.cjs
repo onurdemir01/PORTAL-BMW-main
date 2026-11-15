@@ -12,6 +12,7 @@
 // tek durust cevap "bilmiyorum"dur - onu "hazir" saymak, bu raporun verebilecegi en pahali
 // yanlis olurdu (kullanici o sunucuyu guvenle yeniden baslatir ve geri gelmez).
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const U = (s) =>
   String(s == null ? '' : s)
@@ -123,7 +124,7 @@ const DURUM_SIRASI = ['blocked', 'unknown', 'risk', 'ok', 'notScanned'];
  */
 function rebootReadiness(hosts, istenen, latestScan = null) {
   const byHost = new Map((hosts || []).map((h) => [U(h.host), h]));
-  const liste = [...new Set((istenen || []).map(U).filter(Boolean))].sort();
+  const liste = [...new Set((istenen || []).map(U).filter(Boolean))].sort(varsayilanSira);
 
   const satirlar = liste.map((host) => {
     const h = byHost.get(host);

@@ -77,7 +77,7 @@ export default function EnvanterMetrics() {
   // artik olmayan bir bilesene yazmasini keser.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.envanterSummary(source);
         if (!alive) return;

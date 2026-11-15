@@ -17,6 +17,7 @@
 // yok sayilan girdi adlari, siralanmis ve virgulle). Ikisinde de GEREKCE zorunlu: etiket bir silme
 // kararinin girdisidir.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const {
   KODLAR,
@@ -38,7 +39,7 @@ function yoksayNormal(liste) {
     .map((x) => String(x).trim())
     .filter(Boolean);
   if (adlar.some((x) => !YOKSAY_AD_RE.test(x) || x === '.' || x === '..')) return null;
-  return [...new Set(adlar)].sort();
+  return [...new Set(adlar)].sort(varsayilanSira);
 }
 const YOKSAY_VARSAYILAN_METIN = yoksayNormal(KOK_YOKSAY_VARSAYILAN).join(',');
 

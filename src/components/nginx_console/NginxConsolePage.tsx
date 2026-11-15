@@ -422,7 +422,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
       const r = await nginxConsoleApi.push({ hosts: targets, path: p, mode, content: draft, expectedSha, force });
       if (!r.ok) {
         if (r.conflicts?.length) {
-          setAsk({ title: 'Ön kontrol uyarısı', okLabel: 'Yine de yayınla (force)', onOk: () => { doPush(true); }, body: <><div>{r.message}</div><div className="mt-1" style={{ color: 'var(--text-muted)' }}>Force ile sunucudaki mevcut hal üzerine yazılır; yedek yine alınır.</div></> });
+          setAsk({ title: 'Ön kontrol uyarısı', okLabel: 'Yine de yayınla (force)', onOk: () => { void doPush(true); }, body: <><div>{r.message}</div><div className="mt-1" style={{ color: 'var(--text-muted)' }}>Force ile sunucudaki mevcut hal üzerine yazılır; yedek yine alınır.</div></> });
           return;
         }
         toast.error(r.message || 'Publish başlatılamadı.'); return;

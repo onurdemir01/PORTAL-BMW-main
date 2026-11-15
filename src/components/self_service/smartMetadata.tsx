@@ -72,7 +72,7 @@ export function SmartFieldExtra({ f }: { f: SmartField }) {
   const pick = (o: Record<string, unknown>) => {
     const keys = Object.keys(o);
     const label = keys.find((k) => /^(name|label|text|value|displayvalue|displayname|parametername|itemname)$/i.test(k));
-    const tech = keys.find((k) => /tech|code|id$/i.test(k));
+    const tech = keys.find((k) => /tech|code|(?:id$)/i.test(k));
     return `${label ? String(o[label]) : JSON.stringify(o)}${tech && tech !== label ? ` [${tech}=${String(o[tech])}]` : ''}`;
   };
   return (

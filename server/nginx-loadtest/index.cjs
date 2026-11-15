@@ -119,6 +119,7 @@ const SAHIP_SILME = Object.freeze([
 
 const db = () => require('../db/index.cjs');
 const yukMakineleri = require('./yuk-makineleri.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 const maskele = (s) => require('../retirement/is-ciktisi.cjs').maskele(s);
 const maskeleDerin = (v) => require('../retirement/is-ciktisi.cjs').maskeleDerin(v);
 
@@ -149,7 +150,7 @@ function jsonOku(s) {
 /** Anahtar sirasindan bagimsiz karsilastirma icin kararli JSON. */
 function kararliJson(v) {
   if (Array.isArray(v)) return `[${v.map(kararliJson).join(',')}]`;
-  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + kararliJson(v[k])).join(',')}}`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort(varsayilanSira).map((k) => JSON.stringify(k) + ':' + kararliJson(v[k])).join(',')}}`;
   return JSON.stringify(v ?? null);
 }
 const kullanici = (req) => (req.session?.user) || {};
@@ -1113,7 +1114,7 @@ function yonlendiriciKur() {
         const n = sonNginx.get(h);
         return { nginxEnvanter: a ? a.nginxEnvanter : null, urunler: a ? a.urunler : [], nginxSon: n ? n.nginx : null, nginxSonAt: n ? n.at : null };
       };
-      const hostlar = [...new Set([...k.nginx.keys(), ...adaylar.keys()])].sort();
+      const hostlar = [...new Set([...k.nginx.keys(), ...adaylar.keys()])].sort(varsayilanSira);
       const hedefler = [];
       for (const h of hostlar) {
         const kp = dg.hedefKapisi(h, k);
@@ -1192,7 +1193,7 @@ function yonlendiriciKur() {
       // Sunucu: /hedefler satiriyla AYNI alanlar; uygun:false da 200 (ekran on kontrol dugmesini kapatir). TEK HEDEF
       // MODELI: ipler (aday IP'ler) ve nginx ipuclari (envanter + son on kontrol) da gelir.
       const h = sinif.host;
-      const kaynaklar = [...((k.ipSahipleri && k.ipSahipleri.get(h)) || [])].sort();
+      const kaynaklar = [...((k.ipSahipleri && k.ipSahipleri.get(h)) || [])].sort(varsayilanSira);
       let ipuclari = { nginxEnvanter: null, urunler: [] };
       try {
         const a = (await dg.hedefAdaylariOku({ query, sql, hostlar: [h] })).get(h);

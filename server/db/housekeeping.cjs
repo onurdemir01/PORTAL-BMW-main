@@ -209,7 +209,7 @@ function buildAlertCard(usage, files, cfg) {
       {
         contentType: 'application/vnd.microsoft.card.adaptive',
         content: {
-          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+          $schema: 'https://adaptivecards.io/schemas/adaptive-card.json',
           type: 'AdaptiveCard',
           version: '1.4',
           body: [
@@ -436,7 +436,7 @@ function configForClient(cfg = getConfig()) {
 }
 
 function initDbHousekeeping(app) {
-  loadPersistedState().finally(startScheduler);
+  void loadPersistedState().finally(startScheduler);
 
   app.get('/api/admin/db-usage', async (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });

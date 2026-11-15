@@ -782,7 +782,7 @@ function LimitSatiri({
               disabled={kilitli || gonderiliyor}
               onClick={() => {
                 setDeger(String(l.varsayilan));
-                kaydet(l.varsayilan);
+                void kaydet(l.varsayilan);
               }}
             >
               <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön
@@ -1083,7 +1083,7 @@ function KokYoksayBolumu({
             disabled={kilitli || gonderiliyor || not.trim().length < 3}
             onClick={() => {
               setMetin(y.varsayilan.join(', '));
-              kaydet(y.varsayilan);
+              void kaydet(y.varsayilan);
             }}
           >
             <ArrowUturnLeftIcon className="w-3.5 h-3.5" /> Varsayılana dön

@@ -2374,7 +2374,7 @@ async function dogrudanBaslat({
     await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoDegisti }));
     return ret(409, 'crypto_node_smart_degisti', METIN.ocoDegisti);
   }
-  if (Date.now() > oco?.sonBaslamaMs) {
+  if (oco && Date.now() > oco.sonBaslamaMs) {
     await kapat('HATA', 'DOGRUDAN_AYAR', bosSonuc({ hata: METIN.ocoSonPay(oco.sonBaslamaText) }));
     return ret(409, 'node_oco_son_baslama', METIN.ocoSonPay(oco.sonBaslamaText));
   }

@@ -50,6 +50,7 @@ const crypto = require('node:crypto');
 const { Transform, Writable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { StringDecoder } = require('node:string_decoder');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const VARSAYILAN_MAX_BAYT = 200 * 1024 * 1024;
 // Bir kosu dizininde beklenen: TUR basina 2-4 istemci dosyasi (<= 15 TUR) + ~10 kaydedici dosyasi.
@@ -1010,7 +1011,7 @@ async function dosyaAkit(yol, ad, { gz, isleyici, sayac }) {
     await pipeline(asamalar);
   } catch (e) {
     if (e?.code === 'OKUNAMADI') throw e;
-    const tur = gz && e && /^Z_|incorrect header|unexpected end/i.test(`${e.code || ''} ${e.message || ''}`) ? 'gzip acilamadi' : 'okunamadi';
+    const tur = gz && e && /(?:^Z_)|incorrect header|unexpected end/i.test(`${e.code || ''} ${e.message || ''}`) ? 'gzip acilamadi' : 'okunamadi';
     throw okunamadi(`${ad}: ${tur} (${e?.message ? e.message : e})`, e);
   }
   if (yazici instanceof SatirYazici) sonuc.uzun = yazici.uzun;
@@ -1113,7 +1114,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
 
   const sayac = { toplam: 0, max: maxBayt };
   const boyut = async (ad) => (await fs.promises.lstat(path.join(dizin, ad))).size;
-  const okunacak = [...tur.keys()].sort();
+  const okunacak = [...tur.keys()].sort(varsayilanSira);
   if (okunacak.length > MAX_DOSYA) throw okunamadi(`kosu dizininde cok fazla dosya: ${okunacak.length} (> ${MAX_DOSYA})`);
   let toplamBoyut = 0;
   for (const ad of okunacak) {
@@ -1374,7 +1375,7 @@ async function kosuDiziniOku(dizin, { maxBayt = VARSAYILAN_MAX_BAYT, adim = null
     ...aglar.map((x) => x.ad.slice('ag_'.length, -'.csv'.length)),
     ...[...agBilgiler.keys()].map((ad) => ad.slice('ag_'.length, -'.txt'.length)),
   ]);
-  for (const anahtar of [...agAnahtarlar].sort()) {
+  for (const anahtar of [...agAnahtarlar].sort(varsayilanSira)) {
     const c = aglar.find((x) => x.ad === `ag_${anahtar}.csv`);
     const bilgi = agBilgiler.get(`ag_${anahtar}.txt`) || null;
     const sorun = c ? c.sorun : `ag_${anahtar}.csv yok`;

@@ -15,6 +15,7 @@
 'use strict';
 
 const express = require('express');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const CONFIG_NAME = 'nginx-expose';
 const DEFAULT_TARGET = 'GBNGXT07';
@@ -62,11 +63,11 @@ function groupTestApis(recordset) {
       .map((e) => ({
         configFile: e.configFile,
         api: e.api,
-        hosts: [...e.hosts].sort(),
+        hosts: [...e.hosts].sort(varsayilanSira),
         locations: [...e.locations.values()].sort((a, b) => a.path.localeCompare(b.path)),
       }))
       .sort((a, b) => a.configFile.localeCompare(b.configFile)),
-    hosts: [...new Set(testRows.map((x) => String(x.host || '').trim()))].sort(),
+    hosts: [...new Set(testRows.map((x) => String(x.host || '').trim()))].sort(varsayilanSira),
   };
 }
 

@@ -717,7 +717,7 @@ const okBase = {
 };
 
 test('E1 gecerli girdi kabul', () => {
-  launch.assertValidTargets(okBase);
+  assert.doesNotThrow(() => launch.assertValidTargets(okBase));
 });
 test('E2 namespace: buyuk harf red', () => {
   assert.throws(() => launch.assertValidTargets({ ...okBase, namespace: 'NS' }), /namespace/i);
@@ -742,7 +742,7 @@ test('E6 namespace: nokta KABUL EDILMEZ (k8s ns kurali)', () => {
   assert.throws(() => launch.assertValidTargets({ ...okBase, namespace: 'a.b' }), /namespace/i);
 });
 test('E7 uygulama: nokta KABUL EDILIR', () => {
-  launch.assertValidTargets({ ...okBase, apps: ['a.b-c'] });
+  assert.doesNotThrow(() => launch.assertValidTargets({ ...okBase, apps: ['a.b-c'] }));
 });
 test('E8 uygulama: 253 karakter siniri', () => {
   launch.assertValidTargets({ ...okBase, apps: ['a'.repeat(253)] });

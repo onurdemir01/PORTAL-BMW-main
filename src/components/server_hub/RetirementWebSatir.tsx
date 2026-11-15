@@ -99,7 +99,7 @@ export function webGrupla(web: RtWeb[]): WebGrubu[] {
 export function trafikBirlestir(l: (RtVhostTrafik | undefined)[]): RtVhostTrafik | undefined {
   const vars = l.filter((x): x is RtVhostTrafik => x?.durum === 'var');
   if (vars.length) {
-    const enBuyuk = vars.reduce((a, b) => ((b.req7 ?? 0) > (a.req7 ?? 0) ? b : a));
+    const enBuyuk = vars.reduce((a, b) => ((b.req7 ?? 0) > (a.req7 ?? 0) ? b : a), vars[0]);
     return vars.some((x) => x.sampled) ? { ...enBuyuk, sampled: true } : enBuyuk;
   }
   if (!l.length || l.some((x) => x === undefined)) return undefined;

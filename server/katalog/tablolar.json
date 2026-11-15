@@ -127,7 +127,7 @@
         "tur": "portal",
         "ad": "Self Servis / genel launch (performSsLaunch)",
         "dosya": "server/ansible/runner.cjs:3475",
-        "nasil": "per-run INSERT (pending), bitince UPDATE status/finished_at (runner.cjs:5815)",
+        "nasil": "per-run INSERT (pending), bitince UPDATE status/finished_at (runner.cjs:5817)",
         "ne_zaman": "Her iş başlatmada"
       },
       {
@@ -154,7 +154,7 @@
       {
         "tur": "portal",
         "ad": "Crypto Hub (uygulama/node)",
-        "dosya": "server/crypto-hub/index.cjs:1469",
+        "dosya": "server/crypto-hub/index.cjs:1470",
         "nasil": "per-run INSERT (ayrıca node.cjs:1583)",
         "ne_zaman": "Kullanıcı işlemi"
       },
@@ -190,7 +190,7 @@
     "okuyanlar": [
       {
         "ad": "Ansible iş geçmişi ekranı GET /api/ansible/history",
-        "dosya": "server/ansible/runner.cjs:5956"
+        "dosya": "server/ansible/runner.cjs:5958"
       },
       {
         "ad": "İş durumu uçlarında sahiplik (IDOR) kontrolü - OpsX/Telnet/ScaleX/FileX/Envanter",
@@ -223,7 +223,7 @@
       {
         "tur": "portal",
         "ad": "Genel iş durumu ucu (job-status) arşivleme",
-        "dosya": "server/ansible/runner.cjs:5848",
+        "dosya": "server/ansible/runner.cjs:5850",
         "nasil": "iş terminal duruma geçince bir kez INSERT (varsa atla)",
         "ne_zaman": "İş durumu sorgulandığında, iş bitmişse"
       },
@@ -249,7 +249,7 @@
       },
       {
         "ad": "Yük Testi koşu çıktısı",
-        "dosya": "server/nginx-loadtest/index.cjs:1525"
+        "dosya": "server/nginx-loadtest/index.cjs:1526"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -401,11 +401,11 @@
     "okuyanlar": [
       {
         "ad": "Ayar geçmişi listesi (son 30)",
-        "dosya": "server/ansible/runner.cjs:4266"
+        "dosya": "server/ansible/runner.cjs:4267"
       },
       {
         "ad": "Geri yükleme",
-        "dosya": "server/ansible/runner.cjs:4292"
+        "dosya": "server/ansible/runner.cjs:4293"
       }
     ],
     "saklama": "yok (sinirsiz buyur, küçük JSON)",
@@ -494,7 +494,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/app_hub/app_hub_ocp.yml (Application Hub — OpenShift Canlı Okuma) sonucu, Portal yazar",
-        "dosya": "server/app-hub/canli.cjs:209",
+        "dosya": "server/app-hub/canli.cjs:210",
         "nasil": "per-run INSERT (iş başına bir kez)",
         "ne_zaman": "Kullanıcı App Hub'da canlı okuma istediğinde"
       }
@@ -502,7 +502,7 @@
     "okuyanlar": [
       {
         "ad": "Application Hub uygulama detayı",
-        "dosya": "server/app-hub/canli.cjs:179"
+        "dosya": "server/app-hub/canli.cjs:180"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -655,7 +655,7 @@
       {
         "tur": "portal",
         "ad": "API'yi internete ac ayari ('nginx-expose')",
-        "dosya": "server/nginx-expose/index.cjs:138",
+        "dosya": "server/nginx-expose/index.cjs:139",
         "nasil": "upsert (INSERT :140)",
         "ne_zaman": "Admin elle"
       },
@@ -709,7 +709,7 @@
       },
       {
         "ad": "API'yi internete ac ('nginx-expose')",
-        "dosya": "server/nginx-expose/index.cjs:83"
+        "dosya": "server/nginx-expose/index.cjs:84"
       },
       {
         "ad": "Nginx PROD tasima ('nginx-prod-migration')",
@@ -1021,7 +1021,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü kolon ayarı",
-        "dosya": "server/inventory/index.cjs:1209",
+        "dosya": "server/inventory/index.cjs:1244",
         "nasil": "UPDATE, yoksa INSERT (:1218)",
         "ne_zaman": "Admin işlemi"
       }
@@ -1029,7 +1029,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter veri görüntüleme (gizli kolon filtresi)",
-        "dosya": "server/inventory/index.cjs:732"
+        "dosya": "server/inventory/index.cjs:767"
       }
     ],
     "saklama": "anlik goruntu",
@@ -1046,7 +1046,7 @@
       {
         "tur": "portal",
         "ad": "Envanter geçmişi günlük anlık görüntü (Inventory, MWAppsInventory, BMW_Certificates_Inventory, Openshift_Inventory, NginxRateLimitInventory)",
-        "dosya": "server/inventory/history.cjs:178",
+        "dosya": "server/inventory/history.cjs:179",
         "nasil": "SCD-2: değişen satır için eski kaydı kapat (UPDATE valid_to :159) + yeni INSERT",
         "ne_zaman": "Günde bir (history-scheduler.cjs, 30 dk'da bir 'bugün çalıştı mı' kontrolü) veya POST /api/inventory/history/snapshot"
       }
@@ -1054,7 +1054,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter > Geçmiş paneli (belirli tarihte, fark, seri)",
-        "dosya": "server/inventory/history.cjs:226"
+        "dosya": "server/inventory/history.cjs:227"
       }
     ],
     "saklama": "yok (sinirsiz buyur, değişimle orantılı)",
@@ -1078,7 +1078,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü geçmiş ayarı (PUT /history/config)",
-        "dosya": "server/inventory/index.cjs:2172",
+        "dosya": "server/inventory/index.cjs:2207",
         "nasil": "UPDATE, yoksa INSERT",
         "ne_zaman": "Admin işlemi"
       }
@@ -1090,7 +1090,7 @@
       },
       {
         "ad": "Admin geçmiş ayar ekranı",
-        "dosya": "server/inventory/index.cjs:2104"
+        "dosya": "server/inventory/index.cjs:2139"
       }
     ],
     "saklama": "anlik goruntu",
@@ -1107,7 +1107,7 @@
       {
         "tur": "portal",
         "ad": "Envanter geçmişi anlık görüntü",
-        "dosya": "server/inventory/history.cjs:193",
+        "dosya": "server/inventory/history.cjs:194",
         "nasil": "per-run INSERT",
         "ne_zaman": "Günde bir"
       }
@@ -1115,7 +1115,7 @@
     "okuyanlar": [
       {
         "ad": "Geçmiş çalıştırma listesi /history/runs",
-        "dosya": "server/inventory/history.cjs:286"
+        "dosya": "server/inventory/history.cjs:287"
       },
       {
         "ad": "Zamanlayıcı 'bugün çalıştı mı'",
@@ -1136,7 +1136,7 @@
       {
         "tur": "portal",
         "ad": "Envanter > Kayıtlı sorgular (kaydet/yayınla/varsayılan/sil)",
-        "dosya": "server/inventory/index.cjs:559",
+        "dosya": "server/inventory/index.cjs:560",
         "nasil": "UPDATE (:546), yoksa INSERT; DELETE (:595)",
         "ne_zaman": "Kullanıcı işlemi"
       }
@@ -1144,7 +1144,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter > Kayıtlı sorgular",
-        "dosya": "server/inventory/index.cjs:529"
+        "dosya": "server/inventory/index.cjs:530"
       }
     ],
     "saklama": "yok",
@@ -1161,7 +1161,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü takma ad",
-        "dosya": "server/inventory/index.cjs:117",
+        "dosya": "server/inventory/index.cjs:118",
         "nasil": "UPDATE (:109), yoksa INSERT; DELETE (:125)",
         "ne_zaman": "Admin işlemi"
       }
@@ -1169,11 +1169,11 @@
     "okuyanlar": [
       {
         "ad": "GET /api/inventory/table-aliases (Envanter sayfası)",
-        "dosya": "server/inventory/index.cjs:78"
+        "dosya": "server/inventory/index.cjs:79"
       },
       {
         "ad": "Envanter görünürlük listesi",
-        "dosya": "server/inventory/index.cjs:957"
+        "dosya": "server/inventory/index.cjs:992"
       }
     ],
     "saklama": "anlik goruntu",
@@ -1190,7 +1190,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü rol ayarı",
-        "dosya": "server/inventory/index.cjs:300",
+        "dosya": "server/inventory/index.cjs:301",
         "nasil": "rol için delete+insert (:292)",
         "ne_zaman": "Admin işlemi; ilk kurulumda eski tablodan göç (:225)"
       }
@@ -1198,7 +1198,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo listesi erişim filtresi",
-        "dosya": "server/inventory/index.cjs:265"
+        "dosya": "server/inventory/index.cjs:266"
       }
     ],
     "saklama": "anlik goruntu",
@@ -1215,7 +1215,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü kullanıcı istisnası",
-        "dosya": "server/inventory/index.cjs:1139",
+        "dosya": "server/inventory/index.cjs:1174",
         "nasil": "UPDATE (:1130), yoksa INSERT; DELETE (:1158)",
         "ne_zaman": "Admin işlemi"
       }
@@ -1223,7 +1223,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter erişim filtresi",
-        "dosya": "server/inventory/index.cjs:328"
+        "dosya": "server/inventory/index.cjs:329"
       }
     ],
     "saklama": "anlik goruntu",
@@ -1240,14 +1240,14 @@
       {
         "tur": "portal",
         "ad": "Tablo listesi uzlaştırma (DB'deki tablolar)",
-        "dosya": "server/inventory/index.cjs:175",
+        "dosya": "server/inventory/index.cjs:176",
         "nasil": "yeni tablo INSERT, kaybolan tablo is_active=0 (:188)",
         "ne_zaman": "10 dk'da bir en fazla, tablo listesi istendiğinde"
       },
       {
         "tur": "portal",
         "ad": "Admin > Envanter Görünürlüğü düzenle",
-        "dosya": "server/inventory/index.cjs:1058",
+        "dosya": "server/inventory/index.cjs:1093",
         "nasil": "UPDATE",
         "ne_zaman": "Admin işlemi"
       }
@@ -1255,11 +1255,11 @@
     "okuyanlar": [
       {
         "ad": "Envanter görünürlük ekranı",
-        "dosya": "server/inventory/index.cjs:956"
+        "dosya": "server/inventory/index.cjs:991"
       },
       {
         "ad": "Erişim filtreleri",
-        "dosya": "server/inventory/index.cjs:348"
+        "dosya": "server/inventory/index.cjs:349"
       }
     ],
     "saklama": "anlik goruntu (silinmez, pasifleşir)",
@@ -1276,7 +1276,7 @@
     "okuyanlar": [
       {
         "ad": "Tek seferlik eski veri göçü",
-        "dosya": "server/inventory/index.cjs:211"
+        "dosya": "server/inventory/index.cjs:212"
       }
     ],
     "saklama": "yok",
@@ -1500,7 +1500,7 @@
       },
       {
         "ad": "Yuk Testi gece kuyrugu yetki kontrolu",
-        "dosya": "server/nginx-loadtest/index.cjs:917"
+        "dosya": "server/nginx-loadtest/index.cjs:918"
       }
     ],
     "saklama": "yok",
@@ -1536,7 +1536,7 @@
       }
     ],
     "saklama": "yok",
-    "notlar": "LEGACY: src/ altinda bu uclari cagiran ekran yok. AI Analist host araclari artik inventory_hosts yerine apps tablosunu (varsayilan dbo.MWAppsInventory, server/inventory/index.cjs:2221 getHostsForAiTools) okuyor; portal-tools.cjs yorumlarindaki 'EnvanterApps' adi bayat. Envanter API'sinde gizli tablolar listesinde (server/inventory/index.cjs:21).",
+    "notlar": "LEGACY: src/ altinda bu uclari cagiran ekran yok. AI Analist host araclari artik inventory_hosts yerine apps tablosunu (varsayilan dbo.MWAppsInventory, server/inventory/index.cjs:2256 getHostsForAiTools) okuyor; portal-tools.cjs yorumlarindaki 'EnvanterApps' adi bayat. Envanter API'sinde gizli tablolar listesinde (server/inventory/index.cjs:22).",
     "kullanilmiyor": true,
     "guven": "MAKUL"
   },
@@ -1561,12 +1561,12 @@
       },
       {
         "ad": "LogX ret günlüğü /manage/denials",
-        "dosya": "server/logx/v2/index.cjs:1349",
+        "dosya": "server/logx/v2/index.cjs:1350",
         "uzerinden": "server/logx/audit.cjs"
       },
       {
         "ad": "LogX envanter boşlukları",
-        "dosya": "server/logx/v2/inventory-gaps.cjs:141"
+        "dosya": "server/logx/v2/inventory-gaps.cjs:142"
       }
     ],
     "saklama": "yok (sinirsiz buyur) - zincir bozulmasın diye silinmez",
@@ -1646,7 +1646,7 @@
     "yazanlar": [],
     "okuyanlar": [],
     "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4815-4829)",
-    "notlar": "Olu/miras tablo. inventory_hosts'a FOREIGN KEY tutuyordu (mssql-setup.cjs:4810-4814). Envanter ekraninda gizli (server/inventory/index.cjs:20). Kalan anmalar yalniz yorum: server/logx/index.cjs:4, server/logx/v2/restrictions.cjs:4, mssql-setup.cjs:489. mssql-setup.cjs:28-33 yorumu ile 4815 DROP dongusu celisiyor.",
+    "notlar": "Olu/miras tablo. inventory_hosts'a FOREIGN KEY tutuyordu (mssql-setup.cjs:4810-4814). Envanter ekraninda gizli (server/inventory/index.cjs:21). Kalan anmalar yalniz yorum: server/logx/index.cjs:4, server/logx/v2/restrictions.cjs:4, mssql-setup.cjs:489. mssql-setup.cjs:28-33 yorumu ile 4815 DROP dongusu celisiyor.",
     "kullanilmiyor": true,
     "guven": "KESIN"
   },
@@ -1658,7 +1658,7 @@
     "yazanlar": [],
     "okuyanlar": [],
     "saklama": "yok - tablo artik olusturulmuyor; Portal her acilista varsa DROP TABLE ile dusuruyor (server/db/mssql-setup.cjs:4815-4829)",
-    "notlar": "Olu/miras tablo. mssql-setup.cjs icinde CREATE yok; yalniz acilista silme dongusu var (mssql-setup.cjs:4810-4829, gerekce: inventory_hosts'a FOREIGN KEY tutuyor, inventory_hosts satiri silinirken FK hatasi veriyordu). Celiskili yorum: mssql-setup.cjs:28-33 'DROP TABLE hicbir zaman burada calistirilmaz' diyor ama 4815'teki dongu DROP calistiriyor. Envanter ekraninda gizli tutulur (server/inventory/index.cjs:18 BLOCKED_TABLES). server/db/portal-mssql.cjs:2 dosya basi yorumu hala bu tabloyu anar (bayat). docs/SCALABILITY.md:92 de bayat.",
+    "notlar": "Olu/miras tablo. mssql-setup.cjs icinde CREATE yok; yalniz acilista silme dongusu var (mssql-setup.cjs:4810-4829, gerekce: inventory_hosts'a FOREIGN KEY tutuyor, inventory_hosts satiri silinirken FK hatasi veriyordu). Celiskili yorum: mssql-setup.cjs:28-33 'DROP TABLE hicbir zaman burada calistirilmaz' diyor ama 4815'teki dongu DROP calistiriyor. Envanter ekraninda gizli tutulur (server/inventory/index.cjs:19 BLOCKED_TABLES). server/db/portal-mssql.cjs:2 dosya basi yorumu hala bu tabloyu anar (bayat). docs/SCALABILITY.md:92 de bayat.",
     "kullanilmiyor": true,
     "guven": "KESIN"
   },
@@ -1901,19 +1901,19 @@
       {
         "tur": "portal",
         "ad": "Denetim > Nginx Audit: PUT/DELETE /api/denetim/nginx-audit/allowed (Admin)",
-        "dosya": "server/audit/denetim.cjs:1649",
-        "nasil": "tekil INSERT (varsa atla), DELETE by id (server/audit/denetim.cjs:1664)",
+        "dosya": "server/audit/denetim.cjs:1650",
+        "nasil": "tekil INSERT (varsa atla), DELETE by id (server/audit/denetim.cjs:1665)",
         "ne_zaman": "Admin elle ekler/siler"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Nginx Audit sapma hesabi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1505"
+        "dosya": "server/audit/denetim.cjs:1506"
       },
       {
         "ad": "GET /api/denetim/nginx-audit/allowed",
-        "dosya": "server/audit/denetim.cjs:1618"
+        "dosya": "server/audit/denetim.cjs:1619"
       }
     ],
     "saklama": "yok (elle yonetilen kucuk liste)",
@@ -1930,14 +1930,14 @@
       {
         "tur": "portal",
         "ad": "PUT/DELETE /api/denetim/nginx-audit/exceptions/:host (Admin)",
-        "dosya": "server/audit/denetim.cjs:1691",
+        "dosya": "server/audit/denetim.cjs:1692",
         "nasil": "host basina upsert (UPDATE yoksa INSERT :1694), DELETE (:1773)",
         "ne_zaman": "Admin elle"
       },
       {
         "tur": "portal",
         "ad": "Nginx Hub eski sunucu temizligi (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:70",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:71",
         "nasil": "host'a gore DELETE TOP(n) partileri",
         "ne_zaman": "Admin 'eski sunuculari temizle' dediginde"
       }
@@ -1945,7 +1945,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit ozet/listesi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1580"
+        "dosya": "server/audit/denetim.cjs:1581"
       }
     ],
     "saklama": "yok; kapanmis sunucunun satiri eski-sunucu temizliginde silinir",
@@ -1969,7 +1969,7 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub eski sunucu temizligi",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:72",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:73",
         "nasil": "host'a gore DELETE TOP(n) (host NULL=filo geneli satirlara dokunmaz)",
         "ne_zaman": "Admin temizlik"
       }
@@ -2026,7 +2026,7 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub eski sunucu temizligi",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:71",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:72",
         "nasil": "host'a gore DELETE",
         "ne_zaman": "Admin temizlik"
       }
@@ -2043,7 +2043,7 @@
       },
       {
         "ad": "Denetim yanitlari",
-        "dosya": "server/audit/denetim.cjs:177",
+        "dosya": "server/audit/denetim.cjs:178",
         "uzerinden": "server/audit/nginx-host-labels.cjs"
       }
     ],
@@ -2075,7 +2075,7 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub eski sunucu temizligi",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:68",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:69",
         "nasil": "host'a gore DELETE TOP(n)",
         "ne_zaman": "Admin temizlik"
       }
@@ -2111,7 +2111,7 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub eski sunucu temizligi",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:69",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:70",
         "nasil": "host'a gore DELETE",
         "ne_zaman": "Admin temizlik"
       }
@@ -2407,12 +2407,12 @@
     "okuyanlar": [
       {
         "ad": "LogX sihirbaz uygulama listesi (GET apps)",
-        "dosya": "server/logx/v2/index.cjs:617",
+        "dosya": "server/logx/v2/index.cjs:618",
         "uzerinden": "server/logx/v2/ocp-cache.cjs"
       },
       {
         "ad": "App Hub OCP verisi",
-        "dosya": "server/app-hub/veri.cjs:559",
+        "dosya": "server/app-hub/veri.cjs:560",
         "uzerinden": "server/logx/v2/ocp-cache.cjs"
       },
       {
@@ -2486,7 +2486,7 @@
       },
       {
         "ad": "App Hub",
-        "dosya": "server/app-hub/veri.cjs:504"
+        "dosya": "server/app-hub/veri.cjs:505"
       },
       {
         "ad": "Self Service tenant secimi",
@@ -2516,7 +2516,7 @@
     "okuyanlar": [
       {
         "ad": "LogX namespace listesi",
-        "dosya": "server/logx/v2/index.cjs:569",
+        "dosya": "server/logx/v2/index.cjs:570",
         "uzerinden": "server/logx/v2/ocp-cache.cjs"
       },
       {
@@ -2882,7 +2882,7 @@
       },
       {
         "ad": "Smart onay eslesmesi",
-        "dosya": "server/ansible/runner.cjs:5472"
+        "dosya": "server/ansible/runner.cjs:5473"
       },
       {
         "ad": "AWX sunucu bagimlilik",
@@ -3037,7 +3037,7 @@
       {
         "tur": "portal",
         "ad": "Server Hub > Uygulama Envanteri ayarları",
-        "dosya": "server/server-hub/ear-envanter-ayar.cjs:315",
+        "dosya": "server/server-hub/ear-envanter-ayar.cjs:316",
         "nasil": "anahtar başına upsert / DELETE",
         "ne_zaman": "Admin kaydettiğinde"
       }
@@ -3045,7 +3045,7 @@
     "okuyanlar": [
       {
         "ad": "Uygulama Envanteri ayar okuma (poller, saklama)",
-        "dosya": "server/server-hub/ear-envanter-ayar.cjs:270"
+        "dosya": "server/server-hub/ear-envanter-ayar.cjs:271"
       }
     ],
     "saklama": "anlik goruntu (anahtar-değer)",
@@ -3062,7 +3062,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml (Server Hub — Uygulama Envanteri) ham dosyaları; Portal /sw'den alıp yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1139",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1140",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Haftalık zamanlayıcı (ear-envanter-poller.cjs) veya elle / AWX'ten başlatılan koşu"
       }
@@ -3070,7 +3070,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub > Uygulama Envanteri sorguları",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:173"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:174"
       },
       {
         "ad": "Server Hub host verisi",
@@ -3078,7 +3078,7 @@
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:362"
+        "dosya": "server/app-hub/veri.cjs:363"
       }
     ],
     "saklama": "Son N FİLO koşusu (saklama_kosu, vars. 12) - ear-envanter-saklama.cjs 6 saatte bir, TOP 20000 parçalı DELETE",
@@ -3095,7 +3095,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri poller (haftalık/elle)",
-        "dosya": "server/server-hub/ear-envanter-poller.cjs:257",
+        "dosya": "server/server-hub/ear-envanter-poller.cjs:258",
         "nasil": "per-run INSERT; durum ve sayım UPDATE'leri (:838, :852)",
         "ne_zaman": "Haftalık zamanlayıcı veya kullanıcı"
       },
@@ -3110,7 +3110,7 @@
     "okuyanlar": [
       {
         "ad": "Koşu listesi/detayı",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:434"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:435"
       }
     ],
     "saklama": "Son N filo koşusu (vars. 12), ear-envanter-saklama.cjs:63",
@@ -3127,14 +3127,14 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1146",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1147",
         "nasil": "yoksa INSERT (tekilleştirme)",
         "ne_zaman": "Koşu alımında"
       },
       {
         "tur": "portal",
         "ad": "Sürüm izi eşleme",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:463",
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:464",
         "nasil": "UPDATE surum_izi",
         "ne_zaman": "Alım sonrası"
       }
@@ -3142,7 +3142,7 @@
     "okuyanlar": [
       {
         "ad": "Eşlenik/benzer uygulama analizi",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:495"
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:496"
       }
     ],
     "saklama": "Hiçbir WAR/uygulama kullanmıyorsa silinir (ear-envanter-saklama.cjs:70)",
@@ -3159,7 +3159,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri poller",
-        "dosya": "server/server-hub/ear-envanter-poller.cjs:265",
+        "dosya": "server/server-hub/ear-envanter-poller.cjs:266",
         "nasil": "koşu açılınca INSERT; durum UPDATE'leri (BEKLIYOR->CALISIYOR->ALINIYOR->BITTI)",
         "ne_zaman": "30 sn'de bir poller"
       },
@@ -3174,7 +3174,7 @@
     "okuyanlar": [
       {
         "ad": "Koşu parti detayı",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:450"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:451"
       }
     ],
     "saklama": "Koşu ile birlikte (ear-envanter-saklama.cjs:62)",
@@ -3191,7 +3191,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1154",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1155",
         "nasil": "yeni set için INSERT",
         "ne_zaman": "Koşu alımında"
       }
@@ -3199,11 +3199,11 @@
     "okuyanlar": [
       {
         "ad": "Uygulama Envanteri kütüphane görünümü",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:218"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:219"
       },
       {
         "ad": "Eşlenik analizi",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:447"
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:448"
       }
     ],
     "saklama": "Seti silinince silinir (ear-envanter-saklama.cjs:77)",
@@ -3220,7 +3220,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1145",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1146",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3228,7 +3228,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub > Uygulama Envanteri",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:310"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:311"
       },
       {
         "ad": "Server Hub host verisi",
@@ -3249,7 +3249,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1147",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1148",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3257,7 +3257,7 @@
     "okuyanlar": [
       {
         "ad": "Uygulama Envanteri WAR detayı",
-        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:318"
+        "dosya": "server/server-hub/ear-envanter-sorgu.cjs:319"
       }
     ],
     "saklama": "Son N filo koşusu (ear-envanter-saklama.cjs:59)",
@@ -3274,14 +3274,14 @@
       {
         "tur": "portal",
         "ad": "POST /api/server-hub/reboot-check (once isi)",
-        "dosya": "server/server-hub/reboot-check.cjs:212",
+        "dosya": "server/server-hub/reboot-check.cjs:213",
         "nasil": "kontrol basina INSERT, sonuc UPDATE (:121)",
         "ne_zaman": "Kullanici reboot kontrolu baslatinca"
       },
       {
         "tur": "portal",
         "ad": "POST /reboot-check/:id/sonra",
-        "dosya": "server/server-hub/reboot-check.cjs:247",
+        "dosya": "server/server-hub/reboot-check.cjs:248",
         "nasil": "UPDATE (sonra isi, sonuc :134)",
         "ne_zaman": "Reboot sonrasi kullanici eylemi"
       }
@@ -3289,7 +3289,7 @@
     "okuyanlar": [
       {
         "ad": "Reboot Kontrolu listesi/detay/rapor",
-        "dosya": "server/server-hub/reboot-check.cjs:146"
+        "dosya": "server/server-hub/reboot-check.cjs:147"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -3306,7 +3306,7 @@
       {
         "tur": "portal",
         "ad": "Server Hub ayar kaydet (ayarlar.cjs)",
-        "dosya": "server/server-hub/ayarlar.cjs:173",
+        "dosya": "server/server-hub/ayarlar.cjs:174",
         "nasil": "her degisiklikte INSERT (append)",
         "ne_zaman": "Admin ayar degistirince"
       }
@@ -3314,7 +3314,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub ayar gecmisi ekrani",
-        "dosya": "server/server-hub/ayarlar.cjs:254"
+        "dosya": "server/server-hub/ayarlar.cjs:255"
       }
     ],
     "saklama": "yok (sinirsiz buyur, kucuk)",
@@ -3331,7 +3331,7 @@
       {
         "tur": "portal",
         "ad": "Server Hub ayar kaydet (ayarlar.cjs)",
-        "dosya": "server/server-hub/ayarlar.cjs:162",
+        "dosya": "server/server-hub/ayarlar.cjs:163",
         "nasil": "upsert; varsayilana donuste DELETE (:161)",
         "ne_zaman": "Admin elle"
       }
@@ -3339,7 +3339,7 @@
     "okuyanlar": [
       {
         "ad": "Server Hub kurallari / limitler",
-        "dosya": "server/server-hub/ayarlar.cjs:125"
+        "dosya": "server/server-hub/ayarlar.cjs:126"
       }
     ],
     "saklama": "anlik goruntu",
@@ -3581,11 +3581,11 @@
     "okuyanlar": [
       {
         "ad": "Yuk Testi kosu detayi / karsilastirma / rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:1435"
+        "dosya": "server/nginx-loadtest/index.cjs:1436"
       },
       {
         "ad": "Coklu karsilastirma ve rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:1781"
+        "dosya": "server/nginx-loadtest/index.cjs:1782"
       }
     ],
     "saklama": "housekeeping NGINX_LOADTEST_RETENTION_DAYS (varsayilan 365 gun), TOP(n) partileri",
@@ -3671,7 +3671,7 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi: on kontrol / kosu baslat",
-        "dosya": "server/nginx-loadtest/index.cjs:570",
+        "dosya": "server/nginx-loadtest/index.cjs:571",
         "nasil": "kosu basina INSERT, sonra durum UPDATE'leri",
         "ne_zaman": "Kullanici kosu/on kontrol baslattiginda veya gece kuyrugu"
       },
@@ -3685,7 +3685,7 @@
       {
         "tur": "portal",
         "ad": "Durdur / iptal / etiket",
-        "dosya": "server/nginx-loadtest/index.cjs:843",
+        "dosya": "server/nginx-loadtest/index.cjs:844",
         "nasil": "UPDATE",
         "ne_zaman": "Kullanici eylemi"
       },
@@ -3707,7 +3707,7 @@
     "okuyanlar": [
       {
         "ad": "Yuk Testi kosu listesi / detay / coklu karsilastirma / rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:1419"
+        "dosya": "server/nginx-loadtest/index.cjs:1420"
       },
       {
         "ad": "Gece kuyrugu",
@@ -3787,7 +3787,7 @@
       },
       {
         "ad": "Kuyruk detay ekrani",
-        "dosya": "server/nginx-loadtest/index.cjs:1831"
+        "dosya": "server/nginx-loadtest/index.cjs:1832"
       },
       {
         "ad": "Kosu silme korumasi",
@@ -3833,7 +3833,7 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi senaryo yukle/duzenle/sil",
-        "dosya": "server/nginx-loadtest/index.cjs:1262",
+        "dosya": "server/nginx-loadtest/index.cjs:1263",
         "nasil": "INSERT, UPDATE (:1289), yumusak silme (:1308)",
         "ne_zaman": "Kullanici eylemi"
       }
@@ -3841,11 +3841,11 @@
     "okuyanlar": [
       {
         "ad": "Senaryo listesi",
-        "dosya": "server/nginx-loadtest/index.cjs:1234"
+        "dosya": "server/nginx-loadtest/index.cjs:1235"
       },
       {
         "ad": "Kosu detay/listeleri (JOIN)",
-        "dosya": "server/nginx-loadtest/index.cjs:343"
+        "dosya": "server/nginx-loadtest/index.cjs:344"
       }
     ],
     "saklama": "yok (yumusak silme)",
@@ -3874,7 +3874,7 @@
       },
       {
         "ad": "Kosu dogrulama",
-        "dosya": "server/nginx-loadtest/index.cjs:383",
+        "dosya": "server/nginx-loadtest/index.cjs:384",
         "uzerinden": "server/nginx-loadtest/yuk-makineleri.cjs"
       }
     ],
@@ -3955,7 +3955,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub ekrani (surumler/arsiv)",
-        "dosya": "server/crypto-hub/index.cjs:614"
+        "dosya": "server/crypto-hub/index.cjs:615"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS, varsayilan 90) - crypto_hub_loader.py:24,109",
@@ -3980,7 +3980,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Surumler",
-        "dosya": "server/crypto-hub/index.cjs:596"
+        "dosya": "server/crypto-hub/index.cjs:597"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4005,7 +4005,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Durum",
-        "dosya": "server/crypto-hub/index.cjs:579"
+        "dosya": "server/crypto-hub/index.cjs:580"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4030,7 +4030,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub ekrani (uyarilar)",
-        "dosya": "server/crypto-hub/index.cjs:604"
+        "dosya": "server/crypto-hub/index.cjs:605"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4055,7 +4055,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Durum/Surumler",
-        "dosya": "server/crypto-hub/index.cjs:588"
+        "dosya": "server/crypto-hub/index.cjs:589"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4087,7 +4087,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Deployment Scripts (/api/denetim/deploy-scripts)",
-        "dosya": "server/audit/denetim.cjs:2629"
+        "dosya": "server/audit/denetim.cjs:2630"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4112,7 +4112,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ham sha512; load_date varsa veri yasi",
-        "dosya": "server/audit/denetim.cjs:1964"
+        "dosya": "server/audit/denetim.cjs:1965"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4137,7 +4137,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (vhosting8)",
-        "dosya": "server/audit/denetim.cjs:1965"
+        "dosya": "server/audit/denetim.cjs:1966"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4155,14 +4155,14 @@
         "tur": "playbook",
         "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
         "dosya": "(Ansible tarafi kullanicida; sozlesme docs/INIT-SCRIPTS-SOZLESME.md)",
-        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme \u00a73)",
+        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme §3)",
         "ne_zaman": "check_initialize her kostugunda (loader henuz uretimde degil)"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - norm/CR/durum ve veri yasi",
-        "dosya": "server/audit/denetim.cjs:1968"
+        "dosya": "server/audit/denetim.cjs:1969"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir); scan_date = kosunun zaman damgasi",
@@ -4180,14 +4180,14 @@
         "tur": "playbook",
         "ad": "bmw_wds_scripts/initialize/check_initialize.yaml (initiliaze_scripts_inventory.py)",
         "dosya": "(Ansible tarafi kullanicida; sozlesme docs/INIT-SCRIPTS-SOZLESME.md)",
-        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme \u00a74); referans dizini yok/bossa dokunulmaz",
+        "nasil": "TRUNCATE + yeniden yaz (beklenen; sozlesme §4); referans dizini yok/bossa dokunulmaz",
         "ne_zaman": "check_initialize her kostugunda (loader henuz uretimde degil)"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ekip surumu",
-        "dosya": "server/audit/denetim.cjs:1954"
+        "dosya": "server/audit/denetim.cjs:1955"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4212,7 +4212,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter katmanı getTeamOwnership (kolonları ad kalıbıyla keşfeder: host/sunucu + ekip/team)",
-        "dosya": "server/inventory/index.cjs:803-861"
+        "dosya": "server/inventory/index.cjs:838-861"
       },
       {
         "ad": "Dynatrace varlık keşfi ekranı - owningTeam zenginleştirme",
@@ -4226,7 +4226,7 @@
       },
       {
         "ad": "Envanter ekranı tablo listesi (DB yokken yedek liste) + genel tablo tarayıcı",
-        "dosya": "server/inventory/index.cjs:35"
+        "dosya": "server/inventory/index.cjs:36"
       },
       {
         "ad": "Eski (çöpe atılmış) openshift_certificates / openshift_inventory playbook'ları - HysEkipId ile Ekip/Birim/IsAlani okuyordu",
@@ -4283,7 +4283,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter ekrani / genel tablo tarayici",
-        "dosya": "server/inventory/index.cjs:194"
+        "dosya": "server/inventory/index.cjs:195"
       },
       {
         "ad": "Envanter metrikleri (Denetim)",
@@ -4299,11 +4299,11 @@
       },
       {
         "ad": "Yuk Testi (hedef/yuk makinesi kapisi)",
-        "dosya": "server/nginx-loadtest/index.cjs:1106"
+        "dosya": "server/nginx-loadtest/index.cjs:1107"
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:147"
+        "dosya": "server/app-hub/veri.cjs:148"
       },
       {
         "ad": "Nginx Konsol / eski sunucu",
@@ -4397,7 +4397,7 @@
       },
       {
         "ad": "Yuk Testi IP dogrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:1495"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:1496"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir); dun/bugun farki DB'den degil rapor dosyalarindan",
@@ -4442,7 +4442,7 @@
       },
       {
         "ad": "EAR envanteri filo listesi",
-        "dosya": "server/server-hub/ear-envanter-poller.cjs:103",
+        "dosya": "server/server-hub/ear-envanter-poller.cjs:104",
         "uzerinden": "server/config/apps-table.cjs"
       },
       {
@@ -4464,7 +4464,7 @@
       },
       {
         "ad": "AI Analist host araclari (getHostsForAiTools)",
-        "dosya": "server/inventory/index.cjs:2223"
+        "dosya": "server/inventory/index.cjs:2258"
       }
     ],
     "saklama": "anlik goruntu (her kosuda guncellenir; kaybolan satir silinir); yedek CSV mwapps_backup.py ile",
@@ -4488,7 +4488,7 @@
     ],
     "okuyanlar": [],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır); geçmiş /sw/.../Ping_Sweep/history CSV'lerinde",
-    "notlar": "İki depoda da okuyan ekran/iş bulunamadı (betik yalnız kendi önceki durumunu okur). DENETIM_VERI_AKISI.md bunu yanlışlıkla middleware_inventory'ye bağlıyor. Betikte gömülü TBMWANS parolası var (vault planı). Portal'in Envanter engel listesinde (server/inventory/index.cjs:22 BLOCKED_TABLES) 'servers' adiyla geciyor (eski PostgreSQL donemi kalintisi); Portal tablolari da TBMWANS'ta oldugu icin ayni tablo olmali. Liste JS'te buyuk/kucuk harfe duyarli karsilastirildigindan dbo.Servers Envanter gezgininde fiilen engellenmiyor.",
+    "notlar": "İki depoda da okuyan ekran/iş bulunamadı (betik yalnız kendi önceki durumunu okur). DENETIM_VERI_AKISI.md bunu yanlışlıkla middleware_inventory'ye bağlıyor. Betikte gömülü TBMWANS parolası var (vault planı). Portal'in Envanter engel listesinde (server/inventory/index.cjs:23 BLOCKED_TABLES) 'servers' adiyla geciyor (eski PostgreSQL donemi kalintisi); Portal tablolari da TBMWANS'ta oldugu icin ayni tablo olmali. Liste JS'te buyuk/kucuk harfe duyarli karsilastirildigindan dbo.Servers Envanter gezgininde fiilen engellenmiyor.",
     "kullanilmiyor": true,
     "guven": "MAKUL"
   },
@@ -4563,7 +4563,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini (ham liste)",
-        "dosya": "server/inventory/index.cjs:30"
+        "dosya": "server/inventory/index.cjs:31"
       }
     ],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır)",
@@ -4588,7 +4588,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini (ham liste)",
-        "dosya": "server/inventory/index.cjs:31"
+        "dosya": "server/inventory/index.cjs:32"
       }
     ],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır)",
@@ -4613,7 +4613,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini (ham liste)",
-        "dosya": "server/inventory/index.cjs:32"
+        "dosya": "server/inventory/index.cjs:33"
       }
     ],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır)",
@@ -4638,7 +4638,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini (ham liste)",
-        "dosya": "server/inventory/index.cjs:33"
+        "dosya": "server/inventory/index.cjs:34"
       }
     ],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır)",
@@ -4663,7 +4663,7 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini (ham liste)",
-        "dosya": "server/inventory/index.cjs:34"
+        "dosya": "server/inventory/index.cjs:35"
       }
     ],
     "saklama": "anlık görüntü (her koşuda yeniden yazılır)",
@@ -4727,7 +4727,7 @@
     ],
     "okuyanlar": [],
     "saklama": "yok",
-    "notlar": "LEGACY: Portal apps-table.cjs varsayilani artik MWAppsInventory; AI Analist araclari da apps tablosunu okuyor (server/inventory/index.cjs:2223). ai-analyst/portal-tools.cjs ve logx/v2/legacy.cjs aciklamalarinda ad hala 'EnvanterApps' geciyor (yaniltici metin).",
+    "notlar": "LEGACY: Portal apps-table.cjs varsayilani artik MWAppsInventory; AI Analist araclari da apps tablosunu okuyor (server/inventory/index.cjs:2258). ai-analyst/portal-tools.cjs ve logx/v2/legacy.cjs aciklamalarinda ad hala 'EnvanterApps' geciyor (yaniltici metin).",
     "kullanilmiyor": true,
     "guven": "MAKUL"
   },
@@ -4788,19 +4788,19 @@
     "okuyanlar": [
       {
         "ad": "Envanter tablo gezgini - DB erişilemezse kullanılan yedek liste",
-        "dosya": "server/inventory/index.cjs:29"
+        "dosya": "server/inventory/index.cjs:30"
       },
       {
         "ad": "Envanter ekranı - User rolü için varsayılan görünür tablolar",
-        "dosya": "server/inventory/index.cjs:143"
+        "dosya": "server/inventory/index.cjs:144"
       },
       {
         "ad": "Envanter ekranı - DB erişilemezken gösterilen yedek tablo listesi",
-        "dosya": "server/inventory/index.cjs:29"
+        "dosya": "server/inventory/index.cjs:30"
       }
     ],
     "saklama": "yok (yazan yok)",
-    "notlar": "Eski tablo: aktif yazani yok (yalniz trash_olds/openshift_inventory.yml), guncel veri dbo.Openshift_Inventory'de. Envanter varsayilaninda (server/inventory/index.cjs:143) hala adi geciyor; kullaniciyi bayat veriye yonlendirebilir - varsayilandan cikarilmasi / tablonun kaldirilmasi adayi.",
+    "notlar": "Eski tablo: aktif yazani yok (yalniz trash_olds/openshift_inventory.yml), guncel veri dbo.Openshift_Inventory'de. Envanter varsayilaninda (server/inventory/index.cjs:144) hala adi geciyor; kullaniciyi bayat veriye yonlendirebilir - varsayilandan cikarilmasi / tablonun kaldirilmasi adayi.",
     "kullanilmiyor": true,
     "guven": "MAKUL"
   },
@@ -4821,7 +4821,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (match_by)",
-        "dosya": "server/audit/denetim.cjs:760"
+        "dosya": "server/audit/denetim.cjs:761"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
@@ -4883,15 +4883,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:57",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:58",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit (sunucu sayfası, dosya karşılaştırması)",
-        "dosya": "server/audit/denetim.cjs:1487"
+        "dosya": "server/audit/denetim.cjs:1488"
       },
       {
         "ad": "Nginx Audit değişim belirteci (önbellek)",
@@ -4919,15 +4919,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:52",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:53",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1521"
+        "dosya": "server/audit/denetim.cjs:1522"
       },
       {
         "ad": "Nginx sunucusu ölçülebilirlik durumu",
@@ -4968,15 +4968,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:54",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:55",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1525"
+        "dosya": "server/audit/denetim.cjs:1526"
       },
       {
         "ad": "Denetim > Nginx SPA > Production Taşımaları",
@@ -5004,32 +5004,32 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:53",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:54",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1523"
+        "dosya": "server/audit/denetim.cjs:1524"
       },
       {
         "ad": "Denetim > Nginx API Envanteri (servis sütunu)",
-        "dosya": "server/audit/denetim.cjs:2021"
+        "dosya": "server/audit/denetim.cjs:2022"
       },
       {
         "ad": "API envanteri özeti",
-        "dosya": "server/audit/nginx-api-summary.cjs:17",
+        "dosya": "server/audit/nginx-api-summary.cjs:18",
         "uzerinden": "server/audit/denetim.cjs"
       },
       {
         "ad": "Production Taşımaları",
-        "dosya": "server/audit/nginx-migration.cjs:1126"
+        "dosya": "server/audit/nginx-migration.cjs:1127"
       },
       {
         "ad": "Nginx Hub > Yük Testi hedef doğrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:1334"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:1335"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5053,15 +5053,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:56",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:57",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1529"
+        "dosya": "server/audit/denetim.cjs:1530"
       },
       {
         "ad": "Nginx Audit sıcak önbellek / değişim belirteci",
@@ -5073,7 +5073,7 @@
       },
       {
         "ad": "Nginx Hub > Yük Testi ayar doğrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:790"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:791"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5097,15 +5097,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:55",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:56",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1527"
+        "dosya": "server/audit/denetim.cjs:1528"
       },
       {
         "ad": "Production Taşımaları",
@@ -5137,8 +5137,8 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:58",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:59",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
@@ -5173,8 +5173,8 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:59",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:60",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
@@ -5205,15 +5205,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:61",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:62",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (ortam özeti/matris, GET /api/denetim/nginx-spa, /nginx-spa-coverage, /nginx-proxy)",
-        "dosya": "server/audit/denetim.cjs:151"
+        "dosya": "server/audit/denetim.cjs:152"
       },
       {
         "ad": "Location Detayı",
@@ -5266,15 +5266,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:62",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:63",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (ortam özeti/kapsam)",
-        "dosya": "server/audit/denetim.cjs:495"
+        "dosya": "server/audit/denetim.cjs:496"
       },
       {
         "ad": "Self Servis seçenek kaynağı",
@@ -5320,7 +5320,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Envanteri (GET /api/denetim/nginx-inventory)",
-        "dosya": "server/audit/denetim.cjs:2203"
+        "dosya": "server/audit/denetim.cjs:2204"
       },
       {
         "ad": "Self Servis seçenek kaynağı nginx-hosts / nginx-services",
@@ -5420,15 +5420,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin)",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:63",
-        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:64",
+        "nasil": "host bazında DELETE TOP(5000) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA (yük durumu)",
-        "dosya": "server/audit/denetim.cjs:180",
+        "dosya": "server/audit/denetim.cjs:181",
         "uzerinden": "server/audit/nginx-migration.cjs"
       },
       {
@@ -5461,15 +5461,15 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub > Eski sunucular temizliği (Admin) POST /api/nginx-console/eski-sunucular/temizle",
-        "dosya": "server/nginx-console/eski-sunucu.cjs:60",
-        "nasil": "kapatılmış sunucunun satırları host bazında DELETE TOP(5000) döngüsü (istek başına <=50 host / 20k satır) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:441)",
+        "dosya": "server/nginx-console/eski-sunucu.cjs:61",
+        "nasil": "kapatılmış sunucunun satırları host bazında DELETE TOP(5000) döngüsü (istek başına <=50 host / 20k satır) (TBMWANS_TABLOLARI listesi; DELETE parcaliSil eski-sunucu.cjs:442)",
         "ne_zaman": "Admin elle"
       }
     ],
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx API Envanteri (GET /api/denetim/nginx-api, /nginx-api-locations)",
-        "dosya": "server/audit/denetim.cjs:1978"
+        "dosya": "server/audit/denetim.cjs:1979"
       },
       {
         "ad": "Self Servis seçenek kaynakları nginx-api-locations / nginx-api-gateway-confs",
@@ -5514,15 +5514,15 @@
       },
       {
         "ad": "Application Hub uygulama detayi",
-        "dosya": "server/app-hub/veri.cjs:543"
+        "dosya": "server/app-hub/veri.cjs:544"
       },
       {
         "ad": "Server Hub capraz veri",
-        "dosya": "server/server-hub/capraz-veri.cjs:75"
+        "dosya": "server/server-hub/capraz-veri.cjs:76"
       },
       {
         "ad": "SPA raporu (intranet) - Nginx Konsol SPA keşfi (spaKesfiPaylas) üzerinden",
-        "dosya": "server/spa-report/intranet.cjs:309",
+        "dosya": "server/spa-report/intranet.cjs:310",
         "uzerinden": "server/nginx-console/index.cjs"
       }
     ],
@@ -5548,11 +5548,11 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA ozet/matris, route-stats, ocp-route-coverage",
-        "dosya": "server/audit/denetim.cjs:251"
+        "dosya": "server/audit/denetim.cjs:252"
       },
       {
         "ad": "Production Tasimalari",
-        "dosya": "server/audit/nginx-migration.cjs:1070"
+        "dosya": "server/audit/nginx-migration.cjs:1071"
       },
       {
         "ad": "Self Servis secenek kaynagi",
@@ -5560,7 +5560,7 @@
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:537"
+        "dosya": "server/app-hub/veri.cjs:538"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
@@ -5618,7 +5618,7 @@
       },
       {
         "ad": "Denetim SPA sahiplik",
-        "dosya": "server/audit/denetim.cjs:617",
+        "dosya": "server/audit/denetim.cjs:618",
         "uzerinden": "server/audit/ns-owners.cjs"
       },
       {
@@ -5660,7 +5660,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA ve Denetim > OpenShift (ocp-coverage)",
-        "dosya": "server/audit/denetim.cjs:1890"
+        "dosya": "server/audit/denetim.cjs:1891"
       },
       {
         "ad": "Self Servis seçenek kaynakları ocp-namespaces / ocp-spa-applications",
@@ -5855,15 +5855,15 @@
       },
       {
         "ad": "Retirement kesfi (web vhost'lari)",
-        "dosya": "server/retirement/discover.cjs:600"
+        "dosya": "server/retirement/discover.cjs:601"
       },
       {
         "ad": "Retirement DNS/IP",
-        "dosya": "server/retirement/dns-ip.cjs:144"
+        "dosya": "server/retirement/dns-ip.cjs:145"
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:422"
+        "dosya": "server/app-hub/veri.cjs:423"
       },
       {
         "ad": "Envanter Degisim gecmisi (gunluk anlik kopya)",
@@ -5956,15 +5956,15 @@
       },
       {
         "ad": "Retirement keşfi",
-        "dosya": "server/retirement/discover.cjs:413"
+        "dosya": "server/retirement/discover.cjs:414"
       },
       {
         "ad": "Retirement DNS/IP iadesi",
-        "dosya": "server/retirement/dns-ip.cjs:142"
+        "dosya": "server/retirement/dns-ip.cjs:143"
       },
       {
         "ad": "Uygulama Envanteri koşu yürütücüsü",
-        "dosya": "server/server-hub/ear-envanter-poller.cjs:118"
+        "dosya": "server/server-hub/ear-envanter-poller.cjs:119"
       }
     ],
     "saklama": "DELETE TOP(5000) parça başına commit; RETENTION_DAYS=30 (server_hub_loader.py:36)",
@@ -6018,12 +6018,12 @@
       },
       {
         "ad": "Server Hub değerlendirme (boşta IP)",
-        "dosya": "server/server-hub/assess.cjs:678",
+        "dosya": "server/server-hub/assess.cjs:679",
         "uzerinden": "server/server-hub/index.cjs"
       },
       {
         "ad": "Retirement keşfi",
-        "dosya": "server/retirement/discover.cjs:213"
+        "dosya": "server/retirement/discover.cjs:214"
       }
     ],
     "saklama": "RETENTION_DAYS=30, DELETE TOP(5000)",
@@ -6126,7 +6126,7 @@
       },
       {
         "ad": "Server Hub değerlendirme",
-        "dosya": "server/server-hub/assess.cjs:434",
+        "dosya": "server/server-hub/assess.cjs:435",
         "uzerinden": "server/server-hub/index.cjs"
       }
     ],
@@ -6181,11 +6181,11 @@
       },
       {
         "ad": "Retirement keşfi (web katmanı)",
-        "dosya": "server/retirement/discover.cjs:113"
+        "dosya": "server/retirement/discover.cjs:114"
       },
       {
         "ad": "Retirement DNS/IP iadesi",
-        "dosya": "server/retirement/dns-ip.cjs:141"
+        "dosya": "server/retirement/dns-ip.cjs:142"
       }
     ],
     "saklama": "RETENTION_DAYS=30, DELETE TOP(5000)",

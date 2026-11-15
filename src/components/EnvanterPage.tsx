@@ -144,7 +144,7 @@ const EnvanterPage: React.FC = () => {
         const published = (r.queries ?? []).filter((q) => q.isPublished);
         setPublishedQueries(published);
         const def = published.find((q) => q.isDefault);
-        if (def) runPresetQuery(def);
+        if (def) void runPresetQuery(def);
       })
       .catch(() => {});
   }, []);
@@ -210,7 +210,7 @@ const EnvanterPage: React.FC = () => {
   const colPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    inventoryApi.health().then((r) => setDbAvailable(r.mssqlAvailable ?? false));
+    void inventoryApi.health().then((r) => setDbAvailable(r.mssqlAvailable ?? false));
   }, []);
 
   // TEK ISTEK KURALI (2026-11-12): sayfa acilisinda ve tablo degisiminde inventoryApi.data
@@ -657,7 +657,7 @@ const EnvanterPage: React.FC = () => {
             isAdmin={isAdmin}
             onClose={() => setShowQuery(false)}
             onQueriesChange={() => {
-              inventoryApi.savedQueries().then((r) => {
+              void inventoryApi.savedQueries().then((r) => {
                 setPublishedQueries((r.queries ?? []).filter((q) => q.isPublished));
               });
             }}

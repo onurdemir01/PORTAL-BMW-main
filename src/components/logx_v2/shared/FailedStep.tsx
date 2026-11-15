@@ -57,7 +57,7 @@ const FailedStep: React.FC<Props> = ({
   function toggleOutput() {
     const next = !showOutput;
     setShowOutput(next);
-    if (next && !output && !loading) loadOutput();
+    if (next && !output && !loading) void loadOutput();
   }
 
   return (

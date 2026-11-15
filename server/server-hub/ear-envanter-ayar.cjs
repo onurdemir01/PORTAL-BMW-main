@@ -25,6 +25,7 @@
 // SAAT: Turkiye 2016'dan beri sabit UTC+3 (yaz saati yok); hesap UTC uzerinden +3 ile yapilir,
 // sunucunun TZ ayarina bagli degildir.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const TR_OFSET_MS = 3 * 60 * 60 * 1000;
 const GUNLER = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
@@ -53,7 +54,7 @@ function kapsamDogrula(v) {
   if (s === 'FILO' || s === 'SORUNLU' || s === 'WEB' || s === 'FILO_WEB') return s;
   const m = /^ORTAM:(.+)$/.exec(s);
   if (!m) return null;
-  const l = [...new Set(m[1].split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))].sort();
+  const l = [...new Set(m[1].split(',').map((x) => x.trim().toUpperCase()).filter(Boolean))].sort(varsayilanSira);
   if (!l.length || l.length > 20 || l.some((x) => !ORTAM_RE.test(x))) return null;
   return `ORTAM:${l.join(',')}`;
 }

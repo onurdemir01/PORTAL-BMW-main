@@ -266,7 +266,7 @@ export default function NginxProdMigration() {
         if (!r.ok) throw new Error(r.message || 'Durum okunamadı.');
         if (JOB_TERMINAL.has(r.status) && !reloaded) {
           reloaded = true;
-          loadTracking();
+          void loadTracking();
         }
         return { status: r.status, output: r.output || '' };
       },
@@ -390,7 +390,7 @@ export default function NginxProdMigration() {
       }
       setBulkLog([...log]);
     }
-    loadTracking();
+    void loadTracking();
   };
 
   /**
@@ -453,9 +453,9 @@ export default function NginxProdMigration() {
   useAsyncEffect(
     async (alive) => {
       setLoading(true);
-      loadConfig();
-      loadTracking();
-      (async () => {
+      void loadConfig();
+      void loadTracking();
+      void (async () => {
         try {
           const r = await denetimApi.nginxMigration(tick > 0); // Yenile (tick>0): onbellegi atla
           if (!alive()) return;
@@ -498,7 +498,7 @@ export default function NginxProdMigration() {
     } finally {
       setBusy(false);
       setPending(null);
-      loadTracking();
+      void loadTracking();
     }
   }
 
@@ -530,7 +530,7 @@ export default function NginxProdMigration() {
     } finally {
       setBusy(false);
       setPendingDelete(null);
-      loadTracking();
+      void loadTracking();
     }
   }
 
@@ -1664,7 +1664,7 @@ function MigrationConfigPanel({
   }
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await ansibleApi.servers();
         if (alive && r.ok) setServers(r.servers || []);

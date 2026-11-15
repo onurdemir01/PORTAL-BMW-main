@@ -14,6 +14,7 @@
 const { MADDELER, ALANLAR, KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
 const { LIMITLER } = require('./ayarlar.cjs');
 const { kurallarListesi } = require('./retire-uclar.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 /** Son degerlendirmeden kod -> { bulgu, sunucu }. Taramadan dusen sunucu sayilmaz. */
 function sayimlar(a) {
@@ -85,8 +86,8 @@ function kurallarYaniti(ayar, a, gecmis) {
     kokYoksay: (() => {
       const k = meta('liste:kok_yoksay');
       return {
-        gecerli: ayar.kokYoksay || [...KOK_YOKSAY_VARSAYILAN].sort(),
-        varsayilan: [...KOK_YOKSAY_VARSAYILAN].sort(),
+        gecerli: ayar.kokYoksay || [...KOK_YOKSAY_VARSAYILAN].sort(varsayilanSira),
+        varsayilan: [...KOK_YOKSAY_VARSAYILAN].sort(varsayilanSira),
         degistiren: k ? k.updatedBy : null,
         zaman: k ? k.updatedAt : null,
         not: k ? k.aciklama : '',

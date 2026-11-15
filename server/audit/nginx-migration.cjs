@@ -422,6 +422,7 @@ function spaTrafikDurumu(idx, key, defs) {
   let sampled = false;
   let lastSeen = null;
   let firstSeen = null;
+  /** @type {number|null} */
   let pencere = Infinity;
   for (const h of hostlar) {
     // OLCULEMEDI KAZANIR: ayni sunucu icin hem hata hem olcum gelirse emin olunmayan taraf.

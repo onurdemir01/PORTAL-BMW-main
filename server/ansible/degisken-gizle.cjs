@@ -18,7 +18,7 @@
 // Adi sir olduguna isaret eden degisken. Yanlis pozitif ZARARSIZ: degisken ekranda gorunmez,
 // AWX sablondaki degeri kullanmaya devam eder.
 const SIR_ANAHTARI =
-  /pass(word|wd|phrase)?|parola|sifre|secret|token|api[_-]?key|private[_-]?key|credential|webhook|(^|[_-])pwd([_-]|$)|(^|[_-])key$/i;
+  /pass(word|wd|phrase)?|parola|sifre|secret|token|api[_-]?key|private[_-]?key|credential|webhook|(?:(?:^|[_-])pwd(?:[_-]|$))|(?:(?:^|[_-])key$)/i;
 
 // Adi masum ama DEGERI sir tasiyan degisken.
 const SIR_DEGERI = [

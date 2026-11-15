@@ -419,7 +419,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'LogX',
     description: 'Ana staging dizinine erişilemediğinde kullanılan yerel yedek dizin.',
     required: false,
-    example: '/tmp/logx-fallback',
+    example: '/opt/bmw-portal/logx-fallback',
     usedIn: 'server/logx/v2/downloads.cjs',
   },
   {
@@ -525,7 +525,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     description:
       "Yalnızca OCO trafiği için proxy — global HTTPS_PROXY'den bağımsızdır. Boşsa doğrudan bağlanılır.",
     required: false,
-    example: 'http://proxy.fw.garanti.com.tr:8080',
+    example: 'http://proxy.example.com:8080',
     usedIn: 'server/oco/client.cjs',
   },
   {
@@ -596,7 +596,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     description:
       "Yalnızca Smart trafiğini bu proxy üzerinden gönderir — sistem geneli HTTPS_PROXY'den bilerek bağımsızdır (o, MCP/Splunk/AI gibi diğer tüm entegrasyonları da etkiler). Boşsa doğrudan bağlanılır.",
     required: false,
-    example: 'http://proxy.sirket.com.tr:8080',
+    example: 'http://proxy.example.com:8080',
     usedIn: 'server/smart/client.cjs',
   },
   {

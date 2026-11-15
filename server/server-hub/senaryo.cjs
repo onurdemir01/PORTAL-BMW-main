@@ -28,6 +28,7 @@
 const { A, GUVEN } = require('./iliski-grafigi.cjs');
 const { deploymentOf, earlerOf } = require('./uygulama-360.cjs');
 const { tabanAd } = require('./capraz.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const UE_TAZE_GUN = 7;
 const GUN_MS = 86400000;
@@ -529,7 +530,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       });
     }
     uygulamalar.set(d.anahtar, {
-      gruplar: [...grupKk.keys()].sort(),
+      gruplar: [...grupKk.keys()].sort(varsayilanSira),
       anahtar: d.anahtar,
       ad: d.ad,
       karar,
@@ -552,7 +553,7 @@ function grupImzasi(gk, karar, kk) {
     gk,
     karar,
     k: kk
-      .map((x) => ({ a: x.anahtar, k: x.karar, m: [...new Set(x.maddeler.map((m) => m.kod))].sort() }))
+      .map((x) => ({ a: x.anahtar, k: x.karar, m: [...new Set(x.maddeler.map((m) => m.kod))].sort(varsayilanSira) }))
       .sort((a, b) => a.a.localeCompare(b.a)),
   });
   return require('node:crypto').createHash('sha256').update(govde).digest('hex').slice(0, 32);

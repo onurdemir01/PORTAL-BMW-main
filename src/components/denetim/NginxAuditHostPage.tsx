@@ -41,7 +41,7 @@ export default function NginxAuditHostPage() {
   // `set-state-in-effect` kurali bunu isaretliyordu). Iptal de hook'tan gelir.
   useAsyncEffect(async (alive) => {
     setLoading(true);
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.nginxAuditHost(hostName);
         if (!alive()) return;

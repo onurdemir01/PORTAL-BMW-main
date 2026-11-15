@@ -162,7 +162,7 @@ export function NginxAudit() {
   // Ilk yukleme effect ICINDE kurulur (React 19 set-state-in-effect kurali).
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.nginxAudit();
         if (!alive) return;

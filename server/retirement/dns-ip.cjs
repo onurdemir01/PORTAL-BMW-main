@@ -18,6 +18,7 @@
 // PAYLASIM kendi kaydinin vhost'lari HARIC tutularak olculur (ayni uygulamanin :80 ve :443 bloklari
 // ayni IP'yi dinler; bu paylasim sayilmaz).
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const U = (s) => String(s ?? '').trim().toUpperCase();
 const L = (s) => String(s ?? '').trim().toLowerCase();
@@ -95,7 +96,7 @@ function dnsIpOzeti(rec, { vhostRows = [], certRows = [], cozum = {}, turler = {
     const digerleri = [];
     for (const v of vhostRows) if (U(v.host) === e.host && ipOf(v.listen) === e.ip && !bizimMi(v.host, v.server_name)) digerleri.push(L(v.server_name) || '(adsiz vhost)');
     for (const c of certRows) if (U(c.host) === e.host && String(c.ip || '').trim() === e.ip && !bizimMi(c.host, c.server_name)) digerleri.push(L(c.server_name) || '(adsiz vhost)');
-    e.digerleri = [...new Set(digerleri)].sort();
+    e.digerleri = [...new Set(digerleri)].sort(varsayilanSira);
     e.durum = (() => { if (e.digerleri.length) return 'iade_edilmez'; if (taranan.has(e.host)) return 'iade'; return 'olculemedi'; })();
   }
 
@@ -123,7 +124,7 @@ async function cozumle(adListesi, { sureMs = 3000 } = {}) {
         dns.lookup(ad, { all: true, family: 4 }),
         new Promise((_, red) => setTimeout(() => red(new Error('zaman asimi')), sureMs)),
       ]);
-      out[ad] = { ips: [...new Set(r.map((x) => x.address))].sort() };
+      out[ad] = { ips: [...new Set(r.map((x) => x.address))].sort(varsayilanSira) };
     } catch (e) {
       out[ad] = { hata: e.code === 'ENOTFOUND' ? 'DNS kaydi bulunamadi (NXDOMAIN)' : String(e.code || e.message || e) };
     }

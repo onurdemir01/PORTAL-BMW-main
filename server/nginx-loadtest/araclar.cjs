@@ -30,7 +30,6 @@ const crypto = require('node:crypto');
 const dg = require('./dogrula.cjs');
 
 const VARSAYILAN_DERLEME_HOST = 'GBLABT02';
-const VARSAYILAN_PROXY = 'http://tekprxv2.fw.garanti.com.tr:80';
 const VARSAYILAN_K6_SURUM = 'v0.49.0';
 const WRK_SURUM = dg.WRK_SURUM;
 const K6_SURUM_RE = /^v0\.(4[5-9]|5[0-9])\.[0-9]{1,2}$/;
@@ -39,6 +38,9 @@ const PROXY_RE = /^http:\/\/[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?:[0-9]{1,5}$/;
 // Playbook yt_re_cikti_kok ile AYNI (arac seti yalniz /sw altinda olur).
 const CIKTI_KOK_PB_RE = /^\/sw\/BMW_PORTAL(_DEV)?(\/[A-Za-z0-9._-]+)+$/;
 const PROXY_HATASI = 'NGINX_LOADTEST_ARAC_PROXY geçersiz';
+// Vekil adresi kurum ayaridir ve repoda TUTULMAZ (public repo, 2026-11-15): tanimsizsa arac
+// hazirlama kapanir ve sebebi ekranda yazar. Vekilsiz kurulum icin acikca 'yok' yazilir.
+const PROXY_TANIMSIZ = 'NGINX_LOADTEST_ARAC_PROXY tanımlı değil';
 const ARAC_STATS_ANAHTARI = 'nginx_loadtest_result';
 const AKTIF_ARAC = Object.freeze(['QUEUED', 'RUNNING', 'FINALIZING']);
 const BAYAT_KUYRUK_DK = 15;
@@ -138,10 +140,10 @@ function varsayilanDerlemeHost(env = process.env) {
   return derlemeHostlari(env)[0];
 }
 
-/** Indirme vekili: { proxy, hata }. Bos -> varsayilan; 'yok' -> '' (vekilsiz); gecersiz -> hata. */
+/** Indirme vekili: { proxy, hata }. Bos -> hata (tanimsiz); 'yok' -> '' (vekilsiz); gecersiz -> hata. */
 function aracProxy(env = process.env) {
   const ham = String(env.NGINX_LOADTEST_ARAC_PROXY ?? '').trim();
-  if (!ham) return { proxy: VARSAYILAN_PROXY, hata: null };
+  if (!ham) return { proxy: null, hata: PROXY_TANIMSIZ };
   const v = ham.toLowerCase();
   if (v === 'yok') return { proxy: '', hata: null };
   if (PROXY_RE.test(v)) return { proxy: v, hata: null };
@@ -671,6 +673,7 @@ async function araclariHazirla(req, govde) {
     throw hata(409, 'derleme_host_izinsiz', `${host} derleme makinesi izin listesinde değil (NGINX_LOADTEST_DERLEME_HOSTLARI).`);
   }
   const px = aracProxy();
+  if (px.hata === PROXY_TANIMSIZ) throw hata(409, 'arac_proxy_tanimsiz', 'NGINX_LOADTEST_ARAC_PROXY tanımlı değil (kurum vekil adresi ya da "yok"); araçlar hazırlanamaz.');
   if (px.hata) throw hata(409, 'arac_proxy_gecersiz', 'NGINX_LOADTEST_ARAC_PROXY geçersiz (yalnız http://<ad>:<port>, kimlik bilgisi yok); araçlar hazırlanamaz.');
   const sabit = sabitOzetler();
   if (sabit.eksikler.length) {
@@ -820,7 +823,6 @@ async function aracGeriCek(req, id) {
 
 module.exports = {
   VARSAYILAN_DERLEME_HOST,
-  VARSAYILAN_PROXY,
   VARSAYILAN_K6_SURUM,
   WRK_SURUM,
   K6_SURUM_RE,

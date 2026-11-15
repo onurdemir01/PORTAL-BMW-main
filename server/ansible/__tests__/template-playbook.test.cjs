@@ -71,7 +71,7 @@ test('TP1 OLAYIN KENDISI: server_hub_fix satirinda rollback sablonu -> RED (409)
 test('TP2 dogru sablon GECER; dizin farki onemsiz (yalniz dosya adi), kasa duyarsiz', async () => {
   const { m, restore } = yukle([T(5, 'baska/proje/dizini/Server_Hub_Fix.yml')]);
   try {
-    await m.assertRegistryPlaybook(1, 5, 'server_hub_fix');
+    await assert.doesNotReject(m.assertRegistryPlaybook(1, 5, 'server_hub_fix'));
   } finally {
     restore();
   }
@@ -81,7 +81,7 @@ test('TP3 FAIL-OPEN: metadata okunamaz / sablon yok / playbook alani bos -> enge
   for (const s of [new Error('awx yok'), [], [T(5, '')]]) {
     const { m, restore } = yukle(s);
     try {
-      await m.assertRegistryPlaybook(1, 5, 'server_hub_fix');
+      await assert.doesNotReject(m.assertRegistryPlaybook(1, 5, 'server_hub_fix'));
     } finally {
       restore();
     }

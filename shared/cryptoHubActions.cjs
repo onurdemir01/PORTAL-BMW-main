@@ -23,11 +23,10 @@
 // playbook'lar gelene kadar "ne koşacak" penceresi. Onay akışı hazır, tetikleyicisi yok.
 'use strict';
 
-const PROXY = 'http://tekprxv2.fw.garanti.com.tr:80';
-const NO_PROXY =
-  'localhost,.fw.garanti.com.tr,.fw.dijitalvarlik.com.tr,.fw.gohas.com.tr,' +
-  '.fw.teknoloji.com.tr,.fw.gteknoloji.com.tr,.fw.takasnet.com.tr,.fw.eurekosigorta.com.tr,' +
-  '.gtdmz.com.tr,.gteknolojidmz.com.tr,10.0.0.0/8,172.16.0.0/16,192.168.0.0/16';
+// Vekil adresi ve muafiyet listesi kurum ayaridir, repoda TUTULMAZ (public repo, 2026-11-15).
+// Plan, bastionda tanimli kabuk degiskenlerini gosterir; degerler runbook adim 1-3'tedir.
+const PROXY = '$KURUM_PROXY';
+const NO_PROXY = '$KURUM_NO_PROXY';
 
 /** Ekranda seçilebilen işlemler. `writes` = ortamda gerçek değişiklik yapar. */
 const ACTIONS = Object.freeze([
@@ -106,8 +105,8 @@ function girisAdimlari(tenant) {
       kind: 'command',
       writes: false,
       title: 'Proxy değişkenleri',
-      command: `export http_proxy="${PROXY}"\nexport https_proxy="${PROXY}"\nexport no_proxy=${NO_PROXY}`,
-      note: `Bastion: ${tenant.bastion} (dzdo su - was)`,
+      command: `export http_proxy="${PROXY}"\nexport https_proxy="${PROXY}"\nexport no_proxy="${NO_PROXY}"`,
+      note: `Bastion: ${tenant.bastion} (dzdo su - was); KURUM_PROXY ve KURUM_NO_PROXY bastionda tanımlı olmalı`,
       source: 'runbook adım 1-3',
     },
     {

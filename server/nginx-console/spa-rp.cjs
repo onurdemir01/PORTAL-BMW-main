@@ -51,6 +51,7 @@
 
 const { internetRpHosts, envOfHost } = require('../audit/nginx-hosts.cjs');
 const { envOfNamespace, platformOfCluster } = require('../audit/ocp-platforms.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 const {
   resolveTarget,
   buildResolverMaps,
@@ -831,7 +832,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     // "kendi ortami" bilinmez; tum tanimlar kendi sayilir.
     const disi = ENV ? defs.filter((d) => d.env !== ENV) : [];
     const kendi = ENV ? defs.filter((d) => d.env === ENV) : defs;
-    if (disi.length) a.rpOrtamDisi = [...new Set(disi.map((d) => d.env || '?'))].sort();
+    if (disi.length) a.rpOrtamDisi = [...new Set(disi.map((d) => d.env || '?'))].sort(varsayilanSira);
     // BASKA ORTAMIN OLCULMUS ISTEGI (K3): YALNIZ BILGI - rpReq7'ye eklenmez, rpIstek kararina
     // girmez. Yalniz uygulamaya AYRILABILEN ve OLCULMUS tanimlar: olculemeyen tanima 0
     // yazilmaz; paylasimli/belirsiz tanimin istegi bu uygulamaninki diye yazilmaz.
@@ -867,10 +868,10 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     // olculmus gercek 0 alan TEST uygulamasi, PROD RP'nin test adresine proxy'sinin 900
     // istegiyle "istek var 900" gorunuyordu (dogrulama bulgusu, 2026-10-02).
     a.rp = 'tanimli';
-    a.rpYol = [...new Set(kendi.map((d) => d.yol))].sort();
+    a.rpYol = [...new Set(kendi.map((d) => d.yol))].sort(varsayilanSira);
     // RP SERVISI: yalniz kendi ortaminin tanimlarindan (K3). Ad config'ten gelmediyse (yeni PROD
     // dizin) sunucu grubundan; ekran bunu "sunucu grubundan" diye ayirir.
-    const servisler = [...new Set(kendi.map((d) => d.servis).filter(Boolean))].sort();
+    const servisler = [...new Set(kendi.map((d) => d.servis).filter(Boolean))].sort(varsayilanSira);
     if (servisler.length) a.rpServis = servisler;
     if (kendi.some((d) => d.servisKaynak === 'grup' && d.servis !== 'GLOMO')) a.rpServisGrup = true;
     // rpHost: pay ve payda KENDI ortaminin hostlari (baska ortamin hostu paya girmez).
@@ -891,14 +892,14 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     for (const [k, var_] of sahip)
       for (const h of servisHostlari.get(k) || []) if (!var_.has(h) && taranan.has(h)) esEksik.push(h);
     a.rpEslenik = esEksik.length ? 'eksik' : 'tam';
-    if (esEksik.length) a.rpEslenikEksik = [...new Set(esEksik)].sort();
+    if (esEksik.length) a.rpEslenikEksik = [...new Set(esEksik)].sort(varsayilanSira);
     const enZayif = kendi.reduce((z, d) => Math.max(z, ESLES_SIRA.indexOf(d.esles)), 0);
     if (enZayif > 0) a.rpEsles = ESLES_SIRA[enZayif];
     const sorun = new Set(kendi.map((d) => d.status).filter((s) => SORUNLU.has(s)));
     // Kendi ortaminda da tanim var: 'tanimli' kalir, baska ortamdaki tanim YALNIZ uyaridir
     // (o tanimin durum kodlari ayrinti panelinde, tanim satirinda gorunur).
     if (disi.length) sorun.add('ORTAM_DISI');
-    if (sorun.size) a.rpSorun = [...sorun].sort();
+    if (sorun.size) a.rpSorun = [...sorun].sort(varsayilanSira);
 
     // RP ISTEGI (yalniz tanimli). Karar UYGULAMAYA AYRILABILEN tanimlardan verilir; paylasimli
     // ya da belirsiz tanimin trafigi "istek var" demeye yetmez, 0'i da "yok" demeye.
@@ -948,7 +949,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       const son = olculen
         .map((d) => d.trafik.son)
         .filter(Boolean)
-        .sort();
+        .sort(varsayilanSira);
       if (son.length) a.rpSon = son[son.length - 1];
       const pen = olculen.map((d) => d.trafik.pencereSa).filter((x) => x != null);
       // EN KISA pencere: kapsam, en kotu olculen tanimin kapsamidir.

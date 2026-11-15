@@ -13,6 +13,7 @@
 'use strict';
 
 const db = require('../../db/index.cjs');
+const { varsayilanSira } = require('../../util/siralama.cjs');
 
 let _timer = null;
 let _running = false;   // ust uste calismayi onler (uzun suren tur bir sonrakini bloklamasin)
@@ -202,7 +203,7 @@ async function syncApps({ request, first, artifacts }) {
       if (clean) nsSet.add(clean);
     }
   }
-  const namespaces = [...nsSet].sort().slice(0, maxNs);
+  const namespaces = [...nsSet].sort(varsayilanSira).slice(0, maxNs);
   if (!namespaces.length) return;
   if (nsSet.size > namespaces.length) {
     // Sessiz kirpma YOK: hangi kismin taranmadigi loga yazilir.

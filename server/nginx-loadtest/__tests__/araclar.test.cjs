@@ -59,6 +59,7 @@ function sifirla(ek = {}) {
   for (const k of ['NGINX_LOADTEST_DERLEME_HOSTLARI', 'NGINX_LOADTEST_ARAC_PROXY', 'NGINX_LOADTEST_K6_SURUM', 'NGINX_LOADTEST_K6_ARSIV_SHA256', 'NGINX_LOADTEST_WRK_KAYNAK_SHA256', 'NGINX_LOADTEST_DIR']) {
     delete process.env[k];
   }
+  process.env.NGINX_LOADTEST_ARAC_PROXY = 'http://px.kurum.local:3128'; // kurum ayari (varsayilani yok)
   // D1: iki ozet sabit (sahte tablonun arsiv ozetleri); testler ayrica bozar / siler.
   ozetEnvKur();
 }
@@ -198,8 +199,9 @@ test('AR1 ortam: derleme listesi, vekil, k6 surumu, sabit ozetler', () => {
   assert.deepEqual(ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'GBNGXP01,GBNGXT51,GBXYZ01,x;y,GBNGWAQ02' }), ['GBNGWAQ02']);
   assert.deepEqual(ar.derlemeHostlari({ NGINX_LOADTEST_DERLEME_HOSTLARI: 'GBNGXP01 GBNGXT51' }), ['GBLABT02']);
   // Vekil.
-  assert.deepEqual(ar.aracProxy({}), { proxy: 'http://tekprxv2.fw.garanti.com.tr:80', hata: null });
-  assert.deepEqual(ar.aracProxy({ NGINX_LOADTEST_ARAC_PROXY: '  ' }), { proxy: 'http://tekprxv2.fw.garanti.com.tr:80', hata: null });
+  // Varsayilan adres YOK (kurum ayari, repoda tutulmaz): tanimsiz -> hata, arac hazirlama kapali.
+  assert.deepEqual(ar.aracProxy({}), { proxy: null, hata: 'NGINX_LOADTEST_ARAC_PROXY tanımlı değil' });
+  assert.deepEqual(ar.aracProxy({ NGINX_LOADTEST_ARAC_PROXY: '  ' }), { proxy: null, hata: 'NGINX_LOADTEST_ARAC_PROXY tanımlı değil' });
   assert.deepEqual(ar.aracProxy({ NGINX_LOADTEST_ARAC_PROXY: 'yok' }), { proxy: '', hata: null });
   assert.deepEqual(ar.aracProxy({ NGINX_LOADTEST_ARAC_PROXY: 'YOK' }), { proxy: '', hata: null });
   assert.deepEqual(ar.aracProxy({ NGINX_LOADTEST_ARAC_PROXY: 'HTTP://X:80' }), { proxy: 'http://x:80', hata: null });
@@ -238,12 +240,12 @@ test('AR2 extra_vars: 10 anahtar, sira, metin; son kapi her kurali yakalar', () 
   assert.deepEqual([bosOzetli.yuk_k6_arsiv_sha256, bosOzetli.yuk_wrk_kaynak_sha256], ['', '']);
   // D1: bos arsiv ozeti (ilk-kullanimda-guven) son kapidan GECMEZ.
   assert.deepEqual(ar.aracEkstraDegiskenleriDenetle(bosOzetli, { simdiSn: SIMDI }), ['yuk_k6_arsiv_sha256', 'yuk_wrk_kaynak_sha256']);
-  const ev = ar.aracEkstraDegiskenler({ aracId: 7, derlemeHost: 'GBLABT02', k6Surum: 'v0.49.0', k6ArsivSha256: SHA_K6_ARSIV, wrkKaynakSha256: SHA_WRK_KAYNAK, proxy: 'http://tekprxv2.fw.garanti.com.tr:80', kok: '/sw/BMW_PORTAL/nginx_loadtest', simdiSn: SIMDI });
+  const ev = ar.aracEkstraDegiskenler({ aracId: 7, derlemeHost: 'GBLABT02', k6Surum: 'v0.49.0', k6ArsivSha256: SHA_K6_ARSIV, wrkKaynakSha256: SHA_WRK_KAYNAK, proxy: 'http://px.kurum.local:3128', kok: '/sw/BMW_PORTAL/nginx_loadtest', simdiSn: SIMDI });
   assert.deepEqual(Object.keys(ev), [...ar.ARAC_EKSTRA_ANAHTARLAR]);
   for (const [k, v] of Object.entries(ev)) assert.equal(typeof v, 'string', k);
   assert.deepEqual(ev, {
     yuk_islem: 'araclar', yuk_run_id: '7', yuk_derleme_host: 'GBLABT02', yuk_k6_surum: 'v0.49.0', yuk_wrk_surum: '4.2.0',
-    yuk_k6_arsiv_sha256: SHA_K6_ARSIV, yuk_wrk_kaynak_sha256: SHA_WRK_KAYNAK, yuk_proxy: 'http://tekprxv2.fw.garanti.com.tr:80', yuk_cikti_kok: '/sw/BMW_PORTAL/nginx_loadtest',
+    yuk_k6_arsiv_sha256: SHA_K6_ARSIV, yuk_wrk_kaynak_sha256: SHA_WRK_KAYNAK, yuk_proxy: 'http://px.kurum.local:3128', yuk_cikti_kok: '/sw/BMW_PORTAL/nginx_loadtest',
     yuk_son_epoch: String(SIMDI + 900),
   });
   const den = (ek) => ar.aracEkstraDegiskenleriDenetle({ ...ev, ...ek }, { simdiSn: SIMDI });
@@ -303,6 +305,9 @@ test('AR3 POST /araclar: kapilar, kilit, satir, sabit ozet devamliligi, AWX hata
   assert.deepEqual([r.statusCode, r.body.code, r.body.message], [409, 'arac_proxy_gecersiz', 'NGINX_LOADTEST_ARAC_PROXY geçersiz (yalnız http://<ad>:<port>, kimlik bilgisi yok); araçlar hazırlanamaz.']);
   assert.ok(!JSON.stringify(r.body).includes('u:p@'), 'vekil kimligi yanita sizdi');
   delete process.env.NGINX_LOADTEST_ARAC_PROXY;
+  r = await istek('POST', '/araclar', { body: {} });
+  assert.deepEqual([r.statusCode, r.body.code], [409, 'arac_proxy_tanimsiz'], 'tanimsiz vekil sessizce dogrudan baglantiya dustu');
+  process.env.NGINX_LOADTEST_ARAC_PROXY = 'http://px.kurum.local:3128';
   assert.deepEqual([D.launch.length, D.kilitler.size, D.araclar.length], [0, 0, 0]);
   // Ret denetime yazilir (409).
   assert.ok(D.denetim.some((x) => x.eylem === 'nginx_loadtest_araclar_hazirla' && x.result === 'fail' && x.targetHost === 'GBNGXT34'));
@@ -339,7 +344,7 @@ test('AR3 POST /araclar: kapilar, kilit, satir, sabit ozet devamliligi, AWX hata
   assert.deepEqual([sid, tid, limit], [3, 44, '']);
   assert.deepEqual(Object.keys(ev), [...ar.ARAC_EKSTRA_ANAHTARLAR]);
   assert.deepEqual([ev.yuk_islem, ev.yuk_run_id, ev.yuk_derleme_host, ev.yuk_k6_arsiv_sha256, ev.yuk_wrk_kaynak_sha256, ev.yuk_proxy, ev.yuk_cikti_kok],
-    ['araclar', '7', 'GBLABT02', SHA_K6_ARSIV, SHA_WRK_KAYNAK, 'http://tekprxv2.fw.garanti.com.tr:80', '/sw/BMW_PORTAL/nginx_loadtest']);
+    ['araclar', '7', 'GBLABT02', SHA_K6_ARSIV, SHA_WRK_KAYNAK, 'http://px.kurum.local:3128', '/sw/BMW_PORTAL/nginx_loadtest']);
   assert.deepEqual(ar.aracEkstraDegiskenleriDenetle(ev), []);
   const d = D.denetim.find((x) => x.eylem === 'nginx_loadtest_araclar_hazirla' && !x.result);
   assert.ok(d, 'basari denetime yazilmadi');
@@ -658,7 +663,7 @@ test('AR5 etkinAracSeti ve GET /araclar: etkin / calisan / gecmis / ayar / kapi,
   assert.deepEqual([f.swDizin, f.hata, r.body.calisan.swDizin], [null, 'derleme: make basarisiz (rc 2): x', null]);
   assert.deepEqual(r.body.ayar, {
     derlemeHostlari: ['GBLABT02'], varsayilanDerlemeHost: 'GBLABT02', k6Surum: 'v0.49.0', wrkSurum: '4.2.0', proxyTanimli: true,
-    proxy: 'http://tekprxv2.fw.garanti.com.tr:80', proxyHatasi: null, k6ArsivSha256: SHA_K6_ARSIV, wrkKaynakSha256: SHA_WRK_KAYNAK, ozetEksikleri: [],
+    proxy: 'http://px.kurum.local:3128', proxyHatasi: null, k6ArsivSha256: SHA_K6_ARSIV, wrkKaynakSha256: SHA_WRK_KAYNAK, ozetEksikleri: [],
     isSuresiSn: 2400,
   });
   // Admin disi okur ama vekil adresi null.

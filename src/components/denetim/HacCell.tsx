@@ -56,9 +56,9 @@ export function HacLegend({ defaultOpen = true }: { defaultOpen?: boolean }) {
           <div>Her yeni sunucu sütununda üç harf; <b>büyük harf = var</b>, <b>küçük harf = YOK</b>. Yeşil zemin = taşımaya hazır (H ve A var), kırmızı zemin = eksik.</div>
           <table className="mt-1">
             <tbody>
-              <tr><td className="pr-2 font-mono font-semibold">H</td><td><Code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</Code> — dağıtım paketinin açıldığı dizin (deploy job&apos;ı bırakır)</td></tr>
-              <tr><td className="pr-2 font-mono font-semibold">A</td><td><Code>/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</Code> — nginx&apos;in servis ettiği dosyalar; <b>tanım için şart</b></td></tr>
-              <tr><td className="pr-2 font-mono font-semibold">C</td><td><Code>application-confs/&lt;app&gt;-&lt;ns&gt;.conf</Code> — per-uygulama nginx konfigürasyonu; &quot;Tanım oluştur&quot; bunu yazar</td></tr>
+              <tr><th scope="row" className="pr-2 text-left font-mono font-semibold">H</th><td><Code>/hysdeploy/&lt;ns&gt;/&lt;app&gt;/</Code> — dağıtım paketinin açıldığı dizin (deploy job&apos;ı bırakır)</td></tr>
+              <tr><th scope="row" className="pr-2 text-left font-mono font-semibold">A</th><td><Code>/usr/nginx/applications/&lt;ns&gt;/&lt;app&gt;/</Code> — nginx&apos;in servis ettiği dosyalar; <b>tanım için şart</b></td></tr>
+              <tr><th scope="row" className="pr-2 text-left font-mono font-semibold">C</th><td><Code>application-confs/&lt;app&gt;-&lt;ns&gt;.conf</Code> — per-uygulama nginx konfigürasyonu; &quot;Tanım oluştur&quot; bunu yazar</td></tr>
             </tbody>
           </table>
         </div>

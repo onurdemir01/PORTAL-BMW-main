@@ -13,6 +13,7 @@ const db = () => require('../db/index.cjs');
 const kolonlar = require('./ear-envanter-kolonlar.cjs');
 const eslenik = () => require('./ear-envanter-eslenik.cjs');
 const neden = require('./ear-envanter-neden.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const SAYFA_UST = 5000;
 const likeDeseni = kolonlar.likeDeseni;
@@ -106,7 +107,7 @@ async function uygulamaEkleri(satirlar, kosu) {
       ...r,
       war_adlari: e ? e.warlar.join(', ') : '',
       ...Object.fromEntries(
-        kolonlar.WAR_TEK.map((t) => [t, e && e[t].size ? [...e[t]].sort().join(', ') : null]),
+        kolonlar.WAR_TEK.map((t) => [t, e && e[t].size ? [...e[t]].sort(varsayilanSira).join(', ') : null]),
       ),
       eslenik_ortam_ici: k ? k.ortam_ici : null,
       eslenik_ortamlar_arasi: k ? k.ortamlar_arasi : null,
@@ -379,7 +380,7 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
       .split(',')
       .map((x) => x.trim())
       .filter(Boolean);
-  const ortamlar = liste(ortam).map(eslenik().ortamOf);
+  const ortamlar = liste(ortam).map((o) => eslenik().ortamOf(o));
   const kararlar = liste(karar);
   const kut = liste(kutuphane);
   const yap = liste(yapi);

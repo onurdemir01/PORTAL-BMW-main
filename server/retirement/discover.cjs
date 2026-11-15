@@ -13,6 +13,7 @@
 
 const { buildCertIndex, matchWebForApp, webHostAdaylari, adVaryantlari } = require('../audit/web-app.cjs');
 const { webConfKanonik, urunAilesi, webKanonikAnahtar } = require('./web-liste.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const U = (s) => String(s || '').trim().toUpperCase();
 
@@ -465,7 +466,7 @@ function inPlaceIsaretle(targets) {
     const set = kollar.get(`${t.host}|${U(t.appName)}`);
     if (!set || set.size < 2) continue;
     t.inPlace = true;
-    t.digerSurumler = [...set].filter((g) => g !== (t.gen ?? 0)).sort();
+    t.digerSurumler = [...set].filter((g) => g !== (t.gen ?? 0)).sort(varsayilanSira);
     const diger = t.digerSurumler.map((g) => (g ? `JBoss ${g}` : 'sürümü bilinmeyen kurulum')).join(', ');
     t.web = (t.web || [])
       .filter((w) => {
@@ -651,7 +652,7 @@ async function searchApps(q) {
   );
   const bases = new Set();
   for (const row of r.recordset || []) bases.add(parseAppName(row.app).base);
-  return [...bases].sort();
+  return [...bases].sort(varsayilanSira);
 }
 
 module.exports = { buildTargets, discover, searchApps, siteOf, parseAppName, hedefOrtami, genOf, kolOf, paketYolu, inPlaceIsaretle, jvmIndeksi, jvmSec, trafikSinifi, ajpWeb, mcWeb, hedefSunucusu, webZenginlestir, hubBaglamiYukle, adayVhostlar, ipSahipleri };

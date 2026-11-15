@@ -194,7 +194,7 @@ function ImageAssetEditor({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) onPick(f);
+            if (f) void onPick(f);
           }}
         />
         <button

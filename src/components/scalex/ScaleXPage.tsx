@@ -230,7 +230,7 @@ const ScaleXPage: React.FC = () => {
     if (sonuc.overallStatus === 'FAIL') return; // zaten başarısız, sağlık sormanın anlamı yok
     healthStartedRef.current = true;
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const launched = await scalexApi.discover(
           { env, tenant, namespace, clusters, apps },

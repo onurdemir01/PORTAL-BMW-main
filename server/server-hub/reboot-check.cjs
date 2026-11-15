@@ -23,6 +23,7 @@
 // Kalan: betigin son_fark'i ile Portal'in ayni kuralla kendi hesabinin (portalKalan) buyugu.
 // Kayit durumu: hic 'sorunlu' / 'olculemedi' yok ve en az bir 'kontrol' varsa 'kontrol'.
 'use strict';
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const REGISTRY_KEY = 'reboot_check';
 // Varsayilan; Admin Server Hub > Kurallar & Limitler'den degistirir (ayarlar.cjs 'limit:reboot').
@@ -83,9 +84,9 @@ function portalKalan(once, son) {
   const o = onceKume(once, haric);
   const s = kume(son, haric);
   const out = [];
-  for (const u of [...o.urun].sort()) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
-  for (const k of [...o.jvm].sort()) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
-  for (const k of [...s.jvm].sort())
+  for (const u of [...o.urun].sort(varsayilanSira)) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
+  for (const k of [...o.jvm].sort(varsayilanSira)) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
+  for (const k of [...s.jvm].sort(varsayilanSira))
     if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) out.push(`FARK|NEW|JVM|${k}|`);
   return out;
 }
@@ -117,8 +118,8 @@ function kontrolNedenleri(once, r) {
     const haric = nesilKarsilastirilamaz(once, r?.son_goruntu);
     const o = onceKume(once, haric);
     const s = kume(r?.son_goruntu, haric);
-    for (const u of [...s.urun].sort()) if (!o.urun.has(u)) calisan.push(u);
-    for (const k of [...s.jvm].sort()) {
+    for (const u of [...s.urun].sort(varsayilanSira)) if (!o.urun.has(u)) calisan.push(u);
+    for (const k of [...s.jvm].sort(varsayilanSira)) {
       const u = k.split('|')[0];
       if (!o.jvm.has(k) && !o.urun.has(u)) calisan.push(k.replace('|', '/'));
     }

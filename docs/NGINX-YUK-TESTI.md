@@ -149,14 +149,14 @@ değerle karşılaştırarak iki özeti hesaplar. Playbook'un indirdiği adresle
 
 ```bash
 # wrk 4.2.0 kaynak arşivi (GitHub etiket arşivi)
-curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o wrk-4.2.0.tar.gz \
+curl -fsSL -x "$NGINX_LOADTEST_ARAC_PROXY" -o wrk-4.2.0.tar.gz \
   https://github.com/wg/wrk/archive/refs/tags/4.2.0.tar.gz
 sha256sum wrk-4.2.0.tar.gz
 
 # k6 v0.49.0 linux-amd64 arşivi ve resmî checksums dosyası
-curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o k6-v0.49.0-linux-amd64.tar.gz \
+curl -fsSL -x "$NGINX_LOADTEST_ARAC_PROXY" -o k6-v0.49.0-linux-amd64.tar.gz \
   https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz
-curl -fsSL -x http://tekprxv2.fw.garanti.com.tr:80 -o k6-v0.49.0-checksums.txt \
+curl -fsSL -x "$NGINX_LOADTEST_ARAC_PROXY" -o k6-v0.49.0-checksums.txt \
   https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-checksums.txt
 sha256sum k6-v0.49.0-linux-amd64.tar.gz
 grep '  k6-v0.49.0-linux-amd64.tar.gz$' k6-v0.49.0-checksums.txt   # ayni deger olmali
@@ -215,7 +215,7 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 | `NGINX_LOADTEST_YUK_HOSTLARI` | `GBNGXT34` | İzinli yük makineleri (virgülle). **2026-11-13'ten beri liste Yük Testi › Araçlar › "Yük makineleri"nden (yalnız Admin) yönetilir** (Portal DB `nginx_loadtest_yuk_hostlari`); bu değişken yalnız Portal listesi boşken okunur ve ilk ekleme / çıkarmada Portal'a taşınır. Son makine çıkarılamaz; tablo okunamazsa liste kapalı kalır (424). Listedeki makine de `dbo.Inventory`'de kayıtlı, **tüm** kayıtları DEV/TEST/QA, adından PROD / EDU okunmayan ve üretim işaretsiz olmalı (tek hedef modeli, 2026-11-13: ad kuralı aranmaz; eklerken ve her ön kontrol / koşuda denetlenir, `www` ile SSH'ı ön kontrol kanıtlar); liste kapıyı **gevşetemez**. Geçersiz giriş atılır. |
 | `NGINX_LOADTEST_K6`, `NGINX_LOADTEST_WRK` | — | **Artık kullanılmaz** (tur 4): araçlar /sw'deki arac setinden kopyalanır; playbook'a `yuk_k6_yolu` / `yuk_wrk_yolu` olarak sabit işaret değeri (`/yeni-playbook-gerekli/k6`, `/yeni-playbook-gerekli/wrk`) gider. |
 | `NGINX_LOADTEST_DERLEME_HOSTLARI` | `GBLABT02` | Araç derleme makineleri (virgül / boşluk / `;`). Her girdi `GBLABT02` ya da ad kuralına göre DEV / TEST / QA nginx adı (EDU değil); geçersiz girdi atılır (log'a bir kez); liste boş kalırsa `GBLABT02`. İlk eleman varsayılan. |
-| `NGINX_LOADTEST_ARAC_PROXY` | `http://tekprxv2.fw.garanti.com.tr:80` | İndirme vekili. `yok` = vekilsiz. Yalnız `http://<ad>:<port>` (küçük harfe çevrilir); kimlik bilgisi (`@`), `https://`, yol **geçersizdir** → "Araçları hazırla" 409 `arac_proxy_gecersiz`. Adres yalnız Admin'e gösterilir. |
+| `NGINX_LOADTEST_ARAC_PROXY` | — (zorunlu) | İndirme vekili: kurum vekil adresi (repoda tutulmaz). `yok` = vekilsiz. Boşsa "Araçları hazırla" kapalı → 409 `arac_proxy_tanimsiz`. Yalnız `http://<ad>:<port>` (küçük harfe çevrilir); kimlik bilgisi (`@`), `https://`, yol **geçersizdir** → "Araçları hazırla" 409 `arac_proxy_gecersiz`. Adres yalnız Admin'e gösterilir. |
 | `NGINX_LOADTEST_K6_SURUM` | `v0.49.0` | k6 sürümü; `v0.45.0`..`v0.59.x` dışı uyarıyla varsayılana düşer (1.x desteklenmez). |
 | `NGINX_LOADTEST_K6_ARSIV_SHA256` | — (**zorunlu**) | `k6-<NGINX_LOADTEST_K6_SURUM>-linux-amd64.tar.gz` arşivinin sha256'sı; tam 64 hex (büyük harf küçültülür). Yok / geçersiz → "Araçları hazırla" 409 `arac_ozet_sabit_yok`, hiçbir set etkin değil (§2.2 "Arşiv özetlerini sabitleme"). Önceki setten devralınmaz. |
 | `NGINX_LOADTEST_WRK_KAYNAK_SHA256` | — (**zorunlu**) | wrk 4.2.0 kaynak arşivinin (`https://github.com/wg/wrk/archive/refs/tags/4.2.0.tar.gz`) sha256'sı; aynı kural. Değişirse eski setler etkin olmaz (yeniden hazırlayın). |
@@ -1021,7 +1021,7 @@ eder. İş hataları **409** (kalıcı) ya da **424** (geçici) döner; 5xx yok.
 | Ön kontrol / koşu: şu anki özetlerle hazırlanmış setler geri çekildi | `araclar_geri_cekildi` |
 | Ön kontrol / koşu: araç seti okunamadı | `db_okunamadi` (424) |
 | Koşu: ön kontrolün araç seti (`arac_id`) yok ya da artık etkin değil (değerlendirmeden önce) | `on_kontrol_eski` |
-| Araç hazırlama: derleme makinesi izin listesinde değil / vekil geçersiz / arşiv özetleri sabitlenmemiş | `derleme_host_izinsiz` / `arac_proxy_gecersiz` / `arac_ozet_sabit_yok` |
+| Araç hazırlama: derleme makinesi izin listesinde değil / vekil geçersiz / arşiv özetleri sabitlenmemiş | `derleme_host_izinsiz` / `arac_proxy_tanimsiz` / `arac_proxy_gecersiz` / `arac_ozet_sabit_yok` |
 | Araç geri çekme: set yok / DONE değil / zaten geri çekildi | `arac_yok` / `arac_geri_cekilemez` / `zaten_geri_cekildi` |
 
 `vhost_hedefte_yok` artık üretilmez (Host başlığı serbest metin, §3 adım 4). Ret gövdesinde IP'nin
@@ -1710,7 +1710,7 @@ retlerinde ayrıca `sahipler`).
 | `POST /kosular/sil` | başlatan kişi ya da Admin | 2026-11-04: `{ kosular: [id…] (1–50, tekrarsız), confirmText: '<sayı>' }` → `{ ok, sayi, silinen: […] }` (istek sırasıyla). **Hepsi ya da hiçbiri**: biri silinemezse 409 `silinemez` + `silinemeyenler` (bulunamayan `kosu_yok` dahil), hiçbir kayıt silinmez. 400 / 403 / 424 tekli uçla aynı |
 | `PUT /kosular/:id/etiket` | Admin | 2026-11-04: `{ etiket: string \| null }` → `{ ok, id, etiket }` (trim; boş / null = `NULL`). 400 `gecersiz_istek` (metin değil, > 120 karakter, kontrol karakteri / satır sonu / U+2028-9), 409 `kosu_yok`. Denetim `nginx_loadtest_etiket` (`{ kosuId, eski, yeni }`; ret de yazılır) |
 | `GET /araclar` | okuma | `{ ok, etkin, calisan, gecmis (en çok 10, id azalan), ayar: { derlemeHostlari, varsayilanDerlemeHost, k6Surum, wrkSurum: '4.2.0', proxyTanimli, proxy (yalnız Admin'e dolu), proxyHatasi, k6ArsivSha256, wrkKaynakSha256 (env sabitleri ya da null), ozetEksikleri (['<ENV> tanımlı değil' \| '<ENV> 64 hex değil']), isSuresiSn (2400) }, kapi: { kod, mesaj } }` (`kapi` = `/hedefler` `araclar.kod` / `mesaj`). Araç seti: `{ id, durum, derlemeHost, k6Surum, wrkSurum, k6Sha256, wrkSha256, k6ArsivSha256, wrkKaynakSha256, ozetlerGuncel, geriCekildi, geriCeken, geriCekmeAt, calismaYasSn, swDizin (yalnız DONE), derlemeRhel, derlemeGlibc, wrkGlibcGerekli, wrkOpenssl, wrkLuajit, hata, awxServerId, awxJobId, awxUrl, createdBy, createdAt, startedAt, finishedAt }` |
-| `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
+| `POST /araclar` | Admin | `{ derlemeHost? }` (yoksa listenin ilki) → `{ aracId, jobId, awxServerId }`. 400 `gecersiz_istek` (geçersiz ad), 409 `derleme_host_izinsiz`, 409 `arac_proxy_tanimsiz`, 409 `arac_proxy_gecersiz`, 409 `arac_ozet_sabit_yok` (iki arşiv özeti env'i zorunlu; iş, kilit, kayıt yok), 409 `sablon_yok`, 409 `kilit_dolu` ("Başka bir araç hazırlama işi sürüyor ..."), 409 `sinir_asildi` (son kapı), 424 `db_okunamadi` / `awx_okunamadi`. Extra vars: `yuk_islem='araclar'` + 9 alan (README); `yuk_k6_arsiv_sha256` / `yuk_wrk_kaynak_sha256` her zaman 64 küçük hex; `limit` boş |
 | `GET /kuyruklar`, `GET /kuyruklar/:id` | okuma | gece kuyrukları (en yeni 50); ayrıntı `{ kuyruk: { …, tahminiBitis, siradakiKalanSn, sunucuZamani }, ogeler: [{ id, sira, etiket, durum, asama, onKontrolKosuId, kosuId, neden, butceSn, uyariTurleri, tahminiBaslangic, tahminiBitis, sureYetmeyebilir, ayar, kosuSilindi, onKontrolSilindi }] }` (2026-11-04: silinmiş kayıt `true`; kayıtlar okunamazsa iki alan yok) |
 | `POST /kuyruklar` | Admin | `{ beklemeDk (1–30, varsayılan 5), baslangic (ISO \| null = hemen), enGecBitis (ISO \| null), confirmText, onaylananTurler?, ogeler: [{ etiket (zorunlu, ≤ 100), govde (ön kontrol gövdesi, etiketsiz), onKontrolKosuId? }] }` → `{ id }`. 400 `gecersiz_istek`, 409 `hedef_farkli` (`oge`), `onay_metni`, `uyari_onayi` (`uyariTurleri: [{ kod, ornek, ogeler }]`), kapı kodları (mesaj `Öğe n: …`, `oge`), 424 `db_okunamadi`. Denetim `nginx_loadtest_kuyruk_olustur` |
 | `POST /kuyruklar/:id/iptal` | Admin | sonraki öğeler başlamaz → `{ suren: { ogeId, etiket, kosuId, onKontrolKosuId } \| null }` (süren koşu durdurulmaz). 409 `kuyruk_bitti`. Denetim `nginx_loadtest_kuyruk_iptal` |

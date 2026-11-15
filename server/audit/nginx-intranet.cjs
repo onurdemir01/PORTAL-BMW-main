@@ -21,6 +21,7 @@
 'use strict';
 
 const { envOfHost, tierOfHost, UNKNOWN_ENV } = require('./nginx-hosts.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 /** Uc bayragin hepsi 1 mi? */
 function isFull(row) {
@@ -128,7 +129,7 @@ function coverageForEnv(expected, found, cap = 300) {
     missing: missing.sort(sortTr).slice(0, cap),
     onlyOnServerCount: onlyOnServer.length,
     onlyOnServer: onlyOnServer.sort(sortTr).slice(0, cap),
-    hosts: [...hosts].sort(),
+    hosts: [...hosts].sort(varsayilanSira),
     // Kapsam YALNIZCA TAM kurulumlar uzerinden. Yarim kurulumu "kapsandi" saymak,
     // 404 donen bir uygulamayi yesil gostermek olurdu.
     coverage:

@@ -99,7 +99,7 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
     };
 
     if (prev) {
-      poll(prev.awxServerId, prev.jobId);
+      void poll(prev.awxServerId, prev.jobId);
       return () => {
         cancelled = true;
         if (pollTimer) window.clearTimeout(pollTimer);
@@ -113,7 +113,7 @@ const WasJvmDiscovery: React.FC<Props & { onRefresh: () => void }> = ({ app, hos
         if (cancelled) return;
         if (!r.ok || r.jobId == null || r.awxServerId == null) return fail(r.message || "Keşif işi başlatılamadı.");
         setDisc({ jobId: r.jobId, awxServerId: r.awxServerId });
-        poll(r.awxServerId, r.jobId);
+        void poll(r.awxServerId, r.jobId);
       })
       .catch((e: unknown) => {
         if (!cancelled) fail(errText(e));

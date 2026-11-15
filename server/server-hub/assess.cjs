@@ -32,6 +32,7 @@ const { webHostAdaylari, matchWebForApp } = require('../audit/web-app.cjs');
 const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const { KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 // Capraz kontroller (2026-11-06): kopyalar, ortamlar, OpenShift ve Retirement kaydi (capraz.cjs).
 const {
   caprazAnaliz,
@@ -1595,7 +1596,7 @@ function assess(data, opts = {}) {
     if ((surumNo(h.scanVer) || 0) >= 2001) {
       const cliJ = h.jvms.filter((j) => j.source === 'cli');
       const nesiller = (src) =>
-        [...new Set(cliJ.filter((j) => j.cfgSrc === src).map((j) => j.gen))].sort();
+        [...new Set(cliJ.filter((j) => j.cfgSrc === src).map((j) => j.gen))].sort(varsayilanSira);
       for (const g of nesiller('PS_ONLY'))
         add(
           'warning',
@@ -2742,7 +2743,7 @@ function assess(data, opts = {}) {
       // Erisilemeyen ILK 50 sunucu: ekran "kimler" sorusunu da cevaplayabilsin.
       missingHosts: [...env]
         .filter((h) => !tar.has(h))
-        .sort()
+        .sort(varsayilanSira)
         .slice(0, 50),
     };
   };

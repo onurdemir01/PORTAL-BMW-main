@@ -40,6 +40,7 @@ const poller = require('./ear-envanter-poller.cjs');
 const sorgu = require('./ear-envanter-sorgu.cjs');
 const rapor = require('./ear-envanter-rapor.cjs');
 const eslenikMotoru = require('./ear-envanter-eslenik.cjs');
+const { varsayilanSira } = require('../util/siralama.cjs');
 
 const GORUNUMLER = new Set(['uygulamalar', 'warlar', 'kutuphaneler', 'sunucular', 'eslenikler']);
 const AKAN = new Set(['uygulamalar', 'warlar', 'kutuphaneler']);
@@ -246,7 +247,7 @@ function mount(router, { launch, audit } = {}) {
       const sonraki = planlar
         .filter((p) => p.acik && p.sonraki.length)
         .map((p) => p.sonraki[0])
-        .sort()[0];
+        .sort(varsayilanSira)[0];
       const aktifDetay = aktif ? await sorgu.kosuDetay(aktif.id, { hostlarla: false }) : null;
       res.json({
         ok: true,

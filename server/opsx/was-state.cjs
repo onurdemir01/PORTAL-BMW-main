@@ -623,7 +623,7 @@ const LAST_OP_SET = `last_op_finished_at = CASE WHEN $FIN IS NOT NULL AND (last_
 
 async function releaseLockById(db, key, lockId, finishedIso = null) {
   const { rowCount } = await db.query(
-    `UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE(), ${LAST_OP_SET.replace(/\$FIN/g, '$3')}
+    `UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE(), ${LAST_OP_SET.replace(/\$FIN/g, () => '$3')}
       WHERE lock_key = $1 AND lock_id = $2 AND held = 1`,
     [key, lockId, isoOrNull(finishedIso)],
   );
@@ -698,7 +698,7 @@ async function releaseLocks(db, keys, lockId) {
 // /run'da reddedilmesini saglar (bkz. staleDiscovery).
 async function releaseLocksForJob(db, awxServerId, awxJobId, finishedIso = null) {
   const { rowCount } = await db.query(
-    `UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE(), ${LAST_OP_SET.replace(/\$FIN/g, '$3')}
+    `UPDATE opsx_was_locks SET held = 0, updated_at = GETUTCDATE(), ${LAST_OP_SET.replace(/\$FIN/g, () => '$3')}
       WHERE awx_server_id = $1 AND awx_job_id = $2 AND held = 1`,
     [awxServerId, awxJobId, isoOrNull(finishedIso)],
   );

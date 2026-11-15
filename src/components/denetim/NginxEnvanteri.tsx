@@ -731,7 +731,7 @@ export function NginxEnvanteri() {
   // setState tamamen mesru.
   useEffect(() => {
     let alive = true;
-    (async () => {
+    void (async () => {
       try {
         const r = await denetimApi.nginxInventory();
         if (!alive) return;
