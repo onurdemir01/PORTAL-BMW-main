@@ -245,11 +245,19 @@ test('DK9 metin: JVM satiri yoksa "0 JVM durmus" yazilmaz; auto-start acik yoksa
   const d = kapaliVeri(host);
   d.jvms = d.jvms.map((j) => ({ ...j, auto_start: 'false' }));
   const kapali = sunucu(assess(d), host);
+  // 2026-11-15 (host XML ile kapatma): hepsi false -> reboot'ta acilacak JVM yok, her ortamda bilgi (xml-autostart-kapat XK2)
   assert.equal(
     kodlar(kapali, 'JBOSS_DOMAIN_DOWN')[0].text,
-    'JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş; JVM bazında auto-start bulgusu üretilmedi',
+    "JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok; JVM bazında auto-start bulgusu üretilmedi",
   );
   assert.equal(kodlar(kapali, 'JBOSS_DOMAIN_DOWN')[0].autoStartAcik, 0);
+  assert.equal(kodlar(kapali, 'JBOSS_DOMAIN_DOWN')[0].severity, 'info');
+  // bir JVM'in auto-start'i bilinmiyorsa "acilacak yok" denmez, sayi eklenmez
+  const b = kapaliVeri(host);
+  b.jvms = b.jvms.map((j, i) => ({ ...j, auto_start: i === 0 ? 'unknown' : 'false' }));
+  const bk = kodlar(sunucu(assess(b), host), 'JBOSS_DOMAIN_DOWN')[0];
+  assert.equal(bk.text, 'JBoss 8 domain kapalı (host controller çalışmıyor) — 3 JVM durmuş; JVM bazında auto-start bulgusu üretilmedi');
+  assert.equal(bk.severity, 'warning');
 });
 
 test('DK10 genel non-prod tavani: Admin uyari->kritik yaptiysa prodSeverity kritik; dokunulmayan kritikte de kritik', () => {

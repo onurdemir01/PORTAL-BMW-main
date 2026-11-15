@@ -816,8 +816,11 @@ const isAdmin = (req) => req.session?.user?.role === 'Admin';
 // (autostart-dogrulama.cjs basligi).
 const {
   AUTOSTART_EYLEMLERI,
+  XML_KAPAT_EYLEMI,
+  XML_KAPAT_MAX,
   sunucuYazmaKapisi,
   jvmAutoStartKapisi,
+  xmlKapatKapisi,
 } = require('./autostart-dogrulama.cjs');
 let _autoStart = require('./autostart-dogrulama.cjs').kur();
 
@@ -879,6 +882,35 @@ async function surenIsKilidi(host, gen, jvm, { topluHaric = false, restartHaric 
     /* AWX okunamadi: kilit kalir (guvenli taraf); mesaj isi soyler */
   }
   return `${jvm} için auto-start işi #${s.jobId} hâlâ sürüyor — bitene kadar yeni iş açılmaz (iş açılmadı). Sonucu iş çubuğundan ya da AWX'ten izleyin.`;
+}
+
+/** Kayitli host XML isi (xmlSurenIs) hala suruyor mu: AWX'e bir kez sorulur; terminalse sonucu islenir (false).
+ *  AWX okunamazsa suruyor sayilir (guvenli taraf, surenIsKilidi ile ayni). */
+async function xmlIsSuruyor(xs) {
+  try {
+    const st = await require('../ansible/runner.cjs').getJobStatusOnServer(xs.serverId, xs.jobId);
+    if (st && IS_TERMINAL.has(st.status)) {
+      isSonucuIsle(xs.serverId, xs.jobId, st);
+      return false;
+    }
+  } catch {
+    /* AWX okunamadi: kilit kalir */
+  }
+  return true;
+}
+
+/** Bulgulardan sunucu durumu + sayaclar (assess.cjs host dongusu ile ayni formul). */
+const SEV_SIRASI = { ok: 0, info: 1, warning: 2, danger: 3 };
+function durumSayaclari(F) {
+  const worst = F.reduce((a, f) => Math.max(a, SEV_SIRASI[f.severity] || 0), 0);
+  return {
+    status: Object.keys(SEV_SIRASI).find((k) => SEV_SIRASI[k] === worst),
+    counts: {
+      danger: F.filter((f) => f.severity === 'danger').length,
+      warning: F.filter((f) => f.severity === 'warning').length,
+      info: F.filter((f) => f.severity === 'info').length,
+    },
+  };
 }
 
 /** /findings satirlari (flattenFindings) icin dogrulama katmani; katman bossa ayni dizi. */
@@ -1052,7 +1084,13 @@ function initServerHub(app) {
       // Dogrulanmis auto-start (is CLI ile geri okudu, tarama henuz gelmedi) taramanin onune gecer.
       detay.jvms = detay.jvms.map((j) => _autoStart.uygulaJvm(h, j));
       // Ayni pencerenin Bulgular / Ozet sekmesi de ayni dogrulanmis degeri gorsun (dugme gizlenir).
-      detay.findings = detay.findings.map((f) => _autoStart.uygulaBulgu(h, f));
+      const tarama = detay.findings;
+      detay.findings = tarama.map((f) => _autoStart.uygulaBulgu(h, f));
+      // Inceleme 2026-11-15 (F4): katman bir bulgunun seviyesini degistirdiyse (JBOSS_DOMAIN_DOWN hepsi kapali ->
+      // bilgi) ayni pencerenin durum / sayaclari da ayni bulgulardan (assess ile ayni formul). Liste sayfasi
+      // (/overview) tarama gelene kadar tarama seviyesini gosterir.
+      if (detay.findings.some((f, i) => f !== tarama[i] && f.severity !== tarama[i].severity))
+        Object.assign(detay, durumSayaclari(detay.findings));
       res.json({ ok: true, host: detay });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
@@ -1273,6 +1311,131 @@ function initServerHub(app) {
       res.json({ ok: true, ...r, action, host, jvm, gen });
     } catch (err) {
       res.status(err.status || 500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // ── DOMAIN KAPALIYKEN HOST XML ILE AUTO-START KAPAT (kullanici karari 2026-11-15) ───────────────
+  // "Tek tek, bilincli kullanim icin XML yolu ekleyebilirim opsiyonunu devreye alalim ... bunlar yanlis retire
+  // edilmis uygulamalar o yuzden auto-start'lari kapatilmali". /jvm-autostart domain kapali JVM'de 400 doner (CLI
+  // baglanamaz); bu uc server_hub_fix jboss_autostart_xml_off acar (betik host controller'in kapali oldugunu
+  // canli ps ile yazmadan once ve sonra yeniden dogrular, yalniz true -> false yazar, geri okur).
+  //   - TEK sunucu, TEK nesil, 1..XML_KAPAT_MAX JVM: JVM satiri 1 JVM, JBOSS_DOMAIN_DOWN bulgusu o domain'in durmus
+  //     ve auto-start'i acik JVM'leri. Toplu Auto-Start'a GIRMEZ (orada domain kapali JVM aday degil).
+  //   - plan: true -> plan_only=true (salt okunur: dosya, host adi, oge basina eski -> false, yedek yeri);
+  //     confirmed: true -> uygulama. Ikisi birden ya da hicbiri: 400.
+  //   - Kapilar her istekte TAZE degerlendirmeden: sunucuYazmaKapisi + xmlKapatKapisi (yalniz domainKapali, durmus,
+  //     auto-start true; dogrulama katmani uygulanmis deger). Calisan domain'de ASLA.
+  //   - Uygulamada JVM basina suren is kilidi + rezervasyon; is dogrulama katmanina items ile kaydedilir
+  //     (isKaydetToplu): OK/SKIP oge auto-start=false dogrulanir, JBOSS_DOMAIN_DOWN metni ayni katmandan kurulur.
+  //   - Inceleme 2026-11-15 (F1/F2): uygulama sunucu + nesil basina TEK is (ayni host XML dosyasi). Rezervasyon
+  //     istegin basinda, HICBIR await'ten once alinir; kayitli XML isi bitmemisse 409 (betikte de dizin flock'u).
+  router.post('/jvm-autostart-xml', async (req, res) => {
+    const host = String(req.body?.host || '').toUpperCase();
+    const gen = Number(req.body?.gen);
+    const plan = req.body?.plan === true;
+    const confirmed = req.body?.confirmed === true;
+    const ham = Array.isArray(req.body?.jvms) ? req.body.jvms : null;
+    if (plan === confirmed)
+      return res.status(400).json({
+        ok: false,
+        message: 'Önce plan (plan: true) ya da onaylı uygulama (confirmed: true) gerekli — ikisi birden olmaz.',
+      });
+    if (!HOST_RE.test(host))
+      return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
+    if (gen !== 7 && gen !== 8)
+      return res.status(400).json({ ok: false, message: 'Geçersiz JBoss sürümü (gen 7 ya da 8).' });
+    if (!ham || ham.length < 1 || ham.length > XML_KAPAT_MAX)
+      return res
+        .status(400)
+        .json({ ok: false, message: `1-${XML_KAPAT_MAX} arası JVM adı gerekli (jvms listesi).` });
+    const jvms = ham.map((x) => String(x || '').trim());
+    if (jvms.some((x) => !JVM_RE.test(x)))
+      return res.status(400).json({ ok: false, message: 'Geçersiz JVM adı.' });
+    if (new Set(jvms).size !== jvms.length)
+      return res.status(400).json({ ok: false, message: 'Aynı JVM iki kez verildi.' });
+    const birakXml = confirmed ? _autoStart.xmlRezervasyon(host, gen) : () => {};
+    if (!birakXml)
+      return res.status(409).json({
+        ok: false,
+        code: 'xml_is_suruyor',
+        message: `${host} üzerinde JBoss ${gen} host XML işi şu an başlatılıyor — aynı dosyaya ikinci iş açılmaz (iş açılmadı). Birkaç saniye sonra yeniden deneyin.`,
+      });
+    try {
+      const hazir = launchHazirla(REGISTRY_KEYS.fix);
+      const a = await getAssessment(true);
+      const h = (a.hosts || []).find((x) => x.host === host);
+      if (!h)
+        return res.status(400).json({ ok: false, message: `${host} için tarama verisi yok.` });
+      const sk = sunucuYazmaKapisi(a, h, host);
+      if (sk) return res.status(sk.status).json({ ok: false, message: sk.message });
+      // Ayni sunucu + nesilde kayitli XML isi: AWX'e bir kez sorulur (biten isin sonucu islenir, kilit kalkar).
+      const xs = confirmed ? _autoStart.xmlSurenIs(host, gen) : null;
+      if (xs && (await xmlIsSuruyor(xs)))
+        return res.status(409).json({
+          ok: false,
+          code: 'xml_is_suruyor',
+          message: `${host} üzerinde JBoss ${gen} host XML işi #${xs.jobId} hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz (iş açılmadı). Sonucu iş çubuğundan izleyin.`,
+        });
+      const redler = [];
+      for (const jvm of jvms) {
+        const tj = (h.jvms || []).find((x) => x.name === jvm && Number(x.gen) === gen);
+        if (tj && confirmed) {
+          const kilit = await surenIsKilidi(host, gen, jvm);
+          if (kilit)
+            return res.status(409).json({ ok: false, code: 'autostart_is_suruyor', message: kilit });
+        }
+        const k = xmlKapatKapisi(tj ? _autoStart.uygulaJvm(h, tj) : tj, { host, jvm, gen });
+        if (k) redler.push(k.message);
+      }
+      if (redler.length)
+        return res.status(400).json({
+          ok: false,
+          message:
+            redler.length === 1
+              ? redler[0]
+              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${redler.length > 5 ? ` · +${redler.length - 5}` : ''}`,
+        });
+      const birakanlar = confirmed ? jvms.map((jvm) => _autoStart.rezervasyon(host, gen, jvm)) : [];
+      let r;
+      try {
+        r = await launch(
+          req,
+          REGISTRY_KEYS.fix,
+          `Server Hub: ${plan ? 'plan' : 'uygula'} ${XML_KAPAT_EYLEMI} @ ${host} (JBoss ${gen}, ${jvms.length} JVM)`,
+          {
+            target_host: host,
+            action: XML_KAPAT_EYLEMI,
+            plan_only: plan,
+            reload: false,
+            gen,
+            jvms: jvms.join(' '),
+          },
+          { op: plan ? 'xml-autostart-plan' : 'xml-autostart-off', host, gen, jvms },
+          hazir,
+        );
+        if (confirmed)
+          _autoStart.isKaydetToplu(r.awxServerId, r.jobId, {
+            host,
+            h,
+            items: jvms.map((jvm) => ({ gen, jvm, action: XML_KAPAT_EYLEMI })),
+          });
+      } finally {
+        for (const b of birakanlar) b();
+      }
+      res.json({
+        ok: true,
+        ...r,
+        planOnly: plan,
+        action: XML_KAPAT_EYLEMI,
+        host,
+        gen,
+        jvms,
+        prod: h.envGroup === 'Production',
+      });
+    } catch (err) {
+      res.status(err.status || 500).json({ ok: false, message: err.message });
+    } finally {
+      birakXml();
     }
   });
 

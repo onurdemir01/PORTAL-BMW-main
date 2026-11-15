@@ -75,6 +75,12 @@ import SunucuPaneli from './SunucuPaneli';
 import { jvmNesilEtiketi, jvmSayisiMetni } from './jvmNesil';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import {
+  XmlAutoStartKapatPenceresi,
+  xmlKapatAdaylari,
+  xmlKapatilabilir,
+  xmlKapatSunucuEngeli,
+} from './XmlAutoStartKapat';
+import {
   autoStartAnahtari,
   autoStartBaslat,
   isMetni,
@@ -682,7 +688,7 @@ const KOD_ETIKET: Record<string, string> = {
   HOST_RESTART:
     'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
   JBOSS_DOMAIN_DOWN:
-    'JBoss domain kapalı (taramada host controller çalışmıyordu) — JVM bazında auto-start bulgusu ve işi yok',
+    "JBoss domain kapalı (taramada host controller çalışmıyordu) — JVM bazında auto-start bulgusu yok; durmuş JVM'lerin auto-start'ı host XML ile kapatılabilir",
   RESTART_REQUIRED:
     "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
   INIT_DIFF: 'init script filo çoğunluğundan farklı',
@@ -3148,6 +3154,21 @@ function HostModal({
   useEscIleKapat(!!fix, () => {
     if (fix && (fix.phase === 'ask' || fix.phase === 'planned')) setFix(null);
   });
+  // DOMAIN KAPALIYKEN HOST XML ile auto-start KAPAT (2026-11-15; XmlAutoStartKapat.tsx): JVM satiri (1 JVM) ya da
+  // JBOSS_DOMAIN_DOWN bulgusu (domain'in durmus + auto-start acik JVM'leri). Once plan, sonra onay.
+  const [xmlKapat, setXmlKapat] = useState<{ gen: number; jvms: string[] } | null>(null);
+  const xmlBitti = () => {
+    reload();
+    serverHubApi
+      .host(host, true)
+      .then((x) => {
+        if (x.ok) {
+          setD(x.host);
+          shOnbellek.yaz(`host:${host}`, x.host);
+        }
+      })
+      .catch(() => {});
+  };
 
   // SATIR BAZINDA AUTO-START (kullanici, 2026-10-01): "satir satir hangi jvm'lerde auto
   // start kapaliysa onun saginda bir buton olsun ben tikladigimda acilsin veya ben
@@ -3438,6 +3459,24 @@ function HostModal({
                           <WrenchScrewdriverIcon className="w-3.5 h-3.5" /> Düzelt
                         </button>
                       )}
+                      {f.code === 'JBOSS_DOMAIN_DOWN' &&
+                        !xmlKapatSunucuEngeli(d) &&
+                        (() => {
+                          const ad = xmlKapatAdaylari(d.jvms, f.gen);
+                          if (!ad.length) return null;
+                          return (
+                            <button
+                              onClick={() => setXmlKapat({ gen: Number(f.gen), jvms: ad })}
+                              className={SM_BTN}
+                              style={{ ...smBtn(), whiteSpace: 'normal', height: 'auto', paddingTop: 4, paddingBottom: 4 }}
+                              data-testid="xml-kapat-domain"
+                              title={`Domain kapalı: ${ad.join(', ')} — auto-start host XML'de false yapılır (önce plan)`}
+                            >
+                              <WrenchScrewdriverIcon className="w-3.5 h-3.5 shrink-0" /> Bu domain&apos;deki
+                              auto-start&apos;ı açık {ad.length} durmuş JVM&apos;in auto-start&apos;ını kapat (host XML)
+                            </button>
+                          );
+                        })()}
                     </li>
                   );
                 })}
@@ -3602,6 +3641,16 @@ function HostModal({
                               }
                             >
                               {j.autoStart === 'true' ? 'Kapat' : 'Aç'}
+                            </button>
+                          ) : xmlKapatilabilir(j) && !xmlKapatSunucuEngeli(d) ? (
+                            // DOMAIN KAPALI (2026-11-15): CLI yolu yok; host XML ile YALNIZ kapatma (once plan).
+                            <button
+                              onClick={() => setXmlKapat({ gen: j.gen, jvms: [j.name] })}
+                              className="ml-2 px-1.5 py-0.5 text-[10px] border rounded"
+                              style={{ borderColor: 'var(--status-warning)' }}
+                              title={`${j.name}: JBoss ${j.gen} domain kapalı — auto-start host XML'de false yapılır (önce plan, sonra onay)`}
+                            >
+                              Auto-start&apos;ı kapat (host XML)
                             </button>
                           ) : (
                             <span
@@ -3957,6 +4006,17 @@ function HostModal({
         </div>
       )}
 
+      {xmlKapat && (
+        <XmlAutoStartKapatPenceresi
+          host={host}
+          gen={xmlKapat.gen}
+          jvms={xmlKapat.jvms}
+          envGroup={d?.envGroup ?? null}
+          trackJob={trackJob}
+          onClose={() => setXmlKapat(null)}
+          onBitti={xmlBitti}
+        />
+      )}
       {/* ── Duzelt: once PLAN, sonra onay ── */}
       {fix && (
         <div

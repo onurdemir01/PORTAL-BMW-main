@@ -155,7 +155,7 @@ const MADDELER = [
       {
         kod: 'JBOSS_DOMAIN_DOWN',
         kosul:
-          'Taramada host controller çalışmıyordu (domain kapalı): sunucu + JBoss sürümü başına tek bulgu; JVM bazında auto-start bulgusu ve auto-start işi üretilmez. Non-Production sunucuda bilgi.',
+          "Taramada host controller çalışmıyordu (domain kapalı): sunucu + JBoss sürümü başına tek bulgu; JVM bazında auto-start bulgusu ve CLI auto-start işi üretilmez. Durmuş ve auto-start'ı açık JVM'lerin auto-start'ı sunucu ayrıntısından host XML ile kapatılabilir (yalnız kapatma, önce plan). Non-Production sunucuda bilgi; domain'in tüm JVM'lerinde auto-start kapalıysa (reboot'ta açılacak JVM yok) her ortamda bilgi.",
         seviye: 'warning',
       },
       { kod: null, kosul: 'Host controller running.', seviye: 'ok' },

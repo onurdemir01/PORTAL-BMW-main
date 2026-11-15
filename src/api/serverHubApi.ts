@@ -69,6 +69,12 @@ export interface ShFinding {
   unattributed?: ShUnattributed[];
   /** AUTOSTART_UNKNOWN sebebi (cli-okunamadi | envanterde-yok | envanter-celiskili | tanimsiz-surec). */
   autoStartReason?: string;
+  /** JBOSS_DOMAIN_DOWN (2026-11-15): JBoss sürümü, domain'in JVM sayısı ve durmuş + auto-start açık JVM sayısı. */
+  gen?: number;
+  jvmSayisi?: number;
+  autoStartAcik?: number;
+  /** Admin bu kodun seviyesini Kurallar & Limitler'den değiştirdi (otomatik seviye değişmez). */
+  adminSeviye?: boolean;
 }
 export interface ShHostRow {
   env?: string;
@@ -399,6 +405,22 @@ export interface ShLaunch {
   status: string | null;
   awxServerId: number;
   planOnly?: boolean;
+}
+/** /jvm-autostart-xml (2026-11-15): domain kapalıyken host XML ile auto-start kapatma işi. */
+export interface ShXmlKapatLaunch extends ShLaunch {
+  code?: string;
+  action?: string;
+  host?: string;
+  gen?: number;
+  jvms?: string[];
+  prod?: boolean;
+}
+/** server_hub_fix_result (jboss_autostart_xml_off): items öğe başına RESULT satırı, xmlplan "PLAN\t<anahtar>\t<değer>". */
+export interface ShXmlKapatSonuc {
+  line?: string;
+  plan_only?: boolean | string;
+  items?: { gen?: string | number; jvm: string; action?: string; line: string }[];
+  xmlplan?: string[];
 }
 /** Açılış hazırlığı satırı. `notScanned` ASLA "sorunsuz" sayılmaz. */
 export interface ShReadinessRow {
@@ -1244,6 +1266,18 @@ export const serverHubApi = {
     awxServerId?: number;
     action?: string;
   }> => fetch(`${BASE}/jvm-autostart`, json({ ...p, confirmed: true })).then(safeJson),
+  // DOMAIN KAPALIYKEN HOST XML ile auto-start KAPAT (2026-11-15): tek sunucu, tek JBoss sürümü, 1-200 JVM.
+  // Önce plan (salt okunur), sonra onaylı uygulama; sunucu kapıları taze taramadan yeniden uygular.
+  jvmAutoStartXml: (p: {
+    host: string;
+    gen: number;
+    jvms: string[];
+    asama: 'plan' | 'uygula';
+  }): Promise<ShXmlKapatLaunch> =>
+    fetch(
+      `${BASE}/jvm-autostart-xml`,
+      json({ host: p.host, gen: p.gen, jvms: p.jvms, ...(p.asama === 'plan' ? { plan: true } : { confirmed: true }) }),
+    ).then(safeJson),
   // ACILIS HAZIRLIGI (2026-10-01): "bu sunucular sorunsuz acilir mi" - SALT OKUNUR,
   // hicbir is baslatmaz. Mevcut taramanin bulgularini yeniden baslatma sorusuna gore
   // siniflar.

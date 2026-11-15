@@ -39,6 +39,15 @@ const IS_MAX = 500;
 const DOGRULANAN_MAX = 2000;
 const TTL_MS = 24 * 60 * 60 * 1000;
 const AUTOSTART_EYLEMLERI = new Set(['jboss_autostart_on', 'jboss_autostart_off']);
+// DOMAIN KAPALIYKEN HOST XML (2026-11-15, kullanici: "Tek tek, bilincli kullanim icin XML yolu ... bunlar yanlis
+// retire edilmis uygulamalar o yuzden auto-start'lari kapatilmali"). server_hub_fix.sh jboss_autostart_xml_off: YALNIZ
+// host controller calismiyorken, YALNIZ true -> false, host XML'e yazar ve geri okur. Tek host, bir ya da birden cok
+// JVM (ayni nesil); set_stats items[] Toplu Auto-Start ile ayni sekil. Toplu Auto-Start'a GIRMEZ.
+const XML_KAPAT_EYLEMI = 'jboss_autostart_xml_off';
+const XML_KAPAT_MAX = 200;
+/** Eylemin yazdigi auto-start degeri ('true' | 'false'); auto-start eylemi degilse null. */
+const hedefOf = (action) =>
+  action === 'jboss_autostart_on' ? 'true' : action === 'jboss_autostart_off' || action === XML_KAPAT_EYLEMI ? 'false' : null;
 
 /** RESULT\t<action>\t<OK|SKIP|FAIL|PLAN>\t<mesaj> -> { action, durum, mesaj } ya da null. */
 function sonucSatiri(line) {
@@ -59,7 +68,7 @@ const jvmAnahtari = (gen, jvm) => `${Number(gen)}|${String(jvm || '').trim().toL
  */
 function ogeSonuclari(items, result) {
   const r = result && typeof result === 'object' ? result : null;
-  const listeMi = !!r && r.action === LISTE_EYLEMI && Array.isArray(r.items);
+  const listeMi = !!r && (r.action === LISTE_EYLEMI || r.action === XML_KAPAT_EYLEMI) && Array.isArray(r.items);
   const plan = !r || dogruMu(r.plan_only);
   const satirlar = new Map();
   if (listeMi)
@@ -147,11 +156,59 @@ function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
   return null;
 }
 
+/**
+ * HOST XML ile auto-start KAPAT kapisi (2026-11-15, /jvm-autostart-xml). j: dogrulama katmani uygulanmis JVM.
+ * YALNIZ domain kapali (j.domainKapali, taramada host controller calismiyordu) + durmus + auto-start true JVM.
+ * Calisan domain'de ASLA (orada CLI yolu gecerli; calisan host controller dosyayi kendi modeliyle ezer).
+ * Donus: null ya da { status, message }.
+ */
+function xmlKapatKapisi(j, { host, jvm, gen }) {
+  if (!j)
+    return { status: 400, message: `${host} üzerinde ${jvm} (JBoss ${gen}) taramada yok — sayfayı yenileyin; iş açılmadı.` };
+  if (j.yalnizEnvanter === true || j.source === 'envanter')
+    return {
+      status: 400,
+      message: `${host} üzerinde ${jvm} yalnız envanterde (MWAppsInventory) — host XML'de tanımı bilinmiyor; iş açılmadı.`,
+    };
+  if (j.domainKapali !== true)
+    return {
+      status: 400,
+      message: `${jvm} (JBoss ${gen}) domain'i kapalı görünmüyor (taramada host controller çalışıyordu ya da ölçülemedi) — host XML yolu yalnız domain kapalıyken açılır; çalışan domain'de satırdaki Auto-start Kapat'ı kullanın; iş açılmadı.`,
+    };
+  // Inceleme 2026-11-15 (F6): arayuz (xmlKapatilabilir) gibi KAYNAKTAN BAGIMSIZ - tanim kaynaginda olmayan JVM'in
+  // host XML'de degistirilecek <server> tanimi yoktur (betik de 'tanimli degil' FAIL verirdi).
+  if (String(j.cfgSrc || '').toUpperCase() === 'UNAVAILABLE')
+    return { status: 400, message: `${jvm} (JBoss ${gen}) tanım kaynağında yok — host XML'de değiştirilecek tanım yok; iş açılmadı.` };
+  if (j.runningKnown === false)
+    return {
+      status: 400,
+      message: `${jvm} çalışma durumu ölçülemedi — host XML yolu yalnız durmuş olduğu ölçülen JVM'de açılır; iş açılmadı.`,
+    };
+  if (j.running === true)
+    return {
+      status: 400,
+      message: `${jvm} son taramada ÇALIŞIYOR — host XML yolu yalnız durmuş JVM için; iş açılmadı.`,
+    };
+  if (j.autoStart === 'false')
+    return {
+      status: 400,
+      message: `${jvm} zaten auto-start KAPALI görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
+    };
+  if (j.autoStart !== 'true')
+    return { status: 400, message: `${jvm} auto-start değeri taramada bilinmiyor — host XML yolu açılmaz; iş açılmadı.` };
+  return null;
+}
+
 function kur({ simdi = Date.now } = {}) {
   const isler = new Map();
   const topluIsler = new Map();
   const dogrulanan = new Map();
   const rezerve = new Set();
+  // HOST XML ISI sunucu + nesil basina TEK (inceleme 2026-11-15 F1/F2): ayni host XML dosyasini iki is ayni anda
+  // yazmasin. JVM kilidi yetmez (domain dugmesi {A,B} surerken satir dugmesi C ayni dosyayi yazardi) ve JVM basina
+  // await'li kilit dongusu iki istegi araya sokabilirdi; bu rezervasyon istegin EN BASINDA, await'ten once alinir.
+  const rezerveXml = new Set();
+  const xmlAnahtar = (host, gen) => `${String(host || '').toUpperCase()}|${Number(gen)}`;
   const anahtar = (host, gen, jvm) =>
     `${String(host || '').toUpperCase()}|${Number(gen)}|${String(jvm || '').trim().toLowerCase()}`;
   const sinirla = (m, max) => {
@@ -177,7 +234,7 @@ function kur({ simdi = Date.now } = {}) {
   /** Toplu (liste kipi) host isi: items [{gen, jvm, action}]; h: is acilirkenki sunucu (tarama damgasi). */
   function isKaydetToplu(serverId, jobId, { host, h, items }) {
     if (jobId == null) return;
-    const liste = (items || []).filter((x) => x && AUTOSTART_EYLEMLERI.has(x.action));
+    const liste = (items || []).filter((x) => x && hedefOf(x.action) != null);
     if (!liste.length) return;
     topluIsler.set(`${Number(serverId)}:${Number(jobId)}`, {
       host: String(host || '').toUpperCase(),
@@ -208,7 +265,7 @@ function kur({ simdi = Date.now } = {}) {
       const ogeler = ogeSonuclari(t.items, result);
       for (const o of ogeler)
         if (o.dogrulandi)
-          dogrulandiYaz(t.host, o.gen, o.jvm, o.action === 'jboss_autostart_on' ? 'true' : 'false', jobId, t.scanDate, t.loadedAt);
+          dogrulandiYaz(t.host, o.gen, o.jvm, hedefOf(o.action), jobId, t.scanDate, t.loadedAt);
       return { kayitli: true, toplu: true, host: t.host, ogeler };
     }
     const m = isler.get(k);
@@ -270,11 +327,40 @@ function kur({ simdi = Date.now } = {}) {
    * sekmesi "acik" derken Bulgular "AC" dugmesi gosteriyor, tik 400 "zaten" donuyordu.
    */
   function uygulaBulgu(h, f) {
+    if (f && f.code === 'JBOSS_DOMAIN_DOWN') return domainBulgusu(h, f);
     if (!f || !f.fix || !AUTOSTART_EYLEMLERI.has(f.fix.action) || dogrulanan.size === 0) return f;
     const d = gecerli(h, { gen: f.fix.gen, name: f.fix.jvm });
     const hedef = f.fix.action === 'jboss_autostart_on' ? 'true' : 'false';
     if (!d || d.autoStart !== hedef) return f;
     return { ...f, fix: null, ...('fixable' in f ? { fixable: false } : {}), autoStartDogrulama: dogrulamaBilgisi(d) };
+  }
+
+  /**
+   * JBOSS_DOMAIN_DOWN (2026-11-15): host XML isi (ya da baska auto-start isi) o domain'in JVM'lerinde auto-start'i
+   * dogruladiysa bulgu metni / autoStartAcik dogrulanmis degerle yeniden kurulur (assess ile AYNI fonksiyon,
+   * assess.cjs domainKapaliOzeti). Hepsi false olduysa seviye bilgi (reboot'ta acilacak JVM yok) - Admin seviye
+   * degistirdiyse (adminSeviye) o gecerli. Sunucu durumu / sayaclar tarama gelene kadar degismez.
+   */
+  function domainBulgusu(h, f) {
+    if (dogrulanan.size === 0 || !h || !Array.isArray(h.jvms)) return f;
+    const nj = h.jvms
+      .filter((j) => j && j.domainKapali === true && Number(j.gen) === Number(f.gen))
+      .map((j) => uygulaJvm(h, j));
+    const son = nj
+      .map((j) => j.autoStartDogrulama)
+      .filter(Boolean)
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+    if (!son) return f;
+    const oz = require('./assess.cjs').domainKapaliOzeti(f.gen, nj);
+    if (oz.text === f.text && oz.autoStartAcik === f.autoStartAcik) return f;
+    const g = { ...f, text: oz.text, autoStartAcik: oz.autoStartAcik, autoStartDogrulama: son };
+    if (oz.hepsiKapali && f.adminSeviye !== true) {
+      g.severity = 'info';
+      delete g.defaultSeverity;
+      delete g.ortamTavani;
+      delete g.prodSeverity;
+    }
+    return g;
   }
 
   /** Bu JVM icin suren (terminal olmamis) kayitli is ya da su an baslatilan is; yoksa null. */
@@ -295,6 +381,26 @@ function kur({ simdi = Date.now } = {}) {
     return null;
   }
 
+  /** Bu sunucu + nesilde terminal olmamis kayitli host XML isi (ilk ogesinin JVM'i ile); yoksa null. */
+  function xmlSurenIs(host, gen) {
+    const ak = xmlAnahtar(host, gen);
+    for (const [k, t] of topluIsler) {
+      const o = t.items.find((x) => x.action === XML_KAPAT_EYLEMI && xmlAnahtar(t.host, x.gen) === ak);
+      if (!o) continue;
+      const [serverId, jobId] = k.split(':').map(Number);
+      return { serverId, jobId, jvm: o.jvm };
+    }
+    return null;
+  }
+
+  /** Host XML istegi icin sunucu + nesil rezervasyonu (senkron). Doluysa null, degilse birak(). */
+  function xmlRezervasyon(host, gen) {
+    const ak = xmlAnahtar(host, gen);
+    if (rezerveXml.has(ak)) return null;
+    rezerveXml.add(ak);
+    return () => rezerveXml.delete(ak);
+  }
+
   /** Is baslatilirken (launch suresince) ayni JVM'e ikinci istek gelmesin. Donus: birak(). */
   function rezervasyon(host, gen, jvm) {
     const ak = anahtar(host, gen, jvm);
@@ -311,7 +417,9 @@ function kur({ simdi = Date.now } = {}) {
     uygulaBulgu,
     surenIs,
     rezervasyon,
-    _boyut: () => ({ isler: isler.size, topluIsler: topluIsler.size, dogrulanan: dogrulanan.size, rezerve: rezerve.size }),
+    xmlSurenIs,
+    xmlRezervasyon,
+    _boyut: () => ({ isler: isler.size, topluIsler: topluIsler.size, dogrulanan: dogrulanan.size, rezerve: rezerve.size, rezerveXml: rezerveXml.size }),
   };
 }
 
@@ -321,7 +429,11 @@ module.exports = {
   ogeSonuclari,
   sunucuYazmaKapisi,
   jvmAutoStartKapisi,
+  xmlKapatKapisi,
+  hedefOf,
   AUTOSTART_EYLEMLERI,
   LISTE_EYLEMI,
+  XML_KAPAT_EYLEMI,
+  XML_KAPAT_MAX,
   TTL_MS,
 };

@@ -80,6 +80,27 @@ function jbKalinti(b) {
 function hcKapali(b) {
   return !!b && b.cli === 'SKIP' && /host controller calismiyor/.test(String(b.note || ''));
 }
+/** JBOSS_DOMAIN_DOWN metni ve sayilari (assess ve autostart-dogrulama.cjs uygulaBulgu AYNI fonksiyon). nj: o nesildeki
+ *  domainKapali JVM'ler. autoStartAcik = durmus + auto-start true. hepsiKapali (2026-11-15, host XML ile kapatma):
+ *  en az bir JVM var ve HEPSININ auto-start'i false -> reboot'ta acilacak JVM yok (bilinmeyen deger varsa DEGIL). */
+function domainKapaliOzeti(gen, nj) {
+  const liste = nj || [];
+  const durmus = liste.filter((j) => j.running !== true).length;
+  const autoStartAcik = liste.filter((j) => j.running !== true && j.autoStart === 'true').length;
+  const hepsiKapali = liste.length > 0 && liste.every((j) => j.autoStart === 'false');
+  const kosan = liste.length > durmus ? `, ${liste.length - durmus} JVM süreci görünüyor` : '';
+  const jvmMetni = !liste.length
+    ? 'JVM tanımı okunamadı'
+    : hepsiKapali
+      ? `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`
+      : `${durmus} JVM durmuş${autoStartAcik ? ` (${autoStartAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)` : ''}${kosan}`;
+  return {
+    durmus,
+    autoStartAcik,
+    hepsiKapali,
+    text: `JBoss ${gen} domain kapalı (host controller çalışmıyor) — ${jvmMetni}; JVM bazında auto-start bulgusu üretilmedi`,
+  };
+}
 const GUN_MS = 86400000;
 const nz = (x) => (x == null || x === '' ? null : x);
 const zamanMs = (x) => {
@@ -1608,23 +1629,22 @@ function assess(data, opts = {}) {
       if (hcKapali(b) && !domainBulgusu.has(b.gen)) {
         domainBulgusu.add(b.gen);
         const nj = h.jvms.filter((j) => j.domainKapali === true && Number(j.gen) === b.gen);
-        const durmus = nj.filter((j) => j.running !== true).length;
         // Inceleme (2026-11-15): JVM bazindaki kritik bulgu kalkinca "reboot'ta acilacak" bilgisi kaybolmasin;
         // durmus + host XML'de auto-start=true sayisi metinde. JVM satiri hic yoksa "0 JVM durmus" yazilmaz.
-        const xmlAcik = nj.filter((j) => j.running !== true && j.autoStart === 'true').length;
-        const jvmMetni = !nj.length
-          ? 'JVM tanımı okunamadı'
-          : `${durmus} JVM durmuş${xmlAcik ? ` (${xmlAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)` : ''}${nj.length > durmus ? `, ${nj.length - durmus} JVM süreci görünüyor` : ''}`;
-        add(
-          'warning',
-          'jboss',
-          'JBOSS_DOMAIN_DOWN',
-          `JBoss ${b.gen} domain kapalı (host controller çalışmıyor) — ${jvmMetni}; JVM bazında auto-start bulgusu üretilmedi`,
-          null,
-          { gen: b.gen, jvmSayisi: nj.length, autoStartAcik: xmlAcik },
-        );
+        const oz = domainKapaliOzeti(b.gen, nj);
+        const adminSeviye = SEV[seviyeler.JBOSS_DOMAIN_DOWN] != null;
+        add('warning', 'jboss', 'JBOSS_DOMAIN_DOWN', oz.text, null, {
+          gen: b.gen,
+          jvmSayisi: nj.length,
+          autoStartAcik: oz.autoStartAcik,
+          ...(adminSeviye ? { adminSeviye: true } : {}),
+        });
         const f = F[F.length - 1];
-        if (h.envGroup === 'Non-Production' && SEV[seviyeler.JBOSS_DOMAIN_DOWN] == null && f.severity === 'warning') {
+        // HOST XML ILE KAPATILDI (2026-11-15, kullanici: "bunlar yanlis retire edilmis uygulamalar o yuzden
+        // auto-start'lari kapatilmali"): domain'in TUM JVM'lerinde auto-start false ise reboot'ta hicbir sey acilmaz
+        // -> her ortamda (prod dahil) bilgi. Admin seviye degistirdiyse o gecerli.
+        if (oz.hepsiKapali && !adminSeviye && f.severity === 'warning') f.severity = 'info';
+        else if (h.envGroup === 'Non-Production' && !adminSeviye && f.severity === 'warning') {
           f.severity = 'info';
           f.defaultSeverity = 'warning';
           f.prodSeverity = 'warning';
@@ -2967,6 +2987,10 @@ function flattenFindings(hosts) {
         fix: f.fix || null,
         // bayat / disarida kalan sunucu: eylem tazelik kapisinda kalkti
         stale: f.stale === true,
+        // JBOSS_DOMAIN_DOWN (2026-11-15): dogrulama katmani (uygulaBulgu) nesli ve sayiyi buradan okur
+        ...(f.code === 'JBOSS_DOMAIN_DOWN'
+          ? { gen: f.gen, autoStartAcik: f.autoStartAcik, ...(f.adminSeviye ? { adminSeviye: true } : {}) }
+          : {}),
       });
   out.sort(
     (a, b) =>
@@ -2980,6 +3004,7 @@ function flattenFindings(hosts) {
 module.exports = {
   EAR_VERI_MAX_GUN,
   jbKalinti,
+  domainKapaliOzeti,
   assess,
   parseTargets,
   hedefUserinfoSil,
