@@ -237,9 +237,9 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
 // olacagi icin Ankara sunucularinin cozdugu DNS'in farkli olmasini beklerim").
 //
 // BOLGE + SITE BAZLI COZUM: ayni ad bulundugu siteye gore FARKLI VIP'e cozulur ve hangi DNS sunucusuna
-// sorulacagi domain bolgesine baglidir (kullanici 2026-10-13):
-//   gtdmz.com.tr       Pendik 10.230.238.22   Ankara 10.236.238.22
-//   fw.garanti.com.tr  Pendik 10.230.238.1    Ankara 10.236.238.1
+// sorulacagi domain bolgesine baglidir (kullanici 2026-10-13). DNS sunucu adresleri kurum ic agidir ve
+// repoda TUTULMAZ (public repo, 2026-11-15): WEB_APP_DNS_SUNUCULARI ayari, bicim server/util/ic-ag-ayari.cjs.
+// Ayar yoksa her satir Portal cozucusuyla cozulur ve yanit `dnsAyarHatasi` ile sebebi soyler.
 // Bolge satirin (uygulamanin) domain'inden; site web sunucusunun adindan (Ankara 7 harf). Her uye KENDI
 // sitesinin DNS'iyle gosterilir. Bir site DNS'ine ulasilamazsa diger site denenmez (yanlis VIP olurdu),
 // hata yazilir. Bolgesi bilinmeyen satir Portal cozucusuyla cozulur ve ekran bunu soyler.
@@ -249,10 +249,10 @@ const DNS_SURE_MS = 3000;
 const DNS_ESZAMANLI = 20;
 const _dnsOnbellek = new Map();
 
-const DNS_BOLGELER = Object.freeze({
-  gtdmz: { Pendik: ['10.230.238.22'], Ankara: ['10.236.238.22'] },
-  fw: { Pendik: ['10.230.238.1'], Ankara: ['10.236.238.1'] },
-});
+const { webAppDnsSunuculari } = require('../util/ic-ag-ayari.cjs');
+
+/** Bolge -> site -> DNS sunuculari; her cagrida ayardan okunur. */
+const dnsBolgeleri = () => webAppDnsSunuculari().bolgeler;
 
 /** Domain -> DNS bolgesi ('gtdmz' | 'fw' | null). */
 function dnsBolgesi(domain) {
@@ -285,7 +285,7 @@ async function tekCozum(ad, sunucular) {
  * istekler: [{ad, bolge}] -> sonuc[`${bolge || '-'}|${ad}`] = { Pendik, Ankara } (bolge biliniyorsa)
  * ya da { varsayilan } (bolge yoksa Portal cozucusu).
  */
-async function dnsCozumle(istekler, { bolgeler = DNS_BOLGELER, cozucu = tekCozum, simdi = Date.now } = {}) {
+async function dnsCozumle(istekler, { bolgeler = dnsBolgeleri(), cozucu = tekCozum, simdi = Date.now } = {}) {
   const isler = [];
   const sonuc = {};
   for (const x of istekler || []) {
@@ -325,7 +325,7 @@ function registerWebApp(router) {
       : [];
     try {
       const { sonuc } = await dnsCozumle(istekler);
-      res.json({ ok: true, sonuc });
+      res.json({ ok: true, sonuc, dnsAyarHatasi: webAppDnsSunuculari().hata });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
@@ -508,4 +508,4 @@ async function webAppHesapla(key) {
 /** Test icin: hesap onbellegini bosaltir. */
 function _webAppOnbellekTemizle() { _hesaplar.clear(); }
 
-module.exports = { registerWebApp, _webAppOnbellekTemizle, dnsCozumle, dnsBolgesi, DNS_BOLGELER, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };
+module.exports = { registerWebApp, _webAppOnbellekTemizle, dnsCozumle, dnsBolgesi, dnsBolgeleri, adVaryantlari, webHostOf, webHostAdaylari, tierOf, topolojiOf, nasilAciklama, buildCertIndex, matchWebForApp };

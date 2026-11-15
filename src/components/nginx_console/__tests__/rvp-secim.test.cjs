@@ -147,7 +147,6 @@ test("RVP-7 her onerilen sunucunun Excel ustverisi var; bilinmeyen ad '?' ile is
         n++;
         assert.match(srv.host, /^GB[A-Z0-9]+$/, srv.host);
         assert.ok(srv.domain !== '?' && srv.domain, `${srv.host}: domain ustverisi yok`);
-        assert.ok(srv.subnet !== '?' && srv.subnet, `${srv.host}: subnet ustverisi yok`);
         assert.ok(srv.surum !== '?' && srv.surum, `${srv.host}: nginx surumu yok`);
         assert.ok(['Pendik', 'Ankara'].includes(srv.lokasyon), `${srv.host}: lokasyon`);
       }
@@ -181,8 +180,12 @@ test('RVP-7b onayli liste disindakiler oneri olarak CIKMAZ (GBNGXT07, Edu asamas
 
 // ── RVP-8 ekran: salt okunur, sorular tek yerden, secim degisince alt cevaplar silinir ─
 test('RVP-8 ekran salt okunur: is baslatan/yazan hicbir cagri yok', () => {
+  // Tek izinli istek: alt ag sutununun salt okunur ayari (2026-11-15; alt aglar repoda degil ayarda).
+  const IZINLI = 'nginxConsoleApi.rvpAltAglari()';
+  assert.equal(TAB_RAW.split(IZINLI).length - 1, 1, 'alt ag okumasi yok ya da birden fazla');
+  const kalan = TAB_RAW.split(IZINLI).join('');
   for (const kotu of ['fetch(', 'Api.', 'axios', 'POST', 'method:'])
-    assert.ok(!TAB_RAW.includes(kotu), `RP Secimi ekraninda yazma/istek izi var: ${kotu}`);
+    assert.ok(!kalan.includes(kotu), `RP Secimi ekraninda yazma/istek izi var: ${kotu}`);
   assert.ok(TAB_RAW.includes('rvpOner(secim)'), 'ekran karar fonksiyonunu kullanmiyor');
   assert.ok(TAB_RAW.includes('rvpSiradakiSoru(secim)'), 'ekran soru sirasini kendi uyduruyor');
   // Dort soru da TEK YERDE (RVP_SORULAR); ekranda ayri bir soru metni dizisi olmamali.

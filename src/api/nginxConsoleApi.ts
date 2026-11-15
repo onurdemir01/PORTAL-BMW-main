@@ -1,6 +1,6 @@
 // src/api/nginxConsoleApi.ts — Nginx Hub (2026-09-19): sunucu listesi, konfigurasyon
 // agaci/icerik (Ansible dokumundan, /sw), sertifika envanteri, dokum yenileme ve tek dosya push.
-import { safeJson } from './http';
+import { okJson, safeJson } from './http';
 import { eskiGizliKaydet } from './nginxEskiSunucuApi';
 
 const BASE = '/api/nginx-console';
@@ -714,6 +714,12 @@ function listeli<T extends { ok: boolean; message?: string }>(
 }
 
 export const nginxConsoleApi = {
+  /** RP Secimi alt ag sutunu: sunucu adi -> alt ag (ayar NGINX_RVP_ALT_AGLARI; tanimsizsa bos). */
+  rvpAltAglari: (): Promise<{
+    ok: boolean;
+    altAglar: Record<string, string>;
+    hata: string | null;
+  }> => fetch(`${BASE}/rvp-alt-aglari`).then(okJson),
   // Gercek SPA kesfi (2026-10-01): ad kalibina bakmadan, kabinde nginx kosan uygulamalar.
   // Sunucu 60 sn onbellekler; "Yenile" fresh=1 ile onbellegi atlar. Govdede yazilmayan
   // varsayilanlar BURADA geri doldurulur (spaYanitDoldur).

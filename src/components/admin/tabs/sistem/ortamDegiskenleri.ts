@@ -1031,4 +1031,26 @@ export const ENV_VARS: EnvVarMeta[] = [
     usedIn: 'server/opsx/prod-approval.cjs',
     saltOkunur: 'opsx',
   },
+  {
+    key: 'NGINX_RVP_ALT_AGLARI',
+    label: 'RP Seçimi alt ağları',
+    group: 'Sunucu',
+    description:
+      'Nginx Hub > RP Seçimi tablosundaki alt ağ sütunu. JSON: sunucu adı -> alt ağ (CIDR). Kurum iç ağı olduğu için kodda değil burada; tanımsızsa sütun "—" gösterir.',
+    required: false,
+    example: 'JSON nesnesi: "GBNGXD02": "192.0.2.0/24" (biçim .env.example)',
+    usedIn: 'server/util/ic-ag-ayari.cjs',
+    saltOkunur: 'ortam',
+  },
+  {
+    key: 'WEB_APP_DNS_SUNUCULARI',
+    label: 'Web uygulaması DNS sunucuları',
+    group: 'Sunucu',
+    description:
+      'Denetim > Web uygulaması DNS -> VIP çözümü: bölge ve site başına DNS sunucuları (JSON). Tanımsızsa her ad Portal çözücüsüyle çözülür ve ekran bunu söyler.',
+    required: false,
+    example: 'JSON nesnesi: bölge -> site -> ["192.0.2.22"] (biçim .env.example)',
+    usedIn: 'server/util/ic-ag-ayari.cjs',
+    saltOkunur: 'ortam',
+  },
 ];

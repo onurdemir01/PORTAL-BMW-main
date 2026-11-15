@@ -7,7 +7,7 @@
 // Sihirbaz SALT OKUNURDUR: hicbir is baslatmaz, hicbir sunucuya dokunmaz, hicbir tanim yapmaz.
 // Yalniz "hangi reverse proxy sunucusuna gitmelisin" sorusunu cevaplar. Karar tablosu ve sunucu
 // ustverisi rvpSecim.ts'te (saf, bekcisi var); burasi YALNIZ ekran.
-import React, { useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
@@ -19,6 +19,7 @@ import {
 import { Link } from 'react-router-dom';
 import { toast } from '@/hooks/useToast';
 import { Pill } from '@/components/denetim/ui';
+import { nginxConsoleApi } from '@/api/nginxConsoleApi';
 import {
   rvpOner,
   rvpSiradakiSoru,
@@ -85,7 +86,11 @@ const ORTAM_BASLIK: Record<'nonProd' | 'prod', string> = {
   prod: 'Production',
 };
 
+// Alt aglar kurum ic agidir, repoda degil Portal ayarinda (NGINX_RVP_ALT_AGLARI); sekme bir kez okur.
+const AltAglar = createContext<Record<string, string>>({});
+
 function SunucuSatiri({ s }: { s: RvpSunucu }) {
+  const altAg = useContext(AltAglar)[s.host];
   return (
     <tr className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
       <td className="px-2.5 py-1.5 font-medium whitespace-nowrap">{s.host}</td>
@@ -96,7 +101,7 @@ function SunucuSatiri({ s }: { s: RvpSunucu }) {
         {s.domain}
       </td>
       <td className="px-2.5 py-1.5 whitespace-nowrap tabular-nums" style={{ color: 'var(--text-muted)' }}>
-        {s.subnet}
+        {altAg || '—'}
       </td>
       <td className="px-2.5 py-1.5 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
         {s.surum || '—'}
@@ -182,6 +187,21 @@ function OrtamBlogu({ tur, blok }: { tur: 'nonProd' | 'prod'; blok: RvpBlok }) {
 
 export function RvpSecimTab() {
   const [secim, setSecim] = useState<RvpSecim>({});
+  const [altAglar, setAltAglar] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let iptal = false;
+    nginxConsoleApi.rvpAltAglari().then(
+      (r) => {
+        if (!iptal) setAltAglar(r.altAglar || {});
+      },
+      () => {
+        /* alt ag yalniz bilgi: okunamazsa sutun "—" kalir, sihirbaz calisir */
+      },
+    );
+    return () => {
+      iptal = true;
+    };
+  }, []);
   const siradaki = useMemo(() => rvpSiradakiSoru(secim), [secim]);
   const oneri = useMemo(() => rvpOner(secim), [secim]);
 
@@ -204,6 +224,7 @@ export function RvpSecimTab() {
   const sorulanlar = RVP_SORULAR.filter((q) => secim[q.anahtar] !== undefined || q.anahtar === siradaki);
 
   return (
+    <AltAglar.Provider value={altAglar}>
     <div className="space-y-4">
       <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <h2 className="text-base font-semibold flex items-center gap-2">
@@ -306,6 +327,7 @@ export function RvpSecimTab() {
         </div>
       )}
     </div>
+    </AltAglar.Provider>
   );
 }
 
