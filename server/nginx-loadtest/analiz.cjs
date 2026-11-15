@@ -2228,7 +2228,7 @@ function kosuAnaliz(veri, { adim, hedefTuru = 'sunucu', motor = 'k6', protokol =
       sifirlama: k.sifirlama || 0, ...(k.sorun ? { sorun: String(k.sorun).slice(0, 200) } : {}),
     }));
     const baslar = ctx.zamanTum.map((z) => z[1]).concat((veri.baslatilan || []).map((x) => sayi(x.bas_epoch)).filter((v) => v !== null));
-    const ilkTur = ctx.zamanTum.length ? ctx.zamanTum.reduce((a, z) => (z[1] < a[1] ? z : a))[0] : null;
+    const ilkTur = ctx.zamanTum.length ? ctx.zamanTum.reduce((a, z) => (z[1] < a[1] ? z : a), ctx.zamanTum[0])[0] : null;
     const ilkH = hesaplar.find((h) => h.r.tur === ilkTur);
     const bosta = agBosta(ctx, baslar.length ? enKucuk(baslar) : null, ilkH && ilkH.r._saatFarki !== undefined ? ilkH.r._saatFarki : null);
     if (bosta) ozet.ag_bosta = bosta;

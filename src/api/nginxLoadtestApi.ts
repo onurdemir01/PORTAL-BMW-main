@@ -1146,7 +1146,7 @@ export const nginxLoadtestApi = {
   kosulariSil: (kosular: number[], confirmText: string): Promise<NlSilYaniti> => fetch(`${BASE}/kosular/sil`, json({ kosular, confirmText })).then(safeJson),
   /** Arac setleri (okuma Admin disina acik; `ayar.proxy` yalniz Admin'e dolu). */
   araclar: async (): Promise<NlAraclar> => araclarNormalle(await okJson<unknown>(await fetch(`${BASE}/araclar`))),
-  /** Admin. 409 derleme_host_izinsiz / arac_proxy_gecersiz / arac_ozet_sabit_yok / kilit_dolu / sinir_asildi; 424 db_okunamadi. */
+  /** Admin. 409 derleme_host_izinsiz / arac_proxy_tanimsiz / arac_proxy_gecersiz / arac_ozet_sabit_yok / kilit_dolu / sinir_asildi; 424 db_okunamadi. */
   araclariHazirla: (body: { derlemeHost: string }): Promise<NlEylem> => fetch(`${BASE}/araclar`, json(body)).then(safeJson),
   /** Admin. DONE bir seti geri ceker; 409 arac_yok / arac_geri_cekilemez / zaten_geri_cekildi; 424 db_okunamadi. */
   aracGeriCek: (id: number): Promise<NlEylem> => fetch(`${BASE}/araclar/${id}/geri-cek`, json({})).then(safeJson),
