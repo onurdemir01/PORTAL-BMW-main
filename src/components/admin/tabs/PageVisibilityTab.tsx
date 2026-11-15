@@ -664,7 +664,7 @@ function OverrideEditor({
   const [kind, setKind] = useState<'user' | 'email'>('user');
   const gecerli =
     kind === 'email'
-      ? /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username.trim())
+      ? /^[^@\s]+@[^@\s][^@\s.]*\.[^@\s]+$/.test(username.trim())
       : username.trim().length > 0;
   return (
     <div className="space-y-2">

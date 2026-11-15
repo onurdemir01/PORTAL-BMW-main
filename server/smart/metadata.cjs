@@ -34,7 +34,7 @@ function parseSimpleYaml(src) {
       while (block.length && block[block.length - 1].trim() === '') block.pop();
       const indents = block.filter((b) => b.trim()).map((b) => b.match(/^[ \t]*/)[0].length);
       const indent = indents.length ? Math.min(...indents) : 0;
-      out[key] = block.map((b) => b.slice(indent).replace(/[ \t]+$/, '')).join('\n');
+      out[key] = block.map((b) => b.slice(indent).replace(/(?<![ \t])[ \t]+$/, '')).join('\n');
       continue;
     }
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
@@ -102,7 +102,7 @@ function buildSmartMetadata(
       // ({% if %}) satirlar bos kalinca ardisik bos satirlar tek satira iner, uc bosluk atilir.
       metadata[key] = String(smartMetaEnv.renderString(rawValue, ctx))
         .replace(/\\n/g, '\n')
-        .replace(/[ \t]+\n/g, '\n')
+        .replace(/(?<![ \t])[ \t]+\n/g, '\n')
         .replace(/\n{2,}/g, '\n')
         .trim();
     } catch (renderErr) {

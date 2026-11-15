@@ -761,7 +761,8 @@ def was_oku(yol):
 # ── LOG OKUMA ────────────────────────────────────────────────────────────────────────────────────
 
 ACCESS_ZAMAN = re.compile(r'\[(\d{2})/(\w{3})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})\]')
-ACCESS_ISTEK = re.compile(r'"([A-Z]{3,10}) (\S+)[^"]*" (\d{3}) ')
+# Istek: (\S+) tam kosu ya da (kosu '"' ile bitiyorsa) bir eksigi; eski (\S+)[^"]* ile ayni gruplar, dogrusal.
+ACCESS_ISTEK = re.compile(r'"([A-Z]{3,10}) (\S+)(?:\s[^"]*)?" (\d{3}) ')
 ERROR_ZAMAN = re.compile(r'\[\w{3} (\w{3}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d+)? (\d{4})\]')
 # Arka uca baglanamama: grup 1 hedef host, grup 2 (varsa) port. Ornekler (Apache 2.4 / mod_jk / WAS eklentisi):
 #   AH00957: AJP: attempt to connect to 10.1.1.1:8009 (10.1.1.1) failed

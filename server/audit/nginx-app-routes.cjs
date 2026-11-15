@@ -48,9 +48,12 @@ const L = (v) =>
 
 /** FQDN'in govdesi: sema ve yol atilir, kucuk harfe indirilir. */
 function hostOf(v) {
-  return L(v)
-    .replace(/^https?:\/\//, '')
-    .replace(/\/.*$/, '');
+  const s = L(v).replace(/^https?:\/\//, '');
+  // Yol: SON satirdaki ilk '/' ve sonrasi atilir. Eski `.replace(/\/.*$/, '')` ile ayni sonuc ('.'
+  // satir sonunu gecmez) ama dogrusal: o desen her '/'den satir sonuna tarardi (Sonar S8786).
+  const satirBasi = 1 + Math.max(...['\n', '\r', '\u2028', '\u2029'].map((c) => s.lastIndexOf(c)));
+  const yol = s.indexOf('/', satirBasi);
+  return yol < 0 ? s : s.slice(0, yol);
 }
 
 /** Route inventory satirlarindan (ns, app) -> aday adresler. SAF fonksiyon, test edilebilir.

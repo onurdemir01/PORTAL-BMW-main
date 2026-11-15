@@ -49,7 +49,7 @@ export function grupEtiketi(g: string): string {
   return m ? m[1].trim() : g.trim();
 }
 
-const grupAnahtari = (g: string) => g.trim().toLowerCase().replace(/\s*,\s*/g, ',');
+const grupAnahtari = (g: string) => g.trim().toLowerCase().replace(/(?:(?<!\s)\s+)?,\s*/g, ',');
 
 const SECENEKLER: { mod: SsErisimModu; baslik: string; aciklama: string; icon: React.ElementType }[] = [
   { mod: 'kapali', baslik: 'Kapalı', aciklama: 'Yalnız yöneticiler görür ve çalıştırır.', icon: LockClosedIcon },

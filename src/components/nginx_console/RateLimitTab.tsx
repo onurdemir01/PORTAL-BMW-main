@@ -65,7 +65,7 @@ const SIRA_ETIKET: Record<Sira, string> = {
  *  siralamasi "100r/s" > "50r/s" derdi ve rapor yanlis okunurdu. */
 function oranSayi(v: string | null): number | null {
   if (!v) return null;
-  const m = /([\d.]+)\s*r\/(s|m)/i.exec(v);
+  const m = /(?<![\d.])([\d.]+)\s*r\/(s|m)/i.exec(v);
   if (!m) return null;
   const n = Number(m[1]);
   if (!Number.isFinite(n)) return null;

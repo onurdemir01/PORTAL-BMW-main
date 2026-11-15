@@ -291,7 +291,7 @@ function hedefIsleri(t, gecmis, { sunucuVar } = {}) {
 // klasik AWX / AAP <= 2.4 /#/jobs/... . Sunucu yoksa null.
 function awxIsAdresi(server, jobId) {
   if (!server || !server.url) return null;
-  const kok = String(server.url).replace(/\/+$/, '');
+  const kok = String(server.url).replace(/(?<!\/)\/+$/, '');
   return /\/api\/controller\//.test(`${server.apiBase || ''}/`) ? `${kok}/execution/jobs/playbook/${jobId}/output` : `${kok}/#/jobs/playbook/${jobId}/output`;
 }
 

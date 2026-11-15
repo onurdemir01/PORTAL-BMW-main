@@ -44,7 +44,7 @@ type Kontrol = { ad: string; sonuc: Sonuc; deger?: string };
 /** Satirda yalniz surum numarasi ("k6 v0.49.0 (go1.21.6, linux/amd64)" -> v0.49.0); tamami bilgi satirinda. */
 function motorSatiri(o: NlOnKontrol, motor: NlMotor): Kontrol {
   if (motor === 'wrk') {
-    const surum = o.wrkSurum ? (/\d+\.\d+(?:\.\d+)?/.exec(o.wrkSurum)?.[0] ?? o.wrkSurum) : undefined;
+    const surum = o.wrkSurum ? (/(?<!\d)\d+\.\d+(?:\.\d+)?/.exec(o.wrkSurum)?.[0] ?? o.wrkSurum) : undefined;
     // Uc durum: calisan ve surumu okunan ikili / calisiyor ama surum satiri yok ya da < 4 (kaldi) / olculemedi.
     if (o.wrkVar === true) return { ad: 'Yük sunucusunda wrk', sonuc: 'gecti', deger: surum };
     if (o.wrkCalisiyor === true) return { ad: 'Yük sunucusunda wrk', sonuc: 'kaldi', deger: 'wrk çalışıyor, sürüm okunamadı' };

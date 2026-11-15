@@ -72,7 +72,7 @@ const bilinen = (j) => j.runningKnown !== false;
 const uygTaban = (j) => tabanAd((j && j.invApp) || (j && j.name));
 const yolAdi = (y) =>
   String(y || '')
-    .replace(/\/+$/, '')
+    .replace(/(?<!\/)\/+$/, '')
     .split('/')
     .pop();
 

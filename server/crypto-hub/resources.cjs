@@ -696,7 +696,7 @@ function maskeleManifest(lines, sirRe) {
       } else {
         if (bos) continue;
         if (blokGirinti < 0) blokGirinti = girinti;
-        const m = /^(\s*)("[^"]*"|'[^']*'|[^\s:#][^:#]*?)\s*:(\s|$)/.exec(l);
+        const m = /^(\s*)("[^"]*"|'[^']*'|[^\s:#](?:[^:#]*[^\s:#])?)\s*:(\s|$)/.exec(l);
         if (m && girinti === blokGirinti) {
           out.push(`${m[1]}${m[2]}: ****`);
           atla = girinti;
@@ -707,7 +707,8 @@ function maskeleManifest(lines, sirRe) {
     if (secret[i] && girinti === 0) {
       const m = /^(data|stringData):(.*)$/.exec(l);
       if (m) {
-        const rest = m[2].replace(/#.*$/, '').trim();
+        // m[2] satir sonu icermez (`(.*)$`): '#' ile sonrasi atilir; `$` capasi gereksiz ve karesel taramaydi.
+        const rest = m[2].replace(/#.*/, '').trim();
         if (rest) out.push(`${m[1]}: ****`);
         else {
           out.push(l);
@@ -717,14 +718,14 @@ function maskeleManifest(lines, sirRe) {
         continue;
       }
     }
-    const ad = /^(\s*)-?\s*name:\s*["']?([A-Za-z0-9_.-]+)["']?\s*$/.exec(l);
+    const ad = /^(\s*)(?:-\s*)?name:\s*["']?([A-Za-z0-9_.-]+)["']?\s*$/.exec(l);
     if (sirRe?.test(ad?.[2])) {
       envSir = i;
       out.push(l);
       continue;
     }
     if (envSir >= 0 && i - envSir <= 2) {
-      const v = /^(\s*)(-\s*)?value:\s*(.*)$/.exec(l);
+      const v = /^(\s*)(-\s*)?value:\s*(?!\s)(.*)$/.exec(l);
       if (v?.[3].trim() && v[3].trim() !== '|' && v[3].trim() !== '>') {
         out.push(`${v[1]}${v[2] || ''}value: ****`);
         envSir = -1;
@@ -737,7 +738,9 @@ function maskeleManifest(lines, sirRe) {
         continue;
       }
     }
-    const k = /^(\s*-?\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/.exec(l);
+    // Deger: bosluksuz baslayip biten metin; yalniz bosluk varsa son satir-ici bosluk karakteri (eski
+    // tembel `(.+?)\s*$` ile ayni gruplar, dogrusal; Sonar S8786 - esdegerlik: __tests__/regex-dogrusal).
+    const k = /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/.exec(l);
     if (sirRe?.test(k?.[2])) {
       const d = k[3];
       if (d === '|' || d === '>' || d === '|-' || d === '>-') {

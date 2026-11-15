@@ -94,13 +94,16 @@ JVM_SIR_RE = re.compile(r'(pass(word|wd|phrase)?|pwd|secret|token|credential|(ac
                         r'|private|api|client|master|auth)[_.-]?key|key[_.-]?(store|pass)[_.-]?pass(word)?|keypass'
                         r'|storepass|truststore[_.-]?pass(word)?)', re.I)
 JVM_URL_KIMLIK_RE = re.compile(r'(://[^/:@ ]+:)[^@/ ]+@')
-JVM_KULLANICI_RE = re.compile(r'([A-Za-z0-9_$#.-]+/)[^@/ "]+@')
+# 'kullanici/parola@': eslesme '/'den baslar (geri bakis), grup 1 = '/'; mask.cjs R5 ile ayni cikti, dogrusal.
+JVM_KULLANICI_RE = re.compile(r'(?<=[A-Za-z0-9_$#.-])(/)[^@/ "]+@')
 JVM_AYRAC_RE = re.compile(r'[=:]')
 JVM_BOSLUK_RE = re.compile(r'[\t\r\n\x0b\x0c]')
 JVM_ARG_SINIRI = 2000
 JVM_OZELLIK_SINIRI = 100
 
-JAR_RE = re.compile(r'^(.+?)-(\d[^/]*)\.jar$', re.I)
+# ad-surum.jar: grup 1 = (ilk satirda) son '/'ye kadar + o parcada ilk '-<rakam>'a kadar. Eski tembel
+# (.+?)- ile ayni sonuc; her '-<rakam>' adayindan sona tarama yok (Sonar S8786).
+JAR_RE = re.compile(r'^((?:[^\n]*/|[^/\n])(?:[^-/\n]|-(?!\d))*)-(\d[^/]*)\.jar$', re.I)
 UCUCU_SEGMENT = set(['logs', 'log', 'tmp', 'temp', 'work'])
 UCUCU_AD = re.compile(r'(\.(log|tmp|swp|out)(\.\d+)?$)|(^\.nfs)', re.I)
 WEB_VARYANT = re.compile(r'^web\.([a-z0-9_-]+)\.xml$', re.I)

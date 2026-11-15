@@ -296,7 +296,7 @@ function agirlikBicim(v) {
   if (typeof w !== 'number' || !Number.isFinite(w) || w <= 0 || w > 1e9) return null;
   const r = Math.round(w * 1e6) / 1e6;
   if (r <= 0) return null;
-  return r.toFixed(6).replace(/\.?0+$/, '');
+  return r.toFixed(6).replace(/\.?(?<!0)0+$/, '');
 }
 
 /**
@@ -1074,7 +1074,7 @@ function serbestAgBul(ip, aglar) {
 }
 
 function ciktiKok(env = process.env) {
-  const v = String(env.NGINX_LOADTEST_DIR ?? '').trim().replace(/\/+$/, '');
+  const v = String(env.NGINX_LOADTEST_DIR ?? '').trim().replace(/(?<!\/)\/+$/, '');
   if (!v) return VARSAYILAN_CIKTI_KOK;
   if (yolGuvenli(v, CIKTI_KOK_RE)) return v;
   console.warn('[NginxYukTesti] NGINX_LOADTEST_DIR gecersiz, varsayilan kullaniliyor');
@@ -1846,7 +1846,7 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
  * (zaman asimsiz Node regex'i olay dongusunu kilitleyebilir; asil koruma izin listesi: bilinen bosluk).
  */
 function serverNameEslesir(ad, vhost) {
-  const a = String(ad ?? '').trim().toLowerCase().replace(/;+$/, '').replace(/^["']+|["']+$/g, '');
+  const a = String(ad ?? '').trim().toLowerCase().replace(/(?<!;);+$/, '').replace(/^["']+|(?<!["'])["']+$/g, '');
   const v = String(vhost ?? '').trim().toLowerCase();
   if (!a || !v || a === '_' || a.startsWith('~')) return false;
   if (a === v) return true;

@@ -307,7 +307,7 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
     if (f.required && !v) return `${f.label} zorunlu.`;
     if (!v) return null;
     if (f.type === 'integer' && !/^-?\d+$/.test(v)) return 'Tam sayı girin.';
-    if (f.type === 'float' && !/^-?\d*\.?\d+$/.test(v)) return 'Geçerli bir sayı girin.';
+    if (f.type === 'float' && !/^-?(?:\d*\.)?\d+$/.test(v)) return 'Geçerli bir sayı girin.';
     // Kaynaktan beslenen alanlarda liste istemcide anlık yüklenir; whitelist kararı
     // sunucuda (assertChoiceSources) verilir — burada statik listeye bakılmaz.
     if (
@@ -2036,7 +2036,7 @@ export function ssSlug(title: string): string {
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'servis'
+      .replace(/^-+|(?<!-)-+$/g, '') || 'servis'
   );
 }
 

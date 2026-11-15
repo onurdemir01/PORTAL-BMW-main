@@ -19,7 +19,7 @@ const BLOB_NAME = 'retirement:scc';
 const ADRES_MAX = 10;
 // Sade bir kontrol: tek @, iki tarafta bosluk/ayirac yok, alan adinda nokta. RFC uyumu degil,
 // yanlis yapistirmayi (virgul/noktali virgul kacmasi, isim + adres) yakalamak icin.
-const ADRES_RE = /^[^\s@,;<>"']+@[^\s@,;<>"']+\.[^\s@,;<>"']+$/;
+const ADRES_RE = /^[^\s@,;<>"']+@[^\s@,;<>"'][^\s@,;<>"'.]*\.[^\s@,;<>"']+$/;
 
 function db() { return require('../db/index.cjs'); }
 
