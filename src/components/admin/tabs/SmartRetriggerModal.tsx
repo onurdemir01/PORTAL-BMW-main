@@ -11,6 +11,7 @@ import {
 } from '@/api/ansibleApi';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 import { fmtDateTime as fmt } from '@/utils/datetime';
 
 const SMART_ROZET: Record<string, { label: string; className: string }> = {
@@ -35,6 +36,10 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
   const [confirmOutside, setConfirmOutside] = useState(false);
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
+  // Arka plan tiklamasiyla ayni kural klavyede: gonderim surerken ESC de kapatmaz.
+  useEscIleKapat(true, () => {
+    if (!sending) onClose();
+  });
 
   async function loadCheck() {
     setChecking(true);
@@ -105,6 +110,8 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+      // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC.
+      role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget && !sending) onClose();
       }}

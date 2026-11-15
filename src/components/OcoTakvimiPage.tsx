@@ -216,7 +216,9 @@ export default function OcoTakvimiPage() {
             <span className="flex flex-wrap items-center gap-1.5 mt-1">
               {/* Kopyalanabilir OCO numarası (kullanıcı, 2026-09-29). Tıklama satırı
                   AÇMAMALI: kopyalamak isteyen kişi satırı açmak istemiyor. */}
-              <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+              {/* Sarmalayici yalniz icteki kopyala dugmesinden kabaran olayi durdurur, kendisi
+                  etkilesimli degil: role="presentation" (jsx-a11y'nin bu durum icin onerdigi kalip). */}
+              <span role="presentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                 <CodeChip value={String(r.oco)} label={`#${r.oco}`} copyable tone="muted" />
               </span>
               <OcoRozetleri r={r} kapandi={kapandi} />

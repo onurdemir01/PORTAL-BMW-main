@@ -24,6 +24,7 @@ import { fmtDateTime as fmt } from '@/utils/datetime';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import SmartRetriggerModal from './SmartRetriggerModal';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -88,7 +89,12 @@ export default function SmartTicketsTab() {
   const [cancelTarget, setCancelTarget] = useState<AdminSmartTicket | null>(null);
   const [cancelNote, setCancelNote] = useState('');
   const iptalNotuId = useId();
+  const iptalBaslikId = useId();
   const [cancelling, setCancelling] = useState(false);
+  // Iptal penceresi arka plan tiklamasiyla ayni kuralla ESC ile de kapanir.
+  useEscIleKapat(!!cancelTarget, () => {
+    if (!cancelling) setCancelTarget(null);
+  });
   // Zaman asimina dusmus talebi admin yeniden tetikler (2026-11-11); null ise modal kapali.
   const [retriggerTarget, setRetriggerTarget] = useState<AdminSmartTicket | null>(null);
 
@@ -552,13 +558,20 @@ export default function SmartTicketsTab() {
           {cancelTarget && (
             <div
               className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+              // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC.
+              role="presentation"
               onClick={(e) => {
                 if (e.target === e.currentTarget && !cancelling) setCancelTarget(null);
               }}
             >
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={iptalBaslikId}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4"
+              >
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
+                  <h3 id={iptalBaslikId} className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
                   <p className="text-xs text-gray-500 mt-1">
                     <span className="font-mono">{cancelTarget.username}</span> kullanıcısının{' '}
                     <span className="font-semibold">

@@ -39,12 +39,13 @@ export default function RetirementHedefAyrinti({ rec, t, sekme, ipucu, onSekme, 
   return (
     <div className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
       <div className="flex items-center gap-1 border-b px-2" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div role="tablist" aria-label={`${t.host} ayrıntısı`} className="flex items-center gap-1" onKeyDown={tus}>
+        {/* Ok tuslari odagi TASIYAN sekme dugmesinde dinlenir (sekme listesi kendisi odaklanmaz). */}
+        <div role="tablist" aria-label={`${t.host} ayrıntısı`} className="flex items-center gap-1">
           {sekmeler.map((s) => {
             const secili = s.k === aktif;
             return (
               <button key={s.k} ref={(el) => { dugmeler.current[s.k] = el; }} type="button" role="tab" id={`rt-sekme-${t.id}-${s.k}`} aria-selected={secili} aria-controls={panelId} tabIndex={secili ? 0 : -1}
-                onClick={() => onSekme(s.k)} className="px-3 py-2 text-[12px] font-semibold focus-visible:outline-offset-2!"
+                onClick={() => onSekme(s.k)} onKeyDown={tus} className="px-3 py-2 text-[12px] font-semibold focus-visible:outline-offset-2!"
                 style={secili ? { color: 'var(--text-primary)', boxShadow: 'inset 0 -2px 0 var(--accent)' } : { color: 'var(--text-secondary)' }}>
                 {s.ad}
               </button>

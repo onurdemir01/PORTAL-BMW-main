@@ -91,7 +91,9 @@ export default function SelfServisTasimaDetay({
 
   const icerik = (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Taşıma detayı">
-      <div className="absolute inset-0 bg-black/30" onClick={onKapat} />
+      {/* Arka plan: fare kisayolu, klavye karsiligi yukaridaki ESC dinleyicisi. Kendisi bir
+          kontrol degil (role="presentation"). */}
+      <div className="absolute inset-0 bg-black/30" role="presentation" onClick={onKapat} />
       <aside className="relative w-full max-w-3xl h-full overflow-y-auto bg-white shadow-xl p-4 text-xs space-y-4" style={{ background: 'var(--bg-surface, #fff)' }}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">{s ? s.title : 'Taşıma detayı'}</h3>

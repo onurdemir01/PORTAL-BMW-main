@@ -35,6 +35,7 @@ import HelpModal, { type HelpSection } from '@/components/common/HelpModal';
 import { fmtDateTime } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import YardimDugmesi from '@/components/common/YardimDugmesi';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const PERFORMANCE_HELP_SECTIONS: HelpSection[] = [
   {
@@ -330,6 +331,8 @@ function ProblemsTab({ env }: { env: string }) {
   const [status, setStatus] = useState('OPEN');
   const [host, setHost] = useState('');
   const [detail, setDetail] = useState<{ id: string; title: string; text: string } | null>(null);
+  // Detay penceresi arka plana tiklayinca kapaniyor; klavye karsiligi ESC.
+  useEscIleKapat(!!detail, () => setDetail(null));
 
   const load = (refresh = false) => {
     setLoading(true);
@@ -450,11 +453,17 @@ function ProblemsTab({ env }: { env: string }) {
           >
             <div
               className="min-h-full flex items-center justify-center"
+              // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede
+              // ESC. Iletisim kutusu rolu icteki panelde.
+              role="presentation"
               onClick={(e) => {
                 if (e.target === e.currentTarget) setDetail(null);
               }}
             >
               <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dt-problem-detay-baslik"
                 className="rounded-2xl w-full max-w-2xl flex flex-col max-h-[calc(100dvh-2rem)] my-4"
                 style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}
               >
@@ -462,7 +471,7 @@ function ProblemsTab({ env }: { env: string }) {
                   className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0 gap-2"
                   style={{ borderColor: 'var(--border)' }}
                 >
-                  <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                  <span id="dt-problem-detay-baslik" className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                     Problem Detayı
                   </span>
                   <div className="flex items-center gap-2">
