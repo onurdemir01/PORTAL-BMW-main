@@ -38,6 +38,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
+          # main korumasi acikken push icin atlama izinli deploy key (docs/KALITE-KAPILARI.md);
+          # sir yoksa GITHUB_TOKEN kullanilir.
+          ssh-key: ${{ secrets.KAPSAM_DEPLOY_KEY }}
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4

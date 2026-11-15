@@ -82,7 +82,7 @@ const LoginPage: React.FC = () => {
   //   * girisli kullanici adresi elle /login yazdi ya da yer imiyle acti.
   // Hedef, atildigi sayfadir (yoksa pano).
   useEffect(() => {
-    if (isAuthenticated) navigate(from, { replace: true });
+    if (isAuthenticated) void navigate(from, { replace: true });
   }, [isAuthenticated, from, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -100,7 +100,7 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
     try {
       await login(username, password, rememberMe && !!hatirlaGun);
-      navigate(from, { replace: true });
+      void navigate(from, { replace: true });
     } catch (err: any) {
       setError(err?.message || "Giriş başarısız. Lütfen tekrar deneyin.");
       if (err?.retryAfter > 0) setBekleBitis(Date.now() + err.retryAfter * 1000);

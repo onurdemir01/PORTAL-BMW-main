@@ -367,7 +367,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // kullaniciyi dusuruyordu — kapinin "yalnizca imzali 401" kuralini atlayan
           // ikinci bir yoldu (AWX token 401'i de buradan dusurebilirdi).
           if (unauthorized) return;
-          if (version !== visibilityVersion.current) refreshVisibility();
+          if (version !== visibilityVersion.current) void refreshVisibility();
         })
         .catch(() => {});
     }, 45_000);

@@ -70,6 +70,12 @@ const GELISTIRME_BETIKLERI = new Set([
   'scripts/kanca-kur.mjs',
   'scripts/arac-kontrol.cjs',
   'scripts/kapsam-yayinla.cjs',
+  // Kalite kapilari (docs/KALITE-KAPILARI.md): gelistirici / CI araci, sunucuda kosmaz.
+  'scripts/kapi.cjs',
+  'scripts/kapsam-esik.cjs',
+  'scripts/sir-tarama.cjs',
+  'scripts/bicim-kapisi.cjs',
+  'scripts/sonar-kapi.cjs',
 ]);
 
 /** Kopyalanmayacak yol mu? `goreli` kok'e gore, `/` ayracli. */

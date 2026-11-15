@@ -48,7 +48,7 @@ export default [
     },
   },
   {
-    files: ['server/**/*.cjs', 'src/**/*.cjs'],
+    files: ['server/**/*.cjs', 'src/**/*.cjs', 'shared/**/*.cjs', 'scripts/**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',
@@ -63,6 +63,18 @@ export default [
       'no-useless-assignment': 'off',
       'no-regex-spaces': 'off',
       'no-irregular-whitespace': 'warn',
+    },
+  },
+  {
+    // Gelistirici betikleri (ES modulu): Node ortami.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
   {

@@ -75,7 +75,7 @@ export function CommandPalette() {
   });
 
   function go(item: PaletteItem) {
-    navigate(item.to);
+    void navigate(item.to);
     setOpen(false);
   }
 

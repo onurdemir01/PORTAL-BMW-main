@@ -1,4 +1,7 @@
 name: CI Quality and Security Gates
+# Kalite kapilari (docs/KALITE-KAPILARI.md). Adim listesi scripts/kapi.cjs KAPILAR ile ayni olmali;
+# server/__tests__/kalite-kapilari.test.cjs esitligi kilitler. Hicbir adim continue-on-error /
+# `|| true` tasimaz. main korumasinda zorunlu kontroller: `verify` ve `sonar`.
 
 on:
   push:
@@ -16,6 +19,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -26,6 +31,17 @@ jobs:
 
       - name: Install Dependencies
         run: npm run kur
+
+      - name: Secret Scan Gate (PR / push range)
+        env:
+          OLAY: ${{ github.event_name }}
+          TABAN: ${{ github.event.pull_request.base.sha }}
+          ONCEKI: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$OLAY" = pull_request ]; then ARALIK="$TABAN...$SHA"; else ARALIK="$ONCEKI..$SHA"; fi
+          case "$ARALIK" in 0000000000000000000000000000000000000000*|..*) ARALIK="$SHA~1..$SHA" ;; esac
+          node scripts/sir-tarama.cjs --aralik "$ARALIK"
 
       - name: Security Audit Gate
         run: npm run guvenlik
@@ -39,10 +55,14 @@ jobs:
           npm run lint:ascii
           npm run lint
           npm run check:server
+          node scripts/manifest.cjs --dogrula
           npm run preflight
 
       - name: Coverage Suite (Node + Vitest + LCOV Merge)
         run: npm run test:coverage
+
+      - name: Coverage Threshold Gate
+        run: node scripts/kapsam-esik.cjs
 
       - name: Mutation Testing Gate
         run: npm run test:mutation
@@ -64,3 +84,42 @@ jobs:
             coverage/sbom-runtime.cdx.json
             coverage/sbom-full.cdx.json
           if-no-files-found: ignore
+
+  sonar:
+    # Yerel SonarQube kalite kapisi: kurumsal kapidan siki ("Portal Kati", kalite/esikler.json).
+    # Kapsam raporu `verify` isinin urettigi coverage/lcov.info.
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      sonarqube:
+        image: sonarqube:26.11.0.134175-community
+        env:
+          SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: 'true'
+        ports:
+          - 9000:9000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: gelistirme/package-lock.json
+
+      # Tip denetimli kurallar (orn. S9383 bekletilmeyen promise) ancak paket tipleriyle calisir.
+      - name: Install Dependencies
+        run: npm run kur
+
+      - name: Download Coverage Report
+        uses: actions/download-artifact@v4
+        with:
+          name: quality-and-sbom-artifacts
+          path: coverage
+
+      - name: SonarQube Quality Gate
+        env:
+          SONAR_HOST_URL: http://localhost:9000
+        run: node scripts/sonar-kapi.cjs --ci

@@ -1465,7 +1465,7 @@ export default function RetirementTab({
           onCreated={(id) => {
             setCreating(false);
             setOneriAcik(null);
-            load();
+            void load();
             setOpenId(id);
           }}
         />
@@ -1475,7 +1475,7 @@ export default function RetirementTab({
           id={openId}
           onClose={() => {
             setOpenId(null);
-            load();
+            void load();
           }}
         />
       )}
@@ -2516,7 +2516,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     .catch(() => null),
                 ),
             );
-            load();
+            void load();
           }
           return { status: s.status, output: s.output || '', result: s.result };
         },
@@ -2576,7 +2576,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
           if (!st.ok) throw new Error(st.message || 'Durum okunamadı.');
           if (TERMINAL.has(st.status) && !done) {
             done = true;
-            load();
+            void load();
           }
           return { status: st.status, output: st.output || '', result: st.result };
         },
@@ -2682,7 +2682,7 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             if (TERMINAL.has(s.status) && !bitti) {
               bitti = true;
               setTimeout(() => {
-                load();
+                void load();
               }, 1500);
             }
             return { status: s.status, output: s.output || '', result: s.result };

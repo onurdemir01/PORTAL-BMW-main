@@ -27,7 +27,7 @@
     "check:server": "node scripts/check-server.cjs",
     "test": "node scripts/run-tests.cjs",
     "prelint": "node scripts/arac-kontrol.cjs",
-    "lint": "eslint src/ server/ --max-warnings 0",
+    "lint": "eslint src/ server/ shared/ scripts/ --max-warnings 0",
     "format": "prettier --write .",
     "pretest:ui": "node scripts/arac-kontrol.cjs",
     "test:ui": "vitest run",
@@ -36,6 +36,9 @@
     "kapsam:yayinla": "node scripts/kapsam-yayinla.cjs",
     "kapsam:dogrula": "node scripts/kapsam-yayinla.cjs --dogrula",
     "lint:ascii": "node scripts/check-ascii.cjs",
+    "kapi": "node scripts/kapi.cjs",
+    "kapi:hizli": "node scripts/kapi.cjs --hizli",
+    "kapi:sonar": "node scripts/sonar-kapi.cjs",
     "ui:tarama": "node scripts/ui-tarama/tarama.mjs",
     "fix:ascii": "node scripts/fix-ascii.cjs",
     "preflight": "node scripts/preflight.cjs",
@@ -48,11 +51,8 @@
     "tls:dene": "node scripts/test-tls.cjs"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix"
-    ],
-    "*.{ts,tsx,cjs,mjs,json,md}": [
-      "prettier --write"
+    "{src,server,shared,scripts}/**/*.{ts,tsx,cjs,mjs,js}": [
+      "eslint --max-warnings 0 --no-warn-ignored"
     ]
   },
   "dependencies": {

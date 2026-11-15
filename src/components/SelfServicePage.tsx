@@ -2131,11 +2131,11 @@ export default function SelfServicePage() {
   // Bilinmeyen/silinmis slug: sessizce "tumu"ne don (liste yuklendikten sonra)
   useEffect(() => {
     if (slug && TASINAN_SLUG[slug]) {
-      navigate(TASINAN_SLUG[slug], { replace: true });
+      void navigate(TASINAN_SLUG[slug], { replace: true });
       return;
     }
     if (!loading && slug && !Object.values(SLUG).includes(slug))
-      navigate('/self-service', { replace: true });
+      void navigate('/self-service', { replace: true });
   }, [loading, slug, SLUG, navigate]);
   const SECTIONS: { title: string; icon: React.ElementType; ids: TopTab[] }[] = [
     {

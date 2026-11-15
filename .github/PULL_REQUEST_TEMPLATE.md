@@ -3,20 +3,17 @@
 - **Ne değişti?** <!-- Kısa özet -->
 - **İlgili PBI / Talep:** <!-- Varsa referans -->
 
-## Doğrulama Kontrol Listesi (`CONTRIBUTING.md` & `SECURITY.md`)
+## Kalite kapıları ([docs/KALITE-KAPILARI.md](../docs/KALITE-KAPILARI.md))
 
-- [ ] `npm run lint` (`--max-warnings 0`, sıfır yeni uyarı/bastırma)
-- [ ] `npm run lint:ascii` (sunucu ve betiklerde ASCII kuralı)
-- [ ] `npx tsc --noEmit` (strict TypeScript kontrolü)
-- [ ] `npm test` (Node.js sunucu ve mimari bekçi testleri)
-- [ ] `npm run test:ui` (Vitest istemci testleri)
-- [ ] `npm run guvenlik` (npm audit + Xray taban kapısı — 0 Critical / 0 High)
-- [ ] `npm run sbom` (CycloneDX SBOM ve lisans uyumu)
-- [ ] `npm run preflight` (kurumsal sürüm ön kontrolü)
-- [ ] `npm run build` ve `npm run paket` doğrulandı
+- [ ] `npm run kapi` yerelde yeşil (çıktıdaki özet satırları aşağıda)
+- [ ] Sonar'a dokunan değişiklikte `npm run kapi:sonar` yeşil
+- [ ] CI: `verify` ve `sonar` yeşil
 
-## Güvenlik ve Uyumluluk
+<!-- npm run kapi ozeti -->
 
-- [ ] Yeni gizli anahtar, gerçek kurum IP'si, `.env` veya `.har` dosyası eklenmedi
-- [ ] `NOSONAR`, `@ts-ignore`, `eslint-disable`, `it.skip` veya yapay coverage hariç tutma eklenmedi
-- [ ] Yetkilendirme / girdi doğrulama / log maskeleme kuralları korundu
+## Onaylayıcı için
+
+- [ ] Kapı gevşetilmedi: eşik, bastırma, dışlama, test zayıflatma, dizgi bölme yok. `kalite/`, `sonar-project.properties`, `.github/workflows/`, `.husky/` değiştiyse gerekçesi yazılı.
+- [ ] Yeni davranışın davranış testi var (yalnız kaynak metni okuyan bekçi değil).
+- [ ] Sır, kurum iç adı / IP'si, `.env` ya da `.har` eklenmedi.
+- [ ] Arayüz değiştiyse gerçek tarayıcıda bakıldı (`npm run ui:tarama`).

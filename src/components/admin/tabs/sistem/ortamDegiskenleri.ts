@@ -67,7 +67,7 @@ export const ENV_VARS: EnvVarMeta[] = [
     group: 'Veritabanı',
     description: "Portal DB'sinin barındığı MSSQL sunucu adresi.",
     required: true,
-    example: '10.151.162.147',
+    example: '192.0.2.10',
     usedIn: 'server/db/index.cjs',
     kritik: true,
   },

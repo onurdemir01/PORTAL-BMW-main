@@ -1,1 +1,5 @@
+# Kalite kapilari, commit ani (docs/KALITE-KAPILARI.md). --no-verify ile atlamak YASAK: CI ayni
+# kapilari yeniden kosar ve main korumasi kirmizi PR'i birlestirtmez.
 npx lint-staged
+node scripts/bicim-kapisi.cjs
+node scripts/sir-tarama.cjs --staged

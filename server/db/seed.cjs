@@ -17,7 +17,7 @@ const SAMPLE_HOSTS = [
   {
     hostname: 'app-server-01',
     fqdn: 'app-server-01.internal.corp',
-    ip: '10.10.1.101',
+    ip: '192.0.2.11',
     environment: 'production',
     product_type: 'backend',
     middleware_type: 'JBoss',
@@ -29,7 +29,7 @@ const SAMPLE_HOSTS = [
   {
     hostname: 'app-server-02',
     fqdn: 'app-server-02.internal.corp',
-    ip: '10.10.1.102',
+    ip: '192.0.2.12',
     environment: 'production',
     product_type: 'backend',
     middleware_type: 'JBoss',
@@ -41,7 +41,7 @@ const SAMPLE_HOSTS = [
   {
     hostname: 'web-proxy-01',
     fqdn: 'web-proxy-01.internal.corp',
-    ip: '10.10.2.11',
+    ip: '192.0.2.13',
     environment: 'production',
     product_type: 'frontend',
     middleware_type: 'IBM IHS',
@@ -53,7 +53,7 @@ const SAMPLE_HOSTS = [
   {
     hostname: 'was-node-01',
     fqdn: 'was-node-01.internal.corp',
-    ip: '10.10.3.21',
+    ip: '192.0.2.14',
     environment: 'production',
     product_type: 'backend',
     middleware_type: 'WebSphere',
@@ -65,7 +65,7 @@ const SAMPLE_HOSTS = [
   {
     hostname: 'test-server-01',
     fqdn: 'test-server-01.internal.corp',
-    ip: '10.20.1.101',
+    ip: '192.0.2.15',
     environment: 'test',
     product_type: 'backend',
     middleware_type: 'JBoss',

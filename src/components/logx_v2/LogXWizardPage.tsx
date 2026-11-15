@@ -642,7 +642,7 @@ const LogXWizardPage: React.FC = () => {
     const key = `${requestId}|${(input?.clusters || []).join(',')}`;
     if (nsResolveRef.current === key) return;
     nsResolveRef.current = key;
-    guarded(async () => {
+    void guarded(async () => {
       const cached = await loadNamespaceCache(input);
       if (cached) {
         setNsList(cached);

@@ -1,0 +1,335 @@
+// scripts/sonar-kapi.cjs — SonarQube kalite kapisi (kalite kapisi K13; docs/KALITE-KAPILARI.md).
+//   npm run kapi:sonar                  calisan bir SonarQube'a (SONAR_HOST_URL) tarar, kapiyi bekler
+//   node scripts/sonar-kapi.cjs --docker   sunucu yoksa yerelde konteyner baslatir (Docker gerekir)
+//   node scripts/sonar-kapi.cjs --ci       CI: taze konteyner (admin/admin) -> parola + jeton uretir
+//
+// Kimlik: SONAR_TOKEN (yonetici yetkili kullanici jetonu) ya da SONAR_ADMIN_PASSWORD. --ci'de ikisi
+// de gerekmez. Kapi kosullari kalite/esikler.json `sonar.kosullar` (tek kaynak): betik "Portal Kati"
+// kapisini her kosuda bu listeye ESITLER ve projeye baglar. Taramadan sonra kalite/sonar-inceleme.json
+// kayitlarini (gerekceli hotspot incelemeleri) uygular, kapinin son durumunu okur.
+// Kurumsal SonarQube'un kapisi ayridir ve daha gevsektir; bu kapi kurumda kirmizi cikmamanin
+// yerel garantisidir.
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+
+const KOK = path.join(__dirname, '..');
+const IMAJ = 'sonarqube:26.11.0.134175-community';
+const TARAYICI = '@sonar/scan@5.0.2';
+const KONTEYNER = 'portal-sonar-kapi';
+
+const esikler = () => JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'esikler.json'), 'utf8'));
+const incelemeler = () =>
+  JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'sonar-inceleme.json'), 'utf8')).incelemeler;
+
+/** Hotspot + satirin metni -> eslesen inceleme kaydi ya da null. Saf islev. */
+function incelemeBul(hotspot, satirMetni, liste) {
+  const dosya = String(hotspot.component || '')
+    .split(':')
+    .slice(1)
+    .join(':');
+  const kural = hotspot.ruleKey || hotspot.rule;
+  return (
+    liste.find(
+      (k) => k.kural === kural && k.dosya === dosya && String(satirMetni || '').includes(k.icerik),
+    ) || null
+  );
+}
+
+/** esikler.json -> kapi kosullari [{ metric, op, error }]. Saf islev. */
+function kosullar(e) {
+  return e.sonar.kosullar.map((k) => ({ metric: k.metrik, op: k.op, error: String(k.esik) }));
+}
+
+/** project_status yaniti -> { tamam, satirlar[] }. Saf islev. */
+function durumOzeti(ps) {
+  const p = (ps && ps.projectStatus) || {};
+  const satirlar = (p.conditions || []).map(
+    (c) =>
+      `  ${c.status === 'OK' ? 'TAMAM  ' : 'KIRMIZI'} ${c.metricKey} = ${c.actualValue ?? '-'} (esik ${c.comparator} ${c.errorThreshold})`,
+  );
+  return { tamam: p.status === 'OK', satirlar };
+}
+
+const bekle = (ms) => new Promise((res) => setTimeout(res, ms));
+
+function istemci(host, yetki) {
+  return async function api(yol, params, yontem = 'GET') {
+    const govde = params ? new URLSearchParams(params).toString() : '';
+    const url = yontem === 'GET' && govde ? `${host}${yol}?${govde}` : `${host}${yol}`;
+    const istek = () =>
+      fetch(url, {
+        method: yontem,
+        headers: {
+          ...(yetki ? { Authorization: yetki } : {}),
+          ...(yontem === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+        },
+        body: yontem === 'POST' ? govde : undefined,
+      });
+    // Sunucu bosta kalan baglantiyi kapatir; havuzdan gelen kapanmis sokette istek sunucuya hic
+    // ulasmadan duser (UND_ERR_SOCKET). Yalniz bu sinif icin yeni baglantiyla bir kez daha denenir.
+    let r;
+    try {
+      r = await istek();
+    } catch (e) {
+      if (
+        !['UND_ERR_SOCKET', 'ECONNRESET', 'UND_ERR_CLOSED'].includes(e && e.cause && e.cause.code)
+      )
+        throw e;
+      await bekle(500);
+      r = await istek();
+    }
+    const metin = await r.text();
+    if (!r.ok) throw new Error(`${yontem} ${yol} -> ${r.status} ${metin.slice(0, 200)}`);
+    return metin ? JSON.parse(metin) : {};
+  };
+}
+
+async function ayaktaBekle(host, sureSn) {
+  const son = Date.now() + sureSn * 1000;
+  for (;;) {
+    try {
+      const d = await istemci(host)('/api/system/status');
+      if (d.status === 'UP') return;
+    } catch {
+      /* sunucu henuz dinlemiyor */
+    }
+    if (Date.now() > son) throw new Error(`SonarQube ${sureSn} sn icinde ayaga kalkmadi (${host})`);
+    await bekle(5000);
+  }
+}
+
+function dockerBaslat() {
+  const var_ = spawnSync(
+    'docker',
+    ['ps', '-a', '--filter', `name=^${KONTEYNER}$`, '--format', '{{.Status}}'],
+    { encoding: 'utf8' },
+  );
+  if (var_.error) throw new Error('docker bulunamadi (--docker icin Docker gerekir)');
+  if (String(var_.stdout).trim()) {
+    spawnSync('docker', ['start', KONTEYNER], { stdio: 'inherit' });
+    return;
+  }
+  const r = spawnSync(
+    'docker',
+    [
+      'run',
+      '-d',
+      '--name',
+      KONTEYNER,
+      '-p',
+      '9000:9000',
+      '-e',
+      'SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true',
+      IMAJ,
+    ],
+    { stdio: 'inherit' },
+  );
+  if (r.status !== 0) throw new Error('SonarQube konteyneri baslatilamadi');
+}
+
+/** Yonetici yetkisi -> { yetki (provizyon), jeton (tarayici) }. */
+async function kimlik(host, ci) {
+  if (process.env.SONAR_TOKEN)
+    return { yetki: `Bearer ${process.env.SONAR_TOKEN}`, jeton: process.env.SONAR_TOKEN };
+  let parola = process.env.SONAR_ADMIN_PASSWORD;
+  if (!parola && ci) {
+    // Taze konteyner: varsayilan parola tek kullanimlik; kosu boyunca rastgele bir parolaya cevrilir.
+    parola = `K${crypto.randomBytes(18).toString('base64url')}9!`;
+    await istemci(host, `Basic ${Buffer.from('admin:admin').toString('base64')}`)(
+      '/api/users/change_password',
+      { login: 'admin', previousPassword: 'admin', password: parola },
+      'POST',
+    );
+  }
+  if (!parola) throw new Error('SONAR_TOKEN ya da SONAR_ADMIN_PASSWORD gerekli (CI disinda)');
+  const yetki = `Basic ${Buffer.from(`admin:${parola}`).toString('base64')}`;
+  const t = await istemci(host, yetki)(
+    '/api/user_tokens/generate',
+    { name: `kapi-${Date.now()}` },
+    'POST',
+  );
+  return { yetki, jeton: t.token };
+}
+
+async function kapiyiEsitle(api, ad, hedef, projeAnahtari) {
+  const liste = await api('/api/qualitygates/list');
+  if (!(liste.qualitygates || []).some((g) => g.name === ad))
+    await api('/api/qualitygates/create', { name: ad }, 'POST');
+  const mevcut = await api('/api/qualitygates/show', { name: ad });
+  for (const c of mevcut.conditions || [])
+    await api('/api/qualitygates/delete_condition', { id: c.id }, 'POST');
+  for (const k of hedef)
+    await api('/api/qualitygates/create_condition', { gateName: ad, ...k }, 'POST');
+  const proje = await api('/api/projects/search', { projects: projeAnahtari });
+  if (!(proje.components || []).length)
+    await api('/api/projects/create', { project: projeAnahtari, name: projeAnahtari }, 'POST');
+  await api('/api/qualitygates/select', { gateName: ad, projectKey: projeAnahtari }, 'POST');
+}
+
+/** Tarayicinin birakti gorev kimligi -> sunucu analizi bitirene kadar bekler. */
+async function analizBekle(api) {
+  const rapor = fs.readFileSync(path.join(KOK, '.scannerwork', 'report-task.txt'), 'utf8');
+  const id = (/^ceTaskId=(.+)$/m.exec(rapor) || [])[1];
+  if (!id) throw new Error('report-task.txt icinde ceTaskId yok');
+  const son = Date.now() + 30 * 60 * 1000;
+  for (;;) {
+    const { task } = await api('/api/ce/task', { id });
+    if (task.status === 'SUCCESS') return;
+    if (task.status === 'FAILED' || task.status === 'CANCELED')
+      throw new Error(`sunucu analizi ${task.status}: ${task.errorMessage || ''}`);
+    if (Date.now() > son) throw new Error('sunucu analizi 30 dk icinde bitmedi');
+    await bekle(5000);
+  }
+}
+
+/** Dosyanin `satir`inci satiri (1 tabanli); okunamazsa ''. */
+function satirOku(dosya, satir) {
+  try {
+    return fs.readFileSync(path.join(KOK, dosya), 'utf8').split('\n')[(satir || 1) - 1] || '';
+  } catch {
+    return ''; // dosya yerelde yok: eslesmez, kalan sayilir
+  }
+}
+
+/**
+ * Repodaki gerekceli kararlari uygular: inceleme bekleyen hotspot -> "Reviewed - Safe"; ayni kurala
+ * sunucu surumu hotspot yerine SORUN acmissa (orn. 26.x'te S5443) -> "Accepted". Kaydi olmayanlar
+ * oldugu gibi kalir ve kapiyi kirmizi tutar.
+ */
+async function incelemeleriUygula(api, proje) {
+  const liste = incelemeler();
+  const not = (k) => `kalite/sonar-inceleme.json: ${k.gerekce}`;
+  const hs = await api('/api/hotspots/search', { project: proje, status: 'TO_REVIEW', ps: '500' });
+  const kalan = [];
+  let uygulanan = 0;
+  for (const h of hs.hotspots || []) {
+    const dosya = String(h.component).split(':').slice(1).join(':');
+    const k = incelemeBul(h, satirOku(dosya, h.line), liste);
+    if (!k) {
+      kalan.push(`  - ${h.ruleKey} ${dosya}:${h.line ?? ''} ${h.message}`);
+      continue;
+    }
+    await api(
+      '/api/hotspots/change_status',
+      { hotspot: h.key, status: 'REVIEWED', resolution: 'SAFE', comment: not(k) },
+      'POST',
+    );
+    uygulanan += 1;
+  }
+  const kurallar = [...new Set(liste.map((k) => k.kural))].join(',');
+  const is = kurallar
+    ? await api('/api/issues/search', {
+        componentKeys: proje,
+        rules: kurallar,
+        issueStatuses: 'OPEN,CONFIRMED',
+        ps: '500',
+      })
+    : { issues: [] };
+  for (const i of is.issues || []) {
+    const dosya = String(i.component).split(':').slice(1).join(':');
+    const k = incelemeBul(
+      { component: i.component, ruleKey: i.rule },
+      satirOku(dosya, i.line),
+      liste,
+    );
+    if (!k) continue; // kayitsiz sorun kapida zaten sayilir
+    await api('/api/issues/add_comment', { issue: i.key, text: not(k) }, 'POST');
+    await api('/api/issues/do_transition', { issue: i.key, transition: 'accept' }, 'POST');
+    uygulanan += 1;
+  }
+  if (kalan.length) {
+    console.error(
+      "[sonar-kapi] inceleme bekleyen hotspot (kodu duzelt ya da kalite/sonar-inceleme.json'a gerekcesiyle ekle):",
+    );
+    for (const s of kalan) console.error(s);
+  }
+  if (uygulanan) {
+    console.log(
+      `[sonar-kapi] ${uygulanan} kayitli inceleme uygulandi (kalite/sonar-inceleme.json).`,
+    );
+    await bekle(5000); // olcumler ve kapi canli guncellenir
+  }
+}
+
+async function main(argv) {
+  const ci = argv.includes('--ci');
+  const host = (process.env.SONAR_HOST_URL || 'http://127.0.0.1:9000').replace(/\/$/, '');
+  const proje = process.env.SONAR_PROJE || 'bmw-portal-kapi';
+  const e = esikler();
+  if (argv.includes('--docker')) {
+    try {
+      await ayaktaBekle(host, 1);
+    } catch {
+      dockerBaslat();
+    }
+  }
+  await ayaktaBekle(host, ci ? 600 : 300);
+  console.log(`[sonar-kapi] sunucu hazir: ${host}`);
+  const { yetki, jeton } = await kimlik(host, ci);
+  const api = istemci(host, yetki);
+  await kapiyiEsitle(api, e.sonar.kapiAdi, kosullar(e), proje);
+  console.log(
+    `[sonar-kapi] "${e.sonar.kapiAdi}" kapisi ${kosullar(e).length} kosulla esitlendi, proje ${proje}.`,
+  );
+
+  const lcov = fs.existsSync(path.join(KOK, 'coverage', 'lcov.info'))
+    ? 'coverage/lcov.info'
+    : 'kalite/kapsam/lcov.info';
+  const tarama = spawnSync(
+    'npx',
+    [
+      '--yes',
+      TARAYICI,
+      `-Dsonar.host.url=${host}`,
+      `-Dsonar.projectKey=${proje}`,
+      `-Dsonar.projectName=${proje}`,
+      `-Dsonar.javascript.lcov.reportPaths=${lcov}`,
+      '-Dsonar.scm.disabled=true',
+      '-Dsonar.javascript.node.maxspace=8192',
+    ],
+    { cwd: KOK, stdio: 'inherit', env: { ...process.env, SONAR_TOKEN: jeton } },
+  );
+  if (tarama.status !== 0) throw new Error(`tarayici basarisiz (cikis ${tarama.status})`);
+  await analizBekle(api);
+  await incelemeleriUygula(api, proje);
+  const ps = await api('/api/qualitygates/project_status', { projectKey: proje });
+  const { tamam, satirlar } = durumOzeti(ps);
+  console.log(`\n[sonar-kapi] ${e.sonar.kapiAdi} (${proje}, kapsam raporu ${lcov}):`);
+  for (const s of satirlar) console.log(s);
+  if (!tamam) {
+    const d = await api('/api/issues/search', {
+      componentKeys: proje,
+      issueStatuses: 'OPEN,CONFIRMED',
+      types: 'BUG,VULNERABILITY',
+      ps: '30',
+    });
+    for (const i of d.issues || [])
+      console.error(
+        `  - ${i.rule} ${String(i.component).split(':').slice(1).join(':')}:${i.line ?? ''} ${i.message}`,
+      );
+    console.error(
+      `[sonar-kapi] KIRMIZI. Ayrinti: ${host}/dashboard?id=${encodeURIComponent(proje)}`,
+    );
+    return 1;
+  }
+  console.log('[sonar-kapi] kapi yesil.');
+  return 0;
+}
+
+if (require.main === module)
+  main(process.argv.slice(2)).then(
+    (rc) => {
+      process.exitCode = rc;
+    },
+    (err) => {
+      const neden = err && err.cause ? ` (${err.cause.code || err.cause.message})` : '';
+      console.error(`[sonar-kapi] HATA: ${err && err.message}${neden}`);
+      process.exitCode = 1;
+    },
+  );
+
+module.exports = { kosullar, durumOzeti, incelemeBul, incelemeler, IMAJ };
