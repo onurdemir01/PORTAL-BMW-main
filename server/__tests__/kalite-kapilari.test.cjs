@@ -240,31 +240,37 @@ test('KK6 Sonar yapilandirmasi: kapsam / sorun dislamasi yok, CPD dislamasi yaln
   }
 });
 
-// Bu dosya desenleri metin olarak tasir; sayima girmez.
-const BU_DOSYA = `:!${path.relative(KOK, __filename).replaceAll('\\', '/')}`;
-function say(desen, dizinler) {
-  try {
-    const r = execFileSync('git', ['grep', '-n', '-E', desen, '--', ...dizinler, BU_DOSYA], {
-      cwd: KOK,
-      encoding: 'utf8',
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    return r.split('\n').filter(Boolean).length;
-  } catch (e) {
-    if (e.status === 1) return 0; // eslesme yok
-    throw e;
-  }
+// Izlenen kaynak metinleri (bu dosya haric: desenleri metin olarak tasir). Desenler JS duzenli
+// ifadesiyle sayilir: `git grep -E` \s ve \b tanimaz, sayim sessizce 0 cikiyordu (mutasyonla bulundu).
+const BU_DOSYA = path.relative(KOK, __filename).replaceAll('\\', '/');
+const METINLER = execFileSync(
+  'git',
+  ['ls-files', '-z', '--', 'src', 'server', 'shared', 'scripts'],
+  {
+    cwd: KOK,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  },
+)
+  .split('\0')
+  .filter((f) => f && f !== BU_DOSYA && /\.(?:[cm]?js|tsx?|py|sh|ya?ml)$/.test(f))
+  .map((f) => ({ f, metin: fs.readFileSync(path.join(KOK, f), 'utf8') }));
+function say(re) {
+  let n = 0;
+  for (const { metin } of METINLER)
+    for (const satir of metin.split('\n')) if (re.test(satir)) n += 1;
+  return n;
 }
 
 test('KK7 bastirma sayilari tavanin altinda (NOSONAR, ts-ignore, eslint-disable, .only / .skip)', () => {
-  const D = ['src', 'server', 'shared', 'scripts'];
   const sayim = {
-    NOSONAR: say('NOSONAR', D),
-    'ts-ignore': say('@ts-ignore', D),
-    'ts-expect-error': say('@ts-expect-error', D),
-    'eslint-disable': say('(//|/\\*)\\s*eslint-disable', D),
-    'test-only-skip': say('\\b(it|test|describe)\\.(only|skip)\\(', D),
+    NOSONAR: say(/NOSONAR/),
+    'ts-ignore': say(/@ts-ignore/),
+    'ts-expect-error': say(/@ts-expect-error/),
+    'eslint-disable': say(/(?:\/\/|\/\*)\s*eslint-disable/),
+    'test-only-skip': say(/\b(?:it|test|describe)\.(?:only|skip)\(/),
   };
+
   for (const [ad, n] of Object.entries(sayim))
     assert.ok(
       n <= ESIK.bastirma[ad],
