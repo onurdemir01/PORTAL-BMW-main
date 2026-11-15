@@ -11,7 +11,7 @@
       { "metrik": "bugs", "op": "GT", "esik": "0" },
       { "metrik": "vulnerabilities", "op": "GT", "esik": "0" },
       { "metrik": "software_quality_reliability_rating", "op": "GT", "esik": "1" },
-      { "metrik": "security_rating", "op": "GT", "esik": "1" },
+      { "metrik": "software_quality_security_rating", "op": "GT", "esik": "1" },
       { "metrik": "sqale_rating", "op": "GT", "esik": "1" },
       { "metrik": "security_hotspots_reviewed", "op": "LT", "esik": "100" },
       { "metrik": "software_quality_blocker_issues", "op": "GT", "esik": "0" },
