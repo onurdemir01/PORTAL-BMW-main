@@ -117,7 +117,9 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     // inceleme B6: sorunsuz + kontrol = toplam -> kirmizi degil uyari rengi
     expect((screen.getByText('1 / 2 sunucu sorunsuz') as HTMLElement).style.color).toBe('var(--status-warning)');
     expect(screen.getByText(/^JBoss 8 \/ appX: ürün reboot öncesi görüntüde yoktu/)).toBeTruthy();
-    expect(screen.getByText('şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kurala göre dokunulmadı')).toBeTruthy();
+    // bos once = kapatma kapisi: urun ve JVM'i KAPATILMADI, gercekten dokunulmadi (2026-11-15)
+    expect(screen.getByText('şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kapatma kapısı gereği dokunulmadı')).toBeTruthy();
+    expect(screen.getByText('reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü boş / eski sürüm, kapatılmadı (dokunulmadı)')).toBeTruthy();
   });
 
   it('RT4 onay penceresi önce görüntüsü boş sunucuları listeler; "kontrol" kaydında yeniden çalıştırılabilir', async () => {
@@ -131,7 +133,12 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     expect(await screen.findByText('Önce görüntüsü boş sunucular (1)')).toBeTruthy();
     expect(screen.getByText('GBBOS01', { selector: 'div.font-mono' })).toBeTruthy();
     // inceleme B8: JVM kurali yalniz urunu reboot oncesi calisanlar icin; durulma beklemesi soylenir
-    expect(screen.getByText(/Ürünü reboot öncesi çalışmayanın JVM'lerine dokunulmaz/)).toBeTruthy();
+    expect(screen.getByText(/Ürünü reboot öncesi çalışmayanın JVM'leri ürünle birlikte kapanır/)).toBeTruthy();
+    // 2026-11-15 "nasil bulduysan oyle birak": once calismayan urun KAPATILIR - kalin uyari, domain/WAS/CTG her seyi kapatir
+    expect(screen.getByText(/önce çalışmayan ürün çalışıyorsa kapatılır|çalışmayan ürün şimdi çalışıyorsa/)).toBeTruthy();
+    const uyari = screen.getByText('Dikkat: reboot öncesi çalışmayan ürün KAPATILIR.');
+    expect(uyari.tagName).toBe('B');
+    expect(uyari.parentElement?.textContent).toMatch(/JBoss domain'i .*WAS .*CTG kapatılınca üzerindeki her şey kapanır/);
     expect(screen.getByText(/süreç listesinin durulması beklenir/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Onayla ve başlat' }));
     await waitFor(() => expect(sonraMock).toHaveBeenCalledWith(4));

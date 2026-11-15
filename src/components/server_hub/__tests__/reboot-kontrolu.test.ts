@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/reboot-kontrolu.test.ts — RK1..RK4 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, nesilKarsilastirilamaz, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
+import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, nesilKarsilastirilamaz, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
 
 const ONCE = ['BOOT|b1||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|WAS||', 'JVM|JBOSS8|appA|jboss_home=/usr/jboss8/AppServer', 'JVM|JBOSS8|appB|x', 'JVM|WAS|srv1|profil=p'];
 const ILK = ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|IHS||', 'JVM|JBOSS8|appB|x', 'JVM|JBOSS8|appC|x'];
@@ -18,13 +18,13 @@ describe('Reboot Kontrolü satırları', () => {
     expect(onceOzeti(g)).toEqual([{ urun: 'NGINX', ad: 'Nginx', jvm: null }, { urun: 'JBOSS8', ad: 'JBoss 8', jvm: 2 }, { urun: 'WAS', ad: 'WebSphere (WAS)', jvm: 1 }]);
   });
 
-  test('RK2 ürün tablosu: açılan ürün ok, hâlâ kapalı sorun, yeni ürün bilgi; JVM değişimleri', () => {
+  test('RK2 ürün tablosu: açılan ürün ok, hâlâ kapalı sorun, kapatılmamış yeni ürün sorun (2026-11-15); JVM değişimleri', () => {
     const isl = islemAyristir(['SONUC|baslat|NGINX||OK|startNginx.sh', 'SONUC|baslat|JBOSS8|appA|OK|start', 'SONUC|durdur|JBOSS8|appC|FAIL|hata', 'SONUC|baslat|WAS||FAIL|yok']);
     const t = urunTablosu(goruntuAyristir(ONCE), goruntuAyristir(ILK), goruntuAyristir(SON), isl);
     const by = Object.fromEntries(t.map((u) => [u.urun, u]));
     expect(t.map((u) => u.urun)).toEqual(['NGINX', 'IHS', 'JBOSS8', 'WAS']);
     expect([by.NGINX.durum, by.NGINX.metin, by.NGINX.islem?.sonuc]).toEqual(['ok', 'reboot sonrası kapalıydı, açıldı', 'OK']);
-    expect(by.IHS.durum).toBe('bilgi');
+    expect(by.IHS.durum).toBe('sorun');
     expect([by.WAS.durum, by.WAS.metin]).toEqual(['sorun', 'çalışıyordu, hâlâ KAPALI']);
     expect(by.JBOSS8.jvmAyni).toBe(1);
     expect(by.JBOSS8.jvmDegisim.map((j) => [j.ad, j.durum, j.metin])).toEqual([
@@ -32,8 +32,9 @@ describe('Reboot Kontrolü satırları', () => {
     ]);
     expect(by.WAS.jvmDegisim.map((j) => [j.ad, j.durum])).toEqual([['srv1', 'sorun']]);
     const yeni = urunTablosu(goruntuAyristir(['BOOT|a||']), goruntuAyristir(['BOOT|b||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x']), goruntuAyristir(['BOOT|b||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x']), []);
-    expect(yeni[0].jvmDegisim.map((j) => [j.ad, j.durum])).toEqual([['z', 'bilgi']]);
-    expect(by.IHS.metin).toBe('reboot öncesi çalışmıyordu, şimdi çalışıyor — kurala göre dokunulmadı');
+    // Kapının korumadığı ürünün hâlâ çalışan JVM'i 'sorun' (sunucu kontrol / rapor uyarı ile aynı yön; inceleme R2 #3).
+    expect(yeni[0].jvmDegisim.map((j) => [j.ad, j.durum])).toEqual([['z', 'sorun']]);
+    expect(by.IHS.metin).toBe('reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı (eski betik sürümü olabilir; güncel betikle yeniden çalıştırın)');
   });
 
   test('RK3 son ölçülemediyse önce çalışan her şey sorun; reboot doğrulaması boot id ile', () => {
@@ -53,19 +54,20 @@ describe('Reboot Kontrolü satırları', () => {
 });
 
 describe('Reboot Kontrolü 2026-11-14 (ilk gerçek koşu: "dokunulmadı")', () => {
-  test('RK5 "dokunulmadı" etiketleri SON durumu söyler; JVM etiketi nedenini yazar', () => {
+  test('RK5 "dokunulmadı" etiketleri (yalnız kapatma kapısında: boş önce) SON durumu söyler; JVM etiketi nedenini yazar', () => {
     const once = goruntuAyristir(['BOOT|a||']);
+    const kor = kapatmaKorunan(['BOOT|a||']);
     const ilk = goruntuAyristir(['BOOT|b||', 'URUN|IHS||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x', 'JVM|JBOSS7|y|x']);
     const son = goruntuAyristir(['BOOT|b||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x']);
-    const t = urunTablosu(once, ilk, son, []);
+    const t = urunTablosu(once, ilk, son, [], new Set(), kor);
     const by = Object.fromEntries(t.map((u) => [u.urun, u]));
     expect([by.IHS.durum, by.IHS.metin]).toEqual(['bilgi', 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı']);
-    expect(by.JBOSS7.metin).toBe('reboot öncesi çalışmıyordu, şimdi çalışıyor — kurala göre dokunulmadı');
+    expect(by.JBOSS7.metin).toBe('reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü boş / eski sürüm, kapatılmadı (dokunulmadı)');
     expect(by.JBOSS7.jvmDegisim.map((j) => [j.ad, j.metin])).toEqual([
       ['y', 'şu an KAPALI — ürün reboot öncesi görüntüde yoktu, dokunulmadı'],
-      ['z', 'şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kurala göre dokunulmadı'],
+      ['z', 'şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kapatma kapısı gereği dokunulmadı'],
     ]);
-    expect(urunTablosu(once, ilk, null, [])[0].metin).toMatch(/son durum ölçülemedi/);
+    expect(urunTablosu(once, ilk, null, [], new Set(), kor)[0].metin).toMatch(/son durum ölçülemedi, dokunulmadı/);
   });
 
   test('RK6 JVM satırı ürünün çalıştığını kanıtlar: ürün satırı olmayan ürün "dokunulmadı" sayılmaz, işaretlenir', () => {
@@ -152,5 +154,55 @@ describe('Reboot Kontrolü — inceleme 2026-11-14 (etiket dürüstlüğü, SONU
       "Önce görüntüsü eski betik sürümüyle alınmış — JBoss satırları jboss_home ile yeni nesil kuralına çevrilerek karşılaştırıldı.",
       "JBoss 7: önce görüntüsü eski sürüm, ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — dokunulmadı, elle kontrol edin.",
     ]);
+  });
+});
+
+describe('Reboot Kontrolü 2026-11-15 ("nasıl bulduysan öyle bırak": önce çalışmayan ürün kapatılır)', () => {
+  test('RK11 kapatılan ürün ok "kapatıldı", JVM "ürünle birlikte kapatıldı"; kapanmayan sorun; kapı korursa dokunulmadı', () => {
+    const onceL = ['BOOT|a||', 'SURUM|2||', 'URUN|RHA||'];
+    const ilk = goruntuAyristir(['BOOT|b||', 'URUN|RHA||', 'URUN|NGINX||', 'URUN|IHS||', 'URUN|CTG||', 'URUN|JBOSS8||', 'JVM|JBOSS8|j1|x']);
+    const son = goruntuAyristir(['BOOT|b||', 'URUN|RHA||', 'URUN|IHS||', 'URUN|CTG||']);
+    const isl = islemAyristir(['SONUC|durdur|NGINX||OK|x', 'SONUC|durdur|JBOSS8||OK|x', 'SONUC|durdur|IHS||FAIL|x', 'SONUC|durdur|CTG||OK|x']);
+    const t = urunTablosu(goruntuAyristir(onceL), ilk, son, isl, new Set(), kapatmaKorunan(onceL));
+    const by = Object.fromEntries(t.map((u) => [u.urun, u]));
+    expect([by.RHA.durum, by.RHA.metin]).toEqual(['ok', 'çalışıyordu, çalışıyor']);
+    expect([by.NGINX.durum, by.NGINX.metin]).toEqual(['ok', 'reboot öncesi çalışmıyordu, açılmıştı — kapatıldı']);
+    expect([by.IHS.durum, by.IHS.metin]).toEqual(['sorun', 'reboot öncesi çalışmıyordu — kapatma komutu başarısız, hâlâ ÇALIŞIYOR']);
+    expect([by.CTG.durum, by.CTG.metin]).toEqual(['sorun', 'reboot öncesi çalışmıyordu — kapatma komutu başarılı döndü ama hâlâ ÇALIŞIYOR']);
+    expect(by.JBOSS8.jvmDegisim.map((j) => [j.ad, j.durum, j.metin])).toEqual([['j1', 'ok', 'ürün reboot öncesi çalışmıyordu — ürünle birlikte kapatıldı']]);
+    expect(t.some((u) => /dokunulmadı/.test(u.metin))).toBe(false);
+    // kapı: boş önce -> hepsi korunur; eski sürüm (belirsiz JBoss 7) -> yalnız JBoss
+    expect([...kapatmaKorunan(['BOOT|a||'])].sort()).toEqual(['CTG', 'IHS', 'JBOSS7', 'JBOSS8', 'NGINX', 'RHA', 'WAS']);
+    expect([...kapatmaKorunan(['BOOT|a||', 'URUN|JBOSS7||'])].sort()).toEqual(['JBOSS7', 'JBOSS8']);
+    expect(kapatmaKorunan(onceL).size).toBe(0);
+    const n = nedenListesi(['BILGI|NEW|JBOSS8||reboot oncesi goruntu eski surum, JBoss nesli belirsiz - kapatilmadi, dokunulmadi', 'BILGI|NEW|WAS|s1|reboot oncesi WAS hic calismiyordu - JVMlerine tek tek dokunulmadi (urun, urun asamasinda kapatilir)']);
+    expect(n[0]).toMatch(/^JBoss 8: .*kapatılmadı \(dokunulmadı\)/);
+    expect(n[1]).toMatch(/^WebSphere \(WAS\) \/ s1: .*ürünle birlikte kapatılır/);
+  });
+});
+
+describe('Reboot Kontrolü 2026-11-15 inceleme düzeltmeleri', () => {
+  test('RK12 kapı yalnız ham önce: eski sürüm (SURUM yok, JBoss satırı) → JBoss korunur; BOOT yok → hepsi; SKIP metni; JVM çıkarımı ve önem', () => {
+    expect([...kapatmaKorunan(['BOOT|a||', 'URUN|JBOSS7||', 'JVM|JBOSS7|s1|jboss_home=/usr/jboss/AppServer'])].sort()).toEqual(['JBOSS7', 'JBOSS8']);
+    expect(kapatmaKorunan(['URUN|RHA||']).size).toBe(7);
+    expect(kapatmaKorunan(['BOOT|a||', 'SURUM|2||', 'URUN|JBOSS7||']).size).toBe(0);
+    const once = goruntuAyristir(['BOOT|a||', 'SURUM|2||', 'URUN|RHA||']);
+    const son = goruntuAyristir(['BOOT|b||', 'URUN|RHA||', 'URUN|CTG||', 'JVM|JBOSS8|app1|x']);
+    const t = urunTablosu(once, son, son, islemAyristir(['SONUC|durdur|CTG||SKIP|zaten kapali']), new Set(), new Set());
+    const by = Object.fromEntries(t.map((u) => [u.urun, u]));
+    expect([by.CTG.durum, by.CTG.metin]).toEqual(['sorun', 'reboot öncesi çalışmıyordu — kapatma anında kapalıydı, sonra yeniden kalktı; hâlâ ÇALIŞIYOR']);
+    // ürün satırı olmayan, JVM'i çalışan yeni ürün: satır görünür, ürün de JVM de 'sorun'
+    expect(by.JBOSS8?.durum).toBe('sorun');
+    expect(by.JBOSS8.jvmDegisim.map((j) => [j.ad, j.durum])).toEqual([['app1', 'sorun']]);
+    const n = nedenListesi([
+      'BILGI|YENI_CIKARIM|JBOSS8||x',
+      'BILGI|NEW|JBOSS8|app1|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine tek tek dokunulmadi (urun kapatilmadi: once goruntusu bos / eski surum)',
+      'BILGI|NEW|JBOSS8|app2|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine dokunulmadi',
+      'BILGI|NEW|NGINX||reboot oncesi goruntu bos - calisan urun kapatilmadi, dokunulmadi',
+    ]);
+    expect(n[0]).toMatch(/^JBoss 8: şimdiki görüntüde ürün satırı yok/);
+    expect(n[1]).toMatch(/ürün kapatılmadı, JVM'ine dokunulmadı/);
+    expect(n[2]).toMatch(/eski betik sürümü JVM'ine dokunmadı/);
+    expect(n[3]).toMatch(/^Nginx: .*kapatılmadı \(dokunulmadı\)/);
   });
 });

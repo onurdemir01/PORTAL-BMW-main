@@ -12,17 +12,23 @@
 //   * Surec SAYISI fark degildir (eski COUNT_CHANGED yok).
 //   * DOWN = once calisan urun/JVM duzeltmeden SONRA da calismiyor -> Kritik
 //   * Fazladan calisan JVM (once yoktu, duzeltmeye ragmen calisiyor) -> Kritik
-//   * Duzeltilen (kapaliydi acildi / fazladan kapatildi), once calismayan yeni urun -> Bilgi
+//   * 2026-11-15 ("nasil bulduysan oyle birak"): once calismayan URUN betikce KAPATILIR. Hala calisiyorsa
+//     -> Kritik (NEW_URUN_KALAN; komut FAIL / OK ama calisiyor / hic kosmadi - eski betik - ayri yazilir).
+//     Kapatma kapisinin korudugu urun (once BOS, eski surum once'nin JBoss urunu; kapi yalniz ham once'den) -> Uyari
+//     (NEW_URUN, dokunulmadi). Urunu once calismayan JVM'in komutu urunun SONUC|durdur satiridir ("urunle birlikte
+//     kapatildi"). Durdur SKIP (kapatma aninda kapaliydi) ama son goruntude calisiyor -> "sonra yeniden kalkti" (eski betik
+//     DEGIL). URUN satiri olmayip JVM'i calisan (once calismayan) urun calisiyor sayilir (reboot-check.cjs sonKume).
+//   * Duzeltilen (kapaliydi acildi / fazladan kapatildi) -> Bilgi
 //   * boot_id degismemis -> Uyari (reboot dogrulanamadi)
 //   * Olculemedi (sonuc gelmedi / son goruntu alinamadi) -> Kritik ("sorunsuz" SAYILMAZ)
 // DURUSTLUK (2026-11-14): "Otomatik kapatildi" YALNIZ o oge icin SONUC|durdur|...|OK varsa yazilir
-// (betik URUNU hic durdurmaz; JVM'i de ancak plan durdur dediyse). Komut yoksa "kendiliginden kapandi".
+// (urun icin SONUC|durdur|<urun>||OK; JVM'i ancak plan durdur dediyse ya da urunu kapatildiysa). Komut yoksa "kendiliginden kapandi".
 // "Otomatik acildi" yalniz SONUC|baslat|...|OK ile; komutsuz kalkan oge "kendiliginden acildi". Komut FAIL donup
 // oge yine de kalktiysa / kapandiysa ayri sinif (KOMUT_HATALI_*): "komut calistirmadi" demek yanlis olurdu.
 // Yalniz SONUC satirinda gorunen oge (durulma goruntusunde gorulup kapatilan JVM) de listelenir.
 // Eski surum once goruntusu (SURUM satiri yok) -> JBoss satirlari karsilastirilmaz, Uyari (ESKI_SURUM).
 // Once goruntusu bos (BOOT var, izlenen satir yok) -> Uyari (ONCE_BOS); once calismayan ama simdi
-// calisan, kurala gore dokunulmayan oge -> Uyari (NEW_URUN, kontrol gerekli). Reboot oncesi urun
+// calisan, kapatma kapisi geregi dokunulmayan oge -> Uyari (NEW_URUN, kontrol gerekli). Reboot oncesi urun
 // kumesi betikle ayni: URUN satirlari + JVM'i gorulen urunler.
 'use strict';
 
@@ -69,11 +75,19 @@ function sunucuDegerlendir(onceSat, s) {
   if (!s || s.sonuc_yok) return { sonuc: 'PROBLEM', bulgu: [{ durum: 'OLCULEMEDI', servis: 'Sistem kontrolü', aciklama: 'Sunucudan sonuç gelmedi (ulaşılamadı ya da kopya doğrulanamadı).', onceSonra: '—' }] };
   // Eski surum once goruntusunun JBoss satirlari yeni nesil kuralina CEVRILIR (reboot-check.cjs onceNesilCevir,
   // 2026-11-15); yalniz cevrilemeyen JBoss 7 urunu 'belirsiz' (dokunulmadi, uyari).
-  const { onceNesilCevir } = require('./reboot-check.cjs');
+  const { onceNesilCevir, kapatmaKapisi, kapiKorur } = require('./reboot-check.cjs');
   const cev = onceNesilCevir(onceSat, s.son_olculdu ? s.son_goruntu : s.goruntu);
+  // Kapatma kapisi (betik ve Portal kalan ile ayni, yalniz ham once): bos once / eski surum JBoss urunu -> "dokunulmadi".
+  const kapi = kapatmaKapisi(onceSat);
+  const korur = (u) => kapiKorur(kapi, u);
   const o = onceGoruntu(cev.satirlar);
-  const ilk = goruntu(s.goruntu);
-  const son = s.son_olculdu ? goruntu(s.son_goruntu) : null;
+  // Cikarim (sonKume ile ayni): once calismayan urunun yalniz JVM'i goruluyorsa urun de calisiyor sayilir.
+  const cikarim = (g) => {
+    for (const k of g.jvm) if (!o.urun.has(k.split('|')[0])) g.urun.add(k.split('|')[0]);
+    return g;
+  };
+  const ilk = cikarim(goruntu(s.goruntu));
+  const son = s.son_olculdu ? cikarim(goruntu(s.son_goruntu)) : null;
   const isl = islemSonuclari(s.islemler);
   const onceHam = goruntu(onceSat);
   if (o.boot && onceHam.urun.size === 0 && onceHam.jvm.size === 0)
@@ -106,15 +120,21 @@ function sunucuDegerlendir(onceSat, s) {
       else if (once && !ilkV && sonV && komut('baslat') === 'OK') bulgu.push({ durum: 'DUZELTILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası kapalıydı; otomatik açıldı.', onceSonra: 'kapalıydı → çalışıyor' });
       else if (once && !ilkV && sonV && komut('baslat') === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_ACILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası kapalıydı; Portal açma komutu BAŞARISIZ döndü, son kontrolde çalışıyor.', onceSonra: 'kapalıydı → çalışıyor' });
       else if (once && !ilkV && sonV) bulgu.push({ durum: 'KENDILIGINDEN_ACILDI', servis: servisAdi(k), aciklama: 'Reboot sonrası ilk görüntüde kapalıydı; Portal açma komutu çalıştırmadan kalktı (auto-start).', onceSonra: 'kapalıydı → çalışıyor' });
-      else if (!once && jvm && !o.urun.has(urun) && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Ürün reboot öncesi çalışmıyordu; dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu, şimdi çalışıyor; dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
+      // Urunu reboot oncesi calismayan JVM'in kendi komutu yoktur; urun kapatma komutu (SONUC|durdur|<urun>||) onu da kapsar.
+      const urunJvmi = jvm && !o.urun.has(urun);
+      const durdurK = komut('durdur') ?? (urunJvmi ? isl.get(`durdur|${urun}|`) : undefined);
+      const ile = urunJvmi && !komut('durdur') ? 'ürünle birlikte ' : '';
+      if (!once && urunJvmi && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Ürün reboot öncesi çalışmıyordu; önce görüntüsü boş / eski sürüm olduğu için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
+      else if (!once && urunJvmi && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: `Ürün reboot öncesi çalışmıyordu; ürünle birlikte kapanması gerekirken hâlâ çalışıyor${durdurK === 'FAIL' ? ' (ürün kapatma komutu BAŞARISIZ)' : durdurK === 'SKIP' ? ' (kapatma anında ürün kapalıydı, sonra yeniden kalktı)' : durdurK ? '' : ' (ürün kapatma komutu çalışmadı)'}.`, onceSonra: 'yoktu → çalışıyor' });
+      else if (!once && !jvm && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu, şimdi çalışıyor; önce görüntüsü boş / eski sürüm olduğu için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
+      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN_KALAN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : 'kapatma komutu çalışmadı (kayıt eski betikle değerlendirilmiş olabilir; güncel betikle yeniden çalıştırın)'}.`, onceSonra: 'yoktu → çalışıyor' });
       else if (!once && jvm && sonV) bulgu.push({ durum: 'NEW_KALAN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; kapatılması gerekirken hâlâ çalışıyor.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && !sonV && komut('durdur') === 'OK') bulgu.push({ durum: 'KAPATILDI', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, otomatik kapatıldı.`, onceSonra: 'yoktu → kapatıldı' });
-      else if (!once && !sonV && komut('durdur') === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; Portal kapatma komutu BAŞARISIZ döndü, son kontrolde çalışmıyor.', onceSonra: 'yoktu → kapandı' });
-      else if (!once && (ilkV || komut('durdur')) && !sonV) bulgu.push({ durum: 'KENDILIGINDEN_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; reboot sonrası görülmüştü, son kontrolde çalışmıyor. Portal kapatma komutu çalıştırmadı.', onceSonra: 'yoktu → kapandı' });
+      else if (!once && !sonV && durdurK === 'OK') bulgu.push({ durum: 'KAPATILDI', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, ${ile}otomatik kapatıldı.`, onceSonra: 'yoktu → kapatıldı' });
+      else if (!once && !sonV && durdurK === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; Portal kapatma komutu BAŞARISIZ döndü, son kontrolde çalışmıyor.', onceSonra: 'yoktu → kapandı' });
+      else if (!once && (ilkV || durdurK) && !sonV) bulgu.push({ durum: 'KENDILIGINDEN_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; reboot sonrası görülmüştü, son kontrolde çalışmıyor. Portal kapatma komutu çalıştırmadı.', onceSonra: 'yoktu → kapandı' });
     }
   }
-  const kritik = bulgu.some((b) => ['DOWN', 'NEW_KALAN', 'OLCULEMEDI'].includes(b.durum));
+  const kritik = bulgu.some((b) => ['DOWN', 'NEW_KALAN', 'NEW_URUN_KALAN', 'OLCULEMEDI'].includes(b.durum));
   const sonuc = kritik ? 'PROBLEM' : bulgu.some((b) => DURUM[b.durum]?.[1] === 'warning') ? 'WARNING' : bulgu.length ? 'INFO' : 'OK';
   // Otomasyon ozeti (2026-11-15, ekip: "otomasyon kac tanesinde calisti, kac tanesine dokunmadi"): SKIP komut sayilmaz.
   const komutlar = [...isl.values()].filter((x) => x === 'OK' || x === 'FAIL');
@@ -122,7 +142,7 @@ function sunucuDegerlendir(onceSat, s) {
 }
 
 const DURUM = {
-  DOWN: ['Çalışmıyor (DOWN)', 'problem'], NEW_KALAN: ['Fazladan çalışıyor (NEW)', 'problem'], OLCULEMEDI: ['Ölçülemedi', 'problem'],
+  DOWN: ['Çalışmıyor (DOWN)', 'problem'], NEW_KALAN: ['Fazladan çalışıyor (NEW)', 'problem'], NEW_URUN_KALAN: ['Fazladan çalışan ürün (NEW) — kapatılamadı', 'problem'], OLCULEMEDI: ['Ölçülemedi', 'problem'],
   REBOOT_NOT_CONFIRMED: ['Reboot doğrulanamadı', 'warning'], ONCE_BOS: ['Önce görüntüsü boş', 'warning'], NEW_URUN: ['Yeni süreç (NEW) — kontrol gerekli', 'warning'],
   DUZELTILDI: ['Otomatik açıldı', 'info'], KAPATILDI: ['Otomatik kapatıldı', 'info'],
   KENDILIGINDEN_ACILDI: ['Kendiliğinden açıldı', 'info'], KENDILIGINDEN_KAPANDI: ['Kendiliğinden kapandı', 'info'],

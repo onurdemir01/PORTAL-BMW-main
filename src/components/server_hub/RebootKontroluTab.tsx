@@ -3,7 +3,8 @@
 // Kullanıcı: "Çalışma öncesi ve sonrası çalıştıralım, sunucunun sorunsuz olduğundan emin olalım."
 // Kural (kullanıcı, "mesele çok basit"): Nginx / Red Hat Apache / IBM Apache / CTG / JBoss 7 / JBoss 8 / WAS
 // reboot öncesi çalışıyorduysa sonra da çalışmalı (kapalıysa açılır). JBoss ve WAS JVM'lerinde önce çalışıp
-// kapanan açılır, önce yokken çalışan kapatılır — tek JVM. Python vb. izlenmez. Ekran ürün başına:
+// kapanan açılır, önce yokken çalışan kapatılır — tek JVM. 2026-11-15 ("nasıl bulduysan öyle bırak"): reboot öncesi
+// çalışmayan ÜRÜN de kapatılır (onay penceresi bunu kalın uyarıyla söyler). Python vb. izlenmez. Ekran ürün başına:
 // "çalışıyordu → çalışıyor ✓". Ölçülemeyen sunucu sorunsuz SAYILMAZ.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
@@ -16,7 +17,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 // 2026-11-14 (ilk gerçek koşu): önce görüntüsü boş sunucu yeşil gösteriliyordu ve sonra "Sorunsuz" çıkıyordu.
 const ONCE_BOS_METNI = 'Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda hiçbir şeyi açıp kapatmaz.';
@@ -113,11 +114,13 @@ function IslemNotu({ x }: { x?: IslemSatiri }) {
 function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | undefined; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
   const [acik, setAcik] = useState(d?.durum !== 'sorunsuz');
   // Eski sürüm önce görüntüsünün JBoss satırları yeni nesil kuralına çevrilir (2026-11-15; sunucu ve betikle aynı).
-  const og = goruntuAyristir(onceNesilCevir(once, r?.son_olculdu ? r?.son_goruntu : r?.goruntu).satirlar);
+  const karsi = r?.son_olculdu ? r?.son_goruntu : r?.goruntu;
+  const og = goruntuAyristir(onceNesilCevir(once, karsi).satirlar);
   const ig = goruntuAyristir(r?.goruntu);
   const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
-  const tablo = urunTablosu(og, ig, sg, islem);
+  // 2026-11-15: önce çalışmayan ürün kapatılır; yalnız kapatma kapısının koruduğu ürün "dokunulmadı" der.
+  const tablo = urunTablosu(og, ig, sg, islem, new Set(), kapatmaKorunan(once));
   const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
   const uyari = d?.neden || [];
   // Boş önce / eski sürüm zaten uyarı satırında yazılıysa plan notlarında tekrar edilmez.
@@ -423,7 +426,7 @@ export default function RebootKontroluTab() {
         <ol className="text-[12px] space-y-0.5 list-decimal pl-5" style={{ color: 'var(--text-secondary)' }}>
           <li><b>Reboot öncesi</b> görüntüyü alın — Nginx, Red Hat Apache, IBM Apache, CTG, JBoss 7/8, WAS ve JVM'leri; Portal'da saklanır.</li>
           <li>Reboot'u (patch) yapın.</li>
-          <li><b>Reboot sonrası kontrol et ve düzelt</b> — önce çalışan ürün kapalıysa açılır; JBoss/WAS'ta önce çalışan JVM açılır, önce olmayan JVM kapatılır.</li>
+          <li><b>Reboot sonrası kontrol et ve düzelt</b> — sunucu reboot öncesi nasılsa öyle bırakılır: önce çalışan ürün kapalıysa açılır, <b>önce çalışmayan ürün çalışıyorsa kapatılır</b>; JBoss/WAS'ta önce çalışan JVM açılır, önce olmayan JVM kapatılır.</li>
         </ol>
         <div className="grid gap-2 md:grid-cols-[1fr_16rem]">
           <textarea value={metin} onChange={(e) => setMetin(e.target.value)} rows={2} placeholder="Sunucular (virgül, boşluk ya da satır): GBJBOP18, GBJBOAP18 …"
@@ -485,11 +488,15 @@ export default function RebootKontroluTab() {
         <div className="space-y-2 text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           <p>Sunucuların reboot'u <b>tamamlandıysa</b> devam edin. Her sunucuda:</p>
           <ul className="list-disc pl-5 space-y-0.5">
-            <li>Reboot öncesi çalışan <b>Nginx / Red Hat Apache / IBM Apache / CTG / JBoss / WAS</b> kapalıysa estate başlatma yoluyla <b>açılır</b>. Önce çalışmayan ürüne dokunulmaz.</li>
-            <li>JBoss ve WAS'ta, ürünü reboot öncesi çalışıyor olan JVM'ler için: önce çalışıp şimdi kapalı olan JVM <b>açılır</b>; önce çalışmayıp şimdi çalışan JVM <b>kapatılır</b>. Ürünü reboot öncesi çalışmayanın JVM'lerine dokunulmaz.</li>
-            <li>JVM'lere geçmeden önce süreç listesinin durulması beklenir (sunucu başına en çok ~5 dk).</li>
-            <li>Her JVM tek tek işlenir; sunucu grubu ya da domain durdurulmaz, süreç öldürülmez.</li>
+            <li>Reboot öncesi çalışan <b>Nginx / Red Hat Apache / IBM Apache / CTG / JBoss / WAS</b> kapalıysa estate başlatma yoluyla <b>açılır</b>.</li>
+            <li>Reboot öncesi <b>çalışmayan</b> ürün şimdi çalışıyorsa estate durdurma komutuyla <b>kapatılır</b> (önce açmalar, sonra kapatmalar).</li>
+            <li>JBoss ve WAS'ta, ürünü reboot öncesi çalışıyor olan JVM'ler için: önce çalışıp şimdi kapalı olan JVM <b>açılır</b>; önce çalışmayıp şimdi çalışan JVM <b>kapatılır</b>. Ürünü reboot öncesi çalışmayanın JVM'leri ürünle birlikte kapanır.</li>
+            <li>JVM'lere geçmeden önce süreç listesinin durulması beklenir (sunucu başına en çok ~5 dk); bu sırada geç kalkan, reboot öncesi çalışmayan ürün de <b>kapatılır</b>.</li>
+            <li>Kalan JVM'ler tek tek işlenir; süreç öldürülmez (kill yok).</li>
           </ul>
+          <div role="alert" className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}>
+            <b>Dikkat: reboot öncesi çalışmayan ürün KAPATILIR.</b> JBoss domain'i (Host Controller), WAS (uygulama sunucuları, nodeagent, dmgr) ya da CTG kapatılınca <b>üzerindeki her şey kapanır</b>. Karar tamamen "önce" görüntüsüne dayanır; "önce"den sonra bilerek açılmış bir ürün varsa devam etmeyin. Önce görüntüsü boş olan sunucularda hiçbir ürün, önce görüntüsü eski betik sürümüyle alınmış sunucularda JBoss 7/8 kapatılmaz.
+          </div>
           <p>Yalnız "önce" görüntüsü alınmış sunucular işlenir.</p>
           {onayBos.length > 0 && (
             <div role="alert" className="rounded-lg border px-3 py-2 space-y-1" style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)', color: 'var(--status-warning)' }}>

@@ -3,6 +3,8 @@
 // Kullanıcı kuralı ("mesele çok basit"): Nginx / Red Hat Apache / IBM Apache / CTG / JBoss 7 / JBoss 8 / WAS
 // reboot öncesi çalışıyorduysa sonra da çalışmalı; JBoss ve WAS JVM'lerinde önce çalışıp kapanan açılır,
 // önce yokken çalışan kapatılır. Python ve diğer her şey izlenmez.
+// 2026-11-15 ("nasıl bulduysan öyle bırak"): reboot öncesi ÇALIŞMAYAN ürün de kapatılır; yalnız kapatma kapısı
+// (boş / eski sürüm önce görüntüsü — kapatmaKorunan) "dokunulmadı" der.
 //
 // Playbook (patch_remediation/reboot_check.yml) sunucu başına düz metin satırları döndürür:
 //   görüntü : BOOT|<boot_id>|| · URUN|<ürün>|| · JVM|<ürün>|<jvm>|<detay>
@@ -113,6 +115,18 @@ export function onceNesilCevir(once: unknown, diger: unknown): { satirlar: strin
   return { satirlar: belirsiz ? cev.filter((l) => !l.startsWith('URUN|JBOSS7|')) : cev, cevrildi: true, belirsiz: belirsiz ? ['JBOSS7'] : [] };
 }
 
+/**
+ * KAPATMA KAPISI (2026-11-15, "nasıl bulduysan öyle bırak"; betik kapatma_kapisi ve sunucu kapatmaKapisi ile BİREBİR,
+ * YALNIZ ham önce görüntüsünden): reboot öncesi çalışmayan ürün kapatılır, şu ürünler HARİÇ (dokunulmaz): önce
+ * görüntüsünde BOOT ya da izlenen satır yoksa hepsi; önce görüntüsü eski sürümse (SURUM yok, JBoss satırı var) JBoss 7
+ * ve JBoss 8 (nesil kesin değil; reboot öncesi çalışan domain "yeni" sanılıp kapatılmasın — inceleme R1 B1).
+ */
+export function kapatmaKorunan(once: unknown): Set<string> {
+  const o = satirlar(once);
+  if (!o.some((l) => l.startsWith('BOOT|')) || !o.some((l) => /^(URUN|JVM)\|/.test(l))) return new Set<string>(URUNLER);
+  return !o.some((l) => l.startsWith('SURUM|')) && o.some((l) => /^(URUN|JVM)\|JBOSS[78]\|/.test(l)) ? new Set<string>(['JBOSS7', 'JBOSS8']) : new Set<string>();
+}
+
 /** Önce görüntüsü alınmış (BOOT var) ama izlenen ürün/JVM yok: sonra hiçbir şey açılıp kapatılmaz. */
 export function onceBos(g: Goruntu): boolean {
   return g.bicimTamam && g.urunler.size === 0 && g.jvmler.size === 0;
@@ -120,9 +134,10 @@ export function onceBos(g: Goruntu): boolean {
 
 /**
  * Sunucu başına ürün tablosu. once: reboot öncesi; ilk: reboot sonrası düzeltmeden önce; son: düzeltmeden sonra
- * (null = ölçülemedi). Yalnız önce ya da sonra görülen ürünler listelenir.
+ * (null = ölçülemedi). Yalnız önce ya da sonra görülen ürünler listelenir. korunan: kapatma kapısının koruduğu ürünler
+ * (kapatmaKorunan) — yalnız onlar "dokunulmadı" der; diğer önce çalışmayan ürün kapatılmış olmalıdır (2026-11-15).
  */
-export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, islemler: IslemSatiri[], haric: ReadonlySet<string> = new Set()): UrunSatiri[] {
+export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, islemler: IslemSatiri[], haric: ReadonlySet<string> = new Set(), korunan: ReadonlySet<string> = new Set()): UrunSatiri[] {
   const out: UrunSatiri[] = [];
   const bul = (u: string, ad: string) => islemler.find((x) => x.urun === u && x.ad === ad);
   // "açıldı" / "kapatıldı" YALNIZ o öğe için komut OK döndüyse (rapor ile aynı; inceleme 2026-11-14 B3/B5).
@@ -134,18 +149,39 @@ export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, is
     if (haric.has(u)) continue;
     const o = onceCalisiyordu(once, u);
     const onceCikarim = o && !once.urunler.has(u);
-    const i = ilk.urunler.has(u);
-    const s = son ? son.urunler.has(u) : null;
-    if (!o && !i && !s) continue;
+    // Çıkarım (betik simdi_dosya / sunucu sonKume): önce çalışmayan ürünün yalnız JVM'i görülüyorsa ürün de çalışıyor.
+    const calisir = (g: Goruntu) => g.urunler.has(u) || (!o && (g.jvmler.get(u)?.size || 0) > 0);
+    const i = calisir(ilk);
+    const s = son ? calisir(son) : null;
     const islem = bul(u, '');
+    if (!o && !i && !s && !islem) continue;
+    const kor = korunan.has(u);
+    const durdur = islem?.islem === 'durdur' ? islem.sonuc : undefined;
     let durum: Durum; let metin: string;
     if (o) {
       if (s === null) { durum = 'sorun'; metin = 'son durum ölçülemedi'; }
       else if (s) { durum = 'ok'; metin = i ? 'çalışıyordu, çalışıyor' : acildi(islem, 'reboot sonrası kapalıydı'); }
       else { durum = 'sorun'; metin = 'çalışıyordu, hâlâ KAPALI'; }
-    } else if (s === null) { durum = 'bilgi'; metin = 'reboot öncesi çalışmıyordu — son durum ölçülemedi, dokunulmadı'; }
-    else if (s) { durum = 'bilgi'; metin = 'reboot öncesi çalışmıyordu, şimdi çalışıyor — kurala göre dokunulmadı'; }
-    else { durum = 'bilgi'; metin = 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı'; }
+    } else if (kor) {
+      // Kapatma kapısı (boş / eski sürüm önce görüntüsü): ürüne gerçekten dokunulmadı.
+      durum = 'bilgi';
+      metin = s === null ? 'reboot öncesi çalışmıyordu — son durum ölçülemedi, dokunulmadı'
+        : s ? 'reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü boş / eski sürüm, kapatılmadı (dokunulmadı)'
+          : 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı';
+    } else if (s === null) { durum = 'sorun'; metin = 'reboot öncesi çalışmıyordu — son durum ölçülemedi'; }
+    else if (s) {
+      // "Nasıl bulduysan öyle bırak": kapatılması gerekirken hâlâ çalışıyor.
+      durum = 'sorun';
+      metin = durdur === 'FAIL' ? 'reboot öncesi çalışmıyordu — kapatma komutu başarısız, hâlâ ÇALIŞIYOR'
+        : durdur === 'OK' ? 'reboot öncesi çalışmıyordu — kapatma komutu başarılı döndü ama hâlâ ÇALIŞIYOR'
+          : durdur === 'SKIP' ? 'reboot öncesi çalışmıyordu — kapatma anında kapalıydı, sonra yeniden kalktı; hâlâ ÇALIŞIYOR'
+          : 'reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı (eski betik sürümü olabilir; güncel betikle yeniden çalıştırın)';
+    } else {
+      durum = 'ok';
+      metin = durdur === 'OK' ? (i ? 'reboot öncesi çalışmıyordu, açılmıştı — kapatıldı' : 'reboot öncesi çalışmıyordu, durulma beklemesinde kalkmıştı — kapatıldı')
+        : durdur === 'FAIL' ? 'reboot öncesi çalışmıyordu — kapatma komutu başarısız döndü, sonra kapandı'
+          : i ? 'reboot öncesi çalışmıyordu, kendiliğinden kapandı' : 'reboot öncesi çalışmıyordu, şu an KAPALI';
+    }
 
     let jvmAyni = 0;
     const jvmDegisim: JvmDegisimi[] = [];
@@ -163,10 +199,16 @@ export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, is
         let d: Durum; let m: string;
         if (js === null) { d = 'sorun'; m = 'son durum ölçülemedi'; }
         else if (jo) { d = js ? 'ok' : 'sorun'; m = js ? (ji ? 'çalışıyordu, çalışıyor' : acildi(jx, 'kapalıydı')) : 'çalışıyordu, hâlâ KAPALI'; }
-        else if (!o) {
+        else if (!o && kor) {
           d = 'bilgi';
-          m = js ? 'şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kurala göre dokunulmadı'
+          m = js ? 'şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kapatma kapısı gereği dokunulmadı'
             : 'şu an KAPALI — ürün reboot öncesi görüntüde yoktu, dokunulmadı';
+        }
+        else if (!o) {
+          // Ürün kapatılınca JVM'leri de kapanır; JVM'e tek tek işlem yapılmaz (komutu ürünün SONUC|durdur satırı).
+          d = js ? 'sorun' : 'ok';
+          m = js ? 'şimdi çalışıyor — ürün reboot öncesi çalışmıyordu, ürünle birlikte kapanması gerekiyordu'
+            : durdur === 'OK' ? 'ürün reboot öncesi çalışmıyordu — ürünle birlikte kapatıldı' : 'ürün reboot öncesi çalışmıyordu — şu an KAPALI';
         }
         else if (js) { d = 'sorun'; m = 'önce çalışmıyordu, hâlâ ÇALIŞIYOR'; }
         else {
@@ -212,8 +254,14 @@ export function nedenListesi(plan: unknown, haricTur: readonly string[] = []): s
     if (b.tur === 'NESIL') return 'Önce görüntüsü eski betik sürümüyle alınmış — JBoss satırları jboss_home ile yeni nesil kuralına çevrilerek karşılaştırıldı.';
     if (b.tur === 'BELIRSIZ') return `${ad}: önce görüntüsü eski sürüm, ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — dokunulmadı, elle kontrol edin.`;
     if (b.tur === 'CIKARIM') return `${ad}: önce görüntüsünde ürün satırı yoktu; JVM'i çalıştığı için reboot öncesi çalışıyor sayıldı.`;
-    if (b.ad && /dokunulmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — JVM'ine kurala göre dokunulmadı.`;
-    if (b.tur === 'NEW' && !b.ad) return `${ad}: reboot öncesi çalışmıyordu — ürüne kurala göre dokunulmadı (ürün hiç durdurulmaz).`;
+    if (b.tur === 'YENI_CIKARIM') return `${ad}: şimdiki görüntüde ürün satırı yok ama JVM'i çalışıyor — ürün çalışıyor sayıldı (reboot öncesi çalışmıyordu, kapatılır).`;
+    if (b.ad && /urun asamasinda kapatilir/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi çalışmıyordu — JVM'ine tek tek işlem yapılmadı, ürünle birlikte kapatılır.`;
+    // Kapının koruduğu her not 'kapatilmadi' içerir; yalnız 'dokunulmadi' diyen not eski betik sürümündendir (inceleme R2 #5).
+    if (b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — önce görüntüsü boş / eski sürüm olduğu için ürün kapatılmadı, JVM'ine dokunulmadı.`;
+    if (b.ad && /dokunulmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — eski betik sürümü JVM'ine dokunmadı; güncel betik ürünü (JVM'leriyle) kapatır, yeniden çalıştırın.`;
+    // 2026-11-15: yeni betik önce çalışmayan ürünü KAPATIR; BILGI|NEW yalnız kapatma kapısında (boş / eski sürüm önce) gelir.
+    if (b.tur === 'NEW' && !b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad}: reboot öncesi çalışmıyordu — önce görüntüsü boş / eski sürüm olduğu için kapatılmadı (dokunulmadı).`;
+    if (b.tur === 'NEW' && !b.ad) return `${ad}: reboot öncesi çalışmıyordu — eski betik sürümü ürüne dokunmadı; güncel betik bu ürünü kapatır, "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
     return `${b.urun}${b.ad ? ` / ${b.ad}` : ''}: ${b.mesaj}`;
   });
 }

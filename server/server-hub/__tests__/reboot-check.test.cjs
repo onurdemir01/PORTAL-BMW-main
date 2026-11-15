@@ -340,7 +340,9 @@ test('RC8 KONTROL GEREKLI: once bos ya da "dokunulmadi" denen oge simdi calisiyo
   assert.equal(d.BOS2.durum, 'kontrol', 'once satirlarinda izlenen satir yokken sorunsuz denildi');
   assert.match(d.BOS2.sebep, /izlenen ürün\/JVM yoktu/);
   assert.equal(d.NEW.durum, 'kontrol');
-  assert.match(d.NEW.neden[0], /2 öğe şimdi çalışıyor.*JBOSS8, JBOSS8\/appA/);
+  // Once verilmeyen (eski cagiran) yol + ESKI betigin "dokunulmadi" notlari: yeni kurala gore kapatilmasi gerekirdi
+  // (inceleme R2 #5; kapinin korudugu not 'kapatilmadi' icerir - RC16).
+  assert.match(d.NEW.neden[0], /2 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appA/);
   assert.equal(d.KAPALI.durum, 'sorunsuz', 'dokunulmayan ama simdi KAPALI oge kontrol sayildi');
   assert.equal(d.TAMAM.durum, 'sorunsuz');
   assert.equal(d.SORUN.durum, 'sorunlu', "fark kalan sunucu kontrol'e dusuruldu");
@@ -477,8 +479,10 @@ test('RC12 kontrol nedeni once <-> son goruntuden: plandan SONRA kalkan yeni uru
     ['A'],
     { A: once },
   );
-  assert.equal(d.A.durum, 'kontrol');
-  assert.match(d.A.neden.join(' '), /3 öğe şimdi çalışıyor.*NGINX, WAS, WAS\/s1/);
+  // 2026-11-15 ("nasil bulduysan oyle birak"): once calismayan urun KAPATILIR; hala calisiyorsa KALAN (sorunlu).
+  assert.deepEqual([d.A.durum, d.A.kalan], ['sorunlu', 2], JSON.stringify(d.A));
+  assert.match(d.A.neden.join(' '), /3 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: NGINX, WAS, WAS\/s1/);
+  assert.doesNotMatch(d.A.neden.join(' '), /dokunulmadı/, 'kapatilmasi gereken oge "dokunulmadi" diye anlatildi');
   const yeniJvm = sonraDegerlendir(
     {
       A: {
@@ -614,4 +618,72 @@ test('RC14 sonuclanmis eski kayit ayrintisi acilinca yeni kuralla yeniden degerl
     ozet_json: JSON.stringify({ sonra: body.kayit.ozet.sonra }),
   });
   assert.equal(ikinci.upd, undefined, 'degismeyen kayit yeniden yazildi');
+});
+
+test('RC15 2026-11-15 "nasil bulduysan oyle birak": hala calisan yeni URUN portalKalan\'da; kapatilan sorunsuz; kapi (BOS / BELIRSIZ) korur', () => {
+  const { portalKalan, kontrolNedenleri, kapatmaKapisi } = require('../reboot-check.cjs');
+  const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
+  const calisan = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||', 'URUN|IHS||'];
+  assert.deepEqual(portalKalan(once, calisan), ['FARK|NEW|URUN|IHS||']);
+  const d = sonraDegerlendir(
+    {
+      KALDI: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: calisan, plan: ['ISLEM|www|durdur|IHS||'], islemler: ['SONUC|durdur|IHS||FAIL|x'] },
+      KAPANDI: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once, plan: ['ISLEM|www|durdur|IHS||'], islemler: ['SONUC|durdur|IHS||OK|x'] },
+    },
+    ['KALDI', 'KAPANDI'],
+    { KALDI: once, KAPANDI: once },
+  );
+  assert.deepEqual([d.KALDI.durum, d.KALDI.kalan], ['sorunlu', 1]);
+  assert.match(d.KALDI.neden.join(' '), /hâlâ çalışıyor; otomatik kapatılması gerekiyordu: IHS/);
+  assert.doesNotMatch(d.KALDI.neden.join(' '), /dokunulmadı/);
+  assert.equal(d.KAPANDI.durum, 'sorunsuz');
+  // KAPI 1: bos once -> kalan'da yok, kontrol (dokunulmadi)
+  assert.equal(kapatmaKapisi(['BOOT|b1||']), 'bos');
+  assert.deepEqual(portalKalan(['BOOT|b1||'], calisan), []);
+  const bos = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: calisan, plan: [] } }, ['A'], { A: ['BOOT|b1||'] });
+  assert.equal(bos.A.durum, 'kontrol');
+  assert.match(bos.A.neden.join(' '), /şimdi çalışıyor ve dokunulmadı \(önce görüntüsü boş/);
+  // KAPI 3: eski surum once, JVM'siz URUN|JBOSS7 belirsiz -> bugunku JBOSS8 kalan sayilmaz; JBoss disi yeni urun sayilir
+  const eski = ['BOOT|b1||', 'URUN|JBOSS7||', 'URUN|NGINX||'];
+  const s2 = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|NGINX||', 'URUN|CTG||'];
+  assert.deepEqual(portalKalan(eski, s2), ['FARK|NEW|URUN|CTG||']);
+  const n = kontrolNedenleri(eski, { son_goruntu: s2, plan: [] }).join(' ');
+  assert.match(n, /1 öğe şimdi çalışıyor ve dokunulmadı .*JBOSS8/);
+  assert.match(n, /1 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: CTG/);
+});
+
+test('RC16 inceleme 2026-11-15: kapi yalniz ham once (eski surum -> JBoss korunur; BOOT yok -> bos); JVM\'den urun cikarimi; eski cagiran notlari', () => {
+  const { portalKalan, kontrolNedenleri, kapatmaKapisi, sonKume } = require('../reboot-check.cjs');
+  // R1 B1: eski surum once + son goruntude yalniz HC (JVM yok) -> JVM JBOSS7 kalir, belirsiz URETILMEZ; yine de JBOSS8 korunur
+  const eski = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|srv1|jboss_home=/usr/jboss/AppServer'];
+  const yalnizHc = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|IHS||'];
+  assert.equal(kapatmaKapisi(eski), 'eski');
+  assert.ok(!portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|JBOSS8||'), 'eski surum once\'de JBOSS8 kalan sayildi');
+  assert.ok(portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|IHS||'), 'JBoss disi yeni urun eski surumde de kapatilir');
+  assert.match(kontrolNedenleri(eski, { son_goruntu: yalnizHc, plan: [] }).join(' '), /şimdi çalışıyor ve dokunulmadı .*JBOSS8/);
+  assert.equal(kapatmaKapisi(['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS7||']), '');
+  // R1 B5: BOOT'suz once -> bos (betik plan HATA, kalan saymaz)
+  assert.equal(kapatmaKapisi(['URUN|RHA||']), 'bos');
+  assert.deepEqual(portalKalan(['URUN|RHA||'], ['BOOT|b2||', 'URUN|RHA||', 'URUN|NGINX||']), []);
+  // R2 #2: urun satiri olmayip JVM'i calisan yeni urun calisiyor sayilir -> kalan; once calisan urunun DOWN'u degismez
+  const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
+  const jvmli = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||', 'JVM|JBOSS8|app1|jboss_home=/usr/jboss8/AppServer'];
+  assert.deepEqual(portalKalan(once, jvmli), ['FARK|NEW|URUN|JBOSS8||']);
+  assert.ok(sonKume(jvmli, new Set(['RHA'])).urun.has('JBOSS8'));
+  assert.ok(!sonKume(jvmli, new Set(['JBOSS8'])).urun.has('JBOSS8'));
+  assert.deepEqual(portalKalan(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'], ['BOOT|b2||', 'URUN|RHA||', 'JVM|JBOSS8|app1|x']), ['FARK|DOWN|URUN|JBOSS8||']);
+  const dj = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: jvmli, plan: [] } }, ['A'], { A: once });
+  assert.equal(dj.A.durum, 'sorunlu', 'HC\'siz calisan yeni JBoss urunu sorunsuz/kontrol sayildi');
+  // R2 #5: once verilmeyen yol - yeni betigin kapi notu ('kapatilmadi') korunan; ESKI betigin 'dokunulmadi' notu kapanmali
+  const son = ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x', 'URUN|IHS||'];
+  const n = kontrolNedenleri(null, {
+    son_goruntu: son,
+    plan: [
+      'BILGI|NEW|JBOSS8||reboot oncesi goruntu eski surum (JBoss nesli belirsiz olabilir) - kapatilmadi, dokunulmadi',
+      'BILGI|NEW|JBOSS8|appA|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine tek tek dokunulmadi (urun kapatilmadi: once goruntusu bos / eski surum)',
+      'BILGI|NEW|IHS||reboot oncesi calismiyordu, simdi calisiyor - dokunulmadi',
+    ],
+  }).join(' ');
+  assert.match(n, /2 öğe şimdi çalışıyor ve dokunulmadı \(plan notuna göre\): JBOSS8, JBOSS8\/appA/);
+  assert.match(n, /1 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: IHS/);
 });

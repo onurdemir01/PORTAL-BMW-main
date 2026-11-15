@@ -17,8 +17,11 @@
 // cikti). Fark kalmasa bile iki durumda sunucu SORUNSUZ SAYILMAZ, durum 'kontrol' olur:
 //   (a) "once" goruntusunde hic izlenen satir (URUN/JVM) yok: betik o sunucuda hicbir seyi acip
 //       kapatmaz, "kalan" bos cikar - bu bir dogrulama degil, sessiz gecis olurdu;
-//   (b) once calismayan bir urun ya da (urunu once calismayan) JVM simdi CALISIYOR: kural geregi
-//       dokunulmadi ama beklenen durum mu, insan bakmali (once <-> son goruntuden; rapor NEW_URUN ile ayni);
+//   (b) once calismayan bir urun ya da (urunu once calismayan) JVM simdi CALISIYOR. 2026-11-15'ten beri
+//       ("nasil bulduysan oyle birak") betik once calismayan URUNU KAPATIR: hala calisan yeni urun KALAN'dir
+//       (sorunlu; portalKalan FARK|NEW|URUN; URUN satiri olmayip JVM'i calisan yeni urun de - sonKume). Yalniz
+//       kapatma kapisinin (kapatmaKapisi, yalniz ham once'den) korudugu oge (once BOS / BOOT'suz ya da eski surum
+//       once'nin JBoss 7/8 urunu) "dokunulmadi" der ve kontrol nedenidir; urunu kapatilmasi gereken JVM'i de kontrol;
 //   (c) once goruntusu eski betik surumuyle alinmis ve JBoss 7 urun satiri cevrilemedi (BILGI|BELIRSIZ) ya da
 //       AWX'teki eski betik JBoss'u hic islemedi (BILGI|ESKI). 2026-11-15'ten beri JBoss satirlari cevrilir.
 // Kalan: betigin son_fark'i ile Portal'in ayni kuralla kendi hesabinin (portalKalan) buyugu.
@@ -111,24 +114,57 @@ function onceKume(satirlar, haricJb = false) {
 }
 
 /**
+ * KAPATMA KAPISI (reboot_duzelt.sh kapatma_kapisi ile BIREBIR, 2026-11-15): YALNIZ ham once'den hesaplanir (karsi goruntuden
+ * bagimsiz; betik plani ilk goruntuyle, Portal son goruntuyle bakar - ayni sonucu vermeli). 'bos' = once'de BOOT ya da izlenen
+ * satir yok (her sey "yeni" gorunur); 'eski' = eski surum once (SURUM yok, JBoss satiri var) -> JBoss 7/8 urunleri HIC
+ * kapatilmaz (inceleme R1 B1: ilk goruntude HC kalkmis, JVM'leri kalkmamisken reboot oncesi CALISAN JBoss 8 domain'i "yeni"
+ * sanilip kapatilabiliyordu). -> 'bos'|'eski'|''
+ */
+function kapatmaKapisi(once) {
+  if (!bootVar(once) || !izlenenVar(once)) return 'bos';
+  return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) ? 'eski' : '';
+}
+const kapiKorur = (kapi, u) => kapi === 'bos' || (kapi === 'eski' && /^JBOSS[78]$/.test(u));
+
+/**
+ * Son (ya da ilk) goruntu kumesi + CIKARIM (reboot_duzelt.sh simdi_dosya ile ayni, inceleme R2 #2): reboot oncesi calismayan
+ * urunun JVM'i calisiyor ama URUN satiri yoksa (HC ps'te yok) urun calisiyor sayilir -> kapatilir / kalan'da. Yalniz once
+ * kumesinde OLMAYAN urunlere (once calisan urunun DOWN kurali degismez).
+ */
+function sonKume(satirlar, onceUrun) {
+  const g = kume(satirlar);
+  for (const k of g.jvm) {
+    const u = k.split('|')[0];
+    if (!onceUrun.has(u)) g.urun.add(u);
+  }
+  return g;
+}
+
+/**
  * Portal'in KENDI kalan hesabi (reboot_duzelt.sh kalan ile ayni kural, saf): once calisan her urun/JVM son
- * goruntude yoksa DOWN; once calisan urunun once olmayan JVM'i son goruntude varsa NEW. Betigin son_fark'i
- * kaydin alindigi gunun kuraliyla hesaplanir; eski kayit yeni kuralla bu fonksiyonla yeniden degerlendirilir.
+ * goruntude yoksa DOWN; once calisan urunun once olmayan JVM'i son goruntude varsa NEW; once calismayan URUN son
+ * goruntude hala calisiyorsa NEW (2026-11-15, betik kapatir; kapatma kapisinin korudugu urun haric). Betigin son_fark'i
+ * kaydin alindigi gunun kuraliyla hesaplanir; eski kayit yeni kuralla bu fonksiyonla yeniden degerlendirilir (eski
+ * betigin dokunmadigi yeni urun de boylece "kalan" gorunur - durust; guncel betikle yeniden calistirilir).
  */
 function portalKalan(once, son) {
-  const o = onceKume(onceNesilCevir(once, son).satirlar);
-  const s = kume(son);
+  const cev = onceNesilCevir(once, son);
+  const kapi = kapatmaKapisi(once);
+  const o = onceKume(cev.satirlar);
+  const s = sonKume(son, o.urun);
   const out = [];
   for (const u of [...o.urun].sort(varsayilanSira)) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
   for (const k of [...o.jvm].sort(varsayilanSira)) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
   for (const k of [...s.jvm].sort(varsayilanSira))
     if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) out.push(`FARK|NEW|JVM|${k}|`);
+  for (const u of [...s.urun].sort(varsayilanSira))
+    if (!o.urun.has(u) && !kapiKorur(kapi, u)) out.push(`FARK|NEW|URUN|${u}||`);
   return out;
 }
 
 /**
  * Bir sunucuyu (fark kalmasa da) 'kontrol' yapan nedenler (saf). once: o sunucunun "once" satirlari.
- * "Once calismayip simdi calisan, kurala gore dokunulmayan" oge DOGRUDAN once <-> son goruntu karsilastirmasiyla
+ * "Once calismayip simdi calisan" oge (kapatma kapisinin korudugu ya da kapatilamamis) DOGRUDAN once <-> son goruntu karsilastirmasiyla
  * bulunur (rapor NEW_URUN kuraliyla ayni); plan BILGI satirlari yalniz plandan SONRA kalkan ogeyi kacirirdi.
  * once verilmezse (eski cagiran) plandaki BILGI satirlarina bakilir.
  */
@@ -152,14 +188,23 @@ function kontrolNedenleri(once, r) {
     neden.push(
       'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss 7 ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — JBoss 7 ürününe dokunulmadı, elle kontrol edin.',
     );
-  const calisan = [];
+  // 2026-11-15 ("nasil bulduysan oyle birak"): once calismayan urun KAPATILIR. Hala calisan oge iki turdur:
+  //   korunan (kapatma kapisi: once BOS / eski surum once'nin JBoss urunu) -> gercekten "dokunulmadi";
+  //   kapatilmasi gereken (urun; ya da urunu once calismayan JVM) -> "hala calisiyor" (urun ayrica KALAN'da, sorunlu).
+  const korunan = [];
+  const kapanmali = [];
+  const ekle = (liste, etiket) => {
+    if (!liste.includes(etiket)) liste.push(etiket);
+  };
   if (onceVar) {
+    const kapi = kapatmaKapisi(once);
     const o = onceKume(cev.satirlar);
-    const s = kume(r?.son_goruntu);
-    for (const u of [...s.urun].sort(varsayilanSira)) if (!o.urun.has(u)) calisan.push(u);
+    const s = sonKume(r?.son_goruntu, o.urun);
+    for (const u of [...s.urun].sort(varsayilanSira))
+      if (!o.urun.has(u)) ekle(kapiKorur(kapi, u) ? korunan : kapanmali, u);
     for (const k of [...s.jvm].sort(varsayilanSira)) {
       const u = k.split('|')[0];
-      if (!o.jvm.has(k) && !o.urun.has(u)) calisan.push(k.replace('|', '/'));
+      if (!o.jvm.has(k) && !o.urun.has(u)) ekle(kapiKorur(kapi, u) ? korunan : kapanmali, k.replace('|', '/'));
     }
   } else {
     const son = new Set(dizi(r?.son_goruntu).map((l) => l.split('|').slice(0, 3).join('|')));
@@ -171,12 +216,19 @@ function kontrolNedenleri(once, r) {
       if (!u) continue;
       const anahtar = ad ? `JVM|${u}|${ad}` : `URUN|${u}|`;
       const etiket = ad ? `${u}/${ad}` : u;
-      if (son.has(anahtar) && !calisan.includes(etiket)) calisan.push(etiket);
+      // Yeni betikte kapinin korudugu her not 'kapatilmadi' icerir; digeri (yeni betigin "urun asamasinda kapatilir" JVM
+      // notu ya da ESKI betigin her "dokunulmadi" notu) yeni kurala gore kapatilmasi gereken ogedir (inceleme R2 #5).
+      if (son.has(anahtar)) ekle(/kapatilmadi/.test(l) ? korunan : kapanmali, etiket);
     }
   }
-  if (calisan.length)
+  const liste = (x) => `${x.slice(0, 10).join(', ')}${x.length > 10 ? ' …' : ''}`;
+  if (korunan.length)
     neden.push(
-      `Reboot öncesi çalışmayan ${calisan.length} öğe şimdi çalışıyor ve kurala göre dokunulmadı: ${calisan.slice(0, 10).join(', ')}${calisan.length > 10 ? ' …' : ''} — beklenen durum mu kontrol edin.`,
+      `Reboot öncesi çalışmayan ${korunan.length} öğe şimdi çalışıyor ve dokunulmadı (${onceVar ? 'önce görüntüsü boş ya da eski sürüm — kapatma güvenli değildi' : 'plan notuna göre'}): ${liste(korunan)} — beklenen durum mu kontrol edin.`,
+    );
+  if (kapanmali.length)
+    neden.push(
+      `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — kapatma sonucunu kontrol edin. Kayıt eski betikle değerlendirildiyse güncel betikle "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`,
     );
   return neden;
 }
@@ -546,6 +598,9 @@ module.exports = {
   kontrolNedenleri,
   kayitDurumu,
   portalKalan,
+  kapatmaKapisi,
+  kapiKorur,
+  sonKume,
   nesilKarsilastirilamaz,
   onceNesilCevir,
   onceKume,
