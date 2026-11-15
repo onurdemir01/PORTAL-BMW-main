@@ -34,7 +34,7 @@ function parseBlocks(text, startKey) {
   const blocks = [];
   let current = null;
   for (const line of String(text || '').split('\n')) {
-    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_ ]*?):\s*(.*)$/);
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_ ]*?):\s*(?!\s)(.*)$/);
     if (!m) continue;
     const key = m[1].trim();
     const value = m[2].trim();

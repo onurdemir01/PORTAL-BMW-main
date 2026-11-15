@@ -28,7 +28,7 @@ function fallbackDir() {
 
 // Portal'in kaynak host'lardan ERISILEBILIR taban URL'i (ters-proxy veya dogrudan host:port).
 function ingestBaseUrl() {
-  return (process.env.LOGX_INGEST_BASE_URL || `http://localhost:${process.env.PORT || 5055}`).replace(/\/+$/, '');
+  return (process.env.LOGX_INGEST_BASE_URL || `http://localhost:${process.env.PORT || 5055}`).replace(/(?<!\/)\/+$/, '');
 }
 
 // Launch aninda cagrilir — ingest token uretir ve upload URL'ini doner. DB yoksa null doner

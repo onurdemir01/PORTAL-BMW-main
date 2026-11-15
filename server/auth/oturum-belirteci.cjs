@@ -45,7 +45,7 @@ function kimlik(belirtec) {
 // express-session'in bekledigi imza (cookie-signature ile ayni algoritma). Yalnizca
 // express-session'in ic denetimini gecmek icin — guvenlik buna DAYANMAZ.
 function imzala(deger, secret) {
-  return `${deger}.${crypto.createHmac('sha256', secret).update(deger).digest('base64').replace(/=+$/, '')}`;
+  return `${deger}.${crypto.createHmac('sha256', secret).update(deger).digest('base64').replace(/(?<!=)=+$/, '')}`;
 }
 
 /** express-session `genid`: yeni oturuma belirtec uretir, kimlik olarak OZETINI verir. */

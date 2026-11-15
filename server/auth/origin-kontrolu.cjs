@@ -21,7 +21,7 @@ const DEGISTIREN = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function liste() {
   return String(process.env.PORTAL_ALLOWED_ORIGINS || '')
     .split(',')
-    .map((s) => s.trim().toLowerCase().replace(/\/+$/, ''))
+    .map((s) => s.trim().toLowerCase().replace(/(?<!\/)\/+$/, ''))
     .filter(Boolean);
 }
 
@@ -47,7 +47,7 @@ function kokenUygunMu(req) {
   if (host && k.host === host) return { ok: true };
   // service.cjs CORS'u ile AYNI varsayilan: gelistirmede Vite proxy'si Host'u hedefe
   // cevirebilir, koken ise localhost:3000 kalir.
-  const cors = String(process.env.CORS_ORIGIN || 'http://localhost:3000').toLowerCase().replace(/\/+$/, '');
+  const cors = String(process.env.CORS_ORIGIN || 'http://localhost:3000').toLowerCase().replace(/(?<!\/)\/+$/, '');
   if (cors && k.origin === cors) return { ok: true };
   if (liste().includes(k.origin)) return { ok: true };
   return { ok: false, sebep: `yabanci-koken ${k.origin}` };

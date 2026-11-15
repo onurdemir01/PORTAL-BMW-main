@@ -307,7 +307,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   }
   const ekNedenler = [];
   const kosuBolumu = stats.kosu && typeof stats.kosu === 'object' ? stats.kosu : null;
-  if (kosuBolumu && kosuBolumu.sw_dizin && String(kosuBolumu.sw_dizin).replace(/\/+$/, '') !== dizin) {
+  if (kosuBolumu && kosuBolumu.sw_dizin && String(kosuBolumu.sw_dizin).replace(/(?<!\/)\/+$/, '') !== dizin) {
     ekNedenler.push(`playbook başka bir dizin bildirdi (${String(kosuBolumu.sw_dizin).slice(0, 200)}); Portal ${dizin} dizinini okudu`);
   }
   if (stats.durum === 'DUR') ekNedenler.push('koşu erken durdu (DUR)');

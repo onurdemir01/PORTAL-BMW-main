@@ -31,7 +31,7 @@ function validateItem(x) {
   if (!x.lastName) e.push("lastName required");
   if (!x.phone) e.push("phone required");
   if (!x.email) e.push("email required");
-  if (x.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email)) e.push("email invalid");
+  if (x.email && !/^[^\s@]+@[^\s@][^\s@.]*\.[^\s@]+$/.test(x.email)) e.push("email invalid");
   return e;
 }
 

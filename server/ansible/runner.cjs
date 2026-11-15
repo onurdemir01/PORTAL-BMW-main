@@ -80,7 +80,7 @@ function awxUrlKimligi(value) {
   try {
     return new URL(ham).origin.toLowerCase();
   } catch {
-    return ham.replace(/\/+$/, '').toLowerCase();
+    return ham.replace(/(?<!\/)\/+$/, '').toLowerCase();
   }
 }
 
@@ -167,7 +167,7 @@ function normalizeApiBase(value) {
   const v = String(value || '').trim();
   if (!v) return DEFAULT_API_BASE;
   const withSlash = v.startsWith('/') ? v : '/' + v;
-  return withSlash.replace(/[/]+$/, '') || DEFAULT_API_BASE;
+  return withSlash.replace(/(?<![/])[/]+$/, '') || DEFAULT_API_BASE;
 }
 
 /** `/api/v2/...` yolunu sunucunun API tabanina tasir. Diger yollara DOKUNMAZ. */
@@ -6060,7 +6060,7 @@ function toLongJobCandidate(server, spec, j) {
     createdBy: sf.created_by?.username || null,
     // Bir workflow'un alt isi ise ust workflow job'i: o iptal edilirse AWX bu isi de keser.
     parentWorkflowJobId: Number(sf.source_workflow_job?.id) || null,
-    url: `${String(server.url || '').replace(/\/+$/, '')}/#/jobs/${spec.uiSegment}/${j.id}/output`,
+    url: `${String(server.url || '').replace(/(?<!\/)\/+$/, '')}/#/jobs/${spec.uiSegment}/${j.id}/output`,
   };
 }
 

@@ -119,7 +119,9 @@ async function analyze(lines, context = '', username = 'anonymous') {
   // Parse JSON from response
   let analysis;
   try {
-    const jsonMatch = rawContent.match(/```json\s*([\s\S]+?)\s*```/) || rawContent.match(/({[\s\S]+})/);
+    // Dogrusal yazim (Sonar S8786), sonuc eskisiyle ayni: icerik bosluksuz baslayip biten EN KISA metin;
+    // yalniz bosluk + kapanis varsa tek bosluk (eski tembel desen gibi). Ikinci desen ilk '{'e capali.
+    const jsonMatch = rawContent.match(/```json\s*(\S(?:[\s\S]*?\S)??|\s(?=```))\s*```/) || rawContent.match(/^[^{]*({[\s\S]+})/);
     analysis = JSON.parse(jsonMatch ? jsonMatch[1] : rawContent);
   } catch {
     analysis = {

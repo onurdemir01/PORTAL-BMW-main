@@ -42,7 +42,7 @@ export function parseNginxVersion(v: string | null | undefined): {
 } {
   const s = String(v || '');
   if (!s || s === 'unknown') return { type: 'Bilinmiyor', version: null, release: null };
-  const version = (s.match(/(\d+\.\d+\.\d+)/) || [])[1] || null;
+  const version = (s.match(/(?<!\d)(\d+\.\d+\.\d+)/) || [])[1] || null;
   const release = (s.match(/plus[- ]?(r\d+(?:-p\d+)?)/i) || [])[1] || null;
   return {
     type: /plus/i.test(s) ? 'NGINX Plus' : 'Open Source',

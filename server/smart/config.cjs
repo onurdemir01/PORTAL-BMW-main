@@ -45,7 +45,7 @@ function getConfig() {
     //   Test: gbcalt01.fw.garanti.com.tr | QA: gbcadq01.fw.garanti.com.tr | Prod: gbca.fw.garanti.com.tr
     // Admin hangi ortama baglanilacagini SMART_API_URL'e o ortamin tam host'unu
     // (https://<host>:8443) yazarak secer.
-    baseUrl: (process.env.SMART_API_URL || '').replace(/\/+$/, ''),
+    baseUrl: (process.env.SMART_API_URL || '').replace(/(?<!\/)\/+$/, ''),
     username: process.env.SMART_API_USERNAME || '',
     password: process.env.SMART_API_PASSWORD || '',
     requestToken: process.env.SMART_RFF_TOKEN || '',

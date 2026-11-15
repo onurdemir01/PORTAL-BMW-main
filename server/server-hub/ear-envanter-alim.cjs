@@ -116,7 +116,7 @@ const nesne = (v) => (v && typeof v === 'object' ? v : {});
 function earDizin(env = process.env) {
   const s = String(env.EAR_ENVANTER_DIR || '')
     .trim()
-    .replace(/\/+$/, '');
+    .replace(/(?<!\/)\/+$/, '');
   if (!s) return VARSAYILAN_DIZIN;
   const parcalar = s.split('/');
   if (!/^\/[A-Za-z0-9_][A-Za-z0-9._/-]*$/.test(s) || parcalar.includes('..') || parcalar.length < 3)
@@ -282,7 +282,7 @@ function baglantiOzeti(p) {
 
 /** '/vhosting8' -> '8', '/vhosting' -> '7', digeri '?'. Koke gore JBoss nesli (pilot: ayni EAR iki kokte). */
 function jbossOf(kok) {
-  const s = String(kok || '').replace(/\/+$/, '');
+  const s = String(kok || '').replace(/(?<!\/)\/+$/, '');
   if (/\/vhosting8$/.test(s)) return '8';
   if (/\/vhosting$/.test(s)) return '7';
   return '?';

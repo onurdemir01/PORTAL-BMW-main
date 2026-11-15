@@ -136,7 +136,7 @@ function extractDtUrl(text: string | undefined, problemId: string): string | nul
   if (!text) return null;
   const m = text.match(/https?:\/\/\S+problemdetails;pid=\S*/i);
   if (!m) return null;
-  return m[0].replace(/<problemId>|%3CproblemId%3E/gi, problemId).replace(/[.,)\s]+$/, '');
+  return m[0].replace(/<problemId>|%3CproblemId%3E/gi, problemId).replace(/(?<![.,)\s])[.,)\s]+$/, '');
 }
 
 function fmtEpoch(ms: unknown): string {

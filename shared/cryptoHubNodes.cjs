@@ -169,7 +169,7 @@ function degerDogrula(deger, bicim) {
   return DESEN_RE.sir.test(deger) ? null : 'sir';
 }
 
-const URL_PARCA_RE = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)(.*)$/;
+const URL_PARCA_RE = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)(?![^/?#])(.*)$/;
 const YETKI_RE = /^[A-Za-z0-9.-]+(:[0-9]{1,5})?$/;
 const YETKI6_RE = /^\[[0-9A-Fa-f:.]+\](:[0-9]{1,5})?$/;
 

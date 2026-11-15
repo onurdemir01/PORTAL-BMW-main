@@ -720,7 +720,7 @@ function apiGatewayConfChoices(rows, hosts) {
 function kokYolu(locs, zonlar) {
   const yollar = [...new Set(locs || [])].filter(Boolean);
   const onekMi = (kok, y) => {
-    const k = kok.replace(/\/+$/, '');
+    const k = kok.replace(/(?<!\/)\/+$/, '');
     return y === k || y.startsWith(`${k}/`);
   };
   const say = new Map();
@@ -736,7 +736,7 @@ function kokYolu(locs, zonlar) {
     const sec = (liste) =>
       liste.slice().sort((a, b) => say.get(b) - say.get(a) || a.length - b.length || a.localeCompare(b))[0];
     const govde = kapsayan.length ? kapsayan.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0] : sec(adaylar);
-    const yalin = govde.replace(/\/+$/, '');
+    const yalin = govde.replace(/(?<!\/)\/+$/, '');
     return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || yalin;
   }
   if (!yollar.length) return '';
@@ -750,7 +750,7 @@ function kokYolu(locs, zonlar) {
   }
   const onek = ortak.join('/');
   if (onek.replace(/\//g, '')) {
-    const yalin = onek.replace(/\/+$/, '');
+    const yalin = onek.replace(/(?<!\/)\/+$/, '');
     return yollar.find((y) => y === `${yalin}/`) || yollar.find((y) => y === yalin) || `${yalin}/`;
   }
   return yollar.slice().sort((a, b) => a.length - b.length || a.localeCompare(b))[0];
@@ -837,7 +837,7 @@ function apiGatewayConfDetay(rows, hosts, conf, opts = {}) {
   const kokYol = kokYolu(kendiYollar, zoneBilgisi ? kendiZonlar : []);
   // "kok" etiketi yalniz GERCEK kok'e: dosyada var VE diger tum yollar onunla basliyor (ortak kok yokken
   // kokYolu'nun yedegi olan en kisa yol, kardes bir API'dir - kok diye isaretlenmez).
-  const kokSade = kokYol.replace(/\/+$/, '');
+  const kokSade = kokYol.replace(/(?<!\/)\/+$/, '');
   const kok =
     kendiYollar.includes(kokYol) && kendiYollar.every((y) => y === kokYol || y === kokSade || y.startsWith(`${kokSade}/`))
       ? kokYol
