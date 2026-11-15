@@ -112,7 +112,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
 
   useEffect(() => {
     if (!open) return;
-    yukle();
+    void yukle();
     // Pencere her acilista TEMIZ baslar: onceki oturumun alan tablosu/onizlemesi,
     // baska bir flow'a aitmis gibi yaniltici sekilde asili kalmasin.
     setAlanlar({});

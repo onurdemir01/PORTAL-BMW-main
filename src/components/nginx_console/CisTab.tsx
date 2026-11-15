@@ -100,7 +100,7 @@ export function CisTab({ isAdmin, onOpenHost }: { isAdmin: boolean; onOpenHost: 
         addJob({ title: `Nginx CIS · ${list.length ? list.join(', ') : 'tüm filo'} #${r.jobId}`, fetchStatus: async () => {
           const s = await nginxCisApi.jobStatus(r.awxServerId, r.jobId as number);
           if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-          if (TERMINAL.has(s.status) && !done) { done = true; load(true); }
+          if (TERMINAL.has(s.status) && !done) { done = true; void load(true); }
           return { status: s.status, output: s.output || '' };
         } });
       }

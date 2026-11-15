@@ -746,7 +746,7 @@ export function NginxSpaAudit() {
               value={scanDate}
               onChange={(e) => {
                 setScanDate(e.target.value);
-                load(e.target.value);
+                void load(e.target.value);
               }}
             >
               {data.availableDates.map((d) => (

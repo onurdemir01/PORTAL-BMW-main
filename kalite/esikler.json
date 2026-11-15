@@ -1,0 +1,34 @@
+{
+  "aciklama": "Kalite kapilarinin TEK esik kaynagi (docs/KALITE-KAPILARI.md). Esikler yalniz SIKILASIR: gevsetme server/__tests__/kalite-kapilari.test.cjs ile reddedilir.",
+  "kapsam": {
+    "satirMin": 70
+  },
+  "sonar": {
+    "kapiAdi": "Portal Kati",
+    "kosullar": [
+      { "metrik": "coverage", "op": "LT", "esik": "70" },
+      { "metrik": "duplicated_lines_density", "op": "GT", "esik": "3" },
+      { "metrik": "bugs", "op": "GT", "esik": "0" },
+      { "metrik": "vulnerabilities", "op": "GT", "esik": "0" },
+      { "metrik": "reliability_rating", "op": "GT", "esik": "1" },
+      { "metrik": "security_rating", "op": "GT", "esik": "1" },
+      { "metrik": "sqale_rating", "op": "GT", "esik": "1" },
+      { "metrik": "security_hotspots_reviewed", "op": "LT", "esik": "100" },
+      { "metrik": "software_quality_blocker_issues", "op": "GT", "esik": "0" },
+      { "metrik": "software_quality_high_issues", "op": "GT", "esik": "0" }
+    ],
+    "cpdHaric": {
+      "server/db/mssql-setup.cjs": "Bildirimsel sema listesi: TABLES / *_SEED / MIGRATIONS dizileri {name, sql} ve {table, col, sql} girdileri. CPD dizgi degismezlerini ayni belirtec sayar, her girdi oncekinin kopyasi gorunur; tekrar eden mantik yok.",
+      "src/components/admin/tabs/sistem/ortamDegiskenleri.ts": "Ortam degiskeni katalogu: tek ENV_VARS dizisi, islev yok. Girdilerin bicimi ayni oldugu icin CPD her girdiyi kopya sayar.",
+      "server/server-hub/kural-katalogu.cjs": "Server Hub kural katalogu: MADDELER ve ETIKET_KURALLARI veri dizileri; kurallarin degerlendirmesi baska dosyada.",
+      "shared/cryptoHubTenants.cjs": "Crypto Hub kiraci listesi: CRYPTO_TENANTS veri dizisi ve dort kucuk okuyucu islev."
+    }
+  },
+  "bastirma": {
+    "NOSONAR": 0,
+    "ts-ignore": 0,
+    "ts-expect-error": 0,
+    "eslint-disable": 2,
+    "test-only-skip": 0
+  }
+}

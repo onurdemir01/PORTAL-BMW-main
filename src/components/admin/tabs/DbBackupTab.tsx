@@ -55,7 +55,7 @@ const DbBackupTab: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   // Calisirken 3sn'de bir otomatik yenilenir, bitince durur.
   useEffect(() => {

@@ -1,0 +1,3 @@
+# Kalite kapilari, push oncesi: hizli kapilar (tip, lint, ASCII, sunucu, manifest, bagimlilik
+# guvenligi, on kontrol). Tam liste `npm run kapi`; CI hepsini ve Sonar kapisini kosturur.
+npm run -s kapi:hizli

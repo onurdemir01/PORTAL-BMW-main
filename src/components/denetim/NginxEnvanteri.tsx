@@ -1540,7 +1540,7 @@ export function NginxEnvanteri() {
           onClose={() => setEtiketHost(null)}
           onKaydedildi={() => {
             setEtiketHost(null);
-            load();
+            void load();
           }}
         />
       )}

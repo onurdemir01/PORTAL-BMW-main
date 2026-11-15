@@ -2,24 +2,29 @@
 
 ## Geliştirme Akışı
 
-1. **Dal Stratejisi:** Her değişiklik kısa ömürlü bir feature/fix dalında yapılır; `main` doğrudan değiştirilmez.
-2. **Standart ve İnceleme:** Mimari/kodlama standartları için [docs/STANDARTLAR.md](docs/STANDARTLAR.md) dosyasını okuyun.
-3. **Commit Mesajları:** Konvansiyonel commit biçimi önerilir (`feat:`, `fix:`, `security:`, `test:`, `docs:`, `chore:`).
+1. **Kurulum:** `npm run kur` (geliştirme araçları + git kancaları).
+2. **Dal stratejisi:** Her değişiklik kısa ömürlü bir dalda yapılır ve PR ile `main`'e girer.
+3. **Standartlar:** Mimari ve kodlama standartları [docs/STANDARTLAR.md](docs/STANDARTLAR.md)'de.
+4. **Commit mesajı:** Türkçe serbest biçim geçerlidir. Konu satırı 8–120 karakter olur ve ne yapıldığını söyler; mesajda sır olmaz (`commit-msg` kancası denetler).
 
-## Doğrulama Kontrol Listesi (Merge Öncesi Zorunlu)
+## Kalite kapıları (zorunlu)
 
-Her PR / commit öncesinde aşağıdaki komutların tamamı hatasız geçmelidir:
+Tek kaynak: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
 
-- `npm test` — Tüm `node --test` sunucu ve mimari bekçi testleri
-- `npm run test:ui` — Tüm `vitest` istemci testleri
-- `npm run lint:ascii` — Sunucu ve betiklerde Türkçe ASCII guard kontrolü
-- `npm run lint` — ESLint kontrolü (sıfır yeni uyarı)
-- `npx tsc --noEmit` — Frontend TypeScript tip kontrolü
-- `npm run build` — Production Vite derlemesi
-- `npm run preflight` — Kurumsal sürüm/sertleştirme ön kontrolü
+- PR açmadan önce `npm run kapi` koşturulur. Kapsadığı kapılar:
+  - tip denetimi, lint, ASCII, sunucu denetimi, manifest;
+  - bağımlılık güvenliği, ön kontrol;
+  - testler + kapsam ≥ %70;
+  - mutasyon, SBOM;
+  - derleme + paket.
+- Sonar'a dokunan değişiklikte `npm run kapi:sonar` da koşturulur.
+- Kancalar commit ve push anında hızlı kapıları kendisi koşturur. `--no-verify` yasaktır.
+- CI'da `verify` ve `sonar` yeşil olmadan ve onaylayıcı onayı olmadan merge yoktur.
 
-## Yasak Uygulamalar
+## Yasak uygulamalar
 
-- `NOSONAR`, `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `it.skip` eklenemez.
-- `sonar.coverage.exclusions` ile yapay coverage artışı yapılamaz.
-- Gizli anahtar, gerçek kurum IP'si veya `.har` kayıtları commit edilemez.
+- `NOSONAR`, `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `.only` / `.skip` eklenemez (tavanlar `kalite/esikler.json`).
+- `sonar.coverage.exclusions`, `sonar.issue.ignore.*` ya da kaynak dışlaması eklenemez.
+- Tarayıcıdan gizlemek için dizgi bölmek ya da kodu veri dosyasına taşımak yasaktır.
+- Eşik düşürmek ve testi zayıflatmak yasaktır.
+- Gizli anahtar, kurum iç adı / IP'si, `.env` ya da `.har` commit edilemez.

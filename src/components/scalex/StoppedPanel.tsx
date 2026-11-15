@@ -211,7 +211,7 @@ const StoppedPanel: React.FC<Props> = ({
   useEffect(() => {
     if (!hasRestoring) return;
     const t = setInterval(() => {
-      load({ silent: true });
+      void load({ silent: true });
     }, 20_000);
     return () => clearInterval(t);
   }, [hasRestoring, load]);

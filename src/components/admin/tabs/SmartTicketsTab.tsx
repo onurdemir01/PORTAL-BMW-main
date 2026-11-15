@@ -131,13 +131,13 @@ export default function SmartTicketsTab() {
 
   function applyFilters() {
     setOffset(0);
-    load(0);
+    void load(0);
   }
 
   function page(dir: -1 | 1) {
     const next = Math.max(0, offset + dir * PAGE_SIZE);
     setOffset(next);
-    load(next);
+    void load(next);
   }
 
   async function doCancel() {
@@ -543,7 +543,7 @@ export default function SmartTicketsTab() {
               onClose={() => setRetriggerTarget(null)}
               onDone={() => {
                 setRetriggerTarget(null);
-                load(offset);
+                void load(offset);
               }}
             />
           )}

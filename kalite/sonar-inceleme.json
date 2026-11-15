@@ -1,0 +1,11 @@
+{
+  "aciklama": "SonarQube Security Hotspot incelemeleri (docs/KALITE-KAPILARI.md K13). scripts/sonar-kapi.cjs her taramadan sonra eslesen hotspot'u gerekcesiyle 'Reviewed - Safe', sunucu ayni kurali sorun (issue) olarak acmissa 'Accepted' isaretler; kaydi olmayan bulgu acik kalir ve kapi kirmizi olur. Kayit yalniz gercekten guvenli olan, kodda durust duzeltmesi olmayan bulgu icindir. Eslesme: kural + dosya + satirin icerdigi metin (satir numarasi degil). Yeni kayit CODEOWNERS incelemesinden gecer; kurumsal SonarQube'da ayni karari yetkili kisi verir.",
+  "incelemeler": [
+    {
+      "kural": "javascript:S5443",
+      "dosya": "server/logx/v2/downloads.cjs",
+      "icerik": "'/tmp/logx-v2-fallback'",
+      "gerekce": "Yol Portal sunucusunda degil uzak AWX hostunda yaratilir (staging); dosya adi tahmin edilemez indirme belirteciyle olusur, ayni hostta baska kullanicinin onceden yaratmasi isi bozar ama icerik sizdirmaz. LOGX_STAGING_FALLBACK_DIR ile ozel dizine alinir."
+    }
+  ]
+}

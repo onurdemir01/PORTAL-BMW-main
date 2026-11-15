@@ -693,11 +693,11 @@ function AcikIsler() {
     try {
       await bmwHubApi.guncelle(i.id, { durum }, i.guncelleme);
       toast.success(`Durum: ${DURUM_AD[durum]}`);
-      yukle();
+      void yukle();
     } catch (e) {
       setIsler(eski);
       toast.error((e as Error).message, 8000);
-      yukle();
+      void yukle();
     }
   };
 

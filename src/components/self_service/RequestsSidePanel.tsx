@@ -233,12 +233,12 @@ export default function RequestsSidePanel() {
     const hasPending = tickets.some((t) => t.status === 'PENDING');
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      load();
+      void load();
     }, hasPending ? 15_000 : 60_000);
     return () => clearInterval(timer);
   }, [tickets, load]);
   useEffect(() => {
-    const gorundu = () => { if (document.visibilityState === 'visible') load(); };
+    const gorundu = () => { if (document.visibilityState === 'visible') void load(); };
     document.addEventListener('visibilitychange', gorundu);
     window.addEventListener('focus', gorundu);
     return () => { document.removeEventListener('visibilitychange', gorundu); window.removeEventListener('focus', gorundu); };
@@ -247,7 +247,7 @@ export default function RequestsSidePanel() {
   // Ayni sekmede acilan talebi ANINDA yakala (yukaridaki 1. kanal).
   useEffect(() => {
     const onCreated = () => {
-      load();
+      void load();
     };
     window.addEventListener('portal:smart-ticket-created', onCreated);
     return () => window.removeEventListener('portal:smart-ticket-created', onCreated);
@@ -262,7 +262,7 @@ export default function RequestsSidePanel() {
     } catch {
       /* yoksay */
     }
-    if (!next) load();
+    if (!next) void load();
   };
 
   const cancel = (id: number) => setIptalSor({ id, note: '' });

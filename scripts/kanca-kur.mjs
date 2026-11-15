@@ -1,7 +1,7 @@
 // scripts/kanca-kur.mjs — `npm install` sonrasi git kancalarini (husky) kurar. package.json `prepare`.
 //
-// Kokteki .npmrc (omit=dev) yuzunden varsayilan kurulumda husky YOKTUR (kurumsal pipeline, uretim
-// sunucusu). `prepare: husky` orada "komut bulunamadi" ile kurulumun TAMAMINI dusururdu. Husky
+// Kok manifest yalniz calisma zamani paketlerini tasir (scripts/manifest.cjs): kokte yapilan kurulumda
+// husky YOKTUR (kurumsal pipeline, uretim sunucusu). `prepare: husky` orada "komut bulunamadi" ile kurulumun TAMAMINI dusururdu. Husky
 // kurulu degilse sessizce cikilir; kuruluysa hatasi gizlenmez.
 let husky;
 try {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22.22-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 WORKDIR /build
 
 COPY package.json package-lock.json ./
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build \
   && npm run paket -- --cikti /out/app --derleme-yok
 
-FROM node:22.22-alpine AS runtime
+FROM node:22.23.4-alpine AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -31,6 +31,9 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && chown node:node /tmp/bmw-logs
 
 COPY --from=builder /out/app ./
+# Uygulamanin yazdigi dizinler (LogX staging / fallback) node kullanicisina ait olmali; kok dosya
+# sistemi salt okunur calistirilacaksa bu ikisi birim (volume) olarak baglanir.
+RUN mkdir -p data server/data && chown node:node data server/data
 
 USER node
 EXPOSE 5055

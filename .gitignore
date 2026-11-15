@@ -54,3 +54,6 @@ coverage/
 .omq/
 .vitest/
 .workspace/
+
+# SonarQube tarayici calisma dizini (npm run kapi:sonar)
+.scannerwork/

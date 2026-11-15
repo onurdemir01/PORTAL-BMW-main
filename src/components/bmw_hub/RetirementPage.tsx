@@ -23,7 +23,7 @@ export default function RetirementPage() {
     setRetireOneri((o) => ({ uygulama: gelen.uygulama, not: gelen.not || '', no: (o ? o.no : 0) + 1 }));
   }
   useEffect(() => {
-    if (gelen?.uygulama) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (gelen?.uygulama) void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [gelen, location.pathname, location.search, navigate]);
   return (
     <div className="space-y-5">

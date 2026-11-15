@@ -35,9 +35,12 @@ export function centeredPos(w: number, h: number): FloatingPos {
   };
 }
 
+// Modul sabiti: varsayilan parametre her cagrida yeni nesne uretmesin (kimlik sabit).
+const VARSAYILAN_MIN_BOYUT = { w: 380, h: 240 };
+
 export function useFloatingWindow(
   defaultSize: { w: number; h: number },
-  minSize: { w: number; h: number } = { w: 380, h: 240 },
+  minSize: { w: number; h: number } = VARSAYILAN_MIN_BOYUT,
   opts: { autoHeight?: boolean } = {},
 ) {
   const autoHeight = !!opts.autoHeight;
