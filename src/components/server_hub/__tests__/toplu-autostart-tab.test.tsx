@@ -44,6 +44,10 @@ import TopluAutoStartTab, {
   YOKLAMA_MS,
   PLAN_YOKLAMA_MS,
   onayMetni,
+  awxIsSayisi,
+  isOzeti,
+  belirsizMi,
+  acilanIsSayisi,
 } from '@/components/server_hub/TopluAutoStartTab';
 import { SekmeKabi } from '@/components/server_hub/sekmeGorunurlugu';
 
@@ -198,7 +202,10 @@ describe('Toplu Auto-Start sekmesi', () => {
     expect(pencere.textContent).toMatch(
       /2 JVM, 1 sunucu: 1 JVM'de auto-start AÇILACAK, 1 JVM'de KAPATILACAK/,
     );
-    expect(pencere.textContent).toMatch(/Her sunucu için tek iş açılır, sunucular sırayla işlenir/);
+    expect(pencere.textContent).toMatch(/Her sunucu için ayrı AWX işi açılır, işler sırayla çalışır/);
+    expect(pencere.textContent).toMatch(/sonucu belirsiz iş \(AWX’te sürüyor olabilir\) toplu işi durdurur/);
+    // 15 dk onay suresi planlama BITTIGINDE baslar (kullanicilar planlama suresini de sayiyordu)
+    expect(screen.getByText(/15 dakikalık onay süresi planlama BİTTİĞİNDE başladı \(planlamanın kendi süresi buna dahil değil\)/)).toBeTruthy();
     expect(m.topluAutoStartOnayla).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Onayla ve uygula' }));
     await waitFor(() => expect(m.topluAutoStartOnayla).toHaveBeenCalledWith(7));
@@ -211,6 +218,41 @@ describe('Toplu Auto-Start sekmesi', () => {
       oge(3, 'H2', 'c', 'DUSTU'),
     ] as never);
     expect(t).toMatch(/^2 JVM, 2 sunucu: 2 JVM'de auto-start AÇILACAK, 0 JVM'de KAPATILACAK/);
+  });
+
+  it('TT6 parçalama (2026-11-15): AWX işi sayısı seçimde, onayda ve işte görünür', async () => {
+    // 35 JVM tek sunucu + 1 JVM baska sunucu, is basina 10 -> 4 + 1 = 5 AWX isi
+    const cok = Array.from({ length: 35 }, (_, i) => aday('BUYUK01', `j${i}`, 'ac'));
+    expect(awxIsSayisi([...cok, aday('APP02', 'a2', 'ac')], 10)).toBe(5);
+    expect(awxIsSayisi(cok, 50)).toBe(1);
+    expect(awxIsSayisi([], 10)).toBe(0);
+    expect(isOzeti(cok, 10)).toBe('4 AWX işi, iş başına en çok 10 JVM');
+    const ogeler = Array.from({ length: 12 }, (_, i) => oge(i + 1, 'BUYUK01', `j${i}`, 'PLAN_GECTI'));
+    expect(onayMetni(ogeler as never, 5)).toMatch(/iş başına en çok 5 JVM'lik AWX işlerine bölünür \(3 AWX işi, iş başına en çok 5 JVM\); işler tek tek, sırayla/);
+    m.topluAutoStartAdaylar.mockResolvedValue({
+      ok: true,
+      adaylar: [...cok, aday('APP02', 'a2', 'ac')],
+      dislananlar: [],
+      limit: 500,
+      isBasinaJvm: 10,
+      aktif: null,
+    });
+    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: isSatiri('CALISIYOR'), son: [] });
+    m.topluAutoStartDurum.mockResolvedValue({
+      ok: true,
+      is: isSatiri('CALISIYOR'),
+      ogeler: [
+        oge(1, 'BUYUK01', 'j0', 'OK', { planJobId: 11, awxJobId: 21 }),
+        oge(2, 'BUYUK01', 'j1', 'CALISIYOR', { planJobId: 11, awxJobId: 22 }),
+        oge(3, 'BUYUK01', 'j2', 'BEKLIYOR', { planJobId: 12 }),
+      ],
+    });
+    render(<TopluAutoStartTab />);
+    expect((await screen.findByTestId('toplu-is-ozeti')).textContent).toBe('· 5 AWX işi, iş başına en çok 10 JVM');
+    expect((await screen.findByTestId('toplu-awx-isleri')).textContent).toBe('AWX işi: plan 2 · uygulama 2 (iş başına en çok 10 JVM)');
+    // satir basina is baglantisi kalir
+    expect(screen.getByText('#22')).toBeTruthy();
+    expect(screen.getByText('plan #12')).toBeTruthy();
   });
 
   describe('TT3 gizli sekmede istek / yoklama yok', () => {
@@ -465,5 +507,38 @@ describe('Toplu Auto-Start sekmesi', () => {
     await waitFor(() => expect(screen.getByLabelText('Toplu iş #8').querySelectorAll('tbody tr').length).toBe(2));
     expect(screen.getByRole('button', { name: 'Tümü' }).getAttribute('aria-pressed')).toBe('true');
     expect(screen.queryByTestId('kategori-ne-yapilir')).toBeNull();
+  });
+
+  it('TT10 sonucu belirsiz öğe ayrı sayılır (çalıştırılmayan değil); iş sayısı (sunucu, iş) çiftiyle', async () => {
+    // inceleme 2026-11-15 B5: "yarım kaldı" iki ayrı şey
+    const BEL = "iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, sonucu belirsiz): socket hang up";
+    const CAL =
+      "çalıştırılmadı: toplu iş durduruldu — BUYUK01 parçasının iş isteği belirsiz hatayla döndü. Sonucu bilinmeyen iş AWX'te sürüyor olabilir; AWX'ten kontrol edin";
+    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: BEL })).toBe(true);
+    expect(belirsizMi({ durum: 'FAIL', neden: 'iş #9 3 saatte bitmedi (sonucu belirsiz) — x' })).toBe(true);
+    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: "AWX'e gitmiş olabilir — AWX'ten kontrol edin" })).toBe(true);
+    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: CAL })).toBe(false);
+    expect(belirsizMi({ durum: 'YARIM_KALDI', neden: 'Portal yeniden başladı — çalıştırılmadı' })).toBe(false);
+    expect(belirsizMi({ durum: 'OK', neden: BEL })).toBe(false);
+    const iki = [
+      oge(1, 'A', 'a', 'OK', { awxServerId: 1, awxJobId: 5, planJobId: 9 }),
+      oge(2, 'A', 'b', 'OK', { awxServerId: 2, awxJobId: 5, planJobId: 9 }),
+    ];
+    expect(acilanIsSayisi(iki as never, 'uygulama')).toBe(2);
+    expect(acilanIsSayisi(iki as never, 'plan')).toBe(1);
+    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluAutoStartDurum.mockResolvedValue({
+      ok: true,
+      is: isSatiri('BITTI_HATALI'),
+      ogeler: [
+        oge(1, 'BUYUK01', 'j0', 'OK', { awxJobId: 21 }),
+        oge(2, 'BUYUK01', 'j1', 'YARIM_KALDI', { neden: BEL }),
+        oge(3, 'BUYUK01', 'j2', 'YARIM_KALDI', { neden: BEL }),
+        oge(4, 'BUYUK01', 'j3', 'YARIM_KALDI', { neden: CAL }),
+      ],
+    });
+    render(<TopluAutoStartTab />);
+    expect((await screen.findByTestId('toplu-belirsiz')).textContent).toBe('sonucu belirsiz 2');
+    expect(screen.getByTestId('toplu-calistirilmadi').textContent).toBe('yarım kaldı (çalıştırılmadı) 1');
   });
 });

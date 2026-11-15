@@ -48,7 +48,13 @@
 //   - ayni toplu isin bekleyenleri ATLANDI ("toplu is durduruldu"), is BITTI_HATALI (sessiz devam yok);
 //   - JVM kilidi (topluKilidi) AWX isi bitene kadar (is numarasi yoksa 45 dk) KALKMAZ;
 //   - yeni toplu restart'ta ayni uygulamanin kopyalari ATLANDI, digerleri o is bitene kadar BEKLER.
-// PLAN_HAZIR is 15 dk icinde onaylanmazsa yurutucu onu PLAN_ESKIDI yapar (JVM kilitleri kalkar).
+// PLAN_HAZIR is 15 dk icinde onaylanmazsa yurutucu onu PLAN_ESKIDI yapar (JVM kilitleri kalkar). 15 dk
+// onizleme BITTIGINDE (plan_bitis_at) baslar; onizleme taramasinin kendi suresi dahil degil.
+//
+// AWX IS BOYUTU (2026-11-15, Toplu Auto-Start parcalamasi 'limit:toplu_is_basina_jvm' ile birlikte incelendi):
+// burada parcalama GEREKMEZ. Restart isi zaten JVM basina TEK AWX isi (OpsX legacy restart, tek JVM); onizleme
+// ve dogrulama isleri JVM basina jboss-cli acmayan server_hub_scan taramasidir (onizleme sunuculari
+// 'limit:tara' kadarlik parcalarla tarar). toplu_is_basina_jvm bu modulde okunmaz.
 'use strict';
 
 const crypto = require('node:crypto');
@@ -682,7 +688,7 @@ const planEskiMi = (is) => !is.plan_bitis_at || Date.now() - new Date(is.plan_bi
 async function planEskit(req, id) {
   const r = await db().query(
     `UPDATE server_hub_toplu_isler SET durum = 'PLAN_ESKIDI', hata = $2, bitis_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR'`,
-    [id, 'Önizleme 15 dakikadan eski — onaylanmadı; yeniden önizleyin.'],
+    [id, 'Önizleme bittikten sonra 15 dakika içinde onaylanmadı — yeniden önizleyin.'],
   );
   if (r.rowCount !== 1) return false;
   await db().query(
@@ -701,7 +707,7 @@ async function onayla(req, id) {
   const kim = M(req.session?.user?.username || 'unknown', 128);
   if (planEskiMi(is)) {
     await planEskit(req, id);
-    throw hata(409, 'Önizleme 15 dakikadan eski — JVM’ler yeniden taranmalı. Yeniden önizleyin.', 'plan_eskidi');
+    throw hata(409, 'Önizleme bitişinin üzerinden 15 dakika geçti — JVM’ler yeniden taranmalı. Yeniden önizleyin.', 'plan_eskidi');
   }
   // AWX legacy sablonu limit'i kabul etmiyorsa (yutulursa restart TUM envanterde kosar) onay VERILMEZ.
   await opsx().legacyLimitKontrol();

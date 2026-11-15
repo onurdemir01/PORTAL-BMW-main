@@ -86,14 +86,20 @@ test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uyg
   assert.match(TOPLU, /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/);
 });
 
-test('BA7: kontrollu toplu - host basina TEK is, virgullu hedef YOK, hostlar SIRAYLA', () => {
+test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRAYLA', () => {
   assert.ok(!/join\(','\)/.test(TOPLU), 'toplu modul virgullu hedef listesi uretiyor');
   for (const ad of ['planIlerlet', 'uygulaIlerlet']) assert.match(fonksiyon(TOPLU, ad), /target_host: host,/, `${ad} tek hedef gondermiyor`);
+  // 2026-11-15 parcalama: ayni hostun parcalari da birbirini bekler (host kosulu yok; parca disi tum ogeler)
   assert.match(
     fonksiyon(TOPLU, 'uygulaIlerlet'),
-    /NOT EXISTS \(SELECT 1 FROM server_hub_toplu_ogeler x[\s\S]*x\.host <> \$2 AND x\.durum IN \('BASLATILIYOR', 'CALISIYOR'\)/,
-    'baska host calisirken yeni host baslatilabiliyor (sira yok)',
+    /NOT EXISTS \(SELECT 1 FROM server_hub_toplu_ogeler x[\s\S]*x\.is_id = \$1 AND x\.id NOT IN \(\$\{yerTutucu\(ids, 3\)\}\) AND x\.durum IN \('BASLATILIYOR', 'CALISIYOR'\)/,
+    'baska parca calisirken yeni parca baslatilabiliyor (sira yok)',
   );
+  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /\.slice\(0, n\)/, 'uygulama parcasi isBasinaJvm ile sinirlanmiyor');
+  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /parcala\(tazeOg\.filter\(\(o\) => o\.durum === 'ADAY'\), n\)/, 'plan parcalanmiyor');
+  // belirsiz launch isareti olmazsa toplu is "durdur" yolu uretimde olu kalir
+  assert.match(fonksiyon(SRC, 'launch'), /!\(st >= 400 && st < 500\)\) e\.launchBelirsiz = true;/, 'Server Hub launch belirsiz hatayi isaretlemiyor');
+  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /e\.launchBelirsiz === true[\s\S]*topluDurdur\(is,/, 'belirsiz launch toplu isi durdurmuyor');
 });
 
 test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {

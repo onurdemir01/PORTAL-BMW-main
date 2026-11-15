@@ -13,10 +13,29 @@
 //      PLAN = hala uyumsuz (uygulanir); SKIP = canli deger zaten hedefte (tarama eski, dusurulur); FAIL =
 //      dusurulur (nedeniyle). "AC" adayinin JVM'i plan aninda durmus olsa da betik bunu yakalamaz (auto-start
 //      acmak durmus JVM'e zarar vermez; reboot'ta acilir) - ekran bunu soyler.
-//   3. Onay ekrani (15 dk icinde; plan daha eskiyse PLAN_ESKIDI, yeniden planlanir).
-//   4. Host basina TEK is, hostlar SIRAYLA (bir sonraki host ancak oncekinin isi terminal olunca). FAIL toplu
-//      isi DURDURMAZ, sonda ozet kirmizi (BITTI_HATALI).
-//   5. Ust sinir Admin > Kurallar & Limitler 'limit:toplu_autostart' (varsayilan 50 JVM).
+//   3. Onay ekrani (15 dk icinde; sure planlama BITTIGINDE (plan_bitis_at) baslar, planlamanin kendi suresi
+//      dahil degil; plan daha eskiyse PLAN_ESKIDI, yeniden planlanir).
+//   4. Uygulama: AWX isleri SIRAYLA (bir sonraki ancak oncekinin isi terminal olunca), once bir hostun tum
+//      parcalari, sonra siradaki host (hostlar toplu iste ilk gorulme sirasiyla; secim karisik sirali olsa
+//      da). FAIL toplu isi DURDURMAZ, sonda ozet kirmizi (BITTI_HATALI).
+//   5. Ust sinir Admin > Kurallar & Limitler 'limit:toplu_autostart' (varsayilan 500 JVM).
+//
+// PARCALAMA (2026-11-15, kullanici: "300 kusur JVM secmisim bunlarin planlama asamasi zaten 15 dakikayi
+// asiyor"): betik her JVM icin jboss-cli'yi birkac kez acar (her biri JVM acilisi); 30-40 JVM'li bir host tek
+// isle AWX sablon zaman asimini (~15 dk) asip olduruluyordu. Bir hostun ogeleri artik en cok N JVM'lik
+// PARCALARA bolunur, her parca TEK AWX isi (plan da uygulama da). N = 'limit:toplu_is_basina_jvm' (varsayilan
+// 10, ust 50). Sema degismedi: parca = ayni (plan_)job_id'yi tasiyan ogeler.
+//   - PLAN: en cok PLAN_PARALEL AWX ISI ayni anda (is sayilir); ayni hostta ayni anda en cok PLAN_HOST_PARALEL
+//     (1) is. Plan salt okunurdur (durum acisindan zararsiz) ama her oge jboss-cli JVM'i acar: ayni hostta
+//     paralel parca sunucuya / domain controller'a yuk bindirir, parcalamadan onceki gibi hostta tek is.
+//   - UYGULAMA: ayni anda TEK is (ayni hostun parcalari da birbirini bekler; sahiplenme kosulu tum toplu iste
+//     BASLATILIYOR / CALISIYOR oge olmamasini ister).
+//   - SONUCU BELIRSIZ PARCA (AWX'te suruyor olabilir: launch istegi belirsiz hatayla dondu (launchBelirsiz), is
+//     numarasi yazilamadi (BASLATILIYOR takili), is 3 saatte bitmedi): toplu is DURUR - bekleyen ogeler
+//     YARIM_KALDI ("calistirilmadi: toplu is durduruldu"); ayni hostta ikinci bir yazma isi acilmaz. Belirsiz
+//     ogenin nedeni BELIRSIZ_IZ tasir: JVM, AWX isi terminal gorulene kadar KILITLI kalir (topluKilidi: yeni
+//     toplu is secim dogrulamasinda duser, tek satir dugmesi 409).
+//   - Plan gecerliligi (PLAN_YAS_MS) degismedi: son parca bittiginde (plan_bitis_at) baslar.
 //   6. Dogrulanan sonuc (oge OK/SKIP, betik CLI ile geri okudu) dogrulama katmanina yazilir (isKaydetToplu):
 //      sunucu paneli ve Bulgular tarama gelmeden yeni degeri gosterir.
 //
@@ -49,7 +68,14 @@ const FIX_KEY = 'server_hub_fix';
 const POLL_SN = 10;
 const KIRA_SN = 120;
 const PLAN_YAS_MS = 15 * 60 * 1000;
+// Ayni anda en cok bu kadar PLAN AWX isi (parca; is sayilir, host degil).
 const PLAN_PARALEL = 5;
+// Ayni hostta ayni anda en cok bu kadar plan isi (inceleme 2026-11-15, B4): plan salt okunur ama her oge
+// jboss-cli JVM'i acar (-Xmx96m) ve domain controller'a baglanir; parcalamadan once hostta en cok 1 is vardi,
+// yuk profili korunur. Hostlar arasi paralellik (PLAN_PARALEL) yine gecerli.
+const PLAN_HOST_PARALEL = 1;
+// 'limit:toplu_is_basina_jvm' okunamazsa / gecersizse (ayarlar.cjs LIMITLER ile ayni varsayilan).
+const IS_BASINA_JVM_VARSAYILAN = 10;
 const IS_ZAMAN_ASIMI_MS = 3 * 60 * 60 * 1000;
 const ADAY_KODLARI = { jboss_autostart_on: 'REBOOT_RISK', jboss_autostart_off: 'STOPPED_AUTOSTART_ON' };
 const AKTIF = ['PLANLANIYOR', 'PLAN_HAZIR', 'CALISIYOR', 'IPTAL_ISTENDI'];
@@ -65,6 +91,12 @@ const SECIM_YENIDEN_MS = 30 * 1000;
 const _secimSonraki = new Map();
 // Bu durumdaki oge JVM'i kilitler (tek satir dugmesi / /fix 409): is sonu ya da YARIM_KALDI'da kalkar.
 const KILITLI_OGE = [SECIM, 'ADAY', 'PLANLANIYOR', 'PLAN_GECTI', 'BEKLIYOR', 'BASLATILIYOR', 'CALISIYOR'];
+// Sonucu BELIRSIZ uygulama ogesinin (YARIM_KALDI / FAIL) nedeninde bu iz bulunur: AWX'te suruyor olabilir.
+// Boyle oge JVM'i AWX isi terminal gorulene kadar (is numarasi yoksa baslamadan IS_ZAMAN_ASIMI_MS boyunca)
+// kilitler; en cok BELIRSIZ_PENCERE_SAAT. "calistirilmadi" YARIM_KALDI'lari bu izi TASIMAZ (kilitlemez).
+// Toplu Restart'taki BELIRSIZ_IZ penceresiyle ayni model (inceleme 2026-11-15, B1).
+const BELIRSIZ_IZ = 'sonucu belirsiz';
+const BELIRSIZ_PENCERE_SAAT = 6;
 const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const HOST_RE_VARSAYILAN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/;
@@ -310,7 +342,7 @@ async function ogeDurum(id, eski, yeni, alanlar = {}) {
  * (tek satir isi acilir; betik canli degeri okur, toplu isteki oge sonra SKIP doner - zararsiz).
  * haricIs: secimi dogrulanan isin kendi ogeleri (SECIM) sayilmaz.
  */
-async function topluKilidi(host, gen, jvm, { haricIs = null } = {}) {
+async function topluKilidi(host, gen, jvm, { haricIs = null, belirsizler = null } = {}) {
   try {
     const p = [TUR, String(host || '').toUpperCase(), Number(gen), String(jvm || '')];
     let haric = '';
@@ -326,12 +358,50 @@ async function topluKilidi(host, gen, jvm, { haricIs = null } = {}) {
       p,
     );
     const r = rows && rows[0];
-    if (!r) return null;
-    return `${jvm} toplu auto-start işi #${r.is_id} içinde (${r.durum}) — o iş bitene ya da iptal edilene kadar tek tek iş açılmaz (iş açılmadı). Server Hub › Toplu Auto-Start sekmesinden izleyin.`;
+    if (r)
+      return `${jvm} toplu auto-start işi #${r.is_id} içinde (${r.durum}) — o iş bitene ya da iptal edilene kadar tek tek iş açılmaz (iş açılmadı). Server Hub › Toplu Auto-Start sekmesinden izleyin.`;
+    const H = String(host || '').toUpperCase();
+    const L = (s) => String(s || '').toLowerCase();
+    const y = (belirsizler || (await belirsizOgeler())).find(
+      (x) => x.host === H && Number(x.gen) === Number(gen) && L(x.jvm) === L(jvm) && (haricIs == null || Number(x.is_id) !== Number(haricIs)),
+    );
+    if (!y) return null;
+    const ne = y.jobId ? `AWX işi #${y.jobId} henüz bitmedi ya da okunamadı` : "iş numarası yok, AWX'e gitmiş olabilir";
+    return `${jvm} için toplu auto-start işi #${y.is_id} öğesinin sonucu bilinmiyor (${ne}) — AWX işi bitene kadar bu JVM'e iş açılmaz (iş açılmadı). AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın.`;
   } catch (e) {
     console.warn('[TopluAutoStart] kilit okunamadi:', e && e.message);
     return null;
   }
+}
+
+/**
+ * Sonucu BILINMEYEN auto-start ogeleri (tum toplu auto-start isleri, son BELIRSIZ_PENCERE_SAAT saat): neden
+ * BELIRSIZ_IZ tasir ve AWX isi bitmemis (okunamiyorsa bitmemis sayilir) ya da is numarasi yok ve
+ * baslamasindan bu yana IS_ZAMAN_ASIMI_MS gecmemis. Donus: [{ id, is_id, host, gen, jvm, jobId }]. DB
+ * okunamazsa firlatir.
+ */
+async function belirsizOgeler() {
+  const { rows } = await db().query(
+    `SELECT o.id, o.is_id, o.host, o.gen, o.jvm, o.awx_server_id, o.awx_job_id, o.baslama_at
+       FROM server_hub_toplu_ogeler o JOIN server_hub_toplu_isler i ON i.id = o.is_id
+      WHERE i.tur = $1 AND o.durum IN ('YARIM_KALDI', 'FAIL') AND o.neden LIKE $2
+        AND o.bitis_at > DATEADD(hour, -${BELIRSIZ_PENCERE_SAAT}, SYSUTCDATETIME())`,
+    [TUR, `%${BELIRSIZ_IZ}%`],
+  );
+  const out = [];
+  const durumlar = new Map();
+  for (const o of rows || []) {
+    let suruyor;
+    if (o.awx_job_id != null) {
+      const k = `${o.awx_server_id}|${o.awx_job_id}`;
+      if (!durumlar.has(k)) durumlar.set(k, await isDurumu(o.awx_server_id, o.awx_job_id));
+      const st = durumlar.get(k);
+      suruyor = !st || !IS_TERMINAL.has(st.status);
+    } else suruyor = !o.baslama_at || Date.now() - new Date(o.baslama_at).getTime() <= IS_ZAMAN_ASIMI_MS;
+    if (suruyor)
+      out.push({ id: o.id, is_id: o.is_id, host: String(o.host || '').toUpperCase(), gen: o.gen, jvm: o.jvm, jobId: o.awx_job_id || null });
+  }
+  return out;
 }
 
 // ── OLUSTUR / ONAY / IPTAL ───────────────────────────────────────────────────────────────────────
@@ -478,6 +548,13 @@ async function secimDogrula(is, og) {
   const { adaylar, dislananlar } = adaylariTuret(a);
   const byK = new Map(adaylar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
   const disK = new Map(dislananlar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
+  // Sonucu belirsiz eski ogeler bir kez okunur (oge basina sorgu yok); okunamazsa topluKilidi kendisi dener.
+  let belirsizler = null;
+  try {
+    belirsizler = await belirsizOgeler();
+  } catch {
+    belirsizler = null;
+  }
   const kararlar = await sinirliParalel(liste, KILIT_PARALEL, async (o) => {
     const k = ogeAnahtari(o.host, o.gen, o.jvm);
     const c = byK.get(k);
@@ -485,8 +562,9 @@ async function secimDogrula(is, og) {
       const d = disK.get(k);
       return { neden: `artık aday değil${d ? ` (${d.neden})` : c ? ' (eylem değişti)' : ' (tarama değişti)'}` };
     }
-    // DB tabanli kilit: ayni JVM baska bir toplu isin ogesiyse (YARIM_KALDI izlemesi dahil) gecemez.
-    const kilit = await topluKilidi(c.host, c.gen, c.jvm, { haricIs: is.id });
+    // DB tabanli kilit: ayni JVM baska bir toplu isin ogesiyse (YARIM_KALDI izlemesi ve sonucu belirsiz oge
+    // dahil) gecemez.
+    const kilit = await topluKilidi(c.host, c.gen, c.jvm, { haricIs: is.id, belirsizler });
     return kilit ? { neden: kilit } : { c };
   });
   for (let i = 0; i < liste.length; i += 1) {
@@ -517,7 +595,7 @@ const planEskiMi = (is) => !is.plan_bitis_at || Date.now() - new Date(is.plan_bi
 async function planEskit(req, id) {
   const r = await db().query(
     `UPDATE server_hub_toplu_isler SET durum = 'PLAN_ESKIDI', hata = $2, bitis_at = SYSUTCDATETIME() WHERE id = $1 AND durum = 'PLAN_HAZIR'`,
-    [id, 'Plan 15 dakikadan eski — onaylanmadı; yeniden planlayın.'],
+    [id, 'Plan bittikten sonra 15 dakika içinde onaylanmadı — yeniden planlayın.'],
   );
   if (r.rowCount !== 1) return false;
   await db().query(
@@ -536,7 +614,7 @@ async function onayla(req, id) {
   const kim = M(req.session?.user?.username || 'unknown', 128);
   if (planEskiMi(is)) {
     await planEskit(req, id);
-    throw hata(409, 'Plan 15 dakikadan eski — canlı değerler yeniden okunmalı. Yeniden planlayın.', 'plan_eskidi');
+    throw hata(409, 'Plan bitişinin üzerinden 15 dakika geçti — canlı değerler yeniden okunmalı. Yeniden planlayın.', 'plan_eskidi');
   }
   // Onay aninda TAZE sema / tazelik kapisi: sunucu bu arada bayatladiysa o sunucunun ogeleri dusurulur.
   const a = await _d.getAssessment(true);
@@ -629,6 +707,60 @@ function gruplaHost(liste) {
   return m;
 }
 
+/**
+ * Ogeleri AWX isi parcalarina boler: host basina (ilk gorulme sirasiyla), her hostun ogeleri liste sirasiyla
+ * en cok n'lik dilimler. Donus: [{ host, liste }].
+ */
+function parcala(liste, n) {
+  const k = Math.max(1, Number(n) || 1);
+  const out = [];
+  for (const [host, l] of gruplaHost(liste)) for (let i = 0; i < l.length; i += k) out.push({ host, liste: l.slice(i, i + k) });
+  return out;
+}
+
+/** Suren ogeler AWX isine gore (parca = ayni is numarasini tasiyan ogeler); is numarasi yoksa anahtar 'yok'. */
+function gruplaIs(liste, sunucuAlani, isAlani) {
+  const m = new Map();
+  for (const o of liste) {
+    const k = o[isAlani] == null ? 'yok' : `${o[sunucuAlani]}|${o[isAlani]}`;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(o);
+  }
+  return m;
+}
+
+/** Admin ayari 'limit:toplu_is_basina_jvm': bir AWX isine en cok kac JVM. Okunamaz / gecersizse varsayilan. */
+async function isBasinaJvm() {
+  try {
+    const n = Number(await _d.ayarlar.limit('toplu_is_basina_jvm'));
+    if (Number.isInteger(n) && n >= 1) return n;
+  } catch {
+    // ayar okunamadi: varsayilan
+  }
+  return IS_BASINA_JVM_VARSAYILAN;
+}
+
+/** id listesi icin SQL yer tutuculari ($bas, $bas+1, ...). */
+const yerTutucu = (ids, bas) => ids.map((_, i) => `$${bas + i}`).join(', ');
+
+/**
+ * Sonucu belirsiz parca (AWX'te suruyor olabilir) sonrasi toplu is DURUR: bekleyen ogeler YARIM_KALDI
+ * ("calistirilmadi"); ayni hostta ikinci bir yazma isi acilmaz. Ozet kirmizi (uygulaBitir: YARIM_KALDI).
+ */
+async function topluDurdur(is, neden) {
+  const r = await db().query(
+    `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BEKLIYOR'`,
+    [
+      is.id,
+      M(
+        `çalıştırılmadı: toplu iş durduruldu — ${neden}. Sonucu bilinmeyen iş AWX'te sürüyor olabilir; AWX'ten kontrol edin, sunucuyu yeniden tarayın, sonra yeni toplu iş açın.`,
+        1000,
+      ),
+    ],
+  );
+  if (r.rowCount) denetim(sozdeIstek(is.onaylayan || is.olusturan), { op: 'toplu_autostart_durduruldu', id: is.id, neden, adet: r.rowCount });
+}
+
 const jvmItems = (liste) => liste.map((o) => ({ gen: Number(o.gen), jvm: o.jvm, action: o.eylem }));
 
 function sonucOku(st) {
@@ -648,7 +780,10 @@ async function isDurumu(serverId, jobId) {
 
 const zamanAsimi = (o) => o.baslama_at && Date.now() - new Date(o.baslama_at).getTime() > IS_ZAMAN_ASIMI_MS;
 
-/** PLAN fazi: suren plan islerini isle; iptal istenmediyse en cok PLAN_PARALEL host plan isi ac. */
+/**
+ * PLAN fazi: suren plan islerini (parca basina bir is) isle; iptal istenmediyse ayni anda en cok PLAN_PARALEL
+ * plan isi olacak sekilde yeni parcalar ac (parca = bir hostun en cok isBasinaJvm() ogesi).
+ */
 async function planIlerlet(is, og, iptalMi) {
   // Secim once taze degerlendirmeyle dogrulanir (olustur istegi yalniz secimi yazar); basaramazsa sonraki tick.
   // Beklenmeyen hata da (turetme / DB yazimi) ayni zaman asimina baglidir: is sonsuza dek PLANLANIYOR kalip
@@ -665,10 +800,10 @@ async function planIlerlet(is, og, iptalMi) {
     if (!tamam) return;
     _secimSonraki.delete(is.id);
   }
-  const suren = gruplaHost(og.filter((o) => o.durum === 'PLANLANIYOR'));
-  for (const [host, liste] of suren) {
+  const suren = gruplaIs(og.filter((o) => o.durum === 'PLANLANIYOR'), 'plan_awx_server_id', 'plan_job_id');
+  for (const [k, liste] of suren) {
     const o0 = liste[0];
-    if (o0.plan_job_id == null) {
+    if (k === 'yok') {
       // ayni surecte launch suresince olmaz (tick tek); burada gorulmesi = yarim kalmis baslatma
       for (const o of liste) await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', { neden: 'plan başlatılamadı (iş numarası yok)' });
       continue;
@@ -706,36 +841,50 @@ async function planIlerlet(is, og, iptalMi) {
   }
   if (iptalMi) return;
   const tazeOg = await ogeler(is.id);
-  const calisan = new Set(tazeOg.filter((o) => o.durum === 'PLANLANIYOR').map((o) => o.host)).size;
-  const bekleyen = gruplaHost(tazeOg.filter((o) => o.durum === 'ADAY'));
-  let bos = Math.max(0, PLAN_PARALEL - calisan);
-  for (const [host, liste] of bekleyen) {
+  // Paralellik AWX ISI sayisiyla (PLAN_PARALEL) ve host basina PLAN_HOST_PARALEL ile: ayni hostta ayni anda en
+  // cok bu kadar plan isi (jboss-cli acilislari sunucuya / domain controller'a yuk; parcalamadan once de 1'di).
+  const surenPlan = gruplaIs(tazeOg.filter((o) => o.durum === 'PLANLANIYOR'), 'plan_awx_server_id', 'plan_job_id');
+  let bos = Math.max(0, PLAN_PARALEL - surenPlan.size);
+  if (bos <= 0) return;
+  const hostta = new Map();
+  for (const l of surenPlan.values()) hostta.set(l[0].host, (hostta.get(l[0].host) || 0) + 1);
+  const n = await isBasinaJvm();
+  for (const { host, liste } of parcala(tazeOg.filter((o) => o.durum === 'ADAY'), n)) {
     if (bos <= 0) break;
+    if ((hostta.get(host) || 0) >= PLAN_HOST_PARALEL) continue;
     if (!(await kiraYenile(is.id))) return;
+    const ids = liste.map((o) => o.id);
     const al = await db().query(
       `UPDATE server_hub_toplu_ogeler SET durum = 'PLANLANIYOR', baslama_at = SYSUTCDATETIME()
-        WHERE is_id = $1 AND host = $2 AND durum = 'ADAY'
-          AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'PLANLANIYOR' AND kira_id = $3)`,
-      [is.id, host, SUREC_ID],
+        WHERE is_id = $1 AND durum = 'ADAY' AND id IN (${yerTutucu(ids, 3)})
+          AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'PLANLANIYOR' AND kira_id = $2)`,
+      [is.id, SUREC_ID, ...ids],
     );
     if (al.rowCount < 1) continue;
     bos -= 1;
+    hostta.set(host, (hostta.get(host) || 0) + 1);
+    // Sahiplenilen ogeler (bu arada iptal edilen dusulur); parca = is numarasi henuz yazilmamis bu ogeler.
+    const parca = (await ogeler(is.id)).filter((o) => ids.includes(o.id) && o.durum === 'PLANLANIYOR' && o.plan_job_id == null);
+    const pids = parca.map((o) => o.id);
+    if (!pids.length) continue;
     try {
       const r = await _d.launch(
         sozdeIstek(is.olusturan),
         FIX_KEY,
-        `Server Hub: toplu auto-start #${is.id} plan @ ${host}`,
-        { target_host: host, action: LISTE_EYLEMI, plan_only: true, reload: false, jvm_items: jvmItems(liste) },
-        { op: 'toplu_autostart_plan', id: is.id, host, adet: liste.length },
+        `Server Hub: toplu auto-start #${is.id} plan @ ${host} (${parca.length} JVM)`,
+        { target_host: host, action: LISTE_EYLEMI, plan_only: true, reload: false, jvm_items: jvmItems(parca) },
+        { op: 'toplu_autostart_plan', id: is.id, host, adet: parca.length },
       );
       await db().query(
-        `UPDATE server_hub_toplu_ogeler SET plan_awx_server_id = $3, plan_job_id = $4 WHERE is_id = $1 AND host = $2 AND durum = 'PLANLANIYOR'`,
-        [is.id, host, r.awxServerId, r.jobId],
+        `UPDATE server_hub_toplu_ogeler SET plan_awx_server_id = $2, plan_job_id = $3
+          WHERE is_id = $1 AND durum = 'PLANLANIYOR' AND plan_job_id IS NULL AND id IN (${yerTutucu(pids, 4)})`,
+        [is.id, r.awxServerId, r.jobId, ...pids],
       );
     } catch (e) {
       await db().query(
-        `UPDATE server_hub_toplu_ogeler SET durum = 'DUSTU', neden = $3, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND host = $2 AND durum = 'PLANLANIYOR'`,
-        [is.id, host, M(`plan başlatılamadı: ${e && e.message}`, 1000)],
+        `UPDATE server_hub_toplu_ogeler SET durum = 'DUSTU', neden = $2, bitis_at = SYSUTCDATETIME()
+          WHERE is_id = $1 AND durum = 'PLANLANIYOR' AND plan_job_id IS NULL AND id IN (${yerTutucu(pids, 3)})`,
+        [is.id, M(`plan başlatılamadı: ${e && e.message}`, 1000), ...pids],
       );
     }
   }
@@ -768,16 +917,24 @@ async function planBitir(is) {
     denetim(sozdeIstek(is.olusturan), { op: 'toplu_autostart_bitti', id: is.id, durum, ok: 0, fail: 0, dusen: og.length - gecen });
 }
 
-/** Calisan host isinin sonucu (terminal ise). Donus: true (host bitti). */
-async function hostIsiniIsle(is, liste) {
+/**
+ * Calisan parca isinin sonucu (terminal ise). Donus: true (parca bitti). 3 saatte bitmeyen is sonucu belirsizdir
+ * (AWX'te suruyor olabilir): ogeler FAIL, toplu is DURUR (bekleyenler calistirilmaz).
+ */
+async function parcaIsiniIsle(is, liste) {
   const o0 = liste[0];
   const st = await isDurumu(o0.awx_server_id, o0.awx_job_id);
   if (!st || !IS_TERMINAL.has(st.status)) {
     if (zamanAsimi(o0)) {
+      let gecti = 0;
       for (const o of liste)
-        await ogeDurum(o.id, ['CALISIYOR'], 'FAIL', {
-          neden: `iş #${o0.awx_job_id} 3 saatte bitmedi — sonucu AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`,
-        });
+        if (
+          await ogeDurum(o.id, ['CALISIYOR'], 'FAIL', {
+            neden: `iş #${o0.awx_job_id} 3 saatte bitmedi (${BELIRSIZ_IZ}) — sonucu AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`,
+          })
+        )
+          gecti += 1;
+      if (gecti) await topluDurdur(is, `${o0.host} işi #${o0.awx_job_id} 3 saatte bitmedi`);
       return true;
     }
     return false;
@@ -809,28 +966,38 @@ async function hostIsiniIsle(is, liste) {
 }
 
 async function uygulaIlerlet(is, og) {
-  const calisan = gruplaHost(og.filter((o) => o.durum === 'CALISIYOR'));
+  const calisan = gruplaIs(og.filter((o) => o.durum === 'CALISIYOR'), 'awx_server_id', 'awx_job_id');
   for (const [, liste] of calisan) {
-    if (!(await hostIsiniIsle(is, liste))) return false;
+    if (!(await parcaIsiniIsle(is, liste))) return false;
   }
   if (calisan.size) og = await ogeler(is.id);
   // Is numarasi yazilamamis BASLATILIYOR (launch dondu ama DB yazilamadi): 10 dk sonra YARIM_KALDI; asla
-  // yeniden baslatilmaz.
+  // yeniden baslatilmaz ve toplu is DURUR (ayni hostun siradaki parcasi o is AWX'te surerken acilmasin).
   const takili = og.filter((o) => o.durum === 'BASLATILIYOR');
   if (takili.length) {
     const eski = takili.filter((o) => o.baslama_at && Date.now() - new Date(o.baslama_at).getTime() > 10 * 60 * 1000);
+    let gecti = null;
     for (const o of eski)
-      await ogeDurum(o.id, ['BASLATILIYOR'], 'YARIM_KALDI', {
-        neden: "iş numarası yazılamadı — AWX'e gitmiş olabilir; AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın",
-      });
+      if (
+        await ogeDurum(o.id, ['BASLATILIYOR'], 'YARIM_KALDI', {
+          neden: `iş numarası yazılamadı — AWX'e gitmiş olabilir (${BELIRSIZ_IZ}); AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`,
+        })
+      )
+        gecti = o;
+    if (gecti) await topluDurdur(is, `${gecti.host} parçasının iş numarası yazılamadı`);
     return false;
   }
   if (is.durum !== 'CALISIYOR') return !og.some((o) => o.durum === 'CALISIYOR');
-  // Siradaki host (sira'ya gore ilk BEKLIYOR ogesi olan); bir tick'te TEK host baslatilir.
+  // Siradaki parca: BEKLIYOR ogesi olan hostlardan toplu iste ILK GORULENI (sira'ya gore ilk ogesi en onde olan;
+  // secim sirasi hostlari karistirsa da bir hostun tum parcalari bitmeden sonraki hosta gecilmez - inceleme
+  // 2026-11-15, B2), o hostun ilk en cok n BEKLIYOR ogesi. Bir tick'te TEK parca baslatilir.
   const bekleyen = og.filter((o) => o.durum === 'BEKLIYOR');
   if (!bekleyen.length) return true;
-  const host = bekleyen[0].host;
-  let liste = bekleyen.filter((o) => o.host === host);
+  const ilkSira = new Map();
+  for (const o of og) if (!ilkSira.has(o.host)) ilkSira.set(o.host, Number(o.sira));
+  const host = bekleyen.reduce((b, o) => (ilkSira.get(o.host) < ilkSira.get(b.host) ? o : b)).host;
+  const n = await isBasinaJvm();
+  let liste = bekleyen.filter((o) => o.host === host).slice(0, n);
   // Tek satir isi (bellek kilidi) bu JVM'de suruyorsa oge atlanir (cakisan iki is acilmaz).
   const kalan = [];
   for (const o of liste) {
@@ -841,16 +1008,20 @@ async function uygulaIlerlet(is, og) {
   liste = kalan;
   if (!liste.length) return false;
   if (!(await kiraYenile(is.id))) return false;
+  const ids = liste.map((o) => o.id);
+  // Ayni anda TEK parca: toplu iste (ayni host dahil) baska BASLATILIYOR / CALISIYOR oge varsa sahiplenilmez.
   const al = await db().query(
     `UPDATE server_hub_toplu_ogeler SET durum = 'BASLATILIYOR', baslama_at = SYSUTCDATETIME()
-      WHERE is_id = $1 AND host = $2 AND durum = 'BEKLIYOR'
-        AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'CALISIYOR' AND kira_id = $3)
+      WHERE is_id = $1 AND durum = 'BEKLIYOR' AND id IN (${yerTutucu(ids, 3)})
+        AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'CALISIYOR' AND kira_id = $2)
         AND NOT EXISTS (SELECT 1 FROM server_hub_toplu_ogeler x WITH (UPDLOCK, HOLDLOCK)
-                         WHERE x.is_id = $1 AND x.host <> $2 AND x.durum IN ('BASLATILIYOR', 'CALISIYOR'))`,
-    [is.id, host, SUREC_ID],
+                         WHERE x.is_id = $1 AND x.id NOT IN (${yerTutucu(ids, 3)}) AND x.durum IN ('BASLATILIYOR', 'CALISIYOR'))`,
+    [is.id, SUREC_ID, ...ids],
   );
   if (al.rowCount < 1) return false;
-  const tazeListe = (await ogeler(is.id)).filter((o) => o.host === host && o.durum === 'BASLATILIYOR');
+  const tazeListe = (await ogeler(is.id)).filter((o) => ids.includes(o.id) && o.durum === 'BASLATILIYOR');
+  const tids = tazeListe.map((o) => o.id);
+  if (!tids.length) return false;
   const as = autoStart();
   const birak = tazeListe.map((o) => (as ? as.rezervasyon(o.host, o.gen, o.jvm) : () => {}));
   let r;
@@ -872,17 +1043,31 @@ async function uygulaIlerlet(is, og) {
         { op: 'toplu_autostart_uygula', id: is.id, host, items },
       );
     } catch (e) {
-      // AWX isi acilmadi: bu host FAIL, toplu is DURMAZ (sonraki tick sonraki host).
+      if (e && e.launchBelirsiz === true) {
+        // Launch istegi belirsiz hatayla dondu (zaman asimi / 5xx / baglanti): is AWX'te olusmus olabilir.
+        // "Baslatilamadi" DENMEZ; parca YARIM_KALDI, toplu is DURUR.
+        await db().query(
+          `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
+          [
+            is.id,
+            M(`iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, ${BELIRSIZ_IZ}): ${e && e.message} — AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`, 1000),
+            ...tids,
+          ],
+        );
+        await topluDurdur(is, `${host} parçasının iş isteği belirsiz hatayla döndü`);
+        return false;
+      }
+      // AWX isi acilmadi (kesin red): bu parca FAIL, toplu is DURMAZ (sonraki tick sonraki parca).
       await db().query(
-        `UPDATE server_hub_toplu_ogeler SET durum = 'FAIL', neden = $3, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND host = $2 AND durum = 'BASLATILIYOR'`,
-        [is.id, host, M(`iş başlatılamadı: ${e && e.message}`, 1000)],
+        `UPDATE server_hub_toplu_ogeler SET durum = 'FAIL', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
+        [is.id, M(`iş başlatılamadı: ${e && e.message}`, 1000), ...tids],
       );
       return false;
     }
     if (as) as.isKaydetToplu(r.awxServerId, r.jobId, { host, h, items });
     await db().query(
-      `UPDATE server_hub_toplu_ogeler SET durum = 'CALISIYOR', awx_server_id = $3, awx_job_id = $4 WHERE is_id = $1 AND host = $2 AND durum = 'BASLATILIYOR'`,
-      [is.id, host, r.awxServerId, r.jobId],
+      `UPDATE server_hub_toplu_ogeler SET durum = 'CALISIYOR', awx_server_id = $2, awx_job_id = $3 WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 4)})`,
+      [is.id, r.awxServerId, r.jobId, ...tids],
     );
   } finally {
     for (const b of birak) b();
@@ -942,7 +1127,7 @@ async function yarimBirak(is) {
   await db().query(
     `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME()
       WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND awx_job_id IS NULL`,
-    [is.id, "AWX'e gitmiş olabilir — AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın"],
+    [is.id, `AWX'e gitmiş olabilir (${BELIRSIZ_IZ}) — AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`],
   );
   await sayimYaz(is.id);
   denetim(sozdeIstek('toplu-autostart-yurutucu'), { op: 'toplu_autostart_yarim_kaldi', id: is.id, onceki: is.durum });
@@ -951,8 +1136,8 @@ async function yarimBirak(is) {
 /** YARIM_KALDI isin is numarali CALISIYOR ogeleri: yalniz sonuc okunur. */
 async function izle(is) {
   const og = await ogeler(is.id);
-  const calisan = gruplaHost(og.filter((o) => o.durum === 'CALISIYOR' && o.awx_job_id != null));
-  for (const [, liste] of calisan) await hostIsiniIsle(is, liste);
+  const calisan = gruplaIs(og.filter((o) => o.durum === 'CALISIYOR' && o.awx_job_id != null), 'awx_server_id', 'awx_job_id');
+  for (const [, liste] of calisan) await parcaIsiniIsle(is, liste);
   if (calisan.size) await sayimYaz(is.id);
 }
 
@@ -1049,14 +1234,25 @@ function mount(router, deps) {
 
   router.get('/toplu-autostart/adaylar', async (req, res) => {
     try {
-      const [a, limit, akt] = await Promise.all([
+      const [a, limit, akt, isBasina] = await Promise.all([
         _d.getAssessment(req.query.fresh === '1'),
         _d.ayarlar.limit('toplu_autostart'),
         aktifIs().catch(() => null),
+        isBasinaJvm(),
       ]);
-      if (a.tableMissing) return res.json({ ok: true, adaylar: [], dislananlar: [], limit, aktif: isSatiri(akt), latestScan: null });
+      if (a.tableMissing)
+        return res.json({ ok: true, adaylar: [], dislananlar: [], limit, isBasinaJvm: isBasina, aktif: isSatiri(akt), latestScan: null });
       const { adaylar, dislananlar } = adaylariTuret(a);
-      res.json({ ok: true, adaylar, dislananlar, limit, aktif: isSatiri(akt), latestScan: a.latestScan || null, schemaUnknown: a.schemaUnknown === true });
+      res.json({
+        ok: true,
+        adaylar,
+        dislananlar,
+        limit,
+        isBasinaJvm: isBasina,
+        aktif: isSatiri(akt),
+        latestScan: a.latestScan || null,
+        schemaUnknown: a.schemaUnknown === true,
+      });
     } catch (err) {
       gonder(req, res, err);
     }
@@ -1119,6 +1315,9 @@ module.exports = {
   KIRA_SN,
   PLAN_YAS_MS,
   PLAN_PARALEL,
+  PLAN_HOST_PARALEL,
+  BELIRSIZ_IZ,
+  IS_BASINA_JVM_VARSAYILAN,
   AKTIF,
   KILITLI_OGE,
   SECIM,
@@ -1127,6 +1326,7 @@ module.exports = {
   mount,
   kur,
   adaylariTuret,
+  parcala,
   secimiDuzle,
   topluKilidi,
   olustur,

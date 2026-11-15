@@ -529,6 +529,8 @@ export interface ShTopluAdaylar {
   adaylar: ShTopluAday[];
   dislananlar: ShTopluAday[];
   limit: number;
+  /** AWX işi başına en çok JVM (limit:toplu_is_basina_jvm, 2026-11-15). Eski sunucu yanıtında yok. */
+  isBasinaJvm?: number;
   aktif: ShTopluIs | null;
   latestScan?: string | null;
   schemaUnknown?: boolean;
@@ -641,7 +643,7 @@ export interface ShKuralMadde {
   neTaranir: string;
   ciktilar: ShKuralCikti[];
 }
-export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik' | 'toplu_autostart' | 'toplu_restart';
+export type ShLimitAd = 'tara' | 'reboot' | 'hazirlik' | 'toplu_autostart' | 'toplu_restart' | 'toplu_is_basina_jvm';
 export interface ShLimit {
   ad: ShLimitAd;
   etiket: string;

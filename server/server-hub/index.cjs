@@ -769,9 +769,19 @@ async function launch(req, keyName, templateName, extraVars, detail, hazir) {
   preflight.sablonKontrol(tpl, { templateId, key: keyName, extraVars });
   const user = req.session?.user || {};
   // anketBellegi: survey_spec 2 dk hatirlanir (ayni sablon art arda baslatilinca ek GET yok).
-  const result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, {
-    anketBellegi: true,
-  });
+  // BELIRSIZ LAUNCH (2026-11-15, opsx/index.cjs ile ayni kural): AWX'in 4xx reddi kesin "baslamadi"dir; zaman
+  // asimi / 5xx / baglanti kopmasi is OLUSTURMUS olabilir -> e.launchBelirsiz (Toplu Auto-Start toplu isi
+  // durdurur). Route davranisi degismez.
+  let result;
+  try {
+    result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user, {
+      anketBellegi: true,
+    });
+  } catch (e) {
+    const st = Number(e && e.status);
+    if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
+    throw e;
+  }
   try {
     const db = require('../db/index.cjs');
     await db.query(
@@ -1275,8 +1285,9 @@ function initServerHub(app) {
   // bir sayfa ve tek bir buton"). Yukaridaki soruya cevap: yanlis tarama YAYILMAZ, cunku
   //   - liste yalniz TAZE taramadaki uyumsuz JVM'ler, kapilar /jvm-autostart ile AYNI fonksiyon;
   //   - ONCE salt okunur PLAN isi her JVM'in CANLI auto-start'ini CLI ile okur, artik uyumsuz olmayani dusurur;
-  //   - onay ekrani; ust sinir (limit:toplu_autostart, varsayilan 50 JVM);
-  //   - host basina TEK is (target_host yine TEK sunucu, virgul yok), hostlar SIRAYLA; FAIL durdurmaz, ozet kirmizi;
+  //   - onay ekrani; ust sinir (limit:toplu_autostart, varsayilan 500 JVM);
+  //   - AWX isi basina en cok limit:toplu_is_basina_jvm JVM (2026-11-15; target_host yine TEK sunucu, virgul
+  //     yok), uygulama isleri SIRAYLA; FAIL durdurmaz, ozet kirmizi; sonucu belirsiz is toplu isi durdurur;
   //   - Portal yeniden baslarsa is DEVAM ETTIRILMEZ (YARIM_KALDI).
   // Ayrinti: toplu-autostart.cjs basligi.
   require('./toplu-autostart.cjs').mount(router, {

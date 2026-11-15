@@ -47,7 +47,7 @@ const IS_ETIKET: Record<string, string> = {
   IPTAL: 'İptal edildi',
   YARIM_KALDI: 'Yarım kaldı (Portal yeniden başladı)',
   PLAN_HATA: 'Önizleme okunamadı',
-  PLAN_ESKIDI: 'Önizleme eskidi (15 dk)',
+  PLAN_ESKIDI: 'Önizleme eskidi (bitişinden 15 dk sonra)',
 };
 export const OGE_ETIKET: Record<ShRestartOgeDurum, string> = {
   SECIM: 'seçim doğrulanıyor (taze tarama)',
@@ -542,8 +542,8 @@ export default function TopluRestartTab() {
           {is.hata && <div className="text-[12px]" style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}>{is.hata}</div>}
           {is.durum === 'PLAN_HAZIR' && (
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Önizleme {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla sunucuları yeniden taradı; 15 dakika içinde onaylanmazsa
-              yeniden önizlenmeli. Onayda AWX şablonunun Limit’i kabul ettiği yeniden kontrol edilir.
+              Önizleme sunucuları yeniden taramayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık onay
+              süresi önizleme BİTTİĞİNDE başladı (önizlemenin kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden önizlenmeli. Onayda AWX şablonunun Limit’i kabul ettiği yeniden kontrol edilir.
               {planKalanMs != null && (
                 <span style={{ color: planDoldu ? 'var(--status-danger)' : undefined }}>
                   {planDoldu

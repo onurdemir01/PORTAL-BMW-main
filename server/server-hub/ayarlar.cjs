@@ -70,14 +70,15 @@ const LIMITLER = {
     aciklama: 'İş başlatmaz; son taramayı okur.',
   },
   // Toplu Auto-Start (2026-11-14, kullanici: "auto-start'lari toplu duzeltebilmek icin bir sayfa ve tek bir
-  // buton"). Birim JVM: host basina tek AWX isi acilir, hostlar SIRAYLA (toplu-autostart.cjs).
+  // buton"). Birim JVM: is basina en cok 'toplu_is_basina_jvm' kadar JVM'lik AWX isleri, isler SIRAYLA (once bir
+  // hostun tum isleri, sonra siradaki host; toplu-autostart.cjs).
   toplu_autostart: {
     ad: 'Toplu Auto-Start',
     varsayilan: 500,
     ust: 2000,
     birim: 'JVM',
     aciklama:
-      'Bir toplu auto-start işinde en fazla JVM; önce salt okunur plan, onaydan sonra host başına tek AWX işi, sırayla.',
+      'Bir toplu auto-start işinde en fazla JVM; önce salt okunur plan, onaydan sonra AWX işleri (iş başına en çok “Toplu iş başına JVM” kadar JVM) sırayla.',
   },
   // Toplu Restart (2026-11-14, JVM_PARAM_FARKI): birim JVM; JVM'ler TEK TEK restart edilir, her biri sonrasi
   // sunucu yeniden taranir (toplu-restart.cjs). Sinir guvenlik degil sure icin: 50 JVM birkac saat surer
@@ -89,6 +90,18 @@ const LIMITLER = {
     birim: 'JVM',
     aciklama:
       'Bir toplu restart işinde en fazla JVM; önce salt okunur önizleme taraması, onaydan sonra JVM’ler tek tek (her restart sonrası sunucu yeniden taranır).',
+  },
+  // Toplu Auto-Start parcalama (2026-11-15, kullanici: "300 kusur JVM secmisim bunlarin planlama asamasi zaten
+  // 15 dakikayi asiyor"): betik JVM basina jboss-cli'yi birkac kez acar; 30-40 JVM'li host tek isle AWX sablon
+  // zaman asimini asiyordu. Bir hostun ogeleri en cok bu kadar JVM'lik AWX islerine bolunur (plan + uygulama).
+  // Toplu Restart'ta etkisi yok (orada her restart zaten tek JVM'lik is).
+  toplu_is_basina_jvm: {
+    ad: 'Toplu iş başına JVM (AWX işi)',
+    varsayilan: 10,
+    ust: 50,
+    birim: 'JVM',
+    aciklama:
+      'Toplu Auto-Start’ta bir AWX işine en fazla kaç JVM konur (plan ve uygulama). Betik her JVM için jboss-cli’yi birkaç kez açar; çok JVM’li sunucu tek işte AWX zaman aşımına (~15 dk) takılmasın diye sunucunun JVM’leri bu büyüklükte işlere bölünür. Toplu Restart’ı etkilemez (orada her JVM ayrı iş).',
   },
 };
 

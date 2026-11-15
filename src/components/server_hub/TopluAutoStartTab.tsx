@@ -5,7 +5,7 @@
 // Güvenlik modeli (server/server-hub/toplu-autostart.cjs başlığı): liste yalnız TAZE taramada auto-start'ı
 // uyumsuz JVM'ler (çalışıyor + kapalı → AÇ, durmuş + açık → KAPAT). TEK düğme önce salt okunur PLAN işi açar
 // (canlı değer jboss-cli ile okunur; artık uyumsuz olmayan düşer), sonra onay; onaydan sonra sunucu başına
-// TEK iş, sunucular SIRAYLA. Yürütme sunucu tarafında: sayfa yenilense ya da başka admin açsa da ilerleme
+// en çok N JVM'lik AWX işleri (Admin › Kurallar & Limitler "Toplu iş başına JVM", 2026-11-15), işler SIRAYLA. Yürütme sunucu tarafında: sayfa yenilense ya da başka admin açsa da ilerleme
 // görünür. Gizli sekme yoklama yapmaz (useSekmeGorunur). Doğrulanan öğe açık sunucu paneline ve Bulgular'a
 // hemen yansır (autoStartSonucYay).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -48,7 +48,7 @@ const IS_ETIKET: Record<string, string> = {
   IPTAL: 'İptal edildi',
   YARIM_KALDI: 'Yarım kaldı (Portal yeniden başladı)',
   PLAN_HATA: 'Plan okunamadı',
-  PLAN_ESKIDI: 'Plan eskidi (15 dk)',
+  PLAN_ESKIDI: 'Plan eskidi (bitişinden 15 dk sonra)',
 };
 const OGE_ETIKET: Record<ShTopluOgeDurum, string> = {
   SECIM: 'seçim doğrulanıyor (taze tarama)',
@@ -75,14 +75,58 @@ const ogeRengi = (d: ShTopluOgeDurum) =>
         ? 'var(--status-warning)'
         : 'var(--text-muted)';
 
-/** Onay metni: kapsam, iş sayısı ve sıra açıkça yazılır. */
-export function onayMetni(ogeler: ShTopluOge[]): string {
+/**
+ * AWX işi sayısı: her sunucunun JVM'leri en çok isBasina'lık işlere bölünür (sunucudaki
+ * server/server-hub/toplu-autostart.cjs parcala ile aynı kural).
+ */
+export function awxIsSayisi(liste: { host: string }[], isBasina: number): number {
+  const n = Math.max(1, Math.floor(isBasina) || 1);
+  const say = new Map<string, number>();
+  for (const x of liste) say.set(x.host, (say.get(x.host) || 0) + 1);
+  let toplam = 0;
+  for (const k of say.values()) toplam += Math.ceil(k / n);
+  return toplam;
+}
+
+/**
+ * Sonucu belirsiz öğe (AWX'e gitmiş / AWX'te sürüyor olabilir): sunucudaki BELIRSIZ_IZ ("sonucu belirsiz") ya da
+ * eski kayıtlardaki "AWX'e gitmiş olabilir". "çalıştırılmadı: toplu iş durduruldu" satırı belirsiz DEĞİLDİR.
+ */
+export function belirsizMi(o: { durum: string; neden?: string | null }): boolean {
+  if (o.durum !== 'YARIM_KALDI' && o.durum !== 'FAIL') return false;
+  const t = String(o.neden ?? '');
+  if (/^çalıştırılmadı/.test(t)) return false;
+  return /sonucu belirsiz|AWX['’]e gitmiş olabilir/.test(t);
+}
+
+/** Açılan AWX işi sayısı: (sunucu, iş numarası) çifti başına bir iş (parça = aynı iş numarasını taşıyan öğeler). */
+export function acilanIsSayisi(ogeler: ShTopluOge[], tur: 'plan' | 'uygulama'): number {
+  const k = new Set<string>();
+  for (const o of ogeler) {
+    const id = tur === 'plan' ? o.planJobId : o.awxJobId;
+    if (id == null) continue;
+    k.add(tur === 'plan' ? String(id) : `${o.awxServerId ?? ''}|${id}`);
+  }
+  return k.size;
+}
+
+/** "12 AWX işi, iş başına en çok 10 JVM" */
+export const isOzeti = (liste: { host: string }[], isBasina: number): string =>
+  `${fmtNumber(awxIsSayisi(liste, isBasina))} AWX işi, iş başına en çok ${fmtNumber(isBasina)} JVM`;
+
+/** Onay metni: kapsam, iş sayısı ve sıra açıkça yazılır. isBasina: AWX işi başına en çok JVM (bilinmiyorsa null). */
+export function onayMetni(ogeler: ShTopluOge[], isBasina: number | null = null): string {
   const gecen = ogeler.filter((o) => o.durum === 'PLAN_GECTI');
   const hostlar = [...new Set(gecen.map((o) => o.host))];
   const ac = gecen.filter((o) => o.hedef === 'true').length;
+  const sira =
+    isBasina != null
+      ? `Her sunucunun JVM'leri iş başına en çok ${fmtNumber(isBasina)} JVM'lik AWX işlerine bölünür (${isOzeti(gecen, isBasina)}); işler tek tek, sırayla çalışır (bir sunucunun işleri bitmeden sonraki sunucuya geçilmez). `
+      : 'Her sunucu için ayrı AWX işi açılır, işler sırayla çalışır. ';
   return (
     `${gecen.length} JVM, ${hostlar.length} sunucu: ${ac} JVM'de auto-start AÇILACAK, ${gecen.length - ac} JVM'de KAPATILACAK.\n\n` +
-    'Her sunucu için tek iş açılır, sunucular sırayla işlenir; bir sunucudaki hata ötekileri durdurmaz (özet kırmızı olur). ' +
+    sira +
+    'Bir işteki hata ötekileri durdurmaz (özet kırmızı olur); sonucu belirsiz iş (AWX’te sürüyor olabilir) toplu işi durdurur. ' +
     'Her JVM canlı değeri yeniden okunarak yazılır ve geri okunarak doğrulanır.\n\nDevam edilsin mi?'
   );
 }
@@ -321,6 +365,7 @@ export default function TopluAutoStartTab() {
   const kapatAdaylar = useMemo(() => adaylar.filter((x) => x.eylem === 'kapat'), [adaylar]);
   const secim = useMemo(() => adaylar.filter((x) => secili.has(anahtar(x))), [adaylar, secili]);
   const limit = veri?.limit ?? null;
+  const isBasina = veri?.isBasinaJvm ?? null;
   const limitAsti = limit != null && secim.length > limit;
   const aktifVar = !!is && (YURUYEN.has(is.durum) || is.durum === 'PLAN_HAZIR');
 
@@ -364,7 +409,7 @@ export default function TopluAutoStartTab() {
 
   const onayVer = async () => {
     if (!is || is.durum !== 'PLAN_HAZIR') return;
-    if (!(await onayla({ baslik: 'Toplu auto-start', metin: onayMetni(ogeler), onayMetni: 'Onayla ve uygula' }))) return;
+    if (!(await onayla({ baslik: 'Toplu auto-start', metin: onayMetni(ogeler, isBasina), onayMetni: 'Onayla ve uygula' }))) return;
     setGonderiliyor(true);
     try {
       const r = await serverHubApi.topluAutoStartOnayla(is.id);
@@ -405,6 +450,12 @@ export default function TopluAutoStartTab() {
   };
 
   const say = (d: ShTopluOgeDurum) => ogeler.filter((o) => o.durum === d).length;
+  // Açılan AWX işleri (parça = aynı iş numarasını taşıyan öğeler).
+  const planIsSayisi = acilanIsSayisi(ogeler, 'plan');
+  const uygulamaIsSayisi = acilanIsSayisi(ogeler, 'uygulama');
+  // "yarım kaldı" iki ayrı şey: sonucu belirsiz (AWX'te sürüyor olabilir; JVM kilitli) ve hiç çalıştırılmayan.
+  const belirsizSayisi = ogeler.filter(belirsizMi).length;
+  const calistirilmayanSayisi = ogeler.filter((o) => o.durum === 'YARIM_KALDI' && !belirsizMi(o)).length;
   const dusenler = ogeler.filter((o) => o.durum === 'DUSTU');
   const bitti = !!is && !YURUYEN.has(is.durum) && is.durum !== 'PLAN_HAZIR';
   // Hic uygulanmadiysa (hepsi planda / onayda dustu ya da iptal) ozet yesil 'Tamamlandi' degil, notr.
@@ -467,6 +518,16 @@ export default function TopluAutoStartTab() {
                   {limitAsti ? ' — sınır aşıldı; seçimi azaltın ya da Admin › Kurallar & Limitler’den artırın' : ''}
                 </span>
               )}
+              {isBasina != null && secim.length > 0 && (
+                <span
+                  className="text-[11px] tabular-nums"
+                  style={{ color: 'var(--text-muted)' }}
+                  data-testid="toplu-is-ozeti"
+                  title="Çok JVM’li sunucu tek işte AWX zaman aşımına takılmasın diye bölünür (Admin › Kurallar & Limitler › Toplu iş başına JVM)."
+                >
+                  · {isOzeti(secim, isBasina)}
+                </span>
+              )}
               {aktifVar && (
                 <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                   Toplu iş #{is?.id} aktif — bitene ya da iptal edilene kadar yenisi açılmaz.
@@ -523,18 +584,38 @@ export default function TopluAutoStartTab() {
           </div>
           <div className="text-[12px] tabular-nums flex gap-3 flex-wrap" style={{ color: 'var(--text-secondary)' }}>
             <span>{fmtNumber(ogeler.length)} JVM</span>
+            {(planIsSayisi > 0 || uygulamaIsSayisi > 0) && (
+              <span data-testid="toplu-awx-isleri">
+                AWX işi: plan {fmtNumber(planIsSayisi)}
+                {uygulamaIsSayisi ? ` · uygulama ${fmtNumber(uygulamaIsSayisi)}` : ''}
+                {isBasina != null ? ` (iş başına en çok ${fmtNumber(isBasina)} JVM)` : ''}
+              </span>
+            )}
             <span>uygulanacak / uygulanan {fmtNumber(ogeler.length - say('DUSTU') - say('SECIM') - say('ADAY') - say('PLANLANIYOR'))}</span>
             <span>düşen {fmtNumber(say('DUSTU'))}</span>
             <span style={{ color: 'var(--status-success)' }}>OK {fmtNumber(say('OK'))}</span>
             <span>zaten hedefte {fmtNumber(say('SKIP'))}</span>
             <span style={{ color: say('FAIL') ? 'var(--status-danger)' : undefined }}>başarısız {fmtNumber(say('FAIL'))}</span>
-            {say('YARIM_KALDI') > 0 && <span style={{ color: 'var(--status-danger)' }}>yarım kaldı {fmtNumber(say('YARIM_KALDI'))}</span>}
+            {belirsizSayisi > 0 && (
+              <span
+                style={{ color: 'var(--status-danger)' }}
+                data-testid="toplu-belirsiz"
+                title="AWX’e gitmiş ya da AWX’te sürüyor olabilir: bu JVM’ler AWX işi bitene kadar kilitli (yeni iş açılmaz). AWX’ten kontrol edin, sonra sunucuyu yeniden tarayın."
+              >
+                sonucu belirsiz {fmtNumber(belirsizSayisi)}
+              </span>
+            )}
+            {calistirilmayanSayisi > 0 && (
+              <span style={{ color: 'var(--status-danger)' }} data-testid="toplu-calistirilmadi">
+                yarım kaldı (çalıştırılmadı) {fmtNumber(calistirilmayanSayisi)}
+              </span>
+            )}
           </div>
           {is.hata && <div className="text-[12px]" style={{ color: kirmiziMi(is.durum) ? 'var(--status-danger)' : 'var(--text-muted)' }}>{is.hata}</div>}
           {is.durum === 'PLAN_HAZIR' && (
             <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Plan {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla canlı değerleri okudu; 15 dakika içinde onaylanmazsa yeniden
-              planlanmalı. Not: “AÇ” adayının JVM’i plan anında durmuşsa plan bunu ayırmaz (auto-start açmak durmuş JVM’e zarar
+              Plan canlı değerleri okumayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık onay süresi
+              planlama BİTTİĞİNDE başladı (planlamanın kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden planlanmalı. Not: “AÇ” adayının JVM’i plan anında durmuşsa plan bunu ayırmaz (auto-start açmak durmuş JVM’e zarar
               vermez; reboot’ta açılır).
               {dusenler.length ? ` ${fmtNumber(dusenler.length)} JVM düştü (nedeni tabloda).` : ''}
               {planKalanMs != null && (

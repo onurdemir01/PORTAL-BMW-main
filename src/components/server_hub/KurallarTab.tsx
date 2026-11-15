@@ -653,8 +653,8 @@ function LimitlerBolumu({
         </h2>
         <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
           Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu (Toplu Auto-Start
-          / Toplu Restart: tek toplu işte en fazla JVM). Üst sınır, işin AWX’e taşıdığı veri ve süre
-          yüzünden sabittir.
+          / Toplu Restart: tek toplu işte en fazla JVM; “Toplu iş başına JVM”: Toplu Auto-Start’ta bir AWX
+          işine konan en fazla JVM). Üst sınır, işin AWX’e taşıdığı veri ve süre yüzünden sabittir.
         </p>
       </div>
       <div className="overflow-x-auto">

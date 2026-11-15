@@ -341,6 +341,8 @@ describe('Toplu Restart sekmesi', () => {
       render(<TopluRestartTab />);
       await waitFor(() => expect(m.topluRestartDurum).toHaveBeenCalledTimes(1));
       await screen.findByText(/Kalan süre: ~15 dk/);
+      // 15 dk onizleme BITTIGINDE baslar (2026-11-15: kullanicilar onizleme suresini de sayiyordu)
+      expect(screen.getByText(/15 dakikalık onay süresi önizleme BİTTİĞİNDE başladı/)).toBeTruthy();
       await act(async () => {
         vi.advanceTimersByTime(YOKLAMA_MS);
       });
