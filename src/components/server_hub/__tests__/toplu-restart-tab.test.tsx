@@ -351,4 +351,50 @@ describe('Toplu Restart sekmesi', () => {
       await waitFor(() => expect(m.topluRestartDurum).toHaveBeenCalledTimes(2));
     });
   });
+
+  it('TRT10 başarısız öğeler kümelenir: kapanmadı / atlandı / başarısız sayılır, süzülür', async () => {
+    m.topluRestartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluRestartDurum.mockResolvedValue({
+      ok: true,
+      is: isSatiri('BITTI_HATALI'),
+      ogeler: [
+        oge(1, 'APP01', 'crm', 'KAPANDI', { neden: 'restart edildi, fark kapandı' }),
+        oge(2, 'APP02', 'pay', 'FAIL', { neden: "restart isteği belirsiz hatayla döndü (AWX'te sürüyor olabilir): socket hang up — AWX'ten kontrol edin" }),
+        oge(3, 'APP03', 'crm', 'IPTAL', { neden: 'iptal edildi (çalıştırılmadı)' }),
+        oge(4, 'APP04', 'crm', 'DUSTU', { neden: 'önizlemede düştü: fark kalmadı' }),
+        oge(5, 'APP05', 'crm', 'ATLANDI', { neden: "atlandı: prod — OpsX'ten tek tek" }),
+      ],
+    });
+    render(<TopluRestartTab />);
+    await screen.findByRole('group', { name: 'Başarısız öğe kategorileri' });
+    expect(screen.getByRole('button', { name: 'Bağlantı / süre / AWX 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tarama eski / zaten hedefte 1' })).toBeTruthy();
+    // ATLANDI restart'ta basarisiz sayilir
+    expect(screen.getByRole('button', { name: 'Diğer 1' })).toBeTruthy();
+    const iptal = screen.getByRole('button', { name: 'İptal / durduruldu / yarım kaldı 1' });
+    fireEvent.click(iptal);
+    const satirlar = screen.getByLabelText('Toplu restart #9').querySelectorAll('tbody tr');
+    expect(satirlar.length).toBe(1);
+    expect(satirlar[0].textContent).toMatch(/APP03/);
+    expect(screen.getByTestId('kategori-ne-yapilir').textContent).toMatch(/Ne yapılır: İş iptal edildi/);
+    // ayni cipe ikinci tik secimi kaldirir
+    fireEvent.click(iptal);
+    expect(screen.getByLabelText('Toplu restart #9').querySelectorAll('tbody tr').length).toBe(5);
+  });
+
+  it('TRT11 kategori seçimi işe bağlı: Listeyi yenile başka işi getirince seçim düşer', async () => {
+    const ogeleri = () => [
+      oge(1, 'APP01', 'crm', 'KAPANDI', { neden: 'restart edildi, fark kapandı' }),
+      oge(3, 'APP03', 'crm', 'IPTAL', { neden: 'iptal edildi (çalıştırılmadı)' }),
+    ];
+    m.topluRestartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluRestartDurum.mockImplementation(async (id: number) => ({ ok: true, is: isSatiri('BITTI_HATALI', { id }), ogeler: ogeleri() }));
+    render(<TopluRestartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'İptal / durduruldu / yarım kaldı 1' }));
+    expect(screen.getByLabelText('Toplu restart #9').querySelectorAll('tbody tr').length).toBe(1);
+    m.topluRestartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI', { id: 10 })] });
+    fireEvent.click(screen.getByRole('button', { name: 'Listeyi yenile' }));
+    await waitFor(() => expect(screen.getByLabelText('Toplu restart #10').querySelectorAll('tbody tr').length).toBe(2));
+    expect(screen.getByRole('button', { name: 'Tümü' }).getAttribute('aria-pressed')).toBe('true');
+  });
 });

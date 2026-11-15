@@ -80,9 +80,10 @@ function kopyaOf(h, j) {
     calisiyor,
     autoStart,
     // assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile ayni kosul (olculemeyen calisma karar vermez).
+    // Domain kapali (taramada host controller calismiyordu) JVM'de assess STOPPED_AUTOSTART_ON uretmez.
     autostartUyumsuz: (() => {
       if (calisiyor === true && autoStart === 'false') return 'REBOOT_RISK';
-      if (calisiyor === false && autoStart === 'true') return 'STOPPED_AUTOSTART_ON';
+      if (calisiyor === false && autoStart === 'true' && j.domainKapali !== true) return 'STOPPED_AUTOSTART_ON';
       return null;
     })(),
     trafik: j.trafficState || null,

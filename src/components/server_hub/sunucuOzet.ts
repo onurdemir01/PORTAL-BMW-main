@@ -31,17 +31,20 @@ export function jvmTrafik(j: Pick<ShJvm, 'vhosts'>): 'ACTIVE' | 'NO_RECENT_TRAFF
 /**
  * assess'teki REBOOT_RISK / STOPPED_AUTOSTART_ON ile aynı koşul; ölçülemeyen çalışma karar vermez.
  * "Yalnız envanterde" satırı taranmış JVM değildir: değerleri envanterden ödünç, uyumsuzluk sayılmaz.
+ * Domain kapalı (taramada host controller çalışmıyordu) durmuş JVM uyumsuz sayılmaz: assess tek
+ * JBOSS_DOMAIN_DOWN bulgusu yazar, JVM bazında STOPPED_AUTOSTART_ON yoktur.
  */
 export const autostartUyumsuz = (
   j: Pick<ShJvm, 'running' | 'autoStart'> & {
     runningKnown?: boolean | null;
     source?: string | null;
     yalnizEnvanter?: boolean | null;
+    domainKapali?: boolean | null;
   },
 ) =>
   !yalnizEnvanterMi(j) &&
   j.runningKnown !== false &&
-  ((j.running && j.autoStart === 'false') || (!j.running && j.autoStart === 'true'));
+  ((j.running && j.autoStart === 'false') || (!j.running && j.autoStart === 'true' && j.domainKapali !== true));
 
 export function ozetKartlari(d: ShHostDetail, etiketler: ShRetireEtiketHer[] | null): OzetKarti[] {
   const kritik = d.findings.filter((f) => f.severity === 'danger').length;

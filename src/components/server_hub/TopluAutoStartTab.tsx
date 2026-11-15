@@ -26,6 +26,8 @@ import { useOnay } from '@/components/common/OnayPenceresi';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirsiz';
 import { autoStartSonucYay } from './autoStartIsi';
+import { AUTOSTART_BASARISIZ, kategoriyeGore, type TopluKategori } from './topluSiniflama';
+import { KategoriEtiketi, TopluKategoriFiltresi } from './TopluKategoriFiltresi';
 
 /** Yoklama aralığı (sunucu yürütücüsü 10 sn'de bir ilerler). */
 export const YOKLAMA_MS = 4000;
@@ -211,7 +213,10 @@ function OgeTablosu({ ogeler }: { ogeler: ShTopluOge[] }) {
                 {OGE_ETIKET[o.durum] || o.durum}
                 {o.dogrulandi ? ' · doğrulandı' : ''}
               </td>
-              <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>{o.neden || '—'}</td>
+              <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>
+                <KategoriEtiketi oge={o} basarisiz={AUTOSTART_BASARISIZ} />
+                {o.neden || '—'}
+              </td>
               <td className="px-3 py-1 tabular-nums" style={{ color: 'var(--text-muted)' }}>
                 {o.awxJobId ? `#${o.awxJobId}` : o.planJobId ? `plan #${o.planJobId}` : '—'}
               </td>
@@ -234,6 +239,8 @@ export default function TopluAutoStartTab() {
   const [okunanIs, setIs] = useState<ShTopluIs | null>(null);
   const [ogeler, setOgeler] = useState<ShTopluOge[]>([]);
   const [gonderiliyor, setGonderiliyor] = useState(false);
+  // Kategori seçimi izlenen işe bağlı: başka iş / yeni toplu iş açılınca seçim kendiliğinden düşer (inceleme B-F8).
+  const [kategoriSecimi, setKategoriSecimi] = useState<{ isId: number | null; k: TopluKategori | null }>({ isId: null, k: null });
   // Bu ekranda daha once gorulen dogrulanmis ogeler (yayin bir kez; ilk okumada gorulenler yayilmaz: eski sonuc).
   const yayilan = useRef<{ isId: number | null; ids: Set<number> }>({ isId: null, ids: new Set() });
 
@@ -290,6 +297,8 @@ export default function TopluAutoStartTab() {
 
   // Gosterilen is: yalniz izlenen isin okunmus satiri (izlenen degisince eski is gosterilmez).
   const is = okunanIs && okunanIs.id === izlenen ? okunanIs : null;
+  const kategori = kategoriSecimi.isId === izlenen ? kategoriSecimi.k : null;
+  const setKategori = (k: TopluKategori | null) => setKategoriSecimi({ isId: izlenen, k });
   // YOKLAMA: yalniz sekme gorunurken ve is yururken (ya da yarim kalmis isin calisan ogesi varken).
   const yuruyor =
     !!is && (YURUYEN.has(is.durum) || (is.durum === 'YARIM_KALDI' && ogeler.some((o) => o.durum === 'CALISIYOR')));
@@ -555,7 +564,8 @@ export default function TopluAutoStartTab() {
                 : `Özet: ${fmtNumber(say('OK'))} OK, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın, sonra sunucuyu yeniden tarayın.`}
             </div>
           )}
-          <OgeTablosu ogeler={ogeler} />
+          <TopluKategoriFiltresi ogeler={ogeler} basarisiz={AUTOSTART_BASARISIZ} secili={kategori} onSec={setKategori} />
+          <OgeTablosu ogeler={kategoriyeGore(ogeler, AUTOSTART_BASARISIZ, kategori)} />
           {bitti && (
             <button type="button" className="btn-secondary text-xs" onClick={() => void adaylariYukle(true)}>
               Listeyi yenile

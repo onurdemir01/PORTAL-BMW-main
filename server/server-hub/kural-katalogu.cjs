@@ -152,6 +152,12 @@ const MADDELER = [
     neTaranir: 'Host controller’ın çalışma durumu (CLI).',
     ciktilar: [
       { kod: 'HOST_RESTART', kosul: 'Host controller restart-required ya da reload-required.', seviye: 'warning' },
+      {
+        kod: 'JBOSS_DOMAIN_DOWN',
+        kosul:
+          'Taramada host controller çalışmıyordu (domain kapalı): sunucu + JBoss sürümü başına tek bulgu; JVM bazında auto-start bulgusu ve auto-start işi üretilmez. Non-Production sunucuda bilgi.',
+        seviye: 'warning',
+      },
       { kod: null, kosul: 'Host controller running.', seviye: 'ok' },
     ],
   },

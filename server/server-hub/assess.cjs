@@ -71,6 +71,15 @@ function jbKalinti(b) {
   if (/^jboss-cli yok\b/.test(n) && /host XML (bulunamadi|okunamadi)/.test(n)) return true;
   return /JBoss dizini GORULEMEDI/.test(n) && /giremiyor \(izin\)/.test(n);
 }
+
+/** JBoss DOMAIN KAPALI mi (2026-11-15, uretim: GBBFAA01 toplu auto-start "Connection refused :9990").
+ *  Tarayici (server_hub_scan.sh) yalniz PROC_VIS=FULL iken ps'te host controller gormezse CLI'yi hic
+ *  acmaz ve notu "host controller calismiyor, CLI acilmadi" yazar; JVM satirlari host XML'den gelir
+ *  (auto-start XML degeri, hepsi durmus). BLIND'da host controller gorunmeyebilir: CLI yine denenir,
+ *  bu not yazilmaz - BLIND "kapali" SAYILMAZ. Kesin sinyal: cli SKIP + bu not. */
+function hcKapali(b) {
+  return !!b && b.cli === 'SKIP' && /host controller calismiyor/.test(String(b.note || ''));
+}
 const GUN_MS = 86400000;
 const nz = (x) => (x == null || x === '' ? null : x);
 const zamanMs = (x) => {
@@ -776,6 +785,14 @@ function assess(data, opts = {}) {
         j.autoStart = 'unknown';
         j.autoStartReason = 'tanimsiz-surec';
       }
+    // DOMAIN KAPALI (hcKapali): o nesilde auto-start canli okunamaz / yazilamaz (server_hub_fix.sh
+    // "host controller'a baglanilamadi ... HICBIR SEY DEGISMEDI"). JVM isaretlenir; bulgu dongusu
+    // JVM bazinda STOPPED_AUTOSTART_ON ve auto-start eylemi uretmez, yerine sunucu+nesil basina tek
+    // JBOSS_DOMAIN_DOWN yazar. Yazma kapisi (autostart-dogrulama.cjs jvmAutoStartKapisi) da bu isarete bakar.
+    const kapaliNesil = new Set(h.jboss.filter(hcKapali).map((b) => b.gen));
+    h.jbossDomainKapali = [...kapaliNesil].sort((x, y) => x - y);
+    for (const j of h.jvms)
+      if (j.source === 'cli' && kapaliNesil.has(Number(j.gen))) j.domainKapali = true;
   }
 
   // ── JVM <-> vhost eslemesi ──────────────────────────────────────────────────────
@@ -1552,6 +1569,7 @@ function assess(data, opts = {}) {
         add('info', 'init', 'INIT_MISSING', `${i.root}/${i.file} yok`);
     }
     // jboss host
+    const domainBulgusu = new Set();
     for (const b of h.jboss) {
       if (b.cli === 'FAIL')
         add('info', 'jboss', 'CLI_FAIL', `JBoss ${b.gen} CLI erişilemedi: ${b.note}`.trim());
@@ -1583,6 +1601,36 @@ function assess(data, opts = {}) {
         add('info', 'jboss', 'CLI_SKIP', `JBoss ${b.gen} CLI çalıştırılamadı: ${b.note}`.trim());
       if (b.hostState === 'restart-required' || b.hostState === 'reload-required')
         add('warning', 'jboss', 'HOST_RESTART', `JBoss ${b.gen} host controller ${b.hostState}`);
+      // DOMAIN KAPALI (hcKapali, 2026-11-15): sunucu+nesil basina TEK bulgu; JVM'ler icin ayri ayri
+      // STOPPED_AUTOSTART_ON (ve Toplu Auto-Start "kapat" adayi) uretilmez. Seviye: uyari; Non-Production
+      // sunucuda bilgi (domain bilerek kapatilmis olabilir). Admin seviyeyi degistirdiyse o gecerli (ortam
+      // inisi uygulanmaz); kritik yapilirsa asagidaki NON-PROD TAVANI ayni kalir.
+      if (hcKapali(b) && !domainBulgusu.has(b.gen)) {
+        domainBulgusu.add(b.gen);
+        const nj = h.jvms.filter((j) => j.domainKapali === true && Number(j.gen) === b.gen);
+        const durmus = nj.filter((j) => j.running !== true).length;
+        // Inceleme (2026-11-15): JVM bazindaki kritik bulgu kalkinca "reboot'ta acilacak" bilgisi kaybolmasin;
+        // durmus + host XML'de auto-start=true sayisi metinde. JVM satiri hic yoksa "0 JVM durmus" yazilmaz.
+        const xmlAcik = nj.filter((j) => j.running !== true && j.autoStart === 'true').length;
+        const jvmMetni = !nj.length
+          ? 'JVM tanımı okunamadı'
+          : `${durmus} JVM durmuş${xmlAcik ? ` (${xmlAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)` : ''}${nj.length > durmus ? `, ${nj.length - durmus} JVM süreci görünüyor` : ''}`;
+        add(
+          'warning',
+          'jboss',
+          'JBOSS_DOMAIN_DOWN',
+          `JBoss ${b.gen} domain kapalı (host controller çalışmıyor) — ${jvmMetni}; JVM bazında auto-start bulgusu üretilmedi`,
+          null,
+          { gen: b.gen, jvmSayisi: nj.length, autoStartAcik: xmlAcik },
+        );
+        const f = F[F.length - 1];
+        if (h.envGroup === 'Non-Production' && SEV[seviyeler.JBOSS_DOMAIN_DOWN] == null && f.severity === 'warning') {
+          f.severity = 'info';
+          f.defaultSeverity = 'warning';
+          f.prodSeverity = 'warning';
+          f.ortamTavani = true;
+        }
+      }
     }
     // jvm
     // TANIM KAYNAGI (v3, scan_ver >= 2.1) - iki AYRI durum, iki ayri metin (T2-C2):
@@ -1667,8 +1715,10 @@ function assess(data, opts = {}) {
       // playbook onu host XML'de bulamaz. autoStart yukarida 'unknown'a sabitlendigi icin bu iki
       // bulgu zaten uretilmez; kapi derinlemesine savunmadir.
       const tanimsiz = j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE';
-      const fixOn = tanimsiz ? null : { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
-      const fixOff = tanimsiz ? null : { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
+      // DOMAIN KAPALI JVM'de de auto-start eylemi yok: betik host controller'a baglanamaz (is acilmaz).
+      const yazilamaz = tanimsiz || j.domainKapali === true;
+      const fixOn = yazilamaz ? null : { action: 'jboss_autostart_on', gen: j.gen, jvm: j.name };
+      const fixOff = yazilamaz ? null : { action: 'jboss_autostart_off', gen: j.gen, jvm: j.name };
       // runningKnown (v3): hidepid/ps korlugunde (running_src=UNMEASURED) running=0
       // "kapali" DEGILDIR. Bu JVM icin calisma durumuna dayanan HICBIR bulgu/eylem uretilmez.
       const rk = j.runningKnown !== false;
@@ -1716,14 +1766,17 @@ function assess(data, opts = {}) {
         add('info', 'jvm', 'INV_MISMATCH', `${id}: ${j.mismatch.join('; ')}`);
       if (j.invNot) add('info', 'jvm', 'INV_JVM_COUNT', `${id}: ${j.invNot}`);
       // KRITIK (kullanici 2026-11-06: "jvm kapali auto start acik ise kritik").
+      // DOMAIN KAPALI (hcKapali): JVM bazinda bulgu YOK - sunucu+nesil basina tek JBOSS_DOMAIN_DOWN yazildi.
+      // Retirement adayi (R8) bulgudan ayridir ve AYNEN kalir (retire-etiket.cjs h.retireAdaylari okur).
       if (rk && !j.running && j.autoStart === 'true') {
-        add(
-          'danger',
-          'jvm',
-          'STOPPED_AUTOSTART_ON',
-          `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`,
-          fixOff,
-        );
+        if (j.domainKapali !== true)
+          add(
+            'danger',
+            'jvm',
+            'STOPPED_AUTOSTART_ON',
+            `${id} kapalı ama auto-start AÇIK — reboot'ta açılacak`,
+            fixOff,
+          );
         h.retireAdaylari.push({
           kural: 'R8',
           tur: 'JVM',
@@ -2370,6 +2423,9 @@ function assess(data, opts = {}) {
       for (const f of F)
         if (f.severity === 'danger') {
           if (!f.defaultSeverity) f.defaultSeverity = 'danger';
+          // prodSeverity: bu bulgu prod'da hangi seviyede olurdu (Admin degisikligi dahil). defaultSeverity kodun
+          // varsayilanidir; Admin uyari->kritik yaptiysa ekran "prod'da Kritik" demeli (inceleme 2026-11-15).
+          f.prodSeverity = 'danger';
           f.severity = 'warning';
           f.ortamTavani = true;
         }
@@ -2900,6 +2956,7 @@ function flattenFindings(hosts) {
         // Admin seviyeyi degistirdiyse kodun varsayilani (ekran isaretler).
         ...(f.defaultSeverity ? { defaultSeverity: f.defaultSeverity } : {}),
         ...(f.ortamTavani ? { ortamTavani: true } : {}),
+        ...(f.prodSeverity ? { prodSeverity: f.prodSeverity } : {}),
         area: f.area,
         code: f.code,
         text: f.text,

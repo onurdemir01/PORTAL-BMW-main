@@ -54,6 +54,12 @@ const KOD_ANLAMI = Object.freeze({
   CLI_FAIL: { tip: 'unknown', aciklama: 'JBoss CLI okunamadı' },
   CLI_SKIP: { tip: 'unknown', aciklama: 'JBoss CLI hiç çalıştırılamadı (kurulum/süreç)' },
   CLI_DENIED: { tip: 'unknown', aciklama: 'JBoss CLI yetki reddi (dzdo kuralı eksik)' },
+  // DOMAIN KAPALI (2026-11-15): JVM'ler durmus ve auto-start host XML'den; JVM bazinda STOPPED_AUTOSTART_ON
+  // (risk) URETILMEZ. Reboot'ta domain'in (ve auto-start acik JVM'lerin) kalkip kalkmayacagi bilinmiyor.
+  JBOSS_DOMAIN_DOWN: {
+    tip: 'unknown',
+    aciklama: "JBoss domain taramada kapalıydı (host controller çalışmıyor) — açılışta domain'in ve JVM'lerin kalkıp kalkmayacağı bilinmiyor",
+  },
   // ── SOZLESME v3 (dalga 1): olculemeyen her sey "sorun yok" DEGIL ──
   RUNNING_UNMEASURED: {
     tip: 'unknown',

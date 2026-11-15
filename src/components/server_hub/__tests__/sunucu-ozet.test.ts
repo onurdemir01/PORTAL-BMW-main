@@ -175,5 +175,8 @@ describe('sunucu özeti', () => {
     ).toBe(false);
     expect(jvmTrafik(J({ vhosts: [] }))).toBe('OLCULEMEDI');
     expect(autostartUyumsuz(J({ running: true, autoStart: 'unknown' }))).toBe(false);
+    // domain kapali (taramada host controller calismiyordu): durmus + acik uyumsuz SAYILMAZ (assess JBOSS_DOMAIN_DOWN)
+    expect(autostartUyumsuz(J({ running: false, autoStart: 'true', domainKapali: true }))).toBe(false);
+    expect(autostartUyumsuz(J({ running: false, autoStart: 'true' }))).toBe(true);
   });
 });

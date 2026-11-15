@@ -484,7 +484,7 @@ function autoStartOnayMetni(
  * Calisma durumu OLCULEMEYEN JVM'de dugme ACIK kalir (v3, kural 7): onay metni uyarir.
  */
 function autoStartDugmesi(
-  j: { source?: string; cfgSrc?: string | null; yalnizEnvanter?: boolean },
+  j: { source?: string; cfgSrc?: string | null; yalnizEnvanter?: boolean; domainKapali?: boolean; gen?: number },
   h: { schemaUnknown?: boolean; fresh?: boolean } | null | undefined,
 ): { goster: boolean; neden: string } {
   // YALNIZ ENVANTERDE (2026-11-14): taramada JVM'i yok (MWAppsInventory satiri); sunucu 400 doner.
@@ -497,6 +497,12 @@ function autoStartDugmesi(
     return {
       goster: false,
       neden: "tanım kaynağında yok (ps'te tanımsız süreç) — auto-start değiştirilemez",
+    };
+  // DOMAIN KAPALI (2026-11-15): taramada host controller çalışmıyordu; sunucu 400 döner (iş açılmaz).
+  if (j.domainKapali === true)
+    return {
+      goster: false,
+      neden: `JBoss ${j.gen ?? ''} domain kapalı (taramada host controller çalışmıyordu) — auto-start canlı okunamaz; iş açılmaz. Domain sonradan açıldıysa önce sunucuyu yeniden tarayın`,
     };
   if (h?.schemaUnknown === true)
     return { goster: false, neden: 'Server Hub şeması okunamadı — eylemler kapalı' };
@@ -675,6 +681,8 @@ const KOD_ETIKET: Record<string, string> = {
   // Olculmus durumlar olculmus diye, olculemeyenler "bilinmiyor" diye yazilir (kural 6).
   HOST_RESTART:
     'JBoss host controller restart/reload bekliyor (restart-required / reload-required)',
+  JBOSS_DOMAIN_DOWN:
+    'JBoss domain kapalı (taramada host controller çalışmıyordu) — JVM bazında auto-start bulgusu ve işi yok',
   RESTART_REQUIRED:
     "JVM restart/reload bekliyor — runtime'da etkin olmayan yapılandırma değişikliği var",
   INIT_DIFF: 'init script filo çoğunluğundan farklı',
@@ -1674,19 +1682,22 @@ function SeviyeAyarBandi({
 }
 
 /** Bulgu seviyesi Admin tarafindan degistirildiyse varsayilani yazan isaret. */
-function SeviyeDegistiIsareti({ d, ortam }: { d?: ShSeverity; ortam?: boolean }) {
+function SeviyeDegistiIsareti({ d, ortam, prod }: { d?: ShSeverity; ortam?: boolean; prod?: ShSeverity }) {
   if (!d) return null;
   // NON-PROD TAVANI (2026-11-15): Non-Production sunucuda kritik bulgu uyari sayilir; gizlenmez, isaretlenir.
-  if (ortam)
+  // prod: prod'daki etkin seviye (Admin degisikligi dahil); eski rapor satirinda yoksa varsayilan.
+  if (ortam) {
+    const p = SEV[prod ?? d];
     return (
       <span
         className="text-[10px]"
         style={{ color: 'var(--text-muted)' }}
-        title="Non-Production sunucu: kritik bulgular uyarı olarak sayılır. Prod'da bu bulgu kritiktir."
+        title={`Non-Production sunucu: seviye ortam tavanıyla düşürüldü. Prod'da bu bulgu ${p.label}.`}
       >
-        non-prod · prod'da {SEV[d].label}
+        non-prod · prod'da {p.label}
       </span>
     );
+  }
   return (
     <span
       className="text-[10px]"
@@ -3412,7 +3423,7 @@ function HostModal({
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {AREA[f.area] || f.area} · {kodEtiketi(f.code)}
                           {f.defaultSeverity ? ' · ' : ''}
-                          <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} />
+                          <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} prod={f.prodSeverity} />
                         </div>
                         <LogKanit f={f} />
                         <AtfedilemeyenTrafik f={f} />
@@ -4188,7 +4199,7 @@ function bulguKolonlari(
           <SevPill s={f.severity} />
           {f.defaultSeverity && (
             <div>
-              <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} />
+              <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} prod={f.prodSeverity} />
             </div>
           )}
         </>

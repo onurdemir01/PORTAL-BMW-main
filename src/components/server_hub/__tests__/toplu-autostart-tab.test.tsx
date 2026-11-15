@@ -409,4 +409,61 @@ describe('Toplu Auto-Start sekmesi', () => {
       await waitFor(() => expect(m.topluAutoStartDurum).toHaveBeenCalledTimes(2));
     });
   });
+
+  it('TT8 başarısız öğeler kümelenir: sayım çipleri, satır etiketi, süzme ve "ne yapılır"', async () => {
+    const HC =
+      "canlı okumada: host controller'a baglanilamadi ya da adi okunamadi (controller gbbfaa01:9990, :read-attribute(name=local-host-name)): Connection refused - HICBIR SEY DEGISMEDI";
+    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluAutoStartDurum.mockResolvedValue({
+      ok: true,
+      is: isSatiri('BITTI_HATALI'),
+      ogeler: [
+        oge(1, 'APP01', 'a1', 'OK', { dogrulandi: true, neden: 'a1 auto-start=true (host=m, CLI ile dogrulandi)' }),
+        oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
+        oge(3, 'GBBFAA01', 'h2', 'DUSTU', { neden: HC }),
+        oge(4, 'APP02', 'z1', 'DUSTU', { neden: 'canlı değer zaten true — tarama eski (z1 auto-start zaten true)' }),
+      ],
+    });
+    render(<TopluAutoStartTab />);
+    const grup = await screen.findByRole('group', { name: 'Başarısız öğe kategorileri' });
+    expect(grup.textContent).toMatch(/Başarısız \/ düşen \/ atlanan 3:/);
+    const hc = screen.getByRole('button', { name: 'JBoss domain kapalı 2' });
+    expect(screen.getByRole('button', { name: 'Tarama eski / zaten hedefte 1' })).toBeTruthy();
+    // sifir kumeler gosterilmez
+    expect(screen.queryByRole('button', { name: /^İptal \/ durduruldu/ })).toBeNull();
+    const satirSay = () => screen.getByLabelText('Toplu iş #7').querySelectorAll('tbody tr').length;
+    expect(satirSay()).toBe(4);
+    // satir etiketi yalniz basarisiz ogede
+    expect(document.querySelectorAll('[data-kategori="hc_kapali"]').length).toBe(2);
+    expect(document.querySelectorAll('[data-kategori]').length).toBe(3);
+    expect(screen.queryByTestId('kategori-ne-yapilir')).toBeNull();
+    fireEvent.click(hc);
+    expect(satirSay()).toBe(2);
+    expect(hc.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('kategori-ne-yapilir').textContent).toMatch(
+      /JBoss bilerek kapatılmış olabilir; domain açılınca sunucuyu yeniden tarayıp yeniden planlayın/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Tümü' }));
+    expect(satirSay()).toBe(4);
+    expect(screen.queryByTestId('kategori-ne-yapilir')).toBeNull();
+  });
+
+  it('TT9 kategori seçimi işe bağlı: başka iş gelince seçim düşer, yeni işte kendiliğinden açılmaz', async () => {
+    const HC = "canlı okumada: host controller'a baglanilamadi (controller gbbfaa01:9990) - HICBIR SEY DEGISMEDI";
+    const ogeleri = () => [
+      oge(1, 'APP01', 'a1', 'OK', { neden: 'a1 auto-start=true' }),
+      oge(2, 'GBBFAA01', 'h1', 'DUSTU', { neden: HC }),
+    ];
+    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI')] });
+    m.topluAutoStartDurum.mockImplementation(async (id: number) => ({ ok: true, is: isSatiri('BITTI_HATALI', { id }), ogeler: ogeleri() }));
+    render(<TopluAutoStartTab />);
+    fireEvent.click(await screen.findByRole('button', { name: 'JBoss domain kapalı 1' }));
+    expect(screen.getByLabelText('Toplu iş #7').querySelectorAll('tbody tr').length).toBe(1);
+    // listeyi yenile: en son is artik #8 (ayni kume var) -> secim dusmeli, tum satirlar
+    m.topluAutoStartListe.mockResolvedValue({ ok: true, aktif: null, son: [isSatiri('BITTI_HATALI', { id: 8 })] });
+    fireEvent.click(screen.getByRole('button', { name: 'Listeyi yenile' }));
+    await waitFor(() => expect(screen.getByLabelText('Toplu iş #8').querySelectorAll('tbody tr').length).toBe(2));
+    expect(screen.getByRole('button', { name: 'Tümü' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByTestId('kategori-ne-yapilir')).toBeNull();
+  });
 });

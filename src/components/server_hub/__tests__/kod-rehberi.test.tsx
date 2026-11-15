@@ -4,6 +4,7 @@
 //   KR3 kod rehberi: ilk açılışta kuralları indirir, "bu listedekiler" yalnız listedeki kodları gösterir,
 //       "tüm kodlar" hepsini; koda tıklayınca liste süzülür ve panel kapanır
 //   KR4 R1–R12 bölümü bulgu olmadıklarını ve nerede göründüklerini söyler
+//   KR5 non-prod tavanı işareti prod'daki etkin seviyeyi (prodSeverity) yazar; eski satırda varsayılan (2026-11-15)
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -25,6 +26,7 @@ vi.mock('@/hooks/useToast', () => ({ toast: { success: vi.fn(), error: vi.fn() }
 vi.mock('@/contexts/JobTrackerContext', () => ({ useJobTracker: () => ({ addJob: vi.fn() }) }));
 
 import { FindingsTab } from '@/components/server_hub/ServerHubPage';
+import * as shOnbellek from '@/components/server_hub/shOnbellek';
 
 const bulgu = (host: string, code: string, text: string) => ({
   host,
@@ -135,5 +137,26 @@ describe('Bulgular kodları', () => {
     expect(within(panel).getByText(/Retirement Analizi › Retirement etiketleri/)).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Kod rehberi' })).toBeNull();
+  });
+  it('KR5 non-prod tavanı işareti prod ortamındaki ETKİN seviyeyi yazar (Admin uyarı -> kritik ise kritik)', async () => {
+    const np = { ...bulgu('GBAPT01', 'SYNTAX_UNVERIFIED', 'np1'), env: 'TEST', envGroup: 'Non-Production', severity: 'warning' as const, ortamTavani: true };
+    m.findings.mockResolvedValue({
+      ok: true,
+      tableMissing: false,
+      latestScan: '2026-11-11',
+      findings: [
+        { ...np, defaultSeverity: 'warning' as const, prodSeverity: 'danger' as const },
+        // eski rapor satiri (prodSeverity yok): varsayilana duser
+        { ...np, host: 'GBAPT02', text: 'np2', defaultSeverity: 'danger' as const },
+        { ...np, host: 'GBAPT03', text: 'np3', severity: 'info' as const, defaultSeverity: 'warning' as const, prodSeverity: 'warning' as const },
+      ],
+    });
+    shOnbellek._sifirlaForTest();
+    render(<FindingsTab />);
+    await screen.findByText('np1');
+    const isaret = (t: string) => within(screen.getByText(t).closest('tr')!).getByText(/non-prod · prod'da/).textContent;
+    expect(isaret('np1')).toBe("non-prod · prod'da kritik");
+    expect(isaret('np2')).toBe("non-prod · prod'da kritik");
+    expect(isaret('np3')).toBe("non-prod · prod'da uyarı");
   });
 });

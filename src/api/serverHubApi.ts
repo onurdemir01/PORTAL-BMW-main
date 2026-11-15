@@ -50,6 +50,8 @@ export interface ShFinding {
   defaultSeverity?: ShSeverity;
   /** Non-Production sunucu: kritik bulgu uyari olarak sayildi (2026-11-15). */
   ortamTavani?: boolean;
+  /** ortamTavani ile: bu bulgu prod'da hangi seviyede olurdu (Admin degisikligi dahil). */
+  prodSeverity?: ShSeverity;
   area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan' | 'ear';
   code: string;
   text: string;
@@ -105,6 +107,9 @@ export interface ShJvm {
   /** Eslenen envanter uygulamasi ve esleme turu ('ad' | 'ad-sayi' | 'grup' | 'domain'). */
   invApp?: string;
   invMatch?: string | null;
+  /** 2026-11-15: taramada bu nesilde host controller çalışmıyordu (domain kapalı); auto-start canlı
+   *  okunamaz, /jvm-autostart 400. Bulgu sunucu düzeyinde JBOSS_DOMAIN_DOWN. */
+  domainKapali?: boolean;
   /** v3 JVM.cfg_src: CLI_WILDCARD | XML | PS_ONLY | UNAVAILABLE (tanim kaynagi okundu, JVM orada
    *  tanimli degil - auto-start'i yok, /jvm-autostart 400). */
   cfgSrc?: string | null;
@@ -366,6 +371,7 @@ export interface ShFindingRow {
   severity: ShSeverity;
   defaultSeverity?: ShSeverity;
   ortamTavani?: boolean;
+  prodSeverity?: ShSeverity;
   area: ShFinding['area'];
   code: string;
   text: string;

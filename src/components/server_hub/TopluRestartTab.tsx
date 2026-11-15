@@ -25,6 +25,8 @@ import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useOnay } from '@/components/common/OnayPenceresi';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
 import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirsiz';
+import { RESTART_BASARISIZ, kategoriyeGore, type TopluKategori } from './topluSiniflama';
+import { KategoriEtiketi, TopluKategoriFiltresi } from './TopluKategoriFiltresi';
 
 /** Yoklama aralığı (sunucu yürütücüsü 10 sn'de bir ilerler). */
 export const YOKLAMA_MS = 5000;
@@ -224,7 +226,10 @@ function OgeTablosu({ ogeler }: { ogeler: ShRestartOge[] }) {
                 {OGE_ETIKET[o.durum] || o.durum}
                 {o.startState ? <span className="font-normal" style={{ color: 'var(--text-muted)' }}> · {o.startState}</span> : null}
               </td>
-              <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>{o.neden || '—'}</td>
+              <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>
+                <KategoriEtiketi oge={o} basarisiz={RESTART_BASARISIZ} />
+                {o.neden || '—'}
+              </td>
               <td className="px-3 py-1 max-w-md">
                 <Fark metin={o.fark} />
               </td>
@@ -256,6 +261,8 @@ export default function TopluRestartTab() {
   const [okunanIs, setIs] = useState<ShRestartIs | null>(null);
   const [ogeler, setOgeler] = useState<ShRestartOge[]>([]);
   const [gonderiliyor, setGonderiliyor] = useState(false);
+  // Kategori seçimi izlenen işe bağlı: başka iş / yeni toplu iş açılınca seçim kendiliğinden düşer (inceleme B-F8).
+  const [kategoriSecimi, setKategoriSecimi] = useState<{ isId: number | null; k: TopluKategori | null }>({ isId: null, k: null });
 
   const adaylariYukle = useCallback(async (fresh: boolean) => {
     setYukleniyor(true);
@@ -292,6 +299,8 @@ export default function TopluRestartTab() {
   }, [izlenen, durumOku]);
 
   const is = okunanIs && okunanIs.id === izlenen ? okunanIs : null;
+  const kategori = kategoriSecimi.isId === izlenen ? kategoriSecimi.k : null;
+  const setKategori = (k: TopluKategori | null) => setKategoriSecimi({ isId: izlenen, k });
   const yuruyor = !!is && YURUYEN.has(is.durum);
   const onayBekliyor = !!is && is.durum === 'PLAN_HAZIR';
   useEffect(() => {
@@ -564,7 +573,8 @@ export default function TopluRestartTab() {
                 : `Özet: ${fmtNumber(say('KAPANDI'))} kapandı, ${fmtNumber(say('KAPANMADI'))} kapanmadı, ${fmtNumber(say('FAIL'))} başarısız, ${fmtNumber(say('ATLANDI'))} atlandı, ${fmtNumber(say('YARIM_KALDI'))} yarım kaldı — başarısız JVM’ler için AWX işine bakın.`}
             </div>
           )}
-          <OgeTablosu ogeler={ogeler} />
+          <TopluKategoriFiltresi ogeler={ogeler} basarisiz={RESTART_BASARISIZ} secili={kategori} onSec={setKategori} />
+          <OgeTablosu ogeler={kategoriyeGore(ogeler, RESTART_BASARISIZ, kategori)} />
           {bitti && (
             <button type="button" className="btn-secondary text-xs" onClick={() => void adaylariYukle(true)}>
               Listeyi yenile
