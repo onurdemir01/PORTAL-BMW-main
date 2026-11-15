@@ -24,7 +24,7 @@ import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
 import KapamaOnayiUyarisi, { kapamaOnayinda } from './KapamaOnayiUyarisi';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
-import { useEscIleKapat } from '@/components/common/pencereKlavye';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -649,7 +649,8 @@ export default function RequestsSidePanel() {
               value={iptalSor?.note ?? ''}
               onChange={(e) => setIptalSor((x) => (x ? { ...x, note: e.target.value } : x))}
               rows={2}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
               className="mt-1 w-full px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
             />
           </label>

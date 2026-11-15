@@ -2,6 +2,7 @@
 // hedef IP/host ve port. OpsX'teki OperationStep'in yerini alır — burada bir "işlem"
 // değil, tek bir bağlantı testi tetiklenir.
 import React, { useId, useState } from "react";
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 const IP_PORT_RE = /^[A-Za-z0-9.\-:_]{1,255}$/;
 
@@ -37,7 +38,8 @@ const TelnetInputStep: React.FC<{
           <label htmlFor={`${alanId}-ip`} className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">IP / Host</label>
           <input
             id={`${alanId}-ip`}
-            autoFocus
+            // Adim kullanici secimiyle acilir: odak IP kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+            ref={acilincaOdakla}
             value={ip}
             onChange={(e) => setIp(e.target.value)}
             placeholder="10.10.1.101"

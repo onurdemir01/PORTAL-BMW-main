@@ -23,6 +23,7 @@ import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { logxV2Api, type OcpAppItem } from '@/api/logxV2Api';
 import CacheBadge from '../../shared/CacheBadge';
 import { fmtDateShort } from '@/utils/datetime';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 interface Props {
   /** Devam butonunun metni. Varsayılan "Seçilenleri Listeye Ekle". */
@@ -419,7 +420,8 @@ const AppNameStep: React.FC<Props> = ({
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
         <input
-          autoFocus
+          // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+          ref={acilincaOdakla}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           // Enter: listede yoksa yazilan adi secime ekler.

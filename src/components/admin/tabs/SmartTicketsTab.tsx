@@ -24,7 +24,7 @@ import { fmtDateTime as fmt } from '@/utils/datetime';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import SmartRetriggerModal from './SmartRetriggerModal';
-import { useEscIleKapat } from '@/components/common/pencereKlavye';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -608,7 +608,8 @@ export default function SmartTicketsTab() {
                     onChange={(e) => setCancelNote(e.target.value)}
                     rows={3}
                     maxLength={1000}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                     placeholder="Örn: yanlış ortam seçilmiş, talep sahibiyle görüşüldü."
                     className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg resize-y"
                   />

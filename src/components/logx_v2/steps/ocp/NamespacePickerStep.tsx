@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import CacheBadge from '../../shared/CacheBadge';
 import { humanizeOcpError } from '@/utils/ocpError';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 interface Props {
   namespaces: string[];
@@ -233,7 +234,8 @@ const NamespacePickerStep: React.FC<Props> = ({
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
         <input
-          autoFocus
+          // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+          ref={acilincaOdakla}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Namespace ara... (ör. uygulama adı)"

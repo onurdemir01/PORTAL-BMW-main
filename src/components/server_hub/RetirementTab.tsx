@@ -496,7 +496,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
 }
 import { toast } from '@/hooks/useToast';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { useEscIleKapat } from '@/components/common/pencereKlavye';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 // SM_BTN / smBtn retirementStil.ts'e tasindi (smBtn(true) metni --text-on-accent).
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -1208,7 +1208,8 @@ export default function RetirementTab({
               className={`${INPUT} mt-1 font-mono`}
               style={inputStyle}
               placeholder="ornek@garantibbva.com.tr"
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
           </label>
           <label className="block">
@@ -1719,7 +1720,8 @@ export function CreateModal({
               placeholder="CRM"
               className={INPUT}
               style={inputStyle}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
             {apps.length > 0 && !app && (
               <ul
@@ -2999,7 +3001,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               onChange={(e) => setUzlastirJob(e.target.value)}
               className={`${INPUT} mt-1 font-mono`}
               style={inputStyle}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
           </label>
           <p>
@@ -4101,7 +4104,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 placeholder="ör. yalnız JBoss 7 retire ediliyor"
                 className={`${INPUT} mt-1`}
                 style={inputStyle}
-                autoFocus
+                // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                ref={acilincaOdakla}
               />
             </label>
             <div className="flex justify-end gap-2">
@@ -4275,7 +4279,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     onChange={(e) => setAtlaAd(e.target.value)}
                     className={`${INPUT} mt-1 font-mono`}
                     style={inputStyle}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                   />
                 </label>
                 <div className="flex justify-end gap-2">
@@ -4342,7 +4347,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     onChange={(e) => setAtlaAd(e.target.value)}
                     className={`${INPUT} mt-1 font-mono`}
                     style={inputStyle}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                   />
                 </label>
                 <div className="flex justify-end gap-2">

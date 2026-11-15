@@ -60,7 +60,8 @@ export default function AramaKutusu({ ilk, onSec, buyuk }: { ilk: string; onSec:
         aria-expanded={acik && gorunen.length > 0}
         aria-controls="apphub-sonuclar"
         aria-label="Uygulama adı"
-        autoFocus={buyuk}
+        // autoFocus YOK (Sonar S9379): buyuk kutu Application Hub sayfasinin ilk yuklenen icerigi;
+        // sayfa acilirken odagi tasimak ekran okuyucu kullanicisina sayfanin basini atlatir.
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
