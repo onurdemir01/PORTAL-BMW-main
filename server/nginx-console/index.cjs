@@ -1323,6 +1323,13 @@ function initNginxConsole(app) {
   // ── RATE LIMIT (2026-09-26) ─────────────────────────────────────────────────────────
   // Kullanici: "tum Nginx sunucularinin rate limitlerini ayri bir sekmede gorup raporu
   // indirebilmek istiyorum."
+  // RP Secimi ekraninin alt ag sutunu: kurum ic agi, repoda degil ayarda (NGINX_RVP_ALT_AGLARI).
+  router.get('/rvp-alt-aglari', (req, res) => {
+    const { rvpAltAglari } = require('../util/ic-ag-ayari.cjs');
+    const { altAglar, hata } = rvpAltAglari();
+    res.json({ ok: true, altAglar, hata });
+  });
+
   router.get('/ratelimit', async (req, res) => {
     try {
       const { loadRateLimits } = require('./ratelimit.cjs');

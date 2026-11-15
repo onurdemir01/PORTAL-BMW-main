@@ -42,7 +42,7 @@ const TelnetInputStep: React.FC<{
             ref={acilincaOdakla}
             value={ip}
             onChange={(e) => setIp(e.target.value)}
-            placeholder="10.10.1.101"
+            placeholder="192.0.2.10"
             className="w-full px-3 py-2 text-sm font-mono border border-[var(--border)] rounded-xl outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition"
           />
           {ipTrim && !ipValid && <p className="mt-1 text-xs text-red-600">Geçersiz karakter içeriyor.</p>}

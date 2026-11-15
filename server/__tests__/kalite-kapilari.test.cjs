@@ -170,7 +170,8 @@ const TABAN = {
     // MQR guvenilirlik notu (2026-11-15): kod kokularinin guvenilirlik etkisini de sayar; standart
     // reliability_rating ile esdeger metrik oldugundan ikisi birden kurulamaz, siki olan secildi.
     software_quality_reliability_rating: ['GT', 1],
-    security_rating: ['GT', 1],
+    // MQR guvenlik notu: sabit IP gibi dusuk etkili guvenlik kokularini da sayar (2026-11-15).
+    software_quality_security_rating: ['GT', 1],
     sqale_rating: ['GT', 1],
     security_hotspots_reviewed: ['LT', 100],
     software_quality_blocker_issues: ['GT', 0],

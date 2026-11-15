@@ -2,7 +2,8 @@
 // hizmeti almali?" sihirbazinin VERISI ve KARAR TABLOSU (kullanici, 2026-10-05).
 //
 // Sunucu ustverisi kullanicinin ilettigi Nginx envanteri Excel'inden birebir alinmistir
-// (kolonlar: Tip, Ortam, Lokasyon, Sunucu, Domain, Subnet, Nginx surumu, Amac).
+// (kolonlar: Tip, Ortam, Lokasyon, Sunucu, Domain, Subnet, Nginx surumu, Amac). Subnet kurum ic agidir
+// ve repoda TUTULMAZ (public repo, 2026-11-15): ekran onu NGINX_RVP_ALT_AGLARI ayarindan okur.
 //
 // ONERI MOTORU YALNIZ KULLANICININ SAYDIGI SUNUCULARI VERIR (karar, 2026-10-05). Excel'de olup
 // burada OLMAYANLAR bilerek disaridadir:
@@ -30,7 +31,6 @@ export interface RvpSunucu {
   host: string;
   lokasyon: 'Pendik' | 'Ankara';
   domain: string;
-  subnet: string;
   surum: string;
   /** Excel "Amac" kolonu, AYNEN. */
   amac: string;
@@ -42,11 +42,10 @@ const ekle = (
   host: string,
   lokasyon: 'Pendik' | 'Ankara',
   domain: string,
-  subnet: string,
   surum: string,
   amac: string,
 ) => {
-  ENV[host] = { host, lokasyon, domain, subnet, surum, amac };
+  ENV[host] = { host, lokasyon, domain, surum, amac };
 };
 
 const V129 = '1.29.0 (nginx-plus-r35-p1)';
@@ -54,49 +53,49 @@ const DMZ = 'gtdmz.com.tr';
 const FW = 'fw.garanti.com.tr';
 
 // ARK / Non-Production / internet SPA + Non-Glomo (non-prod ortami da internete acik)
-ekle('GBNGXD02', 'Pendik', DMZ, '192.168.133.0/24', V129, 'Dev → Internet SPA + Non-Glomo Dev');
-ekle('GBNGXT34', 'Pendik', DMZ, '192.168.133.0/24', V129, 'Test -> İnternet SPA + Non-Glomo Test');
-ekle('GBNGXQ02', 'Pendik', DMZ, '192.168.133.0/24', V129, 'QA -> İnternet SPA + Non-Glomo QA');
+ekle('GBNGXD02', 'Pendik', DMZ, V129, 'Dev → Internet SPA + Non-Glomo Dev');
+ekle('GBNGXT34', 'Pendik', DMZ, V129, 'Test -> İnternet SPA + Non-Glomo Test');
+ekle('GBNGXQ02', 'Pendik', DMZ, V129, 'QA -> İnternet SPA + Non-Glomo QA');
 
 // ARK / Non-Production / non-prod ortami internete ACILMAYAN havuz (ic domain)
-ekle('GBNGXT14', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Development');
-ekle('GBNGXT15', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Development');
-ekle('GBNGXT16', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Test');
-ekle('GBNGXT17', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Test');
-ekle('GBNGXT18', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → QA');
-ekle('GBNGXT19', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → QA');
-ekle('GBNGXT20', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Edu');
-ekle('GBNGXT21', 'Pendik', FW, '10.230.140.0/22', '1.30.1', 'Internet SPA → Edu');
+ekle('GBNGXT14', 'Pendik', FW, '1.30.1', 'Internet SPA → Development');
+ekle('GBNGXT15', 'Pendik', FW, '1.30.1', 'Internet SPA → Development');
+ekle('GBNGXT16', 'Pendik', FW, '1.30.1', 'Internet SPA → Test');
+ekle('GBNGXT17', 'Pendik', FW, '1.30.1', 'Internet SPA → Test');
+ekle('GBNGXT18', 'Pendik', FW, '1.30.1', 'Internet SPA → QA');
+ekle('GBNGXT19', 'Pendik', FW, '1.30.1', 'Internet SPA → QA');
+ekle('GBNGXT20', 'Pendik', FW, '1.30.1', 'Internet SPA → Edu');
+ekle('GBNGXT21', 'Pendik', FW, '1.30.1', 'Internet SPA → Edu');
 
 // ARK / Production / internet (kullanicinin verdigi liste; Excel etiketi "CSO Internet")
-ekle('GBNGXP44', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXP45', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXP58', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXP59', 'Pendik', DMZ, '192.168.200.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXAP32', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
-ekle('GBNGXAP33', 'Ankara', DMZ, '192.168.236.0/23', V129, 'Production -> CSO Internet');
+ekle('GBNGXP44', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
+ekle('GBNGXP45', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
+ekle('GBNGXP58', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
+ekle('GBNGXP59', 'Pendik', DMZ, V129, 'Production -> CSO Internet');
+ekle('GBNGXAP32', 'Ankara', DMZ, V129, 'Production -> CSO Internet');
+ekle('GBNGXAP33', 'Ankara', DMZ, V129, 'Production -> CSO Internet');
 
 // ARK / intranet
-ekle('GBNGXD50', 'Pendik', FW, '10.175.15.0/24', V129, 'Dev → Intranet');
-ekle('GBNGXT50', 'Pendik', FW, '192.168.133.0/24', V129, 'Test -> Intranet');
-ekle('GBNGXQ50', 'Pendik', FW, '10.175.15.0/24', V129, 'QA -> Intranet');
-ekle('GBNGXP50', 'Pendik', FW, '10.175.96.0/19', V129, 'Production -> Intranet');
-ekle('GBNGXP51', 'Pendik', FW, '10.175.96.0/19', V129, 'Production -> Intranet');
-ekle('GBNGXP52', 'Pendik', FW, '10.175.96.0/19', V129, 'Production -> Intranet');
-ekle('GBNGXP53', 'Pendik', FW, '10.175.96.0/19', V129, 'Production -> Intranet');
-ekle('GBNGXAP50', 'Ankara', FW, '10.185.96.0/19', V129, 'Production -> Intranet');
-ekle('GBNGXAP51', 'Ankara', FW, '10.185.96.0/19', V129, 'Production -> Intranet');
+ekle('GBNGXD50', 'Pendik', FW, V129, 'Dev → Intranet');
+ekle('GBNGXT50', 'Pendik', FW, V129, 'Test -> Intranet');
+ekle('GBNGXQ50', 'Pendik', FW, V129, 'QA -> Intranet');
+ekle('GBNGXP50', 'Pendik', FW, V129, 'Production -> Intranet');
+ekle('GBNGXP51', 'Pendik', FW, V129, 'Production -> Intranet');
+ekle('GBNGXP52', 'Pendik', FW, V129, 'Production -> Intranet');
+ekle('GBNGXP53', 'Pendik', FW, V129, 'Production -> Intranet');
+ekle('GBNGXAP50', 'Ankara', FW, V129, 'Production -> Intranet');
+ekle('GBNGXAP51', 'Ankara', FW, V129, 'Production -> Intranet');
 
 // Hosting (Excel'de amac kolonu BOS — uydurma etiket yazilmaz)
-ekle('GBRNAT01', 'Pendik', DMZ, '192.168.133.0/24', '1.29.3 (nginx-plus-r36-p4)', '');
-ekle('GBRNAP01', 'Pendik', DMZ, '192.168.68.0/24', '1.30.1', '');
-ekle('GBRNAP02', 'Pendik', DMZ, '192.168.68.0/24', '1.30.1', '');
-ekle('GBRNAAP01', 'Ankara', DMZ, '192.168.236.0/23', '1.30.1', '');
-ekle('GBRNAAP02', 'Ankara', DMZ, '192.168.236.0/23', '1.30.1', '');
+ekle('GBRNAT01', 'Pendik', DMZ, '1.29.3 (nginx-plus-r36-p4)', '');
+ekle('GBRNAP01', 'Pendik', DMZ, '1.30.1', '');
+ekle('GBRNAP02', 'Pendik', DMZ, '1.30.1', '');
+ekle('GBRNAAP01', 'Ankara', DMZ, '1.30.1', '');
+ekle('GBRNAAP02', 'Ankara', DMZ, '1.30.1', '');
 
 /** Ustveriyi olmayan sunucu icin UYDURMAZ: bilinmeyen ad ekranda apacik gorunur. */
 export function rvpSunucu(host: string): RvpSunucu {
-  return ENV[host] || { host, lokasyon: 'Pendik', domain: '?', subnet: '?', surum: '?', amac: '' };
+  return ENV[host] || { host, lokasyon: 'Pendik', domain: '?', surum: '?', amac: '' };
 }
 const liste = (...h: string[]) => h.map(rvpSunucu);
 
