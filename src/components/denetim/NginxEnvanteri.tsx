@@ -85,8 +85,8 @@ const ortamSirala = (a: string, b: string) => {
 function gib(v: string | null): number | null {
   const m = /^([\d.]+)\s*([KMGT])i?B?$/i.exec(String(v || '').trim());
   if (!m) return null;
-  const n = parseFloat(m[1]);
-  if (!isFinite(n)) return null;
+  const n = Number.parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
   return n * ({ k: 1 / 1048576, m: 1 / 1024, g: 1, t: 1024 } as Record<string, number>)[m[2].toLowerCase()];
 }
 
@@ -133,8 +133,8 @@ export function surumKarsilastir(a: string, b: string): number {
   const pa = surumAyristir(a);
   const pb = surumAyristir(b);
   if (pa.bilinmiyor !== pb.bilinmiyor) return pa.bilinmiyor ? 1 : -1;
-  const na = (pa.aile + pa.yama).split('.').map((x) => parseInt(x, 10));
-  const nb = (pb.aile + pb.yama).split('.').map((x) => parseInt(x, 10));
+  const na = (pa.aile + pa.yama).split('.').map((x) => Number.parseInt(x, 10));
+  const nb = (pb.aile + pb.yama).split('.').map((x) => Number.parseInt(x, 10));
   for (let i = 0; i < Math.max(na.length, nb.length); i++) {
     const d = (Number.isFinite(nb[i]) ? nb[i] : -1) - (Number.isFinite(na[i]) ? na[i] : -1);
     if (d) return d;
@@ -768,7 +768,7 @@ export function NginxEnvanteri() {
       g.surum.set(v, (g.surum.get(v) || 0) + 1);
       const os = h.os || '(bilinmiyor)';
       g.os.set(os, (g.os.get(os) || 0) + 1);
-      g.cpu += parseInt(String(h.cpu ?? ''), 10) || 0;
+      g.cpu += Number.parseInt(String(h.cpu ?? ''), 10) || 0;
       g.bellek += gib(h.memory) || 0;
       if (h.etiket) g.etiketli += 1;
     }
@@ -805,11 +805,11 @@ export function NginxEnvanteri() {
         case 'os':
           return h.os || '';
         case 'cpu':
-          return parseInt(String(h.cpu ?? ''), 10) || 0;
+          return Number.parseInt(String(h.cpu ?? ''), 10) || 0;
         case 'bellek':
           return gib(h.memory) || 0;
         case 'konf':
-          return parseInt(String(h.config_count ?? ''), 10) || 0;
+          return Number.parseInt(String(h.config_count ?? ''), 10) || 0;
         default:
           return h.hostname;
       }

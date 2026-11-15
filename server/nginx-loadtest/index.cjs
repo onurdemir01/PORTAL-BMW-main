@@ -802,7 +802,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
   // Baslatma suruyor (is numarasi henuz yazilmadi): durdur satiri CANCELED yapar, sonra donen is
   // takipsiz kalirdi. Pencere icinde reddet; daha eski yarim satir eskisi gibi kapanir.
   if (k.durum === 'QUEUED' && !(jid > 0)) {
-    const yas = k.olusma_yas_sn == null ? NaN : Number(k.olusma_yas_sn);
+    const yas = k.olusma_yas_sn == null ? Number.NaN : Number(k.olusma_yas_sn);
     if (!Number.isFinite(yas) || yas < BASLATMA_PENCERESI_SN) {
       throw hata(409, 'baslatiliyor', 'Koşu başlatılıyor; birkaç saniye sonra yeniden deneyin.');
     }

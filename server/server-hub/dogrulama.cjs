@@ -188,8 +188,8 @@ function dogrula(g, { veri = null } = {}) {
       }
     } else if (d.tur === 'sunucu') {
       const v = vh.get(d.ad);
-      const sh = d.veri.tarama ? Date.parse(d.veri.tarama) : NaN;
-      const ear = v && v.taranma ? Date.parse(v.taranma) : NaN;
+      const sh = d.veri.tarama ? Date.parse(d.veri.tarama) : Number.NaN;
+      const ear = v && v.taranma ? Date.parse(v.taranma) : Number.NaN;
       if (Number.isFinite(sh) && Number.isFinite(ear)) {
         const fark = Math.round(Math.abs(sh - ear) / GUN_MS);
         ekle(

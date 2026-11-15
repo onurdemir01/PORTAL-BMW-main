@@ -129,7 +129,7 @@ function degiskenler(kopyalar, anahtarOf) {
 
 function tarihFarki(kopyalar) {
   const t = kopyalar
-    .map((k) => (k.taranma_utc ? Date.parse(zamanUtc(k.taranma_utc)) : NaN))
+    .map((k) => (k.taranma_utc ? Date.parse(zamanUtc(k.taranma_utc)) : Number.NaN))
     .filter(Number.isFinite);
   return {
     tarih_farki_gun: t.length > 1 ? Math.floor((Math.max(...t) - Math.min(...t)) / GUN_MS) : 0,

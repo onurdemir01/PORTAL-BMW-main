@@ -604,7 +604,7 @@ async function kilitOku(db, tenantKey, release) {
 /** Satir tutuluyor ve suresi dolmamis mi (locked_until UTC). */
 function kilitAktifMi(row, simdi = Date.now()) {
   if (!row?.held) return false;
-  const t = row.locked_until == null ? NaN : new Date(row.locked_until).getTime();
+  const t = row.locked_until == null ? Number.NaN : new Date(row.locked_until).getTime();
   return Number.isFinite(t) && t > simdi;
 }
 

@@ -254,7 +254,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
   const tazelikOf = (host) => {
     const s = g.dugumler.get(`sunucu:${host}`);
     const v = (s && s.veri) || {};
-    const ueMs = v.ueTaranma ? Date.parse(v.ueTaranma) : NaN;
+    const ueMs = v.ueTaranma ? Date.parse(v.ueTaranma) : Number.NaN;
     return {
       sh: !!s && s.kaynaklar.includes('server_hub') && v.taze !== false,
       ue: Number.isFinite(ueMs) && an - ueMs <= UE_TAZE_GUN * GUN_MS,

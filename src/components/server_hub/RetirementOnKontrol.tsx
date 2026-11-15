@@ -44,7 +44,7 @@ export function geriAlHazir(t: Pick<RtTarget, 'geriAlOnKontrol'>): boolean {
 export const ONKONTROL_TAKILDI_MS = 30 * 60000;
 export function onKontrolSuruyor(k: RtOnKontrolKaydi | null | undefined, simdi: number = Date.now()): boolean {
   if (!k || (k.durum !== 'running' && k.durum !== 'baslatiliyor')) return false;
-  const t = k.at ? Date.parse(k.at) : NaN;
+  const t = k.at ? Date.parse(k.at) : Number.NaN;
   return !Number.isFinite(t) || simdi - t < ONKONTROL_TAKILDI_MS;
 }
 /** Geri alma onayı açılabilecek hedef durumu (sunucunun kapısıyla aynı). */

@@ -158,7 +158,7 @@ export default function KosuCiktisi({ kosuId, etiket, awxJobId, basladi, onBitti
     else if (acildi.current) { acildi.current = false; buyutRef.current?.focus(); }
   }, [buyuk]);
 
-  const bas = basladi ? Date.parse(basladi) : NaN;
+  const bas = basladi ? Date.parse(basladi) : Number.NaN;
   const gecen = Number.isFinite(bas) ? (simdi - bas) / 1000 : null;
   const terminalDurumu = !c.status || c.status === 'new' ? 'pending' : c.status;
   const hataliBitti = c.bitti && (c.status === 'failed' || c.status === 'error');

@@ -63,7 +63,7 @@ function tazelenecekler(kayitlar, clusters, simdi = Date.now()) {
       sonuc.push(c);
       continue;
     }
-    const t = k.fetchedAt ? new Date(k.fetchedAt).getTime() : NaN;
+    const t = k.fetchedAt ? new Date(k.fetchedAt).getTime() : Number.NaN;
     if (!Number.isFinite(t) || t < sinir) sonuc.push(c);
   }
   return sonuc;
