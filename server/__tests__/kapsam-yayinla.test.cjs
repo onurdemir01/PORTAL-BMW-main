@@ -5,6 +5,7 @@
 //   KP3 kaynakOzeti: icerik ya da dosya listesi degisince degisir, degismeyince sabit (gecici git deposu)
 //   KP4 --dogrula: guncel rapor 0, bayat / eksik rapor 1 (betigin kendisi, gecici depoda)
 //   KP5 SonarQube ayari repodaki raporu okur; tazeleme is akisi yalniz raporu commit eder
+//   KP6 vurus sayilari 0/1: ayni kapsam farkli sayilarla AYNI rapor; kapsanma degisirse rapor degisir
 'use strict';
 
 const { test } = require('node:test');
@@ -162,4 +163,20 @@ test('KP5 SonarQube ayari ve tazeleme is akisi', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts['kapsam:yayinla'], 'node scripts/kapsam-yayinla.cjs');
   assert.equal(pkg.scripts['kapsam:dogrula'], 'node scripts/kapsam-yayinla.cjs --dogrula');
+});
+
+test('KP6 vurus sayilari 0/1; kapsanma bilgisi korunur', () => {
+  const { vurusIndir } = require('../../scripts/kapsam-yayinla.cjs');
+  assert.equal(vurusIndir('DA:12,37'), 'DA:12,1');
+  assert.equal(vurusIndir('DA:12,0'), 'DA:12,0');
+  assert.equal(vurusIndir('BRDA:5,0,1,9'), 'BRDA:5,0,1,1');
+  assert.equal(vurusIndir('BRDA:5,0,1,-'), 'BRDA:5,0,1,-');
+  assert.equal(vurusIndir('BRDA:5,0,1,0'), 'BRDA:5,0,1,0');
+  assert.equal(vurusIndir('LF:10'), 'LF:10');
+  assert.equal(vurusIndir('DA:3,2,abc123'), 'DA:3,1,abc123', 'istege bagli saglama korunur');
+  const a = kayit('server/a.cjs', ['DA:1,5', 'DA:2,0', 'BRDA:1,0,0,3', 'LF:2', 'LH:1']);
+  const b = kayit('server/a.cjs', ['DA:1,99', 'DA:2,0', 'BRDA:1,0,0,1', 'LF:2', 'LH:1']);
+  const c = kayit('server/a.cjs', ['DA:1,5', 'DA:2,4', 'BRDA:1,0,0,3', 'LF:2', 'LH:2']);
+  assert.equal(lcovSuz(a).metin, lcovSuz(b).metin, 'yalniz sayi farki rapor degistirmemeli');
+  assert.notEqual(lcovSuz(a).metin, lcovSuz(c).metin, 'kapsanma farki rapora yansimali');
 });

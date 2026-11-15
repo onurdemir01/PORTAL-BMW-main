@@ -12,6 +12,10 @@
 // Yalniz SonarQube'un kullandigi satirlar yazilir (SF, DA, BRDA, LF, LH, BRF, BRH): islev
 // satirlari (FN*) kullanilmaz ve depoyu buyutur.
 //
+// VURUS SAYISI 0/1: SonarQube yalniz "kapsandi mi" bilgisini kullanir. Ham sayilar ortamdan ortama
+// degisir (her tazelemede ~50 bin satirlik fark uretiyordu); 0/1'e indirilince rapor yalniz kapsam
+// gercekten degisince degisir.
+//
 // BAYATLIK: ozet.json, raporun uretildigi kaynak agacinin ozetini (dosya yolu + icerik sha256)
 // tasir. Kaynak degisip rapor yenilenmezse SonarQube satirlari yanlis eslestirir; --dogrula bunu
 // yakalar (teslimden once ve CI'da).
@@ -40,6 +44,13 @@ function kaynakMi(yol) {
   );
 }
 
+/** `DA:satir,sayi` ve `BRDA:satir,blok,dal,sayi` satirlarinda sayiyi 0/1'e indirir ('-' aynen). */
+function vurusIndir(satir) {
+  const m = /^(DA:\d+,|BRDA:\d+,\d+,\d+,)(\d+)(.*)$/.exec(satir);
+  if (!m) return satir;
+  return `${m[1]}${Number(m[2]) > 0 ? 1 : 0}${m[3]}`;
+}
+
 /**
  * Birlestirilmis lcov metni -> yalniz kaynak dosyalarinin, yalniz Sonar'in okudugu satirlari.
  * Kayitlar dosya yoluna gore sirali (cikti kararli: ayni kapsam = ayni bayt). Saf islev.
@@ -59,7 +70,7 @@ function lcovSuz(metin) {
       }
       cur = null;
     } else if (cur && TUTULAN.test(satir)) {
-      cur.satirlar.push(satir);
+      cur.satirlar.push(vurusIndir(satir));
     }
   }
   const dosyalar = [...kayitlar.keys()].sort((a, b) => Number(a > b) - Number(a < b));
@@ -145,4 +156,4 @@ if (require.main === module) {
   else yayinla();
 }
 
-module.exports = { lcovSuz, kaynakMi, kaynakOzeti };
+module.exports = { lcovSuz, kaynakMi, kaynakOzeti, vurusIndir };
