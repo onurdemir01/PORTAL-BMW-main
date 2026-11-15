@@ -36,7 +36,8 @@ const REGISTRY_KEYS = Object.freeze({
 });
 
 function consoleDir() {
-  return (process.env.NGINX_CONSOLE_DIR || '/sw/BMW_PORTAL/nginx_console').replace(/\/+$/, '');
+  const dizin = process.env.NGINX_CONSOLE_DIR || '/sw/BMW_PORTAL/nginx_console';
+  return dizin.replace(/(?<!\/)\/+$/, '');
 }
 function rawDir() {
   return path.join(consoleDir(), 'raw');

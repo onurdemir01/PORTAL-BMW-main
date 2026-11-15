@@ -22,7 +22,7 @@ const { timeQuery } = require('../metrics.cjs');
 // history.cjs'teki duz `RETURNING id`), yani onleyici bir sertlestirme, aktif bug degil.
 // Yeni regex noktali virgul HARIC her karakteri yakalar.
 function handleReturning(sql) {
-  const m = sql.match(/\bRETURNING\b\s+([^;]+?)\s*(?:;\s*)?$/i);
+  const m = sql.match(/\bRETURNING\b\s+([^\s;](?:[^;]*[^\s;])?|\s(?=(?:;\s*)?$))\s*(?:;\s*)?$/i);
   if (!m) return sql;
 
   const rawCols = m[1].trim();
@@ -38,7 +38,7 @@ function handleReturning(sql) {
       }).join(', ');
 
   // Remove RETURNING clause
-  sql = sql.replace(/\s*\bRETURNING\b\s+[^;]+?\s*(?:;\s*)?$/i, '').trim();
+  sql = sql.replace(/(?<!\s)\s*\bRETURNING\b\s[^;]+(?:;\s*)?$/i, '').trim();
 
   if (/^\s*INSERT\b/i.test(sql)) {
     // INSERT INTO t (cols) OUTPUT INSERTED.* VALUES (...)

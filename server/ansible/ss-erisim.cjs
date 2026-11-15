@@ -29,7 +29,7 @@ function grupAnahtari(g) {
   return String(g == null ? '' : g)
     .trim()
     .toLowerCase()
-    .replace(/\s*,\s*/g, ',');
+    .replace(/(?:(?<!\s)\s+)?,\s*/g, ',');
 }
 
 function kullaniciGrupAnahtarlari(user) {

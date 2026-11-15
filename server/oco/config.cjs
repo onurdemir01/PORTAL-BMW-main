@@ -22,7 +22,7 @@ function getConfig() {
     // "servis COKMUS" gibi gorunuyordu. Iki apayri sorun, tek mesaj.
     baseUrl: String(process.env.OCO_API_URL || '')
       .trim()
-      .replace(/\/+$/, ''),
+      .replace(/(?<!\/)\/+$/, ''),
     // Path ve sorgu parametresi ayri tutulur ki uc degisirse kod degil ayar guncellensin.
     changeOrderPath:
       process.env.OCO_CHANGE_ORDER_PATH ||

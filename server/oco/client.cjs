@@ -67,6 +67,28 @@ function describeUpstreamError(statusCode, text, num) {
   return fail(`OCO servisi beklenmeyen bir cevap döndü (HTTP ${statusCode}).${suffix}`, 502);
 }
 
+// Her `<...>` etiketini (en az bir karakterli) tek bosluga cevirir: eski `raw.replace(/<[^>]+>/g, ' ')`
+// ile AYNI sonuc, ama dogrusal. O desen kapanmayan '<' kuyrugunda her '<'den metnin sonuna kadar
+// tarardi (Sonar S8786, karesel); burada kapanis bulunmazsa sonraki '<' icin de yoktur, dongu biter.
+function etiketleriBosluga(raw) {
+  let out = '';
+  let i = 0;
+  let a = raw.indexOf('<');
+  while (a >= 0) {
+    const b = raw.indexOf('>', a + 1);
+    if (b < 0) break;
+    if (b === a + 1) {
+      // `<>` etiket degil (desende `[^>]+` en az bir karakter ister): '<' metinde kalir.
+      a = raw.indexOf('<', a + 1);
+      continue;
+    }
+    out += raw.slice(i, a) + ' ';
+    i = b + 1;
+    a = raw.indexOf('<', i);
+  }
+  return out + raw.slice(i);
+}
+
 // Servis govdesinden kisa, okunur bir ipucu: JSON ise Message/ResultMessage/error alani;
 // degilse ilk 120 karakter. HTML hata sayfasi ya da bos govde -> hicbir sey.
 function upstreamHint(text) {
@@ -93,8 +115,7 @@ function upstreamHint(text) {
     const t = /<title[^>]*>([^<]{1,120})<\/title>/i.exec(raw);
     return t ? t[1].trim() : '';
   }
-  const plain = raw
-    .replace(/<[^>]+>/g, ' ')
+  const plain = etiketleriBosluga(raw)
     .replace(/\s+/g, ' ')
     .trim();
   return plain.slice(0, 120);
@@ -212,6 +233,7 @@ module.exports = {
   normalizeOcoNumber,
   describeUpstreamError,
   upstreamHint,
+  etiketleriBosluga,
   httpStatus,
   NGINX_INTERCEPTED,
 };

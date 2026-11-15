@@ -92,7 +92,7 @@ const SIR_ANAHTARI =
 function maskValues(lines) {
   return (lines || []).map((raw) => {
     const l = String(raw == null ? '' : raw);
-    const m = l.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/);
+    const m = l.match(/^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/);
     if (!m) return l;
     const [, girinti, anahtar, deger] = m;
     if (!SIR_ANAHTARI.test(anahtar)) return l;

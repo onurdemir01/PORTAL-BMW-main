@@ -175,7 +175,7 @@
       {
         "tur": "portal",
         "ad": "Nginx Hub (konsol push, CIS, göç, yük testi)",
-        "dosya": "server/nginx-console/index.cjs:505",
+        "dosya": "server/nginx-console/index.cjs:506",
         "nasil": "per-run INSERT (nginx-cis/index.cjs:247, nginx-migration/index.cjs:294, nginx-loadtest/baslat.cjs:181)",
         "ne_zaman": "Kullanıcı işlemi"
       },
@@ -2063,7 +2063,7 @@
         "ad": "Nginx Hub dokum isleme (history.ingestDump)",
         "dosya": "server/nginx-console/history.cjs:121",
         "nasil": "yalniz degisiklikte INSERT; bekleyen Portal yayini satirini UPDATE (:115)",
-        "ne_zaman": "Nginx dokum (fetch playbook) geldikce; arka plan tarayici 5 dk'da bir (server/nginx-console/index.cjs:1053)"
+        "ne_zaman": "Nginx dokum (fetch playbook) geldikce; arka plan tarayici 5 dk'da bir (server/nginx-console/index.cjs:1054)"
       },
       {
         "tur": "portal",
@@ -4307,7 +4307,7 @@
       },
       {
         "ad": "Nginx Konsol / eski sunucu",
-        "dosya": "server/nginx-console/index.cjs:396"
+        "dosya": "server/nginx-console/index.cjs:397"
       },
       {
         "ad": "Envanter Degisim gecmisi",
@@ -4825,7 +4825,7 @@
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
-        "dosya": "server/nginx-console/index.cjs:553"
+        "dosya": "server/nginx-console/index.cjs:554"
       },
       {
         "ad": "Self Servis secenek kaynagi (SPA uygulamalari)",
@@ -4859,7 +4859,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Konsol > SPA Kesfi (cluster tarama durumu)",
-        "dosya": "server/nginx-console/index.cjs:676"
+        "dosya": "server/nginx-console/index.cjs:677"
       }
     ],
     "saklama": "7 gun (parcali DELETE) - spa_discovery_loader.py:305",
@@ -5113,7 +5113,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi (RP eşleştirme)",
-        "dosya": "server/nginx-console/index.cjs:726"
+        "dosya": "server/nginx-console/index.cjs:727"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5233,7 +5233,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi",
-        "dosya": "server/nginx-console/index.cjs:697"
+        "dosya": "server/nginx-console/index.cjs:698"
       },
       {
         "ad": "Nginx ARK SPA Raporu + Glomo Geçiş Planı",
@@ -5328,7 +5328,7 @@
       },
       {
         "ad": "Nginx Hub > Envanter",
-        "dosya": "server/nginx-console/index.cjs:390"
+        "dosya": "server/nginx-console/index.cjs:391"
       },
       {
         "ad": "Nginx Hub > Tutarlılık (drift)",
@@ -5437,7 +5437,7 @@
       },
       {
         "ad": "Nginx Hub > Gerçek SPA Keşfi",
-        "dosya": "server/nginx-console/index.cjs:745"
+        "dosya": "server/nginx-console/index.cjs:746"
       }
     ],
     "saklama": "DELETE TOP(5000) parti + commit; RETENTION_DAYS=3",
@@ -5510,7 +5510,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Konsol > SPA Kesfi (/api/nginx-console/spa-discovery)",
-        "dosya": "server/nginx-console/index.cjs:663"
+        "dosya": "server/nginx-console/index.cjs:664"
       },
       {
         "ad": "Application Hub uygulama detayi",

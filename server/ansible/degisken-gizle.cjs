@@ -88,7 +88,7 @@ function yamldanAyikla(metin) {
       else kalan.push(govde);
     } else if (
       degerSirMi(govde) ||
-      /["']?[\w.-]*(pass|secret|token|parola|sifre)[\w.-]*["']?\s*:/i.test(govde)
+      /(?<![\w.-])(?=[\w.-]*?(?:pass|secret|token|parola|sifre))[\w.-]+["']?\s*:/i.test(govde)
     ) {
       // Ust seviye anahtara baglanamayan ama sir isareti tasiyan satir (akis bicimi `{a: 1, ...}`
       // gibi): hangi degiskene ait oldugu bilinemez, satir atilir.

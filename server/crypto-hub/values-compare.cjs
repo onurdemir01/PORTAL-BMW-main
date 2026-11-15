@@ -31,7 +31,7 @@ function anahtarla(lines) {
   for (const raw of lines || []) {
     const l = String(raw == null ? '' : raw);
     if (!l.trim() || l.trim().startsWith('#')) continue;
-    const m = l.match(/^(\s*)(-\s*)?([A-Za-z0-9_.\-/]+)\s*:\s*(.*)$/);
+    const m = l.match(/^(\s*)(-\s*)?([A-Za-z0-9_.\-/]+)\s*:\s*(?!\s)(.*)$/);
     if (!m) continue;
     const girinti = m[1].length;
     const ad = m[3];
@@ -141,7 +141,7 @@ function uygula(lines, secimler) {
     for (let i = 0; i < cikti.length; i += 1) {
       const l = cikti[i];
       if (!l.trim() || l.trim().startsWith('#')) continue;
-      const m = l.match(/^(\s*)(-\s*)?([A-Za-z0-9_.\-/]+)\s*:\s*(.*)$/);
+      const m = l.match(/^(\s*)(-\s*)?([A-Za-z0-9_.\-/]+)\s*:\s*(?!\s)(.*)$/);
       if (!m) continue;
       const gir = m[1].length;
       while (yol.length && yol[yol.length - 1].girinti >= gir) yol.pop();

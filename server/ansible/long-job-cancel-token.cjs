@@ -61,7 +61,7 @@ function normApiBase(value) {
   const v = String(value || '').trim();
   if (!v) return DEFAULT_API_BASE;
   const withSlash = v.startsWith('/') ? v : '/' + v;
-  return withSlash.replace(/[/]+$/, '') || DEFAULT_API_BASE;
+  return withSlash.replace(/(?<![/])[/]+$/, '') || DEFAULT_API_BASE;
 }
 
 /**

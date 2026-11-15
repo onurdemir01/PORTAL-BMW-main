@@ -2177,7 +2177,7 @@ function assess(data, opts = {}) {
     }
     for (const sp of h.products || []) {
       if (sp === 'NONE') continue;
-      const base = U(sp).replace(/[0-9]+$/, '');
+      const base = U(sp).replace(/(?<![0-9])[0-9]+$/, '');
       if (
         (h.invProducts || []).length &&
         !(h.invProducts || []).some((x) => base.startsWith(x) || x.startsWith(base))
