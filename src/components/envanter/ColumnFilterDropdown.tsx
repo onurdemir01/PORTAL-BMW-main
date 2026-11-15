@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
 import { inventoryApi } from "@/api/inventoryApi";
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 interface Props {
   table: string;
@@ -96,7 +97,8 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
         <div className="relative">
           <MagnifyingGlassIcon className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            autoFocus
+            // Acilir pencere kullanici tiklamasiyla acilir: odak arama kutusuna (autoFocus degil; bkz. pencereKlavye).
+            ref={acilincaOdakla}
             type="text"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}

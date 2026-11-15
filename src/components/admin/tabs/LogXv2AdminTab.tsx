@@ -28,6 +28,7 @@ import { OCP_CLUSTER_INDEX } from '@/config/dataSources';
 import { useToast } from '@/hooks/useToast';
 import OcpRuntimeSettings from './logxv2/OcpRuntimeSettings';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const SUB_TABS = [
   { id: 'clusters', label: 'OCP Cluster Hiyerarşisi', icon: ServerStackIcon },
@@ -265,6 +266,8 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
   const { toast } = useToast();
   const [busy, setBusy] = useState<'conn' | 'pods' | null>(null);
   const [podOutput, setPodOutput] = useState<string | null>(null);
+  // Arka plana tiklayinca kapanan pencere klavyeyle de kapanir (ESC).
+  useEscIleKapat(podOutput !== null, () => setPodOutput(null));
 
   async function run(kind: 'conn' | 'pods') {
     setBusy(kind);
@@ -308,15 +311,18 @@ const ClusterRowActions: React.FC<{ row: OcpClusterIndexRow }> = ({ row }) => {
         <CubeIcon className="w-3.5 h-3.5" />
       </button>
       {podOutput !== null && (
+        // Arka plan yalniz fare kisayolu (role="presentation"); iletisim kutusu ROLU icteki
+        // panelde: ekran okuyucu pencereyi arka plan katmani degil, panel olarak tanir.
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${row.cluster_name} pod durumu`}
+          role="presentation"
           onClick={() => setPodOutput(null)}
         >
           <div
             className="bg-white rounded-xl max-w-4xl w-full max-h-[80vh] overflow-auto p-4 text-left"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${row.cluster_name} pod durumu`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">

@@ -26,7 +26,7 @@
 // namespace ve uygulama zincirdeki her yükleme bittiğinde SIRAYLA uygulanır (env → namespace →
 // uygulama). Her aşama yalnız BİR KEZ denenir (`onSecimRef.asama`); geçersiz bir değer görünür
 // bir uyarıyla düşer, kalan seçim elle yapılır. "Devam Et" yine kullanıcıya bırakılır.
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { XMarkIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { OCP_TUM_PODLAR, ocpCiftEtiketi, opsxApi, type OpsxOcpPair } from "@/api/opsxApi";
@@ -57,6 +57,7 @@ const OcpTargetStep: React.FC<{
   const [namespaceOptions, setNamespaceOptions] = useState<string[]>([]);
   const [namespaceMode, setNamespaceMode] = useState<"list" | "free">("list");
   const [namespace, setNamespace] = useState("");
+  const nsBaslikId = useId();
   // "Yaz" (serbest metin) kipinde `namespace` düz bir <input>'tan gelir ve HER TUŞ
   // VURUŞUNDA değişir. Bunu doğrudan "Uygulama Adı" bloğunun görünürlüğüne VE
   // getOcpApps çağrısına bağlamak, kullanıcı daha namespace'i yazarken her harfte o
@@ -238,7 +239,9 @@ const OcpTargetStep: React.FC<{
         </div>
       )}
       <div>
-        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Ortam</label>
+        {/* Grup basliklari (dugme listesi / degisen alan): etiket ogesi degil. cursor-default
+            etiketin tarayici varsayilani, gorunum ayni kalir. */}
+        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Ortam</span>
         <div className="flex flex-wrap gap-1.5">
           {envs.map((e) => (
             <button
@@ -254,7 +257,7 @@ const OcpTargetStep: React.FC<{
 
       {env && (
         <div>
-          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Cluster</label>
+          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Cluster</span>
           <div className="flex flex-wrap gap-1.5">
             {tenants.map((t) => (
               <button
@@ -281,7 +284,7 @@ const OcpTargetStep: React.FC<{
         <div className="space-y-3 border border-[var(--border)] rounded-xl p-3">
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-medium text-[var(--text-secondary)]">Namespace</label>
+              <span id={nsBaslikId} className="block text-xs font-medium text-[var(--text-secondary)] cursor-default">Namespace</span>
               {namespaceOptions.length > 0 && (
                 <div className="flex gap-1 text-[10px]">
                   <button
@@ -326,6 +329,7 @@ const OcpTargetStep: React.FC<{
               )
             ) : (
               <input
+                aria-labelledby={nsBaslikId}
                 value={namespace}
                 onChange={(e) => setNamespace(e.target.value)}
                 placeholder="das-trading-management-qa"
@@ -341,7 +345,7 @@ const OcpTargetStep: React.FC<{
 
           {settledNamespace && (
             <div>
-              <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Uygulama Adı</label>
+              <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Uygulama Adı</span>
               {/* BATCH / JOB POD'LARI (2026-10-14): envanter yalnız deployment / rollout / dc tutar;
                   CronJob / Job pod'larının "uygulaması" yoktur. Namespace'in TÜM pod'ları ayrı bir
                   seçim olarak eklenir - yalnız pod işlemleri (pod silme, thread/heap dump) için. */}

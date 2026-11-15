@@ -24,7 +24,10 @@ export default function Card({ as = "div", hoverable = false, padding = "md", cl
     ? `card ${hoverable ? "card-hover" : ""} p-6`
     : `card ${hoverable ? "card-hover" : ""} ${PADDING_CLASSES[padding]}`;
   const cls = `${base} ${className}`.trim();
-  if (as === "button") {
+  // Tiklanabilir kart her zaman GERCEK bir dugmedir: tiklanan bir div klavyeyle odaklanamaz ve
+  // Enter / Space ile calismaz. (Bugun as="div" + onClick ile cagiran yok; gelecekte olursa
+  // sessizce erisilemez bir kart cikmasin.)
+  if (as === "button" || onClick) {
     return (
       <button onClick={onClick} className={`${cls} text-left w-full`} style={style}>
         {children}
@@ -32,7 +35,7 @@ export default function Card({ as = "div", hoverable = false, padding = "md", cl
     );
   }
   return (
-    <div onClick={onClick} className={cls} style={style}>
+    <div className={cls} style={style}>
       {children}
     </div>
   );

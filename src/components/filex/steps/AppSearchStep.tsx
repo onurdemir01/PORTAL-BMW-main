@@ -34,8 +34,9 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
       )}
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+        {/* autoFocus YOK (Sonar S9379): bu kutu FileX sayfasinin ilk yuklenen icerigi; sayfa
+            acilirken odagi tasimak ekran okuyucu kullanicisina sayfanin basini atlatir. */}
         <input
-          autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Uygulama adı ara..."

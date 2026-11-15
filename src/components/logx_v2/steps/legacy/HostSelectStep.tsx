@@ -32,6 +32,7 @@ import {
   parseHostKey,
 } from '@/utils/jboss';
 import JbossTag from '@/components/common/JbossTag';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 interface Props {
   app: string;
@@ -324,7 +325,8 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
           <div className="relative">
             <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
-              autoFocus
+              // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Sunucu ara… (ör. GBCJAP01)"

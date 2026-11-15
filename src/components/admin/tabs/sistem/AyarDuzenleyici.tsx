@@ -22,11 +22,12 @@
 // altinda ipucu. Sabitleme YALNIZ dugmeyle: dugme o durumda type="button", Enter (form
 // gonderimi) yalniz degisiklik varken kaydeder — degismemis kutuda Enter'a basmak degeri
 // sessizce sabitlemez. Kritik anahtarda onay penceresi aynen acilir (onayGerekce 'kritik').
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import Button from '@/components/common/Button';
 import { TextInput } from '@/components/ui/Form';
 import type { EnvVarMeta } from './ortamDegiskenleri';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 import { SABITLEME_IPUCU, kontrolTuru, sabitlenebilir, type ConfigValue } from './ayarKurallari';
 
 interface Props {
@@ -79,6 +80,15 @@ export default function AyarDuzenleyici({
   const aciklayan = hata ? `${ipucuId} ${hataId}` : ipucuId;
   const formRef = useRef<HTMLFormElement>(null);
   const gizliKuruldu = useRef(false);
+  // Secim kontrolu: duzenleyici kullanici tiklamasiyla acilinca odak SECILI radyoya gider, yalniz
+  // acilista bir kez (autoFocus degil, Sonar S9379; bkz. pencereKlavye). Sabit geri cagirim:
+  // sonradan baska secenek isaretlenince odak yeniden tasinmaz.
+  const radyoOdakBekliyor = useRef(odakla);
+  const radyoOdak = useCallback((el: HTMLInputElement | null) => {
+    if (!el || !el.checked || !radyoOdakBekliyor.current) return;
+    radyoOdakBekliyor.current = false;
+    acilincaOdakla(el);
+  }, []);
 
   // Hata gelince odak kutuya (secimde secili radyoya) doner — yalniz odak dustuyse ya da hala
   // bu formdaysa; kullanici bu arada baska yere gectiyse odak calinmaz (SA24: PUT beklerken
@@ -115,7 +125,7 @@ export default function AyarDuzenleyici({
                     value={s}
                     checked={aktif}
                     onChange={() => onChange(s)}
-                    autoFocus={odakla && aktif}
+                    ref={radyoOdak}
                   />
                   {s ? <span className="font-mono">{s}</span> : 'Boş (kod varsayılanı)'}
                 </label>

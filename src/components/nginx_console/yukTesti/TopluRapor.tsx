@@ -119,7 +119,9 @@ export default function TopluRapor() {
           : !veri ? <div className="skeleton h-24 rounded-lg" aria-busy="true"><span className="sr-only">Rapor yükleniyor…</span></div>
             : !satirlar.length ? <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Rapora yazılacak ölçüm yok.</p>
               : (
-                <div className="max-h-[70vh] overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }} tabIndex={0} role="region" aria-label="Rapor tablosu, yatay kaydırılabilir">
+                // tabIndex YOK (Sonar S6845): odaklanabilir ogesi olmayan kaydirma kutusunu
+                // Chromium (130+) ve Firefox klavye sirasina kendisi alir; ok tuslariyla kayar.
+                <div className="max-h-[70vh] overflow-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }} role="region" aria-label="Rapor tablosu, yatay kaydırılabilir">
                   <table className="w-max border-separate border-spacing-0 text-[12px]" aria-label="Toplu rapor">
                     <thead>
                       <tr>

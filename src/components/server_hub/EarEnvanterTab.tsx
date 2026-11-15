@@ -7,7 +7,7 @@
 // Ekran: özet şeridi (son koşu, çalışan koşunun partileri, haftalık zaman, sayılar), görünümler
 // (Uygulamalar · Eşlenikler · Kütüphaneler · Sunucular · Koşular · Ayarlar) ve uygulama ayrıntısı.
 // Çalışan koşu varken özet 15 sn'de bir tazelenir. Haftalık tarama varsayılan KAPALI: pilot sonrası açılır.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowPathIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline';
 import { earApi, earIndir, type EarOzet, type EarKip, type EarKapsam } from '@/api/earEnvanterApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -59,6 +59,7 @@ export function TaraPenceresi({
 }) {
   const [kip, setKip] = useState<EarKip>('TAM');
   const [kapsam, setKapsam] = useState<EarKapsam>('SECILI');
+  const seciliId = useId();
   const [ortamlar, setOrtamlar] = useState<string[]>([]);
   const [metin, setMetin] = useState(baslangicListesi ? baslangicListesi.join('\n') : '');
   const [filoOnay, setFiloOnay] = useState(false);
@@ -173,10 +174,13 @@ export function TaraPenceresi({
                 setKapsam('SECILI');
                 setFiloOnay(false);
               }}
+              // Ad = kalin baslik, aciklama = soluk metin (Sonar S6853: ucuncu duzeydeki metin).
+              aria-labelledby={`${seciliId}-ad`}
+              aria-describedby={`${seciliId}-aciklama`}
             />
             <span>
-              <b>Seçili sunucular</b>
-              <span style={{ color: 'var(--text-muted)' }}> — aşağıya yazdığınız sunucular.</span>
+              <b id={`${seciliId}-ad`}>Seçili sunucular</b>
+              <span id={`${seciliId}-aciklama`} style={{ color: 'var(--text-muted)' }}> — aşağıya yazdığınız sunucular.</span>
             </span>
           </label>
           <KapsamSecici

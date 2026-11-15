@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useBackdropDismiss } from "@/components/common/backdropDismiss";
 import { XMarkIcon, PlayIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon, ClockIcon, InformationCircleIcon, PlusIcon } from "@heroicons/react/24/outline";
@@ -197,6 +197,7 @@ interface LaunchModalProps {
 function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
   // Arka plan tiklamasi KAPALI: bu pencerede kullanici girdisi var.
   const backdrop = useBackdropDismiss(onClose, false);
+  const limitId = useId();
   // Template'in statik extra_vars'ından başlangıç değerleri (YAML olarak gösterilir).
   // Template ask_variables_on_launch kullanıp statik var tanımlamamışsa editör boş
   // başlar ama kullanıcı istediği değişkeni serbestçe ekleyebilir (opsiyonel olanlar dahil).
@@ -304,10 +305,11 @@ function LaunchModal({ template, onClose, onLaunched }: LaunchModalProps) {
 
           {/* Limit */}
           <div>
-            <label className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>
+            <label htmlFor={limitId} className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>
               Limit (opsiyonel)
             </label>
             <input
+              id={limitId}
               className="w-full rounded-xl border px-3 py-2 text-sm outline-none transition-colors"
               style={{ borderColor: "var(--border)" }}
               placeholder="host_pattern veya boş bırak"
@@ -370,6 +372,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalProps) {
   const backdrop = useBackdropDismiss(onClose);
+  const ssFormId = useId();
   const [detail, setDetail]   = useState<AwxTemplateDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -585,8 +588,9 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
                 <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4 space-y-3">
                   <p className="text-xs font-bold uppercase tracking-wider text-[#1C69D4]">Self Service Kaydı</p>
                   <div>
-                    <label className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>İsim</label>
+                    <label htmlFor={`${ssFormId}-isim`} className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>İsim</label>
                     <input
+                      id={`${ssFormId}-isim`}
                       className="w-full rounded-xl border px-3 py-2 text-sm outline-none bg-white"
                       style={{ borderColor: "var(--border)" }}
                       value={ssTitle}
@@ -594,8 +598,9 @@ function TemplateInfoModal({ serverId, template, onClose }: TemplateInfoModalPro
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>Açıklama</label>
+                    <label htmlFor={`${ssFormId}-aciklama`} className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-secondary)" }}>Açıklama</label>
                     <input
+                      id={`${ssFormId}-aciklama`}
                       className="w-full rounded-xl border px-3 py-2 text-sm outline-none bg-white"
                       style={{ borderColor: "var(--border)" }}
                       value={ssDesc}

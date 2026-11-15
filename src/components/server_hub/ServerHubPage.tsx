@@ -48,6 +48,7 @@ import {
 } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
@@ -2077,7 +2078,13 @@ function sunucuKolonlari(
       baslik: 'İşlem',
       aciklama: 'Ayrıntı penceresi (JVM, web, init, IP) ve reboot öncesi tek sunucu tarama.',
       hucre: (h) => (
-        <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        // Hucredeki dugmeler satir tiklamasini tetiklemesin: sarmalayici yalniz kabaran olayi
+        // durdurur, kendisi bir kontrol degil (role="presentation", jsx-a11y'nin kalibi).
+        <span
+          role="presentation"
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             onClick={() => onAyrinti(h.host)}
@@ -3114,6 +3121,11 @@ function HostModal({
     jobId?: number;
     reload: boolean;
   } | null>(null);
+  // Duzelt katmani: ESC arka plan tiklamasiyla AYNI kurala uyar (plan / uygulama surerken
+  // kapatmaz) ve yalniz katmani kapatir; alttaki sunucu penceresi acik kalir.
+  useEscIleKapat(!!fix, () => {
+    if (fix && (fix.phase === 'ask' || fix.phase === 'planned')) setFix(null);
+  });
 
   // SATIR BAZINDA AUTO-START (kullanici, 2026-10-01): "satir satir hangi jvm'lerde auto
   // start kapaliysa onun saginda bir buton olsun ben tikladigimda acilsin veya ben
@@ -3928,11 +3940,16 @@ function HostModal({
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,.45)' }}
+          // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC.
+          role="presentation"
           onClick={() => (fix.phase === 'ask' || fix.phase === 'planned' ? setFix(null) : null)}
         >
           <div
             className="w-full max-w-lg rounded-2xl border p-5 space-y-3"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Düzelt — ${fix.f.fix!.action}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start gap-2">

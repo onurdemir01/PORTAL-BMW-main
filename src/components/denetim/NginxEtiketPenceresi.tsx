@@ -10,6 +10,7 @@ import { Modal } from '@/components/common/Modal';
 import Button from '@/components/common/Button';
 import { denetimApi, type NginxInvHost } from '@/api/denetimApi';
 import { toast } from '@/hooks/useToast';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 const ETIKET_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -150,9 +151,10 @@ export function NginxEtiketPenceresi({
                 }}
               >
                 <input type="radio" name="etiket-kip" className="mt-0.5" checked={mod === k.id} onChange={() => setMod(k.id)} />
-                <span>
-                  <span className="block font-semibold" style={{ color: 'var(--text-primary)' }}>{k.ad}</span>
-                  <span className="block text-[12px]" style={{ color: 'var(--text-muted)' }}>{k.acik}</span>
+                {/* Kip adi etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+                <span className="block font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {k.ad}
+                  <span className="block text-[12px] font-normal" style={{ color: 'var(--text-muted)' }}>{k.acik}</span>
                 </span>
               </label>
             ))}
@@ -170,7 +172,8 @@ export function NginxEtiketPenceresi({
             className="pf-input w-full text-sm"
             style={{ fontFamily: 'var(--font-mono)' }}
             aria-describedby="etiket-ipucu"
-            autoFocus
+            // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+            ref={acilincaOdakla}
           />
           <span id="etiket-ipucu" className="block mt-1 text-[12px]" style={{ color: hata ? 'var(--status-danger)' : 'var(--text-muted)' }}>
             {hata || 'Virgül ya da boşlukla ayırın.'}

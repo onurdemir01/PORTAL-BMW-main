@@ -4,7 +4,7 @@
 // (RequestsSidePanel) farki: TUM kullanicilarin talepleri + sunucu-tarafi filtre/sayfalama.
 // Tablo buyuyebilecegi icin filtreleme ve sayfalama SUNUCUDA yapilir (bkz.
 // server/ansible/runner.cjs GET /ss/smart-tickets/all).
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useId, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ArrowPathIcon,
@@ -24,6 +24,7 @@ import { fmtDateTime as fmt } from '@/utils/datetime';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
 import SmartRetriggerModal from './SmartRetriggerModal';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const STATUS_META: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'Onay Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -87,7 +88,13 @@ export default function SmartTicketsTab() {
   // yapilir (2026-08-20). cancelTarget = iptal edilecek talep; null ise modal kapali.
   const [cancelTarget, setCancelTarget] = useState<AdminSmartTicket | null>(null);
   const [cancelNote, setCancelNote] = useState('');
+  const iptalNotuId = useId();
+  const iptalBaslikId = useId();
   const [cancelling, setCancelling] = useState(false);
+  // Iptal penceresi arka plan tiklamasiyla ayni kuralla ESC ile de kapanir.
+  useEscIleKapat(!!cancelTarget, () => {
+    if (!cancelling) setCancelTarget(null);
+  });
   // Zaman asimina dusmus talebi admin yeniden tetikler (2026-11-11); null ise modal kapali.
   const [retriggerTarget, setRetriggerTarget] = useState<AdminSmartTicket | null>(null);
 
@@ -551,13 +558,20 @@ export default function SmartTicketsTab() {
           {cancelTarget && (
             <div
               className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+              // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC.
+              role="presentation"
               onClick={(e) => {
                 if (e.target === e.currentTarget && !cancelling) setCancelTarget(null);
               }}
             >
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={iptalBaslikId}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4"
+              >
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
+                  <h3 id={iptalBaslikId} className="text-sm font-bold text-gray-900">Talebi iptal et</h3>
                   <p className="text-xs text-gray-500 mt-1">
                     <span className="font-mono">{cancelTarget.username}</span> kullanıcısının{' '}
                     <span className="font-semibold">
@@ -585,15 +599,17 @@ export default function SmartTicketsTab() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label htmlFor={iptalNotuId} className="block text-xs font-semibold text-gray-700 mb-1">
                     İptal notu <span className="font-normal text-gray-400">(opsiyonel)</span>
                   </label>
                   <textarea
+                    id={iptalNotuId}
                     value={cancelNote}
                     onChange={(e) => setCancelNote(e.target.value)}
                     rows={3}
                     maxLength={1000}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                     placeholder="Örn: yanlış ortam seçilmiş, talep sahibiyle görüşüldü."
                     className="w-full px-2.5 py-2 text-xs border border-gray-200 rounded-lg resize-y"
                   />

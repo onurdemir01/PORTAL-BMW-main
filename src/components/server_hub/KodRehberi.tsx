@@ -110,7 +110,8 @@ export default function KodRehberi({ acik, onKapat, ad, listede, seciliKod, onSe
 
   if (!acik) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={(e) => e.target === e.currentTarget && onKapat()} style={{ background: 'color-mix(in srgb, var(--bg-base, #000) 35%, transparent)' }}>
+    // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC (yukaridaki dinleyici).
+    <div className="fixed inset-0 z-50 flex justify-end" role="presentation" onClick={(e) => e.target === e.currentTarget && onKapat()} style={{ background: 'color-mix(in srgb, var(--bg-base, #000) 35%, transparent)' }}>
       <aside
         ref={panelRef}
         role="dialog"

@@ -471,8 +471,12 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
                     <input type="checkbox" checked={allChecked} onChange={(e) => setChecked((s) => { const n = new Set(s); list.forEach((h) => (e.target.checked ? n.add(h.host) : n.delete(h.host))); return n; })} title="servisin tüm sunucularını seç" />
                   </div>
                   {open && list.map((h) => (
-                    <div key={h.host} className={`flex items-center gap-1.5 px-2 py-1 text-xs cursor-pointer ${cur === h.host ? 'font-semibold' : ''}`} style={{ background: cur === h.host ? 'var(--bg-elevated)' : undefined }} onClick={() => setCur(h.host)}>
+                    // Sunucuyu SECEN kisim gercek bir dugme (klavyeyle odaklanir, Enter / Space ile
+                    // calisir); onay kutusu dugmenin icine giremeyecegi icin yaninda. Dolgu dugmede
+                    // (py-1 pr-2) ve satirda (pl-2): satir eskisiyle ayni olcude.
+                    <div key={h.host} className={`flex items-center gap-1.5 pl-2 text-xs ${cur === h.host ? 'font-semibold' : ''}`} style={{ background: cur === h.host ? 'var(--bg-elevated)' : undefined }}>
                       <input type="checkbox" checked={checked.has(h.host)} onClick={(e) => e.stopPropagation()} onChange={(e) => setChecked((s) => { const n = new Set(s); e.target.checked ? n.add(h.host) : n.delete(h.host); return n; })} />
+                      <button type="button" className="flex flex-1 min-w-0 items-center gap-1.5 py-1 pr-2 text-left cursor-pointer" aria-current={cur === h.host ? 'true' : undefined} onClick={() => setCur(h.host)}>
                       <span className="font-mono flex-1 truncate" title={`${h.host}${h.ip ? ' · ' + h.ip : ''}${h.nginxVersion ? ' · nginx ' + h.nginxVersion : ''}`}>{h.host}</span>
                       {h.env && <span className="text-[9px] uppercase px-1 rounded border" style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-muted)' }}>{h.env}</span>}
                       {h.dumpedAt ? (
@@ -480,6 +484,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
                       ) : (
                         <span className="w-2 h-2 rounded-full bg-gray-300" title="dokum yok — Yenile" />
                       )}
+                      </button>
                     </div>
                   ))}
                 </div>

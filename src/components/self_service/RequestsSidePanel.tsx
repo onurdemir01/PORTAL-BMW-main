@@ -24,6 +24,7 @@ import { Modal } from '@/components/common/Modal';
 import { toast } from '@/hooks/useToast';
 import KapamaOnayiUyarisi, { kapamaOnayinda } from './KapamaOnayiUyarisi';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 interface TicketDetail {
   externalTicketId?: string | null;
@@ -102,6 +103,8 @@ export default function RequestsSidePanel() {
   const [jobOutputCache, setJobOutputCache] = useState<Record<number, JobOutput>>({});
   const [jobOutputLoadingId, setJobOutputLoadingId] = useState<number | null>(null);
   const [jobOutputOpenId, setJobOutputOpenId] = useState<number | null>(null);
+  // Job ciktisi penceresi arka plana tiklayinca kapaniyor; klavyede ESC.
+  useEscIleKapat(jobOutputOpenId != null, () => setJobOutputOpenId(null));
 
   const toggleDetail = async (id: number) => {
     if (expandedId === id) {
@@ -554,14 +557,22 @@ export default function RequestsSidePanel() {
               return (
                 <div
                   className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+                  // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC.
+                  role="presentation"
                   onClick={(e) => {
                     if (e.target === e.currentTarget) setJobOutputOpenId(null);
                   }}
                 >
-                  <div className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden">
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="ss-job-cikti-baslik"
+                    className="bg-[var(--bg-surface)] rounded-2xl shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col overflow-hidden"
+                  >
                     <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-[var(--border)] flex-shrink-0">
                       <div className="min-w-0">
                         <div
+                          id="ss-job-cikti-baslik"
                           className="font-bold text-sm truncate"
                           title={t?.templateName || 'Job Çıktısı'}
                         >
@@ -638,7 +649,8 @@ export default function RequestsSidePanel() {
               value={iptalSor?.note ?? ''}
               onChange={(e) => setIptalSor((x) => (x ? { ...x, note: e.target.value } : x))}
               rows={2}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
               className="mt-1 w-full px-2.5 py-1.5 text-xs border border-[var(--border)] rounded-lg bg-[var(--bg-surface)]"
             />
           </label>

@@ -176,25 +176,8 @@ function StatusRow({
     unknown: { Icon: MinusCircleIcon, color: 'var(--status-neutral)' },
   } as const;
   const { Icon, color } = MAP[state];
-  return (
-    <div
-      className={`flex items-start gap-2 py-2 ${onClick ? 'cursor-pointer' : ''}`}
-      onClick={onClick}
-      // Tiklanabilir satir klavyeyle de acilir (eskiden yalnizca fare ile calisiyordu).
-      {...(onClick
-        ? {
-            role: 'button',
-            tabIndex: 0,
-            onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onClick();
-              }
-            },
-          }
-        : {})}
-      style={{ borderBottom: '1px solid var(--border)' }}
-    >
+  const icerik = (
+    <>
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color }} />
       <div className="min-w-0">
         <p className="text-[0.875rem]" style={{ color: 'var(--text-primary)' }}>
@@ -206,6 +189,22 @@ function StatusRow({
           </p>
         )}
       </div>
+    </>
+  );
+  const cizgi = { borderBottom: '1px solid var(--border)' };
+  // Tiklanabilir satir GERCEK bir dugme: odak, Enter ve Space tarayicidan gelir (eskiden
+  // role="button" + elle tus dinleyicisi yayilarak veriliyordu). w-full + text-left: dugmenin
+  // varsayilani (icerik kadar genislik, ortali metin) eski satir gorunumunu bozmasin.
+  if (onClick) {
+    return (
+      <button type="button" className="flex items-start gap-2 py-2 cursor-pointer w-full text-left" onClick={onClick} style={cizgi}>
+        {icerik}
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2 py-2" style={cizgi}>
+      {icerik}
     </div>
   );
 }

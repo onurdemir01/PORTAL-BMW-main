@@ -1003,7 +1003,13 @@ function HostRow({
       </Td>
       <Td className="whitespace-nowrap">
         {h.exception ? (
-          <span className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          // Istisna hucresindeki tiklamalar (rozet, not, duzenle dugmesi) satiri acmaz. Sarmalayici
+          // yalniz kabaran olayi durdurur, kendisi etkilesimli degil (role="presentation").
+          <span
+            role="presentation"
+            className="inline-flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Pill
               tone="warning"
               title={`${h.exception.note}${h.exception.by ? `\n— ${h.exception.by}` : ''}${h.exception.at ? ` · ${fmtDate(h.exception.at)}` : ''}`}

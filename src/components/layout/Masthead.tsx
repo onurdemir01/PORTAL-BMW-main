@@ -269,9 +269,10 @@ export default function Masthead({ onToggleNav }: Props) {
                       disabled={smartAtla === null}
                       onChange={(e) => smartAtlaDegistir(!e.target.checked)}
                     />
-                    <span>
-                      <span className="font-semibold">Smart onayı (tetiklemelerim)</span>
-                      <span className="block" style={{ color: smartAtla ? "var(--status-warning-text)" : "var(--text-muted)" }}>
+                    {/* Baslik etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+                    <span className="font-semibold">
+                      Smart onayı (tetiklemelerim)
+                      <span className="block font-normal" style={{ color: smartAtla ? "var(--status-warning-text)" : "var(--text-muted)" }}>
                         {smartAtla === null ? "durum okunamadı — onay istenir"
                           : smartAtla ? "KAPALI — başlattığınız işler onaysız çalışır (denetime yazılır)"
                             : "açık — işleriniz normal onay akışından geçer"}
