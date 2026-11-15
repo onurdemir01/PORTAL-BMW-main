@@ -23,9 +23,14 @@ function ihlalMi(headBicimli, sahneBicimli) {
 
 const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
+/** `git show <spec>`; dosya o surumde yoksa (yeni dosya) null. Git'in hata metni yazdirilmaz. */
 function gitOku(spec) {
   try {
-    return git(['show', spec]);
+    return execFileSync('git', ['show', spec], {
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
   } catch {
     return null;
   }
