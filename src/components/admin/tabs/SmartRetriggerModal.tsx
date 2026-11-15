@@ -187,9 +187,11 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
                 onChange={() => setMode('oco')}
                 className="mt-0.5"
               />
-              <span>
-                <span className="font-semibold text-gray-800">Yeni OCO numarası ile</span>
-                <span className="block text-gray-500">
+              {/* Baslik metni etiketin ikinci duzeyinde: ic ice uc span'de erisilebilir ad
+                  okunamiyordu (Sonar S6853). Gorunum ayni: aciklama blok olarak alta iner. */}
+              <span className="font-semibold text-gray-800">
+                Yeni OCO numarası ile
+                <span className="block font-normal text-gray-500">
                   Pencere açıksa hemen çalışır, henüz açılmadıysa başlangıcına zamanlanır, geçmişse
                   reddedilir.
                 </span>
@@ -213,9 +215,9 @@ export default function SmartRetriggerModal({ ticket, onClose, onDone }: Props) 
                 onChange={() => setMode('pencereDisi')}
                 className="mt-0.5"
               />
-              <span>
-                <span className="font-semibold text-gray-800">Pencere dışında hemen çalıştır</span>
-                <span className="block text-gray-500">Production'da OCO penceresi dışında değişiklik demektir.</span>
+              <span className="font-semibold text-gray-800">
+                Pencere dışında hemen çalıştır
+                <span className="block font-normal text-gray-500">Production'da OCO penceresi dışında değişiklik demektir.</span>
               </span>
             </label>
             {mode === 'pencereDisi' && (

@@ -10,7 +10,7 @@
 // salt-okunurdu, artık hidden/default admin tarafından ayarlanabiliyor) + serbest
 // "Ek Değişkenler" bloğu (survey'de karşılığı olmayan, AWX'in ask_variables_on_launch
 // desteklediği ama hiçbir yerde free-form giriş noktası olmayan boşluğu kapatır).
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useId, useRef, useState, useMemo } from 'react';
 import { toast } from '@/hooks/useToast';
 import { buildMetadataTemplate, SmartFieldsTable } from './smartMetadata';
 import {
@@ -103,12 +103,14 @@ function ChoicesSourceEditor({
 }) {
   const info = sources.find((x) => x.name === value?.source);
   const others = fieldNames.filter((n) => n && n !== selfName);
+  const kaynakId = useId();
   return (
     <div className="rounded-lg border border-dashed border-[var(--border)] p-2 space-y-1.5 bg-[var(--bg-elevated)]/40">
-      <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+      <label htmlFor={kaynakId} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
         Seçenek kaynağı (serbest metin yerine envanterden liste)
       </label>
       <Select
+        id={kaynakId}
         value={value?.source || ''}
         onChange={(e) => {
           const name = e.target.value;
@@ -384,6 +386,7 @@ export default function FieldOverridesModal({
   const [outputFilter, setOutputFilter] = useState<OutputFilter>({ enabled: false, contains: '' });
   // Survey Tasarımcısı — yalnızca AWX'te survey KAPALIYKEN (!surveyEnabled) gösterilir.
   const [customFields, setCustomFields] = useState<SurveyField[]>([]);
+  const alanId = useId();
   const [injectUserInfo, setInjectUserInfo] = useState({
     enabled: false,
     emailKey: 'email',
@@ -1209,10 +1212,11 @@ export default function FieldOverridesModal({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label htmlFor={`${alanId}-ozel-${i}-ad`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                           Görünen Ad (label)
                         </label>
                         <TextInput
+                          id={`${alanId}-ozel-${i}-ad`}
                           value={f.label}
                           error={!f.label.trim()}
                           placeholder="ör. Hedef Ortam"
@@ -1220,10 +1224,11 @@ export default function FieldOverridesModal({
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label htmlFor={`${alanId}-ozel-${i}-degisken`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                           Değişken Adı (extra_vars key)
                         </label>
                         <TextInput
+                          id={`${alanId}-ozel-${i}-degisken`}
                           value={f.name}
                           error={
                             !f.name.trim() || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.name.trim() || 'x')
@@ -1237,10 +1242,11 @@ export default function FieldOverridesModal({
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        <label htmlFor={`${alanId}-ozel-${i}-tip`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                           Tip
                         </label>
                         <Select
+                          id={`${alanId}-ozel-${i}-tip`}
                           value={f.type}
                           onChange={(e) => updateCustomField(i, { type: e.target.value })}
                         >
@@ -1292,9 +1298,11 @@ export default function FieldOverridesModal({
                     {isChoiceType && !f.choicesSource?.source && (
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                          {/* Satir listesinin basligi (tek bir alana bagli degil): etiket ogesi degil.
+                              cursor-default etiketin tarayici varsayilani, gorunum ayni kalir. */}
+                          <span className="text-[11px] font-semibold text-[var(--text-secondary)] cursor-default">
                             Seçenekler — değer (extra_vars'a giden) + görünen ad
-                          </label>
+                          </span>
                           <button
                             onClick={() => addChoice(i)}
                             className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--accent)] hover:underline"
@@ -1346,7 +1354,7 @@ export default function FieldOverridesModal({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                      <label htmlFor={`${alanId}-ozel-${i}-aciklama`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                         Açıklama (opsiyonel)
                       </label>
                       {/* ÇOK SATIRLI: tek satırlık <input> iken alt alta örnek yazmak
@@ -1354,6 +1362,7 @@ export default function FieldOverridesModal({
                               olduğu gibi saklanır ve kullanıcıya Field'ın hint'inde
                               `whitespace-pre-line` ile aynen gösterilir. */}
                       <Textarea
+                        id={`${alanId}-ozel-${i}-aciklama`}
                         rows={3}
                         value={f.description}
                         onChange={(e) => updateCustomField(i, { description: e.target.value })}
@@ -1753,10 +1762,11 @@ export default function FieldOverridesModal({
             {injectUserInfo.enabled && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                  <label htmlFor={`${alanId}-eposta`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                     E-posta anahtarı
                   </label>
                   <TextInput
+                    id={`${alanId}-eposta`}
                     className="font-mono text-xs"
                     value={injectUserInfo.emailKey}
                     placeholder="email"
@@ -1764,10 +1774,11 @@ export default function FieldOverridesModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                  <label htmlFor={`${alanId}-kullanici`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                     Kullanıcı adı anahtarı
                   </label>
                   <TextInput
+                    id={`${alanId}-kullanici`}
                     className="font-mono text-xs"
                     value={injectUserInfo.usernameKey}
                     placeholder="username"
@@ -1913,11 +1924,12 @@ export default function FieldOverridesModal({
             </p>
             {smartApproval.enabled && (
               <div>
-                <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                <label htmlFor={`${alanId}-flow`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                   Smart Flow Key
                 </label>
                 <div className="flex items-center gap-2">
                   <TextInput
+                    id={`${alanId}-flow`}
                     className="font-mono text-xs flex-1"
                     error={invalidSmartApproval}
                     value={smartApproval.flowKey}
@@ -1935,10 +1947,11 @@ export default function FieldOverridesModal({
                   </button>
                 </div>
 
-                <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">
+                <label htmlFor={`${alanId}-integration`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mt-3 mb-1">
                   Integration Key (opsiyonel)
                 </label>
                 <TextInput
+                  id={`${alanId}-integration`}
                   className="font-mono text-xs"
                   type="password"
                   value={smartApproval.integrationKey}
@@ -1966,7 +1979,7 @@ export default function FieldOverridesModal({
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-2 mt-3 mb-1">
-                  <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                  <label htmlFor={`${alanId}-metadata`} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
                     Metadata Eşlemesi
                   </label>
                   <button
@@ -2042,6 +2055,7 @@ export default function FieldOverridesModal({
                   <code className="font-mono">\n</code> da satır sonu sayılır.
                 </p>
                 <Textarea
+                  id={`${alanId}-metadata`}
                   rows={8}
                   className="text-xs font-mono"
                   value={smartApproval.metadataFields}
@@ -2077,10 +2091,11 @@ export default function FieldOverridesModal({
 
             {smartApproval.enabled && (
               <div className="mt-3 pt-3 border-t border-[var(--border)]">
-                <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                <label htmlFor={`${alanId}-atla`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                   Onay hangi durumlarda İSTENMESİN? (opsiyonel)
                 </label>
                 <Textarea
+                  id={`${alanId}-atla`}
                   rows={3}
                   className="font-mono text-xs"
                   value={smartApproval.skipWhen}

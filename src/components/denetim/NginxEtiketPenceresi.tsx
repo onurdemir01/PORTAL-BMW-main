@@ -150,9 +150,10 @@ export function NginxEtiketPenceresi({
                 }}
               >
                 <input type="radio" name="etiket-kip" className="mt-0.5" checked={mod === k.id} onChange={() => setMod(k.id)} />
-                <span>
-                  <span className="block font-semibold" style={{ color: 'var(--text-primary)' }}>{k.ad}</span>
-                  <span className="block text-[12px]" style={{ color: 'var(--text-muted)' }}>{k.acik}</span>
+                {/* Kip adi etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+                <span className="block font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {k.ad}
+                  <span className="block text-[12px] font-normal" style={{ color: 'var(--text-muted)' }}>{k.acik}</span>
                 </span>
               </label>
             ))}

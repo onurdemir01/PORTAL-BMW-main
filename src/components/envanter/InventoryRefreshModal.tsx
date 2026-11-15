@@ -162,9 +162,10 @@ export default function InventoryRefreshModal({ onClose }: { onClose: () => void
                       onChange={() => toggle(opt.value)}
                       className="mt-0.5 rounded"
                     />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium" style={{ color: "var(--text-primary)" }}>{opt.label}</span>
-                      <span className="block text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{opt.description}</span>
+                    {/* Secenek adi etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+                    <span className="min-w-0 block text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                      {opt.label}
+                      <span className="block text-xs mt-0.5 font-normal" style={{ color: "var(--text-muted)" }}>{opt.description}</span>
                     </span>
                   </label>
                 );

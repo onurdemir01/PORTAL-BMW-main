@@ -451,8 +451,9 @@ const OperationStep: React.FC<Props> = ({
             <label className="flex items-start gap-2.5 text-sm cursor-pointer">
               <input type="checkbox" className="mt-1" checked={allowPartial} disabled={busy}
                 onChange={(e) => setAllowPartial(e.target.checked)} />
-              <span>
-                <span className="text-[var(--text-primary)]">Bir hedef başarısız olursa diğerlerine devam et</span>
+              {/* Baslik etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
+              <span className="text-[var(--text-primary)]">
+                Bir hedef başarısız olursa diğerlerine devam et
                 <span className="block text-xs text-[var(--text-muted)] mt-0.5">
                   Kapatırsan “hepsi ya da hiçbiri” çalışır: tek bir ön kontrol hatası tüm işlemi iptal eder
                   ve cluster'da hiçbir değişiklik olmaz.

@@ -24,7 +24,7 @@
 // "Alanlari Getir" tablosu ve "Otomatik Doldur" taslagi Self Service ile AYNI koddan
 // gelir (src/components/self_service/smartMetadata.tsx). Ikinci bir kopya, bu depoda
 // tekrar tekrar yasanan sinifa girerdi: biri duzelince oteki sessizce eski kalir.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useId, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { TextInput, Textarea } from '@/components/ui/Form';
 import { toast } from '@/hooks/useToast';
@@ -74,6 +74,7 @@ interface Props {
 
 const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
   const [yukleniyor, setYukleniyor] = useState(false);
+  const alanId = useId();
   const [kaydediyor, setKaydediyor] = useState(false);
   const [hata, setHata] = useState('');
   const [aktif, setAktif] = useState<OpsxSmartPlatform>('legacy');
@@ -346,11 +347,12 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
 
             {/* ── Flow Key ────────────────────────────────────────────────────────── */}
             <div>
-              <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+              <label htmlFor={`${alanId}-flow`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                 Smart Flow Key
               </label>
               <div className="flex items-center gap-2">
                 <TextInput
+                  id={`${alanId}-flow`}
                   className="font-mono text-xs flex-1"
                   value={guncel.flowKey}
                   placeholder="ör. OPSX_JBOSS_RESTART_FLOW"
@@ -387,10 +389,11 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
 
             {/* ── Integration Key ─────────────────────────────────────────────────── */}
             <div>
-              <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+              <label htmlFor={`${alanId}-integration`} className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                 Integration Key (opsiyonel)
               </label>
               <TextInput
+                id={`${alanId}-integration`}
                 className="font-mono text-xs"
                 type="password"
                 value={guncel.integrationKey}
@@ -423,7 +426,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
             {/* ── Metadata eslemesi ───────────────────────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between gap-2 mb-1">
-                <label className="block text-[11px] font-semibold text-[var(--text-secondary)]">
+                <label htmlFor={`${alanId}-metadata`} className="block text-[11px] font-semibold text-[var(--text-secondary)]">
                   Metadata Eşlemesi
                 </label>
                 <button
@@ -469,6 +472,7 @@ const OpsXSmartConfigModal: React.FC<Props> = ({ open, onClose }) => {
                 sayılır.
               </p>
               <Textarea
+                id={`${alanId}-metadata`}
                 rows={8}
                 className="text-xs font-mono"
                 value={guncel.metadataFields}

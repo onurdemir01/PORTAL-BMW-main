@@ -8,7 +8,7 @@
 //
 // Karar SUNUCUDA verilir (server/ansible/ss-erisim.cjs): liste, form ve başlatma uçları
 // yetkisiz kullanıcıya servisi hiç göstermez. Bu bileşen yalnız ayarı düzenler.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import {
   LockClosedIcon,
   UserGroupIcon,
@@ -72,6 +72,7 @@ export function SsErisimBolumu({
   /** test için enjekte edilebilir */
   search?: (q: string) => Promise<{ groups: LdapGroup[]; error?: string }>;
 }) {
+  const secenekId = useId();
   const [q, setQ] = useState('');
   const [sonuc, setSonuc] = useState<LdapGroup[]>([]);
   const [acik, setAcik] = useState(false);
@@ -182,13 +183,17 @@ export function SsErisimBolumu({
                 onChange={() => onChange({ mode: s.mod, groups })}
                 className="mt-0.5"
                 data-testid={`ss-erisim-${s.mod}`}
+                // Ad = secenek basligi, aciklama = alt satir. Metin etiketin ucuncu duzeyinde
+                // (ikonlu baslik satiri) oldugundan iliski acikca kurulur (Sonar S6853).
+                aria-labelledby={`${secenekId}-${s.mod}-ad`}
+                aria-describedby={`${secenekId}-${s.mod}-aciklama`}
               />
               <span className="min-w-0">
-                <span className="flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
+                <span id={`${secenekId}-${s.mod}-ad`} className="flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
                   <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: aktif ? 'var(--accent)' : 'var(--text-muted)' }} />
                   {s.baslik}
                 </span>
-                <span className="block text-[11px] text-[var(--text-muted)]">{s.aciklama}</span>
+                <span id={`${secenekId}-${s.mod}-aciklama`} className="block text-[11px] text-[var(--text-muted)]">{s.aciklama}</span>
               </span>
             </label>
           );

@@ -71,8 +71,10 @@ const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clus
 
   return (
     <div className="space-y-4">
+      {/* Grup basliklari: altlarinda tek bir alan degil, dugme / kutu listesi var; etiket ogesi
+          degil. cursor-default etiketin tarayici varsayilani, gorunum ayni kalir. */}
       <div>
-        <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Ortam</label>
+        <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Ortam</span>
         <div className="flex flex-wrap gap-1.5">
           {envs.map((e) => (
             <button
@@ -88,7 +90,7 @@ const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clus
 
       {env && (
         <div>
-          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Tenant / İş Birimi</label>
+          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Tenant / İş Birimi</span>
           <div className="flex flex-wrap gap-1.5">
             {tenants.map((t) => (
               <button
@@ -105,7 +107,7 @@ const ClusterSelectStep: React.FC<{ onSubmit: (env: string, tenant: string, clus
 
       {tenant && (
         <div>
-          <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">Cluster(lar) — birden fazla seçilebilir</label>
+          <span className="block text-xs font-medium text-[var(--text-secondary)] mb-1.5 cursor-default">Cluster(lar) — birden fazla seçilebilir</span>
           <div className="space-y-1">
             {availableClusters.length === 0 && (
               <p className="text-xs text-[var(--text-muted)]">

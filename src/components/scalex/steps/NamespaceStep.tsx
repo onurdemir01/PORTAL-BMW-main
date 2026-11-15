@@ -3,7 +3,7 @@
 // Liste `ocp-catalog`tan gelir: dbo.Openshift_Inventory ∪ tarama önbelleği. Yetki
 // kısıtıyla düşen namespace'ler GİZLENİR ama SAYISI söylenir — "neden göremiyorum?"
 // sorusu cevapsız kalmasın.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ArrowPathIcon,
   ExclamationTriangleIcon,
@@ -29,6 +29,7 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState(initial || '');
+  const satirId = useId();
 
   // CANLI TARAMA DURUMU. Katalogda olmayan bir namespace'e ulasmanin tek yolu.
   const [scanning, setScanning] = useState(false);
@@ -211,7 +212,7 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
       )}
 
       <div className="rounded-xl border border-[var(--border)] divide-y divide-[var(--border-subtle)] max-h-80 overflow-y-auto">
-        {list.map((ns) => {
+        {list.map((ns, sira) => {
           const count = data?.counts?.[ns];
           // UC DURUM, UC CUMLE. Ekran bu ayrimi yapmiyordu: `count` tanimsizken
           // "uygulama kaydi yok" yaziyordu — YANI SAYILMAMIS bir namespace icin
@@ -240,6 +241,8 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
               key={ns}
               className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-inset)]"
             >
+              {/* Ad = namespace, aciklama = uygulama sayisi. Metin etiketin ucuncu duzeyinde
+                  (kesme icin ayri span) oldugundan iliski acikca kurulur (Sonar S6853). */}
               <span className="flex items-center gap-2.5 min-w-0">
                 <input
                   type="radio"
@@ -247,12 +250,14 @@ const NamespaceStep: React.FC<Props> = ({ env, tenant, clusters, busy, initial, 
                   disabled={busy}
                   checked={picked === ns}
                   onChange={() => setPicked(ns)}
+                  aria-labelledby={`${satirId}-${sira}-ad`}
+                  aria-describedby={`${satirId}-${sira}-sayi`}
                 />
-                <span className="font-mono truncate text-[var(--text-primary)]" title={ns}>
+                <span id={`${satirId}-${sira}-ad`} className="font-mono truncate text-[var(--text-primary)]" title={ns}>
                   {ns}
                 </span>
               </span>
-              <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+              <span id={`${satirId}-${sira}-sayi`} className="text-xs text-[var(--text-muted)] whitespace-nowrap">
                 <span
                   className={typeof count === 'number' ? undefined : 'italic'}
                   title={countTitle}

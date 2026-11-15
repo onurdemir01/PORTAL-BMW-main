@@ -4,7 +4,7 @@
 // (RequestsSidePanel) farki: TUM kullanicilarin talepleri + sunucu-tarafi filtre/sayfalama.
 // Tablo buyuyebilecegi icin filtreleme ve sayfalama SUNUCUDA yapilir (bkz.
 // server/ansible/runner.cjs GET /ss/smart-tickets/all).
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useId, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ArrowPathIcon,
@@ -87,6 +87,7 @@ export default function SmartTicketsTab() {
   // yapilir (2026-08-20). cancelTarget = iptal edilecek talep; null ise modal kapali.
   const [cancelTarget, setCancelTarget] = useState<AdminSmartTicket | null>(null);
   const [cancelNote, setCancelNote] = useState('');
+  const iptalNotuId = useId();
   const [cancelling, setCancelling] = useState(false);
   // Zaman asimina dusmus talebi admin yeniden tetikler (2026-11-11); null ise modal kapali.
   const [retriggerTarget, setRetriggerTarget] = useState<AdminSmartTicket | null>(null);
@@ -585,10 +586,11 @@ export default function SmartTicketsTab() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  <label htmlFor={iptalNotuId} className="block text-xs font-semibold text-gray-700 mb-1">
                     İptal notu <span className="font-normal text-gray-400">(opsiyonel)</span>
                   </label>
                   <textarea
+                    id={iptalNotuId}
                     value={cancelNote}
                     onChange={(e) => setCancelNote(e.target.value)}
                     rows={3}

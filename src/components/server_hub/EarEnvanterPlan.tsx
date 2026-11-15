@@ -5,7 +5,7 @@
 // manuel istenildiği gibi". İki plan kartı (P1 / P2); her biri sıklık, gün, saat, kip, kapsam ve başlangıç
 // taşır. "Sonraki çalışmalar" sunucunun hesabıdır: ekran ve zamanlayıcı aynı şeyi görür. Planı açmak onay
 // ister. KapsamSecici "Şimdi tara" penceresiyle ortaktır.
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { earApi, type EarOzet, type EarPlanAlani, type EarOrtamSayisi } from '@/api/earEnvanterApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -74,6 +74,7 @@ export function KapsamSecici({
   radioAdi?: string;
 }) {
   const [liste, setListe] = useState<EarOrtamSayisi[] | null>(null);
+  const turId = useId();
   const [hata, setHata] = useState('');
   const [ara, setAra] = useState('');
   const ortamGerek = !secimYok && deger.tur === 'ORTAM';
@@ -103,10 +104,14 @@ export function KapsamSecici({
             checked={!secimYok && deger.tur === t}
             disabled={disabled}
             onChange={() => onChange({ tur: t, ortamlar: t === 'ORTAM' ? deger.ortamlar : [] })}
+            // Ad = kalin baslik, aciklama = soluk metin. Metin etiketin ucuncu duzeyinde
+            // oldugundan iliski acikca kurulur (Sonar S6853).
+            aria-labelledby={`${turId}-${t}-ad`}
+            aria-describedby={`${turId}-${t}-aciklama`}
           />
           <span>
-            <b>{KAPSAM_AD[t]}</b>
-            <span style={{ color: 'var(--text-muted)' }}> — {KAPSAM_ACIKLAMA[t]}</span>
+            <b id={`${turId}-${t}-ad`}>{KAPSAM_AD[t]}</b>
+            <span id={`${turId}-${t}-aciklama`} style={{ color: 'var(--text-muted)' }}> — {KAPSAM_ACIKLAMA[t]}</span>
           </span>
         </label>
       ))}

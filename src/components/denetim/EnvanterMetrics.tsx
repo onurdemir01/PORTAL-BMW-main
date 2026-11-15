@@ -8,7 +8,7 @@
 //
 // Grafikler CSS ile cizilir; projede grafik kutuphanesi YOK ve tek bir dagilim gorseli
 // icin bagimlilik eklemek paket boyutuna deger bir kazanc saglamiyor.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import {
   ArrowPathIcon,
@@ -406,6 +406,7 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
     sum.dims[0];
   const [x, setX] = useState(sum.dims.some((d) => d.key === 'domain') ? 'domain' : sum.dims[0].key);
   const [y, setY] = useState(firstY.key);
+  const pivotId = useId();
   const [metric, setMetric] = useState<'rows' | 'hosts'>(source === 'hosts' ? 'rows' : 'hosts');
   const [hideEmpty, setHideEmpty] = useState(true);
   const [data, setData] = useState<EnvanterPivot | null>(null);
@@ -482,16 +483,16 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
       }
     >
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <label className="text-[11px] text-[var(--text-muted)]">Sütun</label>
-        <Select sizeVariant="sm" value={x} onChange={(e) => setX(e.target.value)}>
+        <label htmlFor={`${pivotId}-x`} className="text-[11px] text-[var(--text-muted)]">Sütun</label>
+        <Select id={`${pivotId}-x`} sizeVariant="sm" value={x} onChange={(e) => setX(e.target.value)}>
           {sum.dims.map((d) => (
             <option key={d.key} value={d.key}>
               {d.label}
             </option>
           ))}
         </Select>
-        <label className="text-[11px] text-[var(--text-muted)] ml-1">Satır</label>
-        <Select sizeVariant="sm" value={y} onChange={(e) => setY(e.target.value)}>
+        <label htmlFor={`${pivotId}-y`} className="text-[11px] text-[var(--text-muted)] ml-1">Satır</label>
+        <Select id={`${pivotId}-y`} sizeVariant="sm" value={y} onChange={(e) => setY(e.target.value)}>
           {sum.dims.map((d) => (
             <option key={d.key} value={d.key}>
               {d.label}
@@ -500,8 +501,9 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
         </Select>
         {source !== 'hosts' && (
           <>
-            <label className="text-[11px] text-[var(--text-muted)] ml-1">Sayım</label>
+            <label htmlFor={`${pivotId}-sayim`} className="text-[11px] text-[var(--text-muted)] ml-1">Sayım</label>
             <Select
+              id={`${pivotId}-sayim`}
               sizeVariant="sm"
               value={metric}
               onChange={(e) => setMetric(e.target.value as 'rows' | 'hosts')}

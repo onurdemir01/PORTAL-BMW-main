@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -112,6 +112,7 @@ interface SurveyModalProps {
 
 function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
   const backdrop = useBackdropDismiss(onClose, false);
+  const ocoAlanId = useId();
   const [fields, setFields] = useState<SurveyField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [launchOptions, setLaunchOptions] = useState<LaunchOptions | null>(null);
@@ -648,11 +649,12 @@ function SurveyModal({ item, onClose, inline = false }: SurveyModalProps) {
 
             {ocoState.phase === 'ask' && (
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-[var(--text-secondary)]">
+                <label htmlFor={ocoAlanId} className="block text-xs font-semibold text-[var(--text-secondary)]">
                   OCO Numarası
                 </label>
                 <div className="flex items-center gap-2">
                   <TextInput
+                    id={ocoAlanId}
                     className="font-mono flex-1"
                     value={ocoNumber}
                     placeholder="ör. 22502813"
@@ -1582,6 +1584,7 @@ function AnsibleSection({
   onSelect?: (id: string | null) => void;
 }) {
   const { onayla, onayPenceresi } = useOnay();
+  const formId = useId();
   const [items, setItems] = useState<AnsibleSsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [launchItem, setLaunchItem] = useState<AnsibleSsItem | null>(null);
@@ -1842,8 +1845,9 @@ function AnsibleSection({
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Servis Adı</label>
+              <label htmlFor={`${formId}-ad`} className="text-xs font-semibold text-gray-500 block mb-1">Servis Adı</label>
               <input
+                id={`${formId}-ad`}
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.title}
                 onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
@@ -1851,8 +1855,9 @@ function AnsibleSection({
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Açıklama</label>
+              <label htmlFor={`${formId}-aciklama`} className="text-xs font-semibold text-gray-500 block mb-1">Açıklama</label>
               <input
+                id={`${formId}-aciklama`}
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.description}
                 onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
@@ -1860,10 +1865,11 @@ function AnsibleSection({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
+              <label htmlFor={`${formId}-sunucu`} className="text-xs font-semibold text-gray-500 block mb-1">
                 AWX Sunucu ID
               </label>
               <input
+                id={`${formId}-sunucu`}
                 type="number"
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.awxServerId}
@@ -1872,8 +1878,9 @@ function AnsibleSection({
               />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 block mb-1">Template ID</label>
+              <label htmlFor={`${formId}-template`} className="text-xs font-semibold text-gray-500 block mb-1">Template ID</label>
               <input
+                id={`${formId}-template`}
                 type="number"
                 className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 value={draft.awxTemplateId || ''}

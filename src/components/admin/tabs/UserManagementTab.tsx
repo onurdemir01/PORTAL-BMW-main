@@ -107,8 +107,9 @@ export default function UserManagementTab() {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
+          <label htmlFor="rol-secimi" className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
           <Select
+            id="rol-secimi"
             aria-label="Atanacak rol"
             value={addRole}
             onChange={(e) => setAddRole(e.target.value as "Admin" | "User")}
