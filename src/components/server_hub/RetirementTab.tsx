@@ -848,7 +848,7 @@ function PaketHucresi({ yol }: { yol: string | null }) {
         —
       </span>
     );
-  const temiz = yol.replace(/\/+$/, '');
+  const temiz = yol.replace(/(?<!\/)\/+$/, '');
   const ad = temiz.split('/').pop() || temiz;
   const dizin = temiz.slice(0, temiz.length - ad.length);
   return (

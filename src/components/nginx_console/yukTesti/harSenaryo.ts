@@ -168,7 +168,7 @@ function pyG(x: number): string {
   if (x === 0) return Object.is(x, -0) ? '-0' : '0';
   const [mantis, usMetni] = x.toExponential(5).split('e');
   const us = Number(usMetni);
-  const kirp = (s: string) => (s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s);
+  const kirp = (s: string) => (s.includes('.') ? s.replace(/(?<!0)0+$/, '').replace(/\.$/, '') : s);
   if (us < -4 || us >= 6)
     return `${kirp(mantis)}e${us < 0 ? '-' : '+'}${String(Math.abs(us)).padStart(2, '0')}`;
   return kirp(x.toFixed(5 - us));

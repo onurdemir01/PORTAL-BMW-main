@@ -124,7 +124,7 @@ export type SurumParca = { ham: string; aile: string; yama: string; ek: string; 
 export function surumAyristir(v: string | null | undefined): SurumParca {
   const ham = String(v ?? '').trim();
   if (BILINMEYEN_SURUM.test(ham)) return { ham, aile: '', yama: '', ek: '', bilinmiyor: true };
-  const m = /^(?:nginx(?:-plus)?\/)?(\d+\.\d+)((?:\.\d+)*)(.*)$/i.exec(ham);
+  const m = /^(?:nginx(?:-plus)?\/)?(\d+\.\d+)(?!\d)((?:\.\d+(?!\d))*)(?!\.\d)(.*)$/i.exec(ham);
   if (!m) return { ham, aile: ham, yama: '', ek: '', bilinmiyor: false };
   return { ham, aile: m[1], yama: m[2], ek: m[3].trim(), bilinmiyor: false };
 }
