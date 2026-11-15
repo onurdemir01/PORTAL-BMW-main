@@ -496,6 +496,7 @@ function VhostBloklar({ liste }: { liste?: VhostPlanDurumu[] }) {
 }
 import { toast } from '@/hooks/useToast';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import { acilincaOdakla, useEscIleKapat } from '@/components/common/pencereKlavye';
 
 // SM_BTN / smBtn retirementStil.ts'e tasindi (smBtn(true) metni --text-on-accent).
 const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
@@ -1207,7 +1208,8 @@ export default function RetirementTab({
               className={`${INPUT} mt-1 font-mono`}
               style={inputStyle}
               placeholder="ornek@garantibbva.com.tr"
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
           </label>
           <label className="block">
@@ -1718,7 +1720,8 @@ export function CreateModal({
               placeholder="CRM"
               className={INPUT}
               style={inputStyle}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
             {apps.length > 0 && !app && (
               <ul
@@ -2238,6 +2241,22 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
   const [askDisc, setAskDisc] = useState<RtDiscovery | null>(null);
   const [vhostPlanlar, setVhostPlanlar] = useState<Record<number, VhostPlanDurumu[]>>({});
   const [webSor, setWebSor] = useState<{ t: RtTarget } | null>(null);
+  // Onay katmanlari (STOP, web, cikar, atla, iptal, geri al, silme) arka plana tiklayinca
+  // kapaniyor; klavyede ESC ayni isi yapar. Liste DOM sirasinda: birden fazlasi acik kalirsa
+  // en sondaki (ustte gorunen) kapanir. Yalniz katman kapanir; kayit penceresi (Modal) acik kalir.
+  const katmanlar: [boolean, () => void][] = [
+    [ask !== null, () => setAsk(null)],
+    [webSor !== null, () => setWebSor(null)],
+    [cikarSor !== null, () => setCikarSor(null)],
+    [webKesif !== null, () => setWebKesif(null)],
+    [atlaTopluSor, () => setAtlaTopluSor(false)],
+    [atlaSor !== null, () => setAtlaSor(null)],
+    [iptalSor, () => setIptalSor(false)],
+    [geriAl !== null, () => setGeriAl(null)],
+    [silmeListe !== null, () => setSilmeListe(null)],
+  ];
+  const ustKatman = katmanlar.filter(([acik]) => acik).pop();
+  useEscIleKapat(ustKatman !== undefined, () => ustKatman?.[1]());
   const [trafikIs, setTrafikIs] = useState<
     Record<number, { durum: TrafikIsDurumu; jobId?: number | null; mesaj?: string; bitti?: string }>
   >({});
@@ -2982,7 +3001,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
               onChange={(e) => setUzlastirJob(e.target.value)}
               className={`${INPUT} mt-1 font-mono`}
               style={inputStyle}
-              autoFocus
+              // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
             />
           </label>
           <p>
@@ -3799,11 +3819,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,.45)' }}
+          role="presentation"
           onClick={() => setAsk(null)}
         >
           <div
             className="w-[96vw] max-w-[1500px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="STOP onayı"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-sm font-semibold">
@@ -3993,11 +4017,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setWebSor(null)}
             >
               <div
                 className="w-[96vw] max-w-[1500px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Web adımını yeniden dene"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">
@@ -4047,11 +4075,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,.45)' }}
+          role="presentation"
           onClick={() => setCikarSor(null)}
         >
           <div
             className="w-full max-w-md rounded-2xl border p-5 space-y-3"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Hedefi kayıttan çıkar"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-sm font-semibold">Hedefi kayıttan çıkar</div>
@@ -4072,7 +4104,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                 placeholder="ör. yalnız JBoss 7 retire ediliyor"
                 className={`${INPUT} mt-1`}
                 style={inputStyle}
-                autoFocus
+                // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                ref={acilincaOdakla}
               />
             </label>
             <div className="flex justify-end gap-2">
@@ -4090,11 +4123,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,.45)' }}
+          role="presentation"
           onClick={() => setWebKesif(null)}
         >
           <div
             className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-2xl border p-5 space-y-3"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Web keşfi (önizleme)"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="text-sm font-semibold">Web keşfi (önizleme) — {rec.app}</div>
@@ -4181,11 +4218,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setAtlaTopluSor(false)}
             >
               <div
                 className="w-full max-w-lg rounded-2xl border p-5 space-y-3"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--status-danger)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Beklemeyi atla (tüm hedefler)"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">
@@ -4238,7 +4279,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     onChange={(e) => setAtlaAd(e.target.value)}
                     className={`${INPUT} mt-1 font-mono`}
                     style={inputStyle}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                   />
                 </label>
                 <div className="flex justify-end gap-2">
@@ -4266,11 +4308,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setAtlaSor(null)}
             >
               <div
                 className="w-full max-w-lg rounded-2xl border p-5 space-y-3"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--status-danger)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Beklemeyi atla"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">
@@ -4301,7 +4347,8 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
                     onChange={(e) => setAtlaAd(e.target.value)}
                     className={`${INPUT} mt-1 font-mono`}
                     style={inputStyle}
-                    autoFocus
+                    // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
+                    ref={acilincaOdakla}
                   />
                 </label>
                 <div className="flex justify-end gap-2">
@@ -4331,11 +4378,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setIptalSor(false)}
             >
               <div
                 className="rounded-xl border p-4 max-w-xl w-full space-y-3"
                 style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Kaydı iptal et"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">
@@ -4415,11 +4466,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setGeriAl(null)}
             >
               <div
                 className="w-[96vw] max-w-[1100px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Geri aktif et"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">
@@ -4521,11 +4576,15 @@ function RecordModal({ id, onClose }: { id: number; onClose: () => void }) {
             <div
               className="fixed inset-0 z-[60] flex items-center justify-center p-4"
               style={{ background: 'rgba(0,0,0,.45)' }}
+              role="presentation"
               onClick={() => setSilmeListe(null)}
             >
               <div
                 className="w-[96vw] max-w-[1100px] rounded-2xl border p-5 space-y-3 max-h-[94vh] overflow-auto"
                 style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Silme ön kontrolü"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="text-sm font-semibold">

@@ -329,8 +329,14 @@ describe('Dashboard', () => {
   it('HY11 durum satirlari klavyeyle de acilir (Enter)', async () => {
     fetchKur([['/api/ansible/ss/items', json(200, { ok: true, items: [{ id: 1 }] })]]);
     ac();
-    const satir = (await screen.findByText('Self service kataloğu')).closest('[role="button"]');
+    // Tiklanabilir satir yerel bir <button>: tarayici onu odak sirasina alir ve Enter / Space ile
+    // calistirir (eskiden role="button" + tabindex="0" + elle tus dinleyicisi). Yukleniyor satiri
+    // tiklanamaz bir div oldugundan once katalog sonucu beklenir.
+    await screen.findByText('1 servis yayında');
+    const satir = screen.getByText('Self service kataloğu').closest('button');
     expect(satir).toBeTruthy();
-    expect(satir?.getAttribute('tabindex')).toBe('0');
+    expect(satir?.getAttribute('type')).toBe('button');
+    expect(satir?.hasAttribute('disabled')).toBe(false);
+    expect(satir?.getAttribute('tabindex')).not.toBe('-1');
   });
 });

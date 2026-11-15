@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { MagnifyingGlassIcon, ExclamationTriangleIcon } from "@heroicons/react/24/outline";
 import { telnetApi } from "@/api/telnetApi";
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean }> = ({ onSelect, busy }) => {
   const [search, setSearch] = useState("");
@@ -35,7 +36,8 @@ const AppSearchStep: React.FC<{ onSelect: (app: string) => void; busy?: boolean 
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
         <input
-          autoFocus
+          // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+          ref={acilincaOdakla}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Uygulama adı ara..."

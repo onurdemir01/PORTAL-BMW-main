@@ -7,7 +7,7 @@
 //
 // Satır CRUD'u olmadığı için SimpleCrudTable uygun değil; yükle/kaydet
 // desenini izleyen düz bir form.
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import {
   ArrowUpIcon,
@@ -46,6 +46,7 @@ export default function OcpRuntimeSettings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newPath, setNewPath] = useState('');
+  const alanId = useId();
 
   async function load() {
     setLoading(true);
@@ -116,9 +117,11 @@ export default function OcpRuntimeSettings() {
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+        {/* Liste basligi tek bir alana bagli degil (satirlar + "Yeni oc yolu" kutusu): etiket
+            ogesi degil. cursor-default etiketin tarayici varsayilani; gorunum ayni kalir. */}
+        <span className="block text-xs font-medium mb-1 text-[var(--text-secondary)] cursor-default">
           Aranacak yollar (sırayla denenir)
-        </label>
+        </span>
         <div className="space-y-1">
           {cfg.ocBinaryCandidates.map((p, i) => (
             <div
@@ -180,10 +183,11 @@ export default function OcpRuntimeSettings() {
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+        <label htmlFor={`${alanId}-kesin`} className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
           Kesin yol (opsiyonel)
         </label>
         <input
+          id={`${alanId}-kesin`}
           value={cfg.ocBinary}
           onChange={(e) => patch({ ocBinary: e.target.value })}
           placeholder="boş = otomatik ara (önerilen)"
@@ -197,10 +201,11 @@ export default function OcpRuntimeSettings() {
       </div>
 
       <div>
-        <label className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
+        <label htmlFor={`${alanId}-kullanici`} className="block text-xs font-medium mb-1 text-[var(--text-secondary)]">
           OCP kullanıcı adı — genel varsayılan
         </label>
         <input
+          id={`${alanId}-kullanici`}
           value={cfg.defaultOcpUsername}
           onChange={(e) => patch({ defaultOcpUsername: e.target.value })}
           placeholder="uxmid"

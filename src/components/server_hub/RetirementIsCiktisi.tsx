@@ -287,7 +287,8 @@ export function IsGoruntuleyici({ kayitId, t, is, onbellek, onIsBitti }: { kayit
       </div>
       <p className="sr-only" aria-live="polite">{c.duyuru}</p>
       {buyuk && (
-        <div className="fixed inset-0 z-[60] flex p-4" style={{ background: 'rgba(0,0,0,.45)' }} onClick={() => setBuyuk(false)} data-rt-buyut>
+        // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu, klavyede ESC katmanTusu'nda.
+        <div className="fixed inset-0 z-[60] flex p-4" style={{ background: 'rgba(0,0,0,.45)' }} role="presentation" onClick={() => setBuyuk(false)} data-rt-buyut>
           <div ref={katmanRef} role="dialog" aria-modal="true" aria-label={`İş çıktısı — ${etiket}`} className="flex h-full w-full flex-col gap-2 rounded-2xl border p-4" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
             onClick={(e) => e.stopPropagation()} onKeyDown={katmanTusu}>
             {serit(true)}

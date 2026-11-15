@@ -29,6 +29,7 @@ import {
 import { fmtRelative, fmtNumber, fmtDateTime } from '@/utils/datetime';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
+import { useEscIleKapat } from '@/components/common/pencereKlavye';
 
 const ONLINE_MS = 2 * 24 * 3600 * 1000;
 const nf = (n: number) => fmtNumber(n);
@@ -847,6 +848,8 @@ export function InstancesTab({
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(25);
   const [menu, setMenu] = useState<string | null>(null);
+  // Eylem menusu fareyle disari tiklayinca kapaniyor (asagidaki sarmalayici); klavyede ESC.
+  useEscIleKapat(menu !== null, () => setMenu(null));
   // Durum suzgeci (kullanici, 2026-09-22): "offline'lari / surumu bilinmeyenleri nasil yakalarim?"
   const [only, setOnly] = useState<'all' | 'offline' | 'tfail' | 'nodump' | 'unknownver'>('all');
   const [now, setNow] = useState(() => Date.now());
@@ -943,7 +946,9 @@ export function InstancesTab({
   };
 
   return (
-    <div className="space-y-3" onClick={() => menu && setMenu(null)}>
+    // Sarmalayici yalniz icten kabaran tiklamayi yakalar (acik menuyu kapatir); kendisi bir
+    // kontrol degil: role="presentation" (jsx-a11y'nin bu durum icin onerdigi kalip).
+    <div className="space-y-3" role="presentation" onClick={() => menu && setMenu(null)}>
       <div className="flex items-center gap-2 flex-wrap">
         <input
           value={q}

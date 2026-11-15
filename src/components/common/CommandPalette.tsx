@@ -102,6 +102,9 @@ export function CommandPalette() {
   return createPortal(
     <div
       className="fixed inset-0 z-[2000] flex items-start justify-center pt-[15vh] px-4 pb-4 bg-black/50 backdrop-blur-sm animate-fade-in overflow-y-auto"
+      // Arka plan bir kontrol degil (role="presentation"): tiklama fare kisayolu; klavyede ESC
+      // useCommandPalette'in pencere dinleyicisiyle kapatir.
+      role="presentation"
       onClick={() => setOpen(false)}
     >
       <div

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import { useAsyncEffect } from "@/hooks/useAsyncEffect";
 import { PlusIcon, PencilSquareIcon, TrashIcon, CommandLineIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import { playbookRegistryApi, type PlaybookRegistryEntry, type SilinenVarsayilan } from "@/api/playbookRegistryApi";
@@ -59,6 +59,7 @@ export default function PlaybookRegistryTab() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
+  const formId = useId();
   const [saving, setSaving] = useState(false);
 
   // Liste OKUNAMADIYSA "Henuz playbook kaydi yok" denmez: kayitlar durdugu halde ekran bos
@@ -203,8 +204,9 @@ export default function PlaybookRegistryTab() {
         <Card padding="md" className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Anahtar Adı (key_name) *</label>
+              <label htmlFor={`${formId}-key`} className="text-xs text-gray-500 block mb-1">Anahtar Adı (key_name) *</label>
               <input
+                id={`${formId}-key`}
                 value={form.keyName}
                 onChange={(e) => setForm((f) => ({ ...f, keyName: e.target.value }))}
                 disabled={!!editId}
@@ -214,8 +216,9 @@ export default function PlaybookRegistryTab() {
               {editId && <p className="text-[11px] text-gray-400 mt-0.5">Oluşturulduktan sonra değiştirilemez.</p>}
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Görünen Ad *</label>
+              <label htmlFor={`${formId}-ad`} className="text-xs text-gray-500 block mb-1">Görünen Ad *</label>
               <input
+                id={`${formId}-ad`}
                 value={form.displayName}
                 onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
                 placeholder="ör. DNS Çözümleme Kontrolü"
@@ -224,8 +227,9 @@ export default function PlaybookRegistryTab() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Açıklama (AI'a ne yaptığını anlatır)</label>
+            <label htmlFor={`${formId}-aciklama`} className="text-xs text-gray-500 block mb-1">Açıklama (AI'a ne yaptığını anlatır)</label>
             <textarea
+              id={`${formId}-aciklama`}
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               rows={2}
@@ -235,8 +239,9 @@ export default function PlaybookRegistryTab() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Kategori</label>
+              <label htmlFor={`${formId}-kategori`} className="text-xs text-gray-500 block mb-1">Kategori</label>
               <Select
+                id={`${formId}-kategori`}
                 sizeVariant="sm"
                 value={form.category}
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
@@ -245,8 +250,9 @@ export default function PlaybookRegistryTab() {
               </Select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1">AWX Template ID (opsiyonel — boşsa .env'e bakılır)</label>
+              <label htmlFor={`${formId}-template`} className="text-xs text-gray-500 block mb-1">AWX Template ID (opsiyonel — boşsa .env'e bakılır)</label>
               <input
+                id={`${formId}-template`}
                 type="number"
                 value={form.awxTemplateId}
                 onChange={(e) => setForm((f) => ({ ...f, awxTemplateId: e.target.value }))}
@@ -256,10 +262,11 @@ export default function PlaybookRegistryTab() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-gray-500 block mb-1">
+            <label htmlFor={`${formId}-sunucu`} className="text-xs text-gray-500 block mb-1">
               AWX Sunucusu (template bu sunucuda aranır — yanlışsa "AWX HTTP 404")
             </label>
             <Select
+              id={`${formId}-sunucu`}
               sizeVariant="sm"
               value={form.awxServerId}
               onChange={(e) => setForm((f) => ({ ...f, awxServerId: e.target.value }))}
@@ -270,8 +277,9 @@ export default function PlaybookRegistryTab() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Kaynak Tipi</label>
+              <label htmlFor={`${formId}-kaynak`} className="text-xs text-gray-500 block mb-1">Kaynak Tipi</label>
               <Select
+                id={`${formId}-kaynak`}
                 sizeVariant="sm"
                 value={form.sourceType}
                 onChange={(e) => setForm((f) => ({ ...f, sourceType: e.target.value }))}
@@ -280,8 +288,9 @@ export default function PlaybookRegistryTab() {
               </Select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Görünürlük (CSV rol listesi)</label>
+              <label htmlFor={`${formId}-gorunurluk`} className="text-xs text-gray-500 block mb-1">Görünürlük (CSV rol listesi)</label>
               <input
+                id={`${formId}-gorunurluk`}
                 value={form.visibility}
                 onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}
                 placeholder="User,Admin"
@@ -289,8 +298,9 @@ export default function PlaybookRegistryTab() {
               />
             </div>
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Sıra</label>
+              <label htmlFor={`${formId}-sira`} className="text-xs text-gray-500 block mb-1">Sıra</label>
               <input
+                id={`${formId}-sira`}
                 type="number"
                 value={form.sortOrder}
                 onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}

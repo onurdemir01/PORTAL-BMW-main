@@ -55,6 +55,7 @@ import {
 import { fmtRelative, fmtDateTime } from '@/utils/datetime';
 import LegacySorunlar from '@/components/logx_v2/shared/LegacySorunlar';
 import { kesifSorunlari } from '@/components/logx_v2/shared/legacySonuc';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 interface Props {
   result: LegacyDiscoveryResult;
@@ -446,7 +447,8 @@ const FileSelectionStep: React.FC<Props> = ({
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
         <input
-          autoFocus
+          // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+          ref={acilincaOdakla}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Dosya veya dizin ara… (ör. server.log, /audit/)"

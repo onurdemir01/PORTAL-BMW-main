@@ -9,6 +9,7 @@ import { nginxLoadtestApi } from '@/api/nginxLoadtestApi';
 import { TBL_BTN, smBtn } from '@/components/server_hub/retirementStil';
 import { GIRDI_TABAN, girdiStili } from './YukUi';
 import { hataMetni } from './yukTestiOrtak';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 export const ETIKET_MAX = 120;
 /** Sunucu kapisinin aynasi: null = gecerli, metin = neden. */
@@ -57,7 +58,8 @@ export default function EtiketDuzenle({ kosuId, etiket, onKaydedildi }: { kosuId
   }
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1" onClick={durdur} onKeyDown={durdur} role="group" aria-label={`Koşu ${kosuId} etiketi`}>
-      <input autoFocus value={deger} onChange={(e) => setDeger(e.target.value)} aria-label="Yeni etiket" maxLength={ETIKET_MAX + 10} className={`${GIRDI_TABAN} h-7 w-56`} style={girdiStili(!!yerel || !!hata)}
+      {/* Duzenleyici kalem dugmesiyle acilir: odak kutuya (autoFocus degil; bkz. pencereKlavye). */}
+      <input ref={acilincaOdakla} value={deger} onChange={(e) => setDeger(e.target.value)} aria-label="Yeni etiket" maxLength={ETIKET_MAX + 10} className={`${GIRDI_TABAN} h-7 w-56`} style={girdiStili(!!yerel || !!hata)}
         onKeyDown={(e) => { if (e.key === 'Enter') { void kaydet(); } if (e.key === 'Escape') { setAcik(false); } }} placeholder="ör. A3 brotli 4" />
       <button type="button" className={TBL_BTN} style={smBtn(true)} disabled={!!yerel || mesgul} onClick={() => void kaydet()}>Kaydet</button>
       <button type="button" className={TBL_BTN} style={smBtn()} onClick={() => setAcik(false)}>İptal</button>

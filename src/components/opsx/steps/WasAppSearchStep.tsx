@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { MagnifyingGlassIcon, ExclamationTriangleIcon, ArrowPathIcon, ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { opsxWasApi, type WasHost } from "@/api/opsxApi";
 import { WasEnvBadge } from "./WasBadges";
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 export interface WasAppSelection {
   app: string;
@@ -220,7 +221,8 @@ const WasAppSearchStep: React.FC<{ busy?: boolean; initialApp?: string; onSubmit
       <div className="relative">
         <MagnifyingGlassIcon className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
         <input
-          autoFocus
+          // Adim kullanici secimiyle acilir: odak arama kutusuna; sayfa ilk yuklenirken tasinmaz (autoFocus degil; bkz. pencereKlavye).
+          ref={acilincaOdakla}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="WAS uygulama (JVM) adı ara..."

@@ -47,6 +47,7 @@ import { ValuesEditor, type ValuesFileOption } from './ValuesEditor';
 import { RolloutApply } from './RolloutApply';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { toast } from '@/hooks/useToast';
+import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
 export interface KnownVersion {
   version: string;
@@ -344,7 +345,8 @@ function VersionStep({
         {manual && (
           <div className="space-y-1">
             <input
-              autoFocus
+              // Kutu, kullanici 'listede olmayan surum'u isaretleyince acilir: odak ona (autoFocus degil; bkz. pencereKlavye).
+              ref={acilincaOdakla}
               value={value}
               onChange={(e) => onChange(e.target.value)}
               placeholder="örn. 1.35.0"

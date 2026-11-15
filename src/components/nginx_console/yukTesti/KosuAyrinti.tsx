@@ -318,12 +318,13 @@ export default function KosuAyrinti({ kosuId, isAdmin, onGeri, kullaniciAdi = nu
       )}
 
       <section className="rounded-xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-        <div role="tablist" aria-label={`Koşu #${kosu.id} bölümleri`} className="flex items-center gap-1 border-b px-2" style={{ borderColor: 'var(--border-subtle)' }} onKeyDown={tus}>
+        {/* Ok tuslari odagi TASIYAN sekme dugmesinde dinlenir (sekme listesi kendisi odaklanmaz). */}
+        <div role="tablist" aria-label={`Koşu #${kosu.id} bölümleri`} className="flex items-center gap-1 border-b px-2" style={{ borderColor: 'var(--border-subtle)' }}>
           {sekmeler.map((s) => {
             const secili = s === etkin;
             return (
               <button key={s} ref={(el) => { dugmeler.current[s] = el; }} type="button" role="tab" id={`yuk-sekme-${kosu.id}-${s}`} aria-selected={secili} aria-controls={panelId} tabIndex={secili ? 0 : -1}
-                onClick={() => setSekme(s)} className="px-3 py-2.5 text-[12px] font-semibold focus-visible:outline-offset-2!"
+                onClick={() => setSekme(s)} onKeyDown={tus} className="px-3 py-2.5 text-[12px] font-semibold focus-visible:outline-offset-2!"
                 style={secili ? { color: 'var(--text-primary)', boxShadow: 'inset 0 -2px 0 var(--accent)' } : { color: 'var(--text-secondary)' }}>
                 {SEKME_ADI[s]}{s === 'cikti' && aktif ? <span aria-hidden className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle animate-status-pulse motion-reduce:animate-none" style={{ background: 'var(--accent)', color: 'var(--accent)' }} /> : null}
               </button>
