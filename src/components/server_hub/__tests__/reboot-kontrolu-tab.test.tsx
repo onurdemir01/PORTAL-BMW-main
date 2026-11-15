@@ -101,7 +101,14 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     fireEvent.click(await screen.findByText('#4'));
     expect(await screen.findByText(/Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı\?/)).toBeTruthy();
     expect(screen.getByText('izlenen ürün yok')).toBeTruthy();
-    expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(3); // liste + ayrinti basligi + sunucu karti
+    expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(5); // liste + ayrinti basligi + sunucu karti + ozet kutusu + filtre dugmesi
+    // OTOMASYON OZETI + FILTRE (2026-11-15): sayilar sunucu; komut kosmayan sunucu "dokunmadi", filtre listeyi daraltir.
+    expect(screen.getByText(/Sayılar/).textContent).toMatch(/sunucu sayısıdır/);
+    expect(screen.getByRole('button', { name: /Otomasyon dokunmadı \(1\)/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Başarısız \(0\)/ }));
+    expect(screen.getByText('Bu filtrede sunucu yok.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Kontrol gerekli \(1\)/ }));
+    expect(screen.queryByText('Bu filtrede sunucu yok.')).toBeNull();
     expect(screen.getByText('1 sunucuda kontrol gerekli')).toBeTruthy();
     expect(screen.getByText(/bu sunucuda hiçbir şey açılıp kapatılmadı \(uygulamalar/)).toBeTruthy();
     expect(screen.getByText('Plan notları — neden dokunulmadı / nasıl sayıldı')).toBeTruthy();

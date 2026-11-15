@@ -19,7 +19,8 @@
 //       kapatmaz, "kalan" bos cikar - bu bir dogrulama degil, sessiz gecis olurdu;
 //   (b) once calismayan bir urun ya da (urunu once calismayan) JVM simdi CALISIYOR: kural geregi
 //       dokunulmadi ama beklenen durum mu, insan bakmali (once <-> son goruntuden; rapor NEW_URUN ile ayni);
-//   (c) once goruntusu eski betik surumuyle alinmis: JBoss karsilastirilamadi (BILGI|ESKI).
+//   (c) once goruntusu eski betik surumuyle alinmis ve JBoss 7 urun satiri cevrilemedi (BILGI|BELIRSIZ) ya da
+//       AWX'teki eski betik JBoss'u hic islemedi (BILGI|ESKI). 2026-11-15'ten beri JBoss satirlari cevrilir.
 // Kalan: betigin son_fark'i ile Portal'in ayni kuralla kendi hesabinin (portalKalan) buyugu.
 // Kayit durumu: hic 'sorunlu' / 'olculemedi' yok ve en az bir 'kontrol' varsa 'kontrol'.
 'use strict';
@@ -56,6 +57,41 @@ function nesilKarsilastirilamaz(once, diger) {
   return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) && surumVar(diger);
 }
 
+/**
+ * CEVIRI (2026-11-15, ilk gece kosusu: JBoss tumden disarida kalinca kapali JVM acilmadi, fazla JVM kapatilmadi).
+ * Eski surum once goruntusunun JBoss satirlari CIKARILMAZ, yeni kurala cevrilir (reboot_duzelt.sh nesil_cevir ile
+ * BIREBIR): JVM nesli = ayni jboss_home'lu diger-goruntu JVM'inin nesli; yoksa home'da jboss8/vhosting8 -> JBOSS8;
+ * yoksa eski etiket. URUN|JBOSS7 yalniz cevrilmis bir JBOSS7 JVM'i ya da digerinde URUN|JBOSS7 varsa kalir; yoksa
+ * cikarilir ve 'belirsiz' (dokunulmadi, kontrol gerekli). Eski degilse satirlar aynen doner.
+ * -> { satirlar, cevrildi, belirsiz: ['JBOSS7'] | [] }
+ */
+const evDizini = (d) => (String(d || '').startsWith('jboss_home=') ? String(d).slice(11) : '');
+function onceNesilCevir(once, diger) {
+  const o = dizi(once);
+  if (!nesilKarsilastirilamaz(o, diger)) return { satirlar: o, cevrildi: false, belirsiz: [] };
+  const harita = new Map();
+  let d7 = false;
+  for (const l of dizi(diger)) {
+    const q = l.split('|');
+    if (q[0] === 'JVM' && /^JBOSS[78]$/.test(q[1])) {
+      const h = evDizini(q[3]);
+      if (h) harita.set(h, q[1]);
+    }
+    if (q[0] === 'URUN' && q[1] === 'JBOSS7') d7 = true;
+  }
+  let j7 = false;
+  const cev = o.map((l) => {
+    const q = l.split('|');
+    if (q[0] !== 'JVM' || !/^JBOSS[78]$/.test(q[1])) return l;
+    const h = evDizini(q[3]);
+    const g = h && harita.has(h) ? harita.get(h) : /jboss8|vhosting8/.test(h) ? 'JBOSS8' : q[1];
+    if (g === 'JBOSS7') j7 = true;
+    return [q[0], g, ...q.slice(2)].join('|');
+  });
+  const belirsiz = !j7 && !d7 && cev.some((l) => l.startsWith('URUN|JBOSS7|'));
+  return { satirlar: belirsiz ? cev.filter((l) => !l.startsWith('URUN|JBOSS7|')) : cev, cevrildi: true, belirsiz: belirsiz ? ['JBOSS7'] : [] };
+}
+
 /** Goruntu satirlari -> { urun: Set, jvm: Set('URUN|ad') }; haricJb: JBoss satirlari sayilmaz. */
 function kume(satirlar, haricJb = false) {
   const g = { urun: new Set(), jvm: new Set() };
@@ -80,9 +116,8 @@ function onceKume(satirlar, haricJb = false) {
  * kaydin alindigi gunun kuraliyla hesaplanir; eski kayit yeni kuralla bu fonksiyonla yeniden degerlendirilir.
  */
 function portalKalan(once, son) {
-  const haric = nesilKarsilastirilamaz(once, son);
-  const o = onceKume(once, haric);
-  const s = kume(son, haric);
+  const o = onceKume(onceNesilCevir(once, son).satirlar);
+  const s = kume(son);
   const out = [];
   for (const u of [...o.urun].sort(varsayilanSira)) if (!s.urun.has(u)) out.push(`FARK|DOWN|URUN|${u}||`);
   for (const k of [...o.jvm].sort(varsayilanSira)) if (!s.jvm.has(k)) out.push(`FARK|DOWN|JVM|${k}|`);
@@ -106,18 +141,21 @@ function kontrolNedenleri(once, r) {
     neden.push(
       'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; bu sunucuda hiçbir şey açılıp kapatılmadı (uygulamalar zaten kapalıyken mi alındı?).',
     );
-  const eski =
-    plan.some((l) => l.startsWith('BILGI|ESKI|')) ||
-    (onceVar && nesilKarsilastirilamaz(once, r?.son_goruntu));
-  if (eski)
+  // ESKI: AWX'teki ESKI betik JBoss'u hic islemedi (2026-11-14 surumu). Yeni betik cevirir (BILGI|NESIL, kontrol degil);
+  // yalniz cevrilemeyen JBoss 7 urunu (BILGI|BELIRSIZ ya da Portal'in ayni hesabi) kontrol nedenidir.
+  if (plan.some((l) => l.startsWith('BILGI|ESKI|')))
     neden.push(
-      "Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss nesil kuralı değiştiği için JBoss ürün/JVM'leri karşılaştırılmadı ve dokunulmadı — elle kontrol edin.",
+      'Reboot öncesi görüntü eski betik sürümüyle alınmış ve AWX\'teki eski betik JBoss ürün/JVM\'lerine dokunmadı. Güncel betikle "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.',
+    );
+  const cev = onceVar ? onceNesilCevir(once, r?.son_goruntu) : { satirlar: [], belirsiz: [] };
+  if (cev.belirsiz.length || plan.some((l) => l.startsWith('BILGI|BELIRSIZ|')))
+    neden.push(
+      'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss 7 ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — JBoss 7 ürününe dokunulmadı, elle kontrol edin.',
     );
   const calisan = [];
   if (onceVar) {
-    const haric = nesilKarsilastirilamaz(once, r?.son_goruntu);
-    const o = onceKume(once, haric);
-    const s = kume(r?.son_goruntu, haric);
+    const o = onceKume(cev.satirlar);
+    const s = kume(r?.son_goruntu);
     for (const u of [...s.urun].sort(varsayilanSira)) if (!o.urun.has(u)) calisan.push(u);
     for (const k of [...s.jvm].sort(varsayilanSira)) {
       const u = k.split('|')[0];
@@ -509,6 +547,7 @@ module.exports = {
   kayitDurumu,
   portalKalan,
   nesilKarsilastirilamaz,
+  onceNesilCevir,
   onceKume,
   kume,
   sonraOzeti,

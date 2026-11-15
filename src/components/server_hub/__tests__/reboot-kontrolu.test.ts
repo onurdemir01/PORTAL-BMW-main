@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/reboot-kontrolu.test.ts — RK1..RK4 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, nesilKarsilastirilamaz, onceBos, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
+import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, nesilKarsilastirilamaz, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
 
 const ONCE = ['BOOT|b1||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|WAS||', 'JVM|JBOSS8|appA|jboss_home=/usr/jboss8/AppServer', 'JVM|JBOSS8|appB|x', 'JVM|WAS|srv1|profil=p'];
 const ILK = ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|IHS||', 'JVM|JBOSS8|appB|x', 'JVM|JBOSS8|appC|x'];
@@ -135,5 +135,22 @@ describe('Reboot Kontrolü — inceleme 2026-11-14 (etiket dürüstlüğü, SONU
     expect(t.map((u) => [u.urun, u.durum])).toEqual([['NGINX', 'ok']]);
     expect(nedenListesi(['BILGI|ESKI|||x', 'BILGI|BOS|||y'])[0]).toMatch(/eski betik sürümüyle/);
     expect(nedenListesi(['BILGI|ESKI|||x', 'BILGI|BOS|||y', 'BILGI|CIKARIM|JBOSS8||z'], ['BOS', 'ESKI'])).toHaveLength(1);
+  });
+
+  test('RK11 eski sürüm önce görüntüsü yeni kurala çevrilir (sunucu onceNesilCevir ile aynı): JVM farkı tabloda', () => {
+    const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|app2|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|v8|jboss_home=/vhosting8/jboss/AppServer'];
+    const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS7||', 'URUN|JBOSS8||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer'];
+    const c = onceNesilCevir(once, son);
+    expect(c.belirsiz).toEqual([]);
+    expect(c.satirlar).toContain('JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer');
+    const t = urunTablosu(g(c.satirlar), g(son), g(son), []);
+    const jb7 = t.find((u) => u.urun === 'JBOSS7')!;
+    expect(jb7.jvmDegisim.map((x) => [x.ad, x.durum])).toEqual([['app2', 'sorun']]);
+    expect(t.find((u) => u.urun === 'JBOSS8')!.durum).toBe('ok');
+    expect(onceNesilCevir(['BOOT|b1||', 'URUN|JBOSS7||'], ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||']).belirsiz).toEqual(['JBOSS7']);
+    expect(nedenListesi(['BILGI|NESIL|||x', 'BILGI|BELIRSIZ|JBOSS7||y'])).toEqual([
+      "Önce görüntüsü eski betik sürümüyle alınmış — JBoss satırları jboss_home ile yeni nesil kuralına çevrilerek karşılaştırıldı.",
+      "JBoss 7: önce görüntüsü eski sürüm, ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — dokunulmadı, elle kontrol edin.",
+    ]);
   });
 });

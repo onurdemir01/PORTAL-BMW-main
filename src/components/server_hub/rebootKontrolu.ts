@@ -83,6 +83,36 @@ export function nesilKarsilastirilamaz(once: unknown, diger: unknown): boolean {
   return !o.some((l) => l.startsWith('SURUM|')) && o.some((l) => /^(URUN|JVM)\|JBOSS[78]\|/.test(l)) && satirlar(diger).some((l) => l.startsWith('SURUM|'));
 }
 
+/**
+ * Eski sürüm önce görüntüsünün JBoss satırları yeni nesil kuralına ÇEVRİLİR (2026-11-15; reboot_duzelt.sh nesil_cevir ve
+ * sunucu reboot-check.cjs onceNesilCevir ile BİREBİR): JVM nesli = aynı jboss_home'lu diğer-görüntü JVM'inin nesli; yoksa
+ * home'da jboss8/vhosting8 → JBOSS8; yoksa eski etiket. URUN|JBOSS7 yalnız çevrilmiş bir JBOSS7 JVM'i ya da diğer
+ * görüntüde JBOSS7 ürünü varsa kalır; yoksa çıkarılır ve 'belirsiz' (dokunulmadı, kontrol gerekli).
+ */
+export function onceNesilCevir(once: unknown, diger: unknown): { satirlar: string[]; cevrildi: boolean; belirsiz: string[] } {
+  const o = satirlar(once);
+  if (!nesilKarsilastirilamaz(o, diger)) return { satirlar: o, cevrildi: false, belirsiz: [] };
+  const ev = (d: string | undefined) => (String(d || '').startsWith('jboss_home=') ? String(d).slice(11) : '');
+  const harita = new Map<string, string>();
+  let d7 = false;
+  for (const l of satirlar(diger)) {
+    const q = l.split('|');
+    if (q[0] === 'JVM' && /^JBOSS[78]$/.test(q[1])) { const h = ev(q[3]); if (h) harita.set(h, q[1]); }
+    if (q[0] === 'URUN' && q[1] === 'JBOSS7') d7 = true;
+  }
+  let j7 = false;
+  const cev = o.map((l) => {
+    const q = l.split('|');
+    if (q[0] !== 'JVM' || !/^JBOSS[78]$/.test(q[1])) return l;
+    const h = ev(q[3]);
+    const g = h && harita.has(h) ? harita.get(h)! : /jboss8|vhosting8/.test(h) ? 'JBOSS8' : q[1];
+    if (g === 'JBOSS7') j7 = true;
+    return [q[0], g, ...q.slice(2)].join('|');
+  });
+  const belirsiz = !j7 && !d7 && cev.some((l) => l.startsWith('URUN|JBOSS7|'));
+  return { satirlar: belirsiz ? cev.filter((l) => !l.startsWith('URUN|JBOSS7|')) : cev, cevrildi: true, belirsiz: belirsiz ? ['JBOSS7'] : [] };
+}
+
 /** Önce görüntüsü alınmış (BOOT var) ama izlenen ürün/JVM yok: sonra hiçbir şey açılıp kapatılmaz. */
 export function onceBos(g: Goruntu): boolean {
   return g.bicimTamam && g.urunler.size === 0 && g.jvmler.size === 0;
@@ -179,6 +209,8 @@ export function nedenListesi(plan: unknown, haricTur: readonly string[] = []): s
     const ad = URUN_ADI[b.urun] || b.urun;
     if (b.tur === 'BOS') return "Reboot öncesi görüntüde izlenen ürün/JVM yoktu — hiçbir şey açılıp kapatılmadı.";
     if (b.tur === 'ESKI') return "Önce görüntüsü eski betik sürümüyle alınmış — JBoss ürün/JVM'leri karşılaştırılmadı ve dokunulmadı.";
+    if (b.tur === 'NESIL') return 'Önce görüntüsü eski betik sürümüyle alınmış — JBoss satırları jboss_home ile yeni nesil kuralına çevrilerek karşılaştırıldı.';
+    if (b.tur === 'BELIRSIZ') return `${ad}: önce görüntüsü eski sürüm, ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — dokunulmadı, elle kontrol edin.`;
     if (b.tur === 'CIKARIM') return `${ad}: önce görüntüsünde ürün satırı yoktu; JVM'i çalıştığı için reboot öncesi çalışıyor sayıldı.`;
     if (b.ad && /dokunulmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — JVM'ine kurala göre dokunulmadı.`;
     if (b.tur === 'NEW' && !b.ad) return `${ad}: reboot öncesi çalışmıyordu — ürüne kurala göre dokunulmadı (ürün hiç durdurulmaz).`;

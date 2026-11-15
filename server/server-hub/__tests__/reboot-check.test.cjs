@@ -499,7 +499,7 @@ test('RC12 kontrol nedeni once <-> son goruntuden: plandan SONRA kalkan yeni uru
   );
 });
 
-test('RC13 eski surum once (SURUM yok) + yeni son: JBoss sahte fark uretmez, nedeni "eski betik surumu" ile kontrol', () => {
+test("RC13 eski surum once (SURUM yok) + yeni son: JBoss satirlari cevrilir, sahte fark yok; JVM'siz JBoss 7 urunu belirsiz -> kontrol", () => {
   const once = [
     'BOOT|b1||',
     'URUN|JBOSS7||',
@@ -520,6 +520,24 @@ test('RC13 eski surum once (SURUM yok) + yeni son: JBoss sahte fark uretmez, ned
     assert.deepEqual([d.A.durum, d.A.kalan], ['kontrol', 0], JSON.stringify(d.A));
     assert.match(d.A.sebep, /eski betik sürümüyle/);
   }
+});
+
+test('RC13b eski surum once: cevrilen JBoss JVM farki Portal kalaninda; cevrilebilen once kontrol nedeni URETMEZ', () => {
+  const { onceNesilCevir } = require('../reboot-check.cjs');
+  const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|app2|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|v8|jboss_home=/vhosting8/jboss/AppServer'];
+  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS7||', 'URUN|JBOSS8||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer'];
+  const c = onceNesilCevir(once, son);
+  assert.equal(c.cevrildi, true);
+  assert.deepEqual(c.belirsiz, []);
+  assert.ok(c.satirlar.includes('JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer'));
+  assert.deepEqual(onceNesilCevir(['SURUM|2||', ...once], son).satirlar, ['SURUM|2||', ...once], 'yeni surum once degistirildi');
+  const d = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: son, plan: ['BILGI|NESIL|||x'] } }, ['A'], { A: once });
+  assert.deepEqual([d.A.durum, d.A.kalan], ['sorunlu', 1], JSON.stringify(d.A));
+  assert.equal(d.A.neden, undefined, 'cevrilebilen eski once kontrol nedeni uretti');
+  // AWX'te ESKI betik (JBoss'a dokunmadi): fark Portal kalaninda gorunur ve yeniden calistirma soylenir.
+  const e = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: son, plan: ['BILGI|ESKI|||x'] } }, ['A'], { A: once });
+  assert.equal(e.A.durum, 'sorunlu');
+  assert.match(e.A.neden.join(' '), /yeniden çalıştırın/);
 });
 
 test('RC14 sonuclanmis eski kayit ayrintisi acilinca yeni kuralla yeniden degerlendirilir ve kayda yazilir', async () => {

@@ -16,7 +16,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, nesilKarsilastirilamaz, onceBos, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 // 2026-11-14 (ilk gerçek koşu): önce görüntüsü boş sunucu yeşil gösteriliyordu ve sonra "Sorunsuz" çıkıyordu.
 const ONCE_BOS_METNI = 'Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda hiçbir şeyi açıp kapatmaz.';
@@ -112,17 +112,16 @@ function IslemNotu({ x }: { x?: IslemSatiri }) {
 
 function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | undefined; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
   const [acik, setAcik] = useState(d?.durum !== 'sorunsuz');
-  const og = goruntuAyristir(once);
+  // Eski sürüm önce görüntüsünün JBoss satırları yeni nesil kuralına çevrilir (2026-11-15; sunucu ve betikle aynı).
+  const og = goruntuAyristir(onceNesilCevir(once, r?.son_olculdu ? r?.son_goruntu : r?.goruntu).satirlar);
   const ig = goruntuAyristir(r?.goruntu);
   const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
-  // Eski sürüm önce görüntüsünde JBoss karşılaştırılmaz (nedeni d.neden'de yazılı).
-  const jbHaric = nesilKarsilastirilamaz(once, r?.son_olculdu ? r?.son_goruntu : r?.goruntu) ? new Set(['JBOSS7', 'JBOSS8']) : new Set<string>();
-  const tablo = urunTablosu(og, ig, sg, islem, jbHaric);
+  const tablo = urunTablosu(og, ig, sg, islem);
   const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
   const uyari = d?.neden || [];
   // Boş önce / eski sürüm zaten uyarı satırında yazılıysa plan notlarında tekrar edilmez.
-  const neden = nedenListesi(r?.plan, uyari.length ? ['BOS', 'ESKI'] : []);
+  const neden = nedenListesi(r?.plan, uyari.length ? ['BOS', 'ESKI', 'BELIRSIZ'] : []);
   const reboot = rebootOldu(og, ig);
   return (
     <div className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -197,12 +196,32 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
   );
 }
 
+// OTOMASYON OZETI + FILTRE (2026-11-15, ekip: "otomasyon kac tanesinde calisti, kac tanesine dokunmadi, kaci basarili,
+// kaci basarisiz"). "Islem yapti" = en az bir acma/kapatma komutu kostu (SKIP sayilmaz). Rapor (reboot-rapor.cjs) ayni tanim.
+type Filtre = 'tum' | 'sorunlu' | 'kontrol' | 'sorunsuz' | 'islem' | 'dokunmadi' | 'komuthata';
+const FILTRE_ADI: Record<Filtre, string> = {
+  tum: 'Tümü', sorunlu: 'Başarısız', kontrol: 'Kontrol gerekli', sorunsuz: 'Başarılı', islem: 'Otomasyon işlem yaptı', dokunmadi: 'Otomasyon dokunmadı', komuthata: 'Komutu başarısız',
+};
+/** Sunucu başına otomasyon sınıfı (saf). */
+function otomasyonSinifi(d: RcDegerlendirme | undefined, r: RcSunucuSonuc | undefined): Record<Filtre, boolean> {
+  const komut = islemAyristir(r?.islemler).filter((x) => x.sonuc === 'OK' || x.sonuc === 'FAIL');
+  const durum = d?.durum;
+  return {
+    tum: true, sorunlu: durum === 'sorunlu' || durum === 'olculemedi', kontrol: durum === 'kontrol', sorunsuz: durum === 'sorunsuz',
+    islem: komut.length > 0, dokunmadi: komut.length === 0, komuthata: komut.some((x) => x.sonuc === 'FAIL'),
+  };
+}
+
 function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: boolean }) {
   const onceS = k.once.sonuc?.sunucular || {};
   const sonraS = k.sonra.sonuc?.sunucular || {};
   const deg = k.ozet?.sonra?.sunucu || {};
   const sonraHazir = SONRA_ACIK.includes(k.durum);
-  const sonraHosts = Object.keys(deg).length ? Object.keys(deg) : [];
+  const [filtre, setFiltre] = useState<Filtre>('tum');
+  const tumHosts = Object.keys(deg);
+  const sinif = Object.fromEntries(tumHosts.map((h) => [h, otomasyonSinifi(deg[h], sonraS[h])]));
+  const say = (f: Filtre) => tumHosts.filter((h) => sinif[h][f]).length;
+  const sonraHosts = tumHosts.filter((h) => sinif[h][filtre]);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -280,8 +299,33 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
           {k.ozet?.sonra?.kontrol ? <span className="ml-2" style={{ color: 'var(--status-warning)' }}>{k.ozet.sonra.kontrol} sunucuda kontrol gerekli</span> : null}
         </div>
         {k.durum === 'sonra_kosuyor' ? <IsCanli k={k} />
-          : sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
-            : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
+          : tumHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
+            : (
+              <div className="space-y-2">
+                <div className="grid gap-1.5 text-[12px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}>
+                  {([['islem', 'var(--status-info)'], ['dokunmadi', 'var(--text-secondary)'], ['sorunsuz', 'var(--status-success)'], ['kontrol', 'var(--status-warning)'], ['sorunlu', 'var(--status-danger)']] as [Filtre, string][]).map(([f, renk]) => (
+                    <div key={f} className="rounded-lg border px-3 py-1.5" style={{ borderColor: 'var(--border-subtle)' }}>
+                      <div className="text-lg font-semibold tabular-nums" style={{ color: renk }}>{say(f)}</div>
+                      <div style={{ color: 'var(--text-muted)' }}>{FILTRE_ADI[f]}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                  Sayılar <b>sunucu</b> sayısıdır. "İşlem yaptı" = en az bir açma/kapatma komutu çalıştı (gerek kalmayanlar sayılmaz); başarılı/başarısız son kontrole göredir.
+                </div>
+                <div role="group" aria-label="Sunucu filtresi" className="flex flex-wrap gap-1.5">
+                  {(Object.keys(FILTRE_ADI) as Filtre[]).map((f) => (
+                    <button key={f} type="button" aria-pressed={filtre === f} onClick={() => setFiltre(f)}
+                      className="h-7 px-2.5 rounded-full border text-[11px] font-medium"
+                      style={filtre === f ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' } : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                      {FILTRE_ADI[f]} <span className="tabular-nums">({say(f)})</span>
+                    </button>
+                  ))}
+                </div>
+                {sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Bu filtrede sunucu yok.</div>
+                  : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
+              </div>
+            )}
       </section>
     </div>
   );

@@ -45,7 +45,7 @@ test('RR4 rapor ekip arkadasinin tasarimini tasir ve tum veriyi KACISLAR', () =>
     } } },
   };
   const h = raporHtml(k);
-  for (const parca of ['Patch Reboot | Durum Raporu', 'Otomatik düzeltme sonrası • Son kontrol', '<h2>Bulgular', '<h2>Otomatik Düzeltme', '<h2>Normal Sunucular', 'Kritik', 'Uyarı', 'Bilgi', 'Normal'])
+  for (const parca of ['Patch Reboot | Durum Raporu', 'Otomatik düzeltme sonrası • Son kontrol', '<h2>Bulgular', '<h2>Otomatik Düzeltme', 'Normal Sunucular', 'Kritik', 'Uyarı', 'Bilgi', 'Normal', '<h2>Otomasyon Özeti', 'Kutular <b>sunucu</b> sayısıdır'])
     assert.ok(h.includes(parca), `rapor bolumu yok: ${parca}`);
   assert.ok(!h.includes('<script>alert'), 'not alani kacislanmadi');
   assert.ok(!h.includes('<img src=x'), 'islem mesaji kacislanmadi');
@@ -103,7 +103,7 @@ test('RR9 komut FAIL donup oge yine de kalktiysa "komut calistirmadi" denmez (KO
   assert.doesNotMatch(b.aciklama, /çalıştırmadan/);
 });
 
-test('RR10 eski surum once goruntusu (SURUM yok) JBoss bazinda karsilastirilmaz: ESKI_SURUM uyarisi, sahte DOWN/NEW yok', () => {
+test('RR10 eski surum once goruntusu (SURUM yok): JBoss satirlari cevrilir, sahte DOWN/NEW yok; JVM\'siz JBoss 7 urunu belirsiz (ESKI_SURUM)', () => {
   const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'URUN|NGINX||', 'JVM|JBOSS7|app1|jboss_home=/vhosting8/jboss/AppServer'];
   const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|NGINX||', 'JVM|JBOSS8|app1|jboss_home=/vhosting8/jboss/AppServer'];
   const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: son, son_goruntu: son });
@@ -112,4 +112,37 @@ test('RR10 eski surum once goruntusu (SURUM yok) JBoss bazinda karsilastirilmaz:
   const eskiSon = ['BOOT|b2||', ...once.slice(1)];
   const ayni = sunucuDegerlendir(once, { son_olculdu: true, goruntu: eskiSon, son_goruntu: eskiSon });
   assert.equal(ayni.sonuc, 'OK', 'iki taraf da eski surumken ESKI_SURUM denildi');
+});
+
+test('RR11 eski surum once: cevrilen JBoss JVM\'leri GERCEKTEN karsilastirilir (2026-11-15 gece kosusu: kapali JVM gozden kaciyordu)', () => {
+  const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|app2|jboss_home=/usr/jboss/AppServer'];
+  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS7||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|yeni|jboss_home=/usr/jboss/AppServer'];
+  const d = sunucuDegerlendir(once, { son_olculdu: true, goruntu: son, son_goruntu: son, islemler: [] });
+  assert.deepEqual(d.bulgu.map((b) => [b.durum, b.servis]).sort(), [['DOWN', 'JBoss 7 JVM — app2'], ['NEW_KALAN', 'JBoss 7 JVM — yeni']]);
+  assert.equal(d.sonuc, 'PROBLEM');
+});
+
+test('RR12 otomasyon ozeti ve filtre: islem yapan / dokunulmayan / komutu basarisiz sunucu sayilari; satir siniflari', () => {
+  const ONCE2 = ['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'];
+  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||'];
+  const k = {
+    id: 9, hosts: ['A1', 'B2', 'C3'], olusturan: 'x',
+    once: { sonuc: { sunucular: { A1: { goruntu_ok: true, goruntu: ONCE2 }, B2: { goruntu_ok: true, goruntu: ONCE2 }, C3: { goruntu_ok: true, goruntu: ONCE2 } } } },
+    sonra: { sonuc: { sunucular: {
+      A1: { son_olculdu: true, goruntu: ['BOOT|b2||', 'SURUM|2||'], son_goruntu: son, islemler: ['SONUC|baslat|NGINX||OK|ok'] },
+      B2: { son_olculdu: true, goruntu: son, son_goruntu: son, islemler: ['SONUC|baslat|NGINX||SKIP|zaten'] },
+      C3: { son_olculdu: true, goruntu: ['BOOT|b2||', 'SURUM|2||'], son_goruntu: ['BOOT|b2||', 'SURUM|2||'], islemler: ['SONUC|baslat|NGINX||FAIL|hata'] },
+    } } },
+  };
+  const h = raporHtml(k);
+  const kutu = (ad) => Number((new RegExp(`>(\\d+)</span><span[^>]*>${ad}<`).exec(h) || [])[1]);
+  assert.equal(kutu('Otomasyon işlem yaptı'), 2);
+  assert.equal(kutu('Otomasyon dokunmadı'), 1, 'yalniz SKIP olan sunucu dokunulmadi sayilmali');
+  assert.equal(kutu('Başarısız'), 1);
+  assert.equal(kutu('Başarılı \\(son kontrol temiz\\)'), 2);
+  assert.match(h, /Komutu başarısız dönen sunucu: <b>1<\/b>/);
+  assert.match(h, /<tr class='r s-PROBLEM o-islem o-hata'><td class='host'>C3/);
+  assert.match(h, /<tr class='r s-INFO o-islem'><td class='host'>A1/);
+  assert.match(h, /#f-dokunmadi:checked ~ table\.fl tr\.r:not\(\.o-yok\)\{display:none\}/);
+  assert.match(h, /\(2 kayıt · 2 sunucu\)/);
 });
