@@ -36,7 +36,9 @@ const PKG = {
   ),
 };
 const KILIT = JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package-lock.json'), 'utf8'));
-assert.ok(Object.keys(PKG.devDependencies || {}).length > 10, 'tam manifestte gelistirme paketleri yok');
+test('PK0 tam manifest gelistirme paketlerini tasir (budama sinanabilir)', () => {
+  assert.ok(Object.keys(PKG.devDependencies || {}).length > 10, 'tam manifestte gelistirme paketleri yok');
+});
 const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8');
 
 test('PK1 calisma zamani package.json', () => {
@@ -160,6 +162,9 @@ test('PK5 haric listesi', () => {
     'scripts/ui-tarama/tarama.mjs',
     'scripts/paket.cjs',
     'scripts/guvenlik-denetim.cjs',
+    'scripts/kapi.cjs',
+    'scripts/sonar-kapi.cjs',
+    'scripts/bicim-kapisi.cjs',
     'node_modules/x/index.js',
   ]) {
     assert.equal(P.haricMi(g), true, g);

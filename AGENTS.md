@@ -6,6 +6,19 @@ Bu depo, geliştirme akışını destekleyen uzman ajanları içerir. Her ajanı
 
 Kurumsal güvenlik taramasından geçen her teslim **0 zafiyet** ile geçer; istisna yoktur. Gerekirse her yere dokunulur, ama sonuçta uygulama **çalışır** kalır. Kuruma ve sunucuya giden şey çalışma zamanı paketidir (`npm run paket`); yeni paket 7 gün bekler ve yeni zafiyet yaratamaz. Ayrıntı ve kapılar: `docs/GUVENLIK-0-ZAFIYET.md`.
 
+## Değişmez kural: kalite kapıları (2026-11-15, herkes için)
+
+`main`'e giren her değişiklik, insan ya da ajan yazmış olsun, [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md)'deki kapıların **hepsinden** geçer.
+
+- Teslimden önce `npm run kapi` koşturulur; sonuç sayılarıyla raporlanır ("geçti" demek yetmez).
+- CI'da `verify` ve `sonar` yeşil olmadan merge yok; onay, onaylayıcı listesinden geçmiş bir inceleyiciden gelir.
+- Kapılar yalnız sıkılaşır. Şunlar yasaktır:
+  - eşik düşürmek;
+  - bastırma ya da dışlama eklemek (`NOSONAR`, `eslint-disable`, `@ts-ignore`, `.skip`, `sonar.*.exclusions`);
+  - testi zayıflatmak;
+  - tarayıcıdan gizlemek için kodu bölmek;
+  - `--no-verify`.
+
 ## Proje Ajanları (`.claude/agents/`)
 
 ### `logx-uzman`
@@ -40,7 +53,7 @@ Bu rol, ana ajanın her turdaki çıktısını **düşmanca doğrulamak** için 
 
 1. **Senkron**: `git fetch` + `git log --oneline origin/main -5`
 2. **Delta al**: Ana ajanın son turda neye dokunduğunu belirle
-3. **Kanıt üret**: Denetim listesini uygula (bekçi körlüğü, sessiz başarısızlık, Portal↔AWX sözleşmesi, yetki, dürüstlük, teslim öncesi)
+3. **Kanıt üret**: Denetim listesini uygula (bekçi körlüğü, sessiz başarısızlık, Portal↔AWX sözleşmesi, yetki, dürüstlük, teslim öncesi, kalite kapıları: `docs/KALITE-KAPILARI.md` onaylayıcı listesi — CI `verify` + `sonar` yeşil mi, kapı gevşetildi mi)
 4. **Görev kuyruğunu yeniden sırala**
 5. **Çıktı ver**: `TUR <n>` biçiminde — bulgular, görevler, kapananlar, denenenler
 

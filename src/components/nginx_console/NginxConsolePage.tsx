@@ -174,7 +174,7 @@ export default function NginxConsolePage() {
         addJob({ title: `Nginx dokum · ${list.length} sunucu #${r.jobId}`, fetchStatus: async () => {
           const s = await nginxConsoleApi.jobStatus(r.awxServerId, r.jobId as number);
           if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-          if (TERMINAL.has(s.status) && !done) { done = true; loadHosts(); }
+          if (TERMINAL.has(s.status) && !done) { done = true; void loadHosts(); }
           return { status: s.status, output: s.output || '', result: s.result };
         } });
       }
@@ -394,7 +394,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
       const r = await nginxConsoleApi.refresh(all ? [] : list, all);
       if (!r.ok) { toast.error(r.message || 'Başlatılamadı.'); return; }
       toast.success(`Dokum başlatıldı (job ${r.jobId}) — bitince liste kendini yeniler.`);
-      trackJob(all ? `Nginx dokum · TÜM filo #${r.jobId}` : `Nginx dokum · ${list.length} sunucu #${r.jobId}`, r, () => { loadHosts(); if (cur && (all || list.includes(cur))) loadTree(cur); });
+      trackJob(all ? `Nginx dokum · TÜM filo #${r.jobId}` : `Nginx dokum · ${list.length} sunucu #${r.jobId}`, r, () => { void loadHosts(); if (cur && (all || list.includes(cur))) void loadTree(cur); });
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 
@@ -429,7 +429,7 @@ function ConfigTab({ isAdmin, initialHost = null }: { isAdmin: boolean; initialH
       }
       setConfirm(false);
       toast.success(`Publish başlatıldı (job ${r.jobId}, ${targets.length} sunucu) — sonuç iş penceresinde; bitince dosya yeniden okunur.`);
-      trackJob(`Nginx publish · ${p.split('/').pop()} → ${targets.length === 1 ? targets[0] : targets.length + ' sunucu'} #${r.jobId}`, r, async () => { await loadTree(cur); if (mode === 'create') { setMode('update'); await openFile(p); } else await openFile(p); loadHosts(); });
+      trackJob(`Nginx publish · ${p.split('/').pop()} → ${targets.length === 1 ? targets[0] : targets.length + ' sunucu'} #${r.jobId}`, r, async () => { await loadTree(cur); if (mode === 'create') { setMode('update'); await openFile(p); } else await openFile(p); void loadHosts(); });
     } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
 

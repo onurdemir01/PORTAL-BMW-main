@@ -322,7 +322,7 @@ export default function RebootKontroluTab() {
   // Koşan kayıt açıksa 10 sn'de bir tazele (sunucu AWX sonucunu okuyup kayda yazar).
   useEffect(() => {
     if (!secili || !/_kosuyor$/.test(secili.durum) || !gorunur) return;
-    const t = window.setInterval(() => { ac(secili.id); yukle(); }, 5000);
+    const t = window.setInterval(() => { void ac(secili.id); void yukle(); }, 5000);
     return () => window.clearInterval(t);
   }, [secili, ac, yukle, gorunur]);
 
@@ -334,7 +334,7 @@ export default function RebootKontroluTab() {
       fetchStatus: async () => {
         const s = await serverHubApi.jobStatus(Number(serverId ?? 0), jobId);
         if (!s.ok) throw new Error(s.message || 'Durum okunamadı.');
-        if (TERMINAL.has(s.status) && !bitti) { bitti = true; window.setTimeout(() => { ac(id); yukle(); }, 1500); }
+        if (TERMINAL.has(s.status) && !bitti) { bitti = true; window.setTimeout(() => { void ac(id); void yukle(); }, 1500); }
         return { status: s.status, output: s.output || '', result: s.result };
       },
     });

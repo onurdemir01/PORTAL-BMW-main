@@ -111,14 +111,14 @@ pipeline {
     }
 
     stage('SonarQube ve Quality Gate') {
+      // Boolean.valueOf(<adres>) her zaman false donuyordu: asama hic kosmuyordu (2026-11-15).
+      // Jeton komut satirinda degil ortamda (SONAR_TOKEN, tarayici kendisi okur); kapi sonucunu
+      // tarayici bekler (withSonarQubeEnv gerektirmez).
       when {
-        expression { return Boolean.valueOf(env.SONAR_HOST_URL?.trim()) }
+        expression { return env.SONAR_HOST_URL?.trim() ? true : false }
       }
       steps {
-        sh 'sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.login="$SONAR_TOKEN"'
-        timeout(time: 10, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
-        }
+        sh 'sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=600'
       }
     }
 

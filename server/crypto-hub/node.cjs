@@ -1838,7 +1838,10 @@ function esOnerisi(tenant, grupId, talepId) {
  * @returns {Promise<{ok: true, oco: object}|{ok: false, status: number, blocked: string, message: string, ek: object}>}
  */
 async function ocoKapisi({ db, ocoNumber, smartMod, simdi = new Date() }) {
-  const red = (status, blocked, message, ek = { ocoRequired: true }) => ({ ...hata(status, blocked, message), ek });
+  const red = (status, blocked, message, ek) => ({
+    ...hata(status, blocked, message),
+    ek: ek === undefined ? { ocoRequired: true } : ek,
+  });
   if (!(await ocoKolonlariVarMi(db))) return red(503, 'node_oco_kolon_yok', METIN.ocoKolonYok, {});
   const numara = String(ocoNumber == null ? '' : ocoNumber).trim();
   if (!numara) return red(400, 'node_oco_gerekli', METIN.ocoGerekli);

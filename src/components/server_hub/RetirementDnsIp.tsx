@@ -66,7 +66,7 @@ export default function RetirementDnsIp({ id, app }: { id: number; app: string }
   };
 
   return (
-    <details className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !d && !yukleniyor) yukle(); }}>
+    <details className="rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open && !d && !yukleniyor) void yukle(); }}>
       <summary className="cursor-pointer px-3 py-2 text-[12px] font-semibold">
         DNS silme / IP iadesi <span className="font-normal" style={{ color: 'var(--text-muted)' }}>— hangi DNS silinecek, hangi IP iade edilecek (Smart kayıtları ekip tarafından açılır)</span>
       </summary>

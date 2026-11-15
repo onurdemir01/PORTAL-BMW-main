@@ -884,7 +884,7 @@ function HostRow({
       className="hover:bg-[var(--bg-elevated)]/60 cursor-pointer"
       onClick={(e) => {
         if (e.ctrlKey || e.metaKey || e.button !== 0) return;
-        navigate(to);
+        void navigate(to);
       }}
       title="Sunucu sayfasını aç"
     >

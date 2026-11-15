@@ -8,5 +8,5 @@ import type { NavigateFunction } from "react-router-dom";
 
 export function seedAiAnalystChat(navigate: NavigateFunction, prompt: string): void {
   sessionStorage.setItem("aiAnalystChatPrefill", prompt);
-  navigate("/ai-analyst");
+  void navigate("/ai-analyst");
 }

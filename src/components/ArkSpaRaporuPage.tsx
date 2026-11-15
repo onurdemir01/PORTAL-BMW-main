@@ -498,7 +498,7 @@ export default function ArkSpaRaporuPage() {
                       defaultValue={r.note}
                       disabled={kayit === k}
                       onBlur={(e) => {
-                        if (e.target.value !== r.note) beyanYaz(r, r.inUse, e.target.value);
+                        if (e.target.value !== r.note) void beyanYaz(r, r.inUse, e.target.value);
                       }}
                       placeholder="not ekle"
                       className="px-1.5 py-1 text-[11px] border rounded-lg w-full"

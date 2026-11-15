@@ -1757,7 +1757,7 @@ export default function ServerHubPage() {
   // BMW Hub > Retirement sayfasinda (/retirement, 2026-11-13): oneri yonlendirme durumu (location.state) ile tasinir,
   // URL'e uygulama adi yazilmaz.
   const retirementAc = (uygulama: string, not: string) => {
-    navigate('/retirement', { state: { retireOneri: { uygulama, not } } });
+    void navigate('/retirement', { state: { retireOneri: { uygulama, not } } });
   };
   // RETIREMENT ANALIZI ROZETI (2026-11-07): Uygulama 360 / sunucu paneli "Analizde ac" -> analiz sekmesi
   // o kayit secili (tek kaynak, iki giris). Context: rozet panelin icinde, prop zinciri gerekmez.
@@ -2248,7 +2248,7 @@ function HostsTab({
           const oz = yukleyiciOzeti(result);
           setYukleme({ baslik: `${baslik}: ${status}`, ...oz });
           if (oz.sorun) toast.warning(`${baslik}: ${oz.satirlar.join(' · ')}`);
-          load(true);
+          void load(true);
         },
       );
     } catch (e: unknown) {
