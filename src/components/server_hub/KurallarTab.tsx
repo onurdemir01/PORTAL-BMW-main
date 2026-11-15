@@ -210,6 +210,12 @@ export default function KurallarTab() {
               <b style={{ color: 'var(--text-secondary)' }}>Açılış Hazırlığı ve özet kartları</b>{' '}
               (reboot riski, retire adayı…) bulgu koduna bakar; seviye değişse de onlar değişmez.
             </p>
+            <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
+              <b style={{ color: 'var(--text-secondary)' }}>Non-Production tavanı:</b> DEV / TEST / QA (ve diğer
+              prod dışı) sunucularda <b style={{ color: 'var(--text-secondary)' }}>kritik</b> bulgular{' '}
+              <b style={{ color: 'var(--text-secondary)' }}>uyarı</b> olarak sayılır; bulgu gizlenmez, &quot;non-prod ·
+              prod&apos;da Kritik&quot; diye işaretlenir. Ortamı bilinmeyen sunucuda tavan uygulanmaz.
+            </p>
           </div>
           <button
             type="button"

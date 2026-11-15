@@ -2361,6 +2361,18 @@ function assess(data, opts = {}) {
         f.schemaUnknown = true;
       }
 
+    // NON-PROD TAVANI (2026-11-15, kullanici: "tum non-production ortamini kritik olarak gostermesek mi"):
+    // Non-Production sunucuda (DEV/TEST/QA/ALPHA/ODM/EDU) KRITIK bulgu UYARI olarak sayilir. Bulgu, metni ve
+    // eylemi aynen kalir; yalniz seviye iner ve f.ortamTavani isaretlenir (ekran "non-prod: kritik -> uyari"
+    // der, gizlemez). Admin seviye degisikliginden SONRA uygulanir. Ortami BILINMIYOR sunucu prod gibi
+    // ele alinir (tavan yok): yanlislikla prod'u yumusatmaktansa.
+    if (h.envGroup === 'Non-Production')
+      for (const f of F)
+        if (f.severity === 'danger') {
+          if (!f.defaultSeverity) f.defaultSeverity = 'danger';
+          f.severity = 'warning';
+          f.ortamTavani = true;
+        }
     h.hostClass = hostClassOf(h.host);
     const worst = F.reduce((a, f) => Math.max(a, SEV[f.severity]), 0);
     h.status = Object.keys(SEV).find((k) => SEV[k] === worst);
@@ -2887,6 +2899,7 @@ function flattenFindings(hosts) {
         severity: f.severity,
         // Admin seviyeyi degistirdiyse kodun varsayilani (ekran isaretler).
         ...(f.defaultSeverity ? { defaultSeverity: f.defaultSeverity } : {}),
+        ...(f.ortamTavani ? { ortamTavani: true } : {}),
         area: f.area,
         code: f.code,
         text: f.text,

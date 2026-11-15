@@ -46,8 +46,10 @@ export interface ShUnattributed {
 export interface ShFinding {
   /** 'ok' yalniz Admin seviyeyi "sorun yok"a cektiyse (Kurallar & Limitler): listede kalir, sayilmaz. */
   severity: ShSeverity;
-  /** Admin seviyeyi degistirdiyse kodun varsayilan seviyesi. */
+  /** Admin seviyeyi degistirdiyse ya da non-prod tavani indirdiyse kodun varsayilan seviyesi. */
   defaultSeverity?: ShSeverity;
+  /** Non-Production sunucu: kritik bulgu uyari olarak sayildi (2026-11-15). */
+  ortamTavani?: boolean;
   area: 'init' | 'jboss' | 'jvm' | 'web' | 'ip' | 'ssh' | 'scan' | 'ear';
   code: string;
   text: string;
@@ -363,6 +365,7 @@ export interface ShFindingRow {
   scanDate: string | null;
   severity: ShSeverity;
   defaultSeverity?: ShSeverity;
+  ortamTavani?: boolean;
   area: ShFinding['area'];
   code: string;
   text: string;

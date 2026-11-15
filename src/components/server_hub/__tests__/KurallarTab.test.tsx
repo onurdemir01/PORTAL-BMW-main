@@ -215,7 +215,7 @@ describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
     expect(sh).toMatch(/<SeviyeAyarBandi ayar=\{data\.ayar\} \/>/);
     expect(sh).toMatch(/bulgu kodunun seviyesi Admin tarafından değiştirildi/);
     expect(sh).toMatch(/Server Hub ayarları okunamadı: bu raporda varsayılan seviyeler uygulandı\./);
-    expect((sh.match(/<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} \/>/g) || []).length).toBe(2);
+    expect((sh.match(/<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} ortam=\{f\.ortamTavani\} \/>/g) || []).length).toBe(2);
     expect(sh).toMatch(/<option value="ok">sorun yok \(seviyesi değiştirilen\)<\/option>/);
   });
 });

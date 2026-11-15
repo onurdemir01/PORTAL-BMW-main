@@ -1674,8 +1674,19 @@ function SeviyeAyarBandi({
 }
 
 /** Bulgu seviyesi Admin tarafindan degistirildiyse varsayilani yazan isaret. */
-function SeviyeDegistiIsareti({ d }: { d?: ShSeverity }) {
+function SeviyeDegistiIsareti({ d, ortam }: { d?: ShSeverity; ortam?: boolean }) {
   if (!d) return null;
+  // NON-PROD TAVANI (2026-11-15): Non-Production sunucuda kritik bulgu uyari sayilir; gizlenmez, isaretlenir.
+  if (ortam)
+    return (
+      <span
+        className="text-[10px]"
+        style={{ color: 'var(--text-muted)' }}
+        title="Non-Production sunucu: kritik bulgular uyarı olarak sayılır. Prod'da bu bulgu kritiktir."
+      >
+        non-prod · prod'da {SEV[d].label}
+      </span>
+    );
   return (
     <span
       className="text-[10px]"
@@ -3401,7 +3412,7 @@ function HostModal({
                         <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                           {AREA[f.area] || f.area} · {kodEtiketi(f.code)}
                           {f.defaultSeverity ? ' · ' : ''}
-                          <SeviyeDegistiIsareti d={f.defaultSeverity} />
+                          <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} />
                         </div>
                         <LogKanit f={f} />
                         <AtfedilemeyenTrafik f={f} />
@@ -4177,7 +4188,7 @@ function bulguKolonlari(
           <SevPill s={f.severity} />
           {f.defaultSeverity && (
             <div>
-              <SeviyeDegistiIsareti d={f.defaultSeverity} />
+              <SeviyeDegistiIsareti d={f.defaultSeverity} ortam={f.ortamTavani} />
             </div>
           )}
         </>

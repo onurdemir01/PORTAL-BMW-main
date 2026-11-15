@@ -145,6 +145,34 @@ test('KR2 assess seviye degisikligini uygular; sorun yok sayilmaz; varsayilan is
   assert.equal(bulgu(g, 'SYNTAX_UNVERIFIED').severity, 'warning');
 });
 
+test('KR2b non-prod tavani: Non-Production sunucuda kritik -> uyari (isaretli, gizlenmez); prod ve ortami bilinmeyen sunucu etkilenmez', () => {
+  const ad = (host) => {
+    const v = veri();
+    for (const k of ['hosts', 'web', 'ips']) for (const r of v[k]) r.host = host;
+    return v;
+  };
+  const sec = (host) => {
+    const r = assess(ad(host), { now: NOW, seviyeler: { SYNTAX_UNVERIFIED: 'danger' } });
+    return { r, h: r.hosts.find((x) => x.host === host) };
+  };
+  const t = sec('GBCJWT01');
+  const f = bulgu(t.h, 'SYNTAX_UNVERIFIED');
+  assert.equal(t.h.envGroup, 'Non-Production');
+  assert.deepEqual([f.severity, f.defaultSeverity, f.ortamTavani], ['warning', 'warning', true]);
+  assert.deepEqual([t.h.status, t.h.counts.danger, t.h.counts.warning], ['warning', 0, 1]);
+  assert.equal(t.r.summary.hosts.danger, 0, 'non-prod sunucu ozette kritik sayildi');
+  const satir = flattenFindings(t.r.hosts).find((x) => x.code === 'SYNTAX_UNVERIFIED');
+  assert.deepEqual([satir.severity, satir.ortamTavani], ['warning', true]);
+  const p = sec('GBCJWP01');
+  assert.deepEqual([bulgu(p.h, 'SYNTAX_UNVERIFIED').severity, bulgu(p.h, 'SYNTAX_UNVERIFIED').ortamTavani], ['danger', undefined]);
+  const b = sec('GBXYZ01');
+  assert.equal(b.h.envGroup, 'Bilinmiyor');
+  assert.equal(bulgu(b.h, 'SYNTAX_UNVERIFIED').severity, 'danger', 'ortami bilinmeyen sunucu yumusatildi');
+  // varsayilani kritik olmayan bulgu (uyari/bilgi) degismez, isaretlenmez
+  const u = assess(ad('GBCJWT01'), { now: NOW }).hosts.find((x) => x.host === 'GBCJWT01');
+  assert.ok(u.findings.every((x) => !x.ortamTavani && x.defaultSeverity === undefined));
+});
+
 test('KR6 kurallar sayimi: taramadan dusen sunucu sayilmaz; sunucu tekil', () => {
   const { sayimlar } = require('../kurallar.cjs');
   const s = sayimlar({
