@@ -87,7 +87,7 @@ import {
   limitUyarilari, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, srvDizinYaz, sunucuAyarHatalari, tavanNedeni, tavanRps, vhostGecerli,
 } from './yukTestiOrtak';
 
-const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : NaN);
+const tamSayi = (s: string) => (/^\s*\d+\s*$/.test(s) ? Number(s) : Number.NaN);
 /** Siniflandirma istegi yazma bitince (her tusta degil). */
 const SINIF_GECIKME_MS = 400;
 const MOTOR_ETIKETI: Record<NlMotor, string> = { k6: 'k6 — açık döngü (sabit istek/sn)', wrk: 'wrk — kapalı döngü (sabit bağlantı, hız tavanlı)' };

@@ -1280,7 +1280,7 @@ function initInventory(app) {
       return res.status(400).json({ ok: false, error: 'Geçersiz kolon adı.' });
     }
     const search = String(req.query.search || '').trim();
-    const limitVal = Math.min(300, Math.max(1, parseInt(req.query.limit || '200', 10)));
+    const limitVal = Math.min(300, Math.max(1, Number.parseInt(req.query.limit || '200', 10)));
 
     // ZINCIRLEME FILTRE: bir kolona filtre uygulandiginda DIGER kolonlarin secenekleri de
     // daralmali. Onceden bu uc tablonun TAMAMINI tariyordu; kullanici product=IHS sectikten
@@ -1429,8 +1429,8 @@ function initInventory(app) {
 
     const admin = isAdmin(req);
     const maxLimit = admin ? 10000 : 1000;
-    const page = Math.max(1, parseInt(req.query.page || '1', 10));
-    const limit = Math.min(maxLimit, Math.max(1, parseInt(req.query.limit || '200', 10)));
+    const page = Math.max(1, Number.parseInt(req.query.page || '1', 10));
+    const limit = Math.min(maxLimit, Math.max(1, Number.parseInt(req.query.limit || '200', 10)));
     const offset = (page - 1) * limit;
     const search = String(req.query.search || '').trim();
 
@@ -1709,7 +1709,7 @@ function initInventory(app) {
     // satir donuyor"). Istemci limit gondermiyordu, 200 sessizce kesiyordu. Sinira takilan
     // sonuc `truncated` ile bildirilir; kullanici daraltmak icin sorguya WHERE/TOP ekler.
     const MAX_ROWS = 10000;
-    const limit = Math.min(MAX_ROWS, Math.max(1, parseInt(limitParam || String(MAX_ROWS), 10)));
+    const limit = Math.min(MAX_ROWS, Math.max(1, Number.parseInt(limitParam || String(MAX_ROWS), 10)));
 
     try {
       // actions.md #20.1 — AYRI salt-okunur havuz tercih edilir; tanimli degilse (DBA henuz
@@ -2066,7 +2066,7 @@ function initInventory(app) {
   router.get('/history/at', async (req, res) => {
     try {
       const at = new Date(String(req.query.date || ''));
-      if (isNaN(at.getTime())) {
+      if (Number.isNaN(at.getTime())) {
         return res.status(400).json({ ok: false, message: 'Gecerli bir tarih verin (date).' });
       }
       // Gun verildiyse O GUNUN SONU alinir: "1 Eylul'deki hali" denince gun icinde
@@ -2084,7 +2084,7 @@ function initInventory(app) {
     try {
       const mk = (v) => {
         const d = new Date(String(v || ''));
-        if (isNaN(d.getTime())) throw new Error('Gecerli bir tarih verin (from/to).');
+        if (Number.isNaN(d.getTime())) throw new Error('Gecerli bir tarih verin (from/to).');
         if (/^\d{4}-\d{2}-\d{2}$/.test(String(v))) d.setUTCHours(23, 59, 59, 999);
         return d;
       };

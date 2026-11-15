@@ -130,7 +130,7 @@ function parametrelerOf(kosu) {
 /** Kosunun butcesi (parametreler.butceSn, sunucunun hesapladigi); okunamazsa en kotu durum. */
 function butceSnOf(kosu) {
   const p = parametrelerOf(kosu);
-  const b = p ? Number(p.butceSn) : NaN;
+  const b = p ? Number(p.butceSn) : Number.NaN;
   return Number.isInteger(b) && b > 0 && b <= VARSAYILAN_BUTCE_SN ? b : VARSAYILAN_BUTCE_SN;
 }
 

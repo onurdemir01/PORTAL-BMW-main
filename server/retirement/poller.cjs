@@ -217,7 +217,7 @@ async function deleteTick(now) {
     const atla = !!t.hedef_delete_now_at;
     if (!atla && !silmeOnKontrolZamaniGeldi(bilgi, now)) continue;
     const plan = onKontrolOku(t.delete_onkontrol_json);
-    const planAni = plan ? Date.parse(plan.at) : NaN;
+    const planAni = plan ? Date.parse(plan.at) : Number.NaN;
     const taze = Number.isFinite(planAni) && now.getTime() - planAni < tazeDk * 60000;
     const izinler = onKontrolGecerli(plan, 'delete', { maxYasDk: tazeDk, now });
     if (!izinler) {

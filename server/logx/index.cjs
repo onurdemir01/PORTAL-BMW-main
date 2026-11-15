@@ -88,7 +88,7 @@ function initLogX(app) {
   router.put('/admin/inventory/:id', async (req, res) => {
     if (getUser(req).role !== 'Admin')
       return res.status(403).json({ ok: false, error: 'Admin only' });
-    const id = parseInt(req.params.id, 10);
+    const id = Number.parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ ok: false, error: 'Invalid id' });
     try {
       const host = await inventory.updateHost(id, req.body);
@@ -102,7 +102,7 @@ function initLogX(app) {
   router.delete('/admin/inventory/:id', async (req, res) => {
     if (getUser(req).role !== 'Admin')
       return res.status(403).json({ ok: false, error: 'Admin only' });
-    const id = parseInt(req.params.id, 10);
+    const id = Number.parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ ok: false, error: 'Invalid id' });
     try {
       const deleted = await inventory.deleteHost(id);
@@ -117,8 +117,8 @@ function initLogX(app) {
     if (getUser(req).role !== 'Admin')
       return res.status(403).json({ ok: false, error: 'Admin only' });
     const { username, targetHost, action, limit = '50', offset = '0' } = req.query;
-    const parsedLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 50));
-    const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
+    const parsedLimit = Math.min(500, Math.max(1, Number.parseInt(limit, 10) || 50));
+    const parsedOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
     try {
       const logs = await audit.getLogs({
         limit: parsedLimit,
