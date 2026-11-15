@@ -7,7 +7,8 @@
 // "Kapat" düğmesi gizli. Bu pencere server_hub_fix jboss_autostart_xml_off işini açar: YALNIZ kapatma, önce plan
 // (salt okunur: dosya, host adı, JVM başına eski -> false, yedek yeri), sonra onay (Production'da ek uyarı + işaret),
 // sonra uygulama. Betik host controller'ın kapalı olduğunu yazmadan önce ve sonra canlı kontrol eder; açıldıysa
-// geri alır. Toplu Auto-Start'a girmez. Sunucu (/jvm-autostart-xml) kapıları taze taramadan yeniden uygular.
+// geri alır. Sunucu (/jvm-autostart-xml) kapıları taze taramadan yeniden uygular. Toplu karşılığı (2026-11-15): Toplu
+// Auto-Start › "Domain kapalı — auto-start host XML üzerinden kapat" (TopluXmlKapat.tsx; aynı kapılar, ayrı toplu iş).
 import React, { useState } from 'react';
 import {
   ExclamationTriangleIcon,

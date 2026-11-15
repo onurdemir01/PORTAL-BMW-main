@@ -458,7 +458,8 @@ export interface ShJobStatus {
 }
 
 // ── Toplu Auto-Start (2026-11-14) ──────────────────────────────────────────────────
-export type ShTopluEylem = 'ac' | 'kapat';
+// 'xml_kapat' (2026-11-15): domain kapalı JVM'de auto-start host XML üzerinden kapatılır (ayrı toplu iş).
+export type ShTopluEylem = 'ac' | 'kapat' | 'xml_kapat';
 export interface ShTopluAday {
   host: string;
   env: string | null;
@@ -508,6 +509,8 @@ export interface ShTopluIs {
   planBitisAt: string | null;
   onayAt: string | null;
   bitisAt: string | null;
+  /** Yalnız /toplu-autostart/:id yanıtında: 'xml' = host XML (domain kapalı) toplu işi. */
+  kip?: 'xml' | 'cli';
 }
 export type ShTopluOgeDurum =
   // SECIM: istekle yazılan seçim; sunucu yürütücüsü taze taramayla doğrular (ADAY ya da DUSTU).
@@ -543,13 +546,28 @@ export interface ShTopluOge {
   awxJobId: number | null;
   sonucSatiri: string | null;
   dogrulandi: boolean;
+  /** 2026-11-15: öğe host XML ile kapatma (eylem jboss_autostart_xml_off). Eski sunucu yanıtında yok. */
+  hostXml?: boolean;
   baslamaAt: string | null;
   bitisAt: string | null;
+}
+/** Domain kapalı (host XML) adayı: sunucu + JBoss sürümü (domain) başına grup; domain'in JVM'leri birlikte seçilir. */
+export interface ShTopluXmlGrup {
+  host: string;
+  gen: number;
+  env: string | null;
+  envGroup: string | null;
+  /** Production ya da ortamı bilinmeyen sunucu: ek açık onay ister. */
+  prod: boolean;
+  scanDate: string | null;
+  jvms: { jvm: string; autoStart: string; running: boolean }[];
 }
 export interface ShTopluAdaylar {
   ok: boolean;
   adaylar: ShTopluAday[];
   dislananlar: ShTopluAday[];
+  /** Domain kapalı — host XML ile kapatılabilecek JVM'ler (2026-11-15). Eski sunucu yanıtında yok. */
+  adaylarXml?: ShTopluXmlGrup[];
   limit: number;
   /** AWX işi başına en çok JVM (limit:toplu_is_basina_jvm, 2026-11-15). Eski sunucu yanıtında yok. */
   isBasinaJvm?: number;
@@ -1293,14 +1311,17 @@ export const serverHubApi = {
     id: number,
   ): Promise<{ ok: boolean; is?: ShTopluIs; ogeler?: ShTopluOge[]; message?: string }> =>
     fetch(`${BASE}/toplu-autostart/${id}`).then(safeJson),
+  // prodOnay (2026-11-15): host XML seçiminde Production / ortamı bilinmeyen sunucu varsa sunucu ister (yoksa 400).
   topluAutoStartOlustur: (
     secim: ShTopluSecim[],
+    secenek?: { prodOnay?: boolean },
   ): Promise<{ ok: boolean; id?: number; adet?: number; hostSayisi?: number; message?: string; code?: string }> =>
-    fetch(`${BASE}/toplu-autostart`, json({ secim })).then(safeJson),
+    fetch(`${BASE}/toplu-autostart`, json({ secim, ...(secenek?.prodOnay ? { prodOnay: true } : {}) })).then(safeJson),
   topluAutoStartOnayla: (
     id: number,
+    secenek?: { prodOnay?: boolean },
   ): Promise<{ ok: boolean; id?: number; adet?: number; message?: string; code?: string }> =>
-    fetch(`${BASE}/toplu-autostart/${id}/onayla`, json({ confirmed: true })).then(safeJson),
+    fetch(`${BASE}/toplu-autostart/${id}/onayla`, json({ confirmed: true, ...(secenek?.prodOnay ? { prodOnay: true } : {}) })).then(safeJson),
   topluAutoStartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
     fetch(`${BASE}/toplu-autostart/${id}/iptal`, json({})).then(safeJson),
   // TOPLU RESTART (2026-11-14): fark bulunan calisan JVM'ler; olustur -> salt okunur onizleme taramasi -> onay ->

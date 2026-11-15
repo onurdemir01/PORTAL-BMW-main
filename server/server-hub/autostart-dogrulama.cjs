@@ -42,7 +42,8 @@ const AUTOSTART_EYLEMLERI = new Set(['jboss_autostart_on', 'jboss_autostart_off'
 // DOMAIN KAPALIYKEN HOST XML (2026-11-15, kullanici: "Tek tek, bilincli kullanim icin XML yolu ... bunlar yanlis
 // retire edilmis uygulamalar o yuzden auto-start'lari kapatilmali"). server_hub_fix.sh jboss_autostart_xml_off: YALNIZ
 // host controller calismiyorken, YALNIZ true -> false, host XML'e yazar ve geri okur. Tek host, bir ya da birden cok
-// JVM (ayni nesil); set_stats items[] Toplu Auto-Start ile ayni sekil. Toplu Auto-Start'a GIRMEZ.
+// JVM (ayni nesil); set_stats items[] Toplu Auto-Start ile ayni sekil. Toplu Auto-Start'ta ayri bolum (2026-11-15:
+// "Domain kapali (host XML)", toplu-autostart.cjs; tek toplu iste CLI ogeleriyle karismaz).
 const XML_KAPAT_EYLEMI = 'jboss_autostart_xml_off';
 const XML_KAPAT_MAX = 200;
 /** Eylemin yazdigi auto-start degeri ('true' | 'false'); auto-start eylemi degilse null. */

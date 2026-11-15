@@ -8,6 +8,10 @@
 // en çok N JVM'lik AWX işleri (Admin › Kurallar & Limitler "Toplu iş başına JVM", 2026-11-15), işler SIRAYLA. Yürütme sunucu tarafında: sayfa yenilense ya da başka admin açsa da ilerleme
 // görünür. Gizli sekme yoklama yapmaz (useSekmeGorunur). Doğrulanan öğe açık sunucu paneline ve Bulgular'a
 // hemen yansır (autoStartSonucYay).
+//
+// 2026-11-15 ("olur ekle lütfen"): domain'i kapalı (taramada host controller çalışmayan) JVM'ler artık "listeye alınmayan"
+// değil, ayrı bölüm: "Domain kapalı — auto-start host XML üzerinden kapat" (TopluXmlKapat.tsx). Aynı motor, ayrı toplu iş
+// (CLI öğeleriyle karışmaz); iş tablosunda bu öğeler "host XML" etiketi taşır; prod sunucu onayda ayrıca işaret ister.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import {
@@ -17,6 +21,7 @@ import {
   type ShTopluIs,
   type ShTopluOge,
   type ShTopluOgeDurum,
+  type ShTopluSecim,
 } from '@/api/serverHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -28,6 +33,16 @@ import { belirsizHataMi, belirsizMesaji, belirsizSonrasiIs } from './topluBelirs
 import { autoStartSonucYay } from './autoStartIsi';
 import { AUTOSTART_BASARISIZ, kategoriyeGore, type TopluKategori } from './topluSiniflama';
 import { KategoriEtiketi, TopluKategoriFiltresi } from './TopluKategoriFiltresi';
+import {
+  TopluXmlKapatBolumu,
+  XmlOnayPenceresi,
+  prodOgesiMi,
+  prodOnayRedMi,
+  xmlKapsami,
+  xmlOgesiMi,
+  xmlSecimi,
+  type XmlOnayKapsami,
+} from './TopluXmlKapat';
 
 /** Yoklama aralığı (sunucu yürütücüsü 10 sn'de bir ilerler). */
 export const YOKLAMA_MS = 4000;
@@ -252,7 +267,18 @@ function OgeTablosu({ ogeler }: { ogeler: ShTopluOge[] }) {
               <td className="px-3 py-1 font-mono">
                 {o.jvm} <span style={{ color: 'var(--text-muted)' }}>JBoss {o.gen}</span>
               </td>
-              <td className="px-3 py-1">{o.hedef === 'true' ? 'AÇ' : 'KAPAT'}</td>
+              <td className="px-3 py-1 whitespace-nowrap">
+                {o.hedef === 'true' ? 'AÇ' : 'KAPAT'}
+                {xmlOgesiMi(o) && (
+                  <span
+                    className="ml-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border"
+                    style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}
+                    title="Domain kapalı: auto-start host XML dosyasında kapatılır (canlı CLI yok)."
+                  >
+                    host XML
+                  </span>
+                )}
+              </td>
               <td className="px-3 py-1 font-semibold" style={{ color: ogeRengi(o.durum) }}>
                 {OGE_ETIKET[o.durum] || o.durum}
                 {o.dogrulandi ? ' · doğrulandı' : ''}
@@ -279,6 +305,10 @@ export default function TopluAutoStartTab() {
   const [yukleniyor, setYukleniyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
   const [secili, setSecili] = useState<Set<string>>(new Set());
+  // Host XML (domain kapalı) seçimi: domain anahtarları (host|gen); varsayılan boş (prod dahil bilinçli seçim).
+  const [xmlSecili, setXmlSecili] = useState<Set<string>>(new Set());
+  // Host XML onay penceresi: plan (olusturma) ya da uygulama onayı; prodOnay sunucuya gönderilir.
+  const [xmlOnay, setXmlOnay] = useState<{ tur: 'plan' | 'uygula'; kapsam: XmlOnayKapsami[]; uyari?: string } | null>(null);
   const [izlenen, setIzlenen] = useState<number | null>(null);
   const [okunanIs, setIs] = useState<ShTopluIs | null>(null);
   const [ogeler, setOgeler] = useState<ShTopluOge[]>([]);
@@ -296,6 +326,7 @@ export default function TopluAutoStartTab() {
       if (!a.ok) throw new Error(a.message || 'Aday listesi okunamadı.');
       setVeri(a);
       setSecili(new Set(a.adaylar.map(anahtar)));
+      setXmlSecili(new Set());
       const hedef = a.aktif || (l.ok ? l.aktif || l.son[0] || null : null);
       setIzlenen(hedef ? hedef.id : null);
     } catch (e) {
@@ -369,16 +400,33 @@ export default function TopluAutoStartTab() {
   const limitAsti = limit != null && secim.length > limit;
   const aktifVar = !!is && (YURUYEN.has(is.durum) || is.durum === 'PLAN_HAZIR');
 
-  const planla = async () => {
-    if (!secim.length || limitAsti || aktifVar) return;
+  const xmlGruplari = useMemo(() => veri?.adaylarXml || [], [veri]);
+  const xmlSecim = useMemo(() => xmlSecimi(xmlGruplari, xmlSecili), [xmlGruplari, xmlSecili]);
+
+  // İnceleme 2026-11-15 #2: sunucu prod_onay 400'ü döndüyse kapsamın TAMAMI prod işaretli yeniden sorulur (sunucu
+  // mesajı en çok 5 sunucu sayar; ekran tahmini yanılmış demektir).
+  const prodOnayIste = (tur: 'plan' | 'uygula', liste: { host: string; gen: number; jvm: string }[], mesaj?: string) =>
+    setXmlOnay({
+      tur,
+      kapsam: xmlKapsami(liste.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, prod: true }))),
+      uyari: `Sunucu prod onayı istedi: ${mesaj || 'kapsamda Production / ortamı bilinmeyen sunucu var'}`,
+    });
+
+  const gonder = async (liste: ShTopluSecim[], prodOnay?: boolean) => {
+    if (!liste.length || aktifVar || (limit != null && liste.length > limit)) return;
     setGonderiliyor(true);
     const baslangic = Date.now();
     const oncekiSonId = izlenen;
     try {
-      const r = await serverHubApi.topluAutoStartOlustur(
-        secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, eylem: x.eylem })),
-      );
+      const r = prodOnay
+        ? await serverHubApi.topluAutoStartOlustur(liste, { prodOnay: true })
+        : await serverHubApi.topluAutoStartOlustur(liste);
       if (!r.ok || r.id == null) {
+        // Sunucu seçimi prod saydı (ekran saymadıysa da; ör. ortam okunamadı): pencere prod işaretiyle yeniden açılır.
+        if (r.code === 'prod_onay' && !prodOnay && liste.some((x) => x.eylem === 'xml_kapat')) {
+          prodOnayIste('plan', liste, r.message);
+          return;
+        }
         toast.error(r.message || 'Toplu iş açılamadı.');
         return;
       }
@@ -388,6 +436,10 @@ export default function TopluAutoStartTab() {
       setIzlenen(r.id);
     } catch (e) {
       const mesaj = e instanceof Error ? e.message : String(e);
+      if (prodOnayRedMi(e) && !prodOnay && liste.some((x) => x.eylem === 'xml_kapat')) {
+        prodOnayIste('plan', liste, mesaj);
+        return;
+      }
       if (!belirsizHataMi(e)) {
         toast.error(mesaj);
         return;
@@ -407,20 +459,61 @@ export default function TopluAutoStartTab() {
     }
   };
 
-  const onayVer = async () => {
-    if (!is || is.durum !== 'PLAN_HAZIR') return;
-    if (!(await onayla({ baslik: 'Toplu auto-start', metin: onayMetni(ogeler, isBasina), onayMetni: 'Onayla ve uygula' }))) return;
+  const planla = () => gonder(secim.map((x) => ({ host: x.host, gen: x.gen, jvm: x.jvm, eylem: x.eylem })));
+  const xmlProdMu = (host: string) => xmlGruplari.some((g) => g.host === host && g.prod);
+  // Host XML planı: önce kapsam penceresi (prod varsa işaret); pencere onaylayınca toplu iş açılır.
+  const xmlPlanla = () => {
+    if (!xmlSecim.length || aktifVar) return;
+    setXmlOnay({ tur: 'plan', kapsam: xmlKapsami(xmlSecim.map((x) => ({ ...x, prod: xmlProdMu(x.host) }))) });
+  };
+  const xmlIs = ogeler.some(xmlOgesiMi);
+
+  const onayGonder = async (id: number, prodOnay?: boolean) => {
     setGonderiliyor(true);
     try {
-      const r = await serverHubApi.topluAutoStartOnayla(is.id);
-      if (!r.ok) toast.error(r.message || 'Onay verilemedi.');
-      else toast.success(`Toplu iş #${is.id}: ${r.adet} JVM uygulanıyor (sunucular sırayla).`);
-      await durumOku(is.id);
+      const r = prodOnay ? await serverHubApi.topluAutoStartOnayla(id, { prodOnay: true }) : await serverHubApi.topluAutoStartOnayla(id);
+      if (!r.ok && r.code === 'prod_onay' && !prodOnay && xmlIs)
+        prodOnayIste(
+          'uygula',
+          ogeler.filter((o) => o.durum === 'PLAN_GECTI'),
+          r.message,
+        );
+      else if (!r.ok) toast.error(r.message || 'Onay verilemedi.');
+      else toast.success(`Toplu iş #${id}: ${r.adet} JVM uygulanıyor (sunucular sırayla).`);
+      await durumOku(id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      if (prodOnayRedMi(e) && !prodOnay && xmlIs)
+        prodOnayIste(
+          'uygula',
+          ogeler.filter((o) => o.durum === 'PLAN_GECTI'),
+          e instanceof Error ? e.message : String(e),
+        );
+      else toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setGonderiliyor(false);
     }
+  };
+
+  const onayVer = async () => {
+    if (!is || is.durum !== 'PLAN_HAZIR') return;
+    if (xmlIs) {
+      const gecen = ogeler.filter((o) => o.durum === 'PLAN_GECTI');
+      setXmlOnay({
+        tur: 'uygula',
+        kapsam: xmlKapsami(gecen.map((o) => ({ host: o.host, gen: o.gen, jvm: o.jvm, prod: prodOgesiMi(o, veri?.adaylarXml) }))),
+      });
+      return;
+    }
+    if (!(await onayla({ baslik: 'Toplu auto-start', metin: onayMetni(ogeler, isBasina), onayMetni: 'Onayla ve uygula' }))) return;
+    await onayGonder(is.id);
+  };
+
+  const xmlOnayla = (prodOnay: boolean) => {
+    const o = xmlOnay;
+    setXmlOnay(null);
+    if (!o) return;
+    if (o.tur === 'plan') void gonder(xmlSecim, prodOnay);
+    else if (is && is.durum === 'PLAN_HAZIR') void onayGonder(is.id, prodOnay);
   };
 
   const iptalEt = async () => {
@@ -465,6 +558,20 @@ export default function TopluAutoStartTab() {
   return (
     <div className="space-y-4">
       {onayPenceresi}
+      <XmlOnayPenceresi
+        acik={xmlOnay !== null}
+        baslik={xmlOnay?.tur === 'plan' ? 'Host XML ile auto-start kapat — plan' : 'Host XML ile auto-start kapat — uygula'}
+        aciklama={
+          xmlOnay?.tur === 'plan'
+            ? 'Önce salt okunur plan çalışır (dosya, host adı, JVM başına mevcut değer); hiçbir şey değişmez. Uygulama için plandan sonra ayrıca onay istenir.'
+            : `Sunucular sırayla, host + JBoss sürümü başına${isBasina != null ? ` en çok ${fmtNumber(isBasina)} JVM'lik` : ''} AWX işleri. Her işte önce yedek alınır; host controller o an kapalı değilse betik yazmaz (açıldıysa geri alır). Bu JVM'ler reboot'ta açılmaz.`
+        }
+        uyari={xmlOnay?.uyari}
+        kapsam={xmlOnay?.kapsam || []}
+        onayMetni={xmlOnay?.tur === 'plan' ? 'Planla' : 'Onayla ve uygula'}
+        onIptal={() => setXmlOnay(null)}
+        onOnayla={xmlOnayla}
+      />
       <section className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -535,6 +642,7 @@ export default function TopluAutoStartTab() {
               )}
             </div>
             {veri.dislananlar.length > 0 && (
+              // Domain kapalı (host XML) adayları burada değil, aşağıdaki ayrı bölümde.
               <details className="text-[12px]">
                 <summary className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>
                   Uyumsuz görünen ama listeye alınmayan {fmtNumber(veri.dislananlar.length)} JVM (nedeniyle)
@@ -551,6 +659,18 @@ export default function TopluAutoStartTab() {
           </>
         )}
       </section>
+
+      {veri && xmlGruplari.length > 0 && (
+        <TopluXmlKapatBolumu
+          gruplar={xmlGruplari}
+          secili={xmlSecili}
+          setSecili={setXmlSecili}
+          kilitli={aktifVar}
+          gonderiliyor={gonderiliyor}
+          limit={limit}
+          onPlanla={xmlPlanla}
+        />
+      )}
 
       {is && (
         <section
@@ -617,6 +737,7 @@ export default function TopluAutoStartTab() {
               Plan canlı değerleri okumayı {is.planBitisAt ? fmtDateTime(is.planBitisAt) : ''} itibarıyla bitirdi. 15 dakikalık onay süresi
               planlama BİTTİĞİNDE başladı (planlamanın kendi süresi buna dahil değil); bu sürede onaylanmazsa yeniden planlanmalı. Not: “AÇ” adayının JVM’i plan anında durmuşsa plan bunu ayırmaz (auto-start açmak durmuş JVM’e zarar
               vermez; reboot’ta açılır).
+              {xmlIs ? ' Host XML: uygulamada betik dosyayı yeniden okur, önce yedek alır; host controller o an kapalı olmalı.' : ''}
               {dusenler.length ? ` ${fmtNumber(dusenler.length)} JVM düştü (nedeni tabloda).` : ''}
               {planKalanMs != null && (
                 <span style={{ color: planDoldu ? 'var(--status-danger)' : undefined }}>

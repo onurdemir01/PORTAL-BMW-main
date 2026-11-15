@@ -77,8 +77,10 @@ test('BA5: iki karar da kodda anlatiliyor (kaldirma gerekcesi + kontrollu model)
 
 test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uygulama yalniz onaydan sonra', () => {
   assert.match(TOPLU, /_d\.ayarlar\.limit\('toplu_autostart'\)/, 'ust sinir Admin ayarindan okunmuyor');
-  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /plan_only: true/, 'plan isi plan_only: true acmiyor');
-  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /plan_only: false/, 'uygulama isi plan_only: false degil');
+  // 2026-11-15 host XML: extra_vars tek yerde (isDegiskenleri; CLI ve host XML dali ayni plan_only'yi tasir)
+  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /isDegiskenleri\(host, parca, true\)/, 'plan isi plan_only: true acmiyor');
+  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /isDegiskenleri\(host, tazeListe, false\)/, 'uygulama isi plan_only: false degil');
+  assert.equal((fonksiyon(TOPLU, 'isDegiskenleri').match(/plan_only: planOnly,/g) || []).length, 2, 'extra_vars dallarindan biri plan_only tasimiyor');
   // uygulama ogesi yalniz CALISIYOR (onaylanmis) isin BEKLIYOR ogesinden sahiplenilir
   assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /durum = 'BEKLIYOR'[\s\S]*durum = 'CALISIYOR' AND kira_id/, 'uygulama onaysiz ise acilabiliyor');
   assert.match(fonksiyon(TOPLU, 'onayla'), /durum !== 'PLAN_HAZIR'/, 'onay plan hazir olmadan veriliyor');
@@ -88,7 +90,8 @@ test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uyg
 
 test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRAYLA', () => {
   assert.ok(!/join\(','\)/.test(TOPLU), 'toplu modul virgullu hedef listesi uretiyor');
-  for (const ad of ['planIlerlet', 'uygulaIlerlet']) assert.match(fonksiyon(TOPLU, ad), /target_host: host,/, `${ad} tek hedef gondermiyor`);
+  for (const ad of ['planIlerlet', 'uygulaIlerlet']) assert.match(fonksiyon(TOPLU, ad), /isDegiskenleri\(host, /, `${ad} tek hedef gondermiyor`);
+  assert.equal((fonksiyon(TOPLU, 'isDegiskenleri').match(/target_host: host,/g) || []).length, 2, 'extra_vars dallarindan biri tek hedef gondermiyor');
   // 2026-11-15 parcalama: ayni hostun parcalari da birbirini bekler (host kosulu yok; parca disi tum ogeler)
   assert.match(
     fonksiyon(TOPLU, 'uygulaIlerlet'),

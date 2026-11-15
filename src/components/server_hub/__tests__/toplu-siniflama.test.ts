@@ -6,6 +6,7 @@
 //       ezilir ("plan eskidi"); YARIM_KALDI "AWX'e gitmiş olabilir" iptal kümesi (bağlantı değil); "AWX çıktısına bakın"
 //       tek başına bağlantı değildir
 //   TS3 sayım: yalnız başarısız durumlar, yalnız sıfır olmayan kümeler, sabit sıra; süzme
+//   TS5 host XML (2026-11-15): server_hub_fix.sh jboss_autostart_xml_off şablonları ve Portal sarmalayıcıları
 import { describe, it, expect } from 'vitest';
 import {
   AUTOSTART_BASARISIZ,
@@ -117,7 +118,105 @@ const INCELEME: [string, string, TopluKategori][] = [
   ['DUSTU', "plan okunamadı (iş #123 failed; set_stats yok — AWX'teki server_hub_fix.yml jboss_autostart_items kipini tanımıyor olabilir (playbook güncel mi?))", 'ortam_yetki'],
 ];
 
+// HOST XML (2026-11-15): server_hub_fix.sh jboss_autostart_xml_off `result FAIL` / ITEM şablonları (yer tutucular örnek
+// değerle) ve Portal sarmalayıcıları (toplu-autostart.cjs: "host XML planında: ", "atlandı: ", topluDurdur).
+const HOST_XML: [string, string, TopluKategori][] = [
+  // host controller şimdi çalışıyor / yazma sırasında açıldı -> domain artık kapalı değil: tarama eski (hc_kapali değil)
+  [
+    'DUSTU',
+    "host XML planında: JBoss 8 host controller / process controller CALISIYOR (yonetim portu 9998 dinleniyor (host controller ps'te gorunmuyor ama port acik)) - XML yolu yalniz domain kapaliyken; calisan domain'de auto-start CLI ile (jboss_autostart_off) degisir - HICBIR SEY DEGISMEDI",
+    'tarama_eski',
+  ],
+  [
+    'FAIL',
+    'host controller yazma sirasinda acildi - XML degisikligi geri alindi (/usr/jboss8/domain/configuration/host.xml yedekten: /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml); HC yeni icerigi okumus olabilir - etkin auto-start belirsiz, sonraki taramayi bekleyin',
+    'tarama_eski',
+  ],
+  ['FAIL', 'host controller yazmadan once acildi ya da ps okunamadi (pid 4242 java -D[Host Controller]) - HICBIR SEY DEGISMEDI', 'tarama_eski'],
+  ['FAIL', "app1 su an CALISIYOR (ps) - calisan JVM'in auto-start'i bu yoldan kapatilmaz - HICBIR SEY DEGISMEDI", 'tarama_eski'],
+  ['FAIL', '/usr/jboss8/domain/configuration/host.xml bu sirada degisti - HICBIR SEY DEGISMEDI', 'tarama_eski'],
+  [
+    'DUSTU',
+    "onay anında: app1 (JBoss 8) domain'i kapalı görünmüyor (taramada host controller çalışıyordu ya da ölçülemedi) — host XML yolu yalnız domain kapalıyken açılır; çalışan domain'de satırdaki Auto-start Kapat'ı kullanın; iş açılmadı.",
+    'tarama_eski',
+  ],
+  ['DUSTU', "host XML'de auto-start zaten false — tarama eski (auto-start zaten false (host.xml))", 'tarama_eski'],
+  // dosya betikle güvenle değiştirilemiyor: elle
+  [
+    'FAIL',
+    'host controller yazma sirasinda acildi ve GERI ALMA BASARISIZ - /usr/jboss8/domain/configuration/host.xml elle /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml ile geri yazilmali',
+    'elle',
+  ],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml sembolik bag; elle duzenlenmeli - HICBIR SEY DEGISMEDI', 'elle'],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml sert bagli (2 ad; mv bagi koparir); elle - HICBIR SEY DEGISMEDI', 'elle'],
+  ['DUSTU', "host XML planında: /usr/jboss8/domain/configuration/host.xml ACL tasiyor (ls '+'; gecici dosya + mv ACL'yi korumaz); elle - HICBIR SEY DEGISMEDI", 'elle'],
+  [
+    'DUSTU',
+    'host XML planında: host XML dosyasi kesin belirlenemedi (/usr/jboss8/domain/configuration: domain.conf ayari, host.xml ya da tek aday yok / birden fazla aday) - HICBIR SEY DEGISMEDI',
+    'elle',
+  ],
+  [
+    'DUSTU',
+    "host XML planında: domain.conf varsayilan disi domain dizini ayarliyor: -Djboss.domain.base.dir=/data/dom - secilen /usr/jboss8/domain/configuration/host.xml gercek domain'in dosyasi olmayabilir; elle - HICBIR SEY DEGISMEDI",
+    'elle',
+  ],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml ayristirilamadi: kapanmamis XML yorumu (<!--) - HICBIR SEY DEGISMEDI', 'elle'],
+  ['FAIL', 'sahip/izin/SELinux baglami korunamiyor (/usr/jboss8/domain/configuration/host.xml 501:501:600:system_u:object_r:usr_t:s0, kopya 501:501:600:?) - HICBIR SEY DEGISMEDI', 'elle'],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml grubu farkli: gecici dosya + mv sahibi/grubu koruyamaz; elle - HICBIR SEY DEGISMEDI', 'elle'],
+  ['DUSTU', "host XML planında: dogrulama (xmllint xpath): <server> sayisi '4' -> '3' - HICBIR SEY DEGISMEDI", 'elle'],
+  ['DUSTU', 'host XML planında: dogrulama: auto-start ozniteligi disinda fark var - HICBIR SEY DEGISMEDI', 'elle'],
+  ['FAIL', "yazildi ama geri okunan app1 '1\tv:true' (yedek /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml)", 'elle'],
+  // ITEM satırları: tanım
+  ['DUSTU', 'host XML planında: host.xml icinde <servers> altinda tanimli degil', 'tanim'],
+  ['DUSTU', 'host XML planında: host.xml icinde 2 kez tanimli (tek olmali)', 'tanim'],
+  ['DUSTU', 'host XML planında: auto-start ifade (${...}) ile tanimli; elle', 'tanim'],
+  ['DUSTU', 'host XML planında: beklenmeyen auto-start degeri: yes', 'tanim'],
+  // başka JVM reddedildi: bu JVM denenmedi
+  ['FAIL', 'istek durduruldu (baska JVM reddedildi)', 'iptal'],
+  ['FAIL', "istek durduruldu (baska JVM reddedildi): app2 su an CALISIYOR (ps) - calisan JVM'in auto-start'i bu yoldan kapatilmaz - HICBIR SEY DEGISMEDI", 'iptal'],
+  [
+    'YARIM_KALDI',
+    'çalıştırılmadı: toplu iş durduruldu — GBX01 host XML işi #5 yazıldı ama geri okunan dosya beklenenden farklı (etkin auto-start belirsiz). Önce o sunucudaki host XML dosyasını yedekle karşılaştırın (yedek yolu öğe satırında; gerekirse elle geri yazın), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    'iptal',
+  ],
+  [
+    'YARIM_KALDI',
+    'çalıştırılmadı: toplu iş durduruldu — GBX01 host XML işi #5 geri almada başarısız (dosya elle geri yazılmalı). Önce o sunucudaki host XML dosyasını yedekten elle geri yazın (yedek yolu öğe satırında), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    'iptal',
+  ],
+  // ortam / yetki
+  ['FAIL', 'yedek yolu dolu: /sw/WAS_IMAGES/server-hub-backup/GBX01/20261115-101010/host.xml.4242 - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['DUSTU', 'host XML planında: host XML was olarak duzenlenir; betik www ile kostu (fix play become_user was olmali) - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['FAIL', 'flock yok; ayni dosyaya eszamanli is engellenemez - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml okunamiyor - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['FAIL', '/usr/jboss8/domain/configuration icinde gecici dosya acilamadi - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['FAIL', 'yeni icerik gecici dosyaya yazilamadi - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  ['FAIL', 'mv basarisiz (/usr/jboss8/domain/configuration/host.xml) - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  // inceleme #6: dosya / ps hiç okunamadı -> ortam / yetki (bağlantı değil)
+  ['DUSTU', "host XML planında: ps okunamadi; host controller'in kapali oldugu dogrulanamadi - HICBIR SEY DEGISMEDI", 'ortam_yetki'],
+  ['DUSTU', 'host XML planında: /usr/jboss8/domain/configuration/host.xml okunamadi - HICBIR SEY DEGISMEDI', 'ortam_yetki'],
+  // eşzamanlı iş / ps / AWX
+  ['FAIL', '/usr/jboss8/domain/configuration uzerinde baska bir host XML isi suruyor (kilit) - HICBIR SEY DEGISMEDI', 'baglanti_sure'],
+  ['DUSTU', 'atlandı: XNP01 üzerinde JBoss 7 host XML işi #77 hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz.', 'baglanti_sure'],
+  [
+    'DUSTU',
+    "plan okunamadı (iş #9 failed; set_stats yok — AWX'teki server_hub_fix.yml jboss_autostart_xml_off kipini tanımıyor olabilir (playbook güncel mi?))",
+    'ortam_yetki',
+  ],
+  // prod onayı yok: Portal tarafı
+  ['DUSTU', 'seçim doğrulamasında düştü: XNP01 Production / ortamı bilinmeyen sunucu — prod onayı verilmedi (host XML ile kapatılmaz)', 'diger'],
+];
+
 describe('topluSiniflama', () => {
+  it('TS5 host XML (jboss_autostart_xml_off) mesajları: elle / tarama eski / tanım / iptal / ortam', () => {
+    for (const [durum, neden, beklenen] of HOST_XML) expect([neden, siniflandir(neden, durum)]).toEqual([neden, beklenen]);
+    expect(KATEGORI_SIRASI.indexOf('elle')).toBe(KATEGORI_SIRASI.indexOf('tanim') + 1);
+    expect(KATEGORI.elle.etiket).toMatch(/host XML/);
+    expect(KATEGORI.hc_kapali.ne).toMatch(/“Domain kapalı — auto-start host XML üzerinden kapat” bölümünden/);
+    // CLI host controller mesajındaki "XML elle duzenlenmez" elle kümesine düşmez
+    expect(siniflandir("canlı okumada: host controller'a baglanilamadi - HICBIR SEY DEGISMEDI (auto-start / server-config yalniz calisan host controller uzerinden degisir; XML elle duzenlenmez)", 'DUSTU')).toBe('hc_kapali');
+  });
+
   it('TS4 inceleme bulguları: gerçek şablonlar doğru kümede', () => {
     for (const [durum, neden, beklenen] of INCELEME) expect([neden, siniflandir(neden, durum)]).toEqual([neden, beklenen]);
     expect(KATEGORI.iptal.etiket).toMatch(/durduruldu/);

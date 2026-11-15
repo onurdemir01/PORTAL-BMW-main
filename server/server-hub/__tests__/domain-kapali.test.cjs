@@ -203,11 +203,15 @@ test('DK6 Toplu Auto-Start: domain kapali JVM aday degil, dislanan nedeni acik; 
   d.jboss.push({ host: acik, gen: 8, host_name: 'master', host_state: 'running', cli: 'OK', note: '' });
   d.jvms.push(jvm(acik, 8, 'acikapp', 0, 'true', { cfg_src: 'CLI_WILDCARD' }));
   const A = assess(d);
-  const { adaylar, dislananlar } = T.adaylariTuret(A, { autoStart: null });
+  const { adaylar, dislananlar, xmlAdaylar } = T.adaylariTuret(A, { autoStart: null });
   assert.deepEqual(adaylar.map((x) => `${x.host}/${x.jvm}/${x.eylem}`), [`${acik}/acikapp/kapat`]);
-  const dis = dislananlar.filter((x) => x.host === host);
-  assert.deepEqual(dis.map((x) => x.jvm).sort(), ['app1', 'app2']);
-  for (const x of dis) assert.equal(x.neden, DOMAIN_MESAJ);
+  // 2026-11-15 ("olur ekle lutfen"): domain kapali durmus + auto-start true JVM'ler CLI adayi degil, dislanan da
+  // degil: ayri host XML grubu (xmlAdaylar, eylem xml_kapat, prod isaretli).
+  assert.deepEqual(dislananlar.filter((x) => x.host === host), []);
+  assert.deepEqual(
+    xmlAdaylar.map((x) => `${x.host}/${x.jvm}/${x.eylem}/${x.action}/${x.prod}`).sort(),
+    [`${host}/app1/xml_kapat/jboss_autostart_xml_off/true`, `${host}/app2/xml_kapat/jboss_autostart_xml_off/true`],
+  );
   // tek satir dugmesi (/jvm-autostart) ayni kapi: iki yon de
   const j = sunucu(A, host).jvms.find((x) => x.name === 'app1');
   for (const enable of [false, true]) {

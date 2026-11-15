@@ -1320,7 +1320,8 @@ function initServerHub(app) {
   // baglanamaz); bu uc server_hub_fix jboss_autostart_xml_off acar (betik host controller'in kapali oldugunu
   // canli ps ile yazmadan once ve sonra yeniden dogrular, yalniz true -> false yazar, geri okur).
   //   - TEK sunucu, TEK nesil, 1..XML_KAPAT_MAX JVM: JVM satiri 1 JVM, JBOSS_DOMAIN_DOWN bulgusu o domain'in durmus
-  //     ve auto-start'i acik JVM'leri. Toplu Auto-Start'a GIRMEZ (orada domain kapali JVM aday degil).
+  //     ve auto-start'i acik JVM'leri. Toplu karsiligi (2026-11-15): Toplu Auto-Start "Domain kapali (host XML)"
+  //     bolumu (toplu-autostart.cjs, ayni kapilar + ayni extra_vars; toplu kilit topluKilidi ile bu uca da gecer).
   //   - plan: true -> plan_only=true (salt okunur: dosya, host adi, oge basina eski -> false, yedek yeri);
   //     confirmed: true -> uygulama. Ikisi birden ya da hicbiri: 400.
   //   - Kapilar her istekte TAZE degerlendirmeden: sunucuYazmaKapisi + xmlKapatKapisi (yalniz domainKapali, durmus,
@@ -1460,6 +1461,12 @@ function initServerHub(app) {
     ayarlar,
     HOST_RE,
     surenIsKilidi: (host, gen, jvm) => surenIsKilidi(host, gen, jvm, { topluHaric: true }),
+    // Host XML (domain kapali) parcasi: ayni sunucu + nesilde kayitli XML isi suruyorsa (ayni dosya) mesaj, yoksa null.
+    xmlIsKilidi: async (host, gen) => {
+      const xs = _autoStart.xmlSurenIs(host, gen);
+      if (!xs || !(await xmlIsSuruyor(xs))) return null;
+      return `${host} üzerinde JBoss ${gen} host XML işi #${xs.jobId} hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz.`;
+    },
     audit: (req, detail) =>
       require('../audit/index.cjs').auditPortal(req, 'server_hub', {
         detail: JSON.stringify(detail),

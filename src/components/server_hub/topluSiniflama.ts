@@ -16,14 +16,21 @@
 // hiç çalıştırılmadı (başka öğe düştü): içindeki neden ne olursa olsun iptal kümesidir. "Connection refused" / "Could not
 // connect" yalnız controller bağlamında (":99xx" ya da "controller") host controller'dır; Portal / DB tarafındaki aynı
 // hata ("taze değerlendirme okunamadı (... Connection refused)") bağlantı kümesine düşer.
+//
+// HOST XML (2026-11-15, Toplu Auto-Start "Domain kapalı — auto-start host XML üzerinden kapat"): server_hub_fix.sh
+// jboss_autostart_xml_off mesajları. Dosya betikle güvenle değiştirilemiyorsa (sembolik / sert bağ, ACL, SELinux,
+// varsayılan dışı dizin, ayrıştırılamayan dosya, doğrulama, GERİ ALMA BAŞARISIZ) yeni küme "elle". Host controller o an
+// ÇALIŞIYORSA (ya da yazma sırasında açıldıysa) domain artık kapalı değildir: tarama eski (metin "domain kapali" geçse
+// de hc_kapali değil). Dosya / ps hiç okunamadıysa ("<dosya> okunamadi", "ps okunamadi; ...") ortam / yetki. Betiğin "istek durduruldu (baska JVM reddedildi)" satırı o JVM'in değil başka JVM'in nedenidir: iptal.
 
-export type TopluKategori = 'hc_kapali' | 'ortam_yetki' | 'tarama_eski' | 'tanim' | 'iptal' | 'baglanti_sure' | 'diger';
+export type TopluKategori = 'hc_kapali' | 'ortam_yetki' | 'tarama_eski' | 'tanim' | 'elle' | 'iptal' | 'baglanti_sure' | 'diger';
 
 export const KATEGORI_SIRASI: readonly TopluKategori[] = [
   'hc_kapali',
   'ortam_yetki',
   'tarama_eski',
   'tanim',
+  'elle',
   'iptal',
   'baglanti_sure',
   'diger',
@@ -32,7 +39,7 @@ export const KATEGORI_SIRASI: readonly TopluKategori[] = [
 export const KATEGORI: Record<TopluKategori, { etiket: string; ne: string }> = {
   hc_kapali: {
     etiket: 'JBoss domain kapalı',
-    ne: 'JBoss bilerek kapatılmış olabilir; domain açılınca sunucuyu yeniden tarayıp yeniden planlayın — taramada domain’i kapalı görünen sunucular aday olmaz.',
+    ne: 'JBoss bilerek kapatılmış olabilir; domain açılınca sunucuyu yeniden tarayıp yeniden planlayın — taramada domain’i kapalı görünen JVM’ler CLI adayı olmaz, auto-start’ları “Domain kapalı — auto-start host XML üzerinden kapat” bölümünden kapatılır.',
   },
   ortam_yetki: {
     etiket: 'Sunucu ortamı / yetki',
@@ -45,6 +52,10 @@ export const KATEGORI: Record<TopluKategori, { etiket: string; ne: string }> = {
   tanim: {
     etiket: 'JVM tanımı',
     ne: 'JVM tanımı bulunamadı ya da belirsiz: sunucu ayrıntısından JVM’i ve host controller tanımını kontrol edin (gerekirse elle).',
+  },
+  elle: {
+    etiket: 'Elle müdahale (host XML)',
+    ne: 'Host XML dosyası betikle güvenle değiştirilemiyor (sembolik / sert bağ, ACL, SELinux, varsayılan dışı dizin, ayrıştırılamayan dosya ya da geri alma başarısız): sunucuda dosyayı elle kontrol edin (yedek yolu satırda), sonra sunucuyu yeniden tarayın.',
   },
   iptal: {
     etiket: 'İptal / durduruldu / yarım kaldı',
@@ -76,7 +87,7 @@ const DESEN: [TopluKategori, RegExp][] = [
   ],
   [
     'ortam_yetki',
-    /yedek dizini acilamadi|yedek alinamadi|gecici dizin acilamadi|permission denied|dzdo|izin vermedi|not allowed|yetki reddi|(dosya|dizin\w*) yazilamadi|yazilamiyor|olarak kosulmuyor|java_home|jboss-cli yok|playbook guncel mi/,
+    /yedek dizini acilamadi|\/\S+ okunamadi - hicbir sey degismedi|ps okunamadi; host controller'in kapali oldugu dogrulanamadi|yedek alinamadi|yedek yolu dolu|gecici dizin acilamadi|gecici (dosya|kopya)|dosyaya yazilamadi|mv basarisiz|flock yok|kilit icin acilamadi|okunamiyor - hicbir sey degismedi|ile kostu|become_user|permission denied|dzdo|izin vermedi|not allowed|yetki reddi|(dosya|dizin\w*) yazilamadi|yazilamiyor|olarak kosulmuyor|java_home|jboss-cli yok|playbook guncel mi/,
   ],
   [
     'tarama_eski',
@@ -84,14 +95,21 @@ const DESEN: [TopluKategori, RegExp][] = [
   ],
   [
     'tanim',
-    /tanimli degil|bulunamadi|iki kez|taramada yok|taramada jvm'i yok|yalniz envanterde|eslesen uygulama yok|tanim kaynaginda yok|gecersiz|beklenmeyen|belirlenemedi|surumu \(7\/8\) bilinmiyor|ifade \(/,
+    /tanimli degil|kez tanimli|bulunamadi|iki kez|taramada yok|taramada jvm'i yok|yalniz envanterde|eslesen uygulama yok|tanim kaynaginda yok|gecersiz|beklenmeyen|belirlenemedi|surumu \(7\/8\) bilinmiyor|ifade \(/,
   ],
   ['iptal', /iptal edildi|yarim kaldi|portal yeniden basladi/],
   [
     'baglanti_sure',
-    /ulasilamadi|unreachable|timeout|zaman asimi|bitmedi|basarilamadi|awx'ten kontrol|awx'te suruyor|awx'e gitmis|is numarasi (yok|yazilamadi)|baslatilamadi|okunamadi|awx/,
+    /host xml isi|ulasilamadi|unreachable|timeout|zaman asimi|bitmedi|basarilamadi|awx'ten kontrol|awx'te suruyor|awx'e gitmis|is numarasi (yok|yazilamadi)|baslatilamadi|okunamadi|awx/,
   ],
 ];
+// HOST XML: dosya betikle güvenle değiştirilemiyor (server_hub_fix.sh jboss_autostart_xml_off). "ifade (${...}) ile tanimli"
+// CLI'daki gibi tanım kümesinde kalır; "XML elle duzenlenmez" (CLI host controller mesajı) burada eşleşmez.
+const XML_ELLE =
+  /sembolik bag|sert bagli|acl tasiyor|selinux baglami korunamiyor|mv sahibi\/grubu koruyamaz|varsayilan disi domain dizini|host xml dosyasi kesin belirlenemedi|ayristirilamadi|yeni icerik uretilemedi|dogrulama( \([^)]*\))?: |yazildi ama geri okunan|geri alma basarisiz/;
+// HOST XML: host controller o an çalışıyor ya da yazma sırasında açıldı — domain artık kapalı değil (tarama eski).
+const XML_HC_ACIK =
+  /host controller \/ process controller calisiyor|domain'i kapali gorunmuyor|yonetim portu \d+ dinleniyor|host controller yazmadan once acildi|host controller yazma sirasinda acildi|bu sirada degisti/;
 // "AWX çıktısına bakın" restart sonuçlarının çoğunda geçer: tek başına bağlantı sorunu değildir.
 const AWX_CIKTI = /awx ciktisina bakin/g;
 
@@ -101,8 +119,13 @@ const AWX_CIKTI = /awx ciktisina bakin/g;
  */
 export function siniflandir(neden: string | null | undefined, durum?: string | null): TopluKategori {
   const t = sade(neden).replace(AWX_CIKTI, '');
-  // Hiç çalıştırılmayan satır (Toplu Restart "toplu iş durduruldu: <başka öğe> <neden>"): içteki neden o öğenindir.
-  if (/^(atlandi: )?toplu is durduruldu/.test(t)) return 'iptal';
+  // Hiç çalıştırılmayan satır (Toplu Restart "toplu iş durduruldu: <başka öğe> <neden>", Toplu Auto-Start "çalıştırılmadı:
+  // toplu iş durduruldu — <başka öğe> <neden>"): içteki neden başka öğenindir (ör. "yazıldı ama geri okunan" elle değil).
+  if (/^(atlandi: |calistirilmadi: )?toplu is durduruldu/.test(t)) return 'iptal';
+  // Host XML: betik başka JVM'i reddettiği için bu JVM'i hiç denemedi.
+  if (/istek durduruldu \(baska jvm reddedildi\)/.test(t)) return 'iptal';
+  if (XML_ELLE.test(t)) return 'elle';
+  if (XML_HC_ACIK.test(t)) return 'tarama_eski';
   // Server Hub şeması (sys.columns) okunamadı: Portal tarafı; bağlantı / AWX değil.
   if (/semasi \(sys\.columns\) okunamadi/.test(t)) return 'diger';
   // server_hub_fix.sh JN eki (rc != 0): JDK yok / JAVA_HOME geçersiz. jboss-cli hiç başlamadıysa "host controller'a

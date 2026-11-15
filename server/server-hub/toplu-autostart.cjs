@@ -52,15 +52,42 @@
 //
 // TALEP 2 (Toplu Restart) ayni tablolari tur='RESTART' ile kullanacak sekilde tasarlandi; bu modul yalniz
 // tur='AUTOSTART'.
+//
+// DOMAIN KAPALI - HOST XML (2026-11-15, kullanici: "bunlar yanlis retire edilmis uygulamalar o yuzden
+// auto-start'lari kapatilmali" + "olur ekle lutfen"): taramada host controller'i calismayan domain'in durmus +
+// auto-start true JVM'leri CLI ile degistirilemez (jvmAutoStartKapisi). Bunlar ayri aday grubudur (xmlAdaylar;
+// kapi /jvm-autostart-xml ile AYNI: sunucuYazmaKapisi + xmlKapatKapisi) ve AYNI motordan gecer:
+//   - Oge eylemi XML_KAPAT_EYLEMI (jboss_autostart_xml_off), hedef false. Secimde eylem 'xml_kapat'.
+//   - TEK TUR: bir toplu iste YA CLI (ac/kapat) YA host XML ogeleri olur, karisik secim 400 (en basit guvenli
+//     secenek: bir AWX isi tek kip, onay metni tek anlam; tur='AUTOSTART' degismez, tur basina tek aktif is
+//     kurali ikisini de kapsar - XML toplu isi CLI toplu isi bitince acilir).
+//   - Parca = (host, gen) basina en cok isBasinaJvm() JVM; tek AWX isi action jboss_autostart_xml_off, gen +
+//     jvms (bosluklu ad listesi; /jvm-autostart-xml ile ayni extra_vars). Plan plan_only=true: ITEM satiri PLAN
+//     -> gecti, SKIP (zaten false) -> dustu, FAIL -> dustu. Betik bir JVM'i reddedince ayni istekteki digerlerine
+//     "istek durduruldu (baska JVM reddedildi)" yazar: bunlar YENIDEN planlanir (reddedilen olmadan; her turda en
+//     az bir oge duser, dongu sonludur). ITEM satiri yoksa (dosya / host controller kapisi) genel RESULT satiri
+//     her ogeye yazilir; YALNIZ "<jvm> su an CALISIYOR (ps)" (JVM'e ozgu genel FAIL, inceleme 2026-11-15 #1) o
+//     JVM'e yazilir, digerlerine "istek durduruldu (baska JVM reddedildi): ..." (planda yeniden planlanir).
+//   - Uygulama: CLI ile ayni sira / tek is / belirsizlik / kilit / iptal; ek olarak host XML rezervasyonu ve
+//     kayitli XML isi (ayni dosya) kontrolu; "GERI ALMA BASARISIZ" (dosya elle geri yazilmali) ve "yazildi ama
+//     geri okunan ..." (dosya yazildi, icerik beklenenden farkli; inceleme #3) toplu isi DURDURUR. "host controller
+//     yazma sirasinda acildi - ... geri alindi" DURDURMAZ: dosya yedekten geri yazildi ve dogrulandi, sunucular
+//     bagimsiz (o sunucu yeniden taranir). Uygulamada betigin "istek durduruldu" satiri yeniden kuyruga ALINMAZ
+//     (FAIL kalir): dosya plandan sonra degismistir, yeni tarama + yeni toplu is gerekir.
+//   - PROD: Production ya da ortami bilinmeyen sunucunun XML ogesi acik prod onayi ister: olusturmada ve onayda
+//     prodOnay:true yoksa 400 (code prod_onay); olusturmada verilen onay ogenin ek alanina yazilir, secim
+//     dogrulamasinda (taze) prod cikan ama onaysiz oge DUSTU.
 'use strict';
 
 const crypto = require('node:crypto');
 const {
-  AUTOSTART_EYLEMLERI,
   LISTE_EYLEMI,
+  XML_KAPAT_EYLEMI,
   ogeSonuclari,
+  sonucSatiri,
   sunucuYazmaKapisi,
   jvmAutoStartKapisi,
+  xmlKapatKapisi,
 } = require('./autostart-dogrulama.cjs');
 
 const TUR = 'AUTOSTART';
@@ -101,6 +128,31 @@ const IS_TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
 const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const HOST_RE_VARSAYILAN = /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/;
 const OLUSTURULUYOR = 'OLUSTURULUYOR';
+// Host XML (domain kapali) secim eylemi ve oge eylemi.
+const XML_SECIM = 'xml_kapat';
+const XML = XML_KAPAT_EYLEMI;
+// Betik bir JVM'i reddedince ayni istekteki digerlerine yazdigi satir (server_hub_fix.sh jboss_autostart_xml_off).
+const XML_DURDURULDU_RE = /istek durduruldu \(baska JVM reddedildi\)/;
+// Uygulamada geri alma basarisiz: dosya elle geri yazilmali -> toplu is DURUR.
+const XML_GERI_ALMA_RE = /GERI ALMA BASARISIZ/;
+// Uygulamada dosya yazildi ama geri okunan icerik / deger beklenenden farkli (betik "yazildi ama geri okunan") -> DURUR.
+const XML_GERI_OKUMA_RE = /yazildi ama geri okunan/;
+// JVM'e ozgu genel FAIL (betik (a) kapisi ITEM yazmadan durur): yalniz o JVM'in nedeni.
+const XML_JVM_CALISIYOR_RE = /^(\S+) su an CALISIYOR \(ps\)/;
+// Olusturmada prod tespiti icin onbellekli degerlendirme en cok bu kadar beklenir; gelmezse sunucular prod sayilir.
+const PROD_OKUMA_MS = 10 * 1000;
+/** Production ya da ortami bilinmeyen (Bilinmiyor / yok) sunucu prod sayilir. */
+const prodMu = (h) => !h || h.envGroup !== 'Non-Production' || String(h.env || '').toUpperCase() === 'PROD';
+const xmlMi = (o) => o && (o.eylem === XML || o.action === XML);
+/** Oge ek alani (JSON): { prodOnay } ; okunamazsa {}. */
+function ekOku(o) {
+  try {
+    const v = o && o.ek ? JSON.parse(o.ek) : null;
+    return v && typeof v === 'object' ? v : {};
+  } catch {
+    return {};
+  }
+}
 
 // Bu surecin kimligi: kira bununla tutulur. Yeniden baslayan surec FARKLI kimlikle gelir (eski kirayi devralmaz).
 const SUREC_ID = crypto.randomBytes(16).toString('hex');
@@ -140,14 +192,17 @@ function sozdeIstek(kim) {
 // ── ADAYLAR ──────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Taze degerlendirmeden aday listesi. Donus: { adaylar, dislananlar }.
+ * Taze degerlendirmeden aday listesi. Donus: { adaylar, dislananlar, xmlAdaylar }.
  * aday: { host, env, envGroup, gen, jvm, eylem: 'ac'|'kapat', action, running, autoStart, scanDate }.
+ * xmlAdaylar: domain kapali (host XML) KAPAT adaylari; ayni alanlar, eylem 'xml_kapat', action
+ *   jboss_autostart_xml_off, prod (Production / ortami bilinmeyen). Kapi /jvm-autostart-xml ile AYNI.
  * dislanan: ayni alanlar + neden (uyumsuz gorunen ama kapidan gecmeyen JVM; ekran nedenini gosterir).
  */
 function adaylariTuret(a, opts = {}) {
   const as = opts.autoStart || autoStart();
   const adaylar = [];
   const dislananlar = [];
+  const xmlAdaylar = [];
   for (const h of (a && a.hosts) || []) {
     // AYNI SUNUCUDA AYNI (gen, JVM adi) IKI KEZ (uretim 2026-11-14, GBSTPQ01/GBSTPMAINWEB): taramada iki
     // kayit varsa hangisinin auto-start'i degisecek belirsizdir; ikisi de aday OLMAZ, nedeniyle disarida.
@@ -194,10 +249,32 @@ function adaylariTuret(a, opts = {}) {
         dislananlar.push({ ...satir, neden: `iş #${j.autoStartDogrulama.jobId} ile doğrulandı — tarama bekleniyor` });
         continue;
       }
+      // DOMAIN KAPALI + KAPAT: host XML grubu (bayat / sema kapisi once ve mesaji aynen; ornek GBFSTT01).
+      if (j.domainKapali === true && action === 'jboss_autostart_off') {
+        const sk = sunucuYazmaKapisi(a, h, h.host);
+        if (sk) {
+          dislananlar.push({ ...satir, neden: sk.message });
+          continue;
+        }
+        const xk = xmlKapatKapisi(j, { host: h.host, jvm: tj.name, gen: Number(tj.gen) });
+        if (xk) {
+          dislananlar.push({ ...satir, neden: `Domain kapalı; “Domain kapalı — auto-start host XML üzerinden kapat” bölümüne de alınmadı: ${xk.message}` });
+          continue;
+        }
+        const sx = as ? as.surenIs(h.host, tj.gen, tj.name) : null;
+        if (sx) {
+          dislananlar.push({ ...satir, neden: sx.jobId ? `iş #${sx.jobId} sürüyor` : 'iş başlatılıyor' });
+          continue;
+        }
+        xmlAdaylar.push({ ...satir, eylem: XML_SECIM, action: XML, prod: prodMu(h) });
+        continue;
+      }
       const k =
         sunucuYazmaKapisi(a, h, h.host) || jvmAutoStartKapisi(j, { host: h.host, jvm: tj.name, gen: Number(tj.gen), enable });
       if (k) {
-        dislananlar.push({ ...satir, neden: k.message });
+        // Domain kapali + AC: host XML yolu yalniz kapatir; neden bunu da soyler.
+        const ek = j.domainKapali === true && enable && !sunucuYazmaKapisi(a, h, h.host) ? ' “Domain kapalı — auto-start host XML üzerinden kapat” bölümü yalnız durmuş JVM’in auto-start’ını kapatır; açma yapmaz.' : '';
+        dislananlar.push({ ...satir, neden: `${k.message}${ek}` });
         continue;
       }
       // assess'in KENDI duzeltmesi de olmali (tazelik / sema / tanimsiz surec kapilari orada da var).
@@ -220,7 +297,23 @@ function adaylariTuret(a, opts = {}) {
   const sira = (x, y) => (x.host < y.host ? -1 : x.host > y.host ? 1 : x.gen - y.gen || (x.jvm < y.jvm ? -1 : x.jvm > y.jvm ? 1 : 0));
   adaylar.sort(sira);
   dislananlar.sort(sira);
-  return { adaylar, dislananlar };
+  xmlAdaylar.sort(sira);
+  return { adaylar, dislananlar, xmlAdaylar };
+}
+
+/**
+ * Host XML adaylarini (host, gen) domain'ine gore gruplar (ekran domain'i birlikte secer).
+ * Donus: [{ host, gen, env, envGroup, prod, scanDate, jvms: [{ jvm, autoStart, running }] }] (host, gen sirali).
+ */
+function xmlGrupla(xmlAdaylar) {
+  const m = new Map();
+  for (const x of xmlAdaylar || []) {
+    const k = `${x.host}|${x.gen}`;
+    if (!m.has(k))
+      m.set(k, { host: x.host, gen: x.gen, env: x.env, envGroup: x.envGroup, prod: x.prod === true, scanDate: x.scanDate, jvms: [] });
+    m.get(k).jvms.push({ jvm: x.jvm, autoStart: x.autoStart, running: x.running });
+  }
+  return [...m.values()];
 }
 
 const ogeAnahtari = (host, gen, jvm) => `${String(host || '').toUpperCase()}|${Number(gen)}|${String(jvm || '').toLowerCase()}`;
@@ -290,6 +383,7 @@ function ogeSatiri(r) {
     awxJobId: r.awx_job_id || null,
     sonucSatiri: r.sonuc_satiri || null,
     dogrulandi: r.dogrulandi === true || r.dogrulandi === 1,
+    hostXml: r.eylem === XML,
     baslamaAt: iso(r.baslama_at),
     bitisAt: iso(r.bitis_at),
   };
@@ -424,13 +518,55 @@ function secimiDuzle(secim, enCok) {
     if (!hostRe().test(host)) throw hata(400, `Geçersiz sunucu adı: ${M(host, 64) || '(boş)'}`);
     if (!JVM_RE.test(jvm)) throw hata(400, `Geçersiz JVM adı: ${M(jvm, 64) || '(boş)'}`);
     if (gen !== 7 && gen !== 8) throw hata(400, `Geçersiz JBoss sürümü (gen): ${host}/${jvm}`);
-    if (eylem !== 'ac' && eylem !== 'kapat') throw hata(400, `Geçersiz eylem: ${host}/${jvm}`);
+    if (eylem !== 'ac' && eylem !== 'kapat' && eylem !== XML_SECIM) throw hata(400, `Geçersiz eylem: ${host}/${jvm}`);
     const k = ogeAnahtari(host, gen, jvm);
     if (gorulen.has(k)) throw hata(400, `Aynı JVM iki kez seçilmiş: ${host}/${jvm}`);
     gorulen.add(k);
-    out.push({ host, jvm, gen, eylem, action: eylem === 'ac' ? 'jboss_autostart_on' : 'jboss_autostart_off' });
+    const action = eylem === 'ac' ? 'jboss_autostart_on' : eylem === 'kapat' ? 'jboss_autostart_off' : XML;
+    out.push({ host, jvm, gen, eylem, action });
   }
+  // Tek kip: CLI (ac/kapat) ve host XML ogeleri ayni toplu iste olmaz (bkz. baslik, DOMAIN KAPALI - HOST XML).
+  const xmlSay = out.filter((x) => x.action === XML).length;
+  if (xmlSay && xmlSay !== out.length)
+    throw hata(
+      400,
+      'Host XML (domain kapalı) öğeleri ile CLI (AÇ / KAPAT) öğeleri aynı toplu işte olmaz — ayrı ayrı planlayın.',
+      'karisik_secim',
+    );
   return out;
+}
+
+/**
+ * Olusturmada prod tespiti (yalniz host XML secimi): onbellekli degerlendirme (fresh degil) en cok PROD_OKUMA_MS
+ * beklenir; gelmezse ya da sunucu yoksa prod sayilir (guvenli taraf). Donus: prod sunucu adlari (Set).
+ */
+async function prodHostlari(hostlar) {
+  let a = null;
+  let t = null;
+  try {
+    a = await Promise.race([
+      _d.getAssessment(false),
+      new Promise((resolve) => {
+        t = setTimeout(() => resolve(null), PROD_OKUMA_MS);
+      }),
+    ]);
+  } catch {
+    a = null;
+  } finally {
+    if (t) clearTimeout(t);
+  }
+  const byHost = new Map(((a && a.hosts) || []).map((h) => [h.host, h]));
+  return new Set(hostlar.filter((x) => prodMu(byHost.get(x))));
+}
+
+/** Prod onayi yoksa 400 (code prod_onay); mesaj sunuculari sayar. */
+function prodOnayYok(prodlar) {
+  const l = [...prodlar];
+  return hata(
+    400,
+    `Production / ortamı bilinmeyen ${l.length} sunucu seçimde (${l.slice(0, 5).join(', ')}${l.length > 5 ? ` +${l.length - 5}` : ''}) — host XML ile kapatma için açık prod onayı gerekli (prodOnay).`,
+    'prod_onay',
+  );
 }
 
 /**
@@ -439,9 +575,15 @@ function secimiDuzle(secim, enCok) {
  * basina SIRALI kilit sorgusu bekleniyordu. Simdi is + ogeler (SECIM) hemen yazilir; taze degerlendirme, aday
  * yeniden turetme (eylem eslesmesi dahil) ve kilit yurutucude (secimDogrula). Gecemeyen oge DUSTU (nedeniyle).
  */
-async function olustur(req, secim) {
+async function olustur(req, secim, { prodOnay = false } = {}) {
   const enCok = await _d.ayarlar.limit('toplu_autostart');
   const istek = secimiDuzle(secim, enCok);
+  const xmlIs = istek.length > 0 && istek[0].action === XML;
+  if (xmlIs && prodOnay !== true) {
+    const prodlar = await prodHostlari([...new Set(istek.map((c) => c.host))]);
+    if (prodlar.size) throw prodOnayYok(prodlar);
+  }
+  const ekMetni = xmlIs ? JSON.stringify({ prodOnay: prodOnay === true }) : null;
   const akt = await aktifIs();
   if (akt) throw hata(409, `Toplu auto-start işi #${akt.id} hâlâ aktif (${akt.durum}) — önce o bitmeli ya da iptal edilmeli.`, 'aktif_is');
   const secilen = istek;
@@ -468,12 +610,12 @@ async function olustur(req, secim) {
       const p = [];
       const v = parca.map((c, j) => {
         // env / tarama degeri / calisiyor / tarama tarihi secimDogrula'da taze degerlendirmeden yazilir.
-        p.push(isId, i + j + 1, c.host, null, c.gen, c.jvm, c.action, c.action === 'jboss_autostart_on' ? 'true' : 'false', null, null, null);
-        const b = p.length - 11;
-        return `(${Array.from({ length: 11 }, (_, n) => `$${b + n + 1}`).join(', ')}, '${SECIM}')`;
+        p.push(isId, i + j + 1, c.host, null, c.gen, c.jvm, c.action, c.action === 'jboss_autostart_on' ? 'true' : 'false', null, null, null, ekMetni);
+        const b = p.length - 12;
+        return `(${Array.from({ length: 12 }, (_, n) => `$${b + n + 1}`).join(', ')}, '${SECIM}')`;
       });
       await db().query(
-        `INSERT INTO server_hub_toplu_ogeler (is_id, sira, host, env, gen, jvm, eylem, hedef, tarama_degeri, calisiyor, tarama_scan_date, durum) VALUES ${v.join(', ')}`,
+        `INSERT INTO server_hub_toplu_ogeler (is_id, sira, host, env, gen, jvm, eylem, hedef, tarama_degeri, calisiyor, tarama_scan_date, ek, durum) VALUES ${v.join(', ')}`,
         p,
       );
     }
@@ -489,8 +631,14 @@ async function olustur(req, secim) {
     throw hata(500, `Toplu iş öğeleri yazılamadı: ${e && e.message}`);
   }
   const hostlar = [...new Set(secilen.map((c) => c.host))];
-  denetim(req, { op: 'toplu_autostart_olustur', id: isId, adet: secilen.length, hostlar });
-  return { id: isId, adet: secilen.length, hostSayisi: hostlar.length, dogrulaniyor: true };
+  denetim(req, {
+    op: 'toplu_autostart_olustur',
+    id: isId,
+    adet: secilen.length,
+    hostlar,
+    ...(xmlIs ? { kip: 'xml', prodOnay: prodOnay === true } : {}),
+  });
+  return { id: isId, adet: secilen.length, hostSayisi: hostlar.length, dogrulaniyor: true, kip: xmlIs ? 'xml' : 'cli' };
 }
 
 /** En cok n esli calisan fn; sonuc sirasi liste sirasi. */
@@ -545,8 +693,8 @@ async function secimDogrula(is, og) {
     return false;
   }
   if (!(await kiraYenile(is.id))) return false;
-  const { adaylar, dislananlar } = adaylariTuret(a);
-  const byK = new Map(adaylar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
+  const { adaylar, dislananlar, xmlAdaylar } = adaylariTuret(a);
+  const byK = new Map([...adaylar, ...xmlAdaylar].map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
   const disK = new Map(dislananlar.map((x) => [ogeAnahtari(x.host, x.gen, x.jvm), x]));
   // Sonucu belirsiz eski ogeler bir kez okunur (oge basina sorgu yok); okunamazsa topluKilidi kendisi dener.
   let belirsizler = null;
@@ -562,6 +710,9 @@ async function secimDogrula(is, og) {
       const d = disK.get(k);
       return { neden: `artık aday değil${d ? ` (${d.neden})` : c ? ' (eylem değişti)' : ' (tarama değişti)'}` };
     }
+    // Taze degerlendirmede prod (ya da ortami bilinmeyen) cikan host XML ogesi olusturmadaki prod onayi olmadan gecemez.
+    if (xmlMi(c) && c.prod && ekOku(o).prodOnay !== true)
+      return { neden: `${c.host} Production / ortamı bilinmeyen sunucu — prod onayı verilmedi (host XML ile kapatılmaz)` };
     // DB tabanli kilit: ayni JVM baska bir toplu isin ogesiyse (YARIM_KALDI izlemesi ve sonucu belirsiz oge
     // dahil) gecemez.
     const kilit = await topluKilidi(c.host, c.gen, c.jvm, { haricIs: is.id, belirsizler });
@@ -607,7 +758,7 @@ async function planEskit(req, id) {
   return true;
 }
 
-async function onayla(req, id) {
+async function onayla(req, id, { prodOnay = false } = {}) {
   const is = await isOku(id);
   if (!is) throw hata(404, `Toplu iş #${id} yok.`);
   if (is.durum !== 'PLAN_HAZIR') throw hata(409, `Toplu iş #${id} onaylanamaz (durum ${is.durum}).`, 'durum');
@@ -627,15 +778,24 @@ async function onayla(req, id) {
     throw hata(400, `Limit ${enCok} JVM'e düşürülmüş (${gecen.length} öğe) — yeniden planlayın.`, 'limit');
   let kalan = 0;
   const as = autoStart();
-  for (const o of gecen) {
+  // Once karar (yazmadan): prod onayi eksikse hicbir oge degismeden 400.
+  const kararlar = gecen.map((o) => {
     const h = byHost.get(o.host);
     // JVM duzeyi kapi da yeniden (inceleme 2026-11-14): plandan sonra baslatilan JVM'in KAPAT ogesi ya da
-    // bu arada hedefe gelmis JVM burada duser (betik reddedip ozeti kirmiziya boyamasin).
+    // bu arada hedefe gelmis JVM burada duser (betik reddedip ozeti kirmiziya boyamasin). Host XML ogesi
+    // /jvm-autostart-xml ile ayni kapidan (domain hala kapali gorunmeli).
     const tj = h ? (h.jvms || []).find((x) => x.name === o.jvm && Number(x.gen) === Number(o.gen)) : null;
     const j = tj && as ? as.uygulaJvm(h, tj) : tj;
     const k =
       sunucuYazmaKapisi(a, h, o.host) ||
-      jvmAutoStartKapisi(j, { host: o.host, jvm: o.jvm, gen: Number(o.gen), enable: o.eylem === 'jboss_autostart_on' });
+      (xmlMi(o)
+        ? xmlKapatKapisi(j, { host: o.host, jvm: o.jvm, gen: Number(o.gen) })
+        : jvmAutoStartKapisi(j, { host: o.host, jvm: o.jvm, gen: Number(o.gen), enable: o.eylem === 'jboss_autostart_on' }));
+    return { o, k, prod: xmlMi(o) && prodMu(h) };
+  });
+  const prodlar = new Set(kararlar.filter((x) => !x.k && x.prod).map((x) => x.o.host));
+  if (prodlar.size && prodOnay !== true) throw prodOnayYok(prodlar);
+  for (const { o, k } of kararlar) {
     if (k) await ogeDurum(o.id, ['PLAN_GECTI'], 'DUSTU', { neden: M(`onay anında: ${k.message}`, 1000) });
     else kalan += 1;
   }
@@ -657,7 +817,7 @@ async function onayla(req, id) {
   if (r.rowCount !== 1) throw hata(409, `Toplu iş #${id} bu arada değişti — sayfayı yenileyin.`, 'durum');
   await db().query(`UPDATE server_hub_toplu_ogeler SET durum = 'BEKLIYOR' WHERE is_id = $1 AND durum = 'PLAN_GECTI'`, [id]);
   await sayimYaz(id);
-  denetim(req, { op: 'toplu_autostart_onay', id, adet: kalan });
+  denetim(req, { op: 'toplu_autostart_onay', id, adet: kalan, ...(prodlar.size ? { prodOnay: true, prodHostlar: [...prodlar] } : {}) });
   return { id, adet: kalan };
 }
 
@@ -698,24 +858,67 @@ async function iptal(req, id) {
 
 // ── YURUTUCU ─────────────────────────────────────────────────────────────────────────────────────
 
-function gruplaHost(liste) {
-  const m = new Map();
-  for (const o of liste) {
-    if (!m.has(o.host)) m.set(o.host, []);
-    m.get(o.host).push(o);
-  }
-  return m;
-}
+/**
+ * Bir AWX isinde birlikte gidebilecek ogelerin anahtari: CLI ogeleri host basina (jvm_items gen tasir), host XML
+ * ogeleri (host, gen) basina (tek host XML dosyasi; extra_vars tek gen). Iki kip ASLA ayni anahtarda olmaz.
+ */
+const parcaAnahtari = (o) => (xmlMi(o) ? `${o.host}|${Number(o.gen)}|xml` : `${o.host}|cli`);
 
 /**
- * Ogeleri AWX isi parcalarina boler: host basina (ilk gorulme sirasiyla), her hostun ogeleri liste sirasiyla
- * en cok n'lik dilimler. Donus: [{ host, liste }].
+ * Ogeleri AWX isi parcalarina boler: anahtar basina (parcaAnahtari; ilk gorulme sirasiyla), her grubun ogeleri
+ * liste sirasiyla en cok n'lik dilimler. Donus: [{ host, gen (yalniz XML), xml, liste }].
  */
 function parcala(liste, n) {
   const k = Math.max(1, Number(n) || 1);
+  const m = new Map();
+  for (const o of liste) {
+    const a = parcaAnahtari(o);
+    if (!m.has(a)) m.set(a, []);
+    m.get(a).push(o);
+  }
   const out = [];
-  for (const [host, l] of gruplaHost(liste)) for (let i = 0; i < l.length; i += k) out.push({ host, liste: l.slice(i, i + k) });
+  for (const l of m.values()) {
+    const xml = xmlMi(l[0]);
+    for (let i = 0; i < l.length; i += k)
+      out.push({ host: l[0].host, ...(xml ? { gen: Number(l[0].gen) } : {}), xml, liste: l.slice(i, i + k) });
+  }
   return out;
+}
+
+/** Parcanin AWX extra_vars'i: CLI jboss_autostart_items + jvm_items; host XML jboss_autostart_xml_off + gen + jvms. */
+function isDegiskenleri(host, liste, planOnly) {
+  if (xmlMi(liste[0]))
+    return {
+      target_host: host,
+      action: XML,
+      plan_only: planOnly,
+      reload: false,
+      gen: Number(liste[0].gen),
+      jvms: liste.map((o) => o.jvm).join(' '),
+    };
+  return { target_host: host, action: LISTE_EYLEMI, plan_only: planOnly, reload: false, jvm_items: jvmItems(liste) };
+}
+
+/**
+ * Parca ogelerinin sonucu (ogeSonuclari). Host XML isinde betik dosya / host controller kapisinda durursa ITEM
+ * satiri yazmaz: genel RESULT satiri FAIL ise satiri olmayan her ogeye o yazilir (dogrulanmaz). Istisna: genel
+ * FAIL "<jvm> su an CALISIYOR (ps)" ve o JVM parcadaysa yalniz ona; digerleri "istek durduruldu" (betik onlari
+ * hic denemedi; planda yeniden planlanir, uygulamada FAIL kalir).
+ */
+function parcaSonuclari(liste, result) {
+  const s = ogeSonuclari(jvmItems(liste), result);
+  if (!liste.length || !xmlMi(liste[0])) return s;
+  const r = result && typeof result === 'object' ? result : null;
+  const g = r && r.action === XML ? sonucSatiri(r.line) : null;
+  if (!g || g.action !== XML || g.durum !== 'FAIL') return s;
+  const cj = XML_JVM_CALISIYOR_RE.exec(g.mesaj || '');
+  const tek = cj && liste.some((o) => o.jvm === cj[1]) ? cj[1] : null;
+  return s.map((x, i) => {
+    if (x.durum) return x;
+    if (tek && liste[i].jvm !== tek)
+      return { ...x, durum: 'FAIL', mesaj: `istek durduruldu (baska JVM reddedildi): ${g.mesaj}`, dogrulandi: false };
+    return { ...x, durum: 'FAIL', mesaj: g.mesaj, dogrulandi: false };
+  });
 }
 
 /** Suren ogeler AWX isine gore (parca = ayni is numarasini tasiyan ogeler); is numarasi yoksa anahtar 'yok'. */
@@ -747,16 +950,10 @@ const yerTutucu = (ids, bas) => ids.map((_, i) => `$${bas + i}`).join(', ');
  * Sonucu belirsiz parca (AWX'te suruyor olabilir) sonrasi toplu is DURUR: bekleyen ogeler YARIM_KALDI
  * ("calistirilmadi"); ayni hostta ikinci bir yazma isi acilmaz. Ozet kirmizi (uygulaBitir: YARIM_KALDI).
  */
-async function topluDurdur(is, neden) {
+async function topluDurdur(is, neden, kuyruk = "Sonucu bilinmeyen iş AWX'te sürüyor olabilir; AWX'ten kontrol edin, sunucuyu yeniden tarayın, sonra yeni toplu iş açın.") {
   const r = await db().query(
     `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BEKLIYOR'`,
-    [
-      is.id,
-      M(
-        `çalıştırılmadı: toplu iş durduruldu — ${neden}. Sonucu bilinmeyen iş AWX'te sürüyor olabilir; AWX'ten kontrol edin, sunucuyu yeniden tarayın, sonra yeni toplu iş açın.`,
-        1000,
-      ),
-    ],
+    [is.id, M(`çalıştırılmadı: toplu iş durduruldu — ${neden}. ${kuyruk}`, 1000)],
   );
   if (r.rowCount) denetim(sozdeIstek(is.onaylayan || is.olusturan), { op: 'toplu_autostart_durduruldu', id: is.id, neden, adet: r.rowCount });
 }
@@ -816,7 +1013,12 @@ async function planIlerlet(is, og, iptalMi) {
       continue;
     }
     const result = sonucOku(st);
-    const s = ogeSonuclari(jvmItems(liste), result);
+    const xml = xmlMi(o0);
+    const s = parcaSonuclari(liste, result);
+    // Host XML: betik bir JVM'i reddedince digerlerine "istek durduruldu" yazar; gercek red varsa onlar yeniden
+    // planlanir (reddedilen olmadan). Gercek red yoksa (yalniz bu satir) duser: dongu olmaz.
+    const durdurulduMu = (x) => x.durum === 'FAIL' && XML_DURDURULDU_RE.test(x.mesaj || '');
+    const gercekRed = xml && s.some((x) => x.durum === 'FAIL' && !durdurulduMu(x));
     for (let i = 0; i < liste.length; i += 1) {
       const o = liste[i];
       const x = s[i];
@@ -825,15 +1027,25 @@ async function planIlerlet(is, og, iptalMi) {
         await ogeDurum(o.id, ['PLANLANIYOR'], 'PLAN_GECTI', { neden: M(x.mesaj || 'canlı değer hâlâ uyumsuz', 1000), sonuc_satiri: M(satir, 1000) });
       else if (x.durum === 'SKIP')
         await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', {
-          neden: M(`canlı değer zaten ${o.hedef} — tarama eski (${x.mesaj})`, 1000),
+          neden: M(xml ? `host XML'de auto-start zaten false — tarama eski (${x.mesaj})` : `canlı değer zaten ${o.hedef} — tarama eski (${x.mesaj})`, 1000),
           sonuc_satiri: M(satir, 1000),
         });
+      else if (gercekRed && durdurulduMu(x))
+        await ogeDurum(o.id, ['PLANLANIYOR'], 'ADAY', {
+          neden: M(`yeniden planlanacak: plan işi #${o0.plan_job_id} içinde başka JVM reddedildi (bu JVM'e dokunulmadı)`, 1000),
+          sonuc_satiri: M(satir, 1000),
+          plan_awx_server_id: null,
+          plan_job_id: null,
+        });
       else if (x.durum)
-        await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', { neden: M(`canlı okumada: ${x.mesaj || x.durum}`, 1000), sonuc_satiri: M(satir, 1000) });
+        await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', {
+          neden: M(xml ? `host XML planında: ${x.mesaj || x.durum}` : `canlı okumada: ${x.mesaj || x.durum}`, 1000),
+          sonuc_satiri: M(satir, 1000),
+        });
       else
         await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', {
           neden: M(
-            `plan okunamadı (iş #${o0.plan_job_id} ${st.status}${result ? '' : "; set_stats yok — AWX'teki server_hub_fix.yml jboss_autostart_items kipini tanımıyor olabilir (playbook güncel mi?)"})`,
+            `plan okunamadı (iş #${o0.plan_job_id} ${st.status}${result ? '' : `; set_stats yok — AWX'teki server_hub_fix.yml ${xml ? XML : LISTE_EYLEMI} kipini tanımıyor olabilir (playbook güncel mi?)`})`,
             1000,
           ),
         });
@@ -849,7 +1061,7 @@ async function planIlerlet(is, og, iptalMi) {
   const hostta = new Map();
   for (const l of surenPlan.values()) hostta.set(l[0].host, (hostta.get(l[0].host) || 0) + 1);
   const n = await isBasinaJvm();
-  for (const { host, liste } of parcala(tazeOg.filter((o) => o.durum === 'ADAY'), n)) {
+  for (const { host, gen, xml, liste } of parcala(tazeOg.filter((o) => o.durum === 'ADAY'), n)) {
     if (bos <= 0) break;
     if ((hostta.get(host) || 0) >= PLAN_HOST_PARALEL) continue;
     if (!(await kiraYenile(is.id))) return;
@@ -871,9 +1083,9 @@ async function planIlerlet(is, og, iptalMi) {
       const r = await _d.launch(
         sozdeIstek(is.olusturan),
         FIX_KEY,
-        `Server Hub: toplu auto-start #${is.id} plan @ ${host} (${parca.length} JVM)`,
-        { target_host: host, action: LISTE_EYLEMI, plan_only: true, reload: false, jvm_items: jvmItems(parca) },
-        { op: 'toplu_autostart_plan', id: is.id, host, adet: parca.length },
+        `Server Hub: toplu auto-start #${is.id} plan${xml ? ` (host XML, JBoss ${gen})` : ''} @ ${host} (${parca.length} JVM)`,
+        isDegiskenleri(host, parca, true),
+        { op: 'toplu_autostart_plan', id: is.id, host, adet: parca.length, ...(xml ? { kip: 'xml', gen } : {}) },
       );
       await db().query(
         `UPDATE server_hub_toplu_ogeler SET plan_awx_server_id = $2, plan_job_id = $3
@@ -949,7 +1161,7 @@ async function parcaIsiniIsle(is, liste) {
       // katman guncellenemedi: DB sonucu yine yazilir
     }
   }
-  const s = ogeSonuclari(jvmItems(liste), result);
+  const s = parcaSonuclari(liste, result);
   for (let i = 0; i < liste.length; i += 1) {
     const o = liste[i];
     const x = s[i];
@@ -962,6 +1174,20 @@ async function parcaIsiniIsle(is, liste) {
         sonuc_satiri: M(satir, 1000),
       });
   }
+  // Host XML geri alma basarisiz: dosya elle geri yazilmali; siradaki sunuculara gecilmez (bekleyenler YARIM_KALDI).
+  if (xmlMi(o0) && s.some((x) => x.durum === 'FAIL' && XML_GERI_ALMA_RE.test(x.mesaj || '')))
+    await topluDurdur(
+      is,
+      `${o0.host} host XML işi #${o0.awx_job_id} geri almada başarısız (dosya elle geri yazılmalı)`,
+      'Önce o sunucudaki host XML dosyasını yedekten elle geri yazın (yedek yolu öğe satırında), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    );
+  // Dosya yazildi ama geri okunan icerik beklenenden farkli: etkin auto-start belirsiz; siradaki sunuculara gecilmez.
+  else if (xmlMi(o0) && s.some((x) => x.durum === 'FAIL' && XML_GERI_OKUMA_RE.test(x.mesaj || '')))
+    await topluDurdur(
+      is,
+      `${o0.host} host XML işi #${o0.awx_job_id} yazıldı ama geri okunan dosya beklenenden farklı (etkin auto-start belirsiz)`,
+      'Önce o sunucudaki host XML dosyasını yedekle karşılaştırın (yedek yolu öğe satırında; gerekirse elle geri yazın), sunucuyu yeniden tarayın, sonra yeni toplu iş açın.',
+    );
   return true;
 }
 
@@ -997,82 +1223,103 @@ async function uygulaIlerlet(is, og) {
   for (const o of og) if (!ilkSira.has(o.host)) ilkSira.set(o.host, Number(o.sira));
   const host = bekleyen.reduce((b, o) => (ilkSira.get(o.host) < ilkSira.get(b.host) ? o : b)).host;
   const n = await isBasinaJvm();
-  let liste = bekleyen.filter((o) => o.host === host).slice(0, n);
-  // Tek satir isi (bellek kilidi) bu JVM'de suruyorsa oge atlanir (cakisan iki is acilmaz).
-  const kalan = [];
-  for (const o of liste) {
-    const k = _d.surenIsKilidi ? await _d.surenIsKilidi(o.host, o.gen, o.jvm) : null;
-    if (k) await ogeDurum(o.id, ['BEKLIYOR'], 'DUSTU', { neden: M(`atlandı: ${k}`, 1000) });
-    else kalan.push(o);
-  }
-  liste = kalan;
-  if (!liste.length) return false;
-  if (!(await kiraYenile(is.id))) return false;
-  const ids = liste.map((o) => o.id);
-  // Ayni anda TEK parca: toplu iste (ayni host dahil) baska BASLATILIYOR / CALISIYOR oge varsa sahiplenilmez.
-  const al = await db().query(
-    `UPDATE server_hub_toplu_ogeler SET durum = 'BASLATILIYOR', baslama_at = SYSUTCDATETIME()
-      WHERE is_id = $1 AND durum = 'BEKLIYOR' AND id IN (${yerTutucu(ids, 3)})
-        AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'CALISIYOR' AND kira_id = $2)
-        AND NOT EXISTS (SELECT 1 FROM server_hub_toplu_ogeler x WITH (UPDLOCK, HOLDLOCK)
-                         WHERE x.is_id = $1 AND x.id NOT IN (${yerTutucu(ids, 3)}) AND x.durum IN ('BASLATILIYOR', 'CALISIYOR'))`,
-    [is.id, SUREC_ID, ...ids],
-  );
-  if (al.rowCount < 1) return false;
-  const tazeListe = (await ogeler(is.id)).filter((o) => ids.includes(o.id) && o.durum === 'BASLATILIYOR');
-  const tids = tazeListe.map((o) => o.id);
-  if (!tids.length) return false;
+  // Parca anahtari hostun sira'ca ilk BEKLIYOR ogesinden (host XML: ayni host + gen; CLI: host). Kipler karismaz.
+  const ilk = bekleyen.filter((o) => o.host === host).reduce((b, o) => (Number(o.sira) < Number(b.sira) ? o : b));
+  const pk = parcaAnahtari(ilk);
+  const xml = xmlMi(ilk);
+  const gen = Number(ilk.gen);
+  let liste = bekleyen.filter((o) => parcaAnahtari(o) === pk).slice(0, n);
   const as = autoStart();
-  const birak = tazeListe.map((o) => (as ? as.rezervasyon(o.host, o.gen, o.jvm) : () => {}));
-  let r;
+  // HOST XML: ayni dosyaya iki is olmasin - rezervasyon (tek satir /jvm-autostart-xml ile ayni) await'ten ONCE alinir;
+  // doluysa bu tick beklenir (birkac saniyelik baslatma).
+  const birakXml = xml && as ? as.xmlRezervasyon(host, gen) : () => {};
+  if (!birakXml) return false;
   try {
-    let h = null;
-    try {
-      const a = await _d.getAssessment(false);
-      h = (a.hosts || []).find((x) => x.host === host) || null;
-    } catch {
-      h = null;
-    }
-    const items = jvmItems(tazeListe);
-    try {
-      r = await _d.launch(
-        sozdeIstek(is.onaylayan || is.olusturan),
-        FIX_KEY,
-        `Server Hub: toplu auto-start #${is.id} @ ${host} (${items.length} JVM)`,
-        { target_host: host, action: LISTE_EYLEMI, plan_only: false, reload: false, jvm_items: items },
-        { op: 'toplu_autostart_uygula', id: is.id, host, items },
-      );
-    } catch (e) {
-      if (e && e.launchBelirsiz === true) {
-        // Launch istegi belirsiz hatayla dondu (zaman asimi / 5xx / baglanti): is AWX'te olusmus olabilir.
-        // "Baslatilamadi" DENMEZ; parca YARIM_KALDI, toplu is DURUR.
-        await db().query(
-          `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
-          [
-            is.id,
-            M(`iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, ${BELIRSIZ_IZ}): ${e && e.message} — AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`, 1000),
-            ...tids,
-          ],
-        );
-        await topluDurdur(is, `${host} parçasının iş isteği belirsiz hatayla döndü`);
+    if (xml && _d.xmlIsKilidi) {
+      const xk = await _d.xmlIsKilidi(host, gen);
+      if (xk) {
+        for (const o of liste) await ogeDurum(o.id, ['BEKLIYOR'], 'DUSTU', { neden: M(`atlandı: ${xk}`, 1000) });
         return false;
       }
-      // AWX isi acilmadi (kesin red): bu parca FAIL, toplu is DURMAZ (sonraki tick sonraki parca).
-      await db().query(
-        `UPDATE server_hub_toplu_ogeler SET durum = 'FAIL', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
-        [is.id, M(`iş başlatılamadı: ${e && e.message}`, 1000), ...tids],
-      );
-      return false;
     }
-    if (as) as.isKaydetToplu(r.awxServerId, r.jobId, { host, h, items });
-    await db().query(
-      `UPDATE server_hub_toplu_ogeler SET durum = 'CALISIYOR', awx_server_id = $2, awx_job_id = $3 WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 4)})`,
-      [is.id, r.awxServerId, r.jobId, ...tids],
+    // Tek satir isi (bellek kilidi) bu JVM'de suruyorsa oge atlanir (cakisan iki is acilmaz).
+    const kalan = [];
+    for (const o of liste) {
+      const k = _d.surenIsKilidi ? await _d.surenIsKilidi(o.host, o.gen, o.jvm) : null;
+      if (k) await ogeDurum(o.id, ['BEKLIYOR'], 'DUSTU', { neden: M(`atlandı: ${k}`, 1000) });
+      else kalan.push(o);
+    }
+    liste = kalan;
+    if (!liste.length) return false;
+    if (!(await kiraYenile(is.id))) return false;
+    const ids = liste.map((o) => o.id);
+    // Ayni anda TEK parca: toplu iste (ayni host dahil) baska BASLATILIYOR / CALISIYOR oge varsa sahiplenilmez.
+    const al = await db().query(
+      `UPDATE server_hub_toplu_ogeler SET durum = 'BASLATILIYOR', baslama_at = SYSUTCDATETIME()
+        WHERE is_id = $1 AND durum = 'BEKLIYOR' AND id IN (${yerTutucu(ids, 3)})
+          AND EXISTS (SELECT 1 FROM server_hub_toplu_isler WHERE id = $1 AND durum = 'CALISIYOR' AND kira_id = $2)
+          AND NOT EXISTS (SELECT 1 FROM server_hub_toplu_ogeler x WITH (UPDLOCK, HOLDLOCK)
+                           WHERE x.is_id = $1 AND x.id NOT IN (${yerTutucu(ids, 3)}) AND x.durum IN ('BASLATILIYOR', 'CALISIYOR'))`,
+      [is.id, SUREC_ID, ...ids],
     );
+    if (al.rowCount < 1) return false;
+    const tazeListe = (await ogeler(is.id)).filter((o) => ids.includes(o.id) && o.durum === 'BASLATILIYOR');
+    const tids = tazeListe.map((o) => o.id);
+    if (!tids.length) return false;
+    const birak = tazeListe.map((o) => (as ? as.rezervasyon(o.host, o.gen, o.jvm) : () => {}));
+    let r;
+    try {
+      let h = null;
+      try {
+        const a = await _d.getAssessment(false);
+        h = (a.hosts || []).find((x) => x.host === host) || null;
+      } catch {
+        h = null;
+      }
+      const items = jvmItems(tazeListe);
+      try {
+        r = await _d.launch(
+          sozdeIstek(is.onaylayan || is.olusturan),
+          FIX_KEY,
+          `Server Hub: toplu auto-start #${is.id}${xml ? ` (host XML, JBoss ${gen})` : ''} @ ${host} (${items.length} JVM)`,
+          isDegiskenleri(host, tazeListe, false),
+          { op: 'toplu_autostart_uygula', id: is.id, host, items, ...(xml ? { kip: 'xml', gen } : {}) },
+        );
+      } catch (e) {
+        if (e && e.launchBelirsiz === true) {
+          // Launch istegi belirsiz hatayla dondu (zaman asimi / 5xx / baglanti): is AWX'te olusmus olabilir.
+          // "Baslatilamadi" DENMEZ; parca YARIM_KALDI, toplu is DURUR.
+          await db().query(
+            `UPDATE server_hub_toplu_ogeler SET durum = 'YARIM_KALDI', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
+            [
+              is.id,
+              M(`iş isteği belirsiz hatayla döndü (AWX'e gitmiş olabilir, ${BELIRSIZ_IZ}): ${e && e.message} — AWX'ten kontrol edin, sonra sunucuyu yeniden tarayın`, 1000),
+              ...tids,
+            ],
+          );
+          await topluDurdur(is, `${host} parçasının iş isteği belirsiz hatayla döndü`);
+          return false;
+        }
+        // AWX isi acilmadi (kesin red): bu parca FAIL, toplu is DURMAZ (sonraki tick sonraki parca).
+        await db().query(
+          `UPDATE server_hub_toplu_ogeler SET durum = 'FAIL', neden = $2, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 3)})`,
+          [is.id, M(`iş başlatılamadı: ${e && e.message}`, 1000), ...tids],
+        );
+        return false;
+      }
+      // Dogrulama katmani: host XML ogeleri de (action jboss_autostart_xml_off, hedef false); xmlSurenIs bu kaydi gorur.
+      if (as) as.isKaydetToplu(r.awxServerId, r.jobId, { host, h, items });
+      await db().query(
+        `UPDATE server_hub_toplu_ogeler SET durum = 'CALISIYOR', awx_server_id = $2, awx_job_id = $3 WHERE is_id = $1 AND durum = 'BASLATILIYOR' AND id IN (${yerTutucu(tids, 4)})`,
+        [is.id, r.awxServerId, r.jobId, ...tids],
+      );
+    } finally {
+      for (const b of birak) b();
+    }
+    return false;
   } finally {
-    for (const b of birak) b();
+    birakXml();
   }
-  return false;
 }
 
 async function uygulaBitir(is) {
@@ -1241,12 +1488,13 @@ function mount(router, deps) {
         isBasinaJvm(),
       ]);
       if (a.tableMissing)
-        return res.json({ ok: true, adaylar: [], dislananlar: [], limit, isBasinaJvm: isBasina, aktif: isSatiri(akt), latestScan: null });
-      const { adaylar, dislananlar } = adaylariTuret(a);
+        return res.json({ ok: true, adaylar: [], dislananlar: [], adaylarXml: [], limit, isBasinaJvm: isBasina, aktif: isSatiri(akt), latestScan: null });
+      const { adaylar, dislananlar, xmlAdaylar } = adaylariTuret(a);
       res.json({
         ok: true,
         adaylar,
         dislananlar,
+        adaylarXml: xmlGrupla(xmlAdaylar),
         limit,
         isBasinaJvm: isBasina,
         aktif: isSatiri(akt),
@@ -1274,7 +1522,8 @@ function mount(router, deps) {
     try {
       const is = await isOku(id);
       if (!is) return res.status(404).json({ ok: false, message: `Toplu iş #${id} yok.` });
-      res.json({ ok: true, is: isSatiri(is), ogeler: (await ogeler(id)).map(ogeSatiri) });
+      const og = (await ogeler(id)).map(ogeSatiri);
+      res.json({ ok: true, is: { ...isSatiri(is), kip: og.length && og[0].hostXml ? 'xml' : 'cli' }, ogeler: og });
     } catch (err) {
       gonder(req, res, err);
     }
@@ -1282,7 +1531,7 @@ function mount(router, deps) {
 
   router.post('/toplu-autostart', async (req, res) => {
     try {
-      res.json({ ok: true, ...(await olustur(req, req.body && req.body.secim)) });
+      res.json({ ok: true, ...(await olustur(req, req.body && req.body.secim, { prodOnay: req.body?.prodOnay === true })) });
     } catch (err) {
       gonder(req, res, err);
     }
@@ -1293,7 +1542,7 @@ function mount(router, deps) {
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, message: 'Geçersiz iş numarası.' });
     if (req.body?.confirmed !== true) return res.status(400).json({ ok: false, message: 'Bu işlem açık onay ister (confirmed).' });
     try {
-      res.json({ ok: true, ...(await onayla(req, id)) });
+      res.json({ ok: true, ...(await onayla(req, id, { prodOnay: req.body?.prodOnay === true })) });
     } catch (err) {
       gonder(req, res, err);
     }
@@ -1326,7 +1575,11 @@ module.exports = {
   mount,
   kur,
   adaylariTuret,
+  xmlGrupla,
   parcala,
+  parcaSonuclari,
+  prodMu,
+  XML_SECIM,
   secimiDuzle,
   topluKilidi,
   olustur,

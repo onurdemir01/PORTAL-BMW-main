@@ -190,13 +190,16 @@ async function query(sql, p = []) {
   if (/^INSERT INTO server_hub_toplu_ogeler/.test(q)) {
     const durumlar_ = [...q.matchAll(/'(ADAY|SECIM)'\)/g)].map((x) => x[1]);
     const n = durumlar_.length;
+    // kolon listesi: ek (2026-11-15, host XML prod onayi) varsa satir basina 12 parametre
+    const ekVar = /tarama_scan_date, ek, durum\)/.test(q);
+    const w = ekVar ? 12 : 11;
     for (let i = 0; i < n; i += 1) {
-      const x = p.slice(i * 11, i * 11 + 11);
+      const x = p.slice(i * w, i * w + w);
       DB.sira += 1;
       DB.ogeler.push({
         id: DB.sira, is_id: x[0], sira: x[1], host: x[2], env: x[3], gen: x[4], jvm: x[5], eylem: x[6], hedef: x[7],
         tarama_degeri: x[8], calisiyor: x[9], tarama_scan_date: x[10], durum: durumlar_[i], neden: null, plan_awx_server_id: null,
-        plan_job_id: null, awx_server_id: null, awx_job_id: null, sonuc_satiri: null, dogrulandi: 0, baslama_at: null, bitis_at: null,
+        plan_job_id: null, awx_server_id: null, awx_job_id: null, sonuc_satiri: null, dogrulandi: 0, baslama_at: null, bitis_at: null, ek: ekVar ? x[11] : null,
       });
     }
     return { rows: [], rowCount: n };
@@ -1204,4 +1207,380 @@ test('TA21 secim sirasi hostlari karistirsa da uygulama bir hostun tum parcalari
   }
   assert.deepEqual(uygulamaIsleri().map((l) => `${l.ev.target_host}:${l.ev.jvm_items[0].jvm}`), ['HA:j00', 'HA:j01', 'HA:j02', 'HB:j00', 'HB:j01', 'HB:j02']);
   assert.equal(DB.isler[0].durum, 'BITTI');
+});
+
+// ── DOMAIN KAPALI - HOST XML (2026-11-15, kullanici: "olur ekle lutfen") ─────────────────────────────────
+//   TX1 adaylar: domain kapali durmus + auto-start true JVM'ler ayri grup (host+gen, prod / bilinmiyor isaretli);
+//       bayat sunucu (GBFSTT01) dislananda AYNI mesajla; kapidan gecemeyen domain kapali JVM'in nedeni bolumu anar
+//   TX2 olustur: CLI + XML karisik 400; prod / bilinmiyor / okunamayan ortam prodOnay olmadan 400 (kayit yok)
+//   TX3 plan: (host, gen) parcasi, extra_vars gen + jvms; PLAN gecer, SKIP / FAIL duser, "istek durduruldu" yeniden
+//       planlanir, ITEM satiri yoksa genel FAIL her ogeye; TX3b yalniz "istek durduruldu" -> duser (dongu yok)
+//   TX4 parcala: CLI ve XML ayni AWX isine girmez
+//   TX5 uygulama: onayda prodOnay zorunlu (ogeye dokunmadan 400); parcalar SIRAYLA; dogrulama katmani + xmlSurenIs
+//   TX6 belirsiz launch durdurur + kilitler; GERI ALMA BASARISIZ durdurur; kayitli XML isi / rezervasyon parcayi tutar
+//   TX7 secim dogrulamasi: taze degerlendirmede prod cikan oge prod onayi olmadan duser
+//   TX8 HTTP: adaylarXml grubu, prodOnay olustur / onay uclarinda, is.kip + oge.hostXml
+const XML_E = 'jboss_autostart_xml_off';
+const XJ = (name, ek) => J(name, { autoStart: 'true', domainKapali: true, ...ek });
+function xmlFilo() {
+  A.hosts.push(
+    host('XNP01', [XJ('a1'), XJ('a2'), XJ('a3'), XJ('b1', { gen: 8 }), XJ('b2', { gen: 8 })]),
+    host('XPR01', [XJ('p1'), XJ('p2')], { env: 'PROD', envGroup: 'Production' }),
+    host('XBL01', [XJ('u1')], { env: 'BILINMIYOR', envGroup: 'Bilinmiyor' }),
+    host('GBFSTT01', [XJ('s1')], { fresh: false }),
+    host('XAC01', [XJ('r1', { running: true, autoStart: 'false' }), XJ('t1', { cfgSrc: 'UNAVAILABLE' })]),
+  );
+}
+const xs = (h, jvms, gen = 7) => jvms.map((jvm) => ({ host: h, gen, jvm, eylem: 'xml_kapat' }));
+const xsatir = (durum, mesaj) => `RESULT\t${XML_E}\t${durum}\t${mesaj}`;
+/** Host XML isinin set_stats sonucu: d = { jvm: [durum, mesaj] } (ITEM satirlari), genel RESULT satiri. */
+function xmlSonuc(l, d, genel, genelMesaj = 'ozet') {
+  const items = Object.entries(d).map(([jvm, [durum, mesaj]]) => ({ gen: String(l.ev.gen), jvm, action: XML_E, line: xsatir(durum, mesaj) }));
+  return {
+    status: genel === 'FAIL' ? 'failed' : 'successful',
+    artifacts: { server_hub_fix_result: { host: l.ev.target_host, action: XML_E, plan_only: l.ev.plan_only, line: xsatir(genel, genelMesaj), items, xmlplan: [] } },
+  };
+}
+/** Sonucu yazilmamis host XML islerini bitirir (plan: PLAN, uygulama: OK). */
+function bitirXml(liste) {
+  for (const l of liste) {
+    if (AWX.has(l.jobId)) continue;
+    const d = Object.fromEntries(l.ev.jvms.split(' ').map((j) => [j, l.ev.plan_only ? ['PLAN', 'true -> false'] : ['OK', 'auto-start=false (host XML host.xml, geri okundu)']]));
+    AWX.set(l.jobId, xmlSonuc(l, d, l.ev.plan_only ? 'PLAN' : 'OK'));
+  }
+}
+async function xmlPlanla(secim, opts) {
+  const r = await T.olustur(istek(), secim, opts);
+  for (let i = 0; i < 20 && DB.isler[0].durum === 'PLANLANIYOR'; i += 1) {
+    await T.tick();
+    bitirXml(planIsleri());
+  }
+  return r.id;
+}
+const og = (jvm) => DB.ogeler.find((o) => o.jvm === jvm);
+
+test('TX1 host XML adaylari: domain kapali durmus + auto-start true ayri grup (host+gen, prod isaretli); bayat sunucu dislananda aynen', () => {
+  xmlFilo();
+  const { adaylar, dislananlar, xmlAdaylar } = T.adaylariTuret(A, { autoStart: katman });
+  assert.ok(!adaylar.some((x) => /^X|^GBFSTT/.test(x.host)), 'domain kapali JVM CLI adayi olmamali');
+  assert.deepEqual(
+    xmlAdaylar.map((x) => `${x.host}/${x.gen}/${x.jvm}/${x.eylem}/${x.action}/${x.prod}`),
+    [
+      `XBL01/7/u1/xml_kapat/${XML_E}/true`,
+      `XNP01/7/a1/xml_kapat/${XML_E}/false`,
+      `XNP01/7/a2/xml_kapat/${XML_E}/false`,
+      `XNP01/7/a3/xml_kapat/${XML_E}/false`,
+      `XNP01/8/b1/xml_kapat/${XML_E}/false`,
+      `XNP01/8/b2/xml_kapat/${XML_E}/false`,
+      `XPR01/7/p1/xml_kapat/${XML_E}/true`,
+      `XPR01/7/p2/xml_kapat/${XML_E}/true`,
+    ],
+  );
+  assert.deepEqual(
+    T.xmlGrupla(xmlAdaylar).map((g) => `${g.host}|${g.gen}|${g.env}|${g.prod}|${g.jvms.map((j) => j.jvm).join(',')}`),
+    ['XBL01|7|BILINMIYOR|true|u1', 'XNP01|7|Test|false|a1,a2,a3', 'XNP01|8|Test|false|b1,b2', 'XPR01|7|PROD|true|p1,p2'],
+  );
+  const neden = Object.fromEntries(dislananlar.map((x) => [x.jvm, x.neden]));
+  assert.match(neden.s1, /^GBFSTT01 taraması bayat/);
+  assert.doesNotMatch(neden.s1, /host XML/, 'bayat sunucu nedeni degismemeli');
+  assert.match(neden.t1, /^Domain kapalı; “Domain kapalı — auto-start host XML üzerinden kapat” bölümüne de alınmadı:.*tanım kaynağında yok/);
+  assert.match(neden.r1, /domain kapalı .* “Domain kapalı — auto-start host XML üzerinden kapat” bölümü yalnız durmuş JVM’in auto-start’ını kapatır; açma yapmaz\.$/);
+  // suren is: XML adayi degil, nedeniyle disarida
+  const hx = A.hosts.find((h) => h.host === 'XNP01');
+  katman.isKaydetToplu(1, 90, { host: 'XNP01', h: hx, items: [{ gen: 7, jvm: 'a1', action: XML_E }] });
+  const t2 = T.adaylariTuret(A, { autoStart: katman });
+  assert.ok(!t2.xmlAdaylar.some((x) => x.jvm === 'a1'));
+  assert.match(t2.dislananlar.find((x) => x.jvm === 'a1').neden, /iş #90 sürüyor/);
+  // dogrulanmis false (is #90 OK): "dogrulandi - tarama bekleniyor"
+  katman.isBitti(1, 90, 'successful', { action: XML_E, plan_only: false, line: xsatir('OK', 'x'), items: [{ gen: '7', jvm: 'a1', action: XML_E, line: xsatir('OK', 'geri okundu') }] });
+  const t3 = T.adaylariTuret(A, { autoStart: katman });
+  assert.ok(!t3.xmlAdaylar.some((x) => x.jvm === 'a1'));
+  assert.match(t3.dislananlar.find((x) => x.jvm === 'a1').neden, /iş #90 ile doğrulandı/);
+});
+
+test('TX2 olustur: CLI + host XML karisik 400; prod / bilinmiyor / okunamayan ortam prodOnay olmadan 400; ek alanina yazilir', async () => {
+  xmlFilo();
+  await assert.rejects(T.olustur(istek(), [tum()[0], ...xs('XNP01', ['a1'])]), (e) => e.status === 400 && e.code === 'karisik_secim');
+  await assert.rejects(T.olustur(istek(), xs('XPR01', ['p1', 'p2'])), (e) => e.status === 400 && e.code === 'prod_onay' && /XPR01/.test(e.message));
+  await assert.rejects(T.olustur(istek(), xs('XBL01', ['u1'])), (e) => e.status === 400 && e.code === 'prod_onay', 'ortami bilinmeyen prod sayilir');
+  await assert.rejects(T.olustur(istek(), xs('YOK01', ['z1'])), (e) => e.code === 'prod_onay', 'degerlendirmede olmayan sunucu prod sayilir');
+  T.kur({
+    ...kurDepsNesnesi(),
+    getAssessment: async () => {
+      throw new Error('TBMWANS zaman asimi');
+    },
+  });
+  await assert.rejects(T.olustur(istek(), xs('XNP01', ['a1'])), (e) => e.code === 'prod_onay', 'ortam okunamazsa prod sayilir');
+  kurDeps();
+  assert.equal(DB.isler.length, 0, 'reddedilen istek kayit acmamali');
+  const r = await T.olustur(istek(), xs('XNP01', ['a1', 'a2']));
+  assert.equal(r.kip, 'xml');
+  assert.deepEqual(DB.ogeler.map((o) => [o.eylem, o.hedef, o.durum, JSON.parse(o.ek).prodOnay]), [[XML_E, 'false', 'SECIM', false], [XML_E, 'false', 'SECIM', false]]);
+  DB.isler.length = 0;
+  DB.ogeler.length = 0;
+  await T.olustur(istek(), xs('XPR01', ['p1', 'p2']), { prodOnay: true });
+  assert.ok(DB.ogeler.every((o) => JSON.parse(o.ek).prodOnay === true));
+  const d = denetimler.filter((x) => x.op === 'toplu_autostart_olustur').pop();
+  assert.deepEqual([d.kip, d.prodOnay], ['xml', true]);
+  // CLI secimi ek yazmaz (eski davranis)
+  DB.isler.length = 0;
+  DB.ogeler.length = 0;
+  const c = await T.olustur(istek(), tum());
+  assert.equal(c.kip, 'cli');
+  assert.ok(DB.ogeler.every((o) => o.ek === null));
+});
+
+test('TX3 plan: (host, gen) parcasi, extra_vars gen + jvms; PLAN / SKIP / FAIL; "istek durduruldu" yeniden planlanir; genel FAIL her ogeye', async () => {
+  xmlFilo();
+  parcaDeger = 2;
+  await T.olustur(istek(), [...xs('XNP01', ['a1', 'a2', 'a3']), ...xs('XNP01', ['b1', 'b2'], 8)]);
+  await T.tick();
+  assert.equal(planIsleri().length, 1, 'hostta ayni anda tek plan isi');
+  const p1 = planIsleri()[0];
+  assert.deepEqual(p1.ev, { target_host: 'XNP01', action: XML_E, plan_only: true, reload: false, gen: 7, jvms: 'a1 a2' });
+  assert.match(p1.ad, /plan \(host XML, JBoss 7\) @ XNP01 \(2 JVM\)/);
+  // a1 gercek red, a2 "istek durduruldu": a1 duser, a2 yeniden planlanir (a3 ile)
+  AWX.set(p1.jobId, xmlSonuc(p1, { a1: ['FAIL', 'host.xml icinde 2 kez tanimli (tek olmali)'], a2: ['FAIL', 'istek durduruldu (baska JVM reddedildi)'] }, 'FAIL'));
+  await T.tick();
+  assert.equal(og('a1').durum, 'DUSTU');
+  assert.match(og('a1').neden, /^host XML planında: host\.xml icinde 2 kez tanimli/);
+  const p2 = planIsleri()[1];
+  assert.equal(og('a2').plan_job_id, p2.jobId, 'durdurulan oge yeni plan isinde');
+  assert.deepEqual([p2.ev.gen, p2.ev.jvms], [7, 'a2 a3']);
+  AWX.set(p2.jobId, xmlSonuc(p2, { a2: ['PLAN', 'true -> false'], a3: ['SKIP', 'auto-start zaten false (host.xml)'] }, 'PLAN'));
+  await T.tick();
+  assert.equal(og('a2').durum, 'PLAN_GECTI');
+  assert.equal(og('a3').durum, 'DUSTU');
+  assert.match(og('a3').neden, /^host XML'de auto-start zaten false — tarama eski/);
+  const p3 = planIsleri()[2];
+  assert.deepEqual([p3.ev.gen, p3.ev.jvms], [8, 'b1 b2']);
+  // dosya kapisi: ITEM satiri yok, genel FAIL her ogeye
+  AWX.set(p3.jobId, xmlSonuc(p3, {}, 'FAIL', '/opt/jboss8/domain/configuration/host.xml sembolik bag; elle duzenlenmeli - HICBIR SEY DEGISMEDI'));
+  await T.tick();
+  for (const j of ['b1', 'b2']) {
+    assert.equal(og(j).durum, 'DUSTU');
+    assert.match(og(j).neden, /^host XML planında: .*sembolik bag; elle/);
+  }
+  assert.equal(DB.isler[0].durum, 'PLAN_HAZIR');
+  assert.equal(planIsleri().length, 3);
+  for (const l of planIsleri()) assert.equal(l.ev.jvm_items, undefined, 'host XML isinde jvm_items olmamali');
+});
+
+test('TX3b yalniz "istek durduruldu" satirlari (gercek red yok) yeniden planlanmaz, duser (dongu yok)', async () => {
+  xmlFilo();
+  await T.olustur(istek(), xs('XNP01', ['a1', 'a2']));
+  await T.tick();
+  const p1 = planIsleri()[0];
+  AWX.set(p1.jobId, xmlSonuc(p1, { a1: ['FAIL', 'istek durduruldu (baska JVM reddedildi)'], a2: ['FAIL', 'istek durduruldu (baska JVM reddedildi)'] }, 'FAIL'));
+  await T.tick();
+  assert.deepEqual([og('a1').durum, og('a2').durum], ['DUSTU', 'DUSTU']);
+  assert.equal(planIsleri().length, 1);
+});
+
+test('TX3c genel FAIL "<jvm> su an CALISIYOR (ps)": yalniz o JVM duser, digerleri yeniden planlanir (inceleme #1)', async () => {
+  xmlFilo();
+  await T.olustur(istek(), xs('XNP01', ['a1', 'a2', 'a3']));
+  await T.tick();
+  const p1 = planIsleri()[0];
+  AWX.set(p1.jobId, xmlSonuc(p1, {}, 'FAIL', "a2 su an CALISIYOR (ps) - calisan JVM'in auto-start'i bu yoldan kapatilmaz - HICBIR SEY DEGISMEDI"));
+  await T.tick();
+  assert.equal(og('a2').durum, 'DUSTU');
+  assert.match(og('a2').neden, /^host XML planında: a2 su an CALISIYOR \(ps\)/);
+  for (const j of ['a1', 'a3']) assert.notEqual(og(j).durum, 'DUSTU', `${j} baska JVM'in nedeniyle dusmemeli`);
+  const p2 = planIsleri()[1];
+  assert.ok(p2, 'digerleri yeniden planlanmali');
+  assert.equal(p2.ev.jvms, 'a1 a3');
+  // JVM parcada degilse (beklenmeyen ad) genel FAIL her ogeye (eski davranis)
+  const s = T.parcaSonuclari([{ jvm: 'x1', gen: 7, eylem: XML_E }], { action: XML_E, line: xsatir('FAIL', 'zz su an CALISIYOR (ps) - x') });
+  assert.deepEqual([s[0].durum, s[0].mesaj], ['FAIL', 'zz su an CALISIYOR (ps) - x']);
+});
+
+test('TX4 parcala: CLI ve host XML ayni AWX isine girmez; XML (host, gen) basina', () => {
+  const o = (id, h, gen, jvm, eylem) => ({ id, host: h, gen, jvm, eylem });
+  const l = [o(1, 'H', 7, 'c1', 'jboss_autostart_on'), o(2, 'H', 7, 'x1', XML_E), o(3, 'H', 8, 'c2', 'jboss_autostart_off'), o(4, 'H', 8, 'x2', XML_E), o(5, 'H', 7, 'x3', XML_E)];
+  const p = T.parcala(l, 10);
+  assert.deepEqual(p.map((x) => `${x.host}|${x.gen ?? '-'}|${x.xml}|${x.liste.map((y) => y.jvm).join(',')}`), ['H|-|false|c1,c2', 'H|7|true|x1,x3', 'H|8|true|x2']);
+  assert.deepEqual(T.parcala(l.filter((x) => x.eylem === XML_E), 1).map((x) => x.liste.map((y) => y.jvm).join(',')), ['x1', 'x3', 'x2']);
+  assert.throws(
+    () => T.secimiDuzle([{ host: 'H', gen: 7, jvm: 'c1', eylem: 'ac' }, { host: 'H', gen: 7, jvm: 'x1', eylem: 'xml_kapat' }], 50),
+    (e) => e.status === 400 && e.code === 'karisik_secim',
+  );
+  assert.deepEqual(T.secimiDuzle([{ host: 'H', gen: 8, jvm: 'x1', eylem: 'xml_kapat' }], 50).map((x) => x.action), [XML_E]);
+});
+
+test('TX5 uygulama: onayda prodOnay zorunlu; (host, gen) parcalari SIRAYLA; OK dogrulama katmanina, xmlSurenIs kilidi', async () => {
+  xmlFilo();
+  parcaDeger = 2;
+  const id = await xmlPlanla([...xs('XPR01', ['p1', 'p2']), ...xs('XNP01', ['a1', 'a2', 'a3'])], { prodOnay: true });
+  assert.equal(DB.isler[0].durum, 'PLAN_HAZIR');
+  assert.equal(DB.isler[0].plan_gecti, 5);
+  await assert.rejects(T.onayla(istek('mehmet'), id), (e) => e.status === 400 && e.code === 'prod_onay' && /XPR01/.test(e.message));
+  assert.ok(DB.ogeler.every((o) => o.durum === 'PLAN_GECTI'), 'reddedilen onay ogeye dokunmamali');
+  assert.equal(DB.isler[0].durum, 'PLAN_HAZIR');
+  await T.onayla(istek('mehmet'), id, { prodOnay: true });
+  assert.equal(DB.isler[0].durum, 'CALISIYOR');
+  const sira = [];
+  for (let i = 0; i < 20 && DB.isler[0].durum === 'CALISIYOR'; i += 1) {
+    const once = uygulamaIsleri().length;
+    await T.tick();
+    const yeni = uygulamaIsleri().slice(once);
+    assert.ok(yeni.length <= 1, 'bir tick en cok bir uygulama isi');
+    if (!yeni.length) continue;
+    const u = yeni[0];
+    sira.push(`${u.ev.target_host}:${u.ev.gen}:${u.ev.jvms}`);
+    assert.deepEqual([u.ev.action, u.ev.plan_only, u.ev.reload, u.ev.jvm_items], [XML_E, false, false, undefined]);
+    assert.equal(u.user, 'mehmet');
+    assert.equal(katman.xmlSurenIs(u.ev.target_host, u.ev.gen).jobId, u.jobId, 'host XML isi dogrulama katmanina kaydedilmedi');
+    await T.tick();
+    assert.equal(uygulamaIsleri().length, once + 1, 'is bitmeden sonraki parca acildi');
+    bitirXml([u]);
+  }
+  assert.deepEqual(sira, ['XPR01:7:p1 p2', 'XNP01:7:a1 a2', 'XNP01:7:a3']);
+  assert.equal(DB.isler[0].durum, 'BITTI');
+  assert.ok(DB.ogeler.every((o) => o.durum === 'OK' && o.dogrulandi === 1));
+  const hx = A.hosts.find((h) => h.host === 'XNP01');
+  const j = katman.uygulaJvm(hx, hx.jvms[0]);
+  assert.deepEqual([j.autoStart, j.autoStartTarama, j.autoStartDogrulama.jobId], ['false', 'true', og('a1').awx_job_id], 'dogrulama katmani guncellenmedi');
+  assert.equal(katman.xmlSurenIs('XNP01', 7), null, 'biten is XML kilidini birakmali');
+  const d = denetimler.find((x) => x.op === 'toplu_autostart_onay');
+  assert.deepEqual([d.prodOnay, d.prodHostlar], [true, ['XPR01']]);
+});
+
+test('TX6 host XML: belirsiz launch durdurur + kilitler; GERI ALMA BASARISIZ durdurur; kayitli XML isi / rezervasyon parcayi tutar', async () => {
+  xmlFilo();
+  parcaDeger = 1;
+  let id = await xmlPlanla(xs('XNP01', ['a1', 'a2', 'a3']));
+  await T.onayla(istek(), id);
+  launchHata = 'socket hang up';
+  launchEk = { launchBelirsiz: true };
+  await T.tick();
+  launchHata = null;
+  launchEk = null;
+  assert.equal(og('a1').durum, 'YARIM_KALDI');
+  assert.match(og('a1').neden, /sonucu belirsiz/);
+  assert.ok(['a2', 'a3'].every((j) => og(j).durum === 'YARIM_KALDI' && /^çalıştırılmadı: toplu iş durduruldu/.test(og(j).neden)));
+  assert.match(await T.topluKilidi('XNP01', 7, 'a1'), /sonucu bilinmiyor/);
+  assert.equal(await T.topluKilidi('XNP01', 7, 'a2'), null, 'calistirilmayan kilitlememeli');
+
+  const sifirla = () => {
+    DB.isler.length = 0;
+    DB.ogeler.length = 0;
+    launchlar.length = 0;
+    AWX.clear();
+    katman = AS.kur();
+  };
+  sifirla();
+  id = await xmlPlanla(xs('XNP01', ['a1', 'a2', 'a3']));
+  await T.onayla(istek(), id);
+  await T.tick();
+  const u1 = uygulamaIsleri()[0];
+  AWX.set(u1.jobId, xmlSonuc(u1, {}, 'FAIL', 'host controller yazma sirasinda acildi ve GERI ALMA BASARISIZ - /opt/jboss/domain/configuration/host.xml elle /sw/bk/host.xml ile geri yazilmali'));
+  await T.tick();
+  assert.equal(og('a1').durum, 'FAIL');
+  assert.equal(og('a1').dogrulandi, 0);
+  assert.match(og('a1').neden, /GERI ALMA BASARISIZ/);
+  assert.ok(['a2', 'a3'].every((j) => og(j).durum === 'YARIM_KALDI' && /geri almada başarısız .*elle geri yazın/.test(og(j).neden)));
+  await T.tick();
+  assert.equal(uygulamaIsleri().length, 1, 'geri alma basarisizligindan sonra yeni is acilmamali');
+  assert.equal(DB.isler[0].durum, 'BITTI_HATALI');
+
+  // yazildi ama geri okunan farkli (inceleme #3): sonuc belirsiz, toplu is durur
+  sifirla();
+  id = await xmlPlanla(xs('XNP01', ['a1', 'a2']));
+  await T.onayla(istek(), id);
+  await T.tick();
+  const u2 = uygulamaIsleri()[0];
+  AWX.set(u2.jobId, xmlSonuc(u2, {}, 'FAIL', "yazildi ama geri okunan a1 '0' (yedek /sw/bk/host.xml)"));
+  await T.tick();
+  assert.equal(og('a1').durum, 'FAIL');
+  assert.ok(og('a2').durum === 'YARIM_KALDI' && /geri okunan dosya beklenenden farklı .*yedekle karşılaştırın/.test(og('a2').neden), og('a2').neden);
+  await T.tick();
+  assert.equal(uygulamaIsleri().length, 1, 'geri okuma farkindan sonra yeni is acilmamali');
+
+  // HC yazma sirasinda acildi ama geri alindi: durmaz (dosya dogrulanarak geri yazildi)
+  sifirla();
+  id = await xmlPlanla(xs('XNP01', ['a1', 'a2']));
+  await T.onayla(istek(), id);
+  await T.tick();
+  const u3 = uygulamaIsleri()[0];
+  AWX.set(u3.jobId, xmlSonuc(u3, {}, 'FAIL', 'host controller yazma sirasinda acildi - XML degisikligi geri alindi (/opt/jboss/domain/configuration/host.xml yedekten: /sw/bk/host.xml); HC yeni icerigi okumus olabilir - etkin auto-start belirsiz, sonraki taramayi bekleyin'));
+  await T.tick();
+  assert.equal(og('a1').durum, 'FAIL');
+  await T.tick();
+  assert.equal(uygulamaIsleri().length, 2, 'geri alinan yazma toplu isi durdurmamali');
+
+  sifirla();
+  T.kur({
+    ...kurDepsNesnesi(),
+    xmlIsKilidi: async (h, g) => (h === 'XNP01' && g === 7 ? 'XNP01 üzerinde JBoss 7 host XML işi #77 hâlâ sürüyor — aynı dosyaya ikinci iş açılmaz.' : null),
+  });
+  id = await xmlPlanla(xs('XNP01', ['a1']));
+  await T.onayla(istek(), id);
+  const birak = katman.xmlRezervasyon('XNP01', 7);
+  await T.tick();
+  assert.equal(uygulamaIsleri().length, 0, 'rezervasyon doluyken is acilmamali');
+  assert.equal(og('a1').durum, 'BEKLIYOR', 'rezervasyon doluyken oge beklemeli');
+  birak();
+  await T.tick();
+  assert.equal(uygulamaIsleri().length, 0);
+  assert.equal(og('a1').durum, 'DUSTU');
+  assert.match(og('a1').neden, /^atlandı: XNP01 üzerinde JBoss 7 host XML işi #77 hâlâ sürüyor/);
+  assert.equal(katman._boyut().rezerveXml, 0, 'yurutucu XML rezervasyonunu birakmali');
+});
+
+test('TX7 secim dogrulamasi: taze degerlendirmede prod cikan host XML ogesi prod onayi olmadan duser', async () => {
+  xmlFilo();
+  const prodA = JSON.parse(JSON.stringify(A));
+  Object.assign(prodA.hosts.find((h) => h.host === 'XNP01'), { env: 'PROD', envGroup: 'Production' });
+  const onbellek = A;
+  T.kur({ ...kurDepsNesnesi(), getAssessment: async (fresh) => (fresh ? prodA : onbellek) });
+  await T.olustur(istek(), xs('XNP01', ['a1']));
+  await T.tick();
+  assert.equal(og('a1').durum, 'DUSTU');
+  assert.match(og('a1').neden, /^seçim doğrulamasında düştü: XNP01 Production \/ ortamı bilinmeyen sunucu — prod onayı verilmedi/);
+  assert.equal(launchlar.length, 0);
+});
+
+test('TX8 HTTP: adaylarXml grubu; olustur / onay uclarinda prodOnay; is.kip ve oge.hostXml', async () => {
+  xmlFilo();
+  const express = require('express');
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.session = { user: { role: 'Admin', username: 'ayse' } };
+    next();
+  });
+  const router = express.Router();
+  const log = console.log;
+  T.mount(router, kurDepsNesnesi());
+  console.log = log;
+  app.use('/api/server-hub', router);
+  const srv = app.listen(0);
+  try {
+    const kok = `http://127.0.0.1:${srv.address().port}/api/server-hub`;
+    const Jx = (r) => r.json().then((body) => ({ status: r.status, body }));
+    const post = (p, b) => fetch(kok + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).then(Jx);
+    const ad = await fetch(`${kok}/toplu-autostart/adaylar`).then(Jx);
+    assert.deepEqual(ad.body.adaylarXml.map((g) => `${g.host}|${g.gen}|${g.prod}|${g.jvms.length}`), ['XBL01|7|true|1', 'XNP01|7|false|3', 'XNP01|8|false|2', 'XPR01|7|true|2']);
+    assert.ok(!ad.body.dislananlar.some((x) => x.host === 'XNP01'), 'host XML adayi dislananda olmamali');
+    const red = await post('/toplu-autostart', { secim: xs('XPR01', ['p1', 'p2']) });
+    assert.deepEqual([red.status, red.body.code], [400, 'prod_onay']);
+    assert.equal((await post('/toplu-autostart', { secim: xs('XPR01', ['p1', 'p2']), prodOnay: 'true' })).status, 400, 'prodOnay yalniz true (boolean)');
+    const c = await post('/toplu-autostart', { secim: xs('XPR01', ['p1', 'p2']), prodOnay: true });
+    assert.equal(c.status, 200);
+    for (let i = 0; i < 10 && DB.isler[0].durum === 'PLANLANIYOR'; i += 1) {
+      await T.tick();
+      bitirXml(planIsleri());
+    }
+    const d = await fetch(`${kok}/toplu-autostart/${c.body.id}`).then(Jx);
+    assert.equal(d.body.is.kip, 'xml');
+    assert.ok(d.body.ogeler.every((o) => o.hostXml === true && o.hedef === 'false'));
+    const o1 = await post(`/toplu-autostart/${c.body.id}/onayla`, { confirmed: true });
+    assert.deepEqual([o1.status, o1.body.code], [400, 'prod_onay']);
+    const o2 = await post(`/toplu-autostart/${c.body.id}/onayla`, { confirmed: true, prodOnay: true });
+    assert.equal(o2.status, 200);
+    assert.equal(o2.body.adet, 2);
+  } finally {
+    srv.close();
+  }
 });
