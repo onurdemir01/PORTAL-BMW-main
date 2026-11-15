@@ -19,6 +19,22 @@ export interface RcSunucuSonuc {
   /** JVM planı öncesi görüntü durulması: settled | timeout | error ('' = koşmadı). */
   durulma?: string;
   durulma_satir?: string;
+  /** Playbook betik sürümü (v3). Yoksa ya da 3'ten küçükse AWX'teki betik eski. */
+  betik_surum?: number | string;
+}
+/** Bir teknolojinin (ürün) otomasyon özeti — sunucu otomasyonOzeti (tek kaynak). */
+export interface RcTeknoloji {
+  urun: string; ad: string;
+  /** En az bir açma/kapatma komutu çalıştı (SKIP sayılmaz). */
+  calistirildi: boolean;
+  /** Çalıştırıldıysa sonuç ("açıldı ✓ (2. denemede)"), değilse neden ("değişiklik yok"). */
+  ozet: string;
+  sonuc: 'ok' | 'hata' | 'yok';
+}
+export interface RcOtomasyon {
+  sinif: 'basarili' | 'basarisiz' | 'dokunmadi'; teknoloji: RcTeknoloji[];
+  /** Teknoloji listesi çıkarılamadıysa nedeni (sunucudan sonuç gelmedi → otomasyon doğrulanamadı, başarısız). */
+  not?: string;
 }
 export interface RcDegerlendirme {
   durum: 'sorunsuz' | 'sorunlu' | 'olculemedi' | 'kontrol';
@@ -26,6 +42,8 @@ export interface RcDegerlendirme {
   /** Kontrol nedenleri (önce görüntüsü boş, eski sürüm, dokunulmayan öğe şimdi çalışıyor); fark kalsa da yazılır. */
   neden?: string[];
   durulma?: string;
+  /** Otomasyon sınıfı + teknoloji listesi (v3); eski API cevabında yok → ekran "—" gösterir. */
+  otomasyon?: RcOtomasyon;
 }
 export interface RcKayit {
   id: number;

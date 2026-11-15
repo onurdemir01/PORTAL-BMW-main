@@ -18,7 +18,10 @@
 //     (NEW_URUN, dokunulmadi). Urunu once calismayan JVM'in komutu urunun SONUC|durdur satiridir ("urunle birlikte
 //     kapatildi"). Durdur SKIP (kapatma aninda kapaliydi) ama son goruntude calisiyor -> "sonra yeniden kalkti" (eski betik
 //     DEGIL). URUN satiri olmayip JVM'i calisan (once calismayan) urun calisiyor sayilir (reboot-check.cjs sonKume).
-//   * Duzeltilen (kapaliydi acildi / fazladan kapatildi) -> Bilgi
+//   * Duzeltilen (kapaliydi acildi / fazladan JVM kapatildi) -> Bilgi
+//   * v3 (2026-11-15 aksam): otomasyonun KAPATTIGI urun -> Uyari (KAPATILDI_URUN, "kontrol edilecek"); AWX'teki betik
+//     eski (betik_surum yok / < 3) -> Uyari (BETIK_ESKI). Bos once'de web urunleri (NGINX/RHA/IHS) korunmaz, kapatilir.
+//     Otomasyon sinifi (basarili/basarisiz/dokunmadi) ve teknoloji listesi reboot-check.cjs otomasyonOzeti'nden (tek kaynak).
 //   * boot_id degismemis -> Uyari (reboot dogrulanamadi)
 //   * Olculemedi (sonuc gelmedi / son goruntu alinamadi) -> Kritik ("sorunsuz" SAYILMAZ)
 // DURUSTLUK (2026-11-14): "Otomatik kapatildi" YALNIZ o oge icin SONUC|durdur|...|OK varsa yazilir
@@ -75,7 +78,8 @@ function sunucuDegerlendir(onceSat, s) {
   if (!s || s.sonuc_yok) return { sonuc: 'PROBLEM', bulgu: [{ durum: 'OLCULEMEDI', servis: 'Sistem kontrolü', aciklama: 'Sunucudan sonuç gelmedi (ulaşılamadı ya da kopya doğrulanamadı).', onceSonra: '—' }] };
   // Eski surum once goruntusunun JBoss satirlari yeni nesil kuralina CEVRILIR (reboot-check.cjs onceNesilCevir,
   // 2026-11-15); yalniz cevrilemeyen JBoss 7 urunu 'belirsiz' (dokunulmadi, uyari).
-  const { onceNesilCevir, kapatmaKapisi, kapiKorur } = require('./reboot-check.cjs');
+  const { onceNesilCevir, kapatmaKapisi, kapiKorur, betikSurumu, betikEskiMetni } = require('./reboot-check.cjs');
+  const surum = betikSurumu(s);
   const cev = onceNesilCevir(onceSat, s.son_olculdu ? s.son_goruntu : s.goruntu);
   // Kapatma kapisi (betik ve Portal kalan ile ayni, yalniz ham once): bos once / eski surum JBoss urunu -> "dokunulmadi".
   const kapi = kapatmaKapisi(onceSat);
@@ -91,7 +95,9 @@ function sunucuDegerlendir(onceSat, s) {
   const isl = islemSonuclari(s.islemler);
   const onceHam = goruntu(onceSat);
   if (o.boot && onceHam.urun.size === 0 && onceHam.jvm.size === 0)
-    bulgu.push({ durum: 'ONCE_BOS', servis: 'Sistem kontrolü', aciklama: 'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; hiçbir şey açılıp kapatılmadı. Uygulamalar zaten kapalıyken mi alındı? Elle kontrol edin.', onceSonra: '—' });
+    bulgu.push({ durum: 'ONCE_BOS', servis: 'Sistem kontrolü', aciklama: 'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; yalnız web ürünleri (Nginx/Apache/IHS) reboot öncesi haline (kapalı) döndürülür, diğerlerine dokunulmadı. Uygulamalar zaten kapalıyken mi alındı? Elle kontrol edin.', onceSonra: '—' });
+  // v3 surum isareti: AWX'teki betik eskiyse bu kosuda urun kapatma / yeniden deneme yoktu (kesin; "olabilir" denmez).
+  if (!surum.guncel) bulgu.push({ durum: 'BETIK_ESKI', servis: 'Sistem kontrolü', aciklama: betikEskiMetni(s), onceSonra: '—' });
   if (cev.belirsiz.length)
     bulgu.push({ durum: 'ESKI_SURUM', servis: 'JBoss 7', aciklama: 'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss 7 ürün satırının nesli belirlenemedi (JBoss 8 olabilir), JBoss 7 ürününe dokunulmadı. Elle kontrol edin.', onceSonra: '—' });
   if (o.boot && ilk.boot && o.boot !== 'bilinmiyor' && o.boot === ilk.boot)
@@ -127,9 +133,10 @@ function sunucuDegerlendir(onceSat, s) {
       if (!once && urunJvmi && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Ürün reboot öncesi çalışmıyordu; önce görüntüsü boş / eski sürüm olduğu için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
       else if (!once && urunJvmi && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: `Ürün reboot öncesi çalışmıyordu; ürünle birlikte kapanması gerekirken hâlâ çalışıyor${durdurK === 'FAIL' ? ' (ürün kapatma komutu BAŞARISIZ)' : durdurK === 'SKIP' ? ' (kapatma anında ürün kapalıydı, sonra yeniden kalktı)' : durdurK ? '' : ' (ürün kapatma komutu çalışmadı)'}.`, onceSonra: 'yoktu → çalışıyor' });
       else if (!once && !jvm && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu, şimdi çalışıyor; önce görüntüsü boş / eski sürüm olduğu için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN_KALAN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : 'kapatma komutu çalışmadı (kayıt eski betikle değerlendirilmiş olabilir; güncel betikle yeniden çalıştırın)'}.`, onceSonra: 'yoktu → çalışıyor' });
+      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN_KALAN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : surum.guncel ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : `kapatma komutu çalışmadı — AWX'teki betik eski (${surum.etiket}); güncel betikle yeniden çalıştırın`}.`, onceSonra: 'yoktu → çalışıyor' });
       else if (!once && jvm && sonV) bulgu.push({ durum: 'NEW_KALAN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; kapatılması gerekirken hâlâ çalışıyor.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && !sonV && durdurK === 'OK') bulgu.push({ durum: 'KAPATILDI', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, ${ile}otomatik kapatıldı.`, onceSonra: 'yoktu → kapatıldı' });
+      // v3 B2: otomasyonun kapattigi URUN uyari sinifindadir ("kapatildi - kontrol edilecek"); JVM bilgi kalir.
+      else if (!once && !sonV && durdurK === 'OK') bulgu.push({ durum: jvm ? 'KAPATILDI' : 'KAPATILDI_URUN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, ${ile}otomatik kapatıldı.${jvm ? '' : ' Beklenen durum mu kontrol edin.'}`, onceSonra: 'yoktu → kapatıldı' });
       else if (!once && !sonV && durdurK === 'FAIL') bulgu.push({ durum: 'KOMUT_HATALI_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; Portal kapatma komutu BAŞARISIZ döndü, son kontrolde çalışmıyor.', onceSonra: 'yoktu → kapandı' });
       else if (!once && (ilkV || durdurK) && !sonV) bulgu.push({ durum: 'KENDILIGINDEN_KAPANDI', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; reboot sonrası görülmüştü, son kontrolde çalışmıyor. Portal kapatma komutu çalıştırmadı.', onceSonra: 'yoktu → kapandı' });
     }
@@ -144,7 +151,8 @@ function sunucuDegerlendir(onceSat, s) {
 const DURUM = {
   DOWN: ['Çalışmıyor (DOWN)', 'problem'], NEW_KALAN: ['Fazladan çalışıyor (NEW)', 'problem'], NEW_URUN_KALAN: ['Fazladan çalışan ürün (NEW) — kapatılamadı', 'problem'], OLCULEMEDI: ['Ölçülemedi', 'problem'],
   REBOOT_NOT_CONFIRMED: ['Reboot doğrulanamadı', 'warning'], ONCE_BOS: ['Önce görüntüsü boş', 'warning'], NEW_URUN: ['Yeni süreç (NEW) — kontrol gerekli', 'warning'],
-  DUZELTILDI: ['Otomatik açıldı', 'info'], KAPATILDI: ['Otomatik kapatıldı', 'info'],
+  DUZELTILDI: ['Otomatik açıldı', 'info'], KAPATILDI: ['Otomatik kapatıldı', 'info'], KAPATILDI_URUN: ['Otomatik kapatıldı — kontrol edilecek', 'warning'],
+  BETIK_ESKI: ['AWX betiği eski', 'warning'],
   KENDILIGINDEN_ACILDI: ['Kendiliğinden açıldı', 'info'], KENDILIGINDEN_KAPANDI: ['Kendiliğinden kapandı', 'info'],
   KOMUT_HATALI_ACILDI: ['Açma komutu başarısız, sonra kalktı', 'info'], KOMUT_HATALI_KAPANDI: ['Kapatma komutu başarısız, sonra kapandı', 'info'],
   ESKI_SURUM: ['JBoss 7 dokunulmadı (eski görüntü)', 'warning'],
@@ -155,9 +163,16 @@ const e = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<'
 const kisaHost = (h) => String(h).split('.', 1)[0];
 const pill = (css, metin) => `<span class='pill ${css}' style='background:${RENK[css][0]};color:${RENK[css][1]};padding:3px 8px;font-weight:bold'>${e(metin)}</span>`;
 
-// [id, etiket, satir sinifi] - sinif bos = tumu.
-const FILTRELER = [['tum', 'Tümü', ''], ['kritik', 'Başarısız (kritik)', 's-PROBLEM'], ['uyari', 'Kontrol gerekli', 's-WARNING'], ['bilgi', 'Bilgi', 's-INFO'],
-  ['islem', 'Otomasyon işlem yaptı', 'o-islem'], ['dokunmadi', 'Otomasyon dokunmadı', 'o-yok'], ['komuthata', 'Komutu başarısız', 'o-hata']];
+// [id, etiket, satir sinifi] - sinif bos = tumu. v3 B4: otomasyon siniflari reboot-check.cjs otomasyonOzeti'nden (ekranla ayni).
+// Inceleme F1: "Sorunsuz / Sorun kaldi / Kontrol gerekli" filtreleri SON DURUM'a (sonraDegerlendir durum -> d-*) baglidir; satirdaki
+// "Son durum" pill'i, Otomasyon Ozeti kutulari ve ekran (sonDurum) ile ayni kaynak. Rapor bulgu sinifi (s-*) yalniz "Bilgi"de.
+const FILTRELER = [['tum', 'Tümü', ''], ['obasarili', 'Otomasyon başarılı', 'o-basarili'], ['obasarisiz', 'Otomasyon başarısız', 'o-basarisiz'],
+  ['dokunmadi', 'Otomasyon dokunmadı', 'o-dokunmadi'], ['sorunsuz', 'Sorunsuz', 'd-sorunsuz'], ['kritik', 'Sorun kaldı (kritik)', 'd-sorunlu'],
+  ['uyari', 'Kontrol gerekli', 'd-kontrol'], ['bilgi', 'Bilgi', 's-INFO']];
+/** Son durum grubu (ekran sonDurum ile ayni): olculemeyen "Sorun kaldi" sayilir. */
+const sonGrup = (son) => (son === 'sorunsuz' || son === 'kontrol' ? son : 'sorunlu');
+const OTOMASYON = { basarili: ['Otomasyon başarılı', 'ok'], basarisiz: ['Otomasyon başarısız', 'problem'], dokunmadi: ['Otomasyon dokunmadı', 'info'] };
+const SON_DURUM = { sorunsuz: ['Sorunsuz', 'ok'], kontrol: ['Kontrol gerekli', 'warning'], sorunlu: ['Sorun kaldı', 'problem'], olculemedi: ['Ölçülemedi', 'problem'] };
 const STIL = [
   'body{margin:0;background:#f5f7fa;font-family:Arial,Helvetica,sans-serif;color:#202938;font-size:14px;line-height:1.45}',
   '.shell{width:100%;max-width:960px;margin:0 auto;background:#fff}', '.pad{padding:24px 28px}',
@@ -203,7 +218,10 @@ function raporHtml(k) {
     }
     p.push('</table>');
   } else {
-    const deg = hostlar.map((h) => ({ h, ...sunucuDegerlendir(onceS[h]?.goruntu, sonraS[h]) }));
+    // Tek kaynak (v3 B4): otomasyon sinifi + teknoloji listesi + son durum reboot-check.cjs sonraDegerlendir'den.
+    const { sonraDegerlendir, onceGirdisi } = require('./reboot-check.cjs');
+    const sd = sonraDegerlendir(sonraS, hostlar, onceGirdisi(onceS));
+    const deg = hostlar.map((h) => ({ h, ...sunucuDegerlendir(onceS[h]?.goruntu, sonraS[h]), oto: sd[h]?.otomasyon || { sinif: 'dokunmadi', teknoloji: [] }, son: sd[h]?.durum || 'olculemedi' }));
     const say = { PROBLEM: 0, WARNING: 0, INFO: 0, OK: 0 };
     for (const d of deg) say[d.sonuc] += 1;
     const baslik = !deg.length ? 'Karşılaştırma için sunucu verisi bulunamadı.' : say.PROBLEM ? `${say.PROBLEM} sunucuda kritik durum tespit edildi.`
@@ -213,18 +231,30 @@ function raporHtml(k) {
       // SAYI KARISIKLIGI (2026-11-15, ekip: "4 bilgi diyor 5 tane cikmis"): kutular SUNUCU sayar, Bulgular KAYIT;
       // bir sunucuda birden cok bulgu olur. Ikisi de acikca yazilir.
       "<p class='note'>Kutular <b>sunucu</b> sayısıdır; bir sunucuda birden çok bulgu olabilir. Sunucu, en ağır bulgusunun sınıfında sayılır.</p>");
-    const islemYapilan = deg.filter((d) => d.komut > 0).length;
-    const komutHatali = deg.filter((d) => d.komutHata > 0).length;
+    const oSay = (c) => deg.filter((d) => d.oto.sinif === c).length;
+    const sSay = (...c) => deg.filter((d) => c.includes(d.son)).length;
     p.push('<h2>Otomasyon Özeti</h2>',
-      kutular([['Otomasyon işlem yaptı', islemYapilan, '#17549f', '#edf4ff'], ['Otomasyon dokunmadı', deg.length - islemYapilan, '#344054', '#f7f9fc'],
-        ['Başarılı (son kontrol temiz)', say.OK + say.INFO, '#20633f', '#eaf6ee'], ['Kontrol gerekli', say.WARNING, '#805300', '#fff4df'], ['Başarısız', say.PROBLEM, '#a12631', '#fff0f0']]),
-      `<p class='note'>"İşlem yaptı" = en az bir açma/kapatma komutu çalıştı (gerek kalmayanlar sayılmaz). Komutu başarısız dönen sunucu: <b>${komutHatali}</b>. Başarılı / başarısız, son kontroldeki karşılaştırmaya göredir.</p>`);
+      kutular([['Otomasyon başarılı', oSay('basarili'), '#20633f', '#eaf6ee'], ['Otomasyon başarısız', oSay('basarisiz'), '#a12631', '#fff0f0'], ['Otomasyon dokunmadı', oSay('dokunmadi'), '#344054', '#f7f9fc']]),
+      kutular([['Sorunsuz', sSay('sorunsuz'), '#20633f', '#eaf6ee'], ['Kontrol gerekli', sSay('kontrol'), '#805300', '#fff4df'], ['Sorun kaldı', sSay('sorunlu', 'olculemedi'), '#a12631', '#fff0f0']]),
+      "<p class='note'>Otomasyon: <b>dokunmadı</b> = hiç açma/kapatma komutu çalışmadı (gerek kalmayanlar sayılmaz); <b>başarılı</b> = çalışan her komut başarılı ve dokunduğu her öğe son kontrolde hedef durumda; <b>başarısız</b> = bir komut başarısız ya da dokunduğu bir öğe son kontrolde hedefte değil / ölçülemedi. Üç sınıfın toplamı sunucu sayısıdır. Alt satır son kontroldeki durumdur (ekrandaki ile aynı).</p>");
+    const sinif = (d) => `r s-${d.sonuc} o-${d.oto.sinif} d-${sonGrup(d.son)}`;
+    // FILTRE: radyolar tum filtreli tablolardan ONCE ve onlarla kardes (CSS ~ secicisi).
+    p.push(...FILTRELER.map(([id], i) => `<input type='radio' name='f' id='f-${id}' class='fr'${i === 0 ? ' checked' : ''}>`),
+      "<div class='filtre'>" + FILTRELER.map(([id, etiket]) => "<label for='f-" + id + "'>" + e(etiket) + '</label>').join('') + '</div>');
+    const tekno = (o, calisan) => (calisan && o.not ? `<span style='color:#a12631'>${e(o.not)}</span>` : '') || o.teknoloji.filter((t) => t.calistirildi === calisan).map((t) => calisan
+      ? `<span style='color:${t.sonuc === 'hata' ? '#a12631' : '#20633f'}'>${e(t.ad)}: ${e(t.ozet)}</span>`
+      : `<span style='color:#596579'>${e(t.ad)} (${e(t.ozet)})</span>`).join('<br>') || "<span class='muted'>—</span>";
+    p.push(`<h2>Sunucu bazında otomasyon <span class='muted'>(${deg.length} sunucu)</span></h2>`,
+      "<table class='fl' cellpadding='0' cellspacing='0' style='width:100%;border-collapse:collapse'><tr><th>Sunucu</th><th>Otomasyon</th><th>Çalıştırılan teknolojiler</th><th>Çalıştırılmayan teknolojiler (nedeniyle)</th><th>Son durum</th></tr>");
+    for (const d of [...deg].sort((a, b) => a.h.localeCompare(b.h))) {
+      const [oEt, oCss] = OTOMASYON[d.oto.sinif] || OTOMASYON.dokunmadi;
+      const [sEt, sCss] = SON_DURUM[d.son] || SON_DURUM.olculemedi;
+      p.push(`<tr class='${sinif(d)}'><td class='host'>${e(kisaHost(d.h))}</td><td>${pill(oCss, oEt)}</td><td class='minor'>${tekno(d.oto, true)}</td><td class='minor'>${tekno(d.oto, false)}</td><td>${pill(sCss, sEt)}</td></tr>`);
+    }
+    p.push('</table>');
     const bulgular = deg.flatMap((d) => d.bulgu.map((b) => ({ ...b, h: d.h, hs: d.sonuc, d }))).sort((a, b) => SIRA[a.hs] - SIRA[b.hs] || a.h.localeCompare(b.h));
     const bulguluSunucu = new Set(bulgular.map((b) => b.h)).size;
-    const sinif = (d) => `r s-${d.sonuc} ${d.komut > 0 ? 'o-islem' : 'o-yok'}${d.komutHata > 0 ? ' o-hata' : ''}`;
-    p.push(`<h2>Bulgular <span class='muted'>(${bulgular.length} kayıt · ${bulguluSunucu} sunucu)</span></h2>`, "<p class='muted'>Yalnız sorunlu, düzeltilen ya da değişen kayıtlar gösterilir; normal çalışanlar tabloyu kalabalıklaştırmaz.</p>",
-      ...FILTRELER.map(([id], i) => `<input type='radio' name='f' id='f-${id}' class='fr'${i === 0 ? ' checked' : ''}>`),
-      "<div class='filtre'>" + FILTRELER.map(([id, etiket]) => "<label for='f-" + id + "'>" + e(etiket) + '</label>').join('') + '</div>');
+    p.push(`<h2>Bulgular <span class='muted'>(${bulgular.length} kayıt · ${bulguluSunucu} sunucu)</span></h2>`, "<p class='muted'>Yalnız sorunlu, düzeltilen ya da değişen kayıtlar gösterilir; normal çalışanlar tabloyu kalabalıklaştırmaz.</p>");
     if (bulgular.length) {
       p.push("<table class='fl' cellpadding='0' cellspacing='0' style='width:100%;border-collapse:collapse'><tr><th>Sunucu</th><th>Servis / JVM</th><th>Durum</th><th>Önce → Sonra</th></tr>");
       for (const b of bulgular) {

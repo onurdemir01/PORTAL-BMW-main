@@ -8,7 +8,7 @@
 // "çalışıyordu → çalışıyor ✓". Ölçülemeyen sunucu sorunsuz SAYILMAZ.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme } from '@/api/rebootCheckApi';
+import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme, type RcOtomasyon } from '@/api/rebootCheckApi';
 import { serverHubApi } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -17,10 +17,11 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { DURUM, SONRA_ACIK, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+import { DURUM, SONRA_ACIK, URUN_ADI, betikEskiMetni, betikSurumu, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 // 2026-11-14 (ilk gerçek koşu): önce görüntüsü boş sunucu yeşil gösteriliyordu ve sonra "Sorunsuz" çıkıyordu.
-const ONCE_BOS_METNI = 'Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda hiçbir şeyi açıp kapatmaz.';
+// v3 (2026-11-15 akşam): boş önce görüntüsünde web ürünleri (Nginx/Apache/IHS) yine kapatılır; diğerlerine dokunulmaz.
+const ONCE_BOS_METNI = "Önce görüntüsünde izlenen ürün yok — uygulamalar zaten kapalıyken mi alındı? Reboot sonrası kontrol bu sunucuda yalnız web ürünlerini (Nginx/Apache/IHS) çalışıyorsa kapatır; CTG, JBoss ve WAS'a dokunmaz.";
 /** Kaydın önce görüntüsü boş (BOOT var, izlenen satır yok) sunucuları. */
 function bosOnceSunuculari(k: RcKayit): string[] {
   const s = k.once.sonuc?.sunucular || {};
@@ -120,7 +121,7 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
   const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
   // 2026-11-15: önce çalışmayan ürün kapatılır; yalnız kapatma kapısının koruduğu ürün "dokunulmadı" der.
-  const tablo = urunTablosu(og, ig, sg, islem, new Set(), kapatmaKorunan(once));
+  const tablo = urunTablosu(og, ig, sg, islem, new Set(), kapatmaKorunan(once), betikSurumu(r));
   const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
   const uyari = d?.neden || [];
   // Boş önce / eski sürüm zaten uyarı satırında yazılıysa plan notlarında tekrar edilmez.
@@ -132,9 +133,9 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
         <span className="font-mono text-sm font-semibold">{host}</span>
         {sunucuRozeti(d)}
         {reboot === false && <Rozet ton="warning">reboot olmamış görünüyor</Rozet>}
-        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {islem.filter((x) => x.sonuc !== 'SKIP').length} işlem{d?.hatali ? ` (${d.hatali} başarısız)` : ''}{d?.sebep && d.durum !== 'kontrol' ? ` · ${d.sebep}` : ''}
-        </span>
+        {d?.otomasyon && <Rozet ton={OTOMASYON[d.otomasyon.sinif].ton}>{OTOMASYON[d.otomasyon.sinif].etiket}</Rozet>}
+        <TeknolojiCipleri o={d?.otomasyon} />
+        {d?.sebep && d.durum !== 'kontrol' && <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>· {d.sebep}</span>}
         <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{acik ? '▴' : '▾'}</span>
       </button>
       {acik && (
@@ -199,20 +200,69 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
   );
 }
 
-// OTOMASYON OZETI + FILTRE (2026-11-15, ekip: "otomasyon kac tanesinde calisti, kac tanesine dokunmadi, kaci basarili,
-// kaci basarisiz"). "Islem yapti" = en az bir acma/kapatma komutu kostu (SKIP sayilmaz). Rapor (reboot-rapor.cjs) ayni tanim.
-type Filtre = 'tum' | 'sorunlu' | 'kontrol' | 'sorunsuz' | 'islem' | 'dokunmadi' | 'komuthata';
-const FILTRE_ADI: Record<Filtre, string> = {
-  tum: 'Tümü', sorunlu: 'Başarısız', kontrol: 'Kontrol gerekli', sorunsuz: 'Başarılı', islem: 'Otomasyon işlem yaptı', dokunmadi: 'Otomasyon dokunmadı', komuthata: 'Komutu başarısız',
+// OTOMASYON + SON DURUM FİLTRESİ (v3, kullanıcı: "otomasyon başarılı ve başarısızı net ayırmıyor, dokunmayı da ayırmıyor;
+// sunucuda hangi teknolojiyi çalıştırdın çalıştırmadın belirt"). Otomasyon sınıfı ve teknoloji listesi SUNUCUDAN gelir
+// (reboot-check.cjs otomasyonOzeti; rapor aynı kaynağı kullanır) — istemci yeniden hesaplamaz. İki grup AND ile uygulanır.
+type OFiltre = 'tum' | 'basarili' | 'basarisiz' | 'dokunmadi';
+type SFiltre = 'tum' | 'sorunsuz' | 'kontrol' | 'sorunlu';
+const O_ADI: Record<OFiltre, string> = { tum: 'Tümü', basarili: 'Başarılı', basarisiz: 'Başarısız', dokunmadi: 'Dokunmadı' };
+const S_ADI: Record<SFiltre, string> = { tum: 'Tümü', sorunsuz: 'Sorunsuz', kontrol: 'Kontrol gerekli', sorunlu: 'Sorun kaldı' };
+const OTOMASYON: Record<RcOtomasyon['sinif'], { etiket: string; ton: string; renk: string }> = {
+  basarili: { etiket: 'Otomasyon başarılı', ton: 'ok', renk: 'var(--status-success)' },
+  basarisiz: { etiket: 'Otomasyon başarısız', ton: 'danger', renk: 'var(--status-danger)' },
+  dokunmadi: { etiket: 'Otomasyon dokunmadı', ton: 'muted', renk: 'var(--text-secondary)' },
 };
-/** Sunucu başına otomasyon sınıfı (saf). */
-function otomasyonSinifi(d: RcDegerlendirme | undefined, r: RcSunucuSonuc | undefined): Record<Filtre, boolean> {
-  const komut = islemAyristir(r?.islemler).filter((x) => x.sonuc === 'OK' || x.sonuc === 'FAIL');
-  const durum = d?.durum;
-  return {
-    tum: true, sorunlu: durum === 'sorunlu' || durum === 'olculemedi', kontrol: durum === 'kontrol', sorunsuz: durum === 'sorunsuz',
-    islem: komut.length > 0, dokunmadi: komut.length === 0, komuthata: komut.some((x) => x.sonuc === 'FAIL'),
-  };
+const SON_RENK: Record<Exclude<SFiltre, 'tum'>, string> = { sorunsuz: 'var(--status-success)', kontrol: 'var(--status-warning)', sorunlu: 'var(--status-danger)' };
+/** Son durum grubu: ölçülemeyen "Sorun kaldı" sayılır (sorunsuz SAYILMAZ). */
+function sonDurum(d: RcDegerlendirme | undefined): Exclude<SFiltre, 'tum'> {
+  if (d?.durum === 'sorunsuz') return 'sorunsuz';
+  return d?.durum === 'kontrol' ? 'kontrol' : 'sorunlu';
+}
+
+/** Sunucu başlığındaki teknoloji çipleri: çalıştırılanlar (✓/✗ özetiyle) ve "çalıştırılmadı: … (neden)". */
+function TeknolojiCipleri({ o }: { o?: RcOtomasyon }) {
+  if (!o) return <span className="text-[11px]" style={{ color: 'var(--text-muted)' }} title="Kayıt otomasyon özeti olmadan hesaplanmış">—</span>;
+  const ad = (u: string, yedek: string) => URUN_ADI[u] || yedek;
+  const calisan = o.teknoloji.filter((t) => t.calistirildi);
+  const calismayan = o.teknoloji.filter((t) => !t.calistirildi);
+  return (
+    <span className="flex flex-wrap items-center gap-1 text-[11px]">
+      {o.not && <span style={{ color: 'var(--status-danger)' }}>{o.not}</span>}
+      {calisan.map((t) => (
+        <span key={t.urun} className="px-1.5 py-0.5 rounded"
+          style={t.sonuc === 'hata' ? { color: 'var(--status-danger)', background: 'var(--status-danger-bg)' } : { color: 'var(--status-success)', background: 'var(--status-success-bg)' }}>
+          {ad(t.urun, t.ad)}: {t.ozet}
+        </span>
+      ))}
+      {calismayan.length > 0 && (
+        <span style={{ color: 'var(--text-muted)' }}>çalıştırılmadı: {calismayan.map((t) => `${ad(t.urun, t.ad)} (${t.ozet})`).join(', ')}</span>
+      )}
+    </span>
+  );
+}
+
+function FiltreGrubu<F extends string>({ etiket, adlar, secili, sec, say }: { etiket: string; adlar: Record<F, string>; secili: F; sec: (f: F) => void; say: (f: F) => number }) {
+  return (
+    <div role="group" aria-label={`${etiket} filtresi`} className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] font-semibold w-20" style={{ color: 'var(--text-muted)' }}>{etiket}</span>
+      {(Object.keys(adlar) as F[]).map((f) => (
+        <button key={f} type="button" aria-pressed={secili === f} onClick={() => sec(f)}
+          className="h-7 px-2.5 rounded-full border text-[11px] font-medium"
+          style={secili === f ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' } : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+          {adlar[f]} <span className="tabular-nums">({say(f)})</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Kutu({ sayi, etiket, renk }: { sayi: number; etiket: string; renk: string }) {
+  return (
+    <div className="rounded-lg border px-3 py-1.5" style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className="text-lg font-semibold tabular-nums" style={{ color: renk }}>{sayi}</div>
+      <div style={{ color: 'var(--text-muted)' }}>{etiket}</div>
+    </div>
+  );
 }
 
 function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: boolean }) {
@@ -220,11 +270,20 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
   const sonraS = k.sonra.sonuc?.sunucular || {};
   const deg = k.ozet?.sonra?.sunucu || {};
   const sonraHazir = SONRA_ACIK.includes(k.durum);
-  const [filtre, setFiltre] = useState<Filtre>('tum');
+  const [oFiltre, setOFiltre] = useState<OFiltre>('tum');
+  const [sFiltre, setSFiltre] = useState<SFiltre>('tum');
   const tumHosts = Object.keys(deg);
-  const sinif = Object.fromEntries(tumHosts.map((h) => [h, otomasyonSinifi(deg[h], sonraS[h])]));
-  const say = (f: Filtre) => tumHosts.filter((h) => sinif[h][f]).length;
-  const sonraHosts = tumHosts.filter((h) => sinif[h][filtre]);
+  const oUyar = (h: string, f: OFiltre) => f === 'tum' || deg[h]?.otomasyon?.sinif === f;
+  const sUyar = (h: string, f: SFiltre) => f === 'tum' || sonDurum(deg[h]) === f;
+  // Düğme sayıları diğer grubun seçimiyle daraltılır (iki grup AND); kutular tüm sunucuları sayar.
+  const oSay = (f: OFiltre) => tumHosts.filter((h) => oUyar(h, f) && sUyar(h, sFiltre)).length;
+  const sSay = (f: SFiltre) => tumHosts.filter((h) => sUyar(h, f) && oUyar(h, oFiltre)).length;
+  const oToplam = (f: OFiltre) => tumHosts.filter((h) => oUyar(h, f)).length;
+  const sToplam = (f: SFiltre) => tumHosts.filter((h) => sUyar(h, f)).length;
+  const sonraHosts = tumHosts.filter((h) => oUyar(h, oFiltre) && sUyar(h, sFiltre));
+  // SÜRÜM BANDI (v3 B3): AWX'teki betik eskiyse kayıt düzeyinde TEK bant (sunucu kartlarında ayrıca neden olarak yazılır).
+  const eskiHosts = k.durum === 'sonra_kosuyor' ? [] : tumHosts.filter((h) => sonraS[h] && !sonraS[h].sonuc_yok && !betikSurumu(sonraS[h]).guncel);
+  const eskiEtiket = [...new Set(eskiHosts.map((h) => betikSurumu(sonraS[h]).etiket))];
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -244,6 +303,13 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
       </div>
 
       {k.durum === 'once_kosuyor' && <IsCanli k={k} />}
+      {eskiHosts.length > 0 && (
+        <div role="alert" className="flex items-start gap-1.5 rounded-lg border px-3 py-2 text-[12px]"
+          style={{ borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}>
+          <ExclamationTriangleIcon className="w-4 h-4 mt-0.5 shrink-0" />
+          <span><b>{betikEskiMetni(eskiEtiket)}</b> ({eskiHosts.length} sunucu)</span>
+        </div>
+      )}
 
       <section className="space-y-1.5">
         <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>1 · Reboot öncesi görüntü {k.once.at ? `(${fmtDateTime(k.once.at)})` : ''}</div>
@@ -306,25 +372,16 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
             : (
               <div className="space-y-2">
                 <div className="grid gap-1.5 text-[12px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}>
-                  {([['islem', 'var(--status-info)'], ['dokunmadi', 'var(--text-secondary)'], ['sorunsuz', 'var(--status-success)'], ['kontrol', 'var(--status-warning)'], ['sorunlu', 'var(--status-danger)']] as [Filtre, string][]).map(([f, renk]) => (
-                    <div key={f} className="rounded-lg border px-3 py-1.5" style={{ borderColor: 'var(--border-subtle)' }}>
-                      <div className="text-lg font-semibold tabular-nums" style={{ color: renk }}>{say(f)}</div>
-                      <div style={{ color: 'var(--text-muted)' }}>{FILTRE_ADI[f]}</div>
-                    </div>
-                  ))}
+                  {(['basarili', 'basarisiz', 'dokunmadi'] as const).map((f) => <Kutu key={f} sayi={oToplam(f)} etiket={OTOMASYON[f].etiket} renk={OTOMASYON[f].renk} />)}
+                </div>
+                <div className="grid gap-1.5 text-[12px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}>
+                  {(['sorunsuz', 'kontrol', 'sorunlu'] as const).map((f) => <Kutu key={f} sayi={sToplam(f)} etiket={S_ADI[f]} renk={SON_RENK[f]} />)}
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Sayılar <b>sunucu</b> sayısıdır. "İşlem yaptı" = en az bir açma/kapatma komutu çalıştı (gerek kalmayanlar sayılmaz); başarılı/başarısız son kontrole göredir.
+                  Sayılar <b>sunucu</b> sayısıdır. Otomasyon: <b>dokunmadı</b> = hiç açma/kapatma komutu çalışmadı (gerek kalmayanlar sayılmaz); <b>başarılı</b> = çalışan her komut başarılı ve dokunduğu her öğe son kontrolde hedef durumda; <b>başarısız</b> = bir komut başarısız ya da dokunduğu öğe son kontrolde hedefte değil / ölçülemedi. Alt satır son kontroldeki durumdur.
                 </div>
-                <div role="group" aria-label="Sunucu filtresi" className="flex flex-wrap gap-1.5">
-                  {(Object.keys(FILTRE_ADI) as Filtre[]).map((f) => (
-                    <button key={f} type="button" aria-pressed={filtre === f} onClick={() => setFiltre(f)}
-                      className="h-7 px-2.5 rounded-full border text-[11px] font-medium"
-                      style={filtre === f ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' } : { borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
-                      {FILTRE_ADI[f]} <span className="tabular-nums">({say(f)})</span>
-                    </button>
-                  ))}
-                </div>
+                <FiltreGrubu etiket="Otomasyon" adlar={O_ADI} secili={oFiltre} sec={setOFiltre} say={oSay} />
+                <FiltreGrubu etiket="Son durum" adlar={S_ADI} secili={sFiltre} sec={setSFiltre} say={sSay} />
                 {sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Bu filtrede sunucu yok.</div>
                   : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
               </div>
@@ -495,7 +552,7 @@ export default function RebootKontroluTab() {
             <li>Kalan JVM'ler tek tek işlenir; süreç öldürülmez (kill yok).</li>
           </ul>
           <div role="alert" className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}>
-            <b>Dikkat: reboot öncesi çalışmayan ürün KAPATILIR.</b> JBoss domain'i (Host Controller), WAS (uygulama sunucuları, nodeagent, dmgr) ya da CTG kapatılınca <b>üzerindeki her şey kapanır</b>. Karar tamamen "önce" görüntüsüne dayanır; "önce"den sonra bilerek açılmış bir ürün varsa devam etmeyin. Önce görüntüsü boş olan sunucularda hiçbir ürün, önce görüntüsü eski betik sürümüyle alınmış sunucularda JBoss 7/8 kapatılmaz.
+            <b>Dikkat: reboot öncesi çalışmayan ürün KAPATILIR.</b> JBoss domain'i (Host Controller), WAS (uygulama sunucuları, nodeagent, dmgr) ya da CTG kapatılınca <b>üzerindeki her şey kapanır</b>. Karar tamamen "önce" görüntüsüne dayanır; "önce"den sonra bilerek açılmış bir ürün varsa devam etmeyin. Önce görüntüsü boş olan sunucularda yalnız web ürünleri (Nginx/Apache/IHS) kapatılır, CTG/JBoss/WAS kapatılmaz; önce görüntüsü eski betik sürümüyle alınmış sunucularda JBoss 7/8 kapatılmaz. Otomasyonun kapattığı her ürün sonuçta <b>kontrol edilecek</b> olarak işaretlenir.
           </div>
           <p>Yalnız "önce" görüntüsü alınmış sunucular işlenir.</p>
           {onayBos.length > 0 && (

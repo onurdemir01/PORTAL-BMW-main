@@ -446,6 +446,8 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
                   : {
                       once_var: true,
                       son_olculdu: true,
+                      // v3: guncel betik surum isareti yazar; yoksa kayit 'kontrol' olur (AWX'teki betik eski)
+                      betik_surum: 3,
                       goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
                       son_goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
                       islemler: [],

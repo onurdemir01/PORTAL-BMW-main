@@ -15,15 +15,17 @@
 //
 // KONTROL GEREKLI (2026-11-14, ilk gercek kosu: her sey "dokunulmadi" yazdi ve sunucular "sorunsuz"
 // cikti). Fark kalmasa bile iki durumda sunucu SORUNSUZ SAYILMAZ, durum 'kontrol' olur:
-//   (a) "once" goruntusunde hic izlenen satir (URUN/JVM) yok: betik o sunucuda hicbir seyi acip
-//       kapatmaz, "kalan" bos cikar - bu bir dogrulama degil, sessiz gecis olurdu;
+//   (a) "once" goruntusunde hic izlenen satir (URUN/JVM) yok: v3'ten beri betik yalniz web urunlerini (Nginx/Apache/IHS)
+//       reboot oncesi haline (kapali) dondurur, CTG/JBoss/WAS'a dokunmaz - bu bir dogrulama degil, elle bakilmali;
 //   (b) once calismayan bir urun ya da (urunu once calismayan) JVM simdi CALISIYOR. 2026-11-15'ten beri
 //       ("nasil bulduysan oyle birak") betik once calismayan URUNU KAPATIR: hala calisan yeni urun KALAN'dir
 //       (sorunlu; portalKalan FARK|NEW|URUN; URUN satiri olmayip JVM'i calisan yeni urun de - sonKume). Yalniz
 //       kapatma kapisinin (kapatmaKapisi, yalniz ham once'den) korudugu oge (once BOS / BOOT'suz ya da eski surum
 //       once'nin JBoss 7/8 urunu) "dokunulmadi" der ve kontrol nedenidir; urunu kapatilmasi gereken JVM'i de kontrol;
 //   (c) once goruntusu eski betik surumuyle alinmis ve JBoss 7 urun satiri cevrilemedi (BILGI|BELIRSIZ) ya da
-//       AWX'teki eski betik JBoss'u hic islemedi (BILGI|ESKI). 2026-11-15'ten beri JBoss satirlari cevrilir.
+//       AWX'teki eski betik JBoss'u hic islemedi (BILGI|ESKI). 2026-11-15'ten beri JBoss satirlari cevrilir;
+//   (d) v3: otomasyon reboot oncesi calismayan bir URUNU kapatti (SONUC|durdur|<urun>||OK) - "kapatip kontrol edilecek";
+//   (e) v3: sonra sonucunda betik_surum yok ya da BETIK_SURUM_GEREKLI'den kucuk (AWX'teki betik eski).
 // Kalan: betigin son_fark'i ile Portal'in ayni kuralla kendi hesabinin (portalKalan) buyugu.
 // Kayit durumu: hic 'sorunlu' / 'olculemedi' yok ve en az bir 'kontrol' varsa 'kontrol'.
 'use strict';
@@ -46,6 +48,41 @@ const jsonOku = (s) => {
 };
 
 const dizi = (x) => (Array.isArray(x) ? x : []).map((l) => String(l));
+const URUNLER = ['NGINX', 'RHA', 'IHS', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS'];
+const URUN_ADI = {
+  NGINX: 'Nginx',
+  RHA: 'Apache HTTP Server',
+  IHS: 'IBM HTTP Server (IHS)',
+  CTG: 'CTG',
+  JBOSS7: 'JBoss 7',
+  JBOSS8: 'JBoss 8',
+  WAS: 'WebSphere',
+};
+
+// SURUM ISARETI (v3): playbook rc_sonuc'a betik_surum yazar. Yoksa ya da GEREKLI'den kucukse AWX'teki betik eski:
+// o kosuda urun kapatma ve yeniden deneme YOKTU. Portal bunu kesin soyler ("eski betik olabilir" demez).
+const BETIK_SURUM_GEREKLI = 3;
+function betikSurumu(r) {
+  const ham = r?.betik_surum;
+  const yazili = ham !== undefined && ham !== null && String(ham).trim() !== '';
+  const n = Number(ham);
+  return {
+    guncel: yazili && Number.isFinite(n) && n >= BETIK_SURUM_GEREKLI,
+    etiket: yazili ? `sürüm ${String(ham).trim()}` : 'sürüm yok',
+  };
+}
+const betikEskiMetni = (r) =>
+  `AWX'teki reboot_check betiği eski (${betikSurumu(r).etiket}, gerekli ${BETIK_SURUM_GEREKLI}): bu koşuda ürün kapatma ve yeniden deneme YOKTU. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+
+/** SONUC satirlari -> { islem, urun, ad, sonuc, mesaj }. */
+function sonucSatirlari(r) {
+  return dizi(r?.islemler)
+    .filter((l) => l.startsWith('SONUC|'))
+    .map((l) => {
+      const q = l.split('|');
+      return { islem: q[1] || '', urun: q[2] || '', ad: q[3] || '', sonuc: q[4] || '', mesaj: q.slice(5).join('|') };
+    });
+}
 const izlenenVar = (satirlar) => dizi(satirlar).some((l) => /^(URUN|JVM)\|/.test(l));
 const bootVar = (satirlar) => dizi(satirlar).some((l) => l.startsWith('BOOT|'));
 const surumVar = (satirlar) => dizi(satirlar).some((l) => l.startsWith('SURUM|'));
@@ -120,11 +157,20 @@ function onceKume(satirlar, haricJb = false) {
  * kapatilmaz (inceleme R1 B1: ilk goruntude HC kalkmis, JVM'leri kalkmamisken reboot oncesi CALISAN JBoss 8 domain'i "yeni"
  * sanilip kapatilabiliyordu). -> 'bos'|'eski'|''
  */
+// v3 (2026-11-15 aksam, kullanici: "Nginx, apache, ihs urunlerini halen kapatmamissin, kontrol edilecek yazmissin.
+// Kapatip, kontrol edilecek yaz"): 'bos' kapida web urunleri (NGINX/RHA/IHS) artik KAPATILIR; CTG/JBoss/WAS korunur.
+// BOOT'suz once 'bootsuz' doner: betik plani HATA yazar, hicbir sey yapilmaz -> hepsi korunur.
+// -> 'bootsuz'|'bos'|'eski'|''
 function kapatmaKapisi(once) {
-  if (!bootVar(once) || !izlenenVar(once)) return 'bos';
+  if (!bootVar(once)) return 'bootsuz';
+  if (!izlenenVar(once)) return 'bos';
   return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) ? 'eski' : '';
 }
-const kapiKorur = (kapi, u) => kapi === 'bos' || (kapi === 'eski' && /^JBOSS[78]$/.test(u));
+const WEB_URUN = /^(NGINX|RHA|IHS)$/;
+const kapiKorur = (kapi, u) =>
+  kapi === 'bootsuz' ||
+  (kapi === 'bos' && !WEB_URUN.test(u)) ||
+  (kapi === 'eski' && /^JBOSS[78]$/.test(u));
 
 /**
  * Son (ya da ilk) goruntu kumesi + CIKARIM (reboot_duzelt.sh simdi_dosya ile ayni, inceleme R2 #2): reboot oncesi calismayan
@@ -173,10 +219,13 @@ function kontrolNedenleri(once, r) {
   const plan = dizi(r?.plan);
   const onceVar = Array.isArray(once) && bootVar(once);
   const onceBos = (onceVar && !izlenenVar(once)) || plan.some((l) => l.startsWith('BILGI|BOS|'));
+  // v3: bos once'de web urunleri yine kapatilir; "hicbir sey acilip kapatilmadi" artik yanlis olurdu.
   if (onceBos)
     neden.push(
-      'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; bu sunucuda hiçbir şey açılıp kapatılmadı (uygulamalar zaten kapalıyken mi alındı?).',
+      'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; yalnız web ürünleri (Nginx/Apache/IHS) reboot öncesi haline (kapalı) döndürülür, diğerlerine dokunulmadı (uygulamalar zaten kapalıyken mi alındı?).',
     );
+  const surum = betikSurumu(r);
+  if (r && !surum.guncel) neden.push(betikEskiMetni(r));
   // ESKI: AWX'teki ESKI betik JBoss'u hic islemedi (2026-11-14 surumu). Yeni betik cevirir (BILGI|NESIL, kontrol degil);
   // yalniz cevrilemeyen JBoss 7 urunu (BILGI|BELIRSIZ ya da Portal'in ayni hesabi) kontrol nedenidir.
   if (plan.some((l) => l.startsWith('BILGI|ESKI|')))
@@ -226,11 +275,124 @@ function kontrolNedenleri(once, r) {
     neden.push(
       `Reboot öncesi çalışmayan ${korunan.length} öğe şimdi çalışıyor ve dokunulmadı (${onceVar ? 'önce görüntüsü boş ya da eski sürüm — kapatma güvenli değildi' : 'plan notuna göre'}): ${liste(korunan)} — beklenen durum mu kontrol edin.`,
     );
+  // Surum biliniyor: "eski betikle degerlendirildiyse" gibi belirsiz bir cumle yazilmaz (v3, B3).
   if (kapanmali.length)
     neden.push(
-      `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — kapatma sonucunu kontrol edin. Kayıt eski betikle değerlendirildiyse güncel betikle "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`,
+      `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — ${surum.guncel ? 'kapatma sonucunu kontrol edin.' : "AWX'teki betik eski olduğu için bu koşuda ürün kapatma yoktu."}`,
+    );
+  // v3 B2 ("kapatip, kontrol edilecek yaz"): otomasyonun KAPATTIGI her URUN (JVM degil) fark kalmasa da kontrol nedenidir.
+  // Yalniz son goruntude gercekten kapali olanlar; hala calisan zaten KALAN'dir (sorunlu).
+  const sk = sonKume(r?.son_goruntu, onceVar ? onceKume(cev.satirlar).urun : new Set());
+  const kapatilan = new Set(
+    sonucSatirlari(r)
+      .filter((x) => x.islem === 'durdur' && !x.ad && x.sonuc === 'OK')
+      .map((x) => x.urun),
+  );
+  const kapali = URUNLER.filter((u) => kapatilan.has(u) && !sk.urun.has(u));
+  if (kapali.length)
+    neden.push(
+      `${kapali.map((u) => URUN_ADI[u]).join(', ')} reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.`,
     );
   return neden;
+}
+
+/**
+ * OTOMASYON OZETI (v3 B4, kullanici: "otomasyon basarili ve basarisizi net ayirmiyor, dokunmayi da ayirmiyor; sunucuda
+ * hangi teknolojiyi calistirdin calistirmadin belirt"). Ekran ve rapor AYNI tanimi buradan alir (saf). Siniflar karsilikli
+ * dislayicidir:
+ *   dokunmadi : hic komut kosmadi (SONUC OK/FAIL yok; SKIP komut sayilmaz);
+ *   basarisiz : en az bir komut kostu VE (bir komut FAIL ya da dokunulan oge son kontrolde hedefte degil / olculemedi);
+ *   basarili  : en az bir komut kostu, hepsi OK ve dokunulan her oge son kontrolde hedefte.
+ * Hedef: baslat -> son goruntude calisiyor; urun durdur -> ne URUN ne JVM'i; JVM durdur -> yok (sonKume / onceNesilCevir).
+ * teknoloji: izlenen 7 urunden once/ilk/son/islemlerde gorulen her biri: { urun, ad, calistirildi, ozet, sonuc }.
+ */
+const OTOMASYON_BILINMIYOR = 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)';
+function otomasyonOzeti(once, r) {
+  const isl = sonucSatirlari(r);
+  const komut = isl.filter((x) => x.sonuc === 'OK' || x.sonuc === 'FAIL');
+  const olculdu = !!r?.son_olculdu;
+  const onceVar = Array.isArray(once) && bootVar(once);
+  // Inceleme F4: BOOT'suz once (betik plani HATA yazar) ya da plan HATA -> hicbir islem yapilmadi; nedeni bu.
+  const planHata = dizi(r?.plan).some((l) => l.startsWith('BILGI|HATA|'));
+  const onceBootsuz = Array.isArray(once) && !bootVar(once);
+  const cev = onceVar
+    ? onceNesilCevir(once, olculdu ? r?.son_goruntu : r?.goruntu)
+    : { satirlar: [], belirsiz: [] };
+  const kapi = onceVar ? kapatmaKapisi(once) : '';
+  const o = onceKume(cev.satirlar);
+  const ilk = sonKume(r?.goruntu, o.urun);
+  const s = olculdu ? sonKume(r?.son_goruntu, o.urun) : null;
+  const urunJvmVar = (g, u) => [...g.jvm].some((k) => k.startsWith(`${u}|`));
+  const hedefte = (x) => {
+    if (!s) return false;
+    const k = `${x.urun}|${x.ad}`;
+    if (!URUN_ADI[x.urun]) return true;
+    if (x.islem === 'baslat') return x.ad ? s.jvm.has(k) : s.urun.has(x.urun);
+    if (x.islem === 'durdur') return x.ad ? !s.jvm.has(k) : !s.urun.has(x.urun) && !urunJvmVar(s, x.urun);
+    return true;
+  };
+  const basarili = (x) => x.sonuc === 'OK' && hedefte(x);
+  let sinif = 'dokunmadi';
+  if (komut.length) sinif = komut.every(basarili) ? 'basarili' : 'basarisiz';
+
+  const gorulen = new Set(isl.map((x) => x.urun));
+  for (const g of [o, ilk, ...(s ? [s] : [])]) {
+    for (const u of g.urun) gorulen.add(u);
+    for (const k of g.jvm) gorulen.add(k.split('|')[0]);
+  }
+  const deneme = (mesaj) => {
+    const m = /\((\d+)\. denemede/.exec(mesaj);
+    return m && Number(m[1]) >= 2 ? ` (${m[1]}. denemede)` : '';
+  };
+  const fark = (g, u) =>
+    o.urun.has(u) !== g.urun.has(u) ||
+    [...o.jvm, ...g.jvm].some((k) => k.startsWith(`${u}|`) && o.jvm.has(k) !== g.jvm.has(k));
+  const surum = betikSurumu(r);
+  const calismayanNeden = (u) => {
+    if (onceBootsuz) return 'önce görüntüsü eski biçimde / BOOT yok — işlem yapılmadı';
+    if (planHata) return 'plan hata verdi — işlem yapılmadı';
+    if (!s) return 'son durum ölçülemedi';
+    if (!fark(s, u)) {
+      if (isl.some((x) => x.urun === u && x.sonuc === 'SKIP')) return 'zaten doğru durumdaydı (komut gerekmedi)';
+      return fark(ilk, u) ? 'kendiliğinden düzeldi (komut gerekmedi)' : 'değişiklik yok';
+    }
+    if (cev.belirsiz.includes(u) || (kapi === 'eski' && kapiKorur(kapi, u))) return 'eski sürüm önce — JBoss dokunulmadı';
+    if (kapiKorur(kapi, u)) return 'önce görüntüsü boş — dokunulmadı';
+    // Inceleme F5: betik SKIP yazdiysa (ornegin "zaten baslatiliyordu") nedeni gorunur; "komut calismadi" eksik kalirdi.
+    const skip = isl.find((x) => x.urun === u && x.sonuc === 'SKIP');
+    if (skip) return `komut koşulmadı (betik: ${skip.mesaj || 'gerek görülmedi'}) — fark kaldı`;
+    return surum.guncel ? 'komut çalışmadı — fark kaldı' : "AWX'teki betik eski — işlem yapılmadı";
+  };
+  // Inceleme F2: komut OK dondu ama son goruntu alinamadi -> "acilamadi" denmez; dogrulanamadi (yine hata sinifi).
+  const durumu = (x) => (x.sonuc === 'OK' && !s ? 'olcmedi' : basarili(x) ? 'ok' : 'hata');
+  const METIN = {
+    baslat: { ok: 'açıldı ✓', olcmedi: 'açma komutu OK — son durum ölçülemedi ✗', hata: 'açılamadı ✗' },
+    durdur: { ok: 'kapatıldı ✓', olcmedi: 'kapatma komutu OK — son durum ölçülemedi ✗', hata: 'kapatılamadı ✗' },
+  };
+  const teknoloji = URUNLER.filter((u) => gorulen.has(u)).map((u) => {
+    const kx = komut.filter((x) => x.urun === u);
+    if (!kx.length) return { urun: u, ad: URUN_ADI[u], calistirildi: false, ozet: calismayanNeden(u), sonuc: 'yok' };
+    const parca = [];
+    for (const x of kx.filter((y) => !y.ad)) {
+      const d = durumu(x);
+      const m = (METIN[x.islem] || METIN.durdur)[d];
+      parca.push(x.islem === 'baslat' && d === 'ok' ? `${m}${deneme(x.mesaj)}` : m);
+    }
+    const jv = kx.filter((y) => y.ad);
+    for (const islem of ['baslat', 'durdur'])
+      for (const d of ['ok', 'olcmedi', 'hata']) {
+        const n = jv.filter((y) => y.islem === islem && durumu(y) === d).length;
+        if (n) parca.push(`${n} JVM ${METIN[islem][d]}`);
+      }
+    return {
+      urun: u,
+      ad: URUN_ADI[u],
+      calistirildi: true,
+      ozet: parca.join(', '),
+      sonuc: kx.every(basarili) ? 'ok' : 'hata',
+    };
+  });
+  return { sinif, teknoloji };
 }
 
 /**
@@ -247,11 +409,16 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
       out[h] = {
         durum: 'olculemedi',
         sebep: 'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)',
+        // Inceleme F3: sonuc gelmeyen sunucuda komut kosmus olabilir (rc_sonuc yalniz son adimda yazilir); "dokunmadi"
+        // yanlis guvence olurdu. Dogrulanamayan otomasyon basarisiz sayilir, nedeni yazilir.
+        otomasyon: { sinif: 'basarisiz', teknoloji: [], not: OTOMASYON_BILINMIYOR },
       };
       continue;
     }
+    const once = onceSat?.[h];
+    const otomasyon = otomasyonOzeti(once, r);
     if (!r.once_var) {
-      out[h] = { durum: 'olculemedi', sebep: 'bu sunucunun "once" goruntusu yok' };
+      out[h] = { durum: 'olculemedi', sebep: 'bu sunucunun "once" goruntusu yok', otomasyon };
       continue;
     }
     const islemler = dizi(r.islemler).filter((l) => l.startsWith('SONUC|'));
@@ -263,10 +430,10 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
         sebep: 'son goruntu alinamadi',
         islem: islemler.length,
         hatali,
+        otomasyon,
       };
       continue;
     }
-    const once = onceSat?.[h];
     const kalanPortal =
       Array.isArray(once) && bootVar(once) ? portalKalan(once, r.son_goruntu) : [];
     const kalan = Math.max(kalanBetik.length, kalanPortal.length);
@@ -280,6 +447,7 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
       ...(neden.length ? { neden } : {}),
       ...(durum === 'kontrol' ? { sebep: neden.join(' ') } : {}),
       ...(r.durulma ? { durulma: String(r.durulma) } : {}),
+      otomasyon,
     };
   }
   return out;
@@ -607,6 +775,12 @@ module.exports = {
   kume,
   sonraOzeti,
   yenidenDegerlendir,
+  otomasyonOzeti,
+  betikSurumu,
+  betikEskiMetni,
+  BETIK_SURUM_GEREKLI,
+  URUNLER,
+  URUN_ADI,
   SONRA_ACIK,
   REGISTRY_KEY,
 };
