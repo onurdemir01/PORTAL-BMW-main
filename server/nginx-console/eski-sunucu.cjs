@@ -156,7 +156,7 @@ async function tazeTbmwans(query, sql, varOlan, esikMs) {
     for (const x of (r && r.recordset) || []) {
       const h = norm(x.hostname);
       if (!h) continue;
-      const ms = x.source_last_update == null ? NaN : new Date(x.source_last_update).getTime();
+      const ms = x.source_last_update == null ? Number.NaN : new Date(x.source_last_update).getTime();
       if (Number.isNaN(ms) || ms >= esikMs) tazeEkle(taze, h);
     }
   }

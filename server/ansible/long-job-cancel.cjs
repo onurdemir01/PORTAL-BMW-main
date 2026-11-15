@@ -289,7 +289,7 @@ function pushLog(entry, tickLog) {
 
 function baseEntry(job, nowMs) {
   const ref = job.started || job.created;
-  const refMs = ref ? new Date(ref).getTime() : NaN;
+  const refMs = ref ? new Date(ref).getTime() : Number.NaN;
   return {
     serverId: job.serverId,
     serverName: job.serverName || `sunucu ${job.serverId}`,

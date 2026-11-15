@@ -178,7 +178,7 @@ export function IsGoruntuleyici({ kayitId, t, is, onbellek, onIsBitti }: { kayit
     else if (acildi.current) { acildi.current = false; buyutRef.current?.focus(); }
   }, [buyuk]);
 
-  const baslangic = v?.started ? Date.parse(v.started) : NaN;
+  const baslangic = v?.started ? Date.parse(v.started) : Number.NaN;
   const gecen = Number.isFinite(baslangic) ? (simdi - baslangic) / 1000 : v?.elapsed ?? null;
   const ham = v ? v.status || (v.bitti ? 'arsiv' : 'pending') : 'pending';
   const terminalDurumu = ham === 'new' ? 'pending' : ham;

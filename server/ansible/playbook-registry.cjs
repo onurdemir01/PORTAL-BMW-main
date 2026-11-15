@@ -221,7 +221,7 @@ function getEffectiveTemplateId(row) {
   if (row.awxTemplateId) return row.awxTemplateId;
   if (row.envVarName && process.env[row.envVarName]) {
     const n = Number(process.env[row.envVarName]);
-    if (!isNaN(n) && n > 0) return n;
+    if (!Number.isNaN(n) && n > 0) return n;
   }
   return null;
 }

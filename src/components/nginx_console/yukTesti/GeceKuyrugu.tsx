@@ -118,7 +118,7 @@ function YeniKuyruk({ taslak, setTaslak, onYeniKosu, onDuzenle, onOlustu }: { ta
   const [hataMsg, setHataMsg] = useState('');
   const hedefler = [...new Set(taslak.map((o) => o.hedef))];
   const hedef = hedefler.length === 1 ? hedefler[0] : null;
-  const dk = /^\s*\d+\s*$/.test(bekleme) ? Number(bekleme) : NaN;
+  const dk = /^\s*\d+\s*$/.test(bekleme) ? Number(bekleme) : Number.NaN;
   const beklemeHata = !(dk >= 1 && dk <= 30) ? '1–30 dk arasında bir tam sayı.' : null;
   const simdi = new Date();
   // Secilen saat az once (en cok 10 dk) gectiyse "hemen" sayilir; aksi halde 24 saat sonraya kayardi.

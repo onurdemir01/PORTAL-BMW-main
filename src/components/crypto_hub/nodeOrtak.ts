@@ -576,7 +576,7 @@ export function kalanSure(
   if (!deadline) return null;
   const son = Date.parse(deadline);
   if (!Number.isFinite(son)) return null;
-  const sunucu = serverNow ? Date.parse(serverNow) : NaN;
+  const sunucu = serverNow ? Date.parse(serverNow) : Number.NaN;
   const simdi =
     Number.isFinite(sunucu) && alindiMs != null ? sunucu + (simdiMs - alindiMs) : simdiMs;
   const ms = son - simdi;

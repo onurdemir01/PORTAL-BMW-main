@@ -211,7 +211,7 @@ export function sunucuAyarHatalari(ae: NlAe, seviye: string, dizin: string): { s
   const h: { seviye?: string; dizin?: string } = {};
   if (ae !== 'identity') {
     const ust = SRV_SEVIYE_MAX[ae];
-    const n = /^\s*\d{1,2}\s*$/.test(seviye) ? Number(seviye) : NaN;
+    const n = /^\s*\d{1,2}\s*$/.test(seviye) ? Number(seviye) : Number.NaN;
     if (!(n >= 1 && n <= ust)) h.seviye = `${ae === 'br' ? 'Brotli' : 'Gzip'} seviyesi 1–${ust} olmalı.`;
   }
   if (!dizin.trim()) h.dizin = 'Dizini yazın (static kapalıyken de gerekir: .gz / .br dosyaları bu dizinde silinir).';
@@ -554,7 +554,7 @@ export function h2Engeli(o: Pick<NlOnKontrol, 'protokol' | 'curlH2' | 'alpnH2' |
  *  alinir - istemci saati kaymis olabilir; yoksa bitis anindan. Ikisi de yoksa null. */
 export function onKontrolKalanMs(k: (Pick<NlKosuAyrinti, 'finishedAt'> & Partial<Pick<NlKosuAyrinti, 'onKontrolYasSn'>>) | null, simdi = Date.now(), alindi?: number | null): number | null {
   if (k?.onKontrolYasSn != null && alindi != null) return ON_KONTROL_OMRU_MS - k.onKontrolYasSn * 1000 - (simdi - alindi);
-  const t = k?.finishedAt ? Date.parse(k.finishedAt) : NaN;
+  const t = k?.finishedAt ? Date.parse(k.finishedAt) : Number.NaN;
   return Number.isFinite(t) ? t + ON_KONTROL_OMRU_MS - simdi : null;
 }
 

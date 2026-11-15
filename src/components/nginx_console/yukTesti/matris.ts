@@ -34,7 +34,7 @@ export function seviyeleriAyristir(metin: string, ae: 'br' | 'gzip'): { seviyele
   const ust = SRV_SEVIYE_MAX[ae];
   const seviyeler: number[] = [];
   for (const p of parcalar) {
-    const n = /^\d{1,2}$/.test(p) ? Number(p) : NaN;
+    const n = /^\d{1,2}$/.test(p) ? Number(p) : Number.NaN;
     if (!(n >= 1 && n <= ust)) return { seviyeler: [], hata: `${AE_ADI[ae]} seviyeleri 1–${ust} arası olmalı.` };
     if (seviyeler.includes(n)) return { seviyeler: [], hata: `${AE_ADI[ae]} seviyesi ${n} iki kez yazılmış.` };
     seviyeler.push(n);

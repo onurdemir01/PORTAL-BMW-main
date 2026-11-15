@@ -149,7 +149,7 @@ function createApp() {
     windowMs: 60_000,     // 1 minute
     // Fonksiyon: her istekte okunur — Admin'den degisince restart gerekmez (Faz E).
     max: () => {
-      const n = parseInt(process.env.LOGIN_IP_MAX_PER_MIN || "30", 10);
+      const n = Number.parseInt(process.env.LOGIN_IP_MAX_PER_MIN || "30", 10);
       return Number.isInteger(n) && n >= 5 && n <= 1000 ? n : 30;
     },
     standardHeaders: true,
@@ -160,7 +160,7 @@ function createApp() {
 
   const apiLimiter = rateLimit({
     windowMs: 60_000,
-    max: parseInt(process.env.API_RATE_LIMIT_PER_MIN || "300", 10), // kullanici(oturum) basina
+    max: Number.parseInt(process.env.API_RATE_LIMIT_PER_MIN || "300", 10), // kullanici(oturum) basina
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: sessionOrIpKey,

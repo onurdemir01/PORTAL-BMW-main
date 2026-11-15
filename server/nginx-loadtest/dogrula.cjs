@@ -1270,7 +1270,7 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (epoch === null || epoch < simdiSn || epoch > simdiSn + SON_EPOCH_UST_PAY_SN) ihlal.push('yuk_son_epoch');
     // Butce: <= 2700 (sunucu ayarli 1800) ve >= bosta + adim_sayisi * tekrar * (isinma + sure + bosluk) + 120 (ek paysiz formul).
     const butce = sayi('yuk_butce_sn');
-    const adimlar = (() => { if (metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar')) return ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length; return NaN; })();
+    const adimlar = (() => { if (metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar')) return ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length; return Number.NaN; })();
     const altSinir = Number(ev.yuk_bosta_bas_sn) + adimlar * Number(ev.yuk_tekrar) * (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) + 120;
     const butceTavani = ev.yuk_srv_ayar === '1' ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
     if (butce === null || butce < 1 || butce > butceTavani || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');

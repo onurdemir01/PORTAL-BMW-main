@@ -38,8 +38,8 @@ function distribution(rows, field, mapper) {
 function toGiB(v) {
   const m = /^([\d.]+)\s*([KMGT])i?B?$/i.exec(String(v || '').trim());
   if (!m) return null;
-  const n = parseFloat(m[1]);
-  if (!isFinite(n)) return null;
+  const n = Number.parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
   const mult = { k: 1 / 1048576, m: 1 / 1024, g: 1, t: 1024 }[m[2].toLowerCase()];
   return n * mult;
 }
@@ -135,7 +135,7 @@ function summarizeNginxInventory(recordset) {
       servicesUnlisted,
       nginxVersions: new Set(rows.map((r) => norm(r.nginx_version))).size,
       osVersions: new Set(rows.map((r) => norm(r.os))).size,
-      cpuTotal: rows.reduce((a, r) => a + (parseInt(r.cpu, 10) || 0), 0),
+      cpuTotal: rows.reduce((a, r) => a + (Number.parseInt(r.cpu, 10) || 0), 0),
       memory: sumGiB(rows, 'memory'),
       diskNginx: sumGiB(rows, 'disk_usr_nginx'),
       diskWebLog: sumGiB(rows, 'disk_web_log'),
