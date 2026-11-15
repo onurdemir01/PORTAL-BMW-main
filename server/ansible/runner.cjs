@@ -29,7 +29,7 @@ function getConfig() {
     .map((s) => s.trim())
     .filter(Boolean)
     .map(Number)
-    .filter((n) => !isNaN(n) && n > 0);
+    .filter((n) => !Number.isNaN(n) && n > 0);
 
   return { url, allowedIds };
 }
@@ -321,7 +321,7 @@ async function listTemplatesForServer(server) {
   const allowedIds = rawIds
     .split(',')
     .map((s) => Number(s.trim()))
-    .filter((n) => !isNaN(n) && n > 0);
+    .filter((n) => !Number.isNaN(n) && n > 0);
 
   const token = await getTokenForServer(server);
 
@@ -938,7 +938,7 @@ async function launchJob(templateId, extraVars = {}, limit = '') {
   const { allowedIds } = getConfig();
   const id = Number(templateId);
 
-  if (isNaN(id) || id <= 0) throw new Error('Geçersiz template ID.');
+  if (Number.isNaN(id) || id <= 0) throw new Error('Geçersiz template ID.');
 
   if (allowedIds.length > 0 && !allowedIds.includes(id)) {
     throw Object.assign(new Error("Bu template ID'ye izin verilmiyor."), { status: 403 });
@@ -958,7 +958,7 @@ async function launchJob(templateId, extraVars = {}, limit = '') {
 
 async function getJobStatus(jobId) {
   const id = Number(jobId);
-  if (isNaN(id) || id <= 0) throw new Error('Geçersiz job ID.');
+  if (Number.isNaN(id) || id <= 0) throw new Error('Geçersiz job ID.');
 
   const data = await awxRequest('GET', `/api/v2/jobs/${id}/`);
 
@@ -1308,7 +1308,7 @@ function applyOutputFilter(stdoutText, overrides) {
 
 async function getJobOutput(jobId) {
   const id = Number(jobId);
-  if (isNaN(id) || id <= 0) throw new Error('Geçersiz job ID.');
+  if (Number.isNaN(id) || id <= 0) throw new Error('Geçersiz job ID.');
 
   const { url } = getConfig();
   const token = await getToken();
@@ -1484,7 +1484,7 @@ async function launchJobOnServer(
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(templateId);
-  if (isNaN(id) || id <= 0)
+  if (Number.isNaN(id) || id <= 0)
     throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
@@ -1566,7 +1566,7 @@ async function getJobStatusOnServer(serverId, jobId, opts = null) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
   const data = await awxRequestToServer(
@@ -1627,7 +1627,7 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
 
@@ -1783,7 +1783,7 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const kind = opts?.kind === 'workflow' ? 'workflow' : 'job';
   const segment = awxJobSegment(kind);
@@ -3138,7 +3138,7 @@ function initAnsibleRunner(app) {
       }
       if (field.type === 'integer' || field.type === 'float') {
         const num = Number(val);
-        if (isNaN(num))
+        if (Number.isNaN(num))
           throw Object.assign(new Error(`Sayısal olmayan değer: ${label}`), {
             status: 400,
             field: field.variable,
@@ -3282,7 +3282,7 @@ function initAnsibleRunner(app) {
       }
       if (field.type === 'integer' || field.type === 'float') {
         const num = Number(val);
-        if (isNaN(num))
+        if (Number.isNaN(num))
           throw Object.assign(new Error(`Sayısal olmayan değer: ${label}`), {
             status: 400,
             field: field.name,
@@ -3340,7 +3340,7 @@ function initAnsibleRunner(app) {
     if (detail?.ask_limit_on_launch && limit) payload.limit = limit;
     if (detail?.ask_forks_on_launch && forks !== undefined && forks !== '' && forks !== null) {
       const n = Number(forks);
-      if (!isNaN(n) && n >= 0) payload.forks = n;
+      if (!Number.isNaN(n) && n >= 0) payload.forks = n;
     }
     if (detail?.ask_tags_on_launch && jobTags) payload.job_tags = jobTags;
     if (detail?.ask_skip_tags_on_launch && skipTags) payload.skip_tags = skipTags;
@@ -3351,7 +3351,7 @@ function initAnsibleRunner(app) {
       verbosity !== null
     ) {
       const n = Number(verbosity);
-      if (!isNaN(n) && n >= 0 && n <= 5) payload.verbosity = n;
+      if (!Number.isNaN(n) && n >= 0 && n <= 5) payload.verbosity = n;
     }
     if (detail?.ask_job_type_on_launch && jobType) payload.job_type = jobType;
     return payload;
@@ -3849,7 +3849,7 @@ function initAnsibleRunner(app) {
 
     const serverId = Number(awxServerId) || 1;
     const templateId = Number(awxTemplateId);
-    if (isNaN(templateId) || templateId <= 0) {
+    if (Number.isNaN(templateId) || templateId <= 0) {
       return res.status(400).json({ ok: false, message: 'Geçersiz template ID.' });
     }
 
@@ -4557,7 +4557,7 @@ function initAnsibleRunner(app) {
     const server = getServerById(req.params.serverId);
     if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
     const templateId = Number(req.params.templateId);
-    if (isNaN(templateId) || templateId <= 0)
+    if (Number.isNaN(templateId) || templateId <= 0)
       return res.status(400).json({ ok: false, message: 'Geçersiz template ID.' });
 
     // enabled=false bir item kullanicilardan gizlenir (bkz. SelfServicePage.tsx
@@ -4697,7 +4697,7 @@ function initAnsibleRunner(app) {
       const server = getServerById(req.params.serverId);
       if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
       const templateId = Number(req.params.templateId);
-      if (isNaN(templateId) || templateId <= 0)
+      if (Number.isNaN(templateId) || templateId <= 0)
         return res.status(400).json({ ok: false, message: 'Geçersiz template ID.' });
 
       const {
@@ -4864,7 +4864,7 @@ function initAnsibleRunner(app) {
       const server = getServerById(req.params.serverId);
       if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
       const templateId = Number(req.params.templateId);
-      if (isNaN(templateId) || templateId <= 0)
+      if (Number.isNaN(templateId) || templateId <= 0)
         return res.status(400).json({ ok: false, message: 'Geçersiz template ID.' });
       if (req.body?.confirm !== true) {
         return res

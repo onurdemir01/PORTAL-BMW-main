@@ -14,7 +14,7 @@
 export function gunAnahtari(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
+  if (Number.isNaN(d.getTime())) return '';
   return tarihAnahtari(d);
 }
 
@@ -81,7 +81,7 @@ export const YAYILIM_SINIRI = 62;
 export function geceYarisiMi(iso: string | null): boolean {
   if (!iso) return false;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return false;
+  if (Number.isNaN(d.getTime())) return false;
   return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
 }
 
@@ -96,7 +96,7 @@ export function ocoYayilimi(
   const basKey = gunAnahtari(plannedStart);
   if (!basKey) return { gunler: [], kirpildi: false };
   const bitis = plannedEnd ? new Date(plannedEnd) : null;
-  if (!bitis || isNaN(bitis.getTime())) return { gunler: [basKey], kirpildi: false };
+  if (!bitis || Number.isNaN(bitis.getTime())) return { gunler: [basKey], kirpildi: false };
   const bas = new Date(plannedStart!);
   if (bitis.getTime() <= bas.getTime()) return { gunler: [basKey], kirpildi: false };
   let sonKey = tarihAnahtari(bitis);
@@ -152,7 +152,7 @@ export function gunlereYay<R extends { oco: number; plannedStart: string | null;
     });
   }
   const zaman = (o: TakvimOgesi<R>) => {
-    const t = o.row.plannedStart ? Date.parse(o.row.plannedStart) : NaN;
+    const t = o.row.plannedStart ? Date.parse(o.row.plannedStart) : Number.NaN;
     return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
   };
   for (const liste of gunler.values()) {

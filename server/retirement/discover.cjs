@@ -78,7 +78,7 @@ function genOf(jbossVersion) {
   if (/jboss.?8|eap.?8/i.test(v)) return 8;
   if (/jboss.?7|eap.?7/i.test(v)) return 7;
   const m = /(\d+)/.exec(v);
-  const n = m ? Number(m[1]) : NaN;
+  const n = m ? Number(m[1]) : Number.NaN;
   return n === 7 || n === 8 ? n : null;
 }
 

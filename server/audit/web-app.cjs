@@ -388,7 +388,7 @@ function registerWebApp(router) {
 // deger) - Map sinirli. Veri gunluk taramalardan gelir; hesap zamani ekranda yazilir.
 const ONBELLEK_VARSAYILAN_MS = 10 * 60 * 1000;
 function onbellekMs() {
-  const n = parseInt(process.env.WEBAPP_ONBELLEK_MS || '', 10);
+  const n = Number.parseInt(process.env.WEBAPP_ONBELLEK_MS || '', 10);
   return Number.isInteger(n) && n >= 0 && n <= 60 * 60 * 1000 ? n : ONBELLEK_VARSAYILAN_MS;
 }
 // Hesap dongusu her DILIM satirda olay dongusune nefes aldirir: hesap surerken Portal donmaz.

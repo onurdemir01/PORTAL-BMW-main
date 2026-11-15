@@ -114,7 +114,7 @@ async function connectOnce() {
     // Ayrinti icin dosyanin basindaki nota bak.
     const pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
-      port: parseInt(process.env.MSSQL_PORT || '1433', 10),
+      port: Number.parseInt(process.env.MSSQL_PORT || '1433', 10),
       database: process.env.MSSQL_DATABASE,
       user: process.env.MSSQL_RO_USER,
       password: process.env.MSSQL_RO_PASSWORD,

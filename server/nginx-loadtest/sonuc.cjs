@@ -338,10 +338,10 @@ class LogDeposu {
     x.t.ekle(t);
     // Yalniz 429 ve 5xx sayilir; Int32 disindaki anlamsiz durum kodu ikisi de degildir -> 0.
     x.durum.ekle(Number.isInteger(durum) && durum >= -2147483648 && durum <= 2147483647 ? durum : 0);
-    x.rt.ekle(rt === null ? NaN : rt);
-    x.cr.ekle(cr === null ? NaN : cr);
-    x.bl.ekle(bl === null ? NaN : bl);
-    x.d.ekle(d === null ? NaN : d);
+    x.rt.ekle(rt === null ? Number.NaN : rt);
+    x.cr.ekle(cr === null ? Number.NaN : cr);
+    x.bl.ekle(bl === null ? Number.NaN : bl);
+    x.d.ekle(d === null ? Number.NaN : d);
   }
 
   bitir() {

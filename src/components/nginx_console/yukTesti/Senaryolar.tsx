@@ -614,7 +614,7 @@ function YeniSenaryo({ onKapat, onKaydedildi }: { onKapat: () => void; onKaydedi
   const busyRef = useRef(false);
 
   const vhostTamam = vhostGecerli(vhost);
-  const esikSayi = /^\d+$/.test(esik.trim()) ? Number(esik) : NaN;
+  const esikSayi = /^\d+$/.test(esik.trim()) ? Number(esik) : Number.NaN;
   const harImza = JSON.stringify([
     vhost,
     sorguAt,

@@ -28,12 +28,12 @@ const EQUAL_DATE_WINDOW_MS = 2 * 60 * 60 * 1000;
 const WCF_DATE_RE = /^\/Date\((-?\d+)(?:[+-]\d{4})?\)\/$/;
 
 function parseOcoDate(value) {
-  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (typeof value !== 'string') return null;
   const w = value.trim().match(WCF_DATE_RE);
   if (w) {
     const d = new Date(Number(w[1]));
-    return isNaN(d.getTime()) ? null : d;
+    return Number.isNaN(d.getTime()) ? null : d;
   }
   const m = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return null;

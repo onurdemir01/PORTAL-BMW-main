@@ -50,7 +50,7 @@ async function connectOnce() {
     // IKINCISI SESSIZCE BIRINCISININ KIMLIGIYLE calisiyordu.
     const pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
-      port: parseInt(process.env.MSSQL_PORT || "1433", 10),
+      port: Number.parseInt(process.env.MSSQL_PORT || "1433", 10),
       database: process.env.MSSQL_DATABASE,
       user: process.env.MSSQL_USER,
       password: process.env.MSSQL_PASSWORD,
@@ -130,13 +130,13 @@ async function connectLongOnce() {
   try {
     const pool = await new sql.ConnectionPool({
       server: process.env.MSSQL_SERVER,
-      port: parseInt(process.env.MSSQL_PORT || "1433", 10),
+      port: Number.parseInt(process.env.MSSQL_PORT || "1433", 10),
       database: process.env.MSSQL_DATABASE,
       user: process.env.MSSQL_USER,
       password: process.env.MSSQL_PASSWORD,
       options: { trustServerCertificate: true, encrypt: false },
       connectionTimeout: 10000,
-      requestTimeout: parseInt(process.env.MSSQL_LONG_REQUEST_TIMEOUT_MS || "180000", 10),
+      requestTimeout: Number.parseInt(process.env.MSSQL_LONG_REQUEST_TIMEOUT_MS || "180000", 10),
       pool: { max: LONG_POOL_MAX, min: 0, idleTimeoutMillis: 60000 },
     }).connect();
     pool.on('error', () => {

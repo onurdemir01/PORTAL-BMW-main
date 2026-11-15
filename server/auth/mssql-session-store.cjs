@@ -26,7 +26,7 @@ function expiryFrom(sess) {
     return new Date(sessionPolicy.bitisler(m).absoluteExpiresAt);
   }
   const e = sess?.cookie?.expires;
-  if (e) { const d = new Date(e); if (!isNaN(d.getTime())) return d; }
+  if (e) { const d = new Date(e); if (!Number.isNaN(d.getTime())) return d; }
   return new Date(Date.now() + DEFAULT_TTL_MS);
 }
 

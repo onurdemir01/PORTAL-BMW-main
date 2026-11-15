@@ -195,7 +195,7 @@ export function yerelUyar(deger: unknown, s: Suzgec, simdi = Date.now()): boolea
     case 'max':
       return !bos && Number(deger) <= Number(s.v);
     case 'gun': {
-      const t = bos ? NaN : Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(metin) ? metin : `${metin}Z`);
+      const t = bos ? Number.NaN : Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(metin) ? metin : `${metin}Z`);
       return Number.isFinite(t) && t >= simdi - Number(s.v) * 86400000;
     }
     case 'evet':
@@ -261,7 +261,7 @@ function SuzgecPenceresi<T>({
       try {
         const d = kolon.secenekler
           ? {
-              degerler: kolon.secenekler.map((x) => ({ deger: x.deger, sayi: NaN })),
+              degerler: kolon.secenekler.map((x) => ({ deger: x.deger, sayi: Number.NaN })),
               farkli: kolon.secenekler.length,
             }
           : await degerGetir(ara);

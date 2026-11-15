@@ -386,7 +386,7 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
   const yap = liste(yapi);
   const qd = String(q || '').trim().toLowerCase();
   const tfg = Number(tarihFarki);
-  const tfm = tarihFarkiMax === '' || tarihFarkiMax == null ? NaN : Number(tarihFarkiMax);
+  const tfm = tarihFarkiMax === '' || tarihFarkiMax == null ? Number.NaN : Number(tarihFarkiMax);
   const uygun = (g) =>
     (tumu || g.karar !== 'TEK') &&
     (!ortamlar.length ||
