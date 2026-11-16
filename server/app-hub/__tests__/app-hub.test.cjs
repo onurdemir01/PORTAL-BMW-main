@@ -572,11 +572,14 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
       assert.match(t, /awx_server_id = \$1 AND job_id = \$2/, 'controller-local history sorgusu gevsetildi');
       return { rows: Number(p[0]) === 2 ? historyRows : [] };
     }
-    if (/SET XACT_ABORT ON/.test(t)) {
+    if (/BEGIN TRY/.test(t)) {
       assert.match(t, /BEGIN TRANSACTION/);
       assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)/);
       assert.match(t, /FROM OPENJSON\(\$3\)/);
-      assert.match(t, /ROLLBACK TRANSACTION/);
+      assert.match(t, /COMMIT TRANSACTION/);
+      assert.match(t, /BEGIN CATCH/);
+      assert.match(t, /IF XACT_STATE\(\) <> 0 ROLLBACK TRANSACTION/);
+      assert.doesNotMatch(t, /SET TRANSACTION ISOLATION LEVEL|SET XACT_ABORT/, 'pooled session ayari siziyor');
       assert.equal(p[6], JSON.parse(p[2]).length, 'expected target sayisi JSON ile ayni degil');
       if (kayitHatasi) throw new Error('fixture persistence failure');
       const key = `${p[0]}|${p[1]}`;
