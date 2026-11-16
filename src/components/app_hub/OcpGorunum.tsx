@@ -275,6 +275,14 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
                         <>
                           {fmtNumber(y.istek.toplam ?? 0)}
                           <div style={{ color: 'var(--text-muted)' }}>{y.istek.gun ?? 7} gün</div>
+                          {y.istek.tumCluster && (
+                            <div
+                              style={{ color: 'var(--text-muted)' }}
+                              title="Dynatrace ölçümü cluster ayrımı vermiyor; namespace + uygulama toplamıdır."
+                            >
+                              namespace toplamı
+                            </div>
+                          )}
                         </>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>ölçülemedi</span>

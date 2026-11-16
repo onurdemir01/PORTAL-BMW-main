@@ -218,7 +218,15 @@ export interface OcpYer {
   routelar: OcpRoute[];
   routeEslesme: string | null;
   atfedilmeyenRoute: number;
-  istek: { toplam: number | null; gun: number | null; olculdu: boolean; tarih: string | null } | null;
+  /** tumCluster: Dynatrace satirinda cluster yok (namespace duzeyi olcum); ayni namespace
+   *  birden cok cluster'daysa sayi her birinde ayni gorunur, toplanmaz. */
+  istek: {
+    toplam: number | null;
+    gun: number | null;
+    olculdu: boolean;
+    tarih: string | null;
+    tumCluster?: boolean;
+  } | null;
 }
 
 export interface OcpDetay {

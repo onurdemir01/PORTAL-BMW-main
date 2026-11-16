@@ -510,3 +510,38 @@ test('AH12 ayni host + uygulama tek satir; JVM durum kaniti tasinir', async () =
   assert.equal(b.durumKaynagi, 'ENVANTER', 'taramada gorulmeyen JVM envanterden geldigini soylemiyor');
   assert.equal(b.calisiyor, false);
 });
+
+// AH13 (kullanici, 2026-11-16): Dynatrace istek kolonu her OCP satirinda "olculemedi". Uretim
+// bicimi: toplayici BMW_Application_Usage.cluster'i BOS ('') yazar, envanter cluster'i doludur;
+// req_total BIGINT (mssql surucusu string dondurur), measured bit (true), scan_date Date.
+test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina eslesir; ayni cluster satiri onceliklidir', async () => {
+  const usage = [];
+  sorgu.yanit = (t) => {
+    if (t.includes('FROM dbo.Openshift_Inventory'))
+      return {
+        recordset: [
+          { cluster: 'gbocp4prod1', namespace: 'account-management-ch-prod', application: 'account-mngt-app-v0' },
+          { cluster: 'gbocp4prod2', namespace: 'baska-ns-prod', application: 'account-mngt-app-v0' },
+          { cluster: 'gbocp4dev1', namespace: 'account-management-ch-dev', application: 'account-mngt-app-v0' },
+        ],
+      };
+    if (t.includes('FROM dbo.BMW_Application_Usage')) return { recordset: usage };
+    return { recordset: [] };
+  };
+  usage.push(
+    { cluster: '', namespace: 'account-management-ch-prod', req_total: '1040346', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
+    { cluster: '', namespace: 'baska-ns-prod', req_total: '5', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
+    { cluster: 'gbocp4prod2', namespace: 'baska-ns-prod', req_total: '42', window_days: 7, measured: true, scan_date: new Date('2026-11-16T00:00:00Z') },
+  );
+  const d = await V.ocpDetay('account-mngt-app-v0');
+  const y = (ns) => d.yerler.find((x) => x.namespace === ns);
+  assert.deepEqual(
+    y('account-management-ch-prod').istek,
+    { toplam: 1040346, gun: 7, olculdu: true, tarih: '2026-11-16', tumCluster: true },
+    "cluster '' kullanim satiri envanter satirina eslesmedi (ekranda 'olculemedi')",
+  );
+  assert.equal(typeof y('account-management-ch-prod').istek.toplam, 'number', 'BIGINT string sayiya cevrilmedi');
+  assert.equal(y('baska-ns-prod').istek.toplam, 42, 'ayni cluster satiri varken bos cluster satiri secildi');
+  assert.equal(y('baska-ns-prod').istek.tumCluster, false);
+  assert.equal(y('account-management-ch-dev').istek, null, 'olcumu olmayan namespace olculmus gorundu');
+});

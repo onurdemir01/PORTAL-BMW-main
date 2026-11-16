@@ -668,9 +668,16 @@ async function ocpDetay(ad) {
       r.namespace,
       ad,
     );
-    const ku = kul.rows.find(
-      (x) => L(x.cluster) === L(r.cluster) && L(x.namespace) === L(r.namespace),
-    );
+    // Toplayici (application_usage) cluster kolonunu uretimde BOS ('') yazar: Dynatrace
+    // clusterName vermez. Envanter satirinin cluster'i ise doludur; yalniz birebir cluster
+    // eslesmesi istemek her OCP satirini "olculemedi" gosteriyordu (2026-11-16). Once ayni
+    // cluster'in satiri, yoksa cluster'i bos (namespace duzeyi) satir alinir; ikincisi
+    // tumCluster ile isaretlenir (ayni namespace iki cluster'daysa sayi ikisinde de ayni gorunur).
+    const nsKul = kul.rows.filter((x) => L(x.namespace) === L(r.namespace));
+    const ku =
+      nsKul.find((x) => L(x.cluster) && L(x.cluster) === L(r.cluster)) ||
+      nsKul.find((x) => !L(x.cluster)) ||
+      null;
     yerler.push({
       cluster: String(r.cluster),
       namespace: String(r.namespace),
@@ -694,6 +701,7 @@ async function ocpDetay(ad) {
             gun: sayi(ku.window_days),
             olculdu: Number(ku.measured) === 1,
             tarih: ku.scan_date ? new Date(ku.scan_date).toISOString().slice(0, 10) : null,
+            tumCluster: !L(ku.cluster),
           };
         return null;
       })(),
