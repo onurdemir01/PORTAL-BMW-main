@@ -2,8 +2,8 @@
 // parametre görüntüleyici, kapasite hücresi, kaynak notu, durum hapı.
 import React, { useState } from 'react';
 import { ClipboardDocumentIcon, CheckIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import type { Kapasite, KaynakDurumu } from '@/api/appHubApi';
-import { fmtNumber } from '@/utils/datetime';
+import type { JbossRetirement, Kapasite, KaynakDurumu } from '@/api/appHubApi';
+import { fmtDate, fmtNumber } from '@/utils/datetime';
 
 export const TIP_AD: Record<string, string> = { jboss: 'JBoss', was: 'WebSphere', ocp: 'OpenShift' };
 
@@ -34,9 +34,87 @@ export function Hap({ ton, children, title }: { ton: 'iyi' | 'uyari' | 'kritik' 
   );
 }
 
-export function CalismaHap({ calisiyor }: { calisiyor: boolean | null | undefined }) {
+type RetirementliJvm = { calisiyor: boolean | null | undefined; retirement?: JbossRetirement | null };
+
+/**
+ * Retirement'ın JVM'e etkisi — sunucu satırı, ortam özeti ve JVM hapı için TEK kural (2026-11-16).
+ * Karar sunucuda verilir, ekran yeniden hesaplamaz: `kapatildi` (hedef STOP / silme yapıldı) ve
+ * `celiski` (Server Hub'ın STOP SONRASI taramayla kanıtladığı neden; zaman ve kök kapısı Server Hub'da).
+ *   'celiski'   kapatılmış hedef + Server Hub kanıtlı çelişki (JVM çalışıyor / auto-start açık / paket diskte): kırmızı
+ *   'dogrulama' kapatılmış hedef + JVM çalışıyor görünüyor ama Server Hub kanıtlamadı (STOP öncesi / aynı gün tarama): sarı
+ *   'retire'    kapatılmış hedef + JVM kapalı, çelişki yok: beklenen kapanma, gri
+ *   null        retirement yok, hedef kapatılmamış (pending / failed / rollback ...) ya da çalışma ölçülemedi: eski davranış
+ */
+export type RetireDurumu = 'celiski' | 'dogrulama' | 'retire' | null;
+export function retireDurumu(j: RetirementliJvm): RetireDurumu {
+  const r = j.retirement;
+  if (!r || r.kapatildi !== true) return null;
+  if (Array.isArray(r.celiski) && r.celiski.length > 0) return 'celiski';
+  if (j.calisiyor === true) return 'dogrulama';
+  if (j.calisiyor === false) return 'retire';
+  return null;
+}
+
+const CELISKI_AD: Record<string, string> = {
+  calisiyor: 'JVM çalışıyor',
+  autostart: "auto-start AÇIK (reboot'ta geri gelir)",
+  paket: 'paket özgün adıyla diskte',
+};
+
+/** "Retirement #12 · STOP 15.11.2026" (gün kurum saat diliminde; silinmişse "· silindi" eklenir). */
+export function retirementMetni(r: JbossRetirement): string {
+  return `Retirement #${r.kayit} · STOP ${r.durduruldu ? fmtDate(r.durduruldu) : 'tarihi bilinmiyor'}${r.durum === 'deleted' ? ' · silindi' : ''}`;
+}
+
+/**
+ * Çalışma hapı. RETIREMENT (kullanıcı, 2026-11-16: "Retirement job'ına girmiş JBoss uygulamaları neden
+ * kritik görünüyor?"): retireDurumu'na göre gri "Retire edildi", kırmızı çelişki ya da sarı "doğrulama
+ * bekliyor". Retirement yoksa eski davranış.
+ */
+export function CalismaHap({
+  calisiyor,
+  retirement,
+  retirementOkunamadi,
+}: {
+  calisiyor: boolean | null | undefined;
+  retirement?: JbossRetirement | null;
+  /** Retirement kayıtları okunamadı: kapalı JVM retire edilmiş olabilir (bilinmiyor). */
+  retirementOkunamadi?: boolean;
+}) {
+  const rd = retireDurumu({ calisiyor, retirement });
+  if (retirement && rd === 'retire')
+    return (
+      <Hap ton="notr" title={`${retirementMetni(retirement)}: JVM Retirement ile durduruldu (beklenen kapanma)`}>
+        Retire edildi
+      </Hap>
+    );
+  if (retirement && rd === 'celiski') {
+    const neden = retirement.celiski.map((n) => CELISKI_AD[n] || n).join(', ');
+    let durumAd = 'Ölçülemedi';
+    if (calisiyor === true) durumAd = 'Çalışıyor';
+    else if (calisiyor === false) durumAd = 'Kapalı';
+    return (
+      <Hap ton="kritik" title={`${retirementMetni(retirement)} ama STOP sonrası Server Hub taramasında: ${neden} (Retirement kaydıyla çelişki)`}>
+        {durumAd} · Retirement ile çelişki
+      </Hap>
+    );
+  }
+  if (retirement && rd === 'dogrulama')
+    return (
+      <Hap
+        ton="uyari"
+        title={`${retirementMetni(retirement)}: JVM çalışıyor görünüyor ama Server Hub bunu STOP sonrası taramayla doğrulamadı (tarama STOP günü ya da öncesi, veya STOP zamanı bilinmiyor); bir sonraki taramada netleşir`}
+      >
+        Çalışıyor · doğrulama bekliyor
+      </Hap>
+    );
   if (calisiyor === true) return <Hap ton="iyi">Çalışıyor</Hap>;
-  if (calisiyor === false) return <Hap ton="kritik">Kapalı</Hap>;
+  if (calisiyor === false)
+    return (
+      <Hap ton="kritik" title={retirementOkunamadi ? 'Retirement kayıtları okunamadı: bu JVM Retirement ile durdurulmuş olabilir (bilinmiyor)' : undefined}>
+        Kapalı
+      </Hap>
+    );
   return <Hap ton="notr" title="Server Hub taramasında çalışma durumu ölçülemedi">Ölçülemedi</Hap>;
 }
 

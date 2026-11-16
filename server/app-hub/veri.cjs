@@ -193,6 +193,94 @@ const heap = (v) => {
   return /^\d+$/.test(s) ? `${s} MB` : s;
 };
 
+// ── Retirement (2026-11-16) ─────────────────────────────────────────────────────
+// Kullanici: "Retirement job'ina girmis JBoss uygulamalari neden kritik durumda gorunuyor?"
+// Retirement ile bilerek durdurulmus JVM beklenen 'kapali'dir; ekran onu beklenmeyen kapanmadan
+// ayirabilsin diye her JVM'e retirement bilgisi tasinir.
+//   ESLEME: Server Hub degerlendirmesinin JVM'e bagladigi hedefler (j.retirement; capraz.cjs retOf:
+//           host + uygulama / invApp + nesil). Ikinci bir eslesme kurali YAZILMAZ.
+//   DURUM + STOP ANI: retirement_targets canli okunur (capraz-veri.cjs retirementHedefleri; ayni
+//           sorgu, yeni SQL yok). STOP ani tam zaman (ISO, UTC) tasinir: gun ekranda kurum saat
+//           dilimiyle yazilir (UTC gunu gece STOP'unda bir gun kayar).
+//   CELISKI: KARAR SERVER HUB'IN (capraz.cjs ZAMAN + KOK KAPISI; j.capraz.celiski). App Hub tarih
+//           karsilastirmaz: Server Hub'in STOP sonrasi taramayla kanitladigi neden (calisiyor /
+//           autostart / paket) 'celiski' olarak tasinir; kanit yoksa calisan JVM "dogrulama bekliyor".
+//   KAPATILDI: hedef STOP / silme yapilmis mi; durum kumesi App Hub'da yalniz burada (ekran bu
+//           alani okur, kendi kumesini tutmaz). failed / rolling_back / rollback_failed / deleting /
+//           active kapatilmis SAYILMAZ (JVM'in acik olmasi gerekebilir; gercek alarm bastirilmaz).
+//   OKUNAMADI: alan null, kaynaklar.retirement.hata dolu; ekran "kapali JVM retire edilmis olabilir,
+//           bilinmiyor" der. Sessiz basari yok.
+const RETIRE_KAPATILMIS = new Set(['stopped', 'deleted']);
+
+/** retirementHedefleri() cagrisi; asla reddetmez. */
+async function retirementOku() {
+  try {
+    return await require('../server-hub/capraz-veri.cjs').retirementHedefleri();
+  } catch (e) {
+    return { okunamadi: true, hata: hataMetni(e), hedefler: [] };
+  }
+}
+
+/**
+ * Degerlendirmenin retirement ozeti (a.capraz.retirement) + canli okuma -> kaynak durumu.
+ * bagliOkunamadi: JVM <-> hedef eslesmesi hic yok (her JVM'de retirement null, "bilinmiyor").
+ */
+function retirementKaynagi(capRet, taze) {
+  if (!capRet)
+    return { bagliOkunamadi: true, hata: 'Server Hub değerlendirmesi retirement durumunu taşımıyor' };
+  if (capRet.okunamadi)
+    return { bagliOkunamadi: true, hata: String(capRet.hata || 'okunamadı') };
+  if (!taze || taze.okunamadi)
+    return {
+      bagliOkunamadi: false,
+      hata: `güncel durum ve STOP tarihi okunamadı (${String((taze && taze.hata) || 'okunamadı')}); Server Hub değerlendirmesindeki durum gösteriliyor`,
+    };
+  return { bagliOkunamadi: false, hata: null };
+}
+
+const CELISKI_NEDENLERI = ['calisiyor', 'autostart', 'paket'];
+const anISO = (ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+
+/**
+ * JVM'e bagli hedeflerden ekranda gosterilecek TEK hedef: once STOP / silme yapilmis olan, sonra en
+ * yeni kayit. tazeIx (hedef id -> canli satir) verilmisse canli durum kullanilir; canli okumada
+ * olmayan hedef (kayit iptal edildi) atlanir. tazeIx null ise degerlendirmedeki durum, tarih yok.
+ * celiskiler: Server Hub'in bu JVM icin kanitladigi celiskiler (j.capraz.celiski); yalniz kapatilmis
+ * hedeflere ait nedenler tasinir (birlesim, sabit sira).
+ * @returns {{ kayit: number, hedef: number, durum: string, kapatildi: boolean,
+ *   durduruldu: string|null, celiski: string[] }|null}
+ */
+function retirementSec(bagli, tazeIx, celiskiler) {
+  if (!Array.isArray(bagli) || !bagli.length) return null;
+  const adaylar = [];
+  for (const r of bagli) {
+    const hedef = Number(r.hedef);
+    const t = tazeIx ? tazeIx.get(hedef) : null;
+    if (tazeIx && !t) continue;
+    const durum = L(t ? t.durum : r.durum);
+    adaylar.push({
+      kayit: Number(r.kayit),
+      hedef,
+      durum,
+      kapatildi: RETIRE_KAPATILMIS.has(durum),
+      durduruldu: t ? anISO(t.durdurulduMs) : null,
+      celiski: [],
+    });
+  }
+  if (!adaylar.length) return null;
+  adaylar.sort(
+    (a, b) => Number(b.kapatildi) - Number(a.kapatildi) || b.kayit - a.kayit || b.hedef - a.hedef,
+  );
+  const sec = adaylar[0];
+  const kapali = new Set(adaylar.filter((x) => x.kapatildi).map((x) => x.hedef));
+  const nedenler = new Set();
+  for (const c of Array.isArray(celiskiler) ? celiskiler : [])
+    if (c && kapali.has(Number(c.hedef)))
+      for (const n of Array.isArray(c.nedenler) ? c.nedenler : []) nedenler.add(n);
+  sec.celiski = CELISKI_NEDENLERI.filter((n) => nedenler.has(n));
+  return sec;
+}
+
 async function jbossDetay(adHam) {
   const { parseAppName, discover } = require('../retirement/discover.cjs');
   const { tabanAd, yalnizEnvanter } = require('../server-hub/capraz.cjs');
@@ -201,12 +289,13 @@ async function jbossDetay(adHam) {
   const t = tablolar();
   const p = [{ name: 'b', type: sql.NVarChar(128), value: base }];
 
-  const [mw, disc] = await Promise.all([
+  const [mw, disc, retTaze] = await Promise.all([
     guvenli(`SELECT * FROM dbo.${t.jboss} WHERE app = @b OR app LIKE @b + '-_'`, p),
     discover(base).then(
       (d) => ({ d, hata: null }),
       (e) => ({ d: null, hata: hataMetni(e) }),
     ),
+    retirementOku(),
   ]);
   if (!mw.hata && !mw.rows.length) return null;
 
@@ -215,11 +304,13 @@ async function jbossDetay(adHam) {
 
   // Server Hub: degerlendirme onbellekten (60 sn taze / 15 dk bayat), agir JVM kolonlari
   // yalniz bu uygulamanin sunuculari icin okunur. Okunamazsa bolum "okunamadi" der.
-  let hub = { hata: null, jvmler: [], sonTarama: null };
+  let hub = { hata: null, jvmler: [], sonTarama: null, retirement: null };
+  const retBagli = new Map();
   try {
     const sh = require('../server-hub/index.cjs');
     const a = await sh.getAssessment(false);
     hub.sonTarama = a.latestScan || null;
+    hub.retirement = (a.capraz && a.capraz.retirement) || null;
     if (a.tableMissing) hub.hata = 'Server Hub tablolari bulunamadi.';
     const hedef = new Set(hostlar);
     const eslesen = (a.hosts || []).filter(
@@ -249,7 +340,7 @@ async function jbossDetay(adHam) {
         // envanter uygulamasi GBFACELIFTSUBE-T'ye eslendiyse invApp tasir; uygulama ona gore secilir.
         if (U(tabanAd(j.name)) !== U(base) && !(j.invApp && U(tabanAd(j.invApp)) === U(base)))
           continue;
-        hub.jvmler.push({
+        const jvmSatiri = {
           host: U(String(h.host).split('.')[0]),
           ad: j.name,
           envanterUygulamasi: j.invApp || null,
@@ -280,12 +371,28 @@ async function jbossDetay(adHam) {
           envanterDurumu: j.invStatus || null,
           uyumsuzluk: Array.isArray(j.mismatch) ? j.mismatch : [],
           domain: j.domain || null,
+          retirement: null,
+        };
+        retBagli.set(jvmSatiri, {
+          bagli: Array.isArray(j.retirement) ? j.retirement : [],
+          celiski: (j.capraz && j.capraz.celiski) || [],
         });
+        hub.jvmler.push(jvmSatiri);
       }
     }
   } catch (e) {
     hub.hata = hataMetni(e);
   }
+  // Server Hub okunamadiysa JVM satiri yok; retirement notu Server Hub hatasina eklenmez (tek uyari).
+  const retKaynak = hub.hata
+    ? { bagliOkunamadi: true, hata: null }
+    : retirementKaynagi(hub.retirement, retTaze);
+  const tazeIx = retTaze.okunamadi ? null : new Map(retTaze.hedefler.map((x) => [x.hedef, x]));
+  if (!retKaynak.bagliOkunamadi)
+    for (const j of hub.jvmler) {
+      const b = retBagli.get(j);
+      j.retirement = retirementSec(b.bagli, tazeIx, b.celiski);
+    }
 
   const hubIx = new Map();
   for (const j of hub.jvmler) {
@@ -398,6 +505,7 @@ async function jbossDetay(adHam) {
         serverHubOkunamadi: !!(disc.d && disc.d.summary && disc.d.summary.hubUnavailable),
       },
       serverHub: { hata: hub.hata, sonTarama: hub.sonTarama },
+      retirement: { hata: retKaynak.hata, okunamadi: !!retKaynak.bagliOkunamadi && !hub.hata },
       kapasite: { hata: kap.hata },
     },
   };
@@ -742,5 +850,5 @@ module.exports = {
   kapasiteOku,
   wasSunucuBilgisi,
   clusterIndeksi,
-  _ic: { heap, sinirliParalel, JVM_AGIR_ESZAMAN },
+  _ic: { heap, sinirliParalel, JVM_AGIR_ESZAMAN, retirementSec, retirementKaynagi },
 };

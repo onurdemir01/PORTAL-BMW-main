@@ -7,7 +7,7 @@ import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import JvmParamDuzenle from './JvmParamDuzenle';
 import { YALNIZ_ENVANTER_ETIKETI } from '@/components/server_hub/jvmNesil';
-import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH } from './ortak';
+import { Bolum, CalismaHap, Hap, JvmArglari, KapasiteHucresi, KaynakUyarisi, TD, TH, retireDurumu } from './ortak';
 import { OrtamOzeti, satirAnahtarlari } from './OrtamOzeti';
 
 const KAYNAK_AD: Record<string, string> = {
@@ -15,6 +15,7 @@ const KAYNAK_AD: Record<string, string> = {
   kesif: 'Web ve trafik keşfi',
   serverHub: 'Server Hub taraması',
   kapasite: 'Sunucu envanteri (Inventory)',
+  retirement: 'Retirement kayıtları',
 };
 
 function heapMetni(s: JbossSunucu) {
@@ -62,9 +63,18 @@ function DurumKaniti({ j }: { j: JbossSunucu['jvmler'][number] }) {
   );
 }
 
-function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunucu; acik: boolean; onToggle: () => void; uygulama: string; onYenile?: () => void }) {
+function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile, retirementOkunamadi }: { s: JbossSunucu; acik: boolean; onToggle: () => void; uygulama: string; onYenile?: () => void; retirementOkunamadi?: boolean }) {
   const calisan = s.jvmler.filter((j) => j.calisiyor === true).length;
   const olculemeyen = s.jvmler.filter((j) => j.calisiyor == null).length;
+  // RETIREMENT (2026-11-16): JVM hapiyla AYNI kural (retireDurumu). Retirement ile STOP edilmis / silinmis
+  // kapali JVM "kapali" sayilmaz (beklenen kapanma; ayri notr "N retire"). Server Hub'in STOP sonrasi
+  // taramayla kanitladigi celiski kirmizi; kanitsiz "calisiyor" (STOP oncesi / ayni gun tarama) sari.
+  const rd = s.jvmler.map(retireDurumu);
+  const say = (x: string) => rd.filter((v) => v === x).length;
+  const retire = say('retire');
+  const celiski = say('celiski');
+  const dogrulama = say('dogrulama');
+  const kapali = s.jvmler.filter((j, i) => j.calisiyor === false && rd[i] !== 'retire').length;
   const portlar = [...new Set(s.jvmler.flatMap((j) => j.portlar || []))];
   return (
     <>
@@ -105,7 +115,26 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
             <div className="space-y-0.5">
               <div className="flex flex-wrap gap-1">
                 {calisan > 0 && <Hap ton="iyi">{calisan} çalışıyor</Hap>}
-                {s.jvmler.length - calisan - olculemeyen > 0 && <Hap ton="kritik">{s.jvmler.length - calisan - olculemeyen} kapalı</Hap>}
+                {kapali > 0 && (
+                  <Hap ton="kritik" title={retirementOkunamadi ? 'Retirement kayıtları okunamadı: kapalı JVM Retirement ile durdurulmuş olabilir (bilinmiyor)' : undefined}>
+                    {kapali} kapalı
+                  </Hap>
+                )}
+                {retire > 0 && (
+                  <Hap ton="notr" title="Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)">
+                    {retire} retire
+                  </Hap>
+                )}
+                {celiski > 0 && (
+                  <Hap ton="kritik" title="Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor (JVM çalışıyor, auto-start açık ya da paket diskte)">
+                    {celiski} Retirement çelişkisi
+                  </Hap>
+                )}
+                {dogrulama > 0 && (
+                  <Hap ton="uyari" title="Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil, doğrulanamadı">
+                    {dogrulama} doğrulama bekliyor
+                  </Hap>
+                )}
                 {olculemeyen > 0 && <Hap ton="notr">{olculemeyen} ölçülemedi</Hap>}
               </div>
               {portlar.length > 0 && (
@@ -158,7 +187,7 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
                         envanter: {j.envanterUygulamasi}
                       </span>
                     )}
-                    <CalismaHap calisiyor={j.calisiyor} />
+                    <CalismaHap calisiyor={j.calisiyor} retirement={j.retirement} retirementOkunamadi={retirementOkunamadi} />
                     <Hap ton={j.autoStart === 'true' || j.autoStart === 'yes' ? 'iyi' : j.autoStart === 'unknown' ? 'notr' : 'uyari'}>
                       auto-start: {j.autoStart}
                     </Hap>
@@ -258,6 +287,8 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
   const tumAnahtarlar = useMemo(() => satirAnahtarlari(d.sunucular.map((s) => `${s.host}|${s.uygulama}`)), [d.sunucular]);
   const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? tumAnahtarlar : []));
   const [ortam, setOrtamHam] = useState('');
+  // Retirement kayitlari okunamadi: kapali JVM'in retire edilip edilmedigi bilinmiyor (KaynakUyarisi + hap title).
+  const retOkunamadi = !!(d.kaynaklar && d.kaynaklar.retirement && d.kaynaklar.retirement.okunamadi);
   // SURUM SUZGECI (kullanici, 2026-11-16): ortam ozetindeki surume tiklamak tabloyu o ortam + o surume suzer.
   // Ortam degisince surum suzgeci kalkar. Surumsuz sunucu '—' (ozetle ayni anahtar).
   const [surum, setSurum] = useState('');
@@ -363,7 +394,7 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
                 // kapanmiyor"): ayni host + uygulama icin birden cok satir gelebiliyordu; ayni
                 // anahtar iki satiri birden acip kapatiyor, React satirlari karistiriyordu.
                 const k = anahtarlar[i];
-                return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} uygulama={d.ad} onYenile={onYenile} />;
+                return <SunucuSatiri key={k} s={s} acik={acik.has(k)} onToggle={() => toggle(k)} uygulama={d.ad} onYenile={onYenile} retirementOkunamadi={retOkunamadi} />;
               })}
             </tbody>
           </table>

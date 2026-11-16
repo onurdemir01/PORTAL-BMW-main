@@ -837,6 +837,16 @@ export interface Sh360Kopya {
     kalinti: { neden: 'PROD_YOK' | 'PROD_KAPALI' | 'PROD_RETIRE'; taban: string } | null;
     ocp: (Sh360Ocp & { eslesme: { namespace: string; cluster: string; uygulama: string }[]; ad: { jboss: string; taban: string; ocp: string } }) | null;
     celiski: { kayit: number; hedef: number; durum: string; nedenler: string[] }[];
+    /** Tarama STOP'tan önce / STOP günü alınmış ya da kök eşlenemedi: çelişki kurulmadı, doğrulama bekliyor (capraz.cjs). */
+    dogrulanamadi?: {
+      kayit: number;
+      hedef: number;
+      durum: string;
+      kaynak: 'SERVER_HUB' | 'EAR';
+      nedenler: string[];
+      sira?: 'once' | 'belirsiz' | null;
+      kokUyusmaz?: boolean;
+    }[];
   } | null;
   ear: { ad: string; kok: string; warSayisi: number | null }[] | null;
   deployment: Sh360Deployment | null;

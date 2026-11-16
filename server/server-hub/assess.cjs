@@ -40,6 +40,7 @@ const {
   kalintiMetni,
   ocpMetni,
   celiskiMetni,
+  dogrulamaMetni,
   yalnizEnvanter,
 } = require('./capraz.cjs');
 
@@ -1860,6 +1861,29 @@ function assess(data, opts = {}) {
         );
         jAday('R12');
       }
+      // ZAMAN KAPISI (capraz.cjs): STOP / silmeden once alinmis veri celiski gibi gorunuyor; iddia
+      // kurulmaz ama sessiz de gecmez (bilgi, retire adayi degil). STOP GUNUNUN taramasi (sira
+      // belirsiz: operatorun dogrulama taramasi olabilir) bilgiye dusmez: UYARI (inceleme B1).
+      const belirsiz = cx ? cx.dogrulanamadi.filter((b) => b.sira === 'belirsiz') : [];
+      const eskiNot = cx ? cx.dogrulanamadi.filter((b) => b.sira !== 'belirsiz') : [];
+      if (belirsiz.length)
+        add(
+          'warning',
+          'capraz',
+          'RETIRE_AYNI_GUN_DOGRULA',
+          `${id}: ${belirsiz.map(dogrulamaMetni).join('; ')}`,
+          null,
+          { capraz: { tur: 'dogrulama', kayitlar: belirsiz } },
+        );
+      if (eskiNot.length)
+        add(
+          'info',
+          'capraz',
+          'RETIRE_DOGRULAMA_BEKLIYOR',
+          `${id}: ${eskiNot.map(dogrulamaMetni).join('; ')}`,
+          null,
+          { capraz: { tur: 'dogrulama', kayitlar: eskiNot } },
+        );
       // KRITIK (kullanici: "JVM ayakta ancak parametrelerde degisiklik varsa kritik"). Olculemeyen
       // fark (2) bulgu degildir; ayrinti sunucu sayfasinda maskeli jvm_arg_diff'te.
       if (rk && j.running && j.argFark === 1)
@@ -2061,6 +2085,15 @@ function assess(data, opts = {}) {
       );
       h.retireAdaylari.push({ kural: 'R12', tur: 'EAR', ad: c.paket, host: h.host, kok: c.kok });
     }
+    for (const c of capraz.hostBekleyen(h.host))
+      add(
+        'info',
+        'capraz',
+        'RETIRE_DOGRULAMA_BEKLIYOR',
+        `${c.kok}/${c.paket}: ${dogrulamaMetni(c)}`,
+        null,
+        { capraz: { tur: 'dogrulama', kayitlar: [c] }, ear: { kok: c.kok, ad: c.paket } },
+      );
     if (h.ear.durum === 'VAR') {
       const olcmeyen = new Map();
       for (const u of ear.uygulamalar) {

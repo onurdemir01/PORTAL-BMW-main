@@ -15,7 +15,7 @@
 
 const { olcumIndeksi } = require('../nginx-console/spa-discovery.cjs');
 const { envOfNamespace } = require('../audit/ocp-platforms.cjs');
-const { normAd } = require('./capraz.cjs');
+const { normAd, kurumGunMetni } = require('./capraz.cjs');
 
 const ONBELLEK_MS = 10 * 60 * 1000;
 const inv = () => require('../inventory/mssql.cjs');
@@ -90,12 +90,24 @@ async function disKaynaklar() {
   return deger;
 }
 
-/** Retirement hedefleri (iptal edilmis kayitlar haric). */
+/** DB zamani -> epoch ms (UTC; stopped_at / deleted_at GETUTCDATE ile yazilir); yoksa null. */
+const zamanMs = (x) => {
+  if (x == null || x === '') return null;
+  const t = new Date(x).getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
+/**
+ * Retirement hedefleri (iptal edilmis kayitlar haric).
+ * durdurulduMs / silindiMs (2026-11-16): STOP / silme aninin tam zamani. capraz.cjs celiski kontrolu
+ * taramanin bu andan SONRA alinip alinmadigina bakar (STOP oncesi tarama kanit degildir);
+ * 'durduruldu' yalniz metin (gun).
+ */
 async function retirementHedefleri() {
   try {
     const r = await db().query(
       `SELECT t.id, t.record_id, t.host, t.app_name, t.jboss_gen, t.app_path, t.status, t.stopped_at,
-              r.status AS kayit_durum
+              t.deleted_at, r.status AS kayit_durum
          FROM retirement_targets t JOIN retirement_records r ON r.id = t.record_id
         WHERE r.status <> 'cancelled'`,
     );
@@ -110,7 +122,10 @@ async function retirementHedefleri() {
         yol: x.app_path == null ? null : String(x.app_path),
         durum: L(x.status),
         kayitDurum: L(x.kayit_durum),
-        durduruldu: x.stopped_at ? new Date(x.stopped_at).toISOString().slice(0, 10) : null,
+        // Gun metni kurum gunu (Europe/Istanbul): gece STOP'unda UTC gunu ekrandaki gunden bir gun geride kalir.
+        durduruldu: kurumGunMetni(zamanMs(x.stopped_at)),
+        durdurulduMs: zamanMs(x.stopped_at),
+        silindiMs: zamanMs(x.deleted_at),
       })),
     };
   } catch (e) {
@@ -142,4 +157,4 @@ function _sifirla() {
   _dis = { at: 0, deger: null };
 }
 
-module.exports = { caprazVeri, caprazDurumu, ocpIndeksi, _sifirla };
+module.exports = { caprazVeri, caprazDurumu, ocpIndeksi, retirementHedefleri, _sifirla };

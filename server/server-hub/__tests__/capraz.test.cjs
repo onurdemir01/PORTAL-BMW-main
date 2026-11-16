@@ -88,6 +88,8 @@ const H = (host, env, jvms, ek = {}) => ({
   env,
   fresh: true,
   taramadanDustu: false,
+  // Retirement ZAMAN KAPISI: varsayilan tarama STOP'tan (hedef: 2026-10-20) sonra.
+  scanDate: '2026-11-05',
   jvms,
   ...ek,
 });
@@ -131,6 +133,8 @@ const hedef = (host, uygulama, durum, ek = {}) => ({
   durum,
   kayitDurum: 'open',
   durduruldu: '2026-10-20',
+  durdurulduMs: Date.parse('2026-10-20T08:00:00Z'),
+  silindiMs: null,
   ...ek,
 });
 const ac = (hostlar, g) => caprazAnaliz(hostlar, g);
@@ -403,7 +407,11 @@ test('C4 ocp: ayni ortam grubu, birebir normalize ad, Dynatrace ve aday kosullar
 test('C5 celiski: Retirement STOP / silme yapildi ama sunucu baska soyluyor', () => {
   const ear =
     (...adlar) =>
-    () => ({ uygulamalar: adlar.map((ad) => ({ ad, kok: '/vhosting' })) });
+    () => ({
+      // EAR taramasi STOP'tan (2026-10-20 08:00Z) sonra: ZAMAN KAPISI acik.
+      taranma: '2026-11-01T02:00:00.000Z',
+      uygulamalar: adlar.map((ad) => ({ ad, kok: '/vhosting' })),
+    });
   const c = (hs, hedefler, earOf) => ac(hs, { capraz: { retirement: RET(hedefler) }, earOf });
   let hs = [H('P1', 'PROD', [J('pay')])];
   assert.deepEqual(
@@ -669,6 +677,8 @@ test('C8 capraz-veri: kaynaklar ayri okunur, onbellek, durum ozeti', async () =>
     durum: 'stopped',
     kayitDurum: 'stopped',
     durduruldu: '2026-10-20',
+    durdurulduMs: Date.parse('2026-10-20T08:00:00Z'),
+    silindiMs: null,
   });
   assert.deepEqual([v.retirement.hedefler[1].gen, v.retirement.hedefler[1].yol], [null, null]);
   assert.deepEqual(caprazDurumu(v), {

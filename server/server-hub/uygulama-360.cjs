@@ -105,19 +105,32 @@ const riskli = (k) =>
     (k.capraz && (k.capraz.kopya || k.capraz.kalinti || k.capraz.celiski.length))
   );
 
+/**
+ * RETIRE EDILMIS KOPYA (2026-11-16, uretim: retire edilen uygulama ortam rozetinde kirmizi 'PROD 0/2'):
+ * Retirement hedefi STOP edilmis / silinmis ve KAPALI olculen kopya bilerek kapatilmistir; ortam
+ * rozetinde acik / kapali sayilmaz, ayri 'retire' sayacina girer. Calisan kopya retire sayilmaz
+ * (Retirement celiskisi olarak gorunur). Calismasi olculemeyen kopya da retire sayilmaz: 'olculemedi'
+ * kalir (App Hub ile ayni; kapali oldugu bilinmeyen kopya "bilerek kapatildi" denip gizlenmez).
+ */
+const KAPATILMIS = new Set(['stopped', 'deleted']);
+const retireMi = (k) =>
+  k.calisiyor === false && (k.retirement || []).some((r) => KAPATILMIS.has(L(r.durum)));
+
 /** Kopyalardan uygulama satiri. */
 function ozetOf(ad, kopyalar, etiketler) {
   const say = (f) => kopyalar.filter(f).length;
   const ortamlar = [...new Set(kopyalar.map((k) => k.ortam))]
     .sort((a, b) => ortamNo(a) - ortamNo(b) || a.localeCompare(b))
     .map((o) => {
-      const l = kopyalar.filter((k) => k.ortam === o);
+      const tum = kopyalar.filter((k) => k.ortam === o);
+      const l = tum.filter((k) => !retireMi(k));
       return {
         ortam: o,
         toplam: l.length,
         acik: l.filter((k) => k.calisiyor === true).length,
         kapali: l.filter((k) => k.calisiyor === false).length,
         olculemedi: l.filter((k) => k.calisiyor === null).length,
+        retire: tum.length - l.length,
       };
     });
   const trafikler = kopyalar.map((k) => k.trafik).filter(Boolean);

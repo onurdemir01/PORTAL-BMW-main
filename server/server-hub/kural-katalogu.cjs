@@ -542,6 +542,21 @@ const MADDELER = [
           ],
         },
       },
+      {
+        kod: 'RETIRE_DOGRULAMA_BEKLIYOR',
+        kosul: 'Retirement hedefi STOP edildi ya da silindi; tarama çelişki gösteriyor ama STOP’tan (silme kontrolünde silmeden) önce alınmış ya da kayıtta STOP zamanı yok: çelişki kurulmaz, bir sonraki tarama doğrular.',
+        seviye: 'info',
+      },
+      {
+        kod: 'RETIRE_AYNI_GUN_DOGRULA',
+        kosul: 'Retirement hedefi STOP edildi ya da silindi; aynı günün Server Hub taraması JVM’i çalışıyor ya da auto-start’ı açık gösteriyor ama tarama yalnız gün taşıdığı için STOP’tan önce mi sonra mı bilinmiyor: kritik denmez, yeniden tarama (ertesi günün taraması) kesinleştirir.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'STOP’u doğrulamak için hemen yapılan tarama da bu durumdadır: JVM gerçekten çalışıyorsa STOP yarım kalmıştır.',
+          eksik: 'Tarama STOP’tan birkaç saat önce yapılmışsa uyarı ertesi günün taramasıyla kalkar.',
+          kontrol: [...DURUM_KONTROL, 'Retirement > kayıt: hedefin iş geçmişi ve son AWX işi'],
+        },
+      },
       { kod: null, kosul: 'Kopyalar ve ortamlar tutarlı; Retirement kaydıyla çelişki yok (ya da kaynak okunamadı: bulgu üretilmez).', seviye: 'ok' },
     ],
   },

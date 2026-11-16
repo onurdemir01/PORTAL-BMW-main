@@ -723,6 +723,10 @@ const KOD_ETIKET: Record<string, string> = {
   ORTAM_KALINTISI: "prod'da çalışmıyor ama DEV / TEST / QA kopyası çalışıyor",
   OCP_KOPYASI: "OpenShift'te de var (aynı ortam) — taşınmış olabilir",
   RETIRE_KAYDI_CELISKI: 'Retirement kaydıyla çelişiyor — STOP / silme yapıldı ama sunucu farklı',
+  RETIRE_DOGRULAMA_BEKLIYOR:
+    'Retirement doğrulaması bekliyor — tarama STOP / silmeden önce alınmış, bir sonraki tarama doğrular',
+  RETIRE_AYNI_GUN_DOGRULA:
+    'Retirement STOP günü taraması — JVM çalışıyor / auto-start açık görünüyor, sıra bilinmiyor: yeniden tarayın',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
   SSH_SESSIONS_NEAR:
     'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',

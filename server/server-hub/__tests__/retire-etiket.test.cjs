@@ -1350,7 +1350,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
     retirement: {
       okunamadi: false,
       hedefler: [
-        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20' },
+        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20', durdurulduMs: Date.parse('2026-10-20T08:00:00Z') },
       ],
     },
   });
@@ -1440,7 +1440,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   // JVM taramada yok, paket ozgun adiyla diskte (taze Uygulama Envanteri): sunucu duzeyi + EAR adayi.
   const e = veri();
   e.capraz.retirement.hedefler = [
-    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null },
+    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null, silindiMs: Date.parse('2026-11-01T08:00:00Z') },
   ];
   e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear', { xml: { durum: 'VAR', jvmler: [{ ad: 'pay', auto_start: true }] } })])] };
   const re = A(e);
