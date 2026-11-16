@@ -886,6 +886,31 @@
   },
   {
     "db": "Portal",
+    "tablo": "server_hub_ear_temizlik",
+    "amac": "EAR Temizliği kayıtları: sunucu, kök, EAR adı, ön kontrol (ls -ltr, WAR, domain.xml, süreç, parmak izi) iş numarası ve sonucu, onaylayan, silme işi, yedek yolu, durum (PLANLANIYOR -> PLAN_HAZIR -> SILINIYOR -> SILINDI / HATA / BELIRSIZ, ya da IPTAL / PLAN_ESKIDI / PLAN_HATA).",
+    "alan": "Server Hub",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "EAR Temizliği uçları (ön kontrol, sil, iptal)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:455",
+        "nasil": "ön kontrol açılınca INSERT; plan / silme sonucu ve durum geçişi UPDATE (:230)",
+        "ne_zaman": "Admin ön kontrol başlatınca; GET uçları AWX ile uzlaştırırken"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:571"
+      }
+    ],
+    "saklama": "Silinmez (denetim izi; silme başına bir satır, ekranda son kayıtlar).",
+    "notlar": "",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
     "tablo": "splunk_products",
     "amac": "Splunk urun listesi (httpd, nginx, tomcat, jboss) icin dusunulmus tablo. Kurulumda doldurulur ama okunmuyor; Splunk ekrani listeyi ortam degiskeninden aliyor.",
     "alan": "Ayarlar",

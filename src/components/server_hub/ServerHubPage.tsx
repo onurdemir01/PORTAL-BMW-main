@@ -57,6 +57,7 @@ import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
 import TopluAutoStartTab from './TopluAutoStartTab';
 import TopluRestartTab from './TopluRestartTab';
+import EarTemizlikTab from './EarTemizlikTab';
 import KopyaDurumuTab from './KopyaDurumuTab';
 import { useAuth } from '@/contexts/AuthContext';
 import EarEnvanterTab from './EarEnvanterTab';
@@ -1745,7 +1746,8 @@ type SekmeId =
   | 'envanter'
   | 'kurallar'
   | 'topluautostart'
-  | 'toplurestart';
+  | 'toplurestart'
+  | 'eartemizlik';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
 export default function ServerHubPage() {
@@ -1760,6 +1762,8 @@ export default function ServerHubPage() {
     typeof canSee === 'function' && canSee('tab:serverhub:topluautostart');
   // TOPLU RESTART (2026-11-14, JVM_PARAM_FARKI): ayni desen, anahtar tab:serverhub:toplurestart (default_visible 0).
   const topluRestartGorur = typeof canSee === 'function' && canSee('tab:serverhub:toplurestart');
+  // EAR TEMIZLIGI (2026-11-16, EAR_WAR_YOK): ayni desen, anahtar tab:serverhub:eartemizlik (default_visible 0; uclar Admin).
+  const earTemizlikGorur = typeof canSee === 'function' && canSee('tab:serverhub:eartemizlik');
   // KOPYA DURUMU (2026-11-14): anahtar tab:serverhub:kopyadurumu, Bulgular gibi varsayilan ACIK (seed default_visible 1);
   // AuthProvider yoksa (birim test) Bulgular gibi gorunur.
   const kopyaDurumuGorur = typeof canSee !== 'function' || canSee('tab:serverhub:kopyadurumu');
@@ -1832,6 +1836,8 @@ export default function ServerHubPage() {
                   ? 'Taze taramada auto-start’ı uyumsuz JVM’ler (çalışıyor ama kapalı → AÇ, durmuş ama açık → KAPAT). Tek düğme önce canlı değeri salt okunur bir planla okur, onaydan sonra sunucu başına tek iş açar ve sunucuları sırayla işler.'
                   : tab === 'toplurestart'
                     ? 'Taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan çalışan JVM’ler. Tek düğme önce sunucuları salt okunur yeniden tarar, onaydan sonra JVM’leri tek tek restart eder ve her restart sonrası farkın kapandığını tarar. Prod sunucular OpsX’ten tek tek.'
+                    : tab === 'eartemizlik'
+                      ? 'Uygulama Envanteri’nde “EAR içinde WAR yok” uyarısı olan EAR’lar. Ön kontrol dizine salt okunur bakar (ls -ltr); çıktıyı görüp teyit ettikten sonra EAR yedeklenip silinir. Uyarı, ardından başlatılan Uygulama Envanteri taraması bitince kalkar.'
                     : tab === 'kopyadurumu'
                       ? 'Aynı uygulamanın kopyaları kaç sunucuda çalışıyor: aynı ortam + JBoss nesli + JVM adı başına “çalışan x / y”, kapalı sunucular ve auto-start farkı. Varsayılan yalnız tutarsız gruplar; prod önce.'
                       : tab === 'kurallar'
@@ -1856,12 +1862,14 @@ export default function ServerHubPage() {
               { id: 'kurallar', label: 'Kurallar & Limitler' },
               { id: 'topluautostart', label: 'Toplu Auto-Start' },
               { id: 'toplurestart', label: 'Toplu Restart' },
+              { id: 'eartemizlik', label: 'EAR Temizliği' },
             ] as const
           )
             .filter(
               (t) =>
                 (t.id !== 'topluautostart' || topluAutoStartGorur) &&
                 (t.id !== 'toplurestart' || topluRestartGorur) &&
+                (t.id !== 'eartemizlik' || earTemizlikGorur) &&
                 (t.id !== 'kopyadurumu' || kopyaDurumuGorur),
             )
             .map((t) => (
@@ -1931,6 +1939,11 @@ export default function ServerHubPage() {
         {topluRestartGorur && acilan.has('toplurestart') && (
           <SekmeKabi id="toplurestart" etkin={tab}>
             <TopluRestartTab />
+          </SekmeKabi>
+        )}
+        {earTemizlikGorur && acilan.has('eartemizlik') && (
+          <SekmeKabi id="eartemizlik" etkin={tab}>
+            <EarTemizlikTab />
           </SekmeKabi>
         )}
       </AnalizAcContext.Provider>
