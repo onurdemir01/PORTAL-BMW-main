@@ -4,6 +4,7 @@
 // GET  /api/app-hub/uygulama/:tip/:ad           tek uygulamanin birlesik gorunumu (tip: jboss|was|ocp)
 // POST /api/app-hub/ocp/:ad/canli               OCP canli okuma isi (AWX, salt okunur)
 // GET  /api/app-hub/ocp/canli/:serverId/:jobId  isin durumu; bitince sonuc kaydedilir ve doner
+// POST /api/app-hub/jvm-karsilastir             toplu JBoss JVM argumani esitligi (salt okunur; jvm-karsilastir.cjs)
 //
 // YETKI (faz 1): yalniz Admin + AppHub gorunurlugu. Server Hub / Uygulama 360 verisi (JVM,
 // vhost, maskeli jvm_args) bugun yalniz Admin'e acik; Hub uygulama ekiplerine acilacaksa
@@ -183,6 +184,15 @@ function createRouter() {
 
   // JBoss JVM parametresi degistir / ekle (2026-11-11): server_hub_fix hatti, plan -> onay -> (prod: Smart).
   require('./jvm-param.cjs').mount(router, { resolveByKey });
+
+  // Toplu JVM argumani karsilastirmasi (2026-11-16, SALT OKUNUR): tek uygulama ekraniyla ayni okuyucu ve onbellek.
+  require('./jvm-karsilastir.cjs').mount(router, {
+    detayOku: (ad, fresh) => onbellekli(`jboss|${ad.toUpperCase()}`, fresh, () => detayOku('jboss', ad)),
+    sinirliParalel: V._ic.sinirliParalel,
+    AD_RE: V.AD_RE,
+    // jbossDetay tabanla okur (MUSTERI-T -> MUSTERI): ayni tabana inen adlar tek okuma, tek onbellek girdisi.
+    tabanAdi: (ad) => require('../retirement/discover.cjs').parseAppName(ad).base,
+  });
 
   return router;
 }

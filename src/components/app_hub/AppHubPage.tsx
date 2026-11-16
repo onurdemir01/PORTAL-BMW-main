@@ -9,7 +9,7 @@
 // Adres: /application-hub?tip=jboss|was|ocp&ad=<ad> (Dashboard araması buraya getirir).
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon, TrashIcon, ScaleIcon } from '@heroicons/react/24/outline';
 import { appHubApi, type AppAramaSonucu, type AppDetay, type AppTip, type OcpDetay } from '@/api/appHubApi';
 import LoadError from '@/components/common/LoadError';
 import Button from '@/components/common/Button';
@@ -127,6 +127,12 @@ export default function AppHubPage() {
           </p>
         </div>
         <AramaKutusu ilk="" onSec={sec} buyuk />
+        {isAdmin && (
+          <Button variant="ghost" size="sm" icon={<ScaleIcon className="w-4 h-4" />} onClick={() => navigate('/application-hub/jvm-karsilastir')}
+            title="Birden çok JBoss uygulamasının JVM argümanlarını sunucuları arasında karşılaştırır. Yalnız Admin; salt okunur.">
+            Toplu JVM argümanı karşılaştır
+          </Button>
+        )}
       </div>
     );
   }
@@ -135,7 +141,14 @@ export default function AppHubPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <AramaKutusu key={`${tip}-${ad}`} ilk={ad} onSec={sec} buyuk={false} />
-        <Button variant="ghost" size="sm" onClick={() => navigate('/application-hub')}>Yeni arama</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <Button variant="ghost" size="sm" icon={<ScaleIcon className="w-4 h-4" />} onClick={() => navigate(tip === 'jboss' ? `/application-hub/jvm-karsilastir?uygulamalar=${encodeURIComponent(detay?.ad || ad)}` : '/application-hub/jvm-karsilastir')}>
+              Toplu JVM karşılaştır
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => navigate('/application-hub')}>Yeni arama</Button>
+        </div>
       </div>
 
       <header className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4" style={{ borderTop: '3px solid var(--ah-hue)' }}>

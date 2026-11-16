@@ -38,6 +38,7 @@ const RetirementPage = lazyWithRetry(() => import('@/components/bmw_hub/Retireme
 const CryptoHubPage = lazyWithRetry(() => import('@/components/crypto_hub/CryptoHubPage'));
 const BmwHubPage = lazyWithRetry(() => import('@/components/bmw_hub/BmwHubPage'));
 const AppHubPage = lazyWithRetry(() => import('@/components/app_hub/AppHubPage'));
+const JvmKarsilastirPage = lazyWithRetry(() => import('@/components/app_hub/JvmKarsilastirPage'));
 const ScaleXPage = lazyWithRetry(() => import('@/components/scalex/ScaleXPage'));
 const FileXWizardPage = lazyWithRetry(() => import('@/components/filex/FileXWizardPage'));
 const TelnetWizardPage = lazyWithRetry(() => import('@/components/telnet/TelnetWizardPage'));
@@ -139,6 +140,10 @@ export default function App() {
             </Route>
             <Route element={<PageVisibilityRoute pageId="AppHub" />}>
               <Route path="/application-hub" element={<AppHubPage />} />
+              {/* Toplu JVM argumani karsilastirmasi (2026-11-16): yalniz Admin, salt okunur. */}
+              <Route element={<AdminRoute />}>
+                <Route path="/application-hub/jvm-karsilastir" element={<JvmKarsilastirPage />} />
+              </Route>
             </Route>
             <Route element={<PageVisibilityRoute pageId="BmwHub" />}>
               <Route path="/bmw-hub" element={<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>} />
