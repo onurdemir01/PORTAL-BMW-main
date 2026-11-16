@@ -1322,6 +1322,13 @@ test('YD24 Host basligi: server_name eslesmesi, host_uretim iki kipte, serbest p
   assert.equal(dg.HOST_URETIMDE_DE_VAR_UYARISI('a.b', ['GBNGXP06', 'GBNGXP01', 'GBNGXP05', 'GBNGXP02', 'GBNGXP04', 'GBNGXP03']), 'Host başlığı (a.b) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (GBNGXP01, GBNGXP02, GBNGXP03, GBNGXP04, GBNGXP05): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.');
   assert.equal(dg.YUK_MAKINESI_HAVUZDA_UYARISI('a.b', 'GBNGXT34'), 'Host başlığı (a.b) yük sunucusunun (GBNGXT34) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.');
   assert.equal(dg.YUK_MAKINESI_RP_UYARISI('GBNGXT34'), 'Yük sunucusu (GBNGXT34) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.');
+  // 2026-11-16 (GBJWLT01): ad kalibi tutmayan sahip artik dbo.Inventory'den (hostOrtami) degerlendirilir.
+  const jw = (inv) => ek([{ host: 'GBJWLT01', listen: '443', server_name: 'jw.test.local' }], { inventory: [...tbmwans().d.inventory, ...inv] });
+  assert.deepEqual(await hb('jw.test.local', jw([{ host: 'GBJWLT01', env: 'Test', ip: '10.0.9.1' }])), { ok: true, uyarilar: [] });
+  assert.deepEqual(await hb('jw.test.local', jw([{ host: 'gbjwlt01.corp.local', env: 'QA', ip: '10.0.9.1' }])), { ok: true, uyarilar: [] });
+  assert.equal((await hb('jw.test.local', jw([]))).code, 'host_uretim');
+  assert.equal((await hb('jw.test.local', jw([{ host: 'GBJWLT01', env: 'Production', ip: '10.0.9.1' }]))).code, 'host_uretim');
+  assert.equal((await hb('jw.test.local', jw([{ host: 'GBJWLT01', env: 'Test', ip: '10.0.9.1' }, { host: 'GBJWLT01', env: 'Production', ip: '10.0.9.2' }]))).code, 'host_uretim');
 });
 
 test('YD25 tarama listen alani bloktaki TUM listen direktiflerini tasir: her belirtec sahiplik ve aday IP sayilir', async () => {

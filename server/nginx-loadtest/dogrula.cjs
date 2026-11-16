@@ -1572,7 +1572,12 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     ...(hostlar ? hostlar.map(hostNormalle).filter(Boolean) : adayHostlar),
     ...ipSahipleri.keys(),
   ])];
-  const invHostlari = [...new Set([...temel, ...ekHostlar.map(hostNormalle).filter(Boolean)])];
+  // Host basligi sahipleri (2026-11-16, GBJWLT01): server_name'i vhost'la eslesen hostlarin dbo.Inventory satirlari da okunur;
+  // hostBasligiDegerlendir ad kalibi tutmayan sahibin ortamini hostOrtami ile (envanterden) bulur.
+  const vhostSahipleri = Array.isArray(taramaAdlari)
+    ? taramaAdlari.filter((x) => String(x.server_name ?? '').split(/\s+/).some((ad) => serverNameEslesir(ad, vhost))).map((x) => sahipAdi(x.host)).filter(Boolean)
+    : [];
+  const invHostlari = [...new Set([...temel, ...ekHostlar.map(hostNormalle).filter(Boolean), ...vhostSahipleri])];
 
   if (invHostlari.length) {
     try {
@@ -1884,8 +1889,13 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
     birlesim.add(h);
     if (r.guncel !== false) guncel.add(h);
   }
-  const uretimMi = (h) => !IZINLI_ORTAM.has(envOfHost(h))
-    || !!uretimIsareti({ host: h, nginxEnv: k.nginx.get(h)?.env ?? null, invEnv: k.inv.get(h) ?? null });
+  // Ad kalibi DEV/TEST/QA soyleyen host eski kuralla (ad + uretim isareti). Ad kalibi tutmayan host (GBJWLT01 gibi;
+  // envOfHost BILINMIYOR) artik dogrudan "ortami bilinmeyen" SAYILMAZ: hedef kapisiyla ayni kural (hostOrtami,
+  // dbo.Inventory'nin TUM satirlari DEV/TEST/QA ve uretim isareti yok). Envanterde yoksa yine engellenir (2026-11-16).
+  const uretimMi = (h) => {
+    if (IZINLI_ORTAM.has(envOfHost(h))) return !!uretimIsareti({ host: h, nginxEnv: k.nginx.get(h)?.env ?? null, invEnv: k.inv.get(h) ?? null });
+    return !hostOrtami(h, k).ok;
+  };
   const P = [...birlesim].filter(uretimMi).sort(varsayilanSira);
   const N = [...guncel].filter((h) => !P.includes(h));
   const S = new Set([...P, ...N]);
