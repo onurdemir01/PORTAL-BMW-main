@@ -657,6 +657,10 @@ async function spaKesfiHesapla() {
       // namespace, app). Eskiden bolumleme (namespace, app) idi; ayni gunun prod1/prod2 satirlari
       // arasinda secim BELIRSIZDI ve pasif cluster'in 0'i "istek yok" gosterebiliyordu. Cluster
       // satirlari spa-discovery.cjs'te TOPLANIR.
+      // UYARI (2026-11-16): uretimde toplayici cluster'i HER satirda BOS ('') yazar (Dynatrace
+      // clusterName vermez; 2026-10-06'dan beri). prod1/prod2 ayrimi fiilen YOKTUR, olcum
+      // (namespace, app) duzeyidir. Kullanim satirini cluster'a gore SUZME ya da ESLEME:
+      // 2026-11-11 ARK suzgeci tum satirlari atip Intranet SPA'yi bos birakti.
       yoksaNull(
         query(
           `SELECT cluster, namespace, app, scan_date, window_days, req_total, services_total, measured, note
@@ -784,7 +788,13 @@ async function spaKesfiHesapla() {
   const arkSuz = (rows, alan) => (rows == null ? rows : rows.filter((r) => arkMi(r[alan])));
   const disc = arkSuz(discHam, 'cluster');
   const inv = arkSuz(invHam, 'cluster_name');
-  const usage = arkSuz(usageHam, 'cluster');
+  // KULLANIM SATIRININ CLUSTER'I BOS OLABILIR (uretim olayi, 2026-11-16): application_usage
+  // toplayicisi cluster kolonunu HER satirda '' yazar (Dynatrace clusterName vermiyor). Bos
+  // cluster "ARK disi" DEGIL "bilinmiyor"dur; atilirsa Intranet SPA / Gercek SPA Kesfi'nde HICBIR
+  // uygulamanin Dynatrace olcumu gorunmuyordu. Eslesme zaten ARK kesif satirinin (namespace,
+  // uygulama) anahtariyla yapilir; yalniz ACIKCA ARK disi bir cluster'in satiri atilir.
+  const usage =
+    usageHam == null ? usageHam : usageHam.filter((r) => !String(r.cluster ?? '').trim() || arkMi(r.cluster));
   const runs = arkSuz(runsHam, 'cluster');
   const katalog = arkSuz(katalogHam, 'cluster_name');
   // ESKI SUNUCULAR (2026-11-12, dogrulama bulgusu): RP tanim/trafik satirlari nginx sunucusundan

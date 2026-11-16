@@ -1741,7 +1741,7 @@ function sahteDb(ayar = {}) {
     if (t.includes('FROM dbo.BMW_Spa_Discovery_Run')) return ver(ayar.runs || []);
     if (t.includes('FROM dbo.BMW_Spa_Discovery d')) return ver(ayar.disc || T_DISC);
     if (t.includes('FROM dbo.BMW_Openshift_Route_Inventory')) return (dus('envanter'), ver([]));
-    if (t.includes('FROM dbo.BMW_Application_Usage')) return (dus('dynatrace'), ver([]));
+    if (t.includes('FROM dbo.BMW_Application_Usage')) return (dus('dynatrace'), ver(ayar.usage || []));
     if (t.includes('FROM dbo.Nginx_Config_Audit'))
       return (dus('cfg'), ver(suz(ayar.cfg || T_TANIM)));
     if (t.includes('FROM dbo.Nginx_Intranet_Audit')) return (dus('dir'), ver(suz(ayar.dir)));
@@ -1882,6 +1882,65 @@ test('SR26a yalniz ARK: ARK disi uygulama / cluster / kapsam / payda yok', async
     if (once) require.cache[ADMIN] = once;
     else delete require.cache[ADMIN];
   }
+});
+
+// URETIM OLAYI (2026-11-16): Intranet SPA sayfasinda HICBIR route icin Dynatrace yoktu.
+// bmw_openshift_jobs/application_usage cluster kolonunu HER satirda '' yazar (Dynatrace
+// clusterName vermiyor); ARK suzgeci cluster'i bos satiri "ARK disi" sayip TUM kullanim
+// verisini atiyordu. Veri URETIM BICIMIYLE: cluster '', measured bit (true), req_total BIGINT
+// (surucu STRING dondurur), scan_date DATE (Date nesnesi), is yuku Rollout, kesif cluster'i dolu.
+test('SR51 uc nokta: cluster kolonu BOS Dynatrace satiri ARK suzgecinde dusmez; Intranet SPA raporuna kadar tasinir', async () => {
+  const disc = [
+    A('account-mngt-open-dd-app-v0', 'account-management-ch-prod', { termination: 'reencrypt', workload_kind: 'Rollout' }),
+    A('ai-channel-catalog-app-v0', 'ai-channel-management-prod', { termination: 'reencrypt', workload_kind: 'Rollout' }),
+    A('kart-ui', 'kart-prod', { termination: 'reencrypt' }),
+  ];
+  const tarih = new Date(Date.UTC(2026, 10, 16));
+  const U = (namespace, app, o = {}) => ({
+    cluster: '',
+    namespace,
+    app,
+    scan_date: tarih,
+    window_days: 7,
+    req_total: '0',
+    services_total: 1,
+    measured: true,
+    note: null,
+    ...o,
+  });
+  const usage = [
+    U('account-management-ch-prod', 'account-mngt-open-dd-app-v0', { req_total: '1040346' }),
+    U('ai-channel-management-prod', 'ai-channel-catalog-app-v0', { services_total: 0 }),
+    // ACIKCA ARK DISI cluster'in satiri hala atilir (ayni ad baska platformda olcumu tasimaz).
+    U('kart-prod', 'kart-ui', { cluster: 'gbocp3rdprod1', req_total: '999' }),
+  ];
+  sahteDb({ disc, usage });
+  const r = await hesapla();
+  assert.equal(r.rpKapsam.dynatraceOkunamadi, false);
+  const b = by(r);
+  const acc = b['account-mngt-open-dd-app-v0'];
+  assert.equal(acc.istek, 'var', `cluster '' satiri dustu: ${JSON.stringify(acc.usage)}`);
+  assert.equal(acc.reqShown, 1040346);
+  assert.deepEqual(acc.usage, { scanDate: '2026-11-16', windowDays: 7, services: 1 });
+  assert.equal(b['ai-channel-catalog-app-v0'].istek, 'servis-yok');
+  assert.equal(b['kart-ui'].istek, 'olcum-yok', 'ARK disi cluster in olcumu ARK uygulamasina yazildi');
+
+  const intranet = require('../../spa-report/intranet.cjs');
+  intranet.onbellekSil();
+  const rapor = await intranet.loadIntranet(true, {
+    spaKesfi: async () => JSON.parse(JSON.stringify(r)),
+    mssql: { query: async () => ({ recordset: [] }), sql: { NVarChar: (n) => ({ n }) } },
+    loadBeyanlar: async () => new Map(),
+  });
+  intranet.onbellekSil();
+  const satir = Object.fromEntries(rapor.rows.map((x) => [x.application, x]));
+  const s = satir['account-mngt-open-dd-app-v0'];
+  assert.ok(s, `intranet satiri yok: ${JSON.stringify(rapor.rows.map((x) => x.application))}`);
+  assert.equal(s.istek, 'var');
+  assert.equal(s.req, 1040346);
+  assert.deepEqual(s.dynatrace, { scanDate: '2026-11-16', windowDays: 7, services: 1, note: '', olcum: '' });
+  assert.equal(satir['ai-channel-catalog-app-v0'].istek, 'servis-yok');
+  assert.equal(rapor.dynatraceTarihi, '2026-11-16');
 });
 
 // UC ISLEYICILERI: sahte req/res (onbellek ara katmani haric; o response-cache testlerinde).
