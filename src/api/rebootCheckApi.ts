@@ -37,13 +37,39 @@ export interface RcOtomasyon {
   not?: string;
 }
 export interface RcDegerlendirme {
-  durum: 'sorunsuz' | 'sorunlu' | 'olculemedi' | 'kontrol';
+  /** v4: kapsam_disi = reboot öncesi izlenen uygulama çalışmıyordu (tek neden önce-boş) — uyarı değil, nötr. */
+  durum: 'sorunsuz' | 'sorunlu' | 'olculemedi' | 'kontrol' | 'kapsam_disi';
   sebep?: string; kalan?: number; islem?: number; hatali?: number;
-  /** Kontrol nedenleri (önce görüntüsü boş, eski sürüm, dokunulmayan öğe şimdi çalışıyor); fark kalsa da yazılır. */
+  /** Kontrol nedenleri (eski sürüm, dokunulmayan öğe şimdi çalışıyor, otomasyon kapattı …); fark kalsa da yazılır. */
   neden?: string[];
+  /** Bilgi notları (v4: önce görüntüsü boş) — uyarı değil. */
+  bilgi?: string[];
   durulma?: string;
   /** Otomasyon sınıfı + teknoloji listesi (v3); eski API cevabında yok → ekran "—" gösterir. */
   otomasyon?: RcOtomasyon;
+}
+/** Oran: pay / payda; metin Türkçe yüzde ("%92,6"), payda 0 ise "—". */
+export interface RcOran { pay: number; payda: number; metin: string }
+export interface RcKomutKoprusu { ok: number; fail: number; skip: number; okHedefteDegil: number; okOlculemedi?: number; sunucu: number; komut: number; basarili: number }
+/** Yönetici özeti (v4) — sunucu yoneticiOzeti (tek kaynak; rapor aynı sayıları kullanır). */
+export interface RcYonetici {
+  /** onceYok: önce görüntüsü alınamayan (karşılaştırma yapılmadı); onceBosKontrol/onceBosSorunlu: karşılaştırma dışı olup kontrol bekleyen / sorun kalan. */
+  sunucu: { toplam: number; olculen: number; olculemeyen: number; onceYok?: number; onceBos: number; onceBosDiger: number; onceBosKontrol?: number; onceBosSorunlu?: number; karsilastirilabilir: number; sorunsuz: number; kontrol: number; sorunlu: number;
+    /**
+     * İnceleme Y7: birakilan = son durumu ölçülen, kalan farkı 0 ve korunan (kapatılmadan bırakılan) çalışan öğesi olmayan
+     * karşılaştırılabilir sunucu (oran.birakildi'nin payı); birakilanKontrolNotlu: bunlardan durumu 'kontrol' olup TEK kontrol
+     * notu "otomasyon fazladan çalışan ürünü kapattı" olan (inceleme B2; eski betik vb. başka notu olan bırakılmış sayılmaz);
+     * kontrolBekleyen = kontrol − birakilanKontrolNotlu; birakilan + kontrolBekleyen + sorunlu = karsilastirilabilir. Eski kayıtta yok olabilir.
+     */
+    birakilan?: number; birakilanKontrolNotlu?: number; kontrolBekleyen?: number };
+  /** korunan: reboot öncesi çalışmayan, kapatma güvenli olmadığı için dokunulmayan öğe (hedef kümesine girmez). */
+  oge: { once: number; hedef: number; dogru: number; ilkSapan: number; ilkDown: number; ilkNew: number; otomatik: number; kendiliginden: number; halaSapan: number; korunan?: number };
+  /** Tüm kayıt (Otomatik Düzeltme tablosuyla aynı); okOlculemedi: komut OK ama son durum ölçülemedi (doğrulanamadı). */
+  komut: RcKomutKoprusu;
+  /** Otomasyon oranının kümesi: yalnız son durumu ölçülen sunucuların komutları. */
+  komutOlculen?: RcKomutKoprusu;
+  oran: { birakildi: RcOran; donus: RcOran; otomasyon: RcOran; komut: RcOran; kapanan: RcOran };
+  metin: string;
 }
 export interface RcKayit {
   id: number;
@@ -56,7 +82,7 @@ export interface RcKayit {
   sonra: { jobId: number | null; serverId: number | null; at: string | null; sonuc?: { faz?: string; sunucular?: Record<string, RcSunucuSonuc> } | null };
   ozet: {
     once?: { alinan: number; toplam: number; job: string; once_bos?: string[] };
-    sonra?: { sorunsuz: number; kontrol?: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme> };
+    sonra?: { sorunsuz: number; kontrol?: number; kapsamDisi?: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme>; yonetici?: RcYonetici };
   } | null;
   /** Kosan fazda AWX'in anlik is durumu (pending / waiting / running / okunamadi); yalniz ayrintida. */
   awxDurum?: string | null;

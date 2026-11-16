@@ -54,17 +54,30 @@ describe('Reboot Kontrolü satırları', () => {
 });
 
 describe('Reboot Kontrolü 2026-11-14 (ilk gerçek koşu: "dokunulmadı")', () => {
-  test('RK5 "dokunulmadı" etiketleri (yalnız kapatma kapısında: boş önce) SON durumu söyler; JVM etiketi nedenini yazar', () => {
+  test('RK5 "dokunulmadı" etiketleri (yalnız kapatma kapısında: BOOT\'suz / eski sürüm önce) SON durumu söyler; JVM etiketi nedenini yazar', () => {
     const once = goruntuAyristir(['BOOT|a||']);
-    const kor = kapatmaKorunan(['BOOT|a||']);
     const ilk = goruntuAyristir(['BOOT|b||', 'URUN|IHS||', 'URUN|CTG||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x', 'JVM|JBOSS7|y|x']);
     const son = goruntuAyristir(['BOOT|b||', 'URUN|JBOSS7||', 'JVM|JBOSS7|z|x']);
+    // v4 ("Her yerde kapat"): boş önce HİÇBİR ürünü korumaz — "dokunulmadı" denmez; hâlâ çalışan JBoss 7 ve JVM'i sorun
+    const bosKor = kapatmaKorunan(['BOOT|a||']);
+    expect(bosKor.size).toBe(0);
+    const tb = urunTablosu(once, ilk, son, [], new Set(), bosKor);
+    const bb = Object.fromEntries(tb.map((u) => [u.urun, u]));
+    expect([bb.CTG.durum, bb.CTG.metin]).toEqual(['ok', 'reboot öncesi çalışmıyordu, kendiliğinden kapandı']);
+    expect([bb.IHS.durum, bb.IHS.metin]).toEqual(['ok', 'reboot öncesi çalışmıyordu, kendiliğinden kapandı']);
+    expect(bb.JBOSS7.durum).toBe('sorun');
+    expect(bb.JBOSS7.jvmDegisim.map((j) => [j.ad, j.durum, j.metin])).toEqual([
+      ['y', 'ok', 'ürün reboot öncesi çalışmıyordu — şu an KAPALI'],
+      ['z', 'sorun', 'şimdi çalışıyor — ürün reboot öncesi çalışmıyordu, ürünle birlikte kapanması gerekiyordu'],
+    ]);
+    expect(tb.some((u) => /dokunulmadı/.test(u.metin) || u.jvmDegisim.some((j) => /dokunulmadı/.test(j.metin)))).toBe(false);
+    // kapı korursa (BOOT'suz önce: hepsi korunur) etiketler SON durumu ve nedeni söyler
+    const kor = kapatmaKorunan(['URUN|RHA||']);
     const t = urunTablosu(once, ilk, son, [], new Set(), kor);
     const by = Object.fromEntries(t.map((u) => [u.urun, u]));
     expect([by.CTG.durum, by.CTG.metin]).toEqual(['bilgi', 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı']);
-    // v3: boş önce görüntüsünde web ürünü (IHS) korunmaz — kapı dışı kural (komutsuz kapandı)
-    expect([by.IHS.durum, by.IHS.metin]).toEqual(['ok', 'reboot öncesi çalışmıyordu, kendiliğinden kapandı']);
-    expect(by.JBOSS7.metin).toBe('reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü boş / eski sürüm, kapatılmadı (dokunulmadı)');
+    expect([by.IHS.durum, by.IHS.metin]).toEqual(['bilgi', 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı']);
+    expect(by.JBOSS7.metin).toBe('reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü eski sürüm / BOOT yok, kapatılmadı (dokunulmadı)');
     expect(by.JBOSS7.jvmDegisim.map((j) => [j.ad, j.metin])).toEqual([
       ['y', 'şu an KAPALI — ürün reboot öncesi görüntüde yoktu, dokunulmadı'],
       ['z', 'şimdi çalışıyor — ürün reboot öncesi görüntüde yoktu, kapatma kapısı gereği dokunulmadı'],
@@ -91,7 +104,8 @@ describe('Reboot Kontrolü 2026-11-14 (ilk gerçek koşu: "dokunulmadı")', () =
       'BILGI|NEW|JBOSS7|z|reboot oncesi JBOSS7 hic calismiyordu - JVMlerine dokunulmadi', 'BILGI|CIKARIM|JBOSS8||x',
     ]);
     expect(n).toHaveLength(4);
-    expect(n[0]).toMatch(/izlenen ürün\/JVM yoktu — yalnız web ürünleri \(Nginx\/Apache\/IHS\)/);
+    expect(n[0]).toMatch(/izlenen ürün\/JVM yoktu — reboot sonrası çalışan her ürün \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) reboot öncesi haline \(kapalı\) döndürülür ve kontrol edilecek/);
+    expect(n[0]).not.toMatch(/yalnız web|dokunulmadı/);
     expect(n[0]).not.toMatch(/hiçbir şey açılıp kapatılmadı/);
     expect(n[1]).toMatch(/^IBM Apache \(IHS\): reboot öncesi çalışmıyordu/);
     expect(n[2]).toMatch(/^JBoss 7 \/ z: ürün reboot öncesi görüntüde yoktu/);
@@ -175,9 +189,9 @@ describe('Reboot Kontrolü 2026-11-15 ("nasıl bulduysan öyle bırak": önce ç
     expect([by.CTG.durum, by.CTG.metin]).toEqual(['sorun', 'reboot öncesi çalışmıyordu — kapatma komutu başarılı döndü ama hâlâ ÇALIŞIYOR']);
     expect(by.JBOSS8.jvmDegisim.map((j) => [j.ad, j.durum, j.metin])).toEqual([['j1', 'ok', 'ürün reboot öncesi çalışmıyordu — ürünle birlikte kapatıldı']]);
     expect(t.some((u) => /dokunulmadı/.test(u.metin))).toBe(false);
-    // kapı: boş önce -> hepsi korunur; eski sürüm (belirsiz JBoss 7) -> yalnız JBoss
-    // v3: boş önce → web (NGINX/RHA/IHS) korunmaz
-    expect([...kapatmaKorunan(['BOOT|a||'])].sort()).toEqual(['CTG', 'JBOSS7', 'JBOSS8', 'WAS']);
+    // kapı: eski sürüm (belirsiz JBoss 7) -> yalnız JBoss
+    // v3: boş önce → web (NGINX/RHA/IHS) korunmaz; v4 ("Her yerde kapat"): boş önce HİÇBİR ürünü korumaz
+    expect([...kapatmaKorunan(['BOOT|a||'])].sort()).toEqual([]);
     expect([...kapatmaKorunan(['BOOT|a||', 'URUN|JBOSS7||'])].sort()).toEqual(['JBOSS7', 'JBOSS8']);
     expect(kapatmaKorunan(onceL).size).toBe(0);
     const n = nedenListesi(['BILGI|NEW|JBOSS8||reboot oncesi goruntu eski surum, JBoss nesli belirsiz - kapatilmadi, dokunulmadi', 'BILGI|NEW|WAS|s1|reboot oncesi WAS hic calismiyordu - JVMlerine tek tek dokunulmadi (urun, urun asamasinda kapatilir)']);
@@ -203,27 +217,38 @@ describe('Reboot Kontrolü 2026-11-15 inceleme düzeltmeleri', () => {
       'BILGI|YENI_CIKARIM|JBOSS8||x',
       'BILGI|NEW|JBOSS8|app1|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine tek tek dokunulmadi (urun kapatilmadi: once goruntusu bos / eski surum)',
       'BILGI|NEW|JBOSS8|app2|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine dokunulmadi',
-      'BILGI|NEW|NGINX||reboot oncesi goruntu bos - calisan urun kapatilmadi, dokunulmadi',
+      'BILGI|NEW|CTG||reboot oncesi goruntu bos - calisan urun kapatilmadi, dokunulmadi',
+      // v4 betiğin kapı notları (yalnız eski sürüm önce görüntüsü korur)
+      'BILGI|NEW|JBOSS8|app3|reboot oncesi JBOSS8 hic calismiyordu - JVMlerine tek tek dokunulmadi (urun kapatilmadi: once goruntusu eski surum)',
+      'BILGI|NEW|JBOSS7||reboot oncesi goruntu eski surum (JBoss nesli belirsiz olabilir) - kapatilmadi, dokunulmadi',
     ]);
     expect(n[0]).toMatch(/^JBoss 8: şimdiki görüntüde ürün satırı yok/);
-    expect(n[1]).toMatch(/ürün kapatılmadı, JVM'ine dokunulmadı/);
+    // İnceleme B3: sürüm 3 notu ("goruntusu bos / eski surum", "goruntu bos") "eski sürüm olduğu için" diye gösterilmez
+    expect(n[1]).toBe("JBoss 8 / app1: ürün reboot öncesi görüntüde yoktu — o koşudaki betik (sürüm 3) önce görüntüsü boş ya da eski sürüm olduğu için ürünü kapatmadı, JVM'ine dokunmadı; sürüm 4 boş önce görüntüsünde ürünü kapatır.");
     expect(n[2]).toMatch(/eski betik sürümü JVM'ine dokunmadı/);
-    expect(n[3]).toMatch(/^Nginx: .*kapatılmadı \(dokunulmadı\)/);
+    expect(n[3]).toBe('CTG: reboot öncesi çalışmıyordu — önce görüntüsü boştu; o koşudaki betik (sürüm 3) bu durumda yalnız web ürünlerini kapatırdı, bu ürüne dokunmadı. Sürüm 4 kapatır; "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.');
+    expect(n[3]).not.toMatch(/eski sürüm/);
+    expect(n[4]).toBe("JBoss 8 / app3: ürün reboot öncesi görüntüde yoktu — önce görüntüsü eski sürüm olduğu için ürün kapatılmadı, JVM'ine dokunulmadı.");
+    expect(n[5]).toBe('JBoss 7: reboot öncesi çalışmıyordu — önce görüntüsü eski sürüm olduğu için kapatılmadı (dokunulmadı).');
   });
 });
 
 describe('Reboot Kontrolü v3 (2026-11-15 akşam: web kapatılır + kontrol edilecek, sürüm işareti)', () => {
-  test('RK13 kapı: boş önce web korunmaz, CTG/JBoss/WAS korunur; BOOT yoksa hepsi (sunucu kapiKorur ile aynı)', () => {
-    expect([...BOS_KORUNAN]).toEqual(['CTG', 'JBOSS7', 'JBOSS8', 'WAS']);
+  test('RK13 kapı (v4): boş önce HİÇBİR ürünü korumaz (web + CTG/JBoss/WAS); BOOT yoksa hepsi (sunucu kapiKorur ile aynı)', () => {
+    expect([...BOS_KORUNAN]).toEqual([]);
     const kor = kapatmaKorunan(['BOOT|a||']);
-    for (const u of ['NGINX', 'RHA', 'IHS']) expect(kor.has(u)).toBe(false);
+    for (const u of ['NGINX', 'RHA', 'IHS', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS']) expect(kor.has(u)).toBe(false);
     expect(kapatmaKorunan(['URUN|RHA||']).size).toBe(7);
-    // boş önce + web hâlâ çalışıyor -> 'sorun' (kapatılması gerekirdi), CTG çalışıyor -> 'bilgi' (dokunulmadı)
+    // boş önce + web ve CTG hâlâ çalışıyor -> ikisi de 'sorun' (kapatılması gerekirdi; "dokunulmadı" denmez)
     const son = goruntuAyristir(['BOOT|b||', 'URUN|NGINX||', 'URUN|CTG||']);
-    const t = urunTablosu(goruntuAyristir(['BOOT|a||']), son, son, [], new Set(), kor, { guncel: true, etiket: 'sürüm 3' });
+    const t = urunTablosu(goruntuAyristir(['BOOT|a||']), son, son, [], new Set(), kor, { guncel: true, etiket: 'sürüm 4' });
     const by = Object.fromEntries(t.map((u) => [u.urun, u]));
     expect(by.NGINX.durum).toBe('sorun');
-    expect(by.CTG.durum).toBe('bilgi');
+    expect(by.CTG.durum).toBe('sorun');
+    expect(by.CTG.metin).not.toMatch(/dokunulmadı/);
+    // boş önce + CTG otomasyonla kapatıldı -> sarı "kontrol edilecek"
+    const ctg = urunTablosu(goruntuAyristir(['BOOT|a||']), goruntuAyristir(['BOOT|b||', 'URUN|CTG||']), goruntuAyristir(['BOOT|b||']), islemAyristir(['SONUC|durdur|CTG||OK|x']), new Set(), kor);
+    expect([ctg[0].urun, ctg[0].durum, ctg[0].metin]).toEqual(['CTG', 'bilgi', 'reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyonla kapatıldı — kontrol edilecek']);
     // boş önce + web otomasyonla kapatıldı -> sarı "kontrol edilecek"
     const ilk = goruntuAyristir(['BOOT|b||', 'URUN|NGINX||']);
     const k2 = urunTablosu(goruntuAyristir(['BOOT|a||']), ilk, goruntuAyristir(['BOOT|b||']), islemAyristir(['SONUC|durdur|NGINX||OK|x']), new Set(), kor);
@@ -236,19 +261,27 @@ describe('Reboot Kontrolü v3 (2026-11-15 akşam: web kapatılır + kontrol edil
     expect(k4.find((u) => u.urun === 'IHS')!.durum).toBe('ok');
   });
 
-  test('RK14 sürüm işareti: yok / <3 eski, >=3 güncel; sürüm bilinince "olabilir" denmez', () => {
-    expect(BETIK_SURUM_GEREKLI).toBe(3);
+  test('RK14 sürüm işareti (v4): yok / <4 eski, >=4 güncel; sürüm bilinince "olabilir" denmez', () => {
+    expect(BETIK_SURUM_GEREKLI).toBe(4);
     expect(betikSurumu(undefined)).toEqual({ guncel: false, etiket: 'sürüm yok' });
     expect(betikSurumu({})).toEqual({ guncel: false, etiket: 'sürüm yok' });
     expect(betikSurumu({ betik_surum: 2 })).toEqual({ guncel: false, etiket: 'sürüm 2' });
-    expect(betikSurumu({ betik_surum: '3' })).toEqual({ guncel: true, etiket: 'sürüm 3' });
+    // v4: sürüm 3 betik boş önce'de CTG/JBoss/WAS'ı korurdu -> artık eski
+    expect(betikSurumu({ betik_surum: '3' })).toEqual({ guncel: false, etiket: 'sürüm 3' });
+    expect(betikSurumu({ betik_surum: 3 })).toEqual({ guncel: false, etiket: 'sürüm 3' });
+    expect(betikSurumu({ betik_surum: '4' })).toEqual({ guncel: true, etiket: 'sürüm 4' });
+    expect(betikSurumu({ betik_surum: 5 })).toEqual({ guncel: true, etiket: 'sürüm 5' });
     expect(betikSurumu({ betik_surum: 'abc' }).guncel).toBe(false);
-    expect(betikEskiMetni(['sürüm yok', 'sürüm 2'])).toBe("AWX'teki reboot_check betiği eski (sürüm yok / sürüm 2, gerekli 3): bu koşuda ürün kapatma ve yeniden deneme YOKTU. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra \"Reboot sonrası kontrol et ve düzelt\"i yeniden çalıştırın.");
+    expect(betikEskiMetni(['sürüm yok', 'sürüm 2'])).toBe("AWX'teki reboot_check betiği eski (sürüm yok / sürüm 2, gerekli 4): bu koşuda ürün kapatma ve yeniden deneme YOKTU. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra \"Reboot sonrası kontrol et ve düzelt\"i yeniden çalıştırın.");
+    // İnceleme B1: sürüm 3'te ürün kapatma ve yeniden deneme VARDI -> "YOKTU" denmez; gerçek eksiği yazılır (sunucu ile birebir)
+    expect(betikEskiMetni(['sürüm 3'])).toBe("AWX'teki reboot_check betiği eski (sürüm 3, gerekli 4): bu koşudaki betik (sürüm 3) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini (Nginx/Apache/IHS) kapatırdı, CTG/JBoss/WAS'a dokunmazdı; sürüm 4 reboot sonrası çalışan her ürünü kapatır. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra \"Reboot sonrası kontrol et ve düzelt\"i yeniden çalıştırın.");
+    // karışık sürüm: her sürümün nedeni ayrı
+    expect(betikEskiMetni(['sürüm 2', 'sürüm 3'])).toMatch(/\(sürüm 2 \/ sürüm 3, gerekli 4\): sürüm 2: bu koşuda ürün kapatma ve yeniden deneme YOKTU; sürüm 3: bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu/);
     const once = goruntuAyristir(['BOOT|a||', 'SURUM|2||', 'URUN|RHA||']);
     const son = goruntuAyristir(['BOOT|b||', 'URUN|RHA||', 'URUN|IHS||']);
     const metin = (b?: { guncel: boolean; etiket: string }) => urunTablosu(once, son, son, [], new Set(), new Set(), b).find((u) => u.urun === 'IHS')!.metin;
-    expect(metin({ guncel: true, etiket: 'sürüm 3' })).not.toMatch(/eski|olabilir \(/);
-    expect(metin({ guncel: true, etiket: 'sürüm 3' })).toMatch(/otomasyon kapatma komutu çalıştırmadı/);
+    expect(metin({ guncel: true, etiket: 'sürüm 4' })).not.toMatch(/eski|olabilir \(/);
+    expect(metin({ guncel: true, etiket: 'sürüm 4' })).toMatch(/otomasyon kapatma komutu çalıştırmadı/);
     expect(metin({ guncel: false, etiket: 'sürüm 2' })).toBe("reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı — AWX'teki betik eski (sürüm 2); güncel betikle yeniden çalıştırın");
     expect(metin({ guncel: false, etiket: 'sürüm 2' })).not.toMatch(/olabilir/);
     // eski çağıran (sürüm verilmedi): belirsiz dil korunur

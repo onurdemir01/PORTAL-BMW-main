@@ -15,19 +15,22 @@
 //
 // KONTROL GEREKLI (2026-11-14, ilk gercek kosu: her sey "dokunulmadi" yazdi ve sunucular "sorunsuz"
 // cikti). Fark kalmasa bile iki durumda sunucu SORUNSUZ SAYILMAZ, durum 'kontrol' olur:
-//   (a) "once" goruntusunde hic izlenen satir (URUN/JVM) yok: v3'ten beri betik yalniz web urunlerini (Nginx/Apache/IHS)
-//       reboot oncesi haline (kapali) dondurur, CTG/JBoss/WAS'a dokunmaz - bu bir dogrulama degil, elle bakilmali;
+//   (a) "once" goruntusunde hic izlenen satir (URUN/JVM) yok: v4'ten (2026-11-16) beri betik reboot sonrasi calisan HER
+//       urunu (Nginx/Apache/IHS/CTG/JBoss/WAS, prod dahil) kapatir; kapatilan her urun "kontrol edilecek" der;
 //   (b) once calismayan bir urun ya da (urunu once calismayan) JVM simdi CALISIYOR. 2026-11-15'ten beri
 //       ("nasil bulduysan oyle birak") betik once calismayan URUNU KAPATIR: hala calisan yeni urun KALAN'dir
 //       (sorunlu; portalKalan FARK|NEW|URUN; URUN satiri olmayip JVM'i calisan yeni urun de - sonKume). Yalniz
-//       kapatma kapisinin (kapatmaKapisi, yalniz ham once'den) korudugu oge (once BOS / BOOT'suz ya da eski surum
-//       once'nin JBoss 7/8 urunu) "dokunulmadi" der ve kontrol nedenidir; urunu kapatilmasi gereken JVM'i de kontrol;
+//       kapatma kapisinin (kapatmaKapisi, yalniz ham once'den) korudugu oge (once BOOT'suz ya da eski surum
+//       once'nin JBoss 7/8 urunu; v4: bos once hicbir seyi korumaz) "dokunulmadi" der ve kontrol nedenidir; urunu kapatilmasi gereken JVM'i de kontrol;
 //   (c) once goruntusu eski betik surumuyle alinmis ve JBoss 7 urun satiri cevrilemedi (BILGI|BELIRSIZ) ya da
 //       AWX'teki eski betik JBoss'u hic islemedi (BILGI|ESKI). 2026-11-15'ten beri JBoss satirlari cevrilir;
 //   (d) v3: otomasyon reboot oncesi calismayan bir URUNU kapatti (SONUC|durdur|<urun>||OK) - "kapatip kontrol edilecek";
 //   (e) v3: sonra sonucunda betik_surum yok ya da BETIK_SURUM_GEREKLI'den kucuk (AWX'teki betik eski).
 // Kalan: betigin son_fark'i ile Portal'in ayni kuralla kendi hesabinin (portalKalan) buyugu.
 // Kayit durumu: hic 'sorunlu' / 'olculemedi' yok ve en az bir 'kontrol' varsa 'kontrol'.
+// v4 (2026-11-16, rapor yoneticiye gidiyor): (a) TEK nedeni olan sunucu 'kontrol' DEGIL, notr 'kapsam_disi' ("Karsilastirma
+// disi"); baska neden varsa o kazanir, once-bos metni 'bilgi' notu olur. Tumu kapsam_disi olan kayit 'tamam' sayilmaz.
+// Komut koprusu (komutSayaci) ve yonetici ozeti (yoneticiOzeti) burada; rapor ve ekran ayni sayilari kullanir.
 'use strict';
 const { varsayilanSira } = require('../util/siralama.cjs');
 
@@ -61,7 +64,8 @@ const URUN_ADI = {
 
 // SURUM ISARETI (v3): playbook rc_sonuc'a betik_surum yazar. Yoksa ya da GEREKLI'den kucukse AWX'teki betik eski:
 // o kosuda urun kapatma ve yeniden deneme YOKTU. Portal bunu kesin soyler ("eski betik olabilir" demez).
-const BETIK_SURUM_GEREKLI = 3;
+// v4: bos once'de her urunu kapatan betik surum 4 (kapiKorur ile ayni kural); daha eskisi 'betik eski' sayilir.
+const BETIK_SURUM_GEREKLI = 4;
 function betikSurumu(r) {
   const ham = r?.betik_surum;
   const yazili = ham !== undefined && ham !== null && String(ham).trim() !== '';
@@ -71,8 +75,17 @@ function betikSurumu(r) {
     etiket: yazili ? `sürüm ${String(ham).trim()}` : 'sürüm yok',
   };
 }
-const betikEskiMetni = (r) =>
-  `AWX'teki reboot_check betiği eski (${betikSurumu(r).etiket}, gerekli ${BETIK_SURUM_GEREKLI}): bu koşuda ürün kapatma ve yeniden deneme YOKTU. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+// Inceleme B1 (2026-11-16): surum 3 betiginde urun kapatma ve 3x120 sn yeniden deneme VARDI (ansible 68af043c7); eksigi yalniz
+// bos once'de CTG/JBoss/WAS'i kapatmamasiydi. Surum 3'e "kapatma YOKTU" demek yanlis olurdu; metin surume gore yazilir.
+const ESKI_SURUM_3 =
+  "bu koşudaki betik (sürüm 3) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini (Nginx/Apache/IHS) kapatırdı, CTG/JBoss/WAS'a dokunmazdı; sürüm 4 reboot sonrası çalışan her ürünü kapatır";
+const ESKI_SURUM_GENEL = 'bu koşuda ürün kapatma ve yeniden deneme YOKTU';
+/** Surum etiketinden (betikSurumu().etiket, surum 3 icin) eski surumun ne yapmadigi (ekran rebootKontrolu.ts eskiSurumNedeni ile BIREBIR). */
+const eskiSurumNedeni = (etiket) => (etiket === 'sürüm 3' ? ESKI_SURUM_3 : ESKI_SURUM_GENEL);
+const betikEskiMetni = (r) => {
+  const { etiket } = betikSurumu(r);
+  return `AWX'teki reboot_check betiği eski (${etiket}, gerekli ${BETIK_SURUM_GEREKLI}): ${eskiSurumNedeni(etiket)}. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+};
 
 /** SONUC satirlari -> { islem, urun, ad, sonuc, mesaj }. */
 function sonucSatirlari(r) {
@@ -158,7 +171,8 @@ function onceKume(satirlar, haricJb = false) {
  * sanilip kapatilabiliyordu). -> 'bos'|'eski'|''
  */
 // v3 (2026-11-15 aksam, kullanici: "Nginx, apache, ihs urunlerini halen kapatmamissin, kontrol edilecek yazmissin.
-// Kapatip, kontrol edilecek yaz"): 'bos' kapida web urunleri (NGINX/RHA/IHS) artik KAPATILIR; CTG/JBoss/WAS korunur.
+// Kapatip, kontrol edilecek yaz"): 'bos' kapida web urunleri (NGINX/RHA/IHS) artik KAPATILIR. v4 (2026-11-16): 'bos'
+// kapi hicbir urunu korumaz (kapiKorur); 'bos' degeri yalniz bilgi icin doner.
 // BOOT'suz once 'bootsuz' doner: betik plani HATA yazar, hicbir sey yapilmaz -> hepsi korunur.
 // -> 'bootsuz'|'bos'|'eski'|''
 function kapatmaKapisi(once) {
@@ -166,10 +180,11 @@ function kapatmaKapisi(once) {
   if (!izlenenVar(once)) return 'bos';
   return !surumVar(once) && dizi(once).some((l) => JB_SATIR.test(l)) ? 'eski' : '';
 }
-const WEB_URUN = /^(NGINX|RHA|IHS)$/;
+// v4 (2026-11-16, kullanici GBTDST01: "standart kurulum, dokunmak istesen dokunurdun"; secim "Her yerde kapat"): 'bos' kapi
+// HICBIR urunu korumaz (prod dahil); reboot sonrasi calisan her urun kapatilir ve "kontrol edilecek" der. Yalniz 'eski'
+// (JBoss nesli belirsiz) ve 'bootsuz' (betik plani HATA) korur. Betik reboot_duzelt.sh korunur() ile BIREBIR (RC_DUZELT_SURUM=4).
 const kapiKorur = (kapi, u) =>
   kapi === 'bootsuz' ||
-  (kapi === 'bos' && !WEB_URUN.test(u)) ||
   (kapi === 'eski' && /^JBOSS[78]$/.test(u));
 
 /**
@@ -214,16 +229,38 @@ function portalKalan(once, son) {
  * bulunur (rapor NEW_URUN kuraliyla ayni); plan BILGI satirlari yalniz plandan SONRA kalkan ogeyi kacirirdi.
  * once verilmezse (eski cagiran) plandaki BILGI satirlarina bakilir.
  */
-function kontrolNedenleri(once, r) {
+// v3: bos once'de web urunleri yine kapatilir; "hicbir sey acilip kapatilmadi" artik yanlis olurdu.
+// v4 (2026-11-16, "Her yerde kapat"): bos once'de reboot sonrasi calisan HER urun kapatilir (prod dahil).
+const ONCE_BOS_NEDEN =
+  'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; reboot sonrası çalışan her ürün (Nginx/Apache/IHS/CTG/JBoss/WAS) reboot öncesi haline (kapalı) döndürülür ve kontrol edilecek (uygulamalar zaten kapalıyken mi alındı?).';
+// v4 (2026-11-16, kullanici: "once goruntusu bos satirlarini Kontrol Gerekli uyarili cikartiyoruz; yonetici 'bunlar ne
+// uyarilari' diyecek"): tek nedeni once-bos olan sunucu UYARI degil, notr "Karsilastirma disi" sinifidir.
+const KAPSAM_DISI_ACIKLAMA =
+  'Reboot öncesi bu sunucuda izlenen uygulama (Nginx/Apache/IHS/CTG/JBoss/WAS) çalışmıyordu; karşılaştırılacak bir şey yoktu.';
+const REBOOT_DOGRULANAMADI =
+  'Sunucunun açılış kimliği reboot öncesiyle aynı; reboot doğrulanamadı.';
+
+/** Once ve ilk goruntunun BOOT kimligi ayni mi (rapor REBOOT_NOT_CONFIRMED ile ayni kural); bilinmiyorsa false. */
+function rebootDogrulanamadi(once, r) {
+  const boot = (satirlar) => {
+    const l = dizi(satirlar).find((x) => x.startsWith('BOOT|'));
+    return l ? l.split('|')[1] || '' : '';
+  };
+  const o = boot(once);
+  const i = boot(r?.goruntu);
+  return !!o && !!i && o !== 'bilinmiyor' && o === i;
+}
+
+// Otomasyonun kapattigi urun nedeni (yoneticiOzeti Y7/B2 bu nedeni ayirt eder; metin ve kalip tek yerden).
+const KAPATTI_EKI = ' — otomasyon KAPATTI; beklenen durum mu kontrol edin.';
+const KAPATTI_NEDENI = / — otomasyon KAPATTI; beklenen durum mu kontrol edin\.$/;
+
+/** Bir sunucuyu (fark kalmasa da) 'kontrol' yapan nedenler; once-bos ayri doner -> { onceBos, neden: [digerleri] } (saf). */
+function kontrolNedenAyrimi(once, r) {
   const neden = [];
   const plan = dizi(r?.plan);
   const onceVar = Array.isArray(once) && bootVar(once);
   const onceBos = (onceVar && !izlenenVar(once)) || plan.some((l) => l.startsWith('BILGI|BOS|'));
-  // v3: bos once'de web urunleri yine kapatilir; "hicbir sey acilip kapatilmadi" artik yanlis olurdu.
-  if (onceBos)
-    neden.push(
-      'Reboot öncesi görüntüde izlenen ürün/JVM yoktu; yalnız web ürünleri (Nginx/Apache/IHS) reboot öncesi haline (kapalı) döndürülür, diğerlerine dokunulmadı (uygulamalar zaten kapalıyken mi alındı?).',
-    );
   const surum = betikSurumu(r);
   if (r && !surum.guncel) neden.push(betikEskiMetni(r));
   // ESKI: AWX'teki ESKI betik JBoss'u hic islemedi (2026-11-14 surumu). Yeni betik cevirir (BILGI|NESIL, kontrol degil);
@@ -238,7 +275,7 @@ function kontrolNedenleri(once, r) {
       'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss 7 ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — JBoss 7 ürününe dokunulmadı, elle kontrol edin.',
     );
   // 2026-11-15 ("nasil bulduysan oyle birak"): once calismayan urun KAPATILIR. Hala calisan oge iki turdur:
-  //   korunan (kapatma kapisi: once BOS / eski surum once'nin JBoss urunu) -> gercekten "dokunulmadi";
+  //   korunan (kapatma kapisi: eski surum once'nin JBoss urunu; v4'ten beri bos once korumaz) -> gercekten "dokunulmadi";
   //   kapatilmasi gereken (urun; ya da urunu once calismayan JVM) -> "hala calisiyor" (urun ayrica KALAN'da, sorunlu).
   const korunan = [];
   const kapanmali = [];
@@ -273,12 +310,12 @@ function kontrolNedenleri(once, r) {
   const liste = (x) => `${x.slice(0, 10).join(', ')}${x.length > 10 ? ' …' : ''}`;
   if (korunan.length)
     neden.push(
-      `Reboot öncesi çalışmayan ${korunan.length} öğe şimdi çalışıyor ve dokunulmadı (${onceVar ? 'önce görüntüsü boş ya da eski sürüm — kapatma güvenli değildi' : 'plan notuna göre'}): ${liste(korunan)} — beklenen durum mu kontrol edin.`,
+      `Reboot öncesi çalışmayan ${korunan.length} öğe şimdi çalışıyor ve dokunulmadı (${onceVar ? 'önce görüntüsü eski sürüm, JBoss nesli belirsiz — kapatma güvenli değildi' : 'plan notuna göre'}): ${liste(korunan)} — beklenen durum mu kontrol edin.`,
     );
   // Surum biliniyor: "eski betikle degerlendirildiyse" gibi belirsiz bir cumle yazilmaz (v3, B3).
   if (kapanmali.length)
     neden.push(
-      `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — ${surum.guncel ? 'kapatma sonucunu kontrol edin.' : "AWX'teki betik eski olduğu için bu koşuda ürün kapatma yoktu."}`,
+      `Reboot öncesi çalışmayan ${kapanmali.length} öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: ${liste(kapanmali)} — ${surum.guncel ? 'kapatma sonucunu kontrol edin.' : `AWX'teki betik eski (${surum.etiket}): ${eskiSurumNedeni(surum.etiket)}.`}`,
     );
   // v3 B2 ("kapatip, kontrol edilecek yaz"): otomasyonun KAPATTIGI her URUN (JVM degil) fark kalmasa da kontrol nedenidir.
   // Yalniz son goruntude gercekten kapali olanlar; hala calisan zaten KALAN'dir (sorunlu).
@@ -291,9 +328,15 @@ function kontrolNedenleri(once, r) {
   const kapali = URUNLER.filter((u) => kapatilan.has(u) && !sk.urun.has(u));
   if (kapali.length)
     neden.push(
-      `${kapali.map((u) => URUN_ADI[u]).join(', ')} reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.`,
+      `${kapali.map((u) => URUN_ADI[u]).join(', ')} reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu${KAPATTI_EKI}`,
     );
-  return neden;
+  return { onceBos, neden };
+}
+
+/** Tum kontrol nedenleri (once-bos ilk sirada; eski cagiranlar ve testler icin). */
+function kontrolNedenleri(once, r) {
+  const a = kontrolNedenAyrimi(once, r);
+  return a.onceBos ? [ONCE_BOS_NEDEN, ...a.neden] : a.neden;
 }
 
 /**
@@ -307,14 +350,15 @@ function kontrolNedenleri(once, r) {
  * teknoloji: izlenen 7 urunden once/ilk/son/islemlerde gorulen her biri: { urun, ad, calistirildi, ozet, sonuc }.
  */
 const OTOMASYON_BILINMIYOR = 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)';
-function otomasyonOzeti(once, r) {
+/**
+ * Hedef-durum baglami (otomasyonOzeti, komutSayaci ve yoneticiOzeti'nin TEK kaynagi): once/ilk/son kumeleri ve bir SONUC
+ * satirinin son kontrolde hedefte olup olmadigi. Hedef: baslat -> son goruntude calisiyor; urun durdur -> ne URUN ne JVM'i;
+ * JVM durdur -> yok. Son goruntu olculemediyse hicbir komut hedefte sayilmaz.
+ */
+function hedefBaglami(once, r) {
   const isl = sonucSatirlari(r);
-  const komut = isl.filter((x) => x.sonuc === 'OK' || x.sonuc === 'FAIL');
   const olculdu = !!r?.son_olculdu;
   const onceVar = Array.isArray(once) && bootVar(once);
-  // Inceleme F4: BOOT'suz once (betik plani HATA yazar) ya da plan HATA -> hicbir islem yapilmadi; nedeni bu.
-  const planHata = dizi(r?.plan).some((l) => l.startsWith('BILGI|HATA|'));
-  const onceBootsuz = Array.isArray(once) && !bootVar(once);
   const cev = onceVar
     ? onceNesilCevir(once, olculdu ? r?.son_goruntu : r?.goruntu)
     : { satirlar: [], belirsiz: [] };
@@ -331,6 +375,52 @@ function otomasyonOzeti(once, r) {
     if (x.islem === 'durdur') return x.ad ? !s.jvm.has(k) : !s.urun.has(x.urun) && !urunJvmVar(s, x.urun);
     return true;
   };
+  return { isl, onceVar, cev, kapi, o, ilk, s, hedefte };
+}
+
+/**
+ * KOMUT SAYACI (v4 B, kullanici: "Otomasyon Basarili sayilari ile Otomatik Duzeltme sayilari eslesmiyor"): Otomatik Duzeltme
+ * KOMUT (SONUC satiri) sayar, Otomasyon Ozeti SUNUCU. Kopru sayisi okHedefteDegil: komutu OK donup son kontrolde hedefte olmayan
+ * satir - sunucuyu 'otomasyon basarisiz' yapar. hedefBaglami ile otomasyonOzeti ayni kurali kullanir.
+ * Inceleme Y3: son goruntu alinamadiysa OK komut "hedefte degil" DEGIL, okOlculemedi (dogrulanamadi; yine basarili sayilmaz).
+ * -> { ok, fail, skip, okHedefteDegil, okOlculemedi }
+ */
+function komutSayaci(once, r) {
+  const b = hedefBaglami(once, r);
+  const c = { ok: 0, fail: 0, skip: 0, okHedefteDegil: 0, okOlculemedi: 0 };
+  for (const x of b.isl) {
+    if (x.sonuc === 'OK') {
+      c.ok += 1;
+      if (!b.s) c.okOlculemedi += 1;
+      else if (!b.hedefte(x)) c.okHedefteDegil += 1;
+    } else if (x.sonuc === 'FAIL') c.fail += 1;
+    else if (x.sonuc === 'SKIP') c.skip += 1;
+  }
+  return c;
+}
+
+/**
+ * Kayit geneli komut koprusu: komutSayaci toplami + komutu olan sunucu sayisi; basarili = OK ve son kontrolde hedefte
+ * (olculemeyen OK komut basarili sayilmaz, okOlculemedi'de ayrica yazilir).
+ */
+function komutKoprusu(sunucular, hedefler, onceSat = null) {
+  const t = { ok: 0, fail: 0, skip: 0, okHedefteDegil: 0, okOlculemedi: 0, sunucu: 0 };
+  for (const h of hedefler) {
+    const r = sunucular?.[h];
+    if (!r) continue;
+    const c = komutSayaci(onceSat?.[h], r);
+    for (const k of ['ok', 'fail', 'skip', 'okHedefteDegil', 'okOlculemedi']) t[k] += c[k];
+    if (c.ok + c.fail + c.skip) t.sunucu += 1;
+  }
+  return { ...t, komut: t.ok + t.fail + t.skip, basarili: t.ok - t.okHedefteDegil - t.okOlculemedi };
+}
+
+function otomasyonOzeti(once, r) {
+  const { isl, cev, kapi, o, ilk, s, hedefte } = hedefBaglami(once, r);
+  const komut = isl.filter((x) => x.sonuc === 'OK' || x.sonuc === 'FAIL');
+  // Inceleme F4: BOOT'suz once (betik plani HATA yazar) ya da plan HATA -> hicbir islem yapilmadi; nedeni bu.
+  const planHata = dizi(r?.plan).some((l) => l.startsWith('BILGI|HATA|'));
+  const onceBootsuz = Array.isArray(once) && !bootVar(once);
   const basarili = (x) => x.sonuc === 'OK' && hedefte(x);
   let sinif = 'dokunmadi';
   if (komut.length) sinif = komut.every(basarili) ? 'basarili' : 'basarisiz';
@@ -357,7 +447,7 @@ function otomasyonOzeti(once, r) {
       return fark(ilk, u) ? 'kendiliğinden düzeldi (komut gerekmedi)' : 'değişiklik yok';
     }
     if (cev.belirsiz.includes(u) || (kapi === 'eski' && kapiKorur(kapi, u))) return 'eski sürüm önce — JBoss dokunulmadı';
-    if (kapiKorur(kapi, u)) return 'önce görüntüsü boş — dokunulmadı';
+    // v4: bos once hicbir urunu korumaz; 'bootsuz' yukarida, 'eski' bir ustte - baska koruyan kapi yok.
     // Inceleme F5: betik SKIP yazdiysa (ornegin "zaten baslatiliyordu") nedeni gorunur; "komut calismadi" eksik kalirdi.
     const skip = isl.find((x) => x.urun === u && x.sonuc === 'SKIP');
     if (skip) return `komut koşulmadı (betik: ${skip.mesaj || 'gerek görülmedi'}) — fark kaldı`;
@@ -437,15 +527,27 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
     const kalanPortal =
       Array.isArray(once) && bootVar(once) ? portalKalan(once, r.son_goruntu) : [];
     const kalan = Math.max(kalanBetik.length, kalanPortal.length);
-    const neden = kontrolNedenleri(once, r);
-    const durum = kalan ? 'sorunlu' : neden.length ? 'kontrol' : 'sorunsuz';
+    // v4: once-bos YALNIZ tek neden ise 'kapsam_disi' (notr); baska bir neden varsa o kazanir ('kontrol') ve once-bos
+    // metni bilgi notu olarak eslik eder. Once-bos sunucuda reboot da dogrulanamadiysa hicbir sey dogrulanmamistir -> kontrol.
+    const ayrim = kontrolNedenAyrimi(once, r);
+    const neden = [
+      ...ayrim.neden,
+      ...(ayrim.onceBos && !ayrim.neden.length && rebootDogrulanamadi(once, r) ? [REBOOT_DOGRULANAMADI] : []),
+    ];
+    const bilgi = ayrim.onceBos ? [ONCE_BOS_NEDEN] : [];
+    let durum = 'sorunsuz';
+    if (kalan) durum = 'sorunlu';
+    else if (neden.length) durum = 'kontrol';
+    else if (ayrim.onceBos) durum = 'kapsam_disi';
     out[h] = {
       durum,
       kalan,
       islem: islemler.length,
       hatali,
       ...(neden.length ? { neden } : {}),
-      ...(durum === 'kontrol' ? { sebep: neden.join(' ') } : {}),
+      ...(bilgi.length ? { bilgi } : {}),
+      ...(durum === 'kontrol' ? { sebep: [...neden, ...bilgi].join(' ') } : {}),
+      ...(durum === 'kapsam_disi' ? { sebep: KAPSAM_DISI_ACIKLAMA } : {}),
       ...(r.durulma ? { durulma: String(r.durulma) } : {}),
       otomasyon,
     };
@@ -453,13 +555,219 @@ function sonraDegerlendir(sunucular, hedefler, onceSat = null) {
   return out;
 }
 
-/** Sunucu degerlendirmelerinden kayit durumu (saf): hepsi sorunsuz -> tamam; sorunsuz + kontrol -> kontrol. */
+/**
+ * Sunucu degerlendirmelerinden kayit durumu (saf): sorunsuz + kapsam_disi (en az bir sorunsuz) -> tamam; TUMU kapsam_disi
+ * -> kontrol (hicbir sey dogrulanmadi); sorunsuz / kapsam_disi + kontrol -> kontrol; aksi sorunlu / sonra_hata.
+ */
 function kayitDurumu(d, sonucVar) {
-  const sorunsuz = d.filter((x) => x.durum === 'sorunsuz').length;
-  const kontrol = d.filter((x) => x.durum === 'kontrol').length;
-  if (d.length && sorunsuz === d.length) return 'tamam';
-  if (d.length && kontrol > 0 && sorunsuz + kontrol === d.length) return 'kontrol';
+  const say = (s) => d.filter((x) => x.durum === s).length;
+  const sorunsuz = say('sorunsuz');
+  const kapsamDisi = say('kapsam_disi');
+  const kontrol = say('kontrol');
+  if (d.length && sorunsuz > 0 && sorunsuz + kapsamDisi === d.length) return 'tamam';
+  if (d.length && sorunsuz + kapsamDisi + kontrol === d.length) return 'kontrol';
   return sonucVar ? 'sorunlu' : 'sonra_hata';
+}
+
+/**
+ * Turkce yuzde: payda 0 -> '—'; bir ondalik, virgul (%92,6); tam sayida ondalik yazilmaz (%100). Inceleme Y8: yuvarlama
+ * tam olmayan sonucu %100 ya da sifir olmayani %0 gostermez (1999/2000 -> %99,9; 1/5000 -> %0,1).
+ */
+function yuzdeMetni(pay, payda) {
+  if (!payda) return '—';
+  let v = Math.round((pay * 1000) / payda) / 10;
+  if (v >= 100 && pay < payda) v = 99.9;
+  if (v <= 0 && pay > 0) v = 0.1;
+  return `%${String(v).replace('.', ',')}`;
+}
+const oran = (pay, payda) => ({ pay, payda, metin: yuzdeMetni(pay, payda) });
+
+/**
+ * Oge (urun + JVM) sayaci - yalniz olculen VE once dolu sunucu (saf). Hedef kumesi: once calisan her oge (calismali) + ilk
+ * ya da son goruntude gorulen, once calismayan her urun ve once calisan urunun yeni JVM'i (kapali olmali; portalKalan ile ayni
+ * oge kimligi, sonKume / onceNesilCevir). dogru = son kontrolde hedef durumda. Ilk sapan oge: otomatik (o ogeye hedef yonunde
+ * komut OK) / kendiliginden (komutsuz, SKIP ya da FAIL donup yine de duzelen) / hala sapan.
+ * Inceleme Y2: reboot_duzelt.sh once URUNU acar, auto-start JVM'ler onunla kalkar ve JVM icin komut yazilmaz (ya da SKIP
+ * "auto-start ile kalkmis"): kendi komutu FAIL olmayan JVM'in urunune baslat OK donduyse JVM "otomatik (urunle birlikte)".
+ * Inceleme Y9: kapatma kapisinin korudugu (eski surum once'nin JBoss urunu / nesli belirsiz JBoss 7) once calismayan urun
+ * hedef kumesine girmez; 'korunan' (dokunulmadi, kontrol nedeni) olarak ayrica sayilir.
+ */
+function ogeSayaci(once, r) {
+  const cev = onceNesilCevir(once, r?.son_goruntu);
+  const kapi = kapatmaKapisi(once);
+  const o = onceKume(cev.satirlar);
+  const ilk = sonKume(r?.goruntu, o.urun);
+  const s = sonKume(r?.son_goruntu, o.urun);
+  const isl = sonucSatirlari(r);
+  const oge = new Map();
+  const korunan = new Set();
+  const ekle = (u, ad, calismali) => {
+    const k = `${u}|${ad}`;
+    if (!oge.has(k)) oge.set(k, { u, ad, calismali });
+  };
+  for (const u of o.urun) ekle(u, '', true);
+  for (const k of o.jvm) ekle(...k.split('|'), true);
+  for (const g of [ilk, s]) {
+    for (const u of g.urun) {
+      if (o.urun.has(u)) continue;
+      if (kapiKorur(kapi, u) || cev.belirsiz.includes(u)) korunan.add(u);
+      else ekle(u, '', false);
+    }
+    for (const k of g.jvm) if (!o.jvm.has(k) && o.urun.has(k.split('|')[0])) ekle(...k.split('|'), false);
+  }
+  const komutu = (u, ad, islem) => isl.find((y) => y.urun === u && y.ad === ad && y.islem === islem);
+  const c = { once: 0, hedef: 0, dogru: 0, ilkSapan: 0, ilkDown: 0, ilkNew: 0, otomatik: 0, kendiliginden: 0, halaSapan: 0, korunan: [...korunan].filter((u) => s.urun.has(u)).length };
+  for (const x of oge.values()) {
+    const var_ = (g) => (x.ad ? g.jvm.has(`${x.u}|${x.ad}`) : g.urun.has(x.u));
+    const ilkV = var_(ilk);
+    const sonDogru = var_(s) === x.calismali;
+    c.hedef += 1;
+    if (x.calismali) c.once += 1;
+    if (sonDogru) c.dogru += 1;
+    if (ilkV === x.calismali) continue;
+    c.ilkSapan += 1;
+    if (x.calismali) c.ilkDown += 1;
+    else c.ilkNew += 1;
+    const islem = x.calismali ? 'baslat' : 'durdur';
+    const kendi = komutu(x.u, x.ad, islem);
+    const urunleBirlikte = !!x.ad && x.calismali && kendi?.sonuc !== 'FAIL' && komutu(x.u, '', 'baslat')?.sonuc === 'OK';
+    const komutOk = kendi?.sonuc === 'OK' || urunleBirlikte;
+    if (!sonDogru) c.halaSapan += 1;
+    else if (komutOk) c.otomatik += 1;
+    else c.kendiliginden += 1;
+  }
+  return c;
+}
+
+/**
+ * YONETICI OZETI (v4 C, kullanici: "%'sel olarak isin oncesi/sonrasi ne kadar karsilandi; otomasyonun basari orani; bulundugu
+ * gibi birakabildik mi; executive summary gibi"). Saf, TEK kaynak: rapor bunu cizer, API ozet.sonra.yonetici olarak ekrana verir.
+ * sunucular/hedefler/onceSat sonraDegerlendir ile ayni; deg verilmezse hesaplanir. Her oran { pay, payda, metin }.
+ * hedefler KAYDIN TUM sunuculari olmali (inceleme Y4: ekran ve rapor ayni kumeyi sayar); once goruntusu alinamayan sunucu
+ * (onceSat'ta yok, degerlendirmesi yok / olculemedi) 'onceYok' kapsam kalemidir, olculemeyen sayilmaz.
+ * Kapsamlar (inceleme Y1/Y3): sunucu orani ve oge sayaci yalniz karsilastirilabilir (olculen + once dolu) sunucular; otomasyon
+ * orani son durumu OLCULEN tum sunucularin komutlari (karsilastirma disi dahil - web urunu kapatma da otomasyondur);
+ * olculemeyen sunucudaki komut "dogrulanamadi" diye ayrica yazilir. komut = tum kayit (Otomatik Duzeltme tablosuyla ayni);
+ * komutOlculen = otomasyon oraninin kumesi. Komut basari orani (donus kodu) tum komutlardan.
+ */
+function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
+  const d = deg || sonraDegerlendir(sunucular, hedefler, onceSat);
+  const sn = {
+    toplam: hedefler.length, olculen: 0, olculemeyen: 0, onceYok: 0,
+    onceBos: 0, onceBosDiger: 0, onceBosKontrol: 0, onceBosSorunlu: 0,
+    karsilastirilabilir: 0, sorunsuz: 0, kontrol: 0, sorunlu: 0, birakilan: 0, birakilanKontrolNotlu: 0,
+  };
+  const oge = { once: 0, hedef: 0, dogru: 0, ilkSapan: 0, ilkDown: 0, ilkNew: 0, otomatik: 0, kendiliginden: 0, halaSapan: 0, korunan: 0 };
+  const olculenler = [];
+  for (const h of hedefler) {
+    const x = d[h];
+    const olculmedi = !x || x.durum === 'olculemedi';
+    if (olculmedi && onceSat && !onceSat[h]) {
+      sn.onceYok += 1;
+      continue;
+    }
+    if (olculmedi) {
+      sn.olculemeyen += 1;
+      continue;
+    }
+    sn.olculen += 1;
+    olculenler.push(h);
+    const once = onceSat?.[h];
+    const r = sunucular?.[h];
+    if (kontrolNedenAyrimi(once, r).onceBos) {
+      sn.onceBos += 1;
+      if (x.durum === 'kontrol') sn.onceBosKontrol += 1;
+      else if (x.durum === 'sorunlu') sn.onceBosSorunlu += 1;
+      continue;
+    }
+    // Inceleme B4: BOOT'lu once'si olmayan sunucu (onceSat verilmis ama bu sunucu icin kullanilabilir once yok) karsilastirilamaz;
+    // 'onceYok' kapsam kalemidir. Boylece birakilan + kontrolBekleyen + sorunlu == karsilastirilabilir esitligi her zaman tutar.
+    // Sayim bolumlemesi (toplam = olculen + olculemeyen + onceYok) korunur: olculen'den dusulur; komutlari ise son goruntu
+    // olculdugu icin otomasyon oranina girer (olculenler).
+    if (!(Array.isArray(once) && bootVar(once))) {
+      sn.olculen -= 1;
+      sn.onceYok += 1;
+      continue;
+    }
+    sn.karsilastirilabilir += 1;
+    if (x.durum === 'sorunsuz') sn.sorunsuz += 1;
+    else if (x.durum === 'kontrol') sn.kontrol += 1;
+    else sn.sorunlu += 1;
+    const c = ogeSayaci(once, r);
+    for (const k of Object.keys(oge)) oge[k] += c[k];
+    // Inceleme Y7 (birakildi tanimi): son durum olculdu (karsilastirilabilir) VE kalan fark 0 VE kapatma kapisinin korudugu
+    // calisan oge yok -> sunucu reboot oncesi haliyle birakildi. Otomasyonun fazladan calisan urunu KAPATIP fark kalmayan
+    // sunucu ('kontrol' notlu) da birakilandir; yalniz 'sorunsuz' sayilsaydi basarisiz gibi gorunurdu (yoneticiye yaniltici).
+    // Inceleme B2: 'kontrol' sunucu yalniz TUM kontrol nedenleri "otomasyon KAPATTI" ise birakilandir; betik eski / ESKI /
+    // BELIRSIZ gibi baska bir nedeni olan sunucuda yapilacak is vardir -> kontrol bekleyen kalir.
+    const yalnizKapatti = x.durum === 'kontrol' && dizi(x.neden).length > 0 && dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
+    if (!x.kalan && c.korunan === 0 && (x.durum === 'sorunsuz' || yalnizKapatti)) {
+      sn.birakilan += 1;
+      if (yalnizKapatti) sn.birakilanKontrolNotlu += 1;
+    }
+  }
+  sn.onceBosDiger = sn.onceBosKontrol + sn.onceBosSorunlu;
+  sn.kontrolBekleyen = sn.kontrol - sn.birakilanKontrolNotlu;
+  const kontrolBekleyen = sn.kontrolBekleyen;
+  const komut = komutKoprusu(sunucular, hedefler, onceSat);
+  const komutOlculen = komutKoprusu(sunucular, olculenler, onceSat);
+  const mudahale = komutOlculen.ok + komutOlculen.fail;
+  const dogrulanamayan = komut.ok + komut.fail - mudahale;
+  const o = {
+    birakildi: oran(sn.birakilan, sn.karsilastirilabilir),
+    donus: oran(oge.dogru, oge.hedef),
+    otomasyon: oran(komutOlculen.basarili, mudahale),
+    komut: oran(komut.ok, komut.ok + komut.fail),
+    kapanan: oran(oge.otomatik + oge.kendiliginden, oge.ilkSapan),
+  };
+  const p = [];
+  const kapsamEk = [
+    ...(sn.olculemeyen ? [`${sn.olculemeyen} sunucu ölçülemedi`] : []),
+    ...(sn.onceYok ? [`${sn.onceYok} sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı`] : []),
+  ];
+  p.push(`Kayıttaki ${sn.toplam} sunucunun ${sn.olculen} tanesinde reboot sonrası son durum ölçüldü${kapsamEk.length ? `, ${kapsamEk.join(', ')}` : ''}.`);
+  if (sn.onceBos) {
+    const ek = [
+      ...(sn.onceBosKontrol ? [`${sn.onceBosKontrol} tanesi kontrol bekliyor`] : []),
+      ...(sn.onceBosSorunlu ? [`${sn.onceBosSorunlu} tanesinde sorun kaldı`] : []),
+    ];
+    p.push(
+      `${sn.onceBos} sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı${ek.length ? ` (bunlardan ${ek.join(', ')})` : ''}.`,
+    );
+  }
+  if (sn.karsilastirilabilir) {
+    // Y7/B2: kontrol bekleyen = kontrol notlu olup BIRAKILAN sayilmayanlar (korunan oge calisiyor, betik eski, ESKI/BELIRSIZ vb.);
+    // birakilan kontrol notlu sunucunun TEK notu "otomasyon KAPATTI"dir -> cumle her zaman dogru. Esitlik:
+    // birakilan + kontrolBekleyen + sorunlu == karsilastirilabilir (B4).
+    const ek = [
+      ...(kontrolBekleyen ? [`${kontrolBekleyen} sunucu kontrol bekliyor`] : []),
+      ...(sn.sorunlu ? [`${sn.sorunlu} sunucuda sorun kaldı`] : []),
+    ];
+    const notlu = sn.birakilanKontrolNotlu
+      ? ` (bunlardan ${sn.birakilanKontrolNotlu} tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var)`
+      : '';
+    p.push(
+      `Karşılaştırılabilen ${sn.karsilastirilabilir} sunucudan ${sn.birakilan} tanesi reboot öncesi haliyle bırakıldı (${o.birakildi.metin})${notlu}${ek.length ? `; ${ek.join(', ')}` : ''}.`,
+    );
+  } else p.push('Karşılaştırılabilen (önce görüntüsü dolu ve son durumu ölçülen) sunucu yok.');
+  if (oge.hedef)
+    p.push(
+      `Karşılaştırılabilen sunucularda öğe bazında (ürün + JVM) reboot öncesi hale dönüş ${o.donus.metin} (${oge.dogru} / ${oge.hedef}); reboot öncesi çalışan öğe sayısı ${oge.once}${oge.korunan ? `; reboot öncesi çalışmayan ${oge.korunan} öğe kapatma güvenli olmadığı için dokunulmadı (kontrol bekliyor)` : ''}.`,
+    );
+  if (oge.ilkSapan)
+    p.push(
+      `Bu sunucularda reboot sonrası ilk kontrolde ${oge.ilkSapan} öğe reboot öncesinden farklıydı (${oge.ilkDown} kapalı, ${oge.ilkNew} fazladan çalışan); ${oge.otomatik} tanesini otomasyon düzeltti, ${oge.kendiliginden} tanesi kendiliğinden düzeldi (${o.kapanan.metin} kapatıldı)${oge.halaSapan ? `, ${oge.halaSapan} öğe hâlâ farklı` : ''}.`,
+    );
+  else if (oge.hedef) p.push('Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu.');
+  if (mudahale)
+    p.push(
+      `Otomasyon son durumu ölçülen sunucularda ${mudahale} açma/kapatma komutu çalıştırdı; ${komutOlculen.basarili} tanesinin hedefi son kontrolde doğrulandı (${o.otomasyon.metin})${dogrulanamayan ? `; ölçülemeyen sunucularda çalışan ${dogrulanamayan} komutun sonucu doğrulanamadı` : ''}.`,
+    );
+  else if (dogrulanamayan) p.push(`Otomasyon yalnız ölçülemeyen sunucularda ${dogrulanamayan} komut çalıştırdı; sonucu doğrulanamadı.`);
+  if (komut.ok + komut.fail)
+    p.push(`Komut başarı oranı (dönüş kodu) ${o.komut.metin} (${komut.ok} / ${o.komut.payda})${komut.skip ? `; ${komut.skip} öğede komuta gerek kalmadı` : ''}.`);
+  else p.push(`Otomasyonun müdahalesine gerek olmadı${komut.skip ? ` (${komut.skip} öğede komut gerekmedi)` : ''}.`);
+  return { sunucu: sn, oge, komut, komutOlculen, oran: o, metin: p.join(' ') };
 }
 
 /** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
@@ -508,18 +816,18 @@ function satir(r, ayrinti) {
 function sonraOzeti(r, sonuc, job) {
   const hedefler = jsonOku(r.hosts_json) || [];
   const onceSat = onceGirdisi(jsonOku(r.once_json)?.sunucular);
-  const deg = sonraDegerlendir(
-    sonuc?.sunucular || {},
-    jsonOku(r.sonra_hedef_json) || hedefler,
-    onceSat,
-  );
+  const sonraHedef = jsonOku(r.sonra_hedef_json) || hedefler;
+  const deg = sonraDegerlendir(sonuc?.sunucular || {}, sonraHedef, onceSat);
   const d = Object.values(deg);
   const durum = kayitDurumu(d, !!sonuc);
   const sorunsuz = d.filter((x) => x.durum === 'sorunsuz').length;
   const kontrol = d.filter((x) => x.durum === 'kontrol').length;
+  const kapsamDisi = d.filter((x) => x.durum === 'kapsam_disi').length;
+  // Inceleme Y4: yonetici ozeti kaydin TUM sunuculariyla (rapor da hosts ile cagirir); once goruntusu alinamayan 'onceYok'.
+  const yonetici = yoneticiOzeti(sonuc?.sunucular || {}, hedefler, onceSat, deg);
   const ozet = {
     ...(jsonOku(r.ozet_json) || {}),
-    sonra: { sorunsuz, kontrol, toplam: d.length, job, sunucu: deg },
+    sonra: { sorunsuz, kontrol, kapsamDisi, toplam: d.length, job, sunucu: deg, yonetici },
   };
   return { durum, ozet };
 }
@@ -764,7 +1072,15 @@ module.exports = {
   sonraDegerlendir,
   onceGirdisi,
   kontrolNedenleri,
+  kontrolNedenAyrimi,
+  rebootDogrulanamadi,
   kayitDurumu,
+  komutSayaci,
+  komutKoprusu,
+  ogeSayaci,
+  yoneticiOzeti,
+  yuzdeMetni,
+  KAPSAM_DISI_ACIKLAMA,
   portalKalan,
   kapatmaKapisi,
   kapiKorur,

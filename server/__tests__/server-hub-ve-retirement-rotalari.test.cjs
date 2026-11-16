@@ -447,7 +447,7 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
                       once_var: true,
                       son_olculdu: true,
                       // v3: guncel betik surum isareti yazar; yoksa kayit 'kontrol' olur (AWX'teki betik eski)
-                      betik_surum: 3,
+                      betik_surum: 4,
                       goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
                       son_goruntu: ['SURUM|1', 'BOOT|b2', 'URUN|JBOSS7', 'JVM|JBOSS7|orders-srv'],
                       islemler: [],
@@ -619,9 +619,16 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
   rcRows.get(1).sonra_job_id = 9902;
   const sonraProg = await (await fetch(`${base}/api/server-hub/reboot-check/1`)).json();
   assert.equal(sonraProg.kayit.durum, 'tamam');
+  // v4: yonetici ozeti API'de (ekran) ve raporda ayni sayilarla
+  const yon = sonraProg.kayit.ozet.sonra.yonetici;
+  assert.deepEqual([yon.oran.birakildi.metin, yon.oran.birakildi.pay, yon.oran.birakildi.payda], ['%100', 1, 1]);
+  assert.equal(sonraProg.kayit.ozet.sonra.kapsamDisi, 0);
   const repRes = await fetch(`${base}/api/server-hub/reboot-check/1/rapor`);
   assert.equal(repRes.status, 200);
-  assert.match(await repRes.text(), /APP01/);
+  const repHtml = await repRes.text();
+  assert.match(repHtml, /APP01/);
+  assert.match(repHtml, /Yönetici Özeti/);
+  assert.ok(repHtml.includes(yon.metin), 'rapor paragrafi API yonetici metniyle ayni degil');
 });
 
 test('server/retirement/index: config, create, discover, dns-ip, stop-toplu, delete-now, rollback, job-status, poller', async (t) => {

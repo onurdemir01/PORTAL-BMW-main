@@ -4,7 +4,7 @@
 // reboot öncesi çalışıyorduysa sonra da çalışmalı; JBoss ve WAS JVM'lerinde önce çalışıp kapanan açılır,
 // önce yokken çalışan kapatılır. Python ve diğer her şey izlenmez.
 // 2026-11-15 ("nasıl bulduysan öyle bırak"): reboot öncesi ÇALIŞMAYAN ürün de kapatılır; yalnız kapatma kapısı
-// (boş / eski sürüm önce görüntüsü — kapatmaKorunan) "dokunulmadı" der.
+// (BOOT'suz / eski sürüm önce görüntüsü — kapatmaKorunan) "dokunulmadı" der; v4: boş önce hiçbir ürünü korumaz.
 //
 // Playbook (patch_remediation/reboot_check.yml) sunucu başına düz metin satırları döndürür:
 //   görüntü : BOOT|<boot_id>|| · URUN|<ürün>|| · JVM|<ürün>|<jvm>|<detay>
@@ -16,7 +16,7 @@
 //   * Reboot öncesi ürün kümesi betikle aynı: URUN satırları + JVM'i görülen ürünler (çalışan JVM ürünün
 //     çalıştığını kanıtlar). Önce görüntüsünde ürün satırı olmayıp JVM'i olan ürün işaretlenir.
 //   * "dokunulmadı" etiketleri SON durumu söyler (şimdi çalışıyor / şu an KAPALI) ve nedenini yazar.
-//   * Önce görüntüsü boşsa (izlenen satır yok) bu yeşil değil, uyarıdır (v3: yalnız web ürünleri kapatılır).
+//   * Önce görüntüsü boşsa (izlenen satır yok) bu yeşil değil, uyarıdır (v4: reboot sonrası çalışan her ürün kapatılır, kontrol edilecek).
 //   * İnceleme: "açıldı" / "kapatıldı" yalnız komut OK ise; FAIL ve komutsuz durum ayrı söylenir. Yalnız SONUC satırında
 //     görülen JVM (durulma görüntüsünde açılıp kapatılan) da listelenir. Eski sürüm önce görüntüsünde JBoss hariç.
 
@@ -118,13 +118,15 @@ export function onceNesilCevir(once: unknown, diger: unknown): { satirlar: strin
 /**
  * KAPATMA KAPISI (2026-11-15, "nasıl bulduysan öyle bırak"; betik kapatma_kapisi ve sunucu kapatmaKapisi ile BİREBİR,
  * YALNIZ ham önce görüntüsünden): reboot öncesi çalışmayan ürün kapatılır, şu ürünler HARİÇ (dokunulmaz): önce
- * görüntüsünde BOOT ya da izlenen satır yoksa hepsi; önce görüntüsü eski sürümse (SURUM yok, JBoss satırı var) JBoss 7
+ * görüntüsünde BOOT yoksa hepsi (v4: izlenen satır yoksa hiçbiri — BOS_KORUNAN boş); önce görüntüsü eski sürümse (SURUM yok, JBoss satırı var) JBoss 7
  * ve JBoss 8 (nesil kesin değil; reboot öncesi çalışan domain "yeni" sanılıp kapatılmasın — inceleme R1 B1).
  */
 // v3 (2026-11-15 akşam, kullanıcı: "Nginx, apache, ihs ürünlerini hâlâ kapatmamışsın … Kapatıp, kontrol edilecek yaz"):
 // boş önce görüntüsünde web ürünleri (Nginx/RHA/IHS) artık KAPATILIR; CTG/JBoss/WAS korunur. BOOT'suz önce: betik planı
 // HATA yazar, hiçbir şey yapılmaz → hepsi korunur (sunucu kapiKorur 'bootsuz' ile BİREBİR).
-export const BOS_KORUNAN: readonly string[] = ['CTG', 'JBOSS7', 'JBOSS8', 'WAS'];
+// v4 (2026-11-16, kullanıcı GBTDST01, seçim "Her yerde kapat"): boş önce görüntüsü HİÇBİR ürünü korumaz (prod dahil);
+// reboot sonrası çalışan her ürün kapatılır ve "kontrol edilecek" der. Sunucu kapiKorur ve betik korunur() ile BİREBİR.
+export const BOS_KORUNAN: readonly string[] = [];
 export function kapatmaKorunan(once: unknown): Set<string> {
   const o = satirlar(once);
   if (!o.some((l) => l.startsWith('BOOT|'))) return new Set<string>(URUNLER);
@@ -136,7 +138,7 @@ export function kapatmaKorunan(once: unknown): Set<string> {
  * SÜRÜM İŞARETİ (v3): playbook her sunucu sonucuna betik_surum yazar. Yoksa ya da GEREKLİ'den küçükse AWX'teki betik eski:
  * o koşuda ürün kapatma ve yeniden deneme YOKTU. Sunucu betikSurumu ile BİREBİR; sürüm bilinince dil kesindir.
  */
-export const BETIK_SURUM_GEREKLI = 3;
+export const BETIK_SURUM_GEREKLI = 4;
 export interface BetikSurumu { guncel: boolean; etiket: string }
 export function betikSurumu(r: { betik_surum?: number | string } | null | undefined): BetikSurumu {
   const ham = r?.betik_surum;
@@ -144,12 +146,25 @@ export function betikSurumu(r: { betik_surum?: number | string } | null | undefi
   const n = Number(ham);
   return { guncel: yazili && Number.isFinite(n) && n >= BETIK_SURUM_GEREKLI, etiket: yazili ? `sürüm ${String(ham).trim()}` : 'sürüm yok' };
 }
+/**
+ * İnceleme B1 (2026-11-16): sürüm 3 betiğinde ürün kapatma ve yeniden deneme VARDI; eksiği yalnız boş önce görüntüsünde
+ * CTG/JBoss/WAS'ı kapatmamasıydı. Sunucu reboot-check.cjs eskiSurumNedeni ile BİREBİR.
+ */
+const ESKI_SURUM_GENEL = 'bu koşuda ürün kapatma ve yeniden deneme YOKTU';
+const ESKI_SURUM_3 = "bu koşudaki betik (sürüm 3) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini (Nginx/Apache/IHS) kapatırdı, CTG/JBoss/WAS'a dokunmazdı; sürüm 4 reboot sonrası çalışan her ürünü kapatır";
+export function eskiSurumNedeni(etiket: string): string {
+  return etiket === 'sürüm 3' ? ESKI_SURUM_3 : ESKI_SURUM_GENEL;
+}
 /** Kayıt düzeyindeki bant metni; etiketler: farklı sürüm etiketleri ("sürüm yok", "sürüm 2"). */
 export function betikEskiMetni(etiketler: readonly string[]): string {
-  return `AWX'teki reboot_check betiği eski (${etiketler.join(' / ')}, gerekli ${BETIK_SURUM_GEREKLI}): bu koşuda ürün kapatma ve yeniden deneme YOKTU. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+  // Tek sürümse onun nedeni; karışıksa her sürümün nedeni ayrı yazılır (sürüm 3'e "YOKTU" denmez).
+  const nedenler = [...new Set(etiketler.map(eskiSurumNedeni))];
+  const neden = nedenler.length === 1 ? nedenler[0]
+    : etiketler.map((x) => `${x}: ${eskiSurumNedeni(x)}`).join('; ');
+  return `AWX'teki reboot_check betiği eski (${etiketler.join(' / ')}, gerekli ${BETIK_SURUM_GEREKLI}): ${neden}. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
 }
 
-/** Önce görüntüsü alınmış (BOOT var) ama izlenen ürün/JVM yok: yalnız web ürünleri kapatılır, diğerlerine dokunulmaz. */
+/** Önce görüntüsü alınmış (BOOT var) ama izlenen ürün/JVM yok: v4'ten beri reboot sonrası çalışan her ürün kapatılır. */
 export function onceBos(g: Goruntu): boolean {
   return g.bicimTamam && g.urunler.size === 0 && g.jvmler.size === 0;
 }
@@ -189,10 +204,10 @@ export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, is
       else if (s) { durum = 'ok'; metin = i ? 'çalışıyordu, çalışıyor' : acildi(islem, 'reboot sonrası kapalıydı'); }
       else { durum = 'sorun'; metin = 'çalışıyordu, hâlâ KAPALI'; }
     } else if (kor) {
-      // Kapatma kapısı (boş / eski sürüm önce görüntüsü): ürüne gerçekten dokunulmadı.
+      // Kapatma kapısı (BOOT'suz / eski sürüm önce görüntüsü; v4: boş önce korumaz): ürüne gerçekten dokunulmadı.
       durum = 'bilgi';
       metin = s === null ? 'reboot öncesi çalışmıyordu — son durum ölçülemedi, dokunulmadı'
-        : s ? 'reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü boş / eski sürüm, kapatılmadı (dokunulmadı)'
+        : s ? 'reboot öncesi çalışmıyordu, şimdi çalışıyor — önce görüntüsü eski sürüm / BOOT yok, kapatılmadı (dokunulmadı)'
           : 'reboot öncesi çalışmıyordu, şu an KAPALI — dokunulmadı';
     } else if (s === null) { durum = 'sorun'; metin = 'reboot öncesi çalışmıyordu — son durum ölçülemedi'; }
     else if (s) {
@@ -279,7 +294,7 @@ export function onceOzeti(g: Goruntu): { urun: string; ad: string; jvm: number |
 export function nedenListesi(plan: unknown, haricTur: readonly string[] = []): string[] {
   return bilgiAyristir(plan).filter((b) => b.tur !== 'HATA' && !haricTur.includes(b.tur)).map((b) => {
     const ad = URUN_ADI[b.urun] || b.urun;
-    if (b.tur === 'BOS') return 'Reboot öncesi görüntüde izlenen ürün/JVM yoktu — yalnız web ürünleri (Nginx/Apache/IHS) reboot öncesi haline (kapalı) döndürülür, diğerlerine dokunulmadı.';
+    if (b.tur === 'BOS') return 'Reboot öncesi görüntüde izlenen ürün/JVM yoktu — reboot sonrası çalışan her ürün (Nginx/Apache/IHS/CTG/JBoss/WAS) reboot öncesi haline (kapalı) döndürülür ve kontrol edilecek.';
     if (b.tur === 'ESKI') return "Önce görüntüsü eski betik sürümüyle alınmış — JBoss ürün/JVM'leri karşılaştırılmadı ve dokunulmadı.";
     if (b.tur === 'NESIL') return 'Önce görüntüsü eski betik sürümüyle alınmış — JBoss satırları jboss_home ile yeni nesil kuralına çevrilerek karşılaştırıldı.';
     if (b.tur === 'BELIRSIZ') return `${ad}: önce görüntüsü eski sürüm, ürün satırının nesli belirlenemedi (JBoss 8 olabilir) — dokunulmadı, elle kontrol edin.`;
@@ -287,10 +302,14 @@ export function nedenListesi(plan: unknown, haricTur: readonly string[] = []): s
     if (b.tur === 'YENI_CIKARIM') return `${ad}: şimdiki görüntüde ürün satırı yok ama JVM'i çalışıyor — ürün çalışıyor sayıldı (reboot öncesi çalışmıyordu, kapatılır).`;
     if (b.ad && /urun asamasinda kapatilir/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi çalışmıyordu — JVM'ine tek tek işlem yapılmadı, ürünle birlikte kapatılır.`;
     // Kapının koruduğu her not 'kapatilmadi' içerir; yalnız 'dokunulmadi' diyen not eski betik sürümündendir (inceleme R2 #5).
-    if (b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — önce görüntüsü boş / eski sürüm olduğu için ürün kapatılmadı, JVM'ine dokunulmadı.`;
+    // İnceleme B3: sürüm 3 betiği JVM notunda "once goruntusu bos / eski surum" yazardı (hangisi olduğu ayrılmaz).
+    if (b.ad && /goruntusu bos/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — o koşudaki betik (sürüm 3) önce görüntüsü boş ya da eski sürüm olduğu için ürünü kapatmadı, JVM'ine dokunmadı; sürüm 4 boş önce görüntüsünde ürünü kapatır.`;
+    if (b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — önce görüntüsü eski sürüm olduğu için ürün kapatılmadı, JVM'ine dokunulmadı.`;
     if (b.ad && /dokunulmadi/.test(b.mesaj)) return `${ad} / ${b.ad}: ürün reboot öncesi görüntüde yoktu — eski betik sürümü JVM'ine dokunmadı; güncel betik ürünü (JVM'leriyle) kapatır, yeniden çalıştırın.`;
-    // 2026-11-15: yeni betik önce çalışmayan ürünü KAPATIR; BILGI|NEW yalnız kapatma kapısında (boş / eski sürüm önce) gelir.
-    if (b.tur === 'NEW' && !b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad}: reboot öncesi çalışmıyordu — önce görüntüsü boş / eski sürüm olduğu için kapatılmadı (dokunulmadı).`;
+    // 2026-11-15: yeni betik önce çalışmayan ürünü KAPATIR; BILGI|NEW yalnız kapatma kapısında (v4: yalnız eski sürüm önce) gelir.
+    // İnceleme B3: sürüm 3 betiğinin boş önce notu ("reboot oncesi goruntu bos - calisan urun kapatilmadi") eski sürüm DEĞİLDİR.
+    if (b.tur === 'NEW' && !b.ad && /goruntu bos/.test(b.mesaj)) return `${ad}: reboot öncesi çalışmıyordu — önce görüntüsü boştu; o koşudaki betik (sürüm 3) bu durumda yalnız web ürünlerini kapatırdı, bu ürüne dokunmadı. Sürüm 4 kapatır; "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+    if (b.tur === 'NEW' && !b.ad && /kapatilmadi/.test(b.mesaj)) return `${ad}: reboot öncesi çalışmıyordu — önce görüntüsü eski sürüm olduğu için kapatılmadı (dokunulmadı).`;
     if (b.tur === 'NEW' && !b.ad) return `${ad}: reboot öncesi çalışmıyordu — eski betik sürümü ürüne dokunmadı; güncel betik bu ürünü kapatır, "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
     return `${b.urun}${b.ad ? ` / ${b.ad}` : ''}: ${b.mesaj}`;
   });
