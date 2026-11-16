@@ -11,7 +11,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@tanstack/react-virtual": "^3.14.26",
     "compression": "^1.8.1",
-    "dotenv": "^18.0.9",
+    "dotenv": "^18.0.10",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.3",
     "express-session": "^1.19.0",
