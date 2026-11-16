@@ -26,6 +26,7 @@ const ACIK = [
   '/compare',
   '/certs',
   '/drift',
+  '/drift/paket',
   '/orphans',
   '/ratelimit',
   '/ratelimit.csv',

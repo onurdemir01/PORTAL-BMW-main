@@ -22,6 +22,7 @@ import {
   type NcDriftGroup,
   type NcDriftFile,
 } from '@/api/nginxConsoleApi';
+import { PaketTutarlilik } from './PaketTutarlilik';
 
 const STATUS: Record<
   NcDriftFile['status'],
@@ -33,7 +34,53 @@ const STATUS: Record<
   same: { label: 'aynı', tone: 'neutral' },
 };
 
+type Gorunum = 'paket' | 'konfig';
+
+/**
+ * Tutarlilik sekmesi: iki gorunum (2026-11-16). "Paketler" (yeni PROD SPA filolarinda paket
+ * esitligi, PaketTutarlilik) varsayilan; "Konfigürasyon" eski dosya bazli karsilastirma.
+ */
 export function DriftTab({ onOpen }: { onOpen: (host: string) => void }) {
+  const [gorunum, setGorunum] = useState<Gorunum>('paket');
+  return (
+    <div className="space-y-3">
+      <div
+        className="inline-flex rounded-lg border p-0.5"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+        role="tablist"
+        aria-label="Tutarlılık görünümü"
+      >
+        {(
+          [
+            ['paket', 'Paketler'],
+            ['konfig', 'Konfigürasyon'],
+          ] as const
+        ).map(([id, ad]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={gorunum === id}
+            onClick={() => setGorunum(id)}
+            className={`px-3 py-1 text-xs font-medium rounded-md ${gorunum === id ? 'shadow-sm' : ''}`}
+            style={{
+              background: gorunum === id ? 'var(--bg-surface)' : 'transparent',
+              color: gorunum === id ? 'var(--text-primary)' : 'var(--text-secondary)',
+            }}
+          >
+            {ad}
+          </button>
+        ))}
+      </div>
+      {gorunum === 'paket' ? (
+        <PaketTutarlilik onOpen={onOpen} />
+      ) : (
+        <KonfigTutarlilik onOpen={onOpen} />
+      )}
+    </div>
+  );
+}
+
+function KonfigTutarlilik({ onOpen }: { onOpen: (host: string) => void }) {
   const [data, setData] = useState<NcDriftResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState<string>('');

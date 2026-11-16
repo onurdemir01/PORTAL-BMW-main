@@ -192,6 +192,75 @@ export interface NcDriftResult {
   services: string[];
   generatedAt: string;
 }
+// Paket tutarliligi (2026-11-16): yeni PROD SPA filolarinda (tasima gruplari) her uygulamanin
+// paketi her sunucuda ayni mi. Sunucu: server/nginx-console/paket-tutarlilik.cjs.
+export interface NcPaketHucre {
+  host: string;
+  yok?: boolean;
+  okunamadi?: boolean;
+  bayatSikistirma?: number;
+  version?: string | null;
+  icerik?: string | null;
+  config?: string | null;
+  dosya?: number | null;
+  versionZamani?: string | null;
+}
+export interface NcPaketVaryant {
+  version: string | null;
+  icerik: string | null;
+  config: string | null;
+  dosya: number | null;
+  hosts: string[];
+}
+export interface NcPaketUygulama {
+  key: string;
+  ns: string;
+  app: string;
+  durum: 'farkli' | 'eksik' | 'olculemedi';
+  fark: ('version' | 'icerik' | 'config' | 'sikistirma')[];
+  yalnizVersion: boolean;
+  yok: string[];
+  okunamayan: string[];
+  bayatSikistirma: string[];
+  varyantlar: NcPaketVaryant[];
+  cogunluk: NcPaketVaryant | null;
+  sunucular: NcPaketHucre[];
+}
+export interface NcPaketSunucu {
+  host: string;
+  durum: 'olculdu' | 'dokum-yok' | 'eski-betik' | 'olculemedi' | 'bayat';
+  neden: string | null;
+  seenAt: string | null;
+  dumpedAt: string | null;
+  paketSayisi: number | null;
+}
+export interface NcPaketGrup {
+  id: string;
+  label: string;
+  hosts: string[];
+  hukum: 'esit' | 'farkli' | 'olculemedi';
+  sunucular: NcPaketSunucu[];
+  sayac: {
+    uygulama: number;
+    ayni: number;
+    farkli: number;
+    eksik: number;
+    olculemedi: number;
+    tanimsiz: number;
+    olculen: number;
+    sunucu: number;
+  };
+  apps: NcPaketUygulama[];
+  ayni: { key: string; version: string | null }[];
+  tanimsiz: { key: string; hosts: string[] }[];
+}
+export interface NcPaketResult {
+  ok: boolean;
+  message?: string;
+  groups: NcPaketGrup[];
+  tazeSaat?: number;
+  generatedAt?: string;
+}
 export interface NcOrphansResult {
   ok: boolean;
   message?: string;
@@ -809,6 +878,11 @@ export const nginxConsoleApi = {
       .then(safeJson)
       .then(eskiGizliKaydet('drift'));
   },
+  /** Yeni PROD SPA filolarinda paket esitligi (Tutarlilik > Paketler). */
+  paketTutarlilik: (): Promise<NcPaketResult> =>
+    fetch(`${BASE}/drift/paket`)
+      .then(safeJson)
+      .then(listeli<NcPaketResult>('groups', 'Paket tutarlılığı')),
   orphans: (host?: string): Promise<NcOrphansResult> =>
     fetch(`${BASE}/orphans${host ? `?host=${encodeURIComponent(host)}` : ''}`)
       .then(safeJson)

@@ -88,7 +88,7 @@ const kod = (s: string) => (
 
 function GrupAyrintisi({ g }: { g: KarsilastirmaGrubu }) {
   return (
-    <div className="space-y-3 px-4 py-3" data-testid="fark-ayrintisi" style={{ background: 'var(--bg-subtle, var(--bg-surface))' }}>
+    <div className="space-y-3 px-4 py-3" data-testid="fark-ayrintisi" style={{ background: 'var(--bg-inset)' }}>
       {g.neden && <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{g.neden}</p>}
       {g.uyarilar.map((u) => (
         <p key={u} className="text-[12px] flex items-start gap-1.5" style={{ color: 'var(--status-warning-text)' }}>

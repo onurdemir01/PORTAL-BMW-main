@@ -28,6 +28,7 @@ const {
 } = require('./dump-parse.cjs');
 const history = require('./history.cjs');
 const { computeDrift } = require('./drift.cjs');
+const { computePaketTutarlilik } = require('./paket-tutarlilik.cjs');
 const eskiSunucu = require('./eski-sunucu.cjs');
 
 const REGISTRY_KEYS = Object.freeze({
@@ -116,8 +117,14 @@ function parseFull(host, st) {
   return parsed;
 }
 
+// Ozet yan dosyasinin (raw/<HOST>.summary.json) sema surumu. Yan dosya yalniz dokum mtime'i ile
+// dogrulaniyordu: yeni alan eklenince (2026-11-16 pkgs) eski Portal'in yeni dokumden yazdigi ozet,
+// dokum degismedigi surece alan olmadan okunmaya devam ederdi. Surum uyusmazsa yeniden uretilir.
+const OZET_SURUMU = 2;
+
 function summaryOf(parsed, mtimeMs, ingested) {
   return {
+    ozetSurumu: OZET_SURUMU,
     mtimeMs,
     ingested: !!ingested,
     host: parsed.host,
@@ -131,6 +138,7 @@ function summaryOf(parsed, mtimeMs, ingested) {
     fileCount: parsed.tree.length,
     loaded: parsed.loaded, // nginx -T'nin yukledigi dosyalar (eski dokumda null)
     sslFiles: parsed.sslFiles,
+    pkgs: parsed.pkgs, // SPA paket ozetleri (@@SPAPKG; eski dokumde null)
   };
 }
 function writeSummary(host, summary) {
@@ -154,7 +162,7 @@ function loadSummary(host) {
   // yan dosya
   try {
     const raw = JSON.parse(fs.readFileSync(summaryPathOf(H), 'utf8'));
-    if (raw && raw.mtimeMs === st.mtimeMs) {
+    if (raw && raw.mtimeMs === st.mtimeMs && raw.ozetSurumu === OZET_SURUMU) {
       _summaries.set(H, { mtimeMs: st.mtimeMs, summary: raw });
       if (!raw.ingested) scheduleIngest(H, st);
       return raw;
@@ -204,6 +212,7 @@ function loadSummary(host) {
     // ile 500 donuyordu; `nginxT` hic yoktu ve /hosts ucu `parsed.nginxT.status`
     // okurken patliyordu — tek bir dev dokum yuzunden Nginx Hub hic acilmiyordu.
     const bozuk = {
+      ozetSurumu: OZET_SURUMU,
       mtimeMs: st.mtimeMs,
       ingested: false,
       host: H,
@@ -220,6 +229,7 @@ function loadSummary(host) {
       fileCount: 0,
       loaded: null,
       sslFiles: [],
+      pkgs: null,
     };
     _summaries.set(H, { mtimeMs: st.mtimeMs, summary: bozuk });
     // Yan dosyaya YAZILMAZ: dokum kuculdugunde (ya da tavan yukseldiginde)
@@ -380,6 +390,35 @@ function seenAtOf(host, dumpedAt) {
   const b = v ? new Date(v).getTime() : 0;
   const m = Math.max(a || 0, b || 0);
   return m > 0 ? new Date(m).toISOString() : null;
+}
+
+// ── Paket tutarliligi (2026-11-16) ─────────────────────────────────────────────────────
+/**
+ * /drift/paket yaniti: tasima gruplarinin yeni PROD sunuculari (MIGRATION_GROUPS.newHosts) icin
+ * ozet + son gorulme -> computePaketTutarlilik. Bir sunucunun ozeti okunamazsa (bozuk dokum vb.)
+ * o sunucu "dokum yok" olarak olculemeyen sayilir; diger sunucular yine karsilastirilir.
+ * @param {{nowMs?: number}} [opts]
+ */
+function paketTutarlilikYaniti(opts = {}) {
+  const { MIGRATION_GROUPS } = require('../audit/nginx-migration.cjs');
+  const gruplar = MIGRATION_GROUPS.map((g) => ({ id: g.id, label: g.label, hosts: g.newHosts }));
+  const veriler = new Map();
+  for (const g of gruplar) {
+    for (const h of g.hosts) {
+      const H = String(h).toUpperCase();
+      if (veriler.has(H)) continue;
+      let ozet = null;
+      try {
+        ozet = loadSummary(H);
+      } catch (e) {
+        console.warn('[NginxHub] paket tutarliligi: ozet okunamadi', H, e.message);
+        ozet = null;
+      }
+      veriler.set(H, { ozet, seenAt: seenAtOf(H, ozet ? ozet.dumpedAt : null) });
+    }
+  }
+  const r = computePaketTutarlilik(gruplar, veriler, { nowMs: opts.nowMs });
+  return { ok: true, ...r, generatedAt: new Date(Number.isFinite(opts.nowMs) ? opts.nowMs : Date.now()).toISOString() };
 }
 
 // ── Envanter: nginx sunuculari (dbo.nginx_inventory, nginx_metadata job'i) ──────────────
@@ -1044,6 +1083,7 @@ const ADMIN_DISI_OKUMA = [
   /^\/compare\/?$/,
   /^\/certs\/?$/,
   /^\/drift\/?$/,
+  /^\/drift\/paket\/?$/,
   /^\/orphans\/?$/,
   /^\/ratelimit(\.csv)?\/?$/,
   /^\/(changes|history\/[^/]+|blob\/[^/]+)\/?$/,
@@ -1446,6 +1486,19 @@ function initNginxConsole(app) {
       });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
+    }
+  });
+
+  // PAKET TUTARLILIGI (2026-11-16): yeni PROD SPA filolari (tasima gruplari, newHosts) icinde her
+  // SPA uygulamasinin paketi her sunucuda ayni mi. Grup listesi MIGRATION_GROUPS'tan (kopyalanmaz);
+  // nginx_inventory services'a guvenilmez (yeni filonun servis kolonu GLOMO gelmeyebilir). Olcum:
+  // dokumdeki @@SPAPKG; tazelik: son gorulme (dokum mtime ile _seen.json'in buyugu) - parmak izi
+  // degismeyen sunucuda dokum yeniden yazilmaz ama sunucu her kosuda gorulur. Sekme: drift.
+  router.get('/drift/paket', async (_req, res) => {
+    try {
+      res.json(paketTutarlilikYaniti());
+    } catch (err) {
+      res.status(500).json({ ok: false, message: 'Paket tutarlılığı hesaplanamadı: ' + err.message });
     }
   });
 
@@ -1884,6 +1937,7 @@ module.exports = {
   _adminKapisi: adminKapisi,
   _ADMIN_DISI_OKUMA: ADMIN_DISI_OKUMA,
   _SEKME_YOLLARI: SEKME_YOLLARI,
+  _paketTutarlilikForTest: paketTutarlilikYaniti,
   REGISTRY_KEYS,
   ALLOWED_PATH_RE,
   HOST_RE,

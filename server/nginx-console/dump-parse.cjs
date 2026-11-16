@@ -2,7 +2,7 @@
 //
 // Bolumler: @@HOST/@@TIME/@@PREFIX, @@NGINX_T ok|fail ... @@END, @@TREE ... @@END,
 // @@FILE <yol> <sha> <size> ... @@END, @@CERTUSE conf\tserver_name\tcrt\tkey\tkeystate,
-// @@CERT <yol> key=value... @@END. Sozlesme betigin basinda; degisirse ikisi birlikte.
+// @@CERT <yol> key=value... @@END, @@SPAPKG (SPA paket ozetleri) ... @@END. Sozlesme betigin basinda; degisirse ikisi birlikte.
 'use strict';
 
 const fs = require('node:fs');
@@ -31,6 +31,9 @@ function parseDumpFrom(readLine, opts = {}) {
     // 2026-09-22: nginx -T'nin yukledigi dosyalar (null = dokumda bolum yok, eski dokum) ve ssl/ dizini
     loaded: null, // string[] | null
     sslFiles: [], // {path, size, mtime}
+    // 2026-11-16: SPA paket ozetleri (@@SPAPKG). null = dokumda bolum yok (eski betik) -> Portal
+    // "olculemedi" der; [] = bolum var, sunucuda uygulama yok.
+    pkgs: null, // {ns, app, durum, version, icerik, config, dosya, versionZamani, tanimli}[] | null
   };
   let raw;
   while ((raw = readLine()) !== null) {
@@ -62,6 +65,13 @@ function parseDumpFrom(readLine, opts = {}) {
         if (f.length >= 5) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: f[3] === '?' ? null : f[3], path: f.slice(4).join('\t') });
         else if (f.length === 4) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: null, path: f[3] });
       }
+    } else if (line === '@@SPAPKG') {
+      out.pkgs = [];
+      let l;
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        const p = pkgSatiri(l.replace(/\r$/, ''));
+        if (p) out.pkgs.push(p);
+      }
     } else if (line.startsWith('@@FILE ')) {
       // "@@FILE <yol> <sha> <size>" — yol bosluk icerebilir: sondan iki alan sabittir.
       const parts = line.slice(7).trim().split(' ');
@@ -89,6 +99,39 @@ function parseDumpFrom(readLine, opts = {}) {
     }
   }
   return out;
+}
+
+const PKG_ALAN = /^[A-Za-z0-9._-]+$/;
+const bosIse = (v) => (v === '-' || v === '' || v == null ? null : v);
+
+const PKG_DURUM = new Set(['var', 'yok', 'okunamadi']);
+const sayiIse = (v) => (bosIse(v) == null || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/**
+ * SPAPKG bolumunun bir satiri: ns, app, durum, version, icerik, config, dosya, version_zamani,
+ * tanimli, bayat_sikistirma (TAB ayrili; 10. alan yoksa null). Bicim disi satir (alan eksik, ad
+ * kurali disi, bilinmeyen durum) ATLANIR: sozlesme disi veri ekranda paket gibi gosterilmez.
+ * durum=var ama icerik ya da config ozeti bos -> okunamadi (ozet uretilememis; esit sayilamaz).
+ */
+function pkgSatiri(satir) {
+  const f = String(satir || '').split('\t');
+  if (f.length < 9) return null;
+  const [ns, app, durumHam, version, icerik, config, dosya, vz, tanimli, bayat] = f;
+  if (!PKG_ALAN.test(ns) || !PKG_ALAN.test(app)) return null;
+  if (!PKG_DURUM.has(durumHam)) return null;
+  const durum = durumHam === 'var' && (bosIse(icerik) == null || bosIse(config) == null) ? 'okunamadi' : durumHam;
+  return {
+    ns,
+    app,
+    durum,
+    version: bosIse(version),
+    icerik: durum === 'var' ? bosIse(icerik) : null,
+    config: durum === 'var' ? bosIse(config) : null,
+    dosya: durum === 'var' ? sayiIse(dosya) : null,
+    versionZamani: bosIse(vz),
+    tanimli: tanimli === '1',
+    bayatSikistirma: durum === 'var' ? sayiIse(bayat) : null,
+  };
 }
 
 /** Bellekteki metni ayristirir (eski davranis). */
@@ -311,4 +354,4 @@ function orphansOf(summary, now = Date.now()) {
   return out;
 }
 
-module.exports = { parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };
+module.exports = { pkgSatiri, parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };

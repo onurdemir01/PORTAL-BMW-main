@@ -32,6 +32,8 @@
 //   * Durum: ESIT | FARKLI | TEK_SUNUCU | OLCULEMEDI | BULUNAMADI.
 'use strict';
 
+const { varsayilanSira } = require('../util/siralama.cjs');
+
 const U = (s) =>
   String(s == null ? '' : s)
     .trim()
@@ -132,7 +134,7 @@ function argOzu(metin) {
   const tekrarlar = [];
   for (const [k, v] of coklu) {
     if (v.length === 1) h.set(k, v[0]);
-    else if (COK_DEGERLI.has(k)) h.set(k, [...v].sort().join(' | '));
+    else if (COK_DEGERLI.has(k)) h.set(k, [...v].sort(varsayilanSira).join(' | '));
     else {
       h.set(k, v[v.length - 1]);
       tekrarlar.push(k);
@@ -188,7 +190,7 @@ function ofsetSunucuIcinde(olan) {
     if (!bySunucu.has(k)) bySunucu.set(k, []);
     bySunucu.get(k).push(String(x.h.get(PORT_OFSET)));
   }
-  return new Set([...bySunucu.values()].map((v) => v.sort().join(','))).size === 1;
+  return new Set([...bySunucu.values()].map((v) => v.sort(varsayilanSira).join(','))).size === 1;
 }
 
 /**
@@ -225,7 +227,7 @@ function grupKarsilastir(uyeler) {
   if (uyeler.length === 1) return sonuc('TEK_SUNUCU', 'Karşılaştırılacak ikinci JVM yok.');
   if (olculen.length < 2) return sonuc('OLCULEMEDI', 'Argümanı okunabilen tek JVM var; diğerleri ölçülemedi.');
 
-  const anahtarlar = [...new Set(haritalar.flatMap((x) => [...x.h.keys()]))].sort();
+  const anahtarlar = [...new Set(haritalar.flatMap((x) => [...x.h.keys()]))].sort(varsayilanSira);
   const degerFarklari = [];
   const eksikFazla = [];
   const karsilastirilamadi = [];
@@ -270,7 +272,7 @@ function grupKarsilastir(uyeler) {
     let cogunlukVar = cogunlukVarMi(sirali);
     // Ham degerlerin cogunlugu baska JVM'leri gosteriyorsa (or. -Dmaster=GOJBAP01 uc sunucuda, biri kendini
     // gosteriyor) normallestirme sapani yanlis secebilir: cogunluk yazilmaz, tum degerler gosterilir.
-    const etiketler = (xs) => xs.map((x) => x.u.etiket).sort().join(',');
+    const etiketler = (xs) => xs.map((x) => x.u.etiket).sort(varsayilanSira).join(',');
     const belirsiz = cogunlukVar && cogunlukVarMi(ham) && etiketler(ham[0][1]) !== etiketler(sirali[0][1]);
     if (belirsiz) cogunlukVar = false;
     degerFarklari.push({

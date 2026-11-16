@@ -121,7 +121,7 @@
           become_method: dzdo
           become_user: www
           ansible.builtin.shell: |
-            cur="$( (find /usr/nginx/conf.d /usr/nginx/conf -type f -printf '%s %T@ %p\n' 2>/dev/null | sort | sha256sum | cut -c1-64) )"
+            cur="$( (find /usr/nginx/conf.d /usr/nginx/conf /usr/nginx/applications -type f -printf '%s %T@ %C@ %p\n' 2>/dev/null | sort | sha256sum | cut -c1-64) )"
             last="$(cat /var/tmp/.nginx_console_fp 2>/dev/null)"
             echo "FP|${cur}|${last}"
           register: fp_out

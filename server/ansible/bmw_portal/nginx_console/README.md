@@ -117,3 +117,62 @@ referanssız `.crt/.pem/.cer` dosyalarını da `@@CERT` ile (en çok 300) döker
 yüklenmeyen conf dosyaları (yedek kalıbı `<conf>_<job>`, `.bak/.old`, `.console_backup/` ayrı), yalnız yüklenmeyen dosyada
 geçen ya da hiç geçmeyen sertifikalar, `ssl/` altında referanssız dosyalar. Sertifikalar sekmesinde "Kullanım" =
 yüklü conf'taki kullanım / toplam referans. Eski dokumda `@@LOADED` yok → sunucu "belirlenemedi" (Yenile ile yeni dokum).
+
+## SPA paket özetleri (`@@SPAPKG`; 2026-11-16)
+
+Kullanıcı: *"Glomo sunucularının her zaman ve her şartta eşit olduğunu bilmek istiyorum."* Aynı gün elle
+yapılan karşılaştırmada Glomo yeni PROD'da (GBNGXP40/41/48/49, GBNGXAP34/35) 230 uygulamanın 24'ü farklıydı.
+Sebepleri:
+- deployment'lar bazı sunucuları atlamış;
+- aynı sürüm numarasıyla farklı dosyalar vardı;
+- elle `nginx_unzip.sh`, `/hysdeploy/.../application.json` olmayan sunucuda config'i silmişti.
+
+**Döküm satırı.** `/usr/nginx/applications/<ns>/<app>/` başına tek satır:
+`ns, app, durum (var|yok|okunamadi), version, içerik özeti, config özeti, dosya sayısı, .version zamanı, tanımlı, bayat sıkıştırma`.
+
+- **İçerik özeti:** dosya yolları ve sha256.
+  - Hariç: **kökteki** `config.json`, `application.json`, `.version`; ayrıca kaynağı yanında duran `<dosya>.gz/.br` (sıkıştırma çıktısı).
+  - Dahil: alt dizindeki `config.json`, pakette kaynaksız gelen dosyalar (`.wasm.br` gibi).
+- **Config özeti:** kökteki `application.json` ve `config.json`.
+- **Bayat sıkıştırma:** kaynağı kendisinden 5 sn'den fazla yeni (ctime) olan `.gz/.br` sayısı. `gzip_static` eski içeriği
+  sunduğu için Portal bunu fark sayar.
+- **Okunamadı asla eşit değildir.** Satır `okunamadi` basar ve özet üretilmez, önbelleğe de yazılmaz:
+  - www dizine giremiyorsa,
+  - bir dosya ya da alt dizin okunamıyorsa,
+  - hata dosyası kurulamıyorsa.
+
+  Portal bu durumda "ölçülemedi" der.
+- **`applications` dizini yoksa** conf'ların gösterdiği her uygulama `yok` basılır (FARKLI); bölüm sessizce boş kalmaz.
+- **`durum=yok`:** bir `*.conf` dizini gösteriyor ama dizin yok (404).
+- **`tanımlı=0`:** hiçbir conf dizini göstermiyor (artık dizin).
+- **Deployment yedeği** (`<app>_<job>`, kardeş `<app>` varken) yalnız hiçbir conf onu göstermiyorsa atlanır. Gizli dizinler sayılmaz.
+- **Gizlilik:** dosya ve config içeriği dökülmez, yalnız özet.
+- **İlk sürümün açıkları** (aynı gün bağımsız incelemede bulundu):
+  - okunamayan dosya ya da dizin özetten sessizce düşüyor, farklı içeriği eşit gösteriyordu;
+  - alt dizindeki config.json hiçbir özete girmiyordu;
+  - boş bölüm "0 uygulama, eşit" sayılıyordu.
+- **Elle betikle uyum:** aynı dosya kümesinde değerler elle kullanılan `glomo_paket_ozeti.sh` ile aynıdır. Alt dizinde
+  config.json ya da kaynaksız .gz/.br olan uygulamalarda Portal daha kapsamlıdır.
+
+**Hız.** sha256 yalnız değişen uygulamada hesaplanır. Dosya listesinin (yol, boyut, mtime, **ctime**) izi
+`/var/tmp/.nginx_console_pkg_cache.v2`'deki izle aynıysa önceki özet kullanılır. Bu dosya yalnız betiği koşturan
+kullanıcıya aitse okunur. ctime `cp -p` ile geri alınamaz; içeriği değişen dosya izi her zaman değiştirir.
+
+**Parmak izi.** Fetch'in "değişiklik var mı" izi artık `/usr/nginx/applications`'ı da kapsar (`.gz/.br` dahil; boyut,
+mtime, ctime). Paket değişip konfigürasyon değişmese de döküm alınır. **İlk koşuda** iz formülü değiştiği için tüm filo bir
+kez tam dökülür; sonra yine artımlı.
+
+**Portal: Nginx Hub › Tutarlılık › Paketler.**
+- Gruplar: taşıma gruplarının yeni PROD sunucuları (`MIGRATION_GROUPS.newHosts`).
+- Hüküm **EŞİT** olması için hepsi gerekir:
+  - tüm sunucular son 3 saat içinde görülmüş,
+  - paket bölümü okunmuş,
+  - en az bir uygulama karşılaştırılmış,
+  - her uygulama aynı (okunamayan uygulama ve bayat sıkıştırma yok).
+- Şunlardan biri varsa hüküm **ÖLÇÜLEMEDİ** olur: eski betikle alınmış döküm (bölüm yok), döküm yok, bayat ölçüm,
+  okunamayan uygulama, hiç uygulama olmaması.
+- Kesin fark her zaman **FARKLI** gösterilir.
+
+**Dağıtım.** Bu dizin AWX'te `gar_bmt_ansible_scripts/bmw_portal/nginx_console` olarak koşar. Dosyalar Portal'daki
+hâlleriyle (LF) taşınmalı. AWX kopyası 2026-11-16'da Portal'dakinden geride bulundu: fetch'te keşif yalıtımı, push'ta
+`throttle` yoktu.
