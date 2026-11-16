@@ -896,6 +896,9 @@ test(
       dosya(path.join(v7, ad, 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'IKI.ear', 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'SEKIZ.ear', 'META-INF', 'application.xml'), 10);
+    // EAR icindeki modul ayri deployment (DACRAAP11 2026-11-16) ve onek tuzagi (TUZ.ear1 TUZ.ear degil)
+    dosya(path.join(v8, 'ALTLI.ear', 'ALTLI.war', 'WEB-INF', 'web.xml'), 10);
+    dosya(path.join(v8, 'TUZ.ear', 'META-INF', 'application.xml'), 10);
     const surum = path.join(kok, 'releases', 'BAGLI-2.0.ear');
     dosya(path.join(surum, 'META-INF', 'application.xml'), 10);
     fs.symlinkSync(surum, path.join(v7, 'BAGLI.ear'));
@@ -923,7 +926,12 @@ test(
     });
     jbossYaz(kok, 'jboss8', {
       alt: 'jboss/domain/configuration',
-      domain: domainXml([{ ad: 'IKI.ear', grup: 'g8' }, { ad: 'SEKIZ.ear', grup: 'g8' }]),
+      domain: domainXml([
+        { ad: 'IKI.ear', grup: 'g8' },
+        { ad: 'SEKIZ.ear', grup: 'g8' },
+        { ad: 'DA-ALTLI-prd.war', yol: path.join(v8, 'ALTLI.ear', 'ALTLI.war'), grup: 'g8' },
+        { ad: 'DA-TUZ-prd.war', yol: path.join(v8, 'TUZ.ear1', 'TUZ.war'), grup: 'g8' },
+      ]),
       host: hostXml([{ ad: 'IKI_JVM8', grup: 'g8' }], 'primary'),
     });
     const yuk = tara(kokler2(kok), { EAR_JBOSS: jbossKokleri(kok) });
@@ -951,6 +959,15 @@ test(
     assert.deepEqual(jv(x('IKI.ear')), [['IKI_JVM7', true]]);
     assert.deepEqual(jv(x('IKI.ear', v8)), [['IKI_JVM8', true]]);
     assert.equal(x('SEKIZ.ear', v8).durum, 'VAR', 'alternatif jboss/domain/configuration yolu okunmali');
+    const alt = x('ALTLI.ear', v8);
+    assert.equal(alt.durum, 'VAR', 'EAR icindeki modulun deployment yolu EAR ile eslesmeli (TANIM_YOK degil)');
+    assert.equal(alt.deploymentlar[0].yontem, 'ALT_YOL');
+    assert.deepEqual(jv(alt), [['IKI_JVM8', true]]);
+    assert.deepEqual(
+      { d: x('TUZ.ear', v8).durum, n: x('TUZ.ear', v8).neden },
+      { d: 'JVM_YOK', n: 'TANIM_YOK' },
+      'TUZ.ear1 altindaki yol TUZ.ear ile eslesmemeli (onek siniri /)',
+    );
 
     const b = x('BAGLI.ear');
     assert.equal(b.deploymentlar[0].yontem, 'YOL', 'bag hedefinin yolu eslesmeli');

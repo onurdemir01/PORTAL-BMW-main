@@ -498,7 +498,7 @@ function xmlEslesme(u) {
           ad: M(d.ad, 256),
           tur: D(d.tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
           yol: M(d.yol, 400),
-          yontem: D(d.yontem, ['YOL', 'AD'], 'AD'),
+          yontem: D(d.yontem, ['YOL', 'ALT_YOL', 'AD'], 'AD'),
           gruplar: dizi(d.gruplar)
             .slice(0, 20)
             .map((g) => ({ ad: M(nesne(g).ad, 128), acik: nesne(g).acik !== false })),

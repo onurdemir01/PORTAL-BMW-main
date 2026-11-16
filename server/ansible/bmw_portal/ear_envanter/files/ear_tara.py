@@ -825,8 +825,15 @@ def yapilandirma_tara():
 
 
 def _deployment_eslesme_turu(d, yollar, ayni_mi, ad_k):
-    if d['yol'] and not d['goreli'] and os.path.normpath(d['yol']) in yollar:
-        return 'YOL'
+    if d['yol'] and not d['goreli']:
+        p = os.path.normpath(d['yol'])
+        if p in yollar:
+            return 'YOL'
+        # EAR dizininin ICINDEKI modul ayri deployment olabilir (DACRAAP11, 2026-11-16:
+        # fs-exploded path=/vhosting8/X.ear/X.war, ad "DA-X-prd.war"). Sinir '/' ile:
+        # /vhosting8/X.ear1/... X.ear sayilmaz.
+        if any(p.startswith(y.rstrip('/') + '/') for y in yollar):
+            return 'ALT_YOL'
     if ayni_mi and ad_k in (d['ad'].lower(), d['calisma_adi'].lower()):
         return 'AD'
     return None

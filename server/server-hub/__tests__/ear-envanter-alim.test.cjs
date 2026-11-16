@@ -521,6 +521,15 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
   const x = JSON.parse(k.uygulamalar[0].xml_eslesme);
   assert.deepEqual([x.jvmler[0].auto_start, x.jvmler[0].deployment_acik], [false, false]);
 
+  // EAR icindeki modulun deployment'i (tarayici ALT_YOL) alimda AD'ye dusmemeli; bilinmeyen yontem AD olur.
+  const altYol = (yontem) =>
+    JSON.parse(
+      kayit({}, { xml_eslesme: { durum: 'VAR', deploymentlar: [{ ad: 'DA-X-prd.war', yol: '/vhosting8/X.ear/X.war', yontem }], jvmler: [{ ad: 'J' }] } })
+        .uygulamalar[0].xml_eslesme,
+    ).deploymentlar[0].yontem;
+  assert.equal(altYol('ALT_YOL'), 'ALT_YOL');
+  assert.equal(altYol('UYDURMA'), 'AD');
+
   const tuhaf = kayit({}, { xml_eslesme: { durum: 'BELKI', jvmler: [{ ad: 'J' }] } });
   assert.equal(JSON.parse(tuhaf.uygulamalar[0].xml_eslesme).durum, 'OLCULEMEDI', 'bilinmeyen eslesme durumu VAR sayilmaz');
 
