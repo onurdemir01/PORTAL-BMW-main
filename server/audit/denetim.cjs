@@ -1963,8 +1963,10 @@ function initDenetim(app) {
   // 2026-11-14: referans artik once EKIP SURUMU (dbo.InitScriptsReference, depo sablonlari),
   // yoksa cogunluk; ve "yalniz bicim farki" (son satir sonu, CRLF, satir sonu boslugu) sapma
   // sayilmaz - ayrinti scriptDeviationReport ustunde. appdomain.service sunucu GENELI tek
-  // dosyadir (hostWide) ama iki tabloya da yazilir: referansi iki tablodan birlikte, host basina
-  // bir kez hesaplanir ki ayni dosya bir sekmede "cogunluk", digerinde "farkli" gorunmesin.
+  // dosyadir (hostWide, /etc/systemd/system) ama iki tabloya da yazilir. 2026-11-16 (kullanici:
+  // "/vhosting ile /vhosting8 sayfalarinda appdomain.service'ler farkli gozukuyor; sunucuda 1
+  // tane zaten"): kok tablolarinin ICINDEN cikarildi; iki tablonun birlesiminden sunucu basina
+  // TEK satir ve TEK referansla ayri "sunucuGeneli" bolumunde raporlanir (buildSunucuGeneli).
   // startRHA.sh / startLiberty.sh dagitiliyordu ama olculmuyordu; optional: yoksa uyari yok.
   const INIT_SCRIPTS = [
     { key: 'appdomain_service', label: 'appdomain.service', hostWide: true },
@@ -2299,7 +2301,7 @@ function initDenetim(app) {
    *   .sh/.jy ve dosyada CR var                   -> "CRLF" uyarisi (ayri sayilir; betik
    *                                                  #!/bin/bash\r ile calismaz)
    *   norm farkli                                 -> gercek sapma
-   * Referans onceligi: disaridan verilen (ozel sunucular / sunucu geneli dosya) > ekip > cogunluk.
+   * Referans onceligi: disaridan verilen (ozel sunucular) > ekip > cogunluk.
    * Detay/referans tablosu yoksa (eski veri) davranis birebir eskisi gibidir: ham hash + cogunluk.
    */
   const CR_SENSITIVE_RE = /\.(sh|jy)$/i;
@@ -2332,16 +2334,14 @@ function initDenetim(app) {
    * @param {object} [opts]
    * @param {Map<string, object>} [opts.details] host -> {<key>: {norm, hasCr, state}}
    * @param {Map<string, object>} [opts.teamRefs] key -> {raw, norm} (ekip surumu)
-   * @param {Map<string, object>} [opts.keyRefs] key -> hazir referans (sunucu geneli dosya)
    */
   function scriptDeviationReport(raw, scripts, majorityOverride, opts = {}) {
     const details = opts.details || null;
     const teamRefs = opts.teamRefs || null;
-    const keyRefs = opts.keyRefs || null;
-    // Ayrinti verisi, ekip referansi ve hazir referans YOKSA (eski veri ve Deployment
-    // Scripts): 2026-11-14 oncesi algoritma BIREBIR (kullanici karari) - eskiSapmaRaporu.
+    // Ayrinti verisi ve ekip referansi YOKSA (eski veri ve Deployment Scripts): 2026-11-14
+    // oncesi algoritma BIREBIR (kullanici karari) - eskiSapmaRaporu.
     const dolu = (m) => !!(m && m.size);
-    if (!dolu(details) && !dolu(teamRefs) && !dolu(keyRefs)) {
+    if (!dolu(details) && !dolu(teamRefs)) {
       return eskiSapmaRaporu(raw, scripts, majorityOverride);
     }
     const hostCount = raw.length;
@@ -2379,13 +2379,8 @@ function initDenetim(app) {
       }
       const t = teamRefs && teamRefs.get(sc.key);
       if (t && t.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
-      for (const v of [
-        keyRefs && keyRefs.get(sc.key),
-        majorityOverride && majorityOverride.get(sc.key),
-      ]) {
-        const kr = asReference(v);
-        if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
-      }
+      const kr = asReference(majorityOverride && majorityOverride.get(sc.key));
+      if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
       return m;
     };
     const cellsOf = (sc) => {
@@ -2439,7 +2434,6 @@ function initDenetim(app) {
         ref = asReference(majorityOverride.get(sc.key));
       } else if (!sc.perServer) {
         ref =
-          asReference(keyRefs && keyRefs.get(sc.key)) ||
           (teamRefs && teamRefs.get(sc.key) && teamRefs.get(sc.key).norm
             ? { ...teamRefs.get(sc.key), source: 'ekip' }
             : null) ||
@@ -2750,62 +2744,56 @@ function initDenetim(app) {
     }
   });
 
+  /** Ekip referansi satirlari -> Map(key -> {raw, norm}); dosya basina ILK (sirali) kazanir. */
+  function teamRefsOf(recordset, keyOfLabel) {
+    const out = new Map();
+    for (const r of recordset || []) {
+      const key = keyOfLabel.get(String(r.script || '').trim());
+      if (!key || !r.norm_sha512 || out.has(key)) continue;
+      out.set(key, {
+        raw: String(r.raw_sha512 || '').trim() || null,
+        norm: String(r.norm_sha512).trim(),
+      });
+    }
+    return out;
+  }
+
   /**
-   * Init Scripts ek verisi (2026-11-14): dbo.InitScriptsDetail (norm/CR/durum),
-   * dbo.InitScriptsReference (ekip surumu) ve sunucu geneli dosyalar icin OTEKI kokun satirlari.
-   * Hicbiri zorunlu degil: tablo yoksa bos doner, sorgu duserse `error` dolar ve ekran eski
-   * davranisla (ham hash + cogunluk) devam eder. Tablo/sutun adlari SABIT; kok ve script adlari
-   * bagli parametredir.
+   * Init Scripts ek verisi (2026-11-14): bu kokun dbo.InitScriptsDetail satirlari (norm/CR/durum)
+   * ve dbo.InitScriptsReference (ekip surumu). Hicbiri zorunlu degil: tablo yoksa bos doner,
+   * sorgu duserse `error` dolar ve ekran eski davranisla (ham hash + cogunluk) devam eder.
+   * Tablo/sutun adlari SABIT; kok bagli parametredir. Sunucu geneli dosyalar (appdomain.service)
+   * burada OKUNMAZ - onlar kokten bagimsiz buildSunucuGeneli'de (2026-11-16).
    */
   async function readInitExtras(query, sqlTypes, root, scripts) {
     const out = {
       details: new Map(),
-      otherDetails: new Map(),
-      otherRows: [],
       teamRefs: new Map(),
       detailAvailable: false,
       detailExists: false,
       error: null,
     };
     const keyOfLabel = new Map(scripts.map((sc) => [sc.label, sc.key]));
-    const hostWide = scripts.filter((sc) => sc.hostWide);
-    const otherRoot = Object.keys(INIT_TABLES).find((r) => r !== root);
-    const otherTable = INIT_TABLES[otherRoot];
-    const put = (map, host, key, val) => {
-      if (!map.has(host)) map.set(host, {});
-      map.get(host)[key] = val;
-    };
     try {
       const ex = await query(
-        `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS d, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS r, OBJECT_ID('${otherTable}') AS o`,
+        `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS d, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS r`,
       );
       const e = (ex.recordset && ex.recordset[0]) || {};
       out.detailExists = !!e.d;
       if (e.d) {
-        const params = [
-          { name: 'root', type: sqlTypes.NVarChar, value: root },
-          { name: 'other', type: sqlTypes.NVarChar, value: otherRoot },
-          ...hostWide.map((sc, i) => ({
-            name: `hw${i}`,
-            type: sqlTypes.NVarChar,
-            value: sc.label,
-          })),
-        ];
-        const hwIn = hostWide.length ? hostWide.map((_, i) => `@hw${i}`).join(', ') : "''";
         const dr = await query(
           `SELECT host, root, script, norm_sha512, has_cr, state FROM ${INIT_DETAIL_TABLE}
-            WHERE root = @root OR (root = @other AND script IN (${hwIn}))`,
-          params,
+            WHERE root = @root`,
+          [{ name: 'root', type: sqlTypes.NVarChar, value: root }],
         );
         for (const r of dr.recordset || []) {
           const host = String(r.host || '').trim();
           const key = keyOfLabel.get(String(r.script || '').trim());
-          if (!host || !key) continue;
+          if (!host || !key || String(r.root) !== root) continue;
           const val = { norm: r.norm_sha512 || null, hasCr: r.has_cr, state: r.state || null };
-          if (String(r.root) === root) {
-            put(out.details, host, key, val);
-            if (val.norm || val.state) out.detailAvailable = true;
-          } else put(out.otherDetails, host, key, val);
+          if (!out.details.has(host)) out.details.set(host, {});
+          out.details.get(host)[key] = val;
+          if (val.norm || val.state) out.detailAvailable = true;
         }
       }
       if (e.r) {
@@ -2813,40 +2801,292 @@ function initDenetim(app) {
           `SELECT script, raw_sha512, norm_sha512 FROM ${INIT_REFERENCE_TABLE}
             ORDER BY script, norm_sha512, raw_sha512`,
         );
-        for (const r of rr.recordset || []) {
-          const key = keyOfLabel.get(String(r.script || '').trim());
-          // Dosya basina birden cok satir varsa ILK (sirali) kazanir: deterministik.
-          if (!key || !r.norm_sha512 || out.teamRefs.has(key)) continue;
-          out.teamRefs.set(key, {
-            raw: String(r.raw_sha512 || '').trim() || null,
-            norm: String(r.norm_sha512).trim(),
-          });
-        }
-      }
-      // OTEKI kokun satirlari yalniz ayrinti tablosu varken gerekir (sunucu geneli dosyanin
-      // ortak referansi); eski veride (yalniz iki genis tablo) hic okunmaz - davranis eskisi.
-      if (e.o && e.d && hostWide.length) {
-        const cr = await query(
-          `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${otherTable}')`,
-        );
-        const have = new Set((cr.recordset || []).map((r) => String(r.name)));
-        const cols = hostWide.map((sc) => sc.key).filter((k) => have.has(k));
-        if (have.has('host') && cols.length) {
-          const or = await query(`SELECT host, ${cols.join(', ')} FROM ${otherTable}`);
-          out.otherRows = (or.recordset || []).filter((r) => String(r.host || '').trim());
-        }
+        out.teamRefs = teamRefsOf(rr.recordset, keyOfLabel);
       }
     } catch (err) {
-      // Kismi okuma YARIM yeni yol uretmesin: ayrinti/referans/oteki kok tamamen birakilir,
-      // rapor eski yoldan (ham hash + cogunluk) cikar - ekrandaki "okunamadi" notuyla tutarli.
+      // Kismi okuma YARIM yeni yol uretmesin: ayrinti/referans tamamen birakilir, rapor eski
+      // yoldan (ham hash + cogunluk) cikar - ekrandaki "okunamadi" notuyla tutarli.
       out.details = new Map();
-      out.otherDetails = new Map();
-      out.otherRows = [];
       out.teamRefs = new Map();
       out.detailAvailable = false;
       out.error = (err && err.message) || String(err);
     }
     return out;
+  }
+
+  /*
+   * SUNUCU GENELI DOSYALAR (2026-11-16). appdomain.service /etc/systemd/system altindadir:
+   * sunucuda TEK dosya, ama check_initialize onu iki koke de yazar. Kok sekmesi basina olculunce
+   * ayni dosya bir sekmede "uyumlu", otekinde "farkli" gorunuyordu (her sekme kendi cogunlugu).
+   * Simdi kokten BAGIMSIZ hesaplanir; hangi sekme istenirse istensin yanit birebir aynidir:
+   *   - iki tablonun birlesimi, sunucu basina TEK satir;
+   *   - iki tabloda da varsa kaynak (hostWideSourceOrder): OLCULMUS kayit (hash ya da ayrinti
+   *     durumu) once; ikisi de olculmusse AYNI kaynaktan tarihi (load_date/scan_date) daha YENI
+   *     olan; sonra degeri (hash) olan; sonra /vhosting8 (HOST_WIDE_ROOT_ORDER). Iki kok farkliysa
+   *     satira bilgi notu (kokFarki: 'icerik' | 'bicim' | 'durum') - sayimi degistirmez;
+   *   - TEK referans: ekip surumu, yoksa birlesik cogunluk; ayrinti tablosu yoksa (eski veri)
+   *     de birlesik hesap yapilir (ham hash + cogunluk). "Yalniz bicim farki" sapma degildir;
+   *   - GBEVM* / GBPRV* referansa katilmaz, ayni referansla olculup `special`ta doner.
+   * Ayrinti/referans sorgusu duserse bu bolum de eski yoldan (ham hash + cogunluk) cikar ve
+   * `error` dolar; genis tablo okunamazsa bolum bos + `error`. Uc yine 200 doner.
+   */
+  const HOST_WIDE_SCRIPTS = INIT_SCRIPTS.filter((sc) => sc.hostWide);
+  const HOST_WIDE_ROOT_ORDER = ['vhosting8', 'vhosting'];
+
+  async function readHostWideSources(query, sqlTypes) {
+    const out = {
+      tables: [],
+      details: new Map(),
+      teamRefs: new Map(),
+      detailAvailable: false,
+      missingColumns: [],
+      error: null,
+    };
+    const keyOfLabel = new Map(HOST_WIDE_SCRIPTS.map((sc) => [sc.label, sc.key]));
+    for (const root of Object.keys(INIT_TABLES)) {
+      const table = INIT_TABLES[root];
+      const cr = await query(
+        `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${table}')`,
+      );
+      const have = new Set((cr.recordset || []).map((r) => String(r.name)));
+      const cols = HOST_WIDE_SCRIPTS.map((sc) => sc.key).filter((k) => have.has(k));
+      // Kok sekmesi sunucu geneli sutunu artik bildirmez (B5, 2026-11-16): eksik sutun burada,
+      // tablo (kok) bazinda raporlanir.
+      if (have.has('host')) {
+        for (const sc of HOST_WIDE_SCRIPTS) {
+          if (!sc.optional && !have.has(sc.key)) out.missingColumns.push({ root, label: sc.label });
+        }
+      }
+      if (!have.has('host') || !cols.length) continue;
+      const tarih = have.has('load_date')
+        ? ', CONVERT(VARCHAR(19), load_date, 120) AS load_date'
+        : '';
+      const rr = await query(`SELECT host, ${cols.join(', ')}${tarih} FROM ${table}`);
+      out.tables.push({
+        root,
+        cols: new Set(cols),
+        rows: (rr.recordset || []).filter((r) => String(r.host || '').trim()),
+      });
+    }
+    try {
+      const ex = await query(
+        `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS hwd, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS hwr`,
+      );
+      const e = (ex.recordset && ex.recordset[0]) || {};
+      const params = HOST_WIDE_SCRIPTS.map((sc, i) => ({
+        name: `hw${i}`,
+        type: sqlTypes.NVarChar,
+        value: sc.label,
+      }));
+      const hwIn = HOST_WIDE_SCRIPTS.map((_, i) => `@hw${i}`).join(', ');
+      if (e.hwd) {
+        const dr = await query(
+          `SELECT host, root, script, norm_sha512, has_cr, state,
+                  CONVERT(VARCHAR(19), scan_date, 120) AS scan_date
+             FROM ${INIT_DETAIL_TABLE} WHERE script IN (${hwIn})`,
+          params,
+        );
+        for (const r of dr.recordset || []) {
+          const host = String(r.host || '').trim();
+          const root = String(r.root || '').trim();
+          const key = keyOfLabel.get(String(r.script || '').trim());
+          if (!host || !key || !INIT_TABLES[root]) continue;
+          const val = {
+            norm: r.norm_sha512 || null,
+            hasCr: r.has_cr,
+            state: r.state || null,
+            date: r.scan_date ? String(r.scan_date) : null,
+          };
+          const id = `${root}|${host.toUpperCase()}`;
+          if (!out.details.has(id)) out.details.set(id, {});
+          out.details.get(id)[key] = val;
+          if (val.norm || val.state) out.detailAvailable = true;
+        }
+      }
+      if (e.hwr) {
+        const rr = await query(
+          `SELECT script, raw_sha512, norm_sha512 FROM ${INIT_REFERENCE_TABLE}
+            WHERE script IN (${hwIn}) ORDER BY script, norm_sha512, raw_sha512`,
+          params,
+        );
+        out.teamRefs = teamRefsOf(rr.recordset, keyOfLabel);
+      }
+    } catch (err) {
+      out.details = new Map();
+      out.teamRefs = new Map();
+      out.detailAvailable = false;
+      out.error = (err && err.message) || String(err);
+    }
+    return out;
+  }
+
+  const rootRank = (r) => {
+    const i = HOST_WIDE_ROOT_ORDER.indexOf(r);
+    return i < 0 ? HOST_WIDE_ROOT_ORDER.length : i;
+  };
+  /**
+   * Ayni sunucunun iki kok kaydi (B1/B2, 2026-11-16):
+   *   1. OLCULMUS kayit once: hash'i var ya da ayrinti satiri acik durum (MISSING/UNREADABLE)
+   *      yaziyor. Ayrintisiz bos hucre "olculmedi" sayilir; daha yeni olsa da dolu kaydi
+   *      golgelemez (loader dizini olmayan sunucuya bos satir yazabilir).
+   *   2. Ikisi de olculmusse daha YENI tarih - yalniz iki tarih AYNI kaynaktansa (load_date ile
+   *      load_date, scan_date ile scan_date); farkli anlamdaki iki zaman karsilastirilmaz.
+   *   3. Degeri olan, sonra kok sirasi (/vhosting8 once).
+   */
+  const olculdu = (c) => !!c.raw || !!(c.detail && c.detail.state);
+  function hostWideSourceOrder(a, b) {
+    if (olculdu(a) !== olculdu(b)) return olculdu(a) ? -1 : 1;
+    if (a.date && b.date && a.dateSrc === b.dateSrc && a.date !== b.date) {
+      return a.date > b.date ? -1 : 1;
+    }
+    if (!!a.raw !== !!b.raw) return a.raw ? -1 : 1;
+    return rootRank(a.root) - rootRank(b.root);
+  }
+
+  /** Secilen kaynakla oteki kok arasindaki fark (bilgi): 'icerik' | 'bicim' | 'durum' | null. */
+  function rootConflict(chosen, other) {
+    if (!other) return null;
+    if (chosen.raw && other.raw) {
+      if (chosen.raw === other.raw) return null;
+      const n1 = chosen.detail && chosen.detail.norm;
+      const n2 = other.detail && other.detail.norm;
+      return n1 && n2 && n1 === n2 ? 'bicim' : 'icerik';
+    }
+    return chosen.raw || other.raw ? 'durum' : null;
+  }
+
+  /** Iki kokun kayitlarini sunucu basina tek kayda indirger (sc tek dosya). */
+  function mergeHostWide(sc, src) {
+    const byHost = new Map();
+    for (const t of src.tables) {
+      if (!t.cols.has(sc.key)) continue;
+      for (const r of t.rows) {
+        const host = String(r.host).trim();
+        // Anahtar buyuk harfle (B7): GBXX ile gbxx ayni sunucudur, tek satir.
+        const anahtar = host.toUpperCase();
+        const detail = (src.details.get(`${t.root}|${anahtar}`) || {})[sc.key] || null;
+        const raw = r[sc.key] ? String(r[sc.key]).trim() : '';
+        const loadDate = r.load_date ? String(r.load_date) : '';
+        const scanDate = (detail && detail.date) || '';
+        const date = loadDate || scanDate || null;
+        let dateSrc = null;
+        if (loadDate) dateSrc = 'load_date';
+        else if (scanDate) dateSrc = 'scan_date';
+        if (!byHost.has(anahtar)) byHost.set(anahtar, []);
+        byHost.get(anahtar).push({ host, root: t.root, raw: raw || null, date, dateSrc, detail });
+      }
+    }
+    const merged = [];
+    for (const [anahtar, cands] of byHost) {
+      const sirali = [...cands].sort(hostWideSourceOrder);
+      const chosen = sirali[0];
+      // "Iki kok farkli" notu yalniz OTEKI kokten bir kayitla (ayni tabloda yinelenen satir kok
+      // farki degildir).
+      const other = sirali.find((c) => c.root !== chosen.root) || null;
+      merged.push({
+        // Gorunen ad: buyuk harfli yazim varsa o (envanter adi), yoksa secilen kaydinki.
+        host: cands.some((x) => x.host === anahtar) ? anahtar : chosen.host,
+        chosen,
+        other,
+        roots: [...new Set(cands.map((c) => c.root))].sort((a, b) => a.localeCompare(b)),
+        conflict: rootConflict(chosen, other),
+      });
+    }
+    return merged.sort((a, b) => varsayilanSira(a.host, b.host));
+  }
+
+  const durumOf = (hr) => {
+    if (hr.deviationCount) return 'farkli';
+    if (hr.unreadableCount) return 'okunamadi';
+    if (hr.missingCount) return 'yok';
+    if (hr.formatOnlyCount) return 'bicim';
+    return 'ayni';
+  };
+
+  /** Bir kume (genel ya da ozel) icin istatistik + sunucu satirlari + sayilar. */
+  function hostWideBlock(stat, hostRows, merged) {
+    const byHost = new Map(merged.map((m) => [m.host, m]));
+    const sayilar = { hosts: hostRows.length, ayni: 0, bicim: 0, farkli: 0, yok: 0, okunamadi: 0 };
+    let kokFarki = 0;
+    const rows = hostRows.map((hr) => {
+      const m = byHost.get(hr.host);
+      const durum = durumOf(hr);
+      sayilar[durum] += 1;
+      if (m.conflict) kokFarki += 1;
+      return {
+        host: hr.host,
+        durum,
+        hash: m.chosen.raw,
+        norm: (m.chosen.detail && m.chosen.detail.norm) || null,
+        kaynak: m.chosen.root,
+        tarih: m.chosen.date,
+        kokler: m.roots,
+        kokFarki: m.conflict,
+        digerKaynak: m.other ? m.other.root : null,
+        digerHash: m.other ? m.other.raw : null,
+      };
+    });
+    return { ...stat, rows, sayilar: { ...sayilar, kokFarki } };
+  }
+
+  /** Sunucu geneli bolum: kokten bagimsiz, iki sekmede de ayni. */
+  async function buildSunucuGeneli(query, sqlTypes) {
+    let src;
+    try {
+      src = await readHostWideSources(query, sqlTypes);
+    } catch (err) {
+      return {
+        files: [],
+        detailAvailable: false,
+        teamReferenceAvailable: false,
+        missingColumns: [],
+        error: (err && err.message) || String(err),
+      };
+    }
+    const files = [];
+    for (const sc of HOST_WIDE_SCRIPTS) {
+      const merged = mergeHostWide(sc, src);
+      if (!merged.length) continue;
+      const details = new Map();
+      for (const m of merged) {
+        if (m.chosen.detail) details.set(m.host, { [sc.key]: m.chosen.detail });
+      }
+      const rowsOf = (list) => list.map((m) => ({ host: m.host, [sc.key]: m.chosen.raw }));
+      const genel = merged.filter((m) => !isSpecialHost(m.host));
+      const ozel = merged.filter((m) => isSpecialHost(m.host));
+      const o = { details, teamRefs: src.teamRefs };
+      const g = scriptDeviationReport(rowsOf(genel), [sc], undefined, o);
+      let special = null;
+      if (ozel.length) {
+        const oz = scriptDeviationReport(rowsOf(ozel), [sc], referenceMap(g.scriptStats), o);
+        special = hostWideBlock(oz.scriptStats[0], oz.hostRows, ozel);
+      }
+      files.push({ ...hostWideBlock(g.scriptStats[0], g.hostRows, genel), special });
+    }
+    return {
+      files,
+      detailAvailable: src.detailAvailable,
+      teamReferenceAvailable: src.teamRefs.size > 0,
+      missingColumns: src.missingColumns,
+      error: src.error,
+    };
+  }
+
+  /*
+   * Iki sekme tutarliligi (B4, 2026-11-16): yanit onbellegi anahtari koke (URL) bagli; loader iki
+   * istek arasinda yazarsa bir sekme 60 sn (bayat-iken-yenile ile daha uzun) eski sunucuGeneli
+   * gosterebilirdi. Bolum degisince TUM kok girisleri silinir; oteki sekme bir sonraki acilista
+   * yeniden hesaplanir. Ilk hesapta (sunucu yeni basladi) silinecek bir sey yoktur.
+   */
+  let sonSunucuGeneliImza = null;
+  function sunucuGeneliDegistiyse(sunucuGeneli) {
+    const imza = JSON.stringify(sunucuGeneli);
+    if (sonSunucuGeneliImza !== null && imza !== sonSunucuGeneliImza) {
+      for (const key of [...responseCache.store.keys()]) {
+        if (/\/init-scripts(\?|$)/.test(key)) responseCache.store.delete(key);
+      }
+    }
+    sonSunucuGeneliImza = imza;
   }
 
   /**
@@ -2906,12 +3146,21 @@ function initDenetim(app) {
         `SELECT c.name FROM sys.columns c WHERE c.object_id = OBJECT_ID('${table}')`,
       );
       const have = new Set((colRes.recordset || []).map((r) => String(r.name)));
-      const scripts = INIT_SCRIPTS.filter((sc) => have.has(sc.key));
-      const missingColumns = INIT_SCRIPTS.filter((sc) => !sc.optional && !have.has(sc.key)).map(
-        (sc) => sc.label,
-      );
+      // Kok sekmesi YALNIZ koke ait dosyalari olcer; sunucu geneli dosya (appdomain.service)
+      // kokten bagimsiz `sunucuGeneli` bolumunde (2026-11-16) - iki sekmede birebir ayni.
+      const scripts = INIT_SCRIPTS.filter((sc) => have.has(sc.key) && !sc.hostWide);
+      // Sunucu geneli sutun eksigi kok sekmesinde degil, sunucuGeneli.missingColumns'ta (B5).
+      const missingColumns = INIT_SCRIPTS.filter(
+        (sc) => !sc.optional && !sc.hostWide && !have.has(sc.key),
+      ).map((sc) => sc.label);
+      const sunucuGeneli = await buildSunucuGeneli(query, sql);
+      sunucuGeneliDegistiyse(sunucuGeneli);
 
       if (!have.has('host') || scripts.length === 0) {
+        // B6: tabloda yalniz sunucu geneli sutun(lar) varsa kok sekmesi bos; neden bos oldugu
+        // soylenir (eskiden appdomain raporu donerdi).
+        const yalnizSunucuGeneli =
+          have.has('host') && INIT_SCRIPTS.some((sc) => sc.hostWide && have.has(sc.key));
         return res.json({
           ok: true,
           root,
@@ -2928,6 +3177,13 @@ function initDenetim(app) {
           ageMinutes: null,
           ageDays: null,
           ageSource: null,
+          ...(yalnizSunucuGeneli
+            ? {
+                message:
+                  'Bu kökün tablosunda ölçülecek kök dosyası sütunu yok; sunucu geneli dosyalar üstteki bölümde.',
+              }
+            : {}),
+          sunucuGeneli,
         });
       }
 
@@ -2947,41 +3203,7 @@ function initDenetim(app) {
         have.has('load_date'),
         ek.detailExists,
       );
-      const opts = { details: ek.details, teamRefs: ek.teamRefs, keyRefs: new Map() };
-
-      // Sunucu geneli dosya (appdomain.service): referans iki tablonun birlesiminden, host
-      // basina bir kez (once bu kokun satiri). Ekip referansi varsa zaten o kullanilir.
-      // YALNIZ ayrinti verisi varken: eski veride (iki genis tablo) her sekme kendi
-      // cogunluguna gore olculur - kullanici karari: eski yol birebir eskisi gibi kalir.
-      const hostWideScripts = ek.detailAvailable ? scripts.filter((s) => s.hostWide) : [];
-      for (const sc of hostWideScripts) {
-        const birlesik = new Map();
-        const birlesikDetay = new Map();
-        for (const [kaynak, detay] of [
-          [raw, ek.details],
-          [ek.otherRows, ek.otherDetails],
-        ]) {
-          for (const r of kaynak) {
-            const host = String(r.host || '').trim();
-            if (!host || isSpecialHost(host) || birlesik.has(host)) continue;
-            birlesik.set(host, { host, [sc.key]: r[sc.key] });
-            const d = detay && detay.get(host);
-            if (d && d[sc.key]) birlesikDetay.set(host, { [sc.key]: d[sc.key] });
-          }
-        }
-        const ortak = scriptDeviationReport([...birlesik.values()], [sc], undefined, {
-          details: birlesikDetay,
-          teamRefs: ek.teamRefs,
-        });
-        const st = ortak.scriptStats[0];
-        if (st && (st.referenceHash || st.referenceNorm)) {
-          opts.keyRefs.set(sc.key, {
-            raw: st.referenceHash,
-            norm: st.referenceNorm,
-            source: st.referenceSource,
-          });
-        }
-      }
+      const opts = { details: ek.details, teamRefs: ek.teamRefs };
 
       // Referans GENEL envanterden; GBEVM*/GBPRV* ayni referansa gore olculup ayri raporlanir.
       const genelRaw = raw.filter((r) => !isSpecialHost(r.host));
@@ -3004,6 +3226,7 @@ function initDenetim(app) {
         extrasError: ek.error,
         ...age,
         special,
+        sunucuGeneli,
       });
     } catch (err) {
       res

@@ -27,16 +27,16 @@ test('DS1 sunucu: /deploy-scripts ucu, uzun tablodan pivot, tab kapisi "deploy"'
   // 2026-09-24: ucuncu parametre (majorityOverride) eklendi - GBEVM/GBPRV sunuculari GENEL
   // envanterin cogunluguna gore olculur. Init ve Deployment ekranlari ayni fonksiyonu paylasir.
   // 2026-11-14: dorduncu parametre (opts: Init ayrinti/ekip referansi) - Deployment vermez,
-  // eski davranis birebir; + Init'te sunucu geneli dosyanin (appdomain.service) iki kokten
-  // ortak referans hesabi.
+  // eski davranis birebir. 2026-11-16: Init'te sunucu geneli dosya (appdomain.service) kok
+  // sekmesinden cikti; iki kokun birlesiminde ayri genel + GBEVM/GBPRV hesabi (buildSunucuGeneli).
   assert.match(
     src,
     /function scriptDeviationReport\(raw, scripts, majorityOverride, opts = \{\}\)/,
   );
   assert.equal(
     (src.match(/scriptDeviationReport\(/g) || []).length,
-    6,
-    'tanim + init(sunucu geneli ortak) + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)',
+    7,
+    'tanim + sunucu geneli(genel) + sunucu geneli(GBEVM/GBPRV) + init(genel) + init(GBEVM/GBPRV) + deploy(genel) + deploy(GBEVM/GBPRV)',
   );
   // 2026-09-24: Deployment Scripts de GBEVM/GBPRV'yi ayirir - Init ile ayni sekil
   assert.match(src, /const genelRaw = raw\.filter\(\(r\) => !isSpecialHost\(r\.host\)\)/g);

@@ -53,6 +53,7 @@ import AppEnvs from '@/components/denetim/AppEnvs';
 import WebApp from '@/components/denetim/WebApp';
 import VeriKatalogu from '@/components/denetim/VeriKatalogu';
 import OcpRouteProd from '@/components/denetim/OcpRouteProd';
+import InitSunucuGeneli from '@/components/denetim/InitSunucuGeneli';
 import { kismiEtiket, kismiAciklama } from '@/components/denetim/yukPencere';
 import { toast } from '@/hooks/useToast';
 import { TableEmptyRow } from '@/components/common/EmptyState';
@@ -1812,8 +1813,20 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
       </div>
     );
 
+  // Sunucu geneli dosya (appdomain.service, 2026-11-16): kokten BAGIMSIZ bolum, kok seciminin
+  // USTUNDE. Sunucu her kok icin ayni icerigi doner; kok degisince bolum ayni kalir.
+  const sunucuGeneli =
+    kind === 'init' &&
+    data?.sunucuGeneli &&
+    (data.sunucuGeneli.files.length > 0 ||
+      !!data.sunucuGeneli.error ||
+      (data.sunucuGeneli.missingColumns || []).length > 0)
+      ? data.sunucuGeneli
+      : null;
+
   return (
     <div className="space-y-3">
+      {sunucuGeneli && <InitSunucuGeneli data={sunucuGeneli} />}
       <div className="flex flex-wrap items-center gap-2">
         <Select sizeVariant="sm" value={root} onChange={(e) => setRoot(e.target.value)}>
           {(data?.roots || ['vhosting']).map((r) => (
@@ -1983,6 +1996,12 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
         {data?.message && data.hosts === 0 && (
           <span className="ml-1 text-amber-700">{data.message}</span>
         )}
+        {sunucuGeneli && sunucuGeneli.files.length > 0 && (
+          <span className="ml-1">
+            {sunucuGeneli.files.map((f) => f.label).join(', ')} sunucu başına tek dosya olduğu için
+            bu kökün tablosunda yok; yukarıdaki “Sunucu geneli” bölümüne taşındı.
+          </span>
+        )}
       </div>
 
       {data && data.ageSource !== undefined && <InitDataAge data={data} job={meta.job} />}
@@ -2115,14 +2134,6 @@ function ScriptsAudit({ kind }: { kind: keyof typeof SCRIPTS_AUDIT_META }) {
                               ? (sc.referenceCount ?? sc.majorityCount)
                               : sc.majorityCount}
                           </span>
-                          {sc.hostWide && shown?.detailAvailable && (
-                            <span
-                              className="text-[10px] text-[var(--text-muted)] flex-shrink-0"
-                              title="Sunucu geneli tek dosya (/etc/systemd/system): referans /vhosting ve /vhosting8 birlikte, sunucu başına bir kez hesaplanır"
-                            >
-                              sunucu geneli
-                            </span>
-                          )}
                         </span>
                       ) : (
                         <span className="text-[var(--text-muted)]">—</span>

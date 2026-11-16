@@ -814,7 +814,10 @@ export interface InitScriptStat {
   majorityCount: number;
   deviatingCount: number;
   variants: InitScriptVariant[];
-  /** Sunucu geneli dosya (appdomain.service): referans iki kokten birlikte hesaplanir. */
+  /**
+   * Sunucu geneli dosya (appdomain.service). 2026-11-16'dan beri kok listesinde YOK; yanittaki
+   * `sunucuGeneli` bolumunde, iki kokun birlesiminden sunucu basina tek satir.
+   */
   hostWide?: boolean;
   /** Var ama tarama kullanicisi okuyamiyor (ya da hash alinamadi). */
   unreadable?: number;
@@ -885,7 +888,68 @@ export interface InitScriptsResult {
    * Cogunluk genel envanterden hesaplanir, bu sunucular AYNI cogunluga gore olculur.
    * Ayni ayrim Server Hub'da da var.
    */
-  special?: Omit<InitScriptsResult, 'root' | 'roots' | 'missingColumns' | 'ok' | 'special'> | null;
+  special?:
+    | Omit<InitScriptsResult, 'root' | 'roots' | 'missingColumns' | 'ok' | 'special' | 'sunucuGeneli'>
+    | null;
+  /**
+   * Init (2026-11-16): sunucu geneli dosyalar (appdomain.service). Kokten BAGIMSIZ: hangi
+   * kok istenirse istensin ayni icerik. Alan yoksa eski sunucu.
+   */
+  sunucuGeneli?: InitSunucuGeneli;
+}
+
+/** Sunucu geneli dosyada bir sunucunun durumu (referansa gore). */
+export type InitSunucuGeneliDurum = 'ayni' | 'bicim' | 'farkli' | 'yok' | 'okunamadi';
+
+export interface InitSunucuGeneliRow {
+  host: string;
+  durum: InitSunucuGeneliDurum;
+  /** Secilen kaynagin ham sha512'si (yoksa null). */
+  hash: string | null;
+  norm: string | null;
+  /**
+   * Degerin alindigi kok. Iki kokte de varsa: olculmus kayit (hash ya da ayrinti durumu) once;
+   * ikisi de olculmusse ayni kaynaktan (load_date/scan_date) daha yeni tarihli; sonra degeri
+   * olan, sonra /vhosting8.
+   */
+  kaynak: string;
+  tarih: string | null;
+  /** Sunucunun bulundugu kokler. */
+  kokler: string[];
+  /** Iki kok farkli deger tasiyor (bilgi; sayimi degistirmez). */
+  kokFarki: 'icerik' | 'bicim' | 'durum' | null;
+  digerKaynak: string | null;
+  digerHash: string | null;
+}
+
+export interface InitSunucuGeneliSayilar {
+  hosts: number;
+  ayni: number;
+  bicim: number;
+  farkli: number;
+  yok: number;
+  okunamadi: number;
+  kokFarki: number;
+}
+
+export interface InitSunucuGeneliBlock extends InitScriptStat {
+  rows: InitSunucuGeneliRow[];
+  sayilar: InitSunucuGeneliSayilar;
+}
+
+export interface InitSunucuGeneliFile extends InitSunucuGeneliBlock {
+  /** GBEVM* / GBPRV*: ayni referansla olculur, ayri listelenir. */
+  special: InitSunucuGeneliBlock | null;
+}
+
+export interface InitSunucuGeneli {
+  files: InitSunucuGeneliFile[];
+  detailAvailable: boolean;
+  teamReferenceAvailable: boolean;
+  /** Sunucu geneli sutunu olmayan kok tablolari (kok sekmesi bunu artik bildirmez). Eski sunucuda yok. */
+  missingColumns?: { root: string; label: string }[];
+  /** files bos + error: genis tablolar okunamadi; files dolu + error: ayrinti/referans okunamadi. */
+  error: string | null;
 }
 
 export interface EnvanterDistRow {
