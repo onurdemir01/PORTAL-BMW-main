@@ -8,7 +8,7 @@
 //   TT3 gizli sekmede istek ve yoklama yok; görünür olunca okur ve yürüyen işi yoklar
 //   TT4 doğrulanan öğe (ilk kez görülen) autoStartIsi yoluna yayılır (açık panel / Bulgular güncellenir); ilk
 //       okumada zaten doğrulanmış olanlar yayılmaz
-//   TT5 sekme 2026-11-15'te kaldırıldı: ServerHubPage'de yok; bileşen ve seed (default_visible 0) depoda
+//   TT5 sekme kaydı: ServerHubPage listesinde 'topluautostart', görünürlük anahtarı, SekmeKabi; seed default_visible 0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -339,17 +339,21 @@ describe('Toplu Auto-Start sekmesi', () => {
     }
   });
 
-  it('TT5 sekme 2026-11-15te kaldirildi: Server Hub listesinde ve render icinde yok; bilesen ve seed depoda duruyor', () => {
+  it('TT5 sekme kaydı: liste, görünürlük anahtarı, SekmeKabi, seed', () => {
     const kok = path.resolve(__dirname, '..', '..', '..', '..');
     const sh = fs.readFileSync(
       path.join(kok, 'src', 'components', 'server_hub', 'ServerHubPage.tsx'),
       'utf8',
     );
-    // Kullanici: "toplu auto-start sayfasini kaldirabiliriz" - sekme listede, gorunurluk suzgecinde ve render'da YOK.
-    expect(sh).not.toMatch(/id: 'topluautostart'/);
-    expect(sh).not.toMatch(/canSee\('tab:serverhub:topluautostart'\)/);
-    expect(sh).not.toMatch(/<TopluAutoStartTab \/>/);
-    expect(sh).not.toMatch(/import TopluAutoStartTab/);
+    expect(sh).toMatch(/\{ id: 'topluautostart', label: 'Toplu Auto-Start' \}/);
+    expect(sh).toMatch(/canSee\('tab:serverhub:topluautostart'\)/);
+    // 2026-11-14: suzgec Toplu Restart sekmesiyle birlikte tek .filter icinde (toplu-restart-tab.test.tsx TRT5).
+    expect(sh).toMatch(
+      /\.filter\(\s*\(t\) =>\s*\(?t\.id !== 'topluautostart' \|\| topluAutoStartGorur\)?/,
+    );
+    expect(sh).toMatch(
+      /topluAutoStartGorur && acilan\.has\('topluautostart'\) && \(\s*<SekmeKabi id="topluautostart" etkin=\{tab\}>\s*<TopluAutoStartTab \/>/,
+    );
     const seed = fs.readFileSync(path.join(kok, 'server', 'db', 'mssql-setup.cjs'), 'utf8');
     expect(seed).toMatch(
       /element_key: 'tab:serverhub:topluautostart',\s*element_type: 'tab',\s*parent_key: 'ServerHub',[\s\S]{0,80}default_visible: 0/,

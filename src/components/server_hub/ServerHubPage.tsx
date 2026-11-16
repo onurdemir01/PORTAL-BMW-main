@@ -55,6 +55,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useNavigate } from 'react-router-dom';
 import KurallarTab from './KurallarTab';
+import TopluAutoStartTab from './TopluAutoStartTab';
 import TopluRestartTab from './TopluRestartTab';
 import KopyaDurumuTab from './KopyaDurumuTab';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1743,6 +1744,7 @@ type SekmeId =
   | 'readiness'
   | 'envanter'
   | 'kurallar'
+  | 'topluautostart'
   | 'toplurestart';
 
 // ── Sayfa ────────────────────────────────────────────────────────────────────────────
@@ -1751,9 +1753,11 @@ export default function ServerHubPage() {
   // 2026-11-11'de BMW Hub'a tasindi (kullanici: "Server Hub'i sadece envanterleme ve goruntuleme
   // amacli kullaniyoruz"); 2026-11-13'ten beri BMW Hub menusunde ayri sayfa (/retirement), gecis oraya.
   const navigate = useNavigate();
-  // TOPLU AUTO-START sekmesi 2026-11-15'te KALDIRILDI (kullanici: "tum islerim bitti"); bilesen
-  // (TopluAutoStartTab) ve sunucu uclari depoda duruyor - geri getirmek icin bu sekme baglantisi geri eklenir.
+  // TOPLU AUTO-START (2026-11-14): gorunurluk anahtari tab:serverhub:topluautostart (seed default_visible 0;
+  // Admin her zaman gorur). Uclar zaten yalniz Admin. AuthProvider yoksa (birim test) sekme gizli.
   const { canSee } = useAuth();
+  const topluAutoStartGorur =
+    typeof canSee === 'function' && canSee('tab:serverhub:topluautostart');
   // TOPLU RESTART (2026-11-14, JVM_PARAM_FARKI): ayni desen, anahtar tab:serverhub:toplurestart (default_visible 0).
   const topluRestartGorur = typeof canSee === 'function' && canSee('tab:serverhub:toplurestart');
   // KOPYA DURUMU (2026-11-14): anahtar tab:serverhub:kopyadurumu, Bulgular gibi varsayilan ACIK (seed default_visible 1);
@@ -1824,7 +1828,9 @@ export default function ServerHubPage() {
               ? 'Reboot sonrası her şey doğru açılacak mı, sunucularda atıl bir şey var mı? Günlük tarama: init script referans uyumu, JBoss 7/8 JVM’leri (auto-start, kapalı, restart-required), RHA/IHS/Nginx syntax ve vhost yükü (hc.html/hc.jsp hariç), boşta IP, sshd sınırları.'
               : tab === 'envanter'
                 ? '/vhosting (JBoss 7) ve /vhosting8 (JBoss 8) altındaki EAR/WAR uygulamaları: Spring / log4j sürümleri, JSP / TLD sayıları, tanımlayıcılar, eşlenik sunucu farkları ve dosya ağacı. Tarama salt okunurdur; otomatik planla (haftada / ayda bir) ya da elle.'
-                : tab === 'toplurestart'
+                : tab === 'topluautostart'
+                  ? 'Taze taramada auto-start’ı uyumsuz JVM’ler (çalışıyor ama kapalı → AÇ, durmuş ama açık → KAPAT). Tek düğme önce canlı değeri salt okunur bir planla okur, onaydan sonra sunucu başına tek iş açar ve sunucuları sırayla işler.'
+                  : tab === 'toplurestart'
                     ? 'Taze taramada yapılandırılan JVM parametreleri çalışan süreçtekinden farklı olan çalışan JVM’ler. Tek düğme önce sunucuları salt okunur yeniden tarar, onaydan sonra JVM’leri tek tek restart eder ve her restart sonrası farkın kapandığını tarar. Prod sunucular OpsX’ten tek tek.'
                     : tab === 'kopyadurumu'
                       ? 'Aynı uygulamanın kopyaları kaç sunucuda çalışıyor: aynı ortam + JBoss nesli + JVM adı başına “çalışan x / y”, kapalı sunucular ve auto-start farkı. Varsayılan yalnız tutarsız gruplar; prod önce.'
@@ -1848,11 +1854,13 @@ export default function ServerHubPage() {
               { id: 'readiness', label: 'Açılış Hazırlığı' },
               { id: 'envanter', label: 'Uygulama Envanteri' },
               { id: 'kurallar', label: 'Kurallar & Limitler' },
+              { id: 'topluautostart', label: 'Toplu Auto-Start' },
               { id: 'toplurestart', label: 'Toplu Restart' },
             ] as const
           )
             .filter(
               (t) =>
+                (t.id !== 'topluautostart' || topluAutoStartGorur) &&
                 (t.id !== 'toplurestart' || topluRestartGorur) &&
                 (t.id !== 'kopyadurumu' || kopyaDurumuGorur),
             )
@@ -1913,6 +1921,11 @@ export default function ServerHubPage() {
         {acilan.has('kurallar') && (
           <SekmeKabi id="kurallar" etkin={tab}>
             <KurallarTab />
+          </SekmeKabi>
+        )}
+        {topluAutoStartGorur && acilan.has('topluautostart') && (
+          <SekmeKabi id="topluautostart" etkin={tab}>
+            <TopluAutoStartTab />
           </SekmeKabi>
         )}
         {topluRestartGorur && acilan.has('toplurestart') && (
