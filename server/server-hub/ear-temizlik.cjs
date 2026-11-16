@@ -8,6 +8,8 @@
 //   1. Aday yalniz TAZE degerlendirmedeki EAR_WAR_YOK bulgusundan gelir. Istemcinin gonderdigi {host, kok, ad}
 //      bulguyla BIREBIR eslesmezse is acilmaz (yol istemciden alinmaz, bulgudan dogrulanir).
 //   2. Engel: ayni EAR Uygulama Envanteri'nde domain.xml deployment'ina bagli (xml.durum VAR) ise on kontrol de yok.
+//      Ayni sekilde dizin kullanimdaysa (2026-11-17: dizini gosteren surec ya da taramadan once 7 gunde yazma)
+//      engel. Referans Uygulama Envanteri'nin TARAMA anidir (h.ear.taranma), duvar saati degil.
 //   3. On kontrol = AWX server_hub_fix, action ear_cleanup, plan_only=true: SALT OKUNUR (ls -ltr + kapilar +
 //      parmak izi). Sonuc set_stats server_hub_fix_result.ear'dan okunur, kayit PLAN_HAZIR olur.
 //   4. Kullanici ls -ltr ciktisini gorur, EAR adini birebir yazar (onayMetni) ve gordugu plan isinin numarasini
@@ -37,6 +39,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { kullanimKaniti, OLCULEMEDI_EKI } = require('./ear-kullanim.cjs');
 
 const REGISTRY_KEY = 'server_hub_fix';
 const TEMPLATE_ADI = 'server_hub_fix';
@@ -55,6 +58,7 @@ const AD_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.ear$/;
 const FP_RE = /^[0-9a-f]{64}$/;
 const HOST_RE_VARSAYILAN = /^[A-Za-z0-9][A-Za-z0-9-]{1,62}$/;
 const ENGEL_XML = "domain.xml'de deployment tanımlı — JBoss'a bağlı";
+const ENGEL_KULLANIM = 'dizin kullanımda';
 const ENVANTER_SURUYOR =
   'Başka Uygulama Envanteri koşusu sürüyor; uyarı bir sonraki taramada kalkar';
 // Betik (server_hub_fix.sh ear_ls): dizinde 1 satir 'ls -ld P' + en cok 300 satir 'ls -ltr P' + 1 tasma notu
@@ -155,8 +159,40 @@ function xmlEngeli(h, kok, ad) {
     : null;
 }
 
+/**
+ * Ayni kok/ad dizini kullanimdaysa (surec ya da taramadan once 7 gunde yazma; ear-kullanim.cjs, Server Hub
+ * bulgusuyla ayni karar ve ayni referans: h.ear.taranma) engel metni (2026-11-17, DACRPAP01: domain.xml'de
+ * olmayan EAR'da canli Node.js). FAIL-CLOSED (kullanici karari 2026-11-17): kullanim olculup YOK cikmadikca
+ * (eski tarayici / alan yok, /proc okunamadi, KISMI, ileri tarihli mtime, envanter kaydi yok) silme REDDEDILIR.
+ * Yalniz izin yuzunden okunamayan (root) surecler engel degil; uyari olarak gosterilir (kullanimUyarisi).
+ */
+function kullanimEngeli(h, kok, ad, now) {
+  const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
+  const u = ul.find((x) => x && x.kok === kok && x.ad === ad);
+  if (!u) return `${OLCULEMEDI_EKI} (envanter kaydı bulunamadı)`;
+  const k = u.kullanim || (u.xml && u.xml.kullanim) || null;
+  const kk = kullanimKaniti(k, h.ear && h.ear.taranma, now);
+  if (kk.aktif) return `${ENGEL_KULLANIM} (${kk.metin})`;
+  if (kk.olculemedi)
+    return `${OLCULEMEDI_EKI}${kk.neden ? ` (${kk.neden})` : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
+  return null;
+}
+
+/**
+ * Engel olmayan ama kullanimi olculememis / kismen gorulmus JVM'siz EAR icin on kontrol ekraninda gosterilecek uyari
+ * (inceleme B12, 2026-11-17): silme acik kalir (ls -ltr + teyit + betik surec kapisi) ama "kullanilmiyor" sanilmaz.
+ */
+function kullanimUyarisi(h, kok, ad, now) {
+  const ul = (h.ear && Array.isArray(h.ear.uygulamalar) && h.ear.uygulamalar) || [];
+  const u = ul.find((x) => x && x.kok === kok && x.ad === ad);
+  if (!u || !u.xml || u.xml.durum !== 'JVM_YOK') return null;
+  const kk = kullanimKaniti(u.kullanim || u.xml.kullanim, h.ear && h.ear.taranma, now);
+  if (kk.aktif || kk.olculemedi) return null;
+  return kk.kor ? `dizin kullanımı kısmen görüldü: ${kk.kor}` : null;
+}
+
 /** Taze degerlendirmeden EAR_WAR_YOK adaylari (kayit alani bos). */
-function adaylariTuret(a) {
+function adaylariTuret(a, now = Date.now()) {
   const out = [];
   for (const h of (a && a.hosts) || []) {
     for (const f of h.findings || []) {
@@ -172,7 +208,9 @@ function adaylariTuret(a) {
         ad,
         jboss,
         envanterTarihi: (h.ear && h.ear.taranma) || null,
-        engel: bicimEngeli(kok, ad, jboss) || xmlEngeli(h, kok, ad),
+        engel:
+          bicimEngeli(kok, ad, jboss) || xmlEngeli(h, kok, ad) || kullanimEngeli(h, kok, ad, now),
+        kullanimUyarisi: kullanimUyarisi(h, kok, ad, now),
         kayit: null,
       });
     }
@@ -1427,6 +1465,7 @@ module.exports = {
   PLAN_GECERLILIK_DK,
   AKTIF,
   ENGEL_XML,
+  ENGEL_KULLANIM,
   ENVANTER_SURUYOR,
   ENVANTER_BEKLIYOR,
   SIRA_ESKIDI_NOTU,

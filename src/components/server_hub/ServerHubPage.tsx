@@ -711,6 +711,7 @@ const KOD_ETIKET: Record<string, string> = {
   EAR_WAR_YOK: 'EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir',
   KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
   EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
+  EAR_JBOSS_DISI_KULLANIM: "EAR JBoss'a bağlı değil ama dizin kullanımda (süreç ya da son 7 günde yazma)",
   EAR_XML_OLCULEMEDI:
     'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
   // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; Uygulama Envanteri ayari).

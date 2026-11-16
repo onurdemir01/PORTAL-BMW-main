@@ -1,5 +1,6 @@
 // src/api/serverHubApi.ts — Server Hub (2026-09-21): reboot hazirligi / atil kaynak raporu.
 import { okJson, safeJson } from './http';
+import type { EarKullanim } from './earEnvanterApi';
 
 const BASE = '/api/server-hub';
 
@@ -202,6 +203,8 @@ export interface ShEarDurumu {
     durum: string;
     warSayisi: number | null;
     xml: { durum: 'VAR' | 'JVM_YOK' | 'OLCULEMEDI'; neden?: string | null; jvmler?: { ad: string; grup?: string; auto_start?: boolean }[] } | null;
+    /** Tarayıcı sürüm 4: JVM_YOK EAR'ın dizin kullanımı (süreç / son yazma); null = ölçülmedi. */
+    kullanim?: EarKullanim | null;
   }[];
   /** Faz 2: calisan JVM'lerin deployment durumu (JBoss CLI). null = kontrol kapali / olculmedi. */
   deployment?: {
@@ -1067,6 +1070,8 @@ export interface EtAday {
   envanterTarihi: string | null;
   /** Doluysa on kontrol acilmaz (or. domain.xml'de deployment tanimli). */
   engel: string | null;
+  /** Engel değil ama JVM'siz EAR'ın dizin kullanımı ölçülemedi / kısmen görüldü (yoksa null; eski sunucuda yok). */
+  kullanimUyarisi?: string | null;
   kayit: EtKayit | null;
 }
 export interface EtListe {

@@ -32,6 +32,7 @@ const { webHostAdaylari, matchWebForApp } = require('../audit/web-app.cjs');
 const { siteOf } = require('../retirement/discover.cjs');
 const { maskText, maskJvmArgs, maskJvmArgDiff } = require('./mask.cjs');
 const { KOK_YOKSAY_VARSAYILAN } = require('./kural-katalogu.cjs');
+const { kullanimKaniti, OLCULEMEDI_EKI } = require('./ear-kullanim.cjs');
 const { varsayilanSira } = require('../util/siralama.cjs');
 // Capraz kontroller (2026-11-06): kopyalar, ortamlar, OpenShift ve Retirement kaydi (capraz.cjs).
 const {
@@ -2067,6 +2068,7 @@ function assess(data, opts = {}) {
           durum: u.durum,
           warSayisi: u.warSayisi,
           xml: u.xml,
+          kullanim: u.kullanim || null,
         })),
         // Faz 2: null = deployment kontrolu kapali / olculmedi.
         deployment: ear.deployment || null,
@@ -2099,19 +2101,35 @@ function assess(data, opts = {}) {
       for (const u of ear.uygulamalar) {
         const yer = `${u.kok}/${u.ad}`;
         const konu = { kok: u.kok, ad: u.ad, jboss: u.jboss };
+        const x = u.xml;
+        // KULLANIM KANITI (2026-11-17, DACRPAP01 canli Node.js): tarayici yalniz JVM_YOK EAR'da olcer. Dizini
+        // gosteren surec ya da TARAMA anindan 7 gun icinde yazma varsa EAR "artik" degildir: ne "silinebilir"
+        // metni ne R3 / R5 retire adayi. Referans tarama ani (veri 35 gune kadar kullanilir), duvar saati degil.
+        const kk = x && x.durum === 'JVM_YOK' ? kullanimKaniti(u.kullanim || x.kullanim, ear.taranma, now) : null;
+        const kullanim = (kk && (u.kullanim || x.kullanim)) || null;
         // KISMI taranan EAR'da WAR'lar eksik olabilir: "WAR yok" yalniz TAM taramada.
         if (u.durum === 'TAM' && u.warSayisi === 0) {
-          add(
-            'warning',
-            'ear',
-            'EAR_WAR_YOK',
-            `${yer}: EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir`,
-            null,
-            { ear: konu },
-          );
-          h.retireAdaylari.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok });
+          if (kk && kk.aktif) {
+            add(
+              'warning',
+              'ear',
+              'EAR_WAR_YOK',
+              `${yer}: EAR içinde WAR yok ama dizin kullanımda (${kk.metin}) — silinmemeli`,
+              null,
+              { ear: { ...konu, kullanim } },
+            );
+          } else {
+            add(
+              'warning',
+              'ear',
+              'EAR_WAR_YOK',
+              `${yer}: EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir`,
+              null,
+              { ear: konu },
+            );
+            h.retireAdaylari.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok });
+          }
         }
-        const x = u.xml;
         if (x && x.durum === 'JVM_YOK') {
           const dep = (x.deploymentlar || []).map((d) => d.ad).filter(Boolean);
           const gruplar = [
@@ -2124,17 +2142,36 @@ function assess(data, opts = {}) {
               return `atandığı server-group'un (${gruplar.slice(0, 3).join(', ') || '?'}) bu sunucuda JVM'i yok (host.xml)`;
             return `domain.xml'de deployment tanımı yok — diskte duruyor ama hiçbir JVM'e yüklenmiyor`;
           })();
-          add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}`, null, {
-            ear: { ...konu, neden: x.neden || 'TANIM_YOK' },
-          });
-          h.retireAdaylari.push({
-            kural: 'R5',
-            tur: 'EAR',
-            ad: u.ad,
-            host: h.host,
-            kok: u.kok,
-            neden: x.neden || 'TANIM_YOK',
-          });
+          // Kullanimda: EAR_JVM_YOK yerine bilgi, R5 retire adayi YOK. Olculemediyse / kismen goruldiyse uyari
+          // kalir ama metin bunu soyler (sessiz basari yok).
+          if (kk.aktif) {
+            add(
+              'info',
+              'ear',
+              'EAR_JBOSS_DISI_KULLANIM',
+              `${yer}: JBoss'a bağlı değil ama dizin kullanımda (${kk.metin})`,
+              null,
+              { ear: { ...konu, neden: x.neden || 'TANIM_YOK', kullanim } },
+            );
+          } else {
+            const nedenEki = kk.neden ? ` (${kk.neden})` : '';
+            const ek = kk.olculemedi
+              ? ` — ${OLCULEMEDI_EKI}${nedenEki}`
+              : kk.kor
+                ? ` — dizin kullanımı görülmedi ama ${kk.kor}`
+                : '';
+            add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}${ek}`, null, {
+              ear: { ...konu, neden: x.neden || 'TANIM_YOK' },
+            });
+            h.retireAdaylari.push({
+              kural: 'R5',
+              tur: 'EAR',
+              ad: u.ad,
+              host: h.host,
+              kok: u.kok,
+              neden: x.neden || 'TANIM_YOK',
+            });
+          }
         } else if (x && x.durum === 'OLCULEMEDI') {
           const k = x.neden || 'neden bilinmiyor';
           if (!olcmeyen.has(k)) olcmeyen.set(k, []);

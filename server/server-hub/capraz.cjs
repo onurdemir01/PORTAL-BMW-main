@@ -151,6 +151,43 @@ function kurumGunu(ms, bicim = kurumGunBicimi) {
 /** Anin kurum gunu 'YYYY-MM-DD' (STOP / tarama gunu metni; ekranla ayni gun); okunamazsa null. */
 const kurumGunMetni = (ms) =>
   sayiMi(ms) ? new Date(kurumGunu(ms) * GUN_MS).toISOString().slice(0, 10) : null;
+/** Kurum gun + saat bicimleyicisi (24 saat); Intl yoksa null (sabit UTC+3; uyari kurumBicimiKur'da bir kez). */
+function kurumSaatBicimiKur(DTF = Intl.DateTimeFormat) {
+  try {
+    return new DTF('en-US', {
+      timeZone: KURUM_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+  } catch {
+    return null;
+  }
+}
+const kurumSaatBicimi = kurumSaatBicimiKur();
+/** Anin kurum saatiyle 'GG.AA.YYYY SS:dd' metni (2026-11-17 kullanim kaniti); sayi degilse null. */
+function kurumZamanMetni(ms, bicim = kurumSaatBicimi) {
+  if (!sayiMi(ms)) return null;
+  const iki = (n) => String(n).padStart(2, '0');
+  let p;
+  if (bicim) {
+    p = {};
+    for (const x of bicim.formatToParts(new Date(ms))) p[x.type] = x.value;
+  } else {
+    const d = new Date(ms + KURUM_SABIT_OFSET_MS);
+    p = {
+      day: iki(d.getUTCDate()),
+      month: iki(d.getUTCMonth() + 1),
+      year: String(d.getUTCFullYear()),
+      hour: iki(d.getUTCHours()),
+      minute: iki(d.getUTCMinutes()),
+    };
+  }
+  return `${p.day}.${p.month}.${p.year} ${p.hour}:${p.minute}`;
+}
 /** 'YYYY-MM-DD...' -> gun numarasi; okunamazsa null. */
 function gunNo(d) {
   if (!d) return null;
@@ -622,9 +659,11 @@ module.exports = {
   celiskiMetni,
   dogrulamaMetni,
   kurumGunMetni,
+  kurumZamanMetni,
   ORTAM_GRUBU,
   NS_GRUBU,
   // yalniz test (ICU'suz Node yedegi)
   _kurumBicimiKur: kurumBicimiKur,
   _kurumGunu: kurumGunu,
+  _kurumSaatBicimiKur: kurumSaatBicimiKur,
 };

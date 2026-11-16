@@ -1125,7 +1125,15 @@ export default function EarTemizlikTab() {
                         className="px-3 py-1"
                         style={{ color: a.engel ? 'var(--status-danger)' : 'var(--text-muted)' }}
                       >
-                        {a.engel || '—'}
+                        {a.engel || (a.kullanimUyarisi ? '' : '—')}
+                        {!a.engel && a.kullanimUyarisi && (
+                          <span
+                            data-testid="et-kullanim-uyarisi"
+                            style={{ color: 'var(--status-warning-text)' }}
+                          >
+                            uyarı: {a.kullanimUyarisi}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1 max-w-xs">
                         {k ? (

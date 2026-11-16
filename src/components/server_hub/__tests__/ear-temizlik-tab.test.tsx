@@ -150,6 +150,22 @@ const liste = (adaylar: EtAday[], kayitlar: EtKayit[] = []) => ({
 const INCELEDIM = { name: /Bu çıktıyı inceledim/ };
 
 describe('EarTemizlikTab', () => {
+  it('ET1b kullanımı ölçülmemiş JVM’siz EAR: engel değil ama satırda uyarı (inceleme B12)', async () => {
+    yonlendir = () =>
+      yanit(
+        liste([
+          aday({ kullanimUyarisi: 'dizin kullanımı ölçülemedi (surec siniri)' }),
+          aday({ host: 'hostb02' }),
+        ]),
+      );
+    render(<EarTemizlikTab />);
+    const satirlar = await screen.findAllByTestId('et-aday');
+    expect(within(satirlar[0]).getByTestId('et-kullanim-uyarisi')).toHaveTextContent(
+      'uyarı: dizin kullanımı ölçülemedi (surec siniri)',
+    );
+    expect(within(satirlar[0]).getByRole('button', { name: /Ön kontrol/ })).toBeEnabled();
+    expect(within(satirlar[1]).queryByTestId('et-kullanim-uyarisi')).toBeNull();
+  });
   it('ET1 liste: yol, JBoss, PROD rozeti; engel olan satırda düğme pasif', async () => {
     yonlendir = () =>
       yanit(

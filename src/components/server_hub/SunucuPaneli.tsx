@@ -37,12 +37,42 @@ import {
   zincirKartlari,
 } from './retireEtiket';
 import DurumRozeti from './DurumRozeti';
+import { kullanimDurumu, surecMetni, utcMs } from './earEnvanter';
+import type { EarKullanim } from '@/api/earEnvanterApi';
 import { isMetni, type AutoStartIsDurumu } from './autoStartIsi';
 import AnalizRozeti, { sunucuAnahtari } from './AnalizRozeti';
 import { ozetKartlari, zincirRozetleri, type BolumId } from './sunucuOzet';
 import { jvmNesilEtiketi, jvmSayisiMetni } from './jvmNesil';
 
 const SIRA: Record<ShSeverity, number> = { danger: 3, warning: 2, info: 1, ok: 0 };
+
+/**
+ * JVM'e bağlı olmayan EAR'ın dizin kullanımı (2026-11-17, DACRPAP01: domain.xml'de olmayan EAR'da canlı
+ * Node.js). Referans Uygulama Envanteri'nin tarama anı; ölçülmediyse bunu söyler ("kullanılmıyor" denmez).
+ */
+export function BagsizKullanim({
+  k,
+  taramaMs,
+}: {
+  k: EarKullanim | null | undefined;
+  taramaMs: number | null;
+}) {
+  const [acilis] = useState(() => Date.now());
+  const d = kullanimDurumu(k, taramaMs ?? acilis);
+  if (!k || !d)
+    return (
+      <span className="ml-2" data-testid="bagsiz-kullanim">
+        <DurumRozeti metin="kullanım ölçülmedi" ton="uyari" title="Eski tarayıcı: dizin kullanımı ölçülmedi" />
+      </span>
+    );
+  return (
+    <span className="ml-2" data-testid="bagsiz-kullanim">
+      <DurumRozeti metin={d.etiket} ton={d.ton === 'bilgi' ? 'notr' : d.ton} title={d.aciklama} />
+      {k.surecler.length > 0 && <span className="ml-2">{k.surecler.slice(0, 3).map(surecMetni).join(', ')}</span>}
+      {k.son_yazma != null && <span className="ml-2">son yazma {fmtDateTime(k.son_yazma * 1000)}</span>}
+    </span>
+  );
+}
 
 function Bolum({
   baslik,
@@ -426,6 +456,9 @@ export default function SunucuPaneli({
                       : u.xml.durum === 'JVM_YOK'
                         ? `JVM yok (${u.xml.neden || 'TANIM_YOK'})`
                         : 'eşlendi'}
+                  {u.xml?.durum === 'JVM_YOK' && (
+                    <BagsizKullanim k={u.kullanim} taramaMs={utcMs(d.ear?.taranma)} />
+                  )}
                 </li>
               ))}
             </ul>

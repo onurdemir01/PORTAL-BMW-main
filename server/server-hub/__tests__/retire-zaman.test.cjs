@@ -52,7 +52,9 @@ const {
   caprazAnaliz,
   dogrulamaMetni,
   kurumGunMetni,
+  kurumZamanMetni,
   _kurumBicimiKur,
+  _kurumSaatBicimiKur,
   _kurumGunu,
 } = require('../capraz.cjs');
 const { caprazVeri, _sifirla } = require('../capraz-veri.cjs');
@@ -672,4 +674,16 @@ test('RA13 kurum gunu: STOP gunu metni Istanbul gunu; Intl yoksa sabit UTC+3', a
   }
   assert.equal(_kurumGunu(gece, null), _kurumGunu(gece));
   assert.equal(_kurumGunu(aksam, null), _kurumGunu(aksam));
+  // Gun + saat metni (kullanim kaniti, 2026-11-17): kurum saati, 24 saat; Intl'siz yedek ayni metni verir.
+  const gs = Date.parse('2026-11-16T21:53:00Z');
+  assert.equal(kurumZamanMetni(gs), '17.11.2026 00:53');
+  assert.equal(kurumZamanMetni(gs, null), '17.11.2026 00:53');
+  assert.equal(kurumZamanMetni(Date.parse('2026-11-17T09:05:00Z')), '17.11.2026 12:05');
+  assert.equal(kurumZamanMetni(Number.NaN), null);
+  assert.equal(
+    _kurumSaatBicimiKur(function () {
+      throw new RangeError('yok');
+    }),
+    null,
+  );
 });

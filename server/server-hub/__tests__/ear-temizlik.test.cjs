@@ -190,13 +190,45 @@ function bulgu(kok, ad, jboss) {
     ear: { kok, ad, jboss },
   };
 }
+// Kullanim olculmus ve temiz (surec yok, son yazma taramadan 30 gun once). Temizlik kapisi fail-closed
+// (2026-11-17): envanter kaydi ya da olculmus kullanim yoksa silme reddedilir; bu yuzden bulgusu olan her EAR
+// icin kaydi verilmemisse temiz bir envanter kaydi eklenir. Fail-closed davranis ETT28'de ayrica sinanir.
+const TEMIZ_KULLANIM = {
+  durum: 'YOK',
+  surecler: [],
+  son_yazma: Date.parse('2026-10-16T10:00:00Z') / 1000,
+  okunamayan: 0,
+};
+function temizKayit(kok, ad, jboss) {
+  return {
+    kok,
+    ad,
+    jboss,
+    durum: 'TAM',
+    warSayisi: 0,
+    xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK' },
+    kullanim: TEMIZ_KULLANIM,
+  };
+}
+// Kurulumdan sonra bulgu ekler; envanter kaydi da (kullanim temiz) birlikte eklenir.
+function bulguEkle(hostAd, kok, ad, jboss) {
+  const h = S.a.hosts.find((x) => x.host === hostAd);
+  h.findings.push(bulgu(kok, ad, jboss));
+  h.ear.uygulamalar.push(temizKayit(kok, ad, jboss));
+}
 function host(ad, envGroup, findings, uygulamalar = []) {
+  const ul = [...uygulamalar];
+  for (const f of findings) {
+    if (!f || f.code !== 'EAR_WAR_YOK' || !f.ear) continue;
+    if (ul.some((u) => u.kok === f.ear.kok && u.ad === f.ear.ad)) continue;
+    ul.push(temizKayit(f.ear.kok, f.ear.ad, f.ear.jboss));
+  }
   return {
     host: ad,
     env: envGroup === 'Production' ? 'PROD' : 'TEST',
     envGroup,
     findings,
-    ear: { durum: 'VAR', taranma: '2026-11-15T10:00:00Z', uygulamalar },
+    ear: { durum: 'VAR', taranma: '2026-11-15T10:00:00Z', uygulamalar: ul },
   };
 }
 function varsayilanA() {
@@ -316,6 +348,7 @@ test('ET1 adaylar: EAR_WAR_YOK bulgulari, prod fail-closed, xml VAR engeli, bici
     jboss: 7,
     envanterTarihi: '2026-11-15T10:00:00Z',
     engel: null,
+    kullanimUyarisi: null,
     kayit: null,
   });
   assert.equal(bul('HOSTA', 'APPY.ear').jboss, 8);
@@ -1560,7 +1593,7 @@ test('ETT11 tekli sil: sunucu doluysa sirada; GET :id ayni sunucuyu ilerletip ba
   assert.equal(k3.durum, 'SILINIYOR');
   assert.equal(satir(x.id).durum, 'SILINDI');
   // tekli iptal sirada kayitta da calisir
-  S.a.hosts.find((h) => h.host === 'HOSTP').findings.push(bulgu('/vhosting', 'PROD2.ear', '7'));
+  bulguEkle('HOSTP', '/vhosting', 'PROD2.ear', '7');
   const z = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
   const w = await hazirPlan('PROD2.ear', '/vhosting', 'HOSTP');
   await ET.sil(istek(), z.id, {
@@ -1658,7 +1691,7 @@ test('ETT12 HTTP: toplu uclar :id uclarindan once; 409 govdesinde reddedilenler;
   assert.equal(f.body.sonuclar.length, 1);
   S.launchHata = null;
   // tekli sil HTTP: sunucu doluysa sirada:true
-  S.a.hosts.find((h) => h.host === 'HOSTU').findings.push(bulgu('/vhosting', 'UNK2.ear', '7'));
+  bulguEkle('HOSTU', '/vhosting', 'UNK2.ear', '7');
   const t1 = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
   const t2 = await hazirPlan('UNK2.ear', '/vhosting', 'HOSTU');
   const s1 = await cagir(
@@ -1958,7 +1991,7 @@ test('ETT18 sirada kayit baslamadan bulgu kapisi: engel -> IPTAL; degerlendirme 
   assert.match(satir(p.id).sonuc, /bulgusu artık yok/);
   assert.equal(satir(u.id).durum, 'SILINIYOR');
   // tekli istek sirada iken engel olustu: siradan duser
-  S.a.hosts.find((h) => h.host === 'HOSTU').findings.push(bulgu('/vhosting', 'UNK2.ear', '7'));
+  bulguEkle('HOSTU', '/vhosting', 'UNK2.ear', '7');
   const w = await hazirPlan('UNK2.ear', '/vhosting', 'HOSTU');
   const sw = await ET.sil(istek(), w.id, {
     confirmed: true,
@@ -2109,4 +2142,187 @@ test('ETT25 kuyruktan baslatma hatasi ayni sunucuda bekleyen taramayi baslatir',
   assert.equal(satir(yy.id).durum, 'HATA');
   assert.equal(S.envanter.length, 1);
   assert.equal(satir(b.id).envanter_kosu_id, 77);
+});
+
+// KULLANIM ENGELI (2026-11-17, DACRPAP01): JBoss'a bagli olmayan ama dizini kullanilan EAR (surec ya da son 7 gunde
+// yazma) on kontrole de silmeye de giremez (tekli + toplu); olculemeyen / eski yazma engel degil.
+test('ETT26 kullanim engeli: surec ya da 7 gun icinde yazma -> on kontrol / sil / toplu reddi', async () => {
+  // Esik TARAMA anina gore (host(): taranma 2026-11-15T10:00:00Z), duvar saatine gore degil.
+  const simdiSn = Math.floor(Date.parse('2026-11-15T10:00:00Z') / 1000);
+  const kullanimli = (ad, kullanim) => ({
+    kok: '/vhosting',
+    ad,
+    jboss: '7',
+    durum: 'TAM',
+    warSayisi: 0,
+    xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim },
+    kullanim,
+  });
+  const SUREC = {
+    durum: 'VAR',
+    surecler: [{ pid: 76867, comm: 'node', kullanici: 'was', nasil: 'cwd' }],
+    son_yazma: null,
+  };
+  S.a.hosts.push(
+    host(
+      'HOSTK',
+      'Non-Production',
+      [
+        'SUREC.ear',
+        'YAZMA.ear',
+        'ESKI.ear',
+        'KISMI.ear',
+        'SINIR.ear',
+        'TEMIZ.ear',
+        'ESKITAR.ear',
+      ].map((ad) => bulgu('/vhosting', ad, '7')),
+      [
+        kullanimli('SUREC.ear', SUREC),
+        kullanimli('YAZMA.ear', { durum: 'YOK', surecler: [], son_yazma: simdiSn - 3600 }),
+        kullanimli('ESKI.ear', { durum: 'YOK', surecler: [], son_yazma: simdiSn - 8 * 86400 }),
+        kullanimli('KISMI.ear', {
+          durum: 'KISMI',
+          surecler: [],
+          son_yazma: null,
+          not: 'surec siniri',
+        }),
+        kullanimli('SINIR.ear', {
+          durum: 'YOK',
+          surecler: [],
+          son_yazma: simdiSn - 7 * 86400 + 60,
+        }),
+        // eski tarayici: xml JVM_YOK ama kullanim alani hic yok
+        {
+          kok: '/vhosting',
+          ad: 'ESKITAR.ear',
+          jboss: '7',
+          durum: 'TAM',
+          warSayisi: 0,
+          xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK' },
+        },
+      ],
+    ),
+  );
+  const l = await ET.liste(false);
+  const engel = (ad) => l.adaylar.find((x) => x.host === 'HOSTK' && x.ad === ad).engel;
+  assert.match(engel('SUREC.ear'), /^dizin kullanımda \(süreç: node pid 76867 \[cwd\]\)$/);
+  assert.match(engel('YAZMA.ear'), /^dizin kullanımda \(son yazma: \d\d\.\d\d\.\d{4} \d\d:\d\d\)$/);
+  assert.match(engel('SINIR.ear'), /dizin kullanımda/, '7 gun icindeki yazma (sinirda) engel');
+  assert.equal(engel('ESKI.ear'), null, '8 gun once yazma engel degil');
+  // FAIL-CLOSED (kullanici karari 2026-11-17): olculemeyen ya da hic olculmemis kullanim ENGEL
+  assert.equal(
+    engel('KISMI.ear'),
+    'dizin kullanımı ölçülemedi (surec siniri); silmek için yeni tarayıcıyla yeniden taranmalı',
+  );
+  assert.match(
+    engel('ESKITAR.ear'),
+    /^dizin kullanımı ölçülemedi \(.*eski tarayıcı.*\); silmek için/,
+  );
+  assert.equal(engel('TEMIZ.ear'), null, 'olculmus ve temiz kullanim engel degil');
+  // engelli EAR'da ayrica uyari yok (engel metni zaten gosteriliyor); olculmus EAR'da uyari yok
+  const uyari = (ad) => l.adaylar.find((x) => x.host === 'HOSTK' && x.ad === ad).kullanimUyarisi;
+  assert.equal(uyari('KISMI.ear'), null);
+  assert.equal(uyari('ESKI.ear'), null);
+  assert.equal(uyari('SUREC.ear'), null);
+  for (const ad of ['SUREC.ear', 'YAZMA.ear', 'KISMI.ear', 'ESKITAR.ear'])
+    await reddeder(ET.onKontrol(istek(), { host: 'HOSTK', kok: '/vhosting', ad }), 409, 'engel');
+  assert.equal(S.launchlar.length, 0, 'engelli EAR icin AWX isi acilmaz');
+  // toplu on kontrol: engelli oge ok:false, digeri baslar
+  const y = await ET.topluOnKontrol(istek(), {
+    adaylar: [
+      { host: 'HOSTK', kok: '/vhosting', ad: 'SUREC.ear' },
+      { host: 'HOSTK', kok: '/vhosting', ad: 'ESKI.ear' },
+    ],
+  });
+  assert.deepEqual(
+    y.sonuclar.map((x) => [x.ad, x.ok]),
+    [
+      ['SUREC.ear', false],
+      ['ESKI.ear', true],
+    ],
+  );
+  assert.match(y.sonuclar[0].message, /dizin kullanımda/);
+  // plan hazirken kullanim basladi: tekli sil ve toplu sil reddedilir, hicbir kayit degismez
+  const planlanan = await ET.tekKayit(y.sonuclar[1].id);
+  S.jobs.set(planlanan.planJobId, sonucJob('PLAN', 'plan hazir', planEar('/vhosting', 'ESKI.ear')));
+  const t = await ET.tekKayit(y.sonuclar[1].id);
+  assert.equal(t.durum, 'PLAN_HAZIR');
+  const t2 = await hazirPlan('TEMIZ.ear', '/vhosting', 'HOSTK');
+  const hk = S.a.hosts.find((h) => h.host === 'HOSTK');
+  hk.ear.uygulamalar = hk.ear.uygulamalar.map((u) =>
+    u.ad === 'ESKI.ear' ? kullanimli('ESKI.ear', SUREC) : u,
+  );
+  await reddeder(
+    ET.sil(istek(), t.id, { confirmed: true, onayMetni: 'ESKI.ear', planJobId: t.planJobId }),
+    409,
+    'engel',
+  );
+  await assert.rejects(ET.topluSil(istek(), topluGovde([t, t2])), (e) => {
+    assert.equal(e.status, 409);
+    assert.deepEqual(
+      e.ek.reddedilenler.map((x) => x.id),
+      [t.id],
+    );
+    return true;
+  });
+  assert.equal(silLaunchlari().length, 0);
+  assert.equal(satir(t2.id).sil_istendi_at, null, 'hepsi-ya-hic: digeri de isaretlenmedi');
+});
+
+// INCELEME B1 (2026-11-17): temizlik engeli de esigi TARAMA anina gore olcer. Envanter 10 gun once tarandi, dizin
+// taramadan 1 saat once yazildi -> engel (duvar saatiyle 'eski yazma' sayilip silme acilirdi). Tarama anindan 1 gunden
+// fazla ileri tarihli yazma kanit degil ve kullanim olculemedi sayilir -> FAIL-CLOSED engel (2026-11-17).
+test('ETT27 kullanim engeli tarama anina gore: eski taramada taramadan once yazma engeldir', async () => {
+  const TAR = Date.now() - 10 * 86400000;
+  const sn = (ms) => Math.floor(ms / 1000);
+  const kullanimli = (ad, kullanim) => ({
+    kok: '/vhosting',
+    ad,
+    jboss: '7',
+    durum: 'TAM',
+    warSayisi: 0,
+    xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim },
+    kullanim,
+  });
+  const h = host(
+    'HOSTE',
+    'Non-Production',
+    ['ONCE.ear', 'ILERI.ear'].map((ad) => bulgu('/vhosting', ad, '7')),
+    [
+      kullanimli('ONCE.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR - 3600000) }),
+      kullanimli('ILERI.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR + 5 * 86400000) }),
+    ],
+  );
+  h.ear.taranma = new Date(TAR).toISOString();
+  S.a.hosts.push(h);
+  const l = await ET.liste(false);
+  const engel = (ad) => l.adaylar.find((x) => x.host === 'HOSTE' && x.ad === ad).engel;
+  assert.match(engel('ONCE.ear'), /^dizin kullanımda \(son yazma: /);
+  assert.match(
+    engel('ILERI.ear'),
+    /^dizin kullanımı ölçülemedi \(son yazma tarama anından ileri tarihli/,
+  );
+  await reddeder(
+    ET.onKontrol(istek(), { host: 'HOSTE', kok: '/vhosting', ad: 'ONCE.ear' }),
+    409,
+    'engel',
+  );
+  assert.equal(S.launchlar.length, 0);
+});
+
+// FAIL-CLOSED (kullanici karari 2026-11-17): bulgusu olan ama envanter kaydi bulunamayan EAR'in dizin kullanimi
+// bilinemez -> engel; on kontrol AWX isi acmaz.
+test('ETT28 envanter kaydi olmayan EAR engellenir (kullanim bilinemez)', async () => {
+  const h = host('HOSTN', 'Non-Production', []);
+  h.findings.push(bulgu('/vhosting', 'KAYITSIZ.ear', '7'));
+  S.a.hosts.push(h);
+  const l = await ET.liste(false);
+  const a = l.adaylar.find((x) => x.host === 'HOSTN' && x.ad === 'KAYITSIZ.ear');
+  assert.equal(a.engel, 'dizin kullanımı ölçülemedi (envanter kaydı bulunamadı)');
+  await reddeder(
+    ET.onKontrol(istek(), { host: 'HOSTN', kok: '/vhosting', ad: 'KAYITSIZ.ear' }),
+    409,
+    'engel',
+  );
+  assert.equal(S.launchlar.length, 0);
 });

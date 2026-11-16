@@ -100,6 +100,27 @@ export interface EarXmlEslesme {
     gruplar: { ad: string; acik: boolean }[];
   }[];
   jvmler: { ad: string; grup: string; auto_start: boolean; deployment_acik: boolean; kurulum: string }[];
+  /** Tarayıcı sürüm 4 (JVM_YOK EAR'lar): dizin kullanımı; null / yok = ölçülmedi (eski tarayıcı). */
+  kullanim?: EarKullanim | null;
+}
+
+/** JBoss'a bağlı olmayan EAR dizininin kullanım kanıtı (süreç ve son yazma). */
+export interface EarKullanim {
+  durum: 'VAR' | 'YOK' | 'KISMI' | 'OLCULEMEDI';
+  surecler: {
+    pid: number;
+    comm: string;
+    kullanici: string;
+    /** '?' = tarayıcı tanınmayan bir yol bildirdi (alım uydurmaz). */
+    nasil: 'cwd' | 'fd' | 'maps' | 'exe' | 'root' | 'cmdline' | '?';
+  }[];
+  /** Ağaçta en yeni dosyanın mtime'ı (epoch saniye); null = bulunamadı / ölçülemedi. */
+  son_yazma: number | null;
+  /** İzin yüzünden yalnız komut satırından denetlenen süreç sayısı (eski kayıtta yok). */
+  okunamayan?: number;
+  /** /proc hidepid değeri; doluysa diğer kullanıcıların süreçleri görünmez. */
+  hidepid?: string | null;
+  not: string | null;
 }
 
 export interface EarUygulama {

@@ -3,7 +3,7 @@
 // DURUM DİLİ (kabul ölçütü): eksik ya da ölçülemeyen hiçbir şey YEŞİL görünmez. Yeşil ("iyi") yalnız
 // TAM / TAMAMLANDI / AYNI'dır; kısmi tarama sarı, sonuç yok / okunamadı kırmızı, karşılaştırılamayan
 // eşlenik nötr. Renkler tasarım belirteçlerinden (koyu temada da okunur).
-import type { EarAgacSatiri, EarParti, EarXmlEslesme } from '@/api/earEnvanterApi';
+import type { EarAgacSatiri, EarKullanim, EarParti, EarXmlEslesme } from '@/api/earEnvanterApi';
 
 export type Ton = 'iyi' | 'uyari' | 'kotu' | 'bilgi' | 'notr';
 export const TON: Record<Ton, { renk: string; zemin: string; metin: string }> = {
@@ -207,6 +207,80 @@ export function jbossDurumu(x: EarXmlEslesme | null): DurumBilgisi {
   if (x.durum === 'JVM_YOK') return JBOSS[x.neden || ''] || JBOSS.TANIM_YOK;
   return JBOSS[x.durum] || bilinmeyen(x.durum);
 }
+
+// Dizin kullanımı (tarayıcı sürüm 4, 2026-11-17): JBoss'a bağlı olmayan EAR'ı süreç ya da yakın tarihli yazma
+// kullanıyorsa "silinebilir" sanılmasın. Eşik ve referans sunucudaki bulguyla aynı (TARAMA anından önceki 7 gün;
+// tarama anından 1 günden fazla ileri tarihli yazma kanıt sayılmaz). Kullanımda olan sarı (uyarı: silinmemeli),
+// görülmeyen nötr; ölçülemeyen, kısmen görülen (okunamayan süreç / hidepid) ve ileri tarihli sarı; hiçbiri yeşil
+// değil.
+export const KULLANIM_YAZMA_GUN = 7;
+const GUN_MS = 86400000;
+const KULLANIM: Record<string, DurumBilgisi> = {
+  SUREC: {
+    etiket: 'dizin kullanımda',
+    ton: 'uyari',
+    aciklama: 'Bu dizini kullanan süreç var: JBoss’a bağlı olmasa da çalışıyor, silinmemeli.',
+  },
+  YAZMA: {
+    etiket: 'yakında yazılmış',
+    ton: 'uyari',
+    aciklama: `Dizinde son ${KULLANIM_YAZMA_GUN} günde yazılmış dosya var: kullanımda olabilir, silinmemeli.`,
+  },
+  YOK: {
+    etiket: 'kullanım görülmedi',
+    ton: 'notr',
+    aciklama: `Taramada bu dizini kullanan süreç ve son ${KULLANIM_YAZMA_GUN} günde yazma görülmedi.`,
+  },
+  KISMI: {
+    etiket: 'kullanım kısmen ölçüldü',
+    ton: 'uyari',
+    aciklama: 'Süreç ya da dosya taraması sınıra takıldı: “kullanılmıyor” denemez.',
+  },
+  OLCULEMEDI: {
+    etiket: 'kullanım ölçülemedi',
+    ton: 'uyari',
+    aciklama: 'Süreç listesi okunamadı: “kullanılmıyor” denemez.',
+  },
+  GIZLI: {
+    etiket: 'kullanım kısmen görüldü',
+    ton: 'uyari',
+    aciklama:
+      'Kullanan süreç görülmedi ama bazı süreçler okunamadı (izin / hidepid): başka kullanıcının süreci bu dizini kullanıyor olabilir.',
+  },
+  GELECEK: {
+    etiket: 'son yazma ileri tarihli',
+    ton: 'uyari',
+    aciklama: 'Son yazma tarama anından ileri tarihli (saat kayması?): kanıt sayılmadı, “kullanılmıyor” denemez.',
+  },
+};
+
+/** "2026-11-17T00:56:00" (UTC) / ms -> ms; okunamazsa null. */
+export function utcMs(utc: string | number | null | undefined): number | null {
+  if (utc == null || utc === '') return null;
+  if (typeof utc === 'number') return Number.isFinite(utc) ? utc : null;
+  const t = Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(utc) ? utc : `${utc}Z`);
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Kullanım kanıtı -> rozet; null = ölçülmedi (eski tarayıcı ya da JVM'e bağlı EAR). Referans TARAMA anıdır
+ * (taramaMs): eski bir taramada taramadan hemen önce yazılmış dizin de "yakında yazılmış" kalır.
+ */
+export function kullanimDurumu(k: EarKullanim | null | undefined, taramaMs: number): DurumBilgisi | null {
+  if (!k || typeof k !== 'object') return null;
+  if (k.durum === 'VAR' && Array.isArray(k.surecler) && k.surecler.length > 0) return KULLANIM.SUREC;
+  if (k.son_yazma != null) {
+    const fark = taramaMs - k.son_yazma * 1000;
+    if (fark < -GUN_MS) return KULLANIM.GELECEK;
+    if (fark <= KULLANIM_YAZMA_GUN * GUN_MS) return KULLANIM.YAZMA;
+  }
+  if (k.durum === 'YOK' && (k.hidepid || (k.okunamayan ?? 0) > 0)) return KULLANIM.GIZLI;
+  return KULLANIM[k.durum] || KULLANIM.OLCULEMEDI;
+}
+
+/** "node pid 76867 (cwd) · was" satırları. */
+export const surecMetni = (p: EarKullanim['surecler'][number]) =>
+  `${p.comm || '?'} pid ${p.pid} (${p.nasil})${p.kullanici ? ` · ${p.kullanici}` : ''}`;
 
 /** "…/AppServer domain.xml IZIN; …" -> okunur metin ("domain.xml: okuma izni yok"). */
 export function xmlNedenMetni(neden: string | null | undefined): string {

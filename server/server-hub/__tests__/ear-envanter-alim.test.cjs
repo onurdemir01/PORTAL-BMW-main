@@ -574,6 +574,106 @@ test('EA12 surum 2 alanlari: kok girdileri, XML ozeti, EAR -> JVM eslemesi', () 
     );
 });
 
+test('EA12b kullanim kaniti (surum 4): beyaz liste, cmdline benzeri alan atilir, kirpma, tutarlilik', () => {
+  const kayit = (kullanim) =>
+    JSON.parse(
+      alim.hostKaydi(
+        {
+          sema: 1,
+          durum: 'TAM',
+          kokler: [],
+          uyarilar: [],
+          uygulamalar: [
+            {
+              kok: '/vhosting8',
+              ad: 'X.ear',
+              bicim: 'ACIK',
+              durum: 'TAM',
+              warlar: [],
+              xml_eslesme: { durum: 'JVM_YOK', neden: 'TANIM_YOK', deploymentlar: [], jvmler: [] },
+              ...(kullanim === undefined ? {} : { kullanim }),
+            },
+          ],
+        },
+        { host: 'APPSRV01', kip: 'OZET', partiNo: 1, ortam: 'PROD', playbookDurum: 'SONUC', hamBayt: 10 },
+      ).uygulamalar[0].xml_eslesme,
+    );
+  // Eski tarayici: alan yok -> null (olculmedi; "kullanilmiyor" degil).
+  assert.equal(kayit(undefined).kullanim, null);
+  const ham = kayit({
+    durum: 'VAR',
+    surecler: [
+      {
+        pid: 76867,
+        comm: 'node' + 'x'.repeat(100),
+        kullanici: 'was' + 'y'.repeat(100),
+        nasil: 'cwd',
+        cmdline: 'node server.js --password=SIZMA',
+        args: ['SIZMA'],
+      },
+      { pid: 'abc', comm: 'kotu', nasil: 'cwd' },
+      { pid: 12, comm: 'java', kullanici: '0', nasil: 'UYDURMA' },
+    ],
+    son_yazma: 1795384380,
+    not: 'n',
+    cmdline: 'SIZMA',
+    ortam: { PAROLA: 'SIZMA' },
+  });
+  assert.ok(!JSON.stringify(ham).includes('SIZMA'), `cmdline / bilinmeyen alan DB'ye gitti: ${JSON.stringify(ham)}`);
+  assert.deepEqual(Object.keys(ham.kullanim).sort(), [
+    'durum',
+    'hidepid',
+    'not',
+    'okunamayan',
+    'son_yazma',
+    'surecler',
+  ]);
+  assert.equal(ham.kullanim.durum, 'VAR');
+  assert.deepEqual(
+    ham.kullanim.surecler.map((p) => Object.keys(p).sort()),
+    [
+      ['comm', 'kullanici', 'nasil', 'pid'],
+      ['comm', 'kullanici', 'nasil', 'pid'],
+    ],
+    'gecersiz pid atilir, yalniz bilinen alanlar',
+  );
+  assert.deepEqual(
+    ham.kullanim.surecler.map((p) => [p.pid, p.comm.length, p.kullanici.length, p.nasil]),
+    [
+      [76867, 32, 32, 'cwd'],
+      [12, 4, 1, '?'],
+    ],
+    "bilinmeyen 'nasil' uydurulmaz ('fd' degil '?')",
+  );
+  assert.equal(ham.kullanim.son_yazma, 1795384380);
+  // 10'dan cok surec kirpilir; surecsiz VAR tutarsiz -> OLCULEMEDI; surec varken YOK -> VAR; bilinmeyen durum.
+  const cok = kayit({ durum: 'VAR', surecler: Array.from({ length: 15 }, (_, i) => ({ pid: i + 1, nasil: 'fd' })) });
+  assert.equal(cok.kullanim.surecler.length, 10);
+  assert.equal(kayit({ durum: 'VAR', surecler: [] }).kullanim.durum, 'OLCULEMEDI');
+  assert.equal(kayit({ durum: 'YOK', surecler: [{ pid: 5, nasil: 'cwd' }] }).kullanim.durum, 'VAR');
+  assert.equal(kayit({ durum: 'BELKI' }).kullanim.durum, 'OLCULEMEDI');
+  assert.deepEqual(kayit({ durum: 'KISMI', son_yazma: 'x' }).kullanim, {
+    durum: 'KISMI',
+    surecler: [],
+    son_yazma: null,
+    okunamayan: 0,
+    hidepid: null,
+    not: null,
+  });
+  // Inceleme B3 / B8: okunamayan / hidepid yapisal tasinir (kirpilir); maps gecerli 'nasil'.
+  const kor = kayit({
+    durum: 'YOK',
+    surecler: [{ pid: 9, nasil: 'maps' }],
+    okunamayan: 7.9,
+    hidepid: '2' + 'z'.repeat(40),
+  }).kullanim;
+  assert.deepEqual([kor.surecler[0].nasil, kor.okunamayan, kor.hidepid.length], ['maps', 7, 16]);
+  assert.equal(kayit({ durum: 'YOK', okunamayan: -3, hidepid: '' }).kullanim.okunamayan, 0);
+  assert.equal(kayit({ durum: 'YOK', hidepid: '' }).kullanim.hidepid, null);
+  assert.equal(kayit('metin').kullanim, null);
+  assert.equal(kayit([1]).kullanim, null);
+});
+
 test('EA13 Faz 2 deployment blogu: DMR, olculemeyen durumlar, kesik blok, hostKaydi', () => {
   const D = (ic) => Buffer.from(`ONCEKI\n@@EAR_DEPLOYMENT_BASLA@@\nsurum=1\n${ic}`);
   assert.equal(alim.deploymentCoz(Buffer.from('@@EAR_ENVANTER_BITTI@@\n')), null, 'blok yok = olculmedi');
