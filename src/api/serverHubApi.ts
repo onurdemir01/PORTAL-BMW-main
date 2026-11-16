@@ -1002,6 +1002,72 @@ export interface ShAyarYazim {
   degismedi?: boolean;
 }
 
+// EAR TEMIZLIGI (2026-11-16): EAR_WAR_YOK uyarisi olan EAR'lar. On kontrol (AWX'te salt okunur PLAN: ls -ltr +
+// guvenlik kapilari + parmak izi) -> kullanici ciktiyi gorup teyit eder -> "Yedekle ve sil" (parmak izi tekrar
+// hesaplanir; degistiyse hicbir sey silinmez). Sozlesme: server/server-hub/ear-temizlik.cjs.
+export type EtDurum =
+  | 'PLANLANIYOR'
+  | 'PLAN_HAZIR'
+  | 'PLAN_HATA'
+  | 'PLAN_ESKIDI'
+  | 'IPTAL'
+  | 'SILINIYOR'
+  | 'SILINDI'
+  | 'HATA'
+  | 'BELIRSIZ';
+export interface EtBilgi {
+  anahtar: string;
+  deger: string;
+}
+export interface EtKayit {
+  id: number;
+  host: string;
+  kok: string;
+  ad: string;
+  jboss: number;
+  prod: boolean;
+  durum: EtDurum;
+  olusturan: string;
+  onaylayan: string | null;
+  createdAt: string;
+  updatedAt: string;
+  planBitisAt: string | null;
+  /** Plan gecerliliginin kalan saniyesi (yalniz PLAN_HAZIR'da; yanit anina gore). */
+  kalanSn: number | null;
+  planJobId: number | null;
+  silJobId: number | null;
+  plan: { fp: string; ls: string[]; info: EtBilgi[] } | null;
+  sonuc: string | null;
+  yedek: string | null;
+  envanter: { kosuId: number | null; not: string | null };
+}
+export interface EtAday {
+  host: string;
+  ortam: string | null;
+  prod: boolean;
+  kok: string;
+  ad: string;
+  jboss: 7 | 8;
+  envanterTarihi: string | null;
+  /** Doluysa on kontrol acilmaz (or. domain.xml'de deployment tanimli). */
+  engel: string | null;
+  kayit: EtKayit | null;
+}
+export interface EtListe {
+  ok: boolean;
+  planGecerlilikDk: number;
+  adaylar: EtAday[];
+  kayitlar: EtKayit[];
+  message?: string;
+}
+export interface EtKayitYanit {
+  ok: boolean;
+  kayit?: EtKayit;
+  message?: string;
+  code?: string;
+  _httpStatus?: number;
+}
+
 const put = (body: unknown) => ({
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
@@ -1340,6 +1406,19 @@ export const serverHubApi = {
     fetch(`${BASE}/toplu-restart/${id}/onayla`, json({ confirmed: true })).then(safeJson),
   topluRestartIptal: (id: number): Promise<{ ok: boolean; id?: number; durum?: string; message?: string }> =>
     fetch(`${BASE}/toplu-restart/${id}/iptal`, json({})).then(safeJson),
+  // EAR TEMIZLIGI (2026-11-16, Admin): aday listesi + son 50 kayit; on kontrol; teyitli yedekle-sil; plan iptali.
+  earTemizlikListe: (): Promise<EtListe> => fetch(`${BASE}/ear-temizlik`).then(safeJson),
+  earTemizlikKayit: (id: number): Promise<EtKayitYanit> => fetch(`${BASE}/ear-temizlik/${id}`).then(safeJson),
+  earTemizlikOnKontrol: (p: { host: string; kok: string; ad: string }): Promise<EtKayitYanit> =>
+    fetch(`${BASE}/ear-temizlik/on-kontrol`, json({ host: p.host, kok: p.kok, ad: p.ad })).then(safeJson),
+  /** onayMetni EAR adiyla birebir, planJobId ekranda gorulen ciktinin isi olmali (sunucu ikisini de denetler). */
+  earTemizlikSil: (id: number, p: { onayMetni: string; planJobId: number }): Promise<EtKayitYanit> =>
+    fetch(
+      `${BASE}/ear-temizlik/${id}/sil`,
+      json({ confirmed: true, onayMetni: p.onayMetni, planJobId: p.planJobId }),
+    ).then(safeJson),
+  earTemizlikIptal: (id: number): Promise<EtKayitYanit> =>
+    fetch(`${BASE}/ear-temizlik/${id}/iptal`, json({})).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
   // KURALLAR & LIMITLER (2026-10-20): tarama maddeleri + seviyeler (Admin degistirir), limitler.

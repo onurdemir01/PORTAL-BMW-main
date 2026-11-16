@@ -1505,6 +1505,20 @@ function initServerHub(app) {
       }),
   });
 
+  // EAR Temizligi (2026-11-16): EAR_WAR_YOK bulgusu olan EAR icin salt okunur on kontrol (ls -ltr + kapilar +
+  // parmak izi) -> kullanici teyidi -> yedekle ve sil (server_hub_fix, action ear_cleanup) -> tek sunucu Uygulama
+  // Envanteri taramasi. Uygulama Envanteri mount'undan SONRA (envanter poller'i launch ile kurulmus olmali).
+  // Ayrinti: ear-temizlik.cjs basligi.
+  require('./ear-temizlik.cjs').mount(router, {
+    launch,
+    getAssessment: (fresh) => getAssessment(fresh === true),
+    HOST_RE,
+    audit: (req, detail) =>
+      require('../audit/index.cjs').auditPortal(req, 'server_hub', {
+        detail: JSON.stringify(detail),
+      }),
+  });
+
   // ── KURALLAR & LIMITLER (2026-10-20) ───────────────────────────────────────────────
   // Kullanici: "hangi maddeler taraniyor ve hangi maddelerin hangi ciktilari kritik, uyari, bilgi ve
   // sorun yok olarak algilaniyor? ... istedigimde bunlarin kritiklik seviyesini degistirebilmek

@@ -1252,6 +1252,38 @@ const TABLES = [
       )`,
   },
   {
+    // Server Hub > EAR Temizligi (2026-11-16, server/server-hub/ear-temizlik.cjs). EAR_WAR_YOK bulgusu olan EAR icin
+    // on kontrol (salt okunur, ls -ltr + parmak izi) -> teyit -> yedekle ve sil. durum: PLANLANIYOR -> PLAN_HAZIR |
+    // PLAN_HATA ; PLAN_HAZIR -> SILINIYOR | IPTAL | PLAN_ESKIDI (plan_bitis_at + 30 dk) ; SILINIYOR -> SILINDI |
+    // HATA | BELIRSIZ. EAR basina TEK aktif kayit: UX_shet_aktif (filtreli tekil). plan_json: { fp, ls[], info[] }.
+    name: 'server_hub_ear_temizlik',
+    sql: `
+      CREATE TABLE server_hub_ear_temizlik (
+        id                  INT IDENTITY(1,1) PRIMARY KEY,
+        host                NVARCHAR(64)   NOT NULL,
+        kok                 NVARCHAR(32)   NOT NULL,
+        ad                  NVARCHAR(255)  NOT NULL,
+        jboss               TINYINT NOT NULL,
+        ortam               NVARCHAR(32)   NULL,
+        prod                BIT NOT NULL DEFAULT 1,
+        durum               NVARCHAR(24)   NOT NULL,
+        plan_awx_server_id  INT NULL,
+        plan_job_id         INT NULL,
+        plan_bitis_at       DATETIME2 NULL,
+        plan_json           NVARCHAR(MAX)  NULL,
+        sil_awx_server_id   INT NULL,
+        sil_job_id          INT NULL,
+        sonuc               NVARCHAR(1000) NULL,
+        yedek               NVARCHAR(400)  NULL,
+        envanter_kosu_id    INT NULL,
+        envanter_notu       NVARCHAR(400)  NULL,
+        olusturan           NVARCHAR(128)  NOT NULL,
+        onaylayan           NVARCHAR(128)  NULL,
+        created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        updated_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+      )`,
+  },
+  {
     // Kosu basina host sonucu. veri_var: tarayici paketi okundu (KOK_YOK da bir cevaptir). Agac
     // satirlari DB'ye yazilmaz: /sw'deki ham dosyadan okunur (saklama suresi boyunca).
     name: 'ear_envanter_hostlari',
@@ -2780,6 +2812,16 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Server Hub > EAR Temizligi (2026-11-16, ear-temizlik.cjs): Toplu Auto-Start ile ayni desen - sekme anahtari
+    // varsayilan KAPALI, Admin her zaman gorur, uclar yalniz Admin (server-hub router'i).
+    element_key: 'tab:serverhub:eartemizlik',
+    element_type: 'tab',
+    parent_key: 'ServerHub',
+    label: 'EAR Temizliği',
+    sort_order: 32,
+    default_visible: 0,
+  },
+  {
     // Server Hub > Kopya Durumu (2026-11-14, kopya-durumu.cjs): salt okunur kopya grubu ozeti ("calisan x / y").
     // Bulgular sekmesi gibi varsayilan ACIK (Bulgular'in ayri anahtari yok: ServerHub sayfasini goren gorur);
     // anahtar yalniz Admin'in sekmeyi gizleyebilmesi icin. Uc zaten yalniz Admin (server-hub router'i).
@@ -4119,7 +4161,7 @@ const PLAYBOOK_REGISTRY_SEED = [
     category: 'system',
     handler: 'server_hub_fix',
     description:
-      'bmw_automation_folder/server_hub/server_hub_fix.yml — tek sunucu, tek eylem (jboss_autostart_on/off, jboss_retire, apache_comment_line, apache_retire_vhost); plan_only=true once plan, onayla uygular; yedek + dogrulama + geri alma. Yalniz Admin tetikler.',
+      'bmw_automation_folder/server_hub/server_hub_fix.yml — tek sunucu, tek eylem (jboss_autostart_on/off, jboss_retire, apache_comment_line, apache_retire_vhost, ear_cleanup); plan_only=true once plan, onayla uygular; yedek + dogrulama + geri alma. Yalniz Admin tetikler.',
     playbook_path: null,
     env_var_name: 'SERVER_HUB_FIX_TEMPLATE_ID',
   },
@@ -6127,6 +6169,27 @@ async function setupTables() {
     }
   } catch (err) {
     console.warn('[DB] Index olusturulamadi (UX_shti_aktif):', err.message);
+  }
+
+  // -- Server Hub EAR Temizligi: EAR basina TEK aktif kayit (FILTRELI TEKIL, 2026-11-16) --
+  // Ucun "aktif kayit var mi" okumasina ek savunma: ayni EAR icin iki on kontrol ayni anda acilirsa ikincisi
+  // UNIQUE ihlali alir ve 409 doner (server/server-hub/ear-temizlik.cjs).
+  try {
+    const exists = await pool
+      .request()
+      .query(
+        `SELECT 1 FROM sys.indexes WHERE name = 'UX_shet_aktif' AND object_id = OBJECT_ID('server_hub_ear_temizlik')`,
+      );
+    if (!exists.recordset.length) {
+      await pool
+        .request()
+        .query(
+          `CREATE UNIQUE INDEX UX_shet_aktif ON server_hub_ear_temizlik (host, kok, ad) WHERE durum IN ('PLANLANIYOR', 'PLAN_HAZIR', 'SILINIYOR')`,
+        );
+      console.log('[DB] Index olusturuldu: UX_shet_aktif (filtreli tekil)');
+    }
+  } catch (err) {
+    console.warn('[DB] Index olusturulamadi (UX_shet_aktif):', err.message);
   }
 
   // -- Yuk Testi kayitli test: ad silinmemislerde tekil (FILTRELI TEKIL, 2026-11-04) --
