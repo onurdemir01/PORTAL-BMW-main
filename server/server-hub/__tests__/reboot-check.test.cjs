@@ -794,10 +794,10 @@ test('RC19 v4 B3 surum isareti: betik_surum yok / < 4 -> kontrol (kesin dil); >=
   assert.equal(d.YOK.durum, 'kontrol');
   assert.match(d.YOK.sebep, /^AWX'teki reboot_check betiği eski \(sürüm yok, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU\. ZIP'i AWX'e yükleyip projeyi Sync edin/);
   assert.match(d.IKI.sebep, /\(sürüm 2, gerekli 4\)/);
-  assert.equal(d.UC.durum, 'kontrol');
-  assert.match(d.UC.sebep, /\(sürüm 3, gerekli 4\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini/);
-  // inceleme B1: surum 3'e "kapatma ve yeniden deneme YOKTU" denmez (v3'te ikisi de vardi)
-  assert.doesNotMatch(d.UC.sebep, /YOKTU/);
+  // 2026-11-16 (uretim, 104 sunucu "hepsi kontrol gerekli"): surum 3 ile 4'un tek farki bos once'de CTG/JBoss/WAS kapatma;
+  // dolu once'de surum 3 guncel sayilir -> hicbir 'eski' notu yok, sorunsuz.
+  assert.equal(d.UC.durum, 'sorunsuz', 'surum 3 + dolu once betik eski diye kontrol sayildi');
+  assert.equal(d.UC.neden, undefined);
   assert.equal(d.DORT.durum, 'sorunsuz');
   // surum biliniyorken "eski betik olabilir" / "eski betikle degerlendirildiyse" gibi belirsiz cumle yok
   const kalan = sonraDegerlendir({ A: { ...temiz, betik_surum: 4, son_goruntu: [...once, 'URUN|IHS||'] } }, ['A'], { A: once });
@@ -1148,10 +1148,11 @@ test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI"
   const v = ['BOOT|b2||', 'SURUM|2||'];
   const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
-  // V3: dolu once, surum 3, aynen -> kalan 0 ama tek neden "betik eski" -> birakilan DEGIL, kontrol bekliyor (B2)
-  const V3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 3 });
-  // K3: surum 3 + otomasyon fazladan IHS'i kapatti -> iki neden (betik eski + KAPATTI) -> birakilan DEGIL
-  const K3 = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x'], { betik_surum: 3 });
+  // V3: dolu once, surum 2 (eski, her sunucuda etkili), aynen -> kalan 0 ama tek neden "betik eski" -> birakilan DEGIL, kontrol
+  // bekliyor (B2). 2026-11-16: surum 3 dolu once'de artik guncel sayilir (asagida U3); B2 kurali surum 2 ile sinanir.
+  const V3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 2 });
+  // K3: surum 2 + otomasyon fazladan IHS'i kapatti -> iki neden (betik eski + KAPATTI) -> birakilan DEGIL
+  const K3 = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x'], { betik_surum: 2 });
   // K4: guncel betik + yalniz KAPATTI notu -> kontrol notlu birakilan
   const K4 = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x']);
   const T = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []);
@@ -1174,9 +1175,107 @@ test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI"
   const v3 = yoneticiOzeti({ V3 }, ['V3'], { V3: onceR });
   assert.deepEqual([v3.sunucu.birakilan, v3.sunucu.birakilanKontrolNotlu, v3.sunucu.kontrolBekleyen], [0, 0, 1]);
   assert.doesNotMatch(v3.metin, /otomasyon fazladan çalışan ürünü kapattı/);
+  // 2026-11-16: ayni kayit surum 3 ile -> betik eskiligi bu sunucuda etkisiz, bulundugu gibi birakildi (kontrol beklemez)
+  const U3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 3 });
+  const u3 = yoneticiOzeti({ U3 }, ['U3'], { U3: onceR });
+  assert.deepEqual([u3.sunucu.sorunsuz, u3.sunucu.birakilan, u3.sunucu.kontrolBekleyen], [1, 1, 0]);
   // B1: bos once + surum 3 + CTG hala calisiyor -> kapanmasi gereken; neden v3'un gercek eksigini soyler ("kapatma yoktu" demez)
   const bos3 = r(['BOOT|b2||', 'URUN|CTG||'], ['BOOT|b2||', 'URUN|CTG||'], [], { betik_surum: 3 });
   const n = kontrolNedenleri(['BOOT|b1||'], bos3).join(' ');
   assert.match(n, /otomatik kapatılması gerekiyordu: CTG — AWX'teki betik eski \(sürüm 3\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini/);
   assert.doesNotMatch(n, /kapatma yoktu|YOKTU/);
+});
+
+test('RC30 2026-11-16 uretim (104 sunucu "hepsi kontrol gerekli"): betik eski SUNUCU BAZINDA ve ETKIYE gore; surum 3 yalniz bos once + calisan CTG/JBoss/WAS', () => {
+  const { sonraDegerlendir, betikEtkisi, betikEskiBandi, otomasyonOzeti, kayitDurumu } = require('../reboot-check.cjs');
+  const v = ['BOOT|b2||', 'SURUM|2||'];
+  const dolu = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
+  const doluSon = [...v, 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
+  const bos = ['BOOT|b1||'];
+  const r = (goruntu, son, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], goruntu, son_goruntu: son, islemler: [], plan: [], ...ek });
+  const RE = /reboot_check betiği eski/;
+  const sunucular = {
+    // surum 3 + dolu once, fark yok -> eski notu YOK, sorunsuz
+    DOLU3: r(doluSon, doluSon, { betik_surum: 3 }),
+    // surum 3 + bos once + yalniz web (v3 web'i kapatti) -> eski notu YOK
+    WEB3: r([...v, 'URUN|NGINX||'], v, { betik_surum: 3, islemler: ['SONUC|durdur|NGINX||OK|x'] }),
+    // surum 3 + bos once + hala calisan JBoss 8 (JVM'inden cikarim) -> eski notu VAR (urun adiyla), durum sorunlu (kalan)
+    JB3: r([...v, 'JVM|JBOSS8|appX|x'], [...v, 'JVM|JBOSS8|appX|x'], { betik_surum: 3 }),
+    // surum 3 + bos once + yalniz ilk goruntude WAS (sonra kendiliginden kapandi) -> eski notu YOK (inceleme B2: yeniden kosmak
+    // bir sey degistirmez), notr kontrol notu; kalan yok -> kontrol
+    WAS3: r([...v, 'URUN|WAS||'], v, { betik_surum: 3 }),
+    // surum 2 / yok -> dolu once'de bile her sunucuda VAR
+    DOLU2: r(doluSon, doluSon, { betik_surum: 2 }),
+    DOLUYOK: r(doluSon, doluSon),
+    // surum 4 + bos once + calisan JBoss -> eski notu YOK (kalan ayri)
+    JB4: r([...v, 'URUN|JBOSS8||'], [...v, 'URUN|JBOSS8||'], { betik_surum: 4 }),
+  };
+  const once = { DOLU3: dolu, WEB3: bos, JB3: bos, WAS3: bos, DOLU2: dolu, DOLUYOK: dolu, JB4: bos };
+  const hedef = Object.keys(sunucular);
+  const d = sonraDegerlendir(sunucular, hedef, once);
+  const eskiVar = (h) => (d[h].neden || []).some((x) => RE.test(x));
+  assert.deepEqual(hedef.filter(eskiVar), ['JB3', 'DOLU2', 'DOLUYOK']);
+  assert.equal(d.DOLU3.durum, 'sorunsuz', 'surum 3 + dolu once kontrol sayildi');
+  assert.equal(d.WEB3.durum, 'kontrol'); // yalniz "otomasyon KAPATTI" notu
+  assert.ok(d.WEB3.neden.every((x) => !/eski/.test(x)), 'surum 3 web kapattigi halde betik eski denildi');
+  // KARAR: hala calisan CTG/JBoss/WAS 'kontrol'e cekilmez - v4 kuraliyla kalan (sorunlu); aciklama "surum 3 kapatmadi"
+  assert.equal(d.JB3.durum, 'sorunlu');
+  assert.ok(d.JB3.kalan > 0);
+  const jb = d.JB3.neden.join(' ');
+  assert.match(jb, /^AWX'teki reboot_check betiği eski \(sürüm 3, gerekli 4\): JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz \(sürüm 4 kapatır\)\. ZIP'i AWX'e yükleyip projeyi Sync edin/);
+  assert.match(jb, /otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appX — AWX'teki betik eski \(sürüm 3\)/);
+  assert.equal(d.WAS3.durum, 'kontrol');
+  assert.match(d.WAS3.neden[0], /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; sürüm 3 betik .*Son durum reboot öncesiyle aynı \(yeniden çalıştırmak bir şey değiştirmez\) — beklenen durum mu kontrol edin\.$/);
+  assert.ok(d.WAS3.neden.every((x) => !/ZIP|betiği eski|betik eski/.test(x)), 'kendiliginden kapanan urun icin ZIP/betik eski denildi');
+  assert.equal(d.DOLU2.durum, 'kontrol');
+  assert.match(d.DOLU2.sebep, /\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU/);
+  assert.match(d.DOLUYOK.sebep, /\(sürüm yok, gerekli 4\)/);
+  assert.equal(d.JB4.durum, 'sorunlu');
+  assert.ok(!eskiVar('JB4'));
+  // betikEtkisi: surum 3 + bos once + calisan CTG ve web karisik -> kapatmaz yalniz CTG/JBoss/WAS; urun bazli kuyruk
+  const k = betikEtkisi(bos, r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], { betik_surum: 3 }));
+  assert.deepEqual([k.eski, k.urunler, k.kapatmaz('CTG'), k.kapatmaz('IHS')], [true, ['CTG'], true, false]);
+  const kar = sonraDegerlendir({ K: r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], { betik_surum: 3 }) }, ['K'], { K: bos });
+  assert.match(kar.K.neden.join(' '), /gerekiyordu: CTG, IHS — CTG için AWX'teki betik eski \(sürüm 3\): .*; IHS için kapatma sonucunu kontrol edin\./);
+  // once verilmeyen (eski cagiran): bos kapi plandaki BILGI|BOS'tan
+  assert.equal(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], { betik_surum: 3, plan: ['BILGI|BOS|||x'] })).eski, true);
+  assert.equal(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], { betik_surum: 3 })).eski, false);
+  // otomasyon ozeti: surum 3 dolu once'de DOWN urun icin "betik eski" denmez; bos once JBoss'ta denir
+  const oz = otomasyonOzeti(dolu, r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], { betik_surum: 3 }));
+  assert.equal(oz.teknoloji.find((t) => t.urun === 'JBOSS8').ozet, 'komut çalışmadı — fark kaldı');
+  const ozB = otomasyonOzeti(bos, sunucular.JB3);
+  assert.equal(ozB.teknoloji.find((t) => t.urun === 'JBOSS8').ozet, "AWX'teki betik eski — işlem yapılmadı");
+  // 104 sunuculu uretim kaydinin kucugu: surum 3, dolu once'li sunucular eskiden hep 'kontrol' idi -> artik kayit 'tamam'
+  const u = sonraDegerlendir({ A: sunucular.DOLU3, B: r(doluSon, doluSon, { betik_surum: 3 }) }, ['A', 'B'], { A: dolu, B: dolu });
+  assert.equal(kayitDurumu(Object.values(u), true), 'tamam');
+  // kayit bandi metni sayisiyla
+  assert.match(betikEskiBandi(['sürüm 3'], 2), /\(sürüm 3, gerekli 4\): .*yeniden çalıştırın\. \(2 sunucuda etkili\)$/);
+});
+
+test('RC31 inceleme 2026-11-16: B1 once kaynagi onceGirdisi; B2 yalniz ilk goruntude calisan + hala calisan karisik; B5 "3.0"', () => {
+  const { sonraDegerlendir, betikEtkisi, kontrolNedenleri } = require('../reboot-check.cjs');
+  const v = ['BOOT|b2||', 'SURUM|2||'];
+  const r = (goruntu, son, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], goruntu, son_goruntu: son, islemler: [], plan: [], ...ek });
+  // B2: JBoss 8 hala calisiyor, WAS yalniz ilk goruntude -> eski yalniz JBoss 8 icin; WAS ayri notr not; bant sayisi 1
+  const e = betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|JBOSS8||', 'URUN|WAS||'], [...v, 'URUN|JBOSS8||'], { betik_surum: 3 }));
+  assert.deepEqual([e.eski, e.urunler, e.hala, e.gecti], [true, ['JBOSS8'], ['JBOSS8'], ['WAS']]);
+  assert.match(e.metin, /: JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş/);
+  assert.doesNotMatch(e.metin, /WebSphere/);
+  assert.match(e.gectiNotu, /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; /);
+  const g = betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 3 }));
+  assert.deepEqual([g.eski, g.metin, g.gecti], [false, '', ['CTG']]);
+  // surum 2 / 4: gecti notu yok
+  assert.equal(betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 2 })).gectiNotu, '');
+  assert.equal(betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 4 })).gectiNotu, '');
+  // B1: once goruntusu alinamadi (goruntu_ok=false) ama ham satirda BOOT var -> onceGirdisi dusurur, plan BILGI|HATA -> eski degil
+  const sun = { X: r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { betik_surum: 3, plan: ['BILGI|HATA|||once yok'] }) };
+  const { onceGirdisi } = require('../reboot-check.cjs');
+  const onceSat = onceGirdisi({ X: { goruntu_ok: false, goruntu: ['BOOT|b1||'] } });
+  assert.deepEqual(onceSat, {});
+  assert.ok(!(sonraDegerlendir(sun, ['X'], onceSat).X.neden || []).some((x) => /betiği eski/.test(x)));
+  // B5: "3.0" surum 3 sayilir; kuyruk metni de surum 3 metni (YOKTU denmez)
+  const n = kontrolNedenleri(['BOOT|b1||'], r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { betik_surum: '3.0' })).join(' ');
+  assert.match(n, /\(sürüm 3\.0, gerekli 4\): CTG reboot öncesi çalışmıyordu ve hâlâ çalışıyor/);
+  assert.match(n, /AWX'teki betik eski \(sürüm 3\.0\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu/);
+  assert.doesNotMatch(n, /YOKTU/);
 });

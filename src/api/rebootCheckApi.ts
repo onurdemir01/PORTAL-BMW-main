@@ -19,7 +19,7 @@ export interface RcSunucuSonuc {
   /** JVM planı öncesi görüntü durulması: settled | timeout | error ('' = koşmadı). */
   durulma?: string;
   durulma_satir?: string;
-  /** Playbook betik sürümü (v3). Yoksa ya da 3'ten küçükse AWX'teki betik eski. */
+  /** Playbook betik sürümü. Yoksa ya da 3'ten küçükse her sunucuda eski; 3 ise yalnız boş önce + çalışan CTG/JBoss/WAS'ta (betikEtkisi); 4+ güncel. */
   betik_surum?: number | string;
 }
 /** Bir teknolojinin (ürün) otomasyon özeti — sunucu otomasyonOzeti (tek kaynak). */

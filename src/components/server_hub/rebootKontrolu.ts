@@ -137,6 +137,8 @@ export function kapatmaKorunan(once: unknown): Set<string> {
 /**
  * SÜRÜM İŞARETİ (v3): playbook her sunucu sonucuna betik_surum yazar. Yoksa ya da GEREKLİ'den küçükse AWX'teki betik eski:
  * o koşuda ürün kapatma ve yeniden deneme YOKTU. Sunucu betikSurumu ile BİREBİR; sürüm bilinince dil kesindir.
+ * 2026-11-16: "betik eski" notu SUNUCU BAZINDA ve ETKİYE göre verilir (betikEtkisi): sürüm < 3 her sunucuda; sürüm 3 yalnız
+ * boş önce + son kontrolde hâlâ çalışan CTG/JBoss/WAS olan sunucuda. betikSurumu().guncel yalnız ham sürüm bilgisidir.
  */
 export const BETIK_SURUM_GEREKLI = 4;
 export interface BetikSurumu { guncel: boolean; etiket: string }
@@ -152,8 +154,11 @@ export function betikSurumu(r: { betik_surum?: number | string } | null | undefi
  */
 const ESKI_SURUM_GENEL = 'bu koşuda ürün kapatma ve yeniden deneme YOKTU';
 const ESKI_SURUM_3 = "bu koşudaki betik (sürüm 3) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini (Nginx/Apache/IHS) kapatırdı, CTG/JBoss/WAS'a dokunmazdı; sürüm 4 reboot sonrası çalışan her ürünü kapatır";
+// İnceleme B5: etiket metniyle değil SAYIYLA karar verilir ("sürüm 3.0" betikEtkisi'nde de sürüm 3; iki metin çelişmez).
 export function eskiSurumNedeni(etiket: string): string {
-  return etiket === 'sürüm 3' ? ESKI_SURUM_3 : ESKI_SURUM_GENEL;
+  const m = /^sürüm (.+)$/.exec(String(etiket || ''));
+  const n = m ? Number(m[1]) : Number.NaN;
+  return Number.isFinite(n) && n >= 3 ? ESKI_SURUM_3 : ESKI_SURUM_GENEL;
 }
 /** Kayıt düzeyindeki bant metni; etiketler: farklı sürüm etiketleri ("sürüm yok", "sürüm 2"). */
 export function betikEskiMetni(etiketler: readonly string[]): string {
@@ -162,6 +167,66 @@ export function betikEskiMetni(etiketler: readonly string[]): string {
   const neden = nedenler.length === 1 ? nedenler[0]
     : etiketler.map((x) => `${x}: ${eskiSurumNedeni(x)}`).join('; ');
   return `AWX'teki reboot_check betiği eski (${etiketler.join(' / ')}, gerekli ${BETIK_SURUM_GEREKLI}): ${neden}. ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`;
+}
+
+/** Kayıt düzeyindeki bant + etkili sunucu sayısı (sunucu reboot-check.cjs betikEskiBandi ile BİREBİR). */
+export function betikEskiBandi(etiketler: readonly string[], n: number): string {
+  return `${betikEskiMetni(etiketler)} (${n} sunucuda etkili)`;
+}
+
+/**
+ * BETİK ETKİSİ (2026-11-16 üretim, 104 sunuculu kayıt: AWX'te sürüm 3 koştu, GEREKLİ=4 olduğu için HER sunucu "kontrol gerekli"
+ * oldu). Sürüm 3 ile 4 arasındaki TEK davranış farkı: önce görüntüsü BOŞ sunucuda reboot sonrası çalışan CTG/JBoss/WAS'ın
+ * kapatılması. "Betik eski" sunucu bazında ve etkiye göre (sunucu reboot-check.cjs betikEtkisi ile BİREBİR):
+ *   sürüm yok / < 3 → her sunucuda eski, kapatmaz = her ürün;
+ *   sürüm 3         → yalnız boş önce + SON görüntüde (JVM'inden çıkarım dahil) hâlâ CTG/JBoss/WAS çalışan sunucuda eski,
+ *                     kapatmaz = CTG/JBoss/WAS; diğer sunucularda güncel sayılır;
+ *   sürüm ≥ 4       → güncel.
+ * İnceleme B2: yalnız ilk görüntüde çalışıp son kontrolde kendiliğinden kapanan CTG/JBoss/WAS (gecti) "betik eski" sayılmaz
+ * (son durum sürüm 4'ünkiyle aynı; bant sayısına girmez); yalnız nötr gectiNotu döner.
+ * önce verilmezse boşluk plandaki BILGI|BOS satırından anlaşılır. Çağıran önce'yi onceTamamGoruntu ile verir (inceleme B1).
+ */
+export interface BetikEtkisi extends BetikSurumu { eski: boolean; urunler: string[]; gecti: string[]; kapatmaz: ReadonlySet<string>; metin: string; gectiNotu: string }
+const V3_BOS_KAPATMAZ = ['CTG', 'JBOSS7', 'JBOSS8', 'WAS'];
+// Sunucu metniyle birebir olsun diye sunucunun ürün adları (ekran URUN_ADI farklı: "Red Hat Apache" vb.).
+const SUNUCU_URUN_ADI: Record<string, string> = { CTG: 'CTG', JBOSS7: 'JBoss 7', JBOSS8: 'JBoss 8', WAS: 'WebSphere' };
+export function betikEtkisi(once: unknown, r: { betik_surum?: number | string; plan?: unknown; goruntu?: unknown; son_goruntu?: unknown } | null | undefined): BetikEtkisi {
+  const surum = betikSurumu(r);
+  const yok: BetikEtkisi = { ...surum, eski: false, urunler: [], gecti: [], kapatmaz: new Set(), metin: '', gectiNotu: '' };
+  if (!r || surum.guncel) return yok;
+  const n = Number(r.betik_surum);
+  if (!(Number.isFinite(n) && n >= 3)) {
+    return { ...yok, eski: true, kapatmaz: new Set(URUNLER), metin: betikEskiMetni([surum.etiket]) };
+  }
+  const o = satirlar(once);
+  const bos = o.some((l) => l.startsWith('BOOT|')) ? !o.some((l) => /^(URUN|JVM)\|/.test(l)) : satirlar(r.plan).some((l) => l.startsWith('BILGI|BOS|'));
+  if (!bos) return yok;
+  // Önce boş: ürün kümesi boş, JVM'i çalışan ürün de çalışıyor sayılır (sunucu sonKume ile aynı).
+  const calisan = (x: unknown) => { const g = goruntuAyristir(x); return new Set([...g.urunler, ...g.jvmler.keys()]); };
+  const ilk = calisan(r.goruntu);
+  const son = calisan(r.son_goruntu);
+  const hala = V3_BOS_KAPATMAZ.filter((u) => son.has(u));
+  const gecti = V3_BOS_KAPATMAZ.filter((u) => !son.has(u) && ilk.has(u));
+  if (!hala.length && !gecti.length) return yok;
+  const ad = (x: string[]) => x.map((u) => SUNUCU_URUN_ADI[u]).join(', ');
+  return {
+    ...surum, eski: hala.length > 0, urunler: hala, gecti, kapatmaz: new Set(V3_BOS_KAPATMAZ),
+    metin: hala.length
+      ? `AWX'teki reboot_check betiği eski (${surum.etiket}, gerekli ${BETIK_SURUM_GEREKLI}): ${ad(hala)} reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz (sürüm 4 kapatır). ZIP'i AWX'e yükleyip projeyi Sync edin, sonra "Reboot sonrası kontrol et ve düzelt"i yeniden çalıştırın.`
+      : '',
+    gectiNotu: gecti.length
+      ? `${ad(gecti)} reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; ${surum.etiket} betik reboot öncesi görüntüsü boş sunucuda bunlara dokunmaz. Son durum reboot öncesiyle aynı (yeniden çalıştırmak bir şey değiştirmez) — beklenen durum mu kontrol edin.`
+      : '',
+  };
+}
+
+/**
+ * İnceleme B1: betikEtkisi'ne giden önce görüntüsü, sunucu onceGirdisi/goruntuTamam ile aynı süzgeçten geçer (goruntu_ok ve
+ * BOOT satırı); alınamamış önce görüntüsü (goruntu_ok=false) ham haliyle kullanılmaz → undefined (plan BILGI|BOS'a bakılır).
+ */
+export function onceTamamGoruntu(r: { goruntu_ok?: boolean; goruntu?: unknown } | null | undefined): string[] | undefined {
+  if (!r?.goruntu_ok || !Array.isArray(r.goruntu)) return undefined;
+  return r.goruntu.some((l) => String(l).startsWith('BOOT|')) ? r.goruntu.map(String) : undefined;
 }
 
 /** Önce görüntüsü alınmış (BOOT var) ama izlenen ürün/JVM yok: v4'ten beri reboot sonrası çalışan her ürün kapatılır. */
@@ -174,11 +239,15 @@ export function onceBos(g: Goruntu): boolean {
  * (null = ölçülemedi). Yalnız önce ya da sonra görülen ürünler listelenir. korunan: kapatma kapısının koruduğu ürünler
  * (kapatmaKorunan) — yalnız onlar "dokunulmadı" der; diğer önce çalışmayan ürün kapatılmış olmalıdır (2026-11-15).
  */
-export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, islemler: IslemSatiri[], haric: ReadonlySet<string> = new Set(), korunan: ReadonlySet<string> = new Set(), betik?: BetikSurumu): UrunSatiri[] {
-  // Komutsuz kalan yeni ürünün nedeni: sürüm biliniyorsa kesin, bilinmiyorsa (eski çağıran) "olabilir".
-  const kapatmadi = !betik ? 'otomasyon kapatmadı (eski betik sürümü olabilir; güncel betikle yeniden çalıştırın)'
-    : betik.guncel ? 'otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)'
-      : `otomasyon kapatmadı — AWX'teki betik eski (${betik.etiket}); güncel betikle yeniden çalıştırın`;
+export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, islemler: IslemSatiri[], haric: ReadonlySet<string> = new Set(), korunan: ReadonlySet<string> = new Set(), betik?: BetikSurumu & { kapatmaz?: ReadonlySet<string> }): UrunSatiri[] {
+  // Komutsuz kalan yeni ürünün nedeni: sürüm biliniyorsa kesin, bilinmiyorsa (eski çağıran) "olabilir". 2026-11-16: betikEtkisi
+  // verildiyse ürün bazında — yalnız eski betiğin gerçekten kapatmadığı ürün (kapatmaz) "betik eski" der.
+  const kapatmadi = (u: string) => {
+    if (!betik) return 'otomasyon kapatmadı (eski betik sürümü olabilir; güncel betikle yeniden çalıştırın)';
+    const eski = betik.kapatmaz ? betik.kapatmaz.has(u) : !betik.guncel;
+    return eski ? `otomasyon kapatmadı — AWX'teki betik eski (${betik.etiket}); güncel betikle yeniden çalıştırın`
+      : 'otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)';
+  };
   const out: UrunSatiri[] = [];
   const bul = (u: string, ad: string) => islemler.find((x) => x.urun === u && x.ad === ad);
   // "açıldı" / "kapatıldı" YALNIZ o öğe için komut OK döndüyse (rapor ile aynı; inceleme 2026-11-14 B3/B5).
@@ -216,7 +285,7 @@ export function urunTablosu(once: Goruntu, ilk: Goruntu, son: Goruntu | null, is
       metin = durdur === 'FAIL' ? 'reboot öncesi çalışmıyordu — kapatma komutu başarısız, hâlâ ÇALIŞIYOR'
         : durdur === 'OK' ? 'reboot öncesi çalışmıyordu — kapatma komutu başarılı döndü ama hâlâ ÇALIŞIYOR'
           : durdur === 'SKIP' ? 'reboot öncesi çalışmıyordu — kapatma anında kapalıydı, sonra yeniden kalktı; hâlâ ÇALIŞIYOR'
-          : `reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — ${kapatmadi}`;
+          : `reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — ${kapatmadi(u)}`;
     } else if (durdur === 'OK') {
       // v3 B2 ("kapatıp, kontrol edilecek yaz"): otomasyonun kapattığı ürün sarı — beklenen durum mu bakılmalı.
       durum = 'bilgi';

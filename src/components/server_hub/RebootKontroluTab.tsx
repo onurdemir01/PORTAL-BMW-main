@@ -19,7 +19,7 @@ import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { useSunucuLimiti, LimitNotu, limitAsildi } from './sunucuLimiti';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
-import { DURUM, SONRA_ACIK, URUN_ADI, betikEskiMetni, betikSurumu, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
+import { DURUM, SONRA_ACIK, URUN_ADI, betikEskiBandi, betikEtkisi, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, onceBos, onceNesilCevir, onceOzeti, onceTamamGoruntu, rebootOldu, sunucuListesi, urunTablosu, type Durum, type IslemSatiri } from './rebootKontrolu';
 
 // 2026-11-14 (ilk gerçek koşu): önce görüntüsü boş sunucu yeşil gösteriliyordu ve sonra "Sorunsuz" çıkıyordu.
 // v3 (2026-11-15 akşam): boş önce görüntüsünde web ürünleri (Nginx/Apache/IHS) yine kapatılır.
@@ -117,7 +117,7 @@ function IslemNotu({ x }: { x?: IslemSatiri }) {
   );
 }
 
-function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | undefined; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
+function SunucuSonra({ host, once, etkiOnce, r, d }: { host: string; once: string[] | undefined; etkiOnce: string[] | undefined; r: RcSunucuSonuc | undefined; d: RcDegerlendirme | undefined }) {
   const [acik, setAcik] = useState(d?.durum !== 'sorunsuz' && d?.durum !== 'kapsam_disi');
   // Eski sürüm önce görüntüsünün JBoss satırları yeni nesil kuralına çevrilir (2026-11-15; sunucu ve betikle aynı).
   const karsi = r?.son_olculdu ? r?.son_goruntu : r?.goruntu;
@@ -126,7 +126,7 @@ function SunucuSonra({ host, once, r, d }: { host: string; once: string[] | unde
   const sg = r?.son_olculdu ? goruntuAyristir(r?.son_goruntu) : null;
   const islem = islemAyristir(r?.islemler);
   // 2026-11-15: önce çalışmayan ürün kapatılır; yalnız kapatma kapısının koruduğu ürün "dokunulmadı" der.
-  const tablo = urunTablosu(og, ig, sg, islem, new Set(), kapatmaKorunan(once), betikSurumu(r));
+  const tablo = urunTablosu(og, ig, sg, islem, new Set(), kapatmaKorunan(once), betikEtkisi(etkiOnce, r));
   const hata = bilgiAyristir(r?.plan).filter((b) => b.tur === 'HATA');
   const uyari = d?.neden || [];
   const bilgi = d?.bilgi || [];
@@ -347,8 +347,9 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
   const sToplam = (f: SFiltre) => tumHosts.filter((h) => sUyar(h, f)).length;
   const sonraHosts = tumHosts.filter((h) => oUyar(h, oFiltre) && sUyar(h, sFiltre));
   // SÜRÜM BANDI (v3 B3): AWX'teki betik eskiyse kayıt düzeyinde TEK bant (sunucu kartlarında ayrıca neden olarak yazılır).
-  const eskiHosts = k.durum === 'sonra_kosuyor' ? [] : tumHosts.filter((h) => sonraS[h] && !sonraS[h].sonuc_yok && !betikSurumu(sonraS[h]).guncel);
-  const eskiEtiket = [...new Set(eskiHosts.map((h) => betikSurumu(sonraS[h]).etiket))];
+  // 2026-11-16: yalnız betiğin eskiliği o sunucuda ETKİLİYSE sayılır (betikEtkisi; sürüm 3 yalnız boş önce + çalışan CTG/JBoss/WAS).
+  const eskiHosts = k.durum === 'sonra_kosuyor' ? [] : tumHosts.filter((h) => sonraS[h] && !sonraS[h].sonuc_yok && betikEtkisi(onceTamamGoruntu(onceS[h]), sonraS[h]).eski);
+  const eskiEtiket = [...new Set(eskiHosts.map((h) => betikEtkisi(onceTamamGoruntu(onceS[h]), sonraS[h]).etiket))];
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -372,7 +373,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
         <div role="alert" className="flex items-start gap-1.5 rounded-lg border px-3 py-2 text-[12px]"
           style={{ borderColor: 'var(--status-danger)', background: 'var(--status-danger-bg)', color: 'var(--status-danger)' }}>
           <ExclamationTriangleIcon className="w-4 h-4 mt-0.5 shrink-0" />
-          <span><b>{betikEskiMetni(eskiEtiket)}</b> ({eskiHosts.length} sunucu)</span>
+          <span><b>{betikEskiBandi(eskiEtiket, eskiHosts.length)}</b></span>
         </div>
       )}
 
@@ -446,7 +447,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
                 <FiltreGrubu etiket="Otomasyon" adlar={O_ADI} secili={oFiltre} sec={setOFiltre} say={oSay} />
                 <FiltreGrubu etiket="Son durum" adlar={S_ADI} secili={sFiltre} sec={setSFiltre} say={sSay} />
                 {sonraHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Bu filtrede sunucu yok.</div>
-                  : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} r={sonraS[h]} d={deg[h]} />)}</div>}
+                  : <div className="space-y-1.5">{sonraHosts.map((h) => <SunucuSonra key={h} host={h} once={onceS[h]?.goruntu} etkiOnce={onceTamamGoruntu(onceS[h])} r={sonraS[h]} d={deg[h]} />)}</div>}
               </div>
             )}
       </section>

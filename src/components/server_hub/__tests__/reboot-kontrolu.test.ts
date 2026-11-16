@@ -1,6 +1,6 @@
 // src/components/server_hub/__tests__/reboot-kontrolu.test.ts — RK1..RK4 (2026-10-08).
 import { describe, expect, test } from 'vitest';
-import { BETIK_SURUM_GEREKLI, BOS_KORUNAN, DURUM, SONRA_ACIK, betikEskiMetni, betikSurumu, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, nesilKarsilastirilamaz, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
+import { BETIK_SURUM_GEREKLI, BOS_KORUNAN, DURUM, SONRA_ACIK, betikEskiBandi, betikEskiMetni, betikEtkisi, betikSurumu, eskiSurumNedeni, onceTamamGoruntu, bilgiAyristir, goruntuAyristir, islemAyristir, kapatmaKorunan, nedenListesi, nesilKarsilastirilamaz, onceBos, onceNesilCevir, onceOzeti, rebootOldu, sunucuListesi, urunTablosu } from '../rebootKontrolu';
 
 const ONCE = ['BOOT|b1||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|WAS||', 'JVM|JBOSS8|appA|jboss_home=/usr/jboss8/AppServer', 'JVM|JBOSS8|appB|x', 'JVM|WAS|srv1|profil=p'];
 const ILK = ['BOOT|b2||', 'URUN|JBOSS8||', 'URUN|IHS||', 'JVM|JBOSS8|appB|x', 'JVM|JBOSS8|appC|x'];
@@ -286,5 +286,64 @@ describe('Reboot Kontrolü v3 (2026-11-15 akşam: web kapatılır + kontrol edil
     expect(metin({ guncel: false, etiket: 'sürüm 2' })).not.toMatch(/olabilir/);
     // eski çağıran (sürüm verilmedi): belirsiz dil korunur
     expect(metin()).toMatch(/eski betik sürümü olabilir/);
+  });
+
+  test('RK15 betik etkisi (2026-11-16): sürüm 3 yalnız boş önce + çalışan CTG/JBoss/WAS; < 3 her yerde; 4 hiçbir yerde; sunucu metniyle birebir', () => {
+    const v = ['BOOT|b||', 'SURUM|2||'];
+    const dolu = ['BOOT|a||', 'SURUM|2||', 'URUN|RHA||'];
+    const bos = ['BOOT|a||'];
+    const r = (goruntu: string[], son: string[], betik_surum?: number | string, plan: string[] = []) => ({ goruntu, son_goruntu: son, betik_surum, plan });
+    // sürüm 3 + dolu önce -> yok
+    expect(betikEtkisi(dolu, r([...v, 'URUN|RHA||', 'URUN|JBOSS8||'], [...v, 'URUN|RHA||', 'URUN|JBOSS8||'], 3)).eski).toBe(false);
+    // sürüm 3 + boş önce + yalnız web -> yok
+    expect(betikEtkisi(bos, r([...v, 'URUN|NGINX||', 'URUN|IHS||'], [...v, 'URUN|IHS||'], 3)).eski).toBe(false);
+    // sürüm 3 + boş önce + çalışan JBoss (JVM'inden çıkarım) -> var, ürün adıyla; sunucu reboot-check.cjs betikEtkisi ile birebir metin
+    const jb = betikEtkisi(bos, r([...v, 'JVM|JBOSS8|app|x', 'URUN|WAS||'], [...v, 'JVM|JBOSS8|app|x'], '3'));
+    // İnceleme B2: yalnız ilk görüntüde çalışan WAS "betik eski" metnine girmez; ayrı nötr not (sunucu gectiNotu ile birebir)
+    expect([jb.eski, jb.urunler, jb.gecti, jb.kapatmaz.has('JBOSS8'), jb.kapatmaz.has('NGINX')]).toEqual([true, ['JBOSS8'], ['WAS'], true, false]);
+    expect(jb.metin).toBe("AWX'teki reboot_check betiği eski (sürüm 3, gerekli 4): JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz (sürüm 4 kapatır). ZIP'i AWX'e yükleyip projeyi Sync edin, sonra \"Reboot sonrası kontrol et ve düzelt\"i yeniden çalıştırın.");
+    expect(jb.gectiNotu).toBe('WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; sürüm 3 betik reboot öncesi görüntüsü boş sunucuda bunlara dokunmaz. Son durum reboot öncesiyle aynı (yeniden çalıştırmak bir şey değiştirmez) — beklenen durum mu kontrol edin.');
+    // önce verilmedi: boşluk plandaki BILGI|BOS'tan
+    expect(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], 3, ['BILGI|BOS|||x'])).eski).toBe(true);
+    expect(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], 3)).eski).toBe(false);
+    // sürüm 2 / yok -> dolu önce'de bile var, her ürünü kapsar
+    for (const s of [2, undefined, '']) {
+      const e = betikEtkisi(dolu, r(dolu, dolu, s));
+      expect(e.eski).toBe(true);
+      expect(e.kapatmaz.has('NGINX')).toBe(true);
+    }
+    expect(betikEtkisi(dolu, r(dolu, dolu, 2)).metin).toMatch(/\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU/);
+    // sürüm 4 -> yok
+    expect(betikEtkisi(bos, r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], 4)).eski).toBe(false);
+    // ürün tablosu ürün bazında: sürüm 3 boş önce -> CTG "betik eski", IHS güncel dil
+    const e3 = betikEtkisi(bos, r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], 3));
+    const g = goruntuAyristir([...v, 'URUN|CTG||', 'URUN|IHS||']);
+    const t = urunTablosu(goruntuAyristir(bos), g, g, [], new Set(), new Set(), e3);
+    expect(t.find((u) => u.urun === 'CTG')!.metin).toMatch(/AWX'teki betik eski \(sürüm 3\)/);
+    expect(t.find((u) => u.urun === 'IHS')!.metin).toMatch(/otomasyon kapatma komutu çalıştırmadı/);
+    expect(betikEskiBandi(['sürüm 3'], 7)).toMatch(/\(sürüm 3, gerekli 4\): .*yeniden çalıştırın\. \(7 sunucuda etkili\)$/);
+  });
+
+  test('RK16 inceleme 2026-11-16: B1 önce kaynağı onceTamamGoruntu; B2 yalnız ilk görüntüde çalışan eski sayılmaz; B5 "3.0"', () => {
+    const v = ['BOOT|b||', 'SURUM|2||'];
+    const r = (goruntu: string[], son: string[], betik_surum?: number | string, plan: string[] = []) => ({ goruntu, son_goruntu: son, betik_surum, plan });
+    // B1: goruntu_ok=false ya da BOOT'suz önce -> undefined; tamam ise satırlar
+    expect(onceTamamGoruntu({ goruntu_ok: false, goruntu: ['BOOT|a||'] })).toBeUndefined();
+    expect(onceTamamGoruntu({ goruntu_ok: true, goruntu: ['URUN|RHA||'] })).toBeUndefined();
+    expect(onceTamamGoruntu(undefined)).toBeUndefined();
+    expect(onceTamamGoruntu({ goruntu_ok: true, goruntu: ['BOOT|a||'] })).toEqual(['BOOT|a||']);
+    const x = r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], 3, ['BILGI|HATA|||once yok']);
+    expect(betikEtkisi(onceTamamGoruntu({ goruntu_ok: false, goruntu: ['BOOT|a||'] }), x).eski).toBe(false);
+    expect(betikEtkisi(onceTamamGoruntu({ goruntu_ok: true, goruntu: ['BOOT|a||'] }), x).eski).toBe(true);
+    // B2: yalnız ilk görüntüde CTG -> eski değil, metin boş, nötr not var
+    const g = betikEtkisi(['BOOT|a||'], r([...v, 'URUN|CTG||'], v, 3));
+    expect([g.eski, g.metin, g.urunler, g.gecti]).toEqual([false, '', [], ['CTG']]);
+    expect(g.gectiNotu).toMatch(/^CTG reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; /);
+    expect(g.gectiNotu).not.toMatch(/ZIP|betiği eski/);
+    // B5: "3.0" sürüm 3 sayılır; neden metni de sürüm 3 metni
+    expect(betikEtkisi(['BOOT|a||'], r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], '3.0')).metin).toMatch(/\(sürüm 3\.0, gerekli 4\): CTG reboot öncesi/);
+    expect(eskiSurumNedeni('sürüm 3.0')).toBe(eskiSurumNedeni('sürüm 3'));
+    expect(eskiSurumNedeni('sürüm 2')).toMatch(/YOKTU/);
+    expect(eskiSurumNedeni('sürüm yok')).toMatch(/YOKTU/);
   });
 });

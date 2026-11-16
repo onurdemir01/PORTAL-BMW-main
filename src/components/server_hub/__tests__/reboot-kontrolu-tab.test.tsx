@@ -138,7 +138,7 @@ describe('Reboot Kontrolü sekmesi', () => {
     // betik_surum yok -> kayıt düzeyinde TEK bant
     const bant = screen.getAllByRole('alert').filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
     expect(bant).toHaveLength(1);
-    expect(bant[0].textContent).toMatch(/\(sürüm yok, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU.*\(2 sunucu\)/);
+    expect(bant[0].textContent).toMatch(/\(sürüm yok, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU.*\(2 sunucuda etkili\)/);
     expect(screen.getByText('1 / 2 sunucu sorunsuz')).toBeTruthy();
     expect(screen.getByText('reboot olmamış görünüyor')).toBeTruthy();
     expect(screen.getByText('çalışıyordu, hâlâ KAPALI')).toBeTruthy();
@@ -259,7 +259,7 @@ describe('Reboot Kontrolü sekmesi — v3 otomasyon filtresi, teknoloji çipleri
     // sürüm bandı: yalnız betik_surum < 4 olan sunucu sayılır, tek bant
     const bant = screen.getAllByRole('alert').filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
     expect(bant).toHaveLength(1);
-    expect(bant[0].textContent).toMatch(/\(sürüm 2, gerekli 4\).*\(1 sunucu\)/);
+    expect(bant[0].textContent).toMatch(/\(sürüm 2, gerekli 4\).*\(1 sunucuda etkili\)/);
     // ürün tablosu sunucu sürümünü kullanır: betik_surum 4 iken "eski betik olabilir" DENMEZ, kesin konuşulur
     expect(screen.getByText('reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)')).toBeTruthy();
     expect(screen.queryByText(/eski betik sürümü olabilir/)).toBeNull();
@@ -384,5 +384,71 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     const y2 = await screen.findByRole('group', { name: 'Yönetici özeti' });
     expect(within(y2).getByText('Bulunduğu gibi bırakıldı').parentElement?.textContent).toBe('%1001 / 1 sunucuBulunduğu gibi bırakıldı');
     expect(within(y2).queryByText(/kontrol notlu/)).toBeNull();
+  });
+});
+
+describe('Reboot Kontrolü sekmesi — betik eski etkiye göre (2026-11-16)', () => {
+  it('RT13 sürüm 3: bant yalnız boş önce + çalışan CTG/JBoss/WAS sunucusu sayısıyla; dolu önce sunucusunda "betik eski" yok', async () => {
+    const v = ['BOOT|x2||', 'SURUM|2||'];
+    const k = {
+      ...KAYIT, id: 13, hosts: ['GBD01', 'GBW02', 'GBJ03'], durum: 'sorunlu',
+      once: { jobId: 1, serverId: 1, at: '2026-11-16T01:00:00Z', sonuc: { faz: 'once', sunucular: {
+        GBD01: { goruntu_ok: true, goruntu: ['BOOT|d1||', 'SURUM|2||', 'URUN|RHA||'] },
+        GBW02: { goruntu_ok: true, goruntu: ['BOOT|w1||'] },
+        GBJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
+      } } },
+      sonra: { jobId: 2, serverId: 1, at: '2026-11-16T03:00:00Z', sonuc: { faz: 'sonra', sunucular: {
+        // dolu önce: IHS yeni ve hâlâ çalışıyor -> sürüm 3 bunu kapatırdı; "betik eski" DENMEZ
+        GBD01: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|RHA||', 'URUN|IHS||'], son_goruntu: [...v, 'URUN|RHA||', 'URUN|IHS||'], islemler: [] },
+        GBW02: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|NGINX||'], son_goruntu: v, islemler: ['SONUC|durdur|NGINX||OK|x'] },
+        GBJ03: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|JBOSS8||'], son_goruntu: [...v, 'URUN|JBOSS8||'], islemler: [] },
+      } } },
+      ozet: { once: { alinan: 3, toplam: 3, job: 'successful' }, sonra: { sorunsuz: 0, kontrol: 1, toplam: 3, job: 'successful', sunucu: {
+        GBD01: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+        GBW02: { durum: 'kontrol', kalan: 0, islem: 1, hatali: 0 },
+        GBJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+      } } },
+    };
+    AKTIF = k as unknown as typeof KAYIT;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#13'));
+    await screen.findByRole('button', { name: /^GBJ03/ });
+    const bant = screen.getAllByRole('alert').filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
+    expect(bant).toHaveLength(1);
+    expect(bant[0].textContent).toMatch(/\(sürüm 3, gerekli 4\): bu koşudaki betik \(sürüm 3\).*\(1 sunucuda etkili\)$/);
+    // ürün tablosu ürün bazında: JBoss 8 (boş önce, sürüm 3 kapatmaz) "betik eski"; IHS (dolu önce) güncel dil
+    expect(screen.getByText("reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı — AWX'teki betik eski (sürüm 3); güncel betikle yeniden çalıştırın")).toBeTruthy();
+    expect(screen.getByText('reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)')).toBeTruthy();
+  });
+  it('RT14 inceleme B1/B2: önce görüntüsü alınamamış (goruntu_ok=false) ve yalnız ilk görüntüde çalışan sunucu bantta sayılmaz', async () => {
+    const v = ['BOOT|x2||', 'SURUM|2||'];
+    const k = {
+      ...KAYIT, id: 14, hosts: ['GBX01', 'GBY02', 'GBJ03'], durum: 'sorunlu',
+      once: { jobId: 1, serverId: 1, at: '2026-11-16T01:00:00Z', sonuc: { faz: 'once', sunucular: {
+        GBX01: { goruntu_ok: false, goruntu: ['BOOT|x1||'] },
+        GBY02: { goruntu_ok: true, goruntu: ['BOOT|y1||'] },
+        GBJ03: { goruntu_ok: true, goruntu: ['BOOT|j1||'] },
+      } } },
+      sonra: { jobId: 2, serverId: 1, at: '2026-11-16T03:00:00Z', sonuc: { faz: 'sonra', sunucular: {
+        GBX01: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|CTG||'], son_goruntu: [...v, 'URUN|CTG||'], islemler: [], plan: ['BILGI|HATA|||once yok'] },
+        GBY02: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|WAS||'], son_goruntu: v, islemler: [] },
+        GBJ03: { once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu: [...v, 'URUN|JBOSS8||'], son_goruntu: [...v, 'URUN|JBOSS8||'], islemler: [] },
+      } } },
+      ozet: { once: { alinan: 2, toplam: 3, job: 'successful' }, sonra: { sorunsuz: 0, kontrol: 2, toplam: 3, job: 'successful', sunucu: {
+        GBX01: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
+        GBY02: { durum: 'kontrol', kalan: 0, islem: 0, hatali: 0 },
+        GBJ03: { durum: 'sorunlu', kalan: 1, islem: 0, hatali: 0 },
+      } } },
+    };
+    AKTIF = k as unknown as typeof KAYIT;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#14'));
+    await screen.findByRole('button', { name: /^GBJ03/ });
+    const bant = screen.getAllByRole('alert').filter((x) => /reboot_check betiği eski/.test(x.textContent || ''));
+    expect(bant).toHaveLength(1);
+    expect(bant[0].textContent).toMatch(/\(sürüm 3, gerekli 4\): bu koşudaki betik \(sürüm 3\).*\(1 sunucuda etkili\)$/);
+    // ürün tablosu da aynı önce kaynağından: GBX01'in CTG satırı "betik eski" demez, yalnız GBJ03'ün JBoss 8 satırı der
+    expect(screen.getAllByText("reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatmadı — AWX'teki betik eski (sürüm 3); güncel betikle yeniden çalıştırın")).toHaveLength(1);
+    expect(screen.getByText('reboot öncesi çalışmıyordu, hâlâ ÇALIŞIYOR — otomasyon kapatma komutu çalıştırmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)')).toBeTruthy();
   });
 });

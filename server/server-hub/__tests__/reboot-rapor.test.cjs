@@ -241,15 +241,17 @@ test('RR15 v3: kapatilan urun WARNING (kontrol edilecek), AWX betigi eskiyse BET
   assert.equal(d.sonuc, 'WARNING', 'otomasyonun kapattigi urun bilgi (normal) sayildi');
   const h0 = raporHtml({ id: 1, hosts: ['A'], once: { sonuc: { sunucular: { A: { goruntu_ok: true, goruntu: once } } } }, sonra: { sonuc: { sunucular: { A: { once_var: true, son_olculdu: true, betik_surum: 4, goruntu: ilk, son_goruntu: son, islemler: ['SONUC|durdur|NGINX||OK|x'] } } } } });
   assert.match(h0, /Otomatik kapatıldı — kontrol edilecek/);
-  // eski betik (v4): surum yok / 2 / 3 -> uyari bulgusu; 4 -> yok
-  for (const [surum, var_] of [[undefined, true], [2, true], ['3', true], [3, true], ['4', false], [4, false]]) {
+  // eski betik (v4): surum yok / 2 -> uyari bulgusu; 4 -> yok. 2026-11-16: surum 3 dolu once'de etkisiz -> yok (bos once: RR-B3)
+  for (const [surum, var_] of [[undefined, true], [2, true], ['3', false], [3, false], ['4', false], [4, false]]) {
     const x = sunucuDegerlendir(once, { son_olculdu: true, betik_surum: surum, goruntu: son, son_goruntu: son });
     assert.equal(x.bulgu.some((b) => b.durum === 'BETIK_ESKI'), var_, `betik_surum=${surum}`);
   }
   assert.match(sunucuDegerlendir(once, { son_olculdu: true, betik_surum: 2, goruntu: son, son_goruntu: son }).bulgu[0].aciklama, /\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU/);
-  // inceleme B1: surum 3 betikte urun kapatma ve yeniden deneme VARDI; eksigi yalniz bos once'de CTG/JBoss/WAS
-  const uc = sunucuDegerlendir(once, { son_olculdu: true, betik_surum: 3, goruntu: son, son_goruntu: son }).bulgu[0].aciklama;
-  assert.match(uc, /\(sürüm 3, gerekli 4\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini \(Nginx\/Apache\/IHS\) kapatırdı, CTG\/JBoss\/WAS'a dokunmazdı; sürüm 4 reboot sonrası çalışan her ürünü kapatır\. ZIP'i AWX'e yükleyip/);
+  // inceleme B1: surum 3 betikte urun kapatma ve yeniden deneme VARDI; eksigi yalniz bos once'de CTG/JBoss/WAS (2026-11-16: o
+  // sunucuda bulgu urun adiyla yazilir)
+  const bosSon = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||'];
+  const uc = sunucuDegerlendir(['BOOT|b1||'], { son_olculdu: true, betik_surum: 3, goruntu: bosSon, son_goruntu: bosSon }).bulgu.find((b) => b.durum === 'BETIK_ESKI').aciklama;
+  assert.match(uc, /^AWX'teki reboot_check betiği eski \(sürüm 3, gerekli 4\): JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz \(sürüm 4 kapatır\)\. ZIP'i AWX'e yükleyip/);
   assert.doesNotMatch(uc, /YOKTU/);
   // komutsuz kalan yeni urun: surum guncelken "eski betik" denmez
   const kal = sunucuDegerlendir(once, { son_olculdu: true, betik_surum: 4, goruntu: ilk, son_goruntu: ilk, islemler: [] });
@@ -430,4 +432,57 @@ test('RR20 v4 inceleme Y2/Y5/Y6/Y11: urunle kalkan JVM otomatik; karsilastirma d
   assert.match(u, /hedefte olmayan: <b>0<\/b>; son durumu ölçülemediği için doğrulanamayan: <b>1<\/b>\./);
   assert.match(u, />%100<\/span><span[^>]*>1 \/ 1 komut<\/span><span[^>]*>Otomasyon başarı oranı</);
   assert.match(u, /ölçülemeyen sunucularda sonucu doğrulanamayan komut <b>1<\/b>/);
+});
+
+test('RR21 2026-11-16 betik eski etkiye gore: surum 3 yalniz bos once + calisan CTG/JBoss/WAS sunucusunda BETIK_ESKI; kayit notu etkili sunucu SAYISIYLA', () => {
+  const v = ['BOOT|b2||', 'SURUM|2||'];
+  const dolu = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
+  const doluSon = [...v, 'URUN|RHA||'];
+  const s = (goruntu, son, surum) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: surum, goruntu, son_goruntu: son, islemler: [], plan: [] });
+  const onceS = { D1: { goruntu_ok: true, goruntu: dolu }, D2: { goruntu_ok: true, goruntu: dolu }, J: { goruntu_ok: true, goruntu: ['BOOT|b1||'] }, W: { goruntu_ok: true, goruntu: ['BOOT|b1||'] } };
+  const sonraS = { D1: s(doluSon, doluSon, 3), D2: s(doluSon, doluSon, 3), J: s([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], 3), W: s(v, v, 3) };
+  const k = { id: 9, hosts: ['D1', 'D2', 'J', 'W'], once: { sonuc: { sunucular: onceS } }, sonra: { sonuc: { sunucular: sonraS } } };
+  const h = raporHtml(k);
+  // kayit notu: yalniz 1 sunucuda etkili (eskiden "betik eski" her sunucudaydi)
+  assert.match(h, /class='betik-eski'[^>]*>AWX&#39;teki reboot_check betiği eski \(sürüm 3, gerekli 4\): .*\(1 sunucuda etkili\)<\/p>/);
+  assert.equal(h.match(/class='betik-eski'/g).length, 1);
+  assert.equal(sunucuDegerlendir(dolu, sonraS.D1).bulgu.some((b) => b.durum === 'BETIK_ESKI'), false);
+  assert.equal(sunucuDegerlendir(dolu, sonraS.D1).sonuc, 'OK');
+  assert.equal(sunucuDegerlendir(['BOOT|b1||'], sonraS.W).bulgu.some((b) => b.durum === 'BETIK_ESKI'), false);
+  const j = sunucuDegerlendir(['BOOT|b1||'], sonraS.J);
+  assert.match(j.bulgu.find((b) => b.durum === 'BETIK_ESKI').aciklama, /: CTG reboot öncesi çalışmıyordu ve hâlâ çalışıyor; /);
+  assert.match(j.bulgu.find((b) => b.durum === 'NEW_URUN_KALAN').aciklama, /kapatma komutu çalışmadı — AWX'teki betik eski \(sürüm 3\)/);
+  // surum 3 + dolu once: v3 yeni urunu kapatirdi -> komutsuz kalan IHS'e "betik eski" denmez (guncel dil)
+  const ihs = sunucuDegerlendir(dolu, s([...doluSon, 'URUN|IHS||'], [...doluSon, 'URUN|IHS||'], 3)).bulgu.find((b) => b.durum === 'NEW_URUN_KALAN').aciklama;
+  assert.match(ihs, /kapatma komutu çalışmadı \(plandan sonra kalkmış olabilir; yeniden çalıştırın\)/);
+  assert.doesNotMatch(ihs, /eski/);
+  // hicbir sunucuda etki yoksa not yok; surum 2 ise her sunucu sayilir
+  assert.doesNotMatch(raporHtml({ ...k, hosts: ['D1', 'W'] }), /class='betik-eski'/);
+  const k2 = { ...k, sonra: { sonuc: { sunucular: Object.fromEntries(Object.entries(sonraS).map(([x, y]) => [x, { ...y, betik_surum: 2 }])) } } };
+  assert.match(raporHtml(k2), /\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU\. .*\(4 sunucuda etkili\)/);
+});
+
+test('RR22 inceleme 2026-11-16 B1/B2: rapor betik-eski karari sonraDegerlendir ile ayni once kaynagindan; kendiliginden kapanan sayilmaz', () => {
+  const { sonraDegerlendir, onceGirdisi } = require('../reboot-check.cjs');
+  const v = ['BOOT|b2||', 'SURUM|2||'];
+  const s = (goruntu, son, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 3, goruntu, son_goruntu: son, islemler: [], plan: [], ...ek });
+  // B1: once goruntu_ok=false (ham satirda BOOT var), plan BILGI|HATA, CTG calisiyor -> ne bant ne BETIK_ESKI
+  const onceS = { X: { goruntu_ok: false, goruntu: ['BOOT|b1||'] } };
+  const sonraS = { X: s([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { plan: ['BILGI|HATA|||once yok'] }) };
+  const k = { id: 7, hosts: ['X'], once: { sonuc: { sunucular: onceS } }, sonra: { sonuc: { sunucular: sonraS } } };
+  const sd = sonraDegerlendir(sonraS, ['X'], onceGirdisi(onceS));
+  assert.ok(!(sd.X.neden || []).some((x) => /betiği eski/.test(x)));
+  const h = raporHtml(k);
+  assert.doesNotMatch(h, /class='betik-eski'/);
+  assert.doesNotMatch(h, /BETIK_ESKI|AWX&#39;teki reboot_check betiği eski/);
+  // ayni sunucu goruntu_ok=true ise (ham once ayni) bant ve bulgu VAR -> fark yalniz once kaynagindan
+  const k2 = { ...k, once: { sonuc: { sunucular: { X: { goruntu_ok: true, goruntu: ['BOOT|b1||'] } } } } };
+  assert.match(raporHtml(k2), /class='betik-eski'[^>]*>.*\(1 sunucuda etkili\)<\/p>/);
+  // arguman acikca undefined -> ham once'ye DUSMEZ
+  assert.equal(sunucuDegerlendir(['BOOT|b1||'], sonraS.X, undefined).bulgu.some((b) => b.durum === 'BETIK_ESKI'), false);
+  assert.equal(sunucuDegerlendir(['BOOT|b1||'], sonraS.X).bulgu.some((b) => b.durum === 'BETIK_ESKI'), true);
+  // B2: yalniz ilk goruntude WAS (kendiliginden kapandi) -> bant yok, BETIK_ESKI yok
+  const kW = { id: 8, hosts: ['W'], once: { sonuc: { sunucular: { W: { goruntu_ok: true, goruntu: ['BOOT|b1||'] } } } }, sonra: { sonuc: { sunucular: { W: s([...v, 'URUN|WAS||'], v) } } } };
+  assert.doesNotMatch(raporHtml(kW), /class='betik-eski'/);
+  assert.equal(sunucuDegerlendir(['BOOT|b1||'], s([...v, 'URUN|WAS||'], v)).bulgu.some((b) => b.durum === 'BETIK_ESKI'), false);
 });

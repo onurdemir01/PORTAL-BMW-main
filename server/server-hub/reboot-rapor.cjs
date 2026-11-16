@@ -21,6 +21,8 @@
 //   * Duzeltilen (kapaliydi acildi / fazladan JVM kapatildi) -> Bilgi
 //   * v3 (2026-11-15 aksam): otomasyonun KAPATTIGI urun -> Uyari (KAPATILDI_URUN, "kontrol edilecek"); AWX'teki betik
 //     eski (betik_surum yok / < 4) -> Uyari (BETIK_ESKI). v4: bos once hicbir urunu korumaz, calisan her urun kapatilir.
+//     2026-11-16: BETIK_ESKI yalniz etkili sunucuda (surum < 3 her sunucu; surum 3 bos once + calisan CTG/JBoss/WAS); kayit
+//     duzeyinde etkili sunucu sayisiyla tek not (betikEskiBandi).
 //     Otomasyon sinifi (basarili/basarisiz/dokunmadi) ve teknoloji listesi reboot-check.cjs otomasyonOzeti'nden (tek kaynak).
 //   * boot_id degismemis -> Uyari (reboot dogrulanamadi)
 //   * Olculemedi (sonuc gelmedi / son goruntu alinamadi) -> Kritik ("sorunsuz" SAYILMAZ)
@@ -73,14 +75,20 @@ const servisAdi = (anahtar) => {
   return ad ? `${JVM_ADI[u] || u} — ${ad}` : URUN_ADI[u] || u;
 };
 
-/** Sunucu basina bulgular ve sonuc (saf; test edilir). */
-function sunucuDegerlendir(onceSat, s) {
+/**
+ * Sunucu basina bulgular ve sonuc (saf; test edilir). etkiOnce: betikEtkisi'ne giden once (inceleme B1: sonraDegerlendir ile
+ * ayni kaynak, onceGirdisi - goruntu_ok + BOOT); ARGUMAN hic verilmezse onceSat (eski cagiran / testler). Acikca undefined
+ * verilirse (once goruntusu alinamamis) undefined kalir - varsayilan parametre bunu yutardi.
+ */
+function sunucuDegerlendir(onceSat, s, ...ek) {
+  const etkiOnce = ek.length ? ek[0] : onceSat;
   const bulgu = [];
   if (!s || s.sonuc_yok) return { sonuc: 'PROBLEM', bulgu: [{ durum: 'OLCULEMEDI', servis: 'Sistem kontrolü', aciklama: 'Sunucudan sonuç gelmedi (ulaşılamadı ya da kopya doğrulanamadı).', onceSonra: '—' }] };
   // Eski surum once goruntusunun JBoss satirlari yeni nesil kuralina CEVRILIR (reboot-check.cjs onceNesilCevir,
   // 2026-11-15); yalniz cevrilemeyen JBoss 7 urunu 'belirsiz' (dokunulmadi, uyari).
-  const { onceNesilCevir, kapatmaKapisi, kapiKorur, betikSurumu, betikEskiMetni, KAPSAM_DISI_ACIKLAMA } = require('./reboot-check.cjs');
-  const surum = betikSurumu(s);
+  const { onceNesilCevir, kapatmaKapisi, kapiKorur, betikEtkisi, KAPSAM_DISI_ACIKLAMA } = require('./reboot-check.cjs');
+  // 2026-11-16: 'betik eski' sunucu bazinda ve etkiye gore (reboot-check.cjs betikEtkisi; surum 3 yalniz bos once + calisan CTG/JBoss/WAS).
+  const etki = betikEtkisi(etkiOnce, s);
   const cev = onceNesilCevir(onceSat, s.son_olculdu ? s.son_goruntu : s.goruntu);
   // Kapatma kapisi (betik ve Portal kalan ile ayni, yalniz ham once): BOOT'suz once / eski surum JBoss urunu -> "dokunulmadi".
   const kapi = kapatmaKapisi(onceSat);
@@ -97,8 +105,8 @@ function sunucuDegerlendir(onceSat, s) {
   const onceHam = goruntu(onceSat);
   if (o.boot && onceHam.urun.size === 0 && onceHam.jvm.size === 0)
     bulgu.push({ durum: 'ONCE_BOS', servis: 'Sistem kontrolü', aciklama: `${KAPSAM_DISI_ACIKLAMA} Bu bir uyarı değildir; reboot sonrası çalışan her ürün (Nginx/Apache/IHS/CTG/JBoss/WAS) reboot öncesi haline (kapalı) döndürülür, kapatılan ürün kontrol edilecek.`, onceSonra: '—' });
-  // v3 surum isareti: AWX'teki betik eskiyse bu kosuda urun kapatma / yeniden deneme yoktu (kesin; "olabilir" denmez).
-  if (!surum.guncel) bulgu.push({ durum: 'BETIK_ESKI', servis: 'Sistem kontrolü', aciklama: betikEskiMetni(s), onceSonra: '—' });
+  // v3 surum isareti: AWX'teki betik eskiyse ve bu sunucuda etkisi varsa (kesin; "olabilir" denmez).
+  if (etki.eski) bulgu.push({ durum: 'BETIK_ESKI', servis: 'Sistem kontrolü', aciklama: etki.metin, onceSonra: '—' });
   if (cev.belirsiz.length)
     bulgu.push({ durum: 'ESKI_SURUM', servis: 'JBoss 7', aciklama: 'Reboot öncesi görüntü eski betik sürümüyle alınmış; JBoss 7 ürün satırının nesli belirlenemedi (JBoss 8 olabilir), JBoss 7 ürününe dokunulmadı. Elle kontrol edin.', onceSonra: '—' });
   if (o.boot && ilk.boot && o.boot !== 'bilinmiyor' && o.boot === ilk.boot)
@@ -136,7 +144,7 @@ function sunucuDegerlendir(onceSat, s) {
       if (!once && urunJvmi && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Ürün reboot öncesi çalışmıyordu; önce görüntüsü eski sürüm (JBoss nesli belirsiz) ya da BOOT satırı olmadığı için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
       else if (!once && urunJvmi && sonV) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: `Ürün reboot öncesi çalışmıyordu; ürünle birlikte kapanması gerekirken hâlâ çalışıyor${durdurK === 'FAIL' ? ' (ürün kapatma komutu BAŞARISIZ)' : durdurK === 'SKIP' ? ' (kapatma anında ürün kapalıydı, sonra yeniden kalktı)' : durdurK ? '' : ' (ürün kapatma komutu çalışmadı)'}.`, onceSonra: 'yoktu → çalışıyor' });
       else if (!once && !jvm && sonV && korur(urun)) bulgu.push({ durum: 'NEW_URUN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu, şimdi çalışıyor; önce görüntüsü eski sürüm (JBoss nesli belirsiz) ya da BOOT satırı olmadığı için kapatılmadı, dokunulmadı.', onceSonra: 'yoktu → çalışıyor' });
-      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN_KALAN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : surum.guncel ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : `kapatma komutu çalışmadı — AWX'teki betik eski (${surum.etiket}); güncel betikle yeniden çalıştırın`}.`, onceSonra: 'yoktu → çalışıyor' });
+      else if (!once && !jvm && sonV) bulgu.push({ durum: 'NEW_URUN_KALAN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : !etki.kapatmaz(urun) ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : `kapatma komutu çalışmadı — AWX'teki betik eski (${etki.etiket}); güncel betikle yeniden çalıştırın`}.`, onceSonra: 'yoktu → çalışıyor' });
       else if (!once && jvm && sonV) bulgu.push({ durum: 'NEW_KALAN', servis: servisAdi(k), aciklama: 'Reboot öncesi çalışmıyordu; kapatılması gerekirken hâlâ çalışıyor.', onceSonra: 'yoktu → çalışıyor' });
       // v3 B2: otomasyonun kapattigi URUN uyari sinifindadir ("kapatildi - kontrol edilecek"); JVM bilgi kalir.
       else if (!once && !sonV && durdurK === 'OK') bulgu.push({ durum: jvm ? 'KAPATILDI' : 'KAPATILDI_URUN', servis: servisAdi(k), aciklama: `Reboot öncesi çalışmıyordu; reboot sonrası ${ilkV ? 'açılmıştı' : 'kalkmıştı (durulma beklemesinde görüldü)'}, ${ile}otomatik kapatıldı.${jvm ? '' : ' Beklenen durum mu kontrol edin.'}`, onceSonra: 'yoktu → kapatıldı' });
@@ -277,7 +285,7 @@ function raporHtml(k) {
     };
     const deg = hostlar.map((h) => {
       const son = sd[h]?.durum || 'olculemedi';
-      return { h, ...hizala(sunucuDegerlendir(onceS[h]?.goruntu, sonraS[h]), son), oto: sd[h]?.otomasyon || { sinif: 'dokunmadi', teknoloji: [] }, son };
+      return { h, ...hizala(sunucuDegerlendir(onceS[h]?.goruntu, sonraS[h], onceSat[h]), son), oto: sd[h]?.otomasyon || { sinif: 'dokunmadi', teknoloji: [] }, son };
     });
     const say = { PROBLEM: 0, WARNING: 0, INFO: 0, KAPSAM_DISI: 0, OK: 0 };
     for (const d of deg) say[d.sonuc] += 1;
@@ -291,6 +299,12 @@ function raporHtml(k) {
     else if (say.WARNING) baslik = `Kritik sorun yok; ${say.WARNING} sunucuda uyarı var.`;
     else if (say.INFO) baslik = `Kritik sorun ve uyarı yok; ${say.INFO} sunucuda bilgi kaydı var.`;
     else if (say.KAPSAM_DISI) baslik = `Kritik sorun ve uyarı yok; ${say.KAPSAM_DISI} sunucu karşılaştırma dışı (reboot öncesi çalışan uygulama yoktu).`;
+    // 2026-11-16: kayit duzeyi betik-eski notu yalniz etkili sunucu varsa ve SAYISIYLA (ekran bandi ile ayni metin).
+    const { betikEtkisi, betikEskiBandi } = require('./reboot-check.cjs');
+    // Inceleme B1: once kaynagi sonraDegerlendir ile ayni (onceSat = onceGirdisi; goruntu_ok=false ham once kullanilmaz).
+    const etkili = hostlar.filter((h) => sonraS[h] && !sonraS[h].sonuc_yok && betikEtkisi(onceSat[h], sonraS[h]).eski);
+    if (etkili.length)
+      p.push(`<p class='betik-eski' style='margin:12px 0;padding:10px 12px;background:${RENK.warning[0]};color:${RENK.warning[1]};font-weight:bold'>${e(betikEskiBandi([...new Set(etkili.map((h) => betikEtkisi(onceSat[h], sonraS[h]).etiket))], etkili.length))}</p>`);
     p.push("<h2>Ayrıntı</h2>", `<p style='font-size:15px;margin:17px 0 14px'><b>${e(baslik)}</b></p>`,
       kutular([['Sunucu', deg.length, '#202938', '#f7f9fc'], ['Kritik sunucu', say.PROBLEM, '#a12631', '#fff0f0'], ['Uyarılı sunucu', say.WARNING, '#805300', '#fff4df'], ['Bilgili sunucu', say.INFO, '#17549f', '#edf4ff'], ['Karşılaştırma dışı', say.KAPSAM_DISI, RENK.neutral[1], RENK.neutral[0]], ['Normal sunucu', say.OK, '#20633f', '#eaf6ee']]),
       // SAYI KARISIKLIGI (2026-11-15, ekip: "4 bilgi diyor 5 tane cikmis"): kutular SUNUCU sayar, Bulgular KAYIT;
