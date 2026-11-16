@@ -160,6 +160,9 @@ function createRouter() {
         return res.status(404).json({ ok: false, error: 'Bu Application Hub işi doğrulanamadı.' });
       }
       const st = await require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId);
+      if (!Number.isInteger(st.templateId) || st.templateId !== sahiplik.templateId) {
+        return res.status(409).json({ ok: false, error: 'AWX iş template kimliği Application Hub geçmişiyle eşleşmiyor.' });
+      }
       const BITTI = new Set(['successful', 'failed', 'error', 'canceled']);
       if (!BITTI.has(st.status)) return res.json({ ok: true, status: st.status, finished: false });
       const raw = C.statsOku(st.artifacts);

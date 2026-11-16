@@ -159,7 +159,7 @@ async function canliIsSahipligi(serverId, jobId) {
   if (!Number.isInteger(Number(row.template_id)) || Number(row.template_id) <= 0 || row.template_name !== TEMPLATE_NAME || !params || params.platform !== 'app-hub-ocp') return null;
   const hedefler = hedefAnahtarlari(params.app_hub_targets);
   if (!hedefler || typeof params.app_hub_app !== 'string' || !params.app_hub_app) return null;
-  return { app: params.app_hub_app, hedefler };
+  return { app: params.app_hub_app, hedefler, templateId: Number(row.template_id) };
 }
 
 function canliArtifactDogrula(raw, sahiplik, ad) {
@@ -240,20 +240,48 @@ async function sonOkumalar(ad) {
 
 async function sonucuKaydet(ad, cozum, { serverId, jobId, kullanici, adSoyad }) {
   const db = require('../db/index.cjs');
-  const { rows } = await db.query(
-    `SELECT TOP 1 id FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2`,
-    [serverId, jobId],
-  );
-  if (rows.length) return false;
-  for (const h of cozum.hedefler) {
+  const hedefler = cozum.hedefler.map((h) => {
     const { cluster, namespace, ok, hata, ...govde } = h;
-    await db.query(
-      `INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [ad, cluster, namespace, JSON.stringify(govde).slice(0, 900000), ok ? 1 : 0, hata ? String(hata).slice(0, 2000) : null, kullanici, adSoyad, serverId, jobId],
-    );
-  }
-  return true;
+    return { cluster, namespace, sonuc_json: JSON.stringify(govde).slice(0, 900000), ok: ok ? 1 : 0, hata: hata ? String(hata).slice(0, 2000) : null };
+  });
+  const { rows } = await db.query(
+    `SET XACT_ABORT ON;
+     SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+     BEGIN TRANSACTION;
+     DECLARE @existing INT = (
+       SELECT COUNT(*) FROM app_hub_ocp_canli WITH (UPDLOCK, HOLDLOCK)
+        WHERE awx_server_id = $1 AND awx_job_id = $2
+     );
+     IF @existing = 0
+     BEGIN
+       INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
+       SELECT $4, j.cluster, j.namespace, j.sonuc_json, j.ok, j.hata, $5, $6, $1, $2
+         FROM OPENJSON($3) WITH (
+           cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace',
+           sonuc_json NVARCHAR(MAX) '$.sonuc_json', ok BIT '$.ok', hata NVARCHAR(2000) '$.hata'
+         ) j;
+       IF @@ROWCOUNT <> $7 THROW 50001, 'Application Hub canli sonucu eksik yazildi.', 1;
+     END
+     ELSE IF @existing <> $7
+       OR EXISTS (SELECT 1 FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2 AND uygulama <> $4)
+       OR EXISTS (
+         SELECT cluster, namespace FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2
+         EXCEPT SELECT cluster, namespace FROM OPENJSON($3) WITH (cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace')
+       )
+       OR EXISTS (
+         SELECT cluster, namespace FROM OPENJSON($3) WITH (cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace')
+         EXCEPT SELECT cluster, namespace FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2
+       )
+     BEGIN
+       ROLLBACK TRANSACTION;
+       THROW 50002, 'Application Hub canli sonucu kismi veya uyumsuz.', 1;
+     END
+     COMMIT TRANSACTION;
+     SELECT CASE WHEN @existing = 0 THEN 1 ELSE 0 END AS inserted;`,
+    [serverId, jobId, JSON.stringify(hedefler), ad, kullanici, adSoyad, hedefler.length],
+    { tekrar: false },
+  );
+  return Number(rows[0] && rows[0].inserted) === 1;
 }
 
 module.exports = { REGISTRY_KEY, STATS_KEY, HEDEF_TAVAN, TEMPLATE_NAME, statsOku, satirlariCoz, sonucuCoz, hedefleriKur, canliIsSahipligi, canliArtifactDogrula, sonOkumalar, sonucuKaydet };
