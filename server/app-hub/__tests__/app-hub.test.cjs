@@ -305,7 +305,7 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
 const SQL = { NVarChar: () => 'nvarchar' };
 const sorgu = { yanit: /** @type {(t?: any, p?: any) => any} */ (() => ({ recordset: [] })) };
 sahte(require.resolve('../../inventory/mssql.cjs'), { sql: SQL, query: async (t, p) => sorgu.yanit(t, p) });
-const portalDb = { yanit: async () => ({ rows: [] }) };
+const portalDb = { yanit: /** @type {(t?: any, p?: any) => any} */ (async () => ({ rows: [] })) };
 sahte(require.resolve('../../db/index.cjs'), { query: (t, p) => portalDb.yanit(t, p) });
 sahte(require.resolve('../../config/apps-table.cjs'), { getAppsTable: () => 'MWAppsInventory', getWasAppsTable: () => 'WASAppsInventory' });
 const hub = { hosts: [], agir: new Map() };
