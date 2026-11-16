@@ -35,6 +35,7 @@ const sayi = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : N
 
 const AD_RE = /^[A-Za-z0-9._-]{1,128}$/;
 const ARA_RE = /^[A-Za-z0-9._-]{2,64}$/;
+const HARF_DUYARSIZ = 'COLLATE Latin1_General_CI_AI';
 const HOST_TAVAN = 60;
 const JVM_AGIR_ESZAMAN = 6;
 
@@ -83,6 +84,9 @@ function tablolar() {
 /**
  * Uygulama adiyla uc tipte arama. JBoss adlari taban ada toplanir (<APP>-D/-T/-Q ayni uygulama).
  * Siralama: tam eslesme, sonra onek, sonra icerir; her tipten en cok 25.
+ * HARF DUYARSIZ (2026-11-16, kullanici: "kucuk harfle yazsam bile uygulamayi bulalim"): LIKE tablonun kendi
+ * collation'ina birakilmaz. Turkce collation'da 'i'nin buyugu 'I' degil (GEINTERNET 'geinternet' ile bulunmuyordu),
+ * CS collation'da hic eslesmez. Ad kolonu Latin1_General_CI_AI ile karsilastirilir (q zaten ASCII: ARA_RE).
  */
 async function ara(q) {
   const { sql } = mssql();
@@ -91,17 +95,17 @@ async function ara(q) {
   const { parseAppName } = require('../retirement/discover.cjs');
   const [jb, wa, oc] = await Promise.all([
     guvenli(
-      `SELECT TOP 400 app, UPPER(host) AS host FROM dbo.${t.jboss} WHERE app LIKE '%' + @q + '%'`,
+      `SELECT TOP 400 app, UPPER(host) AS host FROM dbo.${t.jboss} WHERE app ${HARF_DUYARSIZ} LIKE '%' + @q + '%'`,
       p,
     ),
     guvenli(
       `SELECT TOP 100 app, COUNT(DISTINCT host) AS n FROM dbo.${t.was}
-        WHERE app LIKE '%' + @q + '%' AND app <> 'NOAPP' GROUP BY app`,
+        WHERE app ${HARF_DUYARSIZ} LIKE '%' + @q + '%' AND app <> 'NOAPP' GROUP BY app`,
       p,
     ),
     guvenli(
       `SELECT TOP 100 application AS app, COUNT(DISTINCT namespace) AS ns, COUNT(DISTINCT cluster) AS cl
-         FROM dbo.Openshift_Inventory WHERE application LIKE '%' + @q + '%' GROUP BY application`,
+         FROM dbo.Openshift_Inventory WHERE application ${HARF_DUYARSIZ} LIKE '%' + @q + '%' GROUP BY application`,
       p,
     ),
   ]);

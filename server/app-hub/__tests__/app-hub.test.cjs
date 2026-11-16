@@ -385,6 +385,32 @@ test('AH8 arama: JBoss -D/-T/-Q taban ada toplanir, okunamayan tip ayri soylenir
   assert.ok(r.sonuclar.some((s) => s.tip === 'ocp' && s.ozet.includes('2 namespace')));
 });
 
+test('AH8b arama harf duyarsiz: kucuk / karisik harf ayni sonucu verir; LIKE tablonun (Turkce / CS) collation\'ina birakilmaz', async () => {
+  // Sahte DB, Turkce / CS collation gibi davranir: sorgu ad kolonunu Latin1_General_CI_AI ile karsilastirmiyorsa
+  // eslesme BUYUK/kucuk harfe duyarlidir (gercekte 'geinternet' GEINTERNET'i bulmuyordu).
+  const metinler = [];
+  const tablo = {
+    MWAppsInventory: [{ app: 'GEINTERNETBRANCH-T', host: 'GEJBOT03' }, { app: 'GEINTERNETBRANCH-D', host: 'GEJBOT03' }],
+    WASAppsInventory: [{ app: 'GEINTERNETWAS', n: 1 }],
+    Openshift_Inventory: [{ app: 'geinternet-api', ns: 1, cl: 1 }],
+  };
+  sorgu.yanit = (t, p) => {
+    metinler.push(t);
+    const q = String((p || []).find((x) => x.name === 'q')?.value ?? '');
+    const ci = /(app|application) COLLATE Latin1_General_CI_AI LIKE/.test(t);
+    const es = (ad) => (ci ? ad.toUpperCase().includes(q.toUpperCase()) : ad.includes(q));
+    const ad = Object.keys(tablo).find((k) => t.includes(k));
+    return { recordset: tablo[ad].filter((r) => es(r.app)) };
+  };
+  for (const q of ['geinternet', 'GeInternet', 'GEINTERNET']) {
+    const r = await V.ara(q);
+    assert.deepEqual(r.sonuclar.map((s) => `${s.tip}:${s.ad}`).sort(), ['jboss:GEINTERNETBRANCH', 'ocp:geinternet-api', 'was:GEINTERNETWAS'], q);
+    assert.deepEqual(r.sonuclar.find((s) => s.tip === 'jboss').varyantlar, ['GEINTERNETBRANCH-D', 'GEINTERNETBRANCH-T'], q);
+  }
+  assert.equal(metinler.length, 9);
+  for (const t of metinler) assert.match(t, /(app|application) COLLATE Latin1_General_CI_AI LIKE '%' \+ @q \+ '%'/);
+});
+
 test('AH9 JBoss birlesik gorunum: surum, heap, JVM (maskeli), web, kapasite MB -> GB', async () => {
   sorgu.yanit = (t) => {
     if (t.includes('FROM dbo.MWAppsInventory')) return { recordset: [{ app: 'MUSTERI', host: 'gojbap01', env: 'Production', jboss_version: 'EAP 8.0', jdk_type: 'OpenJDK', jre_version: '17', min_heap: '1024', max_heap: '4096', app_path: '/vhosting8/x' }] };
