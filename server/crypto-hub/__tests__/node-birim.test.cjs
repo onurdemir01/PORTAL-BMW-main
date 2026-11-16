@@ -1137,7 +1137,7 @@ test('N17 degerDogrula / maskele: sozlesme vektorleri; desen kaynak metinleri so
   assert.equal(N.maskele(`${'h'.repeat(250)}:8333`, 'hostport').length, 200);
   assert.ok(N.maskele(`https://${'h'.repeat(250)}.invalid/x`, 'url').length <= 200);
   // Python ayni kumeyi disarida birakir (\r, U+2028, U+2029): canli degerin maskesi iki tarafta ayni.
-  for (const ayrac of ['\r', ' ', ' '])
+  for (const ayrac of ['\r', '\u2028', '\u2029'])
     assert.equal(N.maskele(`https://h.invalid/a${ayrac}b`, 'url'), '****');
   // Maskeli cikti Portal suzgecinden duzeltilmeden gecer (betikle ayni bicim).
   for (const [deger, bicim, neden] of V) {
