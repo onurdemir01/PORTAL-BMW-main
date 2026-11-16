@@ -71,6 +71,7 @@ const esit = (a, b) =>
 function kosul(c, row, p) {
   let m;
   if ((m = /^(\w+) IS NULL$/.exec(c))) return row[m[1]] == null;
+  if ((m = /^(\w+) IS NOT NULL$/.exec(c))) return row[m[1]] != null;
   if ((m = /^(\w+) IN \((.*)\)$/.exec(c)))
     return bol(m[2], ',').some((x) => esit(row[m[1]], deger(x, p)));
   if ((m = /^(\w+) < (.*)$/.exec(c))) return row[m[1]] != null && +row[m[1]] < +deger(m[2], p);
@@ -149,6 +150,9 @@ async function query(sql, p = []) {
       yedek: null,
       envanter_kosu_id: null,
       envanter_notu: null,
+      toplu_id: null,
+      sil_istendi_at: null,
+      sil_isteyen: null,
       created_at: simdi(),
       updated_at: simdi(),
     };
@@ -1111,4 +1115,998 @@ test('ET26 salt okunur on kontrol OK donerse PLAN_HATA + BEKLENMEDIK + denetimde
   assert.equal(d.anomali, true);
   assert.equal(d.yedek, '/var/tmp/x.tgz');
   assert.equal(S.envanter.length, 0);
+});
+
+// ── TOPLU (2026-11-16) ──
+// ETT1 toplu on kontrol kismi basari; hicbiri -> 409 (sonuclar govdede); hepsi AWX 5xx -> 5xx (HTTP 424)
+// ETT2 toplu on kontrol: tekil olmayan / 0 / 51 oge 400 (launch yok); 50 oge kabul
+// ETT3 toplu sil HEPSI-YA-HIC: yanlis planJobId / olmayan / suresi dolmus / bulgu kalkti -> 409, hicbiri degismez
+// ETT4 onayMetni tam "<n> EAR SIL" degilse 409; tekrar eden id 400
+// ETT5 kuyruk: ayni sunucuda 2 kayit -> biri SILINIYOR biri sirada; ilki SILINDI olunca ikincisi baslar;
+//      envanter taramasi son silmeden sonra TEK (iki kayda ayni kosu)
+// ETT6 global TOPLU_ESZAMANLI (5) siniri
+// ETT7 es zamanli kuyrukIlerlet / liste ayni kaydi iki kez baslatmaz, sunucu basina tek
+// ETT8 sirada 60 dk -> PLAN_ESKIDI (launch yok); ETT9 eskit (30 dk) sirada kaydi eskitmez
+// ETT10 toplu iptal yalniz siradakileri; SILINIYOR'a ve baska toplu isleme dokunmaz; gecersiz / bilinmeyen kimlik
+// ETT11 tekli sil: sunucu doluysa sirada, GET :id ayni sunucuyu ilerletip baslatir; tekli iptal sirada kayitta
+// ETT12 HTTP: toplu uclar :id uclarindan once, 409 govdesinde reddedilenler, 424 govdesinde sonuclar, sirada:true
+// ETT13 kuyruktan (toplu) kesin launch reddi -> HATA (geri donmez), digerleri devam
+// ETT14 CAS kaybeden: dogrulamadan sonra baska istek isaretlediyse kaybedenler'de, digerleri isaretli
+
+const SIRA_DIGER = '11111111-2222-4333-8444-555555555555';
+
+function cokHost(n) {
+  const hosts = [];
+  for (let i = 1; i <= n; i += 1)
+    hosts.push(
+      host(`H${i}`, i === 1 ? 'Production' : 'Non-Production', [
+        bulgu('/vhosting', `E${i}.ear`, '7'),
+      ]),
+    );
+  return { hosts };
+}
+
+const topluGovde = (planlar, metin) => ({
+  confirmed: true,
+  onayMetni: metin ?? `${planlar.length} EAR SIL`,
+  kayitlar: planlar.map((t) => ({ id: t.id, planJobId: t.planJobId })),
+});
+const silLaunchlari = () => S.launchlar.filter((l) => l.extraVars.plan_only === false);
+const okJob = (ad) =>
+  sonucJob('OK', 'silindi', { ...PLAN_EAR, backup: `/var/tmp/server_hub_backup/ear-${ad}-1.tgz` });
+const satir = (id) => DB.satirlar.find((x) => x.id === id);
+
+test('ETT1 toplu on kontrol: kismi basari, hicbiri -> 409, hepsi AWX 5xx -> 5xx', async () => {
+  let degerlendirme = 0;
+  ET.kur({
+    ...mevcutDeps(),
+    getAssessment: async () => {
+      degerlendirme += 1;
+      return S.a;
+    },
+  });
+  const y = await ET.topluOnKontrol(istek(), {
+    adaylar: [
+      { host: 'HOSTA', kok: '/vhosting', ad: 'APPX.ear' },
+      { host: 'HOSTX', kok: '/vhosting', ad: 'BAGLI.ear' },
+      { host: 'HOSTA', kok: '/vhosting', ad: 'BASKA.ear' },
+      { host: 'hostp', kok: '/vhosting', ad: 'PRODAPP.ear' },
+    ],
+  });
+  assert.equal(degerlendirme, 1, 'tek taze degerlendirme');
+  assert.equal(y.basarili, 2);
+  assert.equal(y.basarisiz, 2);
+  assert.deepEqual(
+    y.sonuclar.map((x) => [x.host, x.ad, x.ok]),
+    [
+      ['HOSTA', 'APPX.ear', true],
+      ['HOSTX', 'BAGLI.ear', false],
+      ['HOSTA', 'BASKA.ear', false],
+      ['HOSTP', 'PRODAPP.ear', true],
+    ],
+  );
+  assert.equal(y.sonuclar[0].id, 1);
+  assert.match(y.sonuclar[1].message, /domain\.xml/);
+  assert.match(y.sonuclar[2].message, /bulgusu yok/);
+  assert.equal(S.launchlar.length, 2);
+  assert.ok(S.launchlar.every((l) => l.extraVars.plan_only === true));
+  const d = S.denetim.find((x) => x.op === 'ear_temizlik_toplu_plan');
+  assert.equal(d.basarili, 2);
+  assert.equal(d.ogeler.length, 4);
+  // hicbiri baslamadi: 409, govdede sonuclar
+  await assert.rejects(
+    ET.topluOnKontrol(istek(), {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting', ad: 'APPX.ear' },
+        { host: 'HOSTX', kok: '/vhosting', ad: 'BAGLI.ear' },
+      ],
+    }),
+    (e) => {
+      assert.equal(e.status, 409);
+      assert.equal(e.ek.basarili, 0);
+      assert.equal(e.ek.sonuclar.length, 2);
+      assert.match(e.ek.sonuclar[0].message, /hâlâ/);
+      return true;
+    },
+  );
+  // hepsi AWX 5xx: 5xx (HTTP katmaninda 424)
+  S.launchHata = Object.assign(new Error('AWX 503'), { status: 503 });
+  await assert.rejects(
+    ET.topluOnKontrol(istek(), {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting8', ad: 'APPY.ear' },
+        { host: 'HOSTU', kok: '/vhosting', ad: 'UNK.ear' },
+      ],
+    }),
+    (e) => {
+      assert.equal(e.status, 503);
+      assert.equal(e.ek.basarisiz, 2);
+      return true;
+    },
+  );
+});
+
+test('ETT2 toplu on kontrol: tekil olmayan / bos / 51 oge 400; 50 oge kabul', async () => {
+  await reddeder(
+    ET.topluOnKontrol(istek(), {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting', ad: 'APPX.ear' },
+        { host: 'hosta', kok: '/vhosting', ad: 'APPX.ear' },
+      ],
+    }),
+    400,
+    'toplu_tekrar',
+  );
+  await reddeder(ET.topluOnKontrol(istek(), { adaylar: [] }), 400, 'toplu_bos');
+  await reddeder(ET.topluOnKontrol(istek(), {}), 400, 'toplu_bos');
+  const cok = (n) =>
+    Array.from({ length: n }, (_, i) => ({ host: 'HOSTA', kok: '/vhosting', ad: `N${i}.ear` }));
+  await reddeder(ET.topluOnKontrol(istek(), { adaylar: cok(51) }), 400, 'toplu_fazla');
+  // gecersiz oge (bicim) oge basina reddedilir: tek oge -> hicbiri baslamadi 409, oge mesajinda neden
+  await assert.rejects(
+    ET.topluOnKontrol(istek(), { adaylar: [{ host: 'HOSTA', kok: '/opt', ad: 'APPX.ear' }] }),
+    (e) => {
+      assert.equal(e.status, 409);
+      assert.equal(e.code, 'toplu_hicbiri');
+      assert.equal(e.ek.sonuclar[0].ok, false);
+      assert.match(e.ek.sonuclar[0].message, /Kök yalnız/);
+      return true;
+    },
+  );
+  assert.equal(S.launchlar.length, 0);
+  assert.equal(DB.satirlar.length, 0);
+  // 50 oge sinirin icinde: dogrulamadan gecer (bulgular yok -> 409, 400 degil)
+  await reddeder(ET.topluOnKontrol(istek(), { adaylar: cok(50) }), 409, 'toplu_hicbiri');
+  assert.equal(ET.TOPLU_MAX, 50);
+});
+
+test('ETT3 toplu sil hepsi-ya-hic: biri gecmezse hicbir kayit degismez', async () => {
+  const t1 = await hazirPlan();
+  const t2 = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const t3 = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
+  const once = S.launchlar.length;
+  const degismedi = () => {
+    for (const t of [t1, t2, t3]) {
+      assert.equal(satir(t.id).sil_istendi_at, null, `#${t.id} isaretlenmemeli`);
+      assert.equal(satir(t.id).toplu_id, null);
+    }
+    assert.equal(S.launchlar.length, once);
+  };
+  // yanlis planJobId
+  await assert.rejects(
+    ET.topluSil(istek(), {
+      ...topluGovde([t1, t2, t3]),
+      kayitlar: [
+        { id: t1.id, planJobId: t1.planJobId },
+        { id: t2.id, planJobId: t2.planJobId + 99 },
+        { id: t3.id, planJobId: t3.planJobId },
+      ],
+    }),
+    (e) => {
+      assert.equal(e.status, 409);
+      assert.equal(e.code, 'toplu_red');
+      assert.deepEqual(
+        e.ek.reddedilenler.map((x) => x.id),
+        [t2.id],
+      );
+      return true;
+    },
+  );
+  degismedi();
+  assert.ok(!S.denetim.some((d) => d.op === 'ear_temizlik_toplu_sil'));
+  // olmayan kayit
+  await assert.rejects(
+    ET.topluSil(istek(), {
+      confirmed: true,
+      onayMetni: '2 EAR SIL',
+      kayitlar: [
+        { id: t1.id, planJobId: t1.planJobId },
+        { id: 999, planJobId: 1 },
+      ],
+    }),
+    (e) => e.status === 409 && e.ek.reddedilenler[0].id === 999,
+  );
+  degismedi();
+  // suresi dolmus (yalniz t3)
+  satir(t3.id).plan_bitis_at = new Date(Date.now() - 31 * 60000);
+  await assert.rejects(ET.topluSil(istek(), topluGovde([t1, t2, t3])), (e) => {
+    assert.equal(e.status, 409);
+    assert.deepEqual(
+      e.ek.reddedilenler.map((x) => x.id),
+      [t3.id],
+    );
+    assert.match(e.ek.reddedilenler[0].message, /dakikadan eski/);
+    return true;
+  });
+  degismedi();
+  assert.equal(satir(t1.id).durum, 'PLAN_HAZIR');
+  // taze bulgu kalkti (t2)
+  S.a = {
+    hosts: S.a.hosts.map((h) => (h.host === 'HOSTP' ? { ...h, findings: [] } : h)),
+  };
+  await assert.rejects(ET.topluSil(istek(), topluGovde([t1, t2])), (e) => {
+    assert.deepEqual(
+      e.ek.reddedilenler.map((x) => x.id),
+      [t2.id],
+    );
+    return true;
+  });
+  degismedi();
+});
+
+test('ETT4 onayMetni tam "<n> EAR SIL" degilse 409; tekrar eden id 400', async () => {
+  const t1 = await hazirPlan();
+  const t2 = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  for (const m of ['1 EAR SIL', '2 ear sil', ' 2 EAR SIL', '2 EAR SİL', 'APPX.ear', '']) {
+    await reddeder(ET.topluSil(istek(), topluGovde([t1, t2], m)), 409, 'onay_metni');
+  }
+  await reddeder(ET.topluSil(istek(), topluGovde([t1, t1])), 400, 'toplu_tekrar');
+  await reddeder(
+    ET.topluSil(istek(), { confirmed: true, onayMetni: '0 EAR SIL', kayitlar: [] }),
+    400,
+    'toplu_bos',
+  );
+  assert.equal(silLaunchlari().length, 0);
+  assert.equal(satir(t1.id).sil_istendi_at, null);
+  const y = await ET.topluSil(istek(), topluGovde([t1, t2]));
+  assert.equal(y.baslatilan, 2);
+});
+
+test('ETT5 kuyruk: ayni sunucuda tek silme, ilki bitince ikincisi; envanter son silmeden sonra tek', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const y = await ET.topluSil(istek('veli'), topluGovde([x, yy, p]));
+  assert.match(y.topluId, /^[0-9a-f-]{36}$/);
+  assert.equal(y.baslatilan, 2);
+  assert.equal(y.sirada, 1);
+  assert.equal(y.kaybedenler, undefined);
+  assert.equal(satir(x.id).durum, 'SILINIYOR');
+  assert.equal(satir(p.id).durum, 'SILINIYOR');
+  const k2 = (await ET.liste(false)).kayitlar.find((k) => k.id === yy.id);
+  assert.equal(k2.durum, 'PLAN_HAZIR');
+  assert.equal(k2.sirada, true);
+  assert.equal(k2.topluId, y.topluId);
+  assert.equal(k2.kalanSn, null);
+  assert.equal(silLaunchlari().length, 2);
+  assert.deepEqual(silLaunchlari()[0].extraVars, ET.extraVarsOf(satir(x.id), false, FP));
+  assert.equal(silLaunchlari()[0].kim, 'veli');
+  assert.equal(satir(x.id).onaylayan, 'veli');
+  assert.equal(satir(x.id).sil_isteyen, 'veli');
+  const d = S.denetim.find((q) => q.op === 'ear_temizlik_toplu_sil');
+  assert.equal(d.topluId, y.topluId);
+  assert.equal(d.isaretlenen, 3);
+  assert.equal(d.prod, 1);
+  // HOSTA'daki ilk silme biter: APPX SILINDI, tarama bekler, APPY baslar
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  let l = await ET.liste(false);
+  const kx = l.kayitlar.find((k) => k.id === x.id);
+  assert.equal(kx.durum, 'SILINDI');
+  assert.equal(kx.envanter.not, ET.ENVANTER_BEKLIYOR);
+  assert.equal(kx.envanter.kosuId, null);
+  assert.equal(l.kayitlar.find((k) => k.id === yy.id).durum, 'SILINIYOR');
+  assert.equal(S.envanter.length, 0, 'ayni sunucuda bekleyen silme varken tarama yok');
+  assert.equal(silLaunchlari().length, 3);
+  // APPY biter: HOSTA icin TEK tarama, iki kayda ayni kosu
+  S.jobs.set(satir(yy.id).sil_job_id, okJob('APPY.ear'));
+  l = await ET.liste(false);
+  assert.equal(S.envanter.length, 1);
+  assert.deepEqual(S.envanter[0].hedefler, ['HOSTA']);
+  for (const id of [x.id, yy.id]) {
+    const k = l.kayitlar.find((q) => q.id === id);
+    assert.equal(k.durum, 'SILINDI');
+    assert.equal(k.envanter.kosuId, 77);
+  }
+  await ET.liste(false);
+  await ET.tekKayit(x.id);
+  assert.equal(S.envanter.length, 1, 'tarama yeniden baslatilmaz');
+  // HOSTP kendi taramasini alir
+  S.jobs.set(satir(p.id).sil_job_id, okJob('PRODAPP.ear'));
+  await ET.tekKayit(p.id);
+  assert.equal(S.envanter.length, 2);
+  assert.deepEqual(S.envanter[1].hedefler, ['HOSTP']);
+});
+
+test('ETT6 global sinir: en cok 5 silme ayni anda', async () => {
+  S.a = cokHost(7);
+  const planlar = [];
+  for (let i = 1; i <= 7; i += 1) planlar.push(await hazirPlan(`E${i}.ear`, '/vhosting', `H${i}`));
+  const y = await ET.topluSil(istek(), topluGovde(planlar));
+  assert.equal(ET.TOPLU_ESZAMANLI, 5);
+  assert.equal(y.baslatilan, 5);
+  assert.equal(y.sirada, 2);
+  assert.equal(DB.satirlar.filter((r) => r.durum === 'SILINIYOR').length, 5);
+  await ET.liste(false);
+  assert.equal(silLaunchlari().length, 5, 'yer acilmadan baslamaz');
+  // biri biter -> siradaki ilk (istek zamani, id sirasi) baslar
+  S.jobs.set(satir(planlar[0].id).sil_job_id, okJob('E1.ear'));
+  await ET.liste(false);
+  assert.equal(DB.satirlar.filter((r) => r.durum === 'SILINIYOR').length, 5);
+  assert.equal(satir(planlar[5].id).durum, 'SILINIYOR');
+  assert.equal(satir(planlar[6].id).durum, 'PLAN_HAZIR');
+  assert.equal(silLaunchlari().length, 6);
+});
+
+test('ETT7 es zamanli kuyruk cagrilari ayni kaydi iki kez baslatmaz', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  // isaretli ama baslamamis (ornek: isaretleyen istegin kuyruk cagrisi henuz donmedi)
+  for (const t of [x, yy, p]) {
+    satir(t.id).sil_istendi_at = simdi();
+    satir(t.id).sil_isteyen = 'veli';
+  }
+  S.launchGecikme = 15;
+  await Promise.all([
+    ET.kuyrukIlerlet(),
+    ET.kuyrukIlerlet(),
+    ET.liste(false),
+    ET.tekKayit(yy.id),
+    ET.kuyrukIlerlet(),
+  ]);
+  const ids = silLaunchlari().map((l) => `${l.extraVars.target_host}:${l.extraVars.ear_name}`);
+  assert.deepEqual(
+    [...ids].sort((a, b) => a.localeCompare(b)),
+    ['HOSTA:APPX.ear', 'HOSTP:PRODAPP.ear'],
+  );
+  assert.equal(satir(yy.id).durum, 'PLAN_HAZIR');
+  assert.notEqual(satir(x.id).sil_job_id, null);
+});
+
+async function siradaKur() {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const y = await ET.topluSil(istek('veli'), topluGovde([x, yy]));
+  assert.equal(y.sirada, 1);
+  return { x, yy, y };
+}
+
+test('ETT8 sirada 60 dk asilinca PLAN_ESKIDI, launch yok', async () => {
+  const { x, yy } = await siradaKur();
+  const r = satir(yy.id);
+  r.sil_istendi_at = new Date(Date.now() - 59 * 60000);
+  r.plan_bitis_at = new Date(Date.now() - 59 * 60000);
+  await ET.liste(false);
+  assert.equal(r.durum, 'PLAN_HAZIR', '59 dk: hala sirada');
+  r.sil_istendi_at = new Date(Date.now() - 61 * 60000);
+  const k = (await ET.liste(false)).kayitlar.find((q) => q.id === yy.id);
+  assert.equal(k.durum, 'PLAN_ESKIDI');
+  assert.equal(k.sonuc, ET.SIRA_ESKIDI_NOTU);
+  assert.equal(k.sirada, false);
+  // HOSTA'daki silme biter: eskiyen kayit baslamaz; bekleyen kalmadigi icin tarama hemen
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  await ET.liste(false);
+  assert.equal(silLaunchlari().length, 1);
+  assert.equal(S.envanter.length, 1);
+  assert.ok(S.denetim.some((d) => d.faz === 'sira' && d.durum === 'PLAN_ESKIDI'));
+});
+
+test('ETT9 eskit (30 dk) sirada kaydi eskitmez; siradan baslar', async () => {
+  const { x, yy } = await siradaKur();
+  DB.kayma = 31 * 60 * 1000;
+  await ET.liste(false);
+  await ET.tekKayit(yy.id);
+  assert.equal(satir(yy.id).durum, 'PLAN_HAZIR');
+  assert.ok(satir(yy.id).sil_istendi_at);
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  await ET.tekKayit(yy.id);
+  assert.equal(satir(yy.id).durum, 'SILINIYOR');
+  assert.equal(silLaunchlari().length, 2);
+  assert.equal(silLaunchlari()[1].extraVars.ear_fp, FP);
+  // sirada olmayan hazir plan ise eskir
+  const t = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  DB.kayma += 31 * 60 * 1000;
+  await ET.liste(false);
+  assert.equal(satir(t.id).durum, 'PLAN_ESKIDI');
+});
+
+test('ETT10 toplu iptal yalniz siradakileri iptal eder', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const y = await ET.topluSil(istek(), topluGovde([x, yy, p]));
+  // baska toplu islemin sirada kaydi (sunucusu dolu): dokunulmaz
+  const u = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
+  Object.assign(satir(u.id), { sil_istendi_at: simdi(), toplu_id: SIRA_DIGER, host: 'HOSTP' });
+  const r = await ET.topluIptal(istek('ayse'), y.topluId);
+  assert.deepEqual(r, { iptal: 1, suren: 2 });
+  assert.equal(satir(yy.id).durum, 'IPTAL');
+  assert.equal(satir(x.id).durum, 'SILINIYOR');
+  assert.equal(satir(p.id).durum, 'SILINIYOR');
+  assert.equal(satir(u.id).durum, 'PLAN_HAZIR');
+  assert.ok(satir(u.id).sil_istendi_at);
+  const d = S.denetim.find((q) => q.op === 'ear_temizlik_toplu_iptal');
+  assert.equal(d.iptal, 1);
+  assert.equal(d.topluId, y.topluId);
+  assert.deepEqual(await ET.topluIptal(istek(), y.topluId), { iptal: 0, suren: 2 });
+  await reddeder(ET.topluIptal(istek(), 'x; DROP'), 400, 'gecersiz_toplu');
+  await reddeder(ET.topluIptal(istek(), 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'), 404, 'toplu_yok');
+  // APPX biter: iptal edilen APPY baslamaz, HOSTA taramasi hemen
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  await ET.tekKayit(x.id);
+  assert.equal(satir(yy.id).durum, 'IPTAL');
+  assert.equal(S.envanter.length, 1);
+});
+
+test('ETT11 tekli sil: sunucu doluysa sirada; GET :id ayni sunucuyu ilerletip baslatir; tekli iptal', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const k1 = await ET.sil(istek(), x.id, {
+    confirmed: true,
+    onayMetni: 'APPX.ear',
+    planJobId: x.planJobId,
+  });
+  assert.equal(k1.durum, 'SILINIYOR');
+  assert.equal(k1.sirada, false);
+  assert.equal(k1.topluId, null);
+  const k2 = await ET.sil(istek(), yy.id, {
+    confirmed: true,
+    onayMetni: 'APPY.ear',
+    planJobId: yy.planJobId,
+  });
+  assert.equal(k2.durum, 'PLAN_HAZIR');
+  assert.equal(k2.sirada, true);
+  assert.equal(silLaunchlari().length, 1);
+  // tekrar istenemez
+  await reddeder(
+    ET.sil(istek(), yy.id, { confirmed: true, onayMetni: 'APPY.ear', planJobId: yy.planJobId }),
+    409,
+    'sirada',
+  );
+  // GET :id (sirada kayit) HOSTA'daki silmeyi ilerletir, sonra kuyruk
+  assert.equal((await ET.tekKayit(yy.id)).durum, 'PLAN_HAZIR');
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  const k3 = await ET.tekKayit(yy.id);
+  assert.equal(k3.durum, 'SILINIYOR');
+  assert.equal(satir(x.id).durum, 'SILINDI');
+  // tekli iptal sirada kayitta da calisir
+  S.a.hosts.find((h) => h.host === 'HOSTP').findings.push(bulgu('/vhosting', 'PROD2.ear', '7'));
+  const z = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const w = await hazirPlan('PROD2.ear', '/vhosting', 'HOSTP');
+  await ET.sil(istek(), z.id, {
+    confirmed: true,
+    onayMetni: 'PRODAPP.ear',
+    planJobId: z.planJobId,
+  });
+  const kw = await ET.sil(istek(), w.id, {
+    confirmed: true,
+    onayMetni: 'PROD2.ear',
+    planJobId: w.planJobId,
+  });
+  assert.equal(kw.sirada, true);
+  const iw = await ET.iptal(istek(), w.id);
+  assert.equal(iw.durum, 'IPTAL');
+  assert.ok(S.denetim.some((d) => d.op === 'ear_temizlik_iptal' && d.id === w.id && d.sirada));
+});
+
+test('ETT12 HTTP: toplu uclar :id uclarindan once; 409 govdesinde reddedilenler; tekli sirada:true', async () => {
+  const router = sahteRouter();
+  ET.mount(router, mevcutDeps());
+  const yollar = Object.keys(router.h);
+  const sira = (y) => yollar.indexOf(y);
+  assert.ok(sira('POST /ear-temizlik/toplu/sil') >= 0);
+  assert.ok(sira('POST /ear-temizlik/toplu/sil') < sira('POST /ear-temizlik/:id/sil'));
+  assert.ok(sira('POST /ear-temizlik/toplu/:topluId/iptal') >= 0);
+  const o = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/toplu/on-kontrol',
+    {},
+    {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting', ad: 'APPX.ear' },
+        { host: 'HOSTA', kok: '/vhosting8', ad: 'APPY.ear' },
+      ],
+    },
+  );
+  assert.equal(o.code, 200);
+  assert.equal(o.body.ok, true);
+  assert.equal(o.body.basarili, 2);
+  for (const s of o.body.sonuclar) {
+    const r = satir(s.id);
+    S.jobs.set(r.plan_job_id, sonucJob('PLAN', 'ok', planEar(r.kok, r.ad)));
+  }
+  const l = await cagir(router, 'GET', '/ear-temizlik');
+  const hazir = l.body.kayitlar.filter((k) => k.durum === 'PLAN_HAZIR');
+  assert.equal(hazir.length, 2);
+  const c = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/toplu/sil',
+    {},
+    { ...topluGovde(hazir), confirmed: undefined },
+  );
+  assert.equal(c.code, 400);
+  const red = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/toplu/sil',
+    {},
+    {
+      ...topluGovde(hazir),
+      kayitlar: [
+        { id: hazir[0].id, planJobId: hazir[0].planJobId },
+        { id: hazir[1].id, planJobId: 1 },
+      ],
+    },
+  );
+  assert.equal(red.code, 409);
+  assert.equal(red.body.ok, false);
+  assert.deepEqual(
+    red.body.reddedilenler.map((x) => x.id),
+    [hazir[1].id],
+  );
+  const s = await cagir(router, 'POST', '/ear-temizlik/toplu/sil', {}, topluGovde(hazir));
+  assert.equal(s.code, 200);
+  assert.equal(s.body.baslatilan, 1);
+  assert.equal(s.body.sirada, 1);
+  const i = await cagir(router, 'POST', '/ear-temizlik/toplu/:topluId/iptal', {
+    topluId: s.body.topluId,
+  });
+  assert.deepEqual(i.body, { ok: true, iptal: 1, suren: 1 });
+  // hepsi AWX 5xx: 424 + sonuclar
+  S.launchHata = Object.assign(new Error('AWX 503'), { status: 503 });
+  const f = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/toplu/on-kontrol',
+    {},
+    { adaylar: [{ host: 'HOSTP', kok: '/vhosting', ad: 'PRODAPP.ear' }] },
+  );
+  assert.equal(f.code, 424);
+  assert.equal(f.body.upstreamStatus, 503);
+  assert.equal(f.body.sonuclar.length, 1);
+  S.launchHata = null;
+  // tekli sil HTTP: sunucu doluysa sirada:true
+  S.a.hosts.find((h) => h.host === 'HOSTU').findings.push(bulgu('/vhosting', 'UNK2.ear', '7'));
+  const t1 = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
+  const t2 = await hazirPlan('UNK2.ear', '/vhosting', 'HOSTU');
+  const s1 = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/:id/sil',
+    { id: String(t1.id) },
+    { confirmed: true, onayMetni: 'UNK.ear', planJobId: t1.planJobId },
+  );
+  assert.equal(s1.body.sirada, false);
+  const s2 = await cagir(
+    router,
+    'POST',
+    '/ear-temizlik/:id/sil',
+    { id: String(t2.id) },
+    { confirmed: true, onayMetni: 'UNK2.ear', planJobId: t2.planJobId },
+  );
+  assert.equal(s2.code, 200);
+  assert.equal(s2.body.sirada, true);
+  assert.equal(s2.body.kayit.sirada, true);
+});
+
+test('ETT13 kuyruktan kesin launch reddi -> HATA, digerleri devam', async () => {
+  const x = await hazirPlan();
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  let n = 0;
+  const asil = mevcutDeps();
+  ET.kur({
+    ...asil,
+    launch: async (req, key, tpl, extraVars, detail) => {
+      if (extraVars.plan_only === false) {
+        n += 1;
+        if (n === 1) throw Object.assign(new Error('Bad Request'), { status: 400 });
+      }
+      return asil.launch(req, key, tpl, extraVars, detail);
+    },
+  });
+  const y = await ET.topluSil(istek(), topluGovde([x, p]));
+  assert.equal(y.baslatilan, 1);
+  assert.equal(satir(x.id).durum, 'HATA');
+  assert.match(satir(x.id).sonuc, /silme işi başlatılamadı: Bad Request/);
+  assert.equal(satir(p.id).durum, 'SILINIYOR');
+  await ET.liste(false);
+  assert.equal(satir(x.id).durum, 'HATA', 'yeniden denenmez');
+});
+
+test('ETT14 CAS kaybeden: dogrulamadan sonra baskasi isaretlediyse kaybedenler, digerleri isaretli', async () => {
+  const x = await hazirPlan();
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const eski = S.a;
+  const asil = mevcutDeps();
+  ET.kur({
+    ...asil,
+    getAssessment: async () => {
+      // dogrulama okumasindan sonra, CAS'tan once: baska bir toplu istek x'i isaretledi
+      Object.assign(satir(x.id), { sil_istendi_at: simdi(), toplu_id: SIRA_DIGER });
+      return eski;
+    },
+  });
+  const y = await ET.topluSil(istek(), topluGovde([x, p]));
+  assert.deepEqual(y.kaybedenler, [x.id]);
+  assert.equal(satir(x.id).toplu_id, SIRA_DIGER);
+  assert.equal(satir(p.id).toplu_id, y.topluId);
+  assert.equal(y.baslatilan, 1, 'yalniz bu islemin isaretledigi p sayilir');
+  // hepsi kaybedilirse 409
+  ET.kur(asil);
+  const z = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
+  ET.kur({
+    ...asil,
+    getAssessment: async () => {
+      satir(z.id).durum = 'IPTAL';
+      return eski;
+    },
+  });
+  await assert.rejects(ET.topluSil(istek(), topluGovde([z])), (e) => {
+    assert.equal(e.status, 409);
+    assert.deepEqual(e.ek.kaybedenler, [z.id]);
+    return true;
+  });
+});
+
+// ── INCELEME TUR 1 DUZELTMELERI (2026-11-16) ──
+//   ETT15 BELIRSIZ gecisi de envanterKontrol'u tetikler (bekleyen SILINDI taramasi kaybolmaz)
+//   ETT16 toplu on kontrol oge basina girdi hatasi; durum kodsuz belirsiz launch -> 5xx
+//   ETT17 isaretleme / kuyruk hatasi: isaretlenen silmeler surerken "hata" yaniti verilmez
+//   ETT18 sirada kayit baslatilmadan once bulgu kapisi (engel -> IPTAL); degerlendirme okunamazsa baslatma yok
+//   ETT19 liste son 50'ye ek tum aktif kayitlari dondurur
+//   ETT20 yurutucu turu kuyrugu sekmeden bagimsiz ilerletir; server/index.cjs'e kayitli
+//   ETT21 toplu silmede ls -ltr ve parmak izi kapilari (kullanicinin ana sarti)
+//   ETT22-25 baslatma CAS'i sirada kosulu; tekli iptal / toplu iptal CAS'i / baslatma hatasi sonrasi envanter
+
+function bekleyenSilindi(h, kok, ad) {
+  DB.sira += 1;
+  const r = {
+    id: DB.sira,
+    host: h,
+    kok,
+    ad,
+    jboss: 7,
+    ortam: 'TEST',
+    prod: 0,
+    durum: 'SILINDI',
+    olusturan: 'admin1',
+    onaylayan: 'admin1',
+    plan_awx_server_id: 1,
+    plan_job_id: 900 + DB.sira,
+    plan_bitis_at: simdi(),
+    plan_json: null,
+    sil_awx_server_id: 1,
+    sil_job_id: 950 + DB.sira,
+    sonuc: 'silindi',
+    yedek: null,
+    envanter_kosu_id: null,
+    envanter_notu: ET.ENVANTER_BEKLIYOR,
+    toplu_id: null,
+    sil_istendi_at: simdi(),
+    sil_isteyen: 'admin1',
+    created_at: simdi(),
+    updated_at: simdi(),
+  };
+  DB.satirlar.push(r);
+  return r;
+}
+
+test('ETT15 BELIRSIZ gecisi (zaman asimi / numarasiz) ayni sunucudaki bekleyen taramayi baslatir', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  await ET.topluSil(istek('veli'), topluGovde([x, yy]));
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  await ET.liste(false);
+  assert.equal(satir(x.id).durum, 'SILINDI');
+  assert.equal(satir(x.id).envanter_notu, ET.ENVANTER_BEKLIYOR);
+  assert.equal(satir(yy.id).durum, 'SILINIYOR');
+  assert.equal(S.envanter.length, 0);
+  satir(yy.id).updated_at = new Date(Date.now() - 4 * 3600 * 1000);
+  await ET.liste(false);
+  assert.equal(satir(yy.id).durum, 'BELIRSIZ');
+  assert.equal(S.envanter.length, 1, 'zaman asimi BELIRSIZ: bekleyen tarama baslar');
+  assert.deepEqual(S.envanter[0].hedefler, ['HOSTA']);
+  assert.equal(satir(x.id).envanter_kosu_id, 77);
+  // numarasiz silme (is numarasi yazilamadi) 10 dk sonra BELIRSIZ: yine tarama
+  const p = bekleyenSilindi('HOSTP', '/vhosting', 'ESKI.ear');
+  const z = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  Object.assign(satir(z.id), {
+    durum: 'SILINIYOR',
+    sil_istendi_at: simdi(),
+    sil_job_id: null,
+    updated_at: new Date(Date.now() - 11 * 60000),
+  });
+  await ET.tekKayit(z.id);
+  assert.equal(satir(z.id).durum, 'BELIRSIZ');
+  assert.equal(S.envanter.length, 2);
+  assert.deepEqual(S.envanter[1].hedefler, ['HOSTP']);
+  assert.equal(satir(p.id).envanter_kosu_id, 77);
+});
+
+test('ETT16 toplu on kontrol: gecersiz oge yalniz kendisi ok:false; durum kodsuz belirsiz launch -> 502', async () => {
+  const y = await ET.topluOnKontrol(istek(), {
+    adaylar: [
+      { host: 'HOSTA', kok: '/vhosting', ad: 'APPX.ear' },
+      { host: 'HOSTA', kok: '/opt', ad: 'K.ear' },
+      { host: 'HO STA', kok: '/vhosting', ad: 'APPX.ear' },
+      null,
+    ],
+  });
+  assert.equal(y.basarili, 1);
+  assert.equal(y.basarisiz, 3);
+  assert.deepEqual(
+    y.sonuclar.map((x) => x.ok),
+    [true, false, false, false],
+  );
+  assert.match(y.sonuclar[1].message, /Kök yalnız/);
+  assert.match(y.sonuclar[2].message, /sunucu adı/);
+  assert.equal(S.launchlar.length, 1);
+  // tekillik gecerli ogeler uzerinde: ayni EAR iki kez -> 400 (gecersiz oge varken de)
+  await reddeder(
+    ET.topluOnKontrol(istek(), {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting8', ad: 'APPY.ear' },
+        { host: 'HOSTA', kok: '/opt', ad: 'K.ear' },
+        { host: 'hosta', kok: '/vhosting8', ad: 'APPY.ear' },
+      ],
+    }),
+    400,
+    'toplu_tekrar',
+  );
+  // ag kopmasi: launchBelirsiz, status yok -> 502 (HTTP'de 424)
+  S.launchHata = Object.assign(new Error('socket hang up'), { launchBelirsiz: true });
+  await assert.rejects(
+    ET.topluOnKontrol(istek(), {
+      adaylar: [
+        { host: 'HOSTA', kok: '/vhosting8', ad: 'APPY.ear' },
+        { host: 'HOSTU', kok: '/vhosting', ad: 'UNK.ear' },
+      ],
+    }),
+    (e) => {
+      assert.equal(e.status, 502);
+      assert.equal(e.code, 'toplu_awx');
+      assert.equal(e.ek.basarisiz, 2);
+      return true;
+    },
+  );
+});
+
+test('ETT17 isaretleme / kuyruk hatasi: isaretlenen silmeler surerken hata yaniti yok', async () => {
+  S.a = cokHost(7);
+  const planlar = [];
+  for (let i = 1; i <= 3; i += 1) planlar.push(await hazirPlan(`E${i}.ear`, '/vhosting', `H${i}`));
+  let n = 0;
+  S.dbHata = (q) => q.startsWith('UPDATE server_hub_ear_temizlik SET sil_istendi_at') && ++n === 3;
+  const y = await ET.topluSil(istek(), topluGovde(planlar));
+  S.dbHata = null;
+  assert.deepEqual(y.kaybedenler, [planlar[2].id]);
+  assert.equal(y.baslatilan, 2);
+  assert.equal(y.sirada, 0);
+  assert.equal(satir(planlar[2].id).sil_istendi_at, null);
+  await ET.liste(false);
+  assert.equal(silLaunchlari().length, 2, 'isaretlenmeyen kayit silinmez');
+  // ilk isaretleme dusmusse hicbir kayit isaretli degil: hata yukari gider
+  const t4 = await hazirPlan('E4.ear', '/vhosting', 'H4');
+  S.dbHata = (q) => q.startsWith('UPDATE server_hub_ear_temizlik SET sil_istendi_at');
+  await assert.rejects(ET.topluSil(istek(), topluGovde([t4])), /baglanti koptu/);
+  S.dbHata = null;
+  assert.equal(satir(t4.id).sil_istendi_at, null);
+  // toplu: kuyruk hatasi istegi dusurmez; sayilar isaretlenenlerden
+  const t5 = await hazirPlan('E5.ear', '/vhosting', 'H5');
+  S.dbHata = (q) => q.includes('sil_istendi_at < DATEADD');
+  const y5 = await ET.topluSil(istek(), topluGovde([t5]));
+  S.dbHata = null;
+  assert.equal(y5.baslatilan, 0);
+  assert.equal(y5.sirada, 1);
+  await ET.liste(false);
+  assert.equal(satir(t5.id).durum, 'SILINIYOR');
+  // tekli: kuyruk hatasi -> kayit sirada doner (basari), sonraki GET baslatir
+  const t6 = await hazirPlan('E6.ear', '/vhosting', 'H6');
+  S.dbHata = (q) => q.includes('sil_istendi_at < DATEADD');
+  const k6 = await ET.sil(istek(), t6.id, {
+    confirmed: true,
+    onayMetni: 'E6.ear',
+    planJobId: t6.planJobId,
+  });
+  S.dbHata = null;
+  assert.equal(k6.sirada, true);
+  await ET.liste(false);
+  assert.equal(satir(t6.id).durum, 'SILINIYOR');
+  // tekli: kesin red sonrasi kuyruk hatasi sonucu yutarsa ve kayit geri alindiysa basari denmez
+  const t7 = await hazirPlan('E7.ear', '/vhosting', 'H7');
+  S.launchHata = Object.assign(new Error('Bad Request'), { status: 400 });
+  S.dbHata = (q) => q.includes("WHERE host = $1 AND durum IN ('PLAN_HAZIR', 'SILINIYOR')");
+  await reddeder(
+    ET.sil(istek(), t7.id, { confirmed: true, onayMetni: 'E7.ear', planJobId: t7.planJobId }),
+    502,
+    'baslatilamadi',
+  );
+  S.dbHata = null;
+  S.launchHata = null;
+  assert.equal(satir(t7.id).durum, 'PLAN_HAZIR');
+  assert.equal(satir(t7.id).sil_istendi_at, null);
+});
+
+test('ETT18 sirada kayit baslamadan bulgu kapisi: engel -> IPTAL; degerlendirme okunamazsa baslatma yok', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  await ET.topluSil(istek('veli'), topluGovde([x, yy]));
+  // yy sirada iken APPY.ear domain.xml'e baglandi
+  S.a.hosts[0].ear.uygulamalar = [
+    { kok: '/vhosting8', ad: 'APPY.ear', jboss: '8', xml: { durum: 'VAR' } },
+  ];
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  await ET.liste(false);
+  assert.equal(satir(yy.id).durum, 'IPTAL');
+  assert.match(satir(yy.id).sonuc, /sırada iken yeniden denetlendi: .*domain\.xml/);
+  assert.equal(silLaunchlari().length, 1);
+  assert.equal(S.envanter.length, 1, 'bekleyen kalmadi: HOSTA taramasi');
+  assert.ok(S.denetim.some((d) => d.faz === 'sira' && d.durum === 'IPTAL' && d.id === yy.id));
+  // bulgu kalktiysa da IPTAL; degerlendirme okunamiyorsa once hicbiri baslamaz
+  const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+  const u = await hazirPlan('UNK.ear', '/vhosting', 'HOSTU');
+  Object.assign(satir(p.id), { sil_istendi_at: simdi(), sil_isteyen: 'veli' });
+  Object.assign(satir(u.id), { sil_istendi_at: simdi(), sil_isteyen: 'veli' });
+  S.a.hosts.find((h) => h.host === 'HOSTP').findings = [];
+  const asil = mevcutDeps();
+  ET.kur({
+    ...asil,
+    getAssessment: async (fresh) => {
+      if (fresh !== true) throw new Error('degerlendirme yok');
+      return S.a;
+    },
+  });
+  await ET.kuyrukIlerlet();
+  assert.equal(satir(u.id).durum, 'PLAN_HAZIR');
+  assert.equal(satir(p.id).durum, 'PLAN_HAZIR');
+  assert.equal(silLaunchlari().length, 1);
+  ET.kur(asil);
+  await ET.kuyrukIlerlet();
+  assert.equal(satir(p.id).durum, 'IPTAL');
+  assert.match(satir(p.id).sonuc, /bulgusu artık yok/);
+  assert.equal(satir(u.id).durum, 'SILINIYOR');
+  // tekli istek sirada iken engel olustu: siradan duser
+  S.a.hosts.find((h) => h.host === 'HOSTU').findings.push(bulgu('/vhosting', 'UNK2.ear', '7'));
+  const w = await hazirPlan('UNK2.ear', '/vhosting', 'HOSTU');
+  const sw = await ET.sil(istek(), w.id, {
+    confirmed: true,
+    onayMetni: 'UNK2.ear',
+    planJobId: w.planJobId,
+  });
+  assert.equal(sw.sirada, true);
+  S.a.hosts.find((h) => h.host === 'HOSTU').ear.uygulamalar = [
+    { kok: '/vhosting', ad: 'UNK2.ear', jboss: '7', xml: { durum: 'VAR' } },
+  ];
+  S.jobs.set(satir(u.id).sil_job_id, okJob('UNK.ear'));
+  await ET.tekKayit(w.id);
+  assert.equal(satir(w.id).durum, 'IPTAL');
+  assert.equal(silLaunchlari().length, 2);
+});
+
+test('ETT19 liste: son 50 kayda ek tum aktif kayitlar (sirada olan listeden dusmez)', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  await ET.topluSil(istek(), topluGovde([x, yy]));
+  for (let i = 0; i < 55; i += 1) {
+    DB.sira += 1;
+    DB.satirlar.push({ ...satir(x.id), id: DB.sira, durum: 'IPTAL', ad: `ESKI${i}.ear` });
+  }
+  const l = await ET.liste(false);
+  assert.equal(l.kayitlar.length, 52);
+  const k = l.kayitlar.find((q) => q.id === yy.id);
+  assert.ok(k, 'sirada kayit listede');
+  assert.equal(k.sirada, true);
+  assert.ok(l.kayitlar.some((q) => q.id === x.id));
+  const idler = l.kayitlar.map((q) => q.id);
+  assert.deepEqual(
+    idler,
+    [...idler].sort((a, b) => b - a),
+  );
+  assert.equal(l.adaylar.find((a) => a.ad === 'APPY.ear').kayit.id, yy.id);
+});
+
+test('ETT20 yurutucu turu kuyrugu sekmeden bagimsiz ilerletir; server/index.cjs kaydi', async () => {
+  const { x, yy } = await siradaKur();
+  S.jobs.set(satir(x.id).sil_job_id, okJob('APPX.ear'));
+  assert.equal(await ET.yurutucuTuru(), true);
+  assert.equal(satir(x.id).durum, 'SILINDI');
+  assert.equal(satir(yy.id).durum, 'SILINIYOR');
+  S.jobs.set(satir(yy.id).sil_job_id, okJob('APPY.ear'));
+  await ET.yurutucuTuru();
+  assert.equal(satir(yy.id).durum, 'SILINDI');
+  assert.equal(S.envanter.length, 1);
+  // ayni anda iki tur: ikincisi bos doner
+  const ikili = await Promise.all([ET.yurutucuTuru(), ET.yurutucuTuru()]);
+  assert.deepEqual(ikili, [true, false]);
+  const asil = mevcutDeps();
+  ET.kur(null);
+  assert.equal(await ET.yurutucuTuru(), false, 'mount olmadan tur yok');
+  ET.kur(asil);
+  assert.ok(ET.YURUTUCU_SN > 0 && ET.YURUTUCU_SN <= 60);
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const idx = fs.readFileSync(path.join(__dirname, '..', '..', 'index.cjs'), 'utf8');
+  assert.match(idx, /require\('\.\/server-hub\/ear-temizlik\.cjs'\)\.startPoller\(\)/);
+});
+
+test('ETT21 toplu sil: ls -ltr yok / basligi yanlis / parmak izi yok -> 409, hicbir kayit degismez', async () => {
+  const bozuklar = [
+    (pj) => ({ ...pj, ls: [] }),
+    (pj) => ({
+      ...pj,
+      ls: ['drwxr-x--- 3 was was 4096 Nov 1 10:00 /vhosting/BASKA.ear', ...pj.ls.slice(1)],
+    }),
+    (pj) => ({ ...pj, fp: '' }),
+  ];
+  for (const boz of bozuklar) {
+    DB.satirlar = [];
+    const x = await hazirPlan();
+    const p = await hazirPlan('PRODAPP.ear', '/vhosting', 'HOSTP');
+    satir(x.id).plan_json = JSON.stringify(boz(JSON.parse(satir(x.id).plan_json)));
+    await assert.rejects(ET.topluSil(istek(), topluGovde([x, p])), (e) => {
+      assert.equal(e.status, 409);
+      assert.equal(e.code, 'toplu_red');
+      assert.deepEqual(
+        e.ek.reddedilenler.map((q) => q.id),
+        [x.id],
+      );
+      assert.match(e.ek.reddedilenler[0].message, /ls -ltr çıktısı yok|parmak izi yok/);
+      return true;
+    });
+    assert.equal(satir(x.id).sil_istendi_at, null);
+    assert.equal(satir(p.id).sil_istendi_at, null);
+    assert.equal(silLaunchlari().length, 0);
+  }
+});
+
+test('ETT22 baslatma CAS: secimden sonra siradan cikan kayit baslamaz', async () => {
+  const x = await hazirPlan();
+  const asil = mevcutDeps();
+  ET.kur({
+    ...asil,
+    getAssessment: async (fresh) => {
+      // kuyruk degerlendirmesi (fresh=false) okunurken kayit siradan cikti
+      if (fresh !== true) satir(x.id).sil_istendi_at = null;
+      return S.a;
+    },
+  });
+  const y = await ET.topluSil(istek(), topluGovde([x]));
+  assert.equal(y.baslatilan, 0);
+  assert.equal(silLaunchlari().length, 0);
+  assert.equal(satir(x.id).durum, 'PLAN_HAZIR');
+});
+
+test('ETT23 tekli iptal (sirada) ayni sunucuda bekleyen taramayi baslatir', async () => {
+  const b = bekleyenSilindi('HOSTA', '/vhosting', 'ESKI.ear');
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  Object.assign(satir(yy.id), { sil_istendi_at: simdi(), sil_isteyen: 'veli' });
+  await ET.iptal(istek(), yy.id);
+  assert.equal(satir(yy.id).durum, 'IPTAL');
+  assert.equal(S.envanter.length, 1);
+  assert.equal(satir(b.id).envanter_kosu_id, 77);
+});
+
+test('ETT24 toplu iptal CAS toplu_id ile sinirli', async () => {
+  const x = await hazirPlan();
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  const y = await ET.topluSil(istek(), topluGovde([x, yy]));
+  let ilk = true;
+  S.dbHata = (q) => {
+    if (ilk && q.startsWith("UPDATE server_hub_ear_temizlik SET durum = 'IPTAL'")) {
+      ilk = false;
+      satir(yy.id).toplu_id = SIRA_DIGER;
+    }
+    return false;
+  };
+  const r = await ET.topluIptal(istek(), y.topluId);
+  S.dbHata = null;
+  assert.equal(r.iptal, 0);
+  assert.equal(satir(yy.id).durum, 'PLAN_HAZIR');
+});
+
+test('ETT25 kuyruktan baslatma hatasi ayni sunucuda bekleyen taramayi baslatir', async () => {
+  const b = bekleyenSilindi('HOSTA', '/vhosting', 'ESKI.ear');
+  const yy = await hazirPlan('APPY.ear', '/vhosting8');
+  Object.assign(satir(yy.id), {
+    sil_istendi_at: simdi(),
+    sil_isteyen: 'veli',
+    toplu_id: SIRA_DIGER,
+  });
+  S.launchHata = Object.assign(new Error('Bad Request'), { status: 400 });
+  await ET.kuyrukIlerlet();
+  assert.equal(satir(yy.id).durum, 'HATA');
+  assert.equal(S.envanter.length, 1);
+  assert.equal(satir(b.id).envanter_kosu_id, 77);
 });

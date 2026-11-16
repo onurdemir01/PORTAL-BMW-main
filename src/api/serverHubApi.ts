@@ -775,6 +775,8 @@ export interface Sh360Ortam {
   acik: number;
   kapali: number;
   olculemedi: number;
+  /** Retirement ile kapatılmış (STOP / silme) çalışmayan kopya; açık / kapalı / toplama girmez. */
+  retire?: number;
 }
 export type Sh360Deployment = 'OK' | 'FAILED' | 'YOK' | 'KAPALI' | 'OLCULEMEDI';
 export interface Sh360Ocp {
@@ -1040,6 +1042,10 @@ export interface EtKayit {
   sonuc: string | null;
   yedek: string | null;
   envanter: { kosuId: number | null; not: string | null };
+  /** PLAN_HAZIR + silme istendi (sil_istendi_at dolu): ayni sunucudaki silme bitince kuyruktan baslar. */
+  sirada: boolean;
+  /** Toplu silmede verilen islem kimligi (tekli silmede null). */
+  topluId: string | null;
 }
 export interface EtAday {
   host: string;
@@ -1063,8 +1069,49 @@ export interface EtListe {
 export interface EtKayitYanit {
   ok: boolean;
   kayit?: EtKayit;
+  /** Tekli silme: sunucuda baska silme suruyorsa kayit sirada kalir. */
+  sirada?: boolean;
   message?: string;
   code?: string;
+  _httpStatus?: number;
+}
+export interface EtTopluOnKontrolSonuc {
+  host: string;
+  kok: string;
+  ad: string;
+  ok: boolean;
+  id?: number;
+  message?: string;
+}
+export interface EtTopluOnKontrolYanit {
+  ok: boolean;
+  sonuclar?: EtTopluOnKontrolSonuc[];
+  basarili?: number;
+  basarisiz?: number;
+  message?: string;
+  code?: string;
+  _httpStatus?: number;
+}
+export interface EtTopluSilYanit {
+  ok: boolean;
+  topluId?: string;
+  /** Kuyrukta bekleyen (henuz baslamayan) kayit sayisi. */
+  sirada?: number;
+  /** Hemen baslatilan silme sayisi. */
+  baslatilan?: number;
+  /** CAS'i kaybeden (bu arada durumu degisip isaretlenemeyen) kayit id'leri; alan adi sunucu sozlesmesiyle teyit edilmeli. */
+  kaybedenler?: number[];
+  /** 409: hepsi-ya-hic dogrulamasinda gecemeyen kayitlar (hicbir kayit degismedi). */
+  reddedilenler?: { id: number; message: string }[];
+  message?: string;
+  code?: string;
+  _httpStatus?: number;
+}
+export interface EtTopluIptalYanit {
+  ok: boolean;
+  iptal?: number;
+  suren?: number;
+  message?: string;
   _httpStatus?: number;
 }
 
@@ -1419,6 +1466,24 @@ export const serverHubApi = {
     ).then(safeJson),
   earTemizlikIptal: (id: number): Promise<EtKayitYanit> =>
     fetch(`${BASE}/ear-temizlik/${id}/iptal`, json({})).then(safeJson),
+  // TOPLU (2026-11-16): secili adaylara ayri ayri on kontrol (kismi basari); teyit edilen planlar tek
+  // onayla kuyruga (onayMetni tam "<n> EAR SIL"; sunucu hepsi-ya-hic dogrular); siradakileri iptal.
+  earTemizlikTopluOnKontrol: (adaylar: { host: string; kok: string; ad: string }[]): Promise<EtTopluOnKontrolYanit> =>
+    fetch(
+      `${BASE}/ear-temizlik/toplu/on-kontrol`,
+      json({ adaylar: adaylar.map((a) => ({ host: a.host, kok: a.kok, ad: a.ad })) }),
+    ).then(safeJson),
+  earTemizlikTopluSil: (p: { onayMetni: string; kayitlar: { id: number; planJobId: number }[] }): Promise<EtTopluSilYanit> =>
+    fetch(
+      `${BASE}/ear-temizlik/toplu/sil`,
+      json({
+        confirmed: true,
+        onayMetni: p.onayMetni,
+        kayitlar: p.kayitlar.map((k) => ({ id: k.id, planJobId: k.planJobId })),
+      }),
+    ).then(safeJson),
+  earTemizlikTopluIptal: (topluId: string): Promise<EtTopluIptalYanit> =>
+    fetch(`${BASE}/ear-temizlik/toplu/${encodeURIComponent(topluId)}/iptal`, json({})).then(safeJson),
   jobStatus: (awxServerId: number, jobId: number): Promise<ShJobStatus> =>
     fetch(`${BASE}/job-status/${awxServerId}/${jobId}`).then(safeJson),
   // KURALLAR & LIMITLER (2026-10-20): tarama maddeleri + seviyeler (Admin degistirir), limitler.

@@ -5941,6 +5941,24 @@ async function setupTables() {
       col: 'approved_at',
       sql: 'ALTER TABLE smart_tickets ADD approved_at DATETIME2 NULL',
     },
+    // Server Hub EAR Temizligi TOPLU silme kuyrugu (2026-11-16, server/server-hub/ear-temizlik.cjs). "Sirada" =
+    // durum PLAN_HAZIR + sil_istendi_at dolu (durum kumesi ve UX_shet_aktif degismez); toplu_id ayni onayla
+    // istenen silmeleri gruplar (tekli silmede NULL). NULL'a izin veren sutun = yalniz meta veri islemi.
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'toplu_id',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD toplu_id NVARCHAR(36) NULL',
+    },
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'sil_istendi_at',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD sil_istendi_at DATETIME2 NULL',
+    },
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'sil_isteyen',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD sil_isteyen NVARCHAR(128) NULL',
+    },
   ];
 
   for (const { table, col, sql } of alters) {

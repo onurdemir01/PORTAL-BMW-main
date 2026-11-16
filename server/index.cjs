@@ -262,6 +262,13 @@ async function main() {
       optional: true,
     },
     {
+      // Server Hub > EAR Temizligi (2026-11-16): silme kuyrugu yurutucusu (sunucu basina tek silme; onaylanan
+      // toplu silmeler sekme kapansa da siradan baslar). Uclar serverHub router'inda; launch oradan verilir.
+      name: 'earTemizlik',
+      init: () => require('./server-hub/ear-temizlik.cjs').startPoller(),
+      optional: true,
+    },
+    {
       // Server Hub > Toplu Restart (2026-11-14): onizleme / tek tek restart / dogrulama taramasi yurutucusu.
       // Uclar serverHub router'inda. Kirasi dusmus is DEVAM ETTIRILMEZ (YARIM_KALDI).
       name: 'topluRestart',

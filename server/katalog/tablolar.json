@@ -887,21 +887,28 @@
   {
     "db": "Portal",
     "tablo": "server_hub_ear_temizlik",
-    "amac": "EAR Temizliği kayıtları: sunucu, kök, EAR adı, ön kontrol (ls -ltr, WAR, domain.xml, süreç, parmak izi) iş numarası ve sonucu, onaylayan, silme işi, yedek yolu, durum (PLANLANIYOR -> PLAN_HAZIR -> SILINIYOR -> SILINDI / HATA / BELIRSIZ, ya da IPTAL / PLAN_ESKIDI / PLAN_HATA).",
+    "amac": "EAR Temizliği kayıtları: sunucu, kök, EAR adı, ön kontrol (ls -ltr, WAR, domain.xml, süreç, parmak izi) iş numarası ve sonucu, onaylayan, silme işi, yedek yolu, durum (PLANLANIYOR -> PLAN_HAZIR -> SILINIYOR -> SILINDI / HATA / BELIRSIZ, ya da IPTAL / PLAN_ESKIDI / PLAN_HATA). Toplu silme kuyruğu: sil_istendi_at / sil_isteyen / toplu_id (PLAN_HAZIR + sil_istendi_at dolu = sırada; sunucu başına tek, toplamda en çok 5 silme).",
     "alan": "Server Hub",
     "yazanlar": [
       {
         "tur": "portal",
-        "ad": "EAR Temizliği uçları (ön kontrol, sil, iptal)",
-        "dosya": "server/server-hub/ear-temizlik.cjs:455",
-        "nasil": "ön kontrol açılınca INSERT; plan / silme sonucu ve durum geçişi UPDATE (:230)",
-        "ne_zaman": "Admin ön kontrol başlatınca; GET uçları AWX ile uzlaştırırken"
+        "ad": "EAR Temizliği uçları (ön kontrol, sil, iptal, toplu ön kontrol / sil / iptal)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:798",
+        "nasil": "ön kontrol açılınca INSERT; plan / silme sonucu ve durum geçişi UPDATE (:267); silme isteği CAS (:907)",
+        "ne_zaman": "Admin ön kontrol başlatınca, silme isteyince (tekli ya da toplu); GET uçları AWX ile uzlaştırırken"
+      },
+      {
+        "tur": "portal",
+        "ad": "EAR Temizliği silme kuyruğu (sıradaki silmeyi başlatır)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:559",
+        "nasil": "PLAN_HAZIR + sil_istendi_at -> SILINIYOR CAS, ardından AWX silme işi; sırada 60 dk aşılırsa PLAN_ESKIDI",
+        "ne_zaman": "GET uçları, tekli / toplu silme isteğinin sonunda ve kuyruk yürütücüsü (30 sn; sekme kapalıyken de)"
       }
     ],
     "okuyanlar": [
       {
-        "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi)",
-        "dosya": "server/server-hub/ear-temizlik.cjs:571"
+        "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi, toplu işlem)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:1005"
       }
     ],
     "saklama": "Silinmez (denetim izi; silme başına bir satır, ekranda son kayıtlar).",
