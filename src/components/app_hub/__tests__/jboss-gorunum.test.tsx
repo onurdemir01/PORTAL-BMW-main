@@ -69,6 +69,42 @@ describe('Application Hub — JBoss görünümü', () => {
     expect(satirlar().length).toBe(3);
   });
 
+  it('JG2b sürüme tıklamak tabloyu o ortam + o sürüme süzer; yeniden tıklamak / ortam değişimi sürüm süzgecini kaldırır', () => {
+    const d = detay([
+      sunucu({ host: 'P1', jbossSurum: 'EAP 7.4' }),
+      sunucu({ host: 'P2', jbossSurum: 'EAP 8.0' }),
+      sunucu({ host: 'P3', jbossSurum: null }),
+      sunucu({ host: 'T1', ortam: 'TEST', jbossSurum: 'EAP 8.0' }),
+    ]);
+    render(<JbossGorunum d={d} />);
+    const hostlar = () => satirlar().map((r) => ['P1', 'P2', 'P3', 'T1'].find((h) => (r.textContent || '').includes(h)));
+    const surumDugmesi = (ortamSira: number, metin: string) =>
+      within(screen.getAllByTestId('ortam-satiri')[ortamSira]).getAllByTestId('surum').find((s) => (s.textContent || '').startsWith(metin))!;
+    // PROD · EAP 8.0 -> yalniz P2 (TEST'teki EAP 8.0 sunucusu T1 GELMEZ); ortam satiri da secili olur.
+    fireEvent.click(surumDugmesi(0, 'EAP 8.0'));
+    expect(hostlar()).toEqual(['P2']);
+    expect(surumDugmesi(0, 'EAP 8.0').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getAllByTestId('ortam-satiri')[0].getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText(/olan sunucular gösteriliyor \(1\)/)).toBeTruthy();
+    // Surumsuz sunucu '—' rozetiyle secilir.
+    fireEvent.click(surumDugmesi(0, '—'));
+    expect(hostlar()).toEqual(['P3']);
+    // Ayni surume yeniden tiklamak surum suzgecini kaldirir, ortam (PROD) kalir.
+    fireEvent.click(surumDugmesi(0, '—'));
+    expect(hostlar()).toEqual(['P1', 'P2', 'P3']);
+    // TEST satirindaki surum: ortam TEST'e gecer.
+    fireEvent.click(surumDugmesi(1, 'EAP 8.0'));
+    expect(hostlar()).toEqual(['T1']);
+    // Ortam dugmesi (Tumu) surum suzgecini de kaldirir.
+    fireEvent.click(screen.getByRole('button', { name: 'Tümü' }));
+    expect(hostlar()).toEqual(['P1', 'P2', 'P3', 'T1']);
+    // "Surum suzgecini kaldir" baglantisi.
+    fireEvent.click(surumDugmesi(0, 'EAP 7.4'));
+    expect(hostlar()).toEqual(['P1']);
+    fireEvent.click(screen.getByRole('button', { name: 'Sürüm süzgecini kaldır' }));
+    expect(hostlar()).toEqual(['P1', 'P2', 'P3']);
+  });
+
   it('JG3 parametreler kategorisiz ve sırasıyla; durum kanıtı kaynak + envanter çelişkisini söyler', () => {
     const d = detay([
       sunucu({

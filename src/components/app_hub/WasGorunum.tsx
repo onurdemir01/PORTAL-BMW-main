@@ -15,8 +15,14 @@ const KAYNAK_AD: Record<string, string> = {
 
 export default function WasGorunum({ d }: { d: WasDetay }) {
   // Ortam ozeti satirina tiklamak sunucu tablosunu o ortama suzer (JBoss gorunumuyle ayni).
-  const [ortam, setOrtam] = useState('');
-  const liste = d.sunucular.filter((s) => !ortam || (s.ortam || '') === ortam);
+  const [ortam, setOrtamHam] = useState('');
+  // SURUM SUZGECI (2026-11-16, JBoss gorunumuyle ayni): surume tiklamak tabloyu o ortam + o surume suzer.
+  const [surum, setSurum] = useState('');
+  const setOrtam = (o: string) => {
+    setOrtamHam(o);
+    setSurum('');
+  };
+  const liste = d.sunucular.filter((s) => (!ortam || (s.ortam || '') === ortam) && (!surum || (s.wasSurum || '—') === surum));
   const anahtarlar = satirAnahtarlari(liste.map((s) => s.host));
   return (
     <div className="space-y-4">
@@ -26,6 +32,11 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
         surumBasligi="WAS sürümü"
         secili={ortam}
         onSec={setOrtam}
+        seciliSurum={surum}
+        onSurumSec={(o, v) => {
+          setOrtamHam(o);
+          setSurum(v);
+        }}
         jvmGoster={false}
         altBilgi={`${fmtNumber(d.ozet.webSunucuSayisi)} web sunucusu`}
       />
@@ -44,6 +55,14 @@ export default function WasGorunum({ d }: { d: WasDetay }) {
               </tr>
             </thead>
             <tbody>
+              {surum && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-2 text-[12px]" style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}>
+                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında WAS sürümü <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular gösteriliyor ({liste.length}).{' '}
+                    <button type="button" className="underline" onClick={() => setSurum('')}>Sürüm süzgecini kaldır</button>
+                  </td>
+                </tr>
+              )}
               {!liste.length && <TableEmptyRow colSpan={7} />}
               {liste.map((s, i) => (
                 <React.Fragment key={anahtarlar[i]}>

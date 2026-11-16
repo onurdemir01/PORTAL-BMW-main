@@ -257,11 +257,20 @@ function SunucuSatiri({ s, acik, onToggle, uygulama, onYenile }: { s: JbossSunuc
 export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?: () => void }) {
   const tumAnahtarlar = useMemo(() => satirAnahtarlari(d.sunucular.map((s) => `${s.host}|${s.uygulama}`)), [d.sunucular]);
   const [acik, setAcik] = useState<Set<string>>(() => new Set(d.sunucular.length <= 2 ? tumAnahtarlar : []));
-  const [ortam, setOrtam] = useState('');
+  const [ortam, setOrtamHam] = useState('');
+  // SURUM SUZGECI (kullanici, 2026-11-16): ortam ozetindeki surume tiklamak tabloyu o ortam + o surume suzer.
+  // Ortam degisince surum suzgeci kalkar. Surumsuz sunucu '—' (ozetle ayni anahtar).
+  const [surum, setSurum] = useState('');
+  const setOrtam = (o: string) => {
+    setOrtamHam(o);
+    setSurum('');
+  };
   const { liste, anahtarlar } = useMemo(() => {
-    const idx = d.sunucular.map((_, i) => i).filter((i) => !ortam || (d.sunucular[i].ortam || '') === ortam);
+    const idx = d.sunucular
+      .map((_, i) => i)
+      .filter((i) => (!ortam || (d.sunucular[i].ortam || '') === ortam) && (!surum || (d.sunucular[i].jbossSurum || '—') === surum));
     return { liste: idx.map((i) => d.sunucular[i]), anahtarlar: idx.map((i) => tumAnahtarlar[i]) };
-  }, [d.sunucular, ortam, tumAnahtarlar]);
+  }, [d.sunucular, ortam, surum, tumAnahtarlar]);
   const yuk = d.ozet.yuk;
   const toggle = (k: string) =>
     setAcik((a) => {
@@ -288,6 +297,11 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
         surumBasligi="JBoss sürümü"
         secili={ortam}
         onSec={setOrtam}
+        seciliSurum={surum}
+        onSurumSec={(o, v) => {
+          setOrtamHam(o);
+          setSurum(v);
+        }}
         altBilgi={
           <>
             {fmtNumber(d.ozet.webSunucuSayisi)} web sunucusu
@@ -335,6 +349,14 @@ export default function JbossGorunum({ d, onYenile }: { d: JbossDetay; onYenile?
               </tr>
             </thead>
             <tbody>
+              {surum && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-2 text-[12px]" style={{ background: 'var(--ah-hue-soft)', color: 'var(--text-primary)' }}>
+                    Yalnız <b>{ortam || 'Bilinmiyor'}</b> ortamında JBoss sürümü <code style={{ fontFamily: 'var(--font-mono)' }}>{surum}</code> olan sunucular gösteriliyor ({liste.length}).{' '}
+                    <button type="button" className="underline" onClick={() => setSurum('')}>Sürüm süzgecini kaldır</button>
+                  </td>
+                </tr>
+              )}
               {!liste.length && <TableEmptyRow colSpan={8} title="Bu ortamda sunucu yok." />}
               {liste.map((s, i) => {
                 // ANAHTAR BENZERSIZ (kullanici, 2026-11-12: "sunucu sekmeleri ya acilmiyor ya

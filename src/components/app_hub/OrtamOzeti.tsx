@@ -88,11 +88,17 @@ export function OrtamOzeti({
   onSec,
   altBilgi,
   jvmGoster = true,
+  seciliSurum = '',
+  onSurumSec,
 }: {
   satirlar: OrtamSatiri[];
   surumBasligi: string;
   secili: string;
   onSec: (ortam: string) => void;
+  /** Seçili sürüm (yalnız `secili` ortamında anlamlı); '' = sürüm süzgeci yok. Sürümsüz satır '—'. */
+  seciliSurum?: string;
+  /** Verilirse sürüm rozetleri tıklanır: (ortam, sürüm) — sürüm '' ise yalnız sürüm süzgeci kalkar. */
+  onSurumSec?: (ortam: string, surum: string) => void;
   altBilgi?: React.ReactNode;
   /** WAS'ta çalışma durumu ölçülmüyor: JVM kolonu gösterilmez ("yok" sanılmasın). */
   jvmGoster?: boolean;
@@ -144,16 +150,41 @@ export function OrtamOzeti({
                     <div className="flex flex-col gap-1">
                       {[...g.surumler.entries()]
                         .sort((a, b) => b[0].localeCompare(a[0], undefined, { numeric: true }))
-                        .map(([surum, hostlar]) => (
-                          <span key={surum} className="inline-flex items-center gap-1.5 text-[12px]" data-testid="surum">
-                            <code className="px-1.5 py-0.5 rounded" style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-inset)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}>
-                              {surum}
-                            </code>
-                            {g.surumler.size > 1 && (
-                              <span style={{ color: 'var(--text-muted)' }}>{hostlar.size} sunucu</span>
-                            )}
-                          </span>
-                        ))}
+                        .map(([surum, hostlar]) => {
+                          // SURUM SUZGECI (kullanici, 2026-11-16): surume tiklamak tabloyu o ortam + o surume suzer;
+                          // ayni surume yeniden tiklamak surum suzgecini kaldirir (ortam kalir).
+                          const surumSecili = sec && seciliSurum === surum;
+                          const icerik = (
+                            <>
+                              <code className="px-1.5 py-0.5 rounded" style={{ fontFamily: 'var(--font-mono)', background: surumSecili ? 'var(--ah-hue-soft)' : 'var(--bg-inset)', border: `1px solid ${surumSecili ? 'var(--ah-hue)' : 'var(--border-subtle)'}`, color: 'var(--text-primary)', fontWeight: surumSecili ? 600 : 400 }}>
+                                {surum}
+                              </code>
+                              {g.surumler.size > 1 && (
+                                <span style={{ color: 'var(--text-muted)' }}>{hostlar.size} sunucu</span>
+                              )}
+                            </>
+                          );
+                          return onSurumSec ? (
+                            <button
+                              key={surum}
+                              type="button"
+                              aria-pressed={surumSecili}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSurumSec(g.ortam, surumSecili ? '' : surum);
+                              }}
+                              className="inline-flex items-center gap-1.5 text-[12px] self-start rounded hover:underline focus-visible:outline focus-visible:outline-2"
+                              title={surumSecili ? 'Sürüm süzgecini kaldır' : `Sunucu tablosunu ${g.ortam || 'Bilinmiyor'} · ${surum} sunucularına süz`}
+                              data-testid="surum"
+                            >
+                              {icerik}
+                            </button>
+                          ) : (
+                            <span key={surum} className="inline-flex items-center gap-1.5 text-[12px]" data-testid="surum">
+                              {icerik}
+                            </span>
+                          );
+                        })}
                     </div>
                   </td>
                   <td className={`${TD} text-[12px]`}>
