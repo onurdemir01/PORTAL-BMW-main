@@ -32,6 +32,48 @@ test('karar(): runtime bulgu veya duzeltmesi olan dev bulgu dusurur; duzeltmesiz
   assert.ok(r.dusuren.some((s) => s.includes('vite')));
 });
 
+test('karar(): npm downgrade onerisi picomatch yamasi sayilmaz; gercek ileri yama kapiyi acar', () => {
+  const kilit = {
+    'node_modules/picomatch': { version: '4.0.7', dev: true },
+    'node_modules/vite': { version: '8.3.7', dev: true },
+  };
+  const audit = {
+    vulnerabilities: {
+      picomatch: {
+        severity: 'high',
+        nodes: ['node_modules/picomatch'],
+        via: [{ url: 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf' }],
+        fixAvailable: { name: 'vite', version: '6.2.7' },
+      },
+      vite: {
+        severity: 'high',
+        nodes: ['node_modules/vite'],
+        via: ['picomatch'],
+        fixAvailable: { name: 'vite', version: '6.2.7' },
+      },
+      vitest: {
+        severity: 'high',
+        nodes: ['node_modules/vitest'],
+        via: ['coverage-v8', 'vite'],
+        fixAvailable: { name: 'vitest', version: '3.1.4' },
+      },
+      'coverage-v8': {
+        severity: 'high',
+        nodes: ['node_modules/coverage-v8'],
+        via: ['vitest'],
+        fixAvailable: true,
+      },
+    },
+  };
+  const yamasiz = karar(audit, kilit);
+  assert.deepEqual(yamasiz.dusuren, []);
+  assert.equal(yamasiz.bilgi.length, 4, 'dongulu audit zinciri yalanci yama uretmemeli');
+
+  audit.vulnerabilities.picomatch.fixAvailable = { name: 'picomatch', version: '4.0.8' };
+  const yamali = karar(audit, kilit);
+  assert.equal(yamali.dusuren.length, 4, 'gercek ileri yama yayinlaninca tum zincir bloke etmeli');
+});
+
 test('xrayTabanKontrol(): gecerli repo kilit dosyalarinda 0 ihlal doner', () => {
   const tam =
     JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package-lock.json'), 'utf8'))

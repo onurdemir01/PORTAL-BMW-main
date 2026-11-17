@@ -49,6 +49,49 @@ function cmpSemver(a, b) {
   return 0;
 }
 
+const PICOMATCH_YAMASIZ_GHSA = 'GHSA-fc5q-39xc-vjpf';
+
+function paketSurumu(kilitPaketleri, ad) {
+  const meta = kilitPaketleri[`node_modules/${ad}`];
+  return meta && parseSemver(meta.version);
+}
+
+/**
+ * npm audit bazen yama olmayan bir ana-surum dusurmesini `fixAvailable` diye sunar. Picomatch
+ * GHSA'sinda guvenli picomatch surumu henuz yokken Vitest/Vite/ESLint araclarini eski ana
+ * surumlere indirmek buna ornektir. Yalniz bu tek danismana dayanan zinciri "yama yok" sayariz;
+ * picomatch icin daha yeni bir duzeltme onerildigi anda bu muafiyet kendiliginden kapanir.
+ */
+function yamasizPicomatchDurumu(ad, zafiyetler, kilitPaketleri, gorulen = new Set()) {
+  // Audit grafinda Vitest <-> coverage-v8 gibi donguler vardir. Yeniden gorulen dugum yeni bir
+  // danismanlik degildir; notr bir kenar sayilir. Ust dugumde en az bir picomatch yapragi aranir.
+  if (gorulen.has(ad)) return null;
+  const v = zafiyetler[ad];
+  if (!v) return false;
+  const siradaki = new Set(gorulen);
+  siradaki.add(ad);
+  if (ad === 'picomatch') {
+    const buGhsa = (v.via || []).some(
+      (x) => x && typeof x === 'object' && String(x.url || '').includes(PICOMATCH_YAMASIZ_GHSA),
+    );
+    if (!buGhsa) return false;
+    if (v.fixAvailable === false) return true;
+    if (!v.fixAvailable || typeof v.fixAvailable !== 'object') return false;
+    const hedef = parseSemver(v.fixAvailable.version);
+    const mevcut = paketSurumu(kilitPaketleri, v.fixAvailable.name);
+    return !hedef || !mevcut || cmpSemver(hedef, mevcut) <= 0;
+  }
+  const nedenler = Array.isArray(v.via) ? v.via : [];
+  if (!nedenler.length || nedenler.some((x) => typeof x !== 'string')) return false;
+  const durumlar = nedenler.map((x) => yamasizPicomatchDurumu(x, zafiyetler, kilitPaketleri, siradaki));
+  if (durumlar.includes(false)) return false;
+  return durumlar.includes(true) ? true : null;
+}
+
+function yalnizYamasizPicomatch(ad, zafiyetler, kilitPaketleri) {
+  return yamasizPicomatchDurumu(ad, zafiyetler, kilitPaketleri) === true;
+}
+
 function paketAdi(yol) {
   const s = String(yol || '');
   const idx = s.lastIndexOf('node_modules/');
@@ -110,10 +153,11 @@ function xrayTabanKontrol(tamKilitPaketleri, kokKilitPaketleri = {}) {
 function karar(audit, kilitPaketleri) {
   const dusuren = [];
   const bilgi = [];
-  for (const [ad, v] of Object.entries((audit && audit.vulnerabilities) || {})) {
+  const zafiyetler = (audit && audit.vulnerabilities) || {};
+  for (const [ad, v] of Object.entries(zafiyetler)) {
     const yollar = Array.isArray(v.nodes) && v.nodes.length ? v.nodes : [`node_modules/${ad}`];
     const calisma = yollar.some((y) => kilitPaketleri[y] && !kilitPaketleri[y].dev);
-    const duzeltmeVar = v.fixAvailable !== false;
+    const duzeltmeVar = v.fixAvailable !== false && !yalnizYamasizPicomatch(ad, zafiyetler, kilitPaketleri);
     const satir = `${ad} (${v.severity}${calisma ? ', calisma zamani' : ', gelistirme'}${duzeltmeVar ? '' : ', duzeltme yok'}): ${yollar.join(', ')}`;
     if (calisma || duzeltmeVar) dusuren.push(satir);
     else bilgi.push(satir);
