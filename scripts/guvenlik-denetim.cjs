@@ -106,6 +106,43 @@ function xrayTabanKontrol(tamKilitPaketleri, kokKilitPaketleri = {}) {
   };
 }
 
+/**
+ * npm audit `fixAvailable` -> gercekten YAYIMLANMIS bir duzeltme mi? Saf islev.
+ * `true` (uyumlu guncelleme) ya da kurulu surumden YENI bir surume yukseltme duzeltmedir.
+ * Kurulu surumden ESKI bir ana surume inme onerisi (2026-11-18: picomatch <=4.0.7 icin
+ * "vite 6.2.7", kurulu vite 8) duzeltme DEGILDIR: guncel paketin duzeltmesi yoktur ve eski
+ * surum kapatilmis zafiyetleri geri getirir.
+ */
+function gercekDuzeltme(fixAvailable, kilitPaketleri) {
+  if (fixAvailable === false || fixAvailable == null) return false;
+  if (fixAvailable === true) return true;
+  const kurulu = parseSemver(
+    String((kilitPaketleri[`node_modules/${fixAvailable.name}`] || {}).version || ''),
+  );
+  const oneri = parseSemver(String(fixAvailable.version || ''));
+  if (!kurulu || !oneri) return true; // bilinemiyorsa siki tarafta kal
+  return cmpSemver(oneri, kurulu) > 0;
+}
+
+/**
+ * Bulgunun duzeltmesi KOK danismada mi? `via` dizesi baska bir paketin bulgusunu tasidigini
+ * soyler (fdir -> picomatch); duzeltme o kok danismanin paketinde yayimlanmis olmali. npm,
+ * zincirdeki ara pakete "fixAvailable: true" diyebilir ama guncelleme kok danismayi kapatmaz
+ * (2026-11-18 olculdu: `npm audit fix` sonrasi 13 bulgunun 13'u yerinde). Saf islev.
+ */
+function kokDuzeltmeVar(ad, zafiyetler, kilitPaketleri, gorulen = new Set()) {
+  if (gorulen.has(ad)) return false;
+  gorulen.add(ad);
+  const v = zafiyetler[ad];
+  if (!v) return false;
+  const via = Array.isArray(v.via) ? v.via : [];
+  const kendiDanismasi = !via.length || via.some((x) => x && typeof x === 'object');
+  if (kendiDanismasi && gercekDuzeltme(v.fixAvailable, kilitPaketleri)) return true;
+  return via.some(
+    (x) => typeof x === 'string' && kokDuzeltmeVar(x, zafiyetler, kilitPaketleri, gorulen),
+  );
+}
+
 /** Saf karar: audit JSON'u + kilit paketleri -> { dusuren, bilgi }. */
 function karar(audit, kilitPaketleri) {
   const dusuren = [];
@@ -113,7 +150,7 @@ function karar(audit, kilitPaketleri) {
   for (const [ad, v] of Object.entries((audit && audit.vulnerabilities) || {})) {
     const yollar = Array.isArray(v.nodes) && v.nodes.length ? v.nodes : [`node_modules/${ad}`];
     const calisma = yollar.some((y) => kilitPaketleri[y] && !kilitPaketleri[y].dev);
-    const duzeltmeVar = v.fixAvailable !== false;
+    const duzeltmeVar = kokDuzeltmeVar(ad, audit.vulnerabilities, kilitPaketleri);
     const satir = `${ad} (${v.severity}${calisma ? ', calisma zamani' : ', gelistirme'}${duzeltmeVar ? '' : ', duzeltme yok'}): ${yollar.join(', ')}`;
     if (calisma || duzeltmeVar) dusuren.push(satir);
     else bilgi.push(satir);
@@ -162,5 +199,5 @@ function main() {
   console.log('[guvenlik] OK - calisma zamaninda 0, gelistirmede duzeltmesi olan 0 zafiyet.');
 }
 
-module.exports = { XRAY_TABAN, karar, xrayTabanKontrol };
+module.exports = { XRAY_TABAN, karar, gercekDuzeltme, kokDuzeltmeVar, xrayTabanKontrol };
 if (require.main === module) main();

@@ -85,9 +85,11 @@ const DESEN: [TopluKategori, RegExp][] = [
     'hc_kapali',
     /failed to connect to the controller|controller is not available|host controller'a baglanilamadi|domain kapali|host controller calismiyor|(connection refused|could not connect)[\s\S]*(:99\d\d|controller)|(:99\d\d|controller)[\s\S]*(connection refused|could not connect)/,
   ],
+  // `/<yol> okunamadi - ...`: once sabit metin, yol kosulu arkaya bakar (geri izleme yok; `\/\S+ okunamadi`
+  // uzun bosluksuz metinde her `/` icin bastan tariyordu, Sonar S8786). Eslesme kumesi ayni (TS6).
   [
     'ortam_yetki',
-    /yedek dizini acilamadi|\/\S+ okunamadi - hicbir sey degismedi|ps okunamadi; host controller'in kapali oldugu dogrulanamadi|yedek alinamadi|yedek yolu dolu|gecici dizin acilamadi|gecici (dosya|kopya)|dosyaya yazilamadi|mv basarisiz|flock yok|kilit icin acilamadi|okunamiyor - hicbir sey degismedi|ile kostu|become_user|permission denied|dzdo|izin vermedi|not allowed|yetki reddi|(dosya|dizin\w*) yazilamadi|yazilamiyor|olarak kosulmuyor|java_home|jboss-cli yok|playbook guncel mi/,
+    /yedek dizini acilamadi| okunamadi - hicbir sey degismedi(?<=\/\S+ okunamadi - hicbir sey degismedi)|ps okunamadi; host controller'in kapali oldugu dogrulanamadi|yedek alinamadi|yedek yolu dolu|gecici dizin acilamadi|gecici (dosya|kopya)|dosyaya yazilamadi|mv basarisiz|flock yok|kilit icin acilamadi|okunamiyor - hicbir sey degismedi|ile kostu|become_user|permission denied|dzdo|izin vermedi|not allowed|yetki reddi|(dosya|dizin\w*) yazilamadi|yazilamiyor|olarak kosulmuyor|java_home|jboss-cli yok|playbook guncel mi/,
   ],
   [
     'tarama_eski',
