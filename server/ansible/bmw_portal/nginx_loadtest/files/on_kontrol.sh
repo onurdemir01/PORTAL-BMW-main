@@ -11,10 +11,21 @@
 #   hedef : ip_yerel 1|0|-, nginx_T ok|fail, server_name_var 1|0|-, master_sayisi <n>, web_log_df <yuzde>|-,
 #           log_dizini_okunur 1|0, log_format_ua 1|0|-, statik_direktif 1|0|-, hazirlik_yedek 1|0|- (<UST>/hazirlik var mi: geri
 #           alinmamis sunucu ayari; UST verilmezse -)
-#   nginx : nginx_bin 1|0 (NGINX_BIN calistirilabilir mi; bilgi), nginx_T ok|fail, master_sayisi <n>, nginx_var 1|0|-,
-#           nproc <n>|-. nginx_var: master >= 1 VE nginx -T ok -> 1; master 0 VE nginx -T fail -> 0; digeri (nginx -T ok
-#           ama master gorunmuyor: durmus ya da hidepid; master var ama -T basarisiz) -> '-' (belirlenemedi; playbook
-#           olcum yapmaz). nginx -T ve master taramasi hedef kipiyle AYNI islevler (nginx_T_calistir, master_say).
+#   nginx : nginx_bin 1|0 (NGINX_BIN calistirilabilir mi; bilgi), nginx_T ok|fail, master_sayisi <n>,
+#           nginx_pid yok|olu|canli|- , nginx_var 1|0|-, apache_surec <n>, apache_var 1|0|-, nproc <n>|-.
+#           apache_var (2026-11-17, YALNIZ BILGI; nginx kararini DEGISTIRMEZ): /proc'ta komut adi httpd / apache2 (IHS dahil)
+#           olan surec sayisi apache_surec; >= 1 -> 1; 0 ve /proc baskasinin sureclerini gosteriyor (pid 1 gorunur) -> 0;
+#           0 ve pid 1 gorunmuyor (hidepid) -> '-'.
+#           nginx_var: master >= 1 VE nginx -T ok -> 1; master 0 VE nginx -T fail -> 0; master 0, nginx -T ok VE
+#           nginx_pid yok|olu -> 0 (nginx KURULU ama DURMUS; ayni sunucuda Apache gibi baska bir sunucu hizmet
+#           veriyor olabilir: hedef nginx'siz olculur); digeri (master 0 ama pid canli ya da olculemedi: hidepid;
+#           master var ama -T basarisiz) -> '-' (belirlenemedi; playbook olcum yapmaz).
+#           nginx_pid: konfigurasyondaki `pid` dosyasi (nginx -T ciktisindan; yoksa <prefix>/logs/nginx.pid, goreli
+#           yol prefix'e gore). yok: dizin aranabilir ve dosya yok (nginx duzgun durunca dosyayi siler); olu: pid
+#           yazili ama `kill -0` "No such process" ya da /proc'ta gorunen surec nginx master degil (bayat dosya);
+#           canli: surec var (kill -0 basarili ya da "Operation not permitted"; hidepid /proc'u gizler, kill -0'i
+#           gizlemez); '-': dizin aranamiyor, dosya okunamiyor ya da icerik sayi degil.
+#           nginx -T ve master taramasi hedef kipiyle AYNI islevler (nginx_T_calistir, master_say).
 #   yollar: ip_yuk_makinesinde 1|0|-, yuk makinesi (salt okunur, bilgi): port_araligi <lo> <hi>|-, tcp_tw_reuse <n>|-,
 #           tcp_timestamps <n>|-, nproc <n>|-, mem_kb <MemAvailable>|-; YOL<TAB><status><TAB><http surumu><TAB><content-encoding|-><TAB><content-length 1|0><TAB><yol>
 #           (senaryo sirasiyla), HATA<TAB><status><TAB><yol> (200 olmayan ilk 20), OZET<TAB><toplam><TAB><n200><TAB>
@@ -179,8 +190,61 @@ hedef() {
   sonuc OK "hedef olculdu"
 }
 
+# pid_yolu: nginx -T ciktisindaki (yalniz $d/t, basilmaz) ilk `pid` yonergesi; yoksa varsayilan. Goreli yol prefix'e gore.
+pid_yolu() {
+  local p=""
+  [ -s "$d/t" ] && p="$(awk '
+    { sub(/#.*/, "") }
+    { n = split($0, s, ";"); for (i = 1; i <= n; i++) { x = s[i]; sub(/^[ \t{}]+/, "", x)
+        if (x ~ /^pid[ \t]+[^ \t]/) { sub(/^pid[ \t]+/, "", x); sub(/[ \t]+$/, "", x); gsub(/"|\047/, "", x); print x; exit } } }' "$d/t")"
+  [ -n "$p" ] || p="logs/nginx.pid"
+  case "$p" in /*) ;; *) p="${NG_PREFIX%/}/$p" ;; esac
+  printf '%s' "$p"
+}
+
+# nginx_pid_durumu <pid dosyasi>: yok | olu | canli | - (bkz. ust aciklama). Yalniz okuma; sinyal GONDERMEZ (kill -0).
+nginx_pid_durumu() {
+  local f="$1" dz pid="" hata c=""
+  dz="$(dirname -- "$f")"
+  if [ ! -e "$f" ]; then
+    if [ -d "$dz" ] && [ -x "$dz" ]; then echo yok; else echo "-"; fi
+    return
+  fi
+  { IFS= read -r pid < "$f"; } 2>/dev/null || { echo "-"; return; }
+  pid="${pid//[[:space:]]/}"
+  [[ "$pid" =~ ^[1-9][0-9]{0,9}$ ]] || { echo "-"; return; }
+  if [ -r "$PROC/$pid/cmdline" ]; then
+    IFS= read -r -d '' c < "$PROC/$pid/cmdline" 2>/dev/null
+    case "$c" in "nginx: master process"*) echo canli ;; *) echo olu ;; esac
+    return
+  fi
+  if hata="$(kill -0 "$pid" 2>&1)"; then echo canli; return; fi
+  case "$hata" in
+    *"No such process"*) echo olu ;;
+    *"not permitted"*) echo canli ;;
+    *) echo "-" ;;
+  esac
+}
+
+# apache_yaz: Apache / IHS sureci var mi (yalniz bilgi; /proc taramasi, master_say ile ayni okuma). Komut adi argv[0]'in
+# taban adi: httpd, apache2 ya da httpd.<tur> / httpd-<tur> (worker, event, prefork ...). IHS'nin ikilisi de httpd.
+apache_yaz() {
+  local f c a n=0 v=-
+  for f in "$PROC"/[0-9]*/cmdline; do
+    [ -e "$f" ] || continue
+    c=""; IFS= read -r -d '' c < "$f" 2>/dev/null
+    a="${c##*/}"; a="${a%% *}"
+    case "$a" in httpd | apache2 | httpd.* | httpd-* | apache2.* | apache2-*) n=$((n + 1)) ;; esac
+  done
+  if [ "$n" -ge 1 ]; then v=1
+  elif [ -d "$PROC/1" ]; then v=0
+  fi
+  printf 'apache_surec\t%d\n' "$n"
+  printf 'apache_var\t%s\n' "$v"
+}
+
 nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basilmaz)
-  local tok=fail master var=- n b=0
+  local tok=fail master var=- n b=0 pd
   nginx_hazirla
   [ -f "$NG_BIN" ] && [ -x "$NG_BIN" ] && b=1
   printf 'nginx_bin\t%d\n' "$b"
@@ -188,10 +252,14 @@ nginx_modu() {   # nginx var mi (yalniz okuma; yuk YOK, log / konfigurasyon basi
   printf 'nginx_T\t%s\n' "$tok"
   master="$(master_say)"
   printf 'master_sayisi\t%d\n' "$master"
+  pd="$(nginx_pid_durumu "$(pid_yolu)")"
+  printf 'nginx_pid\t%s\n' "$pd"
   if [ "$master" -ge 1 ] && [ "$tok" = ok ]; then var=1
   elif [ "$master" -eq 0 ] && [ "$tok" = fail ]; then var=0
+  elif [ "$master" -eq 0 ] && [ "$tok" = ok ] && { [ "$pd" = yok ] || [ "$pd" = olu ]; }; then var=0
   fi
   printf 'nginx_var\t%s\n' "$var"
+  apache_yaz
   n="$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || :)"
   [[ "$n" =~ ^[0-9]{1,5}$ ]] || n=-
   printf 'nproc\t%s\n' "$n"

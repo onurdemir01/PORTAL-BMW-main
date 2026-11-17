@@ -139,6 +139,18 @@ export const GIRDIYE_BAGLI_RETLER = new Set([
   'hedef_uretim', 'hedef_envanterde_yok', 'yuk_host_izinsiz', 'ayni_host', 'ip_hedefte_yok', 'sinir_asildi', 'host_uretim',
   'ip_belirsiz', 'ip_sahibi_cozulemedi', 'serbest_kapali', 'ip_izinli_agda_degil', 'ip_yasakli_agda', 'ip_yasak_listesi_gecersiz',
 ]);
+/** On kontrol APACHE bilgi satiri (2026-11-17; YALNIZ BILGI, engel/uyari degil). apache: true / false / null (olculemedi);
+ *  nginx: on kontrolun nginx tespiti (true / false / null; undefined = eski playbook). Ne olculemediyse satir yok. */
+export function apacheBilgisi(apache: boolean | null | undefined, nginx: boolean | null | undefined): string | null {
+  if (apache === true) {
+    if (nginx === false) return 'Hedefte Apache / IHS çalışıyor, nginx çalışmıyor: test nginx’siz yapılır (genel CPU ve istemci metrikleri).';
+    if (nginx === true) return 'Hedefte nginx’in yanında Apache / IHS de çalışıyor: genel CPU ikisini birlikte görür.';
+    return 'Hedefte Apache / IHS çalışıyor.';
+  }
+  if (apache === false && nginx === false) return 'Hedefte ne nginx ne Apache / IHS çalışıyor.';
+  return null;
+}
+
 /** Ret govdesi / firlatilan hata -> tek satir mesaj (sunucu mesaji varsa o, yoksa kodun metni). */
 export function hataMetni(x: unknown, yedek = 'İstek başarısız.'): string {
   const r = (x && typeof x === 'object' ? x : {}) as { message?: string; code?: string };
@@ -489,6 +501,9 @@ export function onKontrolDegerlendir(k: DegerlendirmeGirdisi | null): OnKontrolD
   const nginxsiz = nginxAlani && o.hedefNginx === false;
   const belirsiz = nginxAlani && o.hedefNginx !== true && o.hedefNginx !== false;
   if (!serbest && o.hedefNproc != null) d.bilgiler.push(`hedef ${fmtNumber(o.hedefNproc)} çekirdek`);
+  // APACHE BILGISI (2026-11-17, kullanici: "Apache bilgisini de on kontrole ekle"): yalniz bilgi; karari nginx tespiti verir.
+  const apache = apacheBilgisi(serbest ? null : o.hedefApache, serbest ? undefined : o.hedefNginx);
+  if (apache) d.bilgiler.push(apache);
   if (k.sunucuDegerlendirmesi) {
     d.engeller.push(...k.sunucuDegerlendirmesi.engeller.map(buyukBasla));
     d.uyarilar.push(...k.sunucuDegerlendirmesi.uyarilar.map(buyukBasla));

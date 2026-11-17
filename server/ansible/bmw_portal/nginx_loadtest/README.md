@@ -41,7 +41,7 @@ aşağıda ("Betikler") sayılan Portal farkları eklenmiştir. wrk betikleri (`
 | Dosya | İş |
 |---|---|
 | `nginx_loadtest.yml` | Tek playbook, dört kip (`yuk_islem`: `on_kontrol`, `kosu`, `durdur`, `araclar`), iki hedef türü, iki motor. On play (aşağıda). |
-| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `nginx` kipi hedefte (2026-11-13; nginx var mı: `nginx_bin`, `nginx_T`, `master_sayisi`, `nginx_var` `1` \| `0` \| `-`, `nproc`; "Nginx'siz hedef"); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN `openssl s_client` ile TEK bağlantıda ölçülür; h2'de `alpn_h2` ve `alpn_kaynak curl|openssl` satırları). |
+| `files/on_kontrol.sh` | Yük üretmeyen ön kontrol. `hedef` kipi hedefte (IP yerel mi, `nginx -T`'de server_name, nginx master sayısı, `/web_log` doluluğu ve okunabilirliği, log biçimi, statik sıkıştırma direktifi); `nginx` kipi hedefte (2026-11-13; nginx var mı: `nginx_bin`, `nginx_T`, `master_sayisi`, `nginx_pid`, `nginx_var` `1` \| `0` \| `-`, `apache_surec`, `apache_var` (bilgi), `nproc`; "Nginx'siz hedef"); `yollar` kipi yük makinesinde (senaryodaki her tekil yola TEK istek: HTTP/1.1, `yuk_protokol` h2 ise `curl --http2` ile ALPN; curl HTTP/2'siz derlenmişse yollar HTTP/1.1 ile denenir ve ALPN `openssl s_client` ile TEK bağlantıda ölçülür; h2'de `alpn_h2` ve `alpn_kaynak curl|openssl` satırları). |
 | `files/kos.sh` | Kit kopyası: bir ADIM'ın (hız × tekrar) k6 koşularını sırayla çalıştırır (motor `k6`). |
 | `files/yuk_k6.js` | Kit kopyası: açık döngü (constant-arrival-rate) k6 betiği, istek başına TEK GET. |
 | `files/wrk_kos.sh` | Portal'a özgü: bir ADIM'ın (bağlantı × tekrar) wrk koşularını sırayla çalıştırır (motor `wrk`); dış sözleşmesi (çıkış kodları, `DUR:`/`HATA:` satırları, sonuç dosyaları, `kos.pid`) kos.sh ile aynı. |
@@ -502,10 +502,21 @@ nginx` koşturur (www, yalnız okuma; `nginx -T` ve nginx master taraması `hede
 |---|---|---|---|
 | ok | ≥ 1 | `1` | Bugünkü tam davranış: `cpu_kaydedici.sh` (worker CPU, access-log, `cpu_ms_istek`), sunucu ayarı (sıkıştırma aç/kapat + seviye, http2, static, `.gz` / `.br`) |
 | fail (ikili yok dahil) | 0 | `0` | Genel ölçüm: `yuk_cpu_kaydedici.sh ROL=hedef` (`/proc/stat` toplam CPU), log ayrıştırma YOK, sunucu ayarı YOK |
-| ok | 0 | `-` | Belirlenemedi (nginx durmuş ya da hidepid): ön kontrolde engel, koşuda kaydedici ve yük başlamadan `fail` |
+| ok | 0, `nginx_pid` `yok` \| `olu` | `0` | (2026-11-17) nginx KURULU ama DURMUŞ (aynı sunucuda Apache / IHS hizmet veriyor olabilir): genel ölçüm, yukarıdaki `0` satırı |
+| ok | 0, `nginx_pid` `canli` \| `-` | `-` | Belirlenemedi (hidepid altında çalışan nginx ya da pid okunamadı): ön kontrolde engel, koşuda kaydedici ve yük başlamadan `fail` |
 | fail | ≥ 1 | `-` | Belirlenemedi (başka yolda nginx ya da `-T` reddi): aynı |
 
 - Belirsiz durumda gerçek bir nginx hedef sessizce "genel" ölçüme düşürülmez (fail closed).
+- `nginx_pid` (2026-11-17; kullanıcı olayı: nginx kurulu ama kapalı, Apache açık sunucuda ön kontrol "belirlenemedi"
+  engeline düşüyordu): `nginx -T` çıktısındaki `pid` yönergesi (yoksa `<prefix>/logs/nginx.pid`; göreli yol prefix'e
+  göre). `yok`: dizin aranabilir, dosya yok (nginx düzgün durunca dosyayı siler); `olu`: `kill -0` "No such process" ya
+  da `/proc`'ta görünen süreç nginx master değil (bayat dosya); `canli`: süreç var (`kill -0` başarılı ya da "Operation
+  not permitted"; hidepid `/proc`'u gizler, `kill -0`'ı gizlemez); `-`: dizin aranamıyor, dosya okunamıyor, içerik sayı
+  değil. Sinyal gönderilmez (`kill -0`).
+- `apache_surec` / `apache_var` (2026-11-17, YALNIZ BİLGİ; nginx kararını değiştirmez): `/proc`'ta komut adı `httpd` /
+  `apache2` (IHS dahil; `httpd.worker` gibi türler) olan süreç sayısı; `1` en az bir süreç, `0` yok ve `/proc` başka
+  kullanıcıların süreçlerini gösteriyor (pid 1 görünür), `-` hidepid (pid 1 görünmüyor). set_stats
+  `on_kontrol.hedef_apache`; Portal ön kontrol bilgisinde yazar.
 - Genel kaydedici: `setsid nohup timeout -k 300 <bütçe+120> env ROL=hedef SURE=<bütçe+60> ARALIK=1 BOSTA_BAS=<bosta>
   HEDEF_IP=<ip> SONUC=<koşu dizini> bash yuk_cpu_kaydedici.sh R<id>`; aynı `kaydedici.pid` / `kaydedici.out`, aynı
   `YUKU SIMDI BASLATIN` bekleyişi, aynı Play 3 / 4 / 6 akışı. Dosyalar hedefte `<koşu dizini>/R<id>/`:
@@ -516,7 +527,7 @@ nginx` koşturur (www, yalnız okuma; `nginx -T` ve nginx master taraması `hede
   hiç çalıştırmaz (ön kontrolde engel, koşuda `fail`).
 - Portal analizi: CPU ortalaması ve DOYMA (> %90) raporlanır; `cpu_ms_istek` ve KALICI kararı YOK (istek başına CPU
   ölçülmez). Ekran: "Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür."
-- set_stats: `on_kontrol.hedef_nginx` / `hedef_nproc`, `kosu.hedef_nginx` / `hedef_kaydedici` ("set_stats").
+- set_stats: `on_kontrol.hedef_nginx` / `hedef_nproc` / `hedef_apache`, `kosu.hedef_nginx` / `hedef_kaydedici` ("set_stats").
 - **Apache**: Apache'ye özgü metrikler (log biçimi farklı, worker modeli farklı) SONRAKİ adımdır. Bugün Apache hedefte
   yalnız genel CPU ve istemci metrikleri ölçülür.
 
@@ -632,7 +643,7 @@ Tek yazar localhost, `per_host: false`, `aggregate: false`, `fail`'den ÖNCE ve 
                 sikistirma: {statik, dinamik, sikistirmasiz},
                 protokol ('h1'|'h2'|null), curl_h2 (bool|null), alpn_h2 (bool|null),
                 alpn_kaynak ('curl'|'openssl'|null), yollar_yanitli (int|null), yollar_h2 (int|null),
-                hedef_nginx (bool|null), hedef_nproc (int|null) } | null,
+                hedef_nginx (bool|null), hedef_nproc (int|null), hedef_apache (bool|null) } | null,
   kosu: { kos_rc (int|null), kaydedici_rc (int|null), bas_epoch, bit_epoch,
           hedef_nginx (bool|null), hedef_kaydedici ('nginx'|'genel'|null),
           istemci_ozet: [istemci_<TUR>.json içerikleri], dosyalar: [{ad, bayt}], sw_dizin (str|null),
@@ -681,7 +692,9 @@ tamamlanmadi (erisilemedi ya da dustu)`, `/sw yayini: <...>` (`arac dizini zaten
   var: bugünkü tam davranış), `false` (nginx yok: genel CPU kaydı, log ve sunucu ayarı yok), `null` (belirlenemedi ya da
   ölçülmedi; serbestte her zaman `null`). Eski playbook bu anahtarı hiç yazmaz: Portal yokluğu "nginx" sayar (eski
   playbook yalnız nginx hedefte koşabiliyordu). `hedef_nproc`: hedefin çekirdek sayısı (yalnız sunucu; ölçülmediyse
-  `null`). `kosu.hedef_kaydedici`: hangi kaydedici başlatıldı (`'nginx'` = `cpu_kaydedici.sh`, `'genel'` =
+  `null`). `hedef_apache` (yalnız on_kontrol, 2026-11-17, bilgi): `apache_var` — `true` Apache / IHS süreci görünüyor,
+  `false` yok, `null` hidepid ya da ölçülmedi (serbestte her zaman `null`); nginx kararına ve engellere girmez.
+  `kosu.hedef_kaydedici`: hangi kaydedici başlatıldı (`'nginx'` = `cpu_kaydedici.sh`, `'genel'` =
   `yuk_cpu_kaydedici.sh ROL=hedef`; başlamadıysa / serbestte `null`). `hedef_nginx` `false` iken nginx'e ait on_kontrol
   alanları (`server_name_var`, `log_*`, `master_sayisi`, `web_log_df`, `statik_direktif`) yine yayınlanır ama Portal yok sayar.
 - `k6_*` yalnız motor k6'da, `wrk_*` yalnız motor wrk'te dolu; diğerleri `null`; ikisi de koşu dizinindeki araç

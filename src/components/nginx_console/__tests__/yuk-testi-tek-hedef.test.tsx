@@ -4,6 +4,7 @@
 // DEV / TEST / QA makine; nginx on kontrolde OLCULUR (set_stats on_kontrol.hedef_nginx true / false / null).
 // TH1 Normallestirme: hedef_nginx alani yoksa anahtar YOK (eski playbook), true / false, baska deger null; hedef_nproc;
 //     /hedefler ipucu alanlari; /ip-sinifi ipler + ipuclari; kosu satiri hedefNginx; coklu meta nginx yalniz false iken.
+// TH8 Apache bilgisi (2026-11-17): hedef_apache normallestirme, apacheBilgisi metinleri, yalniz bilgiler'e girer.
 // TH2 onKontrolDegerlendir aynasi: nginx'siz hedefte server_name / master / web_log / log_format kurallari yok, sunucu ayari
 //     ENGEL, NGINX_YOK_UYARISI wrk uyarisindan once; null belirsiz ENGEL; alan yoksa cikti BIREBIR eskisi; metinler sunucuyla.
 // TH3 Hedef secici aranabilir (ad / ortam / IP), secili host listede kalir, sayi metni; secenekte ortam, IP ve nginx ipucu.
@@ -24,7 +25,7 @@ import {
 } from '@/api/nginxLoadtestApi';
 import {
   HOST_LISTEDE_YOK_UYARISI, NGINX_BELIRSIZ_ENGELI, NGINX_YOK_AYAR_ENGELI, NGINX_YOK_CPU_IPUCU, NGINX_YOK_UYARISI, SRV_AYAR_ENVANTER_NOTU, SRV_AYAR_NGINX_YOK_NOTU,
-  WRK_UYARISI, hedefNginxsiz, nginxIpucu, onKontrolDegerlendir,
+  WRK_UYARISI, apacheBilgisi, hedefNginxsiz, nginxIpucu, onKontrolDegerlendir,
 } from '../yukTesti/yukTestiOrtak';
 
 const api = vi.hoisted(() => ({
@@ -100,6 +101,30 @@ const secici = () => screen.getByLabelText('Hedef sunucu (isteğe bağlı)') as 
 const secenekler = () => [...secici().querySelectorAll('option')].map((o) => o.textContent ?? '');
 const kutu = () => screen.getByLabelText(/Sunucuyu koşu öncesi ayarla/) as HTMLInputElement;
 const okDugmesi = () => screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
+
+describe('APACHE BILGISI (TH8, 2026-11-17)', () => {
+  it('TH8 hedef_apache normallestirme ve bilgi metni; serbestte ve olculemeyende satir yok; engel/uyari uretmez', () => {
+    expect(onKontrolNormalle({ k6_var: true, hedef_apache: true })?.hedefApache).toBe(true);
+    expect(onKontrolNormalle({ k6_var: true, hedef_apache: 'False' })?.hedefApache).toBe(false);
+    for (const v of [undefined, null, '-', 1]) expect(onKontrolNormalle({ k6_var: true, hedef_apache: v })?.hedefApache).toBeNull();
+    expect(apacheBilgisi(true, false)).toMatch(/Apache \/ IHS çalışıyor, nginx çalışmıyor: test nginx’siz/);
+    expect(apacheBilgisi(true, true)).toMatch(/nginx’in yanında Apache \/ IHS de çalışıyor/);
+    expect(apacheBilgisi(true, null)).toBe('Hedefte Apache / IHS çalışıyor.');
+    expect(apacheBilgisi(true, undefined)).toBe('Hedefte Apache / IHS çalışıyor.');
+    expect(apacheBilgisi(false, false)).toBe('Hedefte ne nginx ne Apache / IHS çalışıyor.');
+    expect(apacheBilgisi(false, true)).toBeNull();
+    expect(apacheBilgisi(null, false)).toBeNull();
+    expect(apacheBilgisi(undefined, false)).toBeNull();
+    // Bilgi yalniz bilgiler'e girer: engel ve uyari sayisi Apache alanindan bagimsiz.
+    const ok = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false }), hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
+    const okA = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_nginx: false, hedef_apache: true }), hedefTuru: 'sunucu', motor: 'k6', parametreler: PARAM } as never) as unknown as { engeller: string[]; uyarilar: string[]; bilgiler: string[] };
+    expect(okA.engeller).toEqual(ok.engeller);
+    expect(okA.uyarilar).toEqual(ok.uyarilar);
+    expect(okA.bilgiler).toEqual([...ok.bilgiler, apacheBilgisi(true, false)]);
+    const serbest = onKontrolDegerlendir({ durum: 'DONE', onKontrol: onKontrolNormalle({ ...OK_HAM, hedef_apache: true }), hedefTuru: 'serbest', motor: 'k6', parametreler: PARAM } as never) as unknown as { bilgiler: string[] };
+    expect(serbest.bilgiler.some((b) => /Apache/.test(b))).toBe(false);
+  });
+});
 
 describe('TEK HEDEF — normallestirme (TH1)', () => {
   it('TH1 on kontrol hedef_nginx üç durum + yok; /hedefler ve /ip-sinifi ipuçları; koşu satırı; çoklu meta', () => {
@@ -231,7 +256,7 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
   });
 
   it('TH5 bu formun ön kontrolü nginx bulamadı: Nginx satırı, uyarı, sunucu ayarı kutusu kapanır', async () => {
-    const okHam = { ...OK_HAM, hedef_nginx: false, hedef_nproc: 4 };
+    const okHam = { ...OK_HAM, hedef_nginx: false, hedef_nproc: 4, hedef_apache: true };
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 16, jobId: 1 });
     api.kosu.mockResolvedValue({
       ok: true, adimlar: [],
@@ -251,6 +276,9 @@ describe('TEK HEDEF — hedef seçici (TH3, TH4)', () => {
     expect(within(panel).queryByText('Tek nginx master')).toBeNull();
     expect(screen.getByText(NGINX_YOK_UYARISI)).toBeInTheDocument();
     expect(screen.getByText(/hedef 4 çekirdek/)).toBeInTheDocument();
+    // TH8 (2026-11-17) Apache bilgisi: nginx'siz hedefte Apache calisiyorsa yazilir; engel/uyari degil.
+    // Bilgiler tek satirda ' · ' ile birlesir: metin o satirin parcasidir.
+    expect(screen.getByText(/hedef 4 çekirdek/).textContent).toContain(apacheBilgisi(true, false)!);
     await waitFor(() => expect(kutu()).toBeDisabled());
     expect(screen.getByText(SRV_AYAR_NGINX_YOK_NOTU)).toBeInTheDocument();
   });
