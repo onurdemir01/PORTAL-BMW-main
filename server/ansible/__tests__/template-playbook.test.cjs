@@ -114,10 +114,11 @@ test('TP5 HER baslatma noktasi korumayi isi baslatmadan ONCE cagirir', () => {
       ),
     ],
     // Server Hub (2026-11-14): sablon TEK okunur (launchHazirla -> sablonOku), iki kontrol sablonKontrol'de
-    // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla.
+    // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla. Belirsiz launch
+    // siniflandirmasi launch'i try/catch ile sardigi icin kaynak araligi retirement'tan daha genistir.
     ...[
       ...kaynak(['server-hub', 'index.cjs']).matchAll(
-        /sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,400}?launchJobOnServer\(/g,
+        /sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,800}?launchJobOnServer\(/g,
       ),
     ],
   ];
