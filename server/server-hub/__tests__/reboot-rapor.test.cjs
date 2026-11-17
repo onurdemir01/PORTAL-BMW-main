@@ -45,7 +45,7 @@ test('RR4 rapor ekip arkadasinin tasarimini tasir ve tum veriyi KACISLAR', () =>
     } } },
   };
   const h = raporHtml(k);
-  for (const parca of ['Patch Reboot | Durum Raporu', 'Otomatik düzeltme sonrası • Son kontrol', '<h2>Bulgular', '<h2>Otomatik Düzeltme', 'Normal Sunucular', 'Kritik', 'Uyarı', 'Bilgi', 'Normal', '<h2>Otomasyon Özeti', 'Kutular <b>sunucu</b> sayısıdır', '<h2>Sunucu bazında otomasyon'])
+  for (const parca of ['Patch Reboot | Durum Raporu', 'Otomatik düzeltme sonrası • Son kontrol', '<h2>Bulgular', '<h2>Otomatik Düzeltme', 'Normal Sunucular', 'Kritik', 'Uyarı', 'Bilgi', 'Normal', '<h2>Otomasyon Özeti', '<h2>Sunucu bazında otomasyon'])
     assert.ok(h.includes(parca), `rapor bolumu yok: ${parca}`);
   assert.ok(!h.includes('<script>alert'), 'not alani kacislanmadi');
   assert.ok(!h.includes('<img src=x'), 'islem mesaji kacislanmadi');
@@ -343,55 +343,69 @@ test('RR18 v4 sayi koprusu: Otomatik Duzeltme "N komut · M sunucu" + OK-ama-hed
   assert.equal(kutuSay(h, 'Otomasyon başarılı'), 1);
   assert.equal(kutuSay(h, 'Otomasyon başarısız'), 1);
   assert.match(h, /<h2>Otomatik Düzeltme <span class='muted'>\(3 komut · 2 sunucu\)<\/span><\/h2>/);
-  assert.match(h, /Başarılı komut: <b>2<\/b> &nbsp;·&nbsp; Başarısız komut: <b>0<\/b> &nbsp;·&nbsp; Gerek kalmadı \(komut çalışmadı\): <b>1<\/b>/);
-  assert.match(h, /Yukarıdaki Otomasyon Özeti <b>sunucu<\/b> sayar: bir sunucuda birden çok komut olabilir; "gerek kalmadı" satırları otomasyonun dokunduğu sayılmaz; komutu başarılı dönüp son kontrolde hedefte olmayan öğe sunucuyu "otomasyon başarısız" yapar\. Komut OK ama son kontrolde hedefte değil: <b>1<\/b>; komut OK ama son durum ölçülemedi \(doğrulanamadı\): <b>0<\/b>\./);
-  assert.match(h, /<b>Komut bazında<\/b> \(aşağıda Otomatik Düzeltme\): başarılı <b>2<\/b> · başarısız <b>0<\/b> · gerek kalmadı <b>1<\/b>\..*hedefte olmayan: <b>1<\/b>; son durumu ölçülemediği için doğrulanamayan: <b>0<\/b>\./);
+  // 2026-11-17 ("uzun paragraflari kaldir"): kopru sayilari ayni, duzyazi yok; tek sayi satiri.
+  assert.match(h, /<p class='sayilar'>Başarılı komut <b>2<\/b> · başarısız <b>0<\/b> · gerek kalmadı <b>1<\/b> · başarılı ama son kontrolde hedefte değil <b>1<\/b> · başarılı ama doğrulanamadı <b>0<\/b><\/p>/);
+  assert.match(h, /<p class='sayilar'>Komut: başarılı <b>2<\/b> · başarısız <b>0<\/b> · gerek kalmadı <b>1<\/b> · başarılı ama son kontrolde hedefte değil <b>1<\/b> · başarılı ama doğrulanamadı <b>0<\/b><\/p>/);
   // kopru Otomasyon Ozeti'nin altinda, Otomatik Duzeltme'den once
-  assert.ok(h.indexOf('<b>Komut bazında</b>') > h.indexOf('<h2>Otomasyon Özeti') && h.indexOf('<b>Komut bazında</b>') < h.indexOf('<h2>Otomatik Düzeltme'));
+  assert.ok(h.indexOf('Komut: başarılı') > h.indexOf('<h2>Otomasyon Özeti') && h.indexOf('Komut: başarılı') < h.indexOf('<h2>Otomatik Düzeltme'));
+  assert.ok(!/Yukarıdaki Otomasyon Özeti|<b>Önemli:<\/b>|<b>Komut bazında<\/b>/.test(h), 'uzun aciklama paragrafi kaldi');
 });
 
-test('RR19 v4 Yonetici Ozeti raporun EN USTUNDE; sayilar reboot-check.cjs yoneticiOzeti ile ayni (tek kaynak); payda yaninda, 0 -> "—"', () => {
-  const { yoneticiOzeti, onceGirdisi, sonraDegerlendir } = require('../reboot-check.cjs');
+// 2026-11-17 yeniden tasarim (kullanici: "Durum sayfasinin ozeti sadece yonetici ozetinden olussun ... sayilara tiklarsam detaylar
+// ortaya ciksin"; "bilmemiz gereken sadece ve sadece sunucu seviyesinde basari orani"). Eski oge / komut / ilk sapma oranlari ve uzun
+// tanim paragrafi KALKTI; ozet sunucuSeviyesi'nden (tek kaynak), eski tablolar "Teknik ayrintilar" panelinde.
+const kovaSay = (h, k) => Number((new RegExp(`href='#d-${k}' aria-label='[^']*'>(\\d+)</a>`).exec(h) || [])[1] ?? 0);
+test('RR19 yonetici ozeti EN USTTE ve YALNIZ sunucu seviyesi; sayilar sunucuSeviyesi ile ayni; ayrintilar tiklayinca (:target)', () => {
+  const { sunucuSeviyesi, onceGirdisi, sonraDegerlendir } = require('../reboot-check.cjs');
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
   const v = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||'];
-  const k = kayitYap({ A: onceR, B: onceR, C: ['BOOT|b1||'] }, {
+  // A: kapali RHA acildi (komut OK) -> duzeltildi; B: fazladan IHS kapatilamadi (FAIL) -> hatali; C: once bos, komut yok -> mudahalesiz
+  // (etiket "izlenen uygulama yoktu"); E: fazladan IHS kapatildi (tek notu "otomasyon KAPATTI") -> duzeltildi.
+  const k = kayitYap({ A: onceR, B: onceR, C: ['BOOT|b1||'], E: onceR }, {
     A: rr(['BOOT|b2||', 'SURUM|2||'], v, ['SONUC|baslat|RHA||OK|x']),
     B: rr([...v, 'URUN|IHS||'], [...v, 'URUN|IHS||'], ['SONUC|durdur|IHS||FAIL|x']),
     C: rr(['BOOT|b2||'], ['BOOT|b2||'], []),
+    E: rr([...v, 'URUN|IHS||'], v, ['SONUC|durdur|IHS||OK|x']),
   });
   const h = raporHtml(k);
   const onceSat = onceGirdisi(k.once.sonuc.sunucular);
-  const y = yoneticiOzeti(k.sonra.sonuc.sunucular, k.hosts, onceSat, sonraDegerlendir(k.sonra.sonuc.sunucular, k.hosts, onceSat));
-  assert.deepEqual([y.oran.birakildi.metin, y.oran.donus.metin, y.oran.otomasyon.metin, y.oran.kapanan.metin], ['%50', '%66,7', '%50', '%50']);
-  const ust = h.indexOf('<h2 style=\'margin-top:18px\'>Yönetici Özeti</h2>');
-  assert.ok(ust > 0 && ust < h.indexOf('sunucuda kritik durum') && ust < h.indexOf('<h2>Otomasyon Özeti') && ust < h.indexOf('<h2>Bulgular'), 'yonetici ozeti en ustte degil');
-  // ana metrik buyuk (34px), payda yaninda; tabular-nums
-  // inceleme Y7: ana metrigin altinda kontrol notlu / kontrol bekleyen / sorun kalan
-  assert.match(h, /font-size:34px;font-weight:bold;color:#202938;font-variant-numeric:tabular-nums'>%50<\/span><span[^>]*>1 \/ 2 sunucu<\/span><span[^>]*>Bulunduğu gibi bırakıldı<\/span><span class='ana-ek'[^>]*>kontrol notlu 0 · kontrol bekleyen 0 · sorun kalan 1<\/span><\/td>/);
-  // Y7 yeni tanim: otomasyonun fazladan IHS'i kapatip fark birakmadigi sunucu (kontrol notlu) BIRAKILAN sayilir
-  const k7 = kayitYap({ A: onceR, B: onceR, E: onceR }, {
-    A: rr(['BOOT|b2||', 'SURUM|2||'], v, ['SONUC|baslat|RHA||OK|x']),
-    B: rr([...v, 'URUN|IHS||'], [...v, 'URUN|IHS||'], ['SONUC|durdur|IHS||FAIL|x']),
-    E: rr([...v, 'URUN|IHS||'], v, ['SONUC|durdur|IHS||OK|x']),
-  });
-  const h7 = raporHtml(k7);
-  assert.match(h7, /font-size:34px;font-weight:bold;color:#202938;font-variant-numeric:tabular-nums'>%66,7<\/span><span[^>]*>2 \/ 3 sunucu<\/span><span[^>]*>Bulunduğu gibi bırakıldı<\/span><span class='ana-ek'[^>]*>kontrol notlu 1 · kontrol bekleyen 0 · sorun kalan 1<\/span><\/td>/);
-  assert.match(h7, /Karşılaştırılabilen <b>3<\/b> sunucudan bulunduğu gibi bırakılan <b>2<\/b> \(sorunsuz <b>1<\/b>, kontrol notlu <b>1<\/b>\), kontrol bekleyen <b>0<\/b>, sorun kalan <b>1<\/b>;/);
-  assert.match(h7, /tek kontrol notu otomasyonun fazladan çalışan ürünü kapatması olan \(eski haline döndürülmüş\) sunucu da bırakılmış sayılır \(kontrol notu ayrıca yazılır\)\. Kontrol bekleyen \(başka bir kontrol notu olan: korunan öğe, eski betik vb\.\) bırakılmış sayılmaz ama bırakıldı oranının paydasındadır; bırakılan \+ kontrol bekleyen \+ sorun kalan = karşılaştırılabilen\./);
-  // inceleme B5: notta eski (paydayla celisen) "ne basari ne basarisizlik" cumlesi kalmadi
-  assert.doesNotMatch(h7, /ne başarı ne başarısızlık/);
-  assert.match(h7, /2 tanesi reboot öncesi haliyle bırakıldı \(%66,7\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 1 sunucuda sorun kaldı\./);
-  assert.match(h, />%66,7<\/span><span[^>]*>2 \/ 3 öğe<\/span><span[^>]*>Reboot öncesi hale dönüş<\/span><\/td>/);
-  // inceleme Y10: otomasyon oraninin birimi komut; "Ilk sapmalardan kapatilan"
-  assert.match(h, />%50<\/span><span[^>]*>1 \/ 2 komut<\/span><span[^>]*>Otomasyon başarı oranı</);
-  assert.match(h, />%50<\/span><span[^>]*>1 \/ 2 öğe<\/span><span[^>]*>İlk sapmalardan kapatılan</);
-  assert.match(h, /Kapsam: toplam <b>3<\/b> sunucu · son durumu ölçülen <b>3<\/b> · karşılaştırma dışı \(önce boş\) <b>1<\/b> · ölçülemeyen <b>0<\/b>/);
-  assert.ok(h.includes(y.metin), 'paragraf yoneticiOzeti metni degil');
-  // payda 0 -> '—' ve "0 / 0"
-  const bos = raporHtml(kayitYap({ C: ['BOOT|b1||'] }, { C: rr(['BOOT|b2||'], ['BOOT|b2||'], []) }));
-  assert.match(bos, /font-size:34px[^>]*>—<\/span><span[^>]*>0 \/ 0 sunucu<\/span>/);
-  // yalniz once kaydi: yonetici ozeti yok
-  assert.doesNotMatch(raporHtml({ id: 1, hosts: ['A'], once: { sonuc: { sunucular: { A: { goruntu_ok: true, goruntu: onceR } } } }, sonra: {} }), /Yönetici Özeti/);
+  const sev = sunucuSeviyesi(k.sonra.sonuc.sunucular, k.hosts, onceSat, sonraDegerlendir(k.sonra.sonuc.sunucular, k.hosts, onceSat));
+  assert.deepEqual(sev.sayi, { mudahalesiz: 1, duzeltildi: 2, kontrol: 0, yapilamadi: 0, hatali: 1 });
+  assert.deepEqual(sev.kova, { mudahalesiz: ['C'], duzeltildi: ['A', 'E'], kontrol: [], yapilamadi: [], hatali: ['B'] });
+  assert.deepEqual([sev.basari.metin, sev.islemYapilan, sev.geriGetirilen.metin], ['%75', 3, '%66,7']);
+  assert.deepEqual(sev.sunucu.C.etiket, ['izlenen uygulama yoktu']);
+  assert.deepEqual(sev.sunucu.E.etiket, ['fazladan çalışan ürün kapatıldı']);
+  assert.deepEqual(sev.etiketSay, { izlenenYok: 1 });
+  // Ozet en ustte; eski ayrinti bolumleri Teknik ayrintilar panelinin ICINDE (ozetten sonra).
+  const ozet = h.indexOf("<section id='ozet' class='ozet' aria-label='Yönetici Özeti'>");
+  const tum = h.indexOf("<section id='d-tum' class='detay'");
+  assert.ok(ozet > 0 && ozet < tum && tum < h.indexOf('<h2>Otomasyon Özeti') && tum < h.indexOf('<h2>Bulgular'), 'ozet en ustte / eski bolumler panelde degil');
+  assert.match(h, /<span class='hero-oran'>%75<\/span>/);
+  assert.match(h, /<span class='hero-alt'><b>3<\/b> \/ 4 sunucu reboot öncesi haliyle çalışıyor<\/span>/);
+  assert.deepEqual(['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'].map((x) => kovaSay(h, x)), [1, 2, 0, 0, 1]);
+  assert.match(h, /<span class='etiket'>1 sunucuda izlenen uygulama yoktu<\/span>/);
+  assert.match(h, /<b>3<\/b> sunucuda işlem yapıldı<\/span><span><b>2<\/b> tanesi eski haline getirildi \(%66,7\)/);
+  // Islemler: (islem, urun) basina sunucu / komut / basarili (hedefte)
+  assert.match(h, /<tr><td>IBM HTTP Server \(IHS\) kapatma<\/td><td class='r'><a class='sayi' href='#d-op-0'[^>]*>2<\/a><\/td><td class='r'>2<\/td><td class='r'><span class='k-bad'>1 \/ 2<\/span><\/td><\/tr>/);
+  assert.match(h, /<tr><td>Apache HTTP Server açma<\/td><td class='r'><a class='sayi' href='#d-op-1'[^>]*>1<\/a><\/td><td class='r'>1<\/td><td class='r'><span class='k-ok'>1 \/ 1<\/span><\/td><\/tr>/);
+  // Paneller varsayilan KAPALI, :target ile acilir; her panelde ozete donus baglantisi
+  assert.match(h, /\.detay\{display:none;/);
+  assert.match(h, /\.detay:target\{display:block;/);
+  for (const id of ['d-mudahalesiz', 'd-duzeltildi', 'd-kontrol', 'd-yapilamadi', 'd-hatali', 'd-op-0', 'd-op-1', 'd-tum'])
+    assert.match(h, new RegExp(`<section id='${id}' class='detay'[^>]*>[\\s\\S]*?<a class='kapat' href='#ozet'>← Özete dön</a>`), `${id} paneli`);
+  // Kova paneli: sunucu, yapilan islemler (hata / hedefte), neden
+  const hatali = h.slice(h.indexOf("<section id='d-hatali'"), h.indexOf('</section>', h.indexOf("<section id='d-hatali'")));
+  assert.match(hatali, /<td class='host'>B<\/td><td class='minor'><span class='k-bad'>IBM HTTP Server \(IHS\) kapatma — hata<\/span><\/td><td class='minor'>1 öğe reboot öncesinden farklı kaldı<br>1 komut hata döndü<\/td>/);
+  // Eski karmasik metrikler ve uzun tanim paragrafi YOK
+  for (const eski of ['Reboot öncesi hale dönüş', 'İlk sapmalardan kapatılan', 'Yüzdenin paydası her zaman', 'Bulunduğu gibi bırakıldı', "class='yonetici-metin'"])
+    assert.ok(!h.includes(eski), `eski ozet kalintisi: ${eski}`);
+  // payda 0 -> "—"
+  assert.match(raporHtml({ id: 2, hosts: [], once: { sonuc: { sunucular: {} } }, sonra: { sonuc: { sunucular: {} } } }), /<span class='hero-oran'>—<\/span>/);
+  // yalniz once kaydi: ozet yok
+  assert.doesNotMatch(raporHtml({ id: 1, hosts: ['A'], once: { sonuc: { sunucular: { A: { goruntu_ok: true, goruntu: onceR } } } }, sonra: {} }), /id='ozet'/);
+  // Kacis: sunucu adi / not HTML'e ham girmez (ozet ve paneller)
+  const kotu = raporHtml(kayitYap({ '<b>X</b>': onceR }, { '<b>X</b>': { sonuc_yok: true } }));
+  assert.ok(!kotu.includes('<b>X</b>') && kotu.includes('&lt;b&gt;X&lt;/b&gt;'), 'sunucu adi kacislanmadi');
 });
 
 test('RR20 v4 inceleme Y2/Y5/Y6/Y11: urunle kalkan JVM otomatik; karsilastirma disi kutusu tek kaynak; sorun kaldi / olculemedi ayri; once-bos etiketi', () => {
@@ -421,17 +435,18 @@ test('RR20 v4 inceleme Y2/Y5/Y6/Y11: urunle kalkan JVM otomatik; karsilastirma d
   const v = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||'];
   const s6 = raporHtml(kayitYap({ B: onceR, D: onceR }, { B: rr([...v, 'URUN|IHS||'], [...v, 'URUN|IHS||'], ['SONUC|durdur|IHS||FAIL|x']), D: { sonuc_yok: true } }));
   assert.deepEqual(['Sorun kaldı', 'Ölçülemedi'].map((a) => kutuSay(s6, a)), [1, 1]);
-  assert.match(s6, /1 sunucuda sorun kaldı/);
+  // 2026-11-17 ozet: B islem yapildi ama eski haline donmedi (hatali); D ulasilamadi, hic islem yapilamadi
+  assert.deepEqual(['hatali', 'yapilamadi'].map((x) => kovaSay(s6, x)), [1, 1]);
   assert.match(s6, /<tr class='r s-PROBLEM o-basarisiz d-sorunlu'><td class='host'>D<\/td>/, 'olculemeyen satir "Sorun kaldi / olculemedi" filtresinde degil');
   // Y3: komut OK ama son goruntu alinamadi -> "hedefte degil" DEGIL, "dogrulanamadi" (iki kopruda da), otomasyon orani disinda
   const u = raporHtml(kayitYap({ A: onceR, U: onceR }, {
     A: rr(['BOOT|b2||', 'SURUM|2||'], v, ['SONUC|baslat|RHA||OK|x']),
     U: { ...rr(['BOOT|b2||', 'SURUM|2||'], [], ['SONUC|baslat|RHA||OK|x']), son_olculdu: false },
   }));
-  assert.match(u, /Komut OK ama son kontrolde hedefte değil: <b>0<\/b>; komut OK ama son durum ölçülemedi \(doğrulanamadı\): <b>1<\/b>\./);
-  assert.match(u, /hedefte olmayan: <b>0<\/b>; son durumu ölçülemediği için doğrulanamayan: <b>1<\/b>\./);
-  assert.match(u, />%100<\/span><span[^>]*>1 \/ 1 komut<\/span><span[^>]*>Otomasyon başarı oranı</);
-  assert.match(u, /ölçülemeyen sunucularda sonucu doğrulanamayan komut <b>1<\/b>/);
+  assert.match(u, /başarılı ama son kontrolde hedefte değil <b>0<\/b> · başarılı ama doğrulanamadı <b>1<\/b><\/p>/);
+  // 2026-11-17 ozet: U komut calisti ama son durum olculemedi -> hatali (eski haline getirildigi DOGRULANAMADI); A duzeltildi
+  assert.deepEqual(['duzeltildi', 'hatali'].map((x) => kovaSay(u, x)), [1, 1]);
+  assert.match(u, /<td class='host'>U<\/td><td class='minor'><span class='k-warn'>Apache HTTP Server açma — son kontrolde hedefte değil<\/span><\/td><td class='minor'>İşlem sonrası son durum ölçülemedi/);
 });
 
 test('RR21 2026-11-16 betik eski etkiye gore: surum 3 yalniz bos once + calisan CTG/JBoss/WAS sunucusunda BETIK_ESKI; kayit notu etkili sunucu SAYISIYLA', () => {
@@ -485,4 +500,58 @@ test('RR22 inceleme 2026-11-16 B1/B2: rapor betik-eski karari sonraDegerlendir i
   const kW = { id: 8, hosts: ['W'], once: { sonuc: { sunucular: { W: { goruntu_ok: true, goruntu: ['BOOT|b1||'] } } } }, sonra: { sonuc: { sunucular: { W: s([...v, 'URUN|WAS||'], v) } } } };
   assert.doesNotMatch(raporHtml(kW), /class='betik-eski'/);
   assert.equal(sunucuDegerlendir(['BOOT|b1||'], s([...v, 'URUN|WAS||'], v)).bulgu.some((b) => b.durum === 'BETIK_ESKI'), false);
+});
+
+// Dogrulama bulgulari (2026-11-17): ozet sayilari / cubuk / paneller tam kilit; komut hata donup kendiliginden duzelen sunucu
+// "otomasyonla duzeltildi" DEGIL; sonucu gelmeyen sunucuda "islem yok" DENMEZ; e-posta gorunumu tum panelleri acar.
+test('RR23 ozet tam kilit; FAIL + kendiliginden duzelme; bilinmiyor; e-posta gorunumu', () => {
+  const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
+  const v = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||'];
+  const k = kayitYap(
+    { A: onceR, F: onceR, U: onceR, T: onceR },
+    {
+      // A: RHA acildi (OK, hedefte) -> duzeltildi
+      A: rr(['BOOT|b2||', 'SURUM|2||'], v, ['SONUC|baslat|RHA||OK|x']),
+      // F: acma komutu FAIL ama RHA kendiliginden kalkti -> mudahalesiz + etiket
+      F: rr(['BOOT|b2||', 'SURUM|2||'], v, ['SONUC|baslat|RHA||FAIL|x']),
+      // U: sonuc gelmedi -> yapilamadi, islem BILINMIYOR
+      U: { sonuc_yok: true },
+      // T: temiz -> mudahalesiz
+      T: rr(v, v, []),
+    },
+  );
+  const h = raporHtml(k);
+  assert.deepEqual(['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'].map((x) => kovaSay(h, x)), [2, 1, 0, 1, 0]);
+  assert.match(h, /<span class='g-say g-ok'>3<\/span>/);
+  assert.match(h, /<h3>Dikkat gerektiren <span class='g-say g-bad'>1<\/span><\/h3>/);
+  assert.match(h, /<span class='hero-oran'>%75<\/span>/);
+  assert.match(h, /<b>2<\/b> sunucuda işlem yapıldı<\/span><span><b>1<\/b> tanesi eski haline getirildi \(%50\)/);
+  // kv yuzdeleri
+  assert.match(h, /Müdahalesiz açıldı<\/b>[\s\S]*?<span class='kv-p'[^>]*>%50<\/span>/);
+  // cubuk: her segment var olan bir panele gider, genislikler toplami 100
+  const seg = [...h.matchAll(/<a class='seg' href='#(d-[a-z]+)'[^>]*style='width:([\d.]+)%/g)];
+  assert.ok(seg.length >= 3);
+  for (const [, id] of seg) assert.ok(h.includes(`<section id='${id}' class='detay'`), `${id} paneli yok`);
+  assert.equal(Math.round(seg.reduce((t, [, , w]) => t + Number(w), 0)), 100);
+  // F: mudahalesiz paneli, etiket ve hata donen komut
+  const panel = (id) => h.slice(h.indexOf(`<section id='${id}'`), h.indexOf('</section>', h.indexOf(`<section id='${id}'`)));
+  assert.match(panel('d-mudahalesiz'), /<td class='host'>F<\/td><td class='minor'><span class='k-bad'>Apache HTTP Server açma — hata<\/span><\/td><td class='minor'><span class='etiket'>komut hata döndü; kendiliğinden düzeldi<\/span><\/td>/);
+  assert.match(panel('d-duzeltildi'), /<td class='host'>A<\/td><td class='minor'><span class='k-ok'>Apache HTTP Server açma ✓<\/span>/);
+  // U: islem bilinmiyor (sonuc gelmedi); "islem yok" DENMEZ
+  assert.match(panel('d-yapilamadi'), /<td class='host'>U<\/td><td class='minor'><span class='sessiz'>bilinmiyor \(sonuç gelmedi\)<\/span><\/td><td class='minor'>Sunucuya ulaşılamadı \(sonuç gelmedi\) — yapılan işlem bilinmiyor<\/td>/);
+  // bos kova paneli mesaji; islem paneli satiri (sunucu, komut, sunucunun sonucu)
+  assert.match(panel('d-hatali'), /Bu grupta sunucu yok\./);
+  assert.match(panel('d-op-0'), /<td class='host'>A<\/td><td class='minor'><span class='k-ok'>Apache HTTP Server açma ✓<\/span><\/td><td><span class='pill'[^>]*>Otomasyonla eski haline getirildi<\/span><\/td>/);
+  assert.match(panel('d-op-0'), /<td class='host'>F<\/td>[\s\S]*?Müdahalesiz açıldı<\/span>/);
+  // gorunum: viewport, teknik ayrintilar ve e-posta baglantilari
+  assert.match(h, /<meta name='viewport' content='width=device-width,initial-scale=1'>/);
+  assert.match(h, /<a href='#d-tum'>Teknik ayrıntılar \(tüm tablolar\) →<\/a> · <a class='eposta-link' href='\?eposta=1'>/);
+  // paneller yalniz :target ile (ve yazdirmada) acilir; baska kural acmaz
+  const acan = [...h.matchAll(/([^}\n]*)\.detay[^{]*\{display:block/g)].map((m) => m[0]);
+  assert.ok(acan.every((x) => /:target|@media print/.test(x)), `beklenmeyen acma kurali: ${acan.join(' | ')}`);
+  // e-posta gorunumu: tum paneller acik, gezinme gizli
+  const ep = raporHtml(k, { eposta: true });
+  assert.match(ep, /\.detay\{display:block!important;animation:none!important\}/);
+  assert.match(ep, /\.kapat,\.alt-link,\.eposta-link\{display:none!important\}/);
+  assert.doesNotMatch(h, /display:block!important/);
 });

@@ -145,6 +145,57 @@ describe('Reboot Kontrolü sekmesi', () => {
     expect(screen.getByText(/açma BAŞARISIZ/)).toBeTruthy();
   });
 
+  it('RT1b AWX’ten alınan kayıt: listede ve başlıkta AWX · WF rozeti; Portal kaydında rozet yok', async () => {
+    AKTIF = { ...KAYIT, kaynak: 'AWX', awxWorkflowId: 7000, olusturan: 'awx:unix-ekip', not: 'AWX’ten alındı: iş #501, workflow #7000' } as unknown as typeof AKTIF;
+    const { unmount } = render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#3'));
+    await screen.findByText('2 ürün kaydedildi');
+    expect(screen.getAllByText('AWX · WF #7000')).toHaveLength(2);
+    unmount();
+    AKTIF = KAYIT;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#3'));
+    await screen.findByText('2 ürün kaydedildi');
+    expect(screen.queryByText(/^AWX( · WF #\d+)?$/)).toBeNull();
+  });
+
+  it('RT1c sunucu seviyesi özet: başarı oranı, gruplar; sayıya tıklayınca sunucular, işlemler ve neden açılır; 0 grubu tıklanmaz', async () => {
+    const seviye = {
+      toplam: 2,
+      sayi: { mudahalesiz: 0, duzeltildi: 1, kontrol: 0, yapilamadi: 0, hatali: 1 },
+      kova: { mudahalesiz: [], duzeltildi: ['GBJBOP18'], kontrol: [], yapilamadi: [], hatali: ['GBJBOAP18'] },
+      basari: { pay: 1, payda: 2, metin: '%50' },
+      islemYapilan: 2,
+      geriGetirilen: { pay: 1, payda: 2, metin: '%50' },
+      islemler: [],
+      sunucu: {
+        GBJBOP18: { kova: 'duzeltildi', etiket: [], neden: [], komutlar: [{ islem: 'baslat', urun: 'JBOSS8', ad: 'appA', sonuc: 'OK', hedefte: true }] },
+        GBJBOAP18: { kova: 'hatali', etiket: [], neden: ['1 öğe reboot öncesinden farklı kaldı', '1 komut hata döndü'], komutlar: [{ islem: 'baslat', urun: 'JBOSS8', ad: 'appB', sonuc: 'FAIL', hedefte: false }] },
+      },
+      etiketSay: { izlenenYok: 0 },
+    };
+    AKTIF = { ...KAYIT, ozet: { ...KAYIT.ozet, sonra: { ...KAYIT.ozet.sonra, seviye } } } as unknown as typeof AKTIF;
+    render(<RebootKontroluTab />);
+    fireEvent.click(await screen.findByText('#3'));
+    const y = await screen.findByRole('group', { name: 'Yönetici özeti' });
+    expect(within(y).getByTestId('seviye-basari').textContent).toBe('%50');
+    expect(y.textContent).toMatch(/1 \/ 2 sunucu reboot öncesi haliyle çalışıyor/);
+    expect(y.textContent).toMatch(/2 sunucuda işlem yapıldı · 1 tanesi eski haline getirildi/);
+    expect((within(y).getByTestId('seviye-mudahalesiz') as HTMLButtonElement).disabled).toBe(true);
+    expect(within(y).queryByTestId('seviye-ayrinti')).toBeNull();
+    fireEvent.click(within(y).getByTestId('seviye-hatali'));
+    const ay = within(y).getByTestId('seviye-ayrinti');
+    expect(ay.textContent).toMatch(/GBJBOAP18/);
+    expect(ay.textContent).toMatch(/JBoss 8 JVM appB açma — hata/);
+    expect(ay.textContent).toMatch(/1 öğe reboot öncesinden farklı kaldı · 1 komut hata döndü/);
+    expect(ay.textContent).not.toMatch(/GBJBOP18/);
+    expect(within(y).getByTestId('seviye-hatali').getAttribute('aria-expanded')).toBe('true');
+    // eski 4 oran ve paragraf yok
+    expect(within(y).queryByText('Reboot öncesi hale dönüş')).toBeNull();
+    fireEvent.click(within(y).getByTestId('seviye-hatali'));
+    expect(within(y).queryByTestId('seviye-ayrinti')).toBeNull();
+  });
+
   it('RT2 "sonra" yalnız onay penceresinden gider', async () => {
     AKTIF = KAYIT;
     sonraMock.mockClear();
@@ -166,7 +217,8 @@ describe('Reboot Kontrolü sekmesi — boş önce görüntüsü (2026-11-14)', (
     expect(screen.getByText('izlenen ürün yok')).toBeTruthy();
     expect(screen.getAllByText('Kontrol gerekli')).toHaveLength(5); // liste + ayrinti basligi + sunucu karti + ozet kutusu + filtre dugmesi
     // OTOMASYON OZETI + FILTRE (2026-11-15): sayilar sunucu; komut kosmayan sunucu "dokunmadi", filtre listeyi daraltir.
-    expect(screen.getByText(/Sayılar/).textContent).toMatch(/sunucu sayısıdır/);
+    // 2026-11-17: uzun tanım paragrafı kaldırıldı ("uzun paragrafları kaldır")
+    expect(screen.queryByText(/Sayılar/)).toBeNull();
     const oto = screen.getByRole('group', { name: 'Otomasyon filtresi' });
     const son = screen.getByRole('group', { name: 'Son durum filtresi' });
     expect(within(oto).getByRole('button', { name: /^Dokunmadı \(1\)/ })).toBeTruthy();
@@ -332,9 +384,10 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     expect(kart('İlk sapmalardan kapatılan')).toBe('—0 / 0 öğeİlk sapmalardan kapatılan');
     // inceleme Y10: otomasyon oranının birimi komut
     expect(kart('Otomasyon başarı oranı')).toBe('%1001 / 1 komutOtomasyon başarı oranı');
-    expect(within(y).getByText('Kayıttaki 2 sunucunun 2 tanesinde reboot sonrası son durum ölçüldü.')).toBeTruthy();
+    // 2026-11-17: yönetici paragrafı gösterilmez; köprü yalnız sayılar
+    expect(within(y).queryByText('Kayıttaki 2 sunucunun 2 tanesinde reboot sonrası son durum ölçüldü.')).toBeNull();
     const kopru = screen.getByText(/^Komut bazında:/);
-    expect(kopru.textContent).toBe('Komut bazında: 1 başarılı · 0 başarısız · 2 gerek kalmadı (1 sunucuda 3 komut). Bir sunucuda birden çok komut olabilir; "gerek kalmadı" komutları otomasyonun dokunduğu sayılmaz; komutu başarılı dönüp son kontrolde hedefte olmayan öğe (0) sunucuyu "otomasyon başarısız" yapar.');
+    expect(kopru.textContent).toBe('Komut bazında: 1 başarılı · 0 başarısız · 2 gerek kalmadı · 0 başarılı ama hedefte değil (1 sunucuda 3 komut)');
   });
 
   it('RT10 eski kayıt (yönetici özeti yok): kutu ve köprü gösterilmez; tümü karşılaştırma dışı iken özet gri', async () => {
@@ -357,7 +410,7 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     render(<RebootKontroluTab />);
     fireEvent.click(await screen.findByText('#8'));
     const kopru = await screen.findByText(/^Komut bazında:/);
-    expect(kopru.textContent).toMatch(/yapar\. Komutu başarılı dönüp son durumu ölçülemediği için doğrulanamayan: 2\.$/);
+    expect(kopru.textContent).toMatch(/· 2 başarılı ama doğrulanamadı \(/);
   });
 
   it('RT12 inceleme Y7: kontrol notlu ama eski haline dönen sunucu "bırakıldı" sayılır; ana metrik altında kontrol notlu / bekleyen; eski kayıtta satır yok', async () => {
@@ -372,7 +425,7 @@ describe('Reboot Kontrolü sekmesi — v4 karşılaştırma dışı, yönetici �
     const y = await screen.findByRole('group', { name: 'Yönetici özeti' });
     const kart = (etiket: string) => within(y).getByText(etiket).parentElement?.textContent;
     expect(kart('Bulunduğu gibi bırakıldı')).toBe('%66,72 / 3 sunucuBulunduğu gibi bırakıldıkontrol notlu 1 · kontrol bekleyen 0 · sorun kalan 1');
-    expect(within(y).getByText(yon.metin)).toBeTruthy();
+    expect(within(y).queryByText(yon.metin)).toBeNull();
     unmount();
     // eski kayıt (Y7 alanları yok): ana metrik altı satır yazılmaz, kutu yine görünür
     const e = structuredClone(KD_KAYIT) as typeof KD_KAYIT;

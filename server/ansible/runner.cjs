@@ -1604,6 +1604,15 @@ async function getJobStatusOnServer(serverId, jobId, opts = null) {
     jobExplanation: data.job_explanation || '',
     // Is bitse de AWX olaylari islerken stdout eksik olabilir (arsiv bunu bekler); alan yoksa undefined.
     eventProcessingFinished: typeof data.event_processing_finished === 'boolean' ? data.event_processing_finished : undefined,
+    // Is bir AWX workflow'unun dugumuyse workflow isinin numarasi (2026-11-17, Reboot Kontrolu AWX alimi: ayni
+    // workflow'un once/sonra islerini eslestirir). Workflow disi is: undefined.
+    workflowJobId:
+      Number.isInteger(data.summary_fields?.source_workflow_job?.id) && data.summary_fields.source_workflow_job.id > 0
+        ? data.summary_fields.source_workflow_job.id
+        : undefined,
+    // Isin extra_vars'i HAM metin (AWX JSON/YAML metni; workflow artifacts'i dahil). Cagiran kendisi cozer; sir
+    // tasiyabilir: loga / ekrana YAZILMAZ.
+    extraVarsHam: typeof data.extra_vars === 'string' ? data.extra_vars : '',
   };
 }
 

@@ -50,6 +50,19 @@ export interface RcDegerlendirme {
 }
 /** Oran: pay / payda; metin Türkçe yüzde ("%92,6"), payda 0 ise "—". */
 export interface RcOran { pay: number; payda: number; metin: string }
+/** 2026-11-17 sunucu seviyesi yonetici ozeti (reboot-check.cjs sunucuSeviyesi; Durum Raporu ayni kaynak). */
+export type RcKova = 'mudahalesiz' | 'duzeltildi' | 'kontrol' | 'yapilamadi' | 'hatali';
+export interface RcSeviye {
+  toplam: number;
+  sayi: Record<RcKova, number>;
+  kova: Record<RcKova, string[]>;
+  basari: RcOran;
+  islemYapilan: number;
+  geriGetirilen: RcOran;
+  islemler: { anahtar: string; islem: string; urun: string; jvm: boolean; komut: number; ok: number; fail: number; hedefte: number; sunucular: string[] }[];
+  sunucu: Record<string, { kova: RcKova; etiket: string[]; neden: string[]; bilinmiyor?: boolean; komutlar: { islem: string; urun: string; ad: string; sonuc: string; hedefte: boolean }[] }>;
+  etiketSay?: { izlenenYok: number };
+}
 export interface RcKomutKoprusu { ok: number; fail: number; skip: number; okHedefteDegil: number; okOlculemedi?: number; sunucu: number; komut: number; basarili: number }
 /** Yönetici özeti (v4) — sunucu yoneticiOzeti (tek kaynak; rapor aynı sayıları kullanır). */
 export interface RcYonetici {
@@ -78,11 +91,15 @@ export interface RcKayit {
   durum: string;
   olusturan: string;
   olusturuldu: string;
+  /** 2026-11-17: 'AWX' = AWX'te (workflow ya da elle) kosan isten alindi (reboot-check-awx.cjs); null/yok = Portal. */
+  kaynak?: 'AWX' | null;
+  /** AWX kaynakli kaydin workflow is numarasi (workflow disi: null). */
+  awxWorkflowId?: number | null;
   once: { jobId: number | null; serverId: number | null; at: string | null; sonuc?: { faz?: string; sunucular?: Record<string, RcSunucuSonuc> } | null };
   sonra: { jobId: number | null; serverId: number | null; at: string | null; sonuc?: { faz?: string; sunucular?: Record<string, RcSunucuSonuc> } | null };
   ozet: {
     once?: { alinan: number; toplam: number; job: string; once_bos?: string[] };
-    sonra?: { sorunsuz: number; kontrol?: number; kapsamDisi?: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme>; yonetici?: RcYonetici };
+    sonra?: { sorunsuz: number; kontrol?: number; kapsamDisi?: number; toplam: number; job: string; sunucu: Record<string, RcDegerlendirme>; yonetici?: RcYonetici; seviye?: RcSeviye };
   } | null;
   /** Kosan fazda AWX'in anlik is durumu (pending / waiting / running / okunamadi); yalniz ayrintida. */
   awxDurum?: string | null;

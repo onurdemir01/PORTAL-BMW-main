@@ -10,7 +10,7 @@
 // yönetici özeti ve sunucu↔komut köprüsü sunucudan (reboot-check.cjs yoneticiOzeti / komutSayaci) gelir.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, CameraIcon, WrenchScrewdriverIcon, CheckCircleIcon, ExclamationTriangleIcon, DocumentTextIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme, type RcOtomasyon, type RcYonetici } from '@/api/rebootCheckApi';
+import { rebootCheckApi, type RcKayit, type RcSunucuSonuc, type RcDegerlendirme, type RcOtomasyon, type RcYonetici, type RcSeviye, type RcKova } from '@/api/rebootCheckApi';
 import { serverHubApi } from '@/api/serverHubApi';
 import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
@@ -89,6 +89,16 @@ function DurumRozeti({ durum }: { durum: string }) {
     <Rozet ton={d?.ton || 'muted'}>
       <span className="inline-flex items-center gap-1">{/_kosuyor$/.test(durum) && <Doner />}{d?.etiket || durum}</span>
     </Rozet>
+  );
+}
+
+/** AWX'te (workflow ya da elle) kosan isten alinan kayit (2026-11-17); Portal kaydinda hicbir sey cizilmez. */
+function KaynakRozeti({ k }: { k: Pick<RcKayit, 'kaynak' | 'awxWorkflowId'> }) {
+  if (k.kaynak !== 'AWX') return null;
+  return (
+    <span title={k.awxWorkflowId ? `AWX workflow #${k.awxWorkflowId} içinde çalıştı; Portal sonucu AWX'ten okudu` : 'AWX’te Portal dışından çalıştı; Portal sonucu AWX’ten okudu'}>
+      <Rozet ton="muted">AWX{k.awxWorkflowId ? ` · WF #${k.awxWorkflowId}` : ''}</Rozet>
+    </span>
   );
 }
 
@@ -296,7 +306,72 @@ function YoneticiOzeti({ y }: { y: RcYonetici }) {
           </div>
         ))}
       </div>
-      <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{y.metin}</p>
+    </div>
+  );
+}
+
+// SUNUCU SEVİYESİ ÖZET (2026-11-17, kullanıcı: "bilmemiz gereken sadece ve sadece sunucu seviyesinde başarı oranı ... sayılara
+// tıklarsam detaylar ortaya çıksın"; "uzun paragraf yazılarını kaldır"). Sayılar sunucudan (reboot-check.cjs sunucuSeviyesi;
+// Durum Raporu aynı kaynak). Her sunucu tek bir gruptadır; bir sayıya tıklayınca o grubun sunucuları, yapılan işlemler ve neden açılır.
+const KOVA: Record<RcKova, { ad: string; renk: string; zemin: string }> = {
+  mudahalesiz: { ad: 'Müdahalesiz açıldı', renk: 'var(--status-success)', zemin: 'var(--status-success-bg)' },
+  duzeltildi: { ad: 'Otomasyonla eski haline getirildi', renk: 'var(--status-success)', zemin: 'var(--status-success-bg)' },
+  yapilamadi: { ad: 'Hiç işlem yapılamadı', renk: 'var(--status-danger)', zemin: 'var(--status-danger-bg)' },
+  hatali: { ad: 'İşlem yapıldı, eski haline getirilemedi', renk: 'var(--status-danger)', zemin: 'var(--status-danger-bg)' },
+  kontrol: { ad: 'Kontrol bekliyor', renk: 'var(--status-warning)', zemin: 'var(--status-warning-bg)' },
+};
+const KOVA_SIRA: RcKova[] = ['mudahalesiz', 'duzeltildi', 'yapilamadi', 'hatali', 'kontrol'];
+const ISLEM_ADI: Record<string, string> = { baslat: 'açma', durdur: 'kapatma' };
+const URUN_KISA: Record<string, string> = { NGINX: 'Nginx', RHA: 'Apache', IHS: 'IHS', CTG: 'CTG', JBOSS7: 'JBoss 7', JBOSS8: 'JBoss 8', WAS: 'WebSphere' };
+function SeviyeOzeti({ s }: { s: RcSeviye }) {
+  const [acik, setAcik] = useState<RcKova | null>(null);
+  const basarili = s.sayi.mudahalesiz + s.sayi.duzeltildi;
+  return (
+    <div role="group" aria-label="Yönetici özeti" className="rounded-lg border px-3 py-2.5 space-y-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text-primary)' }} data-testid="seviye-basari">{s.basari.metin}</span>
+        <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-secondary)' }}><b>{basarili}</b> / {s.toplam} sunucu reboot öncesi haliyle çalışıyor</span>
+        <span className="text-[12px] tabular-nums ml-auto" style={{ color: 'var(--text-muted)' }}>
+          {s.islemYapilan} sunucuda işlem yapıldı · {s.sayi.duzeltildi} tanesi eski haline getirildi
+        </span>
+      </div>
+      <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(10.5rem, 1fr))' }}>
+        {KOVA_SIRA.map((k) => (
+          <button key={k} type="button" disabled={!s.sayi[k]} aria-expanded={acik === k} onClick={() => setAcik(acik === k ? null : k)}
+            className="text-left rounded-lg border px-3 py-1.5 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            style={{ borderColor: acik === k ? KOVA[k].renk : 'var(--border-subtle)', background: acik === k ? KOVA[k].zemin : 'var(--bg-surface)' }}
+            data-testid={`seviye-${k}`}>
+            <div className="text-lg font-semibold tabular-nums" style={{ color: s.sayi[k] ? KOVA[k].renk : 'var(--text-muted)' }}>{s.sayi[k]}</div>
+            <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{KOVA[k].ad}</div>
+            {k === 'mudahalesiz' && !!s.etiketSay?.izlenenYok && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.etiketSay.izlenenYok} sunucuda izlenen uygulama yoktu</div>}
+          </button>
+        ))}
+      </div>
+      {acik && (
+        <div className="rounded-lg border overflow-x-auto" style={{ borderColor: KOVA[acik].renk }} data-testid="seviye-ayrinti">
+          <table className="w-full text-[12px]">
+            <thead><tr style={{ color: 'var(--text-muted)' }}><th className="text-left px-2 py-1">Sunucu</th><th className="text-left px-2 py-1">Yapılan işlemler</th><th className="text-left px-2 py-1">Not / neden</th></tr></thead>
+            <tbody>
+              {[...s.kova[acik]].sort().map((h) => {
+                const x = s.sunucu[h];
+                return (
+                  <tr key={h} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                    <td className="px-2 py-1 font-mono">{h}</td>
+                    <td className="px-2 py-1">
+                      {x?.komutlar.length ? x.komutlar.map((y, i) => (
+                        <div key={i} style={{ color: y.sonuc === 'FAIL' ? 'var(--status-danger)' : y.hedefte ? 'var(--status-success)' : 'var(--status-warning)' }}>
+                          {URUN_KISA[y.urun] || y.urun}{y.ad ? ` JVM ${y.ad}` : ''} {ISLEM_ADI[y.islem] || y.islem} {y.sonuc === 'FAIL' ? '— hata' : y.hedefte ? '✓' : '— hedefte değil'}
+                        </div>
+                      )) : <span style={{ color: 'var(--text-muted)' }}>{x?.bilinmiyor ? 'bilinmiyor (sonuç gelmedi)' : 'işlem yok'}</span>}
+                    </td>
+                    <td className="px-2 py-1" style={{ color: 'var(--text-secondary)' }}>{[...(x?.etiket || []), ...(x?.neden || [])].join(' · ') || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -324,8 +399,8 @@ function SorunsuzOzeti({ s }: { s: NonNullable<NonNullable<RcKayit['ozet']>['son
 function KomutKoprusu({ c }: { c: RcYonetici['komut'] }) {
   return (
     <span className="block mt-0.5 tabular-nums">
-      Komut bazında: <b>{c.ok}</b> başarılı · <b>{c.fail}</b> başarısız · <b>{c.skip}</b> gerek kalmadı ({c.sunucu} sunucuda {c.komut} komut). Bir sunucuda birden çok komut olabilir; "gerek kalmadı" komutları otomasyonun dokunduğu sayılmaz; komutu başarılı dönüp son kontrolde hedefte olmayan öğe (<b>{c.okHedefteDegil}</b>) sunucuyu "otomasyon başarısız" yapar.
-      {c.okOlculemedi ? <> Komutu başarılı dönüp son durumu ölçülemediği için doğrulanamayan: <b>{c.okOlculemedi}</b>.</> : null}
+      {/* 2026-11-17 ("uzun paragraflari kaldir"): yalniz sayilar. */}
+      Komut bazında: <b>{c.ok}</b> başarılı · <b>{c.fail}</b> başarısız · <b>{c.skip}</b> gerek kalmadı · <b>{c.okHedefteDegil}</b> başarılı ama hedefte değil{c.okOlculemedi ? <> · <b>{c.okOlculemedi}</b> başarılı ama doğrulanamadı</> : null} ({c.sunucu} sunucuda {c.komut} komut)
     </span>
   );
 }
@@ -355,6 +430,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold">Kayıt #{k.id}</span>
         <DurumRozeti durum={k.durum} />
+        <KaynakRozeti k={k} />
         <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}{k.not ? ` · ${k.not}` : ''}</span>
         {/* DURUM RAPORU: ekip arkadasinin patch-aggregate-report.py tasarimi (server/server-hub/reboot-rapor.cjs). */}
         <a href={`/api/server-hub/reboot-check/${k.id}/rapor`} target="_blank" rel="noopener noreferrer" className={`${BTN} ml-auto no-underline`}
@@ -433,7 +509,7 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
           : tumHosts.length === 0 ? <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>Henüz çalıştırılmadı. Reboot'u yaptıktan sonra yukarıdaki düğmeyi kullanın.</div>
             : (
               <div className="space-y-2">
-                {k.ozet?.sonra?.yonetici && <YoneticiOzeti y={k.ozet.sonra.yonetici} />}
+                {k.ozet?.sonra?.seviye ? <SeviyeOzeti s={k.ozet.sonra.seviye} /> : k.ozet?.sonra?.yonetici && <YoneticiOzeti y={k.ozet.sonra.yonetici} />}
                 <div className="grid gap-1.5 text-[12px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(9.5rem, 1fr))' }}>
                   {(['basarili', 'basarisiz', 'dokunmadi'] as const).map((f) => <Kutu key={f} sayi={oToplam(f)} etiket={OTOMASYON[f].etiket} renk={OTOMASYON[f].renk} />)}
                 </div>
@@ -441,7 +517,6 @@ function Ayrinti({ k, onSonra, busy }: { k: RcKayit; onSonra: () => void; busy: 
                   {(['sorunsuz', 'kontrol', 'sorunlu', 'kapsam_disi'] as const).map((f) => <Kutu key={f} sayi={sToplam(f)} etiket={S_ADI[f]} renk={SON_RENK[f]} />)}
                 </div>
                 <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  Sayılar <b>sunucu</b> sayısıdır. Otomasyon: <b>dokunmadı</b> = hiç açma/kapatma komutu çalışmadı (gerek kalmayanlar sayılmaz); <b>başarılı</b> = çalışan her komut başarılı ve dokunduğu her öğe son kontrolde hedef durumda; <b>başarısız</b> = bir komut başarısız ya da dokunduğu öğe son kontrolde hedefte değil / ölçülemedi. Alt satır son kontroldeki durumdur; <b>karşılaştırma dışı</b> = reboot öncesi izlenen uygulama çalışmıyordu (uyarı değildir).
                   {k.ozet?.sonra?.yonetici && <KomutKoprusu c={k.ozet.sonra.yonetici.komut} />}
                 </div>
                 <FiltreGrubu etiket="Otomasyon" adlar={O_ADI} secili={oFiltre} sec={setOFiltre} say={oSay} />
@@ -583,6 +658,7 @@ export default function RebootKontroluTab() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold">#{k.id}</span>
                       <DurumRozeti durum={k.durum} />
+                      <KaynakRozeti k={k} />
                     </div>
                     <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text-secondary)' }} title={k.hosts.join(', ')}>{k.hosts.join(', ')}</div>
                     <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{k.olusturan} · {fmtDateTime(k.olusturuldu)}</div>

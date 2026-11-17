@@ -269,6 +269,13 @@ async function main() {
       optional: true,
     },
     {
+      // Server Hub > Reboot Kontrolu (2026-11-17): AWX'te (workflow ya da elle) kosan reboot_check islerini Portal'a alir
+      // (reboot-check-awx.cjs). Portal'in kendi baslattigi is atlanir.
+      name: 'rebootCheckAwx',
+      init: () => require('./server-hub/reboot-check-awx.cjs').startPoller(),
+      optional: true,
+    },
+    {
       // Server Hub > Toplu Restart (2026-11-14): onizleme / tek tek restart / dogrulama taramasi yurutucusu.
       // Uclar serverHub router'inda. Kirasi dusmus is DEVAM ETTIRILMEZ (YARIM_KALDI).
       name: 'topluRestart',
@@ -392,7 +399,11 @@ async function main() {
         try {
           const prefs = await require('./auth/users.cjs').getPrefs(username);
           const t = prefs['bmw-theme'];
-          value = t === 'light' || t === 'dark' ? t : null;
+          // Renk korlugu modu (2026-11-17): ayni tercih okumasindan; tema gibi ILK boyamada uygulanir.
+          value = {
+            theme: t === 'light' || t === 'dark' ? t : null,
+            renk: prefs['bmw-renk'] === 'cvd' ? 'cvd' : null,
+          };
         } catch {
           /* tercih okunamadi — istemci localStorage/OS tercihine duser */
           return null; // BASARISIZLIGI ONBELLEKLEME: gecici bir DB hatasi 30 sn boyunca
@@ -445,8 +456,10 @@ async function main() {
 
           const username = req.session?.user?.username;
           if (username) {
-            const t = await readThemePrefCached(username);
+            const p = await readThemePrefCached(username);
+            const t = p ? p.theme : null;
             if (t === 'light' || t === 'dark') boot.theme = t;
+            if (p && p.renk === 'cvd') boot.renk = 'cvd';
           }
 
           html = html.replace(

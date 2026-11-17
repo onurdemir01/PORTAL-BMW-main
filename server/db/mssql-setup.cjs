@@ -5692,6 +5692,19 @@ async function setupTables() {
     // admin farkli kisilerdir.
     // YALNIZ `CREATE TABLE`a yazmak YETMEZ: mevcut kurulumlarda kolon HIC
     // olusmaz ve sorgular sessizce patlar (bu depoda defalarca yasandi).
+    // Reboot Kontrolu AWX alimi (2026-11-17, reboot-check-awx.cjs): AWX'te (workflow ya da elle) kosan
+    // reboot_check islerinden acilan kayit kaynak='AWX' (NULL = Portal); ayni workflow'un once/sonra
+    // islerini eslestirmek icin workflow isinin numarasi.
+    {
+      table: 'reboot_checks',
+      col: 'kaynak',
+      sql: `ALTER TABLE reboot_checks ADD kaynak NVARCHAR(8) NULL`,
+    },
+    {
+      table: 'reboot_checks',
+      col: 'awx_workflow_id',
+      sql: `ALTER TABLE reboot_checks ADD awx_workflow_id INT NULL`,
+    },
     {
       table: 'oco_scheduled_launches',
       col: 'owner_groups',

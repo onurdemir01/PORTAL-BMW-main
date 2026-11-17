@@ -628,7 +628,13 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
   const repHtml = await repRes.text();
   assert.match(repHtml, /APP01/);
   assert.match(repHtml, /Yönetici Özeti/);
-  assert.ok(repHtml.includes(yon.metin), 'rapor paragrafi API yonetici metniyle ayni degil');
+  // 2026-11-17: rapor ozeti sunucu seviyesi (ozet.sonra.seviye, API ile ayni); uzun yonetici paragrafi KALDIRILDI.
+  const sev = sonraProg.kayit.ozet.sonra.seviye;
+  assert.ok(repHtml.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`), 'rapor basari orani API seviye ozetiyle ayni degil');
+  assert.ok(!repHtml.includes(yon.metin), 'uzun yonetici paragrafi raporda kalmis');
+  // e-posta gorunumu: ayni uc, tum paneller acik
+  const ep = await (await fetch(`${base}/api/server-hub/reboot-check/1/rapor?eposta=1`)).text();
+  assert.match(ep, /\.detay\{display:block!important/);
 });
 
 test('server/retirement/index: config, create, discover, dns-ip, stop-toplu, delete-now, rollback, job-status, poller', async (t) => {

@@ -1099,8 +1099,12 @@ test('RC27 v4 inceleme Y1/Y2/Y3/Y4/Y9: once-bos sorun paragrafta; urunle kalkan 
   assert.deepEqual([yon.sunucu.toplam, yon.sunucu.olculen, yon.sunucu.olculemeyen, yon.sunucu.onceYok], [2, 1, 0, 1]);
   assert.match(yon.metin, /^Kayıttaki 2 sunucunun 1 tanesinde reboot sonrası son durum ölçüldü, 1 sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı\./);
   const html = raporHtml({ id: 1, hosts: ['A', 'X'], once: { sonuc: onceJson }, sonra: { sonuc: { sunucular: sonraS } } });
-  assert.ok(html.includes(yon.metin), 'rapor paragrafi ekrandaki (sonraOzeti) yonetici metniyle ayni degil');
-  assert.match(html, /· ölçülemeyen <b>0<\/b> · önce görüntüsü alınamayan <b>1<\/b>/);
+  // 2026-11-17: rapor ozeti sunucu seviyesi (sunucuSeviyesi; ekran ozet.sonra.seviye ile AYNI): once goruntusu alinamayan X
+  // "hic islem yapilamadi" kovasinda, nedeniyle.
+  const sev = so.ozet.sonra.seviye;
+  assert.deepEqual(sev.kova.yapilamadi, ['X']);
+  assert.ok(html.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`), 'rapor ozeti ekrandaki (sonraOzeti) seviye ile ayni degil');
+  assert.match(html, /<td class='host'>X<\/td><td class='minor'><span class='sessiz'>işlem yok<\/span><\/td><td class='minor'>Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı<\/td>/);
   // Y9: eski surum once'nin korudugu yeni JBoss 7 urunu hedef kumesine girmez, 'korunan' sayilir
   const onceE = ['BOOT|b1||', 'URUN|NGINX||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
   const sonE = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|JBOSS7||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
@@ -1278,4 +1282,56 @@ test('RC31 inceleme 2026-11-16: B1 once kaynagi onceGirdisi; B2 yalniz ilk gorun
   assert.match(n, /\(sürüm 3\.0, gerekli 4\): CTG reboot öncesi çalışmıyordu ve hâlâ çalışıyor/);
   assert.match(n, /AWX'teki betik eski \(sürüm 3\.0\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu/);
   assert.doesNotMatch(n, /YOKTU/);
+});
+
+test('RC-SV1 2026-11-17 sunucuSeviyesi: her sunucu TEK kovada; kontrol / komutsuz fark / olculemeyen komut / once yok / korunan; basari paydasi tum sunucular', () => {
+  const { sunucuSeviyesi, SEVIYE_KOVALARI } = require('../reboot-check.cjs');
+  const v = ['BOOT|b2||', 'SURUM|2||'];
+  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
+  const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
+  const onceE = ['BOOT|b1||', 'URUN|NGINX||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
+  const sonE = [...v, 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|JBOSS7||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
+  const sunucular = {
+    TEMIZ: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []),
+    // reboot dogrulanamadi (boot ayni) ama fark yok: Portal kurali 'sorunsuz' (rapor ayrica uyarir) -> mudahalesiz
+    BOOTAYNI: r(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], []),
+    // AWX'teki betik eski (surum 2) -> kontrol notu, fark yok -> kontrol (basari DEGIL)
+    ESKIBETIK: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 2 }),
+    // kalan var ama hic komut kosmadi -> yapilamadi
+    KOMUTSUZ: r([...v], [...v], []),
+    // komut kostu, son durum olculemedi -> hatali (dogrulanamadi)
+    OLCULMEDI: r([...v], [], ['SONUC|baslat|RHA||OK|x'], { son_olculdu: false }),
+    // korunan (eski surum once) calisan oge, fark yok -> kontrol
+    KORUNAN: r(sonE, sonE, []),
+    // once goruntusu yok (Portal sonra hedefi degil) -> yapilamadi, nedeni once yok
+    ONCESIZ: undefined,
+    // SKIP "gerek kalmadi" komut sayilmaz -> mudahalesiz
+    SKIPLI: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], ['SONUC|baslat|RHA||SKIP|zaten']),
+  };
+  const hedef = Object.keys(sunucular);
+  const onceSat = { TEMIZ: onceR, BOOTAYNI: onceR, ESKIBETIK: onceR, KOMUTSUZ: onceR, OLCULMEDI: onceR, KORUNAN: onceE, SKIPLI: onceR };
+  const s = sunucuSeviyesi(sunucular, hedef, onceSat);
+  assert.deepEqual(s.kova, {
+    mudahalesiz: ['TEMIZ', 'BOOTAYNI', 'SKIPLI'],
+    duzeltildi: [],
+    kontrol: ['ESKIBETIK', 'KORUNAN'],
+    yapilamadi: ['KOMUTSUZ', 'ONCESIZ'],
+    hatali: ['OLCULMEDI'],
+  });
+  // her sunucu tam olarak bir kovada; toplamlar tutar
+  const hepsi = SEVIYE_KOVALARI.flatMap((k) => s.kova[k]);
+  assert.equal(hepsi.length, hedef.length);
+  assert.equal(new Set(hepsi).size, hedef.length);
+  assert.deepEqual(s.basari, { pay: 3, payda: 8, metin: '%37,5' });
+  assert.equal(s.islemYapilan, 1);
+  assert.deepEqual(s.geriGetirilen, { pay: 0, payda: 1, metin: '%0' });
+  assert.deepEqual(s.sunucu.ONCESIZ.neden, ['Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı']);
+  assert.match(s.sunucu.OLCULMEDI.neden[0], /son durum ölçülemedi/);
+  assert.deepEqual(s.sunucu.OLCULMEDI.komutlar, [{ islem: 'baslat', urun: 'RHA', ad: '', sonuc: 'OK', hedefte: false }]);
+  assert.match(s.sunucu.KOMUTSUZ.neden.join(' '), /öğe reboot öncesinden farklı kaldı/);
+  assert.ok(s.sunucu.ESKIBETIK.neden.length > 0 && /betiği eski/.test(s.sunucu.ESKIBETIK.neden.join(' ')), 'kontrol nedeni tasinmali');
+  // islemler: SKIP sayilmaz; OK ama olculemeyen hedefte degil
+  assert.deepEqual(s.islemler.map((x) => [x.anahtar, x.komut, x.ok, x.fail, x.hedefte, x.sunucular]), [['baslat|RHA|urun', 1, 1, 0, 0, ['OLCULMEDI']]]);
+  // bos kayit: payda 0 -> "—"
+  assert.equal(sunucuSeviyesi({}, [], {}).basari.metin, '—');
 });
