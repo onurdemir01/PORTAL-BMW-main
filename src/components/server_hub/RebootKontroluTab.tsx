@@ -382,7 +382,7 @@ function SeviyeOzeti({ s }: { s: RcSeviye }) {
           <table className="w-full text-[12px]">
             <thead><tr style={{ color: 'var(--text-muted)' }}><th className="text-left px-2 py-1">Sunucu</th><th className="text-left px-2 py-1">Yapılan işlemler</th><th className="text-left px-2 py-1">Not / neden</th></tr></thead>
             <tbody>
-              {[...s.kova[acik]].sort().map((h) => {
+              {[...s.kova[acik]].sort((a, b) => a.localeCompare(b, 'tr')).map((h) => {
                 const x = s.sunucu[h];
                 return (
                   <tr key={h} className="border-t" style={{ borderColor: 'var(--border-subtle)' }}>
