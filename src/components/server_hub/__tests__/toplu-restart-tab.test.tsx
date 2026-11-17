@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { render } from '@/test/test-utils';
+import { zamanlayiciKuruluncaIlerlet } from '@/test/zamanlayici';
 
 const m = vi.hoisted(() => ({
   topluRestartAdaylar: vi.fn(),
@@ -190,9 +191,7 @@ describe('Toplu Restart sekmesi', () => {
       );
       await waitFor(() => expect(m.topluRestartDurum).toHaveBeenCalledTimes(1));
       await screen.findByText(/Şu an: APP01\/crm — restart ediliyor \(restart #900\)/);
-      await act(async () => {
-        vi.advanceTimersByTime(YOKLAMA_MS);
-      });
+      await zamanlayiciKuruluncaIlerlet(YOKLAMA_MS);
       await waitFor(() => expect(m.topluRestartDurum).toHaveBeenCalledTimes(2));
       rerender(
         <SekmeKabi id="toplurestart" etkin="hosts">
