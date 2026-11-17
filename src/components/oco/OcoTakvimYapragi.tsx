@@ -17,6 +17,7 @@ import { CodeChip } from '@/components/common/CodeChip';
 import { fmtDate } from '@/utils/datetime';
 import { pencereKapandi } from '@/components/oco/takvimVurgu';
 import { DURUM_TON, OcoDetay, OcoRozetleri, saat, type OcoRow } from '@/components/oco/OcoOrtak';
+import { ocoEtiket, ocoKopya, ocoSesli } from '@/components/oco/manuelOlay';
 import {
   AY_ADLARI,
   GUN_ADLARI,
@@ -88,6 +89,8 @@ export function saatEtiketi(o: Oge): string {
 /** Hücre/ızgara ögesinin tonu: listedeki DURUM_TON; penceresi kapanmış bugünkü OCO tehlike tonu. */
 function ogeTonu(r: OcoRow, kapandi: boolean): string {
   if (kapandi) return 'var(--status-danger)';
+  // Elle olay servis durumundan renk almaz: "manuel" rozetiyle ayni ton, servis OCO'sundan ayirt edilsin.
+  if (r.manuel) return 'var(--status-info)';
   return DURUM_TON[r.statusText] || 'var(--border-strong)';
 }
 
@@ -192,7 +195,7 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
     const secili = secim?.tur === 'oco' && secim.oco === r.oco && secim.gun === gun;
     const zaman = ayrinti ? saatEtiketi(o) : o.devam ? '↳' : saat(r.plannedStart);
     const etiket =
-      `OCO ${r.oco}, ${saatEtiketi(o)}, ${r.subject || '(başlıksız)'}` +
+      `${ocoSesli(r)}, ${saatEtiketi(o)}, ${r.subject || '(başlıksız)'}` +
       (r.statusText ? `, ${r.statusText}` : '') +
       (r.pcabRequired ? ', PCAB' : '') +
       (o.devam ? ', önceki günden devam' : '') +
@@ -223,8 +226,14 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
           {zaman}
         </span>
         <span className={`min-w-0 ${ayrinti ? 'break-words' : 'truncate'}`}>
-          <span className="font-medium">#{r.oco}</span> {r.subject || '(başlıksız)'}
+          <span className="font-medium">{ocoEtiket(r)}</span> {r.subject || '(başlıksız)'}
         </span>
+        {/* OCO no'lu elle olay "#123" diye yazilir; servis OCO'su sanilmasin diye ayrica isaretlenir. */}
+        {r.manuel?.ocoNo && (
+          <span className="shrink-0 text-[9px] font-semibold" style={{ color: 'var(--status-info)' }} aria-hidden>
+            manuel
+          </span>
+        )}
         {r.pcabRequired && (
           <span className="shrink-0 text-[9px] font-semibold" style={{ color: 'var(--status-warning-text)' }} aria-hidden>
             PCAB
@@ -464,7 +473,9 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
               {kapat}
             </div>
             <span className="flex flex-wrap items-center gap-1.5">
-              <CodeChip value={String(secilenOco.oco)} label={`#${secilenOco.oco}`} copyable tone="muted" />
+              {ocoKopya(secilenOco) && (
+                <CodeChip value={ocoKopya(secilenOco)!} label={ocoEtiket(secilenOco)} copyable tone="muted" />
+              )}
               <OcoRozetleri
                 r={secilenOco}
                 kapandi={secim.gun === bugun && pencereKapandi(secilenOco.plannedEnd) === true}
@@ -568,7 +579,7 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
                 key={r.oco}
                 type="button"
                 onClick={() => sec({ tur: 'oco', oco: r.oco, gun: '' })}
-                aria-label={`OCO ${r.oco}, planlanan tarihi yok, ${r.subject || '(başlıksız)'}`}
+                aria-label={`${ocoSesli(r)}, planlanan tarihi yok, ${r.subject || '(başlıksız)'}`}
                 data-testid="oco-takvim-oge"
                 className="w-full text-left rounded px-1 py-0.5 text-[11px] truncate focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                 style={{
@@ -577,7 +588,7 @@ export default function OcoTakvimYapragi({ rows, tumRows, eksik, bugun }: OcoTak
                   color: 'var(--text-primary)',
                 }}
               >
-                <span className="font-medium">#{r.oco}</span> {r.subject || '(başlıksız)'}
+                <span className="font-medium">{ocoEtiket(r)}</span> {r.subject || '(başlıksız)'}
               </button>
             ))}
           </div>

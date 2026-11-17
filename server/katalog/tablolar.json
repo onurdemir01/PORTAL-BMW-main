@@ -2382,6 +2382,33 @@
   },
   {
     "db": "Portal",
+    "tablo": "oco_manuel_olaylar",
+    "amac": "OCO Takvimi'ne elle eklenen olaylar: servisin döndürmediği bir OCO ya da OCO'suz planlı çalışma (başlık, isteğe bağlı OCO no, başlangıç/bitiş, açıklama, ekleyen). Takvimde 'manuel' rozetiyle servis kayıtlarından ayrı görünür.",
+    "alan": "OCO",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "OCO Takvimi > Olay ekle/düzenle/sil (POST/PUT/DELETE /api/oco/manuel)",
+        "dosya": "server/oco/index.cjs:131",
+        "nasil": "INSERT (oco/manuel.cjs:131), UPDATE (:141), DELETE (:148); düzenleme/silme yalnız ekleyen ya da Admin",
+        "ne_zaman": "Kullanıcı elle olay eklediğinde/değiştirdiğinde",
+        "uzerinden": "server/oco/manuel.cjs"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "OCO Takvimi liste ve takvim görünümü (GET /api/oco/manuel)",
+        "dosya": "server/oco/index.cjs:121",
+        "uzerinden": "server/oco/manuel.cjs"
+      }
+    ],
+    "saklama": "yok (elle yönetilir, en çok 2000 kayıt listelenir)",
+    "notlar": "Kurumsal OCO servisine yazılmaz; servis kaydıyla birleştirilmez.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
     "tablo": "ansible_ocp_clusters",
     "amac": "OpenShift cluster kayıtları (ad, ortam, API adresi, token, jump host, bağlantı durumu). Admin ekranından yönetilir; kayıtlar ocp_cluster_index'e de aynalanır.",
     "alan": "OpenShift",

@@ -1871,6 +1871,24 @@ const TABLES = [
       )`,
   },
   {
+    // OCO Takvimi'ne ELLE eklenen olaylar (2026-11-17, server/oco/manuel.cjs). Servis
+    // listesinden AYRI: servis salt okunur, bu kayitlar yalniz Portal'da yasar.
+    name: 'oco_manuel_olaylar',
+    sql: `
+      CREATE TABLE oco_manuel_olaylar (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        oco_no         NVARCHAR(20)   NULL,
+        baslik         NVARCHAR(300)  NOT NULL,
+        aciklama       NVARCHAR(2000) NULL,
+        baslangic      DATETIME2      NOT NULL,
+        bitis          DATETIME2      NULL,
+        olusturan      NVARCHAR(128)  NULL,
+        olusturma_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        guncelleyen    NVARCHAR(128)  NULL,
+        guncelleme_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Eskiden server/data/inventory-saved-queries.json — kimlik anahtari 'name'
     // (bkz. server/inventory/index.cjs readSavedQueries/writeSavedQueries).
     name: 'inventory_saved_queries',
