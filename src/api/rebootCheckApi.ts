@@ -62,6 +62,8 @@ export interface RcSeviye {
   islemler: { anahtar: string; islem: string; urun: string; jvm: boolean; komut: number; ok: number; fail: number; hedefte: number; sunucular: string[] }[];
   sunucu: Record<string, { kova: RcKova; etiket: string[]; neden: string[]; bilinmiyor?: boolean; komutlar: { islem: string; urun: string; ad: string; sonuc: string; hedefte: boolean }[] }>;
   etiketSay?: { izlenenYok: number };
+  yapilamadiNeden?: { ulasilamadi: number; once_yok: number; olculemedi: number; komutsuz: number };
+  otomasyon?: RcOran;
 }
 export interface RcKomutKoprusu { ok: number; fail: number; skip: number; okHedefteDegil: number; okOlculemedi?: number; sunucu: number; komut: number; basarili: number }
 /** Yönetici özeti (v4) — sunucu yoneticiOzeti (tek kaynak; rapor aynı sayıları kullanır). */

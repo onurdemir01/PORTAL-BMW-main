@@ -900,6 +900,8 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     const etiket = [];
     const neden = [];
     let k;
+    // yapilamadi kovasinin alt nedeni (rapor kirilimi): once_yok | ulasilamadi | olculemedi | komutsuz.
+    let altNeden = null;
     if (yerinde) {
       // 'duzeltildi' YALNIZ en az bir komut basarili donup son kontrolde hedefteyse (dogrulama bulgusu: komutu hata donup
       // kendiliginden duzelen sunucu otomasyonla duzeltilmis sayilmaz).
@@ -913,6 +915,12 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
       neden.push(...dizi(x.neden));
     } else {
       k = komutlar.length ? 'hatali' : 'yapilamadi';
+      if (k === 'yapilamadi') {
+        if (!onceGecerli || r?.once_var === false) altNeden = 'once_yok';
+        else if (!r || r.sonuc_yok) altNeden = 'ulasilamadi';
+        else if (!x || x.durum === 'olculemedi') altNeden = 'olculemedi';
+        else altNeden = 'komutsuz';
+      }
       // Once goruntusu yoksa asil neden odur (sonuc gelmese de); digerleri sonraDegerlendir sebebinin okunur karsiligi.
       if (!onceGecerli || r?.once_var === false) neden.push('Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı');
       else if (!x || x.durum === 'olculemedi')
@@ -927,7 +935,7 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     if (komutlar.length) islemYapilan += 1;
     // bilinmiyor: sonra'ya gonderildi (once gecerli) ama sonuc gelmedi; komut kosmus olabilir (rc_sonuc yalniz son adimda
     // yazilir) -> 'islem yok' DENMEZ. Once'si olmayan sunucu sonra'ya hic gonderilmez: orada 'islem yok' dogrudur.
-    sunucu[h] = { kova: k, etiket, neden, komutlar, durum: x?.durum || 'olculemedi', kalan: x?.kalan || 0, bilinmiyor: onceGecerli && (!r || !!r.sonuc_yok) };
+    sunucu[h] = { kova: k, etiket, neden, komutlar, durum: x?.durum || 'olculemedi', kalan: x?.kalan || 0, bilinmiyor: onceGecerli && (!r || !!r.sonuc_yok), ...(altNeden ? { altNeden } : {}) };
     const gorulen = new Set();
     for (const y of komutlar) {
       const anahtar = `${y.islem}|${y.urun}|${y.ad ? 'jvm' : 'urun'}`;
@@ -960,6 +968,12 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
     etiketSay: {
       izlenenYok: Object.values(sunucu).filter((x) => x.etiket.includes('izlenen uygulama yoktu')).length,
     },
+    // Hic islem yapilamayan sunucularin alt nedenleri (ozet kirilimi).
+    yapilamadiNeden: Object.fromEntries(
+      ['ulasilamadi', 'once_yok', 'olculemedi', 'komutsuz'].map((n) => [n, kova.yapilamadi.filter((h) => sunucu[h].altNeden === n).length]),
+    ),
+    // Otomasyonun devreye girip sonucu belli oldugu sunucular: eski haline getirilen + getirilemeyen.
+    otomasyon: oran(sayi.duzeltildi, sayi.duzeltildi + sayi.hatali),
     islemler,
     sunucu,
   };

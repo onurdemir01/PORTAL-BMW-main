@@ -320,7 +320,7 @@ const KOVA: Record<RcKova, { ad: string; renk: string; zemin: string }> = {
   hatali: { ad: 'İşlem yapıldı, eski haline getirilemedi', renk: 'var(--status-danger)', zemin: 'var(--status-danger-bg)' },
   kontrol: { ad: 'Kontrol bekliyor', renk: 'var(--status-warning)', zemin: 'var(--status-warning-bg)' },
 };
-const KOVA_SIRA: RcKova[] = ['mudahalesiz', 'duzeltildi', 'yapilamadi', 'hatali', 'kontrol'];
+const YAPILAMADI_NEDEN = { ulasilamadi: 'Sunucuya ulaşılamadı', once_yok: 'Reboot öncesi görüntüsü yok', olculemedi: 'Son durum ölçülemedi', komutsuz: 'Fark kaldı, komut çalışmadı' } as const;
 const ISLEM_ADI: Record<string, string> = { baslat: 'açma', durdur: 'kapatma' };
 const URUN_KISA: Record<string, string> = { NGINX: 'Nginx', RHA: 'Apache', IHS: 'IHS', CTG: 'CTG', JBOSS7: 'JBoss 7', JBOSS8: 'JBoss 8', WAS: 'WebSphere' };
 function SeviyeOzeti({ s }: { s: RcSeviye }) {
@@ -335,18 +335,48 @@ function SeviyeOzeti({ s }: { s: RcSeviye }) {
           {s.islemYapilan} sunucuda işlem yapıldı · {s.sayi.duzeltildi} tanesi eski haline getirildi
         </span>
       </div>
-      <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(10.5rem, 1fr))' }}>
-        {KOVA_SIRA.map((k) => (
-          <button key={k} type="button" disabled={!s.sayi[k]} aria-expanded={acik === k} onClick={() => setAcik(acik === k ? null : k)}
-            className="text-left rounded-lg border px-3 py-1.5 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            style={{ borderColor: acik === k ? KOVA[k].renk : 'var(--border-subtle)', background: acik === k ? KOVA[k].zemin : 'var(--bg-surface)' }}
-            data-testid={`seviye-${k}`}>
-            <div className="text-lg font-semibold tabular-nums" style={{ color: s.sayi[k] ? KOVA[k].renk : 'var(--text-muted)' }}>{s.sayi[k]}</div>
-            <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>{KOVA[k].ad}</div>
-            {k === 'mudahalesiz' && !!s.etiketSay?.izlenenYok && <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.etiketSay.izlenenYok} sunucuda izlenen uygulama yoktu</div>}
-          </button>
+      {/* v2 (2026-11-17): Durum Raporu ile ayni hikaye - uc yol; "Otomasyon devreye girdi" iki sonucu (getirildi / getirilemedi)
+          ayni kartta tasir; kontrol bekleyenler serit. Her sayi dugmesi o grubun sunucularini acar. */}
+      <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))' }}>
+        {[
+          { baslik: 'Müdahale gerekmedi', renk: 'var(--status-success)', kovalar: ['mudahalesiz'] as RcKova[] },
+          { baslik: 'Otomasyon devreye girdi', renk: 'var(--accent)', kovalar: ['duzeltildi', 'hatali'] as RcKova[] },
+          { baslik: 'Otomasyon işlem yapamadı', renk: 'var(--status-danger)', kovalar: ['yapilamadi'] as RcKova[] },
+        ].map((yol) => (
+          <div key={yol.baslik} className="rounded-lg border px-3 py-2 space-y-1.5" style={{ borderColor: 'var(--border-subtle)', borderTop: `3px solid ${yol.renk}`, background: 'var(--bg-surface)' }}>
+            <div className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{yol.baslik}</div>
+            {yol.kovalar.map((k) => (
+              <button key={k} type="button" disabled={!s.sayi[k]} aria-expanded={acik === k} onClick={() => setAcik(acik === k ? null : k)}
+                className="w-full flex items-baseline gap-2 text-left rounded-md px-2 py-1 disabled:cursor-default focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ background: acik === k ? KOVA[k].zemin : 'transparent', outline: acik === k ? `1px solid ${KOVA[k].renk}` : undefined }}
+                data-testid={`seviye-${k}`}>
+                <span className="text-xl font-semibold tabular-nums" style={{ color: s.sayi[k] ? KOVA[k].renk : 'var(--text-muted)' }}>{s.sayi[k]}</span>
+                <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  {yol.kovalar.length > 1 ? (k === 'duzeltildi' ? '✓ Eski haline getirildi' : '✗ Eski haline getirilemedi') : KOVA[k].ad}
+                </span>
+              </button>
+            ))}
+            {yol.kovalar[0] === 'mudahalesiz' && !!s.etiketSay?.izlenenYok && (
+              <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{s.etiketSay.izlenenYok} sunucuda izlenen uygulama yoktu</div>
+            )}
+            {yol.kovalar[0] === 'yapilamadi' && s.yapilamadiNeden && (
+              <div className="text-[11px] space-y-0.5" style={{ color: 'var(--text-muted)' }}>
+                {(Object.entries(YAPILAMADI_NEDEN) as [keyof NonNullable<RcSeviye['yapilamadiNeden']>, string][])
+                  .filter(([n]) => s.yapilamadiNeden?.[n])
+                  .map(([n, ad]) => <div key={n}>{ad}: <b className="tabular-nums">{s.yapilamadiNeden?.[n]}</b></div>)}
+              </div>
+            )}
+          </div>
         ))}
       </div>
+      {s.sayi.kontrol > 0 && (
+        <button type="button" aria-expanded={acik === 'kontrol'} onClick={() => setAcik(acik === 'kontrol' ? null : 'kontrol')}
+          className="w-full flex items-center gap-2 text-left rounded-lg border px-3 py-1.5 text-[12px] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          style={{ borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg)', color: 'var(--status-warning-text)' }}
+          data-testid="seviye-kontrol">
+          <b className="tabular-nums">{s.sayi.kontrol}</b> sunucu elle kontrol bekliyor — fark yok ama bakılması gereken bir not var; başarı sayılmadı.
+        </button>
+      )}
       {acik && (
         <div className="rounded-lg border overflow-x-auto" style={{ borderColor: KOVA[acik].renk }} data-testid="seviye-ayrinti">
           <table className="w-full text-[12px]">

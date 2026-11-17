@@ -384,7 +384,11 @@ test('RR19 yonetici ozeti EN USTTE ve YALNIZ sunucu seviyesi; sayilar sunucuSevi
   assert.match(h, /<span class='hero-alt'><b>3<\/b> \/ 4 sunucu reboot öncesi haliyle çalışıyor<\/span>/);
   assert.deepEqual(['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'].map((x) => kovaSay(h, x)), [1, 2, 0, 0, 1]);
   assert.match(h, /<span class='etiket'>1 sunucuda izlenen uygulama yoktu<\/span>/);
-  assert.match(h, /<b>3<\/b> sunucuda işlem yapıldı<\/span><span><b>2<\/b> tanesi eski haline getirildi \(%66,7\)/);
+  // v2 akis (2026-11-17): hukum cumlesi; "Otomasyon devreye girdi" karti iki sonucu (getirildi / getirilemedi) birlikte tasir
+  assert.match(h, /<p class='hukum'>4 sunucunun <b>3<\/b> tanesi reboot sonrası reboot öncesi haliyle çalışıyor; <b class='h-bad'>1 sunucu dikkat istiyor<\/b>\.<\/p>/);
+  assert.match(h, /Otomasyon devreye girdi<\/div><div class='yol-sayi'[^>]*>3<\/div><div class='yol-pay'>sunucuda açma\/kapatma yapıldı<\/div>/);
+  assert.match(h, /Eski haline getirildi<\/td><td class='r'[^>]*><a class='sayi' href='#d-duzeltildi'[^>]*>2<\/a><\/td><\/tr><tr><td><span class='s-ikon'[^>]*>✗<\/span> Eski haline getirilemedi<\/td><td class='r'[^>]*><a class='sayi' href='#d-hatali'[^>]*>1<\/a>/);
+  assert.match(h, /<div class='yol-not'>Otomasyon başarısı %66,7<\/div>/);
   // Islemler: (islem, urun) basina sunucu / komut / basarili (hedefte)
   assert.match(h, /<tr><td>IBM HTTP Server \(IHS\) kapatma<\/td><td class='r'><a class='sayi' href='#d-op-0'[^>]*>2<\/a><\/td><td class='r'>2<\/td><td class='r'><span class='k-bad'>1 \/ 2<\/span><\/td><\/tr>/);
   assert.match(h, /<tr><td>Apache HTTP Server açma<\/td><td class='r'><a class='sayi' href='#d-op-1'[^>]*>1<\/a><\/td><td class='r'>1<\/td><td class='r'><span class='k-ok'>1 \/ 1<\/span><\/td><\/tr>/);
@@ -522,12 +526,19 @@ test('RR23 ozet tam kilit; FAIL + kendiliginden duzelme; bilinmiyor; e-posta gor
   );
   const h = raporHtml(k);
   assert.deepEqual(['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'].map((x) => kovaSay(h, x)), [2, 1, 0, 1, 0]);
-  assert.match(h, /<span class='g-say g-ok'>3<\/span>/);
-  assert.match(h, /<h3>Dikkat gerektiren <span class='g-say g-bad'>1<\/span><\/h3>/);
   assert.match(h, /<span class='hero-oran'>%75<\/span>/);
-  assert.match(h, /<b>2<\/b> sunucuda işlem yapıldı<\/span><span><b>1<\/b> tanesi eski haline getirildi \(%50\)/);
-  // kv yuzdeleri
-  assert.match(h, /Müdahalesiz açıldı<\/b>[\s\S]*?<span class='kv-p'[^>]*>%50<\/span>/);
+  assert.match(h, /<b class='h-bad'>1 sunucu dikkat istiyor<\/b>/);
+  // yol 1: mudahale gerekmedi 2 (%50), F'nin komutu hedefe ulasmadan kendiliginden duzeldi etiketi
+  assert.match(h, /Müdahale gerekmedi<\/div><div class='yol-sayi'[^>]*><a class='sayi' href='#d-mudahalesiz'[^>]*>2<\/a><\/div><div class='yol-pay'>%50 · reboot öncesi haliyle açıldı<\/div>/);
+  assert.match(h, /<span class='etiket'>1 sunucuda komut hedefe ulaşmadan kendiliğinden düzeldi<\/span>/);
+  // yol 2: otomasyon devreye girdi = duzeltildi + hatali = 1 (A); F burada sayilmaz
+  assert.match(h, /Otomasyon devreye girdi<\/div><div class='yol-sayi'[^>]*>1<\/div>/);
+  // yol 3: islem yapilamadi 1, neden kirilimi
+  assert.match(h, /Otomasyon işlem yapamadı<\/div><div class='yol-sayi'[^>]*><a class='sayi' href='#d-yapilamadi'[^>]*>1<\/a>/);
+  assert.match(h, /<tr><td>Sunucuya ulaşılamadı<\/td><td class='r'>1<\/td><\/tr>/);
+  // lejant her kovayi panele baglar
+  for (const kv of ['mudahalesiz', 'duzeltildi', 'yapilamadi']) assert.match(h, new RegExp(`<a class='lj' href='#d-${kv}'>`));
+  assert.doesNotMatch(h, /<a class='lj' href='#d-hatali'>/, 'sifir kova lejantta olmaz');
   // cubuk: her segment var olan bir panele gider, genislikler toplami 100
   const seg = [...h.matchAll(/<a class='seg' href='#(d-[a-z]+)'[^>]*style='width:([\d.]+)%/g)];
   assert.ok(seg.length >= 3);

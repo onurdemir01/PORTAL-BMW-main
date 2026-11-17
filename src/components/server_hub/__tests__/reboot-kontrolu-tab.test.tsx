@@ -173,6 +173,7 @@ describe('Reboot Kontrolü sekmesi', () => {
         GBJBOAP18: { kova: 'hatali', etiket: [], neden: ['1 öğe reboot öncesinden farklı kaldı', '1 komut hata döndü'], komutlar: [{ islem: 'baslat', urun: 'JBOSS8', ad: 'appB', sonuc: 'FAIL', hedefte: false }] },
       },
       etiketSay: { izlenenYok: 0 },
+      yapilamadiNeden: { ulasilamadi: 0, once_yok: 0, olculemedi: 0, komutsuz: 0 },
     };
     AKTIF = { ...KAYIT, ozet: { ...KAYIT.ozet, sonra: { ...KAYIT.ozet.sonra, seviye } } } as unknown as typeof AKTIF;
     render(<RebootKontroluTab />);
@@ -182,6 +183,11 @@ describe('Reboot Kontrolü sekmesi', () => {
     expect(y.textContent).toMatch(/1 \/ 2 sunucu reboot öncesi haliyle çalışıyor/);
     expect(y.textContent).toMatch(/2 sunucuda işlem yapıldı · 1 tanesi eski haline getirildi/);
     expect((within(y).getByTestId('seviye-mudahalesiz') as HTMLButtonElement).disabled).toBe(true);
+    // v2: ayni dalin iki sonucu ayni kartta (Otomasyon devreye girdi -> getirildi / getirilemedi); kontrol yoksa serit yok
+    const oto = within(y).getByText('Otomasyon devreye girdi').parentElement as HTMLElement;
+    expect(within(oto).getByTestId('seviye-duzeltildi').textContent).toBe('1✓ Eski haline getirildi');
+    expect(within(oto).getByTestId('seviye-hatali').textContent).toBe('1✗ Eski haline getirilemedi');
+    expect(within(y).queryByTestId('seviye-kontrol')).toBeNull();
     expect(within(y).queryByTestId('seviye-ayrinti')).toBeNull();
     fireEvent.click(within(y).getByTestId('seviye-hatali'));
     const ay = within(y).getByTestId('seviye-ayrinti');

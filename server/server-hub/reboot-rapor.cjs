@@ -238,13 +238,23 @@ const STIL = [
   '.islem td,.islem th{padding:9px 10px}', '.islem .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}', '.islem tr:last-child td{border-bottom:none}',
   '.k-ok{color:#1d7a46}', '.k-warn{color:#8a5a00}', '.k-bad{color:#b42318;font-weight:600}',
   '.alt-link{margin:4px 2px 0;font-size:13px}',
+  '.hukum{margin:0 0 12px;font-size:16px;line-height:1.45;color:var(--ink)}', '.h-bad{color:#b42318}',
+  '.lejant{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px}', '.lj{color:var(--ikincil);text-decoration:none;display:inline-flex;align-items:center;gap:6px}', '.lj:hover{color:var(--ink)}', '.lj b{color:var(--ink);font-variant-numeric:tabular-nums}', '.lj-n{display:inline-block;width:10px;height:10px;border-radius:3px}',
+  '.bolum{margin:22px 2px 10px;font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--soluk)}',
+  '.yollar{border-collapse:separate;border-spacing:14px 0;margin:0 -14px 14px;width:calc(100% + 28px)}', '.yol{width:33.33%;vertical-align:top;background:var(--kart);border:1px solid var(--cizgi);border-top:4px solid;border-radius:14px;padding:16px 18px!important}',
+  '.yol-bas{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--ink)}', '.yol-ikon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;font-size:13px;font-weight:700}',
+  '.yol-sayi{font-size:40px;font-weight:700;line-height:1.15;margin:12px 0 10px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}', '.yol-sayi a.sayi{display:inline-block;line-height:1;padding-bottom:3px}', '.yol-pay{font-size:12px;color:var(--soluk);margin-bottom:10px;font-variant-numeric:tabular-nums}',
+  '.mini-bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:#eef1f6;margin:4px 0 10px}', '.mini-bar span{display:block;height:100%}',
+  '.sonuc td{border-bottom:1px solid #eef1f6;padding:7px 0;font-size:13px}', '.sonuc tr:last-child td{border-bottom:none}', '.sonuc .r{text-align:right;font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}', '.s-ikon{display:inline-block;width:16px;font-weight:700}',
+  '.yol-not{margin-top:8px;font-size:12px;color:var(--soluk)}',
+  '.serit{display:flex;align-items:center;gap:12px;margin:0 0 14px;padding:12px 16px;border-radius:12px;background:#fff4dc;color:#6b4700;text-decoration:none;font-size:13px;border:1px solid #f3dc9f}', '.serit:hover{border-color:#8a5a00}', '.serit-ikon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#8a5a00;color:#fff;font-weight:700;flex:none}', '.serit-ok{margin-left:auto;font-weight:600;white-space:nowrap}',
   // Ayrinti panelleri: kapali; baglantiyla (:target) acilir. Ozet panel acikken de gorunur kalir.
   '.detay{display:none;background:var(--kart);border:1px solid var(--cizgi);border-radius:14px;padding:6px 18px 16px;margin:14px 0}',
   '.detay:target{display:block;animation:ac .18s ease-out}', '@keyframes ac{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}',
   '@media (prefers-reduced-motion:reduce){.detay:target{animation:none}}',
   '.detay-bas{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px}', '.detay-bas h2{margin:14px 0 6px}',
   '.kapat{font-size:13px;text-decoration:none;font-weight:600}',
-  '@media (max-width:640px){.pad{padding:16px 12px 28px!important}.hero{padding:18px;gap:14px}.hero-l,.hero-r{min-width:0;flex-basis:100%}.hero-oran{font-size:42px}.kv-n{width:48px;font-size:24px}.kv td{padding:10px}.grup,.grup>tbody,.grup>tbody>tr,.grup tr{display:block}.grup-k{display:block;width:auto!important}.grup-k+.grup-k{padding-left:0!important;margin-top:14px}td,th{padding:8px}}',
+  '@media (max-width:640px){.yollar,.yollar>tbody,.yollar>tbody>tr,.yollar tr{display:block;width:auto;margin:0}.yol{display:block;width:auto!important;margin-bottom:12px}.yol-sayi{font-size:34px}.serit{flex-wrap:wrap}.pad{padding:16px 12px 28px!important}.hero{padding:18px;gap:14px}.hero-l,.hero-r{min-width:0;flex-basis:100%}.hero-oran{font-size:42px}.kv-n{width:48px;font-size:24px}.kv td{padding:10px}.grup,.grup>tbody,.grup>tbody>tr,.grup tr{display:block}.grup-k{display:block;width:auto!important}.grup-k+.grup-k{padding-left:0!important;margin-top:14px}td,th{padding:8px}}',
   '@media print{.detay{display:block}.kapat,.alt-link{display:none}body{background:#fff}}',
   // FILTRE (2026-11-15): yalniz CSS (radyo + :checked ~); betik yok, e-postada filtre calismaz ama tum satirlar kalir.
   '.fr{position:absolute;opacity:0;pointer-events:none}', '.filtre{margin:14px 0 4px;display:flex;flex-wrap:wrap;gap:6px}',
@@ -273,6 +283,7 @@ const TON = {
   warn: ['#8a5a00', '#fff4dc'],
   bad2: ['#a8431b', '#fdeee6'],
   bad: ['#b42318', '#fdecea'],
+  mavi: ['#1f5fbf', '#e8effb'],
 };
 const ISLEM_ADI = { baslat: 'açma', durdur: 'kapatma' };
 const islemEtiketi = (x) => `${x.jvm ? JVM_ADI[x.urun] || `${x.urun} JVM` : URUN_ADI[x.urun] || x.urun} ${ISLEM_ADI[x.islem] || x.islem}`;
@@ -284,27 +295,86 @@ const komutMetni = (y) => {
 };
 const sayiLink = (id, n, etiket) => `<a class='sayi' href='#${id}' aria-label='${e(`${etiket}: ${n} — ayrıntıyı aç`)}'>${n}</a>`;
 
-/** Ozet: kahraman orani + bolumlu cubuk + iki grup + islemler. sev = sunucuSeviyesi; betikNotu = kayit duzeyi uyari (varsa). */
+/**
+ * Ozet (2026-11-17 v2, kullanici: "Dikkat gerektiren kismi soldaki 'Otomasyonla eski haline getirildi' maddesine bagli degil mi? ...
+ * gorenler vay be ne kadar anlasilir ve net desin"). Ozet bir HIKAYE gibi okunur: hukum cumlesi + basari orani + dagilim cubugu;
+ * sonra "Reboot sonrasi ne oldu?" uc yol: (1) mudahale gerekmedi, (2) otomasyon devreye girdi -> eski haline getirildi /
+ * getirilemedi (ayni dalin iki sonucu ayni kartta), (3) otomasyon islem yapamadi (neden kirilimiyla); kontrol bekleyenler serit.
+ * sev = sunucuSeviyesi; betikNotu = kayit duzeyi uyari (varsa).
+ */
+const YAPILAMADI_NEDEN = {
+  ulasilamadi: 'Sunucuya ulaşılamadı',
+  once_yok: 'Reboot öncesi görüntüsü yok',
+  olculemedi: 'Son durum ölçülemedi',
+  komutsuz: 'Fark kaldı, komut çalışmadı',
+};
+const yuzde = (pay, payda) => e(yuzdeMetni(pay, payda));
 function ozetBolumu(sev, betikNotu) {
   const s = sev.sayi;
   const basarili = s.mudahalesiz + s.duzeltildi;
   const dikkat = s.kontrol + s.yapilamadi + s.hatali;
+  const oto = s.duzeltildi + s.hatali;
   const bar = SEVIYE_SIRA.filter((k) => s[k])
     .map((k) => `<a class='seg' href='#d-${k}' title='${e(`${KOVA[k].ad}: ${s[k]} sunucu`)}' style='width:${(s[k] * 100) / (sev.toplam || 1)}%;background:${TON[KOVA[k].ton][0]}'></a>`)
     .join('');
-  const satir = (k) => {
-    const [fg, bg] = TON[KOVA[k].ton];
-    const etiketler =
-      k === 'mudahalesiz' && sev.etiketSay.izlenenYok
-        ? `<span class='etiket'>${sev.etiketSay.izlenenYok} sunucuda izlenen uygulama yoktu</span>`
-        : '';
-    return (
-      `<tr><td class='kv-n' style='color:${fg}'>${s[k] ? sayiLink(`d-${k}`, s[k], KOVA[k].ad) : '0'}</td>`
-      + `<td class='kv-t'><span class='kv-dot' style='background:${fg}'></span><b>${e(KOVA[k].ad)}</b>`
-      + `<span class='kv-alt'>${e(KOVA[k].alt)}</span>${etiketler}</td>`
-      + `<td class='kv-y'><span class='kv-p' style='color:${fg};background:${bg}'>${e(yuzdeMetni(s[k], sev.toplam))}</span></td></tr>`
-    );
-  };
+  const lejant = SEVIYE_SIRA.filter((k) => s[k])
+    .map((k) => `<a class='lj' href='#d-${k}'><span class='lj-n' style='background:${TON[KOVA[k].ton][0]}'></span>${e(KOVA[k].ad)} <b>${s[k]}</b></a>`)
+    .join('');
+  const hukum = !sev.toplam
+    ? 'Karşılaştırma için sunucu verisi yok.'
+    : dikkat
+      ? `${sev.toplam} sunucunun <b>${basarili}</b> tanesi reboot sonrası reboot öncesi haliyle çalışıyor; <b class='h-bad'>${dikkat} sunucu dikkat istiyor</b>.`
+      : `${sev.toplam} sunucunun <b>tamamı</b> reboot sonrası reboot öncesi haliyle çalışıyor.`;
+  const bas = (ikon, ton, baslik) => `<div class='yol-bas'><span class='yol-ikon' style='background:${TON[ton][1]};color:${TON[ton][0]}'>${ikon}</span>${e(baslik)}</div>`;
+  const sayi = (k, n, ton) =>
+    `<div class='yol-sayi' style='color:${n ? TON[ton][0] : 'var(--soluk)'}'>${n ? sayiLink(`d-${k}`, n, KOVA[k].ad) : '0'}</div>`;
+  // (1) mudahale gerekmedi
+  const etiketler = [];
+  if (sev.etiketSay.izlenenYok) etiketler.push(`${sev.etiketSay.izlenenYok} sunucuda izlenen uygulama yoktu`);
+  const kendiliginden = sev.kova.mudahalesiz.filter((h) => sev.sunucu[h].komutlar.length).length;
+  if (kendiliginden) etiketler.push(`${kendiliginden} sunucuda komut hedefe ulaşmadan kendiliğinden düzeldi`);
+  const yol1 = [
+    "<td class='yol' style='border-top-color:#1d7a46'>",
+    bas('✓', 'ok', 'Müdahale gerekmedi'),
+    sayi('mudahalesiz', s.mudahalesiz, 'ok'),
+    `<div class='yol-pay'>${yuzde(s.mudahalesiz, sev.toplam)} · reboot öncesi haliyle açıldı</div>`,
+    etiketler.map((t) => `<span class='etiket'>${e(t)}</span>`).join(' '),
+    '</td>',
+  ].join('');
+  // (2) otomasyon devreye girdi: iki sonuc ayni kartta
+  const yol2 = [
+    "<td class='yol' style='border-top-color:#1f5fbf'>",
+    bas('⚙', 'mavi', 'Otomasyon devreye girdi'),
+    `<div class='yol-sayi' style='color:${oto ? '#1f5fbf' : 'var(--soluk)'}'>${oto}</div>`,
+    `<div class='yol-pay'>${oto ? 'sunucuda açma/kapatma yapıldı' : 'hiçbir sunucuda gerekmedi'}</div>`,
+    oto
+      ? [
+          `<div class='mini-bar' role='img' aria-label='${e(`${s.duzeltildi} eski haline getirildi, ${s.hatali} getirilemedi`)}'><span style='width:${(s.duzeltildi * 100) / oto}%;background:#13603a'></span><span style='width:${(s.hatali * 100) / oto}%;background:#b42318'></span></div>`,
+          "<table class='sonuc' cellpadding='0' cellspacing='0'>",
+          `<tr><td><span class='s-ikon' style='color:#13603a'>✓</span> Eski haline getirildi</td><td class='r' style='color:#13603a'>${s.duzeltildi ? sayiLink('d-duzeltildi', s.duzeltildi, KOVA.duzeltildi.ad) : '0'}</td></tr>`,
+          `<tr><td><span class='s-ikon' style='color:#b42318'>✗</span> Eski haline getirilemedi</td><td class='r' style='color:#b42318'>${s.hatali ? sayiLink('d-hatali', s.hatali, KOVA.hatali.ad) : '0'}</td></tr>`,
+          '</table>',
+          `<div class='yol-not'>Otomasyon başarısı ${e(sev.otomasyon.metin)}</div>`,
+        ].join('')
+      : '',
+    '</td>',
+  ].join('');
+  // (3) otomasyon islem yapamadi: neden kirilimi
+  const kirilim = Object.entries(YAPILAMADI_NEDEN)
+    .filter(([n]) => sev.yapilamadiNeden[n])
+    .map(([n, ad]) => `<tr><td>${e(ad)}</td><td class='r'>${sev.yapilamadiNeden[n]}</td></tr>`)
+    .join('');
+  const yol3 = [
+    "<td class='yol' style='border-top-color:#a8431b'>",
+    bas('!', 'bad2', 'Otomasyon işlem yapamadı'),
+    sayi('yapilamadi', s.yapilamadi, 'bad2'),
+    `<div class='yol-pay'>${s.yapilamadi ? `${yuzde(s.yapilamadi, sev.toplam)} · reboot öncesi hale döndüğü doğrulanamadı` : 'böyle sunucu yok'}</div>`,
+    kirilim ? `<table class='sonuc' cellpadding='0' cellspacing='0'>${kirilim}</table>` : '',
+    '</td>',
+  ].join('');
+  const serit = s.kontrol
+    ? `<a class='serit' href='#d-kontrol'><span class='serit-ikon'>!</span><span><b>${s.kontrol} sunucu elle kontrol bekliyor.</b> Reboot öncesinden farkı yok ama bakılması gereken bir not var; başarı sayılmadı.</span><span class='serit-ok'>Göster →</span></a>`
+    : '';
   const islem = sev.islemler.length
     ? [
         `<table class='islem' cellpadding='0' cellspacing='0'><tr><th>İşlem</th><th class='r'>Sunucu</th><th class='r'>Komut</th><th class='r'>Başarılı</th></tr>`,
@@ -324,16 +394,15 @@ function ozetBolumu(sev, betikNotu) {
     `<span class='hero-oran'>${e(sev.basari.metin)}</span>`,
     `<span class='hero-alt'><b>${basarili}</b> / ${sev.toplam} sunucu reboot öncesi haliyle çalışıyor</span></div>`,
     "<div class='hero-r'>",
+    `<p class='hukum'>${hukum}</p>`,
     `<div class='bar' role='img' aria-label='${e(SEVIYE_SIRA.map((k) => `${KOVA[k].ad} ${s[k]}`).join(', '))}'>${bar || "<span class='seg bos'></span>"}</div>`,
-    `<div class='hero-mini'><span><b>${sev.islemYapilan}</b> sunucuda işlem yapıldı</span>`
-      + `<span><b>${s.duzeltildi}</b> tanesi eski haline getirildi${sev.islemYapilan ? ` (${e(sev.geriGetirilen.metin)})` : ''}</span></div>`,
+    `<div class='lejant'>${lejant}</div>`,
     '</div></div>',
-    "<table class='grup' cellpadding='0' cellspacing='0'><tr>",
-    `<td class='grup-k'><h3>Reboot öncesi haliyle çalışıyor <span class='g-say g-ok'>${basarili}</span></h3><table class='kv' cellpadding='0' cellspacing='0'>${satir('mudahalesiz')}${satir('duzeltildi')}</table></td>`,
-    `<td class='grup-k'><h3>Dikkat gerektiren <span class='g-say ${dikkat ? 'g-bad' : 'g-ok'}'>${dikkat}</span></h3><table class='kv' cellpadding='0' cellspacing='0'>${satir('yapilamadi')}${satir('hatali')}${satir('kontrol')}</table></td>`,
-    '</tr></table>',
+    "<h3 class='bolum'>Reboot sonrası ne oldu?</h3>",
+    `<table class='yollar' cellpadding='0' cellspacing='0'><tr>${yol1}${yol2}${yol3}</tr></table>`,
+    serit,
     "<div class='kart'><h3>Yapılan işlemler</h3>",
-    `<p class='kart-alt'>${sev.islemYapilan ? `${sev.islemYapilan} sunucuda açma/kapatma işlemi yapıldı; ${s.duzeltildi} tanesi reboot öncesi haline getirildi, ${sev.islemYapilan - s.duzeltildi} tanesi getirilemedi ya da kontrol bekliyor.` : 'Otomasyonun müdahalesine gerek olmadı.'} Sayılara tıklayınca sunucular açılır.</p>`,
+    `<p class='kart-alt'>Hangi işlem kaç sunucuda yapıldı; sayılara tıklayınca sunucular açılır.</p>`,
     islem,
     '</div>',
     `<p class='alt-link'><a href='#d-tum'>Teknik ayrıntılar (tüm tablolar) →</a> · <a class='eposta-link' href='?eposta=1'>E-posta / yazdırma görünümü (tüm ayrıntılar açık)</a></p>`,

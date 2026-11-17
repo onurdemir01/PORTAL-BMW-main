@@ -1325,6 +1325,14 @@ test('RC-SV1 2026-11-17 sunucuSeviyesi: her sunucu TEK kovada; kontrol / komutsu
   assert.deepEqual(s.basari, { pay: 3, payda: 8, metin: '%37,5' });
   assert.equal(s.islemYapilan, 1);
   assert.deepEqual(s.geriGetirilen, { pay: 0, payda: 1, metin: '%0' });
+  // v2 ozet kirilimi: yapilamadi alt nedenleri; otomasyon = duzeltildi / (duzeltildi + hatali)
+  assert.deepEqual(s.yapilamadiNeden, { ulasilamadi: 0, once_yok: 1, olculemedi: 0, komutsuz: 1 });
+  assert.equal(s.sunucu.ONCESIZ.altNeden, 'once_yok');
+  assert.equal(s.sunucu.KOMUTSUZ.altNeden, 'komutsuz');
+  assert.equal(s.sunucu.TEMIZ.altNeden, undefined);
+  assert.deepEqual(s.otomasyon, { pay: 0, payda: 1, metin: '%0' });
+  const ul = sunucuSeviyesi({ U: { sonuc_yok: true } }, ['U'], { U: onceR });
+  assert.deepEqual([ul.sunucu.U.altNeden, ul.yapilamadiNeden.ulasilamadi], ['ulasilamadi', 1]);
   assert.deepEqual(s.sunucu.ONCESIZ.neden, ['Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı']);
   assert.match(s.sunucu.OLCULMEDI.neden[0], /son durum ölçülemedi/);
   assert.deepEqual(s.sunucu.OLCULMEDI.komutlar, [{ islem: 'baslat', urun: 'RHA', ad: '', sonuc: 'OK', hedefte: false }]);
