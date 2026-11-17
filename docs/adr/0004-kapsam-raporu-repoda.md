@@ -32,3 +32,23 @@ Kurumsal SonarQube kapsamı %0 gösteriyordu. Kök neden:
 
 - Depo her yenilemede yaklaşık 3 MB'lık (sıkıştırılmış ~0,8 MB) bir metin farkı taşır.
 - Rapor yalnız sonuçtur; kapsamın kendisi testlerle üretilir. Elle düzenlenmez, dışlama ile oran yükseltilmez.
+
+## Düzeltme (2026-11-18): repodaki rapor kurumsal Sonar'a hiç ulaşmadı
+
+Kurumsal pipeline'ın Sonar adımı incelendi; birkaç ayarı komut satırından veriyor ve böylece `sonar-project.properties`'i eziyor:
+
+| Ayar | Kurumsal değer |
+|---|---|
+| `sonar.sources` | `.` |
+| `sonar.tests` | `.` |
+| `sonar.test.inclusions` | `**/*.test.js,**/*.test.tsx` |
+| `sonar.exclusions` | sabit bir liste |
+| `sonar.javascript.lcov.reportPaths` | çalışma alanında `**/coverage/lcov.info` deseniyle bulunan dosyalar |
+
+Sonuçları:
+
+- **`kalite/kapsam/lcov.info` hiç okunmadı.** Bu desene uymuyor ve repodaki `reportPaths` ezildi. %0 kapsamın asıl sebebi pipeline'da testlerin koşmamasıdır.
+- **Kalıcı çözüm pipeline tanımındadır:** Jenkins `build.commands` içinde `npm run test:coverage` koşar, `coverage/lcov.info` aynı çalışma alanında oluşur, tarayıcı onu bulur. Kurumsal groovy dosyası repo dışındadır.
+- **Vitest kapsamı yalnız `lcov.info` üretir (`lcovonly`).** HTML raporun JS ve CSS dosyaları, kaynak gibi taranıp bulgu üretirdi.
+- **Kalan kısıt kurumsal kütüphanededir.** `.test.cjs` ve `.test.ts` dosyaları ile `__tests__` yardımcıları test sayılmaz, kaynak kod gibi taranır. Repo bunu ayarla düzeltemez; kütüphanenin, `sonar-project.properties` varken bu ayarları ezmemesi istenir.
+- **Kaldırma:** Pipeline'da kapsam görüldüğünde `kalite/kapsam/`, `kapsam-raporu.yml` ve bu ADR'nin "Şimdi" maddesi kaldırılır.

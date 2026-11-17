@@ -17,7 +17,9 @@ export default defineConfig({
     exclude: ['src/__tests__/**/*.cjs', 'node_modules/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['lcov', 'text-summary'],
+      // Yalniz lcov.info (HTML rapor YOK): kurumsal tarayici calisma alaninin tamamini kaynak
+      // sayar; HTML raporun JS/CSS dosyalari kaynak kod gibi taranirdi (ADR 0004).
+      reporter: ['lcovonly', 'text-summary'],
       reportsDirectory: './coverage/vitest',
       include: ['src/**/*.{ts,tsx}', 'shared/**/*.cjs'],
       exclude: [
