@@ -711,6 +711,7 @@ const KOD_ETIKET: Record<string, string> = {
   EAR_WAR_YOK: 'EAR içinde WAR yok — çalıştıracak web modülü yok, silinebilir olabilir',
   KOK_EAR_DISI: '/vhosting kökünde .ear ile bitmeyen girdi — retire şüphesi',
   EAR_JVM_YOK: "EAR diskte var ama domain.xml / host.xml onu hiçbir JVM'e bağlamıyor",
+  EAR_JBOSS_DISI_KULLANIM: "EAR JBoss'a bağlı değil ama dizin kullanımda (süreç ya da son 7 günde yazma)",
   EAR_XML_OLCULEMEDI:
     'JBoss yapılandırması okunamadı — EAR ↔ JVM eşlemesi yapılamadı ("JVM yok" sayılmaz)',
   // Faz 2 (2026-11-06): calisan JVM'lerin deployment durumu (JBoss CLI; Uygulama Envanteri ayari).
@@ -723,6 +724,10 @@ const KOD_ETIKET: Record<string, string> = {
   ORTAM_KALINTISI: "prod'da çalışmıyor ama DEV / TEST / QA kopyası çalışıyor",
   OCP_KOPYASI: "OpenShift'te de var (aynı ortam) — taşınmış olabilir",
   RETIRE_KAYDI_CELISKI: 'Retirement kaydıyla çelişiyor — STOP / silme yapıldı ama sunucu farklı',
+  RETIRE_DOGRULAMA_BEKLIYOR:
+    'Retirement doğrulaması bekliyor — tarama STOP / silmeden önce alınmış, bir sonraki tarama doğrular',
+  RETIRE_AYNI_GUN_DOGRULA:
+    'Retirement STOP günü taraması — JVM çalışıyor / auto-start açık görünüyor, sıra bilinmiyor: yeniden tarayın',
   PRODUCT_NOT_IN_INVENTORY: 'taramada bulunan ürün envanterde (dbo.Inventory) yok',
   SSH_SESSIONS_NEAR:
     'sshd açık oturum sayısı MaxSessions sınırına yakın (mux_client_request_session riski)',

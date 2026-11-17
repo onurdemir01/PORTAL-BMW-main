@@ -33,7 +33,7 @@ const iso = (t) => {
  * @returns {Promise<{ okunamadi: boolean, hata?: string, hostlar: Array<{ host: string, kosuId: number,
  *   taranma: string|null, durum: string, kokGirdileri: { girdiler: object[], kesilen: number }|null,
  *   uygulamalar: Array<{ kok: string, jboss: string, ad: string, durum: string, warSayisi: number|null,
- *   xml: object|null }> }> }>}
+ *   xml: object|null, kullanim: object|null }> }> }>}
  */
 async function earSonDurum() {
   try {
@@ -78,13 +78,16 @@ async function earSonDurum() {
           .toUpperCase(),
       );
       if (!x) continue;
+      const xml = jsonOku(r.xml_eslesme);
       x.uygulamalar.push({
         kok: String(r.kok || ''),
         jboss: String(r.jboss || '?'),
         ad: String(r.ad || ''),
         durum: String(r.durum || ''),
         warSayisi: r.war_sayisi == null ? null : Number(r.war_sayisi),
-        xml: jsonOku(r.xml_eslesme),
+        xml,
+        // Tarayici surum 4: JVM_YOK EAR'in dizin kullanimi (xml_eslesme.kullanim); null = olculmedi (eski tarama).
+        kullanim: xml && xml.kullanim && typeof xml.kullanim === 'object' ? xml.kullanim : null,
       });
     }
     return { okunamadi: false, hostlar: [...hostlar.values()] };

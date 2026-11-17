@@ -70,6 +70,25 @@ export interface JbossJvm {
   envanterUygulamasi?: string | null;
   /** Esleme turu: 'ad' | 'ad-sayi' | 'grup' | 'domain'. */
   envanterEslesmesi?: string | null;
+  /** JVM'in Retirement hedefi (2026-11-16); yoksa ya da okunamadıysa null (okunamadı: kaynaklar.retirement). */
+  retirement?: JbossRetirement | null;
+}
+
+/**
+ * Retirement hedefi (2026-11-16). Karar sunucuda: `kapatildi` (STOP / silme yapıldı) ve `celiski`
+ * (Server Hub'ın STOP sonrası taramayla kanıtladığı nedenler) ekranda yeniden hesaplanmaz.
+ */
+export interface JbossRetirement {
+  kayit: number;
+  hedef: number;
+  /** Hedef durumu (stopped / deleted / pending / failed ...). */
+  durum: string;
+  /** STOP ya da silme yapıldı (stopped / deleted); kapalı JVM beklenen kapanmadır. */
+  kapatildi: boolean;
+  /** STOP anı (ISO, UTC); ekranda kurum gününe çevrilir. Bilinmiyorsa null. */
+  durduruldu: string | null;
+  /** Server Hub kanıtlı çelişki nedenleri: 'calisiyor' | 'autostart' | 'paket'. Boşsa kanıt yok. */
+  celiski: string[];
 }
 
 export interface JbossSunucu {

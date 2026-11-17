@@ -28,6 +28,10 @@
 // istege bagli baglanti goruntusu (EAR_BAGLANTI) -> host.baglanti_ozeti. Eski tarayicinin
 // paketinde bu alanlar yoktur: NULL / eksik alan = OLCULMEDI.
 //
+// KULLANIM (2026-11-17, tarayici surum 4): JVM_YOK EAR'in dizinini kullanan surecler (pid, comm, kullanici,
+// nasil) ve son yazma (epoch) uygulama.kullanim'dan xml_eslesme JSON'unun 'kullanim' alanina (kullanimOzeti;
+// yeni kolon yok). cmdline metni tarayicidan hic gelmez; benzer alan gelse de beyaz liste atar.
+//
 // KUTUPHANE SETLERI: ayni uygulamanin eslenik sunuculardaki WAR'lari ayni kutuphane listesini tasir.
 // Liste her WAR satirina yazilsa haftalik filo kosusu yuzlerce MB olurdu; liste parmak iziyle
 // (sha256, 32 hex) BIR KEZ yazilir, WAR satiri yalniz izi tasir.
@@ -481,6 +485,46 @@ function xmlOzeti(p) {
   );
 }
 
+const KULLANIM_DURUMLARI = Object.freeze(['VAR', 'YOK', 'KISMI', 'OLCULEMEDI']);
+const KULLANIM_NASIL = Object.freeze(['cwd', 'fd', 'maps', 'exe', 'root', 'cmdline']);
+const SINIR_KULLANIM_SUREC = 10;
+const SINIR_OKUNAMAYAN = 1000000;
+
+/**
+ * KULLANIM KANITI (tarayici surum 4, 2026-11-17): JVM_YOK EAR'in dizinini kullanan surecler ve son yazma.
+ * Beyaz liste: yalniz {durum, surecler[{pid, comm, kullanici, nasil}], son_yazma, okunamayan, hidepid, not};
+ * cmdline / args gibi bilinmeyen alan ATILIR (parola tasiyabilir). Bilinmeyen 'nasil' '?' olur (uydurulmaz).
+ * Surec varsa durum VAR; surecsiz VAR tutarsiz -> OLCULEMEDI.
+ * Alan yok (eski tarayici) -> null (olculmedi; "kullanilmiyor" DEGIL).
+ */
+function kullanimOzeti(k) {
+  if (!k || typeof k !== 'object' || Array.isArray(k)) return null;
+  const surecler = dizi(k.surecler)
+    .slice(0, SINIR_KULLANIM_SUREC)
+    .map((ham) => {
+      const p = nesne(ham);
+      const pid = tamsayi(p.pid);
+      return {
+        pid: pid != null && pid > 0 ? pid : null,
+        comm: M(p.comm, 32),
+        kullanici: M(p.kullanici, 32),
+        nasil: D(p.nasil, KULLANIM_NASIL, '?'),
+      };
+    })
+    .filter((p) => p.pid != null);
+  const durum = D(k.durum, KULLANIM_DURUMLARI, 'OLCULEMEDI');
+  const son = tamsayi(k.son_yazma);
+  const okunamayan = tamsayi(k.okunamayan);
+  return {
+    durum: surecler.length ? 'VAR' : durum === 'VAR' ? 'OLCULEMEDI' : durum,
+    surecler,
+    son_yazma: son != null && son > 0 ? son : null,
+    okunamayan: okunamayan != null && okunamayan > 0 ? Math.min(okunamayan, SINIR_OKUNAMAYAN) : 0,
+    hidepid: M(k.hidepid, 16) || null,
+    not: M(k.not, 300) || null,
+  };
+}
+
 /** Uygulama -> JVM eslemesi -> JSON. Alan yok (eski tarayici) -> null; bilinmeyen durum OLCULEMEDI. */
 function xmlEslesme(u) {
   if (!u.xml_eslesme || typeof u.xml_eslesme !== 'object') return null;
@@ -498,7 +542,7 @@ function xmlEslesme(u) {
           ad: M(d.ad, 256),
           tur: D(d.tur, ['ACIK', 'ARSIV', 'YONETILEN'], 'YONETILEN'),
           yol: M(d.yol, 400),
-          yontem: D(d.yontem, ['YOL', 'AD'], 'AD'),
+          yontem: D(d.yontem, ['YOL', 'ALT_YOL', 'AD'], 'AD'),
           gruplar: dizi(d.gruplar)
             .slice(0, 20)
             .map((g) => ({ ad: M(nesne(g).ad, 128), acik: nesne(g).acik !== false })),
@@ -516,6 +560,8 @@ function xmlEslesme(u) {
           kurulum: M(j.kurulum, 200),
         };
       }),
+    // Uygulama kaydinin 'kullanim' alani eslemeyle birlikte saklanir (yeni kolon yok; JVM_YOK konusudur).
+    kullanim: kullanimOzeti(u.kullanim),
   });
 }
 
@@ -1220,6 +1266,8 @@ module.exports = {
   kokGirdileri,
   xmlOzeti,
   xmlEslesme,
+  kullanimOzeti,
+  KULLANIM_DURUMLARI,
   dmrAyristir,
   deploymentCoz,
   DEP_JVM_DURUMLARI,

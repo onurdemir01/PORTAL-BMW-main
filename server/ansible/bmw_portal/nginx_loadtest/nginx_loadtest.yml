@@ -435,6 +435,7 @@
                 yt_hedef_nproc: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^nproc\t') | list | last | default('nproc\t-')).split('\t'))[1] | default('-') }}"
                 yt_hedef_nginx_T: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^nginx_T\t') | list | last | default('nginx_T\t-')).split('\t'))[1] | default('-') }}"
                 yt_hedef_master: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^master_sayisi\t') | list | last | default('master_sayisi\t-')).split('\t'))[1] | default('-') }}"
+                yt_hedef_apache: "{{ ((yt_ng_run.stdout_lines | default([]) | select('match', '^apache_var\t') | list | last | default('apache_var\t-')).split('\t'))[1] | default('-') }}"
 
             - name: --- [Task] Server settings need nginx ---
               ansible.builtin.set_fact:
@@ -2470,6 +2471,7 @@
                   'srv_hazirlik': ((('ok' if ((hostvars[yuk_hedef_host].yt_hz_sonuc[1] | default('FAIL')) == 'OK') else 'fail') if (hostvars[yuk_hedef_host].yt_hz_sonuc is defined) else none) if (yt8_tur == 'sunucu') else none),
                   'hedef_nginx': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_nginx | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'hedef_nproc': ((((hostvars[yuk_hedef_host].yt_hedef_nproc | int) if ((hostvars[yuk_hedef_host].yt_hedef_nproc | default('-') | string) is match('^[0-9]{1,5}$')) else none)) if (yt8_tur == 'sunucu') else none),
+                  'hedef_apache': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_apache | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),
                   'ip_yuk_makinesinde': (({'1': true, '0': false})[((hostvars[yuk_yuk_host].yt_yk | default({})).ip_yuk_makinesinde | default('-'))] | default(none)),
                   'serbest_ag': ((((hostvars[yuk_yuk_host].yt_serbest_izin | default({})).ag | default('')) or none) if (yt8_tur == 'serbest') else none),
                   'arac_dogrulandi': ((hostvars[yuk_yuk_host].yt_arac_ozet | default({})).dogrulandi | default(none)),

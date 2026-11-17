@@ -13,6 +13,21 @@ interface ThemeCtx {
   theme: Theme;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
+  /** Renk korlugu modu (2026-11-17): kirmizi/yesil yerine turuncu/mavi; temadan bagimsiz. */
+  renkKoru: boolean;
+  setRenkKoru: (acik: boolean) => void;
+}
+const RENK_KEY = "bmw-renk";
+
+function currentDomRenk(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.documentElement.getAttribute("data-renk") === "cvd";
+}
+
+function applyRenk(acik: boolean) {
+  if (typeof document === "undefined") return;
+  if (acik) document.documentElement.setAttribute("data-renk", "cvd");
+  else document.documentElement.removeAttribute("data-renk");
 }
 
 const ThemeContext = createContext<ThemeCtx | undefined>(undefined);
@@ -29,6 +44,15 @@ function applyTheme(t: Theme) {
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Başlangıç: index.html init script'inin zaten <html>'e yazdığı değeri kullan (senkron).
   const [theme, setThemeState] = useState<Theme>(currentDomTheme);
+  const [renkKoru, setRenkKoruState] = useState<boolean>(currentDomRenk);
+
+  const setRenkKoru = useCallback((acik: boolean) => {
+    setRenkKoruState(acik);
+    applyRenk(acik);
+    try { localStorage.setItem(RENK_KEY, acik ? "cvd" : "yok"); } catch { /* storage yoksa yok say */ }
+    // Sunucu tercihi: baska tarayicida da ayni mod ve ilk boyamada (server/index.cjs __BMW_BOOT__.renk).
+    prefsApi.set({ [RENK_KEY]: acik ? "cvd" : "yok" }).catch(() => { /* DB yoksa localStorage yeter */ });
+  }, []);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
@@ -42,6 +66,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     let cancelled = false;
     prefsApi.getAll().then((prefs) => {
+      // Renk korlugu: sunucuda acik bir secim varsa (cvd / yok) o kazanir.
+      const renk = prefs[RENK_KEY];
+      if (!cancelled && (renk === "cvd" || renk === "yok")) {
+        const acik = renk === "cvd";
+        if (acik !== currentDomRenk()) {
+          setRenkKoruState(acik);
+          applyRenk(acik);
+          try { localStorage.setItem(RENK_KEY, renk); } catch { /* yok say */ }
+        }
+      }
       const server = prefs[STORAGE_KEY];
       if (cancelled || (server !== "light" && server !== "dark")) return;
       if (server !== currentDomTheme()) {
@@ -75,7 +109,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme, renkKoru, setRenkKoru }}>
       {children}
     </ThemeContext.Provider>
   );

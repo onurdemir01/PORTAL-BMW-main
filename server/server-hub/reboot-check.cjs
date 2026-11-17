@@ -852,6 +852,133 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
   return { sunucu: sn, oge, komut, komutOlculen, oran: o, metin: p.join(' ') };
 }
 
+/**
+ * SUNUCU SEVIYESI OZET (2026-11-17, yonetici raporu; kullanici: "bizim burada bilmemiz gereken sadece ve sadece sunucu
+ * seviyesinde basari orani ... kac sunucu hicbir operasyon yapilmadan acildi, kaci acilamadi, kac sunucuda operasyon yapildi ve
+ * ne operasyonlar yapildi, kaci eski haline getirildi ... kac sunucuda hic operasyon yapilamadi, kac sunucuda operasyon yapildi
+ * ama hata aldi"). Saf, TEK kaynak (rapor + ekran). Her sunucu TAM OLARAK BIR kovadadir:
+ *   mudahalesiz : reboot oncesi haliyle calisiyor, hic acma/kapatma komutu gerekmedi (karsilastirma disi - once bos - sunucu da;
+ *                 etiket 'izlenen uygulama yoktu');
+ *   duzeltildi  : en az bir acma/kapatma komutu calisti VE son durum reboot oncesiyle ayni;
+ *   kontrol     : son durum olculdu, fark kalmadi ama baska bir kontrol notu var (korunan oge, eski betik, reboot dogrulanamadi
+ *                 ...); basari SAYILMAZ, ayrica yazilir;
+ *   yapilamadi  : reboot oncesi hale donmedi ve HIC komut calismadi (ulasilamadi, son durum olculemedi, once goruntusu yok,
+ *                 fark kaldi ama komut kosmadi);
+ *   hatali      : komut calisti ama sunucu reboot oncesi hale donmedi (fark kaldi ya da son durum dogrulanamadi).
+ * "Reboot oncesi haliyle" = yoneticiOzeti'nin birakilan tanimi (kalan 0, korunan calisan oge yok; sorunsuz ya da tek notu
+ * "otomasyon KAPATTI") + v4 karsilastirma disi (kapsam_disi). basari = (mudahalesiz + duzeltildi) / toplam (TUM sunucular).
+ * Komut = SONUC satiri OK ya da FAIL (SKIP "gerek kalmadi" komut sayilmaz). islemler: (islem, urun, JVM mi) basina komut, OK,
+ * FAIL, hedefte (OK ve son kontrolde hedefte) ve sunucu sayisi.
+ */
+// sonraDegerlendir 'olculemedi' sebeplerinin yonetici raporundaki okunur karsiligi.
+const OKUNUR_SEBEP = {
+  'sunucudan sonuc gelmedi (ulasilamadi ya da kopya dogrulanamadi)': 'Sunucuya ulaşılamadı (sonuç gelmedi)',
+  'son goruntu alinamadi': 'İşlem sonrası son durum ölçülemedi',
+};
+const SEVIYE_KOVALARI = ['mudahalesiz', 'duzeltildi', 'kontrol', 'yapilamadi', 'hatali'];
+function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
+  const d = deg || sonraDegerlendir(sunucular, hedefler, onceSat);
+  const kova = Object.fromEntries(SEVIYE_KOVALARI.map((k) => [k, []]));
+  const sunucu = {};
+  const islem = new Map();
+  let islemYapilan = 0;
+  for (const h of hedefler) {
+    const x = d[h];
+    const r = sunucular?.[h];
+    const once = onceSat?.[h];
+    const b = r && !r.sonuc_yok ? hedefBaglami(once, r) : null;
+    const komutlar = (b ? b.isl : [])
+      .filter((y) => y.sonuc === 'OK' || y.sonuc === 'FAIL')
+      .map((y) => ({ islem: y.islem, urun: y.urun, ad: y.ad, sonuc: y.sonuc, hedefte: y.sonuc === 'OK' && !!b.s && b.hedefte(y) }));
+    const olculemedi = !x || x.durum === 'olculemedi';
+    const onceGecerli = !onceSat || (Array.isArray(once) && bootVar(once));
+    const korunan = !olculemedi && onceGecerli && Array.isArray(once) ? ogeSayaci(once, r).korunan : 0;
+    const yalnizKapatti =
+      x?.durum === 'kontrol' && dizi(x.neden).length > 0 && dizi(x.neden).every((n) => KAPATTI_NEDENI.test(n));
+    const yerinde =
+      !olculemedi && onceGecerli && !x.kalan && korunan === 0 && (x.durum === 'sorunsuz' || x.durum === 'kapsam_disi' || yalnizKapatti);
+    const etiket = [];
+    const neden = [];
+    let k;
+    // yapilamadi kovasinin alt nedeni (rapor kirilimi): once_yok | ulasilamadi | olculemedi | komutsuz.
+    let altNeden = null;
+    if (yerinde) {
+      // 'duzeltildi' YALNIZ en az bir komut basarili donup son kontrolde hedefteyse (dogrulama bulgusu: komutu hata donup
+      // kendiliginden duzelen sunucu otomasyonla duzeltilmis sayilmaz).
+      k = komutlar.some((y) => y.hedefte) ? 'duzeltildi' : 'mudahalesiz';
+      if (k === 'mudahalesiz' && komutlar.length)
+        etiket.push(komutlar.some((y) => y.sonuc === 'FAIL') ? 'komut hata döndü; kendiliğinden düzeldi' : 'komut hedefe ulaşmadı; kendiliğinden düzeldi');
+      if (x.durum === 'kapsam_disi') etiket.push('izlenen uygulama yoktu');
+      if (yalnizKapatti) etiket.push('fazladan çalışan ürün kapatıldı');
+    } else if (!olculemedi && onceGecerli && !x.kalan && x.durum === 'kontrol') {
+      k = 'kontrol';
+      neden.push(...dizi(x.neden));
+    } else {
+      k = komutlar.length ? 'hatali' : 'yapilamadi';
+      if (k === 'yapilamadi') {
+        if (!onceGecerli || r?.once_var === false) altNeden = 'once_yok';
+        else if (!r || r.sonuc_yok) altNeden = 'ulasilamadi';
+        else if (!x || x.durum === 'olculemedi') altNeden = 'olculemedi';
+        else altNeden = 'komutsuz';
+      }
+      // Once goruntusu yoksa asil neden odur (sonuc gelmese de); digerleri sonraDegerlendir sebebinin okunur karsiligi.
+      if (!onceGecerli || r?.once_var === false) neden.push('Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı');
+      else if (!x || x.durum === 'olculemedi')
+        neden.push(`${OKUNUR_SEBEP[x?.sebep] || 'Sunucudan sonuç gelmedi'}${!r || r.sonuc_yok ? ' — yapılan işlem bilinmiyor' : ''}`);
+      if (x?.kalan) neden.push(`${x.kalan} öğe reboot öncesinden farklı kaldı`);
+      if (korunan) neden.push(`reboot öncesi çalışmayan ${korunan} ürün kapatma güvenli olmadığı için açık bırakıldı`);
+      const fail = komutlar.filter((y) => y.sonuc === 'FAIL').length;
+      if (fail) neden.push(`${fail} komut hata döndü`);
+      if (x?.durum === 'kontrol') neden.push(...dizi(x.neden));
+    }
+    kova[k].push(h);
+    if (komutlar.length) islemYapilan += 1;
+    // bilinmiyor: sonra'ya gonderildi (once gecerli) ama sonuc gelmedi; komut kosmus olabilir (rc_sonuc yalniz son adimda
+    // yazilir) -> 'islem yok' DENMEZ. Once'si olmayan sunucu sonra'ya hic gonderilmez: orada 'islem yok' dogrudur.
+    sunucu[h] = { kova: k, etiket, neden, komutlar, durum: x?.durum || 'olculemedi', kalan: x?.kalan || 0, bilinmiyor: onceGecerli && (!r || !!r.sonuc_yok), ...(altNeden ? { altNeden } : {}) };
+    const gorulen = new Set();
+    for (const y of komutlar) {
+      const anahtar = `${y.islem}|${y.urun}|${y.ad ? 'jvm' : 'urun'}`;
+      if (!islem.has(anahtar))
+        islem.set(anahtar, { anahtar, islem: y.islem, urun: y.urun, jvm: !!y.ad, komut: 0, ok: 0, fail: 0, hedefte: 0, sunucular: [] });
+      const t = islem.get(anahtar);
+      t.komut += 1;
+      if (y.sonuc === 'OK') t.ok += 1;
+      else t.fail += 1;
+      if (y.hedefte) t.hedefte += 1;
+      if (!gorulen.has(anahtar)) {
+        gorulen.add(anahtar);
+        t.sunucular.push(h);
+      }
+    }
+  }
+  const sayi = Object.fromEntries(SEVIYE_KOVALARI.map((k) => [k, kova[k].length]));
+  const islemler = [...islem.values()].sort(
+    (a, b) => b.sunucular.length - a.sunucular.length || b.komut - a.komut || varsayilanSira(a.anahtar, b.anahtar),
+  );
+  return {
+    toplam: hedefler.length,
+    sayi,
+    kova,
+    basari: oran(sayi.mudahalesiz + sayi.duzeltildi, hedefler.length),
+    islemYapilan,
+    geriGetirilen: oran(sayi.duzeltildi, islemYapilan),
+    // Basarili sayilan ama ek etiketi olan sunucular (kullanici: "kapsam disi ... sorunsuz gosterilmeli; hicbir sey yapilmadigi
+    // icin ek bir etikete sahip olabilir").
+    etiketSay: {
+      izlenenYok: Object.values(sunucu).filter((x) => x.etiket.includes('izlenen uygulama yoktu')).length,
+    },
+    // Hic islem yapilamayan sunucularin alt nedenleri (ozet kirilimi).
+    yapilamadiNeden: Object.fromEntries(
+      ['ulasilamadi', 'once_yok', 'olculemedi', 'komutsuz'].map((n) => [n, kova.yapilamadi.filter((h) => sunucu[h].altNeden === n).length]),
+    ),
+    // Otomasyonun devreye girip sonucu belli oldugu sunucular: eski haline getirilen + getirilemeyen.
+    otomasyon: oran(sayi.duzeltildi, sayi.duzeltildi + sayi.hatali),
+    islemler,
+    sunucu,
+  };
+}
+
 /** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
 const goruntuTamam = (r) =>
   !!(
@@ -878,6 +1005,9 @@ function satir(r, ayrinti) {
     durum: r.status,
     olusturan: r.created_by,
     olusturuldu: r.created_at,
+    // KAYNAK (2026-11-17, reboot-check-awx.cjs): 'AWX' = AWX'te (workflow ya da elle) kosan isten alindi; null = Portal.
+    kaynak: r.kaynak === 'AWX' ? 'AWX' : null,
+    awxWorkflowId: r.awx_workflow_id != null ? Number(r.awx_workflow_id) : null,
     once: { jobId: r.once_job_id, serverId: r.once_server_id, at: r.once_at },
     sonra: { jobId: r.sonra_job_id, serverId: r.sonra_server_id, at: r.sonra_at },
     ozet: jsonOku(r.ozet_json),
@@ -909,7 +1039,8 @@ function sonraOzeti(r, sonuc, job) {
   const yonetici = yoneticiOzeti(sonuc?.sunucular || {}, hedefler, onceSat, deg);
   const ozet = {
     ...(jsonOku(r.ozet_json) || {}),
-    sonra: { sorunsuz, kontrol, kapsamDisi, toplam: d.length, job, sunucu: deg, yonetici },
+    // seviye (2026-11-17): yonetici raporunun sunucu seviyesi ozeti (sunucuSeviyesi); ekran ve rapor ayni kaynaktan.
+    sonra: { sorunsuz, kontrol, kapsamDisi, toplam: d.length, job, sunucu: deg, yonetici, seviye: sunucuSeviyesi(sonuc?.sunucular || {}, hedefler, onceSat, deg) },
   };
   return { durum, ozet };
 }
@@ -991,10 +1122,15 @@ async function ilerlet(r) {
 
 function mount(router, { launch, HOST_RE, limit }) {
   router.get('/reboot-check', async (req, res) => {
+    // AWX'te kosan isler (reboot-check-awx.cjs): poller 2 dk'da bir alir; liste acilinca da (ayni sinirla) bir tur
+    // tetiklenir, BEKLENMEZ (liste yavaslamasin; alinan kayit bir sonraki yenilemede gorunur).
+    require('./reboot-check-awx.cjs')
+      .awxIsleriniAl()
+      .catch((e) => console.warn('[RebootCheck] AWX isleri:', e && e.message));
     try {
       const { rows } = await db().query(
         `SELECT TOP 50 id, hosts_json, notes, status, created_by, created_at, once_job_id, once_server_id, once_at,
-                sonra_job_id, sonra_server_id, sonra_at, ozet_json FROM reboot_checks ORDER BY id DESC`,
+                sonra_job_id, sonra_server_id, sonra_at, ozet_json, kaynak, awx_workflow_id FROM reboot_checks ORDER BY id DESC`,
       );
       res.json({ ok: true, kayitlar: (rows || []).map((r) => satir(r, false)) });
     } catch (err) {
@@ -1019,7 +1155,7 @@ function mount(router, { launch, HOST_RE, limit }) {
       res
         .set('Cache-Control', 'no-store')
         .type('html')
-        .send(require('./reboot-rapor.cjs').raporHtml(satir(r, true)));
+        .send(require('./reboot-rapor.cjs').raporHtml(satir(r, true), { eposta: String(req.query?.eposta || '') === '1' }));
     } catch (err) {
       res.status(500).type('text').send(err.message);
     }
@@ -1151,6 +1287,9 @@ function mount(router, { launch, HOST_RE, limit }) {
 
 module.exports = {
   mount,
+  kayit,
+  ilerlet,
+  goruntuTamam,
   sonraDegerlendir,
   onceGirdisi,
   kontrolNedenleri,
@@ -1161,6 +1300,8 @@ module.exports = {
   komutKoprusu,
   ogeSayaci,
   yoneticiOzeti,
+  sunucuSeviyesi,
+  SEVIYE_KOVALARI,
   yuzdeMetni,
   KAPSAM_DISI_ACIKLAMA,
   portalKalan,

@@ -90,14 +90,14 @@
       {
         "tur": "portal",
         "ad": "AWX sağlık kontrolü",
-        "dosya": "server/ansible/runner.cjs:2112",
+        "dosya": "server/ansible/runner.cjs:2120",
         "nasil": "UPDATE last_checked_at/last_status/last_response_ms",
         "ne_zaman": "Periyodik sağlık kontrolü"
       },
       {
         "tur": "portal",
         "ad": "Admin > AWX sunucuları aç/kapat",
-        "dosya": "server/ansible/runner.cjs:2255",
+        "dosya": "server/ansible/runner.cjs:2263",
         "nasil": "UPDATE enabled",
         "ne_zaman": "Admin işlemi"
       }
@@ -109,7 +109,7 @@
       },
       {
         "ad": "Admin AWX sunucu yönetimi /api/ansible/awx-servers/yonetim",
-        "dosya": "server/ansible/runner.cjs:2175"
+        "dosya": "server/ansible/runner.cjs:2183"
       }
     ],
     "saklama": "anlik goruntu (sunucu başına tek satır, kalıcı)",
@@ -126,7 +126,7 @@
       {
         "tur": "portal",
         "ad": "Self Servis / genel launch (performSsLaunch)",
-        "dosya": "server/ansible/runner.cjs:3475",
+        "dosya": "server/ansible/runner.cjs:3483",
         "nasil": "per-run INSERT (pending), bitince UPDATE status/finished_at (runner.cjs:5817)",
         "ne_zaman": "Her iş başlatmada"
       },
@@ -190,7 +190,7 @@
     "okuyanlar": [
       {
         "ad": "Ansible iş geçmişi ekranı GET /api/ansible/history",
-        "dosya": "server/ansible/runner.cjs:5958"
+        "dosya": "server/ansible/runner.cjs:5966"
       },
       {
         "ad": "İş durumu uçlarında sahiplik (IDOR) kontrolü - OpsX/Telnet/ScaleX/FileX/Envanter",
@@ -223,7 +223,7 @@
       {
         "tur": "portal",
         "ad": "Genel iş durumu ucu (job-status) arşivleme",
-        "dosya": "server/ansible/runner.cjs:5850",
+        "dosya": "server/ansible/runner.cjs:5858",
         "nasil": "iş terminal duruma geçince bir kez INSERT (varsa atla)",
         "ne_zaman": "İş durumu sorgulandığında, iş bitmişse"
       },
@@ -346,7 +346,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Self Servis Survey Tasarımcısı kaydet",
-        "dosya": "server/ansible/runner.cjs:2922",
+        "dosya": "server/ansible/runner.cjs:2930",
         "nasil": "upsert (UPDATE, yoksa INSERT :2928)",
         "ne_zaman": "Admin kaydettiğinde"
       },
@@ -361,7 +361,7 @@
     "okuyanlar": [
       {
         "ad": "Self Servis önbelleği ve launch",
-        "dosya": "server/ansible/runner.cjs:2886"
+        "dosya": "server/ansible/runner.cjs:2894"
       },
       {
         "ad": "Smart/OCO kapısı",
@@ -386,7 +386,7 @@
       {
         "tur": "portal",
         "ad": "Self Servis ayar kaydı öncesi yedek",
-        "dosya": "server/ansible/runner.cjs:2909",
+        "dosya": "server/ansible/runner.cjs:2917",
         "nasil": "her kayıttan önce önceki veriyi INSERT",
         "ne_zaman": "Admin kaydettiğinde"
       },
@@ -401,11 +401,11 @@
     "okuyanlar": [
       {
         "ad": "Ayar geçmişi listesi (son 30)",
-        "dosya": "server/ansible/runner.cjs:4267"
+        "dosya": "server/ansible/runner.cjs:4275"
       },
       {
         "ad": "Geri yükleme",
-        "dosya": "server/ansible/runner.cjs:4293"
+        "dosya": "server/ansible/runner.cjs:4301"
       }
     ],
     "saklama": "yok (sinirsiz buyur, küçük JSON)",
@@ -422,7 +422,7 @@
       {
         "tur": "portal",
         "ad": "Admin > Self Servis kart düzenleme",
-        "dosya": "server/ansible/runner.cjs:2822",
+        "dosya": "server/ansible/runner.cjs:2830",
         "nasil": "DELETE tümü + INSERT (toplu yeniden yazma); tekil UPDATE (:2838)",
         "ne_zaman": "Admin kaydettiğinde"
       },
@@ -437,7 +437,7 @@
     "okuyanlar": [
       {
         "ad": "Self Servis sayfası",
-        "dosya": "server/ansible/runner.cjs:2736"
+        "dosya": "server/ansible/runner.cjs:2744"
       },
       {
         "ad": "AWX sunucu bağımlılık kontrolü",
@@ -477,7 +477,7 @@
       },
       {
         "ad": "Self Servis kart yükleme (taşınanlar)",
-        "dosya": "server/ansible/runner.cjs:2746"
+        "dosya": "server/ansible/runner.cjs:2754"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -887,21 +887,28 @@
   {
     "db": "Portal",
     "tablo": "server_hub_ear_temizlik",
-    "amac": "EAR Temizliği kayıtları: sunucu, kök, EAR adı, ön kontrol (ls -ltr, WAR, domain.xml, süreç, parmak izi) iş numarası ve sonucu, onaylayan, silme işi, yedek yolu, durum (PLANLANIYOR -> PLAN_HAZIR -> SILINIYOR -> SILINDI / HATA / BELIRSIZ, ya da IPTAL / PLAN_ESKIDI / PLAN_HATA).",
+    "amac": "EAR Temizliği kayıtları: sunucu, kök, EAR adı, ön kontrol (ls -ltr, WAR, domain.xml, süreç, parmak izi) iş numarası ve sonucu, onaylayan, silme işi, yedek yolu, durum (PLANLANIYOR -> PLAN_HAZIR -> SILINIYOR -> SILINDI / HATA / BELIRSIZ, ya da IPTAL / PLAN_ESKIDI / PLAN_HATA). Toplu silme kuyruğu: sil_istendi_at / sil_isteyen / toplu_id (PLAN_HAZIR + sil_istendi_at dolu = sırada; sunucu başına tek, toplamda en çok 5 silme).",
     "alan": "Server Hub",
     "yazanlar": [
       {
         "tur": "portal",
-        "ad": "EAR Temizliği uçları (ön kontrol, sil, iptal)",
-        "dosya": "server/server-hub/ear-temizlik.cjs:455",
-        "nasil": "ön kontrol açılınca INSERT; plan / silme sonucu ve durum geçişi UPDATE (:230)",
-        "ne_zaman": "Admin ön kontrol başlatınca; GET uçları AWX ile uzlaştırırken"
+        "ad": "EAR Temizliği uçları (ön kontrol, sil, iptal, toplu ön kontrol / sil / iptal)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:798",
+        "nasil": "ön kontrol açılınca INSERT; plan / silme sonucu ve durum geçişi UPDATE (:267); silme isteği CAS (:907)",
+        "ne_zaman": "Admin ön kontrol başlatınca, silme isteyince (tekli ya da toplu); GET uçları AWX ile uzlaştırırken"
+      },
+      {
+        "tur": "portal",
+        "ad": "EAR Temizliği silme kuyruğu (sıradaki silmeyi başlatır)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:559",
+        "nasil": "PLAN_HAZIR + sil_istendi_at -> SILINIYOR CAS, ardından AWX silme işi; sırada 60 dk aşılırsa PLAN_ESKIDI",
+        "ne_zaman": "GET uçları, tekli / toplu silme isteğinin sonunda ve kuyruk yürütücüsü (30 sn; sekme kapalıyken de)"
       }
     ],
     "okuyanlar": [
       {
-        "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi)",
-        "dosya": "server/server-hub/ear-temizlik.cjs:571"
+        "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi, toplu işlem)",
+        "dosya": "server/server-hub/ear-temizlik.cjs:1005"
       }
     ],
     "saklama": "Silinmez (denetim izi; silme başına bir satır, ekranda son kayıtlar).",
@@ -2375,6 +2382,33 @@
   },
   {
     "db": "Portal",
+    "tablo": "oco_manuel_olaylar",
+    "amac": "OCO Takvimi'ne elle eklenen olaylar: servisin döndürmediği bir OCO ya da OCO'suz planlı çalışma (başlık, isteğe bağlı OCO no, başlangıç/bitiş, açıklama, ekleyen). Takvimde 'manuel' rozetiyle servis kayıtlarından ayrı görünür.",
+    "alan": "OCO",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "OCO Takvimi > Olay ekle/düzenle/sil (POST/PUT/DELETE /api/oco/manuel)",
+        "dosya": "server/oco/index.cjs:131",
+        "nasil": "INSERT (oco/manuel.cjs:131), UPDATE (:141), DELETE (:148); düzenleme/silme yalnız ekleyen ya da Admin",
+        "ne_zaman": "Kullanıcı elle olay eklediğinde/değiştirdiğinde",
+        "uzerinden": "server/oco/manuel.cjs"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "OCO Takvimi liste ve takvim görünümü (GET /api/oco/manuel)",
+        "dosya": "server/oco/index.cjs:121",
+        "uzerinden": "server/oco/manuel.cjs"
+      }
+    ],
+    "saklama": "yok (elle yönetilir, en çok 2000 kayıt listelenir)",
+    "notlar": "Kurumsal OCO servisine yazılmaz; servis kaydıyla birleştirilmez.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
     "tablo": "ansible_ocp_clusters",
     "amac": "OpenShift cluster kayıtları (ad, ortam, API adresi, token, jump host, bağlantı durumu). Admin ekranından yönetilir; kayıtlar ocp_cluster_index'e de aynalanır.",
     "alan": "OpenShift",
@@ -2397,7 +2431,7 @@
     "okuyanlar": [
       {
         "ad": "GET /api/ansible/clusters (Ansible Info, AI)",
-        "dosya": "server/ansible/runner.cjs:2412",
+        "dosya": "server/ansible/runner.cjs:2420",
         "uzerinden": "server/ansible/ocp-store.cjs"
       },
       {
@@ -2907,7 +2941,7 @@
       },
       {
         "ad": "Smart onay eslesmesi",
-        "dosya": "server/ansible/runner.cjs:5473"
+        "dosya": "server/ansible/runner.cjs:5481"
       },
       {
         "ad": "AWX sunucu bagimlilik",

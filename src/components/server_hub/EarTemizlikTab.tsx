@@ -8,6 +8,11 @@
 // adını birebir yazar → "Yedekle ve sil": AWX parmak izini yeniden hesaplar (değiştiyse HİÇBİR ŞEY silinmez),
 // tar.gz yedek alır, siler, doğrular → Portal o sunucu için Uygulama Envanteri taraması başlatır; uyarı o tarama
 // bitince kalkar. Gizli sekme yoklama yapmaz (useSekmeGorunur). PROD satırı işaretlenir (ek onay yok).
+//
+// TOPLU (2026-11-16, kullanıcı: "toplu halde temizlik için gerekli düzenlemeyi yap"): adaylar seçilip tek düğmeyle
+// ayrı ayrı ön kontrol; hazır planlar tek pencerede teyit edilir (her EAR'ın ls -ltr çıktısı görünür, onay metni tam
+// "<n> EAR SIL"). Sunucu silmeleri aynı sunucuda sırayla başlatır: bekleyen kayıt "sırada" görünür, toplu işlemin
+// sıradakileri iptal edilebilir. Pencereler: EarTemizlikToplu.tsx.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowPathIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import {
@@ -16,6 +21,8 @@ import {
   type EtKayit,
   type EtKayitYanit,
   type EtListe,
+  type EtTopluOnKontrolYanit,
+  type EtTopluSilYanit,
 } from '@/api/serverHubApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { toast } from '@/hooks/useToast';
@@ -23,6 +30,19 @@ import { fmtDateTime, fmtNumber } from '@/utils/datetime';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { Modal } from '@/components/common/Modal';
 import { useSekmeGorunur } from './sekmeGorunurlugu';
+import {
+  kbMetin,
+  ProdRozeti,
+  SiradaRozeti,
+  SiradanCikarPenceresi,
+  sureMetni,
+  TOPLU_UST_SINIR,
+  TopluIptalPenceresi,
+  TopluTeyitPenceresi,
+  type TopluOge,
+} from './EarTemizlikToplu';
+
+export { kbMetin, sureMetni };
 
 /** Süren kayıt (ön kontrol / silme) yoklama aralığı. */
 export const YOKLAMA_MS = 4000;
@@ -30,9 +50,16 @@ export const YOKLAMA_MS = 4000;
 export const PLAN_YOKLAMA_MS = 30000;
 /** Bu kadar ardışık yoklama hatasından sonra satırda "durum okunamıyor" uyarısı çıkar. */
 export const YOKLAMA_HATA_ESIGI = 3;
+/**
+ * Yoklanacak kayıt bundan fazlaysa (or. 50 kayıtlık toplu silme kuyruğu) kayıt başına GET yerine tek liste
+ * okunur: her okuma sunucuda kuyruğu ilerletir, onlarca paralel istek gereksiz yük ve CAS yarışı üretir.
+ */
+export const TEK_TEK_YOKLAMA_SINIRI = 8;
 const SUREN = new Set(['PLANLANIYOR', 'SILINIYOR']);
 const AKTIF = new Set(['PLANLANIYOR', 'PLAN_HAZIR', 'SILINIYOR']);
 const HATALI = new Set(['PLAN_HATA', 'HATA', 'BELIRSIZ']);
+/** Kaydı bu durumdaysa aday toplu seçime alınamaz (secilemezNedeni ile aynı küme). */
+const SECIM_DISI = new Set([...AKTIF, 'SILINDI', 'BELIRSIZ']);
 
 export const DURUM_ETIKET: Record<string, string> = {
   PLANLANIYOR: 'Ön kontrol sürüyor (salt okunur)',
@@ -59,19 +86,40 @@ export const durumRengi = (d: string) =>
 
 const adayAnahtari = (x: { host: string; kok: string; ad: string }) => `${x.host}|${x.kok}|${x.ad}`;
 
-/** KB değerini okunur boyuta çevirir ("812 KB", "3,4 MB", "1,2 GB"). */
-export function kbMetin(v: string | number | null | undefined): string {
-  const n = Number(v);
-  if (v === null || v === undefined || v === '' || !Number.isFinite(n)) return '—';
-  if (n >= 1024 * 1024) return `${fmtNumber(Math.round(n / 1024 / 102.4) / 10)} GB`;
-  if (n >= 1024) return `${fmtNumber(Math.round(n / 102.4) / 10)} MB`;
-  return `${fmtNumber(n)} KB`;
+/** Silme istendi, aynı sunucudaki silme bitince kuyruktan başlayacak. */
+export const siradaMi = (k: EtKayit) => k.durum === 'PLAN_HAZIR' && !!k.sirada;
+/** Teyit bekleyen (sırada olmayan) plan. */
+const teyitBekliyor = (k: EtKayit) => k.durum === 'PLAN_HAZIR' && !k.sirada;
+export const durumEtiketi = (k: EtKayit) =>
+  siradaMi(k) ? 'Sırada — aynı sunucudaki silme bitince başlar' : DURUM_ETIKET[k.durum] || k.durum;
+
+/** Tekli "Ön kontrol" kapalıysa nedeni (null = açık): engel, süren/bekleyen kayıt ya da silinmiş. */
+export function onKontrolEngeli(a: EtAday, k: EtKayit | undefined): string | null {
+  if (a.engel) return a.engel;
+  if (k && AKTIF.has(k.durum)) return 'Bu EAR için süren bir kayıt var';
+  if (k && k.durum === 'SILINDI')
+    return 'Silindi; uyarı Uygulama Envanteri taraması bitince kalkar';
+  return null;
 }
 
-/** Saniyeyi "dd:ss" biçimine çevirir (eksi değer 00:00). */
-export function sureMetni(sn: number): string {
-  const s = Math.max(0, Math.floor(sn));
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+/**
+ * Aday toplu seçime alınamıyorsa nedeni (null = seçilebilir). Tekli engellere ek olarak BELIRSIZ: AWX silme işi
+ * gerçekte sürüyor olabilir (betik EAR kökünde kilit tutar); toplu işe karıştırılmaz, elle kontrolden sonra tekli
+ * ön kontrol kullanılır.
+ */
+export function secilemezNedeni(a: EtAday, k: EtKayit | undefined): string | null {
+  const engel = onKontrolEngeli(a, k);
+  if (engel) return engel;
+  if (k && k.durum === 'BELIRSIZ')
+    return 'Önceki silmenin sonucu belirsiz; sunucuda elle kontrol edip tekli ön kontrol kullanın';
+  return null;
+}
+
+/** Sunucu, yol ya da EAR adı süzgeci (büyük/küçük harf duyarsız). */
+export function adaySuz(adaylar: EtAday[], suzgec: string): EtAday[] {
+  const q = suzgec.trim().toLowerCase();
+  if (!q) return adaylar;
+  return adaylar.filter((a) => `${a.host} ${a.kok}/${a.ad}`.toLowerCase().includes(q));
 }
 
 const BILGI_ETIKET: Record<string, string> = {
@@ -191,18 +239,6 @@ function kayitAl(r: EtKayitYanit, varsayilan: string): EtKayit {
   return r.kayit;
 }
 
-function ProdRozeti() {
-  return (
-    <span
-      className="ml-1 rounded px-1 text-[10px] font-semibold border"
-      style={{ color: 'var(--status-danger)', borderColor: 'var(--status-danger)' }}
-      data-testid="et-prod"
-    >
-      PROD
-    </span>
-  );
-}
-
 function KayitSonucu({ k }: { k: EtKayit }) {
   if (k.durum === 'SILINDI') {
     return (
@@ -253,34 +289,44 @@ function TeyitPenceresi({
   const [hata, setHata] = useState<string | null>(null);
   const kalan = kalanSaniye(iz, simdi);
   const doldu = kalan != null && kalan <= 0;
-  const hazir = k.durum === 'PLAN_HAZIR' && !!k.plan && k.planJobId != null;
+  const hazir = teyitBekliyor(k) && !!k.plan && k.planJobId != null;
+  // Kullanıcı şartı: ls -ltr çıktısı görülmeden silinmez; boş çıktı teyit edilemez.
+  const lsVar = !!k.plan && k.plan.ls.length > 0;
   const adTutar = yazilan === k.ad;
   // Süre bilinmiyorsa (kalanSn null) kapalı: sunucu da plan_bitis_at NULL iken silmeyi reddeder.
-  const etkin = hazir && !engel && kalan != null && !doldu && inceledim && adTutar && !gonderiliyor;
+  const etkin =
+    hazir && lsVar && !engel && kalan != null && !doldu && inceledim && adTutar && !gonderiliyor;
   const neden = !hazir
     ? 'Plan artık teyit beklemiyor'
-    : engel
-      ? engel
-      : kalan == null
-        ? 'Plan geçerlilik süresi bilinmiyor; yeniden ön kontrol yapın'
-        : doldu
-          ? 'Plan süresi doldu; yeniden ön kontrol yapın'
-          : !inceledim
-            ? 'Önce çıktıyı incelediğinizi işaretleyin'
-            : !adTutar
-              ? 'EAR adını birebir yazın'
-              : undefined;
+    : !lsVar
+      ? 'ls -ltr çıktısı yok; yeniden ön kontrol yapın'
+      : engel
+        ? engel
+        : kalan == null
+          ? 'Plan geçerlilik süresi bilinmiyor; yeniden ön kontrol yapın'
+          : doldu
+            ? 'Plan süresi doldu; yeniden ön kontrol yapın'
+            : !inceledim
+              ? 'Önce çıktıyı incelediğinizi işaretleyin'
+              : !adTutar
+                ? 'EAR adını birebir yazın'
+                : undefined;
 
   const sil = async () => {
     if (!etkin || k.planJobId == null) return;
     setGonderiliyor(true);
     setHata(null);
     try {
-      const yeni = kayitAl(
-        await serverHubApi.earTemizlikSil(k.id, { onayMetni: yazilan, planJobId: k.planJobId }),
-        'Silme başlatılamadı.',
-      );
-      toast.success(`${k.host}: ${k.kok}/${k.ad} için yedekle ve sil işi başlatıldı.`);
+      const r = await serverHubApi.earTemizlikSil(k.id, {
+        onayMetni: yazilan,
+        planJobId: k.planJobId,
+      });
+      const yeni = kayitAl(r, 'Silme başlatılamadı.');
+      if (r.sirada || siradaMi(yeni))
+        toast.info(
+          `${k.host}: ${k.kok}/${k.ad} sırada; aynı sunucudaki silme bitince yedekle ve sil başlar.`,
+        );
+      else toast.success(`${k.host}: ${k.kok}/${k.ad} için yedekle ve sil işi başlatıldı.`);
       onSilindi(yeni);
     } catch (e) {
       setHata(hataMetni(e));
@@ -431,16 +477,46 @@ export default function EarTemizlikTab() {
   const [teyitId, setTeyitId] = useState<number | null>(null);
   const [simdi, setSimdi] = useState(() => Date.now());
   const [yoklamaHatalari, setYoklamaHatalari] = useState<Map<number, YoklamaHatasi>>(new Map());
+  const [suzgec, setSuzgec] = useState('');
+  const [secili, setSecili] = useState<Set<string>>(() => new Set());
+  const [topluMesgul, setTopluMesgul] = useState(false);
+  const [topluSonuc, setTopluSonuc] = useState<EtTopluOnKontrolYanit | null>(null);
+  const [topluTeyitIdler, setTopluTeyitIdler] = useState<number[] | null>(null);
+  const [topluIptal, setTopluIptal] = useState<{ topluId: string; sirada: number } | null>(null);
+  const [siradanCikarId, setSiradanCikarId] = useState<number | null>(null);
 
-  const kayitlariYaz = useCallback((liste: EtKayit[], sifirla: boolean) => {
-    const t = Date.now();
-    setSimdi(t);
-    setIzler((eski) => {
-      const m = sifirla ? new Map<number, KayitIzi>() : new Map(eski);
-      for (const k of liste) m.set(k.id, { k, t });
+  // Seçilemez hale gelen satır (kaydı süren/silinmiş/belirsiz ya da taze taramada engelli) seçimden o anda düşer:
+  // sonradan yeniden seçilebilir olunca sessizce "seçili" geri gelmez.
+  const secimdenDusur = useCallback((anahtarlar: string[]) => {
+    if (!anahtarlar.length) return;
+    setSecili((s) => {
+      if (!anahtarlar.some((a) => s.has(a))) return s;
+      const m = new Set(s);
+      for (const a of anahtarlar) m.delete(a);
       return m;
     });
   }, []);
+
+  const kayitlariYaz = useCallback(
+    (liste: EtKayit[], sifirla: boolean) => {
+      const t = Date.now();
+      setSimdi(t);
+      setIzler((eski) => {
+        const m = sifirla ? new Map<number, KayitIzi>() : new Map(eski);
+        for (const k of liste) m.set(k.id, { k, t });
+        return m;
+      });
+      secimdenDusur(liste.filter((k) => SECIM_DISI.has(k.durum)).map(adayAnahtari));
+    },
+    [secimdenDusur],
+  );
+  const veriYaz = useCallback(
+    (r: EtListe) => {
+      setVeri(r);
+      secimdenDusur((r.adaylar || []).filter((a) => a.engel).map(adayAnahtari));
+    },
+    [secimdenDusur],
+  );
 
   const listeYukle = useCallback(async () => {
     setYukleniyor(true);
@@ -448,7 +524,7 @@ export default function EarTemizlikTab() {
     try {
       const r = await serverHubApi.earTemizlikListe();
       if (!r || !r.ok) throw new Error((r && r.message) || 'EAR temizliği listesi okunamadı.');
-      setVeri(r);
+      veriYaz(r);
       const hepsi = [...(r.kayitlar || [])];
       for (const a of r.adaylar || []) if (a.kayit) hepsi.push(a.kayit);
       kayitlariYaz(hepsi, true);
@@ -458,7 +534,7 @@ export default function EarTemizlikTab() {
     } finally {
       setYukleniyor(false);
     }
-  }, [kayitlariYaz]);
+  }, [kayitlariYaz, veriYaz]);
 
   useAsyncEffect(async () => {
     if (gorunur && !veri && !yukleniyor && !hata) await listeYukle();
@@ -480,27 +556,54 @@ export default function EarTemizlikTab() {
   const surenIdler = useMemo(
     () =>
       [...izler.values()]
-        .filter((iz) => SUREN.has(iz.k.durum) && yoklanir(iz.k.id))
+        .filter((iz) => (SUREN.has(iz.k.durum) || siradaMi(iz.k)) && yoklanir(iz.k.id))
         .map((iz) => iz.k.id),
     [izler, yoklanir],
   );
   const bekleyenIdler = useMemo(
     () =>
       [...izler.values()]
-        .filter((iz) => iz.k.durum === 'PLAN_HAZIR' && yoklanir(iz.k.id))
+        .filter((iz) => teyitBekliyor(iz.k) && yoklanir(iz.k.id))
         .map((iz) => iz.k.id),
     [izler, yoklanir],
   );
 
   // Hata yutulmaz: her kaydın ardışık hata sayısı tutulur, eşikte satırda uyarı çıkar.
   const kayitOku = useCallback(
-    async (ids: number[]) => {
+    async (ids: number[]): Promise<EtKayit[]> => {
       const sonuc = await Promise.all(ids.map((id) => yoklaKayit(id)));
       const okunan = sonuc.flatMap((s) => ('kayit' in s ? [s.kayit] : []));
       if (okunan.length) kayitlariYaz(okunan, false);
       setYoklamaHatalari((eski) => yoklamaHatalariniIsle(eski, sonuc));
+      return okunan;
     },
     [kayitlariYaz],
+  );
+
+  // Çok kayıt yoklanacaksa tek liste okuması: kayıtlar birleştirilir (sıfırlanmaz), adaylar tazelenir; liste
+  // okunamazsa yoklanan her kayda bir hata yazılır (eşikte satırda uyarı; hata yutulmaz).
+  const listeYokla = useCallback(
+    async (ids: number[]) => {
+      let sonuc: YoklamaSonucu[];
+      try {
+        const r = await serverHubApi.earTemizlikListe();
+        if (!r || !r.ok) throw new Error((r && r.message) || 'EAR temizliği listesi okunamadı.');
+        veriYaz(r);
+        const hepsi = [...(r.kayitlar || [])];
+        for (const a of r.adaylar || []) if (a.kayit) hepsi.push(a.kayit);
+        kayitlariYaz(hepsi, false);
+        const m = new Map(hepsi.map((k) => [k.id, k]));
+        sonuc = ids.map((id) => {
+          const k = m.get(id);
+          return k ? { id, kayit: k } : { id, hata: 'Kayıt listede yok.', kalici: false };
+        });
+      } catch (e) {
+        const mesaj = hataMetni(e);
+        sonuc = ids.map((id) => ({ id, hata: mesaj, kalici: false }));
+      }
+      setYoklamaHatalari((eski) => yoklamaHatalariniIsle(eski, sonuc));
+    },
+    [kayitlariYaz, veriYaz],
   );
 
   // YOKLAMA: yalnız sekme görünürken; süren kayıt varken sık, yalnız teyit bekleyen varken seyrek.
@@ -509,12 +612,13 @@ export default function EarTemizlikTab() {
     if (!gorunur || !ids.length) return undefined;
     const t = setInterval(
       () => {
-        void kayitOku(ids);
+        if (ids.length > TEK_TEK_YOKLAMA_SINIRI) void listeYokla(ids);
+        else void kayitOku(ids);
       },
       surenIdler.length ? YOKLAMA_MS : PLAN_YOKLAMA_MS,
     );
     return () => clearInterval(t);
-  }, [gorunur, surenIdler, bekleyenIdler, kayitOku]);
+  }, [gorunur, surenIdler, bekleyenIdler, kayitOku, listeYokla]);
 
   // Geri sayım: teyit bekleyen plan varken saniyede bir (gizliyken durur).
   useEffect(() => {
@@ -561,7 +665,102 @@ export default function EarTemizlikTab() {
     }
   };
 
-  const adaylar = veri?.adaylar || [];
+  const adaylar = useMemo(() => veri?.adaylar || [], [veri]);
+  const suzulmus = useMemo(() => adaySuz(adaylar, suzgec), [adaylar, suzgec]);
+  const secilemez = useCallback(
+    (a: EtAday) => secilemezNedeni(a, sonKayit.get(adayAnahtari(a))?.k),
+    [sonKayit],
+  );
+  const suzSecilebilir = useMemo(
+    () => suzulmus.filter((a) => !secilemez(a)),
+    [suzulmus, secilemez],
+  );
+  // Seçim yalnız ekranda görünen (süzülmüş) ve hâlâ seçilebilir satırlardan oluşur.
+  const secim = useMemo(
+    () => suzSecilebilir.filter((a) => secili.has(adayAnahtari(a))),
+    [suzSecilebilir, secili],
+  );
+  const hepsiSecili = suzSecilebilir.length > 0 && secim.length === suzSecilebilir.length;
+  const secimYaz = (liste: { host: string; kok: string; ad: string }[], v: boolean) =>
+    setSecili((s) => {
+      const m = new Set(s);
+      for (const a of liste) {
+        if (v) m.add(adayAnahtari(a));
+        else m.delete(adayAnahtari(a));
+      }
+      return m;
+    });
+
+  const topluOnKontrol = async () => {
+    if (!secim.length || secim.length > TOPLU_UST_SINIR) return;
+    setTopluMesgul(true);
+    setEylemHata(null);
+    setTopluSonuc(null);
+    try {
+      const r = await serverHubApi.earTemizlikTopluOnKontrol(secim);
+      if (!r || !Array.isArray(r.sonuclar))
+        throw new Error((r && r.message) || 'Toplu ön kontrol başlatılamadı.');
+      setTopluSonuc(r);
+      const baslayan = r.sonuclar.flatMap((x) => (x.ok && x.id != null ? [x.id] : []));
+      secimYaz(
+        r.sonuclar.filter((x) => x.ok),
+        false,
+      );
+      if (baslayan.length) {
+        toast.info(`${fmtNumber(baslayan.length)} EAR için ön kontrol başlatıldı (salt okunur).`);
+        await kayitOku(baslayan);
+      } else toast.error(r.message || 'Hiçbir ön kontrol başlatılamadı.');
+    } catch (e) {
+      const m = hataMetni(e);
+      setEylemHata(`Toplu ön kontrol: ${m}`);
+      toast.error(m);
+    } finally {
+      setTopluMesgul(false);
+    }
+  };
+
+  // Sonuç yanıttaki sayılardan değil kayıtların kendisinden okunur: işaretlenen kaydın topluId'si bu işleminkidir;
+  // olmayan (CAS'ı kaybeden) ya da sunucunun kaybedenler listesindeki kayıt adıyla raporlanır.
+  const topluGonderildi = async (ids: number[], y: EtTopluSilYanit) => {
+    setTopluTeyitIdler(null);
+    const once = new Map([...izler.values()].map((iz) => [iz.k.id, iz.k]));
+    const okunan = await kayitOku(ids);
+    const sonra = new Map(okunan.map((k) => [k.id, k]));
+    const kaybeden = new Set(y.kaybedenler || []);
+    for (const k of okunan) if (y.topluId && k.topluId !== y.topluId) kaybeden.add(k.id);
+    const isaretli = okunan.filter((k) => !kaybeden.has(k.id));
+    const sirada = isaretli.filter(siradaMi).length;
+    const hatali = isaretli.filter((k) => HATALI.has(k.durum)).length;
+    const basladi = isaretli.length - sirada - hatali;
+    const okunamayan = ids.filter((id) => !sonra.has(id) && !kaybeden.has(id)).length;
+    const parcalar = [`${fmtNumber(basladi)} başladı`, `${fmtNumber(sirada)} sırada`];
+    if (hatali) parcalar.push(`${fmtNumber(hatali)} başlatılamadı`);
+    if (okunamayan) parcalar.push(`${fmtNumber(okunamayan)} kaydın durumu okunamadı`);
+    toast.success(
+      `${fmtNumber(ids.length - kaybeden.size)} EAR için silme istendi: ${parcalar.join(', ')}.`,
+    );
+    if (kaybeden.size) {
+      const ad = (id: number) => {
+        const k = sonra.get(id) || once.get(id);
+        return k ? `${k.host} ${k.kok}/${k.ad}` : `#${id}`;
+      };
+      setEylemHata(
+        `Toplu silme: ${fmtNumber(kaybeden.size)} kayıt işaretlenemedi (bu arada durumu değişti): ` +
+          `${[...kaybeden].map(ad).join(', ')}. Bu kayıtlar silinmeyecek; listeyi kontrol edin.`,
+      );
+    }
+  };
+
+  const topluIptalBitti = (iptal: number, suren: number) => {
+    const grup = topluIptal?.topluId;
+    setTopluIptal(null);
+    toast.info(
+      `${fmtNumber(iptal)} sıradaki silme iptal edildi` +
+        (suren ? `; ${fmtNumber(suren)} silme sürüyor (dokunulmadı).` : '.'),
+    );
+    const ids = [...izler.values()].filter((iz) => iz.k.topluId === grup).map((iz) => iz.k.id);
+    if (ids.length) void kayitOku(ids);
+  };
   const kayitListesi = useMemo(
     () =>
       [...izler.values()]
@@ -570,15 +769,74 @@ export default function EarTemizlikTab() {
         .slice(0, 50),
     [izler],
   );
+  const engelOf = useCallback(
+    (k: EtKayit) => adaylar.find((a) => adayAnahtari(a) === adayAnahtari(k))?.engel ?? null,
+    [adaylar],
+  );
   const teyitIzi = teyitId != null ? izler.get(teyitId) : undefined;
-  const teyitEngeli = teyitIzi
-    ? (adaylar.find((a) => adayAnahtari(a) === adayAnahtari(teyitIzi.k))?.engel ?? null)
-    : null;
+  const siradanCikarIzi = siradanCikarId != null ? izler.get(siradanCikarId) : undefined;
+  const teyitEngeli = teyitIzi ? engelOf(teyitIzi.k) : null;
+
+  // Toplu teyit adayları: sırada olmayan, teyit bekleyen her plan (eskiden yeniye).
+  const hazirlar = useMemo(
+    () =>
+      [...izler.values()]
+        .filter((iz) => teyitBekliyor(iz.k))
+        .map((iz) => iz.k.id)
+        .sort((x, y) => x - y),
+    [izler],
+  );
+  // Toplu teyitte taze taramada artık aday olmayan kayıt da hariç: sunucu hepsi-ya-hiç doğruladığı için tek
+  // kayıt bütün partiyi reddettirir.
+  const topluEngel = (k: EtKayit) =>
+    adaylar.some((a) => adayAnahtari(a) === adayAnahtari(k))
+      ? engelOf(k)
+      : 'Taze taramada bu EAR artık aday değil; listeyi yenileyin';
+  const topluOgeler: TopluOge[] = (topluTeyitIdler || []).flatMap((id) => {
+    const iz = izler.get(id);
+    return iz ? [{ k: iz.k, kalan: kalanSaniye(iz, simdi), engel: topluEngel(iz.k) }] : [];
+  });
+  // Sırada kaydı olan toplu işlemler ("Sıradakileri iptal et").
+  const topluGruplar = useMemo(() => {
+    const m = new Map<string, { sirada: number; suren: number }>();
+    for (const iz of izler.values()) {
+      const t = iz.k.topluId;
+      if (!t) continue;
+      const g = m.get(t) || { sirada: 0, suren: 0 };
+      if (siradaMi(iz.k)) g.sirada += 1;
+      else if (iz.k.durum === 'SILINIYOR') g.suren += 1;
+      m.set(t, g);
+    }
+    return [...m.entries()]
+      .filter(([, g]) => g.sirada > 0)
+      .map(([topluId, g]) => ({ topluId, ...g }))
+      .sort((x, y) => x.topluId.localeCompare(y.topluId));
+  }, [izler]);
 
   const eylem = (a: EtAday) => {
     const iz = sonKayit.get(adayAnahtari(a));
     const k = iz?.k;
     const ad = `${a.kok}/${a.ad}`;
+    if (k && siradaMi(k)) {
+      return (
+        <div className="flex flex-col gap-1 items-start">
+          <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            Silme sırada
+            <SiradaRozeti />
+          </span>
+          <button
+            type="button"
+            className="text-[11px] underline"
+            style={{ color: 'var(--text-muted)' }}
+            disabled={mesgul === adayAnahtari(a)}
+            onClick={() => setSiradanCikarId(k.id)}
+            aria-label={`Sıradan çıkar ${a.host} ${ad}`}
+          >
+            Sıradan çıkar
+          </button>
+        </div>
+      );
+    }
     if (k && k.durum === 'PLAN_HAZIR') {
       const kalan = kalanSaniye(iz, simdi);
       return (
@@ -613,16 +871,8 @@ export default function EarTemizlikTab() {
         </div>
       );
     }
-    const surer = !!k && AKTIF.has(k.durum);
-    const silindi = !!k && k.durum === 'SILINDI';
-    const pasif = !!a.engel || surer || silindi || mesgul === adayAnahtari(a);
-    const neden = a.engel
-      ? a.engel
-      : surer
-        ? 'Bu EAR için süren bir kayıt var'
-        : silindi
-          ? 'Silindi; uyarı Uygulama Envanteri taraması bitince kalkar'
-          : undefined;
+    const neden = onKontrolEngeli(a, k) || undefined;
+    const pasif = !!neden || mesgul === adayAnahtari(a) || topluMesgul;
     const etiket =
       k && k.durum === 'PLANLANIYOR'
         ? 'Ön kontrol sürüyor…'
@@ -658,6 +908,31 @@ export default function EarTemizlikTab() {
           }}
         />
       )}
+      {topluTeyitIdler && (
+        <TopluTeyitPenceresi
+          ogeler={topluOgeler}
+          onKapat={() => setTopluTeyitIdler(null)}
+          onGonderildi={(ids, y) => void topluGonderildi(ids, y)}
+        />
+      )}
+      {siradanCikarIzi && (
+        <SiradanCikarPenceresi
+          k={siradanCikarIzi.k}
+          onKapat={() => setSiradanCikarId(null)}
+          onOnay={() => {
+            setSiradanCikarId(null);
+            void planIptal(siradanCikarIzi.k);
+          }}
+        />
+      )}
+      {topluIptal && (
+        <TopluIptalPenceresi
+          topluId={topluIptal.topluId}
+          sirada={topluIptal.sirada}
+          onKapat={() => setTopluIptal(null)}
+          onBitti={topluIptalBitti}
+        />
+      )}
       <section
         className="rounded-xl border p-4 space-y-3"
         style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
@@ -673,7 +948,10 @@ export default function EarTemizlikTab() {
               görüp teyit ettikten sonra “Yedekle ve sil” önce tar.gz yedek alır, sonra siler;
               içerik ön kontrolden sonra değiştiyse hiçbir şey silinmez. Plan{' '}
               {fmtNumber(veri?.planGecerlilikDk ?? 30)} dakika geçerlidir. Uyarı, silmeden sonra
-              başlatılan Uygulama Envanteri taraması bitince kalkar.
+              başlatılan Uygulama Envanteri taraması bitince kalkar. Toplu işte satırları seçip
+              “Seçilenlere ön kontrol” ile başlatın; hazır planları “Hazır olanları toplu teyit et”
+              penceresinde her birinin çıktısını görerek onaylayın. Aynı sunucudaki silmeler sırayla
+              başlar.
             </p>
           </div>
           <button
@@ -704,6 +982,73 @@ export default function EarTemizlikTab() {
             <span>{eylemHata}</span>
           </div>
         )}
+        {veri && adaylar.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="search"
+              className="input-modern text-[12px] w-64 max-w-full"
+              placeholder="Sunucu ya da EAR adı süz"
+              aria-label="Sunucu ya da EAR adı süz"
+              value={suzgec}
+              onChange={(e) => setSuzgec(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-secondary text-[12px]"
+              disabled={!secim.length || secim.length > TOPLU_UST_SINIR || topluMesgul}
+              title={
+                secim.length > TOPLU_UST_SINIR
+                  ? `En çok ${fmtNumber(TOPLU_UST_SINIR)} EAR tek seferde seçilebilir`
+                  : undefined
+              }
+              onClick={() => void topluOnKontrol()}
+            >
+              {topluMesgul
+                ? 'Ön kontroller başlatılıyor…'
+                : `Seçilenlere ön kontrol (${fmtNumber(secim.length)})`}
+            </button>
+            {hazirlar.length > 0 && (
+              <button
+                type="button"
+                className="btn-danger text-[12px]"
+                onClick={() => setTopluTeyitIdler(hazirlar)}
+              >
+                Hazır olanları toplu teyit et ({fmtNumber(hazirlar.length)})
+              </button>
+            )}
+            {suzgec.trim() && (
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                {fmtNumber(suzulmus.length)} / {fmtNumber(adaylar.length)} aday gösteriliyor
+              </span>
+            )}
+          </div>
+        )}
+        {topluSonuc && (
+          <div
+            className="text-[12px] rounded-lg border px-3 py-2 space-y-1"
+            style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+            data-testid="et-toplu-sonuc"
+          >
+            <div>
+              Toplu ön kontrol: {fmtNumber(topluSonuc.basarili ?? 0)} başladı,{' '}
+              {fmtNumber(topluSonuc.basarisiz ?? 0)} başarısız.
+            </div>
+            {(topluSonuc.sonuclar || []).some((x) => !x.ok) && (
+              <ul className="list-disc pl-5" style={{ color: 'var(--status-danger)' }}>
+                {(topluSonuc.sonuclar || [])
+                  .filter((x) => !x.ok)
+                  .map((x) => (
+                    <li key={adayAnahtari(x)}>
+                      <span className="font-mono">
+                        {x.host} {x.kok}/{x.ad}
+                      </span>
+                      : {x.message || 'başlatılamadı'}
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        )}
         {yukleniyor && !veri ? (
           <LoadingLogo />
         ) : veri && !adaylar.length ? (
@@ -718,6 +1063,16 @@ export default function EarTemizlikTab() {
             <table className="w-full text-[12px]" data-testid="et-adaylar">
               <thead>
                 <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+                  <th className="px-3 py-1.5 w-6">
+                    <input
+                      type="checkbox"
+                      checked={hepsiSecili}
+                      disabled={!suzSecilebilir.length}
+                      onChange={(e) => secimYaz(suzSecilebilir, e.target.checked)}
+                      aria-label="Süzülmüş ve seçilebilir adayların hepsini seç"
+                      title="Süzülmüş ve seçilebilir adayların hepsi"
+                    />
+                  </th>
                   <th className="text-left px-3 py-1.5 font-medium">Sunucu</th>
                   <th className="text-left px-3 py-1.5 font-medium">Ortam</th>
                   <th className="text-left px-3 py-1.5 font-medium">Yol</th>
@@ -729,8 +1084,9 @@ export default function EarTemizlikTab() {
                 </tr>
               </thead>
               <tbody>
-                {adaylar.map((a) => {
+                {suzulmus.map((a) => {
                   const k = sonKayit.get(adayAnahtari(a))?.k;
+                  const secNeden = secilemez(a);
                   return (
                     <tr
                       key={adayAnahtari(a)}
@@ -738,6 +1094,16 @@ export default function EarTemizlikTab() {
                       style={{ borderColor: 'var(--border-subtle)' }}
                       data-testid="et-aday"
                     >
+                      <td className="px-3 py-1">
+                        <input
+                          type="checkbox"
+                          checked={!secNeden && secili.has(adayAnahtari(a))}
+                          disabled={!!secNeden}
+                          title={secNeden || undefined}
+                          onChange={(e) => secimYaz([a], e.target.checked)}
+                          aria-label={`Seç ${a.host} ${a.kok}/${a.ad}`}
+                        />
+                      </td>
                       <td className="px-3 py-1 font-mono font-semibold whitespace-nowrap">
                         {a.host}
                       </td>
@@ -759,14 +1125,20 @@ export default function EarTemizlikTab() {
                         className="px-3 py-1"
                         style={{ color: a.engel ? 'var(--status-danger)' : 'var(--text-muted)' }}
                       >
-                        {a.engel || '—'}
+                        {a.engel || (a.kullanimUyarisi ? '' : '—')}
+                        {!a.engel && a.kullanimUyarisi && (
+                          <span
+                            data-testid="et-kullanim-uyarisi"
+                            style={{ color: 'var(--status-warning-text)' }}
+                          >
+                            uyarı: {a.kullanimUyarisi}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-1 max-w-xs">
                         {k ? (
                           <div className="space-y-0.5">
-                            <div style={{ color: durumRengi(k.durum) }}>
-                              {DURUM_ETIKET[k.durum] || k.durum}
-                            </div>
+                            <div style={{ color: durumRengi(k.durum) }}>{durumEtiketi(k)}</div>
                             <KayitSonucu k={k} />
                             <YoklamaUyarisi h={yoklamaHatalari.get(k.id)} />
                           </div>
@@ -791,6 +1163,27 @@ export default function EarTemizlikTab() {
           <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
             Son kayıtlar
           </h2>
+          {topluGruplar.map((g) => (
+            <div
+              key={g.topluId}
+              className="text-[12px] rounded-lg border px-3 py-2 flex items-center gap-3 flex-wrap"
+              style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-secondary)' }}
+              data-testid="et-toplu-grup"
+            >
+              <span>
+                Toplu işlem <span className="font-mono">{g.topluId.slice(0, 8)}</span>:{' '}
+                {fmtNumber(g.sirada)} silme sırada
+                {g.suren ? `, ${fmtNumber(g.suren)} siliniyor` : ''}
+              </span>
+              <button
+                type="button"
+                className="btn-secondary text-[11px] px-2 py-0.5"
+                onClick={() => setTopluIptal({ topluId: g.topluId, sirada: g.sirada })}
+              >
+                Sıradakileri iptal et
+              </button>
+            </div>
+          ))}
           <div
             className="overflow-x-auto rounded-lg border"
             style={{ borderColor: 'var(--border-subtle)' }}
@@ -825,7 +1218,8 @@ export default function EarTemizlikTab() {
                       {k.kok}/{k.ad}
                     </td>
                     <td className="px-3 py-1" style={{ color: durumRengi(k.durum) }}>
-                      {DURUM_ETIKET[k.durum] || k.durum}
+                      {durumEtiketi(k)}
+                      {siradaMi(k) && <SiradaRozeti />}
                     </td>
                     <td className="px-3 py-1" style={{ color: 'var(--text-secondary)' }}>
                       {k.olusturan}

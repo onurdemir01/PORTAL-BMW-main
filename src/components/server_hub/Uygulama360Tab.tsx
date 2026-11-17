@@ -88,7 +88,8 @@ function kolonlarOf(ayrintili: boolean, ocpOkunamadi: boolean): EarKolon<Sh360Oz
     {
       anahtar: 'ortamlar',
       baslik: 'Ortamlar',
-      aciklama: 'Ortam başına çalışan / toplam kopya. Ölçülemeyen kopya varsa rozet gri.',
+      aciklama:
+        'Ortam başına çalışan / toplam kopya. Ölçülemeyen kopya varsa rozet gri. Retirement ile kapatılmış kopya ayrı sayılır ("· N retire"), kapalı sayılmaz.',
       suzgec: 'secim',
       deger: (u) => u.ortamlar.map((o) => o.ortam),
       hucre: (u) => (

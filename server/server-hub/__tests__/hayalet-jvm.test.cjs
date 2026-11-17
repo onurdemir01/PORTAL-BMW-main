@@ -275,7 +275,7 @@ test('HJ9 capraz: yalniz envanterdeki satir ortam kalintisi ve Retirement celisk
   const k = [HH('GBPAYT01', 'TEST', [tj('PAY-T')]), HH('GBPAYP01', 'PROD', [tj('PAY', { running: false })])];
   assert.ok(caprazAnaliz(k, {}).jvm('GBPAYT01', k[0].jvms[0]).kalinti, 'kontrol: kalinti kurulmadi');
   // celiski: Retirement hedefi stopped, JVM yalniz envanterde "calisiyor" -> celiski YOK
-  const ret = { retirement: { hedefler: [{ host: 'GBRETT01', uygulama: 'OLD', gen: null, durum: 'stopped', kayit: 5, hedef: 9, yol: '' }] } };
+  const ret = { retirement: { hedefler: [{ host: 'GBRETT01', uygulama: 'OLD', gen: null, durum: 'stopped', kayit: 5, hedef: 9, yol: '', durdurulduMs: Date.parse('2026-11-10T08:00:00Z') }] } };
   const rh = [HH('GBRETT01', 'TEST', [hay('OLD')])];
   const cx = caprazAnaliz(rh, { capraz: ret }).jvm('GBRETT01', rh[0].jvms[0]);
   assert.ok(!cx || cx.celiski.length === 0, 'yalniz envanterdeki satirda Retirement celiskisi');
@@ -320,7 +320,7 @@ test('HJ10 GBJIST02 + prod kopyasi: -T1/-T2 kalinti / R10 olmaz, 360 tek uygulam
   assert.equal(ue.ayrinti('GBFACELIFTSUBE').etiketler.length, 1, 'etiket uygulama satirina baglanmadi');
   // Retirement: kayit envanter adiyla (GBFACELIFTSUBE-T) STOP; T1 hala calisiyor -> celiski T1/T2'de
   const { caprazAnaliz } = require('../capraz.cjs');
-  const ret = { retirement: { hedefler: [{ host: 'GBJIST02', uygulama: 'GBFACELIFTSUBE-T', gen: 7, durum: 'stopped', kayit: 11, hedef: 3, yol: '' }] } };
+  const ret = { retirement: { hedefler: [{ host: 'GBJIST02', uygulama: 'GBFACELIFTSUBE-T', gen: 7, durum: 'stopped', kayit: 11, hedef: 3, yol: '', durdurulduMs: Date.parse('2026-11-10T08:00:00Z') }] } };
   const cx = caprazAnaliz(r.hosts, { capraz: ret });
   for (const j of t.jvms) {
     const c = cx.jvm('GBJIST02', j);

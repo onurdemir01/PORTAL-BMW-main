@@ -6,6 +6,8 @@
 //
 // SALT OKUNUR: bu modul OCO acmaz, kapatmaz, guncellemez — yalnizca listeler. (Zamanlanmis
 // tetikleme ve OCO penceresi denetimi ayri yerlerde: oco/poller.cjs, oco/window.cjs.)
+// ISTISNA (2026-11-17): /manuel uclari yalniz Portal DB'deki elle eklenen olaylara yazar
+// (oco/manuel.cjs); kurumsal OCO servisine yine HIC yazilmaz.
 //
 // ONBELLEK (2026-11-13): arama ucu her cagrida tum sayfalari gezer (3-4 sn). Onbellek
 // takvim-onbellek.cjs'te: 5 dk taze, 60 dk'ya kadar bayat deger ANINDA doner ve arka planda
@@ -85,8 +87,108 @@ function initOco(app) {
     }
   });
 
+  initManuelUclari(router);
+
   app.use('/api/oco', router);
   console.log('[OCO] module mounted at /api/oco');
 }
 
-module.exports = { initOco, _onbellek };
+// ── Elle eklenen olaylar (2026-11-17, server/oco/manuel.cjs) ─────────────────────────
+// Servis listesinden AYRI uc: /calendar onbellegine girmez (yazinca hemen gorunsun) ve OCO
+// servisi yapilandirilmamis olsa da calisir. Gorunurluk router'in OcoTakvimi kuralindan gelir.
+// Bu fonksiyon initOco ALTINDA: route-auth-order bekcisi (RO1) metin sirasina bakar; uclar
+// kimlik kapisindan (router.use(requireAuth)) sonra kurulur ve dosyada da sonra yazilir.
+// 403/404 nginx'te govdesi yutuldugu icin telden httpStatus ile gider (bkz. client.cjs).
+function initManuelUclari(router, { db: dbVerilen, kullanici: kullaniciVerilen, denetim } = {}) {
+  const mo = require('./manuel.cjs');
+  const db = () => dbVerilen || require('../db/index.cjs');
+  const kim = (req) =>
+    (kullaniciVerilen || require('../auth/index.cjs').getRequestUser)(req) || null;
+  const iz = (req, action, detail) => {
+    try {
+      (denetim || require('../audit/index.cjs').auditPortal)(req, action, {
+        result: 'ok',
+        detail: JSON.stringify(detail),
+      });
+    } catch {
+      /* denetim kaydi dusse de islem sonucu degismez */
+    }
+  };
+  const hata = (res, status, message, ek = {}) =>
+    res.status(httpStatus({ status })).json({ ok: false, message, ...ek });
+  const disaVer = (o, u) => ({ ...o, duzenleyebilir: mo.yetkili(o, u) });
+
+  router.get('/manuel', async (req, res) => {
+    try {
+      const u = kim(req);
+      const { olaylar, kirpildi } = await mo.listele(db());
+      res.json({ ok: true, olaylar: olaylar.map((o) => disaVer(o, u)), kirpildi });
+    } catch (err) {
+      hata(res, 503, `Elle eklenen olaylar okunamadı: ${err.message}`);
+    }
+  });
+
+  router.post('/manuel', async (req, res) => {
+    const u = kim(req);
+    const v = mo.dogrula(req.body || {});
+    if (v.hata) return hata(res, 400, v.hata);
+    try {
+      const o = await mo.ekle(db(), v, u?.username || null);
+      iz(req, 'oco_manuel_ekle', { id: o?.id, ocoNo: v.ocoNo, baslik: v.baslik });
+      res.json({ ok: true, olay: o ? disaVer(o, u) : null });
+    } catch (err) {
+      hata(res, 503, `Olay kaydedilemedi: ${err.message}`);
+    }
+  });
+
+  // Ortak on kontrol: id gecerli, kayit var, kullanici yetkili. Yanit verildiyse null doner.
+  async function yetkiliKayit(req, res) {
+    const id = mo.idCoz(req.params.id);
+    if (!id) {
+      hata(res, 400, 'Geçersiz olay kimliği.');
+      return null;
+    }
+    const mevcut = await mo.getir(db(), id);
+    if (!mevcut) {
+      hata(res, 404, 'Olay bulunamadı (silinmiş olabilir).', { yok: true });
+      return null;
+    }
+    const u = kim(req);
+    if (!mo.yetkili(mevcut, u)) {
+      hata(res, 403, 'Bu olayı yalnız ekleyen kişi ya da yönetici değiştirebilir.', {
+        yetkisiz: true,
+      });
+      return null;
+    }
+    return { id, mevcut, u };
+  }
+
+  router.put('/manuel/:id', async (req, res) => {
+    const v = mo.dogrula(req.body || {});
+    if (v.hata) return hata(res, 400, v.hata);
+    try {
+      const k = await yetkiliKayit(req, res);
+      if (!k) return;
+      const o = await mo.guncelle(db(), k.id, v, k.u?.username || null);
+      if (!o) return hata(res, 404, 'Olay bulunamadı (silinmiş olabilir).', { yok: true });
+      iz(req, 'oco_manuel_guncelle', { id: k.id, ocoNo: v.ocoNo, baslik: v.baslik });
+      res.json({ ok: true, olay: disaVer(o, k.u) });
+    } catch (err) {
+      hata(res, 503, `Olay güncellenemedi: ${err.message}`);
+    }
+  });
+
+  router.delete('/manuel/:id', async (req, res) => {
+    try {
+      const k = await yetkiliKayit(req, res);
+      if (!k) return;
+      await mo.sil(db(), k.id);
+      iz(req, 'oco_manuel_sil', { id: k.id, ocoNo: k.mevcut.ocoNo, baslik: k.mevcut.baslik });
+      res.json({ ok: true, id: k.id });
+    } catch (err) {
+      hata(res, 503, `Olay silinemedi: ${err.message}`);
+    }
+  });
+}
+
+module.exports = { initOco, initManuelUclari, _onbellek };

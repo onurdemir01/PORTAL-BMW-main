@@ -6,16 +6,16 @@
 // sayısı, sürüm(ler) her biri ayrı rozet ve kaç sunucuda olduğu, Java, JVM çalışan / toplam, toplam
 // kapasite. Satır seçimi sunucu tablosunu o ortama süzer.
 import React from 'react';
-import type { Kapasite } from '@/api/appHubApi';
+import type { JbossRetirement, Kapasite } from '@/api/appHubApi';
 import { fmtNumber } from '@/utils/datetime';
-import { TD, TH } from './ortak';
+import { TD, TH, retireDurumu } from './ortak';
 
 export interface OrtamSatiri {
   host: string;
   ortam: string | null;
   surum: string | null;
   java: string | null;
-  jvmler: { calisiyor: boolean | null }[];
+  jvmler: { calisiyor: boolean | null; retirement?: JbossRetirement | null }[];
   kapasite: Kapasite | null;
 }
 
@@ -47,6 +47,12 @@ interface Grup {
   javalar: Set<string>;
   calisan: number;
   kapali: number;
+  /** Kapalı ve Retirement ile STOP edilmiş / silinmiş (kapalı sayısına girmez, kırmızı değil). */
+  retire: number;
+  /** Retirement hedefi kapatılmış ama Server Hub STOP sonrası taramada çelişki kanıtladı (kırmızı; çalışan / kapalı sayımına da girer). */
+  celiski: number;
+  /** Retirement hedefi kapatılmış, JVM çalışıyor görünüyor, STOP sonrası doğrulanmadı (sarı; çalışan sayımına da girer). */
+  dogrulama: number;
   olculemedi: number;
   cpu: number;
   bellekGb: number;
@@ -58,7 +64,7 @@ export function ortamGruplari(satirlar: OrtamSatiri[]): Grup[] {
   for (const s of satirlar) {
     const o = s.ortam || BILINMIYOR;
     if (!m.has(o))
-      m.set(o, { ortam: o, hostlar: new Set(), surumler: new Map(), javalar: new Set(), calisan: 0, kapali: 0, olculemedi: 0, cpu: 0, bellekGb: 0 });
+      m.set(o, { ortam: o, hostlar: new Set(), surumler: new Map(), javalar: new Set(), calisan: 0, kapali: 0, retire: 0, celiski: 0, dogrulama: 0, olculemedi: 0, cpu: 0, bellekGb: 0 });
     const g = m.get(o)!;
     g.hostlar.add(s.host);
     const surum = s.surum || '—';
@@ -66,7 +72,12 @@ export function ortamGruplari(satirlar: OrtamSatiri[]): Grup[] {
     g.surumler.get(surum)!.add(s.host);
     if (s.java) g.javalar.add(s.java);
     for (const j of s.jvmler) {
+      // Sunucu satiri ve JVM hapiyla AYNI kural (retireDurumu).
+      const rd = retireDurumu(j);
+      if (rd === 'celiski') g.celiski += 1;
+      if (rd === 'dogrulama') g.dogrulama += 1;
       if (j.calisiyor === true) g.calisan += 1;
+      else if (rd === 'retire') g.retire += 1;
       else if (j.calisiyor === false) g.kapali += 1;
       else g.olculemedi += 1;
     }
@@ -131,7 +142,27 @@ export function OrtamOzeti({
           <tbody>
             {gruplar.map((g) => {
               const sec = secili === g.ortam;
-              const toplamJvm = g.calisan + g.kapali + g.olculemedi;
+              const toplamJvm = g.calisan + g.kapali + g.retire + g.olculemedi;
+              // RETIREMENT (2026-11-16): retire edilmis kapali JVM kirmizi "kapali"ya girmez; ayri notr "N retire".
+              const ekler: { k: string; n: number; metin: string; renk: string; title?: string }[] = [
+                { k: 'kapali', n: g.kapali, metin: 'kapalı', renk: 'var(--status-danger)' },
+                {
+                  k: 'celiski',
+                  n: g.celiski,
+                  metin: 'Retirement çelişkisi',
+                  renk: 'var(--status-danger)',
+                  title: 'Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor',
+                },
+                {
+                  k: 'dogrulama',
+                  n: g.dogrulama,
+                  metin: 'doğrulama bekliyor',
+                  renk: 'var(--status-warning-text)',
+                  title: "Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil",
+                },
+                { k: 'retire', n: g.retire, metin: 'retire', renk: 'var(--text-muted)', title: 'Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)' },
+                { k: 'olculemedi', n: g.olculemedi, metin: 'ölçülemedi', renk: 'var(--text-muted)' },
+              ].filter((e) => e.n > 0);
               return (
                 <tr
                   key={g.ortam || 'bilinmiyor'}
@@ -197,11 +228,16 @@ export function OrtamOzeti({
                         <div style={{ color: 'var(--text-primary)' }}>
                           {g.calisan} / {toplamJvm} çalışıyor
                         </div>
-                        {(g.kapali > 0 || g.olculemedi > 0) && (
+                        {ekler.length > 0 && (
                           <div>
-                            {g.kapali > 0 && <span style={{ color: 'var(--status-danger)' }}>{g.kapali} kapalı</span>}
-                            {g.kapali > 0 && g.olculemedi > 0 && ' · '}
-                            {g.olculemedi > 0 && <span style={{ color: 'var(--text-muted)' }}>{g.olculemedi} ölçülemedi</span>}
+                            {ekler.map((e, i) => (
+                              <React.Fragment key={e.k}>
+                                {i > 0 && ' · '}
+                                <span style={{ color: e.renk }} title={e.title} data-testid={`ortam-${e.k}`}>
+                                  {e.n} {e.metin}
+                                </span>
+                              </React.Fragment>
+                            ))}
                           </div>
                         )}
                       </div>

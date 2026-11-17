@@ -36,6 +36,12 @@
 # EAR_SINIR_HOST, EAR_SURE, EAR_ARSIV_MB, EAR_CIKTI (paket | insan), EAR_JBOSS (JBoss kurulum
 # kokleri, ':' ayrili; varsayilan /usr/jboss/AppServer:/usr/jboss8/AppServer), EAR_WAS (WebSphere
 # kokleri), EAR_BAGLANTI (1: baglanti goruntusu), EAR_BAGLANTI_ORNEK, EAR_BAGLANTI_ARA (sn); testte EAR_PROC.
+# KULLANIM (surum 4, 2026-11-17): XML eslemesi JVM_YOK cikan EAR'lar icin uygulama.kullanim = {durum VAR | YOK |
+# KISMI | OLCULEMEDI, surecler [{pid, comm, kullanici, nasil}], son_yazma epoch|null, okunamayan, hidepid, not}.
+# Tek /proc taramasi (cwd / root / exe / fd / maps / cmdline yollari; cmdline metni SAKLANMAZ) + agacta en yeni
+# dosya mtime'i; EAR'in dogrudan altindaki DIS dizin baglari (or. logs -> /baska/yer) tek seviye ve sinirli
+# izlenir (7 gun esigi Portal'da). Sinirlar: EAR_KULLANIM_SURE, EAR_SUREC_SINIRI, EAR_FD_SINIRI, EAR_MAPS_BAYT,
+# EAR_SON_YAZMA_SINIRI; kullanici adi yalniz EAR_PASSWD dosyasindan (varsayilan /etc/passwd; NSS yok).
 import base64
 import hashlib
 import io
@@ -52,7 +58,7 @@ import zlib
 from collections import deque
 from xml.etree import ElementTree
 
-SURUM = 3
+SURUM = 4
 BASLA = '@@EAR_ENVANTER_BASLA@@'
 BITTI = '@@EAR_ENVANTER_BITTI@@'
 
@@ -85,6 +91,19 @@ BAGLANTI = os.environ.get('EAR_BAGLANTI', '') == '1'
 BAGLANTI_ORNEK = ortam_sayi('EAR_BAGLANTI_ORNEK', 3, 1, 10)
 BAGLANTI_ARA = ortam_sayi('EAR_BAGLANTI_ARA', 10, 0, 60)
 PROC = os.environ.get('EAR_PROC', '/proc')
+# Kullanim kaniti (surum 4): toplam sure, surec sayisi, surec basina fd ve EAR basina mtime girisi sinirlari.
+KULLANIM_SURE = ortam_sayi('EAR_KULLANIM_SURE', 60, 1, 600)
+SUREC_SINIRI = ortam_sayi('EAR_SUREC_SINIRI', 20000, 1, 500000)
+FD_SINIRI = ortam_sayi('EAR_FD_SINIRI', 20000, 1, 1000000)
+SON_YAZMA_SINIRI = ortam_sayi('EAR_SON_YAZMA_SINIRI', 200000, 1, 5000000)
+PASSWD = os.environ.get('EAR_PASSWD', '/etc/passwd')
+KULLANIM_SUREC_SINIRI = 10
+MAPS_BAYT = ortam_sayi('EAR_MAPS_BAYT', 4 * 1024 * 1024, 1, 64 * 1024 * 1024)
+DIS_BAG_SINIRI = 20
+CMDLINE_BAYT = 128 * 1024
+SILINDI_EKI = ' (deleted)'
+HIDEPID_RE = re.compile(r'(?:^|,)hidepid=([^,]+)')
+CMDLINE_AYRAC_RE = re.compile(r'[=:,]')
 SOKET_ADLARI = ('ajp', 'http', 'https')
 IFADE_RE = re.compile(r'^(?:\$\{[^:}]+:(-?\d+)\}|(-?\d+))$')
 WAS_UYGULAMA_RE = re.compile(r'applications/([^/]+?)(?:\.ear)?/')
@@ -825,8 +844,15 @@ def yapilandirma_tara():
 
 
 def _deployment_eslesme_turu(d, yollar, ayni_mi, ad_k):
-    if d['yol'] and not d['goreli'] and os.path.normpath(d['yol']) in yollar:
-        return 'YOL'
+    if d['yol'] and not d['goreli']:
+        p = os.path.normpath(d['yol'])
+        if p in yollar:
+            return 'YOL'
+        # EAR dizininin ICINDEKI modul ayri deployment olabilir (DACRAAP11, 2026-11-16:
+        # fs-exploded path=/vhosting8/X.ear/X.war, ad "DA-X-prd.war"). Sinir '/' ile:
+        # /vhosting8/X.ear1/... X.ear sayilmaz.
+        if any(p.startswith(y.rstrip('/') + '/') for y in yollar):
+            return 'ALT_YOL'
     if ayni_mi and ad_k in (d['ad'].lower(), d['calisma_adi'].lower()):
         return 'AD'
     return None
@@ -1137,6 +1163,318 @@ def baglanti_tara(yapilandirmalar, was):
     return out
 
 
+# ---- KULLANIM KANITI (surum 4, 2026-11-17) ----
+# DACRPAP01: /vhosting8/DASCRYPTOWEBSITENODE.ear domain.xml'de yok (JVM_YOK, TANIM_YOK) ama dizinde canli bir
+# Node.js sureci calisiyor (cwd = .../X.war) ve logs/ bugun yaziliyor. JVM_YOK cikan her EAR icin TEK /proc
+# taramasi (tum EAR'lar paylasir) ve agacta en yeni dosya mtime'i. Kayda yalniz pid, comm, kullanici ve
+# 'nasil' girer: cmdline METNI hicbir yere yazilmaz (parola tasiyabilir), yalniz yerelde yol karsilastirilir.
+
+def hedef_bul(yol, hedefler):
+    """Mutlak yol hedef EAR'in kendisi ya da altinda mi (sinir '/': X.ear1 X.ear degil); indeks ya da None."""
+    if not yol or not yol.startswith('/'):
+        return None
+    if yol.endswith(SILINDI_EKI):
+        yol = yol[:-len(SILINDI_EKI)]
+    p = os.path.normpath(yol)
+    while p and p != '/':
+        i = hedefler.get(p)
+        if i is not None:
+            return i
+        p = p.rsplit('/', 1)[0]
+    return None
+
+
+def bag_oku(yol):
+    """(hedef, 'OK' | 'IZIN' | 'YOK'); surec bittiyse / bag yoksa YOK (okunamadi sayilmaz)."""
+    try:
+        return os.readlink(yol), 'OK'
+    except PermissionError:
+        return None, 'IZIN'
+    except OSError:
+        return None, 'YOK'
+
+
+def kucuk_oku(yol, sinir):
+    """Salt okunur, sinirli okuma; okunamazsa None."""
+    try:
+        fd = os.open(yol, os.O_RDONLY)
+        with os.fdopen(fd, 'rb') as akis:
+            return akis.read(sinir)
+    except OSError:
+        return None
+
+
+def cmdline_yollari(veri):
+    """cmdline argumanlarindaki mutlak yollar (arguman ve '=' / ':' / ',' parcalari). Metin SAKLANMAZ."""
+    out = []
+    for arg in (veri or b'').split(b'\0'):
+        s = arg.decode('utf-8', 'surrogateescape')
+        out.extend(p for p in [s] + CMDLINE_AYRAC_RE.split(s) if p.startswith('/'))
+    return out
+
+
+def maps_yollari(pid_dizin, sayac):
+    """/proc/<pid>/maps'te eslenmis dosya yollari (jar / so; fd'si kapali olabilir). (yollar, izin reddi var mi)."""
+    try:
+        fd = os.open(pid_dizin + '/maps', os.O_RDONLY)
+        with os.fdopen(fd, 'rb') as akis:
+            veri = akis.read(MAPS_BAYT + 1)
+    except PermissionError:
+        return [], True
+    except OSError:
+        return [], False
+    if len(veri) > MAPS_BAYT:
+        sayac['maps_kesildi'] += 1
+        veri = veri[:MAPS_BAYT]
+    out = set()
+    for s in veri.split(b'\n'):
+        p = s.split(None, 5)
+        if len(p) == 6 and p[5].startswith(b'/'):
+            out.add(p[5].decode('utf-8', 'surrogateescape'))
+    return sorted(out), False
+
+
+def hidepid_bul():
+    """proc baglama secenegi hidepid (0 / off disi) ise degeri, yoksa ''."""
+    veri = kucuk_oku(PROC + '/mounts', 1024 * 1024) or b''
+    for s in veri.decode('utf-8', 'replace').split('\n'):
+        p = s.split()
+        if len(p) >= 4 and p[2] == 'proc':
+            m = HIDEPID_RE.search(p[3])
+            if m and m.group(1) not in ('0', 'off'):
+                return m.group(1)[:16]
+    return ''
+
+
+def kullanici_adlari():
+    """uid -> ad; yalniz yerel passwd DOSYASI (NSS sorgusu yok)."""
+    out = {}
+    veri = kucuk_oku(PASSWD, 4 * 1024 * 1024) or b''
+    for s in veri.decode('utf-8', 'replace').split('\n'):
+        p = s.split(':')
+        if len(p) >= 3 and p[2].isdigit():
+            out.setdefault(int(p[2]), p[0][:32])
+    return out
+
+
+def _fd_eslesmeleri(pid_dizin, ekle, sayac):
+    try:
+        with os.scandir(pid_dizin + '/fd') as it:
+            for n, e in enumerate(it):
+                if n >= FD_SINIRI:
+                    sayac['fd_kesildi'] += 1
+                    break
+                ekle(bag_oku(e.path)[0], 'fd')
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def surec_eslesmeleri(pid_dizin, hedefler, sayac):
+    """Surecin gosterdigi yollar -> ({hedef indeksi: nasil}, okunamadi mi). Oncelik cwd, root, exe, fd, maps, cmdline.
+    Okunamadi: cwd / fd / maps izin reddi ve cekirdek is parcacigi degil (cmdline bos degil ya da okunamiyor);
+    boyle bir surec dizini yalniz komut satirindan denetlenmistir."""
+    bulunan = {}
+
+    def ekle(yol, nasil):
+        i = hedef_bul(yol, hedefler)
+        if i is not None and i not in bulunan:
+            bulunan[i] = nasil
+
+    izin = False
+    for ad in ('cwd', 'root', 'exe'):
+        hedef, durum = bag_oku(pid_dizin + '/' + ad)
+        izin = izin or durum == 'IZIN'
+        ekle(hedef, ad)
+    izin = _fd_eslesmeleri(pid_dizin, ekle, sayac) or izin
+    maps, maps_izin = maps_yollari(pid_dizin, sayac)
+    for yol in maps:
+        ekle(yol, 'maps')
+    cmd = kucuk_oku(pid_dizin + '/cmdline', CMDLINE_BAYT)
+    for yol in cmdline_yollari(cmd):
+        ekle(yol, 'cmdline')
+    cekirdek = cmd is not None and not cmd.strip(b'\0')
+    return bulunan, (izin or maps_izin) and not cekirdek
+
+
+def surec_kimligi(pid_dizin, adlar):
+    comm = (kucuk_oku(pid_dizin + '/comm', 256) or b'').decode('utf-8', 'replace').strip()[:32]
+    try:
+        uid = os.lstat(pid_dizin).st_uid
+        kullanici = adlar.get(uid) or str(uid)
+    except OSError:
+        kullanici = ''
+    return comm, kullanici
+
+
+def _pid_listesi():
+    try:
+        with os.scandir(PROC) as it:
+            return sorted((e.name for e in it if e.name.isdigit()), key=int), ''
+    except OSError as e:
+        return None, 'surec listesi okunamadi: ' + e.__class__.__name__
+
+
+def _surec_kaydet(sonuc, pid, pid_dizin, bulunan):
+    if 'adlar' not in sonuc:
+        sonuc['adlar'] = kullanici_adlari()
+    comm, kullanici = surec_kimligi(pid_dizin, sonuc['adlar'])
+    for i, nasil in bulunan.items():
+        sonuc['eslesme'].setdefault(i, []).append({'pid': int(pid), 'comm': comm, 'kullanici': kullanici, 'nasil': nasil})
+
+
+def surec_tara(hedefler, bitis):
+    """TEK /proc taramasi: {'durum': TAM | KISMI | OLCULEMEDI, 'eslesme': {indeks: [surec]}, 'not': [...]}."""
+    sonuc = {'durum': 'TAM', 'eslesme': {}, 'okunamayan': 0, 'fd_kesildi': 0, 'maps_kesildi': 0, 'hidepid': '',
+             'not': []}
+    pidler, hata = _pid_listesi()
+    if not pidler:
+        sonuc['durum'] = 'OLCULEMEDI'
+        sonuc['not'].append(hata or 'surec listesi bos')
+        return sonuc
+    hp = hidepid_bul()
+    sonuc['hidepid'] = hp
+    if hp:
+        sonuc['not'].append('hidepid=' + hp + ': diger kullanicilarin surecleri gorunmeyebilir')
+    kendi = bag_oku(PROC + '/self')[0]
+    for n, pid in enumerate(pidler):
+        if n >= SUREC_SINIRI or time.monotonic() > bitis:
+            sonuc['durum'] = 'KISMI'
+            sonuc['not'].append('surec taramasi kesildi ({}/{}; {})'.format(
+                n, len(pidler), 'sayi siniri' if n >= SUREC_SINIRI else 'sure siniri'))
+            break
+        if pid == kendi:
+            continue
+        pid_dizin = PROC + '/' + pid
+        bulunan, izin = surec_eslesmeleri(pid_dizin, hedefler, sonuc)
+        sonuc['okunamayan'] += 1 if izin else 0
+        if bulunan:
+            _surec_kaydet(sonuc, pid, pid_dizin, bulunan)
+    if sonuc['fd_kesildi']:
+        sonuc['durum'] = 'KISMI'
+        sonuc['not'].append('fd siniri {}: {} surecte kesildi'.format(FD_SINIRI, sonuc['fd_kesildi']))
+    if sonuc['maps_kesildi']:
+        sonuc['durum'] = 'KISMI'
+        sonuc['not'].append('maps siniri {} bayt: {} surecte kesildi'.format(MAPS_BAYT, sonuc['maps_kesildi']))
+    if sonuc['okunamayan']:
+        sonuc['not'].append('{} surec okunamadi (izin; yalniz komut satiri denetlendi)'.format(sonuc['okunamayan']))
+    return sonuc
+
+
+def _dizin_son_yazma(dizin, derinlik, yigin, d):
+    """Tek dizin: dosya mtime'lari d['en_yeni']'ye, alt dizinler yigina; sinir / hata d['kesik']'e."""
+    try:
+        with os.scandir(dizin) as it:
+            for e in it:
+                d['sayi'] += 1
+                if d['sayi'] > SON_YAZMA_SINIRI:
+                    d['kesik'] = 'giris siniri'
+                    return
+                if e.is_dir(follow_symlinks=False):
+                    if derinlik < DERINLIK_SINIRI:
+                        yigin.append((e.path, derinlik + 1))
+                    else:
+                        d['kesik'] = 'derinlik siniri'
+                elif e.is_file(follow_symlinks=False):
+                    m = int(e.stat(follow_symlinks=False).st_mtime)
+                    d['en_yeni'] = m if d['en_yeni'] is None else max(d['en_yeni'], m)
+    except OSError as h:
+        d['kesik'] = d['kesik'] or ('okunamadi: ' + h.__class__.__name__)
+
+
+def agac_son_yazma(kok, bitis):
+    """Agacta en yeni duzenli dosya mtime'i (lstat; bag izlenmez). (epoch|None, kesik nedeni|'')."""
+    d = {'en_yeni': None, 'sayi': 0, 'kesik': ''}
+    yigin = [(kok, 0)]
+    while yigin and d['kesik'] != 'giris siniri':
+        if time.monotonic() > bitis:
+            d['kesik'] = 'sure siniri'
+            break
+        dizin, derinlik = yigin.pop()
+        _dizin_son_yazma(dizin, derinlik, yigin, d)
+    return d['en_yeni'], d['kesik']
+
+
+def dis_baglar(gercek):
+    """EAR'in dogrudan altindaki, EAR DISINDA bir dizini gosteren baglar: [(ad, hedef)] (en cok DIS_BAG_SINIRI)."""
+    out = []
+    try:
+        with os.scandir(gercek) as it:
+            for e in it:
+                if not e.is_symlink():
+                    continue
+                hedef = os.path.realpath(e.path)
+                if hedef == gercek or hedef.startswith(gercek + '/') or not os.path.isdir(hedef):
+                    continue
+                out.append((e.name, hedef))
+    except OSError:
+        return out
+    return sorted(out)[:DIS_BAG_SINIRI]
+
+
+def _en_yeni(a, b):
+    return b if a is None else (a if b is None else max(a, b))
+
+
+def son_yazma_olc(u, bitis):
+    """(epoch|None, kesik nedeni|'', notlar). TAM kipte tam taranmis agacin satirlari kullanilir (ayni gezi).
+    EAR'in dogrudan altindaki dis dizin baglari (logs -> /baska/yer) ayrica, tek seviye ve sinirli gezilir."""
+    try:
+        gercek = os.path.realpath(os.path.join(u['kok'], u['ad']))
+        st = os.lstat(gercek)
+    except OSError as e:
+        return None, 'okunamadi: ' + e.__class__.__name__, []
+    if not stat.S_ISDIR(st.st_mode):
+        return int(st.st_mtime), '', []
+    if KIP == 'TAM' and u['durum'] == 'TAM':
+        mt = [s[6] for s in u['satirlar'] if s[1] == 'F']
+        son, kesik = (max(mt) if mt else None), ''
+    else:
+        son, kesik = agac_son_yazma(gercek, bitis)
+    notlar = []
+    for ad, hedef in dis_baglar(gercek):
+        m, k = agac_son_yazma(hedef, bitis)
+        son = _en_yeni(son, m)
+        kesik = kesik or (k and 'dis bag ' + ad[:40] + ': ' + k)
+        notlar.append('dis bag izlendi: ' + ad[:40])
+    return son, kesik, notlar
+
+
+def kullanim_durumu(surecler, proc_durum, kesik):
+    if surecler:
+        return 'VAR'
+    if proc_durum == 'OLCULEMEDI':
+        return 'OLCULEMEDI'
+    if proc_durum == 'KISMI' or kesik:
+        return 'KISMI'
+    return 'YOK'
+
+
+def kullanim_olc(uygulamalar):
+    """JVM_YOK EAR'lari icin 'kullanim': {durum, surecler (en cok 10), son_yazma, okunamayan, hidepid, not}."""
+    bitis = time.monotonic() + KULLANIM_SURE
+    hedefler = {}
+    for i, u in enumerate(uygulamalar):
+        yol = os.path.normpath(os.path.join(u['kok'], u['ad']))
+        hedefler.setdefault(yol, i)
+        hedefler.setdefault(os.path.realpath(yol), i)
+    s = surec_tara(hedefler, bitis)
+    for i, u in enumerate(uygulamalar):
+        surecler = s['eslesme'].get(i, [])
+        son, kesik, bag_notlari = son_yazma_olc(u, bitis)
+        notlar = list(s['not']) + bag_notlari
+        if kesik:
+            notlar.append('son yazma kismi: ' + kesik)
+        if len(surecler) > KULLANIM_SUREC_SINIRI:
+            notlar.append('{} surec daha'.format(len(surecler) - KULLANIM_SUREC_SINIRI))
+        u['kullanim'] = {'durum': kullanim_durumu(surecler, s['durum'], kesik),
+                         'surecler': surecler[:KULLANIM_SUREC_SINIRI], 'son_yazma': son,
+                         'okunamayan': s['okunamayan'], 'hidepid': s['hidepid'],
+                         'not': '; '.join(notlar)[:300]}
+
+
 def kok_girdisi(kok, e):
     """Kokteki .ear disi girdi: ad, tip, boyut, mtime (yalniz lstat), bag ise hedef."""
     g = {'kok': kok, 'ad': e.name, 'tip': '?', 'boyut': None, 'mtime': None, 'hedef': ''}
@@ -1266,6 +1604,9 @@ def tara():
         yuk['uygulamalar'].append(_aday_uygulamayi_calistir(kok, ad, tip))
     for u in yuk['uygulamalar']:
         u['xml_eslesme'] = xml_eslestir(u, yuk['yapilandirma'])
+    jvmsiz = [u for u in yuk['uygulamalar'] if u['xml_eslesme'].get('durum') == 'JVM_YOK']
+    if jvmsiz:
+        kullanim_olc(jvmsiz)
     yuk['durum'] = _genel_durum_belirle(yuk)
     yuk['sure_sn'] = round(time.monotonic() - BASLANGIC, 2)
     yuk['giris'] = HOST['giris']
@@ -1284,6 +1625,11 @@ def _insan_uygulama_satirlari(u, s):
     x = u.get('xml_eslesme') or {}
     s.append('    xml={} {} jvm={}'.format(x.get('durum', '-'), x.get('neden', ''),
                                          ','.join(j['ad'] for j in x.get('jvmler', [])) or '-'))
+    k = u.get('kullanim')
+    if k:
+        s.append('    kullanim={} surec={} son_yazma={}'.format(
+            k['durum'], ','.join('{}:{}[{}]'.format(p['comm'], p['pid'], p['nasil']) for p in k['surecler']) or '-',
+            k['son_yazma'] if k['son_yazma'] is not None else '-'))
     for m in u['uyarilar'][:3]:
         s.append('    ! ' + m)
 

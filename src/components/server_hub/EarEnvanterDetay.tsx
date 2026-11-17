@@ -19,6 +19,7 @@ import {
   type EarAgac,
   type EarKutuphane,
   type EarWar,
+  type EarKullanim,
 } from '@/api/earEnvanterApi';
 import {
   uygulamaDurumu,
@@ -28,6 +29,9 @@ import {
   xmlEslesmeOku,
   jbossDurumu,
   xmlNedenMetni,
+  kullanimDurumu,
+  surecMetni,
+  utcMs,
 } from './earEnvanter';
 import {
   Rozet,
@@ -58,9 +62,54 @@ export function pencereAraligi(ust: number, adet: number): [number, number] {
   return [bas, Math.min(adet, Math.ceil((u + PENCERE_YUKSEKLIK) / SATIR_YUKSEKLIK) + PAY)];
 }
 
+/** JBoss'a bağlı olmayan EAR'ın dizin kullanımı: süreçler ve son yazma (tarayıcı sürüm 4). */
+export function DizinKullanimi({ k, taramaMs }: { k: EarKullanim | null | undefined; taramaMs: number }) {
+  const d = kullanimDurumu(k, taramaMs);
+  if (!k || !d) {
+    return (
+      <div className="text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="dizin-kullanimi">
+        Dizin kullanımı ölçülmedi (eski tarayıcı) — “kullanılmıyor” sayılmaz.
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11px] space-y-0.5" data-testid="dizin-kullanimi">
+      <div className="flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+        Dizin kullanımı <Rozet d={d} kucuk />
+        <span style={{ color: 'var(--text-muted)' }}>
+          son yazma: {k.son_yazma == null ? '—' : fmtDateTime(k.son_yazma * 1000)}
+        </span>
+      </div>
+      <div style={{ color: 'var(--text-muted)' }}>{d.aciklama}</div>
+      {k.surecler.length > 0 && (
+        <div className="font-mono" style={{ color: 'var(--text-secondary)' }}>
+          {k.surecler.map((p) => (
+            <div key={`${p.pid}|${p.nasil}`}>{surecMetni(p)}</div>
+          ))}
+        </div>
+      )}
+      {(k.okunamayan ?? 0) > 0 && (
+        <div style={{ color: 'var(--text-muted)' }}>
+          {fmtNumber(k.okunamayan ?? 0)} süreç izin yüzünden yalnız komut satırından denetlendi
+        </div>
+      )}
+      {k.not && <div style={{ color: 'var(--text-muted)' }}>{k.not}</div>}
+    </div>
+  );
+}
+
 /** JBoss eşlemesi: bu EAR hangi deployment / server-group / JVM'e bağlı; okunamadıysa nedeni. */
-export function JbossEslesmesi({ ham }: { ham: string | null | undefined }) {
+export function JbossEslesmesi({
+  ham,
+  taranma,
+}: {
+  ham: string | null | undefined;
+  /** Uygulama Envanteri tarama anı (UTC): 7 gün eşiğinin referansı (duvar saati değil). */
+  taranma?: string | number | null;
+}) {
   const x = xmlEslesmeOku(ham);
+  const [acilis] = useState(() => Date.now());
+  const tarama = utcMs(taranma) ?? acilis;
   const d = jbossDurumu(x);
   return (
     <section className="space-y-1.5" data-testid="jboss-eslesmesi">
@@ -70,6 +119,7 @@ export function JbossEslesmesi({ ham }: { ham: string | null | undefined }) {
       <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
         {x && x.durum === 'OLCULEMEDI' ? xmlNedenMetni(x.neden) : d.aciklama}
       </div>
+      {x && x.durum === 'JVM_YOK' && <DizinKullanimi k={x.kullanim} taramaMs={tarama} />}
       {x && x.jvmler.length > 0 && (
         <table className={TABLO}>
           <thead>
@@ -380,7 +430,7 @@ export default function EarEnvanterDetay({
               ))}
             </div>
           )}
-          <JbossEslesmesi ham={u.xml_eslesme} />
+          <JbossEslesmesi ham={u.xml_eslesme} taranma={u.taranma_utc} />
           <section className="space-y-2">
             <h3 className="text-xs font-semibold">WAR'lar ({d.warlar.length})</h3>
             {d.warlar.length === 0 ? (

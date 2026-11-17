@@ -74,9 +74,9 @@ test('U1 gruplama: taban ad tek satir; dusen sunucu yok, bayat sayilir; ortamlar
   assert.equal(r.uygulamalar.length, 1, 'PAY, PAY-T, pay-q ayri satir oldu');
   const u = satir(r, 'PAY');
   assert.deepEqual(u.ortamlar, [
-    { ortam: 'PROD', toplam: 3, acik: 2, kapali: 1, olculemedi: 0 },
-    { ortam: 'QA', toplam: 1, acik: 0, kapali: 0, olculemedi: 1 },
-    { ortam: 'TEST', toplam: 2, acik: 2, kapali: 0, olculemedi: 0 },
+    { ortam: 'PROD', toplam: 3, acik: 2, kapali: 1, olculemedi: 0, retire: 0 },
+    { ortam: 'QA', toplam: 1, acik: 0, kapali: 0, olculemedi: 1, retire: 0 },
+    { ortam: 'TEST', toplam: 2, acik: 2, kapali: 0, olculemedi: 0, retire: 0 },
   ]);
   assert.deepEqual(
     [u.kopyaSayisi, u.sunucuSayisi, u.nesiller, u.calisan, u.kapali, u.olculemeyen, u.bayatKopya],

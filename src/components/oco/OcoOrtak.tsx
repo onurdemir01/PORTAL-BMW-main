@@ -4,8 +4,10 @@
 // açılan AYRINTININ aynısı görünmeli. Ayrıntı ve rozetler iki yerde kopyalansaydı biri
 // güncellenip diğeri unutulurdu ("listede PCAB var, takvimde yok"). Liste DOM'u değişmedi:
 // bu bileşenler sayfadaki eski işaretlemeyi birebir üretir.
-import React from 'react';
+import React, { createContext, useContext } from 'react';
+import { PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
+import type { ManuelOlay } from '@/components/oco/manuelOlay';
 
 export interface OcoRow {
   oco: number;
@@ -23,7 +25,16 @@ export interface OcoRow {
   openedAt: string | null;
   /** Hangi sorgudan geldi (2026-11-12): 'acan' = ekibin açtığı, 'sorumlu' = ekibe açılan. */
   iliski?: ('acan' | 'sorumlu')[];
+  /** Elle eklenen olay (2026-11-17): servis OCO'su değil, Portal DB'de; `oco` negatif iç kimlik. */
+  manuel?: ManuelOlay;
 }
+
+/** Elle olayın Düzenle/Sil eylemleri: sayfa sağlar, liste ve takvim ayrıntısı aynı düğmeleri gösterir. */
+export interface ManuelEylemler {
+  duzenle: (o: ManuelOlay) => void;
+  sil: (o: ManuelOlay) => void;
+}
+export const ManuelEylemBaglami = createContext<ManuelEylemler | null>(null);
 
 export const DURUM_TON: Record<string, string> = {
   'Sorumlu Grup Açma Onayı': 'var(--status-info)',
@@ -64,6 +75,14 @@ export function saat(iso: string | null): string {
 export function OcoRozetleri({ r, kapandi }: { r: OcoRow; kapandi: boolean }) {
   return (
     <>
+      {r.manuel && (
+        <Chip
+          tone="var(--status-info)"
+          title={`Portal'a elle eklendi${r.manuel.olusturan ? ` — ${r.manuel.olusturan}` : ''}; OCO servisinden gelmiyor`}
+        >
+          manuel
+        </Chip>
+      )}
       {r.iliski?.includes('acan') && (
         <Chip tone="var(--accent)" title="Ekibimizin açtığı OCO">açtığımız</Chip>
       )}
@@ -87,8 +106,41 @@ export function OcoRozetleri({ r, kapandi }: { r: OcoRow; kapandi: boolean }) {
 
 /** Satır açıldığında görünen ayrıntı (planlanan pencere, açılış, gerçekleşen, açıklama). */
 export function OcoDetay({ r, className }: { r: OcoRow; className: string }) {
+  const eylem = useContext(ManuelEylemBaglami);
+  const m = r.manuel;
   return (
     <div className={className}>
+      {m && (
+        <div className="flex flex-wrap items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }} data-testid="oco-manuel-bilgi">
+          <span>
+            Elle ekleyen {m.olusturan || '—'}
+            {m.olusturmaAt && <> · {fmtDateTime(m.olusturmaAt)}</>}
+            {m.guncelleyen && m.guncellemeAt && m.guncellemeAt !== m.olusturmaAt && (
+              <> · son değişiklik {m.guncelleyen}, {fmtDateTime(m.guncellemeAt)}</>
+            )}
+          </span>
+          {eylem && m.duzenleyebilir && (
+            <span className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => eylem.duzenle(m)}
+                className="inline-flex items-center gap-1 h-6 px-2 rounded-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+              >
+                <PencilSquareIcon className="h-3.5 w-3.5" /> Düzenle
+              </button>
+              <button
+                type="button"
+                onClick={() => eylem.sil(m)}
+                className="inline-flex items-center gap-1 h-6 px-2 rounded-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                style={{ borderColor: 'var(--status-danger)', background: 'var(--bg-surface)', color: 'var(--status-danger)' }}
+              >
+                <TrashIcon className="h-3.5 w-3.5" /> Sil
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
         Planlanan: {r.plannedStart ? fmtDateTime(r.plannedStart) : '—'}
         {' → '}

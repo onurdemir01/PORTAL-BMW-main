@@ -223,6 +223,9 @@ export interface NlOnKontrol {
   hedefNginx?: boolean | null;
   /** Hedefin cekirdek sayisi (yeni playbook; yoksa null). */
   hedefNproc?: number | null;
+  /** 2026-11-17, YALNIZ BILGI: hedefte Apache / IHS sureci goruluyor mu (true / false; null = hidepid, olculmedi ya da
+   *  eski playbook). Nginx kararina ve engellere girmez. */
+  hedefApache?: boolean | null;
 }
 export interface NlKosu {
   id: number; islem: NlIslem; etiket: string | null; adim: string | null;
@@ -666,6 +669,7 @@ export function onKontrolNormalle(x: unknown): NlOnKontrol | null {
     // Alan yoksa anahtar da YOK (eski playbook = nginx); varsa true / false, baska her deger null (belirlenemedi).
     ...(alan(ham, 'hedefNginx', 'hedef_nginx') !== undefined ? { hedefNginx: nginxDegeri(alan(ham, 'hedefNginx', 'hedef_nginx')) } : {}),
     hedefNproc: sayiVeya(alan(ham, 'hedefNproc', 'hedef_nproc')),
+    hedefApache: nginxDegeri(alan(ham, 'hedefApache', 'hedef_apache')),
   };
 }
 /** Nginx tespiti yalniz boolean (ya da Ansible metni 'True' / 'False'); digeri null. */

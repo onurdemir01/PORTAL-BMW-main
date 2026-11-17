@@ -160,8 +160,31 @@ test('OC5: uc sozlesmesi - yapilandirilmamis servis BOS LISTE donmez', () => {
   );
   // Sayfa siniri asildiysa ekran bunu gormeli.
   assert.ok(kod.includes('truncated: r.truncated'), 'eksik liste bayragi ekrana tasinmiyor');
-  // Uc SALT OKUNUR olmali: bu modul OCO acmaz/kapatmaz.
-  assert.ok(!/router\.(post|put|delete)\(/.test(kod), 'OCO takvimi ucu YAZAN bir yol acmis');
+  // Uc SALT OKUNUR olmali: bu modul OCO acmaz/kapatmaz. TEK ISTISNA (2026-11-17): elle eklenen
+  // olaylarin Portal DB uclari (/manuel). Yazan yollar BIREBIR bu ucluyle sinirli; yeni bir yazan
+  // yol (ya da baska bir yola yazma) bekciyi kirmizi yapar.
+  const yazanlar = [...kod.matchAll(/router\.(post|put|delete|patch)\(\s*(['"`])([^'"`]*)\2/g)].map(
+    (m) => `${m[1]} ${m[3]}`,
+  );
+  assert.deepEqual(
+    yazanlar.sort(),
+    ['delete /manuel/:id', 'post /manuel', 'put /manuel/:id'],
+    'OCO takvimi ucu izin listesi disinda YAZAN bir yol acmis',
+  );
+  // Adi verilmeyen (degiskenle kurulan) yazan yol da sayilir: yukaridaki liste onu kaciramaz.
+  assert.equal(
+    (kod.match(/router\.(post|put|delete|patch)\(/g) || []).length,
+    3,
+    'izin listesinde olmayan YAZAN bir yol var',
+  );
+  // Elle olay uclari kurumsal OCO servisine GITMEZ: yalniz Portal DB (oco/manuel.cjs).
+  const manuelGovde = kod.slice(kod.indexOf('function initManuelUclari'), kod.indexOf('module.exports'));
+  assert.ok(manuelGovde.length > 200, 'initManuelUclari govdesi bulunamadi');
+  assert.ok(manuelGovde.includes("require('./manuel.cjs')"), 'elle olay uclari manuel.cjs uzerinden degil');
+  assert.ok(
+    !/require\('\.\/(search|client)\.cjs'\)|searchChangeOrders|getChangeOrder/.test(manuelGovde),
+    'elle olay uclari kurumsal OCO servisine erisiyor',
+  );
   // Gorunurluk kapisi: sol menude gorunen her sayfa gibi bu da motordan gecer.
   assert.ok(kod.includes("requireVisible('OcoTakvimi')"), 'gorunurluk kapisi yok');
 });
@@ -274,7 +297,9 @@ test('OC9: OCO numarasi KOPYALANABILIR ve kopyalama satiri acmaz', () => {
   // Kopyalama ortak bilesenle yapilir (her ekranda ayri bir kopyalama davranisi olmasin).
   assert.match(
     kod,
-    /<CodeChip value=\{String\(r\.oco\)\}[^>]*copyable/,
+    // 2026-11-17: deger ocoKopya(r) (servis OCO'sunda String(r.oco); elle olayda OCO no) - bkz.
+    // src/components/oco/__tests__/oco-manuel.test.tsx OM-U6.
+    /<CodeChip value=\{ocoKopya\(r\)!\}[^>]*copyable/,
     'OCO numarasi kopyalanabilir degil',
   );
   // TIKLAMA SATIRI ACMAMALI: kopyalamak isteyen kisi satiri acmak istemiyor.

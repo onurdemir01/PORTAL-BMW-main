@@ -18,6 +18,10 @@
 //       true iken; belirsiz engel metni.
 //   (f) bash varsa: on_kontrol.sh nginx dort durumu (master x nginx -T) -> 1 / - / - / 0; hedef kipinin satir sirasi
 //       degismedi.
+//   (h) bash varsa: nginx kurulu ama durmus (pid dosyasi yok / olu / Apache'ye denk gelen bayat pid) -> 0; canli pid
+//       (hidepid) ve bozuk pid -> belirsiz; pid yonergesi nginx -T ciktisindan, goreli yol prefix'e gore.
+//   (i) bash varsa: apache_surec / apache_var (httpd, apache2, IHS, turler; benzer adlar sayilmaz; hidepid '-');
+//       nginx_var'i degistirmez. (e) on_kontrol.hedef_apache yalniz on kontrol bolumunde.
 //   (g) bash varsa: yuk_cpu_kaydedici.sh varsayilan (ROL=yuk) yukcpu_ (eski adlar, anahtarlar, duyuru yok); ROL=hedef
 //       hedefcpu_ + rol=hedef + duyuru; gecersiz ROL / BOSTA_BAS rc 2, dosya yazilmaz.
 // Jinja davranisi Ansible deposundaki bekcide; burada metin. NGINX_LOADTEST_AYNA: mutasyon kopyasi dizini.
@@ -134,6 +138,12 @@ test('NA10 (e) Play 10: hedef_nginx alanlari, log engeli yalniz nginx true, beli
   const eng = gorevler(son).find((x) => x.includes('- name: --- [Task] On kontrol engelleri'));
   const esle = "'hedef_nginx': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_nginx | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),";
   assert.ok(onk.includes(esle) && onk.includes("'hedef_nproc': "), 'on_kontrol.hedef_nginx / hedef_nproc');
+  // 2026-11-17 Apache bilgisi: yalniz on_kontrol bolumunde; kosu bolumunde YOK (karara girmez).
+  assert.ok(
+    onk.includes("'hedef_apache': ((({'1': true, '0': false})[hostvars[yuk_hedef_host].yt_hedef_apache | default('-')] | default(none)) if (yt8_tur == 'sunucu') else none),"),
+    'on_kontrol.hedef_apache',
+  );
+  assert.ok(!kosu.includes('hedef_apache'), 'kosu bolumunde hedef_apache olmamali');
   assert.ok(kosu.includes(esle), 'kosu.hedef_nginx');
   assert.ok(kosu.includes("'hedef_kaydedici': ((({'cpu_kaydedici.sh': 'nginx', 'yuk_cpu_kaydedici.sh': 'genel'})"), 'kosu.hedef_kaydedici');
   assert.ok(eng.includes("(['log dizini /web_log okunamiyor'] if ((yt8_tur == 'sunucu') and (yt_s_onk.hedef_nginx is sameas true) and not yt_s_onk.log_dizini_okunur) else [])"), '/web_log engeli yalniz nginx hedefte');
@@ -176,7 +186,7 @@ test('NA10 (f) bash: on_kontrol.sh nginx uc durum; hedef kipinin satir sirasi de
       const etiket = `master ${m ? 1 : 0}, ${ng}`;
       assert.deepEqual(
         r.stdout.split('\n').filter(Boolean).map((x) => x.split('\t')[0]),
-        ['nginx_bin', 'nginx_T', 'master_sayisi', 'nginx_var', 'nproc', 'SONUC'],
+        ['nginx_bin', 'nginx_T', 'master_sayisi', 'nginx_pid', 'nginx_var', 'apache_surec', 'apache_var', 'nproc', 'SONUC'],
         `nginx kipi satirlari (${etiket})`,
       );
       assert.equal(deger(r.stdout, 'nginx_var'), beklenen, `nginx_var (${etiket})`);
@@ -199,6 +209,167 @@ test('NA10 (f) bash: on_kontrol.sh nginx uc durum; hedef kipinin satir sirasi de
     const u = kos('bilinmeyen', 'ngok');
     assert.equal(u.status, 2);
     assert.match(u.stdout, /^SONUC\tFAIL\tkullanim: on_kontrol.sh hedef\|nginx\|yollar$/m);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// NA10 (h) KULLANICI OLAYI (2026-11-17): "bir sunucumda hem Nginx hem Apache var ... nginx kapali oldugu icin on kontrol
+// patlamis". nginx KURULU (nginx -T ok) ama DURMUS (master yok) hedef eskiden '-' (belirlenemedi -> Portal engeli) idi.
+// Artik pid dosyasi ayirir: yok / olu (bayat) -> 0 (nginx'siz hedef olculur); canli (hidepid: /proc gizli, kill -0
+// gizlemez) ya da okunamayan -> '-' (engel kalir).
+test('NA10 (h) bash: nginx kurulu ama durmus -> 0; canli pid ya da okunamayan pid -> belirsiz', { skip: bashVar ? false : 'bash yok' }, async (t) => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'nlpid_'));
+  let uyuyan = null;
+  try {
+    const bin = path.join(d, 'bin');
+    const onek = path.join(d, 'ng');
+    fs.mkdirSync(bin);
+    fs.mkdirSync(path.join(d, 'proc', '4242'), { recursive: true });
+    fs.mkdirSync(path.join(onek, 'logs'), { recursive: true });
+    fs.mkdirSync(path.join(onek, 'run'), { recursive: true });
+    fs.writeFileSync(path.join(bin, 'dzdo'), '#!/bin/bash\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'ngok'), '#!/bin/bash\necho "server_name a.b.c;"\n', { mode: 0o755 });
+    // pid yonergesi: yorumdaki satir sayilmaz, goreli yol prefix'e gore, tirnak atilir.
+    fs.writeFileSync(
+      path.join(bin, 'ngpid'),
+      '#!/bin/bash\necho "# eski; pid logs/yorum.pid;"\necho "user www; pid \\"run/ng.pid\\";"\necho "server_name a.b.c;"\n',
+      { mode: 0o755 },
+    );
+    // /proc'ta gorunen ama nginx OLMAYAN surec (bayat pid dosyasi baska bir surece denk gelmis: Apache).
+    fs.writeFileSync(path.join(d, 'proc', '4242', 'cmdline'), '/usr/sbin/httpd\0-k\0start\0');
+    const kos = (ngbin) =>
+      spawnSync(BASH, [posixYol(path.join(DIR, 'files', 'on_kontrol.sh')), 'nginx'], {
+        cwd: d,
+        encoding: 'utf8',
+        timeout: 30000,
+        env: {
+          ...process.env,
+          PATH: kabukPath(bin),
+          PROC_ROOT: posixYol(path.join(d, 'proc')),
+          NGINX_PREFIX: posixYol(onek),
+          NGINX_BIN: posixYol(path.join(bin, ngbin)),
+        },
+      });
+    const deger = (out, k) => (new RegExp(`^${k}\\t(.*)$`, 'm').exec(out) || [])[1];
+    const pidYaz = (rel, icerik) => fs.writeFileSync(path.join(onek, ...rel.split('/')), icerik);
+    const pidSil = () => {
+      for (const rel of ['logs/nginx.pid', 'run/ng.pid']) fs.rmSync(path.join(onek, ...rel.split('/')), { force: true });
+    };
+    const bak = (etiket, ngbin, pidBeklenen, varBeklenen) => {
+      const r = kos(ngbin);
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(
+        r.stdout.split('\n').filter(Boolean).map((x) => x.split('\t')[0]),
+        ['nginx_bin', 'nginx_T', 'master_sayisi', 'nginx_pid', 'nginx_var', 'apache_surec', 'apache_var', 'nproc', 'SONUC'],
+        `satirlar (${etiket})`,
+      );
+      assert.equal(deger(r.stdout, 'master_sayisi'), '0', `master (${etiket})`);
+      assert.equal(deger(r.stdout, 'nginx_T'), 'ok', `nginx_T (${etiket})`);
+      assert.equal(deger(r.stdout, 'nginx_pid'), pidBeklenen, `nginx_pid (${etiket})`);
+      assert.equal(deger(r.stdout, 'nginx_var'), varBeklenen, `nginx_var (${etiket})`);
+      // /proc'taki 4242 Apache (httpd): bilgi satiri onu sayar, nginx kararina girmez.
+      assert.equal(deger(r.stdout, 'apache_var'), '1', `apache_var (${etiket})`);
+    };
+
+    // KULLANICI OLAYI: varsayilan pid yolu (<prefix>/logs/nginx.pid) yok, dizin aranabilir -> durmus.
+    pidSil();
+    bak('pid dosyasi yok', 'ngok', 'yok', '0');
+    // Bayat pid: surec yok.
+    pidYaz('logs/nginx.pid', '999999999\n');
+    bak('olu pid', 'ngok', 'olu', '0');
+    // Bayat pid baska bir surece (Apache) denk gelmis: /proc'ta gorunuyor, nginx master degil.
+    pidYaz('logs/nginx.pid', '4242\n');
+    bak('pid Apache sureci', 'ngok', 'olu', '0');
+    // Icerik sayi degil -> olculemedi, engel kalir.
+    pidYaz('logs/nginx.pid', 'bozuk\n');
+    bak('bozuk pid', 'ngok', '-', '-');
+    pidSil();
+    // pid yonergesi: goreli yol prefix/run/ng.pid; yorumdaki logs/yorum.pid ve varsayilan logs/nginx.pid okunmaz.
+    pidYaz('logs/yorum.pid', '999999999\n');
+    pidYaz('logs/nginx.pid', 'bozuk\n');
+    bak('pid yonergesi, dosya yok', 'ngpid', 'yok', '0');
+    pidSil();
+    fs.rmSync(path.join(onek, 'logs', 'yorum.pid'), { force: true });
+
+    // CANLI surec /proc'ta GORUNMEZ (hidepid): kill -0 onu bulur -> belirsiz (nginx calisiyor olabilir), engel kalir.
+    const pidDosyasi = path.join(onek, 'run', 'uyuyan.pid');
+    uyuyan = require('node:child_process').spawn(BASH, ['-c', `echo $$ > '${posixYol(pidDosyasi)}'; exec sleep 30`], {
+      stdio: 'ignore',
+    });
+    for (let i = 0; i < 100 && !(fs.existsSync(pidDosyasi) && fs.readFileSync(pidDosyasi, 'utf8').trim()); i++)
+      await new Promise((r) => setTimeout(r, 50));
+    const canliPid = fs.readFileSync(pidDosyasi, 'utf8').trim();
+    assert.match(canliPid, /^[0-9]+$/);
+    pidYaz('run/ng.pid', `${canliPid}\n`);
+    bak('canli pid, /proc gizli', 'ngpid', 'canli', '-');
+
+    // BASKA KULLANICININ canli sureci (hidepid altindaki gercek durum): kill -0 "Operation not permitted" der -> canli.
+    // Yalniz bunu uretebilen ortamda kosar (Linux, root olmayan kullanici); CI boyle. Digerinde bilerek ATLANDIGI yazilir.
+    const eperm = spawnSync(BASH, ['-c', 'kill -0 1'], { encoding: 'utf8' });
+    if (eperm.status !== 0 && /not permitted/.test(eperm.stderr)) {
+      pidYaz('run/ng.pid', '1\n');
+      bak('baska kullanicinin canli sureci', 'ngpid', 'canli', '-');
+    } else {
+      t.diagnostic('kill -0 1 EPERM uretmiyor (root ya da Windows): baska-kullanici dali bu ortamda sinanmadi');
+    }
+  } finally {
+    if (uyuyan) uyuyan.kill();
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// NA10 (i) APACHE BILGISI (2026-11-17, kullanici: "Apache bilgisini de on kontrole ekle"): /proc'ta komut adi httpd /
+// apache2 (IHS dahil, httpd.worker gibi turler) sayilir; benzer adlar (myhttpd, httpdx) SAYILMAZ; hic yoksa pid 1
+// gorunuyorsa 0, gorunmuyorsa (hidepid) '-'. YALNIZ BILGI: nginx_var bu satirlardan ETKILENMEZ.
+test('NA10 (i) bash: apache_surec / apache_var; nginx kararindan bagimsiz', { skip: bashVar ? false : 'bash yok' }, () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'nlapc_'));
+  try {
+    const bin = path.join(d, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'dzdo'), '#!/bin/bash\nexit 1\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'ngfail'), '#!/bin/bash\nexit 1\n', { mode: 0o755 });
+    const surec = (pid, cmd) => {
+      fs.mkdirSync(path.join(d, 'proc', String(pid)), { recursive: true });
+      fs.writeFileSync(path.join(d, 'proc', String(pid), 'cmdline'), cmd);
+    };
+    const temizle = () => fs.rmSync(path.join(d, 'proc'), { recursive: true, force: true });
+    const kos = () =>
+      spawnSync(BASH, [posixYol(path.join(DIR, 'files', 'on_kontrol.sh')), 'nginx'], {
+        cwd: d,
+        encoding: 'utf8',
+        timeout: 30000,
+        env: { ...process.env, PATH: kabukPath(bin), PROC_ROOT: posixYol(path.join(d, 'proc')), NGINX_BIN: posixYol(path.join(bin, 'ngfail')) },
+      });
+    const deger = (out, k) => (new RegExp(`^${k}\\t(.*)$`, 'm').exec(out) || [])[1];
+    const bak = (etiket, sayi, deg) => {
+      const r = kos();
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(deger(r.stdout, 'apache_surec'), sayi, `apache_surec (${etiket})`);
+      assert.equal(deger(r.stdout, 'apache_var'), deg, `apache_var (${etiket})`);
+      // Bilgi nginx kararini degistirmez: master yok + nginx -T fail -> 0, Apache olsa da olmasa da.
+      assert.equal(deger(r.stdout, 'nginx_var'), '0', `nginx_var (${etiket})`);
+    };
+
+    temizle();
+    surec(1, '/usr/lib/systemd/systemd\0');
+    surec(100, '/usr/sbin/httpd\0-DFOREGROUND\0');
+    surec(101, '/usr/sbin/httpd.worker\0');
+    surec(102, '/usr/sbin/apache2\0-k\0start\0');
+    surec(103, '/opt/IBM/HTTPServer/bin/httpd\0-d\0/opt/IBM/HTTPServer\0');
+    surec(104, '/usr/local/bin/myhttpd\0');
+    surec(105, 'httpdx\0');
+    surec(106, '');
+    bak('dort Apache/IHS, iki benzer ad, bos cmdline', '4', '1');
+
+    temizle();
+    surec(1, '/usr/lib/systemd/systemd\0');
+    surec(200, '/usr/sbin/sshd\0');
+    bak('Apache yok, /proc acik', '0', '0');
+
+    temizle();
+    surec(300, '/bin/bash\0');
+    bak('Apache yok, pid 1 gorunmuyor (hidepid)', '0', '-');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }

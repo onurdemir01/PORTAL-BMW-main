@@ -402,6 +402,138 @@ test('RE2 EAR bulgulari: WAR yok, JVM yok (3 neden), XML okunamadi, kok girdiler
   );
 });
 
+// KULLANIM KANITI (2026-11-17, DACRPAP01: domain.xml'de olmayan EAR'da canli Node.js): surec ya da 7 gun icinde
+// yazma -> EAR_JVM_YOK YERINE EAR_JBOSS_DISI_KULLANIM (bilgi), R5 retire adayi YOK; olculemediyse uyari + ek.
+test('RE2b EAR kullanim kaniti: surec / 7 gun yazma -> JBoss disi kullanim, R5 yok; KISMI / eski tarayici eki', () => {
+  const sn = (ms) => Math.floor(ms / 1000);
+  const TY = (ad, kullanim) =>
+    U7(ad, {
+      xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK', deploymentlar: [], jvmler: [], kullanim },
+      kullanim,
+    });
+  const d = r1Veri();
+  const TAR = Date.parse(taranma(0));
+  // 2026-11-05T21:53Z = kurum saatiyle 06.11.2026 00:53 (UTC+3)
+  const yazma = Date.parse('2026-11-05T21:53:00Z');
+  d.ear = {
+    okunamadi: false,
+    hostlar: [
+      earHost(APP, [
+        TY('NODE.ear', {
+          durum: 'VAR',
+          surecler: [{ pid: 76867, comm: 'node', kullanici: 'was', nasil: 'cwd' }],
+          son_yazma: sn(yazma),
+          not: '',
+        }),
+        // 7 gun esigi TARAMA anina gore (taranma(0) = bugun 06:00Z; NOW 10:00Z)
+        TY('YAZILAN.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR - 7 * 86400000 + 60000), not: '' }),
+        TY('ESKIYAZMA.ear', { durum: 'YOK', surecler: [], son_yazma: sn(TAR - 7 * 86400000 - 60000), not: '' }),
+        TY('KISMI.ear', { durum: 'KISMI', surecler: [], son_yazma: null, not: 'surec taramasi kesildi' }),
+        TY('OLCMEYEN.ear', { durum: 'OLCULEMEDI', surecler: [], son_yazma: null, not: 'surec listesi okunamadi' }),
+        TY('ESKITARAYICI.ear', undefined),
+      ]),
+    ],
+  };
+  const r = A(d);
+  const k = Object.fromEntries(bul(r, APP, 'EAR_JBOSS_DISI_KULLANIM').map((f) => [f.ear.ad, f]));
+  assert.deepEqual(Object.keys(k).sort(), ['NODE.ear', 'YAZILAN.ear']);
+  assert.equal(
+    k['NODE.ear'].text,
+    "/vhosting/NODE.ear: JBoss'a bağlı değil ama dizin kullanımda (süreç: node pid 76867 [cwd], son yazma: 06.11.2026 00:53)",
+  );
+  assert.equal(k['NODE.ear'].severity, 'info');
+  assert.match(k['YAZILAN.ear'].text, /dizin kullanımda \(son yazma: \d\d\.\d\d\.2026 \d\d:\d\d\)$/);
+  const j = Object.fromEntries(bul(r, APP, 'EAR_JVM_YOK').map((f) => [f.ear.ad, f.text]));
+  assert.deepEqual(Object.keys(j).sort(), ['ESKITARAYICI.ear', 'ESKIYAZMA.ear', 'KISMI.ear', 'OLCMEYEN.ear']);
+  assert.ok(!/ölçülemedi/.test(j['ESKIYAZMA.ear']), 'olculmus ve kullanilmayan EAR icin ek yok');
+  assert.match(j['ESKIYAZMA.ear'], /deployment tanımı yok — diskte duruyor/);
+  assert.match(j['KISMI.ear'], /— dizin kullanımı ölçülemedi \(surec taramasi kesildi\)$/);
+  assert.match(j['OLCMEYEN.ear'], /— dizin kullanımı ölçülemedi \(surec listesi okunamadi\)$/);
+  assert.match(j['ESKITARAYICI.ear'], /— dizin kullanımı ölçülemedi \(tarama kullanım ölçmeyen eski tarayıcıyla yapıldı\)$/);
+  const r5 = sunucu(r, APP)
+    .retireAdaylari.filter((a) => a.kural === 'R5')
+    .map((a) => a.ad)
+    .sort();
+  assert.deepEqual(r5, ['ESKITARAYICI.ear', 'ESKIYAZMA.ear', 'KISMI.ear', 'OLCMEYEN.ear'], 'kullanimdaki EAR R5 adayi olmamali');
+  // h.ear kullanimi ekrana tasir
+  assert.equal(sunucu(r, APP).ear.uygulamalar.find((u) => u.ad === 'NODE.ear').kullanim.surecler[0].pid, 76867);
+});
+
+// INCELEME (2026-11-17): B1 esigin referansi TARAMA ani (veri 35 gune kadar kullanilir; duvar saati kaniti sessizce
+// dusururdu); B5 tarama anindan 1 gunden fazla ileri tarihli yazma kanit degil (olculemedi eki); B2 WAR'siz ama
+// kullanimdaki EAR "silinebilir olabilir" demez ve R3 adayi olmaz; B3 hidepid -> olculemedi, okunamayan surec -> ek.
+test('RE2c kullanim kaniti: tarama referansi, ileri tarih, WAR yok + kullanim, hidepid / okunamayan eki', () => {
+  const sn = (ms) => Math.floor(ms / 1000);
+  const TY = (ad, kullanim, ek = {}) =>
+    U7(ad, {
+      xml: { durum: 'JVM_YOK', neden: 'TANIM_YOK', deploymentlar: [], jvmler: [], kullanim },
+      kullanim,
+      ...ek,
+    });
+  const GUN = 86400000;
+  const TAR10 = Date.parse(taranma(10));
+  const yok = (ek) => ({ durum: 'YOK', surecler: [], not: '', ...ek });
+  const SUREC = { durum: 'VAR', surecler: [{ pid: 4242, comm: 'node', kullanici: 'was', nasil: 'cwd' }], son_yazma: null };
+  const d = r1Veri();
+  d.ear = {
+    okunamadi: false,
+    hostlar: [
+      earHost(
+        APP,
+        [
+          TY('ESKITARAMA.ear', yok({ son_yazma: sn(TAR10 - 3600000) })),
+          TY('ILERI.ear', yok({ son_yazma: sn(TAR10 + 3 * GUN) })),
+          TY('KAYMA.ear', yok({ son_yazma: sn(TAR10 + 3600000) })),
+          TY('WARSIZ.ear', SUREC, { warSayisi: 0 }),
+          TY('WARSIZBOS.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN) }), { warSayisi: 0 }),
+          TY('GIZLI.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN), hidepid: '2' })),
+          TY('KOR.ear', yok({ son_yazma: sn(TAR10 - 30 * GUN), okunamayan: 112 })),
+        ],
+        null,
+        10,
+      ),
+    ],
+  };
+  const r = A(d);
+  const k = Object.fromEntries(bul(r, APP, 'EAR_JBOSS_DISI_KULLANIM').map((f) => [f.ear.ad, f]));
+  assert.deepEqual(
+    Object.keys(k).sort(),
+    ['ESKITARAMA.ear', 'KAYMA.ear', 'WARSIZ.ear'],
+    'B1: 10 gunluk taramada taramadan 1 saat once yazma kanittir',
+  );
+  const j = Object.fromEntries(bul(r, APP, 'EAR_JVM_YOK').map((f) => [f.ear.ad, f.text]));
+  assert.deepEqual(Object.keys(j).sort(), ['GIZLI.ear', 'ILERI.ear', 'KOR.ear', 'WARSIZBOS.ear']);
+  assert.match(j['ILERI.ear'], /— dizin kullanımı ölçülemedi \(son yazma tarama anından ileri tarihli/, 'B5');
+  assert.match(
+    j['GIZLI.ear'],
+    /— dizin kullanımı ölçülemedi \(hidepid=2: diğer kullanıcıların süreçleri görünmüyor\)$/,
+    'B3 hidepid',
+  );
+  assert.match(
+    j['KOR.ear'],
+    /— dizin kullanımı görülmedi ama 112 süreç izin yüzünden yalnız komut satırından denetlendi$/,
+    'B3 okunamayan',
+  );
+  assert.ok(!/ölçülemedi|görülmedi/.test(j['WARSIZBOS.ear']), 'tam olculmus kullanilmayan EAR icin ek yok');
+  const w = Object.fromEntries(bul(r, APP, 'EAR_WAR_YOK').map((f) => [f.ear.ad, f]));
+  assert.deepEqual(Object.keys(w).sort(), ['WARSIZ.ear', 'WARSIZBOS.ear']);
+  assert.equal(
+    w['WARSIZ.ear'].text,
+    '/vhosting/WARSIZ.ear: EAR içinde WAR yok ama dizin kullanımda (süreç: node pid 4242 [cwd]) — silinmemeli',
+    'B2',
+  );
+  assert.equal(w['WARSIZ.ear'].severity, 'warning');
+  assert.equal(w['WARSIZ.ear'].ear.kullanim.surecler[0].pid, 4242);
+  assert.match(w['WARSIZBOS.ear'].text, /silinebilir olabilir$/);
+  const aday = (kural) =>
+    sunucu(r, APP)
+      .retireAdaylari.filter((a) => a.kural === kural)
+      .map((a) => a.ad)
+      .sort();
+  assert.deepEqual(aday('R3'), ['WARSIZBOS.ear'], 'B2: kullanimdaki WARsiz EAR R3 adayi degil');
+  assert.deepEqual(aday('R5'), ['GIZLI.ear', 'ILERI.ear', 'KOR.ear', 'WARSIZBOS.ear']);
+});
+
 test('RE3 EAR verisi eski / okunamadi / yok: bulgu ve aday yok, nedeni h.ear tasir', () => {
   const ear = (gunOnce) => ({
     okunamadi: false,
@@ -764,6 +896,12 @@ test('RE7 manuel kontrol: imza baglantisi, VERI_DEGISTI, yalniz KESIN + DOGRULAN
   assert.equal(etiketle({ hosts }).ozet.kesin, 1);
 });
 
+const KULLANIM_RE8 = {
+  durum: 'VAR',
+  surecler: [{ pid: 76867, comm: 'node', kullanici: 'was', nasil: 'cwd' }],
+  son_yazma: 1795384380,
+  not: null,
+};
 test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi', async () => {
   sifirla();
   const { earSonDurum } = require('../ear-hub-verisi.cjs');
@@ -799,7 +937,7 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
       ad: 'A.ear',
       durum: 'TAM',
       war_sayisi: 0,
-      xml_eslesme: JSON.stringify({ durum: 'JVM_YOK', neden: 'TANIM_YOK' }),
+      xml_eslesme: JSON.stringify({ durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim: KULLANIM_RE8 }),
     },
     {
       host: 'GBCJAP02',
@@ -828,7 +966,9 @@ test('RE8 ear-hub-verisi: son kosu, JSON, bozuk JSON null, DB hatasi okunamadi',
     girdiler: [{ kok: '/vhosting', ad: 'X.bak', tip: 'F' }],
     kesilen: 1,
   });
-  assert.deepEqual(a.uygulamalar[0].xml, { durum: 'JVM_YOK', neden: 'TANIM_YOK' });
+  assert.deepEqual(a.uygulamalar[0].xml, { durum: 'JVM_YOK', neden: 'TANIM_YOK', kullanim: KULLANIM_RE8 });
+  assert.deepEqual(a.uygulamalar[0].kullanim, KULLANIM_RE8, 'tarayici surum 4 kullanim kaniti tasinmali');
+  assert.equal(b.uygulamalar[0].kullanim, null, 'xml yok -> kullanim olculmedi (null)');
   assert.equal(b.taranma, '2026-11-04T01:00:00.000Z', 'DATETIME2 metni UTC okunmali');
   assert.equal(b.kokGirdileri, null, 'bozuk JSON olculmedi sayilmali');
   assert.deepEqual(a.deployment, {
@@ -1350,7 +1490,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
     retirement: {
       okunamadi: false,
       hedefler: [
-        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20' },
+        { hedef: 9, kayit: 4, host: APP2, uygulama: 'pay', gen: 7, yol: '/vhosting/pay.ear', durum: 'stopped', kayitDurum: 'stopped', durduruldu: '2026-10-20', durdurulduMs: Date.parse('2026-10-20T08:00:00Z') },
       ],
     },
   });
@@ -1440,7 +1580,7 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   // JVM taramada yok, paket ozgun adiyla diskte (taze Uygulama Envanteri): sunucu duzeyi + EAR adayi.
   const e = veri();
   e.capraz.retirement.hedefler = [
-    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null },
+    { hedef: 3, kayit: 2, host: APP, uygulama: 'old', gen: 7, yol: '/vhosting/old.ear', durum: 'deleted', kayitDurum: 'deleted', durduruldu: null, silindiMs: Date.parse('2026-11-01T08:00:00Z') },
   ];
   e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear', { xml: { durum: 'VAR', jvmler: [{ ad: 'pay', auto_start: true }] } })])] };
   const re = A(e);

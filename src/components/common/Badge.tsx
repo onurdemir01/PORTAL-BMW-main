@@ -19,11 +19,11 @@ const SIZE_CLASSES: Record<NonNullable<BadgeProps["size"]>, string> = {
 };
 
 const SOLID_CLASSES: Record<StatusLevel, string> = {
-  critical: "bg-[#c9190b] text-white border-[#c9190b]",
-  error:    "bg-[#c9190b] text-white border-[#c9190b]",
+  critical: "bg-[var(--solid-danger)] text-white border-[var(--solid-danger)]",
+  error:    "bg-[var(--solid-danger)] text-white border-[var(--solid-danger)]",
   warning:  "bg-[#f0ab00] text-[#151515] border-[#f0ab00]",
   info:     "bg-[var(--accent)] text-white border-[var(--accent)]",
-  success:  "bg-[#3e8635] text-white border-[#3e8635]",
+  success:  "bg-[var(--solid-success)] text-white border-[var(--solid-success)]",
   neutral:  "bg-[#6a6e73] text-white border-[#6a6e73]",
 };
 

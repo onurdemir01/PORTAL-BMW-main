@@ -7,6 +7,8 @@
 //   UA5 okunamayan kaynak bandı; OpenShift "okunamadı" ("yok" değil)
 //   UA6 liste okunamazsa LoadError + yeniden dene
 //   UA7 saf yardımcılar: ortam rozeti tonu, kopya rozetleri, matris sırası, çip sayıları
+//   RA10 Retirement ile kapatılmış kopya: ortam rozeti kırmızı değil ("· N retire", nötr); kopya "kapalı (retire)"
+//   RA14 tarama STOP öncesi / STOP günü: "Retirement doğrulaması bekliyor" rozeti (JVM çalışıyor görünüyorsa uyarı, yalnız EAR nötr)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -219,7 +221,8 @@ describe('Uygulama 360', () => {
     expect(m.iliskiKarar).toHaveBeenCalledWith('app:PAY');
     const p2 = within(a).getByRole('button', { name: 'P2 sunucu paneli' });
     for (const t of [
-      'kapalı',
+      // STOP edilmiş hedefin kapalı kopyası beklenen durum (RA10); çelişki rozeti ayrıca kırmızı.
+      'kapalı (retire)',
       'auto-start açık',
       'kopyalardan farklı',
       'Retirement ile çelişiyor',
@@ -321,5 +324,118 @@ describe('UA7 saf yardımcılar', () => {
       ocp: 1,
       retirement: 1,
     });
+  });
+});
+
+describe('RA10 Retirement ile kapatılmış kopya rozetleri', () => {
+  it('yalnız retire kopyası olan ortam nötr; karışık ortamda retire hariç sayılır', () => {
+    const yalniz = ortamRozeti({
+      ortam: 'PROD',
+      toplam: 0,
+      acik: 0,
+      kapali: 0,
+      olculemedi: 0,
+      retire: 2,
+    });
+    expect([yalniz.metin, yalniz.ton]).toEqual(['PROD 0/0 · 2 retire', 'notr']);
+    expect(yalniz.title).toBe(
+      'PROD: 0 açık, 0 kapalı, 2 retire (Retirement ile kapatıldı) (toplam 2)',
+    );
+    const karisik = ortamRozeti({
+      ortam: 'PROD',
+      toplam: 1,
+      acik: 1,
+      kapali: 0,
+      olculemedi: 0,
+      retire: 1,
+    });
+    expect([karisik.metin, karisik.ton]).toEqual(['PROD 1/1 · 1 retire', 'iyi']);
+    // Retire dışındaki kopyaların hepsi kapalıysa yine kötü (gerçek alarm korunur).
+    expect(
+      ortamRozeti({ ortam: 'PROD', toplam: 1, acik: 0, kapali: 1, olculemedi: 0, retire: 1 }).ton,
+    ).toBe('kotu');
+    // Eski yanıt (retire alanı yok): metin değişmez.
+    expect(ortamRozeti({ ortam: 'QA', toplam: 1, acik: 1, kapali: 0, olculemedi: 0 }).metin).toBe(
+      'QA 1/1',
+    );
+  });
+  it('kapalı retire kopyası nötr "kapalı (retire)"; STOP edilmemiş kayıt uyarı kalır', () => {
+    const r = kopyaRozetleri(
+      kop('P1', {
+        calisiyor: false,
+        autoStart: 'false',
+        retirement: [{ kayit: 24, hedef: 7, durum: 'stopped' }],
+      }),
+    );
+    expect([r[0].metin, r[0].ton, r[0].title]).toEqual([
+      'kapalı (retire)',
+      'notr',
+      'Retirement #24 ile kapatıldı: beklenen durum',
+    ]);
+    expect(
+      kopyaRozetleri(
+        kop('P1', {
+          calisiyor: false,
+          autoStart: 'false',
+          retirement: [{ kayit: 24, hedef: 7, durum: 'planned' }],
+        }),
+      )[0],
+    ).toEqual({ metin: 'kapalı', ton: 'uyari' });
+  });
+});
+
+describe('RA14 Retirement doğrulaması bekliyor (tarama STOP öncesi / STOP günü)', () => {
+  const cap = (dogrulanamadi: NonNullable<Sh360Kopya['capraz']>['dogrulanamadi']) => ({
+    kopya: null,
+    kalinti: null,
+    ocp: null,
+    celiski: [],
+    dogrulanamadi,
+  });
+  const ret = [{ kayit: 24, hedef: 7, durum: 'stopped' }];
+  it('JVM çalışıyor görünüyorsa uyarı rozeti; yeşil "çalışıyor" tek başına kalmaz', () => {
+    const r = kopyaRozetleri(
+      kop('P1', {
+        retirement: ret,
+        capraz: cap([
+          {
+            kayit: 24,
+            hedef: 7,
+            durum: 'stopped',
+            kaynak: 'SERVER_HUB',
+            nedenler: ['calisiyor', 'autostart'],
+            sira: 'belirsiz',
+          },
+        ]),
+      }),
+    );
+    const b = r.find((x) => x.metin === 'Retirement doğrulaması bekliyor');
+    expect(b?.ton).toBe('uyari');
+    expect(b?.title).toBe(
+      'Retirement #24: JVM çalışıyor / auto-start açık görünüyor ama tarama STOP’tan önce ya da STOP günü alınmış; bir sonraki tarama doğrular',
+    );
+    expect(r.some((x) => x.ton === 'kotu')).toBe(false);
+  });
+  it('yalnız paket adı (EAR) bekliyorsa nötr; not yoksa rozet yok', () => {
+    const r = kopyaRozetleri(
+      kop('P1', {
+        calisiyor: false,
+        autoStart: 'false',
+        retirement: ret,
+        capraz: cap([
+          { kayit: 24, hedef: 7, durum: 'stopped', kaynak: 'EAR', nedenler: ['paket'] },
+        ]),
+      }),
+    );
+    expect(r.find((x) => x.metin === 'Retirement doğrulaması bekliyor')?.ton).toBe('notr');
+    expect(
+      kopyaRozetleri(kop('P1', { capraz: cap([]) })).some(
+        (x) => x.metin === 'Retirement doğrulaması bekliyor',
+      ),
+    ).toBe(false);
+    // Eski yanıt (alan yok) düşmez.
+    expect(
+      kopyaRozetleri(kop('P1', { capraz: { ...cap([]), dogrulanamadi: undefined } })).length,
+    ).toBeGreaterThan(0);
   });
 });

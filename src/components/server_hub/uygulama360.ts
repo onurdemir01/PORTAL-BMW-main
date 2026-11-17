@@ -62,17 +62,25 @@ export const u360Say = (l: Sh360Ozet[]) =>
 
 export type U360Ton = 'iyi' | 'uyari' | 'kotu' | 'notr';
 
-/** Ortam rozeti: "PROD 2/3" — hepsi açık iyi, hiçbiri açık değil kötü, ölçülemeyen varsa nötr. */
+/**
+ * Ortam rozeti: "PROD 2/3" — hepsi açık iyi, hiçbiri açık değil kötü, ölçülemeyen varsa nötr.
+ * Retirement ile kapatılmış kopyalar (STOP / silme) açık / kapalı sayılmaz: "PROD 1/1 · 2 retire";
+ * ortamda yalnız onlar varsa "PROD 0/0 · 2 retire" nötr (kötü değil, bilerek kapatıldı).
+ */
 export function ortamRozeti(o: Sh360Ortam): { metin: string; ton: U360Ton; title: string } {
-  const title = `${o.ortam}: ${o.acik} açık, ${o.kapali} kapalı${o.olculemedi ? `, ${o.olculemedi} ölçülemedi` : ''} (toplam ${o.toplam})`;
-  const ton: U360Ton = o.olculemedi
-    ? 'notr'
-    : o.acik === o.toplam
-      ? 'iyi'
-      : o.acik === 0
-        ? 'kotu'
-        : 'uyari';
-  return { metin: `${o.ortam} ${o.acik}/${o.toplam}`, ton, title };
+  const retire = o.retire || 0;
+  const retireMetni = retire ? `, ${retire} retire (Retirement ile kapatıldı)` : '';
+  const title = `${o.ortam}: ${o.acik} açık, ${o.kapali} kapalı${o.olculemedi ? `, ${o.olculemedi} ölçülemedi` : ''}${retireMetni} (toplam ${o.toplam + retire})`;
+  const ton = ((): U360Ton => {
+    if (o.olculemedi || o.toplam === 0) return 'notr';
+    if (o.acik === o.toplam) return 'iyi';
+    return o.acik === 0 ? 'kotu' : 'uyari';
+  })();
+  return {
+    metin: `${o.ortam} ${o.acik}/${o.toplam}${retire ? ` · ${retire} retire` : ''}`,
+    ton,
+    title,
+  };
 }
 
 export const TRAFIK_METNI: Record<string, string> = {
@@ -99,16 +107,25 @@ export function ocpMetni(u: Sh360Ozet, okunamadi: boolean): string {
 /** Kopyanın rozetleri (matris hücresi): çalışma, auto-start, trafik ve risk işaretleri. */
 export function kopyaRozetleri(k: Sh360Kopya): { metin: string; ton: U360Ton; title?: string }[] {
   const r: { metin: string; ton: U360Ton; title?: string }[] = [];
+  // Retirement ile kapatılmış (STOP / silme) kapalı kopya beklenen durumdur: uyarı değil, nötr.
+  const retire = (k.retirement || []).filter((x) => x.durum === 'stopped' || x.durum === 'deleted');
   r.push(
-    k.calisiyor === null
-      ? {
+    ((): { metin: string; ton: U360Ton; title?: string } => {
+      if (k.calisiyor === null)
+        return {
           metin: 'ölçülemedi',
           ton: 'notr',
           title: 'Süreç görünmüyor (hidepid / ps körlüğü): kapalı sayılmaz',
-        }
-      : k.calisiyor
-        ? { metin: 'çalışıyor', ton: 'iyi' }
-        : { metin: 'kapalı', ton: 'uyari' },
+        };
+      if (k.calisiyor) return { metin: 'çalışıyor', ton: 'iyi' };
+      if (retire.length)
+        return {
+          metin: 'kapalı (retire)',
+          ton: 'notr',
+          title: `Retirement #${retire.map((x) => x.kayit).join(', #')} ile kapatıldı: beklenen durum`,
+        };
+      return { metin: 'kapalı', ton: 'uyari' };
+    })(),
   );
   r.push({
     metin: `auto-start ${k.autoStart === 'true' ? 'açık' : k.autoStart === 'false' ? 'kapalı' : '?'}`,
@@ -128,6 +145,19 @@ export function kopyaRozetleri(k: Sh360Kopya): { metin: string; ton: U360Ton; ti
       ton: 'kotu',
       title: `Retirement #${k.capraz.celiski.map((c) => c.kayit).join(', #')}`,
     });
+  const bekleyen = k.capraz?.dogrulanamadi || [];
+  if (bekleyen.length) {
+    // Tarama STOP'tan önce (ya da aynı gün) alınmış: çelişki kurulmadı ama gizlenmez. JVM çalışıyor /
+    // auto-start açık görünüyorsa uyarı; yalnız paket adı (EAR) bekliyorsa nötr (App Hub ile aynı).
+    const sh = bekleyen.some((b) => b.kaynak === 'SERVER_HUB');
+    r.push({
+      metin: 'Retirement doğrulaması bekliyor',
+      ton: sh ? 'uyari' : 'notr',
+      title: `Retirement #${[...new Set(bekleyen.map((b) => b.kayit))].join(', #')}: ${
+        sh ? 'JVM çalışıyor / auto-start açık görünüyor' : 'paket özgün adıyla görünüyor'
+      } ama tarama STOP’tan önce ya da STOP günü alınmış; bir sonraki tarama doğrular`,
+    });
+  }
   if (!k.taze)
     r.push({
       metin: `bayat (${k.taramaTarihi || '?'})`,

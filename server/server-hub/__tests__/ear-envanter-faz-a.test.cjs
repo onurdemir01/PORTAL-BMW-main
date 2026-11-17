@@ -421,7 +421,7 @@ test(
     });
     assert.equal(r.status, 0, String(r.stderr));
     const p = alim.paketCoz(r.stdout);
-    assert.equal(p.tarayici_surum, 3);
+    assert.equal(p.tarayici_surum, 4);
     const k = alim.hostKaydi(p, {
       host: 'APPSRV01',
       kip: 'OZET',

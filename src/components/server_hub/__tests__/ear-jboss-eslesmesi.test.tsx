@@ -7,11 +7,21 @@
 //   EJ3 xmlNedenMetni: ham dosya durumu okunur dile çevrilir
 //   EJ4 bölüm: JVM tablosu (auto-start, deployment etkin/devre dışı), deployment satırı (yol / ad eşleşmesi,
 //       server-group yok), okunamadıysa nedeni, eski taramada "ölçülmedi"
+//   EJ5 dizin kullanımı (sürüm 4): süreç / son yazma görünür, 7 gün eşiği, ölçülemeyen "kullanılmıyor" değil
+//   EJ6 inceleme (2026-11-17): eşiğin referansı TARAMA anı (duvar saati değil); ileri tarihli yazma kanıt değil;
+//       okunamayan süreç / hidepid "görülmedi" nötrü değil; maps / '?' nasıl; Server Hub sunucu panelinde rozet
 import { describe, it, expect } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import { JbossEslesmesi } from '@/components/server_hub/EarEnvanterDetay';
-import { xmlEslesmeOku, jbossDurumu, xmlNedenMetni } from '@/components/server_hub/earEnvanter';
+import { BagsizKullanim } from '@/components/server_hub/SunucuPaneli';
+import {
+  xmlEslesmeOku,
+  jbossDurumu,
+  xmlNedenMetni,
+  kullanimDurumu,
+} from '@/components/server_hub/earEnvanter';
+import type { EarKullanim } from '@/api/earEnvanterApi';
 
 const ham = (x: unknown) => JSON.stringify(x);
 const VAR = {
@@ -147,5 +157,146 @@ describe('EJ4 JBoss eşlemesi bölümü', () => {
     const b = screen.getByTestId('jboss-eslesmesi');
     expect(within(b).getByText('ölçülmedi')).toBeInTheDocument();
     expect(within(b).getByText(/eski tarayıcıyla/)).toBeInTheDocument();
+  });
+});
+
+// EJ5 dizin kullanımı (tarayıcı sürüm 4, 2026-11-17; DACRPAP01 canlı Node.js): JBoss'a bağlı olmayan EAR'da süreç /
+// son yazma görünür; yakın yazma ve süreç uyarı (silinmemeli); ölçülemeyen "kullanılmıyor" denmez; hiçbiri yeşil değil.
+describe('EJ5 dizin kullanımı', () => {
+  const SIMDI = Date.parse('2026-11-17T10:00:00Z');
+  const sn = (ms: number) => Math.floor(ms / 1000);
+  const jvmsiz = (kullanim: unknown) =>
+    ham({ durum: 'JVM_YOK', neden: 'TANIM_YOK', deploymentlar: [], jvmler: [], kullanim });
+  it('süreç: rozet, pid / comm / nasıl / kullanıcı ve son yazma görünür', () => {
+    render(
+      <JbossEslesmesi
+        taranma={SIMDI}
+        ham={jvmsiz({
+          durum: 'VAR',
+          surecler: [{ pid: 76867, comm: 'node', kullanici: 'was', nasil: 'cwd' }],
+          son_yazma: sn(Date.parse('2026-11-16T21:56:00Z')),
+          not: null,
+        })}
+      />,
+    );
+    const b = screen.getByTestId('dizin-kullanimi');
+    expect(within(b).getByText('dizin kullanımda')).toBeInTheDocument();
+    expect(within(b).getByText('node pid 76867 (cwd) · was')).toBeInTheDocument();
+    expect(within(b).getByText(/son yazma: 17\.11\.2026 00:56/)).toBeInTheDocument();
+    expect(within(b).getByText(/silinmemeli/)).toBeInTheDocument();
+  });
+  it('yalnız yakın yazma (7 gün içinde) uyarı; daha eski yazma "görülmedi"', () => {
+    const { unmount } = render(
+      <JbossEslesmesi
+        taranma={SIMDI}
+        ham={jvmsiz({ durum: 'YOK', surecler: [], son_yazma: sn(SIMDI - 6 * 86400000), not: null })}
+      />,
+    );
+    expect(
+      within(screen.getByTestId('dizin-kullanimi')).getByText('yakında yazılmış'),
+    ).toBeInTheDocument();
+    unmount();
+    render(
+      <JbossEslesmesi
+        taranma={SIMDI}
+        ham={jvmsiz({ durum: 'YOK', surecler: [], son_yazma: sn(SIMDI - 8 * 86400000), not: null })}
+      />,
+    );
+    expect(
+      within(screen.getByTestId('dizin-kullanimi')).getByText('kullanım görülmedi'),
+    ).toBeInTheDocument();
+  });
+  it('kısmi / ölçülemedi / eski tarayıcı "kullanılmıyor" demez; hiçbir kullanım durumu yeşil değil', () => {
+    for (const k of [
+      {
+        durum: 'VAR',
+        surecler: [{ pid: 1, comm: 'x', kullanici: '', nasil: 'fd' }],
+        son_yazma: null,
+        not: null,
+      },
+      { durum: 'YOK', surecler: [], son_yazma: null, not: null },
+      { durum: 'KISMI', surecler: [], son_yazma: null, not: 'surec siniri' },
+      { durum: 'OLCULEMEDI', surecler: [], son_yazma: null, not: null },
+    ])
+      expect(kullanimDurumu(k as EarKullanim, SIMDI)?.ton).not.toBe('iyi');
+    expect(
+      kullanimDurumu({ durum: 'KISMI', surecler: [], son_yazma: null, not: null }, SIMDI)?.etiket,
+    ).toBe('kullanım kısmen ölçüldü');
+    render(<JbossEslesmesi taranma={SIMDI} ham={jvmsiz(undefined)} />);
+    expect(
+      within(screen.getByTestId('dizin-kullanimi')).getByText(
+        /ölçülmedi .*“kullanılmıyor” sayılmaz/,
+      ),
+    ).toBeInTheDocument();
+  });
+  it('JVM’e bağlı EAR’da dizin kullanımı bölümü yok', () => {
+    render(<JbossEslesmesi ham={ham(VAR)} />);
+    expect(screen.queryByTestId('dizin-kullanimi')).toBeNull();
+  });
+});
+
+describe('EJ6 inceleme: tarama referansı, ileri tarih, kısmi görünürlük, sunucu paneli', () => {
+  const TARAMA = Date.parse('2026-10-01T10:00:00Z');
+  const sn = (ms: number) => Math.floor(ms / 1000);
+  const jvmsiz = (kullanim: unknown) =>
+    ham({ durum: 'JVM_YOK', neden: 'TANIM_YOK', deploymentlar: [], jvmler: [], kullanim });
+  const yok = { durum: 'YOK' as const, surecler: [], not: null };
+  it('eski taramada taramadan 1 saat önce yazılmış dizin hâlâ "yakında yazılmış" (referans tarama, şimdi değil)', () => {
+    render(
+      <JbossEslesmesi
+        taranma="2026-10-01T10:00:00"
+        ham={jvmsiz({ ...yok, son_yazma: sn(TARAMA - 3600000) })}
+      />,
+    );
+    expect(
+      within(screen.getByTestId('dizin-kullanimi')).getByText('yakında yazılmış'),
+    ).toBeInTheDocument();
+    expect(kullanimDurumu({ ...yok, son_yazma: sn(TARAMA - 8 * 86400000) }, TARAMA)?.etiket).toBe(
+      'kullanım görülmedi',
+    );
+  });
+  it('tarama anından 1 günden fazla ileri tarihli yazma kanıt değil (uyarı), 1 gün içi yakın sayılır', () => {
+    expect(kullanimDurumu({ ...yok, son_yazma: sn(TARAMA + 3 * 86400000) }, TARAMA)?.etiket).toBe(
+      'son yazma ileri tarihli',
+    );
+    expect(kullanimDurumu({ ...yok, son_yazma: sn(TARAMA + 3600000) }, TARAMA)?.etiket).toBe(
+      'yakında yazılmış',
+    );
+  });
+  it('okunamayan süreç / hidepid varken "görülmedi" nötr değil, sarı', () => {
+    for (const ek of [{ okunamayan: 3 }, { hidepid: '2' }]) {
+      const d = kullanimDurumu({ ...yok, son_yazma: null, ...ek }, TARAMA);
+      expect([d?.etiket, d?.ton]).toEqual(['kullanım kısmen görüldü', 'uyari']);
+    }
+    expect(kullanimDurumu({ ...yok, son_yazma: null, okunamayan: 0 }, TARAMA)?.ton).toBe('notr');
+    render(
+      <JbossEslesmesi taranma={TARAMA} ham={jvmsiz({ ...yok, son_yazma: null, okunamayan: 42 })} />,
+    );
+    expect(
+      within(screen.getByTestId('dizin-kullanimi')).getByText(
+        /42 süreç izin yüzünden yalnız komut satırından denetlendi/,
+      ),
+    ).toBeInTheDocument();
+  });
+  it('sunucu paneli: JVM’e bağlanmayan EAR satırında kullanım rozeti ve süreç; ölçülmediyse söyler', () => {
+    const { unmount } = render(
+      <BagsizKullanim
+        taramaMs={TARAMA}
+        k={{
+          durum: 'VAR',
+          surecler: [{ pid: 76867, comm: 'node', kullanici: 'was', nasil: 'maps' }],
+          son_yazma: null,
+          not: null,
+        }}
+      />,
+    );
+    const b = screen.getByTestId('bagsiz-kullanim');
+    expect(within(b).getByText('dizin kullanımda')).toBeInTheDocument();
+    expect(within(b).getByText(/node pid 76867 \(maps\) · was/)).toBeInTheDocument();
+    unmount();
+    render(<BagsizKullanim taramaMs={null} k={null} />);
+    expect(
+      within(screen.getByTestId('bagsiz-kullanim')).getByText('kullanım ölçülmedi'),
+    ).toBeInTheDocument();
   });
 });

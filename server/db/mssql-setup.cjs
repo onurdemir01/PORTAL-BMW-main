@@ -1871,6 +1871,24 @@ const TABLES = [
       )`,
   },
   {
+    // OCO Takvimi'ne ELLE eklenen olaylar (2026-11-17, server/oco/manuel.cjs). Servis
+    // listesinden AYRI: servis salt okunur, bu kayitlar yalniz Portal'da yasar.
+    name: 'oco_manuel_olaylar',
+    sql: `
+      CREATE TABLE oco_manuel_olaylar (
+        id             INT IDENTITY(1,1) PRIMARY KEY,
+        oco_no         NVARCHAR(20)   NULL,
+        baslik         NVARCHAR(300)  NOT NULL,
+        aciklama       NVARCHAR(2000) NULL,
+        baslangic      DATETIME2      NOT NULL,
+        bitis          DATETIME2      NULL,
+        olusturan      NVARCHAR(128)  NULL,
+        olusturma_at   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        guncelleyen    NVARCHAR(128)  NULL,
+        guncelleme_at  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
     // Eskiden server/data/inventory-saved-queries.json — kimlik anahtari 'name'
     // (bkz. server/inventory/index.cjs readSavedQueries/writeSavedQueries).
     name: 'inventory_saved_queries',
@@ -5674,6 +5692,19 @@ async function setupTables() {
     // admin farkli kisilerdir.
     // YALNIZ `CREATE TABLE`a yazmak YETMEZ: mevcut kurulumlarda kolon HIC
     // olusmaz ve sorgular sessizce patlar (bu depoda defalarca yasandi).
+    // Reboot Kontrolu AWX alimi (2026-11-17, reboot-check-awx.cjs): AWX'te (workflow ya da elle) kosan
+    // reboot_check islerinden acilan kayit kaynak='AWX' (NULL = Portal); ayni workflow'un once/sonra
+    // islerini eslestirmek icin workflow isinin numarasi.
+    {
+      table: 'reboot_checks',
+      col: 'kaynak',
+      sql: `ALTER TABLE reboot_checks ADD kaynak NVARCHAR(8) NULL`,
+    },
+    {
+      table: 'reboot_checks',
+      col: 'awx_workflow_id',
+      sql: `ALTER TABLE reboot_checks ADD awx_workflow_id INT NULL`,
+    },
     {
       table: 'oco_scheduled_launches',
       col: 'owner_groups',
@@ -5940,6 +5971,24 @@ async function setupTables() {
       table: 'smart_tickets',
       col: 'approved_at',
       sql: 'ALTER TABLE smart_tickets ADD approved_at DATETIME2 NULL',
+    },
+    // Server Hub EAR Temizligi TOPLU silme kuyrugu (2026-11-16, server/server-hub/ear-temizlik.cjs). "Sirada" =
+    // durum PLAN_HAZIR + sil_istendi_at dolu (durum kumesi ve UX_shet_aktif degismez); toplu_id ayni onayla
+    // istenen silmeleri gruplar (tekli silmede NULL). NULL'a izin veren sutun = yalniz meta veri islemi.
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'toplu_id',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD toplu_id NVARCHAR(36) NULL',
+    },
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'sil_istendi_at',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD sil_istendi_at DATETIME2 NULL',
+    },
+    {
+      table: 'server_hub_ear_temizlik',
+      col: 'sil_isteyen',
+      sql: 'ALTER TABLE server_hub_ear_temizlik ADD sil_isteyen NVARCHAR(128) NULL',
     },
   ];
 

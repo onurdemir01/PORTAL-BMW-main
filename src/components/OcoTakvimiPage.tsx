@@ -16,6 +16,11 @@
 // TAKVİM YAPRAĞI (2026-11-13, "bazı arkadaşlar o şekilde görmek istiyor"): Liste | Takvim seçimi.
 // Liste varsayılan ve değişmedi; ?gorunum=takvim (paylaşılabilir) ya da izleyicinin son seçimi
 // takvimi açar. Takvim: src/components/oco/OcoTakvimYapragi.tsx; ortak rozet/ayrıntı OcoOrtak.tsx.
+//
+// ELLE OLAY (2026-11-17, "OCO Takvimi'ne manuel ekleme olayı da ekler misin?"): servisin
+// döndürmediği OCO ya da OCO'suz planlı çalışma Portal DB'ye eklenir (/api/oco/manuel) ve
+// listede/takvimde "manuel" rozetiyle görünür. Ayrı uçtan, ayrı yüklenir: OCO servisi düşse de
+// elle olaylar görünür; elle olaylar okunamazsa OCO listesi yine görünür ve hata yazılır.
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -25,13 +30,32 @@ import {
   ChevronRightIcon,
   ExclamationTriangleIcon,
   ClockIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 import { CodeChip } from '@/components/common/CodeChip';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { fmtDate, fmtDateTime } from '@/utils/datetime';
 import { gunSinifi, gunVurgu, pencereKapandi, type GunSinifi } from '@/components/oco/takvimVurgu';
-import { OcoDetay, OcoRozetleri, saat, type OcoRow } from '@/components/oco/OcoOrtak';
+import {
+  ManuelEylemBaglami,
+  OcoDetay,
+  OcoRozetleri,
+  saat,
+  type ManuelEylemler,
+  type OcoRow,
+} from '@/components/oco/OcoOrtak';
+import { Modal } from '@/components/common/Modal';
+import ManuelOlayFormu from '@/components/oco/ManuelOlayFormu';
+import {
+  manueldenSatira,
+  manuelListele,
+  manuelSil,
+  ocoEtiket,
+  ocoKopya,
+  type ManuelOlay,
+  type ManuelYanit,
+} from '@/components/oco/manuelOlay';
 import { gunAnahtari } from '@/components/oco/takvimIzgara';
 import OcoTakvimYapragi from '@/components/oco/OcoTakvimYapragi';
 
@@ -99,7 +123,13 @@ export default function OcoTakvimiPage() {
   const [acik, setAcik] = useState<number | null>(null);
   // ILISKI SUZGECI (kullanici, 2026-11-12): "hem bizim actigimiz hem bize acilan OCO'lar ayni
   // anda" - varsayilan hepsi; istenirse yalniz biri.
-  const [iliski, setIliski] = useState<'tumu' | 'acan' | 'sorumlu'>('tumu');
+  const [iliskiSecim, setIliski] = useState<'tumu' | 'acan' | 'sorumlu' | 'manuel'>('tumu');
+  const [manuel, setManuel] = useState<ManuelYanit | null>(null);
+  // Form: null = kapali; { olay: null } = yeni; { olay } = duzenle.
+  const [form, setForm] = useState<{ olay: ManuelOlay | null } | null>(null);
+  const [silinecek, setSilinecek] = useState<ManuelOlay | null>(null);
+  const [silHata, setSilHata] = useState<string | null>(null);
+  const [siliniyor, setSiliniyor] = useState(false);
   // GORUNUM (kullanici, 2026-11-13: "istek halinde gercek bir takvim yapragi seklinde"): liste
   // varsayilan; URL parametresi paylasilabilir/yer imi, yoksa izleyicinin son secimi.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -131,25 +161,73 @@ export default function OcoTakvimiPage() {
     }
   };
 
+  const yukleManuel = async () => {
+    try {
+      setManuel(await manuelListele());
+    } catch (e) {
+      setManuel({ ok: false, message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   useAsyncEffect(async (alive) => {
-    if (alive()) await yukle();
+    if (alive()) await Promise.all([yukle(), yukleManuel()]);
   }, []);
 
-  const rows = useMemo(() => data?.rows || [], [data]);
+  const servisRows = useMemo(() => data?.rows || [], [data]);
+  const manuelRows = useMemo(() => (manuel?.olaylar || []).map(manueldenSatira), [manuel]);
+  const rows = useMemo(() => [...servisRows, ...manuelRows], [servisRows, manuelRows]);
+  // GORUNMEZ SUZGEC YOK (dogrulama bulgusu): Manuel secenegi elle olay kalmayinca kaybolur; secim
+  // 'manuel' kalsaydi hicbir sekme secili gorunmeden tum OCO'lar gizlenirdi. O durumda Tumu gecerli.
+  const iliski = iliskiSecim === 'manuel' && manuelRows.length === 0 ? 'tumu' : iliskiSecim;
+  const servisOcolari = useMemo(() => new Set(servisRows.map((r) => String(r.oco))), [servisRows]);
+  const eylemler = useMemo<ManuelEylemler>(
+    () => ({
+      duzenle: (o) => setForm({ olay: o }),
+      sil: (o) => {
+        setSilHata(null);
+        setSilinecek(o);
+      },
+    }),
+    [],
+  );
+  const silOnayla = async () => {
+    if (!silinecek) return;
+    setSiliniyor(true);
+    setSilHata(null);
+    try {
+      const r = await manuelSil(silinecek.id);
+      if (!r.ok) {
+        setSilHata(r.message || 'Olay silinemedi.');
+        return;
+      }
+      setSilinecek(null);
+      await yukleManuel();
+    } catch (e) {
+      setSilHata(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSiliniyor(false);
+    }
+  };
   const iliskiSay = useMemo(
     () => ({
       acan: rows.filter((r) => r.iliski?.includes('acan')).length,
       sorumlu: rows.filter((r) => r.iliski?.includes('sorumlu')).length,
+      manuel: manuelRows.length,
     }),
-    [rows],
+    [rows, manuelRows],
   );
   const suzulmus = useMemo(() => {
     const q = sorgu.trim().toLowerCase();
-    const ilk = iliski === 'tumu' ? rows : rows.filter((r) => r.iliski?.includes(iliski));
+    const ilk =
+      iliski === 'tumu'
+        ? rows
+        : iliski === 'manuel'
+          ? rows.filter((r) => r.manuel)
+          : rows.filter((r) => r.iliski?.includes(iliski));
     if (!q) return ilk;
     return ilk.filter(
       (r) =>
-        String(r.oco).includes(q) ||
+        (r.manuel ? String(r.manuel.ocoNo || '').includes(q) || 'manuel'.includes(q) : String(r.oco).includes(q)) ||
         r.subject.toLowerCase().includes(q) ||
         r.statusText.toLowerCase().includes(q) ||
         r.explanation.toLowerCase().includes(q),
@@ -218,9 +296,11 @@ export default function OcoTakvimiPage() {
                   AÇMAMALI: kopyalamak isteyen kişi satırı açmak istemiyor. */}
               {/* Sarmalayici yalniz icteki kopyala dugmesinden kabaran olayi durdurur, kendisi
                   etkilesimli degil: role="presentation" (jsx-a11y'nin bu durum icin onerdigi kalip). */}
-              <span role="presentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                <CodeChip value={String(r.oco)} label={`#${r.oco}`} copyable tone="muted" />
-              </span>
+              {ocoKopya(r) && (
+                <span role="presentation" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <CodeChip value={ocoKopya(r)!} label={ocoEtiket(r)} copyable tone="muted" />
+                </span>
+              )}
               <OcoRozetleri r={r} kapandi={kapandi} />
             </span>
           </span>
@@ -287,6 +367,7 @@ export default function OcoTakvimiPage() {
   };
 
   return (
+    <ManuelEylemBaglami.Provider value={eylemler}>
     <div className="p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -316,6 +397,8 @@ export default function OcoTakvimiPage() {
               { id: 'tumu', label: 'Tümü', n: rows.length },
               { id: 'acan', label: 'Açtığımız', n: iliskiSay.acan },
               { id: 'sorumlu', label: 'Bize açılan', n: iliskiSay.sorumlu },
+              // Elle olay yoksa secenek gosterilmez (bos bir sekme kalabalik yapar).
+              ...(iliskiSay.manuel > 0 ? [{ id: 'manuel', label: 'Manuel', n: iliskiSay.manuel } as const] : []),
             ] as const
           ).map((s) => (
             <button
@@ -368,7 +451,7 @@ export default function OcoTakvimiPage() {
         </div>
         <button
           type="button"
-          onClick={() => void yukle(true)}
+          onClick={() => void Promise.all([yukle(true), yukleManuel()])}
           disabled={loading}
           className="inline-flex items-center gap-1 h-8 px-2.5 text-xs rounded-lg border disabled:opacity-40"
           style={{
@@ -378,6 +461,20 @@ export default function OcoTakvimiPage() {
           }}
         >
           <ArrowPathIcon className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
+        </button>
+        <button
+          type="button"
+          onClick={() => setForm({ olay: null })}
+          className="inline-flex items-center gap-1 h-8 px-2.5 text-xs rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          style={{
+            borderColor: 'var(--accent)',
+            background: 'var(--bg-surface)',
+            color: 'var(--accent)',
+          }}
+          title="Servisin göstermediği bir OCO ya da OCO'suz planlı çalışma ekle"
+          data-testid="oco-manuel-ekle"
+        >
+          <PlusIcon className="h-3.5 w-3.5" /> Olay ekle
         </button>
         {data?.fetchedAt && (
           <span
@@ -403,6 +500,33 @@ export default function OcoTakvimiPage() {
           {/* Mesaj artik cagrilan ADRESI de tasiyor (bkz. server/oco/search.cjs
               aramaHatasi). Uzun bir URL sarmalanmazsa kutuyu yatayda tasirir. */}
           <span className="min-w-0 break-words">{data.message || 'OCO listesi alınamadı.'}</span>
+        </div>
+      )}
+
+      {/* ELLE OLAYLAR OKUNAMADI: OCO listesi gorunur, elle olaylar eksik (bos sanilmasin). */}
+      {manuel && !manuel.ok && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={{
+            color: 'var(--status-warning-text)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+          data-testid="oco-manuel-hata"
+        >
+          Elle eklenen olaylar <b>gösterilemiyor</b>: {manuel.message || 'okunamadı.'}
+        </div>
+      )}
+      {manuel?.ok && manuel.kirpildi && (
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border"
+          style={{
+            color: 'var(--status-warning-text)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+        >
+          Elle eklenen olaylar <b>eksik</b>: yalnız en yeni {manuel.olaylar?.length} olay gösteriliyor.
         </div>
       )}
 
@@ -446,19 +570,22 @@ export default function OcoTakvimiPage() {
         <LoadingLogo compact />
       ) : gorunum === 'takvim' ? (
         <>
-          <OcoTakvimYapragi rows={suzulmus} tumRows={rows} eksik={!!data?.truncated} bugun={bugun} />
+          <OcoTakvimYapragi rows={suzulmus} tumRows={servisRows} eksik={!!data?.truncated} bugun={bugun} />
           {data?.ok && suzulmus.length === 0 && (
             <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
               {sorgu
                 ? 'Aramayla eşleşen OCO yok.'
-                : iliski !== 'tumu'
-                  ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
-                  : 'Bu grupta OCO görünmüyor.'}
+                : iliski === 'manuel'
+                  ? 'Elle eklenen olay görünmüyor.'
+                  : iliski !== 'tumu'
+                    ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
+                    : 'Bu grupta OCO görünmüyor.'}
             </div>
           )}
           {data?.ok && (
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               {suzulmus.length} / {rows.length} OCO gösteriliyor
+              {manuelRows.length > 0 && ` · ${manuelRows.length} elle eklenen olay dahil`}
             </div>
           )}
         </>
@@ -496,9 +623,11 @@ export default function OcoTakvimiPage() {
               {data?.ok
                 ? sorgu
                   ? 'Aramayla eşleşen OCO yok.'
-                  : iliski !== 'tumu'
-                    ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
-                    : 'Bu grupta OCO görünmüyor.'
+                  : iliski === 'manuel'
+                    ? 'Elle eklenen olay görünmüyor.'
+                    : iliski !== 'tumu'
+                      ? `${iliski === 'acan' ? 'Açtığımız' : 'Bize açılan'} OCO görünmüyor.`
+                      : 'Bu grupta OCO görünmüyor.'
                 : ''}
             </div>
           ) : (
@@ -508,6 +637,7 @@ export default function OcoTakvimiPage() {
           {data?.ok && (
             <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
               {suzulmus.length} / {rows.length} OCO gösteriliyor
+              {manuelRows.length > 0 && ` · ${manuelRows.length} elle eklenen olay dahil`}
               {data.kaynak?.acan || data.kaynak?.sorumlu
                 ? ` · serviste açtığımız ${data.kaynak?.acan?.total ?? '?'}, bize açılan ${data.kaynak?.sorumlu?.total ?? '?'} (ortak olanlar bir kez listelenir)`
                 : ` · serviste toplam ${data.total ?? '?'}`}
@@ -515,6 +645,61 @@ export default function OcoTakvimiPage() {
           )}
         </>
       )}
+
+      {form && (
+        <ManuelOlayFormu
+          key={form.olay ? form.olay.id : 'yeni'}
+          olay={form.olay}
+          servisOcolari={servisOcolari}
+          onClose={() => setForm(null)}
+          onKaydedildi={() => {
+            setForm(null);
+            void yukleManuel();
+          }}
+        />
+      )}
+      <Modal
+        open={!!silinecek}
+        onClose={() => (siliniyor ? undefined : setSilinecek(null))}
+        title="Olayı sil"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => void silOnayla()}
+              disabled={siliniyor}
+              className="h-8 px-3 text-xs font-medium rounded-lg disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              style={{ background: 'var(--status-danger)', color: 'var(--text-on-accent)' }}
+            >
+              {siliniyor ? 'Siliniyor…' : 'Sil'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSilinecek(null)}
+              disabled={siliniyor}
+              className="h-8 px-3 text-xs rounded-lg border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
+            >
+              İptal
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-2 text-xs" style={{ color: 'var(--text-secondary)' }} data-testid="oco-manuel-sil">
+          <p>
+            <b style={{ color: 'var(--text-primary)' }}>{silinecek?.baslik}</b>
+            {silinecek?.ocoNo ? ` (OCO ${silinecek.ocoNo})` : ''} takvimden kalıcı olarak silinecek. Bu geri
+            alınamaz.
+          </p>
+          {silHata && (
+            <div role="alert" style={{ color: 'var(--status-danger)' }}>
+              {silHata}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
+    </ManuelEylemBaglami.Provider>
   );
 }

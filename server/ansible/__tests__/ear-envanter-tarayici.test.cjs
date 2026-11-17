@@ -36,6 +36,10 @@
 //        okunamazsa OLCULEMEDI; port yoksa PORT_YOK
 //   ET18 FAZ A WebSphere serverindex.xml: sunucu, WC_ uc nokta portlari, kurulu uygulamalar; kok yok -> YOK;
 //        DOCTYPE reddi; WC portlari baglanti goruntusune girer
+//   ET20 kullanim kaniti (surum 4): JVM_YOK EAR'da gercek surec cwd / fd / cmdline eslesmesi, '/' onek siniri,
+//        cmdline metni pakete girmez, son yazma (OZET gezisi / TAM satirlari), sinirlar KISMI, proc yok OLCULEMEDI
+//   ET21 kullanim kaniti inceleme: gercek mmap (fd kapali) -> maps; sahte maps / maps siniri KISMI; okunamayan
+//        surec yapisal sayilir (cekirdek is parcacigi sayilmaz); hidepid alani; EAR disina bagli logs/ izlenir
 'use strict';
 
 const { test } = require('node:test');
@@ -896,6 +900,9 @@ test(
       dosya(path.join(v7, ad, 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'IKI.ear', 'META-INF', 'application.xml'), 10);
     dosya(path.join(v8, 'SEKIZ.ear', 'META-INF', 'application.xml'), 10);
+    // EAR icindeki modul ayri deployment (DACRAAP11 2026-11-16) ve onek tuzagi (TUZ.ear1 TUZ.ear degil)
+    dosya(path.join(v8, 'ALTLI.ear', 'ALTLI.war', 'WEB-INF', 'web.xml'), 10);
+    dosya(path.join(v8, 'TUZ.ear', 'META-INF', 'application.xml'), 10);
     const surum = path.join(kok, 'releases', 'BAGLI-2.0.ear');
     dosya(path.join(surum, 'META-INF', 'application.xml'), 10);
     fs.symlinkSync(surum, path.join(v7, 'BAGLI.ear'));
@@ -923,7 +930,12 @@ test(
     });
     jbossYaz(kok, 'jboss8', {
       alt: 'jboss/domain/configuration',
-      domain: domainXml([{ ad: 'IKI.ear', grup: 'g8' }, { ad: 'SEKIZ.ear', grup: 'g8' }]),
+      domain: domainXml([
+        { ad: 'IKI.ear', grup: 'g8' },
+        { ad: 'SEKIZ.ear', grup: 'g8' },
+        { ad: 'DA-ALTLI-prd.war', yol: path.join(v8, 'ALTLI.ear', 'ALTLI.war'), grup: 'g8' },
+        { ad: 'DA-TUZ-prd.war', yol: path.join(v8, 'TUZ.ear1', 'TUZ.war'), grup: 'g8' },
+      ]),
       host: hostXml([{ ad: 'IKI_JVM8', grup: 'g8' }], 'primary'),
     });
     const yuk = tara(kokler2(kok), { EAR_JBOSS: jbossKokleri(kok) });
@@ -951,6 +963,15 @@ test(
     assert.deepEqual(jv(x('IKI.ear')), [['IKI_JVM7', true]]);
     assert.deepEqual(jv(x('IKI.ear', v8)), [['IKI_JVM8', true]]);
     assert.equal(x('SEKIZ.ear', v8).durum, 'VAR', 'alternatif jboss/domain/configuration yolu okunmali');
+    const alt = x('ALTLI.ear', v8);
+    assert.equal(alt.durum, 'VAR', 'EAR icindeki modulun deployment yolu EAR ile eslesmeli (TANIM_YOK degil)');
+    assert.equal(alt.deploymentlar[0].yontem, 'ALT_YOL');
+    assert.deepEqual(jv(alt), [['IKI_JVM8', true]]);
+    assert.deepEqual(
+      { d: x('TUZ.ear', v8).durum, n: x('TUZ.ear', v8).neden },
+      { d: 'JVM_YOK', n: 'TANIM_YOK' },
+      'TUZ.ear1 altindaki yol TUZ.ear ile eslesmemeli (onek siniri /)',
+    );
 
     const b = x('BAGLI.ear');
     assert.equal(b.deploymentlar[0].yontem, 'YOL', 'bag hedefinin yolu eslesmeli');
@@ -1378,4 +1399,232 @@ test('ET19 WAS JVM: server.xml jvmEntries heap / argumanlar / sistem ozellikleri
   assert.deepEqual([j2.ilk_heap_mb, j2.en_cok_heap_mb], [null, null], 'heap yoksa null (0 DEGIL)');
   assert.equal(j2.sistem_ozellikleri.length, 100);
   assert.equal(j2.ozellik_kesildi, true);
+});
+
+// ET20 KULLANIM KANITI (surum 4, 2026-11-17; DACRPAP01: domain.xml'de olmayan EAR'da canli Node.js sureci). GERCEK
+// alt surecler: cwd = EAR/X.war ('sleep'), EAR icindeki dosyayi acik tutan python (fd), arguman yolunda EAR'i
+// tasiyan ve cmdline'inda sir gecen python (cmdline). Onek tuzagi (X.ear1). Sahte proc koku: ' (deleted)',
+// hidepid notu, okunamayan surec, fd / surec / mtime sinirlari -> KISMI; proc yok / bos -> OLCULEMEDI.
+const { spawn } = require('node:child_process');
+
+function bekleyenSurec(komut, args, cwd, hazirMetni) {
+  const c = spawn(komut, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+  if (!hazirMetni) return { c, hazir: Promise.resolve() };
+  const hazir = new Promise((coz, red) => {
+    c.stdout.on('data', (b) => String(b).includes(hazirMetni) && coz());
+    c.on('exit', (k) => red(new Error(`surec erken bitti: ${k}`)));
+  });
+  return { c, hazir };
+}
+
+test('ET20 kullanim kaniti: gercek surec cwd / fd / cmdline; onek siniri; sir yok; son yazma; sinirlar', { skip: SKIP }, async () => {
+  const kok = geciciKok('et20');
+  const v8 = path.join(kok, 'vhosting8');
+  const eski = new Date(Date.now() - 10 * 86400000);
+  const war = path.join(v8, 'NODEAPP.ear', 'NODEAPP.war');
+  const yaz = (p, t) => {
+    dosya(p, 8);
+    fs.utimesSync(p, t, t);
+  };
+  yaz(path.join(war, 'server.js'), eski);
+  yaz(path.join(v8, 'NODEAPP.ear', 'logs', 'nodejs.log'), new Date());
+  fs.mkdirSync(path.join(v8, 'NODEAPP.ear1'), { recursive: true });
+  yaz(path.join(v8, 'FDAPP.ear', 'veri.dat'), eski);
+  yaz(path.join(v8, 'CMDAPP.ear', 'app.js'), eski);
+  yaz(path.join(v8, 'YOKAPP.ear', 'META-INF', 'application.xml'), eski);
+  const enYeni = new Date(eski.getTime() + 5000);
+  yaz(path.join(v8, 'YOKAPP.ear', 'a', 'b', 'c.txt'), enYeni);
+  yaz(path.join(v8, 'BAGLI.ear', 'META-INF', 'application.xml'), eski);
+  jbossYaz(kok, 'jboss8', {
+    domain: domainXml([{ ad: 'BAGLI.ear', grup: 'g' }]),
+    host: hostXml([{ ad: 'J1', grup: 'g' }]),
+  });
+  const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+  const SIR = 'GIZLI_PAROLA_8f3a';
+  const surecler = [
+    bekleyenSurec('sleep', ['60'], war),
+    bekleyenSurec('sleep', ['60'], path.join(v8, 'NODEAPP.ear1')),
+    bekleyenSurec(
+      PY.komut,
+      [...PY.on, '-I', '-c', 'import sys,time; f=open(sys.argv[1],"rb"); print("hazir", flush=True); time.sleep(60)', path.join(v8, 'FDAPP.ear', 'veri.dat')],
+      '/',
+      'hazir',
+    ),
+    bekleyenSurec(
+      PY.komut,
+      [...PY.on, '-I', '-c', 'print("hazir", flush=True); import time; time.sleep(60)', `--db-password=${SIR}`, `--app=${path.join(v8, 'CMDAPP.ear', 'app.js')}`],
+      '/',
+      'hazir',
+    ),
+  ];
+  const k = (yuk, ad) => uyg(yuk, ad).kullanim;
+  const saniye = (t) => Math.floor(t.getTime() / 1000);
+  try {
+    await Promise.all(surecler.map((s) => s.hazir));
+    await new Promise((coz) => setTimeout(coz, 300));
+    const yuk = tara([v8], ORT);
+    assert.equal(yuk.tarayici_surum, 4);
+    const n = k(yuk, 'NODEAPP.ear');
+    assert.equal(n.durum, 'VAR', JSON.stringify(n));
+    assert.deepEqual(
+      n.surecler.map((p) => [p.pid, p.nasil, p.comm]),
+      [[surecler[0].c.pid, 'cwd', 'sleep']],
+      'cwd = EAR/X.war sureci (ve YALNIZ o: X.ear1 onek tuzagi degil)',
+    );
+    assert.ok(n.surecler[0].kullanici, 'kullanici adi / uid');
+    assert.deepEqual(Object.keys(n).sort(), ['durum', 'hidepid', 'not', 'okunamayan', 'son_yazma', 'surecler']);
+    assert.deepEqual(Object.keys(n.surecler[0]).sort(), ['comm', 'kullanici', 'nasil', 'pid']);
+    assert.ok(n.son_yazma > Date.now() / 1000 - 3600, 'logs/ altindaki bugunku yazma son_yazma olmali');
+    assert.deepEqual(k(yuk, 'FDAPP.ear').surecler.map((p) => [p.pid, p.nasil]), [[surecler[2].c.pid, 'fd']]);
+    assert.deepEqual(k(yuk, 'CMDAPP.ear').surecler.map((p) => [p.pid, p.nasil]), [[surecler[3].c.pid, 'cmdline']]);
+    const metin = JSON.stringify(yuk);
+    assert.ok(!metin.includes(SIR) && !metin.includes('db-password'), 'cmdline metni pakete girdi');
+    const y = k(yuk, 'YOKAPP.ear');
+    assert.deepEqual([y.durum, y.surecler, y.son_yazma], ['YOK', [], saniye(enYeni)]);
+    assert.equal(uyg(yuk, 'BAGLI.ear').kullanim, undefined, 'JVM_YOK olmayan EAR olculmez');
+    const insan = tara([v8], { ...ORT, EAR_CIKTI: 'insan' });
+    assert.match(insan, /kullanim=VAR/);
+    assert.ok(!insan.includes(SIR), 'insan kipinde sir');
+    // TAM kip: ayni geziden; OZET agac siniri -> KISMI; surec sayi siniri -> KISMI
+    assert.equal(k(tara([v8], { ...ORT, EAR_KIP: 'TAM' }), 'YOKAPP.ear').son_yazma, saniye(enYeni));
+    const ks = k(tara([v8], { ...ORT, EAR_SON_YAZMA_SINIRI: '1' }), 'YOKAPP.ear');
+    assert.equal(ks.durum, 'KISMI');
+    assert.match(ks.not, /son yazma kismi/);
+    const ss = k(tara([v8], { ...ORT, EAR_SUREC_SINIRI: '1' }), 'YOKAPP.ear');
+    assert.equal(ss.durum, 'KISMI');
+    assert.match(ss.not, /sayi siniri/);
+  } finally {
+    for (const s of surecler) s.c.kill('SIGKILL');
+  }
+
+  // Sahte proc koku
+  const ear = path.join(v8, 'YOKAPP.ear');
+  const pidKur = (proc, pid, { cwd = '/', fdler = [], cmd = '' } = {}) => {
+    const d = path.join(proc, String(pid));
+    fs.mkdirSync(path.join(d, 'fd'), { recursive: true });
+    fs.symlinkSync(cwd, path.join(d, 'cwd'));
+    fs.symlinkSync('/', path.join(d, 'root'));
+    fs.symlinkSync('/usr/bin/java', path.join(d, 'exe'));
+    fdler.forEach((h, i) => fs.symlinkSync(h, path.join(d, 'fd', String(i))));
+    fs.writeFileSync(path.join(d, 'cmdline'), cmd);
+    fs.writeFileSync(path.join(d, 'comm'), 'java\n');
+    return d;
+  };
+  const proc = path.join(kok, 'proc');
+  fs.mkdirSync(proc);
+  fs.writeFileSync(path.join(proc, 'mounts'), 'proc /proc proc rw,nosuid,nodev,noexec,relatime,hidepid=2 0 0\n');
+  pidKur(proc, 100, { fdler: ['/dev/null', `${ear}/a/b/c.txt (deleted)`] });
+  pidKur(proc, 101, { cwd: `${ear}1/x` });
+  pidKur(proc, 102, { cmd: `java\0-Dx=${ear}/lib\0` });
+  const kilitli = pidKur(proc, 103);
+  fs.chmodSync(kilitli, 0);
+  try {
+    const s = k(tara([v8], { ...ORT, EAR_PROC: proc }), 'YOKAPP.ear');
+    assert.deepEqual(
+      s.surecler.map((p) => [p.pid, p.nasil, p.comm]),
+      [[100, 'fd', 'java'], [102, 'cmdline', 'java']],
+      JSON.stringify(s),
+    );
+    assert.match(s.not, /hidepid=2/);
+    if (!ROOT) assert.match(s.not, /1 surec okunamadi/);
+    const f1 = k(tara([v8], { ...ORT, EAR_PROC: proc, EAR_FD_SINIRI: '1' }), 'YOKAPP.ear');
+    assert.match(f1.not, /fd siniri 1/);
+  } finally {
+    fs.chmodSync(kilitli, 0o755);
+  }
+  const proc2 = path.join(kok, 'proc2');
+  pidKur(proc2, 200, { fdler: ['/dev/null', '/dev/zero', '/dev/full'] });
+  const f2 = k(tara([v8], { ...ORT, EAR_PROC: proc2, EAR_FD_SINIRI: '2' }), 'YOKAPP.ear');
+  assert.deepEqual([f2.durum, f2.surecler], ['KISMI', []], 'fd siniri asildiysa YOK denmez');
+  assert.equal(k(tara([v8], { ...ORT, EAR_PROC: proc2, EAR_FD_SINIRI: '3' }), 'YOKAPP.ear').durum, 'YOK', 'kontrol: sinir icinde YOK');
+  fs.mkdirSync(path.join(kok, 'procbos'));
+  assert.equal(k(tara([v8], { ...ORT, EAR_PROC: path.join(kok, 'procbos') }), 'YOKAPP.ear').durum, 'OLCULEMEDI');
+  const yok = k(tara([v8], { ...ORT, EAR_PROC: path.join(kok, 'yokproc') }), 'YOKAPP.ear');
+  assert.equal(yok.durum, 'OLCULEMEDI');
+  assert.match(yok.not, /okunamadi/);
+});
+
+// ET21 INCELEME (2026-11-17): B8 maps (silme betigi de maps'e bakar; fd'si kapatilmis mmap), B3 okunamayan / hidepid
+// yapisal alan (Portal "gorulmedi" demez), B6 EAR disina bagli logs/ dizini son yazmaya girer.
+test('ET21 kullanim kaniti: maps, okunamayan / hidepid alanlari, dis bag logs/', { skip: SKIP }, async () => {
+  const kok = geciciKok('et21');
+  const v8 = path.join(kok, 'vhosting8');
+  const eski = new Date(Date.now() - 30 * 86400000);
+  const yaz = (p, t) => {
+    dosya(p, 8);
+    fs.utimesSync(p, t, t);
+  };
+  yaz(path.join(v8, 'MAPAPP.ear', 'lib', 'native.so'), eski);
+  yaz(path.join(v8, 'LOGBAG.ear', 'app.js'), eski);
+  const disLog = path.join(kok, 'dislog', 'LOGBAG');
+  yaz(path.join(disLog, 'app.log'), new Date());
+  fs.symlinkSync(disLog, path.join(v8, 'LOGBAG.ear', 'logs'));
+  yaz(path.join(v8, 'BOS.ear', 'app.js'), eski);
+  jbossYaz(kok, 'jboss8', { domain: domainXml([]), host: hostXml([]) });
+  const ORT = { EAR_JBOSS: jbossKokleri(kok), EAR_WAS: path.join(kok, 'yok') };
+  const k = (yuk, ad) => uyg(yuk, ad).kullanim;
+  // Yol ortam degiskeninden: cmdline'da gorunmez, fd mmap'ten sonra kapanir -> yalniz maps yakalar.
+  const c = spawn(
+    PY.komut,
+    [
+      ...PY.on,
+      '-I',
+      '-c',
+      "import ctypes,os,time; L=ctypes.CDLL(None); L.mmap.restype=ctypes.c_void_p; L.mmap.argtypes=[ctypes.c_void_p,ctypes.c_size_t,ctypes.c_int,ctypes.c_int,ctypes.c_int,ctypes.c_long]; fd=os.open(os.environ['MAPYOL'],os.O_RDONLY); a=L.mmap(None,8,1,2,fd,0); os.close(fd); assert a not in (None, ctypes.c_void_p(-1).value); print('hazir', flush=True); time.sleep(60)",
+    ],
+    {
+      cwd: '/',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, MAPYOL: path.join(v8, 'MAPAPP.ear', 'lib', 'native.so') },
+    },
+  );
+  try {
+    await new Promise((coz, red) => {
+      c.stdout.on('data', (b) => String(b).includes('hazir') && coz());
+      c.on('exit', (x) => red(new Error(`surec erken bitti: ${x}`)));
+    });
+    const yuk = tara([v8], ORT);
+    const mp = k(yuk, 'MAPAPP.ear');
+    assert.deepEqual(mp.surecler.map((p) => [p.pid, p.nasil]), [[c.pid, 'maps']], JSON.stringify(mp));
+    assert.ok(!JSON.stringify(yuk).includes('MAPYOL'), 'ortam metni pakete girmez');
+    const lb = k(yuk, 'LOGBAG.ear');
+    assert.ok(lb.son_yazma > Date.now() / 1000 - 3600, `dis bagli logs/ izlenmeli: ${JSON.stringify(lb)}`);
+    assert.match(lb.not, /dis bag izlendi: logs/);
+    assert.equal(typeof lb.okunamayan, 'number');
+    assert.equal(typeof lb.hidepid, 'string');
+    assert.ok(k(yuk, 'BOS.ear').son_yazma < Date.now() / 1000 - 20 * 86400, 'dis bag yalniz kendi EAR inda');
+  } finally {
+    c.kill('SIGKILL');
+  }
+  // Sahte proc: maps eslesmesi ve siniri; okunamayan yapisal (cekirdek is parcacigi sayilmaz); hidepid alani
+  const ear = path.join(v8, 'BOS.ear');
+  const proc = path.join(kok, 'proc');
+  const pidKur = (pid, { maps = null, cmd = 'java\0', fdKilit = false } = {}) => {
+    const d = path.join(proc, String(pid));
+    fs.mkdirSync(path.join(d, 'fd'), { recursive: true });
+    fs.symlinkSync('/', path.join(d, 'cwd'));
+    fs.symlinkSync('/', path.join(d, 'root'));
+    fs.symlinkSync('/usr/bin/java', path.join(d, 'exe'));
+    fs.writeFileSync(path.join(d, 'cmdline'), cmd);
+    fs.writeFileSync(path.join(d, 'comm'), 'java\n');
+    if (maps != null) fs.writeFileSync(path.join(d, 'maps'), maps);
+    if (fdKilit) fs.chmodSync(path.join(d, 'fd'), 0);
+    return d;
+  };
+  fs.mkdirSync(proc);
+  fs.writeFileSync(path.join(proc, 'mounts'), 'proc /proc proc rw,hidepid=invisible 0 0\n');
+  pidKur(300, { maps: `7f00-7f01 r-xp 00000000 08:01 1234 ${ear}/lib/x.so\n7f01-7f02 r--p 00000000 08:01 1 /usr/lib/libc.so\n` });
+  pidKur(301, { cmd: '', fdKilit: true });
+  pidKur(302, { fdKilit: true });
+  try {
+    const f = k(tara([v8], { ...ORT, EAR_PROC: proc }), 'BOS.ear');
+    assert.deepEqual(f.surecler.map((p) => [p.pid, p.nasil]), [[300, 'maps']]);
+    assert.equal(f.hidepid, 'invisible');
+    if (!ROOT) assert.equal(f.okunamayan, 1, 'cekirdek is parcacigi (bos cmdline) okunamayan sayilmaz');
+    const ms = k(tara([v8], { ...ORT, EAR_PROC: proc, EAR_MAPS_BAYT: '10' }), 'BOS.ear');
+    assert.equal(ms.durum, 'KISMI');
+    assert.match(ms.not, /maps siniri 10 bayt/);
+  } finally {
+    for (const p of [301, 302]) fs.chmodSync(path.join(proc, String(p), 'fd'), 0o755);
+  }
 });
