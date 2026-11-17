@@ -45,7 +45,7 @@ function sunucuDurumu(ozet, seenAt, nowMs, tazeSaat) {
       neden: 'dökümde paket bölümü yok (sunucudaki döküm betiği eski)',
     };
   }
-  const t = seenAt ? new Date(seenAt).getTime() : NaN;
+  const t = seenAt ? new Date(seenAt).getTime() : Number.NaN;
   if (!Number.isFinite(t)) return { durum: 'bayat', neden: 'son görülme zamanı bilinmiyor' };
   const yasSaat = (nowMs - t) / 3600000;
   if (yasSaat > tazeSaat) {
