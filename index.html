@@ -72,6 +72,12 @@
           // Sunucu tercihi localStorage'a da yazilir: bir sonraki acilista, HTML
           // gomulemese bile (or. nginx statigi dogrudan servis ederse) dogru tema.
           if (boot.theme) { try { localStorage.setItem("bmw-theme", boot.theme); } catch (e) {} }
+          // RENK KORLUGU MODU (2026-11-17): kirmizi/yesil yerine turuncu/mavi (index.css [data-renk="cvd"]).
+          // Temadan bagimsiz; sunucu tercihi kazanir, yoksa localStorage.
+          var renk = null;
+          try { renk = localStorage.getItem("bmw-renk"); } catch (e) {}
+          if (boot.renk === "cvd") { renk = "cvd"; try { localStorage.setItem("bmw-renk", "cvd"); } catch (e) {} }
+          if (renk === "cvd") document.documentElement.setAttribute("data-renk", "cvd");
           // Mobil tarayici cubugu MASTHEAD ile ayni renkte olmali. PF6'da masthead
           // temayi izler: acik #f2f2f2, koyu #151515 (--masthead-bg ile BIREBIR ayni;
           // src/__tests__/first-paint.test.cjs bu esitligi kilitler).

@@ -20,6 +20,7 @@ import {
   ChevronDownIcon,
   UserCircleIcon,
   ExclamationTriangleIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 import { AuthContext } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -36,7 +37,7 @@ interface Props {
 
 export default function Masthead({ onToggleNav }: Props) {
   const { user, logout } = useContext(AuthContext);
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, renkKoru, setRenkKoru } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [oturumlarAcik, setOturumlarAcik] = useState(false);
   // Sunucudaki tercih acilista ASENKRON dolar. Ilk deger onbellekten okunur
@@ -168,6 +169,20 @@ export default function Masthead({ onToggleNav }: Props) {
           title={theme === "dark" ? "Açık tema" : "Koyu tema"}
         >
           {theme === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+        </button>
+
+        {/* RENK KORLUGU MODU (2026-11-17, kullanici: "ekipteki renk koru arkadasimiz kirmizilari goremiyor"): kirmizi/yesil
+            yerine turuncu/mavi (index.css [data-renk="cvd"]). Acikken dugme vurgulu; ekran okuyucuya aria-pressed. */}
+        <button
+          className="pf-masthead-btn"
+          onClick={() => setRenkKoru(!renkKoru)}
+          aria-pressed={renkKoru}
+          aria-label={renkKoru ? "Renk körü modunu kapat" : "Renk körü modunu aç"}
+          title={renkKoru ? "Renk körü modu açık (kırmızı/yeşil yerine turuncu/mavi)" : "Renk körü modu (kırmızı/yeşil yerine turuncu/mavi)"}
+          data-testid="renk-koru-dugme"
+          style={renkKoru ? { color: "var(--accent)", boxShadow: "inset 0 -2px 0 var(--accent)" } : undefined}
+        >
+          <EyeIcon className="h-5 w-5" />
         </button>
 
         {adminMi && smartAtla && (

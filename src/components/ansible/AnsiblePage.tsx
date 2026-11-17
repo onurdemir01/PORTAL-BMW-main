@@ -65,7 +65,7 @@ function parseVarsText(text: string, format: "yaml" | "json"): { obj: Record<str
 
 // ── Job status helpers ────────────────────────────────────────────────────────
 const STATUS_COLOR: Record<string, string> = {
-  successful: "#22c55e", failed: "#ef4444", error: "#ef4444",
+  successful: "var(--nokta-ok)", failed: "var(--nokta-hata)", error: "var(--nokta-hata)",
   canceled: "#f97316", running: "var(--accent)", waiting: "#94a3b8", pending: "#94a3b8",
 };
 const STATUS_LABEL: Record<string, string> = {
