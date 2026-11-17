@@ -244,49 +244,32 @@ async function sonucuKaydet(ad, cozum, { serverId, jobId, kullanici, adSoyad }) 
     const { cluster, namespace, ok, hata, ...govde } = h;
     return { cluster, namespace, sonuc_json: JSON.stringify(govde).slice(0, 900000), ok: ok ? 1 : 0, hata: hata ? String(hata).slice(0, 2000) : null };
   });
-  const { rows } = await db.query(
-    `DECLARE @existing INT;
-     BEGIN TRY
-       BEGIN TRANSACTION;
-       SELECT @existing = COUNT(*) FROM app_hub_ocp_canli WITH (UPDLOCK, HOLDLOCK)
-        WHERE awx_server_id = $1 AND awx_job_id = $2
-       IF @existing = 0
-       BEGIN
-         INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
-         SELECT $4, j.cluster, j.namespace, j.sonuc_json, j.ok, j.hata, $5, $6, $1, $2
-           FROM OPENJSON($3) WITH (
-             cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace',
-             sonuc_json NVARCHAR(MAX) '$.sonuc_json', ok BIT '$.ok', hata NVARCHAR(2000) '$.hata'
-           ) j;
-         IF @@ROWCOUNT <> $7
-         BEGIN
-           ;THROW 50001, 'Application Hub canli sonucu eksik yazildi.', 1;
-         END
-       END
-       ELSE IF @existing <> $7
-         OR EXISTS (SELECT 1 FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2 AND uygulama <> $4)
-         OR EXISTS (
-           SELECT cluster, namespace FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2
-           EXCEPT SELECT cluster, namespace FROM OPENJSON($3) WITH (cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace')
-         )
-         OR EXISTS (
-           SELECT cluster, namespace FROM OPENJSON($3) WITH (cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace')
-           EXCEPT SELECT cluster, namespace FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2
-         )
-       BEGIN
-         ;THROW 50002, 'Application Hub canli sonucu kismi veya uyumsuz.', 1;
-       END
-       COMMIT TRANSACTION;
-     END TRY
-     BEGIN CATCH
-       IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
-       THROW;
-     END CATCH;
-     SELECT CASE WHEN @existing = 0 THEN 1 ELSE 0 END AS inserted;`,
-    [serverId, jobId, JSON.stringify(hedefler), ad, kullanici, adSoyad, hedefler.length],
-    { tekrar: false },
-  );
-  return Number(rows[0] && rows[0].inserted) === 1;
+  const beklenen = hedefAnahtarlari(hedefler);
+  return db.transaction(async (tx) => {
+    const { rows: mevcut } = await tx.query(
+      `SELECT uygulama, cluster, namespace FROM app_hub_ocp_canli WITH (UPDLOCK, HOLDLOCK)
+        WHERE awx_server_id = $1 AND awx_job_id = $2`,
+      [serverId, jobId],
+    );
+    if (mevcut.length) {
+      const eski = hedefAnahtarlari(mevcut);
+      if (!eski || mevcut.some((x) => x.uygulama !== ad) || eski.length !== beklenen.length || eski.some((x, i) => x !== beklenen[i])) {
+        throw new Error('Application Hub canli sonucu kismi veya uyumsuz.');
+      }
+      return false;
+    }
+    const { rowCount } = await tx.query(
+      `INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
+       SELECT $4, j.cluster, j.namespace, j.sonuc_json, j.ok, j.hata, $5, $6, $1, $2
+         FROM OPENJSON($3) WITH (
+           cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace',
+           sonuc_json NVARCHAR(MAX) '$.sonuc_json', ok BIT '$.ok', hata NVARCHAR(2000) '$.hata'
+         ) j`,
+      [serverId, jobId, JSON.stringify(hedefler), ad, kullanici, adSoyad],
+    );
+    if (rowCount !== hedefler.length) throw new Error('Application Hub canli sonucu eksik yazildi.');
+    return true;
+  });
 }
 
 module.exports = { REGISTRY_KEY, STATS_KEY, HEDEF_TAVAN, TEMPLATE_NAME, statsOku, satirlariCoz, sonucuCoz, hedefleriKur, canliIsSahipligi, canliArtifactDogrula, sonOkumalar, sonucuKaydet };

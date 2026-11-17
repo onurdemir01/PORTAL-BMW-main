@@ -305,8 +305,11 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
 const SQL = { NVarChar: () => 'nvarchar' };
 const sorgu = { yanit: /** @type {(t?: any, p?: any) => any} */ (() => ({ recordset: [] })) };
 sahte(require.resolve('../../inventory/mssql.cjs'), { sql: SQL, query: async (t, p) => sorgu.yanit(t, p) });
-const portalDb = { yanit: /** @type {(t?: any, p?: any) => any} */ (async () => ({ rows: [] })) };
-sahte(require.resolve('../../db/index.cjs'), { query: (t, p) => portalDb.yanit(t, p) });
+const portalDb = {
+  yanit: /** @type {(t?: any, p?: any) => any} */ (async () => ({ rows: [] })),
+  transaction: /** @type {(work: any) => any} */ (async (work) => work({ query: async () => ({ rows: [], rowCount: 0 }) })),
+};
+sahte(require.resolve('../../db/index.cjs'), { query: (t, p) => portalDb.yanit(t, p), transaction: (work) => portalDb.transaction(work) });
 sahte(require.resolve('../../config/apps-table.cjs'), { getAppsTable: () => 'MWAppsInventory', getWasAppsTable: () => 'WASAppsInventory' });
 const hub = { hosts: [], agir: new Map() };
 sahte(require.resolve('../../server-hub/index.cjs'), {
@@ -572,28 +575,42 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
       assert.match(t, /awx_server_id = \$1 AND job_id = \$2/, 'controller-local history sorgusu gevsetildi');
       return { rows: Number(p[0]) === 2 ? historyRows : [] };
     }
-    if (/BEGIN TRY/.test(t)) {
-      assert.match(t, /BEGIN TRANSACTION/);
-      assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)/);
-      assert.match(t, /FROM OPENJSON\(\$3\)/);
-      assert.match(t, /COMMIT TRANSACTION/);
-      assert.match(t, /BEGIN CATCH/);
-      assert.match(t, /IF XACT_STATE\(\) <> 0 ROLLBACK TRANSACTION/);
-      assert.doesNotMatch(t, /SET TRANSACTION ISOLATION LEVEL|SET XACT_ABORT/, 'pooled session ayari siziyor');
-      assert.equal(p[6], JSON.parse(p[2]).length, 'expected target sayisi JSON ile ayni degil');
-      if (kayitHatasi) throw new Error('fixture persistence failure');
-      const key = `${p[0]}|${p[1]}`;
-      const yeni = JSON.parse(p[2]);
-      const eski = kayitlar.get(key);
-      if (eski && JSON.stringify(eski.map((x) => [x.cluster, x.namespace]).sort()) !== JSON.stringify(yeni.map((x) => [x.cluster, x.namespace]).sort())) throw new Error('fixture partial result mismatch');
-      if (!eski) {
-        kayitlar.set(key, yeni);
-        insertler.push(...yeni);
-      }
-      return { rows: [{ inserted: eski ? 0 : 1 }] };
-    }
     if (/FROM app_hub_ocp_canli WHERE uygulama/.test(t)) return { rows: [] };
     return { rows: [] };
+  };
+  portalDb.transaction = async (work) => {
+    const onceKayitlar = new Map([...kayitlar].map(([k, v]) => [k, { app: v.app, targets: v.targets.map((x) => ({ ...x })) }]));
+    const onceInsert = insertler.length;
+    try {
+      return await work({
+        query: async (t, p) => {
+          const key = `${p[0]}|${p[1]}`;
+          if (/SELECT uygulama, cluster, namespace/.test(t)) {
+            assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)/);
+            const eski = kayitlar.get(key);
+            return { rows: eski ? eski.targets.map((x) => ({ uygulama: eski.app, cluster: x.cluster, namespace: x.namespace })) : [], rowCount: eski ? eski.targets.length : 0 };
+          }
+          if (/INSERT INTO app_hub_ocp_canli/.test(t)) {
+            assert.match(t, /FROM OPENJSON\(\$3\)/);
+            const yeni = JSON.parse(p[2]);
+            if (kayitHatasi) {
+              kayitlar.set(key, { app: p[3], targets: yeni.slice(0, 1) });
+              insertler.push(...yeni.slice(0, 1));
+              throw new Error('fixture persistence failure');
+            }
+            kayitlar.set(key, { app: p[3], targets: yeni });
+            insertler.push(...yeni);
+            return { rows: [], rowCount: yeni.length };
+          }
+          throw new Error(`beklenmeyen transaction sorgusu: ${t}`);
+        },
+      });
+    } catch (e) {
+      kayitlar.clear();
+      for (const [k, v] of onceKayitlar) kayitlar.set(k, v);
+      insertler.length = onceInsert;
+      throw e;
+    }
   };
   const artifact = (ek = {}) => ({
     app_hub_ocp_result: {
@@ -663,7 +680,7 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   kayitHatasi = false;
   r = await istek('GET', '/ocp/canli/2/901?ad=demo');
   assert.equal(r.status, 200, 'rollback sonrasi retry sonucu tamamlayamadi');
-  assert.equal(kayitlar.get('2|901').length, 2, 'retry tum hedefleri atomik yazmadi');
+  assert.equal(kayitlar.get('2|901').targets.length, 2, 'retry tum hedefleri atomik yazmadi');
 
   const onceParalel = insertler.length;
   const paralel = await Promise.all([istek('GET', '/ocp/canli/2/903?ad=demo'), istek('GET', '/ocp/canli/2/903?ad=demo')]);
