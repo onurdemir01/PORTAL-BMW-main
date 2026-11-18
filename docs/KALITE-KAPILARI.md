@@ -66,6 +66,9 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
   - Normal derlemede yalnız uyarır.
 - **Paket:** `build/BMWPORTAL/PORTAL-BMW-main` altında üretilir. Kütüphanenin Sonar adımı `build/**`'i taramaz; zip adımı çalışma alanı içinden okur. War'ın kökü `PORTAL-BMW-main/`, çünkü `deploy/release.sh` bunu bekler.
 - **Adlar:** `BMWPORTAL.war` ve `BMWPORTAL-D`, uygulamanın SI/CMDB kaydındaki war ve deployment adlarıdır.
+- **TST ve PRD:** [`TST_…`](../deploy/jenkins/TST_JAVASCRIPT_GAR_BMW_PORTAL.groovy) ve [`PRD_…`](../deploy/jenkins/PRD_JAVASCRIPT_GAR_BMW_PORTAL.groovy). Derleme, paket, war ve staging DVL ile birebir aynıdır (bekçi KJ4).
+  - TST deployment adı `BMWPORTAL-T`. Kurumdaki `-D` / `-T` / `-Q` kalıbından türetildi; TST SI kaydıyla doğrulanmalı.
+  - PRD'de deploy adımı yoktur. Üretim kurulumu staging'deki `BMWPORTAL.war`'dan ayrı süreçle yapılır.
 - **Bekçi:** `server/__tests__/kurumsal-pipeline.test.cjs`. Şunları denetler:
   - Node sürümü izin listesinde ve Dockerfile ile aynı;
   - araç yalnız nodejs, elle ajan yok;
