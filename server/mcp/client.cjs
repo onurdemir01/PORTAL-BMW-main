@@ -442,5 +442,5 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
 
 // buildDispatcher disa acik: MCP-disi dis servis client'lari (or. server/splunk/client.cjs)
 // ayni CA/NO_PROXY-farkinda undici dispatcher'i yeniden kullanabilsin — yeni bir TLS/proxy
-// yaklasimi icat etmek yerine (bkz. docs/TLS-SETUP.md, docs/NETWORK-HARDENING-BACKLOG.md).
+// yaklasimi icat etmek yerine (bkz. docs/TLS-SETUP.md).
 module.exports = { createMcpClient, buildDispatcher };

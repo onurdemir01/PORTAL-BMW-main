@@ -3,7 +3,7 @@
 //
 // KK1-KK4: kapilarin kendisi dogru calisiyor mu (sir taramasi, kapsam esigi, bicim cirigi, Sonar).
 // KK5-KK9: kapilar gevsetilemiyor mu: esik tabanlari, Sonar dislamalari, bastirma sayilari, CI ile
-// tek komutun esitligi, kancalar ve ajan / gelistirici talimat dosyalari.
+// tek komutun esitligi, kancalar ve ajan / gelistirici talimat dosyalari (proje ajanlari ve repo hijyeni dahil).
 'use strict';
 
 const { test } = require('node:test');
@@ -336,6 +336,11 @@ test('KK9 kancalar ve talimat dosyalari kapilari zorunlu kilar', () => {
     '.agent/rules/kalite-kapilari.md',
     'CONTRIBUTING.md',
     '.github/PULL_REQUEST_TEMPLATE.md',
+    // Proje ajanlarinin tanimlari (2026-11-18'den beri repoda): her biri ayni kurallara baglidir.
+    ...fs
+      .readdirSync(path.join(KOK, '.claude/agents'))
+      .filter((x) => x.endsWith('.md'))
+      .map((x) => `.claude/agents/${x}`),
   ]) {
     const m = oku(f);
     assert.ok(
@@ -343,6 +348,17 @@ test('KK9 kancalar ve talimat dosyalari kapilari zorunlu kilar', () => {
       `${f}: docs/KALITE-KAPILARI.md'ye isaret etmiyor`,
     );
     assert.ok(m.includes('npm run kapi'), `${f}: npm run kapi yok`);
+    // Repo hijyeni (2026-11-18): kullanilmayan dosya birakilmaz; kural her talimatta yazili.
+    assert.match(m, /repo hijyeni/i, `${f}: repo hijyeni kurali yok`);
+  }
+  assert.equal(
+    fs.readdirSync(path.join(KOK, '.claude/agents')).filter((x) => x.endsWith('.md')).length >= 4,
+    true,
+    'proje ajanlari repoda degil',
+  );
+  for (const f of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md']) {
+    assert.match(oku(f), /scripts\/repo-hijyeni\.cjs/, `${f}: hijyen bekcisine isaret etmiyor`);
+    assert.match(oku(f), /tek ajan yazar/, `${f}: ayni dala tek ajan kurali yok`);
   }
   const doc = oku('docs/KALITE-KAPILARI.md');
   for (const k of [...KAPILAR, ...CI_EK])

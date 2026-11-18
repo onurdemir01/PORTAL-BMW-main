@@ -155,10 +155,9 @@ arşivi** gösterir; yeni `staged_files[]` her arşivi taşır (bastion başına
 
 ## 5. OpsX / Telnet
 
-Doğrulama + bastion çözümleme + extra_vars üretimi artık **ortak** `server/opsx/ocp-target.cjs`
-(Telnet'in kopyası ve koda sabit anahtar adları kaldırıldı).
-
-Cluster listesinin biçimi Admin → OCP Yapılandırma'dan seçilir (deploy gerekmez):
+OpsX/Telnet ortak hedef yardımcısı (`ocp-target.cjs`), Telnet akışı sadeleşince (2026-08-11) hiçbir
+akış tarafından kullanılmaz oldu ve kaldırıldı. Aşağıdaki `clusterListStyle` ayarı bugün **hiçbir akış
+tarafından okunmuyor**; tablo, ayar yeniden bağlanırsa sözleşme olarak kayıttır:
 
 | `clusterListStyle` | Davranış |
 |---|---|

@@ -19,6 +19,17 @@ Kurumsal güvenlik taramasından geçen her teslim **0 zafiyet** ile geçer; ist
   - tarayıcıdan gizlemek için kodu bölmek;
   - `--no-verify`.
 
+## Değişmez kural: repo hijyeni (2026-11-18, herkes için)
+
+Repoda kullanılmayan dosya kalmaz; insan ya da ajan fark etmez. Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md) "Repo hijyeni".
+
+- Repo hijyeni: kullanılmayan dosya bırakılmaz.
+  - Yeni dosya bir yerden bağlanır (README / ilgili belge / `package.json` / kullanan kod).
+  - İşi biten dosya aynı PR'da silinir; arşiv dizini açılmaz, git geçmişi yeter.
+  - Tek seferlik betik, iş kaydı / PBI, yol haritası ve oturum raporu repoya girmez (`.ai-workspace/`).
+  - Bekçi: `scripts/repo-hijyeni.cjs` (CI'da).
+- Aynı dala aynı anda tek ajan yazar; başka bir ajanın açık PR'ı o ajan durdurulmadan devralınmaz.
+
 ## Proje Ajanları (`.claude/agents/`)
 
 ### `logx-uzman`
@@ -53,7 +64,7 @@ Bu rol, ana ajanın her turdaki çıktısını **düşmanca doğrulamak** için 
 
 1. **Senkron**: `git fetch` + `git log --oneline origin/main -5`
 2. **Delta al**: Ana ajanın son turda neye dokunduğunu belirle
-3. **Kanıt üret**: Denetim listesini uygula (bekçi körlüğü, sessiz başarısızlık, Portal↔AWX sözleşmesi, yetki, dürüstlük, teslim öncesi, kalite kapıları: `docs/KALITE-KAPILARI.md` onaylayıcı listesi — CI `verify` + `sonar` yeşil mi, kapı gevşetildi mi)
+3. **Kanıt üret**: Denetim listesini uygula (bekçi körlüğü, sessiz başarısızlık, Portal↔AWX sözleşmesi, yetki, dürüstlük, teslim öncesi, kalite kapıları: `docs/KALITE-KAPILARI.md` onaylayıcı listesi — CI `verify` + `sonar` yeşil mi, kapı gevşetildi mi, repo hijyeni: yetim ya da tek seferlik dosya eklendi mi)
 4. **Görev kuyruğunu yeniden sırala**
 5. **Çıktı ver**: `TUR <n>` biçiminde — bulgular, görevler, kapananlar, denenenler
 

@@ -24,4 +24,9 @@
 
 ## 5. Mimari Karar Kayıtları (ADR)
 
-Önemli mimari seçimler `docs/adr/` altında numaralı ADR dosyalarıyla kayıt altına alınır (`0001`, `0002`, `0003`, ...).
+Önemli mimari seçimler `docs/adr/` altında numaralı ADR dosyalarıyla kayıt altına alınır. Yeni ADR bu listeye eklenir (repo hijyeni bekçisi listede olmayanı yetim sayar):
+
+- [0001 — Oturum deposu ve çerez sertleştirme](adr/0001-session-store-and-cookie-hardening.md)
+- [0002 — İki test koşucusu ve LCOV birleştirme](adr/0002-dual-test-runner-and-lcov-merge.md)
+- [0003 — Çalışma zamanı paketi budama ve 0 zafiyet kapısı](adr/0003-runtime-package-prune-and-zero-vuln-gate.md)
+- [0004 — Kapsam raporu repoda](adr/0004-kapsam-raporu-repoda.md)

@@ -6,7 +6,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-.claude/
+# Claude Code yerel ayarlari git disi; proje ajanlarinin tanimlari (.claude/agents/) repoda paylasilir.
+.claude/*
+!.claude/agents/
 node_modules
 dist
 dist-ssr

@@ -27,4 +27,13 @@ Tek kaynak: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
 - `sonar.coverage.exclusions`, `sonar.issue.ignore.*` ya da kaynak dışlaması eklenemez.
 - Tarayıcıdan gizlemek için dizgi bölmek ya da kodu veri dosyasına taşımak yasaktır.
 - Eşik düşürmek ve testi zayıflatmak yasaktır.
+
+### Repo hijyeni
+
+- Repo hijyeni: kullanılmayan dosya bırakılmaz.
+  - Yeni dosya bir yerden bağlanır (README / ilgili belge / `package.json` / kullanan kod).
+  - İşi biten dosya aynı PR'da silinir; arşiv dizini açılmaz, git geçmişi yeter.
+  - Tek seferlik betik, iş kaydı / PBI, yol haritası ve oturum raporu repoya girmez (`.ai-workspace/`).
+  - Bekçi: `scripts/repo-hijyeni.cjs` (CI'da).
+- Aynı dala aynı anda tek ajan yazar; başka bir ajanın açık PR'ı o ajan durdurulmadan devralınmaz.
 - Gizli anahtar, kurum iç adı / IP'si, `.env` ya da `.har` commit edilemez.

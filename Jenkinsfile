@@ -7,11 +7,11 @@
 //       kalite kapısı (tsc + lint:ascii + eslint + server syntax) →
 //       build → paket → arşiv (indirilebilir artifact).
 //
-// NOT — DEPLOY BU PIPELINE'DA YOK: gerçek sunucuya (gblabt02, /vhosting8/bmw_portal)
+// NOT — DEPLOY BU PIPELINE'DA YOK: gerçek sunucuya (/vhosting8/bmw_portal)
 // kurulum SSH/CI ile değil, MANUEL zip → deploy/release.sh <env> akışıyla yapılır
 // (bkz. docs/DEPLOYMENT.md). Eski SSH+scripts/deploy.sh modeli (/opt/bmw-portal,
-// port 5055, JSON-store) artık gerçek altyapıyla uyuşmuyordu — arşivlendi:
-// docs/archive/deploy-legacy.sh. Bu pipeline yalnızca derleme/paket doğrulaması yapar;
+// port 5055, JSON-store) artık gerçek altyapıyla uyuşmuyordu — kaldırıldı (git
+// geçmişinde). Bu pipeline yalnızca derleme/paket doğrulaması yapar;
 // üretilen artifact'i indirip elle deploy/release.sh ile sunucuya taşıyın.
 pipeline {
   agent any
