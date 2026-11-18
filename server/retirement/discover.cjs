@@ -137,7 +137,7 @@ function trafikSinifi(v) {
     return { durum: 'olculemedi', sebep: `${st} ama sayi yok (${v.req_7d})` };
   // TEKRAR EDEN ISTEK (scan_ver 2.6, 2026-11-18): istegin TAMAMI saglik kontrolu benzeri ise durum
   // 'var' KALIR (kayit acan yine onaylar) ama ekran "yalniz tekrar eden istek" ve URI'yi soyler.
-  const rp = v.repeat_7d == null || v.repeat_7d === '' ? NaN : Number(v.repeat_7d);
+  const rp = v.repeat_7d == null || v.repeat_7d === '' ? Number.NaN : Number(v.repeat_7d);
   const tekrar =
     r7 > 0 && rp === r7
       ? {
