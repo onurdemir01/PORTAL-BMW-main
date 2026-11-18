@@ -298,11 +298,26 @@ function git(...args) {
   }
 }
 
+/**
+ * Cikti nereye yazilabilir? Repo DISI ya da repo icinde yalniz `build/` altina (git disi; DAHIL
+ * listesinde olmadigi icin paket kendini kopyalamaz). Kurumsal Jenkins isi paketi calisma alani icinde
+ * `build/` altinda uretir: kutuphanenin Sonar adimi build/**'i tarama disi birakir ve zip adimi
+ * calisma alani disindaki dizine guvenilmez (deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy).
+ * Hata metni ya da null doner.
+ */
+function ciktiYeriHatasi(cikti, kok = KOK) {
+  const icerde = cikti === kok || cikti.startsWith(`${kok}${path.sep}`);
+  const build = path.join(kok, 'build');
+  if (icerde && !cikti.startsWith(`${build}${path.sep}`))
+    return '--cikti repo DISINDA ya da repo icinde build/ altinda olmali';
+  return null;
+}
+
 function main() {
   const a = argumanlar(process.argv.slice(2));
   const cikti = path.resolve(a.cikti);
-  if (cikti === KOK || cikti.startsWith(`${KOK}${path.sep}`))
-    throw new Error('--cikti repo DISINDA olmali');
+  const yerHatasi = ciktiYeriHatasi(cikti);
+  if (yerHatasi) throw new Error(yerHatasi);
   const kokPkg = JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8'));
   const kokKilit = JSON.parse(fs.readFileSync(path.join(KOK, 'package-lock.json'), 'utf8'));
 
@@ -384,6 +399,7 @@ function main() {
 }
 
 module.exports = {
+  ciktiYeriHatasi,
   DAHIL,
   haricMi,
   paketJson,

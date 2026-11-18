@@ -35,6 +35,7 @@
     "test:mutation": "node scripts/mutasyon-testi.cjs",
     "kapsam:yayinla": "node scripts/kapsam-yayinla.cjs",
     "kapsam:dogrula": "node scripts/kapsam-yayinla.cjs --dogrula",
+    "kapsam:kurumsal": "node scripts/kapsam-yayinla.cjs --kurumsal",
     "lint:ascii": "node scripts/check-ascii.cjs",
     "kapi": "node scripts/kapi.cjs",
     "kapi:hizli": "node scripts/kapi.cjs --hizli",

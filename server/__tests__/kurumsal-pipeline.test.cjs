@@ -1,9 +1,9 @@
 // server/__tests__/kurumsal-pipeline.test.cjs — kurumsal Jenkins isi (deploy/jenkins/*.groovy) bayatlamasin.
 //
-// Kurumsal Sonar kapsami %0 gorunuyordu: is tanimi testleri hic kosturmuyordu (2026-11-17). Dogru is
-// tanimi bu repoda tutulur; bu bekci onun repo ile uyumunu zorlar: Node surumu izin listesinde ve
-// Dockerfile ile ayni, kapsam adimi build'den once, `npm run` betikleri var, paket calisma alani
-// DISINDA, public repoda gercek e-posta adresi yok.
+// Kurumsal is calismiyordu (2026-11-18, kurumdaki 560 groovy ve standart_pipeline koduyla karsilastirildi):
+// Node araci yoktu (kutuphane Linux ajanini yalniz `tools: [nodejs]` ile secer), var olmayan `build`
+// dizini sikistiriliyordu, war ve deployment adlari SI kaydiyla (BMWPORTAL.war, BMWPORTAL-D) uyusmuyordu.
+// Bu bekci dogru is tanimini repo ile uyumlu tutar.
 'use strict';
 
 const { test } = require('node:test');
@@ -15,25 +15,34 @@ const KOK = path.join(__dirname, '..', '..');
 const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8');
 const GROOVY = 'deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy';
 
-// Kurumsal standart_pipeline kutuphanesinin Node izin listesi (StandardPipelineUtilities.groovy,
-// 2026-11-17 okundu). 22.20.0 listede YOK. Liste degisirse burasi ve groovy birlikte guncellenir.
+// Kurumsal standart_pipeline kutuphanesinin Node izin listesinden (StandardPipelineUtilities.groovy,
+// 2026-11-17 okundu) bu repoda kullanilabilenler. 22.20.0 listede YOK.
 const NODE_IZINLI = ['22.23.4', '24.22.1', '26.12.1'];
+const PAKET_KOKU = 'build/BMWPORTAL';
 const BEKLENEN_KOMUTLAR = [
   'install',
   'run kur',
-  'run test:coverage',
+  'run kapsam:kurumsal',
   'run build',
-  'run paket -- --cikti ${PAKET}/PORTAL-BMW-main --derleme-yok',
+  `run paket -- --cikti ${PAKET_KOKU}/PORTAL-BMW-main --derleme-yok`,
 ];
+// Uygulamanin SI/CMDB kaydi: Deployment Name BMWPORTAL-D, War Name BMWPORTAL.war, Application Type Java.
+const SI = { war: 'BMWPORTAL.war', deployment: 'BMWPORTAL-D', platform: 'JAVA' };
 
 /** Saf denetim: groovy metni + repo bilgileri -> hata listesi (bos = uyumlu). */
 function denetle(metin, { dockerNode, nvmrc, betikler, paketKaynak }) {
   const h = [];
-  const node = (metin.match(/tools:\s*\[nodejs:\s*"([^"]+)"\]/) || [])[1];
+  const araclar = (metin.match(/tools:\s*\[([^\]]*)\]/) || [])[1] || '';
+  const node = (araclar.match(/nodejs:\s*"([^"]+)"/) || [])[1];
   if (!NODE_IZINLI.includes(node)) h.push(`Node ${node} kurumsal izin listesinde degil`);
   if (node !== dockerNode) h.push(`Node ${node} != Dockerfile ${dockerNode}`);
   if (!node || node.split('.')[0] !== nvmrc)
     h.push(`Node ${node} ana surumu .nvmrc (${nvmrc}) ile ayni degil`);
+  // Kutuphane (generateSuitableLabel) Linux ajanini yalniz npm + YALNIZ nodejs aracinda secer.
+  if ((araclar.match(/\w+:/g) || []).length !== 1)
+    h.push(`tools yalniz nodejs olmali (Linux ajani): ${araclar}`);
+  if (/^\s*agent:/m.test(metin))
+    h.push('agent elle verilmez: npm isinde kutuphane etiketi kendisi secer');
 
   const blok = (metin.match(/commands:\s*\[([\s\S]*?)\]/) || [])[1] || '';
   const komutlar = [...blok.replace(/\/\/.*$/gm, '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
@@ -43,17 +52,27 @@ function denetle(metin, { dockerNode, nvmrc, betikler, paketKaynak }) {
     const ad = (k.match(/^run ([\w:-]+)/) || [])[1];
     if (ad && !betikler[ad]) h.push(`package.json'da "${ad}" betigi yok`);
   }
-
-  const paket = (metin.match(/def PAKET = '([^']+)'/) || [])[1] || '';
-  if (!paket.startsWith('../')) h.push(`paket calisma alani icinde: ${paket || '(tanimsiz)'}`);
-  const sikistir = metin.match(/compress:\s*\[from:\s*(\w+),\s*to:\s*"([^"]+)"\]/);
-  const staging = (metin.match(/artifactsToCopy:\s*'([^']+)'/) || [])[1];
-  if (!sikistir || sikistir[1] !== 'PAKET') h.push('compress paket dizininden yapilmiyor');
-  if (!sikistir || sikistir[2] !== staging) h.push(`staging (${staging}) compress ciktisi degil`);
   for (const bayrak of ['--cikti', '--derleme-yok']) {
     if (!paketKaynak.includes(`'${bayrak}'`))
       h.push(`scripts/paket.cjs ${bayrak} bayragini tanimiyor`);
   }
+
+  const sikistir = metin.match(/compress:\s*\[from:\s*"([^"]+)",\s*to:\s*"([^"]+)"\]/);
+  const staging = (metin.match(/artifactsToCopy:\s*'([^']+)'/) || [])[1] || '';
+  if (!sikistir || sikistir[1] !== PAKET_KOKU)
+    h.push(`compress paket kokunden (${PAKET_KOKU}) yapilmiyor`);
+  if (!sikistir || path.posix.basename(sikistir[2]) !== SI.war)
+    h.push(`war adi SI kaydindaki ${SI.war} degil`);
+  if (
+    !sikistir ||
+    path.posix.dirname(sikistir[2]) !== path.posix.dirname(staging) ||
+    !staging.endsWith('.war')
+  )
+    h.push(`staging (${staging}) compress ciktisini almiyor`);
+  if (!new RegExp(`deploymentPlatform:\\s*'${SI.platform}'`).test(metin))
+    h.push(`deploymentPlatform ${SI.platform} degil`);
+  if (!new RegExp(`configurationName:\\s*'${SI.deployment}'`).test(metin))
+    h.push(`configurationName SI kaydindaki ${SI.deployment} degil`);
 
   const epostalar = metin.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
   if (epostalar.length) h.push(`gercek e-posta adresi public repoda: ${epostalar.join(', ')}`);
@@ -68,51 +87,71 @@ const BAGLAM = () => ({
   paketKaynak: oku('scripts/paket.cjs'),
 });
 
-test('KP1 kurumsal is tanimi repo ile uyumlu (Node, komut sirasi, betikler, paket yeri, e-posta)', () => {
+test('KJ1 kurumsal is tanimi repo ve SI kaydi ile uyumlu (Node/ajan, komutlar, war, deployment, e-posta)', () => {
   assert.deepEqual(denetle(oku(GROOVY), BAGLAM()), []);
 });
 
-test("KP2 kapsam raporu Sonar'in aradigi yerde uretilir", () => {
-  // Kutuphanenin Sonar adimi `**/coverage/lcov.info` arar; repo ayari da ayni dosyayi gosterir.
-  assert.match(oku('scripts/lcov-birlestir.cjs'), /let out = 'coverage\/lcov\.info'/);
+test("KJ2 paket build/ altinda uretilebilir ve kurumsal Sonar onu taramaz; kapsam Sonar'in aradigi yerde", () => {
+  const { ciktiYeriHatasi } = require('../../scripts/paket.cjs');
+  assert.equal(ciktiYeriHatasi(path.join(KOK, PAKET_KOKU, 'PORTAL-BMW-main')), null);
+  assert.match(oku('.gitignore'), /^\/build$/m, 'build/ git disi degil');
+  // Kutuphanenin Sonar adimi `**/coverage/lcov.info` arar; kapsam:kurumsal onu oraya koyar.
+  assert.match(
+    JSON.parse(oku('package.json')).scripts['kapsam:kurumsal'],
+    /kapsam-yayinla\.cjs --kurumsal/,
+  );
+  assert.match(oku('scripts/kapsam-yayinla.cjs'), /path\.join\(KOK, 'coverage', 'lcov\.info'\)/);
   assert.match(
     oku('sonar-project.properties'),
     /^sonar\.javascript\.lcov\.reportPaths=(?:[^,\n]+,)*coverage\/lcov\.info(?:,|$)/m,
   );
-  assert.match(JSON.parse(oku('package.json')).scripts['test:coverage'], /lcov-birlestir\.cjs/);
 });
 
-test('KP3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
+test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
   const asil = oku(GROOVY);
   const b = BAGLAM();
   const bozuk = [
     ['izin disi Node', asil.replace('nodejs: "22.23.4"', 'nodejs: "22.20.0"'), /izin listesinde/],
-    ['kapsam adimi yok', asil.replace('            "run test:coverage",\n', ''), /beklenen sirada/],
     [
-      'kapsam build sonrasi',
-      asil.replace(
-        '"run test:coverage",\n            "run build",',
-        '"run build",\n            "run test:coverage",',
-      ),
-      /beklenen sirada/,
+      'ek arac (Linux ajani kaybolur)',
+      asil.replace('tools: [nodejs: "22.23.4"]', 'tools: [nodejs: "22.23.4", jdk: \'OPEN8\']'),
+      /yalniz nodejs/,
     ],
     [
-      'paket calisma alaninda',
-      asil.replace("'../DVL_JAVASCRIPT_GAR_BMW_PORTAL-paket'", "'paket'"),
-      /calisma alani icinde/,
+      'elle ajan',
+      asil.replace('    global: [\n', "    global: [\n        agent: 'NODEJS',\n"),
+      /agent elle/,
+    ],
+    [
+      'kapsam adimi yok',
+      asil.replace('            "run kapsam:kurumsal",\n', ''),
+      /beklenen sirada/,
+    ],
+    ['kur yok', asil.replace('            "run kur",\n', ''), /beklenen sirada/],
+    [
+      'eski build dizini',
+      asil.replace('compress: [from: "build/BMWPORTAL"', 'compress: [from: "build"'),
+      /paket kokunden/,
+    ],
+    [
+      'yanlis war adi',
+      asil.replace('"BMWPORTAL/BMWPORTAL.war"', '"GAR_BMW_PORTAL/GAR_BMW_PORTAL.war"'),
+      /war adi/,
+    ],
+    [
+      'yanlis deployment',
+      asil.replace("configurationName: 'BMWPORTAL-D'", "configurationName: 'GAR_BMW_PORTAL'"),
+      /configurationName/,
+    ],
+    [
+      'staging farkli',
+      asil.replace("artifactsToCopy: 'BMWPORTAL/*.war'", "artifactsToCopy: 'outdir/*.war'"),
+      /staging/,
     ],
     [
       'gercek e-posta',
       asil.replace("'EKIP_EPOSTA_ADRESI'", "'ekip@ornek.com.tr'"),
       /gercek e-posta/,
-    ],
-    [
-      'staging farkli',
-      asil.replace(
-        "artifactsToCopy: 'outdir/PORTAL-BMW-main.zip'",
-        "artifactsToCopy: 'outdir/x.zip'",
-      ),
-      /staging/,
     ],
   ];
   for (const [ad, metin, beklenen] of bozuk) {
@@ -124,8 +163,8 @@ test('KP3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
     );
   }
   assert.ok(
-    denetle(asil, { ...b, betikler: { ...b.betikler, 'test:coverage': undefined } }).some((x) =>
-      /test:coverage/.test(x),
+    denetle(asil, { ...b, betikler: { ...b.betikler, 'kapsam:kurumsal': undefined } }).some((x) =>
+      /kapsam:kurumsal/.test(x),
     ),
     'eksik npm betigi yakalanmadi',
   );
