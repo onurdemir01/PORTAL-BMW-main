@@ -17,6 +17,7 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - İstemci URL doğrulama birim testleri (`src/utils/__tests__/url.test.ts`).
 
 ### Fixed (kurumsal Jenkins, 2026-11-18)
+- Kurumsal iş #50 (`teslim butunlugu`, 37 eksik dosya): `.github/`, `.claude/`, `.agent/` ve `sunum/` kurumsal depoya gitmiyor. Teslim imzası bu dizinleri iki yönde de yok sayar (`scripts/teslim.cjs` `KURUMA_GITMEYEN`, bekçi TS1/TS4b).
 - Kurumsal iş #48 (`Missing script: "kurumsal:derle"`): kurumsal dal main'in yarım bir kopyasıydı (ZIP üzerine kopyalama: `scripts/kurumsal-derle.cjs` gelmiş, aynı commit'teki `package.json` satırı gelmemişti). Aktarım yöntemi (`git rm -r -q .` + ZIP içeriği) `docs/KALITE-KAPILARI.md` "Kurumsal aktarım"da; yarım kopya artık derlemenin ilk adımında yakalanır.
 - Kurumsal iş #46 (`Missing script: "kapsam:kurumsal"`): groovy, kurumsal daldaki eski kodda olmayan bir betiği çağırıyordu. Groovy artık yalnız `install` + `run kurumsal:derle` çağırıyor; adımlar `scripts/kurumsal-derle.cjs`'te kodla birlikte sürümleniyor (bekçi KJ5/KJ6).
 - TST ve PRD iş tanımları (`deploy/jenkins/TST_…`, `PRD_…`): derleme DVL ile birebir aynı; TST deployment `BMWPORTAL-T`, PRD'de deploy yok (bekçi KJ4).

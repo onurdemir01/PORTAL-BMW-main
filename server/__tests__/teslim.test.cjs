@@ -63,7 +63,7 @@ const ANA = {
   'kalite/kapsam/ozet.json': '{}\n',
 };
 
-test('TS1 imza: git blob sha (git hash-object ile ayni), kalite/ haric, bosluklu yollar', () => {
+test('TS1 imza: git blob sha (git hash-object ile ayni), kuruma gitmeyenler haric, bosluklu yollar', () => {
   const d = depo(ANA);
   try {
     const i = T.imza(d);
@@ -74,9 +74,19 @@ test('TS1 imza: git blob sha (git hash-object ile ayni), kalite/ haric, bosluklu
       'scripts/paket.cjs',
     ]);
     for (const yol of Object.keys(i)) assert.equal(i[yol], git(d, 'hash-object', yol), yol);
-    assert.deepEqual(T.HARIC, ['kalite/']);
+    assert.deepEqual(T.KURUMA_GITMEYEN, ['kalite/', '.github/', '.claude/', '.agent/', 'sunum/']);
     assert.equal(T.IMZA, 'kalite/teslim.json');
-    assert.ok(T.IMZA.startsWith(T.HARIC[0]), 'imza kendini kapsamamali');
+    assert.ok(T.IMZA.startsWith(T.KURUMA_GITMEYEN[0]), 'imza kendini kapsamamali');
+    // Derlenen / calisan hicbir sey kuruma gitmeyenlere giremez.
+    for (const yol of [
+      'src/a.ts',
+      'server/a.cjs',
+      'shared/a.cjs',
+      'scripts/a.cjs',
+      'package.json',
+      'deploy/a.sh',
+    ])
+      assert.ok(!T.KURUMA_GITMEYEN.some((h) => yol.startsWith(h)), `${yol} kuruma gitmeyenlerde`);
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -175,6 +185,47 @@ test('TS4 imzaDogrula: birebir 0; yarim kopyanin her bicimi 1 ve dosyasiyla soyl
     assert.match(m2, /eksik \(main'de var, burada yok\) \(1\): scripts\/paket\.cjs/);
     assert.match(m2, /fazla \(main'de yok, burada var\) \(1\): scripts\/eski-betik\.cjs/);
     assert.doesNotMatch(m2, /icerigi farkli/);
+    git(d, 'reset', '-q', '--hard');
+    git(d, 'clean', '-q', '-fd', '-e', 'kalite/');
+    assert.equal(T.imzaDogrula(d, toplayici().g), 0, 'temizlikten sonra birebir degil');
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('TS4b kurumsal is #50: kuruma gitmeyen dizinler eksik ya da farkli olsa da BIREBIR', () => {
+  const d = depo({
+    ...ANA,
+    '.github/workflows/ci.yml': 'on: push\n',
+    '.claude/agents/a.md': 'a\n',
+    '.agent/rules/k.md': 'k\n',
+    'sunum/deck.pptx': 'ikili\n',
+  });
+  try {
+    T.imzaYaz(d);
+    const kayit = JSON.parse(fs.readFileSync(path.join(d, T.IMZA), 'utf8'));
+    assert.deepEqual(Object.keys(kayit.dosyalar).sort(), Object.keys(T.imza(d)).sort());
+    assert.ok(
+      !Object.keys(kayit.dosyalar).some((y) => /^(\.github|\.claude|\.agent|sunum)\//.test(y)),
+    );
+    // Kurumsal dalda yoklar (is #50):
+    git(d, 'rm', '-q', '-r', '--cached', '.github', '.claude', '.agent', 'sunum');
+    assert.equal(T.imzaDogrula(d, toplayici().g), 0, 'eksik kuruma-gitmeyen dosya fark sayildi');
+    // Kurumsal dalda farkli ya da fazlalar:
+    yazDosya(d, '.github/workflows/ci.yml', 'on: pull_request\n');
+    yazDosya(d, 'sunum/yeni.pdf', 'pdf\n');
+    git(d, 'add', '-A');
+    assert.equal(
+      T.imzaDogrula(d, toplayici().g),
+      0,
+      'fazla / farkli kuruma-gitmeyen dosya fark sayildi',
+    );
+    // Ama kod hala denetlenir.
+    yazDosya(d, 'scripts/paket.cjs', 'module.exports = 9;\n');
+    git(d, 'add', '-A');
+    const t = toplayici();
+    assert.equal(T.imzaDogrula(d, t.g), 1);
+    assert.match(t.cikti.hata.join('\n'), /icerigi farkli \(1\): scripts\/paket\.cjs/);
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -274,13 +325,16 @@ test('TS7 imza tazeleme is akisi: her main push, yalniz imza, zorla push yok, he
   );
 });
 
-test('TS8 repodaki imza bicimi: kalite/ yok, her deger 40 haneli sha, sayi tutarli', () => {
+test('TS8 repodaki imza bicimi: kuruma gitmeyenler yok, her deger 40 haneli sha, sayi tutarli', () => {
   const kayit = JSON.parse(fs.readFileSync(path.join(KOK, T.IMZA), 'utf8'));
   const yollar = Object.keys(kayit.dosyalar);
   assert.equal(kayit.dosyaSayisi, yollar.length);
   assert.match(kayit.kaynak, /^[0-9a-f]{40}$/);
   assert.ok(yollar.length > 100, 'imza bos');
-  assert.ok(!yollar.some((y) => y.startsWith('kalite/')), 'imza kalite/ icermemeli');
+  assert.ok(
+    !yollar.some((y) => T.KURUMA_GITMEYEN.some((h) => y.startsWith(h))),
+    'imza kuruma gitmeyenleri icermemeli',
+  );
   assert.ok(Object.values(kayit.dosyalar).every((s) => /^[0-9a-f]{40}$/.test(s)));
   for (const y of ['package.json', 'scripts/kurumsal-derle.cjs', 'scripts/teslim.cjs'])
     assert.ok(yollar.includes(y), `${y} imzada yok`);
