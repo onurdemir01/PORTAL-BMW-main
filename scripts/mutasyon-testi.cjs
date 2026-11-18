@@ -18,6 +18,47 @@ const MIN_KILL_PCT = 85;
 /** Targeted security/compliance mutation catalog (exact token replacements on live logic). */
 const TARGETS = [
   {
+    // Kurumsal teslim imzasi (kurumsal is #48): yarim aktarimin her bicimi ayri yakalanir. Yalniz
+    // gecici git depolarinda kosan testler (TS1-TS6); TS7/TS8 repo kokundeki dosyalari okur.
+    id: 'teslim-imza',
+    file: 'scripts/teslim.cjs',
+    runner: 'node',
+    tests: ['server/__tests__/teslim.test.cjs'],
+    testNamePattern: '^TS[1-6] ',
+    specs: [
+      {
+        id: 'tes-eksik',
+        find: 'if (!Object.hasOwn(mevcut, yol)) eksik.push(yol);',
+        replace: 'if (false) eksik.push(yol);',
+        desc: 'ignore files missing from the delivered tree',
+      },
+      {
+        id: 'tes-farkli',
+        find: 'else if (mevcut[yol] !== sha) farkli.push(yol);',
+        replace: '',
+        desc: 'ignore files whose content differs',
+      },
+      {
+        id: 'tes-fazla',
+        find: 'if (!Object.hasOwn(beklenen, yol)) fazla.push(yol);',
+        replace: 'if (false) fazla.push(yol);',
+        desc: 'ignore extra files not in main',
+      },
+      {
+        id: 'tes-haric',
+        find: 'if (HARIC.some((h) => yol.startsWith(h))) continue;',
+        replace: '',
+        desc: 'include kalite/ (coverage report, signature itself) in the signature',
+      },
+      {
+        id: 'tes-birebir',
+        find: 'if (!fark) {',
+        replace: 'if (true) {',
+        desc: 'always report the tree as identical',
+      },
+    ],
+  },
+  {
     // Application Hub canli sonucu: AWX artifact'i Portal'in kendi is gecmisiyle eslesmeden okunmaz
     // ya da kaydedilmez (PR #303). Yalniz AH14 kosar; dosyanin betik testleri Python ister ve yavastir.
     id: 'app-hub-sahiplik',
@@ -308,7 +349,7 @@ function runCommandAsync(cmd, args, cwd) {
 
 function prepareSandbox(sandboxDir) {
   fs.mkdirSync(sandboxDir, { recursive: true });
-  for (const dirName of ['server', 'shared', 'src']) {
+  for (const dirName of ['server', 'shared', 'src', 'scripts']) {
     fs.cpSync(path.join(REPO_ROOT, dirName), path.join(sandboxDir, dirName), { recursive: true });
   }
   for (const fileName of ['package.json', 'vitest.config.ts', 'tsconfig.json']) {

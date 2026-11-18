@@ -1,7 +1,8 @@
 name: CI Quality and Security Gates
 # Kalite kapilari (docs/KALITE-KAPILARI.md). Adim listesi scripts/kapi.cjs KAPILAR ile ayni olmali;
 # server/__tests__/kalite-kapilari.test.cjs esitligi kilitler. Hicbir adim continue-on-error /
-# `|| true` tasimaz. main korumasinda zorunlu kontroller: `verify` ve `sonar`.
+# `|| true` tasimaz. main korumasinda zorunlu kontroller: `verify` ve `sonar`; `sonar` ayrica
+# `kurumsal` isini bekler, bu yuzden kurumsal prova da fiilen zorunludur.
 
 on:
   push:
@@ -85,10 +86,38 @@ jobs:
             coverage/sbom-full.cdx.json
           if-no-files-found: ignore
 
+  kurumsal:
+    # Kurumsal Jenkins isinin provasi (scripts/kurumsal-prova.cjs): temiz agacta groovy'nin komutlari
+    # aynen, groovy'deki Node surumuyle. Kurumsal is #46 / #48 sinifi kirilmalar merge'den once gorunur.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node surumu (groovy)
+        id: surum
+        # Atama ayri satirda: okunamazsa adim duser (bos surumle setup-node calismaz).
+        run: |
+          surum=$(node scripts/kurumsal-prova.cjs --node-surumu)
+          echo "node=$surum" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js (kurumsal surum)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.surum.outputs.node }}
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            gelistirme/package-lock.json
+
+      - name: Kurumsal Is Provasi
+        run: npm run kurumsal:prova
+
   sonar:
     # Yerel SonarQube kalite kapisi: kurumsal kapidan siki ("Portal Kati", kalite/esikler.json).
     # Kapsam raporu `verify` isinin urettigi coverage/lcov.info.
-    needs: verify
+    needs: [verify, kurumsal]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:

@@ -8,6 +8,11 @@
 // bu betigi cagirir; derleme adimlari KODLA BIRLIKTE surumlenir ve her dal kendi adimlarini kosar.
 // Adim eklemek / degistirmek groovy degisikligi GEREKTIRMEZ.
 //
+// ILK ADIM TESLIM BUTUNLUGU (2026-11-18, kurumsal is #48): kurumsal dal main'in yarim bir kopyasiydi
+// (bu betik gelmis, package.json satiri gelmemisti). scripts/teslim.cjs kodu main'in imzasiyla
+// (kalite/teslim.json) karsilastirir; yarim kopya anlasilmaz bir adimda degil, burada ve dosya dosya
+// soylenerek durur.
+//
 // SOZLESME (degismez; deploy/jenkins/*.groovy ve server/__tests__/kurumsal-pipeline.test.cjs):
 //   - betik adi: kurumsal:derle
 //   - cikti:     build/BMWPORTAL/PORTAL-BMW-main  (groovy: compress build/BMWPORTAL -> BMWPORTAL/BMWPORTAL.war)
@@ -22,6 +27,8 @@ const CIKTI = 'build/BMWPORTAL/PORTAL-BMW-main';
 const NODE = process.execPath;
 
 const ADIMLAR = [
+  // Kurumsal daldaki kod main'in birebir kopyasi mi (yarim aktarim: is #48)?
+  { ad: 'teslim butunlugu', komut: NODE, argumanlar: ['scripts/teslim.cjs', '--dogrula'] },
   // Derleme araclari (vite vb.) gelistirme/ agacindan; kokteki `npm install` yalniz calisma zamani.
   { ad: 'derleme araclari', komut: NODE, argumanlar: ['scripts/kur.cjs'] },
   // CI'in gercek testlerle urettigi kapsam raporu -> coverage/lcov.info (bayatsa Sonar kosusu duser).

@@ -34,6 +34,7 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K11 | SBOM ve lisans | `npm run sbom` | CI | 0 lisans ihlali |
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |
 | K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
+| K14 | Kurumsal iş provası | `npm run kurumsal:prova` | CI (`kurumsal` işi), yerelde aynı komut | temiz ağaçta groovy'nin komutları aynen geçer, paket eksiksiz, süre ≤ 10 dk |
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 
@@ -64,6 +65,24 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
   - **Neden:** groovy her dala aynı anda uygulanır; kod ise dal dal ilerler. 2026-11-18'deki iş #46'da groovy, kurumsal dalda henüz bulunmayan `kapsam:kurumsal` betiğini çağırdı ve iş `npm error Missing script` ile düştü.
   - **Kural:** adım eklemek ya da değiştirmek groovy değişikliği gerektirmez; değişiklik bu betikte yapılır. Groovy'ye yeni bir `run …` eklenmez (bekçi KJ1 / KJ3).
   - **Kurumsal depo:** yeni sözleşmeyle ilk kez çalışacak dala önce güncel kod gönderilir.
+- **Kurumsal aktarım (ZIP):** kurumsal dal main'in **birebir** kopyası olur. Kurumsal PC GitHub'a git ile erişemediği için kod main ZIP'iyle taşınır. Yöntem, kurumsal klonda, kurumsal dalda:
+  1. `git pull`
+  2. `git rm -r -q .`: izlenen bütün dosyalar silinir. Kopyalarken "üzerine yaz / atla" sorusu çıkmaz ve main'de silinmiş dosyalar geride kalmaz.
+  3. GitHub'dan main ZIP'i indirilir; `PORTAL-BMW-main-main` klasörünün **içeriği** klonun köküne kopyalanır. ZIP, GitHub Actions'taki "Teslim imzası" ve "Kapsam raporu" işleri bittikten sonra indirilir.
+  4. `git add -A`. Node varsa `node scripts/teslim.cjs --dogrula` çalıştırılır; `BIREBIR` yazmalı.
+  5. Commit (kurumun PBI biçimiyle), push, iş yeniden koşturulur.
+  - **Neden:** 2026-11-18'deki iş #48'de dal, main'in yarım bir kopyasıydı. Aynı commit'te gelen iki dosyadan `scripts/kurumsal-derle.cjs` gelmiş, `package.json` satırı gelmemişti; iş `npm error Missing script` ile düştü. Var olan dosyaların üzerine kopyalama bu tür karışık ağaç üretir.
+  - **Teslim imzası:** [`kalite/teslim.json`](../kalite/teslim.json), main'deki her izlenen dosyanın git blob sha'sı (`kalite/` hariç). [`.github/workflows/teslim-imzasi.yml`](../.github/workflows/teslim-imzasi.yml) her main push'undan sonra tazeler; elle düzenlenmez. `kurumsal:derle`'nin ilk adımı ([`scripts/teslim.cjs`](../scripts/teslim.cjs) `--dogrula`) kodu bununla karşılaştırır. Fark varsa iş orada durur ve farkı dosya dosya söyler: içeriği farklı, eksik, fazla.
+  - **Tazeleme penceresi:** main'e push'tan sonra yaklaşık bir dakika imza eskidir. O arada indirilen ZIP ilk adımda düşer; mesaj nedenini söyler, ZIP yeniden indirilir.
+  - **Sınır:** `package.json`'ın kendisi eskiyse `kurumsal:derle` hiç çalışmaz (iş #48). Onu yalnız bu aktarım yöntemi önler.
+- **Prova (K14):** [`scripts/kurumsal-prova.cjs`](../scripts/kurumsal-prova.cjs) kurumsal işi CI'da tekrarlar. Kurumsal klon gibi temiz bir git ağacında, groovy'deki Node sürümüyle:
+  - imzayı yazar;
+  - `npm install` çalıştırır (kurumun `jf npm install`'ı);
+  - groovy'nin geri kalan komutlarını aynen `npm <komut>` olarak koşturur;
+  - `compress` dizininde çalışma zamanı paketinin eksiksiz olduğunu denetler;
+  - toplam süre 10 dakikayı geçerse kırmızı olur (kurumun sınırı 15 dakika).
+
+  Kayıt defteri ve JFrog'un `.npmrc`'si gibi kurum ortamı farkları provada yoktur.
 - **Ajan:** `tools` yalnız `nodejs` verilir. Kütüphane npm + yalnız nodejs için Linux ajanını (`POD&&NODEJS`) kendisi seçer; ajan elle verilmez. Araç verilmezse iş varsayılan ajana düşer ve derleme araçları kurulamaz (2026-11-18'e kadarki kırık iş).
 - **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
   - Rapor kaynakla aynı değilse Sonar koşusunu düşürür; yanlış eşleşen kapsam yüklenmez.
@@ -73,7 +92,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 - **TST ve PRD:** [`TST_…`](../deploy/jenkins/TST_JAVASCRIPT_GAR_BMW_PORTAL.groovy) ve [`PRD_…`](../deploy/jenkins/PRD_JAVASCRIPT_GAR_BMW_PORTAL.groovy). Derleme, paket, war ve staging DVL ile birebir aynıdır (bekçi KJ4).
   - TST deployment adı `BMWPORTAL-T`. Kurumdaki `-D` / `-T` / `-Q` kalıbından türetildi; TST SI kaydıyla doğrulanmalı.
   - PRD'de deploy adımı yoktur. Üretim kurulumu staging'deki `BMWPORTAL.war`'dan ayrı süreçle yapılır.
-- **Bekçi:** `server/__tests__/kurumsal-pipeline.test.cjs`. Şunları denetler:
+- **Bekçi:** `server/__tests__/kurumsal-pipeline.test.cjs` (teslim imzası: `server/__tests__/teslim.test.cjs`). Şunları denetler:
   - Node sürümü izin listesinde ve Dockerfile ile aynı;
   - araç yalnız nodejs, elle ajan yok;
   - komut sırası ve betiklerin varlığı;
@@ -91,10 +110,11 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 
 ## CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) her PR'da ve `main`'e her push'ta iki iş koşturur:
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) her PR'da ve `main`'e her push'ta üç iş koşturur:
 
 - `verify`: K0–K12.
-- `sonar`: K13. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir.
+- `kurumsal`: K14. Node sürümü groovy'den okunur; aşağıdaki "Kurumsal Jenkins" bölümüne bakın.
+- `sonar`: K13. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir. `verify` ve `kurumsal`'ı bekler; zorunlu kontrol olduğu için prova da fiilen zorunludur.
 
 `scripts/kapi.cjs` içindeki liste ile CI adımlarının eşitliği testle kilitlidir. Hiçbir adım `continue-on-error` ya da `|| true` taşımaz.
 
