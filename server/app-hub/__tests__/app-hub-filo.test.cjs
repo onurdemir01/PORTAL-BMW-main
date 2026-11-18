@@ -23,6 +23,7 @@
 //        is gecmisi kapanir; alim tavani; kayit anahtari playbook korumasi
 //   AF14 canli okuma pod ozeti: pod listesi okunamadiysa sayi yok; 200 ustunde gercek toplam END'den
 //   AF15 betik: tarama butcesi (slot SONRASI baslar) bitince kalan turler KINDFAIL, satir silinmez
+//   AF16 kosu dizini: sondaki egik cizgiler dongu ile atilir (regex geri izlemesi yok, Sonar S8786)
 'use strict';
 
 const { test } = require('node:test');
@@ -578,6 +579,12 @@ test('AF8 DB farki: ekle / ayni / guncelle / sil; okunamayan kapsam silinmez', a
   assert.deepEqual([ilk.eklenen, ilk.guncellenen, ilk.silinen, ilk.ayni], [4, 0, 0, 0]);
   const api = dbDurum.satirlar.find((r) => r.uygulama === 'api');
   assert.equal(api.pod_toplam, 3);
+  // Degisiklik izi CHAR(40) sutununa sigar ve sha256'dan gelir (sha1 degil).
+  for (const r of dbDurum.satirlar)
+    assert.equal(
+      r.ozet_sha,
+      require('node:crypto').createHash('sha256').update(r.sonuc_json).digest('hex').slice(0, 40),
+    );
   const ikinci = await F.clusterYaz('c1', F.kumele(kayitlar()), 2);
   assert.deepEqual([ikinci.eklenen, ikinci.guncellenen, ikinci.silinen, ikinci.ayni], [0, 0, 0, 4]);
   assert.ok(
@@ -1075,3 +1082,29 @@ test(
     assert.equal(F.korunur(k, 'musteri'), true, 'butce bitince satirlar silinebilir');
   },
 );
+
+test('AF16 kosu dizini: sondaki egik cizgiler atilir; goreli, .. ve sig dizin 422', () => {
+  const onceki = process.env.APP_HUB_FILO_DIR;
+  const dene = (v) => {
+    if (v === undefined) delete process.env.APP_HUB_FILO_DIR;
+    else process.env.APP_HUB_FILO_DIR = v;
+    return F.filoDizini();
+  };
+  try {
+    assert.equal(dene(undefined), '/sw/BMW_PORTAL/app_hub_ocp');
+    assert.equal(dene(' /sw/a/b/// '), '/sw/a/b');
+    assert.equal(dene('/sw/a/b'), '/sw/a/b');
+    // Cok sayida egik cizgi (sonda olmayan) hizli ve dogru: geri izleme yok.
+    const uzun = `/sw/a/b${'/'.repeat(50000)}x`;
+    assert.equal(dene(uzun), uzun);
+    for (const kotu of ['sw/a/b', '/sw/../b/c', '/sw/a', '/', '///'])
+      assert.throws(
+        () => dene(kotu),
+        (e) => e.status === 422 && /APP_HUB_FILO_DIR gecersiz/.test(e.message),
+        kotu,
+      );
+  } finally {
+    if (onceki === undefined) delete process.env.APP_HUB_FILO_DIR;
+    else process.env.APP_HUB_FILO_DIR = onceki;
+  }
+});
