@@ -53,7 +53,7 @@ Değerde:
 - Rollout CRD'si olmayan cluster'da `rollouts.argoproj.io` sorgusu hata değil `NOTE` üretir. Aynı kural DeploymentConfig için de geçerli.
 - Parola `oc login` argümanında görünür (bastion `ps`). Bu, `opsx_openshift_pods.yaml` ile aynı modeldir. Parola komut satırına Ansible'dan değil ortam değişkeninden gelir ve `no_log` altındadır.
 - Kubeconfig iş başına `/tmp/app-hub-<iş>-<cluster>-<ns>.kubeconfig` dosyasına yazılır ve iş sonunda silinir. Betik kopyası `/var/tmp/.app_hub_ocp.*.sh` adıyla oluşturulur, sha1 ile doğrulanır ve silinir.
-- Bekçi: `server/app-hub/__tests__/app-hub.test.js` (AH1-AH5). Sahte `oc` ile maske, yalnız `login`/`get` kullanımı, yorum satırı yokluğu ve `set_stats`'ın `fail`'den önce gelmesi denetlenir.
+- Bekçi: `server/app-hub/__tests__/app-hub.test.cjs` (AH1-AH5). Sahte `oc` ile maske, yalnız `login`/`get` kullanımı, yorum satırı yokluğu ve `set_stats`'ın `fail`'den önce gelmesi denetlenir.
 
 ---
 
@@ -123,4 +123,4 @@ Toplanan bilgi canlı okumayla aynıdır: tür, replika, imaj, CPU / bellek iste
   - Koşu satırları 14 gün tutulur.
   - `/sw` koşu dizinleri 48 saat tutulur.
   - 7 gündür tazelenmeyen önbellek satırı silinir; bu, katalogdan çıkan cluster'ları kapsar.
-- **Bekçi:** `server/app-hub/__tests__/app-hub-filo.test.js` (AF1-AF12) ve `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP4).
+- **Bekçi:** `server/app-hub/__tests__/app-hub-filo.test.cjs` (AF1-AF12) ve `src/components/app_hub/__tests__/ocp-pod.test.tsx` (OP1-OP4).

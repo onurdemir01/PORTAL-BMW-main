@@ -57,7 +57,7 @@ hepsini denetler; biri eksikse her kip "files/ altindaki betiklerden biri yok (A
 yapilmadi" ile düşer.
 
 Portal'daki birebir aynası: `server/ansible/bmw_portal/nginx_loadtest/**` (iki kopya **bayt bayt
-aynı**; Portal testi `nginx-loadtest-ayna.test.js` sabit sha256 listesiyle ve
+aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
 `NGINX_LOADTEST_ANSIBLE_DEPO` verilirse bu depoyla karşılaştırır).
 
 ## Yük makinesi CPU kaydı
@@ -1364,13 +1364,13 @@ install -m 0644 serbest_aglar /etc/portal_yuktesti/serbest_aglar
 - `bmw_nginx/tests/check_readme_sync.py`: bu README'deki değişken tablosu ve sunucu adları koddan. İlk hücresi ters
   tırnaklı küçük harf tanımlayıcı olan tablo satırı YALNIZ `yuk_*` değişkenleri içindir (özet anahtarları, istemci
   eşlemesi ve set_stats alanları ters tırnaksız tablo ya da kod bloğu).
-- Portal: `server/ansible/__tests__/nginx-loadtest-ayna.test.js` (ayna + kayıt; NA5 delegate ve Play 2 / 3 getent
+- Portal: `server/ansible/__tests__/nginx-loadtest-ayna.test.cjs` (ayna + kayıt; NA5 delegate ve Play 2 / 3 getent
   erişilemezlik fail'i; NA7 Portal `EKSTRA_ANAHTARLAR` + `ARAC_EKSTRA_ANAHTARLAR` = bu README'nin değişken tablosu, 44),
-  `nginx-loadtest-arac.test.js` (NA8: vekil ortamı yalnız Play 8 get_url'lerinde, TLS doğrulaması, Play 3 araç kopyası,
-  `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.js`
+  `nginx-loadtest-arac.test.cjs` (NA8: vekil ortamı yalnız Play 8 get_url'lerinde, TLS doğrulaması, Play 3 araç kopyası,
+  `/tmp` yok, Play 7 `arac/` silmesi, Play 9 `mv -T` / 0644 / SHA256SUMS / manifest, `arac_hazirla.sh` metni, 10 play), `nginx-loadtest-wrk.test.cjs`
   (NA6: yuk_wrk.lua / wrk_kos.sh / durdur.sh / playbook metin kuralları; (i) tohum satırları, (m) ret nedeni kesmesi ve
-  dosya metni temizliği), `nginx-loadtest-k6.test.js` (k6 mantığı; K7 `ozet_hesapla` anahtar sırası =
-  wrk_kos.sh `JSON_ANAHTARLARI`), `nginx-loadtest-nginxsiz.test.js` (NA10, 2026-11-13: Play 1'de ad kuralı ve ek liste
+  dosya metni temizliği), `nginx-loadtest-k6.test.cjs` (k6 mantığı; K7 `ozet_hesapla` anahtar sırası =
+  wrk_kos.sh `JSON_ANAHTARLARI`), `nginx-loadtest-nginxsiz.test.cjs` (NA10, 2026-11-13: Play 1'de ad kuralı ve ek liste
   yok, EDU + üretim adı reddi; nginx tespiti sunucu ayarından ve kaydedicilerden ÖNCE; genel kaydedici `ROL=hedef`;
   Play 4 kaydedici seçimi; Play 10 `hedef_nginx`; bash varsa `on_kontrol.sh nginx` üç durumu ve `yuk_cpu_kaydedici.sh`
   `ROL`), genel playbook bekçileri.

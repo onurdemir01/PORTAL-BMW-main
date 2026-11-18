@@ -59,7 +59,7 @@
     #
     # `namespaces` ADI ASLA KULLANILMAZ: `namespace` Jinja'nin kendi global adi;
     # o aileden bir ad `is defined` testinde HEP true doner ve kapi olu kalir
-    # (bkz. jinja-global-shadowing.test.js). Bu yuzden `oc_namespaces_effective`.
+    # (bkz. jinja-global-shadowing.test.cjs). Bu yuzden `oc_namespaces_effective`.
     oc_namespaces_effective: >-
       {{ ([target_namespace | default('') | string | trim]
           + (scalex_target_namespaces | default([]) | map('string') | map('trim') | list))

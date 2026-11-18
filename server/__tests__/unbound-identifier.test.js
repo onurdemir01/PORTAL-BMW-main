@@ -79,12 +79,13 @@ function tscCalistir(config) {
   }
 }
 
-test('tsconfig.server-check.json repoda var ve server/**/*.cjs kapsiyor', () => {
+test('tsconfig.server-check.json repoda var ve server/**/*.cjs ile Node testlerini (*.test.js) kapsiyor', () => {
   assert.ok(fs.existsSync(TSCONFIG), 'sunucu denetim yapilandirmasi silinmis');
   const cfg = JSON.parse(fs.readFileSync(TSCONFIG, 'utf8'));
   assert.ok(cfg.compilerOptions.checkJs, 'checkJs kapatilmis — bekci ise yaramaz');
   assert.ok(cfg.compilerOptions.allowJs);
-  assert.deepEqual(cfg.include, ['server/**/*.cjs']);
+  // Node testleri 2026-11-18'den beri *.test.js (kurumsal Sonar); onlar da denetimde kalir.
+  assert.deepEqual(cfg.include, ['server/**/*.cjs', 'server/**/*.test.js']);
 });
 
 test('server/**/*.cjs icinde TANIMSIZ KIMLIK yok (gateVars sinifi)', () => {

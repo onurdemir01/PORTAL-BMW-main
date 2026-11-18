@@ -8,7 +8,7 @@ sözleşmesi (`extra_vars` adları, `set_stats` anahtarları) ile playbook aynı
 aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı düzen
 `server/ansible/bmw_portal/logx/` altında var.
 
-> Sözleşme testleri: `server/ansible/__tests__/scalex-awx-package.test.js`.
+> Sözleşme testleri: `server/ansible/__tests__/scalex-awx-package.test.cjs`.
 > Bu testler gerçek `scalex_runner.sh`'i sahte bir `oc` ile çalıştırıp çıktısını
 > portalın gerçek ayrıştırıcısından (`server/scalex/result.cjs`) geçirir.
 

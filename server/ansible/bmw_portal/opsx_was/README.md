@@ -335,8 +335,8 @@ Portal tarafı: `OPSX_WAS_DISCOVER_TEMPLATE_ID`, `OPSX_WAS_OPERATION_TEMPLATE_ID
   "Listede var ama erişilemiyor" durumu sahte `ls` ile her platformda (D15), gerçek `r--` izinleriyle
   yalnız izin semantiği olan ortamda (G5; Windows'ta ya da root'ta **ATLANDI** yazar, yeşil
   saymaz) ölçülür.
-- Portal: `server/ansible/__tests__/opsx-was-playbook.test.js`,
-  `server/ansible/__tests__/opsx-was-script.test.js` (iki depo aynası: `OPSX_WAS_ANSIBLE_DEPO`).
+- Portal: `server/ansible/__tests__/opsx-was-playbook.test.cjs`,
+  `server/ansible/__tests__/opsx-was-script.test.cjs` (iki depo aynası: `OPSX_WAS_ANSIBLE_DEPO`).
 - Her bekçi mutasyonla doğrulanır (mutasyon yalnız kopyada; ortam değişkenleri `OPSX_WAS_SH`,
   `OPSX_WAS_OP_YML`, `OPSX_WAS_DISC_YML`, `OPSX_WAS_UPD`, `OPSX_WAS_README`).
 
