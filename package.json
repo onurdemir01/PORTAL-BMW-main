@@ -36,6 +36,7 @@
     "kapsam:yayinla": "node scripts/kapsam-yayinla.cjs",
     "kapsam:dogrula": "node scripts/kapsam-yayinla.cjs --dogrula",
     "kapsam:kurumsal": "node scripts/kapsam-yayinla.cjs --kurumsal",
+    "kurumsal:derle": "node scripts/kurumsal-derle.cjs",
     "lint:ascii": "node scripts/check-ascii.cjs",
     "kapi": "node scripts/kapi.cjs",
     "kapi:hizli": "node scripts/kapi.cjs --hizli",

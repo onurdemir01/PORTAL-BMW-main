@@ -20,10 +20,7 @@ p = standardPipeline (
         tools: [nodejs: "22.23.4"],
         commands: [
             "install",
-            "run kur",
-            "run kapsam:kurumsal",
-            "run build",
-            "run paket -- --cikti build/BMWPORTAL/PORTAL-BMW-main --derleme-yok"
+            "run kurumsal:derle"
         ],
         compress: [from: "build/BMWPORTAL", to: "BMWPORTAL/BMWPORTAL.war"]
     ],

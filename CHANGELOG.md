@@ -15,6 +15,7 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - İstemci URL doğrulama birim testleri (`src/utils/__tests__/url.test.ts`).
 
 ### Fixed (kurumsal Jenkins, 2026-11-18)
+- Kurumsal iş #46 (`Missing script: "kapsam:kurumsal"`): groovy, kurumsal daldaki eski kodda olmayan bir betiği çağırıyordu. Groovy artık yalnız `install` + `run kurumsal:derle` çağırıyor; adımlar `scripts/kurumsal-derle.cjs`'te kodla birlikte sürümleniyor (bekçi KJ5/KJ6).
 - TST ve PRD iş tanımları (`deploy/jenkins/TST_…`, `PRD_…`): derleme DVL ile birebir aynı; TST deployment `BMWPORTAL-T`, PRD'de deploy yok (bekçi KJ4).
 - Kurumsal iş tanımı kurumdaki çalışan işler ve `standart_pipeline` koduyla hizalandı: `tools: [nodejs]` (Linux ajanı), `npm run kur`, paket `build/` altında, war `BMWPORTAL.war`, deployment `BMWPORTAL-D` (SI kaydı). `scripts/paket.cjs` repo içinde yalnız `build/` altına yazabilir.
 
