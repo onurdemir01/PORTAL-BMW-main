@@ -353,7 +353,9 @@ async function clusterYaz(cluster, kume, kosuId, zaman = new Date()) {
       sonuc.buyuk++;
       continue;
     }
-    const sha = crypto.createHash('sha1').update(json).digest('hex');
+    // Degisiklik izi: sha256'nin ilk 40 hanesi. Sutun CHAR(40) (dis DB'de DDL yok); sha1 Sonar
+    // kapisinda zafiyet (S4790) sayilir. Bicim degisince ilk kosu satirlari bir kez gunceller.
+    const sha = crypto.createHash('sha256').update(json).digest('hex').slice(0, 40);
     const eski = mevcut.get(k);
     const y = { ns: g.ns, ad: g.ad, json, sha, ozet: ozetAlanlari(govde), pod: govde.podOzet };
     if (!eski) yeniler.push(y);
@@ -400,9 +402,9 @@ async function clusterYaz(cluster, kume, kosuId, zaman = new Date()) {
 
 /** Kosu dizini (env APP_HUB_FILO_DIR; mutlak, '..' yok, en az 3 seviye). */
 function filoDizini() {
-  const d = String(process.env.APP_HUB_FILO_DIR || '/sw/BMW_PORTAL/app_hub_ocp')
-    .trim()
-    .replace(/\/+$/, '');
+  let d = String(process.env.APP_HUB_FILO_DIR || '/sw/BMW_PORTAL/app_hub_ocp').trim();
+  // Sondaki egik cizgiler dongu ile: `/\/+$/` geri izlemede karesel (Sonar S8786).
+  while (d.endsWith('/')) d = d.slice(0, -1);
   if (!path.isAbsolute(d) || d.includes('..') || d.split(/[\\/]/).filter(Boolean).length < 3) {
     throw Object.assign(new Error(`APP_HUB_FILO_DIR gecersiz: ${d}`), { status: 422 });
   }
