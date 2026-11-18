@@ -55,6 +55,7 @@ Bu Ansible playbook'u Linux sunuculardaki `/vhosting` ve `/vhosting8` klasörler
   - **Config hataları:** eksik `Include`, döngü.
   - **Soket ve IP:** dinlenen soketler (`/proc/net/tcp`), sunucunun IP'leri (`ip -o addr show`).
   - **Log özeti:** access log'dan son 7 günün gerçek / sağlık kontrolü (`hc.html`, `hc.jsp`) / statik istek sayıları; error log'dan arka uca bağlanamama sayıları.
+  - **Tekrar eden istek (2026-11-18):** gerçek sayılan GET/HEAD isteklerinden birkaç istemciden (≤ 8), 7 günün saatlerinin ≥ %80'inde ve düzenli hızda gelenler `hc.html` / `hc.jsp` dışında bir URI ile yapılan sağlık kontrolü sayılır: `tekrar_7g` (≤ `gercek_7g`; pencere tam değilse -1) ve `tekrar_uriler` (en çok 3, `METOT yol`). `tekrar_7g = gercek_7g > 0` ise Retirement Analizi "yalnız tekrar eden istek" (şüpheli) der. Kurallar Server Hub `server_hub_scan.sh` ile aynı (`bmw_automation_folder/server_hub/README.md` "Tekrar eden istek").
   - **Yapmadıkları:**
     - `httpd` / `apachectl` çalıştırılmaz;
     - çalışan web sunucusuna istek atılmaz;

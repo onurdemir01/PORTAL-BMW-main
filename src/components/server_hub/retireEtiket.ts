@@ -120,6 +120,7 @@ export type HizliSuzgec =
   | 'dusen'
   | 'autostart'
   | 'capraz'
+  | 'tekrar'
   | 'retirementte'
   | 'yanlis'
   | 'hepsi';
@@ -135,6 +136,7 @@ export const HIZLI_SUZGECLER: { id: HizliSuzgec; etiket: string }[] = [
   { id: 'dusen', etiket: 'kesinden şüpheliye inen' },
   { id: 'autostart', etiket: 'auto-start uyumsuz (R7/R8)' },
   { id: 'capraz', etiket: 'çapraz kontrol (R9–R12)' },
+  { id: 'tekrar', etiket: 'yalnız tekrar eden istek (R13)' },
   { id: 'retirementte', etiket: 'Retirement kaydı var' },
   { id: 'yanlis', etiket: 'yanlış alarm' },
   { id: 'hepsi', etiket: 'hepsi' },
@@ -150,6 +152,7 @@ export function hizliSuz<T extends ShRetireEtiketHer>(etiketler: T[], h: HizliSu
     dusen: (e) => acik(e) && e.hamSeviye === 'KESIN' && e.seviye !== 'KESIN',
     autostart: (e) => acik(e) && e.kurallar.some((k) => AUTOSTART_KURALLARI.has(k)),
     capraz: (e) => acik(e) && e.kurallar.some((k) => CAPRAZ_KURALLARI.has(k)),
+    tekrar: (e) => acik(e) && e.kurallar.includes('R13'),
     retirementte: (e) => (e.retirement || []).length > 0,
     yanlis: (e) => e.durum === 'YANLIS_ALARM',
     hepsi: () => true,

@@ -78,6 +78,12 @@ const SENARYOLAR = Object.freeze({
     baslik: 'Eşli vhost’larda gerçek trafik yok',
     elle: 'Access log’u en az 7 gün geriye doğru elle kontrol edin.',
   },
+  WEB_YALNIZ_TEKRAR: {
+    katman: 'web',
+    etki: 'DESTEKLER',
+    baslik: 'Yalnız tekrar eden istek geliyor (olası health check, hc.html / hc.jsp dışında)',
+    elle: 'Tekrar eden URI’nin LB / izleme sisteminin sağlık kontrolü olduğunu ve istemci IP’lerini doğrulayın; bir izleme aracı iş URL’sini yokluyorsa uygulama kullanılıyor olabilir.',
+  },
   WEB_YALNIZ_HC: {
     katman: 'web',
     etki: 'DESTEKLER',
@@ -213,7 +219,34 @@ function vhostTrafigi(d, t = TAZE) {
     sh >= 0 &&
     ['ACTIVE', 'NO_RECENT_TRAFFIC', null, undefined].includes(d.veri.shTrafik);
   const wSayi = l && Number.isFinite(l.gercek_7g) ? l.gercek_7g : null;
-  if ((shOlcul && sh > 0) || (wSayi != null && wSayi > 0 && ['OLCULDU', 'KISMI'].includes(l.durum)))
+  // TEKRAR EDEN ISTEK (2026-11-18): bir kaynak "yalniz tekrar" dese bile DIGER kaynakta tekrar disi
+  // (ya da tekrari olculmemis) istek varsa VAR kalir (guvenli taraf). Tekrar sayisi olculmediyse 0 sayilir.
+  const shTek = Number.isFinite(d.veri.shTekrar7g) ? d.veri.shTekrar7g : 0;
+  const wTek = l && Number.isFinite(l.tekrar_7g) ? l.tekrar_7g : 0;
+  const wOk = wSayi != null && wSayi > 0 && ['OLCULDU', 'KISMI'].includes(l.durum);
+  const shGercek = shOlcul && sh > 0 ? sh - Math.min(sh, shTek) : 0;
+  const wGercek = wOk ? wSayi - Math.min(wSayi, wTek) : 0;
+  const yalnizTekrar = ((shOlcul && sh > 0) || wOk) && shGercek === 0 && wGercek === 0;
+  // TAZELIK: "yalniz tekrar" da bir "gercek trafik yok" iddiasidir; destekleyen her kaynak taze olmali
+  // (bayatsa olculemedi; sifir trafikle ayni kural).
+  const tekrarBayat = yalnizTekrar && ((shOlcul && sh > 0 && !t.sh) || (wOk && !t.ue));
+  if (tekrarBayat)
+    return {
+      olcum: 'OLCULEMEDI',
+      bayat: true,
+      metin: `${d.ad}: yalnız tekrar eden istek ölçümü bayat (${[shOlcul && sh > 0 && !t.sh ? ('Server Hub ' + (t.shTarih || '?')) : '', wOk && !t.ue ? ('access log ' + (t.ueTarih || '?')) : ''].filter(Boolean).join(', ')} taraması)`,
+    };
+  if (yalnizTekrar) {
+    const uriler = [
+      ...new Set([...(d.veri.shTekrarUri || []), ...((l && l.tekrar_uriler) || [])]),
+    ].slice(0, 3);
+    return {
+      olcum: 'TEKRAR',
+      uriler,
+      metin: `${d.ad}: 7 gündür yalnız tekrar eden istek (olası health check${uriler.length ? ': ' + uriler.join(', ') : ''})`,
+    };
+  }
+  if ((shOlcul && sh > 0) || wOk)
     return {
       olcum: 'VAR',
       metin: `${d.ad}: ${shOlcul && sh > 0 ? ("Server Hub 7 gün " + sh) : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? ("access log " + wSayi) : ''} gerçek istek`,
@@ -362,6 +395,15 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       );
     const yok = trafikler.filter((x) => x.t.olcum === 'YOK');
     const olcmedi = trafikler.filter((x) => x.t.olcum === 'OLCULEMEDI');
+    // Yalniz tekrar eden istek: kullanim kaniti DEGIL, retire lehine (SUPHELI; RETIRE_ADAYI degil, cunku
+    // vhost "trafik yok" olculmedi). Gercek trafik varsa (trafikVar) madde eklenmez.
+    const tekrarli = trafikler.filter((x) => x.t.olcum === 'TEKRAR');
+    if (tekrarli.length && !trafikVar.length)
+      maddeler.push(
+        madde('WEB_YALNIZ_TEKRAR', tekrarli.map((x) => x.t.metin).join('; '), tekrarli[0].v.anahtar, {
+          uriler: [...new Set(tekrarli.flatMap((x) => x.t.uriler))].slice(0, 5),
+        }),
+      );
     if (yok.length && !trafikVar.length) {
       const hc = yok.filter((x) => x.t.hc > 0);
       maddeler.push(

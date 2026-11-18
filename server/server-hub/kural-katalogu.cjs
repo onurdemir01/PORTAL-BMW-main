@@ -52,6 +52,7 @@ const DURUM_KONTROL = [CLI7('ls host=master/server-config=<JVM>'), CLI8('ls host
 const TRAFIK_KONTROL = [
   "ls -lrt <ACCESS_LOG>*   # rotasyonla kac gunluk log var",
   "zgrep -h -v -E 'hc\\.(jsp|html)' <ACCESS_LOG>* | tail -5   # hc disi son istekler",
+  "zgrep -h -v -E 'hc\\.(jsp|html)' <ACCESS_LOG>* | awk '{ print $1, $6, $7 }' | sed 's/?.*//' | sort | uniq -c | sort -rn | head   # en cok tekrar eden istekler (istemci, metot, yol)",
 ];
 const TRAFIK_EKSIK =
   'Ayda / ceyrekte bir calisan is (batch, rapor); web katmani disindan dogrudan JVM portuna gelen istek; MQ, zamanlayici ya da EJB ile tetiklenen uygulama; 7 gunden eski log rotasyonu; DR / yedek sitedeki kopya.';
@@ -254,7 +255,7 @@ const MADDELER = [
     id: 'jvm-yuk',
     alan: 'jvm',
     ad: 'JVM yükü (web katmanı trafiği)',
-    neTaranir: 'JVM’e giden web katmanı access log istekleri, son 7 gün (hc.jsp / hc.html hariç).',
+    neTaranir: 'JVM’e giden web katmanı access log istekleri, son 7 gün (hc.jsp / hc.html hariç); IHS / RHA / Nginx loglarında tekrar eden (sağlık kontrolü benzeri) istekler ayrı sayılır.',
     ciktilar: [
       {
         kod: 'RETIRE_CANDIDATE',
@@ -274,6 +275,16 @@ const MADDELER = [
           neden: 'JVM çalışıyor, eşlenen vhost’larda son 7 günde istek yok.',
           eksik: TRAFIK_EKSIK,
           kontrol: [...DEPLOYMENT_KONTROL, ...TRAFIK_KONTROL],
+        },
+      },
+      {
+        kod: 'ONLY_REPEAT_TRAFFIC',
+        kosul: 'Web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check; URI bulguda) — JVM kapalıysa retire adayı olabilir.',
+        seviye: 'warning',
+        dogrulama: {
+          neden: 'Eşlenen vhost’ların access log’undaki hc dışı isteklerin TAMAMI birkaç istemciden (LB / izleme), 7 günün saatlerinin çoğunda ve düzenli hızda gelen aynı GET/HEAD istekleri: gerçek kullanıcı isteği görülmedi.',
+          eksik: 'Tekrar eden istek bir izleme aracının iş URL’sini yoklaması ya da sistemden sisteme düzenli bir çağrı olabilir (o zaman uygulama kullanılıyordur). ' + TRAFIK_EKSIK,
+          kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'Tekrar eden isteğin istemci IP’sinin LB / izleme sistemine ait olduğunu doğrula', 'CMDB / uygulama sahibi onayı'],
         },
       },
       { kod: 'TRAFFIC_UNATTRIBUTED', kosul: 'Web katmanında hiçbir JVM’e atfedilemeyen proxy trafiği var — retire önerilmez.', seviye: 'warning' },
@@ -717,6 +728,17 @@ const ETIKET_KURALLARI = [
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'RETIRE_KAYDI_CELISKI',
+  },
+  // R13 (2026-11-18; kullanici: "yalniz tekrar eden satirlar varsa retire edilecek olabilecek olarak
+  // label'la"): health check hc.html / hc.jsp disinda bir URI ile yapiliyor olabilir.
+  {
+    kural: 'R13',
+    tur: 'JVM',
+    ad: 'Kapalı + yalnız tekrar eden istek',
+    kosul: 'JVM kapalı ve web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check, hc.html / hc.jsp dışında bir URI).',
+    varsayilan: 'SUPHELI',
+    dogrulama: null,
+    kod: 'ONLY_REPEAT_TRAFFIC',
   },
 ].map((k) => ({ ...k, dogrulama: k.dogrulama || KODLAR.get(k.kod).dogrulama }));
 

@@ -3,7 +3,7 @@
 // Kullanıcı: "Kurallar listesini ince, güzel, şık bir UI/UX ile karşımıza çıkan sayfaya da işler misin?
 // Bakmak isteyen insanlar hangi kod neydi diye Kurallar ve Limitler sayfasına geçip durmasın."
 // Sağdan açılan bir panel: bulgu kodları alana göre gruplu, okunur ad + ne zaman çıkar + geçerli seviye
-// + bu listedeki sayı. Koda tıklayınca Bulgular o koda süzülür. Retirement etiket kuralları (R1–R12)
+// + bu listedeki sayı. Koda tıklayınca Bulgular o koda süzülür. Retirement etiket kuralları (R1–R13)
 // bulgu DEĞİLDİR; altta ayrı, katlanır bir bölümde ve nerede kullanıldıklarıyla durur.
 // Veri: GET /api/server-hub/kurallar (Kurallar & Limitler ile aynı tek kaynak); panel ilk açılışta indirir.
 import React, { useEffect, useMemo, useRef, useState } from 'react';

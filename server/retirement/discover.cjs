@@ -135,8 +135,23 @@ function trafikSinifi(v) {
   // tutarsizdir ve "yok" saymak yanlis olurdu.
   if (!Number.isFinite(r7) || r7 < 0)
     return { durum: 'olculemedi', sebep: `${st} ama sayi yok (${v.req_7d})` };
+  // TEKRAR EDEN ISTEK (scan_ver 2.6, 2026-11-18): istegin TAMAMI saglik kontrolu benzeri ise durum
+  // 'var' KALIR (kayit acan yine onaylar) ama ekran "yalniz tekrar eden istek" ve URI'yi soyler.
+  const rp = v.repeat_7d == null || v.repeat_7d === '' ? NaN : Number(v.repeat_7d);
+  const tekrar =
+    r7 > 0 && rp === r7
+      ? {
+          istek: rp,
+          uriler: String(v.repeat_uris || '')
+            .split(' | ')
+            .map((x) => x.trim().replace(/ \d+ \d+ip$/, ''))
+            .filter(Boolean)
+            .slice(0, 3),
+        }
+      : null;
   return {
     durum: r7 > 0 ? 'var' : 'yok',
+    tekrar,
     req24: Number.isFinite(r24) && r24 >= 0 ? r24 : null,
     req7: r7,
     hc24: Number.isFinite(Number(v.hc_24h)) && Number(v.hc_24h) >= 0 ? Number(v.hc_24h) : null,
@@ -591,6 +606,17 @@ async function discover(base, db) {
       console.warn('[Retirement] Server_Hub_Jvms kolonlari okunamadi:', hubError);
       return null;
     });
+  // Tekrar eden istek kolonlari (scan_ver 2.6) yukleyici ilk kostugunda eklenir; yoksa NULL secilir
+  // (kolon eksikligi tum vhost trafigini 'olculemedi'ye dusurmesin).
+  const vhCols = await query(
+    `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Server_Hub_Vhosts') AND name IN ('repeat_7d', 'repeat_uris')`,
+  )
+    .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
+    .catch(() => []);
+  const tekrarSel =
+    vhCols.includes('repeat_7d') && vhCols.includes('repeat_uris')
+      ? 'v.repeat_7d, v.repeat_uris'
+      : 'NULL AS repeat_7d, NULL AS repeat_uris';
   const jvmSel = ['host', 'jvm', 'gen', 'running', 'auto_start', 'scan_date', 'ports']
     .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
     .concat(jvmCols && jvmCols.includes('cfg_ports') ? ['cfg_ports'] : [])
@@ -613,7 +639,7 @@ async function discover(base, db) {
     // acik liste; okunamazsa BOS doner ve her vhost 'olculemedi' olur - "trafik yok"
     // DEGIL. Tablo/kolon yoksa da ayni yere duser.
     query(`SELECT v.host, v.server_name, v.aliases, v.listen, v.conf_file, v.product, v.proxy_targets, v.req_24h, v.req_7d, v.hc_24h,
-                  v.traffic_state, v.traffic_reason, v.sampled, v.last_req_epoch, v.scan_date
+                  v.traffic_state, v.traffic_reason, v.sampled, v.last_req_epoch, v.scan_date, ${tekrarSel}
              FROM dbo.Server_Hub_Vhosts v
              JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
                ON m.host = v.host AND m.d = v.scan_date`).then((r) => r.recordset || []).catch((e) => {

@@ -6,6 +6,8 @@
 //   SN3 uygulama toplamasi ve yapilabilecekler (en cok 3; yalniz yonlendir / elle / bilgi; calistiran yok)
 //   SN4 uclar: /iliski/kararlar ve /iliski/karar (app / sunucu / kopya), 400 / 409; uc saati motora verir; hata 424
 //   SN9 elle metinleri var olmayan "Retirement sekmesi"ni gostermez (2026-11-13)
+//   SN10 tekrar eden istek (2026-11-18): yalniz tekrar -> WEB_YALNIZ_TEKRAR + SUPHELI (RETIRE_ADAYI / KULLANIMDA
+//       degil); tekrar disi istek ya da tekrari olculmemis ikinci kaynak -> VAR (guvenli taraf)
 //   SN5 tazelik her kanitin kendi sunucusundan (web sunucusu Server Hub / UE taramasi, baglanti UE taramasi):
 //       bayat sifir "olculemedi", aday olamaz; kullanim kaniti bayat da olsa kazanir
 'use strict';
@@ -16,7 +18,7 @@ const express = require('express');
 
 const { grafikKur, A } = require('../iliski-grafigi.cjs');
 const { dogrula } = require('../dogrulama.cjs');
-const { kararla, KARARLAR } = require('../senaryo.cjs');
+const { kararla, KARARLAR, vhostTrafigi } = require('../senaryo.cjs');
 
 const APP = 'APPSRV01';
 const WEB = 'WEBSRV01';
@@ -40,6 +42,7 @@ function filo({
   celiski = false,
   ad = 'APP1',
   ikinci = null,
+  tekrar = null,
 } = {}) {
   const shV = {
     product: 'IHS',
@@ -138,7 +141,7 @@ function filo({
         : [],
   };
   const logOz =
-    (() => { if (log === 'YOK') return null; return { durum: log, gercek_7g: gercek, hc_7g: hc, hc_istemcileri: hc ? ['10.0.0.250'] : [] }; })();
+    (() => { if (log === 'YOK') return null; return { durum: log, gercek_7g: gercek, hc_7g: hc, hc_istemcileri: hc ? ['10.0.0.250'] : [], ...(tekrar == null ? {} : { tekrar_7g: tekrar, tekrar_uriler: ['GET /app1/status'] }) }; })();
   const vhostW = {
     server_name: shV.serverName,
     aliases: [],
@@ -247,6 +250,27 @@ test('SN1 dogruluk tablosu', () => {
       'RETIRE_ADAYI',
       ['WEB_YALNIZ_HC'],
       ['WEB_TRAFIK_YOK'],
+    ],
+    [
+      'yalniz tekrar eden istek (olasi health check): supheli',
+      { gercek: 2016, tekrar: 2016 },
+      'SUPHELI',
+      ['WEB_YALNIZ_TEKRAR'],
+      ['WEB_TRAFIK_VAR', 'WEB_TRAFIK_YOK'],
+    ],
+    [
+      'tekrar + gercek istek: kullanimda',
+      { gercek: 2020, tekrar: 2016 },
+      'KULLANIMDA',
+      ['WEB_TRAFIK_VAR'],
+      ['WEB_YALNIZ_TEKRAR'],
+    ],
+    [
+      'kapali + yalniz tekrar: kirik zincir degil, supheli',
+      { calisiyor: false, gercek: 2016, tekrar: 2016 },
+      'SUPHELI',
+      ['WEB_YALNIZ_TEKRAR', 'JVM_KAPALI'],
+      ['KIRIK_ZINCIR', 'WEB_TRAFIK_VAR'],
     ],
     ['celiski, kullanim yok', { celiski: true }, 'KARAR_VERILEMEZ', ['CELISKI'], []],
     [
@@ -689,4 +713,33 @@ test('SN9 elle metinleri Retirement sekmesine degil BMW Hub > Retirement sayfasi
     assert.ok(!/sekme/i.test(String(s.elle || '')), `${kod}: elle metni sekme diyor: ${s.elle}`);
   }
   assert.match(SENARYOLAR.RETIREMENT_KAYDI.elle, /BMW Hub › Retirement sayfas/);
+});
+
+test('SN10 vhostTrafigi: tekrar eden istek iki kaynakta, guvenli taraf', () => {
+  const d = (veri, kaynaklar = ['server_hub']) => ({ ad: 'v1', kaynaklar, veri });
+  const sh = { shTrafik: 'ACTIVE', shReq7g: 2016, shTekrar7g: 2016, shTekrarUri: ['GET /a/status'] };
+  const t = vhostTrafigi(d(sh));
+  assert.equal(t.olcum, 'TEKRAR');
+  assert.deepEqual(t.uriler, ['GET /a/status']);
+  assert.match(t.metin, /yalnız tekrar eden istek \(olası health check: GET \/a\/status\)/);
+  // Server Hub tekrar disi istek goruyor -> VAR
+  assert.equal(vhostTrafigi(d({ ...sh, shTekrar7g: 2000 })).olcum, 'VAR');
+  // tekrar olculemedi (eski satir / -1 -> null) -> VAR
+  assert.equal(vhostTrafigi(d({ ...sh, shTekrar7g: null })).olcum, 'VAR');
+  // Server Hub yalniz tekrar ama Faz W tekrari OLCULMEMIS gercek istek goruyor -> VAR
+  assert.equal(
+    vhostTrafigi(d({ ...sh, fazWLog: { durum: 'OLCULDU', gercek_7g: 5 } })).olcum,
+    'VAR',
+  );
+  // iki kaynak da yalniz tekrar -> TEKRAR, URI'ler birlesir
+  const iki = vhostTrafigi(
+    d({ ...sh, fazWLog: { durum: 'OLCULDU', gercek_7g: 2016, tekrar_7g: 2016, tekrar_uriler: ['HEAD /a/status'] } }),
+  );
+  assert.deepEqual([iki.olcum, iki.uriler], ['TEKRAR', ['GET /a/status', 'HEAD /a/status']]);
+  // TAZELIK: "yalniz tekrar" da trafik-yok iddiasidir; bayat kaynaktan OLCULEMEDI (bayat)
+  const bayat = vhostTrafigi(d(sh), { sh: false, ue: true, shTarih: '2026-10-01', ueTarih: null });
+  assert.deepEqual([bayat.olcum, bayat.bayat], ['OLCULEMEDI', true]);
+  assert.match(bayat.metin, /yalnız tekrar eden istek ölçümü bayat \(Server Hub 2026-10-01/);
+  // trafik yok: eskisi gibi YOK
+  assert.equal(vhostTrafigi(d({ ...sh, shTrafik: 'NO_RECENT_TRAFFIC', shReq7g: 0, shTekrar7g: 0 })).olcum, 'YOK');
 });

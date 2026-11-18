@@ -6,7 +6,7 @@
 // inceleme eslenik durumuna gore inceleme"; "Manuel kontrol de gerekecek".
 //
 // GIRDI: assess() sunuculari (h.retireAdaylari bulgudan ayri uretilir), Admin kural seviyeleri
-// (ayarlar.etiketler: R1..R12 -> KESIN | SUPHELI | KAPALI) ve kayitli manuel kontroller.
+// (ayarlar.etiketler: R1..R13 -> KESIN | SUPHELI | KAPALI) ve kayitli manuel kontroller.
 //
 // KONU + ORTAM BASINA TEK ETIKET. Konu:
 //   JVM   ad + JBoss nesli (7 ve 8 kopyasi ayri: 8'e tasinmis uygulamanin 7 kopyasi tam da retire
@@ -62,6 +62,8 @@ function jvmKopyasi(h, j, adaylar) {
     calisiyor: j.runningKnown === false ? null : !!j.running,
     autoStart: j.autoStart || 'unknown',
     trafik: j.trafficState || null,
+    // ACTIVE ama yalniz tekrar eden istek (olasi health check; assess yalnizTekrarOzeti): { istek, uriler } | null
+    tekrar: j.yalnizTekrar || null,
     esleme: j.mapping || 'NOT_MAPPED',
     tier: j.tier == null ? null : String(j.tier),
     taze: h.fresh !== false,
@@ -184,16 +186,33 @@ function zincirNedenleri(konu, kopyalar, kurallar) {
     // R1 / R2 / R8 "JVM kapali" iddiasidir: calisan / olculemeyen kopya onu bozar. R6 (Faz 2) ve R7
     // calisan JVM hakkindadir; orada calismak beklenen durumdur.
     const kapaliIddiasi =
-      kurallar.includes('R1') || kurallar.includes('R2') || kurallar.includes('R8');
+      kurallar.includes('R1') ||
+      kurallar.includes('R2') ||
+      kurallar.includes('R8') ||
+      kurallar.includes('R13');
     for (const k of kopyalar) {
       if (kapaliIddiasi && k.calisiyor === null) n.push(`${k.host}: çalışma durumu ölçülemedi`);
       else if (kapaliIddiasi && k.calisiyor) n.push(`${k.host}: eşlenik kopya çalışıyor`);
       if (!k.taze) n.push(`${k.host}: tarama bayat (${k.taramaTarihi || '?'})`);
     }
     // R1 trafik yok iddiasidir: her kopyanin web katmani olculmus ve bos olmali.
+    // R13 "yalniz tekrar eden istek" iddiasidir: her kopyanin web katmani olculmus ve ya bos ya da yalniz
+    // tekrar eden istek aliyor olmali (R1 ile birlikteyse R1'in nedenleri yeter).
+    if (kurallar.includes('R13') && !kurallar.includes('R1'))
+      for (const k of kopyalar) {
+        if (k.trafik === 'ACTIVE' && !k.tekrar)
+          n.push(`${k.host}: web katmanında gerçek trafik var`);
+        else if (k.trafik === 'UNREADABLE' || k.trafik === 'UNVERIFIED')
+          n.push(`${k.host}: trafik ölçülemedi`);
+        else if (k.trafik !== 'NO_RECENT_TRAFFIC' && k.trafik !== 'ACTIVE')
+          n.push(`${k.host}: web katmanı eşlenemedi (${k.esleme})`);
+        if (k.engel) n.push(`${k.host}: retire kanıtı eksik — ${k.engel}`);
+      }
     if (kurallar.includes('R1'))
       for (const k of kopyalar) {
-        if (k.trafik === 'ACTIVE') n.push(`${k.host}: web katmanında trafik var`);
+        if (k.trafik === 'ACTIVE' && k.tekrar)
+          n.push(`${k.host}: web katmanına yalnız tekrar eden istek geliyor (olası health check)`);
+        else if (k.trafik === 'ACTIVE') n.push(`${k.host}: web katmanında trafik var`);
         else if (k.trafik === 'UNREADABLE' || k.trafik === 'UNVERIFIED')
           n.push(`${k.host}: trafik ölçülemedi`);
         else if (k.trafik !== 'NO_RECENT_TRAFFIC')
@@ -224,7 +243,17 @@ function retirementOf(kopyalar) {
 function kanitImzasi(konu, kopyalar, kurallar) {
   const satir = (k) => {
     if (konu.tur === 'JVM')
-      return [k.host, k.gen, k.calisiyor, k.autoStart, k.trafik, k.esleme, !!k.engel, k.taze];
+      // tekrar YALNIZ varken eklenir: mevcut manuel kontrollerin imzasi degismez.
+      return [
+        k.host,
+        k.gen,
+        k.calisiyor,
+        k.autoStart,
+        k.trafik,
+        k.esleme,
+        !!k.engel,
+        k.taze,
+      ].concat(k.tekrar ? ['tekrar'] : []);
     if (konu.tur === 'EAR')
       return [
         k.host,

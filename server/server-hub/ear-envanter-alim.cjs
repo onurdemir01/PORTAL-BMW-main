@@ -757,6 +757,13 @@ const logOf = (l) => ({
   hc_istemcileri: sayilar(l.hc_istemcileri),
   ilk_istemciler: sayilar(l.ilk_istemciler),
   ilk_yollar: sinirli(l.ilk_yollar, 5, (x) => ({ yol: M(x.yol, 80), n: N(x.n) })),
+  // TEKRAR EDEN ISTEK (2026-11-18): -1 / yok = olculemedi -> null (0 DEGIL: 0 "olculdu, tekrar yok").
+  tekrar_7g: l.tekrar_7g == null || !(Number(l.tekrar_7g) >= 0) ? null : N(l.tekrar_7g),
+  tekrar_uriler: sinirli(l.tekrar_uriler, 3, (x) => ({
+    yol: M(x.yol, 200),
+    n: N(x.n),
+    istemci: N(x.istemci),
+  })),
   ornek: l.ornek === true,
   ayristirilamayan: N(l.ayristirilamayan),
   satir: N(l.satir),

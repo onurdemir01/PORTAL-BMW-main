@@ -4551,7 +4551,7 @@
       },
       {
         "ad": "Server Hub",
-        "dosya": "server/server-hub/index.cjs:173"
+        "dosya": "server/server-hub/index.cjs:285"
       },
       {
         "ad": "EAR envanteri filo listesi",
@@ -5968,7 +5968,7 @@
       },
       {
         "ad": "Retirement kesfi (web vhost'lari)",
-        "dosya": "server/retirement/discover.cjs:601"
+        "dosya": "server/retirement/discover.cjs:627"
       },
       {
         "ad": "Retirement DNS/IP",
@@ -6037,7 +6037,7 @@
       {
         "tur": "playbook",
         "ad": "server_hub_scan.yml -> server_hub_loader.py",
-        "dosya": "bmw_automation_folder/server_hub/files/server_hub_loader.py:131",
+        "dosya": "bmw_automation_folder/server_hub/files/server_hub_loader.py:133",
         "nasil": "gün + sunucu başına delete(TOP 5000)+insert",
         "ne_zaman": "günde bir gece"
       }

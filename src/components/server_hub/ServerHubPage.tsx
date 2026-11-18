@@ -50,6 +50,7 @@ import { useJobTracker } from '@/contexts/JobTrackerContext';
 import { Modal } from '@/components/common/Modal';
 import { useEscIleKapat } from '@/components/common/pencereKlavye';
 import { TableEmptyRow } from '@/components/common/EmptyState';
+import { TekrarRozeti } from '@/components/server_hub/TekrarRozeti';
 import { fmtNumber, fmtDate } from '@/utils/datetime';
 import { toast } from '@/hooks/useToast';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
@@ -679,6 +680,8 @@ const KOD_ETIKET: Record<string, string> = {
   STOPPED_AUTOSTART_ON: "JVM kapalı ama auto-start açık — reboot'ta açılır",
   RETIRE_CANDIDATE: 'JVM kapalı ve web katmanında 7 gündür istek yok — retire adayı',
   NO_LOAD: 'JVM çalışıyor ama 7 gündür istek yok',
+  ONLY_REPEAT_TRAFFIC:
+    'web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check) — JVM kapalıysa retire adayı olabilir',
   SYNTAX_FAIL: 'web sunucusu sözdizimi hatalı',
   SYNTAX_UNVERIFIED: 'web sözdizimi doğrulanamadı (dosya erişimi)',
   SYNTAX_UNKNOWN: 'web sözdizimi ölçülemedi',
@@ -1850,7 +1853,7 @@ export default function ServerHubPage() {
                         : tab === 'uygulama360'
                           ? 'Uygulama bazında bakış: bir uygulamanın bütün ortam ve sunuculardaki kopyaları, auto-start uyumu, OpenShift karşılığı, Retirement kaydı ve etiketleri tek satırda.'
                           : tab === 'analiz'
-                            ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R12) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
+                            ? 'Bir uygulama, sunucu, vhost ya da IP yazın: app + web + IP katmanları birlikte okunur, ne yapılabileceği ve şüphe sade bir kartta; neden ve kanıt ayrıntıda. Retirement etiketleri (R1–R13) listesi ve elle kontrol de burada. Ekran hiçbir şey çalıştırmaz.'
                             : 'Sunucu listesi verin: yeniden başlatılırsa sorunsuz geri gelir mi, son taramadan özetlenir (taranmamış sunucu “hazır” sayılmaz). Reboot Kontrolü ve Retirement operasyonları BMW Hub’da.'}
           </p>
         </div>
@@ -3870,6 +3873,7 @@ function HostModal({
                           >
                             {v.req7d == null || v.req7d < 0 ? '?' : nf(v.req7d)}
                             {v.sampled ? '~' : ''}
+                            <TekrarRozeti v={v} />
                           </td>
                           <td
                             className="px-2.5 py-1.5 tabular-nums text-right"
@@ -3892,7 +3896,9 @@ function HostModal({
               <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                 "~" = sayı alt sınır (log kuyruğu 7 günü kapsamadı ya da trafiğin bir kısmı bu logda
                 yok). Sayılar hc.html/hc.jsp hariç; "?" = sayı yok: log ya da conf okunamadı veya
-                trafik bu logdan doğrulanamadı — sebep hücrenin üzerinde.
+                trafik bu logdan doğrulanamadı — sebep hücrenin üzerinde. "olası HC" = birkaç
+                istemciden düzenli tekrar eden GET/HEAD isteği (hc.html/hc.jsp dışında bir health
+                check); "yalnız tekrar" = 7 gündür başka istek yok, retire adayı olabilir.
               </p>
             </div>
           )}

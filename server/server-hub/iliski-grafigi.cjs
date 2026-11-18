@@ -329,6 +329,9 @@ function grafikKur({ hosts = [], veri = null } = {}) {
           shTrafik: v.trafficState || null,
           shReq7g: v.req7d == null ? null : v.req7d,
           shHc24s: v.hc24h == null ? null : v.hc24h,
+          // TEKRAR EDEN ISTEK (scan_ver 2.6): null = olculemedi (eski satir / -1)
+          shTekrar7g: Number.isFinite(v.repeat7d) && v.repeat7d >= 0 ? v.repeat7d : null,
+          shTekrarUri: (v.repeatUris || []).map((u) => `${u.metot} ${u.yol}`),
           conf: v.confFile || '',
         },
         'server_hub',

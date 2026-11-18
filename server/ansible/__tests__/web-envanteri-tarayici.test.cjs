@@ -621,6 +621,62 @@ test('WT6b rotatelogs borusu: tarih desenli dosyalar okunur', { skip: SKIP }, ()
   assert.equal(o.dosyalar.length, 2);
 });
 
+test(
+  'WT6c tekrar eden istek: iki LB saglik kontrolu tekrar_7g = gercek_7g + URI; gercek istek, POST, dalgali trafik tekrar degil',
+  { skip: SKIP },
+  () => {
+    const kok = geciciKok();
+    const r = logluAgac(kok, {});
+    const s = SIMDI;
+    let hc = '';
+    let karisik = '';
+    for (let t = s - 8 * 86400; t < s - 60; t += 600) {
+      const iki =
+        erisim('10.0.0.1', t, `/app/status?t=${t}`) + erisim('10.0.0.2', t, '/app/status');
+      hc += iki;
+      karisik += iki;
+      // gunde bir gercek istek
+      if (t % 86400 < 600) karisik += erisim('10.5.5.5', t, '/app/sayfa');
+      // tek istemciden mesai saatinde 12, gece 1 istek: duzenli degil -> tekrar sayilmaz
+      const saat = new Date(t * 1000).getUTCHours();
+      karisik += erisim('10.9.9.9', t, '/api/siparis').repeat(saat >= 6 && saat <= 15 ? 12 : 1);
+      karisik += erisim('10.0.0.1', t, '/app/ping').replace('"GET ', '"POST ');
+    }
+    yaz(path.join(r, 'logs', 'ana_access_log'), hc, s - 60);
+    yaz(path.join(r, 'logs', 'access_log'), karisik, s - 60);
+    const v = Object.fromEntries(kos(kok).kurulumlar[0].vhostlar.map((x) => [x.server_name, x]));
+    const o = v['ana.ornek.local'].loglar[0];
+    assert.equal(o.durum, 'OLCULDU', o.neden);
+    assert.ok(o.gercek_7g > 1000);
+    assert.equal(o.tekrar_7g, o.gercek_7g, 'yalniz saglik kontrolu');
+    assert.deepEqual(
+      o.tekrar_uriler.map((u) => u.yol),
+      ['GET /app/status'],
+    );
+    assert.equal(o.tekrar_uriler[0].istemci, 2);
+    assert.ok(!JSON.stringify(o).includes('t='), 'sorgu dizesi pakete girmez');
+    const m = v['miras1.ornek.local'].loglar[0];
+    assert.equal(m.durum, 'OLCULDU', m.neden);
+    assert.ok(
+      m.tekrar_7g > 0 && m.tekrar_7g < m.gercek_7g,
+      `karisik: ${m.tekrar_7g} / ${m.gercek_7g}`,
+    );
+    assert.deepEqual(
+      m.tekrar_uriler.map((u) => u.yol),
+      ['GET /app/status'],
+    );
+    // KISA PENCERE: 7 gun kapsanmadi -> -1 (olculemedi)
+    yaz(
+      path.join(r, 'logs', 'ana_access_log'),
+      erisim('10.0.0.1', s - 3600, '/app/status'),
+      s - 60,
+    );
+    const k = kos(kok).kurulumlar[0].vhostlar.find((x) => x.server_name === 'ana.ornek.local')
+      .loglar[0];
+    assert.equal(k.tekrar_7g, -1);
+  },
+);
+
 // ── WT7 error loglari ──────────────────────────────────────────────────────────────────────────
 test(
   'WT7 arka uca baglanamama: proxy / mod_jk / WAS eklentisi, pencere disi sayilmaz',

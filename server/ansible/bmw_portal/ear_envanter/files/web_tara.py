@@ -20,7 +20,8 @@
 #     JkWorkersFile (workers.properties), mod_cluster yonergeleri, WebSpherePluginConfig (plugin-cfg.xml),
 #     CustomLog / ErrorLog / JkLogFile, SSLCertificateFile (var mi), DocumentRoot
 #   - access log: vhost basina pencerede GERCEK / HC / STATIK istek sayilari, durum siniflari, son
-#     gercek istek, kapsama baslangici, istemci sayisi, HC istemcileri (LB yokluyor mu)
+#     gercek istek, kapsama baslangici, istemci sayisi, HC istemcileri (LB yokluyor mu), TEKRAR EDEN
+#     istekler (hc.html / hc.jsp disinda bir URI ile yapilan saglik kontrolu; tekrar_7g, tekrar_uriler)
 #   - error log / mod_jk log / WAS eklenti logu: arka uca baglanamama sayilari
 #
 # OLCULEMEDI != YOK: okunamayan dosya, gorunmeyen surec (hidepid), kesik log, ayristirilamayan satir
@@ -64,6 +65,17 @@ KOKLER = [k for k in os.environ.get('EAR_WEB_KOKLER', VARSAYILAN_KOKLER).split('
 HC_ADLARI = set(x.strip().lower() for x in os.environ.get('EAR_WEB_HC', 'hc.html,hc.jsp').split(',') if x.strip())
 GUN = ortam_sayi('EAR_WEB_GUN', 7, 1, 31)
 LOG_BUTCE = ortam_sayi('EAR_WEB_LOG_MB', 256, 1, 4096) * 1024 * 1024
+# TEKRAR EDEN ISTEK (2026-11-18; Server Hub server_hub_scan.sh ile ayni kurallar ve varsayilanlar):
+# gercek sayilan GET/HEAD istekleri 'METOT yol' (sorgu dizgesi atilir) imzasiyla izlenir. Imza TEKRAR
+# EDEN (saglik kontrolu benzeri) sayilir ANCAK istemcisi <= TEKRAR_IP, pencerenin saatlerinin
+# >= %TEKRAR_KAPSAMA'sinde goruluyor ve saatlik sayisi duzenli (ilk / son saat haric en buyuk <=
+# TEKRAR_ORAN x en kucuk). POST vb., izlenemeyen (TEKRAR_IMZA asimi) ve cok istemcili istek tekrar
+# SAYILMAZ (guvenli taraf: aktif). Karar yalniz durum OLCULDU (pencere tam) iken; aksi tekrar_7g -1.
+TEKRAR_IMZA = 2000
+TEKRAR_IP = 8
+TEKRAR_KAPSAMA = 80
+TEKRAR_ORAN = 3
+TEKRAR_MIN_SAAT = 24
 SURE = ortam_sayi('EAR_WEB_SURE', 240, 10, 3600)
 PROC = os.environ.get('EAR_WEB_PROC', '/proc')
 IP_DOSYA = os.environ.get('EAR_WEB_IP_DOSYA', '')
@@ -855,6 +867,52 @@ def sinif_of(yolu):
     return 'gercek'
 
 
+def _tekrar_kaydet(tek, mi, t, ip):
+    if mi.group(1) not in ('GET', 'HEAD'):
+        return
+    imza = mi.group(1) + ' ' + mi.group(2).split('?', 1)[0][:160]
+    e = tek.get(imza)
+    if e is None:
+        if len(tek) >= TEKRAR_IMZA:
+            return
+        e = tek[imza] = [0, {}, set(), False]
+    e[0] += 1
+    saat = int(t // 3600)
+    e[1][saat] = e[1].get(saat, 0) + 1
+    if not e[3] and ip not in e[2]:
+        if len(e[2]) >= TEKRAR_IP:
+            e[3] = True
+            e[2] = set()
+        else:
+            e[2].add(ip)
+
+
+def tekrar_ozeti(oz, tek, pencere_bas):
+    """tekrar_7g (-1 olculemedi) ve tekrar_uriler [{yol: 'METOT yol', n, istemci}] (en cok 3)."""
+    oz['tekrar_7g'], oz['tekrar_uriler'] = -1, []
+    if oz['durum'] != 'OLCULDU':
+        return
+    if not oz['gercek_7g']:
+        oz['tekrar_7g'] = 0
+        return
+    if oz['son_satir'] is None:
+        return
+    saat = (oz['son_satir'] - pencere_bas) / 3600.0
+    if saat < TEKRAR_MIN_SAAT:
+        return
+    tekrar = []
+    for imza, (n, saatler, ipler, cok) in tek.items():
+        if cok or len(saatler) * 100 < TEKRAR_KAPSAMA * saat:
+            continue
+        ara = [c for h, c in saatler.items() if h != min(saatler) and h != max(saatler)]
+        if not ara or max(ara) > TEKRAR_ORAN * min(ara):
+            continue
+        tekrar.append((n, imza, len(ipler)))
+    oz['tekrar_7g'] = min(sum(x[0] for x in tekrar), oz['gercek_7g'])
+    oz['tekrar_uriler'] = [{'yol': kisalt(i, 200), 'n': n, 'istemci': c}
+                           for n, i, c in sorted(tekrar, key=lambda x: (-x[0], x[1]))[:3]]
+
+
 def _access_gercek_kaydet(oz, mi, t, gun_bas, ip, istemci, yollar):
     oz['gercek_7g'] += 1
     if t >= gun_bas:
@@ -871,7 +929,7 @@ def _access_gercek_kaydet(oz, mi, t, gun_bas, ip, istemci, yollar):
         yollar[seg] = yollar.get(seg, 0) + 1
 
 
-def _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+def _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek):
     oz['satir'] += 1
     mz = ACCESS_ZAMAN.search(s)
     mi = ACCESS_ISTEK.search(s)
@@ -894,10 +952,11 @@ def _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
         oz['statik_7g'] += 1
     else:
         _access_gercek_kaydet(oz, mi, t, gun_bas, ip, istemci, yollar)
+        _tekrar_kaydet(tek, mi, t, ip)
     return t
 
 
-def _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+def _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek):
     en_eski = None
     for i, s in enumerate(satirlar):
         if not s:
@@ -905,7 +964,7 @@ def _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yo
         if i % 20000 == 0 and sure_doldu():
             oz['ornek'] = True
             break
-        t = _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar)
+        t = _access_satiri_isle(s, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek)
         if t is not None and (en_eski is None or t < en_eski):
             en_eski = t
     return en_eski
@@ -921,7 +980,7 @@ def _access_durum_belirle(oz, pencere_bas):
         oz['neden'] = 'butce / sure siniri' if oz['ornek'] else 'log penceresi %d gunden kisa' % GUN
 
 
-def _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+def _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek):
     kalan = LOG_BUTCE - DURUM['log_bayt']
     if sure_doldu() or kalan <= 0:
         oz['ornek'] = True
@@ -935,7 +994,7 @@ def _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yolla
     if kesik:
         oz['ornek'] = True
     oz['dosyalar'].append({'yol': kisalt(yol, 400), 'durum': 'KESIK' if kesik else 'OKUNDU', 'bayt': okunan})
-    en_eski = _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar)
+    en_eski = _access_dosyasi_tara(satirlar, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek)
     if en_eski is not None and (oz['kapsama_bas'] is None or en_eski < oz['kapsama_bas']):
         oz['kapsama_bas'] = en_eski
     return bool(oz['kapsama_bas'] is not None and oz['kapsama_bas'] <= pencere_bas and not kesik)
@@ -950,7 +1009,7 @@ def access_ozeti(desen, onbellek):
           'kapsama_bas': None, 'son_satir': None, 'gercek_24s': 0, 'gercek_7g': 0, 'hc_24s': 0, 'hc_7g': 0,
           'statik_7g': 0, 'durum_sinif': {'2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0}, 'istemci_sayisi': 0,
           'hc_istemcileri': [], 'ilk_istemciler': [], 'son_gercek': None, 'ornek': False,
-          'ayristirilamayan': 0, 'satir': 0, 'ilk_yollar': []}
+          'ayristirilamayan': 0, 'satir': 0, 'ilk_yollar': [], 'tekrar_7g': -1, 'tekrar_uriler': []}
     onbellek[desen] = oz
     if dosyalar is None:
         oz['durum'], oz['neden'] = 'OLCULEMEDI', 'boru hedefinde log yolu bulunamadi'
@@ -958,11 +1017,11 @@ def access_ozeti(desen, onbellek):
     if not dosyalar:
         oz['durum'], oz['neden'] = 'OLCULEMEDI', 'pencerede log dosyasi yok ya da okunamadi'
         return oz
-    istemci, hc_ist, yollar = {}, {}, {}
+    istemci, hc_ist, yollar, tek = {}, {}, {}, {}
     pencere_bas = SIMDI - GUN * 86400
     gun_bas = SIMDI - 86400
     for _, yol, _ in dosyalar:
-        if _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar):
+        if _access_tek_dosya_isle(yol, oz, pencere_bas, gun_bas, istemci, hc_ist, yollar, tek):
             break
     sirala = lambda d: [{'ip': k, 'n': n} for k, n in sorted(d.items(), key=lambda x: (-x[1], x[0]))[:5]]
     oz['istemci_sayisi'] = len(istemci)
@@ -970,6 +1029,7 @@ def access_ozeti(desen, onbellek):
     oz['hc_istemcileri'] = sirala(hc_ist)
     oz['ilk_yollar'] = [{'yol': k, 'n': n} for k, n in sorted(yollar.items(), key=lambda x: (-x[1], x[0]))[:5]]
     _access_durum_belirle(oz, pencere_bas)
+    tekrar_ozeti(oz, tek, pencere_bas)
     return oz
 
 

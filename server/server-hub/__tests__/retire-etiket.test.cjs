@@ -28,6 +28,9 @@
 //   RE13 CAPRAZ (2026-11-06): auto-start uyumsuzlugu R7 / R8 adayi; kopya (R9), ortam kalintisi (R10),
 //        OpenShift (R11), Retirement celiskisi (R12) bulgu + aday; etikette Retirement baglami; R8 KESIN
 //        iken calisan kopya dusurur, R7 dusurmez; okunamayan kaynak / bayat sunucu / eski EAR -> YOK
+//   RE14 TEKRAR EDEN ISTEK (2026-11-18): kapali JVM'in web katmanina yalniz tekrar eden istek (olasi health
+//        check) -> ONLY_REPEAT_TRAFFIC (eylemsiz, URI metinde) + R13 SUPHELI (R2 yerine); gercek istek varsa,
+//        tekrar olculemediyse ya da eski satirsa hicbiri; calisan JVM'de bilgi metni
 //   RE10 uclar (GERCEK initServerHub): GET /retire-etiketleri (capraz kaynak durumu dahil), Uygulama 360 kapisi; PUT /retire-kontrol 400 / 409 (etiket yok,
 //        imza eski) / 424 (kayitlar okunamadi) / 200 + gecmis + denetim; PUT /kurallar/etiket gerekce
 //        zorunlu; PUT /kurallar/kok-yoksay gecersiz ad / 256 karakter -> 400, gecerli liste bulguyu kaldirir
@@ -832,6 +835,7 @@ test('RE6 Admin kural seviyesi: KAPALI etiket uretmez, SUPHELI -> KESIN; gecersi
     R10: 'SUPHELI',
     R11: 'SUPHELI',
     R12: 'SUPHELI',
+    R13: 'SUPHELI',
   });
   assert.deepEqual(a.kokYoksay, ['a', 'b']);
   assert.deepEqual(
@@ -1022,6 +1026,7 @@ test('RE9 katalog: her etiket kurali ve retire ile ilgili kod uc parcali dogrula
       ['R10', 'SUPHELI'],
       ['R11', 'SUPHELI'],
       ['R12', 'SUPHELI'],
+      ['R13', 'SUPHELI'],
     ],
   );
   // Faz 2'nin deployment komutu elle kontrol olarak simdiden verilir (JBoss 7 ve 8).
@@ -1191,6 +1196,7 @@ test('RE10 uclar: etiket listesi, manuel kontrol (400 / 409 / 424 / 200), kural 
         ['R10', 'SUPHELI'],
         ['R11', 'SUPHELI'],
         ['R12', 'SUPHELI'],
+        ['R13', 'SUPHELI'],
       ],
     );
     const jvm = r.body.etiketler.find((e) => e.tur === 'JVM');
@@ -1594,4 +1600,121 @@ test('RE13 capraz: R7 / R8 adaylari; kopya, ortam kalintisi, OpenShift, Retireme
   // Eski Uygulama Envanteri (35 gun ustu) paket iddiasi kurmaz.
   e.ear = { okunamadi: false, hostlar: [earHost(APP, [U7('old.ear')], null, 40)] };
   assert.equal(bul(A(e), APP, 'RETIRE_KAYDI_CELISKI').length, 0);
+});
+
+test('RE14 tekrar eden istek: R13 SUPHELI, ONLY_REPEAT_TRAFFIC eylemsiz, gercek istek varsa yok', () => {
+  const veri = (vek = {}, jek = {}) => {
+    const d = r1Veri();
+    d.jvms = [J3(APP, 'oldapp', { auto_start: 'false', ...jek })];
+    d.vhosts = [
+      V3(WEB, 'oldapp.bmw.local', {
+        traffic_state: 'ACTIVE',
+        req_24h: 288,
+        req_7d: 2016,
+        repeat_7d: 2016,
+        repeat_uris: 'GET /oldapp/status 1008 2ip | HEAD /oldapp/status 1008 1ip',
+        ...vek,
+      }),
+    ];
+    return A(d);
+  };
+  const r = veri();
+  const f = bul(r, APP, 'ONLY_REPEAT_TRAFFIC');
+  assert.equal(f.length, 1);
+  assert.match(
+    f[0].text,
+    /kapalı; web katmanına 7 gündür yalnız tekrar eden istek geliyor \(olası health check: GET \/oldapp\/status, HEAD \/oldapp\/status\) — retire adayı olabilir/,
+  );
+  assert.equal(f[0].action || null, null, 'tekrar eden istekle jboss_retire onerilmez');
+  assert.equal(bul(r, APP, 'RETIRE_CANDIDATE').length, 0);
+  const kurallar = sunucu(r, APP).retireAdaylari.map((a) => a.kural);
+  assert.ok(kurallar.includes('R13') && !kurallar.includes('R2'), kurallar.join(','));
+  const j = sunucu(r, APP).jvms.find((x) => x.name === 'oldapp');
+  assert.equal(j.trafficState, 'ACTIVE', 'sayim degismez');
+  assert.deepEqual(j.yalnizTekrar.uriler.map((u) => `${u.metot} ${u.yol}`), ['GET /oldapp/status', 'HEAD /oldapp/status']);
+  sifirla();
+  const e = etiketle({ hosts: r.hosts }).etiketler.find((x) => x.kurallar.includes('R13'));
+  assert.equal(e.seviye, 'SUPHELI');
+  assert.ok(e.kopyalar[0].tekrar, 'kopya tekrar ozetini tasir');
+  // Gercek istek de var -> tekrar ozeti yok, R2 (trafik var) eskisi gibi
+  const karisik = veri({ repeat_7d: 2000 });
+  assert.equal(bul(karisik, APP, 'ONLY_REPEAT_TRAFFIC').length, 0);
+  const kk = sunucu(karisik, APP).retireAdaylari.map((a) => a.kural);
+  assert.ok(kk.includes('R2') && !kk.includes('R13'), kk.join(','));
+  // Olculemedi (-1) ve eski satir (kolon yok) -> eskisi gibi ACTIVE, bulgu yok
+  assert.equal(bul(veri({ repeat_7d: -1, repeat_uris: '' }), APP, 'ONLY_REPEAT_TRAFFIC').length, 0);
+  assert.equal(bul(veri({ repeat_7d: undefined, repeat_uris: undefined }), APP, 'ONLY_REPEAT_TRAFFIC').length, 0);
+  // Calisan JVM: bilgi metni, retire adayi yok
+  const cal = veri({}, CALISAN);
+  const fc = bul(cal, APP, 'ONLY_REPEAT_TRAFFIC');
+  assert.equal(fc.length, 1);
+  assert.match(fc[0].text, /çalışıyor ama web katmanına 7 gündür yalnız tekrar eden istek geliyor .* gerçek kullanıcı yok/);
+  assert.ok(!sunucu(cal, APP).retireAdaylari.some((a) => a.kural === 'R13'));
+  // Admin R13'u KESIN yapar: kopya yalniz tekrar aliyorsa zincir nedeni yok -> KESIN
+  // (R1 ile birlikte gelirse R1 nedeni 'yalniz tekrar' yazar: KESIN'den SUPHELI'ye iner).
+  // OLCULEMEDI != YOK (inceleme 2026-11-18): esli IKINCI vhost olculemediyse (gercek trafik orada olabilir)
+  // "yalniz tekrar" kurulmaz; ne bulgu ne R13.
+  const iki = r1Veri();
+  iki.jvms = [J3(APP, 'oldapp', { auto_start: 'false' })];
+  iki.vhosts = [
+    V3(WEB, 'oldapp.bmw.local', {
+      traffic_state: 'ACTIVE',
+      req_24h: 288,
+      req_7d: 2016,
+      repeat_7d: 2016,
+      repeat_uris: 'GET /oldapp/status 1008 2ip',
+    }),
+    V3(WEB, 'oldapp.bmw.local', {
+      listen: '10.0.0.1:8443',
+      access_log: '/l/oldapp-ssl',
+      traffic_state: 'UNREADABLE',
+      traffic_reason: 'PERM_DENIED',
+      req_24h: -1,
+      req_7d: -1,
+      hc_24h: -1,
+    }),
+  ];
+  const ri = A(iki);
+  assert.equal(sunucu(ri, APP).jvms.find((x) => x.name === 'oldapp').vhosts.length, 2, 'iki vhost esli');
+  assert.equal(bul(ri, APP, 'ONLY_REPEAT_TRAFFIC').length, 0, 'olculemeyen vhost varken yalniz tekrar');
+  assert.ok(!sunucu(ri, APP).retireAdaylari.some((a) => a.kural === 'R13'));
+  // R13 retire kanitini okur: bayat web sunucusu -> engel, etiket SUPHELI ve neden yazilir.
+  const bay = r1Veri();
+  bay.hosts = [H3(APP, { products: 'JBOSS7' }), H3(WEB, { products: 'IHS', scan_date: '2026-10-01' })];
+  bay.jvms = [J3(APP, 'oldapp', { auto_start: 'false' })];
+  bay.vhosts = [
+    V3(WEB, 'oldapp.bmw.local', {
+      scan_date: '2026-10-01',
+      traffic_state: 'ACTIVE',
+      req_7d: 2016,
+      repeat_7d: 2016,
+      repeat_uris: 'GET /oldapp/status 1008 2ip',
+    }),
+  ];
+  const rb = A(bay);
+  const r13 = sunucu(rb, APP).retireAdaylari.find((a) => a.kural === 'R13');
+  assert.ok(r13, 'bayat kanitla da R13 adayi kalir (etiket motoru SUPHELI tutar)');
+  assert.match(String(r13.engel), /bayat/, 'bayat kanit R13 engeli');
+  assert.match(bul(rb, APP, 'ONLY_REPEAT_TRAFFIC')[0].text, /kanıt eksik: bayat/);
+  assert.ok(ETIKET_KURALLARI.find((k) => k.kural === 'R13').varsayilan === 'SUPHELI');
+  assert.ok(KODLAR.get('ONLY_REPEAT_TRAFFIC').dogrulama.kontrol.length >= 3);
+  // R13 bir "JVM kapali" iddiasidir: ayni ortamdaki eslenik kopya calisiyorsa neden yazilir.
+  const esl = r1Veri();
+  esl.hosts.push(H3(APP2, { products: 'JBOSS7' }));
+  esl.jvms = [J3(APP, 'oldapp', { auto_start: 'false' }), J3(APP2, 'oldapp', CALISAN)];
+  esl.vhosts = [
+    V3(WEB, 'oldapp.bmw.local', {
+      traffic_state: 'ACTIVE',
+      req_7d: 2016,
+      repeat_7d: 2016,
+      repeat_uris: 'GET /oldapp/status 1008 2ip',
+    }),
+  ];
+  sifirla();
+  const ee = etiketle({ hosts: A(esl).hosts }).etiketler.find((x) => x.kurallar.includes('R13'));
+  assert.ok(ee, 'R13 etiketi');
+  assert.ok(
+    ee.nedenler.some((n) => n.includes('eşlenik kopya çalışıyor')),
+    `calisan eslenik kopya nedeni yok: ${ee.nedenler.join(' | ')}`,
+  );
 });

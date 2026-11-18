@@ -565,6 +565,16 @@ function TrafikHucresi({ tr }: { tr?: import('@/api/retirementApi').RtVhostTrafi
         istek yok (7g)
       </span>
     );
+  if (tr.tekrar)
+    return (
+      <span
+        className={TR_CIP}
+        style={TR_OLCULEMEDI}
+        title={`7 günde ${tr.req7} isteğin tamamı tekrar eden istek — olası health check: ${tr.tekrar.uriler.join(', ') || 'URI kaydı yok'}. Gerçek kullanıcı isteği görülmedi; retire edilebilir olabilir, elle doğrulayın.`}
+      >
+        yalnız tekrar eden istek (7g)
+      </span>
+    );
   return (
     <span
       className={TR_CIP}
@@ -1955,7 +1965,8 @@ export function CreateModal({
                   style={{ color: 'var(--text-secondary)' }}
                 >
                   {trafikli.slice(0, 6).map(({ t, w }, i) => {
-                    const m = `${w.serverName} @ ${w.host} — ${w.trafik?.sampled ? 'en az ' : ''}${fmtNumber(w.trafik?.req7)} istek / 7 gün${w.trafik?.req24 != null ? ` · 24s ${fmtNumber(w.trafik.req24)}` : ''}`;
+                    const tk = w.trafik?.tekrar;
+                    const m = `${w.serverName} @ ${w.host} — ${w.trafik?.sampled ? 'en az ' : ''}${fmtNumber(w.trafik?.req7)} istek / 7 gün${w.trafik?.req24 != null ? ` · 24s ${fmtNumber(w.trafik.req24)}` : ''}${tk ? ` · yalnız tekrar eden istek (olası health check: ${tk.uriler.join(', ') || 'URI kaydı yok'})` : ''}`;
                     return (
                       <li key={`uy-${key(t)}-${webKey(w, i)}`} className="truncate" title={m}>
                         {m}

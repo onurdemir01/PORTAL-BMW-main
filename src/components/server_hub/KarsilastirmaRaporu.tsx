@@ -49,7 +49,7 @@ export default function KarsilastirmaRaporu() {
     <div className="space-y-3" data-testid="karsilastirma">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs" style={MUTED}>
-          Retirement etiketleri (R1–R12) ile Analiz’in ortam/kurulum kararı. Etiket motoru kaldırılmadan önce kritik ve
+          Retirement etiketleri (R1–R13) ile Analiz’in ortam/kurulum kararı. Etiket motoru kaldırılmadan önce kritik ve
           “Analiz aday, etiket engelli” satırları sıfır olmalı.{veri.latestScan ? ` Son tarama ${veri.latestScan}.` : ''}
         </p>
         <button type="button" className={`${BTN} ml-auto`} style={btnStil()} onClick={() => yukle(true)} disabled={yukleniyor}>

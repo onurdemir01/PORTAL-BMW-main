@@ -3,7 +3,7 @@
 // Kullanıcı: "Retirement etiketleri ile Retirement Analizi birbirinin aynısı ise etiketlerdeki
 // feature'ları Analiz'e yükleyebiliriz; Bulgular sayfası tek başına olsun." Etiket listesi Bulgular'ın
 // alt görünümüyken buraya taşındı: retirement ile ilgili iki görünüm tek sekmede.
-// İKİ MOTOR HÂLÂ AYRI: Analiz (senaryo.cjs, uygulama/kopya kararı) ve etiketler (retire-etiket.cjs, R1–R12,
+// İKİ MOTOR HÂLÂ AYRI: Analiz (senaryo.cjs, uygulama/kopya kararı) ve etiketler (retire-etiket.cjs, R1–R13,
 // Admin kural seviyesi, kanıt imzalı elle kontrol, KESIN + DOĞRULANDI kapısı). Motorların birleşmesi
 // ayrı bir iş; bu dosya yalnız yerleşimi birleştirir, hiçbir karar değiştirmez.
 import React, { useCallback, useState } from 'react';
@@ -82,7 +82,7 @@ export default function RetirementAnaliziSekmesi({
           {gorunum === 'analiz'
             ? 'Tek uygulama / sunucu / IP için app + web + IP katmanlarını birlikte okuyan karar.'
             : gorunum === 'etiketler'
-              ? 'R1–R12 kurallarıyla işaretlenen adaylar; elle kontrol ve Retirement kaydı buradan.'
+              ? 'R1–R13 kurallarıyla işaretlenen adaylar; elle kontrol ve Retirement kaydı buradan.'
               : 'İki motor nerede ayrışıyor (birleştirme gözlem raporu).'}
         </span>
       </div>

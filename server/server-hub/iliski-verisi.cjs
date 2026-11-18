@@ -108,6 +108,8 @@ function webProjeksiyon(w) {
                 paylasilan: l.paylasilan === true,
                 son_gercek: sayi(l.son_gercek),
                 hc_istemcileri: dizi(l.hc_istemcileri).map((x) => String(x.ip || '')),
+                tekrar_7g: l.tekrar_7g == null ? null : sayi(l.tekrar_7g),
+                tekrar_uriler: dizi(l.tekrar_uriler).map((x) => String(x.yol || '')),
               }
             : null,
         };

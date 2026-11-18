@@ -45,6 +45,8 @@ export interface RtVhostTrafik {
   hc24?: number | null;
   /** Log kuyrugu kesildi: sayilar ALT SINIR. */
   sampled?: boolean;
+  /** Istegin TAMAMI tekrar eden (saglik kontrolu benzeri) istek: tespit edilen URI'ler ('METOT yol'). */
+  tekrar?: { istek: number; uriler: string[] } | null;
   sonIstek?: string | null;
   tarama?: string | null;
 }

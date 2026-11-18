@@ -121,6 +121,8 @@ const SH_KOLONLAR = Object.freeze({
     'last_req_epoch',
     'last_line_epoch',
     'log_read_as',
+    'repeat_7d',
+    'repeat_uris',
   ],
   'dbo.Server_Hub_Ips': ['host', 'scan_date', 'ip', 'iface', 'used_by', 'is_primary'],
   'dbo.Server_Hub_Sshd': ['host', 'scan_date', 'max_sessions', 'max_startups', 'active_sessions'],

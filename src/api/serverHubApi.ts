@@ -138,6 +138,8 @@ export interface ShJvm {
   mismatch?: string[];
   req24h: number | null;
   req7d: number | null;
+  /** Esli vhost'lara 7 gundur YALNIZ tekrar eden istek geliyor (olasi health check); yoksa null. */
+  yalnizTekrar?: ShTekrarOzeti | null;
   matchKind: 'proxy' | 'name' | null;
   vhosts: {
     host: string;
@@ -151,6 +153,17 @@ export interface ShJvm {
     trafficState?: string | null;
     trafficReason?: string | null;
   }[];
+}
+/** Tespit edilen tekrar eden (saglik kontrolu benzeri) istek imzasi: tarayici VHOST.repeat_uris. */
+export interface ShTekrarUri {
+  metot: string;
+  yol: string;
+  istek: number;
+  istemci: number;
+}
+export interface ShTekrarOzeti {
+  istek: number;
+  uriler: ShTekrarUri[];
 }
 export interface ShVhost {
   product: string;
@@ -166,6 +179,10 @@ export interface ShVhost {
   sampled: boolean;
   confFile: string;
   jvm: string | null;
+  /** Tekrar eden istek sayisi (<= req7d); null = olculemedi (eski tarama / pencere kapsanmadi). */
+  repeat7d?: number | null;
+  /** Tespit edilen tekrar eden istekler (olasi health check URI'leri), en cok 3. */
+  repeatUris?: ShTekrarUri[];
   /** C4: proxy hedef listesi yukleyicide kesildi (~); kesilen kisimdaki sunucu:port bilinmez. */
   targetsTruncated?: boolean;
   /** EK-7.4/7.5: proxy_targets '~DYNAMIC' tasiyor - trafik conf'ta hedef kaydi birakmayan bir

@@ -1525,12 +1525,12 @@ const V3_SEMA = {
   Server_Hub_Jboss: ['id', 'scan_date', 'host', 'gen', 'host_name', 'host_state', 'cli', 'note', 'mgmt_cfg', 'mgmt_state', 'cli_rescue', 'cli_run_as', 'host_config', 'dc_role'],
   Server_Hub_Jvms: ['id', 'scan_date', 'host', 'gen', 'jvm', 'grp', 'running', 'auto_start', 'server_state', 'ports', 'running_src', 'cfg_src', 'state_src', 'config_changed', 'config_risk', 'config_mtime_epoch', 'process_start_epoch', 'os_startup', 'reboot_expected', 'reboot_status', 'cfg_ports', 'cfg_ports_src', 'jvm_arg_status', 'jvm_args_src', 'jvm_args', 'configured_jvm_args', 'jvm_arg_diff'],
   Server_Hub_Web: ['id', 'scan_date', 'host', 'product', 'running', 'syntax', 'detail', 'check_class', 'syntax_verification', 'run_as', 'check_rc', 'vhost_trust', 'running_src'],
-  Server_Hub_Vhosts: ['id', 'scan_date', 'host', 'product', 'listen', 'server_name', 'aliases', 'access_log', 'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file', 'traffic_state', 'traffic_reason', 'cover_from_epoch', 'last_req_epoch', 'last_line_epoch', 'log_read_as'],
+  Server_Hub_Vhosts: ['id', 'scan_date', 'host', 'product', 'listen', 'server_name', 'aliases', 'access_log', 'proxy_targets', 'req_24h', 'req_7d', 'hc_24h', 'shared', 'sampled', 'conf_file', 'traffic_state', 'traffic_reason', 'cover_from_epoch', 'last_req_epoch', 'last_line_epoch', 'log_read_as', 'repeat_7d', 'repeat_uris'],
   Server_Hub_Ips: ['id', 'scan_date', 'host', 'ip', 'iface', 'used_by', 'is_primary'],
   Server_Hub_Sshd: ['id', 'scan_date', 'host', 'max_sessions', 'max_startups', 'active_sessions'],
   Server_Hub_LoadIssues: ['id', 'scan_date', 'host', 'issue', 'detail', 'run_at'],
 };
-const SAYILAR = { Server_Hub_Hosts: 13, Server_Hub_Init: 7, Server_Hub_Jboss: 14, Server_Hub_Jvms: 27, Server_Hub_Web: 13, Server_Hub_Vhosts: 21, Server_Hub_Ips: 7, Server_Hub_Sshd: 6, Server_Hub_LoadIssues: 6 };
+const SAYILAR = { Server_Hub_Hosts: 13, Server_Hub_Init: 7, Server_Hub_Jboss: 14, Server_Hub_Jvms: 27, Server_Hub_Web: 13, Server_Hub_Vhosts: 23, Server_Hub_Ips: 7, Server_Hub_Sshd: 6, Server_Hub_LoadIssues: 6 };
 // Eski 8 tablolu sema: yalniz CREATE TABLE govdeleri (DDL henuz kosmamis)
 const ESKI_SEMA = {
   Server_Hub_Hosts: V3_SEMA.Server_Hub_Hosts.slice(0, 7),

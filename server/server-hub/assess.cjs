@@ -105,6 +105,52 @@ function domainKapaliOzeti(gen, nj) {
 }
 const GUN_MS = 86400000;
 const nz = (x) => (x == null || x === '' ? null : x);
+
+// ── TEKRAR EDEN ISTEK (2026-11-18) ───────────────────────────────────────────────────────
+// Kullanici: "health check istekleri hc.html / hc.jsp disinda farkli bicimlerde olabiliyor; tekrar eden
+// satirlar disinda istek varsa aktif, yalniz tekrar edenler varsa retire edilecek olabilir; tespit edilen
+// health check URI'sini sisteme yansit". Tarayici (server_hub_scan.sh, scan_ver 2.6) VHOST.repeat_7d ve
+// repeat_uris yazar: 'METOT yol sayi Nip' ' | ' ayracli, en cok 3.
+const TEKRAR_RE = /^([A-Z]+) (\S+) (\d+) (\d+)ip$/;
+/** repeat_uris -> [{ metot, yol, istek, istemci }]; bicim disi parca atlanir. */
+function tekrarUrileri(s) {
+  if (s == null || s === '') return [];
+  return String(s)
+    .split(' | ')
+    .map((p) => TEKRAR_RE.exec(p.trim()))
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((m) => ({ metot: m[1], yol: m[2], istek: Number(m[3]), istemci: Number(m[4]) }));
+}
+/** Vhost'a 7 gundur YALNIZ tekrar eden istek mi geldi (olculmus, ACTIVE, repeat_7d = req_7d > 0). */
+const vhostYalnizTekrar = (v) =>
+  v.trafficState === 'ACTIVE' &&
+  Number.isFinite(v.req7d) &&
+  v.req7d > 0 &&
+  Number.isFinite(v.repeat7d) &&
+  v.repeat7d === v.req7d;
+/**
+ * JVM ozeti: trafigi olan (req7d > 0) her olculmus vhost yalniz tekrar eden istek aliyorsa
+ * { istek, uriler } (uriler: en cok 3, istege gore), degilse null. Trafigi olan tek vhost bile
+ * gercek istek aliyorsa ya da tekrar olculemediyse null (guvenli taraf: kullanimda).
+ */
+function yalnizTekrarOzeti(vhostlar) {
+  const trafikli = vhostlar.filter((v) => Number.isFinite(v.req7d) && v.req7d > 0);
+  if (!trafikli.length || !trafikli.every(vhostYalnizTekrar)) return null;
+  const uriler = new Map();
+  for (const v of trafikli)
+    for (const u of v.repeatUris || []) {
+      const k = `${u.metot} ${u.yol}`;
+      const e = uriler.get(k);
+      uriler.set(k, e ? { ...e, istek: e.istek + u.istek } : { ...u });
+    }
+  return {
+    istek: trafikli.reduce((a, v) => a + v.req7d, 0),
+    uriler: [...uriler.values()].sort((a, b) => b.istek - a.istek || (a.yol < b.yol ? -1 : 1)).slice(0, 3),
+  };
+}
+const tekrarMetni = (t) =>
+  t && t.uriler.length ? t.uriler.map((u) => `${u.metot} ${u.yol}`).join(', ') : 'URI kaydı yok';
 const zamanMs = (x) => {
   if (x == null || x === '') return null;
   if (typeof x === 'number') return Number.isFinite(x) ? x : null;
@@ -567,6 +613,10 @@ function assess(data, opts = {}) {
       lastReqEpoch: epoch(r.last_req_epoch),
       lastLineEpoch: epoch(r.last_line_epoch),
       logReadAs: nz(r.log_read_as),
+      // TEKRAR EDEN ISTEK (scan_ver 2.6): saglik kontrolu benzeri istek sayisi (<= req_7d) ve
+      // tespit edilen imzalar. NULL (eski satir) / -1 = olculemedi -> vhost eskisi gibi ACTIVE okunur.
+      repeat7d: r.repeat_7d == null || r.repeat_7d === '' ? null : Number(r.repeat_7d),
+      repeatUris: tekrarUrileri(r.repeat_uris),
       jvm: null,
     };
     vhostHedef.set(v, hl);
@@ -1158,6 +1208,14 @@ function assess(data, opts = {}) {
         ts = 'UNREADABLE';
       else ts = 'UNVERIFIED';
       j.trafficState = ts;
+      // YALNIZ TEKRAR EDEN ISTEK (2026-11-18): trafigi olan her olculmus vhost'a 7 gundur yalniz saglik
+      // kontrolu benzeri istek geliyor. ts ACTIVE KALIR (sayim degismez); retire icin ayri, SUPHELI etiket.
+      // OLCULEMEDI != YOK: esli vhost'lardan biri olculemediyse (gercek trafik orada olabilir) ya da web
+      // katmaninin guveni bozuksa (PARTIAL envanter) "yalniz tekrar" iddiasi KURULMAZ.
+      j.yalnizTekrar =
+        ts === 'ACTIVE' && olc.length === mapped.length && !j.trustBad
+          ? yalnizTekrarOzeti(olc.map((m) => m.v))
+          : null;
       if (ts === 'ACTIVE' || ts === 'NO_RECENT_TRAFFIC') {
         j.req24h = olc.reduce((a, m) => a + Math.max(0, m.v.req24h || 0), 0);
         j.req7d = olc.reduce((a, m) => a + Math.max(0, m.v.req7d || 0), 0);
@@ -1328,7 +1386,10 @@ function assess(data, opts = {}) {
    *   NO_V2        her esli vhost NO_RECENT_TRAFFIC + OK degil
    *   UNATTRIBUTED atfedilemeyen proxy trafigi (EK-3)
    */
-  const retireEngeli = (h, j) => {
+  // tekrarKabul (R13): NO_V2 adiminda "yalniz tekrar eden istek" alan vhost da (ACTIVE + OK + repeat_7d =
+  // req_7d) kanit sayilir; diger engeller (bayat, eski satir, olculemeyen katman, esleme, atfedilemeyen
+  // proxy) AYNEN uygulanir.
+  const retireEngeli = (h, j, { tekrarKabul = false } = {}) => {
     const gate = j.gateHosts.map(hostBilgi).filter(Boolean);
     const bayat = [h, ...gate].filter((b) => b.scanned && !b.fresh);
     if (bayat.length)
@@ -1365,7 +1426,11 @@ function assess(data, opts = {}) {
     if (j.vhosts.some((m) => m.kind !== 'EXACT_JVM' && m.kind !== 'WEB_APP'))
       return { kod: 'MAPPING', metin: `eşleme türü ${j.mapping}` };
     if (
-      !j.vhosts.every((m) => m.v.trafficState === 'NO_RECENT_TRAFFIC' && m.v.trafficReason === 'OK')
+      !j.vhosts.every(
+        (m) =>
+          m.v.trafficReason === 'OK' &&
+          (m.v.trafficState === 'NO_RECENT_TRAFFIC' || (tekrarKabul && vhostYalnizTekrar(m.v))),
+      )
     )
       return { kod: 'NO_V2', metin: 'v2 trafik kanıtı yok' };
     const atf = [...atfedilemeyenTrafik(h, j), ...hedefiBilinmeyenTrafik(h, j)];
@@ -1957,10 +2022,23 @@ function assess(data, opts = {}) {
         return '';
       })();
       const durmus = rk && !j.running;
+      const tekrar = j.yalnizTekrar;
       // ETIKET ADAYLARI: R1 kapali + auto-start acik + trafik yok; R2 kapali + auto-start kapali +
-      // trafik var (IHS acik). Engel (bayat / esleme / olculemeyen katman) adayi dusurmez: etiket
-      // motoru KESIN'i SUPHELI'ye indirir ve nedenini yazar.
-      if (
+      // trafik var (IHS acik); R13 kapali + web katmanina yalniz tekrar eden istek (olasi health check).
+      // Engel (bayat / esleme / olculemeyen katman) adayi dusurmez: etiket motoru KESIN'i SUPHELI'ye
+      // indirir ve nedenini yazar.
+      // R13 de R1 gibi retire kanitini okur: engel etiketi KESIN'den SUPHELI'ye indirir ve nedenini yazar.
+      const tekrarEngeli = durmus && tekrar ? retireEngeli(h, j, { tekrarKabul: true }) : null;
+      if (durmus && tekrar)
+        h.retireAdaylari.push({
+          kural: 'R13',
+          tur: 'JVM',
+          ad: j.name,
+          host: h.host,
+          gen: j.gen,
+          engel: tekrarEngeli ? tekrarEngeli.metin : null,
+        });
+      else if (
         durmus &&
         ((j.autoStart === 'true' && ts === 'NO_RECENT_TRAFFIC') ||
           (j.autoStart === 'false' && ts === 'ACTIVE'))
@@ -2016,6 +2094,16 @@ function assess(data, opts = {}) {
           `${id} çalışıyor ama 7 gündür istek yok (hc.jsp/hc.html hariç)${kanit}`,
           null,
           logKanit,
+        );
+      // YALNIZ TEKRAR EDEN ISTEK: eylem ONERILMEZ (jboss_retire yalniz NO_RECENT_TRAFFIC kanitiyla).
+      if (rk && tekrar)
+        add(
+          'warning',
+          'jvm',
+          'ONLY_REPEAT_TRAFFIC',
+          `${id} ${j.running ? 'çalışıyor ama' : 'kapalı;'} web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check: ${tekrarMetni(tekrar)}) — ${j.running ? 'gerçek kullanıcı yok' : 'retire adayı olabilir, elle doğrula'}${tekrarEngeli ? ' — kanıt eksik: ' + tekrarEngeli.metin : ''}${kanit}`,
+          null,
+          { ...logKanit, tekrar, retireBlock: tekrarEngeli ? tekrarEngeli.kod : null },
         );
       // EK-3: bu sunucuya giden ve hicbir JVM'e atfedilemeyen proxy trafigi varken portu
       // bilinmeyen (durmus / olculemeyen) JVM'in trafigi bilinemez. Calistigi BILINEN JVM'e
@@ -3086,4 +3174,6 @@ module.exports = {
   FRESH_MAX_DAYS,
   erisimKaynakli,
   envanterEslestir,
+  tekrarUrileri,
+  yalnizTekrarOzeti,
 };

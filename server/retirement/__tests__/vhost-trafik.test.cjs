@@ -154,3 +154,26 @@ test('TR7 kesif ve ekran: sorgu en yeni taramadan, onay ZORUNLU', () => {
     'trafik tum hedeflerden sayiliyor (secili olmayan dahil)',
   );
 });
+
+test('TR8 yalniz tekrar eden istek (scan_ver 2.6): durum var KALIR, tekrar ozeti + URI; karisik / -1 / eski satirda yok', () => {
+  const v = (ek) =>
+    trafikSinifi({
+      traffic_state: 'ACTIVE',
+      traffic_reason: 'OK',
+      req_24h: 288,
+      req_7d: 2016,
+      hc_24h: 0,
+      repeat_7d: 2016,
+      repeat_uris: 'GET /app/status 1008 2ip | HEAD /app/status 1008 1ip',
+      ...ek,
+    });
+  const r = v({});
+  assert.equal(r.durum, 'var', 'kayit acan yine onaylar');
+  assert.deepEqual(r.tekrar, { istek: 2016, uriler: ['GET /app/status', 'HEAD /app/status'] });
+  assert.equal(v({ repeat_7d: 2000 }).tekrar, null, 'tekrar disi istek var');
+  assert.equal(v({ repeat_7d: -1, repeat_uris: '' }).tekrar, null, 'olculemedi');
+  assert.equal(v({ repeat_7d: null, repeat_uris: null }).tekrar, null, 'eski satir');
+  // Kolon yoksa (yukleyici henuz kosmadi) sorgu NULL secer: trafik olcumu 'olculemedi'ye dusmez.
+  assert.match(DISC, /NULL AS repeat_7d, NULL AS repeat_uris/);
+  assert.match(TAB, /yalnız tekrar eden istek \(7g\)/);
+});
