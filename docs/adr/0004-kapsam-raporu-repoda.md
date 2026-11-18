@@ -48,7 +48,7 @@ Kurumsal pipeline'ın Sonar adımı incelendi; birkaç ayarı komut satırından
 Sonuçları:
 
 - **`kalite/kapsam/lcov.info` hiç okunmadı.** Bu desene uymuyor ve repodaki `reportPaths` ezildi. %0 kapsamın asıl sebebi pipeline'da testlerin koşmamasıdır.
-- **Kalıcı çözüm pipeline tanımındadır:** Jenkins `build.commands` içinde `npm run test:coverage` koşar, `coverage/lcov.info` aynı çalışma alanında oluşur, tarayıcı onu bulur. Kurumsal groovy dosyası repo dışındadır.
+- **Pipeline tanımı (ikinci düzeltme, aynı gün):** kurumsal işte `npm run test:coverage` KOŞTURULMAZ. npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde; takım yerelde bile yaklaşık 6 dakika sürüyor. Bunun yerine `npm run kapsam:kurumsal`, bu ADR'deki repodaki raporu `coverage/lcov.info`'ya koyar ve kurumsal tarayıcı onu bulur. Rapor bayatsa Sonar koşusu düşer. İş tanımı repoda: `deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy`.
 - **Vitest kapsamı yalnız `lcov.info` üretir (`lcovonly`).** HTML raporun JS ve CSS dosyaları, kaynak gibi taranıp bulgu üretirdi.
 - **Kalan kısıt kurumsal kütüphanededir.** `.test.cjs` ve `.test.ts` dosyaları ile `__tests__` yardımcıları test sayılmaz, kaynak kod gibi taranır. Repo bunu ayarla düzeltemez; kütüphanenin, `sonar-project.properties` varken bu ayarları ezmemesi istenir.
-- **Kaldırma:** Pipeline'da kapsam görüldüğünde `kalite/kapsam/`, `kapsam-raporu.yml` ve bu ADR'nin "Şimdi" maddesi kaldırılır.
+- **Kaldırma:** `kalite/kapsam/` ve `kapsam-raporu.yml` artık kurumsal kapsamın kaynağıdır. Ancak kurumsal iş testleri zaman aşımı içinde kendisi koşturabilirse kaldırılır.

@@ -1,6 +1,7 @@
 // scripts/kapsam-yayinla.cjs — kapsam raporunu kurumsal SonarQube'un okuyacagi yere, REPOYA yazar.
 //   node scripts/kapsam-yayinla.cjs             coverage/lcov.info -> kalite/kapsam/{lcov.info,ozet.json}
 //   node scripts/kapsam-yayinla.cjs --dogrula   rapor kaynakla ayni mi (bayatsa cikis 1)
+//   node scripts/kapsam-yayinla.cjs --kurumsal  kurumsal Jenkins isi: guncel raporu coverage/lcov.info'ya koyar
 //
 // NEDEN REPODA (2026-11-14, docs/adr/0004-kapsam-raporu-repoda.md):
 //   Kurumsal pipeline testleri kosturamiyor (Node 16; test asamasi yok). SonarQube kapsami ancak
@@ -131,28 +132,71 @@ function yayinla() {
   );
 }
 
-function dogrula() {
+/** Repodaki rapor kaynak agaciyla ayni mi? Cikmaz; durumu doner. */
+function raporDurumu() {
   const yol = path.join(HEDEF_DIZIN, 'ozet.json');
-  if (!fs.existsSync(yol) || !fs.existsSync(path.join(HEDEF_DIZIN, 'lcov.info'))) {
+  if (!fs.existsSync(yol) || !fs.existsSync(path.join(HEDEF_DIZIN, 'lcov.info')))
+    return { durum: 'yok' };
+  const kayitli = JSON.parse(fs.readFileSync(yol, 'utf8'));
+  const simdi = kaynakOzeti();
+  return { durum: kayitli.kaynakOzeti === simdi.ozet ? 'guncel' : 'bayat', kayitli, simdi };
+}
+
+function dogrula() {
+  const r = raporDurumu();
+  if (r.durum === 'yok') {
     console.error(
       '[kapsam] kalite/kapsam raporu yok. Uret: npm run test:coverage && npm run kapsam:yayinla',
     );
     process.exit(1);
   }
-  const kayitli = JSON.parse(fs.readFileSync(yol, 'utf8'));
-  const simdi = kaynakOzeti();
-  if (kayitli.kaynakOzeti !== simdi.ozet) {
+  if (r.durum === 'bayat') {
     console.error(
-      `[kapsam] rapor BAYAT: kaynak agaci rapordan sonra degismis (${kayitli.kaynakDosya} -> ${simdi.dosya} dosya).\n` +
+      `[kapsam] rapor BAYAT: kaynak agaci rapordan sonra degismis (${r.kayitli.kaynakDosya} -> ${r.simdi.dosya} dosya).\n` +
         '  Yenile: npm run test:coverage && npm run kapsam:yayinla',
     );
     process.exit(1);
   }
-  console.log(`[kapsam] rapor guncel (satir %${kayitli.satir.oran}).`);
+  console.log(`[kapsam] rapor guncel (satir %${r.kayitli.satir.oran}).`);
+}
+
+/**
+ * Kurumsal Jenkins isi (deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy) icin. Testler orada
+ * KOSTURULMAZ: npm komutlarinin hepsi tek bir 15 dk zaman asimi icinde ve takim yerelde bile ~6 dk.
+ * Kapsami CI uretir (her main push'unda gercek testlerle, kalite/kapsam/); bu adim o raporu
+ * kurumsal Sonar adiminin aradigi coverage/lcov.info'ya koyar.
+ *   - rapor guncel  -> kopyalar, cikis 0
+ *   - bayat / yok + Sonar kosusu (BUILD_NOTE "sonarqube...") -> cikis 1: yanlis eslesen kapsam yuklenmez
+ *   - bayat / yok + normal derleme -> uyarir, kopyalamaz, cikis 0 (kapsam yalniz Sonar kosusunda okunur)
+ */
+function kurumsal() {
+  const r = raporDurumu();
+  const sonarKosusu = /^sonarqube/i.test(process.env.BUILD_NOTE || '');
+  if (r.durum === 'guncel') {
+    fs.mkdirSync(path.dirname(GIRDI), { recursive: true });
+    fs.copyFileSync(path.join(HEDEF_DIZIN, 'lcov.info'), GIRDI);
+    console.log(
+      `[kapsam] kurumsal: kalite/kapsam/lcov.info -> coverage/lcov.info (satir %${r.kayitli.satir.oran}).`,
+    );
+    return 0;
+  }
+  const neden =
+    r.durum === 'yok'
+      ? 'kalite/kapsam raporu yok'
+      : 'kalite/kapsam raporu BAYAT (kaynak rapordan sonra degismis)';
+  if (sonarKosusu) {
+    console.error(
+      `[kapsam] Sonar kosusu: ${neden}; yanlis eslesen kapsam yuklenmez. CI tazelemesini bekleyip yeniden kosturun.`,
+    );
+    return 1;
+  }
+  console.warn(`[kapsam] ${neden}; Sonar kosusu degil, kapsam kopyalanmadi (derleme surer).`);
+  return 0;
 }
 
 if (require.main === module) {
   if (process.argv.includes('--dogrula')) dogrula();
+  else if (process.argv.includes('--kurumsal')) process.exit(kurumsal());
   else yayinla();
 }
 

@@ -289,3 +289,14 @@ test('PK9 Jenkinsfile: Guvenlik asamasi ve uretici ile Paket', () => {
   assert.match(j, /npm run paket -- --cikti .* --zip .* --derleme-yok/);
   assert.doesNotMatch(j, /cp -r dist server scripts deploy/, 'eski elle paketleme geri gelmis');
 });
+
+test('PK-YER cikti repo disinda ya da yalniz build/ altinda (kurumsal Jenkins isi; paket kendini kopyalamaz)', () => {
+  const kok = path.resolve('/depo');
+  const hata = (p) => P.ciktiYeriHatasi(path.resolve(p), kok);
+  assert.equal(hata('/baska/paket/PORTAL-BMW-main'), null, 'repo disi kabul edilmeli');
+  assert.equal(hata('/depo/build/BMWPORTAL/PORTAL-BMW-main'), null, 'build/ alti kabul edilmeli');
+  for (const yasak of ['/depo', '/depo/scripts/x', '/depo/build', '/depo/buildx/y', '/depo/dist/p']) {
+    assert.match(String(hata(yasak)), /DISINDA ya da repo icinde build\/ altinda/, `${yasak} reddedilmeli`);
+  }
+  assert.ok(!P.DAHIL.includes('build'), 'build/ pakete kopyalanirsa cikti kendini kopyalar');
+});

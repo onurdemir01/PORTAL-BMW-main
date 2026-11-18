@@ -59,3 +59,6 @@ coverage/
 
 # SonarQube tarayici calisma dizini (npm run kapi:sonar)
 .scannerwork/
+
+# Kurumsal Jenkins isinin paket ciktisi (npm run paket -- --cikti build/...)
+/build

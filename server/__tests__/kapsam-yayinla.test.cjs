@@ -6,6 +6,8 @@
 //   KP4 --dogrula: guncel rapor 0, bayat / eksik rapor 1 (betigin kendisi, gecici depoda)
 //   KP5 SonarQube ayari repodaki raporu okur; tazeleme is akisi yalniz raporu commit eder
 //   KP6 vurus sayilari 0/1: ayni kapsam farkli sayilarla AYNI rapor; kapsanma degisirse rapor degisir
+//   KP7 --kurumsal: guncel rapor coverage/lcov.info'ya kopyalanir; bayat / yok rapor Sonar kosusunu
+//       dusurur, normal derlemeyi durdurmaz ve hicbir zaman kopyalanmaz
 'use strict';
 
 const { test } = require('node:test');
@@ -133,6 +135,52 @@ test('KP4 --dogrula guncel raporda 0, bayat ya da eksik raporda 1', () => {
     const b = kos('--dogrula');
     assert.equal(b.status, 1);
     assert.match(b.stderr, /BAYAT/);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('KP7 --kurumsal: guncel rapor kopyalanir; bayat ya da eksik rapor Sonar kosusunu dusurur', () => {
+  const { d } = geciciDepo();
+  try {
+    fs.copyFileSync(
+      path.join(KOK, 'scripts', 'kapsam-yayinla.cjs'),
+      path.join(d, 'scripts', 'kapsam-yayinla.cjs'),
+    );
+    const kos = (env, ...a) =>
+      spawnSync(process.execPath, ['scripts/kapsam-yayinla.cjs', ...a], {
+        cwd: d,
+        encoding: 'utf8',
+        env: { ...process.env, BUILD_NOTE: '', ...env },
+      });
+    const hedef = path.join(d, 'coverage', 'lcov.info');
+    const sonar = { BUILD_NOTE: 'sonarqube - kurumsal analiz' };
+
+    // Rapor yok: Sonar kosusu duser, normal derleme surer; hicbir sey yazilmaz.
+    assert.equal(kos(sonar, '--kurumsal').status, 1);
+    assert.equal(kos({}, '--kurumsal').status, 0);
+    assert.equal(fs.existsSync(hedef), false);
+
+    // Guncel rapor: aynen kopyalanir (Sonar kosusunda da).
+    fs.mkdirSync(path.join(d, 'coverage'));
+    fs.writeFileSync(hedef, kayit('server/a.cjs', ['DA:1,1', 'LF:1', 'LH:1']));
+    assert.equal(kos({}).status, 0);
+    fs.rmSync(hedef);
+    const g = kos(sonar, '--kurumsal');
+    assert.equal(g.status, 0, g.stderr);
+    assert.equal(
+      fs.readFileSync(hedef, 'utf8'),
+      fs.readFileSync(path.join(d, 'kalite', 'kapsam', 'lcov.info'), 'utf8'),
+    );
+
+    // Bayat rapor: Sonar kosusu duser; normal derleme surer ama yanlis eslesen rapor kopyalanmaz.
+    fs.rmSync(hedef);
+    fs.writeFileSync(path.join(d, 'server', 'a.cjs'), 'module.exports = 4;\n');
+    const b = kos(sonar, '--kurumsal');
+    assert.equal(b.status, 1);
+    assert.match(b.stderr, /BAYAT/);
+    assert.equal(kos({}, '--kurumsal').status, 0);
+    assert.equal(fs.existsSync(hedef), false, 'bayat rapor kopyalandi');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
