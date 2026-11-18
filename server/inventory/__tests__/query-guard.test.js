@@ -1,0 +1,249 @@
+// server/inventory/__tests__/query-guard.test.js — /api/inventory/query'nin SQL
+// sertlestirmesi (kurumsal AI kod incelemesi, review.md #3/#4). DB gerektirmeyen SAF
+// fonksiyon testleri: isSelectOnly (banned-keyword + coklu-ifade reddi) ve
+// extractReferencedTables (FROM/JOIN sonrasi tablo adi cikarimi — /query route'unun
+// tablo-whitelist uygulamasinin girdisi).
+'use strict';
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const db = require('../../db/index.cjs');
+const {
+  _isSelectOnly: isSelectOnly, _extractReferencedTables: extractReferencedTables,
+  _writeSavedQueries: writeSavedQueries, _buildAdvancedWhereClause: buildAdvancedWhereClause,
+  _setSqCache: setSqCache, _getSqCache: getSqCache,
+} = require('../index.cjs');
+
+test('isSelectOnly(): SELECT olmayan ifadeler reddedilir', () => {
+  assert.equal(isSelectOnly('DROP TABLE users'), false);
+  assert.equal(isSelectOnly('INSERT INTO x VALUES (1)'), false);
+});
+
+test('isSelectOnly(): banned-list icindeki anahtar kelimeler (SELECT icinde bile) reddedilir', () => {
+  assert.equal(isSelectOnly("SELECT * FROM x WHERE 1=1; EXEC xp_cmdshell('dir')"), false);
+  assert.equal(isSelectOnly('SELECT * FROM OPENQUERY(srv, \'SELECT 1\')'), false);
+});
+
+test('isSelectOnly(): coklu ifade (noktali virgul) reddedilir — tek-ifade zorunlulugu (review.md #4)', () => {
+  assert.equal(isSelectOnly('SELECT * FROM users; SELECT * FROM secrets'), false);
+});
+
+// ai_review_3.md #6: OPENQUERY zaten banned-list'te vardi (dogrulandi); genisletme:
+// OPENDATASOURCE eklendi + 4-parcali linked-server adlandirmasi (OPENQUERY/OPENDATASOURCE
+// disindaki tek linked-server erisim yolu) ayrica reddedilir.
+test('isSelectOnly(): OPENDATASOURCE reddedilir', () => {
+  assert.equal(isSelectOnly("SELECT * FROM OPENDATASOURCE('SQLNCLI', '...').db.schema.table"), false);
+});
+
+test('isSelectOnly(): 4-parcali linked-server adlandirmasi (sunucu.db.sema.tablo) reddedilir', () => {
+  assert.equal(isSelectOnly('SELECT * FROM LinkedServer.SomeDb.dbo.SomeTable'), false);
+  assert.equal(isSelectOnly('SELECT * FROM users u JOIN LinkedServer.SomeDb.dbo.SomeTable t ON 1=1'), false);
+});
+
+test('isSelectOnly(): tek noktali (dbo.Tablo) yerel referanslar linked-server olarak yanlislikla reddedilmez', () => {
+  assert.equal(isSelectOnly('SELECT * FROM dbo.users'), true);
+});
+
+test('isSelectOnly(): sondaki tek noktali virgul (trailing) kabul edilir', () => {
+  assert.equal(isSelectOnly('SELECT * FROM users;'), true);
+});
+
+test('isSelectOnly(): mesru tek SELECT kabul edilir', () => {
+  assert.equal(isSelectOnly('SELECT id, name FROM users WHERE active = 1'), true);
+  assert.equal(isSelectOnly('select * from dbo.users u join apps a on a.id = u.app_id'), true);
+});
+
+test('extractReferencedTables(): basit FROM/JOIN tablo adlarini cikarir', () => {
+  const tables = extractReferencedTables('SELECT * FROM users u JOIN apps a ON a.id = u.app_id');
+  assert.deepEqual(new Set(tables), new Set(['users', 'apps']));
+});
+
+test('extractReferencedTables(): schema-onekli (dbo.Table) ve koseli parantezli isimleri de yakalar', () => {
+  const tables = extractReferencedTables('SELECT * FROM dbo.portal_env_overrides p JOIN [dbo].[logx_audit_logs] l ON 1=1');
+  assert.deepEqual(new Set(tables), new Set(['portal_env_overrides', 'logx_audit_logs']));
+});
+
+test('extractReferencedTables(): FROM/JOIN yoksa bos liste doner (ör. SELECT 1)', () => {
+  assert.deepEqual(extractReferencedTables('SELECT 1 AS ok'), []);
+});
+
+// ── buildAdvancedWhereClause(): artik WHERE oneki YOK (review.md #8) ──────────────────
+test('buildAdvancedWhereClause(): WHERE oneki olmadan yalniz kosul metnini doner', () => {
+  const fakeReq = { input: () => {} };
+  const clause = buildAdvancedWhereClause(
+    { mode: 'AND', filters: [{ col: 'name', op: 'equals', value: 'x' }] },
+    ['name'],
+    fakeReq
+  );
+  assert.equal(clause.startsWith('WHERE'), false);
+  assert.match(clause, /^CAST\(\[name\] AS NVARCHAR\(MAX\)\) = @af0$/);
+});
+
+test('buildAdvancedWhereClause(): filterGroup boşsa bos string doner', () => {
+  const fakeReq = { input: () => {} };
+  assert.equal(buildAdvancedWhereClause(null, [], fakeReq), '');
+  assert.equal(buildAdvancedWhereClause({ filters: [] }, [], fakeReq), '');
+});
+
+// ── writeSavedQueries(): delete-all+reinsert yerine fark-bazli UPSERT (review.md #12/#13) ──
+test('writeSavedQueries(): sadece DEGISEN kayitlar UPSERT edilir, degismeyenler atlanir', async (t) => {
+  setSqCache([
+    { name: 'q1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    { name: 'q2', sql: 'SELECT 2', isPublished: false, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+  ]);
+  const writes = [];
+  t.mock.method(db, 'query', async (sql, params) => {
+    if (/^UPDATE/.test(sql)) { writes.push(params[params.length - 1]); return { rowCount: 1 }; }
+    if (/^DELETE/.test(sql)) { writes.push('DELETE:' + JSON.stringify(params)); return { rowCount: 0 }; }
+    return { rows: [], rowCount: 0 };
+  });
+  // q1 aynen kaliyor, q2'nin sql'i degisiyor
+  await writeSavedQueries([
+    { name: 'q1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    { name: 'q2', sql: 'SELECT 2 CHANGED', isPublished: false, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+  ]);
+  assert.deepEqual(writes, ['q2'], 'yalniz degisen q2 UPDATE edilmeli, degismeyen q1 atlanmali, hicbir DELETE calismamali (ikisi de listede kaliyor)');
+});
+
+test('writeSavedQueries(): listeden CIKARILAN kayit silinir, hicbir sey once toptan silinmez', async (t) => {
+  setSqCache([
+    { name: 'keep', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    { name: 'drop', sql: 'SELECT 2', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+  ]);
+  const calls = [];
+  t.mock.method(db, 'query', async (sql, params) => {
+    calls.push(sql.trim().split(/\s+/)[0]);
+    if (/^DELETE/.test(sql)) { assert.deepEqual(params, ['drop']); return { rowCount: 1 }; }
+    return { rows: [], rowCount: 1 };
+  });
+  // 'keep' de bilerek DEGISTIRILIYOR (aksi halde diff hicbir UPDATE tetiklemez) — boylece
+  // hem UPDATE hem DELETE calisiyor ve DELETE'in upsert dongusunden SONRA geldigi dogrulanabilir.
+  await writeSavedQueries([
+    { name: 'keep', sql: 'SELECT 1 CHANGED', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+  ]);
+  assert.deepEqual(calls, ['UPDATE', 'DELETE'], 'once degisen kaydin UPSERT\'i, SONRA kaldirilanin DELETE\'i calismali — hicbir zaman once toptan silme yok');
+});
+
+test('writeSavedQueries(): bos cache ile ilk yazim tum kayitlari yeni sayar (migrasyon senaryosu)', async (t) => {
+  setSqCache(null);
+  let updateCount = 0;
+  t.mock.method(db, 'query', async (sql) => {
+    if (/^UPDATE/.test(sql)) { updateCount++; return { rowCount: 0 }; } // hicbiri yok, INSERT'e duser
+    return { rows: [], rowCount: 1 };
+  });
+  await writeSavedQueries([
+    { name: 'n1', sql: 'SELECT 1', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+    { name: 'n2', sql: 'SELECT 2', isPublished: true, isDefault: false, publishedBy: 'a', description: '', savedAt: '2026-01-01' },
+  ]);
+  assert.equal(updateCount, 2);
+  assert.equal(getSqCache().length, 2);
+});
+
+// Custom SQL satir ust siniri (kullanici bildirimi, 2026-09-14: "200 satir donuyor").
+// Istemci limit gondermiyor; varsayilan ARTIK ust sinirin kendisi ve kesilme bildirilir.
+test('custom sorgu varsayilan limiti 200 DEGIL ust sinir (10000); truncated bayragi yanitta', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+  assert.ok(!/parseInt\(limitParam \|\| '200'/.test(src), 'custom sorgu varsayilani 200 kalmis');
+  assert.ok(/const MAX_ROWS = 10000;/.test(src));
+  assert.ok(/parseInt\(limitParam \|\| String\(MAX_ROWS\), 10\)/.test(src));
+  assert.ok(/truncated: result\.recordset\.length >= limit/.test(src), 'sinira takilma yanitta bildirilmeli');
+});
+
+// ── GELISMIS FILTRE: OR GRUBU (GF1..GF4, 2026-10-01) ────────────────────────────────
+//
+// Kullanici: "envanterde sorgular bir sapitiyor. cluster name gbocpqa1 icerir OR cluster
+// name gbocpqa2 icerir deyip uyguladigimiz zaman sorgu adam akilli calismiyor."
+//
+// Olculdu: uretilen SQL DOGRU. Asil sorun GORUNURLUK - gelismis filtre tek basina
+// kosmuyor, arama kutusu ve kolon suzgecleri ayni WHERE'e AND ile ekleniyor ve kullanici
+// o AND'i gormuyordu. Bu bekciler hem SQL'i hem gorunurlugu kilitler.
+const INV_SRC = require('node:fs').readFileSync(
+  require('node:path').join(__dirname, '..', 'index.cjs'),
+  'utf8',
+);
+
+function sahteReq() {
+  return { parameters: {}, input(n, t, v) { this.parameters[n] = { value: v }; } };
+}
+
+test('GF1 OR grubu OR ile birlesir, AND grubu AND ile', () => {
+  const b = buildAdvancedWhereClause;
+  const f = (v) => ({ col: 'cluster_name', op: 'contains', value: v });
+  const types = new Map([['cluster_name', 'nvarchar']]);
+  const orSql = b({ mode: 'OR', filters: [f('gbocpqa1'), f('gbocpqa2')] }, ['cluster_name'], sahteReq(), types);
+  assert.match(orSql, / OR /, 'OR grubu AND ile birlestirilmis - kullanicinin sikayeti');
+  assert.ok(!/ AND /.test(orSql), 'OR grubunda AND var');
+  const andSql = b({ mode: 'AND', filters: [f('a'), f('b')] }, ['cluster_name'], sahteReq(), types);
+  assert.match(andSql, / AND /);
+  assert.ok(!/ OR /.test(andSql));
+});
+
+test('GF2 OR grubu WHERE icinde PARANTEZLENIR (yoksa AND once baglar)', () => {
+  // `x = 1 AND a LIKE .. OR b LIKE ..` SQL'de `(x=1 AND a) OR b` demektir - bambaska
+  // bir sonuc kumesi. Parantez kaybolursa arama kutusuyla birlikte kullanildiginda
+  // sessizce yanlis satirlar doner.
+  const i = INV_SRC.indexOf('const advancedWhere = buildAdvancedWhereClause(');
+  assert.ok(i > 0, 'advanced filtre cagrisi bulunamadi');
+  assert.match(
+    INV_SRC.slice(i, i + 200),
+    /parts\.push\(`\(\$\{advancedWhere\}\)`\)/,
+    'OR grubu parantezlenmeden WHERE e ekleniyor',
+  );
+});
+
+test('GF3 bilinmeyen kolon SESSIZCE suzgeci dusurur ama TUM kosulu dusurmez', () => {
+  // Beyaz liste disi kolon atlanir (enjeksiyon savunmasi). Iki kuraldan biri gecersizse
+  // oteki calismaya devam eder - hepsini atip TUM tabloyu dondurmek en kotusu olurdu.
+  const b = buildAdvancedWhereClause;
+  const sql2 = b(
+    { mode: 'OR', filters: [
+      { col: 'yok_boyle_kolon', op: 'contains', value: 'x' },
+      { col: 'cluster_name', op: 'contains', value: 'gbocpqa2' },
+    ] },
+    ['cluster_name'],
+    sahteReq(),
+    new Map([['cluster_name', 'nvarchar']]),
+  );
+  assert.match(sql2, /cluster_name/);
+  assert.ok(!/yok_boyle_kolon/.test(sql2));
+  assert.ok(!/ OR /.test(sql2), 'tek gecerli kural kaldi, yine de OR uretilmis');
+});
+
+test('GF4 CALISAN KOSUL yanitta doner ve ekranda gosterilir', () => {
+  assert.match(INV_SRC, /appliedWhere: _appliedWhere \|\| null/, 'kosul yanitta donmuyor');
+  const ui = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', '..', 'src', 'components', 'EnvanterPage.tsx'),
+    'utf8',
+  );
+  assert.match(ui, /setAppliedWhere\(r\.appliedWhere \?\? null\)/, 'ekran kosulu almiyor');
+  assert.match(ui, /Çalışan koşul/, 'kosul ekranda gosterilmiyor');
+});
+
+// 2026-11-15 (SonarQube S5852): 4 parcali ad kontrolu eski regex yerine DOGRUSAL tarayicida.
+test('linked-server tarayicisi eski desenle ayni karari verir ve uzun girdide dogrusal kalir', () => {
+  const { _linkedServerAdiVar: tara } = require('../index.cjs');
+  const ESKI = /\b(?:FROM|JOIN)\s+\[?\w+\]?(?:\s*\.\s*\[?\w*\]?){3,}/;
+  const ornekler = [
+    'SELECT * FROM A.B.C.D', 'SELECT * FROM [A].[B].[C].[D]', 'SELECT * FROM A . B . C . D',
+    'SELECT * FROM A..C.D', 'SELECT * FROM DBO.USERS', 'SELECT * FROM A.B.C', 'SELECT * FROM .A.B.C',
+    'SELECT * FROM [A]', 'SELECT * FROM X JOIN S.D.O.T ON 1=1', 'SELECT A.B.C.D FROM T', 'SELECT * FROM',
+    'SELECT * FROM [].A.B.C', 'SELECT * FROM A.B.C.D.E', 'SELECT * FROM A.[B C].D.E',
+  ];
+  // Rastgele kisa girdiler: eski desenle ayni sonuc.
+  let t = 1234567;
+  const r = () => ((t = (t * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const harf = ['A', 'B', '.', ' ', '[', ']', '_', '1', 'FROM ', 'JOIN '];
+  for (let n = 0; n < 3000; n++) ornekler.push('SELECT * ' + Array.from({ length: 4 + Math.floor(r() * 14) }, () => harf[Math.floor(r() * harf.length)]).join(''));
+  for (const s of ornekler) {
+    const c = s.replace(/\s+/g, ' ').trim();
+    assert.equal(tara(c), ESKI.test(c), c);
+  }
+  // Geri izlemeye zorlayan uzun girdi dogrusal surede biter.
+  const uzun = 'SELECT * FROM A' + ' . ['.repeat(20000) + '!';
+  const t0 = process.hrtime.bigint();
+  assert.equal(tara(uzun), true);
+  assert.equal(tara('SELECT * FROM A' + ' .'.repeat(2) + '!'.repeat(50000)), false);
+  assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 200, 'tarama dogrusal degil');
+});

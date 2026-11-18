@@ -2,7 +2,7 @@
 //
 // NEDEN VAR: LogX legacy'de envanterde olmayan bir uygulama/sunucu ELLE girilebiliyor
 // ve is calisiyor — ama o ad envantere YAZILMIYOR (kullanici karari: oraya yalnizca
-// duzenli tarama yazar, bkz. legacy-inventory-readonly.test.cjs).
+// duzenli tarama yazar, bkz. legacy-inventory-readonly.test.js).
 //
 // Bu dogru bir karar, ama DONGUYU ACIK BIRAKIYORDU: elle girilen ad denetim kaydina
 // yazilip orada kaliyordu. Hangi adlarin HALA envantere girmedigini kimse bilmiyordu.

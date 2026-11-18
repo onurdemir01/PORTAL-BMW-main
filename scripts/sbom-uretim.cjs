@@ -58,15 +58,46 @@ function isLicenseAllowed(licenseExpr, isDevOnly) {
   // Compound SPDX OR expressions: allowed if at least one branch is allowlisted.
   const stripped = expr.replace(/^\((.*)\)$/, '$1').trim();
   if (/\bOR\b/.test(stripped)) {
-    const parts = stripped.split(/\s+OR\s+/).map((p) => p.trim());
+    const parts = spdxBol(stripped, 'OR');
     return parts.some((p) => allowSet.has(p));
   }
   // Compound SPDX AND expressions: allowed only if every branch is allowlisted.
   if (/\bAND\b/.test(stripped)) {
-    const parts = stripped.split(/\s+AND\s+/).map((p) => p.trim());
+    const parts = spdxBol(stripped, 'AND');
     return parts.length > 0 && parts.every((p) => allowSet.has(p));
   }
   return false;
+}
+
+const BOSLUK = /\s/;
+
+/**
+ * SPDX ifadesini `op` (OR / AND) sozcugunde boler; parcalar kirpilir. `split(/\s+OR\s+/)` ile
+ * birebir ayni sonuc, tek gecis (o desen geri izlemede karesel, Sonar S8786): bosluk dizisinin
+ * hemen ardindan `op` ve yine bosluk gelirse bolunur, bosluklar ayraca dahildir.
+ */
+function spdxBol(ifade, op) {
+  const out = [];
+  let bas = 0;
+  let i = 0;
+  while (i < ifade.length) {
+    if (!BOSLUK.test(ifade[i])) {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    while (j < ifade.length && BOSLUK.test(ifade[j])) j += 1;
+    const sonra = j + op.length;
+    if (ifade.startsWith(op, j) && sonra < ifade.length && BOSLUK.test(ifade[sonra])) {
+      let k = sonra;
+      while (k < ifade.length && BOSLUK.test(ifade[k])) k += 1;
+      out.push(ifade.slice(bas, i));
+      bas = k;
+      i = k;
+    } else i = j;
+  }
+  out.push(ifade.slice(bas));
+  return out.map((p) => p.trim());
 }
 
 function packageNameFromLockKey(lockKey) {
@@ -187,6 +218,7 @@ module.exports = {
   DEV_ALLOWED_LICENSES,
   normalizeLicenseText,
   isLicenseAllowed,
+  spdxBol,
   buildCycloneDxSbom,
   auditAndWriteSbom,
 };

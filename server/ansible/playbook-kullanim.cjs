@@ -4,7 +4,7 @@
 // Admin bir kaydi silmeden once "Bu kaydi <ozellik> kullaniyor; silerseniz o ekran calismaz"
 // uyarisini gorur (silme yine serbest). Liste STATIK: kod icindeki getByKey('...') / ..._KEY
 // sabitleri / REGISTRY_KEYS tablolarindan elle cikarildi. Kaymasin diye bekci var:
-// server/ansible/__tests__/playbook-kayit-silme.test.cjs (PK1) server/ altinda bir seed
+// server/ansible/__tests__/playbook-kayit-silme.test.js (PK1) server/ altinda bir seed
 // anahtarini adiyla anan her kod dosyasini tarar; burada karsiligi olmayan anahtar ya da
 // seed'de olmayan fazla anahtar testi kirar.
 //

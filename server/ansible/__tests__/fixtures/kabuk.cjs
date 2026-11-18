@@ -27,6 +27,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync, spawnSync } = require('node:child_process');
+const { aracYolu } = require('../../../../scripts/arac-yolu.cjs');
 
 const WINDOWS = process.platform === 'win32';
 
@@ -75,8 +76,10 @@ function bashBul() {
 const BASH = bashBul();
 const BASH_SURUM = bashSurumu(BASH);
 
+// cygpath (Git for Windows) sabit dizinden; PATH'te aranmaz (scripts/arac-yolu.cjs).
+const CYGPATH = WINDOWS ? aracYolu('cygpath', { zorunlu: false }) : null;
 const HAS_CYGPATH =
-  WINDOWS && spawnSync('cygpath', ['-u', 'C:\\'], { stdio: 'ignore' }).status === 0;
+  CYGPATH !== null && spawnSync(CYGPATH, ['-u', 'C:\\'], { stdio: 'ignore' }).status === 0;
 
 /** cygpath yoksa son care: `C:\a\b` -> `/c/a/b` (MSYS2 kok eslemesi). */
 function elleCevir(p) {
@@ -98,7 +101,7 @@ function posixYol(p) {
     yolOnbellek.set(
       anahtar,
       HAS_CYGPATH
-        ? execFileSync('cygpath', ['-u', anahtar], { encoding: 'utf8' }).trim()
+        ? execFileSync(CYGPATH, ['-u', anahtar], { encoding: 'utf8' }).trim()
         : elleCevir(anahtar),
     );
   }
@@ -118,7 +121,7 @@ function posixListe(ogeler, { mirasPath = false } = {}) {
     if (miras) {
       if (!WINDOWS) parcalar.push(miras);
       else if (HAS_CYGPATH)
-        parcalar.push(execFileSync('cygpath', ['-u', '-p', miras], { encoding: 'utf8' }).trim());
+        parcalar.push(execFileSync(CYGPATH, ['-u', '-p', miras], { encoding: 'utf8' }).trim());
       else parcalar.push(miras.split(';').filter(Boolean).map(elleCevir).join(':'));
     }
   }

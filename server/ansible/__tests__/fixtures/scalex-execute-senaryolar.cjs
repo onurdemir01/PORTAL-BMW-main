@@ -14,6 +14,7 @@
 'use strict';
 
 const { TEMEL_MODEL, HARITA, kostur } = require('./scalex-precheck-senaryolar.cjs');
+const { varsayilanSira } = require('../../../util/siralama.cjs');
 
 const kopya = (x) => JSON.parse(JSON.stringify(x));
 function modelle(degistir) {
@@ -96,7 +97,7 @@ function uygulamaBasina(satirlar) {
   // ve rapor icin anlamsizdir (bkz. dosya basi).
   return Object.fromEntries(
     Object.keys(g)
-      .sort()
+      .sort(varsayilanSira)
       .map((k) => [k, g[k]]),
   );
 }

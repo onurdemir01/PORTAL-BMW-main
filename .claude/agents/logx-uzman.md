@@ -10,7 +10,7 @@ yeniden keşfetme, üzerine inşa et.
 
 ## Yerleşim
 `server/logx/v2/*` (Express CJS), `src/components/logx_v2/*` (React 19 + Tailwind 4),
-`server/ansible/playbooks/logx_*.yml`, testler `server/logx/v2/__tests__/*.test.cjs`.
+`server/ansible/playbooks/logx_*.yml`, testler `server/logx/v2/__tests__/*.test.js`.
 
 ## Durum makinesi
 `logx_v2_requests.state`: `draft → discovering|namespace_discovering →

@@ -36,8 +36,8 @@ Kurulum: `docs/KURULUM-PAKET.md`. Sunucu tarafında `deploy/release.sh`, `releas
 | Nerede | Ne |
 |---|---|
 | `npm run guvenlik` (Jenkins "Güvenlik" aşaması) | `npm audit`: çalışma zamanında **her** seviye; geliştirmede düzeltmesi yayımlanmış **her** bulgu build'i durdurur. |
-| `server/__tests__/guvenlik-tabanlari.test.cjs` | Kurumsal taramanın ihlal saydığı sürümlere kilit geri düşemez; `overrides` silinemez; kök manifest geliştirme paketi taşıyamaz ve tam manifestle eşit kalır; `prepare` araçsız kurulumu düşürmez. |
-| `server/__tests__/paket.test.cjs` | Pakete geliştirme aracı sızamaz; çalışma zamanı kodu tanımsız paket yükleyemez; dağıtım betikleri dev paketi bırakamaz. |
+| `server/__tests__/guvenlik-tabanlari.test.js` | Kurumsal taramanın ihlal saydığı sürümlere kilit geri düşemez; `overrides` silinemez; kök manifest geliştirme paketi taşıyamaz ve tam manifestle eşit kalır; `prepare` araçsız kurulumu düşürmez. |
+| `server/__tests__/paket.test.js` | Pakete geliştirme aracı sızamaz; çalışma zamanı kodu tanımsız paket yükleyemez; dağıtım betikleri dev paketi bırakamaz. |
 | Yerel tarama tezgâhı (repo dışı) | Push öncesi birden çok tarayıcı. Kurumsal tarayıcının kendi bulgu listesinden türetilen sürüm aralığı kontrolü zorunlu kapıdır. |
 
 **Not:** Tarayıcıların veritabanları farklıdır. `npm audit` / OSV, kurumsal tarayıcının bulgularının ancak bir kısmını bilir. Yerelde "temiz" demek kurumsal taramada 0 demek değildir. Bu yüzden her kurumsal tarama sonucu tezgâhın aralık listesine işlenir.

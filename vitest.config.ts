@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/__tests__/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['src/__tests__/**/*.cjs', 'node_modules/**'],
+    exclude: ['src/**/__tests__/**/*.test.js', 'node_modules/**'],
     coverage: {
       provider: 'v8',
       // Yalniz lcov.info (HTML rapor YOK): kurumsal tarayici calisma alaninin tamamini kaynak

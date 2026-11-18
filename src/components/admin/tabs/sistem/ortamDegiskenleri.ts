@@ -5,7 +5,7 @@
 // Stil yok, yalniz veri: tasarim bekcileri `.ts` dosyalarini taramaz.
 //
 // BICIM KISITLARI (bekciler bu dosyayi METIN olarak okur):
-//   * S11  (server/admin/__tests__/system-config-ekran.test.cjs): her girdi `{` ile acilir ve
+//   * S11  (server/admin/__tests__/system-config-ekran.test.js): her girdi `{` ile acilir ve
 //          ILK alan `key:` olur; beyaz listedeki her anahtar burada bulunmali.
 //   * S11b ayni dosya: beyaz listede olmayan anahtar `saltOkunur: 'ortam'` tasir; 'opsx' yalniz
 //          OPSX_SMART_* anahtarlarinda.
@@ -13,7 +13,7 @@
 //          yok (`secenekler` dizidir). `restartRequired` alani KALDIRILDI: tek kaynak sunucunun
 //          `hotReloadable` alanidir (meta 47 anahtarda sunucuyla celisiyordu).
 //   * S16  `secenekler` sunucu dogrulayicisindan gecmeli (CSRF_ORIGIN_CHECK, SCALEX_PROD_SMART_MODE).
-//   * OS5  (server/auth/__tests__/oturum-sertlestirme.test.cjs): `key: 'X',` sonra TEK satir
+//   * OS5  (server/auth/__tests__/oturum-sertlestirme.test.js): `key: 'X',` sonra TEK satir
 //          `label`, hemen ardindan `group: 'Oturum ve Giriş'`. Bicimlendirici label'i iki satira
 //          bolerse bekci kirmiziya doner.
 

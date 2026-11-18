@@ -226,7 +226,7 @@ const RbacFindings: React.FC = () => {
 // ── KESIF SURE OLCUMU ────────────────────────────────────────────────────────
 //
 // NEDEN BURADA: "ScaleX kesfi cok yavas" aylarca NEREDE yavas oldugu bilinmeden
-// tartisildi. Sentetik bekci (`scalex-awx-package.test.cjs`) `oc` cagri sayisini
+// tartisildi. Sentetik bekci (`scalex-awx-package.test.js`) `oc` cagri sayisini
 // deterministik olcer ama AWX kuyrugunu ve bastion RTT'sini OLCEMEZ. Bu panel
 // URETIMDEKI sayiyi gosterir; her hizlandirma turunun etkisi burada GORULUR.
 //

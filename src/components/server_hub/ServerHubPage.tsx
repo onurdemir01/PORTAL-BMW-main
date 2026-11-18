@@ -168,7 +168,7 @@ const AREA: Record<string, string> = {
 // Yeni alanlarin hepsi ISTEGE BAGLIDIR: eski sunucu yaniti alani tasimaz, ekran o zaman eski
 // davranisi gosterir ve eksik sayaci "0" diye UYDURMAZ (alan yoksa satir hic basilmaz).
 //
-// Bekci: server/server-hub/__tests__/ui-v2.test.cjs (bu yardimcilari kaynaktan derleyip cagirir;
+// Bekci: server/server-hub/__tests__/ui-v2.test.js (bu yardimcilari kaynaktan derleyip cagirir;
 // bantlari jsx fabrikasiyla CAGIRIR, yerlesimi AST ile denetler).
 type ShHostRowV3 = ShHostRow & { jvmsUnmeasured?: number };
 type ShJvmV3 = ShJvm & { runningKnown?: boolean | null; runningSrc?: string | null };

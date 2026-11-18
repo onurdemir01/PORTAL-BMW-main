@@ -30,6 +30,7 @@ Tek kaynak: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
 
 ### Repo hijyeni
 
+- Node testleri `*.test.js` adını taşır (`*.test.cjs` değil): kurumsal Sonar testi yalnız `*.test.js` / `*.test.tsx` adından tanır; klasördeki `package.json` (`"type": "commonjs"`) onları CommonJS yapar. Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md) "Kurumsal Sonar".
 - Repo hijyeni: kullanılmayan dosya bırakılmaz.
   - Yeni dosya bir yerden bağlanır (README / ilgili belge / `package.json` / kullanan kod).
   - İşi biten dosya aynı PR'da silinir; arşiv dizini açılmaz, git geçmişi yeter.

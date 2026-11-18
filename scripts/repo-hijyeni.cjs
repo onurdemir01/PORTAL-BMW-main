@@ -4,7 +4,7 @@
 //
 // Kural (docs/KALITE-KAPILARI.md "Repo hijyeni", herkes ve her ajan icin): repoda kullanilmayan
 // belge, betik ya da kaynak modulu kalmaz. Yeni dosya bir referansla gelir; isi biten dosya silinir
-// (git gecmisinde durur). Bu bekci kurali CI'da zorlar: `server/__tests__/repo-hijyeni.test.cjs`.
+// (git gecmisinde durur). Bu bekci kurali CI'da zorlar: `server/__tests__/repo-hijyeni.test.js`.
 //
 // Iki kapsam:
 //   1. Belge ve betikler (docs/, kokteki *.md, scripts/, deploy/): kod, test, yapilandirma ve kok
@@ -23,6 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 /** Kokteki standart dosyalar: kimse anmasa da kalir (GitHub ve araclar onlari adiyla bulur). */
 const KOK_STANDART = new Set([
@@ -55,15 +56,50 @@ const modulKapsami = (f) =>
   !testMi(f) &&
   !f.startsWith('server/ansible/bmw_portal/');
 
-const UZANTILI = /[\w.@-]+(?:\/[\w.@-]+)*\.[A-Za-z0-9]{1,8}\b/g;
+// Uzantili yol adaylari: `/` ile ayrilmis [\w.@-] parcalari (dogrusal; parcalar `/` ile ayrildigi
+// icin belirsizlik yok). Uzantinin yeri uzantiSonu ile bulunur: eski tek desen
+// `[\w.@-]+(?:\/[\w.@-]+)*\.[A-Za-z0-9]{1,8}\b` geri izlemede karesel (Sonar S8786); sonuc ayni.
+const YOL_ADAYI = /[\w.@-]+(?:\/[\w.@-]+)*/g;
+const ALNUM = /[A-Za-z0-9]/;
+const KELIME = /\w/;
+
+/**
+ * Aday icinde `.uzanti` (1-8 harf/rakam, ardindan kelime siniri) ile biten EN UZUN onekin sonu;
+ * yoksa -1. Nokta ilk karakter olamaz ve `/`'tan hemen sonra gelemez.
+ */
+function uzantiSonu(s) {
+  for (let i = s.lastIndexOf('.'); i >= 1; i = s.lastIndexOf('.', i - 1)) {
+    if (s[i - 1] === '/') continue;
+    let n = 0;
+    while (i + 1 + n < s.length && ALNUM.test(s[i + 1 + n])) n += 1;
+    const sonraki = s[i + 1 + n];
+    if (n >= 1 && n <= 8 && (sonraki === undefined || !KELIME.test(sonraki))) return i + 1 + n;
+  }
+  return -1;
+}
+
+/** Metindeki uzantili yollar (ayni sira, ayni eslesmeler). */
+function uzantiliYollar(metin) {
+  const out = [];
+  for (const m of metin.matchAll(YOL_ADAYI)) {
+    let s = m[0];
+    for (let son = uzantiSonu(s); son > 0; son = uzantiSonu(s)) {
+      out.push(s.slice(0, son));
+      let i = son;
+      while (s[i] === '/') i += 1;
+      s = s.slice(i);
+    }
+  }
+  return out;
+}
 const BELIRTEC = /['"`]((?:\.{1,2}\/|@\/|\/)?[\w.@-]+(?:\/[\w.@-]+)*)['"`]/g;
 
 /** Bir metnin andigi adlar: uzantili yollar + taban adlari, ve modul belirteclerinin son parcasi. */
 function anilanlar(metin) {
   const adlar = new Set();
-  for (const m of metin.matchAll(UZANTILI)) {
-    adlar.add(m[0]);
-    adlar.add(path.posix.basename(m[0]));
+  for (const yol of uzantiliYollar(metin)) {
+    adlar.add(yol);
+    adlar.add(path.posix.basename(yol));
   }
   const belirtec = new Set();
   for (const m of metin.matchAll(BELIRTEC)) {
@@ -149,7 +185,7 @@ function yetimler(dosyalar, oku) {
 }
 
 function repoTaramasi(kok = path.join(__dirname, '..')) {
-  const dosyalar = execFileSync('git', ['ls-files'], { cwd: kok, encoding: 'utf8' })
+  const dosyalar = execFileSync(aracYolu('git'), ['ls-files'], { cwd: kok, encoding: 'utf8' })
     .split('\n')
     .filter(Boolean);
   return yetimler(dosyalar, (f) => {
@@ -174,4 +210,11 @@ if (require.main === module) {
   process.exit(1);
 }
 
-module.exports = { yetimler, repoTaramasi, anilanlar, KOK_STANDART, YALNIZ_TEST_IZINLI };
+module.exports = {
+  yetimler,
+  repoTaramasi,
+  anilanlar,
+  uzantiliYollar,
+  KOK_STANDART,
+  YALNIZ_TEST_IZINLI,
+};

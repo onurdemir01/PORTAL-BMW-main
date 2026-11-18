@@ -1,5 +1,5 @@
 // server/nginx-loadtest/__tests__/arac-sahte-tablo.cjs - sahte nginx_loadtest_araclar tablosu (tur 4).
-// kapi.test.cjs ve araclar.test.cjs ortak kullanir. WHERE / ORDER BY / TOP SQL METNINDEN uygulanir
+// kapi.test.js ve araclar.test.js ortak kullanir. WHERE / ORDER BY / TOP SQL METNINDEN uygulanir
 // (sorgunun anlami sinanir: kosulu silinen sorgu farkli satir dondurur). Taninmayan kosul HATA.
 // D1 (2026-11-02): etkin set su anki env sabit ozetlerini ister; ozetEnvKur() iki env'i bu dosyanin
 // SHA_K6_ARSIV / SHA_WRK_KAYNAK degerlerine kurar (aracSatiri'nin istenen ozetleri de bunlar).

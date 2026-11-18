@@ -114,7 +114,7 @@ const SORUNLU = new Set(['BROKEN_INCLUDE', 'NOT_DEPLOYED', 'NON_PROD_TARGET', 'M
  * SATIRA YAZILABILEN KODLARIN TAMAMI (arayuz sozlugu). Ekran her kod icin KENDI etiketini
  * gostermeli: eksik etiket ya 'undefined' basar ya da yedek etikete ('olculemedi') duser ve
  * "uygulanamaz" bir satiri olculemedi diye gosterir (dogrulama bulgusu, 2026-10-01).
- * Bekci (spa-rp.test.cjs SR35): fixture'larda URETILEN her kod bu listede, listedeki her kod
+ * Bekci (spa-rp.test.js SR35): fixture'larda URETILEN her kod bu listede, listedeki her kod
  * en az bir fixture'da uretiliyor ve NginxSpaDiscovery.tsx sozluklerinde etiketi var.
  * rpNeden 'kod' ya da 'kod:ek' (ek: config | dizin | upstream) bicimindedir.
  */

@@ -5,13 +5,14 @@
 //
 // Bir kapi kirmizi olsa da sonrakiler kosar (hepsinin durumu tek seferde gorulur); sonunda
 // herhangi biri kirmiziysa cikis 1. CI ayni listeyi .github/workflows/ci.yml'de kosturur; liste
-// ile is akisinin esitligini server/__tests__/kalite-kapilari.test.cjs kilitler.
+// ile is akisinin esitligini server/__tests__/kalite-kapilari.test.js kilitler.
 'use strict';
 
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { aracYolu, kabukIcin } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const PAKET_CIKTI = path.join(os.tmpdir(), 'bmw-paket-kapi');
@@ -103,11 +104,13 @@ const CI_EK = [
   { id: 'K0', ad: 'sir taramasi (PR / push araligi)', ci: 'node scripts/sir-tarama.cjs --aralik' },
   { id: 'K13', ad: 'SonarQube kalite kapisi', ci: 'node scripts/sonar-kapi.cjs' },
   { id: 'K14', ad: 'kurumsal is provasi', ci: 'npm run kurumsal:prova' },
+  { id: 'K15', ad: 'kurumsal Sonar taklidi', ci: 'node scripts/sonar-kapi.cjs --ci --kurumsal' },
 ];
 
 function kos(k) {
   const bas = Date.now();
-  const r = spawnSync(k.komut[0], k.komut.slice(1), {
+  // Arac sabit dizinden (PATH'te aranmaz; scripts/arac-yolu.cjs). Windows'ta npm / npx kabuk ister.
+  const r = spawnSync(kabukIcin(aracYolu(k.komut[0])), k.komut.slice(1), {
     cwd: KOK,
     stdio: 'inherit',
     shell: process.platform === 'win32',

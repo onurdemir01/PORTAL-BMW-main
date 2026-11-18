@@ -5,7 +5,7 @@
 
 ## Bağlam
 
-Backend testleri Node'un yerleşik `node --test` koşucusunu (`.test.cjs`), frontend testleri Vitest'i (`.test.ts`/`.test.tsx`) kullanmaktadır. SonarQube Quality Gate analizinde LCOV raporu üretilmediği ve tek birleşik rapor tanımlanmadığı için coverage `%0.0` çıkmıştır (`AUD-001`).
+Backend testleri Node'un yerleşik `node --test` koşucusunu (`.test.js`), frontend testleri Vitest'i (`.test.ts`/`.test.tsx`) kullanmaktadır. SonarQube Quality Gate analizinde LCOV raporu üretilmediği ve tek birleşik rapor tanımlanmadığı için coverage `%0.0` çıkmıştır (`AUD-001`).
 
 ## Karar
 
@@ -15,5 +15,5 @@ Backend testleri Node'un yerleşik `node --test` koşucusunu (`.test.cjs`), fron
 
 ## Sonuçlar
 
-- Çalışma zamanı paketine dev bağımlılığı sızmadan (`paket.test.cjs` PK4b uyumlu) tek LCOV raporu SonarQube'a beslenir.
-- Yeni eklenen her `__tests__` dizini `test-glob-coverage.test.cjs` bekçisiyle otomatik denetlenir.
+- Çalışma zamanı paketine dev bağımlılığı sızmadan (`paket.test.js` PK4b uyumlu) tek LCOV raporu SonarQube'a beslenir.
+- Yeni eklenen her `__tests__` dizini `test-glob-coverage.test.js` bekçisiyle otomatik denetlenir.

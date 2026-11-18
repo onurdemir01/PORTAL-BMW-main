@@ -1,7 +1,7 @@
 // server/ansible/playbook-kayit-rotalari.cjs - Admin > Playbook Kayitlari: liste, silme ve
 // silinen varsayilanlari geri yukleme uclari (2026-11-02). runner.cjs initAnsibleRunner
 // buradan baglar; ayri modul cunku sahte app/registry ile davranis testi yapilabiliyor
-// (server/ansible/__tests__/playbook-kayit-silme.test.cjs).
+// (server/ansible/__tests__/playbook-kayit-silme.test.js).
 //
 //   GET    /api/ansible/playbooks                                 - kayitlar + kullanan ozellik
 //                                                                    + silinen varsayilanlar

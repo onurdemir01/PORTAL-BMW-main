@@ -33,7 +33,7 @@ const KATALOG_YOLU = path.join(__dirname, '..', 'katalog', 'tablolar.json');
 
 const VERITABANLARI = ['Portal', 'TBMWANS'];
 // Alan adlari sayfada gruplama icin SABIT liste. Yeni alan gerekiyorsa buraya da eklenir
-// (bekci: server/audit/__tests__/veri-katalogu-bekci.test.cjs).
+// (bekci: server/audit/__tests__/veri-katalogu-bekci.test.js).
 const ALANLAR = [
   'AI Analist',
   'Ansible / AWX',

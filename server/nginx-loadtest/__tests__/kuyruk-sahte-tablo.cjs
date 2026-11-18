@@ -1,5 +1,5 @@
 // server/nginx-loadtest/__tests__/kuyruk-sahte-tablo.cjs - sahte gece kuyrugu tablolari (2026-11-03).
-// kuyruk.test.cjs ve kapi.test.cjs ortak kullanir. Ifadeler /*KQ:ad*/ etiketiyle taninir; YARIS KOSULLARI
+// kuyruk.test.js ve kapi.test.js ortak kullanir. Ifadeler /*KQ:ad*/ etiketiyle taninir; YARIS KOSULLARI
 // SQL METNINDEN uygulanir (kosulu silinen ifade sahte tabloda da uygulanmaz: mutasyon davranis testinde kirmizi).
 // Zaman D.simdi (ms); kilitler D.kilitler (Map, kapi.test bicimi), kosular D.kosular.
 'use strict';
@@ -434,7 +434,7 @@ function kuyrukKur(D, { kuyruk = {}, ogeler = [] } = {}) {
   });
   ogeler.forEach((o, i) => {
     D.ogeler.push({
-      id: D.ogeler.length + 1, kuyruk_id: id, sira: i + 1, etiket: `oge ${i + 1}`, sonraki_deneme_at: null, govde: JSON.stringify({ senaryoId: 1, hedefHost: 'GBNGXT33', hedefIp: '10.0.0.9', vhost: 'app.test.local', yukHost: 'GBNGXT34', sni: false, parametreler: { hizlar: [100] } }),
+      id: D.ogeler.length + 1, kuyruk_id: id, sira: i + 1, etiket: `oge ${i + 1}`, sonraki_deneme_at: null, govde: JSON.stringify({ senaryoId: 1, hedefHost: 'GBNGXT33', hedefIp: '192.0.2.9', vhost: 'app.test.local', yukHost: 'GBNGXT34', sni: false, parametreler: { hizlar: [100] } }),
       butce_sn: 600, uyari_turleri: '[]', durum: 'BEKLIYOR', asama: null, deneme_id: null, on_kontrol_kosu_id: null, kosu_id: null, neden: null, deneme: 0,
       baslama_at: null, bitis_at: null, created_at: new Date(D.simdi), ...o,
     });

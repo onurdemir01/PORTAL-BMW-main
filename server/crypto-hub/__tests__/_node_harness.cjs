@@ -46,9 +46,9 @@ const VAL = {
   a: 'https://eth-a.example.net/v3/KEYA',
   b: 'https://eth-b.example.net/v3/KEYB',
   btcP2p: '10.1.2.3:8333',
-  btcRpc: 'http://10.1.2.3:8332/wallet',
+  btcRpc: 'https://10.1.2.3:8332/wallet',
   ltcP2p: '10.1.2.4:9333',
-  ltcRpc: 'http://10.1.2.4:9332/wallet',
+  ltcRpc: 'https://10.1.2.4:9332/wallet',
   dotUrl: `https://dot.example.net/v1/${SIR}`,
   dotAuth: SIR,
 };
@@ -111,14 +111,14 @@ function satirlar(o = {}) {
   add('NODEALLOW', t, G_BTC, 'p2p', 'NBXPLORER_BTCNODEENDPOINT', 'hostport');
   add('NODEALLOW', t, G_BTC, 'rpc', 'NBXPLORER_BTCRPCURL', 'url');
   add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.3:8333', SHA.btcP2p, 'hayir');
-  add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCRPCURL', 'rpc', 'literal', 'http://10.1.2.3:8332/****', SHA.btcRpc, 'hayir');
+  add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCRPCURL', 'rpc', 'literal', 'https://10.1.2.3:8332/****', SHA.btcRpc, 'hayir');
 
   add('NODEGRP', t, G_LTC, 'eski', 'eski-nbxplorer-mainnet', 'nbxplorer-mainnet (LTC)');
   add('NODEDEP', t, G_LTC, D.nbx, '-', 1, 1, 9, 'hayir', 'hmz');
   add('NODEALLOW', t, G_LTC, 'p2p', 'NBXPLORER_LTCNODEENDPOINT', 'hostport');
   add('NODEALLOW', t, G_LTC, 'rpc', 'NBXPLORER_LTCRPCURL', 'url');
   add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.4:9333', SHA.ltcP2p, 'hayir');
-  add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCRPCURL', 'rpc', 'literal', 'http://10.1.2.4:9332/****', SHA.ltcRpc, 'hayir');
+  add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCRPCURL', 'rpc', 'literal', 'https://10.1.2.4:9332/****', SHA.ltcRpc, 'hayir');
 
   // Polkadot: SIDECAR_AUTH_VALUE SIRDIR. Betik hatasi benzetimi: maskeli alanlarda HAM sir.
   add('NODEGRP', t, G_DOT, 'eski', 'eski-substrate-polkadot-assethub', 'substrate-polkadot-assethub');

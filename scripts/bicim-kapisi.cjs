@@ -7,11 +7,14 @@
 //   - yeni dosya bicimli olmali;
 //   - HEAD'de bicimli olan dosya bicimli kalmali;
 //   - HEAD'de bicimsiz dosyaya dokunmak serbest (toplu bicimleme ayri, tek commit'te yapilir).
+//   - yeniden adlandirilan dosya YENI degildir: HEAD bicimi ESKI yoldan okunur (2026-11-18: 511 Node
+//     testi .test.cjs -> .test.js; yeni sayilsaydi 330 bicimsiz test toplu bicimlemeye zorlanirdi).
 // Dosyayi duzeltmek icin: npx prettier --write <dosya>
 'use strict';
 
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOD = /\.(?:[cm]?js|tsx?)$/;
 
@@ -21,12 +24,34 @@ function ihlalMi(headBicimli, sahneBicimli) {
   return headBicimli === null || headBicimli === true;
 }
 
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+/**
+ * `git diff --cached --name-status -z -M` ciktisi -> [{ yol, eski }]. Yeniden adlandirmada (R)
+ * `eski` kaynak yoldur, HEAD bicimi oradan okunur; digerlerinde yolun kendisi. Saf islev.
+ */
+function degisenler(cikti) {
+  const p = cikti.split('\0');
+  const out = [];
+  for (let i = 0; i < p.length;) {
+    const durum = p[i++];
+    if (!durum) continue;
+    if (durum.startsWith('R')) {
+      const eski = p[i++];
+      out.push({ yol: p[i++], eski });
+    } else {
+      const yol = p[i++];
+      out.push({ yol, eski: yol });
+    }
+  }
+  return out;
+}
+
+const git = (args) =>
+  execFileSync(aracYolu('git'), args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 /** `git show <spec>`; dosya o surumde yoksa (yeni dosya) null. Git'in hata metni yazdirilmaz. */
 function gitOku(spec) {
   try {
-    return execFileSync('git', ['show', spec], {
+    return execFileSync(aracYolu('git'), ['show', spec], {
       encoding: 'utf8',
       maxBuffer: 256 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'ignore'],
@@ -50,17 +75,17 @@ async function main() {
     return 1;
   }
   const kok = git(['rev-parse', '--show-toplevel']).trim();
-  const dosyalar = git(['diff', '--cached', '--name-only', '--diff-filter=ACMR'])
-    .split('\n')
-    .filter((f) => f && KOD.test(f));
+  const dosyalar = degisenler(
+    git(['diff', '--cached', '--name-status', '-z', '-M', '--diff-filter=ACMR']),
+  ).filter((d) => KOD.test(d.yol));
   const ihlaller = [];
-  for (const f of dosyalar) {
+  for (const { yol: f, eski } of dosyalar) {
     const tam = path.join(kok, f);
     const info = await prettier.getFileInfo(tam, { ignorePath: path.join(kok, '.prettierignore') });
     if (info.ignored || !info.inferredParser) continue;
     const sahne = gitOku(`:${f}`);
     if (sahne === null) continue;
-    const head = gitOku(`HEAD:${f}`);
+    const head = gitOku(`HEAD:${eski}`);
     const headBicimli = head === null ? null : await bicimliMi(prettier, head, tam);
     if (ihlalMi(headBicimli, await bicimliMi(prettier, sahne, tam)))
       ihlaller.push({ f, yeni: headBicimli === null });
@@ -83,4 +108,4 @@ if (require.main === module)
     },
   );
 
-module.exports = { ihlalMi, KOD };
+module.exports = { ihlalMi, degisenler, KOD };

@@ -3,7 +3,7 @@
 // Kurumsal Jenkins isi, TST ortami. Derleme, paket, war ve staging DVL ile BIREBIR aynidir; gerekceler
 // DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy basliginda. Fark yalniz deployment adi: BMWPORTAL-T (kurumdaki
 // -D / -T / -Q kalibi; TST SI kaydiyla dogrulanmali). KURUMSAL KOPYADA `EKIP_EPOSTA_ADRESI` yerine ekip
-// e-posta adresi yazilir. Bekci: server/__tests__/kurumsal-pipeline.test.cjs.
+// e-posta adresi yazilir. Bekci: server/__tests__/kurumsal-pipeline.test.js.
 p = standardPipeline (
     global: [
         email: [

@@ -21,7 +21,7 @@ const { varsayilanSira } = require('../../util/siralama.cjs');
 // (restrictions.cjs). Bu alan eskiden ATILIYORDU ve grup izinleri HICBIR ZAMAN
 // eslesmiyordu — yalnizca grup izinli bir kisitlama o gruptaki herkese 403 veriyordu
 // (uretimde "prod'da hata, test'te yok"; test DB'de kisitlama yoktu). Bekci:
-// restrictions-group-route.test.cjs (gercek router + oturum).
+// restrictions-group-route.test.js (gercek router + oturum).
 function currentUser(req) {
   const s = req.session?.user;
   if (s)

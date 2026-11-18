@@ -15,6 +15,7 @@ Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
   - tarayıcıdan gizlemek için dizgi bölmek ya da kodu veri dosyasına taşımak;
   - `--no-verify`.
 - Repo public: sır, iç ad (kurum alan adı, sunucu, IP, kişi) ve `.har` commit edilmez.
+- Node testleri `*.test.js` adını taşır (`*.test.cjs` değil): kurumsal Sonar testi yalnız `*.test.js` / `*.test.tsx` adından tanır; klasördeki `package.json` (`"type": "commonjs"`) onları CommonJS yapar. Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md) "Kurumsal Sonar".
 - Repo hijyeni: kullanılmayan dosya bırakılmaz.
   - Yeni dosya bir yerden bağlanır (README / ilgili belge / `package.json` / kullanan kod).
   - İşi biten dosya aynı PR'da silinir; arşiv dizini açılmaz, git geçmişi yeter.

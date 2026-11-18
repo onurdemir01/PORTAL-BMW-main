@@ -24,7 +24,7 @@ const { evaluateWindow, extractPlannedInterruption } = require('./window.cjs');
  * Portalin GERCEKTEN okudugu alanlar — TEK KAYNAK.
  *
  * Bu liste ile kodun ayrismasi, ekranin YALAN soylemesi demek olurdu ("bu alan
- * okunuyor" yazar, kod okumaz). `__tests__/oco-diagnose.test.cjs` her girdinin
+ * okunuyor" yazar, kod okumaz). `__tests__/oco-diagnose.test.js` her girdinin
  * ilgili dosyada GERCEKTEN geciyor olmasini zorunlu kiliyor.
  */
 const READ_FIELDS = Object.freeze([
@@ -166,7 +166,7 @@ function diagnose(order, now = new Date()) {
  *
  * Gercek kapiyi cagirmaz (o AWX isi acabilir, SMART kaydi yaratabilir); kapinin
  * KARAR AGACINI birebir tekrarlar. Agac `change-gates.evaluateOcoGate` icindedir
- * ve bekci `oco-diagnose.test.cjs` ikisinin ayni sirada kalmasini zorluyor.
+ * ve bekci `oco-diagnose.test.js` ikisinin ayni sirada kalmasini zorluyor.
  */
 function simulateGate({ diagnosis, ocoApplies }) {
   if (!ocoApplies) {

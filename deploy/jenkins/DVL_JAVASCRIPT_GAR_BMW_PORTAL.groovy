@@ -3,7 +3,7 @@
 // Kurumsal Jenkins isi (standart_pipeline). Bu dosya kurumsal is tanimi deposundaki kopyanin KAYNAGIDIR;
 // degisiklik once burada yapilir, sonra oraya kopyalanir. KURUMSAL KOPYADA `EKIP_EPOSTA_ADRESI` yerine
 // ekip e-posta adresi yazilir; gercek adres public repoya yazilmaz.
-// Bekci: server/__tests__/kurumsal-pipeline.test.cjs. Ayrinti: docs/KALITE-KAPILARI.md "Kurumsal Jenkins".
+// Bekci: server/__tests__/kurumsal-pipeline.test.js. Ayrinti: docs/KALITE-KAPILARI.md "Kurumsal Jenkins".
 //
 //   - tools yalniz nodejs: kutuphane npm + yalniz nodejs icin Linux ajani (POD&&NODEJS) secer. Arac
 //     verilmezse varsayilan ajana duser; derleme araclari orada kurulamaz.

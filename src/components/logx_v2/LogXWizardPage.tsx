@@ -659,7 +659,7 @@ const LogXWizardPage: React.FC = () => {
   // ile erken dönüp 17 hook çalıştırıyor, `setLoading(false)` sonrası ikinci render 19 hook
   // çalıştırıyordu → React "Rendered more hooks than during the previous render." fırlattı,
   // ağaç unmount oldu, /logx BEMBEYAZ açıldı. TypeScript de build de bunu yakalamaz;
-  // src/__tests__/hook-order.test.cjs yakalar.
+  // src/__tests__/hook-order.test.js yakalar.
   if (loading) {
     return <LoadingLogo compact />;
   }

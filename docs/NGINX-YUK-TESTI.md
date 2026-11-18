@@ -1279,7 +1279,7 @@ olarak yazar; eski worker'lar çıkınca toplam düşer.
 * **Eski koşular (R2 dahil):** reload anları yalnız bu turdan sonra analiz edilen koşularda vardır;
   R2'nin satırları eski analizle yazıldığı için ekranda reload nedeni cümlesi çıkar, "saat …" çıkmaz.
   Negatif değerler API'de null'a çevrilir (DB değişmez).
-* **Gerçek R2 fikstürü:** `__tests__/r2-gercek.test.cjs` R2 iş çıktısındaki sayıları (6 adımın
+* **Gerçek R2 fikstürü:** `__tests__/r2-gercek.test.js` R2 iş çıktısındaki sayıları (6 adımın
   başlangıcı, istek, gerçek hız, p50 / p95 / p99, dropped, kaydedici konf özeti) sentetik kaydedici
   örnekleri ve iki ölçüm içi reload ile tüm zincirden geçirir (analiz → poller → DB satırı → API);
   çıktısı `fixtures/r2-gercek-api.json`'da bayt bayt kilitlidir ve arayüz testi (SD11) aynı dosyayı

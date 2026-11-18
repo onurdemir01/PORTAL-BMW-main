@@ -936,7 +936,7 @@ describe('NginxSpaDiscovery — kolon düzeni ve görünüm (2026-10-03)', () =>
     // DOM sırası yetmez: tarayıcının rowSpan/colSpan yerleşiminde de başlık doğru kolonda.
     basligiYerlesimleDogrula(container);
     // YAPIŞKAN ilk kolon ve başlık bağlantısı (görsel ölçü jsdom'da yok; bağlantı burada, CSS
-    // kuralları ve kabın yükseklik sınırı nginx-console.test.cjs GS28'de).
+    // kuralları ve kabın yükseklik sınırı nginx-console.test.js GS28'de).
     const kap = tablo(container).parentElement as HTMLElement;
     expect(kap.classList.contains('ng-spa-kap'), 'kaydırma kabı .ng-spa-kap değil').toBe(true);
     expect(kap.classList.contains('overflow-auto')).toBe(true);

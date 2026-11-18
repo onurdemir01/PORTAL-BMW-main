@@ -512,7 +512,7 @@ describe('Yük Testi sade — koşu ayrıntısı (SD9, SD10)', () => {
 
 // SD11 / SD12 (entegrasyon): sunucu ciktisiyla capraz kontrol. SD11 gercek R2 sayilarinin sunucu zincirinden
 // (analiz -> poller -> DB -> GET /kosular/:id) gecmis halini cizer: fikstur server/nginx-loadtest/__tests__/
-// r2-gercek.test.cjs (RG2) tarafindan uretilir ve orada bayt bayt kilitlidir. SD12 analiz.cjs NEDEN_KALIPLARI'ndaki
+// r2-gercek.test.js (RG2) tarafindan uretilir ve orada bayt bayt kilitlidir. SD12 analiz.cjs NEDEN_KALIPLARI'ndaki
 // her kod icin bir ornegin sunucu kalibina uydugunu ve ekranin onu taniyip duz cumleye cevirdigini sinar (sunucuya
 // yeni kod eklenip burada ornegi yoksa test KIRMIZI).
 const sunucuCjs = createRequire(import.meta.url);
@@ -633,7 +633,7 @@ describe('Yük Testi sade — sunucuyla çapraz kontrol (SD11, SD12)', () => {
     // B1: yeni playbook kaydedicinin son satirini ekler ('<neden>;son=<satir>'); satir parantez icerebilir.
     const s = uyariAcikla('yuk_cpu_olculemedi(kaydedici_baslamadi;son=HATA: /proc/stat okunamiyor (x))');
     expect([s.bilinmiyor ?? false, s.cumle]).toEqual([false, 'Yük makinesi CPU’su ölçülemedi (kaydedici başlatılamadı; kaydedicinin son çıktısı: “HATA: /proc/stat okunamiyor (x)”); “yük makinesi doydu” denetimi yapılamadı, sonuç yük makinesinin sınırını gösteriyor olabilir.']);
-    // Sunucu bicimi analiz.test.cjs AN-Y9'da kilitli: 'yuk_cpu_olculemedi(<neden>;son=<ASCII, en cok 200>)'.
+    // Sunucu bicimi analiz.test.js AN-Y9'da kilitli: 'yuk_cpu_olculemedi(<neden>;son=<ASCII, en cok 200>)'.
     const uzun = uyariAcikla(`yuk_cpu_olculemedi(pencerede_ornek_yok;son=${'x'.repeat(200)})`);
     expect([uzun.bilinmiyor ?? false, uzun.cumle.includes('ölçüm penceresinde yeterli örnek yok; kaydedicinin son çıktısı: “' + 'x'.repeat(200) + '”')]).toEqual([false, true]);
   });

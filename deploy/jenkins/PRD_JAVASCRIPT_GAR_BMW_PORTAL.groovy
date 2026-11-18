@@ -4,7 +4,7 @@
 // DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy basliginda. Deploy adimi YOK: uretim kurulumu staging'deki
 // BMWPORTAL.war'dan ayri surecle yapilir (kurumdaki PRD islerinin cogu ve onceki PRD tanimi boyle).
 // KURUMSAL KOPYADA `EKIP_EPOSTA_ADRESI` yerine ekip e-posta adresi yazilir.
-// Bekci: server/__tests__/kurumsal-pipeline.test.cjs.
+// Bekci: server/__tests__/kurumsal-pipeline.test.js.
 p = standardPipeline (
     global: [
         email: [

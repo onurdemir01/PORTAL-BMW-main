@@ -93,7 +93,7 @@ betik buldu.
 Taramanın bulduğu sınıflar kalıcı testlere bağlandı; tarama onların yerine geçmez, yeni
 sınıfları bulmak içindir.
 
-- `src/__tests__/tema-kontrast.test.cjs` — tema token çiftlerinin kontrastı (≥ 4.5)
+- `src/__tests__/tema-kontrast.test.js` — tema token çiftlerinin kontrastı (≥ 4.5)
 - `src/components/__tests__/ListeUclari.test.tsx` — liste API'si düşünce adım çökmez
 - `src/components/__tests__/HataYokDegil.test.tsx` — "okunamadı" ile "yok" ayrı gösterilir
 - `src/components/admin/__tests__/AdminDayaniklilik.test.tsx` — çöken sekme menüyü düşürmez

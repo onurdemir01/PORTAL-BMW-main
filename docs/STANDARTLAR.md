@@ -18,7 +18,7 @@
 
 ## 4. Test ve Coverage Standartları
 
-- **Backend:** Node built-in test runner (`node --test`), tüm `__tests__` dizinleri `scripts/run-tests.cjs` `TEST_DIRS` içinde kayıtlı olmalıdır (`test-glob-coverage.test.cjs` bekçisi).
+- **Backend:** Node built-in test runner (`node --test`), tüm `__tests__` dizinleri `scripts/run-tests.cjs` `TEST_DIRS` içinde kayıtlı olmalıdır (`test-glob-coverage.test.js` bekçisi).
 - **Frontend:** Vitest (`src/**/__tests__/**/*.test.ts(x)`).
 - **LCOV Birleştirme:** `scripts/lcov-birlestir.cjs` tüm LCOV çıktılarını `coverage/lcov.info` altında repo-göreli yollarla birleştirir; coverage hedefine ulaşmak için source exclusion kullanılamaz.
 

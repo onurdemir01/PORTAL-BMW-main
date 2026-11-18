@@ -10,7 +10,7 @@
 //
 // Okunan biçimler GERÇEK playbook çıktılarıdır; örnekleri
 // `__tests__/fixtures/legacy-sonuc-ornekleri.json` içinde durur ve
-// `server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs` (LG5) her birini gerçek
+// `server/ansible/__tests__/logx-legacy-gercek-kosum.test.js` (LG5) her birini gerçek
 // koşumla karşılaştırır. Aktarım sonucu ÜÇ biçimde gelir:
 //   - tek sunucu, arşiv var : üst düzey `per_file_status[]`
 //   - tek sunucu, arşiv yok : `hosts[{host, status, error}]` (dosya sebepleri metnin içinde)

@@ -80,7 +80,7 @@
           if (renk === "cvd") document.documentElement.setAttribute("data-renk", "cvd");
           // Mobil tarayici cubugu MASTHEAD ile ayni renkte olmali. PF6'da masthead
           // temayi izler: acik #f2f2f2, koyu #151515 (--masthead-bg ile BIREBIR ayni;
-          // src/__tests__/first-paint.test.cjs bu esitligi kilitler).
+          // src/__tests__/first-paint.test.js bu esitligi kilitler).
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute("content", theme === "dark" ? "#151515" : "#f2f2f2");
         } catch (e) {

@@ -2,7 +2,7 @@
 
 Ekran: **Denetim › Init Scripts** (`GET /api/denetim/init-scripts?root=vhosting|vhosting8`).
 Kod: `server/audit/denetim.cjs` (`INIT_SCRIPTS`, `readInitExtras`, `readInitAge`,
-`scriptDeviationReport`, `eskiSapmaRaporu`, `buildSunucuGeneli`). Testler: `server/audit/__tests__/init-scripts-referans.test.cjs`.
+`scriptDeviationReport`, `eskiSapmaRaporu`, `buildSunucuGeneli`). Testler: `server/audit/__tests__/init-scripts-referans.test.js`.
 Veritabanı: **TBMWANS**. Portal bu tabloların hiçbirine **yazmaz**, DDL çalıştırmaz.
 
 Ansible tarafı (`bmw_wds_scripts/initialize/check_initialize.yaml` ve loader

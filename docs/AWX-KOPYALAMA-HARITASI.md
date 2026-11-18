@@ -26,7 +26,7 @@ playbook_dir ~ '/../../../bmw_openshift_jobs/global_variables/credentials.yaml'
 > dosyasına yönlendirerek. Portal reposunda hiçbir test kırmızı dönmemişti: burada
 > ağaç düzdü ve "derinlik" diye bir kavram yoktu.
 
-`server/ansible/__tests__/playbook-tree.test.cjs` (AT3) artık her playbook'un göreli
+`server/ansible/__tests__/playbook-tree.test.js` (AT3) artık her playbook'un göreli
 yollarının **kendi derinliğiyle** tutarlı olduğunu ölçer.
 
 ## Ağaç

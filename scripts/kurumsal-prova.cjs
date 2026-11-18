@@ -19,6 +19,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { CIKTI } = require('./kurumsal-derle.cjs');
+const { aracYolu, kabukIcin } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const GROOVY = 'deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy';
@@ -33,15 +34,20 @@ const PAKET_ICERIGI = [
   'deploy/release.sh',
 ];
 
+/** Satir yorumlari (`//` sonrasi) atilir; satir satir (dogrusal, Sonar S8786). */
+const yorumsuz = (metin) =>
+  metin
+    .split('\n')
+    .map((s) => (s.includes('//') ? s.slice(0, s.indexOf('//')) : s))
+    .join('\n');
+
 /** Groovy metni -> derleme bilgileri; bulunamayan alan undefined. Saf islev, hata atmaz. */
 function ayristir(metin) {
   const araclar = (metin.match(/tools:\s*\[([^\]]*)\]/) || [])[1];
   const node = araclar && (araclar.match(/nodejs:\s*"([^"]+)"/) || [])[1];
   const blok = (metin.match(/commands:\s*\[([\s\S]*?)\]/) || [])[1];
   const komutlar =
-    blok === undefined
-      ? undefined
-      : [...blok.replaceAll(/\/\/.*$/gm, '').matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    blok === undefined ? undefined : [...yorumsuz(blok).matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   const s = metin.match(/compress:\s*\[from:\s*"([^"]+)",\s*to:\s*"([^"]+)"\]/);
   return { araclar, node, komutlar, sikistir: s ? { from: s[1], to: s[2] } : undefined };
 }
@@ -87,6 +93,8 @@ function prova({
   hata = console.error,
   simdi = Date.now,
   surum = process.version,
+  // Komut adi -> mutlak yol (git / npm PATH'te aranmaz; scripts/arac-yolu.cjs).
+  cozumle = (k) => (path.isAbsolute(k) ? k : kabukIcin(aracYolu(k))),
 } = {}) {
   let g;
   try {
@@ -102,7 +110,7 @@ function prova({
   const bas = simdi();
   const adim = (ad, komut, args, cwd) => {
     yaz(`[prova] ${ad}: ${[path.basename(komut), ...args].join(' ')}`);
-    const r = kos(komut, args, {
+    const r = kos(cozumle(komut), args, {
       cwd,
       stdio: 'inherit',
       env: ortam(),
@@ -136,7 +144,7 @@ function prova({
     yaz(`[prova] tamam: ${dk.toFixed(1)} dk, paket ${CIKTI} -> ${g.sikistir.to}`);
     return 0;
   } finally {
-    kos('git', ['worktree', 'remove', '--force', agac], { cwd: kok, stdio: 'ignore' });
+    kos(cozumle('git'), ['worktree', 'remove', '--force', agac], { cwd: kok, stdio: 'ignore' });
     fs.rmSync(gecici, { recursive: true, force: true });
   }
 }

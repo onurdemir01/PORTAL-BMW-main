@@ -28,7 +28,9 @@ const MANIFEST = path.join(__dirname, '..', 'server', 'ansible', 'playbook-revis
 // `logx_playbook_revision: "{{ logx_playbook_revision }}"` SABLONUNU da eziyordu:
 // damga yayinlanmayi birakiyor, mekanizma SESSIZCE olu kaliyordu. (Bekci PV3
 // bunu ilk kosuda yakaladi.)
-const STAMP_RE = /^(\s*)logx_playbook_revision:\s*"[0-9a-f]*"\s*$/gm;
+// Bosluk yalniz satir ici ([ \t]): `\s*` cok satirli kipte satir sonlarini da yutar, geri izlemede
+// karesel (Sonar S8786); damgali dosyalarda sonuc ayni.
+const STAMP_RE = /^([ \t]*)logx_playbook_revision:[ \t]*"[0-9a-f]*"[ \t]*$/gm;
 
 /** Damgalanan playbook'lar: AWX'te kosan ve portalin sonucunu okudugu olanlar. */
 const STAMPED = [

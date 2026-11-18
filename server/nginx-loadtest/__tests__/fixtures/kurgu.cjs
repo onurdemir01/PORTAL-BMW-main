@@ -16,6 +16,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { varsayilanSira } = require('../../../util/siralama.cjs');
 
 const AY = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // yuk_k6.js KOLONLAR ile ayni sira.
@@ -246,7 +247,7 @@ class Kurgu {
 /** Python'un okudugu dosyalarin (ad + sha256) ozeti: uretec degisirse beklenenler gecersiz kalir. */
 function parmakIzi(dosyalar) {
   const h = crypto.createHash('sha256');
-  for (const ad of [...dosyalar.keys()].sort()) {
+  for (const ad of [...dosyalar.keys()].sort(varsayilanSira)) {
     const f = dosyalar.get(ad);
     if (!f.py) continue;
     h.update(`${ad}\n${crypto.createHash('sha256').update(f.icerik, 'utf8').digest('hex')}\n`);

@@ -5,7 +5,7 @@
 //
 // BU DOSYA, Ansible tarafındaki bmw_automation_folder/crypto_hub/vars/tenants.yml ile AYNI
 // olmak zorundadır. Ayrışırlarsa ekran bir ortamı gösterir, iş başka bir cluster'a bağlanır —
-// yani en tehlikeli hata sınıfı. Bekçi (src/__tests__/crypto-hub-tenants.test.cjs) iki
+// yani en tehlikeli hata sınıfı. Bekçi (src/__tests__/crypto-hub-tenants.test.js) iki
 // listeyi karşılaştırır; Ansible deposu bu makinede yoksa test o karşılaştırmayı ATLAR ama
 // kataloğun kendi tutarlılığını yine de doğrular.
 //

@@ -9,7 +9,7 @@
 //   - aktarım KISMİ bitince         -> hiçbir şey; eksik arşiv "Log dosyanız hazır" diye sunuluyordu
 //
 // GİRDİLER UYDURMA DEĞİL: `fixtures/legacy-sonuc-ornekleri.json` gerçek playbook çıktısıdır
-// ve `server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs` (LG5) her örneği gerçek
+// ve `server/ansible/__tests__/logx-legacy-gercek-kosum.test.js` (LG5) her örneği gerçek
 // Ansible koşumuyla karşılaştırır. Playbook biçimi değişirse önce o test kızarır.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';

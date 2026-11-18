@@ -204,4 +204,7 @@ function ipucuYaz(h, hata) {
   }
   console.log(hatali === 0 ? '✓ TUM HEDEFLER DOGRULANDI' : `⚠ ${hatali}/${liste.length} hedef basarisiz`);
   process.exit(hatali === 0 ? 0 : 1);
-})();
+})().catch((e) => {
+  console.error(`[tls] HATA: ${e && e.message}`);
+  process.exit(1);
+});

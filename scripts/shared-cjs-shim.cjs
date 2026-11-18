@@ -10,7 +10,7 @@
 // Artik adlar metinden TAHMIN EDILMEZ: modul Node'da gercekten yuklenir ve
 // `Object.keys(module.exports)` kullanilir. Yorumlar, ic ice suslu parantezler ve
 // `{ a: b }` bicimi sorun olmaktan cikar. Burada durmasinin sebebi test edilebilirlik:
-// `src/__tests__/shared-cjs-shim.test.cjs` her shared modulu bu fonksiyondan gecirip
+// `src/__tests__/shared-cjs-shim.test.js` her shared modulu bu fonksiyondan gecirip
 // sonucu GERCEK bir ES modulu olarak ice aktarir.
 'use strict';
 

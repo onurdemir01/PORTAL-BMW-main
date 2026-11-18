@@ -20,7 +20,7 @@ replika değiştirir.
 | Tarama işi | `bmw_automation_folder/crypto_hub/crypto_hub_inventory.yml` |
 | İşlem işi | `bmw_automation_folder/crypto_hub/crypto_hub_ops.yml` |
 | Tablolar | `dbo.Crypto_Hub_{Components,Releases,ChartTags,Archives,Notes}` |
-| Bekçiler | `server/crypto-hub/__tests__/crypto-hub.test.cjs` · `bmw_nginx/tests/check_crypto_hub.py` |
+| Bekçiler | `server/crypto-hub/__tests__/crypto-hub.test.js` · `bmw_nginx/tests/check_crypto_hub.py` |
 
 **Katalog iki yerde ama tek doğruluk kaynağı var.** `shared/cryptoHubTenants.cjs` ile
 `vars/tenants.yml` **aynı** olmak zorunda; ayrışırlarsa ekran bir ortamı gösterirken iş başka
@@ -377,7 +377,7 @@ eşlemeleri (ör. `{% if opsx.ortam == 'prod' %}Production_9{% else %}…{% endi
 | `extraVars.openshift_operations` | `openshift_application_rollout` | **verilmez** (bu bir rollout değil) |
 | `extraVars.target_cluster` | yalnız tek cluster seçilince | **verilmez** (OpsX'te de isteğe bağlı; şablonda `\| default`) |
 
-Eşlik bekçisi `node-birim.test.cjs` N5c GERÇEK `opsxProductionKapisi`'ni koşturur, OpsX'in
+Eşlik bekçisi `node-birim.test.js` N5c GERÇEK `opsxProductionKapisi`'ni koşturur, OpsX'in
 şablona verdiği bağlamı yakalar ve `opsx.*` / `extraVars.*` anahtarlarının node bağlamında
 olduğunu (adıyla yazılı istisnalar hariç) ve `uretimSebebi` / `talepEden` değerlerinin aynı
 olduğunu doğrular. OpsX'e yeni bir anahtar eklenirse bekçi kırmızı olur.

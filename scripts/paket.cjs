@@ -30,7 +30,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 const { builtinModules } = require('node:module');
+const { varsayilanSira } = require('../server/util/siralama.cjs');
 
 const KOK = path.join(__dirname, '..');
 
@@ -195,7 +197,9 @@ function kilitBudama(kilit, pkg) {
 }
 
 // ── Gelistirme paketi sizintisi ─────────────────────────────────────────────────────────────────
-const YUKLEME = /(?:require\(\s*|import\(\s*|\bfrom\s+|^\s*import\s+)['"]([^'"./][^'"]*)['"]/gm;
+// Satir basi girintisi yalniz satir ici ([ \t]): cok satirli kipte `^\s*` satir sonlarini da yutar
+// (geri izlemede karesel, Sonar S8786); yakalanan belirtecler ayni.
+const YUKLEME = /(?:require\(\s*|import\(\s*|\bfrom\s+|^[ \t]*import\s+)['"]([^'"./][^'"]*)['"]/gm;
 const YERLESIK = new Set(builtinModules.flatMap((m) => [m, `node:${m}`]));
 
 /** Paket adini ayiklar (`@kapsam/ad/alt` -> `@kapsam/ad`, `ad/alt` -> `ad`). */
@@ -220,7 +224,7 @@ function devSizintisi(dosyalar, calismaZamani) {
       if (!izinli.has(ad)) bulgu.push(`${goreli}: ${ad}`);
     }
   }
-  return [...new Set(bulgu)].sort();
+  return [...new Set(bulgu)].sort(varsayilanSira);
 }
 
 // ── dist manifesti ──────────────────────────────────────────────────────────────────────────────
@@ -231,7 +235,7 @@ function dosyaListesi(dizin, taban = dizin) {
     if (e.isDirectory()) out.push(...dosyaListesi(p, taban));
     else out.push(path.relative(taban, p).split(path.sep).join('/'));
   }
-  return out.sort();
+  return out.sort(varsayilanSira);
 }
 
 function sha256(dosya) {
@@ -292,7 +296,7 @@ function argumanlar(argv) {
 
 function git(...args) {
   try {
-    return execFileSync('git', args, { cwd: KOK, encoding: 'utf8' }).trim();
+    return execFileSync(aracYolu('git'), args, { cwd: KOK, encoding: 'utf8' }).trim();
   } catch {
     return null;
   }
@@ -323,7 +327,7 @@ function main() {
 
   if (a.derleme) {
     console.log('[paket] arayuz derleniyor (npm run build)');
-    execFileSync('npm', ['run', 'build'], { cwd: KOK, stdio: 'inherit' });
+    execFileSync(aracYolu('npm'), ['run', 'build'], { cwd: KOK, stdio: 'inherit' });
   }
   const dist = path.join(KOK, 'dist');
   if (!fs.existsSync(path.join(dist, 'index.html')))
@@ -386,7 +390,7 @@ function main() {
     try {
       fs.cpSync(cikti, path.join(gecici, 'PORTAL-BMW-main'), { recursive: true });
       fs.rmSync(zip, { force: true });
-      execFileSync('zip', ['-rq', zip, 'PORTAL-BMW-main'], { cwd: gecici });
+      execFileSync(aracYolu('zip'), ['-rq', zip, 'PORTAL-BMW-main'], { cwd: gecici });
     } finally {
       fs.rmSync(gecici, { recursive: true, force: true });
     }
@@ -407,6 +411,7 @@ module.exports = {
   kilitBudama,
   devSizintisi,
   paketAdi,
+  YUKLEME,
   manifestYaz,
   MANIFEST,
   PAKET_BILGI,

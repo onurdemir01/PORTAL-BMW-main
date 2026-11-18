@@ -2280,7 +2280,7 @@ module.exports = {
   },
   _getSqCache: () => _sqCache,
   // test-only: Bolum K (kullanici tablo gorunurlugu) yeni sema adaptorunu DB gerektirmeden
-  // dogrulamak icin acildi (bkz. __tests__/visible-tables.test.cjs).
+  // dogrulamak icin acildi (bkz. __tests__/visible-tables.test.js).
   _readVisibleTables: readVisibleTables,
   _writeVisibleTablesForRole: writeVisibleTablesForRole,
   _filterTablesByRole: filterTablesByRole,

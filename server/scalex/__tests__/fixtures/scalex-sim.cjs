@@ -1,5 +1,5 @@
 // server/scalex/__tests__/fixtures/scalex-sim.cjs — ScaleX SUNUCU SIMULATORU.
-// Test dosyasi DEGIL (run-tests.cjs yalniz *.test.cjs toplar).
+// Test dosyasi DEGIL (run-tests.cjs yalniz *.test.js toplar).
 //
 // NEDEN VAR (2026-10-14). ScaleX'in onay kapilari uretimde iki kez "yazilmis ama hic
 // calismamis" cikti: 2026-09-20'de OCO koduna ulasilamiyordu, 2026-10-13'te SMART yolu
@@ -901,7 +901,7 @@ sahte('smart/store.cjs', {
 // degiskenler yok sayilir ve baslatma yanitinin `ignored_fields`ine duser.
 function awxIstegi(req, res, govde) {
   const a = sim.ayar.awx;
-  const u = new URL(req.url, 'http://x');
+  const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
   sim.kayit.awxIstekleri.push({
     method: req.method,

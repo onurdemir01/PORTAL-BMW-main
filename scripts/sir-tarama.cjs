@@ -13,6 +13,7 @@
 
 const fs = require('node:fs');
 const { execFileSync, spawnSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KESIN = [
   ['AWS erisim anahtari', /\bAKIA[0-9A-Z]{16}\b/],
@@ -108,7 +109,8 @@ function farkTara(fark, eklenenDosyalar = []) {
   return bulgular;
 }
 
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+const git = (args) =>
+  execFileSync(aracYolu('git'), args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 function rapor(bulgular, baglam) {
   if (!bulgular.length) {
@@ -151,10 +153,14 @@ function main(argv) {
     .split('\n')
     .filter(Boolean);
   let rc = rapor(farkTara(fark, eklenen), 'sahnelenen fark');
-  const gl = spawnSync('gitleaks', ['protect', '--staged', '--redact', '--no-banner'], {
-    stdio: 'inherit',
-  });
-  if (!gl.error && gl.status !== 0) rc = 1; // kurulu degilse (ENOENT) atlanir
+  // gitleaks istege bagli: kurulu degilse atlanir; kuruluysa hatasi da bulgusu da kirmizidir.
+  const gitleaks = aracYolu('gitleaks', { zorunlu: false });
+  if (gitleaks) {
+    const gl = spawnSync(gitleaks, ['protect', '--staged', '--redact', '--no-banner'], {
+      stdio: 'inherit',
+    });
+    if (gl.error || gl.status !== 0) rc = 1;
+  }
   return rc;
 }
 

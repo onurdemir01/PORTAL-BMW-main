@@ -76,7 +76,7 @@ function buildDispatcher(targetUrl, name) {
 
   // Guvensiz TLS modu yalnizca kurumsal CA hic yuklenmemisse, gecici teshis amaciyla
   // kullanilabilir. Deger HESAPLANIR; kaynakta sabit `false` bulunmaz
-  // (server/__tests__/tls-dogrulama.test.cjs bekcisi).
+  // (server/__tests__/tls-dogrulama.test.js bekcisi).
   const guvensizIstendi = process.env.MCP_TLS_INSECURE === '1';
   const dogrula = !(guvensizIstendi && corporateFileCount === 0);
 
