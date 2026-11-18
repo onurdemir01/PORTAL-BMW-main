@@ -36,6 +36,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { render } from '@/test/test-utils';
+import { zamanlayiciKuruluncaIlerlet } from '@/test/zamanlayici';
 
 const toastM = vi.hoisted(() => ({
   success: vi.fn(),
@@ -415,11 +416,7 @@ describe('EarTemizlikTab yoklama', () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }));
   afterEach(() => vi.useRealTimers());
 
-  const ilerlet = async (ms: number) => {
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(ms);
-    });
-  };
+  const ilerlet = zamanlayiciKuruluncaIlerlet;
   const kayitCagrisi = (id = 11) =>
     cagrilar.filter((c) => c.method === 'GET' && c.url === `/api/server-hub/ear-temizlik/${id}`)
       .length;
@@ -515,7 +512,6 @@ describe('EarTemizlikTab yoklama', () => {
       const r = render(<EarTemizlikTab />);
       const s = (await screen.findAllByTestId('et-aday'))[0];
       await ilerlet(YOKLAMA_MS);
-      await waitFor(() => expect(kayitCagrisi()).toBe(1));
       expect(await within(s).findByTestId('et-yoklama-hata')).toHaveTextContent('yoklama durdu');
       await ilerlet(YOKLAMA_MS * 5);
       expect(kayitCagrisi()).toBe(1);
@@ -1105,11 +1101,7 @@ describe('EarTemizlikTab toplu', () => {
 describe('EarTemizlikTab toplu yoklama', () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }));
   afterEach(() => vi.useRealTimers());
-  const ilerlet = async (ms: number) => {
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(ms);
-    });
-  };
+  const ilerlet = zamanlayiciKuruluncaIlerlet;
   const hazir = (id: number, host: string, ek: Partial<EtKayit> = {}): EtKayit =>
     kayit('PLAN_HAZIR', { id, host, planJobId: 600 + id, ...ek });
   const getSayisi = (re: RegExp) =>

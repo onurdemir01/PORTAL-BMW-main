@@ -49,49 +49,6 @@ function cmpSemver(a, b) {
   return 0;
 }
 
-const PICOMATCH_YAMASIZ_GHSA = 'GHSA-fc5q-39xc-vjpf';
-
-function paketSurumu(kilitPaketleri, ad) {
-  const meta = kilitPaketleri[`node_modules/${ad}`];
-  return meta && parseSemver(meta.version);
-}
-
-/**
- * npm audit bazen yama olmayan bir ana-surum dusurmesini `fixAvailable` diye sunar. Picomatch
- * GHSA'sinda guvenli picomatch surumu henuz yokken Vitest/Vite/ESLint araclarini eski ana
- * surumlere indirmek buna ornektir. Yalniz bu tek danismana dayanan zinciri "yama yok" sayariz;
- * picomatch icin daha yeni bir duzeltme onerildigi anda bu muafiyet kendiliginden kapanir.
- */
-function yamasizPicomatchDurumu(ad, zafiyetler, kilitPaketleri, gorulen = new Set()) {
-  // Audit grafinda Vitest <-> coverage-v8 gibi donguler vardir. Yeniden gorulen dugum yeni bir
-  // danismanlik degildir; notr bir kenar sayilir. Ust dugumde en az bir picomatch yapragi aranir.
-  if (gorulen.has(ad)) return null;
-  const v = zafiyetler[ad];
-  if (!v) return false;
-  const siradaki = new Set(gorulen);
-  siradaki.add(ad);
-  if (ad === 'picomatch') {
-    const buGhsa = (v.via || []).some(
-      (x) => x && typeof x === 'object' && String(x.url || '').includes(PICOMATCH_YAMASIZ_GHSA),
-    );
-    if (!buGhsa) return false;
-    if (v.fixAvailable === false) return true;
-    if (!v.fixAvailable || typeof v.fixAvailable !== 'object') return false;
-    const hedef = parseSemver(v.fixAvailable.version);
-    const mevcut = paketSurumu(kilitPaketleri, v.fixAvailable.name);
-    return !hedef || !mevcut || cmpSemver(hedef, mevcut) <= 0;
-  }
-  const nedenler = Array.isArray(v.via) ? v.via : [];
-  if (!nedenler.length || nedenler.some((x) => typeof x !== 'string')) return false;
-  const durumlar = nedenler.map((x) => yamasizPicomatchDurumu(x, zafiyetler, kilitPaketleri, siradaki));
-  if (durumlar.includes(false)) return false;
-  return durumlar.includes(true) ? true : null;
-}
-
-function yalnizYamasizPicomatch(ad, zafiyetler, kilitPaketleri) {
-  return yamasizPicomatchDurumu(ad, zafiyetler, kilitPaketleri) === true;
-}
-
 function paketAdi(yol) {
   const s = String(yol || '');
   const idx = s.lastIndexOf('node_modules/');
@@ -149,15 +106,51 @@ function xrayTabanKontrol(tamKilitPaketleri, kokKilitPaketleri = {}) {
   };
 }
 
+/**
+ * npm audit `fixAvailable` -> gercekten YAYIMLANMIS bir duzeltme mi? Saf islev.
+ * `true` (uyumlu guncelleme) ya da kurulu surumden YENI bir surume yukseltme duzeltmedir.
+ * Kurulu surumden ESKI bir ana surume inme onerisi (2026-11-18: picomatch <=4.0.7 icin
+ * "vite 6.2.7", kurulu vite 8) duzeltme DEGILDIR: guncel paketin duzeltmesi yoktur ve eski
+ * surum kapatilmis zafiyetleri geri getirir.
+ */
+function gercekDuzeltme(fixAvailable, kilitPaketleri) {
+  if (fixAvailable === false || fixAvailable == null) return false;
+  if (fixAvailable === true) return true;
+  const kurulu = parseSemver(
+    String((kilitPaketleri[`node_modules/${fixAvailable.name}`] || {}).version || ''),
+  );
+  const oneri = parseSemver(String(fixAvailable.version || ''));
+  if (!kurulu || !oneri) return true; // bilinemiyorsa siki tarafta kal
+  return cmpSemver(oneri, kurulu) > 0;
+}
+
+/**
+ * Bulgunun duzeltmesi KOK danismada mi? `via` dizesi baska bir paketin bulgusunu tasidigini
+ * soyler (fdir -> picomatch); duzeltme o kok danismanin paketinde yayimlanmis olmali. npm,
+ * zincirdeki ara pakete "fixAvailable: true" diyebilir ama guncelleme kok danismayi kapatmaz
+ * (2026-11-18 olculdu: `npm audit fix` sonrasi 13 bulgunun 13'u yerinde). Saf islev.
+ */
+function kokDuzeltmeVar(ad, zafiyetler, kilitPaketleri, gorulen = new Set()) {
+  if (gorulen.has(ad)) return false;
+  gorulen.add(ad);
+  const v = zafiyetler[ad];
+  if (!v) return false;
+  const via = Array.isArray(v.via) ? v.via : [];
+  const kendiDanismasi = !via.length || via.some((x) => x && typeof x === 'object');
+  if (kendiDanismasi && gercekDuzeltme(v.fixAvailable, kilitPaketleri)) return true;
+  return via.some(
+    (x) => typeof x === 'string' && kokDuzeltmeVar(x, zafiyetler, kilitPaketleri, gorulen),
+  );
+}
+
 /** Saf karar: audit JSON'u + kilit paketleri -> { dusuren, bilgi }. */
 function karar(audit, kilitPaketleri) {
   const dusuren = [];
   const bilgi = [];
-  const zafiyetler = (audit && audit.vulnerabilities) || {};
-  for (const [ad, v] of Object.entries(zafiyetler)) {
+  for (const [ad, v] of Object.entries((audit && audit.vulnerabilities) || {})) {
     const yollar = Array.isArray(v.nodes) && v.nodes.length ? v.nodes : [`node_modules/${ad}`];
     const calisma = yollar.some((y) => kilitPaketleri[y] && !kilitPaketleri[y].dev);
-    const duzeltmeVar = v.fixAvailable !== false && !yalnizYamasizPicomatch(ad, zafiyetler, kilitPaketleri);
+    const duzeltmeVar = kokDuzeltmeVar(ad, audit.vulnerabilities, kilitPaketleri);
     const satir = `${ad} (${v.severity}${calisma ? ', calisma zamani' : ', gelistirme'}${duzeltmeVar ? '' : ', duzeltme yok'}): ${yollar.join(', ')}`;
     if (calisma || duzeltmeVar) dusuren.push(satir);
     else bilgi.push(satir);
@@ -206,5 +199,5 @@ function main() {
   console.log('[guvenlik] OK - calisma zamaninda 0, gelistirmede duzeltmesi olan 0 zafiyet.');
 }
 
-module.exports = { XRAY_TABAN, karar, xrayTabanKontrol };
+module.exports = { XRAY_TABAN, karar, gercekDuzeltme, kokDuzeltmeVar, xrayTabanKontrol };
 if (require.main === module) main();
