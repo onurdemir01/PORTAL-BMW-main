@@ -156,6 +156,21 @@ komutlar:
         kapsam: namespace
         not: "Yalnizca Argo Rollouts KURULU cluster'larda gerekir."
         rbac: { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["get", "list"] }
+      - kaynak: "deployment, deploymentconfig, statefulset, rollouts, pods, hpa (TUM namespace'ler, -A)"
+        ornek: 'oc get pods -A -o go-template=...'
+        kapsam: cluster
+        modul: [AppHub-Saatlik]
+        not: >-
+          Application Hub saatlik taramasi (bmw_portal/app_hub/files/app_hub_fleet.sh) cluster basina tur
+          basina TEK `oc get <tur> -A` yapar. -A yetkisi YOKSA betik `oc get projects` listesindeki her
+          namespace icin ayni okumaya geri duser (yavas ama calisir); o da okunamazsa satirlar silinmez,
+          ekran "olculemedi" der. Cluster genelinde list yetkisi verilirse cluster basina 6 cagri yeter.
+        rbac:
+          - { apiGroups: ["apps"], resources: ["deployments", "statefulsets"], verbs: ["list"], kapsam: ClusterRole }
+          - { apiGroups: ["apps.openshift.io"], resources: ["deploymentconfigs"], verbs: ["list"], kapsam: ClusterRole }
+          - { apiGroups: ["argoproj.io"], resources: ["rollouts"], verbs: ["list"], kapsam: ClusterRole }
+          - { apiGroups: [""], resources: ["pods"], verbs: ["list"], kapsam: ClusterRole }
+          - { apiGroups: ["autoscaling"], resources: ["horizontalpodautoscalers"], verbs: ["list"], kapsam: ClusterRole }
       - kaynak: horizontalpodautoscalers
         ornek: 'oc get hpa -n <ns>'
         kapsam: namespace
@@ -421,3 +436,11 @@ degisiklik_gunlugu:
     not: >-
       Bu ilk surum MEVCUT DURUMU yazar, yeni yetki istemez. Playbook'lardan
       makine ile cikarildi (`ocp-permissions.test.cjs` ayni taramayi yapar).
+  - tarih: "2026-11-18"
+    degisiklik: >-
+      Application Hub saatlik taramasi: deployment, deploymentconfig, statefulset, rollouts, pods ve hpa
+      icin cluster genelinde `oc get <tur> -A` (salt okunur, yalniz list).
+    yetki_genisledi_mi: evet
+    not: >-
+      Zorunlu DEGIL: -A yasaksa betik namespace basina mevcut get/list yetkisiyle okur. Cluster genelinde
+      list verilirse tarama hizlanir ve AWX/bastion yuku duser.

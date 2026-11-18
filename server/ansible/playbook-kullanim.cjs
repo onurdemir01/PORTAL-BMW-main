@@ -46,6 +46,7 @@ const KULLANIM = Object.freeze({
   crypto_hub_ops: 'Crypto Hub',
   crypto_hub_inventory: 'Crypto Hub (envanter)',
   app_hub_ocp_canli: 'Application Hub (OpenShift canlı okuma)',
+  app_hub_ocp_filo: 'Application Hub (OpenShift saatlik tarama)',
   server_hub_scan: 'Server Hub (tarama) ve App Retirement',
   server_hub_fix:
     'Server Hub (düzeltme, EAR Temizliği), App Retirement ve Application Hub (JVM parametresi)',

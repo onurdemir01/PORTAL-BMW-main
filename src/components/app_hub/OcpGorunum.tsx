@@ -1,9 +1,10 @@
 // src/components/app_hub/OcpGorunum.tsx — Application Hub: OpenShift uygulaması.
 //
 // Envanter yalnız cluster / namespace / ad tutar. Tür (Deployment mı Argo Rollout mu), replika,
-// imaj, kaynak, JVM env'leri ve pod'ların node'ları "Canlı oku" ile gelir: tek bir salt okunur
-// AWX işi (bastion'da oc get). Son okuma kaydedilir; başka bir admin açınca yeniden iş açmadan
-// görür ve okuma zamanını bilir.
+// pod sayısı, imaj, kaynak, JVM env'leri ve pod'ların node'ları iki yoldan gelir:
+//   * saatlik tarama (2026-11-18): Portal saatte bir tüm cluster'ları salt okunur tarar (filo-poller);
+//   * "Canlı oku": o anki durum için tek uygulamalık salt okunur AWX işi.
+// (cluster, namespace) başına hangisi daha yeniyse o gösterilir; kartta kaynağı ve zamanı yazar.
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowPathIcon, ArrowTopRightOnSquareIcon, BoltIcon } from '@heroicons/react/24/outline';
 import { appHubApi, type OcpCanliOkuma, type OcpDetay, type OcpYer } from '@/api/appHubApi';
@@ -22,26 +23,108 @@ const KAYNAK_AD: Record<string, string> = {
 
 const anahtar = (c: string, n: string) => `${c.toLowerCase()}|${n.toLowerCase()}`;
 
+const kaynakAdi = (o: OcpCanliOkuma) => (o.kaynak === 'saatlik' ? 'saatlik tarama' : 'canlı okuma');
+
+/** Pod sayısı: hazır / toplam; okunamadıysa null (0 DEĞİL). Eski canlı okumada podOzet yoksa listeden sayılır. */
+export function podSayisi(o?: OcpCanliOkuma): { hazir: number; toplam: number } | null {
+  if (!o || !o.ok) return null;
+  if (o.podOzet) {
+    if (o.podOzet.okunamadi || o.podOzet.toplam == null) return null;
+    return { hazir: o.podOzet.hazir ?? 0, toplam: o.podOzet.toplam };
+  }
+  // Eski kayıt (podOzet yok): pod listesi okunamadıysa sayı yok; liste en çok 200 olduğu için tam sayı da değil.
+  if (!o.podlar || (o.hatalar || []).some((h) => /pod listesi okunamadi/i.test(h))) return null;
+  const hazir = o.podlar.filter((p) => {
+    const [r, t] = String(p.hazir || '').split('/').map(Number);
+    return p.faz === 'Running' && t > 0 && r === t;
+  }).length;
+  return { hazir, toplam: o.podlar.length };
+}
+
+/** Okumaları birleştirir: (cluster, namespace) başına daha yeni olan kalır. */
+export function okumaBirlestir(eski: OcpCanliOkuma[], yeni: OcpCanliOkuma[]): OcpCanliOkuma[] {
+  const ix = new Map<string, OcpCanliOkuma>();
+  const dahaIyi = (a: OcpCanliOkuma, b: OcpCanliOkuma) => (a.ok !== b.ok ? a.ok : (a.alinma || '') > (b.alinma || ''));
+  for (const o of [...eski, ...yeni.map((x) => ({ ...x, kaynak: x.kaynak || ('canli' as const) }))]) {
+    const k = anahtar(o.cluster, o.namespace);
+    const v = ix.get(k);
+    if (!v) {
+      ix.set(k, o);
+      continue;
+    }
+    const [kazanan, kaybeden] = dahaIyi(o, v) ? [o, v] : [v, o];
+    // Daha yeni ama başarısız okuma geçerli veriyi gizlemez; kartta uyarı olarak kalır.
+    const yeniHata = !kaybeden.ok && (kaybeden.alinma || '') > (kazanan.alinma || '');
+    ix.set(k, yeniHata ? { ...kazanan, sonOkumaHatasi: kaybeden.hata || 'okunamadı' } : kazanan);
+  }
+  return [...ix.values()];
+}
+
+/** Cluster başına pod dağılımı (aynı cluster'daki namespace'ler toplanır). */
+export function clusterPodlari(okumalar: OcpCanliOkuma[]) {
+  const m = new Map<string, { cluster: string; hazir: number; toplam: number; olculemeyen: number }>();
+  for (const o of okumalar) {
+    const k = o.cluster.toLowerCase();
+    const g = m.get(k) || { cluster: o.cluster, hazir: 0, toplam: 0, olculemeyen: 0 };
+    const p = podSayisi(o);
+    if (p) {
+      g.hazir += p.hazir;
+      g.toplam += p.toplam;
+    } else g.olculemeyen++;
+    m.set(k, g);
+  }
+  return [...m.values()].sort((a, b) => a.cluster.localeCompare(b.cluster));
+}
+
+/** Aynı adda Deployment (workloadRef, 0'a ölçekli) + Rollout varsa replikası olan nesne gösterilir. */
+function anaNesne(o?: OcpCanliOkuma) {
+  return (o?.nesneler || []).reduce<NonNullable<OcpCanliOkuma['nesneler']>[number] | null>(
+    (a, n) => (!a || (n.istenen || 0) > (a.istenen || 0) ? n : a),
+    null,
+  );
+}
+
 function turOzeti(y: OcpYer, canli?: OcpCanliOkuma) {
-  const n = canli?.nesneler?.[0];
-  if (n) return { tur: n.tur, replika: `${n.hazir ?? 0} / ${n.istenen ?? 0}`, kaynak: 'canlı' as const };
+  const n = anaNesne(canli);
+  if (n && canli) return { tur: n.tur, replika: `${n.hazir ?? 0} / ${n.istenen ?? 0}`, kaynak: kaynakAdi(canli) };
   const c = y.onbellek?.kayitlar?.[0];
   if (c && c.kind && c.kind !== 'Unknown') return { tur: c.kind, replika: c.replicas == null ? '?' : String(c.replicas), kaynak: 'önbellek' as const };
   return null;
 }
 
 function CanliKart({ o }: { o: OcpCanliOkuma }) {
+  const pod = podSayisi(o);
+  const kisaltildi = !!o.podOzet && o.podOzet.toplam != null && o.podOzet.listelenen < o.podOzet.toplam;
   return (
     <div className="rounded p-3 space-y-3" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
         <strong style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{o.cluster} / {o.namespace}</strong>
         {o.ok ? <Hap ton="iyi">okundu</Hap> : <Hap ton="kritik">okunamadı</Hap>}
+        <Hap ton="notr" title={o.kaynak === 'saatlik' ? "Portal saatte bir tüm cluster'ları salt okunur tarar." : 'Elle başlatılan "Canlı oku" işi.'}>
+          {kaynakAdi(o)}
+        </Hap>
         {o.alinma && (
           <span style={{ color: 'var(--text-muted)' }} title={fmtDateTime(o.alinma)}>
             {fmtRelative(o.alinma)}{o.alanAd ? ` · ${o.alanAd}` : ''}{o.isNo ? ` · AWX #${o.isNo}` : ''}
           </span>
         )}
+        {pod && (
+          <span className="tabular-nums" style={{ color: 'var(--text-secondary)' }} data-testid="kart-pod">
+            <strong>{pod.toplam}</strong> pod · {pod.hazir} hazır
+          </span>
+        )}
+        {!pod && o.ok && <span style={{ color: 'var(--text-muted)' }}>pod sayısı ölçülemedi</span>}
       </div>
+      {o.sonOkumaHatasi && (
+        <p className="text-[12px]" style={{ color: 'var(--status-warning-text)' }}>
+          Daha yeni bir okuma başarısız oldu ({o.sonOkumaHatasi}); gösterilen veri {o.alinma ? fmtRelative(o.alinma) : 'daha önce'} alındı.
+        </p>
+      )}
+      {o.sonTaramaHatasi && (
+        <p className="text-[12px]" style={{ color: 'var(--status-warning-text)' }}>
+          Bu cluster son saatlik taramada okunamadı ({o.sonTaramaHatasi}); gösterilen veri {o.alinma ? fmtRelative(o.alinma) : 'daha eski bir taramadan'} alındı.
+        </p>
+      )}
       {o.hata && <p className="text-[12px]" style={{ color: 'var(--status-danger)' }}>{o.hata}</p>}
       {(o.notlar || []).map((n) => (
         <p key={n} className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{n}</p>
@@ -119,6 +202,11 @@ function CanliKart({ o }: { o: OcpCanliOkuma }) {
           </table>
         </div>
       )}
+      {kisaltildi && (
+        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+          Listede ilk {o.podOzet?.listelenen} pod var; sayı ve node dağılımı tüm {o.podOzet?.toplam} pod'dan.
+        </p>
+      )}
       {(o.nodelar || []).length > 0 && (
         <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
           Node'lar: {(o.nodelar || []).map((n) => `${n.ad} (${n.pod})`).join(', ')}
@@ -154,7 +242,10 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
           continue;
         }
         setIs(null);
-        if (r.okumalar) setOkumalar(r.okumalar);
+        if (r.okumalar) {
+          const yeni = r.okumalar;
+          setOkumalar((eski) => okumaBirlestir(eski, yeni));
+        }
         if (r.error) toast.error(r.error, 8000);
         else if (r.genel === 'ok') toast.success('Canlı okuma tamamlandı.');
         else toast.warning('Canlı okuma kısmen tamamlandı; okunamayan hedefler kartlarda yazıyor.', 8000);
@@ -185,20 +276,58 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
   };
 
   const sonOkuma = okumalar.reduce<string | null>((a, o) => (!a || (o.alinma && o.alinma > a) ? o.alinma : a), null);
+  const dagilim = clusterPodlari(okumalar);
+  const podToplam = dagilim.reduce(
+    (a, g) => ({ hazir: a.hazir + g.hazir, toplam: a.toplam + g.toplam, olculemeyen: a.olculemeyen + g.olculemeyen }),
+    { hazir: 0, toplam: 0, olculemeyen: 0 },
+  );
+  const sk = d.filo?.sonKosu || null;
+  const filoSorunlu = !!sk && (sk.durum === 'HATA' || sk.okSayisi < sk.clusterSayisi || !sk.clusterSayisi);
+  let filoMetni = `Saatlik tarama henüz koşmadı (her ${d.filo?.aralikDk ?? 60} dakikada bir; AWX şablonu tanımlı olmalı).`;
+  if (sk && (sk.durum === 'HATA' || !sk.clusterSayisi)) {
+    filoMetni = `Son saatlik tarama başarısız (${sk.bitis ? fmtRelative(sk.bitis) : '—'})${sk.hata ? `: ${sk.hata}` : ''}. Gösterilen veri daha eski taramalardan.`;
+  } else if (sk) {
+    filoMetni = `Saatlik tarama: son koşu ${sk.bitis ? fmtRelative(sk.bitis) : '—'} · ${sk.okSayisi}/${sk.clusterSayisi} cluster okundu${sk.hata ? ` · ${sk.hata}` : ''}`;
+  }
 
   return (
     <div className="space-y-4">
       <KaynakUyarisi kaynaklar={d.kaynaklar} adlar={KAYNAK_AD} />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <OzetKutusu etiket="Cluster" deger={d.ozet.clusterSayisi} alt={d.ozet.ortamlar.join(' · ') || undefined} />
         <OzetKutusu etiket="Namespace" deger={d.ozet.namespaceSayisi} />
         <OzetKutusu etiket="Route" deger={d.ozet.routeSayisi} />
-        <OzetKutusu etiket="Son canlı okuma" deger={sonOkuma ? fmtRelative(sonOkuma) : 'yok'} alt={sonOkuma ? fmtDateTime(sonOkuma) : 'tür, replika, node ve JVM için "Canlı oku"'} />
+        <OzetKutusu
+          etiket="Pod (hazır / toplam)"
+          deger={podToplam.toplam || podToplam.hazir ? `${podToplam.hazir} / ${podToplam.toplam}` : dagilim.length && !podToplam.olculemeyen ? '0 / 0' : '—'}
+          alt={podToplam.olculemeyen ? `${podToplam.olculemeyen} yerde ölçülemedi` : `${dagilim.length} cluster`}
+        />
+        <OzetKutusu etiket="Son veri" deger={sonOkuma ? fmtRelative(sonOkuma) : 'yok'} alt={sonOkuma ? fmtDateTime(sonOkuma) : 'saatlik tarama ya da "Canlı oku"'} />
       </div>
+      <p className="text-[12px]" style={{ color: filoSorunlu ? 'var(--status-warning-text)' : 'var(--text-muted)' }} data-testid="filo-durumu">
+        {filoMetni}
+      </p>
+      {dagilim.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-[12px]" data-testid="cluster-pod-dagilimi">
+          <span style={{ color: 'var(--text-secondary)' }}>Cluster başına pod:</span>
+          {dagilim.map((g) => {
+            const tamam = !g.olculemeyen && g.toplam > 0 && g.hazir === g.toplam;
+            return (
+              <Hap key={g.cluster} ton={tamam ? 'iyi' : g.toplam || g.olculemeyen ? 'uyari' : 'notr'}>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>{g.cluster}</span>{' '}
+                <span className="tabular-nums">
+                  {g.toplam} pod{g.toplam ? ` · ${g.hazir} hazır` : ''}
+                  {g.olculemeyen ? ` · ${g.olculemeyen} namespace ölçülemedi` : ''}
+                </span>
+              </Hap>
+            );
+          })}
+        </div>
+      )}
 
       <Bolum
         baslik="Çalıştığı yerler"
-        aciklama="Envanterdeki cluster / namespace kayıtları. Tür ve replika canlı okumadan (yoksa LogX keşif önbelleğinden) gelir."
+        aciklama="Envanterdeki cluster / namespace kayıtları. Tür, replika ve pod sayısı saatlik taramadan ya da daha yeniyse canlı okumadan (ikisi de yoksa LogX keşif önbelleğinden) gelir."
         sag={
           <>
             <Button size="sm" variant="ghost" icon={<ArrowPathIcon className="w-4 h-4" />} onClick={onYenile}>Yenile</Button>
@@ -217,15 +346,17 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
                 <th className={TH}>Namespace</th>
                 <th className={TH}>Tür</th>
                 <th className={TH}>Replika (hazır / istenen)</th>
+                <th className={TH}>Pod (hazır / toplam)</th>
                 <th className={TH}>Root adres (route)</th>
                 <th className={TH}>İstek</th>
               </tr>
             </thead>
             <tbody>
-              {!d.yerler.length && <TableEmptyRow colSpan={7} />}
+              {!d.yerler.length && <TableEmptyRow colSpan={8} />}
               {d.yerler.map((y) => {
                 const o = canliIx.get(anahtar(y.cluster, y.namespace));
                 const t = turOzeti(y, o);
+                const p = podSayisi(o);
                 return (
                   <tr key={`${y.cluster}|${y.namespace}`} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                     <td className={TD}>
@@ -246,6 +377,11 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
                       {t ? (
                         <span className="inline-flex items-center gap-1.5">
                           {t.tur}
+                          {t.kaynak !== 'önbellek' && (
+                            <Hap ton="notr" title={o && o.alinma ? fmtDateTime(o.alinma) : undefined}>
+                              {t.kaynak}
+                            </Hap>
+                          )}
                           {t.kaynak === 'önbellek' && <Hap ton="notr" title={y.onbellek?.alinma ? `LogX keşfi ${fmtDateTime(y.onbellek.alinma)}` : undefined}>önbellek{y.onbellek?.bayat ? ' · bayat' : ''}</Hap>}
                         </span>
                       ) : (
@@ -253,6 +389,17 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
                       )}
                     </td>
                     <td className={`${TD} tabular-nums`}>{t ? t.replika : '—'}</td>
+                    <td className={`${TD} tabular-nums`} data-testid="yer-pod">
+                      {p ? (
+                        <span style={{ color: p.toplam && p.hazir < p.toplam ? 'var(--status-warning-text)' : undefined }}>
+                          {p.hazir} / {p.toplam}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }} title={o ? 'Pod listesi okunamadı' : 'Bu yer için tarama verisi yok'}>
+                          {o ? 'ölçülemedi' : '—'}
+                        </span>
+                      )}
+                    </td>
                     <td className={`${TD} text-[12px]`}>
                       {y.routelar.length ? (
                         <ul className="space-y-0.5">
@@ -297,14 +444,14 @@ export default function OcpGorunum({ d, onYenile }: { d: OcpDetay; onYenile: () 
       </Bolum>
 
       <Bolum
-        baslik="Canlı durum"
-        aciklama="Tür (Deployment / Argo Rollout / DC / StatefulSet), replika, imaj, kaynak, JVM parametreleri (parola değerleri gizli) ve pod'ların çalıştığı node'lar."
+        baslik="Ayrıntı (cluster / namespace başına)"
+        aciklama="Tür (Deployment / Argo Rollout / DC / StatefulSet), replika, pod sayısı, imaj, CPU / bellek istek ve limitleri, JVM parametreleri (parola değerleri gizli) ve pod'ların çalıştığı node'lar. Saatlik taramadan gelir; o anki durum için Canlı oku."
       >
         <div className="p-4 space-y-3">
           {canliHata && <p className="text-[12px]" style={{ color: 'var(--status-danger)' }}>Son okumalar okunamadı: {canliHata}</p>}
           {!okumalar.length && !canliHata && (
             <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
-              Bu uygulama için henüz canlı okuma yok. "Canlı oku" bir AWX işi başlatır (salt okunur, genelde 1-3 dk); sonuç kaydedilir ve bu sayfayı açan herkes görür.
+              Bu uygulama için henüz tarama verisi yok. Saatlik tarama tüm cluster'ları kendiliğinden okur; beklemeden görmek için "Canlı oku" bir AWX işi başlatır (salt okunur, genelde 1-3 dk) ve sonuç bu sayfayı açan herkese görünür.
             </p>
           )}
           {okumalar.map((o) => (

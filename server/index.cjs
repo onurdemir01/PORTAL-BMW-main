@@ -276,6 +276,12 @@ async function main() {
       optional: true,
     },
     {
+      // Application Hub (2026-11-18): saatlik OpenShift filo taramasi (filo-poller.cjs). Sablon tanimli degilse bekler.
+      name: 'appHubFilo',
+      init: () => require('./app-hub/filo-poller.cjs').startPoller(),
+      optional: true,
+    },
+    {
       // Server Hub > Toplu Restart (2026-11-14): onizleme / tek tek restart / dogrulama taramasi yurutucusu.
       // Uclar serverHub router'inda. Kirasi dusmus is DEVAM ETTIRILMEZ (YARIM_KALDI).
       name: 'topluRestart',

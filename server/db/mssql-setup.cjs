@@ -1615,6 +1615,48 @@ const TABLES = [
       )`,
   },
   {
+    // Application Hub (2026-11-18): saatlik OpenShift filo taramasinin onbellegi (server/app-hub/filo.cjs).
+    // (cluster, namespace, uygulama) basina TEK satir; her kosu FARK yazar (degismeyenin yalniz alinma'si).
+    // Okunamayan kapsamdaki satir silinmez, eski alinma ile kalir (ekran bayat der). Boyut sabit (append yok).
+    name: 'app_hub_ocp_filo',
+    sql: `
+      CREATE TABLE app_hub_ocp_filo (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        cluster         NVARCHAR(100) NOT NULL,
+        namespace       NVARCHAR(63) NOT NULL,
+        uygulama        NVARCHAR(253) NOT NULL,
+        sonuc_json      NVARCHAR(MAX),
+        ozet_sha        CHAR(40),
+        tur             NVARCHAR(32),
+        istenen         INT,
+        hazir           INT,
+        pod_toplam      INT,
+        pod_hazir       INT,
+        kosu_id         INT,
+        alinma          DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        degisti         DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+      )`,
+  },
+  {
+    // Application Hub (2026-11-18): saatlik filo tarama kosulari (server/app-hub/filo-poller.cjs). anahtar UNIQUE:
+    // ayni zaman dilimi iki kez kosmaz (iki Portal sureci); ayni anda tek kosu (BASLATILIYOR/CALISIYOR/ALINIYOR).
+    name: 'app_hub_ocp_filo_kosu',
+    sql: `
+      CREATE TABLE app_hub_ocp_filo_kosu (
+        id              INT IDENTITY(1,1) PRIMARY KEY,
+        anahtar         NVARCHAR(40) NOT NULL UNIQUE,
+        durum           NVARCHAR(16) NOT NULL,
+        awx_server_id   INT,
+        awx_job_id      INT,
+        baslangic       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+        alim_baslangic  DATETIME2,
+        bitis           DATETIME2,
+        cluster_sayisi  INT,
+        ozet_json       NVARCHAR(MAX),
+        hata            NVARCHAR(2000)
+      )`,
+  },
+  {
     // BMW Hub is gecmisi: notlar + otomatik kayitlar (olusturma, durum/sahip/tarih degisimi).
     name: 'bmw_hub_notlar',
     sql: `
@@ -4220,6 +4262,18 @@ const PLAYBOOK_REGISTRY_SEED = [
     env_var_name: 'APP_HUB_OCP_TEMPLATE_ID',
   },
   {
+    // Application Hub (2026-11-18): saatlik filo taramasi - tum katalog cluster'larinda cluster basina tek login +
+    // oc get -A (deployment, deploymentconfig, statefulset, rollouts, pods, hpa). SALT OKUNUR. Sonuc /sw'ye dosya.
+    key_name: 'app_hub_ocp_filo',
+    display_name: 'Application Hub — OpenShift Saatlik Tarama',
+    category: 'openshift',
+    handler: 'app_hub_ocp_filo',
+    description:
+      'bmw_portal/app_hub/app_hub_fleet.yml - Portal saatte bir baslatir (APP_HUB_FILO_ARALIK_DK). Bastion basina cluster basina oc login + oc get -A; sonuc cluster basina tek dosya olarak app_hub_fleet_writer uzerinden app_hub_fleet_dir/run-<kosu>/raw/ altina, ozet set_stats app_hub_fleet_result. Variables prompt-on-launch ACIK; template kimligi bastion ve yazici sunucuda gecerli olmali.',
+    playbook_path: null,
+    env_var_name: 'APP_HUB_OCP_FILO_TEMPLATE_ID',
+  },
+  {
     key_name: 'opsx_openshift_pods',
     display_name: 'OpsX — Openshift Pod Keşfi',
     category: 'opsx',
@@ -6134,6 +6188,10 @@ async function setupTables() {
     // Application Hub: son okuma uygulamaya gore, kaydin tekrari is numarasina gore aranir.
     { name: 'IX_ahoc_app', table: 'app_hub_ocp_canli', cols: 'uygulama, alinma DESC' },
     { name: 'IX_ahoc_job', table: 'app_hub_ocp_canli', cols: 'awx_server_id, awx_job_id' },
+    // Application Hub filo: uygulama ekrani ada gore, kosu yazimi cluster'a gore okur.
+    { name: 'IX_ahof_app', table: 'app_hub_ocp_filo', cols: 'uygulama' },
+    { name: 'IX_ahof_cluster', table: 'app_hub_ocp_filo', cols: 'cluster, namespace' },
+    { name: 'IX_ahofk_durum', table: 'app_hub_ocp_filo_kosu', cols: 'durum, id' },
     // Server Hub toplu is (2026-11-14): yurutucu durumla, ekran / kilit is + host ile, izleme is numarasiyla okur.
     { name: 'IX_shti_durum', table: 'server_hub_toplu_isler', cols: 'durum, id' },
     { name: 'IX_shto_is', table: 'server_hub_toplu_ogeler', cols: 'is_id, host, sira' },

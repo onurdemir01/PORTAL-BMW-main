@@ -53,7 +53,8 @@ SECRET_RE='(pass|pwd|secret|token|credential|apikey|api[-_]key|private|keystore|
 
 # Bir JVM argumani dizisini belirtec bazinda maskeler (stdin -> stdout, tek satir).
 mask_args() {
-  awk -v safe="$SAFE_PREFIX" -v sec="$SECRET_RE" '
+  MASK_SAFE="$SAFE_PREFIX" MASK_SEC="$SECRET_RE" awk '
+    BEGIN { safe = ENVIRON["MASK_SAFE"]; sec = ENVIRON["MASK_SEC"] }
     {
       out = ""
       n = split($0, t, /[ ]+/)

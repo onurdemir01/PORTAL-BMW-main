@@ -19,7 +19,12 @@ const HEDEF_TAVAN = 20;
 const TEMPLATE_NAME = 'Application Hub: OpenShift canlı okuma';
 
 const L = (s) => String(s == null ? '' : s).trim().toLowerCase();
-const bos = (v) => (v == null || v === '' || v === '<no value>' ? null : v);
+// go-template eksik etiket/anotasyon icin "<no value>" basar; gitops alani iki index'i birlestirdigi icin
+// "<no value><no value>" da gelebilir. Isaret hangi sayida olursa olsun silinir; geriye bir sey kalmazsa null.
+const bos = (v) => {
+  const s = v == null ? '' : String(v).replace(/<no value>/g, '');
+  return s === '' ? null : s;
+};
 const tam = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
 
 /** AWX artifact'inden set_stats anahtari (uc bicim; opsx extractStatsKey ile ayni tolerans). */
@@ -107,6 +112,7 @@ function satirlariCoz(lines) {
         break;
       case 'END':
         out.bitti = true;
+        out.endPod = tam(f[2]);
         break;
       default:
         break;
@@ -119,11 +125,35 @@ function satirlariCoz(lines) {
 }
 
 /** Playbook sonucunu hedef basina cozumlenmis listeye cevirir. */
+/**
+ * Canli okumanin pod ozeti (saatlik taramayla ayni anlam): pod listesi okunamadiysa sayi YOK (0 degil);
+ * betik en cok 200 pod yazar, gercek toplam END satirindadir. Bitmis pod (Succeeded / Failed) sayilmaz.
+ */
+function canliPodOzeti(c) {
+  const okunamadi = c.hatalar.some((h) => /pod listesi okunamadi/i.test(h));
+  const bitmisFaz = (p) => p.faz === 'Succeeded' || p.faz === 'Failed';
+  const listede = c.podlar.filter((p) => !bitmisFaz(p));
+  const bitmis = c.podlar.length - listede.length;
+  const toplam = c.endPod != null && c.endPod > c.podlar.length ? c.endPod - bitmis : listede.length;
+  const hazir = listede.filter((p) => {
+    const [r, t] = String(p.hazir || '').split('/').map(Number);
+    return p.faz === 'Running' && t > 0 && r === t;
+  }).length;
+  return { toplam: okunamadi ? null : toplam, hazir: okunamadi ? null : hazir, bitmis, listelenen: c.podlar.length, okunamadi };
+}
+
 function sonucuCoz(raw) {
   const sonuc = (raw && Array.isArray(raw.results) ? raw.results : []).map((r) => {
     const c = satirlariCoz(r.lines);
     const hata = r.ok === false ? [r.error, ...c.hatalar].filter(Boolean).join(' · ') : c.hatalar.join(' · ') || null;
-    return { cluster: String(r.cluster || ''), namespace: String(r.namespace || ''), ok: r.ok !== false && c.bitti, hata: hata || null, ...c };
+    return {
+      cluster: String(r.cluster || ''),
+      namespace: String(r.namespace || ''),
+      ok: r.ok !== false && c.bitti,
+      hata: hata || null,
+      ...c,
+      podOzet: canliPodOzeti(c),
+    };
   });
   return { genel: (raw && raw.overall_status) || null, hedefler: sonuc };
 }
@@ -242,7 +272,7 @@ async function sonucuKaydet(ad, cozum, { serverId, jobId, kullanici, adSoyad }) 
   const db = require('../db/index.cjs');
   const hedefler = cozum.hedefler.map((h) => {
     const { cluster, namespace, ok, hata, ...govde } = h;
-    return { cluster, namespace, sonuc_json: JSON.stringify(govde).slice(0, 900000), ok: ok ? 1 : 0, hata: hata ? String(hata).slice(0, 2000) : null };
+    return { cluster, namespace, sonuc_json: require('./filo.cjs').govdeJson({ notlar: [], podlar: [], ...govde }), ok: ok ? 1 : 0, hata: hata ? String(hata).slice(0, 2000) : null };
   });
   const beklenen = hedefAnahtarlari(hedefler);
   return db.transaction(async (tx) => {

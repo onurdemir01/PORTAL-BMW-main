@@ -494,7 +494,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/app_hub/app_hub_ocp.yml (Application Hub — OpenShift Canlı Okuma) sonucu, Portal yazar",
-        "dosya": "server/app-hub/canli.cjs:210",
+        "dosya": "server/app-hub/canli.cjs:292",
         "nasil": "per-run INSERT (iş başına bir kez)",
         "ne_zaman": "Kullanıcı App Hub'da canlı okuma istediğinde"
       }
@@ -502,10 +502,64 @@
     "okuyanlar": [
       {
         "ad": "Application Hub uygulama detayı",
-        "dosya": "server/app-hub/canli.cjs:180"
+        "dosya": "server/app-hub/canli.cjs:251"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
+    "notlar": "",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
+    "tablo": "app_hub_ocp_filo",
+    "amac": "Application Hub'da her OpenShift uygulamasının saatlik taramadan gelen son durumu: tür, replika, pod sayısı, imaj, kaynak, maskeli JVM ayarları; (cluster, namespace, uygulama) başına tek satır.",
+    "alan": "App Hub",
+    "yazanlar": [
+      {
+        "tur": "playbook",
+        "ad": "bmw_portal/app_hub/app_hub_fleet.yml (Application Hub — OpenShift Saatlik Tarama) /sw dosyası, Portal yazar",
+        "dosya": "server/app-hub/filo.cjs:314",
+        "nasil": "cluster başına fark (yeni INSERT, değişen UPDATE, görülmeyen DELETE; okunamayan kapsam silinmez)",
+        "ne_zaman": "Saatte bir (APP_HUB_FILO_ARALIK_DK)"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Application Hub uygulama detayı",
+        "dosya": "server/app-hub/filo.cjs:478"
+      }
+    ],
+    "saklama": "7 gündür tazelenmeyen satır silinir (server/app-hub/filo-poller.cjs:400)",
+    "notlar": "Boyut sabit: her koşu yalnız farkı yazar, satır eklemez.",
+    "kullanilmiyor": false,
+    "guven": "KESIN"
+  },
+  {
+    "db": "Portal",
+    "tablo": "app_hub_ocp_filo_kosu",
+    "amac": "Application Hub saatlik OpenShift taramasının koşuları: zaman dilimi, AWX işi, durum ve cluster başına sonuç özeti.",
+    "alan": "App Hub",
+    "yazanlar": [
+      {
+        "tur": "portal",
+        "ad": "Application Hub saatlik tarama yürütücüsü",
+        "dosya": "server/app-hub/filo-poller.cjs:83",
+        "nasil": "dilim başına tek INSERT (UPDLOCK + HOLDLOCK), durum geçişleri koşullu UPDATE",
+        "ne_zaman": "Saatte bir"
+      }
+    ],
+    "okuyanlar": [
+      {
+        "ad": "Application Hub uygulama detayı (son koşu durumu)",
+        "dosya": "server/app-hub/filo.cjs:510"
+      },
+      {
+        "ad": "Saatlik tarama yürütücüsü",
+        "dosya": "server/app-hub/filo-poller.cjs:373"
+      }
+    ],
+    "saklama": "14 gün (server/app-hub/filo-poller.cjs:397)",
     "notlar": "",
     "kullanilmiyor": false,
     "guven": "KESIN"

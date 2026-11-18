@@ -119,6 +119,8 @@ const BEKLENEN_PLAYBOOK = Object.freeze({
   nginx_loadtest_run: 'nginx_loadtest.yml',
   // Server Hub > Uygulama Envanteri: salt okunur tarama; yanlis sablon baska isi hedefler listesiyle kosturmasin.
   server_hub_ear_envanter: 'ear_envanter.yml',
+  // Application Hub saatlik tarama: her saat kendiliginden baslar; yanlis sablon baska isi kosturmasin.
+  app_hub_ocp_filo: 'app_hub_fleet.yml',
 });
 /** Playbook Kayitlari anahtarina gore sablonun playbook'unu dogrular. */
 function assertRegistryPlaybook(serverId, templateId, key) {

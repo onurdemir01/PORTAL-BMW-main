@@ -224,6 +224,30 @@ export interface OcpCanliOkuma {
   nodelar?: { ad: string; pod: number }[];
   hpa?: { ad: string; hedef: string | null; min: number | null; max: number | null; guncel: number | null }[];
   notlar?: string[];
+  hatalar?: string[];
+  /** 'saatlik': Portal'in saatlik filo taramasi; 'canli': elle "Canlı oku". Hangisi daha yeniyse o gelir. */
+  kaynak?: 'saatlik' | 'canli';
+  /** Saatlik taramada icerigin son degistigi an (alinma = son tarama). */
+  degisti?: string | null;
+  /** Bu cluster son saatlik taramada okunamadiysa sebep (gosterilen veri daha eski taramadan). */
+  sonTaramaHatasi?: string | null;
+  /** Bu yer icin daha yeni ama basarisiz bir okuma var (gosterilen veri daha eski, gecerli okumadan). */
+  sonOkumaHatasi?: string | null;
+  /** Pod sayisi tum pod'lardan (liste en cok 200 gosterir); okunamadi ise sayi yok (0 degil). */
+  podOzet?: { toplam: number | null; hazir: number | null; listelenen: number; okunamadi: boolean; bitmis?: number };
+}
+
+export interface OcpFiloDurumu {
+  sonKosu: {
+    kosuId: number;
+    durum: 'BITTI' | 'HATA';
+    baslangic: string | null;
+    bitis: string | null;
+    clusterSayisi: number;
+    okSayisi: number;
+    hata: string | null;
+  } | null;
+  aralikDk: number;
 }
 
 export interface OcpYer {
@@ -254,6 +278,7 @@ export interface OcpDetay {
   ozet: { clusterSayisi: number; namespaceSayisi: number; ortamlar: string[]; routeSayisi: number };
   yerler: OcpYer[];
   canli: OcpCanliOkuma[] | { hata: string };
+  filo?: OcpFiloDurumu;
   kaynaklar: Record<string, KaynakDurumu>;
 }
 

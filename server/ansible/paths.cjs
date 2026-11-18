@@ -69,6 +69,8 @@ const PLAYBOOKS = {
   earEnvanter: 'ear_envanter/ear_envanter.yml',
   // Application Hub (2026-11-08): OpenShift canli okuma (bastion, salt okunur). Iki seviye derinlik.
   appHubOcp: 'app_hub/app_hub_ocp.yml',
+  // Application Hub (2026-11-18): saatlik filo taramasi (bastion, salt okunur; sonuc /sw'ye). Iki seviye derinlik.
+  appHubFleet: 'app_hub/app_hub_fleet.yml',
 };
 
 /** ScaleX AWX paketi — klasor olarak kopyalanir (tek dosya degil). */

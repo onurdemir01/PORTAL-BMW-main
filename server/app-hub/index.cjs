@@ -46,7 +46,15 @@ async function detayOku(tip, ad) {
   if (tip === 'was') return V.wasDetay(ad);
   const d = await V.ocpDetay(ad);
   if (d) {
-    d.canli = await C.sonOkumalar(ad).catch((e) => ({ hata: String((e && e.message) || e) }));
+    // Saatlik filo taramasi (filo.cjs) + elle canli okuma: (cluster, namespace) basina DAHA YENI olan gosterilir.
+    const F = require('./filo.cjs');
+    const [canli, saatlik, sonKosu] = await Promise.all([
+      C.sonOkumalar(ad).catch((e) => ({ hata: String((e && e.message) || e) })),
+      F.filoOkumalari(ad).catch(() => []),
+      F.sonKosuDurumu().catch(() => null),
+    ]);
+    d.canli = Array.isArray(canli) ? F.birlestir(canli, saatlik) : saatlik.length ? saatlik : canli;
+    d.filo = { sonKosu, aralikDk: require('./filo-poller.cjs').ayar().aralikDk };
   }
   return d;
 }
