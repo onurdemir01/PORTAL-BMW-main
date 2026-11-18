@@ -301,12 +301,17 @@ async function main(argv) {
   console.log(`\n[sonar-kapi] ${e.sonar.kapiAdi} (${proje}, kapsam raporu ${lcov}):`);
   for (const s of satirlar) console.log(s);
   if (!tamam) {
+    // Notu dusuren bulgular: bug / zafiyet ve MQR guvenilirlik / guvenlik etkisi olan kokular
+    // (yalniz bug listelemek MQR notu kirmiziyken ekrani bos birakiyordu).
     const d = await api('/api/issues/search', {
       componentKeys: proje,
       issueStatuses: 'OPEN,CONFIRMED',
-      types: 'BUG,VULNERABILITY',
-      ps: '30',
+      impactSoftwareQualities: 'RELIABILITY,SECURITY',
+      ps: '50',
     });
+    console.error(
+      `[sonar-kapi] guvenilirlik / guvenlik bulgusu: ${d.total ?? (d.issues || []).length}`,
+    );
     for (const i of d.issues || [])
       console.error(
         `  - ${i.rule} ${String(i.component).split(':').slice(1).join(':')}:${i.line ?? ''} ${i.message}`,

@@ -105,29 +105,44 @@ test('TP4 eslemede olmayan anahtar KONTROL EDILMEZ; retirement/server hub anahta
   }
 });
 
+// Her `launchJobOnServer(` cagrisindan ONCE, araya baska bir baslatma girmeden, yorum olmayan bir
+// koruma cagrisi olmali (YAPISAL). Eskiden 400 karakterlik yakinlik penceresiydi: koruma ile baslatma
+// arasina aciklama ve try blogu girince korumali kod "korumasiz" gorunuyordu (2026-11-17, main CI
+// kirmizi). -> her baslatma icin "korundu mu" (true/false).
+function baslatmaKorumalari(metin, koruma) {
+  const sonuc = [];
+  let koruma0 = false;
+  for (const satir of metin.split('\n')) {
+    if (/^\s*\/\//.test(satir)) continue;
+    if (koruma.test(satir)) koruma0 = true;
+    if (/launchJobOnServer\(/.test(satir)) {
+      sonuc.push(koruma0);
+      koruma0 = false; // bir koruma yalniz ARDINDAKI ilk baslatmayi korur
+    }
+  }
+  return sonuc;
+}
+
 test('TP5 HER baslatma noktasi korumayi isi baslatmadan ONCE cagirir', () => {
   const kaynak = (p) => fs.readFileSync(path.join(__dirname, '..', '..', ...p), 'utf8');
-  const noktalar = [
-    ...[
-      ...kaynak(['retirement', 'index.cjs']).matchAll(
-        /assertRegistryPlaybook\([\s\S]{0,400}?launchJobOnServer\(/g,
-      ),
-    ],
-    // Server Hub (2026-11-14): sablon TEK okunur (launchHazirla -> sablonOku), iki kontrol sablonKontrol'de
-    // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla. Belirsiz launch
-    // siniflandirmasi launch'i try/catch ile sardigi icin kaynak araligi retirement'tan daha genistir.
-    ...[
-      ...kaynak(['server-hub', 'index.cjs']).matchAll(
-        /sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);[\s\S]{0,800}?launchJobOnServer\(/g,
-      ),
-    ],
-  ];
-  assert.equal(
-    noktalar.length,
-    4,
-    `korunan baslatma noktasi sayisi ${noktalar.length} (beklenen 4: retirement launch, web kapat, web geri ac, server hub launch)`,
-  );
   const ri = kaynak(['retirement', 'index.cjs']);
+  const retirement = baslatmaKorumalari(ri, /assertRegistryPlaybook\(/);
+  // Server Hub (2026-11-14): sablon TEK okunur (launchHazirla -> sablonOku), iki kontrol sablonKontrol'de
+  // (playbook + Prompt on launch) - baslatmadan ONCE ve kayit anahtariyla.
+  const serverHub = baslatmaKorumalari(
+    kaynak(['server-hub', 'index.cjs']),
+    /sablonKontrol\(tpl, \{ templateId, key: keyName, extraVars \}\);/,
+  );
+  assert.deepEqual(
+    retirement,
+    [true, true, true],
+    'retirement: korumasiz baslatma ya da yeni bir baslatma noktasi (beklenen 3: launch, web kapat, web geri ac)',
+  );
+  assert.deepEqual(
+    serverHub,
+    [true],
+    'server hub: baslatma korumasiz ya da yeni bir baslatma noktasi',
+  );
   assert.equal(
     (ri.match(/launchJobOnServer\(/g) || []).length,
     3,

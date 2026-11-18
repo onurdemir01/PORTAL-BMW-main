@@ -261,3 +261,20 @@ describe('topluSiniflama', () => {
     expect(AUTOSTART_BASARISIZ.has('OK')).toBe(false);
   });
 });
+
+// TS6 (2026-11-18, Sonar S8786): `/<yol> okunamadi - hicbir sey degismedi` dogrusal; anlam ayni.
+describe('TS6 yol okunamadi deseni dogrusal ve ayni kumeyi yakalar', () => {
+  it('yol + okunamadi -> ortam_yetki; yolsuz / yalniz egik cizgi -> yakalanmaz', () => {
+    expect(siniflandir('/opt/jboss/standalone.xml okunamadi - hicbir sey degismedi')).toBe('ortam_yetki');
+    expect(siniflandir('x /a/b okunamadi - hicbir sey degismedi')).toBe('ortam_yetki');
+    expect(siniflandir('/ okunamadi - hicbir sey degismedi')).not.toBe('ortam_yetki');
+    expect(siniflandir('dosya okunamadi - hicbir sey degismedi')).not.toBe('ortam_yetki');
+  });
+  it('uzun bosluksuz yol metninde hizli (eskisi 50 bin karakterde ~1 sn)', () => {
+    const kotu = `/${'a/'.repeat(25000)}`;
+    const bas = Date.now();
+    siniflandir(kotu);
+    expect(Date.now() - bas).toBeLessThan(200);
+  });
+});
+
