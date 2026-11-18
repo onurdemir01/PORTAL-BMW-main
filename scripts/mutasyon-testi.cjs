@@ -24,7 +24,7 @@ const TARGETS = [
     file: 'scripts/teslim.cjs',
     runner: 'node',
     tests: ['server/__tests__/teslim.test.cjs'],
-    testNamePattern: '^TS[1-6] ',
+    testNamePattern: '^TS([1-6]|4b) ',
     specs: [
       {
         id: 'tes-eksik',
@@ -46,9 +46,9 @@ const TARGETS = [
       },
       {
         id: 'tes-haric',
-        find: 'if (HARIC.some((h) => yol.startsWith(h))) continue;',
+        find: 'if (KURUMA_GITMEYEN.some((h) => yol.startsWith(h))) continue;',
         replace: '',
-        desc: 'include kalite/ (coverage report, signature itself) in the signature',
+        desc: 'include kalite/ and non-delivered dirs (.github, sunum, ...) in the signature',
       },
       {
         id: 'tes-birebir',

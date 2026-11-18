@@ -15,8 +15,13 @@
 // NE KARSILASTIRILIR: `git ls-files -s` blob sha'lari (icerik). Calisma agaci okunmaz: CRLF donusumu
 // yanlis alarm uretmez, dosya okunmadigi icin hizlidir. Mod bitleri karsilastirilmaz: Windows'tan
 // yapilan commit'ler calistirma bitini kaybeder.
-// kalite/ haric: kapsam raporu kendi parmak iziyle denetlenir (scripts/kapsam-yayinla.cjs); imza
-// kendini iceremez. Bu yuzden kapsam ve imza tazeleme commit'leri imzayi bayatlatmaz.
+// KURUMA GITMEYENLER (iki yonde de yok sayilir: kurumsal depoda olsalar da olmasalar da denetim gecer):
+//   kalite/                       kapsam raporu kendi parmak iziyle denetlenir (scripts/kapsam-yayinla.cjs);
+//                                 imza kendini iceremez. Kapsam / imza tazeleme commit'leri imzayi bayatlatmaz.
+//   .github/ .claude/ .agent/     GitHub CI ve ajan talimatlari: kurumsal derlemede kullanilmaz.
+//   sunum/                        tanitim sunumu (ikili dosyalar): derlemede ve pakette yok.
+// Kurumsal is #50 (2026-11-18) bu dort dizin kurumsal dalda olmadigi icin dustu; kurumsal depoya
+// gitmemeleri karar (kullanici). Kod, betik, yapilandirma ve package.json bu listeye GIREMEZ (TS1).
 //
 // SINIR: package.json'in kendisi eskiyse `npm run kurumsal:derle` hic calismaz (is #48 tam olarak
 // buydu); onu aktarim yontemi onler (docs/KALITE-KAPILARI.md "Kurumsal aktarim").
@@ -28,10 +33,10 @@ const { execFileSync } = require('node:child_process');
 
 const KOK = path.join(__dirname, '..');
 const IMZA = 'kalite/teslim.json';
-const HARIC = ['kalite/'];
+const KURUMA_GITMEYEN = ['kalite/', '.github/', '.claude/', '.agent/', 'sunum/'];
 const GOSTER = 20;
 const ACIKLAMA =
-  'Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kalite/ haric). ' +
+  'Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). ' +
   "Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. " +
   'Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula';
 
@@ -43,7 +48,7 @@ const git = (args, kok) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-/** git indeksi -> { yol: blobSha } (kalite/ haric; git'in sirasiyla). */
+/** git indeksi -> { yol: blobSha } (kuruma gitmeyenler haric; git'in sirasiyla). */
 function imza(kok = KOK) {
   const dosyalar = {};
   for (const kayit of git(['ls-files', '-s', '-z'], kok).split('\0')) {
@@ -51,7 +56,7 @@ function imza(kok = KOK) {
     // "<mod> <sha> <asama>\t<yol>"
     const sekme = kayit.indexOf('\t');
     const yol = kayit.slice(sekme + 1);
-    if (HARIC.some((h) => yol.startsWith(h))) continue;
+    if (KURUMA_GITMEYEN.some((h) => yol.startsWith(h))) continue;
     dosyalar[yol] = kayit.slice(0, sekme).split(' ')[1];
   }
   return dosyalar;
@@ -166,4 +171,4 @@ function main(argv, kok = KOK, { yaz = console.log, hata = console.error } = {})
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
-module.exports = { IMZA, HARIC, imza, karsilastir, imzaYaz, imzaDogrula, main };
+module.exports = { IMZA, KURUMA_GITMEYEN, imza, karsilastir, imzaYaz, imzaDogrula, main };
