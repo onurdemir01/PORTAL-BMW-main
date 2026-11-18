@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "f321eb6d1079aa92623cd3bbac0b23358bb60437",
+  "kaynak": "2bba0566e19e6456ffd6f9546694c2d11f1c7cfd",
   "dosyaSayisi": 1676,
   "dosyalar": {
     ".dockerignore": "d4179f686ae64896773bc12cab7898c719d851d6",
@@ -812,7 +812,7 @@
     "server/retirement/__tests__/vhost-trafik.test.cjs": "13b322a81201b3fe566a4cbe865db483de5675ab",
     "server/retirement/__tests__/web-kesif.test.cjs": "da9ed28b7a4dff25ff4fd3344163760ad69e6d99",
     "server/retirement/ayar.cjs": "3501d6fb0d15fb591c6780e3169eb5ca1d2e32ff",
-    "server/retirement/discover.cjs": "ada4cfd011f1b713fd1141f6d78ad517174a580b",
+    "server/retirement/discover.cjs": "3b4a2707f76edbeac3d276664ad82005233f9b62",
     "server/retirement/dns-ip.cjs": "78d1775e6a1f66a5d07016e269f7ed6ec70de9ea",
     "server/retirement/index.cjs": "6fdc4e9b783686da8086e189a2e681ca08a539c7",
     "server/retirement/is-ciktisi.cjs": "3199220d3d58e5fadcfdcf51e1b5390fff9f7c7d",
