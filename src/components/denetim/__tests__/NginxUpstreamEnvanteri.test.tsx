@@ -9,18 +9,27 @@
 //   UU5 veri yoksa "henüz yok" notu
 //   UU6 taranamayan sunucu "bağlı değil" sayılmaz (ayrı süzgeç); location dışı kullanım; değişken hedef;
 //       kesik arka uç listesi; sahibi bilinmeyen location'a ad uydurulmaz
+//   UU7 CSV: sunucu · server_name · upstream · upstream_endpoint; ekrandaki süzgeç uygulanır; eksik liste notu
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import { NginxUpstreamEnvanteri } from '@/components/denetim/NginxUpstreamEnvanteri';
 import type { NginxUpsOzetResult, NginxUpsDetayResult } from '@/api/denetimApi';
 
-const api = vi.hoisted(() => ({ ozet: vi.fn(), sunucu: vi.fn(), ara: vi.fn() }));
+const api = vi.hoisted(() => ({
+  ozet: vi.fn(),
+  sunucu: vi.fn(),
+  ara: vi.fn(),
+  liste: vi.fn(),
+  csv: vi.fn(),
+}));
+vi.mock('@/utils/csv', () => ({ downloadCsv: api.csv }));
 vi.mock('@/api/denetimApi', () => ({
   denetimApi: {
     nginxUpstreamOzet: api.ozet,
     nginxUpstreamSunucu: api.sunucu,
     nginxUpstreamAra: api.ara,
+    nginxUpstreamListe: api.liste,
   },
 }));
 vi.mock('@/contexts/AuthContext', () => ({
@@ -304,5 +313,47 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(within(d).getByText('(server bilinmiyor)')).toBeTruthy();
     expect(within(d).getByText('kullanılıyor (location dışı)')).toBeTruthy();
     expect(within(d).getByText('$be').closest('tr')!.textContent).toMatch(/değişken hedef/);
+  });
+
+  it('UU7 bağlantı CSV', async () => {
+    api.liste.mockResolvedValue({
+      ok: true,
+      hazir: true,
+      serversOlculdu: true,
+      eksikUpstream: 2,
+      satirlar: [
+        {
+          host: 'GBNGXP01',
+          serverName: 'glomo.example',
+          upstream: 'glomo-prod',
+          endpoint: 'glomo.apps.example:443',
+        },
+        {
+          host: 'GBNGXP01',
+          serverName: 'glomo.example',
+          upstream: 'glomo-prod',
+          endpoint: 'glomo2.apps.example:443',
+        },
+        { host: 'GBNGXT01', serverName: 't.example', upstream: 'x', endpoint: '10.0.0.1:80' },
+      ],
+    });
+    render(<NginxUpstreamEnvanteri />);
+    await screen.findByTestId('ups-ozet');
+    fireEvent.click(screen.getByRole('button', { name: /Upstream’e bağlı/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
+    await waitFor(() => expect(api.csv).toHaveBeenCalled());
+    const [ad, baslik, satir] = api.csv.mock.calls[0];
+    expect(ad).toBe('nginx_upstream_baglantilari');
+    expect(baslik).toEqual(['sunucu', 'server_name', 'upstream', 'upstream_endpoint']);
+    expect(satir).toEqual([
+      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443'],
+      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443'],
+    ]);
+    expect(api.liste).toHaveBeenCalledWith(false);
+    const not = await screen.findByTestId('ups-indirme-notu');
+    expect(not.textContent).toMatch(/2 satır indirildi \(1 sunucu\)/);
+    expect(not.textContent).toMatch(
+      /2 upstream’in arka uç listesi tam değil \(kayıt sınırında kesik\)/,
+    );
   });
 });

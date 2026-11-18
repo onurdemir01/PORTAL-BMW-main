@@ -8,6 +8,8 @@
 //       location'a ad uydurulmaz; kullanilan once
 //   UE3 servers olculmedi (eski tarayici): liste YOK, eldeki SON server ayrica; kesik liste (+N)
 //   UE4 ters arama: adres / upstream adi; kesik ya da olculmeyen listede SON server da aranir
+//   UE5 disa aktarim: sunucu / server_name / upstream / endpoint; arka uc basina satir, tekillesir;
+//       eksik liste sayilir (uydurma satir yok); sahibi bilinmeyen server_name "(bilinmiyor)"
 'use strict';
 
 const { test } = require('node:test');
@@ -255,4 +257,65 @@ test('UE4 ters arama', () => {
     [['GBNGXT01', [], false]],
     'servers olculmediyse yalniz son server satirina bakilir',
   );
+});
+
+test('UE5 disa aktarim satirlari', () => {
+  const r = ue.baglantiSatirlari(
+    [
+      {
+        host: 'gbngxp01',
+        server_name: 'b.example',
+        upstream: 'app',
+        server: 'y:443',
+        servers: 'x:443 resolve ; y:443 backup',
+      },
+      {
+        host: 'GBNGXP01',
+        server_name: 'a.example',
+        upstream: 'app',
+        server: 'y:443',
+        servers: 'x:443 resolve ; y:443 backup',
+      },
+      // ayni baglanti iki location'dan: tekillesir
+      {
+        host: 'GBNGXP01',
+        server_name: 'a.example',
+        upstream: 'app',
+        server: 'y:443',
+        servers: 'x:443 resolve ; y:443 backup',
+      },
+      { host: 'GBNGXP01', server_name: null, upstream: 'snip', server: 'z:1', servers: 'z:1' },
+      // kesik liste: bilinen + son server, eksik sayilir
+      {
+        host: 'GBNGXP02',
+        server_name: 'c.example',
+        upstream: 'havuz',
+        server: 'k:9',
+        servers: 'p:1 ; +3',
+      },
+    ],
+    true,
+  );
+  assert.deepEqual(
+    r.satirlar.map((x) => [x.host, x.serverName, x.upstream, x.endpoint]),
+    [
+      ['GBNGXP01', '(bilinmiyor)', 'snip', 'z:1'],
+      ['GBNGXP01', 'a.example', 'app', 'x:443'],
+      ['GBNGXP01', 'a.example', 'app', 'y:443'],
+      ['GBNGXP01', 'b.example', 'app', 'x:443'],
+      ['GBNGXP01', 'b.example', 'app', 'y:443'],
+      ['GBNGXP02', 'c.example', 'havuz', 'k:9'],
+      ['GBNGXP02', 'c.example', 'havuz', 'p:1'],
+    ],
+  );
+  assert.equal(r.eksikUpstream, 1);
+  const eski = ue.baglantiSatirlari(
+    [{ host: 'H', server_name: 's', upstream: 'u', server: 'q:1 resolve', servers: null }],
+    false,
+  );
+  assert.deepEqual(
+    eski.satirlar.map((x) => x.endpoint),
+    ['q:1'],
+  );
+  assert.equal(eski.eksikUpstream, 1);
 });

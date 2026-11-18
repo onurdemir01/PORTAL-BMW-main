@@ -438,6 +438,8 @@ export function NginxUpstreamEnvanteri() {
   const [acik, setAcik] = useState<Set<string>>(() => new Set());
   const [yenile, setYenile] = useState(0);
   const [yukleniyor, setYukleniyor] = useState(true);
+  const [indiriliyor, setIndiriliyor] = useState(false);
+  const [indirmeNotu, setIndirmeNotu] = useState<{ metin: string; hata: boolean } | null>(null);
 
   useEffect(() => {
     let iptal = false;
@@ -490,6 +492,45 @@ export function NginxUpstreamEnvanteri() {
     );
 
   const t = veri.totals;
+  // DISA AKTARIM (kullanici, 2026-11-19): "sunucu - server name - upstream - upstream endpoint".
+  // Satirlar tum filo icin sunucudan gelir; ekrandaki suzgecler (ortam / baglanti / arama) uygulanir.
+  const baglantiIndir = async () => {
+    setIndiriliyor(true);
+    setIndirmeNotu(null);
+    try {
+      const r = await denetimApi.nginxUpstreamListe(yenile > 0);
+      if (!r.ok || !r.hazir) {
+        setIndirmeNotu({
+          metin: `İndirilemedi: ${r.message || NEDEN_METNI[r.neden || ''] || 'veri yok'}`,
+          hata: true,
+        });
+        return;
+      }
+      const gorunen = new Set(satirlar.map((h) => h.host));
+      const xs = (r.satirlar || []).filter((x) => gorunen.has(x.host));
+      csvDownload(
+        'nginx_upstream_baglantilari',
+        ['sunucu', 'server_name', 'upstream', 'upstream_endpoint'],
+        xs.map((x) => [x.host, x.serverName, x.upstream, x.endpoint]),
+      );
+      const eksik = r.eksikUpstream || 0;
+      setIndirmeNotu({
+        metin:
+          `${nf(xs.length)} satır indirildi (${nf(gorunen.size)} sunucu).` +
+          (eksik
+            ? ` ${nf(eksik)} upstream’in arka uç listesi tam değil (${r.serversOlculdu === false ? 'tarama tüm server satırlarını içermiyor' : 'kayıt sınırında kesik'}); onlar için yalnız bilinen adresler yazıldı.`
+            : ''),
+        hata: false,
+      });
+    } catch (e: unknown) {
+      setIndirmeNotu({
+        metin: `İndirilemedi: ${e instanceof Error ? e.message : String(e)}`,
+        hata: true,
+      });
+    } finally {
+      setIndiriliyor(false);
+    }
+  };
   const ac = (h: string) =>
     setAcik((x) => {
       const y = new Set(x);
@@ -602,9 +643,20 @@ export function NginxUpstreamEnvanteri() {
             <span className="ml-auto inline-flex items-center gap-2">
               <button
                 type="button"
+                onClick={baglantiIndir}
+                disabled={indiriliyor}
+                className={btn}
+                style={{ borderColor: 'var(--border)' }}
+                title="Her satır: sunucu · server_name · upstream · upstream endpoint (ekrandaki süzgeçlerle)"
+              >
+                <ArrowDownTrayIcon className="w-3.5 h-3.5" />{' '}
+                {indiriliyor ? 'Hazırlanıyor…' : 'CSV'}
+              </button>
+              <button
+                type="button"
                 onClick={() =>
                   csvDownload(
-                    'nginx_upstream_envanteri',
+                    'nginx_upstream_ozet',
                     [
                       'sunucu',
                       'ortam',
@@ -635,8 +687,9 @@ export function NginxUpstreamEnvanteri() {
                 }
                 className={btn}
                 style={{ borderColor: 'var(--border)' }}
+                title="Sunucu başına sayılar"
               >
-                <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
+                <ArrowDownTrayIcon className="w-3.5 h-3.5" /> Özet CSV
               </button>
               <button
                 type="button"
@@ -655,6 +708,15 @@ export function NginxUpstreamEnvanteri() {
           {hata && (
             <p className="text-[12px]" style={{ color: 'var(--status-danger)' }}>
               Yenilenemedi: {hata}
+            </p>
+          )}
+          {indirmeNotu && (
+            <p
+              className="text-[12px]"
+              style={{ color: indirmeNotu.hata ? 'var(--status-danger)' : 'var(--text-secondary)' }}
+              data-testid="ups-indirme-notu"
+            >
+              {indirmeNotu.metin}
             </p>
           )}
         </header>

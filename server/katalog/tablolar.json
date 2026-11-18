@@ -5040,7 +5040,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2418"
+        "dosya": "server/audit/denetim.cjs:2440"
       },
       {
         "ad": "Denetim > Nginx Audit (GET /api/denetim/nginx-audit)",
@@ -5093,7 +5093,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2378"
+        "dosya": "server/audit/denetim.cjs:2379"
       },
       {
         "ad": "Denetim > Nginx Audit",
@@ -5133,7 +5133,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2381"
+        "dosya": "server/audit/denetim.cjs:2382"
       },
       {
         "ad": "Denetim > Nginx Audit",
@@ -5234,7 +5234,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2399"
+        "dosya": "server/audit/denetim.cjs:2421"
       },
       {
         "ad": "Denetim > Nginx Audit",

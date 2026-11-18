@@ -2339,6 +2339,7 @@ function initDenetim(app) {
   //   (parametresiz) sunucu basina ozet (GROUP BY; SPA sunucusunda binlerce upstream olabilir)
   //   ?host=X        o sunucunun upstream'leri, TUM server satirlari, kullanan server_name/location
   //   ?ara=q (>= 2)  ters arama: arka uc adresi ya da upstream adi -> hangi sunucu, hangi upstream
+  //   ?liste=1       disa aktarim: sunucu / server_name / upstream / arka uc (location baglantisi basina)
   // Upstreams.servers kolonu yoksa (yeni tarama gelmedi) ekran "tam liste yok" der; eldeki tek
   // `server` (SON satir) tam liste SANILMAZ.
   router.get('/nginx-upstreams', async (req, res) => {
@@ -2387,6 +2388,27 @@ function initDenetim(app) {
           host,
           serversOlculdu,
           ...ue.upstreamDetayi(u.recordset || [], l.recordset || [], s.recordset || [], serversOlculdu),
+        });
+      }
+
+      if (String(req.query.liste || '') === '1') {
+        const r = await query(
+          `SELECT DISTINCT l.host, s.server_name, l.proxy_target AS upstream, u.server,
+                  ${serversOlculdu ? 'u.servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers'}
+             FROM dbo.Nginx_Audit_Locations l
+             JOIN dbo.Nginx_Audit_Upstreams u
+               ON u.scan_date = l.scan_date AND u.host = l.host AND u.name = l.proxy_target
+             LEFT JOIN dbo.Nginx_Audit_Servers s
+               ON s.scan_date = l.scan_date AND s.host = l.host AND s.seq = l.srv_seq
+            WHERE l.scan_date = @scanDate AND l.target_kind = 'upstream'`,
+          params,
+        );
+        return res.json({
+          ok: true,
+          hazir: true,
+          scanDate,
+          serversOlculdu,
+          ...ue.baglantiSatirlari(es.ayir(r.recordset || [], (x) => x.host), serversOlculdu),
         });
       }
 

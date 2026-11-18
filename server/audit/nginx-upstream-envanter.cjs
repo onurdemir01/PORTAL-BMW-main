@@ -232,7 +232,48 @@ function aramaSonucu(rows, q, serversOlculdu) {
   return out;
 }
 
+/**
+ * Disa aktarim (kullanici, 2026-11-19: "sunucu - server name - upstream - upstream endpoint"):
+ * location -> upstream baglantisi basina, upstream'in HER arka ucu icin bir satir.
+ * Girdi: {host, server_name, upstream, server, servers} (Locations x Servers x Upstreams).
+ * Arka uc listesi olculmediyse ya da kesikse (+N) eldeki adresler yazilir ve o upstream
+ * `eksik` sayilir (ekran indirmeden once soyler; CSV'ye uydurma satir eklenmez).
+ * Sahibi bilinmeyen location (srv_seq 0) server_name bos -> "(bilinmiyor)".
+ */
+function baglantiSatirlari(rows, serversOlculdu) {
+  const gor = new Set();
+  const eksik = new Set();
+  const out = [];
+  for (const r of rows || []) {
+    const host = H(r.host);
+    const upstream = String(r.upstream || '');
+    if (!host || !upstream) continue;
+    const serverName = r.server_name ? String(r.server_name) : '(bilinmiyor)';
+    const sl = serversOlculdu ? serverListesi(r.servers) : null;
+    let ucler = sl ? sl.liste.map(adresOf) : [];
+    if (!sl || sl.kesik) {
+      eksik.add(`${host}\u0000${upstream}`);
+      if (r.server && !ucler.includes(adresOf(r.server))) ucler = [...ucler, adresOf(r.server)];
+    }
+    for (const endpoint of ucler.length ? ucler : ['']) {
+      const k = `${host}\u0000${serverName}\u0000${upstream}\u0000${endpoint}`;
+      if (gor.has(k)) continue;
+      gor.add(k);
+      out.push({ host, serverName, upstream, endpoint });
+    }
+  }
+  out.sort(
+    (a, b) =>
+      a.host.localeCompare(b.host) ||
+      a.serverName.localeCompare(b.serverName) ||
+      a.upstream.localeCompare(b.upstream) ||
+      a.endpoint.localeCompare(b.endpoint),
+  );
+  return { satirlar: out, eksikUpstream: eksik.size };
+}
+
 module.exports = {
+  baglantiSatirlari,
   DOGRUDAN_TURLER,
   serverListesi,
   adresOf,

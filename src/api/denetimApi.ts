@@ -1532,6 +1532,18 @@ export interface NginxUpsAramaResult {
   }[];
 }
 
+export interface NginxUpsListeResult {
+  ok: boolean;
+  message?: string;
+  hazir?: boolean;
+  neden?: 'tablo' | 'tarama';
+  scanDate?: string;
+  serversOlculdu?: boolean;
+  satirlar?: { host: string; serverName: string; upstream: string; endpoint: string }[];
+  /** arka uç listesi tam olmayan (ölçülmedi / kayıt sınırında kesik) upstream sayısı */
+  eksikUpstream?: number;
+}
+
 export interface NginxInvEtiket {
   /** degistir: otomatik listenin yerine gecer · ekle: otomatik listeye eklenir */
   mod: 'degistir' | 'ekle';
@@ -1672,6 +1684,10 @@ export const denetimApi = {
     fetch(
       `${BASE}/nginx-upstreams?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`,
     ).then(safeJson),
+
+  /** Dışa aktarım: sunucu / server_name / upstream / arka uç satırları (tüm filo). */
+  nginxUpstreamListe: (fresh = false): Promise<NginxUpsListeResult> =>
+    fetch(`${BASE}/nginx-upstreams?liste=1${fresh ? '&fresh=1' : ''}`).then(safeJson),
 
   /** Ters arama: arka uç adresi ya da upstream adı (en az 2 karakter). */
   nginxUpstreamAra: (q: string, fresh = false): Promise<NginxUpsAramaResult> =>
