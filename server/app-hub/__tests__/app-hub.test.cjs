@@ -568,6 +568,7 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   });
   let historyRows = [history()];
   let kayitHatasi = false;
+  let eksikYazim = false;
   const insertler = [];
   const kayitlar = new Map();
   portalDb.yanit = async (t, p) => {
@@ -593,6 +594,12 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
           if (/INSERT INTO app_hub_ocp_canli/.test(t)) {
             assert.match(t, /FROM OPENJSON\(\$3\)/);
             const yeni = JSON.parse(p[2]);
+            if (eksikYazim) {
+              // Surucu hata atmadan eksik satir yazdi: yazilan sayi beklenenden azsa is geri alinmali.
+              kayitlar.set(key, { app: p[3], targets: yeni.slice(0, 1) });
+              insertler.push(...yeni.slice(0, 1));
+              return { rows: [], rowCount: 1 };
+            }
             if (kayitHatasi) {
               kayitlar.set(key, { app: p[3], targets: yeni.slice(0, 1) });
               insertler.push(...yeni.slice(0, 1));
@@ -648,6 +655,8 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
     artifact({ results: [{ cluster: 'c1', namespace: 'ns-a', ok: true, lines: ['END\t0\t0'] }] }),
     artifact({ results: [...hedefler, { cluster: 'c3', namespace: 'ns-c' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
     artifact({ results: [hedefler[0], hedefler[0]].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+    // Ayni sayida hedef ama biri farkli: yalniz sayiyi degil hedeflerin kendisini de karsilastir.
+    artifact({ results: [hedefler[0], { cluster: 'c2', namespace: 'ns-z' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
   ]) {
     awx.durum = durum(raw);
     const once = insertler.length;
@@ -681,6 +690,12 @@ test('AH14 canli sonuc: controller-local history, template, app ve hedefler exac
   r = await istek('GET', '/ocp/canli/2/901?ad=demo');
   assert.equal(r.status, 200, 'rollback sonrasi retry sonucu tamamlayamadi');
   assert.equal(kayitlar.get('2|901').targets.length, 2, 'retry tum hedefleri atomik yazmadi');
+
+  eksikYazim = true;
+  r = await istek('GET', '/ocp/canli/2/904?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 502, 'eksik yazim basari sayildi');
+  assert.equal(kayitlar.has('2|904'), false, 'eksik yazim geri alinmadi');
+  eksikYazim = false;
 
   const onceParalel = insertler.length;
   const paralel = await Promise.all([istek('GET', '/ocp/canli/2/903?ad=demo'), istek('GET', '/ocp/canli/2/903?ad=demo')]);
