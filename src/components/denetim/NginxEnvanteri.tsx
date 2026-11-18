@@ -60,6 +60,7 @@ import { Note } from './ui';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { NginxEtiketPenceresi } from './NginxEtiketPenceresi';
+import { NginxHttp2 } from './NginxHttp2';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -855,7 +856,7 @@ function ServiceSunuculari({
   );
 }
 
-type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular';
+type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular' | 'http2';
 type SiraAnahtar = 'hostname' | 'ortam' | 'location' | 'nginx' | 'os' | 'cpu' | 'bellek' | 'diskNginx' | 'diskWebLog' | 'konf';
 
 function SiraTh({
@@ -914,6 +915,8 @@ export function NginxEnvanteri() {
   const [sira, setSira] = useState<{ k: SiraAnahtar; yon: 1 | -1 }>({ k: 'hostname', yon: 1 });
   const [etiketHost, setEtiketHost] = useState<NginxInvHost | null>(null);
   const [acikService, setAcikService] = useState<Set<string>>(() => new Set());
+  // HTTP/2 gorunumu ayri uctan okur; Yenile onu da (onbellegi atlayarak) tazelesin.
+  const [yenileSayac, setYenileSayac] = useState(0);
   const serviceAc = (s: string) =>
     setAcikService((m) => {
       const y = new Set(m);
@@ -1107,6 +1110,7 @@ export function NginxEnvanteri() {
     { id: 'service', label: "Service'ler", sayi: t.services },
     { id: 'kaynak', label: 'Kaynaklar' },
     { id: 'sunucular', label: 'Sunucular', sayi: n },
+    { id: 'http2', label: 'HTTP/2' },
   ];
 
   const kpi = (etiket: string, deger: React.ReactNode, ipucu?: string, uyari?: boolean) => (
@@ -1268,7 +1272,14 @@ export function NginxEnvanteri() {
         </div>
         <span className="ml-auto inline-flex items-center gap-2">
           {data.lastUpdate && <GuncellemeRozeti tarih={data.lastUpdate.slice(0, 19).replace('T', ' ')} />}
-          <button onClick={load} className={btnIkincil} style={{ borderColor: 'var(--border)' }}>
+          <button
+            onClick={() => {
+              setYenileSayac((x) => x + 1);
+              void load();
+            }}
+            className={btnIkincil}
+            style={{ borderColor: 'var(--border)' }}
+          >
             <ArrowPathIcon className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
           </button>
         </span>
@@ -1541,6 +1552,17 @@ export function NginxEnvanteri() {
       )}
 
       {/* ── SUNUCULAR ──────────────────────────────────────────────────────────── */}
+      {/* ── HTTP/2 (2026-11-18): nginx denetim taramasından, server bloğu başına etkin durum ── */}
+      {view === 'http2' && (
+        <NginxHttp2
+          yenile={yenileSayac}
+          ortamRozeti={(host) => {
+            const h = hostByName.get(host) ?? data.hosts.find((x) => x.hostname.toUpperCase() === host);
+            return h ? <OrtamRozeti ortam={ortamOf(h)} /> : null;
+          }}
+        />
+      )}
+
       {view === 'sunucular' && (
         <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
           <header className="px-4 py-3 border-b space-y-2.5" style={{ borderColor: 'var(--border-subtle)' }}>
