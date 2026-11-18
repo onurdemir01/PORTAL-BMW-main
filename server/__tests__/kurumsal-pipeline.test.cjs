@@ -119,6 +119,19 @@ test('KJ4 TST ve PRD derlemesi DVL ile birebir ayni (yalniz deploy farkli)', () 
     dvl.includes('commands:') && dvl.includes('artifactsToCopy'),
     'DVL derleme bolumu okunamadi',
   );
+  assert.ok(dvl.startsWith('    checkout: ['), 'DVL derleme bolumu checkout ile baslamiyor');
+  assert.ok(
+    dvl.includes(BEKLENEN_KOMUTLAR[4]) && dvl.endsWith(']'),
+    'DVL derleme bolumu eksik okundu',
+  );
+  // Bekci kor degil: KJ1'in gormedigi bir ayrisma (TST'ye dal eklemek) de farkli bolum uretir.
+  const tst = oku(ORTAMLAR.TST.dosya);
+  const ayrik = tst.replace(
+    "repository: 'GAR_BMW_PORTAL'",
+    "repository: 'GAR_BMW_PORTAL',\n        branch: 'develop'",
+  );
+  assert.notEqual(ayrik, tst, 'ayrisma uygulanamadi');
+  assert.notEqual(derlemeBolumu(ayrik), dvl, 'TST ayrismasi yakalanmadi');
   for (const ortam of ['TST', 'PRD']) {
     assert.equal(
       derlemeBolumu(oku(ORTAMLAR[ortam].dosya)),
