@@ -1,0 +1,60 @@
+# Kurumsal teslim imzasini (kalite/teslim.json) main'e her push'tan sonra yeniler.
+# Kurumsal derleme ilk adimda kodu bu imzayla karsilastirir (scripts/teslim.cjs --dogrula): kurumsal
+# dal main ZIP'inin yarim bir kopyasiysa (kurumsal is #48) is orada ve dosya dosya soylenerek durur.
+#
+# - Yalniz kalite/teslim.json commit edilir; zorla push yok.
+# - Her denemede imza GUNCEL main'den yeniden uretilir (rebase yok): imza agactan turetilir, catisma
+#   cikmaz. Kapsam isinin dosyalari (kalite/kapsam) ayri; imza kalite/'yi kapsamaz.
+# - Commit mesaji [skip ci] tasir; ust uste push'larda yalniz sonuncusu kosar (concurrency).
+name: Teslim imzasi (kurumsal aktarim)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: teslim-imzasi
+  cancel-in-progress: true
+
+jobs:
+  imza:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # main korumasi acikken push icin atlama izinli deploy key (docs/KALITE-KAPILARI.md);
+          # sir yoksa GITHUB_TOKEN kullanilir.
+          ssh-key: ${{ secrets.KAPSAM_DEPLOY_KEY }}
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Imzayi yaz ve commit et
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for deneme in 1 2 3; do
+            git fetch origin main
+            git reset --hard origin/main
+            node scripts/teslim.cjs --yaz
+            git add kalite/teslim.json
+            if git diff --cached --quiet; then
+              echo "Imza degismedi."
+              exit 0
+            fi
+            git commit -m "chore(teslim): kurumsal teslim imzasi tazelendi [skip ci]"
+            if git push origin HEAD:main; then exit 0; fi
+            sleep 15
+          done
+          echo "Imza push edilemedi (main ust uste degisiyor); sonraki push yeniden dener."
+          exit 1

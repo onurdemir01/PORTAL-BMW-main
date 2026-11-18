@@ -102,6 +102,7 @@ const KAPILAR = [
 const CI_EK = [
   { id: 'K0', ad: 'sir taramasi (PR / push araligi)', ci: 'node scripts/sir-tarama.cjs --aralik' },
   { id: 'K13', ad: 'SonarQube kalite kapisi', ci: 'node scripts/sonar-kapi.cjs' },
+  { id: 'K14', ad: 'kurumsal is provasi', ci: 'npm run kurumsal:prova' },
 ];
 
 function kos(k) {

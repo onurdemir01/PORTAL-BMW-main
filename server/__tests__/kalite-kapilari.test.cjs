@@ -292,7 +292,16 @@ test('KK8 CI ve `npm run kapi` ayni kapilari kosturur; hicbir kapi yumusatilmami
   assert.ok(!/continue-on-error\s*:\s*true/.test(kod), 'CI adimi continue-on-error tasiyor');
   assert.ok(!/\|\|\s*(true\b|:(\s|$)|exit 0\b)/m.test(kod), 'CI adimi `|| true` ile yumusatilmis');
   assert.match(ci, /pull_request:\s*\n\s*branches: \[main\]/, 'PR tetigi yok');
-  assert.match(ci, /\n  sonar:\n[\s\S]*needs: verify[\s\S]*sonar-kapi\.cjs --ci/, 'Sonar isi yok');
+  assert.match(
+    ci,
+    /\n  sonar:\n[\s\S]*needs: \[verify, kurumsal\][\s\S]*sonar-kapi\.cjs --ci/,
+    'Sonar isi yok ya da kurumsal provayi beklemiyor',
+  );
+  assert.match(
+    ci,
+    /\n  kurumsal:\n[\s\S]*node-version: \$\{\{ steps\.surum\.outputs\.node \}\}[\s\S]*npm run kurumsal:prova/,
+    'kurumsal prova groovy surumuyle kosmuyor',
+  );
   const pkg = JSON.parse(oku('package.json'));
   assert.equal(pkg.scripts.kapi, 'node scripts/kapi.cjs');
   assert.equal(pkg.scripts['kapi:hizli'], 'node scripts/kapi.cjs --hizli');

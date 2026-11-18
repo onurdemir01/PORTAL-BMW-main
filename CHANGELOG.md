@@ -5,6 +5,8 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ## [Unreleased]
 
 ### Added
+- Kurumsal teslim imzası `kalite/teslim.json` (`scripts/teslim.cjs`, `.github/workflows/teslim-imzasi.yml`): main'deki her dosyanın git blob sha'sı, her main push'undan sonra tazelenir. `kurumsal:derle`'nin ilk adımı kodu bununla karşılaştırır ve yarım aktarımı dosya dosya söyler (bekçi TS1-TS8).
+- Kurumsal iş provası `npm run kurumsal:prova` (`scripts/kurumsal-prova.cjs`, CI'da `kurumsal` işi, K14): temiz ağaçta, groovy'deki Node sürümüyle groovy'nin komutları aynen; paket ve 10 dk süre sınırı denetlenir. `sonar` işi provayı bekler (bekçi KJ7/KJ8).
 - `npm run kapsam:kurumsal`: CI'ın ürettiği kapsam raporunu kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar (bayatsa Sonar koşusunu düşürür).
 - Repo hijyeni bekçisi `scripts/repo-hijyeni.cjs` (`server/__tests__/repo-hijyeni.test.cjs`): hiçbir yerden ulaşılamayan belge/betik ve yalnız testlerin yüklediği modül CI'da kırmızı. Kural tüm talimat dosyalarında (AGENTS, CLAUDE, GEMINI, `.agent/rules`, CONTRIBUTING, PR şablonu).
 - Kurumsal Jenkins iş tanımı `deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy` (test + kapsam adımıyla) ve bekçisi `server/__tests__/kurumsal-pipeline.test.cjs`.
@@ -15,6 +17,7 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - İstemci URL doğrulama birim testleri (`src/utils/__tests__/url.test.ts`).
 
 ### Fixed (kurumsal Jenkins, 2026-11-18)
+- Kurumsal iş #48 (`Missing script: "kurumsal:derle"`): kurumsal dal main'in yarım bir kopyasıydı (ZIP üzerine kopyalama: `scripts/kurumsal-derle.cjs` gelmiş, aynı commit'teki `package.json` satırı gelmemişti). Aktarım yöntemi (`git rm -r -q .` + ZIP içeriği) `docs/KALITE-KAPILARI.md` "Kurumsal aktarım"da; yarım kopya artık derlemenin ilk adımında yakalanır.
 - Kurumsal iş #46 (`Missing script: "kapsam:kurumsal"`): groovy, kurumsal daldaki eski kodda olmayan bir betiği çağırıyordu. Groovy artık yalnız `install` + `run kurumsal:derle` çağırıyor; adımlar `scripts/kurumsal-derle.cjs`'te kodla birlikte sürümleniyor (bekçi KJ5/KJ6).
 - TST ve PRD iş tanımları (`deploy/jenkins/TST_…`, `PRD_…`): derleme DVL ile birebir aynı; TST deployment `BMWPORTAL-T`, PRD'de deploy yok (bekçi KJ4).
 - Kurumsal iş tanımı kurumdaki çalışan işler ve `standart_pipeline` koduyla hizalandı: `tools: [nodejs]` (Linux ajanı), `npm run kur`, paket `build/` altında, war `BMWPORTAL.war`, deployment `BMWPORTAL-D` (SI kaydı). `scripts/paket.cjs` repo içinde yalnız `build/` altına yazabilir.
