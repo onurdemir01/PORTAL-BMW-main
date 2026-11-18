@@ -135,7 +135,7 @@ function createRouter() {
       try {
         await require('../db/index.cjs').query(
           `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [u.username || 'unknown', serverId, templateId, 'Application Hub: OpenShift canlı okuma', job && job.jobId, (job && job.status) || 'pending', JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: ad, app_hub_targets: kur.extraVars.app_hub_targets })],
+          [u.username || 'unknown', serverId, templateId, C.TEMPLATE_NAME, job && job.jobId, (job && job.status) || 'pending', JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: ad, app_hub_targets: kur.extraVars.app_hub_targets })],
         );
       } catch (e) {
         console.warn('[AppHub] is gecmisi yazilamadi:', e.message);
@@ -155,7 +155,14 @@ function createRouter() {
       return res.status(400).json({ ok: false, error: 'Geçersiz iş numarası ya da uygulama adı.' });
     }
     try {
+      const sahiplik = await C.canliIsSahipligi(serverId, jobId);
+      if (!sahiplik || sahiplik.app !== ad) {
+        return res.status(404).json({ ok: false, error: 'Bu Application Hub işi doğrulanamadı.' });
+      }
       const st = await require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId);
+      if (!Number.isInteger(st.templateId) || st.templateId !== sahiplik.templateId) {
+        return res.status(409).json({ ok: false, error: 'AWX iş template kimliği Application Hub geçmişiyle eşleşmiyor.' });
+      }
       const BITTI = new Set(['successful', 'failed', 'error', 'canceled']);
       if (!BITTI.has(st.status)) return res.json({ ok: true, status: st.status, finished: false });
       const raw = C.statsOku(st.artifacts);
@@ -167,14 +174,12 @@ function createRouter() {
           error: st.status === 'successful' ? "İş bitti ama sonuç yayınlanmadı (playbook'un set_stats adımı)." : 'İş başarısız oldu ve sonuç yayınlanmadı; AWX iş çıktısına bakın.',
         });
       }
-      if (String(raw.app || '') && String(raw.app) !== ad) {
-        return res.status(400).json({ ok: false, error: 'Bu iş başka bir uygulamaya ait.' });
+      if (!C.canliArtifactDogrula(raw, sahiplik, ad)) {
+        return res.status(409).json({ ok: false, error: 'İş sonucu Application Hub isteğiyle eşleşmiyor.' });
       }
       const cozum = C.sonucuCoz(raw);
       const u = (req.session && req.session.user) || {};
-      await C.sonucuKaydet(ad, cozum, { serverId, jobId, kullanici: String(u.username || '').toLowerCase() || 'bilinmiyor', adSoyad: u.displayName || u.username || null }).catch((e) =>
-        console.warn('[AppHub] canli sonuc kaydedilemedi:', e.message),
-      );
+      await C.sonucuKaydet(ad, cozum, { serverId, jobId, kullanici: String(u.username || '').toLowerCase() || 'bilinmiyor', adSoyad: u.displayName || u.username || null });
       _onbellek.delete(`ocp|${ad.toUpperCase()}`);
       res.json({ ok: true, status: st.status, finished: true, genel: cozum.genel, okumalar: await C.sonOkumalar(ad).catch(() => []) });
     } catch (e) {

@@ -16,6 +16,7 @@ const { varsayilanSira } = require('../util/siralama.cjs');
 const REGISTRY_KEY = 'app_hub_ocp_canli';
 const STATS_KEY = 'app_hub_ocp_result';
 const HEDEF_TAVAN = 20;
+const TEMPLATE_NAME = 'Application Hub: OpenShift canlı okuma';
 
 const L = (s) => String(s == null ? '' : s).trim().toLowerCase();
 const bos = (v) => (v == null || v === '' || v === '<no value>' ? null : v);
@@ -127,6 +128,46 @@ function sonucuCoz(raw) {
   return { genel: (raw && raw.overall_status) || null, hedefler: sonuc };
 }
 
+function hedefAnahtarlari(hedefler) {
+  if (!Array.isArray(hedefler) || !hedefler.length) return null;
+  const anahtarlar = hedefler.map((h) => {
+    const cluster = h && typeof h.cluster === 'string' ? h.cluster.trim() : '';
+    const namespace = h && typeof h.namespace === 'string' ? h.namespace.trim() : '';
+    return cluster && namespace ? `${cluster}\u0000${namespace}` : '';
+  });
+  if (anahtarlar.some((x) => !x) || new Set(anahtarlar).size !== anahtarlar.length) return null;
+  return anahtarlar.sort(varsayilanSira);
+}
+
+async function canliIsSahipligi(serverId, jobId) {
+  const db = require('../db/index.cjs');
+  const { rows } = await db.query(
+    `SELECT TOP 2 template_id, template_name, params
+       FROM ansible_job_history
+      WHERE awx_server_id = $1 AND job_id = $2
+      ORDER BY id DESC`,
+    [serverId, jobId],
+  );
+  if (rows.length !== 1) return null;
+  const row = rows[0];
+  let params = null;
+  try {
+    params = JSON.parse(row.params);
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(Number(row.template_id)) || Number(row.template_id) <= 0 || row.template_name !== TEMPLATE_NAME || !params || params.platform !== 'app-hub-ocp') return null;
+  const hedefler = hedefAnahtarlari(params.app_hub_targets);
+  if (!hedefler || typeof params.app_hub_app !== 'string' || !params.app_hub_app) return null;
+  return { app: params.app_hub_app, hedefler, templateId: Number(row.template_id) };
+}
+
+function canliArtifactDogrula(raw, sahiplik, ad) {
+  if (!raw || typeof raw !== 'object' || typeof raw.app !== 'string' || raw.app !== ad || !sahiplik || sahiplik.app !== ad) return false;
+  const hedefler = hedefAnahtarlari(raw.results);
+  return !!hedefler && hedefler.length === sahiplik.hedefler.length && hedefler.every((x, i) => x === sahiplik.hedefler[i]);
+}
+
 /** Uygulamanin envanterdeki yerlerinden is hedeflerini ve fan-out extra_vars'ini kurar. */
 async function hedefleriKur(ad, yerler, secim) {
   const istenen = Array.isArray(secim) && secim.length ? new Set(secim.map((s) => `${L(s.cluster)}|${L(s.namespace)}`)) : null;
@@ -199,20 +240,36 @@ async function sonOkumalar(ad) {
 
 async function sonucuKaydet(ad, cozum, { serverId, jobId, kullanici, adSoyad }) {
   const db = require('../db/index.cjs');
-  const { rows } = await db.query(
-    `SELECT TOP 1 id FROM app_hub_ocp_canli WHERE awx_server_id = $1 AND awx_job_id = $2`,
-    [serverId, jobId],
-  );
-  if (rows.length) return false;
-  for (const h of cozum.hedefler) {
+  const hedefler = cozum.hedefler.map((h) => {
     const { cluster, namespace, ok, hata, ...govde } = h;
-    await db.query(
-      `INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [ad, cluster, namespace, JSON.stringify(govde).slice(0, 900000), ok ? 1 : 0, hata ? String(hata).slice(0, 2000) : null, kullanici, adSoyad, serverId, jobId],
+    return { cluster, namespace, sonuc_json: JSON.stringify(govde).slice(0, 900000), ok: ok ? 1 : 0, hata: hata ? String(hata).slice(0, 2000) : null };
+  });
+  const beklenen = hedefAnahtarlari(hedefler);
+  return db.transaction(async (tx) => {
+    const { rows: mevcut } = await tx.query(
+      `SELECT uygulama, cluster, namespace FROM app_hub_ocp_canli WITH (UPDLOCK, HOLDLOCK)
+        WHERE awx_server_id = $1 AND awx_job_id = $2`,
+      [serverId, jobId],
     );
-  }
-  return true;
+    if (mevcut.length) {
+      const eski = hedefAnahtarlari(mevcut);
+      if (!eski || mevcut.some((x) => x.uygulama !== ad) || eski.length !== beklenen.length || eski.some((x, i) => x !== beklenen[i])) {
+        throw new Error('Application Hub canli sonucu kismi veya uyumsuz.');
+      }
+      return false;
+    }
+    const { rowCount } = await tx.query(
+      `INSERT INTO app_hub_ocp_canli (uygulama, cluster, namespace, sonuc_json, ok, hata, alan_kullanici, alan_ad, awx_server_id, awx_job_id)
+       SELECT $4, j.cluster, j.namespace, j.sonuc_json, j.ok, j.hata, $5, $6, $1, $2
+         FROM OPENJSON($3) WITH (
+           cluster NVARCHAR(128) '$.cluster', namespace NVARCHAR(256) '$.namespace',
+           sonuc_json NVARCHAR(MAX) '$.sonuc_json', ok BIT '$.ok', hata NVARCHAR(2000) '$.hata'
+         ) j`,
+      [serverId, jobId, JSON.stringify(hedefler), ad, kullanici, adSoyad],
+    );
+    if (rowCount !== hedefler.length) throw new Error('Application Hub canli sonucu eksik yazildi.');
+    return true;
+  });
 }
 
-module.exports = { REGISTRY_KEY, STATS_KEY, HEDEF_TAVAN, statsOku, satirlariCoz, sonucuCoz, hedefleriKur, sonOkumalar, sonucuKaydet };
+module.exports = { REGISTRY_KEY, STATS_KEY, HEDEF_TAVAN, TEMPLATE_NAME, statsOku, satirlariCoz, sonucuCoz, hedefleriKur, canliIsSahipligi, canliArtifactDogrula, sonOkumalar, sonucuKaydet };

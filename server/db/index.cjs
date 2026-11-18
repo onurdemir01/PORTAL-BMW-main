@@ -150,6 +150,41 @@ async function query(pgSql, params = [], opts = {}) {
   }
 }
 
+// Ayni fiziksel connection'i transaction boyunca rezerve eder. Query timeout/client cancel
+// batch icindeki T-SQL CATCH'e dusmeyebilir; rollback bu nedenle uygulama katmanindadir.
+async function transaction(work) {
+  const pool = await getPool().catch(() => null);
+  if (!pool) throw new Error('Database not available. MSSQL bağlantısı yok.');
+  const tx = new mssql.Transaction(pool);
+  let active = false;
+  try {
+    await tx.begin();
+    active = true;
+    const txQuery = async (pgSql, params = []) => {
+      const request = new mssql.Request(tx);
+      params.forEach((val, idx) => request.input(`p${idx + 1}`, inferType(val), coerce(val)));
+      const sql = adaptSql(pgSql);
+      const result = await timeQuery('portal', 0n, sql, () => request.query(sql), { retry: false });
+      const rows = result.recordset || [];
+      const rowCount = result.rowsAffected?.[0] ?? rows.length;
+      return { rows, rowCount };
+    };
+    const sonuc = await work({ query: txQuery });
+    await tx.commit();
+    active = false;
+    return sonuc;
+  } catch (err) {
+    if (active) {
+      try {
+        await tx.rollback();
+      } catch {
+        // Broken connection pool tarafindan atilir; asil query/cancel hatasi korunur.
+      }
+    }
+    throw err;
+  }
+}
+
 async function isAvailable() {
   try {
     const pool = await getPool();
@@ -162,7 +197,7 @@ async function isAvailable() {
 }
 
 module.exports = {
-  query, isAvailable,
+  query, transaction, isAvailable,
   // saf ceviri yardimcilari — birim testleri icin acildi (DB gerektirmez)
   _adaptSql: adaptSql, _handleReturning: handleReturning, _coerce: coerce,
 };

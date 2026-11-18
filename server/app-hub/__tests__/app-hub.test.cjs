@@ -305,7 +305,11 @@ test('AH6 ayristirici: nesne, container, maskeli env, pod, node, hata ve not', (
 const SQL = { NVarChar: () => 'nvarchar' };
 const sorgu = { yanit: /** @type {(t?: any, p?: any) => any} */ (() => ({ recordset: [] })) };
 sahte(require.resolve('../../inventory/mssql.cjs'), { sql: SQL, query: async (t, p) => sorgu.yanit(t, p) });
-sahte(require.resolve('../../db/index.cjs'), { query: async () => ({ rows: [] }) });
+const portalDb = {
+  yanit: /** @type {(t?: any, p?: any) => any} */ (async () => ({ rows: [] })),
+  transaction: /** @type {(work: any) => any} */ (async (work) => work({ query: async () => ({ rows: [], rowCount: 0 }) })),
+};
+sahte(require.resolve('../../db/index.cjs'), { query: (t, p) => portalDb.yanit(t, p), transaction: (work) => portalDb.transaction(work) });
 sahte(require.resolve('../../config/apps-table.cjs'), { getAppsTable: () => 'MWAppsInventory', getWasAppsTable: () => 'WASAppsInventory' });
 const hub = { hosts: [], agir: new Map() };
 sahte(require.resolve('../../server-hub/index.cjs'), {
@@ -334,6 +338,15 @@ sahte(require.resolve('../../auth/index.cjs'), {
 });
 sahte(require.resolve('../../auth/visibility.cjs'), { requireVisiblePrefix: () => (_q, _s, n) => n() });
 sahte(require.resolve('../../audit/index.cjs'), { auditMutations: () => (_q, _s, n) => n() });
+
+const awx = { durum: { status: 'running', artifacts: {} }, okumalar: 0 };
+sahte(require.resolve('../../ansible/runner.cjs'), {
+  getJobStatusOnServer: async () => {
+    awx.okumalar += 1;
+    return awx.durum;
+  },
+  launchJobOnServer: async () => ({ jobId: 1, status: 'pending' }),
+});
 
 const V = require('../veri.cjs');
 const { createRouter, _ic } = require('../index.cjs');
@@ -544,4 +557,157 @@ test('AH13 OCP istek: cluster bos kullanim satiri dolu cluster envanter satirina
   assert.equal(y('baska-ns-prod').istek.toplam, 42, 'ayni cluster satiri varken bos cluster satiri secildi');
   assert.equal(y('baska-ns-prod').istek.tumCluster, false);
   assert.equal(y('account-management-ch-dev').istek, null, 'olcumu olmayan namespace olculmus gorundu');
+});
+
+test('AH14 canli sonuc: controller-local history, template, app ve hedefler exact olmadan okunmaz ya da kaydedilmez', async () => {
+  const hedefler = [{ cluster: 'c1', namespace: 'ns-a' }, { cluster: 'c2', namespace: 'ns-b' }];
+  const history = (ek = {}) => ({
+    template_id: 77,
+    template_name: C.TEMPLATE_NAME,
+    params: JSON.stringify({ platform: 'app-hub-ocp', app_hub_app: 'demo', app_hub_targets: hedefler, ...ek }),
+  });
+  let historyRows = [history()];
+  let kayitHatasi = false;
+  let eksikYazim = false;
+  const insertler = [];
+  const kayitlar = new Map();
+  portalDb.yanit = async (t, p) => {
+    if (/FROM ansible_job_history/.test(t)) {
+      assert.match(t, /awx_server_id = \$1 AND job_id = \$2/, 'controller-local history sorgusu gevsetildi');
+      return { rows: Number(p[0]) === 2 ? historyRows : [] };
+    }
+    if (/FROM app_hub_ocp_canli WHERE uygulama/.test(t)) return { rows: [] };
+    return { rows: [] };
+  };
+  portalDb.transaction = async (work) => {
+    const onceKayitlar = new Map([...kayitlar].map(([k, v]) => [k, { app: v.app, targets: v.targets.map((x) => ({ ...x })) }]));
+    const onceInsert = insertler.length;
+    try {
+      return await work({
+        query: async (t, p) => {
+          const key = `${p[0]}|${p[1]}`;
+          if (/SELECT uygulama, cluster, namespace/.test(t)) {
+            assert.match(t, /WITH \(UPDLOCK, HOLDLOCK\)/);
+            const eski = kayitlar.get(key);
+            return { rows: eski ? eski.targets.map((x) => ({ uygulama: eski.app, cluster: x.cluster, namespace: x.namespace })) : [], rowCount: eski ? eski.targets.length : 0 };
+          }
+          if (/INSERT INTO app_hub_ocp_canli/.test(t)) {
+            assert.match(t, /FROM OPENJSON\(\$3\)/);
+            const yeni = JSON.parse(p[2]);
+            if (eksikYazim) {
+              // Surucu hata atmadan eksik satir yazdi: yazilan sayi beklenenden azsa is geri alinmali.
+              kayitlar.set(key, { app: p[3], targets: yeni.slice(0, 1) });
+              insertler.push(...yeni.slice(0, 1));
+              return { rows: [], rowCount: 1 };
+            }
+            if (kayitHatasi) {
+              kayitlar.set(key, { app: p[3], targets: yeni.slice(0, 1) });
+              insertler.push(...yeni.slice(0, 1));
+              throw new Error('fixture persistence failure');
+            }
+            kayitlar.set(key, { app: p[3], targets: yeni });
+            insertler.push(...yeni);
+            return { rows: [], rowCount: yeni.length };
+          }
+          throw new Error(`beklenmeyen transaction sorgusu: ${t}`);
+        },
+      });
+    } catch (e) {
+      kayitlar.clear();
+      for (const [k, v] of onceKayitlar) kayitlar.set(k, v);
+      insertler.length = onceInsert;
+      throw e;
+    }
+  };
+  const artifact = (ek = {}) => ({
+    app_hub_ocp_result: {
+      app: 'demo',
+      overall_status: 'ok',
+      results: hedefler.map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })),
+      ...ek,
+    },
+  });
+  const durum = (artifacts = artifact(), templateId = 77) => ({ status: 'successful', artifacts, templateId });
+  awx.durum = durum();
+  awx.okumalar = 0;
+
+  let r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(insertler.length, 2, 'exact sahipli sonuc kalici envantere yazilmadi');
+
+  for (const rows of [[], [history({ platform: 'baska' })], [{ ...history(), template_name: 'Baska template' }], [{ ...history(), template_id: 0 }], [history({ app_hub_app: 'baska' })], [{ ...history(), params: '{bozuk' }], [history(), history()]]) {
+    historyRows = rows;
+    const once = awx.okumalar;
+    r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+    assert.equal(r.body.upstreamStatus || r.status, 404, JSON.stringify(rows));
+    assert.equal(awx.okumalar, once, 'history sahipligi kurulmadan AWX isi okundu');
+  }
+  historyRows = [history()];
+  const once = awx.okumalar;
+  r = await istek('GET', '/ocp/canli/3/900?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 404, 'baska controller ayni job id ile kabul edildi');
+  assert.equal(awx.okumalar, once, 'yanlis controller isi AWX tarafindan okundu');
+
+  historyRows = [history()];
+  for (const raw of [
+    artifact({ app: '' }),
+    artifact({ app: 'baska' }),
+    artifact({ results: [{ cluster: 'c1', namespace: 'ns-a', ok: true, lines: ['END\t0\t0'] }] }),
+    artifact({ results: [...hedefler, { cluster: 'c3', namespace: 'ns-c' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+    artifact({ results: [hedefler[0], hedefler[0]].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+    // Ayni sayida hedef ama biri farkli: yalniz sayiyi degil hedeflerin kendisini de karsilastir.
+    artifact({ results: [hedefler[0], { cluster: 'c2', namespace: 'ns-z' }].map((h) => ({ ...h, ok: true, lines: ['END\t0\t0'] })) }),
+  ]) {
+    awx.durum = durum(raw);
+    const once = insertler.length;
+    r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+    assert.equal(r.body.upstreamStatus || r.status, 409, JSON.stringify(raw));
+    assert.equal(insertler.length, once, 'mismatch artifact kalici envantere yazildi');
+  }
+
+  historyRows = [{ ...history(), template_id: 999 }];
+  awx.durum = durum(artifact(), 77);
+  r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 409, 'farkli pozitif history/live template ID kabul edildi');
+  historyRows = [history()];
+  awx.durum = durum(artifact(), null);
+  r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 409, 'AWX template kimligi olculemeden is kabul edildi');
+
+  historyRows = [history({ app_hub_targets: [{ cluster: 'c1', namespace: 'ns-a' }] })];
+  awx.durum = durum();
+  r = await istek('GET', '/ocp/canli/2/900?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 409, 'history ile artifact hedefleri farkli ama kabul edildi');
+
+  historyRows = [history()];
+  awx.durum = durum();
+  kayitHatasi = true;
+  r = await istek('GET', '/ocp/canli/2/901?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 502, JSON.stringify(r.body));
+  assert.equal(r.body.ok, false, 'kalicilik hatasi basari gibi dondu');
+  assert.equal(kayitlar.has('2|901'), false, 'hata atomik rollback yerine kismi satir birakti');
+  kayitHatasi = false;
+  r = await istek('GET', '/ocp/canli/2/901?ad=demo');
+  assert.equal(r.status, 200, 'rollback sonrasi retry sonucu tamamlayamadi');
+  assert.equal(kayitlar.get('2|901').targets.length, 2, 'retry tum hedefleri atomik yazmadi');
+
+  eksikYazim = true;
+  r = await istek('GET', '/ocp/canli/2/904?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 502, 'eksik yazim basari sayildi');
+  assert.equal(kayitlar.has('2|904'), false, 'eksik yazim geri alinmadi');
+  eksikYazim = false;
+
+  const onceParalel = insertler.length;
+  const paralel = await Promise.all([istek('GET', '/ocp/canli/2/903?ad=demo'), istek('GET', '/ocp/canli/2/903?ad=demo')]);
+  assert.deepEqual(paralel.map((x) => x.status), [200, 200]);
+  assert.equal(insertler.length, onceParalel + 2, 'paralel poll ayni job hedeflerini iki kez yazdi');
+
+  portalDb.yanit = async (t) => {
+    if (/FROM ansible_job_history/.test(t)) throw new Error('history unavailable');
+    return { rows: [] };
+  };
+  const historyHatasiOnce = awx.okumalar;
+  r = await istek('GET', '/ocp/canli/2/902?ad=demo');
+  assert.equal(r.body.upstreamStatus || r.status, 502, 'history DB hatasi fail-open oldu');
+  assert.equal(awx.okumalar, historyHatasiOnce, 'history DB hatasinda AWX isi okundu');
 });
