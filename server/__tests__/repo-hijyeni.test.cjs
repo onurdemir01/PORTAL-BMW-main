@@ -46,9 +46,11 @@ test('RH2 bekcinin kendisi kor degil: yetimi yakalar, kullanilani birakir', () =
     'server/olu.cjs': '',
     'server/yalniz-test.cjs': '',
     'server/__tests__/x.test.cjs': "require('../yalniz-test.cjs'); require('../index.cjs');",
-    'src/main.tsx': "import { a } from '@/utils/yardimci'; import B from './bilesen';",
+    'src/main.tsx':
+      "import { a } from '@/utils/yardimci'; import B from './bilesen'; import C from './kutu/index';",
     'src/utils/yardimci.ts': '',
     'src/bilesen/index.tsx': '',
+    'src/kutu/index.ts': '',
     'src/utils/olu.ts': '',
     'kalite/kapsam/lcov.info': 'SF:server/olu.cjs\nSF:docs/YETIM.md',
   };
@@ -79,6 +81,7 @@ test('RH2 bekcinin kendisi kor degil: yetimi yakalar, kullanilani birakir', () =
     'server/tembel/analiz.cjs',
     'src/utils/yardimci.ts',
     'src/bilesen/index.tsx',
+    'src/kutu/index.ts',
   ]) {
     assert.ok(!ad.includes(canli), `kullanilan dosya yetim sayildi: ${canli}`);
   }
