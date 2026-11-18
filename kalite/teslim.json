@@ -1,6 +1,6 @@
 {
   "aciklama": "Kurumsal teslim imzasi: main agacindaki her izlenen dosyanin git blob sha degeri (kuruma gitmeyenler haric). Elle duzenlenmez: main'e her push'tan sonra .github/workflows/teslim-imzasi.yml yazar. Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula",
-  "kaynak": "1cf77033564e2266ad9d908645d5188695bde59c",
+  "kaynak": "f455aade0634bd5d62c81d8a73dfc369449585f5",
   "dosyaSayisi": 1681,
   "dosyalar": {
     ".dockerignore": "d4179f686ae64896773bc12cab7898c719d851d6",
