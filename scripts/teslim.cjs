@@ -30,6 +30,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const IMZA = 'kalite/teslim.json';
@@ -41,7 +42,7 @@ const ACIKLAMA =
   'Kurumsal derleme ilk adimda bununla karsilastirir: node scripts/teslim.cjs --dogrula';
 
 const git = (args, kok) =>
-  execFileSync('git', args, {
+  execFileSync(aracYolu('git'), args, {
     cwd: kok,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

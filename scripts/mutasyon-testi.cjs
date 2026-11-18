@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const MIN_KILL_PCT = 85;
@@ -368,7 +369,7 @@ function prepareSandbox(sandboxDir) {
 async function runTestsForTarget(sandboxDir, runner, tests, testNamePattern = null) {
   if (runner === 'vitest') {
     const vitestBin = path.join(REPO_ROOT, 'gelistirme', 'node_modules', '.bin', 'vitest');
-    const cmd = fs.existsSync(vitestBin) ? vitestBin : 'npx';
+    const cmd = fs.existsSync(vitestBin) ? vitestBin : aracYolu('npx');
     const args = fs.existsSync(vitestBin)
       ? ['run', '--reporter=basic', ...tests]
       : ['vitest', 'run', ...tests];

@@ -21,6 +21,7 @@
 
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const CIKTI = 'build/BMWPORTAL/PORTAL-BMW-main';
@@ -43,15 +44,18 @@ const ADIMLAR = [
 ];
 
 /** Adimlari sirayla kosar; ilk dusen adimda durur. Cikis kodunu doner (0 = hepsi tamam). */
+/** Komut adi -> mutlak yol (npm PATH'te aranmaz; scripts/arac-yolu.cjs). Mutlak yol aynen. */
+const coz = (komut) => (path.isAbsolute(komut) ? komut : aracYolu(komut));
+
 function calistir(
   adimlar = ADIMLAR,
-  { kos = spawnSync, yaz = console.log, hata = console.error } = {},
+  { kos = spawnSync, yaz = console.log, hata = console.error, cozumle = coz } = {},
 ) {
   for (const [i, a] of adimlar.entries()) {
     yaz(
       `[kurumsal] ${i + 1}/${adimlar.length} ${a.ad}: ${[path.basename(a.komut), ...a.argumanlar].join(' ')}`,
     );
-    const r = kos(a.komut, a.argumanlar, { cwd: KOK, stdio: 'inherit', env: process.env });
+    const r = kos(cozumle(a.komut), a.argumanlar, { cwd: KOK, stdio: 'inherit', env: process.env });
     const kod = r.error || r.status == null ? 1 : r.status;
     if (kod !== 0) {
       const ayrinti = [`cikis ${kod}`];

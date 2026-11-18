@@ -20,6 +20,7 @@
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
+const { varsayilanSira } = require('../server/util/siralama.cjs');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -107,7 +108,7 @@ function collect() {
     );
     process.exit(1);
   }
-  return files.sort();
+  return files.sort(varsayilanSira);
 }
 
 function supportsModuleMocks() {

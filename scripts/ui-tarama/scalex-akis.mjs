@@ -22,6 +22,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { sekme, DENETIM, sleep } from './lib.mjs';
+import araclar from '../arac-yolu.cjs';
 
 const BURASI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const KOK = path.resolve(process.env.UI_TARAMA_KOK || BURASI);
@@ -118,7 +119,7 @@ fs.rmSync(CIKTI, { recursive: true, force: true });
 fs.mkdirSync(CIKTI, { recursive: true });
 const profil = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-tarama-profil-'));
 console.log(`[scalex-akis] ${ESKI ? 'ESKI' : 'YENI'} akis; agac: ${KOK}`);
-surecler.push(spawn('npx', ['vite', '--port', String(VITE_PORT), '--strictPort'], { cwd: KOK, stdio: 'ignore' }));
+surecler.push(spawn(araclar.aracYolu('npx'), ['vite', '--port', String(VITE_PORT), '--strictPort'], { cwd: KOK, stdio: 'ignore' }));
 surecler.push(spawn(chromeYolu(), ['--headless=new', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profil}`, '--no-first-run', '--disable-gpu', 'about:blank'], { stdio: 'ignore' }));
 await hazirOlana(TABAN + '/');
 await hazirOlana(`http://127.0.0.1:${CDP_PORT}/json/version`);

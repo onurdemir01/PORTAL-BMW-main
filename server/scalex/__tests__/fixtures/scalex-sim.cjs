@@ -901,7 +901,7 @@ sahte('smart/store.cjs', {
 // degiskenler yok sayilir ve baslatma yanitinin `ignored_fields`ine duser.
 function awxIstegi(req, res, govde) {
   const a = sim.ayar.awx;
-  const u = new URL(req.url, 'http://x');
+  const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
   sim.kayit.awxIstekleri.push({
     method: req.method,

@@ -14,6 +14,7 @@
 
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOD = /\.(?:[cm]?js|tsx?)$/;
 
@@ -44,12 +45,13 @@ function degisenler(cikti) {
   return out;
 }
 
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+const git = (args) =>
+  execFileSync(aracYolu('git'), args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 
 /** `git show <spec>`; dosya o surumde yoksa (yeni dosya) null. Git'in hata metni yazdirilmaz. */
 function gitOku(spec) {
   try {
-    return execFileSync('git', ['show', spec], {
+    return execFileSync(aracYolu('git'), ['show', spec], {
       encoding: 'utf8',
       maxBuffer: 256 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'ignore'],

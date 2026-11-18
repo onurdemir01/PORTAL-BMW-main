@@ -18,6 +18,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { ADIMLAR, KARARLAR } = require('./senaryolar.cjs');
 const { parmakIzi, pythonDuzeniYaz } = require('./kurgu.cjs');
+const { varsayilanSira } = require('../../../util/siralama.cjs');
 
 // Kayit basina tek satir JSON: yalniz ilkel deger (ya da ilkel dizi) tasiyan nesneler tek satira yazilir,
 // ust yapilar girintili kalir. Dosya ~400 KB yerine ~1/3; satir bazli fark okunur kalir.
@@ -31,7 +32,7 @@ function yaz(x, girinti) {
   if (x === null || typeof x !== 'object' || yaprakMi(x)) return JSON.stringify(x);
   const ic = girinti + ' ';
   if (Array.isArray(x)) return x.length ? `[\n${x.map((e) => ic + yaz(e, ic)).join(',\n')}\n${girinti}]` : '[]';
-  const anahtarlar = Object.keys(x).sort();
+  const anahtarlar = Object.keys(x).sort(varsayilanSira);
   return `{\n${anahtarlar.map((k) => (String(ic) + JSON.stringify(k) + ": " + yaz(x[k], ic))).join(',\n')}\n${girinti}}`;
 }
 

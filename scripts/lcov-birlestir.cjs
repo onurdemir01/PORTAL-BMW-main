@@ -16,7 +16,9 @@ const { Buffer } = require('node:buffer');
 function normalizeSfPath(rawPath, repoRoot = process.cwd()) {
   const s = String(rawPath || '').trim().replaceAll('\\', '/');
   if (!s) return '';
-  const rootPosix = path.resolve(repoRoot).replaceAll('\\', '/').replace(/\/+$/, '');
+  let rootPosix = path.resolve(repoRoot).replaceAll('\\', '/');
+  // Sondaki egik cizgiler dongu ile (`/\/+$/` geri izlemede karesel, Sonar S8786).
+  while (rootPosix.endsWith('/')) rootPosix = rootPosix.slice(0, -1);
   if (s.startsWith(`${rootPosix}/`)) {
     return s.slice(rootPosix.length + 1);
   }

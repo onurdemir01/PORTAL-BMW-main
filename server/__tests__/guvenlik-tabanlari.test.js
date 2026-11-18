@@ -244,7 +244,8 @@ test('GT8 gelistirici kurulumu bagi kurar ve cozer; arac-kontrol eksigi soyler',
 test('GT9 guvenlik kapisi tam agaca bakar; Jenkins tam kurulumu kullanir', () => {
   const kapi = oku('scripts', 'guvenlik-denetim.cjs');
   assert.match(kapi, /const TAM = path\.join\(KOK, 'gelistirme'\);/);
-  assert.match(kapi, /spawnSync\('npm', \['audit', '--json'\], \{\s*cwd: TAM,/);
+  // npm sabit dizinden (scripts/arac-yolu.cjs); tam agacta (TAM) denetlenir.
+  assert.match(kapi, /spawnSync\(aracYolu\('npm'\), \['audit', '--json'\], \{\s*cwd: TAM,/);
   assert.match(kapi, /path\.join\(TAM, 'package-lock\.json'\)/);
   // Yorum satirlari haric (Groovy `//`, kabuk `#`): yalniz CALISAN adimlar.
   const jenkins = oku('Jenkinsfile')

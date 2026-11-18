@@ -16,11 +16,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { aracYolu, kabukIcin } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 
 function npm(args, cwd) {
-  const r = spawnSync('npm', args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
+  const r = spawnSync(kabukIcin(aracYolu('npm')), args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
   if (r.status !== 0) {
     console.error(
       `[kur] HATA: npm ${args.join(' ')} (${path.relative(KOK, cwd) || '.'}) basarisiz.`,

@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { varsayilanSira } = require('../server/util/siralama.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -177,7 +178,9 @@ function checkEnvExample() {
     }
   };
   walk(path.join(ROOT, 'server'));
-  const missing = [...used].filter((v) => !new RegExp(`^${v}=`, 'm').test(example)).sort();
+  const missing = [...used]
+    .filter((v) => !new RegExp(`^${v}=`, 'm').test(example))
+    .sort(varsayilanSira);
   if (missing.length) {
     fail(
       '.env.example EKSIK degisken tasiyor',

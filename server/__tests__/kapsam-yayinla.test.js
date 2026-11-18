@@ -110,10 +110,8 @@ test('KP3 kaynakOzeti icerik ve dosya listesine bagli, test dosyasina degil', ()
 test('KP4 --dogrula guncel raporda 0, bayat ya da eksik raporda 1', () => {
   const { d } = geciciDepo();
   try {
-    fs.copyFileSync(
-      path.join(KOK, 'scripts', 'kapsam-yayinla.cjs'),
-      path.join(d, 'scripts', 'kapsam-yayinla.cjs'),
-    );
+    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs'])
+      fs.copyFileSync(path.join(KOK, 'scripts', betik), path.join(d, 'scripts', betik));
     const kos = (...a) =>
       spawnSync(process.execPath, ['scripts/kapsam-yayinla.cjs', ...a], {
         cwd: d,
@@ -143,10 +141,8 @@ test('KP4 --dogrula guncel raporda 0, bayat ya da eksik raporda 1', () => {
 test('KP7 --kurumsal: guncel rapor kopyalanir; bayat ya da eksik rapor Sonar kosusunu dusurur', () => {
   const { d } = geciciDepo();
   try {
-    fs.copyFileSync(
-      path.join(KOK, 'scripts', 'kapsam-yayinla.cjs'),
-      path.join(d, 'scripts', 'kapsam-yayinla.cjs'),
-    );
+    for (const betik of ['kapsam-yayinla.cjs', 'arac-yolu.cjs'])
+      fs.copyFileSync(path.join(KOK, 'scripts', betik), path.join(d, 'scripts', betik));
     const kos = (env, ...a) =>
       spawnSync(process.execPath, ['scripts/kapsam-yayinla.cjs', ...a], {
         cwd: d,

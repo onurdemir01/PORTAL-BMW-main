@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const IMAJ = 'sonarqube:26.11.0.134175-community';
@@ -128,17 +129,17 @@ async function ayaktaBekle(host, sureSn) {
 
 function dockerBaslat() {
   const var_ = spawnSync(
-    'docker',
+    aracYolu('docker'),
     ['ps', '-a', '--filter', `name=^${KONTEYNER}$`, '--format', '{{.Status}}'],
     { encoding: 'utf8' },
   );
   if (var_.error) throw new Error('docker bulunamadi (--docker icin Docker gerekir)');
   if (String(var_.stdout).trim()) {
-    spawnSync('docker', ['start', KONTEYNER], { stdio: 'inherit' });
+    spawnSync(aracYolu('docker'), ['start', KONTEYNER], { stdio: 'inherit' });
     return;
   }
   const r = spawnSync(
-    'docker',
+    aracYolu('docker'),
     [
       'run',
       '-d',
@@ -330,7 +331,7 @@ async function main(argv) {
 /** Bir tarama + kapi sonucu. true = yesil. */
 async function tara(api, host, jeton, e, { proje, lcov, argumanlar }) {
   const tarama = spawnSync(
-    'npx',
+    aracYolu('npx'),
     [
       '--yes',
       TARAYICI,

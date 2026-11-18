@@ -288,6 +288,7 @@ test('KJ6 calistir(): ilk dusen adimda durur, adimi ve cikis kodunu soyler; heps
     const kosulan = [];
     const mesaj = [];
     const kod = GIRIS.calistir(adimlar, {
+      cozumle: (k) => k,
       kos: (k) => {
         kosulan.push(k);
         return sonuclar[k];

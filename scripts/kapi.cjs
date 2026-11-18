@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { aracYolu, kabukIcin } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const PAKET_CIKTI = path.join(os.tmpdir(), 'bmw-paket-kapi');
@@ -108,7 +109,8 @@ const CI_EK = [
 
 function kos(k) {
   const bas = Date.now();
-  const r = spawnSync(k.komut[0], k.komut.slice(1), {
+  // Arac sabit dizinden (PATH'te aranmaz; scripts/arac-yolu.cjs). Windows'ta npm / npx kabuk ister.
+  const r = spawnSync(kabukIcin(aracYolu(k.komut[0])), k.komut.slice(1), {
     cwd: KOK,
     stdio: 'inherit',
     shell: process.platform === 'win32',

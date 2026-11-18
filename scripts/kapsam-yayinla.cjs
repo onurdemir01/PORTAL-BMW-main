@@ -26,6 +26,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 const GIRDI = path.join(KOK, 'coverage', 'lcov.info');
@@ -47,9 +48,10 @@ function kaynakMi(yol) {
 
 /** `DA:satir,sayi` ve `BRDA:satir,blok,dal,sayi` satirlarinda sayiyi 0/1'e indirir ('-' aynen). */
 function vurusIndir(satir) {
-  const m = /^(DA:\d+,|BRDA:\d+,\d+,\d+,)(\d+)(.*)$/.exec(satir);
+  // Kalan kisim rakamla baslayamaz (\d+ hepsini aldi): `(\d+)(.*)$` belirsizdi (Sonar S8786).
+  const m = /^(DA:\d+,|BRDA:\d+,\d+,\d+,)(\d+)(\D.*)?$/.exec(satir);
   if (!m) return satir;
-  return `${m[1]}${Number(m[2]) > 0 ? 1 : 0}${m[3]}`;
+  return `${m[1]}${Number(m[2]) > 0 ? 1 : 0}${m[3] ?? ''}`;
 }
 
 /**
@@ -88,7 +90,7 @@ function lcovSuz(metin) {
 
 /** Izlenen kaynak dosyalari (git ls-files) -> tek ozet. Yol listesi ve icerikler degisirse degisir. */
 function kaynakOzeti(kok = KOK) {
-  const cikti = execFileSync('git', ['ls-files', '-z', '--', ...KAYNAK_DIZINLERI], {
+  const cikti = execFileSync(aracYolu('git'), ['ls-files', '-z', '--', ...KAYNAK_DIZINLERI], {
     cwd: kok,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

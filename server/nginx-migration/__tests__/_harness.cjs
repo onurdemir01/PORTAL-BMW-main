@@ -20,6 +20,7 @@
 const http = require('node:http');
 const path = require('node:path');
 const Module = require('node:module');
+const BASKA_EKIP_SIRRI = `sir-${require('node:crypto').randomBytes(8).toString('hex')}`;
 
 const TOKEN = 'NF-SIR-TOKEN-91c4e7a2b3';
 const DELETE_TPL = 20;
@@ -168,7 +169,7 @@ function awxSifirla() {
   a.jobTemplate = DELETE_TPL; // GET /jobs/<JOB_ID>/ job_template alani; null -> alan YOK
   a.stdout = 'TASK [nginx_ops] ok\n';
   // Bu modulun OLMAYAN isler (job-status IDOR kurgusu): id -> { job_template, stdout }
-  a.foreignJobs = { 7777: { job_template: 999, stdout: 'TASK [debug] ok: db_password=BASKA-EKIBIN-SIRRI\n' } };
+  a.foreignJobs = { 7777: { job_template: 999, stdout: `TASK [debug] ok: db_password=${BASKA_EKIP_SIRRI}\n` } };
   a.launchNoId = false; // launch yaniti job id TASIMAZ
   a.lastLaunch = null;
   a.lastIgnored = undefined;
@@ -176,7 +177,7 @@ function awxSifirla() {
 
 function awxIstegi(req, res, body) {
   const a = h.awx;
-  const u = new URL(req.url, 'http://x');
+  const u = new URL(req.url, 'http://localhost');
   const yol = u.pathname;
   a.istekler.push({ method: req.method, yol, body, auth: req.headers.authorization || null });
   const send = (code, obj) => {
@@ -338,4 +339,6 @@ h.mockConsole = (t) => {
   return out;
 };
 
+// Baska ekibin isindeki sir: her kosuda rastgele (sabit parola yok); testler sizmadigini bununla arar.
+h.BASKA_EKIP_SIRRI = BASKA_EKIP_SIRRI;
 module.exports = h;

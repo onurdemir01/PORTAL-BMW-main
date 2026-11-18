@@ -188,7 +188,7 @@ test('Y7 OKUMA = YAZMA: ayni kurallarla ekranin veri ucu ve PROD silme ucu AYNI 
 });
 
 // ── J1-J5: job-status sahiplik (IDOR) ────────────────────────────────────────
-const SIR = 'BASKA-EKIBIN-SIRRI';
+const SIR = h.BASKA_EKIP_SIRRI;
 
 test('J1 sayfayi goren ekip uyesi BASKA bir isin (7777) ciktisini OKUYAMAZ: 404, stdout HIC istenmez', async (t) => {
   h.mockConsole(t);

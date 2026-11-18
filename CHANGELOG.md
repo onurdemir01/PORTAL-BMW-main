@@ -5,6 +5,7 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ## [Unreleased]
 
 ### Added
+- `scripts/arac-yolu.cjs`: geliştirme betiklerinin çalıştırdığı dış araçlar (git, npm, npx, docker, zip, gitleaks, cygpath) PATH'te aranmaz; yalnız sabit sistem dizinlerinden ve Node'un kurulum dizininden mutlak yolla çalışır (Sonar S4036; bekçi AY1-AY3).
 - Kurumsal Sonar taklidi (K15): CI `sonar` işi, kurumun sınıflandırmasıyla (`kalite/kurumsal-sonar.json`) ayrı bir projeye de tarar ve aynı kapıyı uygular (`node scripts/sonar-kapi.cjs --ci --kurumsal`, bekçi KK12).
 - Kurumsal teslim imzası `kalite/teslim.json` (`scripts/teslim.cjs`, `.github/workflows/teslim-imzasi.yml`): main'deki her dosyanın git blob sha'sı, her main push'undan sonra tazelenir. `kurumsal:derle`'nin ilk adımı kodu bununla karşılaştırır ve yarım aktarımı dosya dosya söyler (bekçi TS1-TS8).
 - Kurumsal iş provası `npm run kurumsal:prova` (`scripts/kurumsal-prova.cjs`, CI'da `kurumsal` işi, K14): temiz ağaçta, groovy'deki Node sürümüyle groovy'nin komutları aynen; paket ve 10 dk süre sınırı denetlenir. `sonar` işi provayı bekler (bekçi KJ7/KJ8).
@@ -18,6 +19,11 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 - İstemci URL doğrulama birim testleri (`src/utils/__tests__/url.test.ts`).
 
 ### Fixed (kurumsal Jenkins, 2026-11-18)
+- Kurumsal sınıflandırmada görünen bulgular (K15'in ilk koşusu: 8 bug, 28 zafiyet, `scripts/` ve test yardımcılarında) kodda düzeltildi; bastırma ya da dışlama yok:
+  - geri izlemeli düzenli ifadeler doğrusal yazıldı; eski ve yeni sonuçlar 1675 repo metninde ve kötü girdilerde aynı (S8786);
+  - sıralamalar `varsayilanSira` ile (S2871); beklenmeyen promise (S9383);
+  - test yardımcılarında `http` / sabit parola / özel IP (S5332, S2068, S1313).
+  - `ear_regex_esdeger.py` eski desenleri tutmuyor: eşdeğerlik, eski desenin aynı ~15 bin deterministik girdideki çıktı özetiyle (sha256) kanıtlanıyor.
 - Kurumsal Sonar (iş #49, kapsam %50, güvenlik F): kurumun `scanOnSonar` adımı testleri yalnız `*.test.js` / `*.test.tsx` adından tanıyordu; 511 Node testi (`*.test.cjs`) üretim kodu sayıldı. Node testleri `*.test.js` oldu (`server/` ve Node testi olan `src/**/__tests__/` altında `"type": "commonjs"`); `npm test` eski adı reddeder (KK11). Biçim kapısı yeniden adlandırmayı tanır: HEAD biçimi eski yoldan okunur (KK3b).
 - Kurumsal iş #50 (`teslim butunlugu`, 37 eksik dosya): `.github/`, `.claude/`, `.agent/` ve `sunum/` kurumsal depoya gitmiyor. Teslim imzası bu dizinleri iki yönde de yok sayar (`scripts/teslim.cjs` `KURUMA_GITMEYEN`, bekçi TS1/TS4b).
 - Kurumsal iş #48 (`Missing script: "kurumsal:derle"`): kurumsal dal main'in yarım bir kopyasıydı (ZIP üzerine kopyalama: `scripts/kurumsal-derle.cjs` gelmiş, aynı commit'teki `package.json` satırı gelmemişti). Aktarım yöntemi (`git rm -r -q .` + ZIP içeriği) `docs/KALITE-KAPILARI.md` "Kurumsal aktarım"da; yarım kopya artık derlemenin ilk adımında yakalanır.

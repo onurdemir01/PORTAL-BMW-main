@@ -13,6 +13,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { aracYolu } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
 // TAM agac (calisma zamani + gelistirme) gelistirme/ altindadir; kok manifest yalniz calisma
@@ -162,7 +163,7 @@ function karar(audit, kilitPaketleri) {
 }
 
 function main() {
-  const r = spawnSync('npm', ['audit', '--json'], {
+  const r = spawnSync(aracYolu('npm'), ['audit', '--json'], {
     cwd: TAM,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,

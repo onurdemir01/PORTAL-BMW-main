@@ -47,6 +47,9 @@ function withBrokenCopy(mutate, fn) {
     // Damga kontrolu icin gereken makine. Kopyalanmazsa preflight bu bolumu
     // "DOGRULANAMADI" diye gecer ve mutasyon testleri farkli bir sey olcmus olur.
     'scripts/playbook-rev.cjs',
+    // preflight.cjs ve playbook-rev.cjs bunlari yukler (siralama, arac yolu).
+    'server/util/siralama.cjs',
+    'scripts/arac-yolu.cjs',
     'server/ansible/paths.cjs',
     'server/ansible/playbook-revisions.json',
     'server/ansible/bmw_portal/logx/ocp/logx_ocp_namespace_discovery.yml',
