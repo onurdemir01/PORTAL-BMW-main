@@ -4989,7 +4989,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:669",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:946",
         "nasil": "scan_date bazlı: aynı günün satırları DELETE TOP(5000) ile silinip yeniden INSERT",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },
@@ -5012,7 +5012,7 @@
       }
     ],
     "saklama": "DELETE TOP(5000) parti silme; RETENTION_DAYS=1 (bugün + dün) - nginx_audit_analyze.py:47",
-    "notlar": "Tablo yoksa loader yazmadan uyarı verir (nginx_audit_analyze.py:605).",
+    "notlar": "Tablo yoksa loader yazmadan uyarı verir (nginx_audit_analyze.py:875).",
     "kullanilmiyor": false,
     "guven": "KESIN"
   },
@@ -5025,7 +5025,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:635",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:905",
         "nasil": "scan_date bazlı: günün satırları DELETE TOP(5000) silinir, yeniden INSERT",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },
@@ -5074,7 +5074,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:660",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:937",
         "nasil": "scan_date bazlı delete(TOP 5000)+insert",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },
@@ -5104,13 +5104,13 @@
   {
     "db": "TBMWANS",
     "tablo": "Nginx_Audit_Servers",
-    "amac": "Nginx server blokları: dinlenen port, server_name, SSL açık mı, sertifika ve anahtar dosyası. API envanterinde 'servis' sütunu ve yük testi hedef doğrulaması buradan gelir.",
+    "amac": "Nginx server blokları: dinlenen port, server_name, SSL açık mı, sertifika ve anahtar dosyası, HTTP/2 etkin mi ve nereden (http2 / http2_source, 2026-11-18). API envanterinde 'servis' sütunu ve yük testi hedef doğrulaması buradan gelir.",
     "alan": "Nginx Denetim",
     "yazanlar": [
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:657",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:932",
         "nasil": "scan_date bazlı delete(TOP 5000)+insert",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },
@@ -5143,6 +5143,10 @@
       {
         "ad": "Nginx Hub > Yük Testi hedef doğrulama",
         "dosya": "server/nginx-loadtest/dogrula.cjs:1335"
+      },
+      {
+        "ad": "Nginx Hub > Envanter > HTTP/2 (GET /api/denetim/nginx-inventory/http2)",
+        "dosya": "server/audit/denetim.cjs:2317"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5159,7 +5163,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:665",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:942",
         "nasil": "scan_date bazlı delete(TOP 5000)+insert",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },
@@ -5203,7 +5207,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_nginx/nginx_audit/nginx_audit.yml -> files/nginx_audit_analyze.py",
-        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:663",
+        "dosya": "bmw_nginx/nginx_audit/files/nginx_audit_analyze.py:940",
         "nasil": "scan_date bazlı delete(TOP 5000)+insert",
         "ne_zaman": "AWX zamanlaması (günde bir)"
       },

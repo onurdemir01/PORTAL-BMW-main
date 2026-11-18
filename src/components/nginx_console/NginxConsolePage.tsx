@@ -211,7 +211,7 @@ export default function NginxConsolePage() {
   const ESKI_KAYNAK: Record<Tab, readonly EskiKaynak[]> = {
     dashboard: ['hosts'], instances: ['hosts'], config: ['hosts'], changes: ['changes'], certs: ['certs'],
     orphans: ['orphans'], drift: ['drift'], audit: ['audit'], cis: ['cis'], ratelimit: ['ratelimit'], rvpsecim: [],
-    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter'],
+    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter', 'envanterHttp2'],
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {

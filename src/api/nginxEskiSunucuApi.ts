@@ -27,6 +27,7 @@ export type EskiKaynak =
   | 'api'
   | 'apiLocations'
   | 'envanter'
+  | 'envanterHttp2'
   | 'spa'
   | 'spaKesif';
 

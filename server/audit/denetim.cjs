@@ -2277,6 +2277,61 @@ function initDenetim(app) {
     }
   });
 
+  // -- NGINX ENVANTERI > HTTP/2 (2026-11-18) ------------------------------------------------
+  // Kullanici: "Nginx Envanterine http2 acik olan konfigurasyonlari da isleyebilir miyiz".
+  // Kaynak: dbo.Nginx_Audit_Servers.http2 / http2_source (nginx_audit, son tarama). ?host=X verilmezse
+  // sunucu basina sayim (GROUP BY; filo binlerce server blogu), verilirse o sunucunun bloklari.
+  // Tablo ya da kolon yoksa "bulgu yok" DEGIL: hazir=false + neden (ekran ne yapilacagini soyler).
+  router.get('/nginx-inventory/http2', async (req, res) => {
+    try {
+      const { queryLong: query, sql } = require('../inventory/mssql.cjs');
+      const { http2Ozeti, http2Satirlari } = require('./nginx-http2.cjs');
+      const host = String(req.query.host || '').trim().toUpperCase().slice(0, 64);
+
+      const dateRes = await readLatestAuditDate(query);
+      if (dateRes._missing) return res.json({ ok: true, hazir: false, neden: 'tablo' });
+      const scanDate = dateRes.recordset?.[0]?.d || null;
+      if (!scanDate) return res.json({ ok: true, hazir: false, neden: 'tarama' });
+      const kol = await query(
+        `SELECT COL_LENGTH('dbo.Nginx_Audit_Servers', 'http2') AS h,
+                COL_LENGTH('dbo.Nginx_Audit_Servers', 'http2_source') AS k`,
+      );
+      const k0 = kol.recordset?.[0] || {};
+      if (k0.h == null || k0.k == null) {
+        return res.json({ ok: true, hazir: false, neden: 'kolon', scanDate });
+      }
+
+      const params = [{ name: 'scanDate', type: sql.Date, value: scanDate }];
+      if (host) {
+        params.push({ name: 'host', type: sql.NVarChar(64), value: host });
+        const r = await query(
+          `SELECT conf_file, seq, listen, server_name, ssl, http2, http2_source
+             FROM dbo.Nginx_Audit_Servers
+            WHERE scan_date = @scanDate AND host = @host`,
+          params,
+        );
+        return res.json({ ok: true, hazir: true, scanDate, host, satirlar: http2Satirlari(r.recordset || []) });
+      }
+      const r = await query(
+        `SELECT host, http2, http2_source, COUNT(*) AS n
+           FROM dbo.Nginx_Audit_Servers
+          WHERE scan_date = @scanDate
+          GROUP BY host, http2, http2_source`,
+        params,
+      );
+      const es = await eskiSunucuSuzgec(req);
+      res.json({
+        ok: true,
+        hazir: true,
+        scanDate,
+        ...http2Ozeti(es.ayir(r.recordset || [], (x) => x.host)),
+        eskiGizli: es.bilgi(),
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
   // Ortak hesap (Init Script + Deployment Scripts, 2026-09-18): raw = [{host, <key>: sha}],
   // scripts = [{key,label,perServer?}] -> script bazli surum dagilimi + sunucu bazli sapma.
   /**
