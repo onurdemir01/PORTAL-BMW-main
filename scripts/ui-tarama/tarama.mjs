@@ -49,7 +49,7 @@ const ADIMLAR = {
 // Denetim yalniz "hata" durumunda: alti sekmesi genel bos govdede ({ok:true, items:[]}) gercek
 // sunucunun HER ZAMAN dondugu bir alani bulamayip cokuyor (sahte cokme; hata yolu dogru calisiyor).
 const SEKMELER = {
-  '/nginx-console': { modlar: ['bos', 'hata'], sekmeler: ['instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'] },
+  '/nginx-console': { modlar: ['bos', 'hata'], sekmeler: ['instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'upstream', 'audit'] },
   '/denetim': { modlar: ['hata'], sekmeler: ['ocp', 'ocproute', 'init', 'deploy', 'envanter', 'degisim', 'appenvs', 'webapp', 'katalog'] },
 };
 // "bos" durumunda genel sahte govde ({ok:true, items:[] ...}) bazi uclarin GERCEK bos yanitina
@@ -60,7 +60,9 @@ const sunucuRequire = createRequire(import.meta.url);
 function bosSekiller() {
   const { summarizeNginxInventory } = sunucuRequire('../../server/audit/nginx-inventory-summary.cjs');
   const { summarize } = sunucuRequire('../../server/audit/nginx-api-summary.cjs');
+  const { upstreamOzeti } = sunucuRequire('../../server/audit/nginx-upstream-envanter.cjs');
   return {
+    '=/api/denetim/nginx-upstreams': { ok: true, hazir: true, scanDate: null, serversOlculdu: true, ...upstreamOzeti([], [], [], () => 'BILINMIYOR') },
     '=/api/denetim/nginx-inventory': { ok: true, lastUpdate: null, ...summarizeNginxInventory([]) },
     '=/api/denetim/nginx-api': { ok: true, scanDate: null, availableDates: [], ...summarize([]) },
     '=/api/denetim/nginx-audit': { ok: true, schemaReady: true, filesReady: false, scanDate: null, hosts: [], totals: null },

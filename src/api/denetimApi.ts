@@ -1422,6 +1422,116 @@ export interface NginxHttp2SunucuResult {
   satirlar?: NginxHttp2Satir[];
 }
 
+// ── Upstream Envanteri (2026-11-19) ─────────────────────────────────────────────────
+export interface NginxUpsHost {
+  host: string;
+  ortam: string;
+  /** nginx_audit tarama durumu (ok | fail | noinst) */
+  durum: string | null;
+  upstream: number;
+  kullanilan: number;
+  kullanilmayan: number;
+  resolveYok: number;
+  keepaliveYok: number;
+  /** proxy_pass ile tanımlı bir upstream'e giden location sayısı */
+  upstreamLocation: number;
+  /** upstream'i atlayıp doğrudan DNS adına giden location */
+  dogrudanLocation: number;
+  /** proxy_pass hedefi çalışma anında çözülen değişken ($be) */
+  degiskenLocation: number;
+  /** ne upstream ne çözümlenebilir ad (nginx başlamaz) */
+  tanimsizLocation: number;
+  /** en az bir upstream'i kullanılıyor (location ya da stream proxy_pass) */
+  bagli: boolean;
+  /** tarama başarısız / nginx kurulu değil: "bağlı değil" denemez */
+  olculmedi: boolean;
+}
+
+export interface NginxUpsOzetResult {
+  ok: boolean;
+  message?: string;
+  hazir?: boolean;
+  neden?: 'tablo' | 'tarama';
+  scanDate?: string;
+  /** false: son tarama upstream'in TÜM server satırlarını içermiyor (yalnız son satır) */
+  serversOlculdu?: boolean;
+  hosts?: NginxUpsHost[];
+  totals?: {
+    hosts: number;
+    bagli: number;
+    bagliDegil: number;
+    olculmedi: number;
+    upstreamsiz: number;
+    upstream: number;
+    kullanilmayan: number;
+    dogrudanLocation: number;
+    degiskenLocation: number;
+    tanimsizLocation: number;
+  };
+  eskiGizli?: unknown;
+}
+
+export interface NginxUpsKullanan {
+  confFile: string;
+  serverName: string | null;
+  location: string;
+}
+
+export interface NginxUpsUpstream {
+  ad: string;
+  confFile: string;
+  /** TÜM server satırları (weight / backup / resolve dahil); null = ölçülmedi */
+  servers: string[] | null;
+  /** kayıt sınırında kesilen server satırı sayısı (listede yok) */
+  serversKesik: number;
+  /** servers ölçülmediyse eldeki SON server satırı (tam liste değil) */
+  sonServer: string | null;
+  resolve: boolean;
+  keepalive: boolean;
+  zone: boolean;
+  kullaniliyor: boolean;
+  kullananlar: NginxUpsKullanan[];
+}
+
+export interface NginxUpsDetayResult {
+  ok: boolean;
+  message?: string;
+  hazir?: boolean;
+  neden?: 'tablo' | 'tarama';
+  scanDate?: string;
+  host?: string;
+  serversOlculdu?: boolean;
+  upstreams?: NginxUpsUpstream[];
+  dogrudan?: {
+    hedef: string;
+    tur: 'fqdn' | 'variable' | 'unix' | 'undefined';
+    kullananlar: NginxUpsKullanan[];
+  }[];
+}
+
+export interface NginxUpsAramaResult {
+  ok: boolean;
+  message?: string;
+  hazir?: boolean;
+  neden?: 'tablo' | 'tarama';
+  scanDate?: string;
+  serversOlculdu?: boolean;
+  ara?: string;
+  /** sunucu sorgusu 2000 satırda kesildi */
+  kesildi?: boolean;
+  satirlar?: {
+    host: string;
+    upstream: string;
+    /** eşleşen arka uç adresleri */
+    eslesen: string[];
+    /** upstream adı eşleşti */
+    adEsler: boolean;
+    /** false: yalnız son server satırına bakıldı */
+    tamListe: boolean;
+    kullaniliyor: boolean;
+  }[];
+}
+
 export interface NginxInvEtiket {
   /** degistir: otomatik listenin yerine gecer · ekle: otomatik listeye eklenir */
   mod: 'degistir' | 'ekle';
@@ -1553,6 +1663,21 @@ export const denetimApi = {
 
   nginxInventory: (): Promise<NginxInventoryResult> =>
     fetch(`${BASE}/nginx-inventory`).then(safeJson).then(eskiGizliKaydet('envanter')),
+
+  /** Upstream Envanteri özeti; fresh: "Yenile" sonrası sunucu önbelleği atlanır. */
+  nginxUpstreamOzet: (fresh = false): Promise<NginxUpsOzetResult> =>
+    fetch(`${BASE}/nginx-upstreams${fresh ? '?fresh=1' : ''}`).then(safeJson),
+
+  nginxUpstreamSunucu: (host: string, fresh = false): Promise<NginxUpsDetayResult> =>
+    fetch(
+      `${BASE}/nginx-upstreams?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`,
+    ).then(safeJson),
+
+  /** Ters arama: arka uç adresi ya da upstream adı (en az 2 karakter). */
+  nginxUpstreamAra: (q: string, fresh = false): Promise<NginxUpsAramaResult> =>
+    fetch(`${BASE}/nginx-upstreams?ara=${encodeURIComponent(q)}${fresh ? '&fresh=1' : ''}`).then(
+      safeJson,
+    ),
 
   /** fresh: Envanter "Yenile" sonrası sunucu önbelleği atlanır (?fresh=1). */
   nginxHttp2Ozet: (fresh = false): Promise<NginxHttp2OzetResult> =>

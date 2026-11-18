@@ -3598,6 +3598,15 @@ const ELEMENT_SEED = [
     default_visible: 0,
   },
   {
+    // Upstream Envanteri (2026-11-19): hangi nginx sunucusu hangi upstream'e bagli.
+    element_key: 'tab:nginx:upstream',
+    element_type: 'tab',
+    parent_key: 'NginxConsole',
+    label: 'Upstream Envanteri',
+    sort_order: 30,
+    default_visible: 0,
+  },
+  {
     element_key: 'tab:nginx:audit',
     element_type: 'tab',
     parent_key: 'NginxConsole',

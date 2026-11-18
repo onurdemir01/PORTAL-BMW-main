@@ -101,11 +101,12 @@ function initDenetim(app) {
     // kullanicilar yalniz istedigim sekmeleri gorsun" (kullanici). Eslesmeyen nginx yolu
     // sayfa kapisinda kalir.
     const NGINX_PATH =
-      /^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration|nginx-locations|nginx-proxy|nginx-api|nginx-api-locations|nginx-inventory|nginx-audit)(\/|$)/;
+      /^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration|nginx-locations|nginx-proxy|nginx-api|nginx-api-locations|nginx-inventory|nginx-audit|nginx-upstreams)(\/|$)/;
     const NGINX_TAB_OF_PATH = [
       [/^\/(nginx-spa|nginx-spa-coverage|route-stats|nginx-migration)(\/|$)/, 'spa'],
       [/^\/(nginx-api|nginx-api-locations)(\/|$)/, 'api'],
       [/^\/nginx-inventory(\/|$)/, 'envanter'],
+      [/^\/nginx-upstreams(\/|$)/, 'upstream'],
       [/^\/(nginx-audit|nginx-locations|nginx-proxy)(\/|$)/, 'audit'],
     ];
     const TAB_OF_PATH = [
@@ -2325,6 +2326,119 @@ function initDenetim(app) {
         hazir: true,
         scanDate,
         ...http2Ozeti(es.ayir(r.recordset || [], (x) => x.host)),
+        eskiGizli: es.bilgi(),
+      });
+    } catch (err) {
+      res.status(503).json({ ok: false, message: err.message });
+    }
+  });
+
+  // -- NGINX HUB > UPSTREAM ENVANTERI (2026-11-19) ------------------------------------------
+  // Kullanici: "hangi sunucu herhangi bir upstream'a bagli mi, bagliysa hangi upstream'e bagli".
+  // Kaynak: nginx_audit son taramasi (Hosts / Upstreams / Locations / Servers). Uc kip:
+  //   (parametresiz) sunucu basina ozet (GROUP BY; SPA sunucusunda binlerce upstream olabilir)
+  //   ?host=X        o sunucunun upstream'leri, TUM server satirlari, kullanan server_name/location
+  //   ?ara=q (>= 2)  ters arama: arka uc adresi ya da upstream adi -> hangi sunucu, hangi upstream
+  // Upstreams.servers kolonu yoksa (yeni tarama gelmedi) ekran "tam liste yok" der; eldeki tek
+  // `server` (SON satir) tam liste SANILMAZ.
+  router.get('/nginx-upstreams', async (req, res) => {
+    try {
+      const { queryLong: query, sql } = require('../inventory/mssql.cjs');
+      const ue = require('./nginx-upstream-envanter.cjs');
+      const { envOfHost } = require('./nginx-hosts.cjs');
+      const host = String(req.query.host || '')
+        .trim()
+        .toUpperCase()
+        .slice(0, 64);
+      const ara = String(req.query.ara || '')
+        .trim()
+        .slice(0, 100);
+
+      const dateRes = await readLatestAuditDate(query);
+      if (dateRes._missing) return res.json({ ok: true, hazir: false, neden: 'tablo' });
+      const scanDate = dateRes.recordset?.[0]?.d || null;
+      if (!scanDate) return res.json({ ok: true, hazir: false, neden: 'tarama' });
+      const kol = await query(`SELECT COL_LENGTH('dbo.Nginx_Audit_Upstreams', 'servers') AS s`);
+      const serversOlculdu = kol.recordset?.[0]?.s != null;
+      const serversKol = serversOlculdu ? 'servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers';
+      const params = [{ name: 'scanDate', type: sql.Date, value: scanDate }];
+      const es = await eskiSunucuSuzgec(req);
+
+      if (host) {
+        params.push({ name: 'host', type: sql.NVarChar(64), value: host });
+        const w = 'WHERE scan_date = @scanDate AND host = @host';
+        const [u, l, s] = await Promise.all([
+          query(
+            `SELECT conf_file, name, server, ${serversKol}, resolve, keepalive, zone, used
+               FROM dbo.Nginx_Audit_Upstreams ${w}`,
+            params,
+          ),
+          query(
+            `SELECT conf_file, srv_seq, location, proxy_target, target_kind
+               FROM dbo.Nginx_Audit_Locations ${w} AND target_kind IN ('upstream', 'fqdn', 'variable', 'unix', 'undefined')`,
+            params,
+          ),
+          query(`SELECT seq, server_name, conf_file FROM dbo.Nginx_Audit_Servers ${w}`, params),
+        ]);
+        return res.json({
+          ok: true,
+          hazir: true,
+          scanDate,
+          host,
+          serversOlculdu,
+          ...ue.upstreamDetayi(u.recordset || [], l.recordset || [], s.recordset || [], serversOlculdu),
+        });
+      }
+
+      if (ara) {
+        if (ara.length < 2) return res.status(400).json({ ok: false, message: 'Arama en az 2 karakter.' });
+        const like = '%' + ara.replace(/[[%_]/g, (c) => '[' + c + ']') + '%';
+        params.push({ name: 'ara', type: sql.NVarChar(120), value: like });
+        const r = await query(
+          `SELECT TOP (2000) host, name, server, ${serversKol}, used
+             FROM dbo.Nginx_Audit_Upstreams
+            WHERE scan_date = @scanDate
+              AND (name LIKE @ara OR server LIKE @ara${serversOlculdu ? ' OR servers LIKE @ara' : ''})`,
+          params,
+        );
+        const satirlar = ue.aramaSonucu(es.ayir(r.recordset || [], (x) => x.host), ara, serversOlculdu);
+        return res.json({
+          ok: true,
+          hazir: true,
+          scanDate,
+          serversOlculdu,
+          ara,
+          kesildi: (r.recordset || []).length >= 2000,
+          satirlar,
+        });
+      }
+
+      const w = 'WHERE scan_date = @scanDate';
+      const [h, u, l] = await Promise.all([
+        query(`SELECT host, status FROM dbo.Nginx_Audit_Hosts ${w}`, params),
+        query(
+          `SELECT host, COUNT(*) AS n,
+                  SUM(CASE WHEN used = 1 THEN 1 ELSE 0 END) AS kullanilan,
+                  SUM(CASE WHEN resolve = 0 THEN 1 ELSE 0 END) AS resolve_yok,
+                  SUM(CASE WHEN keepalive = 0 THEN 1 ELSE 0 END) AS keepalive_yok
+             FROM dbo.Nginx_Audit_Upstreams ${w}
+            GROUP BY host`,
+          params,
+        ),
+        query(
+          `SELECT host, target_kind, COUNT(*) AS n
+             FROM dbo.Nginx_Audit_Locations ${w} AND target_kind IN ('upstream', 'fqdn', 'variable', 'unix', 'undefined')
+            GROUP BY host, target_kind`,
+          params,
+        ),
+      ]);
+      const ayir = (rows) => es.ayir(rows || [], (x) => x.host);
+      res.json({
+        ok: true,
+        hazir: true,
+        scanDate,
+        serversOlculdu,
+        ...ue.upstreamOzeti(ayir(h.recordset), ayir(u.recordset), ayir(l.recordset), envOfHost),
         eskiGizli: es.bilgi(),
       });
     } catch (err) {

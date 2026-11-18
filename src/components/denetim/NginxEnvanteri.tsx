@@ -114,7 +114,7 @@ const UST_ETIKET = 'text-[11px] font-semibold uppercase tracking-[0.06em]';
 
 // ── Küçük parçalar ─────────────────────────────────────────────────────────────
 
-function OrtamRozeti({ ortam }: { ortam: string }) {
+export function OrtamRozeti({ ortam }: { ortam: string }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap"
