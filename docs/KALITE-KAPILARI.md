@@ -60,8 +60,12 @@ Repoda kullanılmayan dosya kalmaz; insan ya da ajan fark etmez.
 Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy`](../deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy).
 
 - **Değişiklik sırası:** önce bu dosya değiştirilir, sonra kurumsal iş tanımı deposuna kopyalanır. E-posta yer tutucusu orada doldurulur; gerçek adres public repoya yazılmaz.
+- **Tek giriş noktası (değişmez sözleşme):** groovy'nin `commands` listesi yalnız `install` ve `run kurumsal:derle` içerir. Derleme adımları `scripts/kurumsal-derle.cjs`'tedir: kur, kapsam, build, paket.
+  - **Neden:** groovy her dala aynı anda uygulanır; kod ise dal dal ilerler. 2026-11-18'deki iş #46'da groovy, kurumsal dalda henüz bulunmayan `kapsam:kurumsal` betiğini çağırdı ve iş `npm error Missing script` ile düştü.
+  - **Kural:** adım eklemek ya da değiştirmek groovy değişikliği gerektirmez; değişiklik bu betikte yapılır. Groovy'ye yeni bir `run …` eklenmez (bekçi KJ1 / KJ3).
+  - **Kurumsal depo:** yeni sözleşmeyle ilk kez çalışacak dala önce güncel kod gönderilir.
 - **Ajan:** `tools` yalnız `nodejs` verilir. Kütüphane npm + yalnız nodejs için Linux ajanını (`POD&&NODEJS`) kendisi seçer; ajan elle verilmez. Araç verilmezse iş varsayılan ajana düşer ve derleme araçları kurulamaz (2026-11-18'e kadarki kırık iş).
-- **Kapsam:** testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
+- **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
   - Rapor kaynakla aynı değilse Sonar koşusunu düşürür; yanlış eşleşen kapsam yüklenmez.
   - Normal derlemede yalnız uyarır.
 - **Paket:** `build/BMWPORTAL/PORTAL-BMW-main` altında üretilir. Kütüphanenin Sonar adımı `build/**`'i taramaz; zip adımı çalışma alanı içinden okur. War'ın kökü `PORTAL-BMW-main/`, çünkü `deploy/release.sh` bunu bekler.

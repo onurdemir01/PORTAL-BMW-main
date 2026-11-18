@@ -6,13 +6,13 @@
 // Bekci: server/__tests__/kurumsal-pipeline.test.cjs. Ayrinti: docs/KALITE-KAPILARI.md "Kurumsal Jenkins".
 //
 //   - tools yalniz nodejs: kutuphane npm + yalniz nodejs icin Linux ajani (POD&&NODEJS) secer. Arac
-//     verilmezse varsayilan ajana duser; derleme araclari (npm run kur) orada kurulamaz.
-//   - run kur: derleme araclari (vite vb.) gelistirme/ agacindan; kokteki install yalniz calisma zamani.
-//   - run kapsam:kurumsal: CI'in gercek testlerle urettigi kalite/kapsam raporunu, Sonar adiminin aradigi
-//     coverage/lcov.info'ya koyar (bayatsa Sonar kosusunu dusurur). Testler burada kosturulmaz: npm
-//     komutlarinin hepsi tek bir 15 dk zaman asimi icinde.
-//   - paket build/ altinda: kutuphanenin Sonar adimi build/**'i tarama disi birakir (cift tarama olmaz) ve
-//     zip adimi calisma alani icinden okur. War'in koku PORTAL-BMW-main/ (deploy/release.sh bunu bekler).
+//     verilmezse varsayilan ajana duser; derleme araclari orada kurulamaz.
+//   - commands YALNIZ install + "run kurumsal:derle" (degismez sozlesme). Groovy her dala ayni anda
+//     uygulanir; yeni bir npm betigi cagirirsa o betigi tasimayan dal "Missing script" ile kirilir (is #46).
+//     Derleme adimlari (kur, kapsam, build, paket) scripts/kurumsal-derle.cjs'te, kodla birlikte surumlenir;
+//     adim degisikligi groovy degisikligi GEREKTIRMEZ.
+//   - kurumsal:derle paketi build/BMWPORTAL/PORTAL-BMW-main'e yazar: kutuphanenin Sonar adimi build/**'i
+//     tarama disi birakir, zip adimi calisma alani icinden okur. War'in koku PORTAL-BMW-main/ (release.sh).
 //   - BMWPORTAL.war ve BMWPORTAL-D: uygulamanin SI/CMDB kaydindaki war ve deployment adlari.
 p = standardPipeline (
     global: [
@@ -30,10 +30,7 @@ p = standardPipeline (
         tools: [nodejs: "22.23.4"],
         commands: [
             "install",
-            "run kur",
-            "run kapsam:kurumsal",
-            "run build",
-            "run paket -- --cikti build/BMWPORTAL/PORTAL-BMW-main --derleme-yok"
+            "run kurumsal:derle"
         ],
         compress: [from: "build/BMWPORTAL", to: "BMWPORTAL/BMWPORTAL.war"]
     ],

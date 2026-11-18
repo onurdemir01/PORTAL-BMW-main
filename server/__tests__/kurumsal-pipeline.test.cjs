@@ -34,13 +34,11 @@ const derlemeBolumu = (metin) => {
 // 2026-11-17 okundu) bu repoda kullanilabilenler. 22.20.0 listede YOK.
 const NODE_IZINLI = ['22.23.4', '24.22.1', '26.12.1'];
 const PAKET_KOKU = 'build/BMWPORTAL';
-const BEKLENEN_KOMUTLAR = [
-  'install',
-  'run kur',
-  'run kapsam:kurumsal',
-  'run build',
-  `run paket -- --cikti ${PAKET_KOKU}/PORTAL-BMW-main --derleme-yok`,
-];
+// Groovy YALNIZ install + tek giris noktasini cagirir (kurumsal is #46, 2026-11-18): groovy her dala ayni
+// anda uygulanir; yeni bir npm betigi cagirirsa o betigi tasimayan dal "Missing script" ile kirilir.
+// Derleme adimlari scripts/kurumsal-derle.cjs'te, kodla birlikte surumlenir.
+const BEKLENEN_KOMUTLAR = ['install', 'run kurumsal:derle'];
+const GIRIS = require('../../scripts/kurumsal-derle.cjs');
 // Uygulamanin SI/CMDB kaydi (DVL): Deployment Name BMWPORTAL-D, War Name BMWPORTAL.war, Application Type Java.
 const SI = { war: 'BMWPORTAL.war', platform: 'JAVA' };
 
@@ -121,7 +119,7 @@ test('KJ4 TST ve PRD derlemesi DVL ile birebir ayni (yalniz deploy farkli)', () 
   );
   assert.ok(dvl.startsWith('    checkout: ['), 'DVL derleme bolumu checkout ile baslamiyor');
   assert.ok(
-    dvl.includes(BEKLENEN_KOMUTLAR[4]) && dvl.endsWith(']'),
+    dvl.includes(`"${BEKLENEN_KOMUTLAR[1]}"`) && dvl.includes('compress:') && dvl.endsWith(']'),
     'DVL derleme bolumu eksik okundu',
   );
   // Bekci kor degil: KJ1'in gormedigi bir ayrisma (TST'ye dal eklemek) de farkli bolum uretir.
@@ -173,11 +171,19 @@ test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
       /agent elle/,
     ],
     [
-      'kapsam adimi yok',
-      asil.replace('            "run kapsam:kurumsal",\n', ''),
+      'giris noktasi yok',
+      asil.replace(',\n            "run kurumsal:derle"', ''),
       /beklenen sirada/,
     ],
-    ['kur yok', asil.replace('            "run kur",\n', ''), /beklenen sirada/],
+    [
+      'groovy yeni betik cagiriyor (surum kaymasi)',
+      // Yalniz komut satiri (12 bosluk girinti); baslik yorumunda da ayni metin geciyor.
+      asil.replace(
+        '            "run kurumsal:derle"\n',
+        '            "run kurumsal:derle",\n            "run kapsam:kurumsal"\n',
+      ),
+      /beklenen sirada/,
+    ],
     [
       'eski build dizini',
       asil.replace('compress: [from: "build/BMWPORTAL"', 'compress: [from: "build"'),
@@ -234,8 +240,8 @@ test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
     );
   }
   assert.ok(
-    denetle(asil, { ...b, betikler: { ...b.betikler, 'kapsam:kurumsal': undefined } }).some((x) =>
-      /kapsam:kurumsal/.test(x),
+    denetle(asil, { ...b, betikler: { ...b.betikler, 'kurumsal:derle': undefined } }).some((x) =>
+      /kurumsal:derle/.test(x),
     ),
     'eksik npm betigi yakalanmadi',
   );
@@ -243,4 +249,58 @@ test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
     denetle(asil, { ...b, dockerNode: '22.99.0' }).some((x) => /Dockerfile/.test(x)),
     'Dockerfile farki yakalanmadi',
   );
+});
+
+test("KJ5 tek giris noktasi: adimlar kodla birlikte, cikti groovy'nin sikistirdigi yerde", () => {
+  assert.equal(
+    JSON.parse(oku('package.json')).scripts['kurumsal:derle'],
+    'node scripts/kurumsal-derle.cjs',
+  );
+  assert.equal(
+    GIRIS.CIKTI,
+    `${PAKET_KOKU}/PORTAL-BMW-main`,
+    'cikti groovy compress kokunun altinda degil',
+  );
+  const ozet = GIRIS.ADIMLAR.map((a) => [path.basename(a.komut), ...a.argumanlar].join(' '));
+  assert.deepEqual(ozet, [
+    `${path.basename(process.execPath)} scripts/kur.cjs`,
+    `${path.basename(process.execPath)} scripts/kapsam-yayinla.cjs --kurumsal`,
+    'npm run -s build',
+    `${path.basename(process.execPath)} scripts/paket.cjs --cikti ${GIRIS.CIKTI} --derleme-yok`,
+  ]);
+  for (const a of GIRIS.ADIMLAR.filter((x) => x.komut === process.execPath)) {
+    assert.ok(fs.existsSync(path.join(KOK, a.argumanlar[0])), `${a.argumanlar[0]} yok`);
+  }
+  assert.ok(JSON.parse(oku('package.json')).scripts.build, 'build betigi yok');
+});
+
+test('KJ6 calistir(): ilk dusen adimda durur, adimi ve cikis kodunu soyler; hepsi tamamsa 0', () => {
+  const adimlar = [
+    { ad: 'bir', komut: 'a', argumanlar: [] },
+    { ad: 'iki', komut: 'b', argumanlar: ['x'] },
+    { ad: 'uc', komut: 'c', argumanlar: [] },
+  ];
+  const kos = (sonuclar) => {
+    const kosulan = [];
+    const mesaj = [];
+    const kod = GIRIS.calistir(adimlar, {
+      kos: (k) => {
+        kosulan.push(k);
+        return sonuclar[k];
+      },
+      yaz: () => {},
+      hata: (m) => mesaj.push(m),
+    });
+    return { kod, kosulan, mesaj };
+  };
+  const tamam = kos({ a: { status: 0 }, b: { status: 0 }, c: { status: 0 } });
+  assert.deepEqual([tamam.kod, tamam.kosulan, tamam.mesaj], [0, ['a', 'b', 'c'], []]);
+  const duser = kos({ a: { status: 0 }, b: { status: 7 }, c: { status: 0 } });
+  assert.deepEqual([duser.kod, duser.kosulan], [7, ['a', 'b']], 'dusen adimdan sonra devam etti');
+  assert.match(duser.mesaj[0], /ADIM DUSTU: iki \(cikis 7\)/);
+  const baslamadi = kos({ a: { error: new Error('ENOENT'), status: null } });
+  assert.equal(baslamadi.kod, 1);
+  assert.match(baslamadi.mesaj[0], /ADIM DUSTU: bir \(cikis 1, ENOENT\)/);
+  const sinyal = kos({ a: { status: null, signal: 'SIGTERM' } });
+  assert.equal(sinyal.kod, 1, 'sinyalle olen adim basari sayildi');
 });
