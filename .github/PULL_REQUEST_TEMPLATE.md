@@ -17,3 +17,4 @@
 - [ ] Yeni davranışın davranış testi var (yalnız kaynak metni okuyan bekçi değil).
 - [ ] Sır, kurum iç adı / IP'si, `.env` ya da `.har` eklenmedi.
 - [ ] Arayüz değiştiyse gerçek tarayıcıda bakıldı (`npm run ui:tarama`).
+- [ ] Repo hijyeni: yeni dosya bir yerden bağlı; artık kullanılmayan dosya bu PR'da silindi; tek seferlik betik, rapor ya da plan eklenmedi.

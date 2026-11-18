@@ -37,6 +37,37 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 
+## Repo hijyeni
+
+Repoda kullanılmayan dosya kalmaz; insan ya da ajan fark etmez.
+
+- **Yeni dosya bir referansla gelir.**
+  - Belge README'den ya da ilgili belgeden bağlanır.
+  - Betik `package.json`'dan ya da onu çağıran koddan bağlanır.
+  - Modül, onu yükleyen koddan bağlanır.
+  - ADR, [`docs/STANDARTLAR.md`](STANDARTLAR.md) listesine eklenir.
+- **İşi biten dosya aynı PR'da silinir:** yerini alan kodun eskisi, artık çağrılmayan modül ve testi, tek seferlik betik ve SQL, bayat plan. Git geçmişi yeter; arşiv dizini açılmaz.
+- **Repoya girmez:** tek seferlik teşhis betikleri; iş kaydı, PBI ve yol haritası (`.ai-workspace/backlog/`, git dışı); oturum raporları.
+- **Bekçi:** [`scripts/repo-hijyeni.cjs`](../scripts/repo-hijyeni.cjs). Testi `server/__tests__/repo-hijyeni.test.cjs`, K8 içinde CI'da koşar. Şunlar kırmızıdır:
+  - hiçbir koddan, testten, yapılandırmadan ya da canlı belgeden ulaşılamayan belge ya da betik (birbirini anan iki bayat belge de dahil);
+  - yalnız testlerin yüklediği modül.
+
+  `CHANGELOG.md`'de anılmak kullanım sayılmaz.
+- **Bekçi bir alt sınırdır:** yorumda anılıp kullanılmayan dosyayı yakalamaz; onaylayıcı bakar.
+
+## Kurumsal Jenkins
+
+Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy`](../deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy).
+
+- **Değişiklik sırası:** önce bu dosya değiştirilir, sonra kurumsal iş tanımı deposuna kopyalanır. E-posta yer tutucusu orada doldurulur; gerçek adres public repoya yazılmaz.
+- **Kapsam:** kurumsal Sonar kapsamı bu işin `npm run test:coverage` adımından gelir. Adım yoksa kapsam %0 görünür.
+- **Bekçi:** `server/__tests__/kurumsal-pipeline.test.cjs`. Şunları denetler:
+  - Node sürümü kurumsal izin listesinde ve Dockerfile ile aynı;
+  - komut sırası (kapsam derlemeden önce);
+  - `npm run` betikleri var;
+  - paket çalışma alanının dışında;
+  - gerçek e-posta adresi yok.
+
 ## Kancalar
 
 `npm run kur` kurar; `--no-verify` ile atlamak **yasaktır**. Atlansa bile CI aynı kapıları yeniden koşturur ve `main` koruması kırmızı PR'ı birleştirtmez.
@@ -77,17 +108,20 @@ Onay vermeden önce:
 3. **Yeni davranışın testi var.** Kaynak metni okuyan bekçi tek başına yetmez; davranış testi olmalı. Yeni bekçi için mutasyonla körlük denetimi yapılmış olmalı.
 4. **Sır, iç ad, `.har` yok.** Repo public: kurum alan adı, sunucu adı, IP, kişi adı eklenmez.
 5. **Arayüz değiştiyse** gerçek tarayıcıda bakılmış (`npm run ui:tarama`).
+6. **Repo hijyeni.** Yeni dosya bir yerden bağlı; yerini alan ya da artık kullanılmayan dosya aynı PR'da silinmiş; tek seferlik betik, rapor ya da plan eklenmemiş.
 
 ## Yapay zekâ ajanları
 
-Aynı kurallar ajanlar için de geçerlidir; Claude Code, Codex, Qoder, Antigravity ve Gemini fark etmez. Talimat dosyaları buraya işaret eder: [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md), [`GEMINI.md`](../GEMINI.md), [`.agent/rules/kalite-kapilari.md`](../.agent/rules/kalite-kapilari.md). Ajan teslimden önce `npm run kapi` koşturur ve sonucu sayılarıyla raporlar.
+Aynı kurallar ajanlar için de geçerlidir; Claude Code, Codex, Qoder, Antigravity ve Gemini fark etmez. Talimat dosyaları buraya işaret eder: [`AGENTS.md`](../AGENTS.md), [`CLAUDE.md`](../CLAUDE.md), [`GEMINI.md`](../GEMINI.md), [`.agent/rules/kalite-kapilari.md`](../.agent/rules/kalite-kapilari.md) ve proje ajanlarının tanımları (`.claude/agents/*.md`). Ajan teslimden önce `npm run kapi` koşturur ve sonucu sayılarıyla raporlar.
 
 Ajan şunları **yapmaz**:
 
 - tarayıcıdan gizlemek için dizgi bölmek (`['', 'tmp'].join('/')` gibi), kodu veri dosyasına taşımak;
 - bastırma, dışlama ya da eşik değişikliği;
 - testi zayıflatmak;
-- `--no-verify`.
+- `--no-verify`;
+- kullanılmayan dosya bırakmak ya da tek seferlik betik, rapor, plan eklemek (repo hijyeni);
+- başka bir ajanın çalıştığı dala yazmak (aynı dala aynı anda tek ajan; devralmadan önce o ajan durdurulur).
 
 ## Depo sahibi için: `main` koruması
 

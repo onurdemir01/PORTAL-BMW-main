@@ -18,58 +18,55 @@ const MIN_KILL_PCT = 85;
 /** Targeted security/compliance mutation catalog (exact token replacements on live logic). */
 const TARGETS = [
   {
-    id: 'url',
-    file: 'src/utils/url.ts',
-    runner: 'vitest',
-    tests: ['src/utils/__tests__/url.test.ts'],
+    // Application Hub canli sonucu: AWX artifact'i Portal'in kendi is gecmisiyle eslesmeden okunmaz
+    // ya da kaydedilmez (PR #303). Yalniz AH14 kosar; dosyanin betik testleri Python ister ve yavastir.
+    id: 'app-hub-sahiplik',
+    file: 'server/app-hub/canli.cjs',
+    runner: 'node',
+    tests: ['server/app-hub/__tests__/app-hub.test.cjs'],
+    testNamePattern: '^AH14 ',
     specs: [
       {
-        id: 'url-allow-js',
-        find: 'new Set(["http:", "https:"])',
-        replace: 'new Set(["http:", "https:", "javascript:"])',
-        desc: 'allow javascript scheme in allowlist',
+        id: 'ah-tek-kayit',
+        find: 'if (rows.length !== 1) return null;',
+        replace: '',
+        desc: 'accept zero or duplicate history rows',
       },
       {
-        id: 'url-drop-https',
-        find: 'new Set(["http:", "https:"])',
-        replace: 'new Set(["http:"])',
-        desc: 'drop https from allowlist',
+        id: 'ah-sablon-adi',
+        find: 'row.template_name !== TEMPLATE_NAME ||',
+        replace: '',
+        desc: 'skip template name ownership check',
       },
       {
-        id: 'url-ctrl-lt',
-        find: 'if (code <= 0x1f || code === 0x7f) return true;',
-        replace: 'if (code < 0x1f || code === 0x7f) return true;',
-        desc: 'relax control char <= to <',
+        id: 'ah-platform',
+        find: "params.platform !== 'app-hub-ocp') return null;",
+        replace: 'false) return null;',
+        desc: 'skip platform ownership check',
       },
       {
-        id: 'url-ctrl-and',
-        find: 'if (code <= 0x1f || code === 0x7f) return true;',
-        replace: 'if (code <= 0x1f && code === 0x7f) return true;',
-        desc: 'change || to && in control char check',
+        id: 'ah-artifact-app',
+        find: 'raw.app !== ad ||',
+        replace: '',
+        desc: 'accept artifact of another application',
       },
       {
-        id: 'url-ctrl-ret',
-        find: 'if (code <= 0x1f || code === 0x7f) return true;',
-        replace: 'if (code <= 0x1f || code === 0x7f) return false;',
-        desc: 'return false on control chars',
+        id: 'ah-hedef-esit',
+        find: 'hedefler.every((x, i) => x === sahiplik.hedefler[i])',
+        replace: 'true',
+        desc: 'compare target count only, not targets',
       },
       {
-        id: 'url-proto-bypass',
-        find: 'if (!ALLOWED_PROTOCOLS.has(parsed.protocol) || !parsed.hostname) return "";',
-        replace: 'if (ALLOWED_PROTOCOLS.has(parsed.protocol) && !parsed.hostname) return "";',
-        desc: 'bypass ALLOWED_PROTOCOLS negation',
+        id: 'ah-eksik-yazim',
+        find: 'if (rowCount !== hedefler.length) throw',
+        replace: 'if (false) throw',
+        desc: 'accept short write as success',
       },
       {
-        id: 'url-open-unsafe',
-        find: 'if (!url) return;',
-        replace: 'if (false && !url) return;',
-        desc: 'open window even when url rejected',
-      },
-      {
-        id: 'url-proto-rel',
-        find: 'if (v.startsWith("//")) {',
-        replace: 'if (!v.startsWith("//")) {',
-        desc: 'invert protocol-relative check',
+        id: 'ah-mevcut-kayit',
+        find: 'if (mevcut.length) {',
+        replace: 'if (false) {',
+        desc: 'write the same job twice',
       },
     ],
   },
@@ -259,6 +256,7 @@ function generateMutants(target, content) {
       file: target.file,
       runner: target.runner,
       tests: target.tests,
+      testNamePattern: target.testNamePattern || null,
       id: spec.id,
       desc: spec.desc,
       line,
@@ -329,7 +327,7 @@ function prepareSandbox(sandboxDir) {
   return sandboxDir;
 }
 
-async function runTestsForTarget(sandboxDir, runner, tests) {
+async function runTestsForTarget(sandboxDir, runner, tests, testNamePattern = null) {
   if (runner === 'vitest') {
     const vitestBin = path.join(REPO_ROOT, 'gelistirme', 'node_modules', '.bin', 'vitest');
     const cmd = fs.existsSync(vitestBin) ? vitestBin : 'npx';
@@ -338,7 +336,8 @@ async function runTestsForTarget(sandboxDir, runner, tests) {
       : ['vitest', 'run', ...tests];
     return runCommandAsync(cmd, args, sandboxDir);
   }
-  return runCommandAsync(process.execPath, ['--test', ...tests], sandboxDir);
+  const desen = testNamePattern ? [`--test-name-pattern=${testNamePattern}`] : [];
+  return runCommandAsync(process.execPath, ['--test', ...desen, ...tests], sandboxDir);
 }
 
 async function runMutationSuite({ targetFilter = null, concurrency = 4 } = {}) {
@@ -374,7 +373,7 @@ async function runMutationSuite({ targetFilter = null, concurrency = 4 } = {}) {
         const m = allMutants[idx];
         const targetAbs = path.join(sb, m.file);
         fs.writeFileSync(targetAbs, m.mutated, 'utf8');
-        const res = await runTestsForTarget(sb, m.runner, m.tests);
+        const res = await runTestsForTarget(sb, m.runner, m.tests, m.testNamePattern);
         fs.writeFileSync(targetAbs, originals.get(m.file), 'utf8');
         results[idx] = {
           id: m.id,

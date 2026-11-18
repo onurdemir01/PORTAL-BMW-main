@@ -318,7 +318,7 @@ function makeAnalyzeLogTool(username) {
 }
 
 // ── Tool 4: Izin verilen Ansible/AWX template'ini calistirma (yalnizca Admin) ─
-// Guvenlik modeli (docs/AI-INTEGRATION-ROADMAP.md #29/#30 ile ayni cizgi):
+// Guvenlik modeli:
 //   - Yalnizca runner.cjs'teki AWX_READ_ONLY_TEMPLATE_IDS allowlist'inde olan
 //     template'ler cagrilabilir — launchJob zaten bunu zorluyor, burada AYRICA
 //     tekrar edilmiyor (tek dogruluk kaynagi runner.cjs'te kalsin).

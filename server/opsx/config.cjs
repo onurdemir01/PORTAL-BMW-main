@@ -1,8 +1,8 @@
 // server/opsx/config.cjs — OpsX'in AWX'e GONDERDIGI parametrelerin admin tarafindan
-// duzenlenebilir yapilandirmasi. Telnet modulu de bu blob'un openshift bolumunu
-// PAYLASIR (bkz. server/opsx/ocp-target.cjs + server/telnet/index.cjs) — bu yuzden
-// terminalHost*/namespaceKey/appNameKey/clustersKey/clusterListStyle alanlari
-// SILINEMEZ, sadece OpsX'in KENDI /api/opsx/run yolu bunlari artik KULLANMIYOR
+// duzenlenebilir yapilandirmasi. Telnet eskiden bu blob'un openshift bolumunu PAYLASIYORDU;
+// ortak hedef yardimcisi Telnet akisi sadelesince (2026-08-11) kalkti. Bugun
+// terminalHost*/namespaceKey/appNameKey/clustersKey/clusterListStyle alanlarini HICBIR
+// akis okumuyor; DB'deki kayitlarin bicimi bozulmasin diye normalizasyonda tutuluyor
 // (bkz. asagidaki not).
 //
 // NEDEN VAR: parametre adlari ('application', 'limit', 'operation') onceden KOD ICINDE
@@ -84,8 +84,8 @@ const SMART_METADATA_MAX = 20000;
 //   duzeltilse bile DB satirinin oncelikli olmasi yuzunden gerci ezmeye devam ediyordu).
 //
 //   terminalHostKey/terminalHostsKey/namespaceKey/appNameKey/clustersKey/clusterListStyle
-//   alanlari OpsX tarafindan artik OKUNMUYOR ama Telnet modulu (server/telnet/index.cjs)
-//   hala buradan okuyup server/opsx/ocp-target.cjs'e gecirdigi icin KORUNUR.
+//   alanlari OpsX tarafindan artik OKUNMUYOR; Telnet de 2026-08-11'den beri okumuyor.
+//   Yalniz DB'deki mevcut kayitlarin bicimi bozulmasin diye normalizasyonda tutulur.
 const DEFAULTS = Object.freeze({
   legacy: {
     applicationKey: 'application',
@@ -109,7 +109,7 @@ const DEFAULTS = Object.freeze({
     // Coklu namespace/uygulama ciftleri arasindaki ayirac (OpsX'in oc_input'unda ";").
     // Telnet tarafinda ise cluster_name listesini birlestirmek icin kullanilir.
     separator: ',',
-    // Telnet'in cluster listesini AWX'e hangi SEKILDE gonderecegi (bkz. ocp-target.cjs).
+    // Cluster listesinin AWX'e hangi SEKILDE gidecegi (bugun hicbir akis okumuyor; ust not).
     //   'joined'     → TEK oge, cluster_name'ler `separator` ile birlesik (varsayilan).
     //   'perCluster' → her cluster ayri oge + kendi terminal_host'u + terminal_hosts[].
     clusterListStyle: 'joined',

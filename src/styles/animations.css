@@ -48,7 +48,7 @@
    animation ends via `animation-fill-mode: both`. Any transform value other
    than the `none` keyword creates a new containing block for fixed
    descendants — this silently broke every modal nested in an animated
-   ancestor (see docs/QUICK-SOLVER.md). */
+   ancestor. */
 @keyframes springIn {
   0%   { opacity: 0; transform: translateY(12px) scale(0.96); }
   55%  { opacity: 1; transform: translateY(-3px) scale(1.01); }

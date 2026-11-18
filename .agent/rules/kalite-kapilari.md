@@ -11,4 +11,6 @@ Bu depodaki her değişiklik [docs/KALITE-KAPILARI.md](../../docs/KALITE-KAPILAR
   - tarayıcıdan gizlemek için dizgi bölmek (`['', 'tmp'].join('/')` gibi);
   - testi zayıflatmak;
   - `--no-verify`;
-  - sır, iç ad ya da `.har` commit etmek.
+  - sır, iç ad ya da `.har` commit etmek;
+  - kullanılmayan dosya bırakmak; tek seferlik betik, rapor, plan eklemek (repo hijyeni, bekçi `scripts/repo-hijyeni.cjs`);
+  - başka bir ajanın çalıştığı dala yazmak.

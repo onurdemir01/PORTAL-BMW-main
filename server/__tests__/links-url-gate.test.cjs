@@ -18,7 +18,6 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const ts = require('typescript');
 
 const ROOT = path.join(__dirname, '..', '..');
 
@@ -36,18 +35,7 @@ function loadServerGate() {
   return mod.exports.urlError;
 }
 
-// Onyuzdeki ikinci katmani da GERCEK kaynaktan yukler.
-function loadClientGate() {
-  const out = ts.transpileModule(fs.readFileSync(path.join(ROOT, 'src/utils/safeUrl.ts'), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-  }).outputText;
-  const m = { exports: {} };
-  new Function('module', 'exports', 'require', out)(m, m.exports, require);
-  return m.exports.safeLinkUrl;
-}
-
 const urlError = loadServerGate();
-const safeLinkUrl = loadClientGate();
 
 const REDDEDILMELI = [
   'javascript:alert(1)',
@@ -83,25 +71,10 @@ test('LU2 SUNUCU kapisi mesru adresleri KABUL EDER (seed kirilmiyor)', () => {
   }
 });
 
-test('LU3 ONYUZ ikinci katmani da ayni kararlari verir', () => {
-  // Sunucu kapisi yalnizca YENI yazimlari korur; tabloda ZATEN duran satirlar
-  // dogrulanmadan gecmistir. Render aninda ayni kural uygulanmali.
-  for (const u of REDDEDILMELI) {
-    const r = safeLinkUrl(u);
-    assert.equal(r.safe, false, `onyuz kabul etti: ${JSON.stringify(u)}`);
-    assert.equal(r.href, '', 'guvensiz adres icin href BOS olmali');
-    assert.ok(r.reason.length > 0, 'sebep yazilmamis');
-  }
-  for (const u of KABUL_EDILMELI) {
-    const r = safeLinkUrl(u);
-    assert.equal(r.safe, true, `onyuz mesru adresi reddetti: ${u}`);
-    assert.equal(r.href, u.trim());
-  }
-});
-
-// LU4 (ekran guvensiz adresi tiklanabilir yapmaz) 2026-10-02'de KALDIRILDI: Linkler
-// sayfasi silindi, portal_links'i render eden bir ekran YOK. Sayfa geri gelirse
-// `safeLinkUrl` (src/utils/safeUrl.ts) ile render edilmeli ve bu bekci geri yazilmali.
+// LU3 (onyuz ikinci katmani) ve LU4 (ekran guvensiz adresi tiklanabilir yapmaz) KALDIRILDI: Linkler
+// sayfasi 2026-10-02'de silindi, portal_links'i render eden bir ekran YOK; onyuz katmani
+// (src/utils/safeUrl.ts) 2026-11-18'de olu kod olarak silindi. Sayfa geri gelirse safeUrl.ts
+// git gecmisinden (7196be20^) geri getirilir, render ondan gecer ve LU3 / LU4 geri yazilir.
 
 test('LU5 validate() URL kapisini GERCEKTEN cagiriyor', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server/links/index.cjs'), 'utf8');

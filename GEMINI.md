@@ -15,3 +15,9 @@ Ayrıntı: [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md).
   - tarayıcıdan gizlemek için dizgi bölmek ya da kodu veri dosyasına taşımak;
   - `--no-verify`.
 - Repo public: sır, iç ad (kurum alan adı, sunucu, IP, kişi) ve `.har` commit edilmez.
+- Repo hijyeni: kullanılmayan dosya bırakılmaz.
+  - Yeni dosya bir yerden bağlanır (README / ilgili belge / `package.json` / kullanan kod).
+  - İşi biten dosya aynı PR'da silinir; arşiv dizini açılmaz, git geçmişi yeter.
+  - Tek seferlik betik, iş kaydı / PBI, yol haritası ve oturum raporu repoya girmez (`.ai-workspace/`).
+  - Bekçi: `scripts/repo-hijyeni.cjs` (CI'da).
+- Aynı dala aynı anda tek ajan yazar; başka bir ajanın açık PR'ı o ajan durdurulmadan devralınmaz.
