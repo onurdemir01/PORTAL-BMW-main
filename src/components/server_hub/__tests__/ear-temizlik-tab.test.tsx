@@ -417,7 +417,7 @@ describe('EarTemizlikTab yoklama', () => {
 
   const ilerlet = async (ms: number) => {
     await act(async () => {
-      vi.advanceTimersByTime(ms);
+      await vi.advanceTimersByTimeAsync(ms);
     });
   };
   const kayitCagrisi = (id = 11) =>
@@ -515,6 +515,7 @@ describe('EarTemizlikTab yoklama', () => {
       const r = render(<EarTemizlikTab />);
       const s = (await screen.findAllByTestId('et-aday'))[0];
       await ilerlet(YOKLAMA_MS);
+      await waitFor(() => expect(kayitCagrisi()).toBe(1));
       expect(await within(s).findByTestId('et-yoklama-hata')).toHaveTextContent('yoklama durdu');
       await ilerlet(YOKLAMA_MS * 5);
       expect(kayitCagrisi()).toBe(1);
@@ -1106,7 +1107,7 @@ describe('EarTemizlikTab toplu yoklama', () => {
   afterEach(() => vi.useRealTimers());
   const ilerlet = async (ms: number) => {
     await act(async () => {
-      vi.advanceTimersByTime(ms);
+      await vi.advanceTimersByTimeAsync(ms);
     });
   };
   const hazir = (id: number, host: string, ek: Partial<EtKayit> = {}): EtKayit =>
