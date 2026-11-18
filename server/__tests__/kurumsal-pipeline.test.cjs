@@ -3,7 +3,7 @@
 // Kurumsal is calismiyordu (2026-11-18, kurumdaki 560 groovy ve standart_pipeline koduyla karsilastirildi):
 // Node araci yoktu (kutuphane Linux ajanini yalniz `tools: [nodejs]` ile secer), var olmayan `build`
 // dizini sikistiriliyordu, war ve deployment adlari SI kaydiyla (BMWPORTAL.war, BMWPORTAL-D) uyusmuyordu.
-// Bu bekci dogru is tanimini repo ile uyumlu tutar.
+// Bu bekci dogru is tanimlarini (DVL, TST, PRD) repo ile ve birbirleriyle uyumlu tutar.
 'use strict';
 
 const { test } = require('node:test');
@@ -14,6 +14,21 @@ const path = require('node:path');
 const KOK = path.join(__dirname, '..', '..');
 const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8');
 const GROOVY = 'deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy';
+// Ortam basina deployment adi. DVL: SI kaydi. TST: kurumdaki -D / -T / -Q kalibi (SI ile dogrulanmali).
+// PRD: deploy YOK (uretim kurulumu staging'den ayri surecle; kurumdaki PRD islerinin cogu ve onceki
+// PRD tanimi boyle).
+const ORTAMLAR = {
+  DVL: { dosya: GROOVY, deployment: 'BMWPORTAL-D' },
+  TST: { dosya: 'deploy/jenkins/TST_JAVASCRIPT_GAR_BMW_PORTAL.groovy', deployment: 'BMWPORTAL-T' },
+  PRD: { dosya: 'deploy/jenkins/PRD_JAVASCRIPT_GAR_BMW_PORTAL.groovy', deployment: null },
+};
+/** Derleme + paket + war + staging bolumu: ortamlar arasinda BIREBIR ayni olmali. */
+const derlemeBolumu = (metin) => {
+  const i = metin.indexOf('    checkout: [');
+  const j = metin.indexOf('    copyToStagingArea: [');
+  const k = metin.indexOf(']', j);
+  return i < 0 || j < 0 ? '' : metin.slice(i, k + 1);
+};
 
 // Kurumsal standart_pipeline kutuphanesinin Node izin listesinden (StandardPipelineUtilities.groovy,
 // 2026-11-17 okundu) bu repoda kullanilabilenler. 22.20.0 listede YOK.
@@ -26,11 +41,11 @@ const BEKLENEN_KOMUTLAR = [
   'run build',
   `run paket -- --cikti ${PAKET_KOKU}/PORTAL-BMW-main --derleme-yok`,
 ];
-// Uygulamanin SI/CMDB kaydi: Deployment Name BMWPORTAL-D, War Name BMWPORTAL.war, Application Type Java.
-const SI = { war: 'BMWPORTAL.war', deployment: 'BMWPORTAL-D', platform: 'JAVA' };
+// Uygulamanin SI/CMDB kaydi (DVL): Deployment Name BMWPORTAL-D, War Name BMWPORTAL.war, Application Type Java.
+const SI = { war: 'BMWPORTAL.war', platform: 'JAVA' };
 
 /** Saf denetim: groovy metni + repo bilgileri -> hata listesi (bos = uyumlu). */
-function denetle(metin, { dockerNode, nvmrc, betikler, paketKaynak }) {
+function denetle(metin, { dockerNode, nvmrc, betikler, paketKaynak }, deployment = 'BMWPORTAL-D') {
   const h = [];
   const araclar = (metin.match(/tools:\s*\[([^\]]*)\]/) || [])[1] || '';
   const node = (araclar.match(/nodejs:\s*"([^"]+)"/) || [])[1];
@@ -69,10 +84,15 @@ function denetle(metin, { dockerNode, nvmrc, betikler, paketKaynak }) {
     !staging.endsWith('.war')
   )
     h.push(`staging (${staging}) compress ciktisini almiyor`);
-  if (!new RegExp(`deploymentPlatform:\\s*'${SI.platform}'`).test(metin))
-    h.push(`deploymentPlatform ${SI.platform} degil`);
-  if (!new RegExp(`configurationName:\\s*'${SI.deployment}'`).test(metin))
-    h.push(`configurationName SI kaydindaki ${SI.deployment} degil`);
+  if (deployment === null) {
+    if (/^\s*deploy:/m.test(metin))
+      h.push('PRD isinde deploy olmaz (uretim kurulumu ayri surecle)');
+  } else {
+    if (!new RegExp(`deploymentPlatform:\\s*'${SI.platform}'`).test(metin))
+      h.push(`deploymentPlatform ${SI.platform} degil`);
+    if (!new RegExp(`configurationName:\\s*'${deployment}'`).test(metin))
+      h.push(`configurationName ${deployment} degil`);
+  }
 
   const epostalar = metin.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
   if (epostalar.length) h.push(`gercek e-posta adresi public repoda: ${epostalar.join(', ')}`);
@@ -87,8 +107,25 @@ const BAGLAM = () => ({
   paketKaynak: oku('scripts/paket.cjs'),
 });
 
-test('KJ1 kurumsal is tanimi repo ve SI kaydi ile uyumlu (Node/ajan, komutlar, war, deployment, e-posta)', () => {
-  assert.deepEqual(denetle(oku(GROOVY), BAGLAM()), []);
+test('KJ1 kurumsal is tanimlari repo ve SI kaydi ile uyumlu (Node/ajan, komutlar, war, deployment, e-posta)', () => {
+  for (const [ortam, o] of Object.entries(ORTAMLAR)) {
+    assert.deepEqual(denetle(oku(o.dosya), BAGLAM(), o.deployment), [], ortam);
+  }
+});
+
+test('KJ4 TST ve PRD derlemesi DVL ile birebir ayni (yalniz deploy farkli)', () => {
+  const dvl = derlemeBolumu(oku(GROOVY));
+  assert.ok(
+    dvl.includes('commands:') && dvl.includes('artifactsToCopy'),
+    'DVL derleme bolumu okunamadi',
+  );
+  for (const ortam of ['TST', 'PRD']) {
+    assert.equal(
+      derlemeBolumu(oku(ORTAMLAR[ortam].dosya)),
+      dvl,
+      `${ortam} derlemesi DVL'den ayrismis`,
+    );
+  }
 });
 
 test("KJ2 paket build/ altinda uretilebilir ve kurumsal Sonar onu taramaz; kapsam Sonar'in aradigi yerde", () => {
@@ -153,10 +190,31 @@ test('KJ3 bekcinin kendisi kor degil: her bozulma ayri yakalanir', () => {
       asil.replace("'EKIP_EPOSTA_ADRESI'", "'ekip@ornek.com.tr'"),
       /gercek e-posta/,
     ],
+    [
+      'PRD isinde deploy',
+      oku(ORTAMLAR.PRD.dosya).replace(
+        "        artifactsToCopy: 'BMWPORTAL/*.war'\n    ]\n",
+        "        artifactsToCopy: 'BMWPORTAL/*.war'\n    ],\n    deploy: [\n        deploymentPlatform: 'JAVA',\n        configurationName: 'BMWPORTAL'\n    ]\n",
+      ),
+      /PRD isinde deploy/,
+      null,
+    ],
+    [
+      'TST DVL adiyla',
+      oku(ORTAMLAR.TST.dosya).replace(
+        "configurationName: 'BMWPORTAL-T'",
+        "configurationName: 'BMWPORTAL-D'",
+      ),
+      /configurationName BMWPORTAL-T/,
+      'BMWPORTAL-T',
+    ],
   ];
-  for (const [ad, metin, beklenen] of bozuk) {
-    assert.notEqual(metin, asil, `${ad}: bozulma uygulanamadi (groovy degismis)`);
-    const h = denetle(metin, b);
+  for (const [ad, metin, beklenen, deployment = 'BMWPORTAL-D'] of bozuk) {
+    assert.ok(
+      !Object.values(ORTAMLAR).some((o) => oku(o.dosya) === metin),
+      `${ad}: bozulma uygulanamadi (groovy degismis)`,
+    );
+    const h = denetle(metin, b, deployment);
     assert.ok(
       h.some((x) => beklenen.test(x)),
       `${ad} yakalanmadi: ${JSON.stringify(h)}`,
