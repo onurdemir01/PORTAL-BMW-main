@@ -55,7 +55,7 @@ cp -r server/ansible/bmw_portal/scalex/scalex_app <AWX_PROJECT_DIR>/bmw_portal/s
 > `../../../bmw_openshift_jobs/` yolunu kullanıyor; hedef derinliği bir kademe
 > kayarsa cluster kimlik dosyaları bulunamaz ve iş "catalog_source: file" ile
 > sessizce yanlış katalogla koşar. `AT6` bekçisi (server/ansible/__tests__/
-> playbook-tree.test.cjs) bu satırı kilitler — komutu değiştirirseniz bekçi kırmızı olur.
+> playbook-tree.test.js) bu satırı kilitler — komutu değiştirirseniz bekçi kırmızı olur.
 
 Paket kopyalandıktan veya güncellendikten sonra AWX üzerinde:
 
@@ -746,7 +746,7 @@ olmasıdır.
 Test:
 
 ```bash
-node --test server/ansible/__tests__/scalex-awx-package.test.cjs
+node --test server/ansible/__tests__/scalex-awx-package.test.js
 ```
 
 ---

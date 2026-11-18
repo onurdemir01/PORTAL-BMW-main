@@ -5,7 +5,7 @@
 //
 // Bir kapi kirmizi olsa da sonrakiler kosar (hepsinin durumu tek seferde gorulur); sonunda
 // herhangi biri kirmiziysa cikis 1. CI ayni listeyi .github/workflows/ci.yml'de kosturur; liste
-// ile is akisinin esitligini server/__tests__/kalite-kapilari.test.cjs kilitler.
+// ile is akisinin esitligini server/__tests__/kalite-kapilari.test.js kilitler.
 'use strict';
 
 const fs = require('node:fs');
@@ -103,6 +103,7 @@ const CI_EK = [
   { id: 'K0', ad: 'sir taramasi (PR / push araligi)', ci: 'node scripts/sir-tarama.cjs --aralik' },
   { id: 'K13', ad: 'SonarQube kalite kapisi', ci: 'node scripts/sonar-kapi.cjs' },
   { id: 'K14', ad: 'kurumsal is provasi', ci: 'npm run kurumsal:prova' },
+  { id: 'K15', ad: 'kurumsal Sonar taklidi', ci: 'node scripts/sonar-kapi.cjs --ci --kurumsal' },
 ];
 
 function kos(k) {

@@ -13,7 +13,7 @@
 #   Playbook'lara YENI bir `oc` komutu ekleyen ya da mevcut birinin kaynagini/
 #   fiilini degistiren herkes BU DOSYAYI AYNI PR ICINDE guncellemek ZORUNDADIR.
 #
-#   Bu bir rica degil, KAPIDIR: `server/ansible/__tests__/ocp-permissions.test.cjs`
+#   Bu bir rica degil, KAPIDIR: `server/ansible/__tests__/ocp-permissions.test.js`
 #   playbook'lari tarar ve burada YAZMAYAN bir `oc` alt komutu bulursa testi
 #   KIRMIZIYA dondurur. `npm test` gecmeden PR merge edilemez.
 #
@@ -435,7 +435,7 @@ degisiklik_gunlugu:
     yetki_genisledi_mi: hayir
     not: >-
       Bu ilk surum MEVCUT DURUMU yazar, yeni yetki istemez. Playbook'lardan
-      makine ile cikarildi (`ocp-permissions.test.cjs` ayni taramayi yapar).
+      makine ile cikarildi (`ocp-permissions.test.js` ayni taramayi yapar).
   - tarih: "2026-11-18"
     degisiklik: >-
       Application Hub saatlik taramasi: deployment, deploymentconfig, statefulset, rollouts, pods ve hpa

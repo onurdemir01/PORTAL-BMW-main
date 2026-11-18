@@ -105,7 +105,7 @@ yaşanan AWX #3297277 ile aynı sınıf.
   alınamadığında keşif hatasını mesaja koyar. Sıra önemli — `fail` önce gelseydi iş doğru şekilde
   kırmızı olurdu ama sonuç sözleşmesi yine yayınlanmazdı.
 
-Bu kuralı `playbook-jinja-traps.test.cjs` içindeki **TUZAK 3** bekçisi kilitler.
+Bu kuralı `playbook-jinja-traps.test.js` içindeki **TUZAK 3** bekçisi kilitler.
 
 ## Kullanılmayan dosyalar (`@@LOADED`, `@@SSLDIR`; 2026-09-22)
 

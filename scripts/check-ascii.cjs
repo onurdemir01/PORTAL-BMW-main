@@ -20,7 +20,7 @@ function walk(dir, out = []) {
     const p = path.join(dir, name);
     const st = fs.statSync(p);
     if (st.isDirectory()) walk(p, out);
-    else if (/\.(cjs|mjs)$/.test(name)) out.push(p);
+    else if (/\.(cjs|mjs)$|\.test\.js$/.test(name)) out.push(p);
   }
   return out;
 }

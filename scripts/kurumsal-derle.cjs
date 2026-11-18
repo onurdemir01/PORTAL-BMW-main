@@ -13,7 +13,7 @@
 // (kalite/teslim.json) karsilastirir; yarim kopya anlasilmaz bir adimda degil, burada ve dosya dosya
 // soylenerek durur.
 //
-// SOZLESME (degismez; deploy/jenkins/*.groovy ve server/__tests__/kurumsal-pipeline.test.cjs):
+// SOZLESME (degismez; deploy/jenkins/*.groovy ve server/__tests__/kurumsal-pipeline.test.js):
 //   - betik adi: kurumsal:derle
 //   - cikti:     build/BMWPORTAL/PORTAL-BMW-main  (groovy: compress build/BMWPORTAL -> BMWPORTAL/BMWPORTAL.war)
 //

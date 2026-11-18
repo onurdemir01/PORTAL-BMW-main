@@ -10,12 +10,12 @@
 //   IP7 (denetim B1) diger kurulum da seciliyse "hala calisiyor mu" DENMEZ; kismi secimde yalniz secili olmayan icin
 //   IP8 STOP baglaminda diger kurulum KAYITTA hedefse (onayda olmasa da) "bu kayitta hedef" der
 //   IP9 (denetim B8) ozel uyari gorsel olarak ayrisir: kalin sol cizgi + IN-PLACE cipi
-// Kaynak bekcisi (CreateModal yerlesimi, create() inPlace'e bakmaz): server/retirement/__tests__/ekran-tablo.test.cjs.
+// Kaynak bekcisi (CreateModal yerlesimi, create() inPlace'e bakmaz): server/retirement/__tests__/ekran-tablo.test.js.
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { InPlaceUyari, inPlaceIpucu, inPlaceOzeti, type InPlaceHedef } from '@/components/server_hub/RetirementInPlace';
 
-// discover.cjs inPlaceIsaretle ciktisinin bicimi (in-place.test.cjs IN1/IN5 ile ayni senaryo).
+// discover.cjs inPlaceIsaretle ciktisinin bicimi (in-place.test.js IN1/IN5 ile ayni senaryo).
 const elle = 'in-place: GBPOSWEBAPI bu sunucuda JBoss 8 kurulumunda da var; ... elle kontrol edilmeli';
 const j7: InPlaceHedef = { host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 7, inPlace: true, digerSurumler: [8], web: [{ elle }, { elle }, {}] };
 const j8: InPlaceHedef = { host: 'GBJEXP05', appName: 'GBPOSWEBAPI', gen: 8, inPlace: true, digerSurumler: [7], web: [] };

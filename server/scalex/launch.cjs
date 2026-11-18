@@ -30,7 +30,7 @@ const MODES = Object.freeze(['dry_run', 'apply']);
 // ASAGIDAKI GETTER'LAR FONKSIYON, SABIT DEGIL. Modul duzeyinde
 // `const X = tunable(...)` yazmak dinamikligi SESSIZCE oldururdu: deger boot'ta
 // donar ve admin ekrani bir daha hicbir seyi degistirmez. Bekci
-// (scalex-dinamik-ayarlar.test.cjs) bunu ayni proses icinde KANITLIYOR.
+// (scalex-dinamik-ayarlar.test.js) bunu ayni proses icinde KANITLIYOR.
 const verifyTimeoutDefault = () => config.tunable('SCALEX_VERIFY_TIMEOUT_DEFAULT');
 const verifyTimeoutMin = () => config.tunable('SCALEX_VERIFY_TIMEOUT_MIN');
 const verifyTimeoutMax = () => config.tunable('SCALEX_VERIFY_TIMEOUT_MAX');
@@ -498,7 +498,7 @@ async function buildRunExtraVars({
     ...(action === 'scale' ? { target_replicas: Number(targetReplicas) } : {}),
     // SAYI, STRING DEGIL. Bu uc soru AWX survey'inde `integer` tipinde; string
     // gonderilirse AWX launch'i 400 ile duser (bu depoda kayitli bir tuzak —
-    // bkz. scalex-awx-package.test.cjs S7).
+    // bkz. scalex-awx-package.test.js S7).
     //
     // `?? DEFAULT` KASITLI: `normalizeVerificationTimeout` gecersiz girdide `null`
     // doner ve `Number(null)` SIFIR olur — yani dogrulama bir sekilde atlanirsa

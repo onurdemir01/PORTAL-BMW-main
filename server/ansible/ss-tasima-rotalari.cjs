@@ -19,7 +19,7 @@
 // kapat) YALNIZ istegin `to` sunucusuna yazar. Gecmis (ansible_job_history, smart_tickets,
 // oco_scheduled_launches) ve kaynak ayar satiri DEGISTIRILMEZ. Kapanis icindeki onbellege
 // dokunan fonksiyonlar runner.cjs'ten enjekte edilir (sahte app / DB ile test edilebilir:
-// server/ansible/__tests__/ss-tasima-rotalar.test.cjs).
+// server/ansible/__tests__/ss-tasima-rotalar.test.js).
 'use strict';
 
 const T = require('./ss-tasima.cjs');

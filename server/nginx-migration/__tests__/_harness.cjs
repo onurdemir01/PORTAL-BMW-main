@@ -1,5 +1,5 @@
 // server/nginx-migration/__tests__/_harness.cjs - nginx-migration davranis testlerinin ORTAK
-// duzenegi (test dosyasi DEGIL: run-tests.cjs yalniz *.test.cjs toplar).
+// duzenegi (test dosyasi DEGIL: run-tests.cjs yalniz *.test.js toplar).
 //
 // GERCEK olanlar: Express ucu (initNginxMigration), runner.cjs (template/survey okuma, launch,
 // iptal - yerel SAHTE AWX'e HTTP ile), gorunurluk motoru (auth/visibility.cjs: decide, Admin

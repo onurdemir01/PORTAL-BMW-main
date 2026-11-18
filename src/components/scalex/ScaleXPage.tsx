@@ -7,7 +7,7 @@
 //
 // İskelet TelnetWizardPage'ten: `STEP_TITLES`, `backTargetFor`, `busyRef` (state DEĞİL —
 // aynı tick'teki iki tık iki AWX işi açardı), `<div key={step}>` ile adım sıfırlama.
-// ERKEN `return` TÜM HOOK'LARIN ALTINDA olmak zorunda (bkz. src/__tests__/hook-order.test.cjs).
+// ERKEN `return` TÜM HOOK'LARIN ALTINDA olmak zorunda (bkz. src/__tests__/hook-order.test.js).
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeftIcon,

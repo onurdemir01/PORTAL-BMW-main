@@ -225,7 +225,7 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
     const yt = oku('server/nginx-loadtest/index.cjs');
     expect(yt).toMatch(/if \(await canSee\(user, 'YukTesti'\)\) return next\(\);/);
     expect(yt).toMatch(/\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/);
-    // Reboot Kontrolu / Retirement uclari: eski ServerHub kapisi + yeni sayfa anahtari (davranis: ek-sayfa-kapisi.test.cjs).
+    // Reboot Kontrolu / Retirement uclari: eski ServerHub kapisi + yeni sayfa anahtari (davranis: ek-sayfa-kapisi.test.js).
     expect(oku('server/retirement/index.cjs')).toMatch(
       /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{ anahtar: 'Retirement', ana, canSee: gor\.canSee \}\)\);/,
     );

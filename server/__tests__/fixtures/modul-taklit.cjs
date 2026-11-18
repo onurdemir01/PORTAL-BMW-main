@@ -7,7 +7,7 @@
 // `exports` yeni API'dir (`namedExports` ileride kalkabilir): 24+ onu, 22 `namedExports`u alir.
 //
 // Yardimci yalnizca SECENEK nesnesini uretir; `mock.module` cagrisini test dosyasi kendisi yapar,
-// cunku belirtec (or. '../mssql.cjs') CAGIRAN dosyaya gore cozulur. Bekci: modul-taklit.test.cjs.
+// cunku belirtec (or. '../mssql.cjs') CAGIRAN dosyaya gore cozulur. Bekci: modul-taklit.test.js.
 'use strict';
 
 function modulTaklitSecenegi(disaAktarim, surum = process.versions.node) {

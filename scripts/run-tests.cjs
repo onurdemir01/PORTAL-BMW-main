@@ -2,7 +2,7 @@
 // scripts/run-tests.cjs — test kosucusu (npm test).
 //
 // NEDEN AYRI BIR KOSUCU VAR: suit `node --test` ile calisiyor, ama TEK bir dosya
-// (server/inventory/__tests__/visible-tables.test.cjs) `mock.module` kullaniyor ve o
+// (server/inventory/__tests__/visible-tables.test.js) `mock.module` kullaniyor ve o
 // da `--experimental-test-module-mocks` bayragini gerektiriyor. Bayrak Node 22.3+
 // ile geldi; Jenkins ise "node20" araciyla calisiyor ve Node 20'de BILINMEYEN bir
 // bayrak surecin tamamini basta oldurur — yani `npm test` CI'da hic kosamazdi.
@@ -59,7 +59,7 @@ const TEST_DIRS = [
   'server/__tests__',
   'src/__tests__',
   'server/nobetci/__tests__',
-  // TS-ONLY (vitest) dizin: `collect()` yalnizca `.test.cjs` topladigi icin
+  // TS-ONLY (vitest) dizin: `collect()` yalnizca `.test.js` topladigi icin
   // buradan `node --test`e dosya GITMEZ; liste "hicbir test dizini sessizce
   // kosmadan kalmasin" bekcisi (test-glob-coverage) icin gerekli.
   'src/api/__tests__',
@@ -85,14 +85,27 @@ const TEST_DIRS = [
   'src/utils/__tests__',
 ];
 
+// Node testleri `*.test.js` (2026-11-18, kurumsal is #49): kurumsal Sonar testi YALNIZ `*.test.js` /
+// `*.test.tsx` adindan tanir (scanOnSonar sonar.test.inclusions'i ezer). `.test.cjs` test olarak
+// sayilmaz, uretim kodu sayilir: kapsam yariya iner, testteki sahte parola zafiyet olur. Klasorlerdeki
+// package.json ({"type":"commonjs"}) `.test.js`'i CommonJS yapar. Eski adla yeni test SESSIZCE atlanmaz.
 function collect() {
   const files = [];
+  const eskiAd = [];
   for (const d of TEST_DIRS) {
     const abs = path.join(ROOT, d);
     if (!fs.existsSync(abs)) continue;
     for (const f of fs.readdirSync(abs)) {
-      if (f.endsWith('.test.cjs')) files.push(path.join(d, f));
+      if (f.endsWith('.test.js')) files.push(path.join(d, f));
+      else if (f.endsWith('.test.cjs')) eskiAd.push(path.join(d, f));
     }
+  }
+  if (eskiAd.length) {
+    console.error(
+      `[test] ESKI AD: Node testleri *.test.js olmali (kurumsal Sonar yalniz onu test sayar):\n` +
+        eskiAd.map((f) => `  - ${f} -> ${f.replace(/\.test\.cjs$/, '.test.js')}`).join('\n'),
+    );
+    process.exit(1);
   }
   return files.sort();
 }

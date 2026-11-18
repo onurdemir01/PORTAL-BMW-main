@@ -50,7 +50,7 @@ ocp_clusters:
 
 Tek bastion'lı kurulumda üretilen payload, eski payload'ın **üst kümesidir** — eski playbook
 sürümü yeni alanları yok sayarsa davranış birebir aynı kalır (`buildOcpExtraVars` golden testi
-bunu garanti eder: `server/logx/v2/__tests__/ocp-extra-vars.test.cjs`).
+bunu garanti eder: `server/logx/v2/__tests__/ocp-extra-vars.test.js`).
 
 ### v3 — cluster kataloğu DB'de (parola hâlâ vault'ta)
 
@@ -185,7 +185,7 @@ Düzeltme: dış tırnağı **çift tırnak** yapmak, apostrofu normal karakter 
 > **Bu sınıf `ansible-playbook --syntax-check`'ten GEÇER** (YAML geçerlidir, ifade ancak
 > çalışma anında derlenir) ve davranış ansible/jinja **sürümüne göre değişir** — daha yeni
 > bir sürümde yerelde sessizce çalışabilir. Bu yüzden koruma bir **grep testidir**:
-> `server/ansible/__tests__/ocp-playbook-username.test.cjs` bu playbook'larda kaçırılmış
+> `server/ansible/__tests__/ocp-playbook-username.test.js` bu playbook'larda kaçırılmış
 > apostrof bulunmasını yasaklar. Aynı test, `>-` katlamalı skaler **içine** `#` yorum
 > satırı konmasını da yasaklar (orada `#` YAML yorumu değildir, ifadenin parçası olur).
 
@@ -230,7 +230,7 @@ kimse okumuyordu**. Taramayı tetikleyen kullanıcı bile sonucu göremiyordu.
 - Aynı ad iki kaynakta da varsa **envanter** kaynak etiketini kazanır; uygulama kaydında
   ise **önbellek** kazanır (kind/replica bilgisi orada, envanterde yalnızca ad var).
 - **Onur'un kararı korunur:** bu modül envanter tablosuna **YAZMAZ**, yalnızca okur.
-  Test bunu kilitler (`__tests__/ocp-catalog.test.cjs`).
+  Test bunu kilitler (`__tests__/ocp-catalog.test.js`).
 - Kısıtlama filtresi yerinde kalır (`index.cjs`), birleştirme filtreden önce olur.
 - Rozet kaynağı gösterir: "Envanterden • 2 saat önce" / "Envanter + tarama" + satır
   bazında `tarama` etiketi.
@@ -390,7 +390,7 @@ Bu repodaki playbook'lar **referans kopyadır**; çalıştırılan sürüm AWX p
 > sayar; `shell: |` bloğunun **yorum satırında** tek başına bir `'` (ör. "API'si") bloğu
 > `unbalanced jinja2 block or quotes` ile reddettirir ve playbook **hiç yüklenmez**. YAML
 > geçerli kalır, testler yeşil görünür — hata ancak AWX'te çalıştırınca çıkar. Bu sınıfı
-> `server/ansible/__tests__/playbook-shell-quotes.test.cjs` yakalar.
+> `server/ansible/__tests__/playbook-shell-quotes.test.js` yakalar.
 
 > **Sürüm sapması uyarısı — 2026-08-09 itibarıyla GİDERİLDİ.** 2026-08-08'de AWX'teki
 > `logx_ocp_discover_fetch.yml` hâlâ eski tek-bastion sürümüydü. 2026-08-09 üretim

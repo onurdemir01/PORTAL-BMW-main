@@ -3739,7 +3739,7 @@ function initAnsibleRunner(app) {
         // aktarilmazsa bilet sinirsiz bekler ve onay anindaki nextRunAt kapisi (runner smart
         // poller geri cagrisi, iki alan da doluysa calisir) atlanir - pencere kapandiktan
         // gunler sonra gelen onay isi OCO disinda prod'da kosturur. Bkz.
-        // server/smart/__tests__/oco-yedek-yol-son-tarih.test.cjs.
+        // server/smart/__tests__/oco-yedek-yol-son-tarih.test.js.
         pendingLaunchExtras: {
           gateVars,
           ...(opts.ocoRecordId ? { ocoRecordId: opts.ocoRecordId } : {}),
@@ -6589,12 +6589,12 @@ module.exports = {
   whoAmIWithTokenOnServer,
   redactSecrets: redactAwxSecrets,
   // Saf yardimci — "kullaniciya log gozukmuyor" senaryosunun test edilebilmesi icin
-  // disari acildi (bkz. server/ansible/__tests__/output-filter.test.cjs).
+  // disari acildi (bkz. server/ansible/__tests__/output-filter.test.js).
   applyOutputFilter,
   // Saf yardimci — atif zincirinin UCU burasi: AWX'e giden `requester_email`i bu
   // fonksiyon kurar. Kaynak tarayan bekci "kullanici geciriliyor mu" diye sorup
   // YESIL kalabiliyordu; davranisin kendisi olculebilsin diye disari acildi
-  // (bkz. server/auth/__tests__/user-identity.test.cjs).
+  // (bkz. server/auth/__tests__/user-identity.test.js).
   withRequesterVars,
   // Saf yardimci — gecmis kaydi redaksiyonu; Crypto Hub da ayni kurali uygular (K-3).
   redactExtraVarsForHistory,

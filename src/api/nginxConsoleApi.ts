@@ -687,7 +687,7 @@ export interface NgSpaDiscovery {
 /**
  * SUNUCUNUN YANIT GÖVDESİNE YAZMADIĞI VARSAYILANLAR (8 MB önbellek sınırı, 2026-10-01).
  * server/nginx-console/spa-discovery.cjs YANIT_VARSAYILAN / YANIT_BOS_DIZI ile BİREBİR aynı
- * olmalı — bekçi: spa-rp.test.cjs SR27. Eksik alan doldurulmazsa ekran `staleClusters.includes`
+ * olmalı — bekçi: spa-rp.test.js SR27. Eksik alan doldurulmazsa ekran `staleClusters.includes`
  * üzerinde çöker ve `rp` alanı olmayan satır "ölçülemedi" görünür (uygulanamaz ≠ ölçülemedi).
  */
 export const SPA_YANIT_VARSAYILAN = {

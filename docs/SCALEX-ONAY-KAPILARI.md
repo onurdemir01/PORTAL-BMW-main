@@ -229,7 +229,7 @@ kopyalama gerekmez.
 
 ## Testler
 
-- `server/scalex/__tests__/scalex-kapi-matrisi.test.cjs` — istek gerçek yönlendiriciden geçer
+- `server/scalex/__tests__/scalex-kapi-matrisi.test.js` — istek gerçek yönlendiriciden geçer
   (`fixtures/scalex-sim.cjs`: gerçek ortak kapı ve gerçek `runner`, sahte AWX / OCO / SMART).
   928 hücrelik karar matrisi ve bu belgedeki her kural için ayrı test. Pencere saatindeki ve
   SMART onayı sonrasındaki başlatmalar da gerçek yoldan koşar: gerçek OCO zamanlayıcısı ve

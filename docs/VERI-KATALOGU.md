@@ -9,7 +9,7 @@ gösterir. Satır sayısı ve boyut veritabanından canlı okunur.
 | Katalog (elle tutulur) | `server/katalog/tablolar.json` |
 | Uç (salt okunur, 10 dk önbellek) | `GET /api/denetim/veri-katalogu` — `server/audit/veri-katalogu.cjs` |
 | Ekran | `src/components/denetim/VeriKatalogu.tsx` |
-| Bekçiler | `server/audit/__tests__/veri-katalogu-bekci.test.cjs` |
+| Bekçiler | `server/audit/__tests__/veri-katalogu-bekci.test.js` |
 | Erişim | `tab:denetim:katalog` — varsayılan yalnız Admin; Admin › Denetim Erişimi ile açılır |
 
 ## Yeni tablo eklerken
@@ -34,7 +34,7 @@ Eklenmezse bekçi kırmızı olur:
 - **VB5** — Portal kodunun `dbo.X` ile okuduğu her tablo (ve envanter gezgininin
   `FALLBACK_TABLES` listesi) katalogda olmalı.
 
-Çalıştırma: `node --test server/audit/__tests__/veri-katalogu-bekci.test.cjs`
+Çalıştırma: `node --test server/audit/__tests__/veri-katalogu-bekci.test.js`
 
 ## Girdi biçimi
 

@@ -48,7 +48,15 @@ export default [
     },
   },
   {
-    files: ['server/**/*.cjs', 'src/**/*.cjs', 'shared/**/*.cjs', 'scripts/**/*.cjs'],
+    // Node testleri `*.test.js` (CommonJS; klasordeki package.json "type": "commonjs").
+    files: [
+      'server/**/*.cjs',
+      'src/**/*.cjs',
+      'shared/**/*.cjs',
+      'scripts/**/*.cjs',
+      'server/**/*.test.js',
+      'src/**/__tests__/**/*.test.js',
+    ],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',

@@ -3,7 +3,7 @@
 // bmw_inventory/lb_suspend_excludelist/operations/files/lb_suspend_excludelist.sh kurallarinin
 // Portal karsiligi. Betik lbSuspendList-<tarih>.txt dosyasini okur; dbo.IPInventory ayni dosyadan
 // yuklenir, bu yuzden AWX isi baslatmadan ayni sonuc verilebilir. Kural degisirse iki taraf da
-// degismeli. __tests__/lb-ip-kurallari.test.cjs gercek betigin ciktisindan alinmis beklentileri tasir.
+// degismeli. __tests__/lb-ip-kurallari.test.js gercek betigin ciktisindan alinmis beklentileri tasir.
 //
 // Eslesme betikteki gibi buyuk / kucuk harf duyarsiz ALT METINDIR ("grep -i"), tam ad degil.
 'use strict';

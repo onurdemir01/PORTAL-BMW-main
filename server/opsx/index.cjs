@@ -1179,7 +1179,7 @@ function initOpsX(app) {
     let ocEnvForGate = '',
       ocTenantForGate = '',
       ocInputForGate = '';
-    // AD BILEREK 'ocCluster*' DEGIL: `openshift-no-limit.test.cjs` o oneki YASAKLIYOR
+    // AD BILEREK 'ocCluster*' DEGIL: `openshift-no-limit.test.js` o oneki YASAKLIYOR
     // (geri alinan AWX limit-kisitlama ozelliginin adlari; AWX o limiti sessizce
     // yutuyordu). Bu dizi bir LIMIT degil, uretim tespiti icin olculecek cluster adlari.
     let ocKapiHedefleri = [];

@@ -44,7 +44,7 @@ Sen bu repodaki Ansible playbook'larının denetçisisin. Aşağıdaki tuzaklar�
 Bulguları en ciddi olandan başlayarak listele; her biri için **dosya:satır**, ne olacağı
 (somut hata metni) ve düzeltme. Temizse hangi kontrollerin geçtiğini tek satırda söyle.
 Sonunda çalıştırılacak doğrulamayı yaz: `ansible-playbook --syntax-check <dosya>` ve varsa
-ilgili `server/ansible/__tests__/*.test.cjs`.
+ilgili `server/ansible/__tests__/*.test.js`.
 
 ## Zorunlu kurallar (herkes ve her ajan için)
 

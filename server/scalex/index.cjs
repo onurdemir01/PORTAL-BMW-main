@@ -363,7 +363,7 @@ function istemciyeUlasan(status, body) {
 //
 // Artik engel `/preview`da BASTAN soyleniyor (ekran OCO numarasi istemez) ve burada ayni
 // kararla, AYNI METINLE reddediliyor. OCO kapisinin erisilebilirligi SMART devrede
-// degilken/hazirken olculur (bkz. scalex-kapi-matrisi.test.cjs).
+// degilken/hazirken olculur (bkz. scalex-kapi-matrisi.test.js).
 //
 // IKI CAGIRAN, TEK GOVDE: `/run` kilit almadan ve AWX sozlugunu kurmadan ONCE doner;
 // `runScaleXGates` (toplu geri alma dahil) ortak kapidan once ayni fonksiyonu cagirir.

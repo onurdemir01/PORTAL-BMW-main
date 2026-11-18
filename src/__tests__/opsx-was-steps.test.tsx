@@ -1,6 +1,6 @@
 // src/__tests__/opsx-was-steps.test.tsx - OpsX WAS adimlarinin DAVRANISI.
 //
-// src/__tests__/opsx-was-single-select.test.cjs kaynak metnini kilitler; bu dosya ayni
+// src/__tests__/opsx-was-single-select.test.js kaynak metnini kilitler; bu dosya ayni
 // kurallarin ekranda GERCEKTEN boyle calistigini olcer (render + tiklama):
 //   V1 JVM secimi radyo + TEK secim; OLCULEMEDI satiri secilemez ve "Durmus" gosterilmez
 //   V2 islem dugmeleri olculen duruma gore acilir (RUNNING: Durdur/Restart, Baslat kapali)

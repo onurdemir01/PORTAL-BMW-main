@@ -2,6 +2,15 @@
 //   npm run kapi:sonar                  calisan bir SonarQube'a (SONAR_HOST_URL) tarar, kapiyi bekler
 //   node scripts/sonar-kapi.cjs --docker   sunucu yoksa yerelde konteyner baslatir (Docker gerekir)
 //   node scripts/sonar-kapi.cjs --ci       CI: taze konteyner (admin/admin) -> parola + jeton uretir
+//   ... --kurumsal                          ek olarak KURUMSAL TAKLIT (K15): kurumun siniflandirmasiyla
+//                                           (kalite/kurumsal-sonar.json) ayri projeye tarar, ayni kapi
+//
+// KURUMSAL TAKLIT (2026-11-18, kurumsal is #49): kurumun scanOnSonar adimi sources / tests /
+// test.inclusions / exclusions anahtarlarini komut satirindan verip bizim siniflandirmamizi ezer.
+// Is #49'da Node testleri (.test.cjs) uretim kodu sayildi: kapsam %50, testteki sahte parolalar
+// guvenlik bulgusu. Taklit kurumun gorecegini her PR'da gosterir; kapsam raporu kurumun yukledigi
+// gibi kaynak dosyalariyla suzulur (scripts/kapsam-yayinla.cjs lcovSuz). SCM acik: kurumdaki gibi
+// .gitignore uygulanir.
 //
 // Kimlik: SONAR_TOKEN (yonetici yetkili kullanici jetonu) ya da SONAR_ADMIN_PASSWORD. --ci'de ikisi
 // de gerekmez. Kapi kosullari kalite/esikler.json `sonar.kosullar` (tek kaynak): betik "Portal Kati"
@@ -21,6 +30,9 @@ const IMAJ = 'sonarqube:26.11.0.134175-community';
 const TARAYICI = '@sonar/scan@5.0.2';
 const KONTEYNER = 'portal-sonar-kapi';
 
+const KURUMSAL_PROJE = 'bmw-portal-kurumsal';
+const KURUMSAL_LCOV = 'coverage/kurumsal-lcov.info';
+
 const esikler = () => JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'esikler.json'), 'utf8'));
 const incelemeler = () =>
   JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'sonar-inceleme.json'), 'utf8')).incelemeler;
@@ -37,6 +49,18 @@ function incelemeBul(hotspot, satirMetni, liste) {
       (k) => k.kural === kural && k.dosya === dosya && String(satirMetni || '').includes(k.icerik),
     ) || null
   );
+}
+
+/** kalite/kurumsal-sonar.json -> kurumun komut satiri anahtarlari (-D...). Saf islev. */
+function kurumsalArgumanlar(k, lcov = KURUMSAL_LCOV) {
+  return [
+    `-Dsonar.sources=${k.sources}`,
+    `-Dsonar.tests=${k.tests}`,
+    `-Dsonar.test.inclusions=${k.testInclusions.join(',')}`,
+    `-Dsonar.exclusions=${k.exclusions.join(',')}`,
+    `-Dsonar.coverage.exclusions=${k.coverageExclusions.join(',')}`,
+    `-Dsonar.javascript.lcov.reportPaths=${lcov}`,
+  ];
 }
 
 /** esikler.json -> kapi kosullari [{ metric, op, error }]. Saf islev. */
@@ -279,6 +303,32 @@ async function main(argv) {
   const lcov = fs.existsSync(path.join(KOK, 'coverage', 'lcov.info'))
     ? 'coverage/lcov.info'
     : 'kalite/kapsam/lcov.info';
+  const tamam = await tara(api, host, jeton, e, {
+    proje,
+    lcov,
+    argumanlar: [`-Dsonar.javascript.lcov.reportPaths=${lcov}`, '-Dsonar.scm.disabled=true'],
+  });
+  if (!argv.includes('--kurumsal')) return tamam ? 0 : 1;
+
+  // K15: kurumun siniflandirmasi. Kapsam raporu kurumun yukledigi gibi: yalniz kaynak dosyalari.
+  const { lcovSuz } = require('./kapsam-yayinla.cjs');
+  fs.mkdirSync(path.join(KOK, 'coverage'), { recursive: true });
+  fs.writeFileSync(
+    path.join(KOK, KURUMSAL_LCOV),
+    lcovSuz(fs.readFileSync(path.join(KOK, lcov), 'utf8')).metin,
+  );
+  await kapiyiEsitle(api, e.sonar.kapiAdi, kosullar(e), KURUMSAL_PROJE);
+  const k = JSON.parse(fs.readFileSync(path.join(KOK, 'kalite', 'kurumsal-sonar.json'), 'utf8'));
+  const kurumsal = await tara(api, host, jeton, e, {
+    proje: KURUMSAL_PROJE,
+    lcov: KURUMSAL_LCOV,
+    argumanlar: kurumsalArgumanlar(k),
+  });
+  return tamam && kurumsal ? 0 : 1;
+}
+
+/** Bir tarama + kapi sonucu. true = yesil. */
+async function tara(api, host, jeton, e, { proje, lcov, argumanlar }) {
   const tarama = spawnSync(
     'npx',
     [
@@ -287,8 +337,7 @@ async function main(argv) {
       `-Dsonar.host.url=${host}`,
       `-Dsonar.projectKey=${proje}`,
       `-Dsonar.projectName=${proje}`,
-      `-Dsonar.javascript.lcov.reportPaths=${lcov}`,
-      '-Dsonar.scm.disabled=true',
+      ...argumanlar,
       '-Dsonar.javascript.node.maxspace=8192',
     ],
     { cwd: KOK, stdio: 'inherit', env: { ...process.env, SONAR_TOKEN: jeton } },
@@ -319,10 +368,10 @@ async function main(argv) {
     console.error(
       `[sonar-kapi] KIRMIZI. Ayrinti: ${host}/dashboard?id=${encodeURIComponent(proje)}`,
     );
-    return 1;
+    return false;
   }
-  console.log('[sonar-kapi] kapi yesil.');
-  return 0;
+  console.log(`[sonar-kapi] ${proje}: kapi yesil.`);
+  return true;
 }
 
 if (require.main === module)
@@ -337,4 +386,13 @@ if (require.main === module)
     },
   );
 
-module.exports = { kosullar, durumOzeti, incelemeBul, incelemeler, IMAJ };
+module.exports = {
+  kosullar,
+  durumOzeti,
+  incelemeBul,
+  incelemeler,
+  kurumsalArgumanlar,
+  IMAJ,
+  KURUMSAL_PROJE,
+  KURUMSAL_LCOV,
+};

@@ -4,5 +4,5 @@
     "target": "es2022", "module": "node16", "moduleResolution": "node16",
     "skipLibCheck": true, "types": ["node"]
   },
-  "include": ["server/**/*.cjs"]
+  "include": ["server/**/*.cjs", "server/**/*.test.js"]
 }

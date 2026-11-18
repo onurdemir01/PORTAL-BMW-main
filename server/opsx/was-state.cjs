@@ -208,7 +208,7 @@ function normalizeServer(raw, { hostOk, hostReason, kimlik }) {
 
 // opsx_was_discover_result'i normalize eder. `requestedHosts` verilirse sonucta
 // OLMAYAN her istenen host `overall: 'olculemedi'` olarak EKLENIR (erisilemeyen host
-// listeden dusmez - LX2 dersi, bkz. server/ansible/__tests__/logx-legacy-olculemedi.test.cjs).
+// listeden dusmez - LX2 dersi, bkz. server/ansible/__tests__/logx-legacy-olculemedi.test.js).
 function parseDiscoverResult(raw, requestedHosts = []) {
   const hostsIn = Array.isArray(raw?.hosts) ? raw.hosts : [];
   const hosts = [];

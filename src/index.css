@@ -26,7 +26,7 @@
      gray-45 #8c8c8c · gray-50 #707070 · gray-60 #4d4d4d · gray-70 #383838
      gray-80 #292929 · gray-90 #1f1f1f · gray-95 #151515
 
-   Asagidaki her gri token BU RAMPADAN bir degerdir; src/__tests__/pf6-palette.test.cjs
+   Asagidaki her gri token BU RAMPADAN bir degerdir; src/__tests__/pf6-palette.test.js
    hem rampa uyumunu hem R=G=B notrlugunu kilitler (PF5 sapmasi geri gelmesin).
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -75,7 +75,7 @@
      `--accent-rgb: 0, 102, 204` ile yazilsaydi `rgb(0, 102, 204 / 0.08)` uretilir,
      bu GECERSIZ bir degerdir ve tarayici BILDIRIMI TUMDEN ATAR — hata vermeden,
      sessizce. (Ilk yazimda tam olarak bu oldu; spec-uyumlu bir renk ayristiricisiyla
-     dogrulanip duzeltildi. Bkz. src/__tests__/color-syntax.test.cjs) */
+     dogrulanip duzeltildi. Bkz. src/__tests__/color-syntax.test.js) */
   --accent-rgb:   0 102 204;
 
   /* Yuzeyler — PF6: sayfa gray-10, kart beyaz */
@@ -155,7 +155,7 @@
      uyari metinleri (ornegin "Veritabani baglantisi yok") zor okunuyordu. Metin icin ayri
      token: #795600 (`.pf-label--gold` zaten bunu kullaniyordu) -> yuzeyde 6.68, uyari
      zemininde 6.06. `--status-danger-text` acik temada temel tonla aynidir; koyu temada
-     ayrisir. Bekci: src/__tests__/tema-kontrast.test.cjs. */
+     ayrisir. Bekci: src/__tests__/tema-kontrast.test.js. */
   --status-warning-text: #795600;
   --status-danger-text:  #b1380b;
   --status-success:      #3d7317;   /* green-60 */
@@ -265,7 +265,7 @@
   --text-primary:   #ffffff;
   --text-secondary: #c7c7c7;   /* gray-30 */
   /* gray-45 (#8c8c8c) yuzeyde 4.33, yukselmis zeminde 3.49 veriyordu (AA 4.5). gray-40 ->
-     yuzeyde 5.77, yukselmis zeminde 4.65 (2026-10-07; bekci tema-kontrast.test.cjs). */
+     yuzeyde 5.77, yukselmis zeminde 4.65 (2026-10-07; bekci tema-kontrast.test.js). */
   --text-muted:     #a3a3a3;   /* gray-40 */
 
   --border:        #4d4d4d;    /* gray-60 */
@@ -675,7 +675,7 @@ thead th {
 /* KONTRAST (dogrulama bulgusu, 2026-10-03): 10-11 px ikincil metin --text-muted ile AA'nin
    (4.5) altindaydi (koyu tema: normal satir 4.33, zebra 3.92, secili satir 3.11; baslik alt
    satiri 3.49). Anlam tasiyan ikincil metin --text-secondary (her zeminde >= 6:1); bekci
-   nginx-console.test.cjs GS28 zeminleri token'lardan hesaplayip olcer. */
+   nginx-console.test.js GS28 zeminleri token'lardan hesaplayip olcer. */
 .ng-spa-tablo .ng-baslik-alt {
   display: block;
   font-size: 10px;
@@ -1169,7 +1169,7 @@ thead th {
    MARKUP DEGISTIRILMEDI — BILEREK. 85 dosyada ~59 siniflik bir donusum, sifir
    gorsel etkisi olan dev bir diff uretir ve kaynak tarayan bekcileri kirardi.
    Eksik olan sey markup degil, ESLEMEYDI. Yeni bir tonun sessizce sizmasini
-   `src/__tests__/inline-color-leaks.test.cjs` icindeki bekci engelliyor. */
+   `src/__tests__/inline-color-leaks.test.js` icindeki bekci engelliyor. */
 :root .text-red-300, :root .text-red-400, :root .text-red-800, :root .text-red-900,
 :root .text-rose-400, :root .text-rose-700, :root .text-rose-800 { color: var(--status-danger-text); }
 :root .bg-red-700, :root .bg-red-800 { background-color: var(--status-danger); }
@@ -1301,7 +1301,7 @@ thead th {
    `--text-on-accent` ile duzeltilmisti, ama elle yazilmis siniflar disarida kalmisti).
    Zemin sinifiyla `text-white` AYNI ogedeyse metin `--text-on-accent` olur. Zemini satir-ici
    `style` ile verilenlere CSS ulasamaz; onlar markup'ta duzeltildi ve bekci
-   (tema-kontrast.test.cjs) yenisinin eklenmesini engeller. */
+   (tema-kontrast.test.js) yenisinin eklenmesini engeller. */
 :root .bg-black.text-white,
 :root .bg-blue-500.text-white, :root .bg-blue-600.text-white,
 :root .bg-indigo-500.text-white, :root .bg-indigo-600.text-white,

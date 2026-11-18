@@ -1,5 +1,5 @@
 {
-  "_aciklama": "GERCEK playbook ciktilari (gecici kok dizin silinmis, arsiv boyutu 1). ELLE DUZENLENMEZ. Yeniden uretmek icin: LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs",
+  "_aciklama": "GERCEK playbook ciktilari (gecici kok dizin silinmis, arsiv boyutu 1). ELLE DUZENLENMEZ. Yeniden uretmek icin: LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.js",
   "aktarim_tek_kismi": {
     "ne": "tek host: bir dosya arsive girdi, biri yerinde yok, biri okunamiyor",
     "is_basarili": true,

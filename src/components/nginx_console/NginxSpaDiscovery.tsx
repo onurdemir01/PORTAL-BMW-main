@@ -2736,7 +2736,7 @@ export default function NginxSpaDiscovery() {
           yatay kaydirma icin `overflow-auto` oldugundan yapiskan baslik ONA gore yapisiyor ve
           sayfa kayarken HIC yapismiyordu (tarayicida olculdu). Kap dikeyde de kayinca baslik
           ve ilk kolon (uygulama) yerinde kalir. Yukseklik siniri ve klavye odagi icin
-          scroll-padding index.css `.ng-spa-kap`ta (bekci: nginx-console.test.cjs GS28). */}
+          scroll-padding index.css `.ng-spa-kap`ta (bekci: nginx-console.test.js GS28). */}
       <div ref={tabloRef} className="ng-spa-kap overflow-auto rounded-xl border" style={{ borderColor: 'var(--border-subtle)' }}>
         {/* GENISLIK: tablo icerigi kadar (w-max), en az kap kadar (min-w-full). Esneyen kolon
             (Adresler; gizliyse son kolon) disindakiler <col> ile icerige sikisir (1px =

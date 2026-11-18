@@ -8,7 +8,7 @@
 //   * yeni pencere eskisinden onceyse onay isi AWX'te ESKI pencereye (vazgecilen OCO'nun
 //     saatine) zamanlar.
 // Bu yuzden paketteki pencere alanlari ve OCO numarasi kayittan yeniden yazilir.
-// Bkz. server/smart/__tests__/oco-yedek-yol-son-tarih.test.cjs (OY3).
+// Bkz. server/smart/__tests__/oco-yedek-yol-son-tarih.test.js (OY3).
 'use strict';
 
 function isoYap(d) {

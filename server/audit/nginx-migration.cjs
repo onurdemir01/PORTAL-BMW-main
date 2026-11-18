@@ -243,7 +243,7 @@ function buildResolverMaps(routeRows, ocpRows) {
 // okuyucu TUM donmus dosyalari okur, veri yine 1-4 gun kalir ve sampled=0 basar (butce
 // bitmedi). Eskiden durum `req7 > 0 ? active : sampled ? unknown : idle` idi: 1-4 gunluk
 // olcum 7 gunluk "yuk yok" (atil / emekli adayi) gorunuyordu. Pencere = scan_date 00:00 -
-// first_seen (spa-rp.cjs pencereSaat ile AYNI hesap; bekci: spa-traffic-pencere.test.cjs).
+// first_seen (spa-rp.cjs pencereSaat ile AYNI hesap; bekci: spa-traffic-pencere.test.js).
 // Mirror sunucularda pencere EN DAR olanidir (en YENI first_seen): bir sunucu 1 gun
 // gorduyse oteki 6 gun gormus olsa da kalan 5 gunde o sunucuya gelen istek bilinmez.
 //

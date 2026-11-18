@@ -4,7 +4,7 @@
 //
 // Kural (docs/KALITE-KAPILARI.md "Repo hijyeni", herkes ve her ajan icin): repoda kullanilmayan
 // belge, betik ya da kaynak modulu kalmaz. Yeni dosya bir referansla gelir; isi biten dosya silinir
-// (git gecmisinde durur). Bu bekci kurali CI'da zorlar: `server/__tests__/repo-hijyeni.test.cjs`.
+// (git gecmisinde durur). Bu bekci kurali CI'da zorlar: `server/__tests__/repo-hijyeni.test.js`.
 //
 // Iki kapsam:
 //   1. Belge ve betikler (docs/, kokteki *.md, scripts/, deploy/): kod, test, yapilandirma ve kok

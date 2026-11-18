@@ -7,7 +7,7 @@
 //
 // TEK KAYNAK: her tarama MADDESI, o maddenin CIKTILARI ve her ciktinin bulgu kodu + VARSAYILAN
 // seviyesi. Varsayilan seviye assess.cjs'teki add('<seviye>', '<alan>', '<KOD>') ile AYNI olmali:
-// bekci (__tests__/kural-katalogu.test.cjs) assess.cjs kaynagini tarar; katalogda olmayan kod,
+// bekci (__tests__/kural-katalogu.test.js) assess.cjs kaynagini tarar; katalogda olmayan kod,
 // seviyesi tutmayan kod ya da assess'te artik uretilmeyen katalog kodu KIRMIZI.
 // kod: null olan cikti "sorun yok" durumudur: bulgu uretilmez, seviyesi degistirilemez.
 //

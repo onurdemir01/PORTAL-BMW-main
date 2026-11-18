@@ -4332,7 +4332,7 @@ const PLAYBOOK_REGISTRY_SEED = [
   // `server/ansible/bmw_portal/scalex/` altindadir (LogX ile ayni duzen: depoda referans,
   // AWX'te calisan kopya). `playbook_path` yine de null — dogrulama LogX'teki gibi
   // dosya adi eslemesiyle DEGIL, portal/playbook sozlesme testleriyle yapiliyor
-  // (server/ansible/__tests__/scalex-awx-package.test.cjs).
+  // (server/ansible/__tests__/scalex-awx-package.test.js).
   // Admin yalnizca awx_template_id + awx_server_id doldurur.
   //
   // IKI AYRI TEMPLATE, TEK PLAYBOOK KLASORU. Her ikisinde de "Prompt on launch >

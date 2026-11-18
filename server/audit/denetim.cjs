@@ -2055,7 +2055,7 @@ function initDenetim(app) {
       ]);
 
       // Toplama mantigi SAF ve AYRI: DB olmadan test edilebilsin diye
-      // (bkz. __tests__/nginx-api-summary.test.cjs).
+      // (bkz. __tests__/nginx-api-summary.test.js).
       const es = await eskiSunucuSuzgec(req);
       // Elle etiket (2026-11-12): sunucunun service kolonu Envanter'deki etiketle ayni kurala uyar.
       const etk = await require('./nginx-host-labels.cjs').etiketHaritasi();

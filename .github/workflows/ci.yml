@@ -1,6 +1,6 @@
 name: CI Quality and Security Gates
 # Kalite kapilari (docs/KALITE-KAPILARI.md). Adim listesi scripts/kapi.cjs KAPILAR ile ayni olmali;
-# server/__tests__/kalite-kapilari.test.cjs esitligi kilitler. Hicbir adim continue-on-error /
+# server/__tests__/kalite-kapilari.test.js esitligi kilitler. Hicbir adim continue-on-error /
 # `|| true` tasimaz. main korumasinda zorunlu kontroller: `verify` ve `sonar`; `sonar` ayrica
 # `kurumsal` isini bekler, bu yuzden kurumsal prova da fiilen zorunludur.
 
@@ -148,7 +148,9 @@ jobs:
           name: quality-and-sbom-artifacts
           path: coverage
 
-      - name: SonarQube Quality Gate
+      # K13 bizim siniflandirmamiz; K15 kurumsal taklit (kalite/kurumsal-sonar.json): kurumun
+      # scanOnSonar'i testleri yalniz *.test.js / *.test.tsx adindan tanir (kurumsal is #49).
+      - name: SonarQube Quality Gate (K13 + kurumsal taklit K15)
         env:
           SONAR_HOST_URL: http://localhost:9000
-        run: node scripts/sonar-kapi.cjs --ci
+        run: node scripts/sonar-kapi.cjs --ci --kurumsal

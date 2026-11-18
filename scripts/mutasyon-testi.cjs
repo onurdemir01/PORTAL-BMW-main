@@ -23,7 +23,7 @@ const TARGETS = [
     id: 'teslim-imza',
     file: 'scripts/teslim.cjs',
     runner: 'node',
-    tests: ['server/__tests__/teslim.test.cjs'],
+    tests: ['server/__tests__/teslim.test.js'],
     testNamePattern: '^TS([1-6]|4b) ',
     specs: [
       {
@@ -64,7 +64,7 @@ const TARGETS = [
     id: 'app-hub-sahiplik',
     file: 'server/app-hub/canli.cjs',
     runner: 'node',
-    tests: ['server/app-hub/__tests__/app-hub.test.cjs'],
+    tests: ['server/app-hub/__tests__/app-hub.test.js'],
     testNamePattern: '^AH14 ',
     specs: [
       {
@@ -115,7 +115,7 @@ const TARGETS = [
     id: 'degisken-gizle',
     file: 'server/ansible/degisken-gizle.cjs',
     runner: 'node',
-    tests: ['server/ansible/__tests__/degisken-gizle.test.cjs'],
+    tests: ['server/ansible/__tests__/degisken-gizle.test.js'],
     specs: [
       {
         id: 'dg-val-some',
@@ -166,10 +166,10 @@ const TARGETS = [
     file: 'server/auth/visibility.cjs',
     runner: 'node',
     tests: [
-      'server/auth/__tests__/visibility.test.cjs',
-      'server/auth/__tests__/visibility-cascade.test.cjs',
-      'server/auth/__tests__/visibility-email-strict.test.cjs',
-      'server/auth/__tests__/ek-sayfa-kapisi.test.cjs',
+      'server/auth/__tests__/visibility.test.js',
+      'server/auth/__tests__/visibility-cascade.test.js',
+      'server/auth/__tests__/visibility-email-strict.test.js',
+      'server/auth/__tests__/ek-sayfa-kapisi.test.js',
     ],
     specs: [
       {
@@ -227,10 +227,7 @@ const TARGETS = [
     id: 'log',
     file: 'server/log.cjs',
     runner: 'node',
-    tests: [
-      'server/__tests__/log-rotation.test.cjs',
-      'server/__tests__/log-kimlik-maskesi.test.cjs',
-    ],
+    tests: ['server/__tests__/log-rotation.test.js', 'server/__tests__/log-kimlik-maskesi.test.js'],
     specs: [
       {
         id: 'log-empty-zero',

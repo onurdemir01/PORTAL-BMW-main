@@ -22,7 +22,7 @@ yazıldığını merak ediyorsanız önce buraya bakın.
   `artifacts` alanındaki `logx_result` anahtarından okur. Ham stdout ASLA parse edilmez.
 - Yayın kontrol listesi: iki playbook ve bu README için iki depo arasında `diff -q` boş olmalı.
   Portal bekçisi bunu `LOGX_ANSIBLE_DEPO=<ansible deposu kökü>` verildiğinde sınar
-  (`logx-legacy-olculemedi.test.cjs`, X05). LogX değişikliği Ansible deposunda AYRI commit'tir
+  (`logx-legacy-olculemedi.test.js`, X05). LogX değişikliği Ansible deposunda AYRI commit'tir
   ve Server Hub değişiklikleriyle karıştırılmaz; geri alınacaksa iki depoda aynı revizyona
   bağımsız geri alınır.
 
@@ -278,10 +278,10 @@ arşiv hiçbir uyarı olmadan "hazır" diye sunuluyordu. Artık şu alanlar ekra
 `per_file_status`).
 
 **Bu alanların adı ya da biçimi değişirse ekran sessizce boş kalır.** Bunu iki test bağlar:
-`logx-legacy-gercek-kosum.test.cjs` LG5 her biçimi GERÇEK koşumla üretip
+`logx-legacy-gercek-kosum.test.js` LG5 her biçimi GERÇEK koşumla üretip
 `src/components/logx_v2/__tests__/fixtures/legacy-sonuc-ornekleri.json` ile karşılaştırır; ekran
 testleri (`LegacySebepler.test.tsx`) AYNI dosyayı girdi alır. Biçim bilerek değişecekse örnek
-`LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.cjs` ile
+`LOGX_ORNEK_YAZ=1 node --test server/ansible/__tests__/logx-legacy-gercek-kosum.test.js` ile
 yeniden üretilir ve ekranın yeni biçimi okuduğu doğrulanır.
 
 Özet kurallarının dayandığı sabit ifadeler (değiştirilirse `src/utils/legacySebep.ts` de
@@ -460,14 +460,14 @@ fallback hiç devreye girmezdi. `.failed`'ı okunan görev `ignore_errors: true`
 
 ## Körlükler ve kanarya
 
-Bekçiler: `server/ansible/__tests__/logx-legacy-run-as.test.cjs` (kullanıcı ayrımı, pipelining,
-kök listesi, `failed_when` tuzağı) ve `logx-legacy-olculemedi.test.cjs` (kural 6; karar mantığı
+Bekçiler: `server/ansible/__tests__/logx-legacy-run-as.test.js` (kullanıcı ayrımı, pipelining,
+kök listesi, `failed_when` tuzağı) ve `logx-legacy-olculemedi.test.js` (kural 6; karar mantığı
 python3 + jinja2 ile RENDER edilerek sınanır; jinja2 yoksa test açık hatayla düşer). Render
 için yorumlayıcı sırası: `PORTAL_TEST_PYTHON`, PATH'teki `python3`/`python`, sonra kurulu
 Ansible'ın KENDİ yorumlayıcısı (`ansible-playbook` betiğinin ilk satırı) — Ansible kuruluysa
 ayrıca paket kurmak gerekmez.
 
-`logx-legacy-gercek-kosum.test.cjs` iki playbook'u geçici bir dizin ağacında GERÇEK
+`logx-legacy-gercek-kosum.test.js` iki playbook'u geçici bir dizin ağacında GERÇEK
 `ansible-playbook` ile koşturur (yerel bağlantı, become kapalı, kökler `legacy_log_roots` ile
 geçici dizine çevrilir). Render testi `find`'ın desen eşlemesini, atlanan yolları nasıl
 bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onları gerçekten çalıştırır:
@@ -501,7 +501,7 @@ bildirdiğini ve `archive`'ın ZIP'e ne yazdığını TAKLİT eder; bu test onla
 - LG4 ayrıca iki sunucunun AYNI (paylaşımlı) adayı kullandığı durumu ölçer; LG6'da kullanılan
   aday bir sembolik bağdır (`stat` bağı izler).
 
-Render tarafında X11 (`logx-legacy-olculemedi.test.cjs`) aday kararını enjekte edilmiş `stat` /
+Render tarafında X11 (`logx-legacy-olculemedi.test.js`) aday kararını enjekte edilmiş `stat` /
 `df` sonuçlarıyla tablo halinde sınar: bütçe tam sınırda ve bir bayt fazlasında, boş alan
 ölçülemedi, aday denetlenemedi, 0733 yolu (hangi görev hangi kullanıcıyla, hangi kiple koştu),
 iki deneme, dışarıdan verilen liste, çoklu-host.

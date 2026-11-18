@@ -1,5 +1,5 @@
 // server/scalex/__tests__/fixtures/scalex-sim.cjs — ScaleX SUNUCU SIMULATORU.
-// Test dosyasi DEGIL (run-tests.cjs yalniz *.test.cjs toplar).
+// Test dosyasi DEGIL (run-tests.cjs yalniz *.test.js toplar).
 //
 // NEDEN VAR (2026-10-14). ScaleX'in onay kapilari uretimde iki kez "yazilmis ama hic
 // calismamis" cikti: 2026-09-20'de OCO koduna ulasilamiyordu, 2026-10-13'te SMART yolu

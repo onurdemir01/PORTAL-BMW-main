@@ -45,7 +45,7 @@ const {
 // API'den BASLATABILIRDI (dogrulayici probe'u: GET 403, POST /delete 200). Bu yuzden ayni uc
 // anahtar burada da istenir (fail-closed; hicbir kapi gevsetilmedi). Nginx yollarini
 // 'Denetim'den muaf tutmak (Nginx Hub panelinin tek basina yetmesi) KULLANICI KARARIDIR; o
-// karar verilirse iki tarafta BIRLIKTE degismeli - bekci: nginx-migration-yetki.test.cjs Y7.
+// karar verilirse iki tarafta BIRLIKTE degismeli - bekci: nginx-migration-yetki.test.js Y7.
 const DENETIM_PAGE_KEY = 'Denetim';
 const PAGE_KEY = 'NginxConsole';
 const TAB_KEY = 'tab:nginx:spa';

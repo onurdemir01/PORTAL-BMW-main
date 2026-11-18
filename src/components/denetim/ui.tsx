@@ -72,7 +72,7 @@ export function StatTile({
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: t.fg }}>
         {Icon && <Icon className="w-3.5 h-3.5 flex-shrink-0" />}
         {/* title SART: etiket kesildiginde uzerine gelmeden okunamaz/kopyalanamazdi
-            (bkz. src/__tests__/accessibility.test.cjs — D7). */}
+            (bkz. src/__tests__/accessibility.test.js — D7). */}
         <span className="truncate" title={label}>{label}</span>
       </div>
       <p className="mt-1 text-2xl font-bold leading-none tabular-nums" style={{ color: t.fg }}>

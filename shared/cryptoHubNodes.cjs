@@ -3,7 +3,7 @@
 // Sozlesme: scratchpad/serbest/sozlesme.md (2026-11-03). NODE LISTESI YOK: yeni deger SERBEST
 // METIN, kullanici sihirbazda grubun her rolu icin yazar (is birimi onayli). Portal degeri bu
 // moduldeki kurallarla dogrular (Ansible crypto_hub_node.py ile KARAKTER KARAKTER ayni desenler;
-// capraz bekci node-sozlesme.test.cjs CHN12), Portal DB'de yalniz sifreli tutar ve ekranda /
+// capraz bekci node-sozlesme.test.js CHN12), Portal DB'de yalniz sifreli tutar ve ekranda /
 // Smart'ta / denetimde yalniz maskeli deger + sha256 gosterir. Bu modul require ICERMEZ: Vite
 // dev shim'i ve tarayici ayni dosyayi saf modul olarak yukler.
 //
@@ -68,7 +68,7 @@ const ONAY_DK = 1440;
 const MAX_HEDEF = 8;
 
 // NODEENV `kaynak` alaninin KAPALI kumesi: crypto_hub_node.py KAYNAKLAR ile BIREBIR (capraz
-// bekci node-sozlesme.test.cjs CHN11). Bilinmeyen kaynak -> grup olculemedi (fail-closed).
+// bekci node-sozlesme.test.js CHN11). Bilinmeyen kaynak -> grup olculemedi (fail-closed).
 //   envFrom  : kapta acik yok, envFrom kaynagi bu adi KESIN tanimliyor (referans)
 //   belirsiz : kapta acik yok, envFrom kaynagi okunamadi (olculemedi)
 const NODE_KAYNAKLARI = Object.freeze(['literal', 'secretRef', 'configMapRef', 'alanRef', 'envFrom', 'belirsiz', 'yok']);

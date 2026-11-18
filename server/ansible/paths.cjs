@@ -18,7 +18,7 @@
 //   hatasi gosterdi.
 //
 // YENI PLAYBOOK EKLERKEN: once AWX'teki yerini ogren, sonra buraya ayni yolla
-// ekle. `playbook-tree.test.cjs` bu listeyi agacin gercegiyle karsilastirir.
+// ekle. `playbook-tree.test.js` bu listeyi agacin gercegiyle karsilastirir.
 'use strict';
 
 const fs = require('node:fs');
@@ -61,7 +61,7 @@ const PLAYBOOKS = {
   nginxConsolePush: 'nginx_console/nginx_console_push.yml',
   // Nginx Hub Yuk Testi (k6): tek playbook, uc kip (yuk_islem on_kontrol|kosu|durdur).
   // AWX'e limit GITMEZ; hedef ve yuk makinesi extra_var + add_host ile. Ayna Ansible deposuyla
-  // BAYT BAYT ayni (nginx-loadtest-ayna.test.cjs).
+  // BAYT BAYT ayni (nginx-loadtest-ayna.test.js).
   nginxLoadtest: 'nginx_loadtest/nginx_loadtest.yml',
   telnetOpenshift: 'telnet_openshift/telnet_openshift.yaml',
   // Server Hub > Uygulama Envanteri (2026-11-04): /vhosting + /vhosting8 EAR/WAR, SALT OKUNUR.

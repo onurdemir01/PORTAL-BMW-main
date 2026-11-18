@@ -30,7 +30,7 @@ export interface ScaleXLimits {
 }
 
 // FABRIKA DEGERLERI — `server/scalex/config.cjs` icindeki `fallback`larla AYNI
-// olmali. Bekci (scalex-dinamik-ayarlar.test.cjs) ikisini birden kilitler; ayrismak,
+// olmali. Bekci (scalex-dinamik-ayarlar.test.js) ikisini birden kilitler; ayrismak,
 // sunucu henuz cevap vermeden once ekranin YANLIS bir aralik gostermesi demekti.
 export const SCALEX_FALLBACK_LIMITS: ScaleXLimits = {
   timeoutDefault: '300',

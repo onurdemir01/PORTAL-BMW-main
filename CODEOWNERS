@@ -28,6 +28,6 @@
 /scripts/kapi.cjs @onurdemir01 @hknisci
 /scripts/sonar-kapi.cjs @onurdemir01 @hknisci
 /scripts/sir-tarama.cjs @onurdemir01 @hknisci
-/server/__tests__/kalite-kapilari.test.cjs @onurdemir01 @hknisci
+/server/__tests__/kalite-kapilari.test.js @onurdemir01 @hknisci
 /docs/KALITE-KAPILARI.md @onurdemir01 @hknisci
 /AGENTS.md @onurdemir01 @hknisci

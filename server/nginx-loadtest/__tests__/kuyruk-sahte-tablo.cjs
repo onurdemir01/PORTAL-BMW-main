@@ -1,5 +1,5 @@
 // server/nginx-loadtest/__tests__/kuyruk-sahte-tablo.cjs - sahte gece kuyrugu tablolari (2026-11-03).
-// kuyruk.test.cjs ve kapi.test.cjs ortak kullanir. Ifadeler /*KQ:ad*/ etiketiyle taninir; YARIS KOSULLARI
+// kuyruk.test.js ve kapi.test.js ortak kullanir. Ifadeler /*KQ:ad*/ etiketiyle taninir; YARIS KOSULLARI
 // SQL METNINDEN uygulanir (kosulu silinen ifade sahte tabloda da uygulanmaz: mutasyon davranis testinde kirmizi).
 // Zaman D.simdi (ms); kilitler D.kilitler (Map, kapi.test bicimi), kosular D.kosular.
 'use strict';

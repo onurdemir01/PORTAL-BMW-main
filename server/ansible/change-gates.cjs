@@ -26,7 +26,7 @@
 // yoktu). Bu yuzden hem burada hem cagiranda beyaz liste var: `OUTCOMES` disinda bir
 // deger uretilirse ya da cagirana ulasirsa FAIL-CLOSED davranilir.
 //
-// `change-gates-parity.test.cjs` bu sozlesmenin eski davranisla birebir ayni oldugunu
+// `change-gates-parity.test.js` bu sozlesmenin eski davranisla birebir ayni oldugunu
 // kilitler. Degistirmeden once o testi oku.
 'use strict';
 
@@ -65,7 +65,7 @@ function isSmartRequired(smartApproval, gateVars) {
 //                           (ekran "SMART istenmeyecek, su kural yuzunden" diyebilsin ve
 //                           atlama denetime yazilabilsin)
 //   * `parseSmartSkipRules` kurallarin kendisi + okunamayan satirlar (admin durum karti)
-// `smart-gate.cjs` baska hicbir yerden dogrudan cagrilmaz (bkz. smart-gate-input.test.cjs).
+// `smart-gate.cjs` baska hicbir yerden dogrudan cagrilmaz (bkz. smart-gate-input.test.js).
 function matchSmartSkip(smartApproval, gateVars) {
   return require('./smart-gate.cjs').matchSkip(smartApproval, gateVars || {});
 }

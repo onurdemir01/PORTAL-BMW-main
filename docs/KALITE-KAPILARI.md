@@ -1,6 +1,6 @@
 # Kalite kapıları (zorunlu, herkes için)
 
-**Kural (2026-11-15):** `main`'e giren her değişiklik — insan ya da yapay zekâ ajanı yazmış olsun — aşağıdaki kapıların **hepsinden** geçer. İstisna yok. Kapılar yalnız **sıkılaşır**: eşik düşürmek, kapı kaldırmak, bastırma (`NOSONAR`, `eslint-disable`, `@ts-ignore`, `.skip`) ya da dışlama eklemek `server/__tests__/kalite-kapilari.test.cjs` tarafından reddedilir.
+**Kural (2026-11-15):** `main`'e giren her değişiklik — insan ya da yapay zekâ ajanı yazmış olsun — aşağıdaki kapıların **hepsinden** geçer. İstisna yok. Kapılar yalnız **sıkılaşır**: eşik düşürmek, kapı kaldırmak, bastırma (`NOSONAR`, `eslint-disable`, `@ts-ignore`, `.skip`) ya da dışlama eklemek `server/__tests__/kalite-kapilari.test.js` tarafından reddedilir.
 
 Kurumsal teslimde 0 zafiyet kuralı ayrıca geçerlidir: [GUVENLIK-0-ZAFIYET.md](GUVENLIK-0-ZAFIYET.md).
 
@@ -35,6 +35,7 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |
 | K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
 | K14 | Kurumsal iş provası | `npm run kurumsal:prova` | CI (`kurumsal` işi), yerelde aynı komut | temiz ağaçta groovy'nin komutları aynen geçer, paket eksiksiz, süre ≤ 10 dk |
+| K15 | Kurumsal Sonar taklidi | `node scripts/sonar-kapi.cjs --ci --kurumsal` | CI (`sonar` işi) | K13 ile aynı koşullar, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json)) ayrı projede |
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 
@@ -49,7 +50,7 @@ Repoda kullanılmayan dosya kalmaz; insan ya da ajan fark etmez.
   - ADR, [`docs/STANDARTLAR.md`](STANDARTLAR.md) listesine eklenir.
 - **İşi biten dosya aynı PR'da silinir:** yerini alan kodun eskisi, artık çağrılmayan modül ve testi, tek seferlik betik ve SQL, bayat plan. Git geçmişi yeter; arşiv dizini açılmaz.
 - **Repoya girmez:** tek seferlik teşhis betikleri; iş kaydı, PBI ve yol haritası (`.ai-workspace/backlog/`, git dışı); oturum raporları.
-- **Bekçi:** [`scripts/repo-hijyeni.cjs`](../scripts/repo-hijyeni.cjs). Testi `server/__tests__/repo-hijyeni.test.cjs`, K8 içinde CI'da koşar. Şunlar kırmızıdır:
+- **Bekçi:** [`scripts/repo-hijyeni.cjs`](../scripts/repo-hijyeni.cjs). Testi `server/__tests__/repo-hijyeni.test.js`, K8 içinde CI'da koşar. Şunlar kırmızıdır:
   - hiçbir koddan, testten, yapılandırmadan ya da canlı belgeden ulaşılamayan belge ya da betik (birbirini anan iki bayat belge de dahil);
   - yalnız testlerin yüklediği modül.
 
@@ -85,6 +86,12 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 
   Kayıt defteri ve JFrog'un `.npmrc`'si gibi kurum ortamı farkları provada yoktur.
 - **Ajan:** `tools` yalnız `nodejs` verilir. Kütüphane npm + yalnız nodejs için Linux ajanını (`POD&&NODEJS`) kendisi seçer; ajan elle verilmez. Araç verilmezse iş varsayılan ajana düşer ve derleme araçları kurulamaz (2026-11-18'e kadarki kırık iş).
+- **Kurumsal Sonar (iş #49):** kütüphanenin `scanOnSonar` adımı `sonar.sources=.`, `sonar.tests=.`, `sonar.test.inclusions=**/*.test.js,**/*.test.tsx` ve kendi `sonar.exclusions` listesini komut satırından verir; `sonar-project.properties`'teki karşılıkları ezilir (diğer anahtarları, ör. CPD dışlaması, okunur).
+  - **Sonuç:** test olarak yalnız `*.test.js` ve `*.test.tsx` sayılır. 2026-11-18'e kadar Node testleri `*.test.cjs` idi; 511 test dosyası üretim kodu sayıldı. Kapsam %50'ye indi, testlerdeki sahte parolalar güvenlik bulgusu oldu.
+  - **Kural:** Node testleri `*.test.js`. Klasördeki `package.json` (`"type": "commonjs"`; `server/` ve Node testi olan `src/**/__tests__/`) onları CommonJS yapar. `npm test` eski adı (`.test.cjs`) görünce durur; bekçi KK11.
+  - **Taklit (K15):** CI `sonar` işi, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json), iş #49 logundan) ayrı bir projeye de tarar ve aynı "Portal Katı" kapısını uygular. Kurumun göreceği kapsam ve bulgular merge'den önce görünür. Liste yalnız genel desenleri taşır (başka uygulamaların adları yazılmaz); bekçi KK12 dondurur.
+  - **Sınır:** taklit SonarQube Community ile koşar; kurumun Enterprise'a özgü JS güvenlik (taint) ve kurumsal sır analizi taklitte yoktur.
+  - **Kurum talebi:** `scanOnSonar`'ın `sonar-project.properties`'e uyması (`.ai-workspace/kurum-talep.md`). Gelse de ad kuralı kalır.
 - **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
   - Rapor kaynakla aynı değilse Sonar koşusunu düşürür; yanlış eşleşen kapsam yüklenmez.
   - Normal derlemede yalnız uyarır.
@@ -93,7 +100,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 - **TST ve PRD:** [`TST_…`](../deploy/jenkins/TST_JAVASCRIPT_GAR_BMW_PORTAL.groovy) ve [`PRD_…`](../deploy/jenkins/PRD_JAVASCRIPT_GAR_BMW_PORTAL.groovy). Derleme, paket, war ve staging DVL ile birebir aynıdır (bekçi KJ4).
   - TST deployment adı `BMWPORTAL-T`. Kurumdaki `-D` / `-T` / `-Q` kalıbından türetildi; TST SI kaydıyla doğrulanmalı.
   - PRD'de deploy adımı yoktur. Üretim kurulumu staging'deki `BMWPORTAL.war`'dan ayrı süreçle yapılır.
-- **Bekçi:** `server/__tests__/kurumsal-pipeline.test.cjs` (teslim imzası: `server/__tests__/teslim.test.cjs`). Şunları denetler:
+- **Bekçi:** `server/__tests__/kurumsal-pipeline.test.js` (teslim imzası: `server/__tests__/teslim.test.js`). Şunları denetler:
   - Node sürümü izin listesinde ve Dockerfile ile aynı;
   - araç yalnız nodejs, elle ajan yok;
   - komut sırası ve betiklerin varlığı;
@@ -115,7 +122,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 
 - `verify`: K0–K12.
 - `kurumsal`: K14. Node sürümü groovy'den okunur; aşağıdaki "Kurumsal Jenkins" bölümüne bakın.
-- `sonar`: K13. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir. `verify` ve `kurumsal`'ı bekler; zorunlu kontrol olduğu için prova da fiilen zorunludur.
+- `sonar`: K13 ve K15. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir. K15 aynı kapıyla ikinci bir tarama yapar: kurumun sınıflandırmasıyla, ayrı projede (aşağıda "Kurumsal Sonar"). `verify` ve `kurumsal`'ı bekler; zorunlu kontrol olduğu için prova da fiilen zorunludur.
 
 `scripts/kapi.cjs` içindeki liste ile CI adımlarının eşitliği testle kilitlidir. Hiçbir adım `continue-on-error` ya da `|| true` taşımaz.
 
@@ -138,7 +145,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 Onay vermeden önce:
 
 1. **CI'da `verify` ve `sonar` yeşil.** Ajanın ya da yazarın "geçti" demesi yetmez; CI çıktısına bakılır.
-2. **Kapı gevşetilmedi.** Şu dosyalardan birine dokunan PR ayrıca gerekçelendirilir: `kalite/esikler.json`, `kalite/sonar-inceleme.json`, `sonar-project.properties`, `.github/workflows/`, `.husky/`, `scripts/kapi.cjs`, `scripts/sonar-kapi.cjs`, `server/__tests__/kalite-kapilari.test.cjs`.
+2. **Kapı gevşetilmedi.** Şu dosyalardan birine dokunan PR ayrıca gerekçelendirilir: `kalite/esikler.json`, `kalite/sonar-inceleme.json`, `sonar-project.properties`, `.github/workflows/`, `.husky/`, `scripts/kapi.cjs`, `scripts/sonar-kapi.cjs`, `server/__tests__/kalite-kapilari.test.js`.
 3. **Yeni davranışın testi var.** Kaynak metni okuyan bekçi tek başına yetmez; davranış testi olmalı. Yeni bekçi için mutasyonla körlük denetimi yapılmış olmalı.
 4. **Sır, iç ad, `.har` yok.** Repo public: kurum alan adı, sunucu adı, IP, kişi adı eklenmez.
 5. **Arayüz değiştiyse** gerçek tarayıcıda bakılmış (`npm run ui:tarama`).

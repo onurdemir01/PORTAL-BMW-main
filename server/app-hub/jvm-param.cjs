@@ -29,7 +29,7 @@
 const REGISTRY_KEY = 'server_hub_fix';
 const ACTION = 'jboss_jvm_option';
 const JVM_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-// server_hub_fix.sh JVMOPT_RE ile BIREBIR (bekci: app-hub-jvm-param.test.cjs sozlesme testi).
+// server_hub_fix.sh JVMOPT_RE ile BIREBIR (bekci: app-hub-jvm-param.test.js sozlesme testi).
 // Izin deseni: ^(-D[A-Za-z0-9_.-]{1,128}(=[A-Za-z0-9_./:@%+=-]{0,512})?|-X(ms|mx|ss)[0-9]{1,6}[kKmMgG]|-XX:[+-][A-Za-z0-9]{1,64}|-XX:[A-Za-z0-9]{1,64}=[A-Za-z0-9_./:%-]{1,256})$
 // Yasak deseni: ^-XX:[+-]?(OnError|OnOutOfMemoryError|VMOptionsFile|Flags|CompileCommandFile|CompilerDirectivesFile)|^-D(java\.security\.|java\.ext\.dirs|java\.endorsed\.dirs|java\.class\.path|java\.library\.path|java\.system\.class\.loader|sun\.boot\.|com\.sun\.management\.|jdk\.attach\.|java\.rmi\.server\.|jboss\.modules\.system\.pkgs|javax\.net\.ssl\.)
 const JVMOPT_PARCALAR = [

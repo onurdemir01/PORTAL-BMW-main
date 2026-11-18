@@ -15,7 +15,7 @@
 //
 // Bu dosyada ONE SABIT YOK. Her `readTunables()` cagrisi `process.env`i YENIDEN
 // okur; admin degeri degistirdiginde SONRAKI ISTEK yeni degerle calisir, restart
-// GEREKMEZ. Bekci (scalex-dinamik-ayarlar.test.cjs) bunu ayni proses icinde
+// GEREKMEZ. Bekci (scalex-dinamik-ayarlar.test.js) bunu ayni proses icinde
 // `process.env`i degistirip KANITLAR — kaynak taramasiyla degil.
 //
 // ── TUTARSIZ AYAR SESSIZCE UYGULANMAZ ───────────────────────────────────────

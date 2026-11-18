@@ -166,8 +166,8 @@ npm test          # scripts/run-tests.cjs — Node sürümüne göre bayrak seç
 ```
 
 ScaleX bekçileri: `server/scalex/__tests__/` (doğrulama, sözleşme, güvenlik
-düzeltmeleri, uzlaştırıcı) + `src/__tests__/scalex-ui-validation.test.cjs` +
-`server/ansible/__tests__/scalex-awx-package.test.cjs`.
+düzeltmeleri, uzlaştırıcı) + `src/__tests__/scalex-ui-validation.test.js` +
+`server/ansible/__tests__/scalex-awx-package.test.js`.
 
 Sonuncusu **gerçek `scalex_runner.sh`'i sahte bir `oc` ile çalıştırır** ve çıktısını
 portalın gerçek ayrıştırıcısından (`result.cjs`) geçirir; ayrıca survey ↔ `extra_vars`

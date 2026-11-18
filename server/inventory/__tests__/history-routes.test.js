@@ -1,0 +1,119 @@
+// server/inventory/__tests__/history-routes.test.js
+//
+// NEDEN VAR: envanter gecmisi icin bes yeni uc (server/inventory/index.cjs) ve bes
+// istemci fonksiyonu (src/api/inventoryApi.ts) AYNI ANDA yazildi. Ikisi ayri dosyada
+// yasadigi icin biri yeniden adlandirilirsa digeri sessizce 404 almaya baslar — ekran
+// "veri yok" der, hata vermez. Bu tur sessiz ayrisma tam olarak burada kilitleniyor.
+//
+// Ek olarak yapilandirmanin kendisi dogrulanir: her tablo taniminin bir anahtari olmali
+// ve last_seen_at HER tabloda hash disi birakilmis olmali (dahil edilseydi her satir
+// her gece "degisti" sayilirdi — bkz. history.cjs).
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const SERVER = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
+const CLIENT = fs.readFileSync(
+  path.join(__dirname, '..', '..', '..', 'src', 'api', 'inventoryApi.ts'),
+  'utf8',
+);
+
+const ROUTES = ['/history/tables', '/history/runs', '/history/at', '/history/diff', '/history/series'];
+
+test('istemcinin cagirdigi HER gecmis ucu sunucuda TANIMLI', () => {
+  for (const r of ROUTES) {
+    assert.ok(
+      SERVER.includes(`'${r}'`),
+      `sunucuda tanimli degil: ${r} (istemci bunu cagiriyor, 404 alir)`,
+    );
+    assert.ok(
+      CLIENT.includes(r.replace('/history/', '/history/')),
+      `istemcide kullanilmiyor: ${r}`,
+    );
+  }
+});
+
+test('elle tetikleme ucu YALNIZCA Admin', () => {
+  const i = SERVER.indexOf("'/history/snapshot'");
+  assert.ok(i > 0, 'snapshot ucu bulunamadi');
+  // Ucun govdesinde admin kapisi olmali; yoksa herhangi bir kullanici gecmis yazdirabilirdi.
+  const body = SERVER.slice(i, i + 600);
+  assert.match(body, /isAdmin\(req\)/, 'snapshot ucu admin kapisi tasimali');
+});
+
+test('okuma uclari tablo adini DOGRUDAN SQL-e gommuyor', () => {
+  // rowsAt/diff/series tablo adini history-config allowlist-inden gecirir; uc katmani
+  // ham query parametresini SQL-e koymamali.
+  assert.ok(
+    !/FROM dbo\.\$\{|FROM \$\{req\.query/.test(SERVER),
+    'tablo adi SQL-e dogrudan gomulmemeli',
+  );
+});
+
+// ── Yapilandirma ───────────────────────────────────────────────────────────────
+
+const { TABLES, getTable, snapshotTables } = require('../history-config.cjs');
+
+test('her tablonun anahtari ve etiketi var', () => {
+  for (const t of TABLES) {
+    assert.ok(Array.isArray(t.key) && t.key.length > 0, `${t.table}: anahtar yok`);
+    assert.ok(t.label, `${t.table}: etiket yok`);
+    assert.ok(['snapshot', 'native'].includes(t.mode), `${t.table}: gecersiz mode`);
+  }
+});
+
+test('last_seen_at anlik goruntu alinan HER tabloda hash DISINDA (en kritik ayar)', () => {
+  // Yalnizca `snapshot` tablolari icin gecerli: `native` tablolarin (NginxRateLimit-
+  // Inventory) satirlari HIC hash-lenmez — gecmisi kaynagin kendi scan_date kolonundan
+  // okunur — ve o tabloda zaten last_seen_at kolonu yoktur.
+  for (const t of snapshotTables()) {
+    assert.ok(
+      (t.volatile || []).some((c) => c.toLowerCase() === 'last_seen_at'),
+      `${t.table}: last_seen_at hash-e girerse HER satir HER gece "degisti" sayilir`,
+    );
+  }
+});
+
+test('kullanicinin onayladigi bes tablo kapsamda', () => {
+  for (const name of ['Inventory', 'MWAppsInventory', 'BMW_Certificates_Inventory',
+                      'Openshift_Inventory', 'NginxRateLimitInventory']) {
+    assert.ok(getTable(name), `kapsamda degil: ${name}`);
+  }
+});
+
+test('NginxRateLimitInventory anlik goruntu ALMAZ (zaten scan_date ile gecmis tutuyor)', () => {
+  assert.strictEqual(getTable('NginxRateLimitInventory').mode, 'native');
+  assert.ok(
+    !snapshotTables().some((t) => t.table === 'NginxRateLimitInventory'),
+    'ayni veriyi ikinci kez saklamamali',
+  );
+});
+
+test('anahtar kolonlari yukleyicilerin DELETE ifadeleriyle ayni', () => {
+  // Bu degerler bmw_inventory yukleyicilerinden alindi; degistirilirse "ayni satir"
+  // tanimi kaynakla ayrisir ve fark ekrani anlamsiz sonuc uretir.
+  assert.deepStrictEqual(getTable('Inventory').key, ['host']);
+  assert.deepStrictEqual(getTable('MWAppsInventory').key, ['host', 'app', 'app_path']);
+  assert.deepStrictEqual(getTable('BMW_Certificates_Inventory').key,
+    ['env', 'host', 'conf_file', 'cert_file']);
+  assert.deepStrictEqual(getTable('Openshift_Inventory').key,
+    ['cluster', 'namespace', 'application']);
+});
+
+// ── Hash disi kolonlar ────────────────────────────────────────────────────────
+// 2026-09-08: dbo.Openshift_Inventory'de `loaded_at` (DEFAULT SYSUTCDATETIME) ve
+// `id INT IDENTITY` kolonlari kesfedildi. Ikisi de TRUNCATE + yeniden doldurmada HER
+// GECE tazelenir; hash'e girselerdi o tablonun gecmisi baslangictan itibaren bozuk
+// toplanacakti (her satir her gece "degisti"). Liste bu yuzden genisletildi.
+test('TRUNCATE ile tazelenen kolonlarin HICBIRI hash-e girmiyor', () => {
+  const CHURN = ['id', 'created_at', 'updated_at', 'last_seen_at', 'loaded_at', 'inserted_at'];
+  for (const t of snapshotTables()) {
+    const v = (t.volatile || []).map((c) => c.toLowerCase());
+    for (const c of CHURN) {
+      assert.ok(v.includes(c), `${t.table}: "${c}" hash disinda olmali`);
+    }
+  }
+});
