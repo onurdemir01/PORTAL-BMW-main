@@ -10,6 +10,9 @@
 //   UE4 ters arama: adres / upstream adi; kesik ya da olculmeyen listede SON server da aranir
 //   UE5 disa aktarim: sunucu / server_name / upstream / endpoint; arka uc basina satir, tekillesir;
 //       eksik liste sayilir (uydurma satir yok); sahibi bilinmeyen server_name "(bilinmiyor)"
+//   UE6 HTTP/2 (upstream + http2 ortak, 2026-11-19): server_name basina durum (ayni adli TUM bloklar):
+//       acik / kismen / kapali / http_degil; acik yoksa ve biri olculmediyse olculmedi (kapali SANILMAZ);
+//       ozet sunucu basina acik / blok; kolon yoksa null ve http2Olculdu false
 'use strict';
 
 const { test } = require('node:test');
@@ -68,6 +71,8 @@ test('UE1 sunucu basina bagli / kullanilmayan / olculmedi', () => {
     dogrudanLocation: 2,
     degiskenLocation: 1,
     tanimsizLocation: 1,
+    http2Olculdu: false,
+    http2Host: 0,
   });
 });
 
@@ -318,4 +323,100 @@ test('UE5 disa aktarim satirlari', () => {
     ['q:1'],
   );
   assert.equal(eski.eksikUpstream, 1);
+});
+
+test('UE6 HTTP/2 durumu: server_name basina, olculmeyen kapali sayilmaz', () => {
+  const d = ue.http2Durumu;
+  assert.equal(d([{ http2: true, http2_source: 'server' }]), 'acik');
+  assert.equal(d([{ http2: 1 }, { http2: 0 }]), 'kismen');
+  assert.equal(d([{ http2: 1 }, { http2: null }]), 'kismen');
+  assert.equal(d([{ http2: false, http2_source: '' }]), 'kapali');
+  assert.equal(d([{ http2: 0 }, { http2: null }]), 'olculmedi', 'kanitsiz kapali denmez');
+  assert.equal(d([{ http2: false, http2_source: 'stream' }]), 'http_degil');
+  assert.equal(d([{ http2: false, http2_source: 'stream' }, { http2: 0 }]), 'kapali');
+  assert.equal(d([]), 'olculmedi');
+
+  const rows = [
+    {
+      host: 'h1',
+      server_name: 'a',
+      upstream: 'u',
+      server: 'x:1',
+      servers: 'x:1',
+      http2: 1,
+      http2_source: 'listen',
+    },
+    // ayni server_name'in baska blogu (ayni upstream) kapali: kismen; satir tekil kalir
+    {
+      host: 'H1',
+      server_name: 'a',
+      upstream: 'u',
+      server: 'x:1',
+      servers: 'x:1',
+      http2: 0,
+      http2_source: '',
+    },
+    {
+      host: 'H1',
+      server_name: 'b',
+      upstream: 'u',
+      server: 'x:1',
+      servers: 'x:1',
+      http2: 0,
+      http2_source: '',
+    },
+    {
+      host: 'H1',
+      server_name: null,
+      upstream: 'v',
+      server: 'y:1',
+      servers: 'y:1',
+      http2: null,
+      http2_source: null,
+    },
+  ];
+  const r = ue.baglantiSatirlari(rows, true, true);
+  assert.deepEqual(
+    r.satirlar.map((x) => [x.serverName, x.upstream, x.endpoint, x.http2]),
+    [
+      ['(bilinmiyor)', 'v', 'y:1', 'olculmedi'],
+      ['a', 'u', 'x:1', 'kismen'],
+      ['b', 'u', 'x:1', 'kapali'],
+    ],
+  );
+  assert.deepEqual(
+    ue.baglantiSatirlari(rows, true, false).satirlar.map((x) => x.http2),
+    [null, null, null],
+    'kolon yoksa durum uydurulmaz',
+  );
+
+  const env = () => 'TEST';
+  const o = ue.upstreamOzeti(
+    [
+      { host: 'H1', status: 'ok' },
+      { host: 'H2', status: 'ok' },
+    ],
+    [{ host: 'H1', n: 1, kullanilan: 1 }],
+    [],
+    env,
+    [
+      { host: 'h1', n: 5, acik: 3 },
+      { host: 'H2', n: 2, acik: 0 },
+      { host: 'H9', n: 4, acik: 4 },
+    ],
+  );
+  assert.deepEqual(
+    o.hosts.map((h) => [h.host, h.http2Acik, h.http2Blok]),
+    [
+      ['H1', 3, 5],
+      ['H2', 0, 2],
+    ],
+    'Hosts satiri olmayan sunucu eklenmez',
+  );
+  assert.equal(o.totals.http2Host, 1);
+  assert.equal(o.totals.http2Olculdu, true);
+  const yok = ue.upstreamOzeti([{ host: 'H1', status: 'ok' }], [], [], env);
+  assert.equal(yok.hosts[0].http2Acik, null);
+  assert.equal(yok.totals.http2Olculdu, false);
+  assert.equal(yok.totals.http2Host, 0);
 });

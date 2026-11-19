@@ -1445,7 +1445,14 @@ export interface NginxUpsHost {
   bagli: boolean;
   /** tarama başarısız / nginx kurulu değil: "bağlı değil" denemez */
   olculmedi: boolean;
+  /** HTTP/2'si etkin server bloğu sayısı; null = tarama http2 ölçmüyor */
+  http2Acik: number | null;
+  /** toplam server bloğu; null = tarama http2 ölçmüyor */
+  http2Blok: number | null;
 }
+
+/** server_name'in (aynı adlı tüm bloklar) HTTP/2 durumu; kismen = bazı bloklar açık */
+export type NginxUpsHttp2 = 'acik' | 'kismen' | 'kapali' | 'http_degil' | 'olculmedi';
 
 export interface NginxUpsOzetResult {
   ok: boolean;
@@ -1467,6 +1474,10 @@ export interface NginxUpsOzetResult {
     dogrudanLocation: number;
     degiskenLocation: number;
     tanimsizLocation: number;
+    /** false: Nginx_Audit_Servers.http2 kolonu yok */
+    http2Olculdu?: boolean;
+    /** en az bir server bloğunda HTTP/2 açık olan sunucu */
+    http2Host?: number;
   };
   eskiGizli?: unknown;
 }
@@ -1539,7 +1550,15 @@ export interface NginxUpsListeResult {
   neden?: 'tablo' | 'tarama';
   scanDate?: string;
   serversOlculdu?: boolean;
-  satirlar?: { host: string; serverName: string; upstream: string; endpoint: string }[];
+  /** false: Nginx_Audit_Servers.http2 kolonu yok (satırlarda http2 null) */
+  http2Olculdu?: boolean;
+  satirlar?: {
+    host: string;
+    serverName: string;
+    upstream: string;
+    endpoint: string;
+    http2: NginxUpsHttp2 | null;
+  }[];
   /** arka uç listesi tam olmayan (ölçülmedi / kayıt sınırında kesik) upstream sayısı */
   eksikUpstream?: number;
 }

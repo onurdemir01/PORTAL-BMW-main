@@ -10,6 +10,9 @@
 // sunucusunda binlerce upstream). Ters arama: arka uç adresi ya da upstream adı -> hangi sunucu.
 // Tarama upstream'in TÜM server satırlarını içermiyorsa (eski tarayıcı yalnız SONUNCUYU yazardı)
 // eldeki adres "tam liste değil" diye gösterilir; tek arka uç SANILMAZ.
+// HTTP/2 (2026-11-19, "upstream envanteri ile http2 envanterini ortaklaştıralım; http2'si açık
+// servisleri hızlıca çekmek istiyorum"): sunucu başına açık blok sayısı, "HTTP/2 açık" süzgeci
+// (bağlantı süzgeciyle birlikte çalışır) ve CSV'de server_name başına http2 kolonu.
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownTrayIcon,
@@ -23,6 +26,7 @@ import {
   type NginxUpsAramaResult,
   type NginxUpsDetayResult,
   type NginxUpsHost,
+  type NginxUpsHttp2,
   type NginxUpsKullanan,
   type NginxUpsOzetResult,
 } from '@/api/denetimApi';
@@ -46,6 +50,17 @@ const TAM_LISTE_YOK =
   'Güncel nginx_audit paketi AWX’e alındıktan sonraki ilk taramayla tam liste gelir.';
 
 type Suzgec = 'hepsi' | 'bagli' | 'bagsiz' | 'olculmedi';
+
+/** CSV değeri (ASCII, filtrelenebilir) */
+const HTTP2_CSV: Record<NginxUpsHttp2, string> = {
+  acik: 'acik',
+  kismen: 'kismen',
+  kapali: 'kapali',
+  http_degil: 'http_degil',
+  olculmedi: 'olculmedi',
+};
+const HTTP2_YOK =
+  'Son tarama HTTP/2 durumunu içermiyor; güncel nginx_audit paketiyle ilk taramadan sonra gelir.';
 
 const btn =
   'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg hover:bg-[var(--bg-elevated)] transition-colors';
@@ -435,6 +450,7 @@ export function NginxUpstreamEnvanteri() {
   const [q, setQ] = useState('');
   const [suzgec, setSuzgec] = useState<Suzgec>('hepsi');
   const [ortam, setOrtam] = useState('');
+  const [yalnizH2, setYalnizH2] = useState(false);
   const [acik, setAcik] = useState<Set<string>>(() => new Set());
   const [yenile, setYenile] = useState(0);
   const [yukleniyor, setYukleniyor] = useState(true);
@@ -473,9 +489,10 @@ export function NginxUpstreamEnvanteri() {
           (suzgec === 'bagsiz' && !h.bagli && !h.olculmedi) ||
           (suzgec === 'olculmedi' && h.olculmedi)) &&
         (!ortam || h.ortam === ortam) &&
+        (!yalnizH2 || (h.http2Acik ?? 0) > 0) &&
         (!s || h.host.includes(s)),
     );
-  }, [veri, q, suzgec, ortam]);
+  }, [veri, q, suzgec, ortam, yalnizH2]);
 
   if (hata && !veri)
     return (
@@ -492,8 +509,10 @@ export function NginxUpstreamEnvanteri() {
     );
 
   const t = veri.totals;
-  // DISA AKTARIM (kullanici, 2026-11-19): "sunucu - server name - upstream - upstream endpoint".
+  const h2Var = t.http2Olculdu === true;
+  // DISA AKTARIM (kullanici, 2026-11-19): "sunucu - server name - upstream - upstream endpoint" + http2.
   // Satirlar tum filo icin sunucudan gelir; ekrandaki suzgecler (ortam / baglanti / arama) uygulanir.
+  // "HTTP/2 acik" suzgeci seciliyse yalniz HTTP/2'si acik (ya da kismen acik) server_name satirlari.
   const baglantiIndir = async () => {
     setIndiriliyor(true);
     setIndirmeNotu(null);
@@ -507,11 +526,19 @@ export function NginxUpstreamEnvanteri() {
         return;
       }
       const gorunen = new Set(satirlar.map((h) => h.host));
-      const xs = (r.satirlar || []).filter((x) => gorunen.has(x.host));
+      const xs = (r.satirlar || []).filter(
+        (x) => gorunen.has(x.host) && (!yalnizH2 || x.http2 === 'acik' || x.http2 === 'kismen'),
+      );
       csvDownload(
-        'nginx_upstream_baglantilari',
-        ['sunucu', 'server_name', 'upstream', 'upstream_endpoint'],
-        xs.map((x) => [x.host, x.serverName, x.upstream, x.endpoint]),
+        yalnizH2 ? 'nginx_upstream_http2_acik' : 'nginx_upstream_baglantilari',
+        ['sunucu', 'server_name', 'upstream', 'upstream_endpoint', 'http2'],
+        xs.map((x) => [
+          x.host,
+          x.serverName,
+          x.upstream,
+          x.endpoint,
+          x.http2 ? HTTP2_CSV[x.http2] : 'olculmedi',
+        ]),
       );
       const eksik = r.eksikUpstream || 0;
       setIndirmeNotu({
@@ -519,7 +546,8 @@ export function NginxUpstreamEnvanteri() {
           `${nf(xs.length)} satır indirildi (${nf(gorunen.size)} sunucu).` +
           (eksik
             ? ` ${nf(eksik)} upstream’in arka uç listesi tam değil (${r.serversOlculdu === false ? 'tarama tüm server satırlarını içermiyor' : 'kayıt sınırında kesik'}); onlar için yalnız bilinen adresler yazıldı.`
-            : ''),
+            : '') +
+          (r.http2Olculdu === false ? ` http2 kolonu boş: ${HTTP2_YOK}` : ''),
         hata: false,
       });
     } catch (e: unknown) {
@@ -611,6 +639,25 @@ export function NginxUpstreamEnvanteri() {
                 </button>
               );
             })}
+            {h2Var && (
+              <button
+                type="button"
+                aria-pressed={yalnizH2}
+                onClick={() => setYalnizH2((x) => !x)}
+                title="En az bir server bloğunda HTTP/2 açık olan sunucular; CSV de yalnız HTTP/2'si açık server_name satırlarını verir"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[12px] ml-1"
+                style={{
+                  borderColor: yalnizH2 ? 'var(--accent)' : 'var(--border-subtle)',
+                  background: yalnizH2 ? 'var(--accent-bg)' : 'var(--bg-surface)',
+                  color: yalnizH2 ? 'var(--text-primary)' : 'var(--text-secondary)',
+                }}
+              >
+                HTTP/2 açık
+                <span className="tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  {nf(t.http2Host ?? 0)}
+                </span>
+              </button>
+            )}
             <select
               value={ortam}
               onChange={(e) => setOrtam(e.target.value)}
@@ -647,7 +694,7 @@ export function NginxUpstreamEnvanteri() {
                 disabled={indiriliyor}
                 className={btn}
                 style={{ borderColor: 'var(--border)' }}
-                title="Her satır: sunucu · server_name · upstream · upstream endpoint (ekrandaki süzgeçlerle)"
+                title="Her satır: sunucu · server_name · upstream · upstream endpoint · http2 (ekrandaki süzgeçlerle)"
               >
                 <ArrowDownTrayIcon className="w-3.5 h-3.5" />{' '}
                 {indiriliyor ? 'Hazırlanıyor…' : 'CSV'}
@@ -669,6 +716,8 @@ export function NginxUpstreamEnvanteri() {
                       'location_tanimsiz',
                       'resolve_yok',
                       'keepalive_yok',
+                      'http2_acik_blok',
+                      'server_blok',
                     ],
                     satirlar.map((h) => [
                       h.host,
@@ -682,6 +731,8 @@ export function NginxUpstreamEnvanteri() {
                       String(h.tanimsizLocation),
                       String(h.resolveYok),
                       String(h.keepaliveYok),
+                      h.http2Acik == null ? '' : String(h.http2Acik),
+                      h.http2Blok == null ? '' : String(h.http2Blok),
                     ]),
                   )
                 }
@@ -731,6 +782,7 @@ export function NginxUpstreamEnvanteri() {
                   ['Upstream (kullanılan / tanımlı)', 'right'],
                   ['Location → upstream', 'right'],
                   ['Doğrudan adres', 'right'],
+                  ['HTTP/2 (açık / blok)', 'right'],
                 ].map(([ad, yon]) => (
                   <th
                     key={ad}
@@ -746,7 +798,7 @@ export function NginxUpstreamEnvanteri() {
               {satirlar.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-3 py-4 text-center"
                     style={{ color: 'var(--text-muted)' }}
                   >
@@ -818,11 +870,23 @@ export function NginxUpstreamEnvanteri() {
                       >
                         {h.dogrudanLocation ? nf(h.dogrudanLocation) : '—'}
                       </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">
+                        {h.http2Acik == null || h.http2Blok == null ? (
+                          <span style={{ color: 'var(--text-muted)' }} title={HTTP2_YOK}>
+                            —
+                          </span>
+                        ) : (
+                          <>
+                            <strong>{nf(h.http2Acik)}</strong>
+                            <span style={{ color: 'var(--text-muted)' }}> / {nf(h.http2Blok)}</span>
+                          </>
+                        )}
+                      </td>
                     </tr>
                     {genis && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className="p-0"
                           style={{ background: 'var(--bg-elevated)' }}
                         >

@@ -10,7 +10,12 @@
 // Taramasi basarisiz / nginx'i kurulu olmayan sunucu "bagli degil" SAYILMAZ: "olculmedi".
 // servers NULL = OLCULMEDI (eski tarayici yalniz SON server satirini yazardi): tek server SANILMAZ.
 // servers sonu " ; +N" = analiz 2000 karakterde kesti; N satir listede yok (kesik).
+// HTTP/2 (kullanici 2026-11-19: "upstream envanteri ile http2 envanterini ortaklastiralim"): kaynak
+// Nginx_Audit_Servers.http2 / http2_source (bkz. nginx-http2.cjs). Kolon yoksa alanlar null
+// (olculmedi); olculmeyen blok "kapali" SAYILMAZ.
 'use strict';
+
+const { h2Degeri, HTTP_DISI } = require('./nginx-http2.cjs');
 
 const bit = (v) => v === true || v === 1 || v === '1';
 const sayi = (v) => Number(v) || 0;
@@ -51,13 +56,35 @@ function adresOf(server) {
 }
 
 /**
+ * Bir server_name'in (ayni ada sahip TUM server bloklari) HTTP/2 durumu.
+ * Girdi: [{http2, http2_source}]. Cikti: 'acik' | 'kismen' (bazi bloklar acik) | 'kapali' |
+ * 'http_degil' (stream / mail) | 'olculmedi'. Acik blok yoksa ve biri olculmediyse 'olculmedi'
+ * (kanitsiz "kapali" denmez).
+ */
+function http2Durumu(rows) {
+  const d = new Set();
+  for (const r of rows || []) {
+    const v = h2Degeri(r.http2);
+    if (v === true) d.add('acik');
+    else if (v === false && HTTP_DISI.includes(String(r.http2_source || '').trim()))
+      d.add('http_degil');
+    else if (v === false) d.add('kapali');
+    else d.add('olculmedi');
+  }
+  if (d.has('acik')) return d.size === 1 ? 'acik' : 'kismen';
+  if (!d.size || d.has('olculmedi')) return 'olculmedi';
+  return d.has('kapali') ? 'kapali' : 'http_degil';
+}
+
+/**
  * Sunucu basina ozet.
  * @param {object[]} hostRows  Nginx_Audit_Hosts {host, status}
  * @param {object[]} upsAgg    {host, n, kullanilan, resolve_yok, keepalive_yok}
  * @param {object[]} locAgg    {host, target_kind, n}
  * @param {(h:string)=>string} envOf
+ * @param {object[]|null} [h2Agg]  Nginx_Audit_Servers {host, n, acik}; null = http2 kolonu yok
  */
-function upstreamOzeti(hostRows, upsAgg, locAgg, envOf) {
+function upstreamOzeti(hostRows, upsAgg, locAgg, envOf, h2Agg = null) {
   const m = new Map();
   const al = (host) => {
     const k = H(host);
@@ -78,6 +105,8 @@ function upstreamOzeti(hostRows, upsAgg, locAgg, envOf) {
         tanimsizLocation: 0,
         bagli: false,
         olculmedi: false,
+        http2Acik: h2Agg ? 0 : null,
+        http2Blok: h2Agg ? 0 : null,
       });
     return m.get(k);
   };
@@ -101,6 +130,13 @@ function upstreamOzeti(hostRows, upsAgg, locAgg, envOf) {
     else if (k === 'fqdn') h.dogrudanLocation += sayi(r.n);
     else if (k === 'variable') h.degiskenLocation += sayi(r.n);
     else if (k === 'undefined') h.tanimsizLocation += sayi(r.n);
+  }
+  for (const r of h2Agg || []) {
+    // yalniz upstream envanterinde olan sunucular (Hosts satiri olmayan sunucu eklenmez)
+    const h = m.get(H(r.host));
+    if (!h) continue;
+    h.http2Blok += sayi(r.n);
+    h.http2Acik += sayi(r.acik);
   }
   const hosts = [...m.values()].map((h) => {
     const bagli = h.kullanilan > 0;
@@ -127,6 +163,8 @@ function upstreamOzeti(hostRows, upsAgg, locAgg, envOf) {
       dogrudanLocation: topla('dogrudanLocation'),
       degiskenLocation: topla('degiskenLocation'),
       tanimsizLocation: topla('tanimsizLocation'),
+      http2Olculdu: Boolean(h2Agg),
+      http2Host: hosts.filter((h) => h.http2Acik > 0).length,
     },
   };
 }
@@ -240,10 +278,18 @@ function aramaSonucu(rows, q, serversOlculdu) {
  * `eksik` sayilir (ekran indirmeden once soyler; CSV'ye uydurma satir eklenmez).
  * Sahibi bilinmeyen location (srv_seq 0) server_name bos -> "(bilinmiyor)".
  */
-function baglantiSatirlari(rows, serversOlculdu) {
+function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false) {
   const gor = new Set();
   const eksik = new Set();
   const out = [];
+  // HTTP/2 server_name basina (ayni adli TUM bloklar); satir basina degil
+  const h2 = new Map();
+  if (http2Olculdu)
+    for (const r of rows || []) {
+      const k = `${H(r.host)}\u0000${r.server_name ? String(r.server_name) : '(bilinmiyor)'}`;
+      if (!h2.has(k)) h2.set(k, []);
+      h2.get(k).push(r);
+    }
   for (const r of rows || []) {
     const host = H(r.host);
     const upstream = String(r.upstream || '');
@@ -259,7 +305,8 @@ function baglantiSatirlari(rows, serversOlculdu) {
       const k = `${host}\u0000${serverName}\u0000${upstream}\u0000${endpoint}`;
       if (gor.has(k)) continue;
       gor.add(k);
-      out.push({ host, serverName, upstream, endpoint });
+      const http2 = http2Olculdu ? http2Durumu(h2.get(`${host}\u0000${serverName}`)) : null;
+      out.push({ host, serverName, upstream, endpoint, http2 });
     }
   }
   out.sort(
@@ -274,6 +321,7 @@ function baglantiSatirlari(rows, serversOlculdu) {
 
 module.exports = {
   baglantiSatirlari,
+  http2Durumu,
   DOGRUDAN_TURLER,
   serverListesi,
   adresOf,

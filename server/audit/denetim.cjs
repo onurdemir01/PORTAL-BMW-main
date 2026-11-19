@@ -2339,7 +2339,9 @@ function initDenetim(app) {
   //   (parametresiz) sunucu basina ozet (GROUP BY; SPA sunucusunda binlerce upstream olabilir)
   //   ?host=X        o sunucunun upstream'leri, TUM server satirlari, kullanan server_name/location
   //   ?ara=q (>= 2)  ters arama: arka uc adresi ya da upstream adi -> hangi sunucu, hangi upstream
-  //   ?liste=1       disa aktarim: sunucu / server_name / upstream / arka uc (location baglantisi basina)
+  //   ?liste=1       disa aktarim: sunucu / server_name / upstream / arka uc / HTTP/2 (location basina)
+  // HTTP/2 (2026-11-19, "upstream ile http2 envanterini ortaklastiralim"): ozet sunucu basina acik
+  // server blogu sayar, liste server_name basina durum verir. Servers.http2 kolonu yoksa null (olculmedi).
   // Upstreams.servers kolonu yoksa (yeni tarama gelmedi) ekran "tam liste yok" der; eldeki tek
   // `server` (SON satir) tam liste SANILMAZ.
   router.get('/nginx-upstreams', async (req, res) => {
@@ -2359,8 +2361,13 @@ function initDenetim(app) {
       if (dateRes._missing) return res.json({ ok: true, hazir: false, neden: 'tablo' });
       const scanDate = dateRes.recordset?.[0]?.d || null;
       if (!scanDate) return res.json({ ok: true, hazir: false, neden: 'tarama' });
-      const kol = await query(`SELECT COL_LENGTH('dbo.Nginx_Audit_Upstreams', 'servers') AS s`);
+      const kol = await query(
+        `SELECT COL_LENGTH('dbo.Nginx_Audit_Upstreams', 'servers') AS s,
+                COL_LENGTH('dbo.Nginx_Audit_Servers', 'http2') AS h,
+                COL_LENGTH('dbo.Nginx_Audit_Servers', 'http2_source') AS k`,
+      );
       const serversOlculdu = kol.recordset?.[0]?.s != null;
+      const http2Olculdu = kol.recordset?.[0]?.h != null && kol.recordset?.[0]?.k != null;
       const serversKol = serversOlculdu ? 'servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers';
       const params = [{ name: 'scanDate', type: sql.Date, value: scanDate }];
       const es = await eskiSunucuSuzgec(req);
@@ -2394,7 +2401,8 @@ function initDenetim(app) {
       if (String(req.query.liste || '') === '1') {
         const r = await query(
           `SELECT DISTINCT l.host, s.server_name, l.proxy_target AS upstream, u.server,
-                  ${serversOlculdu ? 'u.servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers'}
+                  ${serversOlculdu ? 'u.servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers'},
+                  ${http2Olculdu ? 's.http2, s.http2_source' : 'CAST(NULL AS BIT) AS http2, CAST(NULL AS NVARCHAR(1)) AS http2_source'}
              FROM dbo.Nginx_Audit_Locations l
              JOIN dbo.Nginx_Audit_Upstreams u
                ON u.scan_date = l.scan_date AND u.host = l.host AND u.name = l.proxy_target
@@ -2408,7 +2416,8 @@ function initDenetim(app) {
           hazir: true,
           scanDate,
           serversOlculdu,
-          ...ue.baglantiSatirlari(es.ayir(r.recordset || [], (x) => x.host), serversOlculdu),
+          http2Olculdu,
+          ...ue.baglantiSatirlari(es.ayir(r.recordset || [], (x) => x.host), serversOlculdu, http2Olculdu),
         });
       }
 
@@ -2436,7 +2445,7 @@ function initDenetim(app) {
       }
 
       const w = 'WHERE scan_date = @scanDate';
-      const [h, u, l] = await Promise.all([
+      const [h, u, l, s2] = await Promise.all([
         query(`SELECT host, status FROM dbo.Nginx_Audit_Hosts ${w}`, params),
         query(
           `SELECT host, COUNT(*) AS n,
@@ -2453,6 +2462,14 @@ function initDenetim(app) {
             GROUP BY host, target_kind`,
           params,
         ),
+        http2Olculdu
+          ? query(
+              `SELECT host, COUNT(*) AS n, SUM(CASE WHEN http2 = 1 THEN 1 ELSE 0 END) AS acik
+                 FROM dbo.Nginx_Audit_Servers ${w}
+                GROUP BY host`,
+              params,
+            )
+          : null,
       ]);
       const ayir = (rows) => es.ayir(rows || [], (x) => x.host);
       res.json({
@@ -2460,7 +2477,13 @@ function initDenetim(app) {
         hazir: true,
         scanDate,
         serversOlculdu,
-        ...ue.upstreamOzeti(ayir(h.recordset), ayir(u.recordset), ayir(l.recordset), envOfHost),
+        ...ue.upstreamOzeti(
+          ayir(h.recordset),
+          ayir(u.recordset),
+          ayir(l.recordset),
+          envOfHost,
+          s2 ? ayir(s2.recordset) : null,
+        ),
         eskiGizli: es.bilgi(),
       });
     } catch (err) {

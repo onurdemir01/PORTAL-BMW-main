@@ -9,7 +9,11 @@
 //   UU5 veri yoksa "henüz yok" notu
 //   UU6 taranamayan sunucu "bağlı değil" sayılmaz (ayrı süzgeç); location dışı kullanım; değişken hedef;
 //       kesik arka uç listesi; sahibi bilinmeyen location'a ad uydurulmaz
-//   UU7 CSV: sunucu · server_name · upstream · upstream_endpoint; ekrandaki süzgeç uygulanır; eksik liste notu
+//   UU7 CSV: sunucu · server_name · upstream · upstream_endpoint · http2; ekrandaki süzgeç uygulanır;
+//       eksik liste notu
+//   UU8 HTTP/2 (upstream + http2 ortak): sunucu başına açık / blok kolonu; "HTTP/2 açık" süzgeci bağlantı
+//       süzgeciyle birlikte; CSV yalnız açık / kısmen açık server_name satırları; tarama http2 ölçmüyorsa
+//       süzgeç yok, kolon "—", CSV notu söyler (kapalı SANILMAZ)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -51,6 +55,8 @@ const host = (o: Partial<NonNullable<NginxUpsOzetResult['hosts']>[number]>) => (
   tanimsizLocation: 0,
   bagli: false,
   olculmedi: false,
+  http2Acik: null,
+  http2Blok: null,
   ...o,
 });
 const ozet = (o: Partial<NginxUpsOzetResult> = {}): NginxUpsOzetResult => ({
@@ -344,10 +350,10 @@ describe('NginxUpstreamEnvanteri', () => {
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [ad, baslik, satir] = api.csv.mock.calls[0];
     expect(ad).toBe('nginx_upstream_baglantilari');
-    expect(baslik).toEqual(['sunucu', 'server_name', 'upstream', 'upstream_endpoint']);
+    expect(baslik).toEqual(['sunucu', 'server_name', 'upstream', 'upstream_endpoint', 'http2']);
     expect(satir).toEqual([
-      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443'],
-      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443'],
+      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443', 'olculmedi'],
+      ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443', 'olculmedi'],
     ]);
     expect(api.liste).toHaveBeenCalledWith(false);
     const not = await screen.findByTestId('ups-indirme-notu');
@@ -355,5 +361,135 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(not.textContent).toMatch(
       /2 upstream’in arka uç listesi tam değil \(kayıt sınırında kesik\)/,
     );
+  });
+
+  it('UU8 HTTP/2: kolon, süzgeç, yalnız açık CSV; ölçülmediyse kapalı sanılmaz', async () => {
+    const o = ozet();
+    o.hosts = [
+      host({
+        host: 'GBNGXP01',
+        ortam: 'PROD',
+        upstream: 3,
+        kullanilan: 2,
+        bagli: true,
+        http2Acik: 4,
+        http2Blok: 6,
+      }),
+      host({
+        host: 'GBNGXP02',
+        ortam: 'PROD',
+        upstream: 1,
+        kullanilan: 1,
+        bagli: true,
+        http2Acik: 0,
+        http2Blok: 2,
+      }),
+      host({ host: 'GBNGXT01', http2Acik: 1, http2Blok: 1 }),
+    ];
+    o.totals = {
+      ...o.totals!,
+      hosts: 3,
+      bagli: 2,
+      bagliDegil: 1,
+      http2Olculdu: true,
+      http2Host: 2,
+    };
+    api.ozet.mockResolvedValue(o);
+    api.liste.mockResolvedValue({
+      ok: true,
+      hazir: true,
+      serversOlculdu: true,
+      http2Olculdu: true,
+      satirlar: [
+        {
+          host: 'GBNGXP01',
+          serverName: 'a.example',
+          upstream: 'u1',
+          endpoint: 'x:443',
+          http2: 'acik',
+        },
+        {
+          host: 'GBNGXP01',
+          serverName: 'b.example',
+          upstream: 'u1',
+          endpoint: 'x:443',
+          http2: 'kapali',
+        },
+        {
+          host: 'GBNGXP01',
+          serverName: 'c.example',
+          upstream: 'u2',
+          endpoint: 'y:443',
+          http2: 'kismen',
+        },
+        {
+          host: 'GBNGXP02',
+          serverName: 'd.example',
+          upstream: 'u3',
+          endpoint: 'z:443',
+          http2: 'kapali',
+        },
+        {
+          host: 'GBNGXT01',
+          serverName: 't.example',
+          upstream: 'u4',
+          endpoint: 'q:80',
+          http2: 'acik',
+        },
+      ],
+    });
+    render(<NginxUpstreamEnvanteri />);
+    await screen.findByTestId('ups-ozet');
+    expect(screen.getByRole('columnheader', { name: 'HTTP/2 (açık / blok)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!.textContent).toMatch(
+      /4 \/ 6$/,
+    );
+    const h2 = screen.getByRole('button', { name: /HTTP\/2 açık/ });
+    expect(h2.textContent).toMatch(/2$/);
+    // bağlantı süzgeci + HTTP/2 birlikte: GBNGXP02 (h2 yok) ve GBNGXT01 (bağlı değil) düşer
+    fireEvent.click(screen.getByRole('button', { name: /Upstream’e bağlı/ }));
+    fireEvent.click(h2);
+    expect(h2.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button', { name: /GBNGXP02/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /GBNGXT01/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /GBNGXP01/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
+    await waitFor(() => expect(api.csv).toHaveBeenCalled());
+    const [ad, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
+    expect(ad).toBe('nginx_upstream_http2_acik');
+    expect(satir).toEqual([
+      ['GBNGXP01', 'a.example', 'u1', 'x:443', 'acik'],
+      ['GBNGXP01', 'c.example', 'u2', 'y:443', 'kismen'],
+    ]);
+  });
+
+  it('UU8b tarama http2 ölçmüyorsa süzgeç yok, kolon boş, CSV notu', async () => {
+    api.liste.mockResolvedValue({
+      ok: true,
+      hazir: true,
+      serversOlculdu: true,
+      http2Olculdu: false,
+      satirlar: [
+        {
+          host: 'GBNGXP01',
+          serverName: 'a.example',
+          upstream: 'u1',
+          endpoint: 'x:443',
+          http2: null,
+        },
+      ],
+    });
+    render(<NginxUpstreamEnvanteri />);
+    await screen.findByTestId('ups-ozet');
+    expect(screen.queryByRole('button', { name: /HTTP\/2 açık/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!.textContent).toMatch(
+      /—$/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
+    await waitFor(() => expect(api.csv).toHaveBeenCalled());
+    const [, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
+    expect(satir).toEqual([['GBNGXP01', 'a.example', 'u1', 'x:443', 'olculmedi']]);
+    const not = await screen.findByTestId('ups-indirme-notu');
+    expect(not.textContent).toMatch(/http2 kolonu boş: Son tarama HTTP\/2 durumunu içermiyor/);
   });
 });
