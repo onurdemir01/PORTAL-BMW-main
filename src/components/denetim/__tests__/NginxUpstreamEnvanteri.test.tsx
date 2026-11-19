@@ -1,6 +1,6 @@
 // src/components/denetim/__tests__/NginxUpstreamEnvanteri.test.tsx
 //
-// Nginx Hub > Upstream Envanteri (kullanıcı, 2026-11-19).
+// Nginx Hub > Envanter > Upstream Envanteri (kullanıcı, 2026-11-19).
 //   UU1 özet: bağlı / toplam, kullanılmayan, doğrudan adres; süzgeç (bağlı / bağlı değil) + ortam + arama
 //   UU2 satır açılınca upstream'ler: tüm arka uçlar, ayar rozetleri, kullanan server_name · location,
 //       kullanılmayan upstream, upstream'i atlayan location
@@ -16,11 +16,19 @@
 //       süzgeç yok, kolon "—", CSV notu söyler (kapalı SANILMAZ)
 //   UU9 ağ: listen IP (* = tüm arayüzler), domain, subnet, birincil IP; subnet dışı listen işaretlenir;
 //       arama IP / subnet / domain ile; CSV + özet CSV ağ kolonları; Nginx Envanteri okunamazsa not
+//   UU10 Envanter'in alt sekmesi (eski HTTP/2 sekmesinin yerinde): HTTP/2 sekmesi yok; Envanter
+//       "Yenile"si bu görünümü de önbelleği atlayarak okur; sonradan açılan sekme önbellekten okur
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
 import { NginxUpstreamEnvanteri } from '@/components/denetim/NginxUpstreamEnvanteri';
-import type { NginxUpsOzetResult, NginxUpsDetayResult } from '@/api/denetimApi';
+import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
+import type {
+  NginxUpsOzetResult,
+  NginxUpsDetayResult,
+  NginxInventoryResult,
+  NginxInvHost,
+} from '@/api/denetimApi';
 
 const api = vi.hoisted(() => ({
   ozet: vi.fn(),
@@ -28,6 +36,7 @@ const api = vi.hoisted(() => ({
   ara: vi.fn(),
   liste: vi.fn(),
   csv: vi.fn(),
+  inv: vi.fn(),
 }));
 vi.mock('@/utils/csv', () => ({ downloadCsv: api.csv }));
 vi.mock('@/api/denetimApi', () => ({
@@ -36,6 +45,7 @@ vi.mock('@/api/denetimApi', () => ({
     nginxUpstreamSunucu: api.sunucu,
     nginxUpstreamAra: api.ara,
     nginxUpstreamListe: api.liste,
+    nginxInventory: api.inv,
   },
 }));
 vi.mock('@/contexts/AuthContext', () => ({
@@ -658,5 +668,80 @@ describe('NginxUpstreamEnvanteri', () => {
     expect(screen.getByTestId('ups-ag-bilinmeyen').textContent).toMatch(
       /2 sunucunun IP \/ domain \/ subnet bilgisi yok/,
     );
+  });
+
+  it('UU10 Envanter alt sekmesi; HTTP/2 sekmesi yok; Envanter Yenile aktarılır', async () => {
+    const size = { totalGiB: 0, parsed: 0, unparsed: 0 };
+    const sunucu: NginxInvHost = {
+      hostname: 'GBNGXP01',
+      fqdn: null,
+      env: 'production',
+      location: 'pendik',
+      service: null,
+      services: 'glomo',
+      service_count: 1,
+      domain: null,
+      ip: null,
+      subnet: null,
+      os: 'RHEL 8',
+      kernel: null,
+      architecture: null,
+      cpu: 4,
+      memory: '16G',
+      nginx_version: '1.24.0',
+      nginx_user: 'www',
+      nginx_prefix: null,
+      config_count: 3,
+      disk_usr_nginx: null,
+      disk_web_log: null,
+      source_last_update: null,
+      metadata_version: 1,
+      envByName: 'PROD',
+    };
+    const inv: NginxInventoryResult = {
+      ok: true,
+      lastUpdate: null,
+      totals: {
+        hosts: 1,
+        envs: 1,
+        services: 1,
+        servicesUnlisted: [],
+        nginxVersions: 1,
+        osVersions: 1,
+        cpuTotal: 4,
+        memory: size,
+        diskNginx: size,
+        diskWebLog: size,
+      },
+      byEnv: [],
+      byService: [],
+      versions: { nginx: [], os: [], kernel: [], architecture: [], metadata: [] },
+      resources: {
+        cpu: [],
+        memory: [],
+        diskNginx: [],
+        diskWebLog: [],
+        configCount: [],
+        serviceCount: [],
+      },
+      other: { domain: [], subnet: [], nginxUser: [] },
+      hosts: [sunucu],
+    };
+    api.inv.mockReset().mockResolvedValue(inv);
+    render(<NginxEnvanteri />);
+    const sekme = await screen.findByRole('tab', { name: 'Upstream Envanteri' });
+    expect(screen.queryByRole('tab', { name: 'HTTP/2' })).toBeNull();
+    // Envanter Yenile'si sekme acilmadan once basildi: ilk yukleme yine onbellekten
+    fireEvent.click(screen.getByRole('button', { name: /Yenile/ }));
+    await waitFor(() => expect(api.inv).toHaveBeenCalledTimes(2));
+    fireEvent.click(sekme);
+    await screen.findByTestId('ups-ozet');
+    expect(api.ozet).toHaveBeenCalledTimes(1);
+    expect(api.ozet).toHaveBeenLastCalledWith(false);
+    const yenile = screen.getAllByRole('button', { name: /Yenile/ });
+    expect(yenile).toHaveLength(2);
+    fireEvent.click(yenile[0]);
+    await waitFor(() => expect(api.ozet).toHaveBeenLastCalledWith(true));
+    expect(api.inv).toHaveBeenCalledTimes(3);
   });
 });

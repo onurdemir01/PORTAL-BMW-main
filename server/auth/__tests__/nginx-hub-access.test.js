@@ -188,7 +188,7 @@ test('NH-A3 sunucu kapıları: uçlar sayfa + sekme kapısından geçer', () => 
     den.includes("requireVisible('tab:nginx:' + nx[1])"),
     'denetim nginx yolları sekme kapısında değil',
   );
-  for (const t of ['spa', 'api', 'envanter', 'upstream', 'audit']) {
+  for (const t of ['spa', 'api', 'envanter', 'audit']) {
     assert.ok(new RegExp(`'${t}'\\]`).test(den), `denetim yol eşlemesinde ${t} yok`);
   }
 });

@@ -1360,68 +1360,6 @@ export interface NginxInvHost {
   etiket?: NginxInvEtiket | null;
 }
 
-/** HTTP/2 kaynağı (nginx_audit, etkin durum): blokta `http2 on` · kendi `listen … http2`'si ·
- *  http{}'den miras · aynı adres:port'taki başka bloğun `listen … http2`'si · TLS'siz sokette
- *  varsayılan sunucudan. */
-export type NginxHttp2Kaynak = 'server' | 'listen' | 'http' | 'socket' | 'default';
-
-export interface NginxHttp2Host {
-  host: string;
-  toplam: number;
-  acik: number;
-  kapali: number;
-  /** eski tarama satırı ya da bağlamı çözülemeyen `http2` / `listen`: kapalı SAYILMAZ */
-  olculmedi: number;
-  /** stream{} / mail{} blokları: HTTP değil, kapalı sayılmaz */
-  httpDisi: number;
-  kaynak: Record<NginxHttp2Kaynak, number>;
-}
-
-/** hazir=false: neden 'tablo' (nginx_audit şeması yok) | 'tarama' (satır yok) | 'kolon' (yeni tarama gelmedi). */
-export interface NginxHttp2OzetResult {
-  ok: boolean;
-  message?: string;
-  hazir?: boolean;
-  neden?: 'tablo' | 'tarama' | 'kolon';
-  scanDate?: string;
-  hosts?: NginxHttp2Host[];
-  totals?: {
-    hosts: number;
-    hostsAcik: number;
-    hostsOlculmedi: number;
-    bloklar: number;
-    acik: number;
-    kapali: number;
-    olculmedi: number;
-    httpDisi: number;
-    kaynak: Record<NginxHttp2Kaynak, number>;
-  };
-  eskiGizli?: unknown;
-}
-
-export interface NginxHttp2Satir {
-  confFile: string;
-  seq: number;
-  serverName: string | null;
-  listen: string | null;
-  ssl: boolean;
-  /** null = ölçülmedi */
-  http2: boolean | null;
-  kaynak: NginxHttp2Kaynak | null;
-  /** HTTP olmayan blok (stream / mail) */
-  httpDisi: 'stream' | 'mail' | null;
-}
-
-export interface NginxHttp2SunucuResult {
-  ok: boolean;
-  message?: string;
-  hazir?: boolean;
-  neden?: 'tablo' | 'tarama' | 'kolon';
-  scanDate?: string;
-  host?: string;
-  satirlar?: NginxHttp2Satir[];
-}
-
 // ── Upstream Envanteri (2026-11-19) ─────────────────────────────────────────────────
 export interface NginxUpsHost {
   host: string;
@@ -1735,15 +1673,6 @@ export const denetimApi = {
     fetch(`${BASE}/nginx-upstreams?ara=${encodeURIComponent(q)}${fresh ? '&fresh=1' : ''}`).then(
       safeJson,
     ),
-
-  /** fresh: Envanter "Yenile" sonrası sunucu önbelleği atlanır (?fresh=1). */
-  nginxHttp2Ozet: (fresh = false): Promise<NginxHttp2OzetResult> =>
-    fetch(`${BASE}/nginx-inventory/http2${fresh ? '?fresh=1' : ''}`).then(safeJson),
-
-  nginxHttp2Sunucu: (host: string, fresh = false): Promise<NginxHttp2SunucuResult> =>
-    fetch(
-      `${BASE}/nginx-inventory/http2?host=${encodeURIComponent(host)}${fresh ? '&fresh=1' : ''}`,
-    ).then(safeJson),
 
   nginxApiLocations: (scanDate?: string): Promise<NginxApiLocationsResult> =>
     fetch(

@@ -60,7 +60,8 @@ import { Note } from './ui';
 import { downloadCsv as csvDownload } from '@/utils/csv';
 import { useAuth } from '@/contexts/AuthContext';
 import { NginxEtiketPenceresi } from './NginxEtiketPenceresi';
-import { NginxHttp2 } from './NginxHttp2';
+import { NginxUpstreamEnvanteri } from './NginxUpstreamEnvanteri';
+import { OrtamRozeti, ortamAdi, ortamRengi } from './NginxOrtamRozeti';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
@@ -69,22 +70,11 @@ const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 // Tablodaki `env` yalnız production/non-production; kalıp dışı sunucu "Kalıp dışı" kovasında
 // görünür (sessizce bir ortama atılmaz).
 const ORTAM_SIRA = ['PROD', 'QA', 'TEST', 'DEV', 'EDU', 'BILINMIYOR'] as const;
-const ORTAM_AD: Record<string, string> = { BILINMIYOR: 'Kalıp dışı' };
-const ORTAM_RENK: Record<string, string> = {
-  PROD: 'var(--nh-hub)',
-  QA: 'var(--status-info)',
-  TEST: 'var(--accent)',
-  DEV: 'var(--ah-hue)',
-  EDU: 'var(--bh-hue)',
-  BILINMIYOR: 'var(--status-neutral)',
-};
 export function ortamOf(h: NginxInvHost): string {
   const e = (h.envByName || '').toUpperCase();
   if (e && e !== 'BILINMIYOR') return e;
   return h.env === 'production' ? 'PROD' : 'BILINMIYOR';
 }
-const ortamAdi = (o: string) => ORTAM_AD[o] || o;
-const ortamRengi = (o: string) => ORTAM_RENK[o] || 'var(--status-neutral)';
 const ortamSirala = (a: string, b: string) => {
   const ia = ORTAM_SIRA.indexOf(a as (typeof ORTAM_SIRA)[number]);
   const ib = ORTAM_SIRA.indexOf(b as (typeof ORTAM_SIRA)[number]);
@@ -113,18 +103,6 @@ const elleAdlar = (h: NginxInvHost) =>
 const UST_ETIKET = 'text-[11px] font-semibold uppercase tracking-[0.06em]';
 
 // ── Küçük parçalar ─────────────────────────────────────────────────────────────
-
-export function OrtamRozeti({ ortam }: { ortam: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap"
-      style={{ borderColor: 'var(--border-subtle)', color: 'var(--text-primary)', background: 'var(--bg-surface)' }}
-    >
-      <span aria-hidden="true" className="w-2 h-2 rounded-full" style={{ background: ortamRengi(ortam) }} />
-      {ortamAdi(ortam)}
-    </span>
-  );
-}
 
 // ── Sürüm ──────────────────────────────────────────────────────────────────────
 // nginx -v çıktısından gelen serbest metin: "1.24.0", "nginx/1.26.3", "1.25.1 (nginx-plus-r30)",
@@ -856,7 +834,7 @@ function ServiceSunuculari({
   );
 }
 
-type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular' | 'http2';
+type View = 'ortam' | 'versiyon' | 'service' | 'kaynak' | 'sunucular' | 'upstream';
 type SiraAnahtar = 'hostname' | 'ortam' | 'location' | 'nginx' | 'os' | 'cpu' | 'bellek' | 'diskNginx' | 'diskWebLog' | 'konf';
 
 function SiraTh({
@@ -915,7 +893,7 @@ export function NginxEnvanteri() {
   const [sira, setSira] = useState<{ k: SiraAnahtar; yon: 1 | -1 }>({ k: 'hostname', yon: 1 });
   const [etiketHost, setEtiketHost] = useState<NginxInvHost | null>(null);
   const [acikService, setAcikService] = useState<Set<string>>(() => new Set());
-  // HTTP/2 gorunumu ayri uctan okur; Yenile onu da (onbellegi atlayarak) tazelesin.
+  // Upstream Envanteri gorunumu ayri uctan okur; Yenile onu da (onbellegi atlayarak) tazelesin.
   const [yenileSayac, setYenileSayac] = useState(0);
   const serviceAc = (s: string) =>
     setAcikService((m) => {
@@ -1110,7 +1088,7 @@ export function NginxEnvanteri() {
     { id: 'service', label: "Service'ler", sayi: t.services },
     { id: 'kaynak', label: 'Kaynaklar' },
     { id: 'sunucular', label: 'Sunucular', sayi: n },
-    { id: 'http2', label: 'HTTP/2' },
+    { id: 'upstream', label: 'Upstream Envanteri' },
   ];
 
   const kpi = (etiket: string, deger: React.ReactNode, ipucu?: string, uyari?: boolean) => (
@@ -1552,16 +1530,10 @@ export function NginxEnvanteri() {
       )}
 
       {/* ── SUNUCULAR ──────────────────────────────────────────────────────────── */}
-      {/* ── HTTP/2 (2026-11-18): nginx denetim taramasından, server bloğu başına etkin durum ── */}
-      {view === 'http2' && (
-        <NginxHttp2
-          yenile={yenileSayac}
-          ortamRozeti={(host) => {
-            const h = hostByName.get(host) ?? data.hosts.find((x) => x.hostname.toUpperCase() === host);
-            return h ? <OrtamRozeti ortam={ortamOf(h)} /> : null;
-          }}
-        />
-      )}
+      {/* ── UPSTREAM ENVANTERI (2026-11-19): Nginx Hub ust sekmesinden buraya tasindi ve eski HTTP/2
+          sekmesinin yerini aldi (kullanici: "HTTP2'yi kaldir yerine Upstream Envanteri'ni yerlestir").
+          HTTP/2 durumu Upstream Envanteri'nin kolonu / "HTTP/2 acik" suzgeci olarak yasiyor. ── */}
+      {view === 'upstream' && <NginxUpstreamEnvanteri yenile={yenileSayac} />}
 
       {view === 'sunucular' && (
         <section className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>

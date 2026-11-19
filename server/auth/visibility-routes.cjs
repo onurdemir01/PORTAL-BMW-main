@@ -414,8 +414,6 @@ function initVisibilityRoutes(app, { requireAuth, requireAdmin }) {
     'spa',
     'api',
     'envanter',
-    // Upstream Envanteri (2026-11-19): /api/denetim/nginx-upstreams, requireVisible('tab:nginx:upstream').
-    'upstream',
     'audit',
     'spadiscovery',
     'rvpsecim',

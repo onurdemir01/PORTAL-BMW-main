@@ -1,4 +1,5 @@
-// src/components/denetim/NginxUpstreamEnvanteri.tsx — Nginx Hub > "Upstream Envanteri".
+// src/components/denetim/NginxUpstreamEnvanteri.tsx — Nginx Hub > Envanter > "Upstream Envanteri".
+// 2026-11-19: Nginx Hub ust sekmesinden Envanter'in alt sekmesine tasindi; eski HTTP/2 sekmesinin yerini aldi.
 //
 // Kullanıcı (2026-11-19): "Nginx Envanteri gibi bir envanter daha istiyorum: hangi sunucu herhangi bir
 // upstream'a bağlı mı, bağlıysa hangi upstream'e bağlı".
@@ -36,7 +37,7 @@ import {
 import { eskiGizliKaydet } from '@/api/nginxEskiSunucuApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { downloadCsv as csvDownload } from '@/utils/csv';
-import { OrtamRozeti } from './NginxEnvanteri';
+import { OrtamRozeti } from './NginxOrtamRozeti';
 import { Note } from './ui';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
@@ -503,7 +504,8 @@ function TersArama({ yenile }: { yenile: number }) {
   );
 }
 
-export function NginxUpstreamEnvanteri() {
+/** yenile: Envanter'in "Yenile" sayaci; arttiginda bu gorunum de onbellegi atlayarak tazelenir. */
+export function NginxUpstreamEnvanteri({ yenile: disYenile = 0 }: { yenile?: number } = {}) {
   const [veri, setVeri] = useState<NginxUpsOzetResult | null>(null);
   const [hata, setHata] = useState('');
   const [q, setQ] = useState('');
@@ -511,7 +513,10 @@ export function NginxUpstreamEnvanteri() {
   const [ortam, setOrtam] = useState('');
   const [yalnizH2, setYalnizH2] = useState(false);
   const [acik, setAcik] = useState<Set<string>>(() => new Set());
-  const [yenile, setYenile] = useState(0);
+  const [icYenile, setYenile] = useState(0);
+  // Envanter Yenile'si bu sekme acilmadan once basildiysa ilk yukleme yine onbellekten gelir.
+  const [ilkDisYenile] = useState(disYenile);
+  const yenile = icYenile + Math.max(0, disYenile - ilkDisYenile);
   const [yukleniyor, setYukleniyor] = useState(true);
   const [indiriliyor, setIndiriliyor] = useState(false);
   const [indirmeNotu, setIndirmeNotu] = useState<{ metin: string; hata: boolean } | null>(null);

@@ -4200,7 +4200,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Deployment Scripts (/api/denetim/deploy-scripts)",
-        "dosya": "server/audit/denetim.cjs:2631"
+        "dosya": "server/audit/denetim.cjs:2576"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -5039,8 +5039,8 @@
     ],
     "okuyanlar": [
       {
-        "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2440"
+        "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
+        "dosya": "server/audit/denetim.cjs:2385"
       },
       {
         "ad": "Denetim > Nginx Audit (GET /api/denetim/nginx-audit)",
@@ -5092,8 +5092,8 @@
     ],
     "okuyanlar": [
       {
-        "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2379"
+        "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
+        "dosya": "server/audit/denetim.cjs:2324"
       },
       {
         "ad": "Denetim > Nginx Audit",
@@ -5132,8 +5132,8 @@
     ],
     "okuyanlar": [
       {
-        "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2382"
+        "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
+        "dosya": "server/audit/denetim.cjs:2327"
       },
       {
         "ad": "Denetim > Nginx Audit",
@@ -5155,10 +5155,6 @@
       {
         "ad": "Nginx Hub > Yük Testi hedef doğrulama",
         "dosya": "server/nginx-loadtest/dogrula.cjs:1335"
-      },
-      {
-        "ad": "Nginx Hub > Envanter > HTTP/2 (GET /api/denetim/nginx-inventory/http2)",
-        "dosya": "server/audit/denetim.cjs:2318"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5233,8 +5229,8 @@
     ],
     "okuyanlar": [
       {
-        "ad": "Nginx Hub > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2421"
+        "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
+        "dosya": "server/audit/denetim.cjs:2366"
       },
       {
         "ad": "Denetim > Nginx Audit",

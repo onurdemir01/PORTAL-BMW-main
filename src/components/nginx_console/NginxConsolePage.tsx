@@ -39,15 +39,14 @@ import { NGINX_DENETIM_HELP } from '@/components/DenetimPage';
 import NginxSpaBirlesik from '@/components/nginx_console/NginxSpaBirlesik';
 import { NginxApiEnvanteri } from '@/components/denetim/NginxApiEnvanteri';
 import { NginxEnvanteri } from '@/components/denetim/NginxEnvanteri';
-import { NginxUpstreamEnvanteri } from '@/components/denetim/NginxUpstreamEnvanteri';
 import { NginxAudit } from '@/components/denetim/NginxAudit';
 import HelpModal from '@/components/common/HelpModal';
 import { nginxConsoleApi, type NcHost, type NcTree, type NcTreeDir, type NcFile, type NcCertsResult, type NcAggCert, type NcCert, type NcChange } from '@/api/nginxConsoleApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import LoadError from '@/components/common/LoadError';
 
-type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'yuktesti' | 'spadiscovery' | 'api' | 'envanter' | 'upstream' | 'audit';
-const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'upstream', 'audit'];
+type Tab = 'dashboard' | 'instances' | 'config' | 'certs' | 'changes' | 'orphans' | 'drift' | 'cis' | 'ratelimit' | 'rvpsecim' | 'yuktesti' | 'spadiscovery' | 'api' | 'envanter' | 'audit';
+const TABS: readonly Tab[] = ['dashboard', 'instances', 'config', 'changes', 'certs', 'orphans', 'drift', 'cis', 'ratelimit', 'rvpsecim', 'yuktesti', 'spadiscovery', 'api', 'envanter', 'audit'];
 // Panel basliklarindaki kucuk dugmeler: HEPSI ayni boyut/yazi (2026-09-19: btn-primary'nin buyuk
 // dolgusu "Sunucular" basligini eziyordu, iki dugmenin yazisi da farkli buyuklukteydi).
 const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
@@ -84,7 +83,6 @@ const HUB_AUDIT_TABS = [
   { id: 'spadiscovery', label: 'SPA Uygulamaları' },
   { id: 'api', label: 'API Envanteri' },
   { id: 'envanter', label: 'Envanter' },
-  { id: 'upstream', label: 'Upstream Envanteri' },
   { id: 'audit', label: 'Audit' },
 ] as const;
 
@@ -207,13 +205,13 @@ export default function NginxConsolePage() {
   // her sekmenin basinda kaynak isi, verinin tarihi ve nasil tazelenecegi yazar.
   const SOURCE_OF: Record<Tab, SourceKey> = {
     dashboard: 'console', instances: 'console', config: 'console', changes: 'console', certs: 'console',
-    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', yuktesti: 'yuktesti', spadiscovery: 'spa', api: 'api', envanter: 'inventory', upstream: 'audit',
+    orphans: 'console', drift: 'console', audit: 'audit', cis: 'cis', ratelimit: 'api', rvpsecim: 'rvpstatic', yuktesti: 'yuktesti', spadiscovery: 'spa', api: 'api', envanter: 'inventory',
   };
   // ESKI SUNUCU NOTU (2026-11-12): sekmenin verisini getiren uc(lar) kac eski sunucuyu gizledi.
   const ESKI_KAYNAK: Record<Tab, readonly EskiKaynak[]> = {
     dashboard: ['hosts'], instances: ['hosts'], config: ['hosts'], changes: ['changes'], certs: ['certs'],
     orphans: ['orphans'], drift: ['drift'], audit: ['audit'], cis: ['cis'], ratelimit: ['ratelimit'], rvpsecim: [],
-    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter', 'envanterHttp2'], upstream: ['upstream'],
+    yuktesti: [], spadiscovery: ['spa', 'spaKesif'], api: ['api', 'apiLocations'], envanter: ['envanter', 'upstream'],
   };
   // Dokum tabanli sekmelerde "son tarama" = en yeni dokum/gorulme ani.
   const lastDump = useMemo(() => {
@@ -287,7 +285,6 @@ export default function NginxConsolePage() {
       )}
       {tab === 'api' && canSee('tab:nginx:api') && <NginxApiEnvanteri />}
       {tab === 'envanter' && canSee('tab:nginx:envanter') && <NginxEnvanteri />}
-      {tab === 'upstream' && canSee('tab:nginx:upstream') && <NginxUpstreamEnvanteri />}
       {tab === 'audit' && canSee('tab:nginx:audit') && <NginxAudit />}
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} title="Nginx Hub — Denetim bölümleri" sections={NGINX_DENETIM_HELP} />
     </div>
