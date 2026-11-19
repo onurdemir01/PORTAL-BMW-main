@@ -1449,6 +1449,14 @@ export interface NginxUpsHost {
   http2Acik: number | null;
   /** toplam server bloğu; null = tarama http2 ölçmüyor */
   http2Blok: number | null;
+  /** birincil IP / domain / subnet (dbo.nginx_inventory); null = bilinmiyor */
+  ip: string | null;
+  domain: string | null;
+  subnet: string | null;
+  /** server bloklarının dinlediği adresler ('*' = tüm arayüzler); null = okunamadı */
+  listenIp: string[] | null;
+  /** belirli bir IP'yi dinleyen ama birincil subnet dışında kalan listen adresleri */
+  subnetDisi: string[];
 }
 
 /** server_name'in (aynı adlı tüm bloklar) HTTP/2 durumu; kismen = bazı bloklar açık */
@@ -1478,6 +1486,12 @@ export interface NginxUpsOzetResult {
     http2Olculdu?: boolean;
     /** en az bir server bloğunda HTTP/2 açık olan sunucu */
     http2Host?: number;
+    /** false: dbo.nginx_inventory okunamadı (ip / domain / subnet boş) */
+    agOlculdu?: boolean;
+    /** false: listen değerleri okunamadı */
+    listenOlculdu?: boolean;
+    /** nginx_inventory'de satırı olmayan sunucu */
+    agBilinmeyen?: number;
   };
   eskiGizli?: unknown;
 }
@@ -1552,9 +1566,17 @@ export interface NginxUpsListeResult {
   serversOlculdu?: boolean;
   /** false: Nginx_Audit_Servers.http2 kolonu yok (satırlarda http2 null) */
   http2Olculdu?: boolean;
+  /** false: dbo.nginx_inventory okunamadı */
+  agOlculdu?: boolean;
   satirlar?: {
     host: string;
+    hostIp: string | null;
+    domain: string | null;
+    subnet: string | null;
     serverName: string;
+    /** server_name'in tüm bloklarının dinlediği adresler ('*' = tüm arayüzler) */
+    listenIp: string[];
+    subnetDisi: string[];
     upstream: string;
     endpoint: string;
     http2: NginxUpsHttp2 | null;

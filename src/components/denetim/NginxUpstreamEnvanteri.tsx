@@ -13,6 +13,9 @@
 // HTTP/2 (2026-11-19, "upstream envanteri ile http2 envanterini ortaklaştıralım; http2'si açık
 // servisleri hızlıca çekmek istiyorum"): sunucu başına açık blok sayısı, "HTTP/2 açık" süzgeci
 // (bağlantı süzgeciyle birlikte çalışır) ve CSV'de server_name başına http2 kolonu.
+// Ağ (2026-11-19, "sunucuların yanına listen IP'sini, domain ve subnet bilgisini"): listen IP'leri
+// nginx_audit taramasından ('*' = tüm arayüzler), IP / domain / subnet Nginx Envanteri'nden
+// (nginx_metadata, birincil arayüz). Belirli IP'yi dinleyen blok o subnet dışındaysa işaretlenir.
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownTrayIcon,
@@ -59,6 +62,62 @@ const HTTP2_CSV: Record<NginxUpsHttp2, string> = {
   http_degil: 'http_degil',
   olculmedi: 'olculmedi',
 };
+const AG_YOK =
+  'Nginx Envanteri (nginx_metadata) okunamadı; IP / domain / subnet boş. Listen IP’leri yine taramadan gelir.';
+const SUBNET_DISI =
+  'Bu adres sunucunun birincil subnet’inin dışında (ek IP / başka arayüz). Subnet yalnız birincil IP için bilinir.';
+const LISTEN_YOK = 'listen değerleri okunamadı (nginx denetim tablosu); listen IP kolonu boş.';
+const ipSirala = (xs: string[]) => xs.join(' ');
+
+function ListenIpleri({ ipler, disi }: { ipler: string[] | null; disi: string[] }) {
+  if (ipler == null)
+    return (
+      <span style={{ color: 'var(--text-muted)' }} title={LISTEN_YOK}>
+        —
+      </span>
+    );
+  if (ipler.length === 0)
+    return (
+      <span
+        style={{ color: 'var(--text-muted)' }}
+        title="Dinlenen TCP adresi yok (yalnız unix soketi ya da server bloğu yok)"
+      >
+        —
+      </span>
+    );
+  // subnet disi adresler HER ZAMAN gorunur (sinira takilip "+N" icinde kaybolmaz)
+  const SINIR = 3;
+  const sirali = [
+    ...ipler.filter((ip) => disi.includes(ip)),
+    ...ipler.filter((ip) => !disi.includes(ip)),
+  ];
+  const gorunen = sirali.slice(0, Math.max(SINIR, sirali.filter((ip) => disi.includes(ip)).length));
+  const kalan = sirali.slice(gorunen.length);
+  return (
+    <span className="inline-flex flex-wrap gap-1 font-mono text-[11.5px]">
+      {gorunen.map((ip) =>
+        disi.includes(ip) ? (
+          <Rozet key={ip} ton="uyari" title={SUBNET_DISI}>
+            {ip} · subnet dışı
+          </Rozet>
+        ) : (
+          <span
+            key={ip}
+            title={ip === '*' ? 'Tüm arayüzler (listen 443 / *:443 / 0.0.0.0:443)' : undefined}
+          >
+            {ip}
+          </span>
+        ),
+      )}
+      {kalan.length > 0 && (
+        <span style={{ color: 'var(--text-muted)' }} title={kalan.join(', ')}>
+          +{nf(kalan.length)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const HTTP2_YOK =
   'Son tarama HTTP/2 durumunu içermiyor; güncel nginx_audit paketiyle ilk taramadan sonra gelir.';
 
@@ -490,7 +549,13 @@ export function NginxUpstreamEnvanteri() {
           (suzgec === 'olculmedi' && h.olculmedi)) &&
         (!ortam || h.ortam === ortam) &&
         (!yalnizH2 || (h.http2Acik ?? 0) > 0) &&
-        (!s || h.host.includes(s)),
+        (!s ||
+          h.host.includes(s) ||
+          [h.ip, h.domain, h.subnet, ...(h.listenIp || [])].some((x) =>
+            String(x || '')
+              .toUpperCase()
+              .includes(s),
+          )),
     );
   }, [veri, q, suzgec, ortam, yalnizH2]);
 
@@ -531,10 +596,26 @@ export function NginxUpstreamEnvanteri() {
       );
       csvDownload(
         yalnizH2 ? 'nginx_upstream_http2_acik' : 'nginx_upstream_baglantilari',
-        ['sunucu', 'server_name', 'upstream', 'upstream_endpoint', 'http2'],
+        [
+          'sunucu',
+          'sunucu_ip',
+          'domain',
+          'subnet',
+          'server_name',
+          'listen_ip',
+          'listen_subnet_disi',
+          'upstream',
+          'upstream_endpoint',
+          'http2',
+        ],
         xs.map((x) => [
           x.host,
+          x.hostIp || '',
+          x.domain || '',
+          x.subnet || '',
           x.serverName,
+          ipSirala(x.listenIp || []),
+          ipSirala(x.subnetDisi || []),
           x.upstream,
           x.endpoint,
           x.http2 ? HTTP2_CSV[x.http2] : 'olculmedi',
@@ -547,7 +628,8 @@ export function NginxUpstreamEnvanteri() {
           (eksik
             ? ` ${nf(eksik)} upstream’in arka uç listesi tam değil (${r.serversOlculdu === false ? 'tarama tüm server satırlarını içermiyor' : 'kayıt sınırında kesik'}); onlar için yalnız bilinen adresler yazıldı.`
             : '') +
-          (r.http2Olculdu === false ? ` http2 kolonu boş: ${HTTP2_YOK}` : ''),
+          (r.http2Olculdu === false ? ` http2 kolonu boş: ${HTTP2_YOK}` : '') +
+          (r.agOlculdu === false ? ` ${AG_YOK}` : ''),
         hata: false,
       });
     } catch (e: unknown) {
@@ -577,6 +659,13 @@ export function NginxUpstreamEnvanteri() {
 
   return (
     <div className="space-y-4">
+      {(t.agOlculdu === false || t.listenOlculdu === false) && (
+        <Note tone="warning" title="Ağ bilgisi eksik">
+          {[t.agOlculdu === false ? AG_YOK : '', t.listenOlculdu === false ? LISTEN_YOK : '']
+            .filter(Boolean)
+            .join(' ')}
+        </Note>
+      )}
       {veri.serversOlculdu === false && (
         <Note tone="warning" title="Arka uç listeleri eksik">
           {TAM_LISTE_YOK}
@@ -607,6 +696,14 @@ export function NginxUpstreamEnvanteri() {
                 ` · ${nf(t.tanimsizLocation)} location tanımsız hedefe gidiyor`}
               {t.degiskenLocation > 0 &&
                 ` · ${nf(t.degiskenLocation)} location değişken hedefe gidiyor`}
+              {t.agOlculdu === true && (t.agBilinmeyen ?? 0) > 0 && (
+                <span
+                  data-testid="ups-ag-bilinmeyen"
+                  title="Bu sunucular Nginx Envanteri'nde (nginx_metadata) yok: IP / domain / subnet boş"
+                >
+                  {` · ${nf(t.agBilinmeyen ?? 0)} sunucunun IP / domain / subnet bilgisi yok`}
+                </span>
+              )}
             </span>
             <span className="ml-2 text-[11.5px]" style={{ color: 'var(--text-muted)' }}>
               nginx denetim taraması {veri.scanDate}
@@ -679,7 +776,7 @@ export function NginxUpstreamEnvanteri() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="sunucu ara"
+                placeholder="sunucu, IP, domain ya da subnet ara"
                 aria-label="Upstream envanteri sunucu ara"
                 className="pf-input pl-8 text-xs w-56"
               />
@@ -694,7 +791,7 @@ export function NginxUpstreamEnvanteri() {
                 disabled={indiriliyor}
                 className={btn}
                 style={{ borderColor: 'var(--border)' }}
-                title="Her satır: sunucu · server_name · upstream · upstream endpoint · http2 (ekrandaki süzgeçlerle)"
+                title="Her satır: sunucu · sunucu IP · domain · subnet · server_name · listen IP · subnet dışı listen · upstream · upstream endpoint · http2 (ekrandaki süzgeçlerle)"
               >
                 <ArrowDownTrayIcon className="w-3.5 h-3.5" />{' '}
                 {indiriliyor ? 'Hazırlanıyor…' : 'CSV'}
@@ -706,6 +803,11 @@ export function NginxUpstreamEnvanteri() {
                     'nginx_upstream_ozet',
                     [
                       'sunucu',
+                      'sunucu_ip',
+                      'domain',
+                      'subnet',
+                      'listen_ip',
+                      'listen_subnet_disi',
                       'ortam',
                       'bagli',
                       'upstream',
@@ -721,6 +823,11 @@ export function NginxUpstreamEnvanteri() {
                     ],
                     satirlar.map((h) => [
                       h.host,
+                      h.ip || '',
+                      h.domain || '',
+                      h.subnet || '',
+                      ipSirala(h.listenIp || []),
+                      ipSirala(h.subnetDisi || []),
                       h.ortam,
                       h.bagli ? 'evet' : 'hayir',
                       String(h.upstream),
@@ -777,6 +884,9 @@ export function NginxUpstreamEnvanteri() {
               <tr>
                 {[
                   ['Sunucu', 'left'],
+                  ['Listen IP', 'left'],
+                  ['Domain', 'left'],
+                  ['Subnet', 'left'],
                   ['Ortam', 'left'],
                   ['Bağlantı', 'left'],
                   ['Upstream (kullanılan / tanımlı)', 'right'],
@@ -798,7 +908,7 @@ export function NginxUpstreamEnvanteri() {
               {satirlar.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={10}
                     className="px-3 py-4 text-center"
                     style={{ color: 'var(--text-muted)' }}
                   >
@@ -822,6 +932,24 @@ export function NginxUpstreamEnvanteri() {
                           <Ok className="w-3.5 h-3.5" aria-hidden="true" />
                           {h.host}
                         </button>
+                        {h.ip && (
+                          <div
+                            className="pl-[1.125rem] font-mono text-[11px]"
+                            style={{ color: 'var(--text-muted)' }}
+                            title="Birincil IP (Nginx Envanteri)"
+                          >
+                            {h.ip}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        <ListenIpleri ipler={h.listenIp} disi={h.subnetDisi || []} />
+                      </td>
+                      <td className="px-3 py-1.5 text-[12px] [overflow-wrap:anywhere]">
+                        {h.domain || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono text-[11.5px] whitespace-nowrap">
+                        {h.subnet || <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
                       <td className="px-3 py-1.5">
                         <OrtamRozeti ortam={h.ortam} />
@@ -886,7 +1014,7 @@ export function NginxUpstreamEnvanteri() {
                     {genis && (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={10}
                           className="p-0"
                           style={{ background: 'var(--bg-elevated)' }}
                         >

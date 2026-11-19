@@ -13,6 +13,12 @@
 // HTTP/2 (kullanici 2026-11-19: "upstream envanteri ile http2 envanterini ortaklastiralim"): kaynak
 // Nginx_Audit_Servers.http2 / http2_source (bkz. nginx-http2.cjs). Kolon yoksa alanlar null
 // (olculmedi); olculmeyen blok "kapali" SAYILMAZ.
+// Ag bilgisi (kullanici 2026-11-19: "sunucularin yanina listen IP'sini, domain ve subnet bilgisini"):
+//   listen IP : Nginx_Audit_Servers.listen (blogun TUM listen degerleri bosluklu tek metin; adres
+//               belirteci parametrelerden ayiklanir). '*' = tum arayuzler (443, *:443, 0.0.0.0:443).
+//   ip / domain / subnet : dbo.nginx_inventory (nginx_metadata; BIRINCIL arayuz). Subnet yalniz
+//               birincil IP'nin agidir: belirli bir IP'yi dinleyen blok o subnet'in disindaysa
+//               "subnet disi" diye isaretlenir, subnet'i uydurulmaz. 'unknown' = null.
 'use strict';
 
 const { h2Degeri, HTTP_DISI } = require('./nginx-http2.cjs');
@@ -53,6 +59,137 @@ function adresOf(server) {
       .trim()
       .split(/\s+/)[0] || ''
   );
+}
+
+/** nginx `listen` parametrelerinin '=' icermeyen (ciplak) olanlari: adres SANILMAZ. */
+const LISTEN_PARAM = new Set([
+  'default_server',
+  'default',
+  'ssl',
+  'http2',
+  'http3',
+  'quic',
+  'proxy_protocol',
+  'deferred',
+  'bind',
+  'reuseport',
+  'spdy',
+]);
+/** Analiz listen metnini bu uzunlukta keser (Nginx_Audit_Servers.listen NVARCHAR(400)). */
+const LISTEN_SINIR = 400;
+
+/**
+ * Listen metninden dinlenen adresler (port ve parametre olmadan), sirali ve tekil.
+ * '443 ssl 10.1.2.3:8443 ssl http2 [::]:443' -> ['*', '10.1.2.3', '[::]'].
+ * '*' = tum IPv4 arayuzleri; unix soketi atlanir; parametreler (ssl, backlog=..) adres sayilmaz.
+ * Bos metin = blokta listen YOK: nginx *:80'i (root degilse *:8000) dinler -> ['*'].
+ * null = bilinmiyor (blok bulunamadi) -> [].
+ * Metin analiz sinirinda (400) ise son belirtec yarim olabilir: atilir (sahte IP / '*' uretmez).
+ */
+function listenIpleri(listen) {
+  if (listen == null) return [];
+  const metin = String(listen);
+  if (!metin.trim()) return ['*'];
+  const belirtecler = metin.trim().split(/\s+/);
+  if (metin.length >= LISTEN_SINIR) belirtecler.pop();
+  const out = new Set();
+  for (const t of belirtecler) {
+    if (!t || t.includes('=') || t.startsWith('unix:') || LISTEN_PARAM.has(t.toLowerCase()))
+      continue;
+    let ip = null;
+    if (/^\d+$/.test(t) || /^\*(:\d+)?$/.test(t)) ip = '*';
+    else if (/^\[[0-9a-f:.]*\](:\d+)?$/i.test(t)) ip = t.slice(0, t.indexOf(']') + 1).toLowerCase();
+    else if (/^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(t)) ip = t.split(':')[0];
+    else if (/^[a-z0-9][\w.-]*:\d+$/i.test(t)) ip = t.slice(0, t.lastIndexOf(':')).toLowerCase();
+    // portsuz ad (`listen localhost;`, `listen app.example ssl;`): nginx :80 sayar
+    else if (/^[a-z0-9][\w.-]*$/i.test(t)) ip = t.toLowerCase();
+    if (ip === '0.0.0.0') ip = '*';
+    if (ip) out.add(ip);
+  }
+  return [...out].sort((a, b) => (a === '*' ? -1 : b === '*' ? 1 : a.localeCompare(b)));
+}
+
+const ipSayi = (ip) => {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip || '');
+  if (!m || m.slice(1).some((x) => Number(x) > 255)) return null;
+  return m.slice(1).reduce((s, x) => s * 256 + Number(x), 0);
+};
+
+/** IPv4 adres CIDR icinde mi: true / false; karsilastirilamazsa (IPv6, ad, bozuk) null. */
+function subnetIcinde(ip, cidr) {
+  const [ag, onek] = String(cidr || '').split('/');
+  const a = ipSayi(ip);
+  const b = ipSayi(ag);
+  const n = Number(onek);
+  if (a == null || b == null || !/^\d+$/.test(onek || '') || n > 32) return null;
+  const boy = 2 ** (32 - n);
+  return Math.floor(a / boy) === Math.floor(b / boy);
+}
+
+/** Envanter adi -> Upstream Envanteri anahtari (buyuk harf, alan adi olmadan). */
+const kisaAd = (v) => H(v).split('.')[0];
+const bilinen = (v) => {
+  const t = String(v ?? '').trim();
+  return t && t.toLowerCase() !== 'unknown' ? t : null;
+};
+
+/** dbo.nginx_inventory satirlari -> Map(HOST -> {ip, domain, subnet}). */
+function agHaritasi(invRows) {
+  const m = new Map();
+  for (const r of invRows || []) {
+    const k = kisaAd(r.hostname);
+    if (!k || m.has(k)) continue;
+    m.set(k, { ip: bilinen(r.ip), domain: bilinen(r.domain), subnet: bilinen(r.subnet) });
+  }
+  return m;
+}
+
+/** Belirli (joker olmayan) IPv4 listen adreslerinden birincil subnet disinda kalanlar. */
+function subnetDisi(ipler, subnet) {
+  if (!subnet) return [];
+  return ipler.filter((ip) => ip !== '*' && subnetIcinde(ip, subnet) === false);
+}
+
+/**
+ * Ozet satirlarina ag bilgisi ekler (sunucu basina: ip, domain, subnet, listen IP'leri).
+ * @param {object} ozet          upstreamOzeti sonucu
+ * @param {object[]|null} invRows dbo.nginx_inventory {hostname, ip, domain, subnet}; null = okunamadi
+ * @param {object[]|null} listenRows Nginx_Audit_Servers DISTINCT {host, listen}; null = okunamadi
+ */
+function agBilgisiEkle(ozet, invRows, listenRows) {
+  const ag = invRows ? agHaritasi(invRows) : null;
+  const dinle = new Map();
+  for (const r of listenRows || []) {
+    const k = H(r.host);
+    if (!dinle.has(k)) dinle.set(k, new Set());
+    for (const ip of listenIpleri(r.listen)) dinle.get(k).add(ip);
+  }
+  const hosts = (ozet.hosts || []).map((h) => {
+    const a = ag ? ag.get(h.host) || null : null;
+    const listenIp = listenRows
+      ? [...(dinle.get(h.host) || [])].sort((x, y) =>
+          x === '*' ? -1 : y === '*' ? 1 : x.localeCompare(y),
+        )
+      : null;
+    return {
+      ...h,
+      ip: a ? a.ip : null,
+      domain: a ? a.domain : null,
+      subnet: a ? a.subnet : null,
+      listenIp,
+      subnetDisi: listenIp && a ? subnetDisi(listenIp, a.subnet) : [],
+    };
+  });
+  return {
+    ...ozet,
+    hosts,
+    totals: {
+      ...ozet.totals,
+      agOlculdu: Boolean(invRows),
+      listenOlculdu: Boolean(listenRows),
+      agBilinmeyen: ag ? hosts.filter((h) => !ag.has(h.host)).length : hosts.length,
+    },
+  };
 }
 
 /**
@@ -278,18 +415,18 @@ function aramaSonucu(rows, q, serversOlculdu) {
  * `eksik` sayilir (ekran indirmeden once soyler; CSV'ye uydurma satir eklenmez).
  * Sahibi bilinmeyen location (srv_seq 0) server_name bos -> "(bilinmiyor)".
  */
-function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false) {
+function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false, ag = null) {
   const gor = new Set();
   const eksik = new Set();
   const out = [];
-  // HTTP/2 server_name basina (ayni adli TUM bloklar); satir basina degil
+  // HTTP/2 ve listen server_name basina: o adin upstream'e giden TUM bloklari (ayni adli ama
+  // upstream'e gitmeyen blok, or. yalniz `return 301` yapan :80 blogu, bu listeye girmez)
   const h2 = new Map();
-  if (http2Olculdu)
-    for (const r of rows || []) {
-      const k = `${H(r.host)}\u0000${r.server_name ? String(r.server_name) : '(bilinmiyor)'}`;
-      if (!h2.has(k)) h2.set(k, []);
-      h2.get(k).push(r);
-    }
+  for (const r of rows || []) {
+    const k = `${H(r.host)}\u0000${r.server_name ? String(r.server_name) : '(bilinmiyor)'}`;
+    if (!h2.has(k)) h2.set(k, []);
+    h2.get(k).push(r);
+  }
   for (const r of rows || []) {
     const host = H(r.host);
     const upstream = String(r.upstream || '');
@@ -305,8 +442,24 @@ function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false) {
       const k = `${host}\u0000${serverName}\u0000${upstream}\u0000${endpoint}`;
       if (gor.has(k)) continue;
       gor.add(k);
-      const http2 = http2Olculdu ? http2Durumu(h2.get(`${host}\u0000${serverName}`)) : null;
-      out.push({ host, serverName, upstream, endpoint, http2 });
+      const ayni = h2.get(`${host}\u0000${serverName}`) || [r];
+      const http2 = http2Olculdu ? http2Durumu(ayni) : null;
+      const a = ag ? ag.get(host) || null : null;
+      const listenIp = [...new Set(ayni.flatMap((x) => listenIpleri(x.listen)))].sort((x, y) =>
+        x === '*' ? -1 : y === '*' ? 1 : x.localeCompare(y),
+      );
+      out.push({
+        host,
+        hostIp: a ? a.ip : null,
+        domain: a ? a.domain : null,
+        subnet: a ? a.subnet : null,
+        serverName,
+        listenIp,
+        subnetDisi: a ? subnetDisi(listenIp, a.subnet) : [],
+        upstream,
+        endpoint,
+        http2,
+      });
     }
   }
   out.sort(
@@ -320,6 +473,10 @@ function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false) {
 }
 
 module.exports = {
+  agBilgisiEkle,
+  agHaritasi,
+  listenIpleri,
+  subnetIcinde,
   baglantiSatirlari,
   http2Durumu,
   DOGRUDAN_TURLER,

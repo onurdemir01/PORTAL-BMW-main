@@ -14,6 +14,8 @@
 //   UU8 HTTP/2 (upstream + http2 ortak): sunucu başına açık / blok kolonu; "HTTP/2 açık" süzgeci bağlantı
 //       süzgeciyle birlikte; CSV yalnız açık / kısmen açık server_name satırları; tarama http2 ölçmüyorsa
 //       süzgeç yok, kolon "—", CSV notu söyler (kapalı SANILMAZ)
+//   UU9 ağ: listen IP (* = tüm arayüzler), domain, subnet, birincil IP; subnet dışı listen işaretlenir;
+//       arama IP / subnet / domain ile; CSV + özet CSV ağ kolonları; Nginx Envanteri okunamazsa not
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
@@ -57,8 +59,27 @@ const host = (o: Partial<NonNullable<NginxUpsOzetResult['hosts']>[number]>) => (
   olculmedi: false,
   http2Acik: null,
   http2Blok: null,
+  ip: null,
+  domain: null,
+  subnet: null,
+  listenIp: null,
+  subnetDisi: [],
   ...o,
 });
+// baglanti CSV satirindan eski 5 kolon: sunucu, server_name, upstream, upstream_endpoint, http2
+const bes = (xs: string[][]) => xs.map((r) => [r[0], r[4], r[7], r[8], r[9]]);
+const BAGLANTI_BASLIK = [
+  'sunucu',
+  'sunucu_ip',
+  'domain',
+  'subnet',
+  'server_name',
+  'listen_ip',
+  'listen_subnet_disi',
+  'upstream',
+  'upstream_endpoint',
+  'http2',
+];
 const ozet = (o: Partial<NginxUpsOzetResult> = {}): NginxUpsOzetResult => ({
   ok: true,
   hazir: true,
@@ -350,8 +371,8 @@ describe('NginxUpstreamEnvanteri', () => {
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [ad, baslik, satir] = api.csv.mock.calls[0];
     expect(ad).toBe('nginx_upstream_baglantilari');
-    expect(baslik).toEqual(['sunucu', 'server_name', 'upstream', 'upstream_endpoint', 'http2']);
-    expect(satir).toEqual([
+    expect(baslik).toEqual(BAGLANTI_BASLIK);
+    expect(bes(satir)).toEqual([
       ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo.apps.example:443', 'olculmedi'],
       ['GBNGXP01', 'glomo.example', 'glomo-prod', 'glomo2.apps.example:443', 'olculmedi'],
     ]);
@@ -457,7 +478,7 @@ describe('NginxUpstreamEnvanteri', () => {
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [ad, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
     expect(ad).toBe('nginx_upstream_http2_acik');
-    expect(satir).toEqual([
+    expect(bes(satir)).toEqual([
       ['GBNGXP01', 'a.example', 'u1', 'x:443', 'acik'],
       ['GBNGXP01', 'c.example', 'u2', 'y:443', 'kismen'],
     ]);
@@ -488,8 +509,154 @@ describe('NginxUpstreamEnvanteri', () => {
     fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
     await waitFor(() => expect(api.csv).toHaveBeenCalled());
     const [, , satir] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
-    expect(satir).toEqual([['GBNGXP01', 'a.example', 'u1', 'x:443', 'olculmedi']]);
+    expect(bes(satir)).toEqual([['GBNGXP01', 'a.example', 'u1', 'x:443', 'olculmedi']]);
     const not = await screen.findByTestId('ups-indirme-notu');
     expect(not.textContent).toMatch(/http2 kolonu boş: Son tarama HTTP\/2 durumunu içermiyor/);
+  });
+
+  it('UU9 ağ: listen IP, domain, subnet; subnet dışı; arama; CSV', async () => {
+    const o = ozet();
+    o.hosts = [
+      host({
+        host: 'GBNGXP01',
+        ortam: 'PROD',
+        upstream: 1,
+        kullanilan: 1,
+        bagli: true,
+        ip: '10.1.2.10',
+        domain: 'corp.example',
+        subnet: '10.1.2.0/24',
+        listenIp: ['*', '10.1.2.50', '10.9.9.9'],
+        subnetDisi: ['10.9.9.9'],
+      }),
+      host({ host: 'GBNGXT01', listenIp: [], subnet: null }),
+    ];
+    o.totals = { ...o.totals!, hosts: 2, agOlculdu: true, listenOlculdu: true };
+    api.ozet.mockResolvedValue(o);
+    api.liste.mockResolvedValue({
+      ok: true,
+      hazir: true,
+      serversOlculdu: true,
+      http2Olculdu: true,
+      agOlculdu: true,
+      satirlar: [
+        {
+          host: 'GBNGXP01',
+          hostIp: '10.1.2.10',
+          domain: 'corp.example',
+          subnet: '10.1.2.0/24',
+          serverName: 'a.example',
+          listenIp: ['10.1.2.50', '10.9.9.9'],
+          subnetDisi: ['10.9.9.9'],
+          upstream: 'u1',
+          endpoint: 'x:443',
+          http2: 'acik',
+        },
+      ],
+    });
+    render(<NginxUpstreamEnvanteri />);
+    await screen.findByTestId('ups-ozet');
+    for (const b of ['Listen IP', 'Domain', 'Subnet'])
+      expect(screen.getByRole('columnheader', { name: b })).toBeTruthy();
+    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    expect(within(satir).getByText('10.1.2.10')).toBeTruthy();
+    expect(within(satir).getByText('corp.example')).toBeTruthy();
+    expect(within(satir).getByText('10.1.2.0/24')).toBeTruthy();
+    expect(within(satir).getByText('*')).toBeTruthy();
+    expect(within(satir).getByText('10.1.2.50')).toBeTruthy();
+    expect(within(satir).getByText(/10\.9\.9\.9 · subnet dışı/)).toBeTruthy();
+    expect(within(satir).queryByText(/10\.1\.2\.50 · subnet dışı/)).toBeNull();
+    // arama subnet / listen IP ile
+    const ara = screen.getByRole('textbox', { name: 'Upstream envanteri sunucu ara' });
+    for (const deger of ['10.9.9', 'corp.example', '10.1.2.0/24', '10.1.2.10']) {
+      fireEvent.change(ara, { target: { value: deger } });
+      expect(screen.getByRole('button', { name: /GBNGXP01/ })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /GBNGXT01/ })).toBeNull();
+    }
+    fireEvent.change(ara, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
+    await waitFor(() => expect(api.csv).toHaveBeenCalled());
+    const [, baslik, rows] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
+    expect(baslik).toEqual(BAGLANTI_BASLIK);
+    expect(rows).toEqual([
+      [
+        'GBNGXP01',
+        '10.1.2.10',
+        'corp.example',
+        '10.1.2.0/24',
+        'a.example',
+        '10.1.2.50 10.9.9.9',
+        '10.9.9.9',
+        'u1',
+        'x:443',
+        'acik',
+      ],
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: /Özet CSV/ }));
+    const [ad, ob, orows] = api.csv.mock.calls[api.csv.mock.calls.length - 1];
+    expect(ad).toBe('nginx_upstream_ozet');
+    expect(ob.slice(0, 6)).toEqual([
+      'sunucu',
+      'sunucu_ip',
+      'domain',
+      'subnet',
+      'listen_ip',
+      'listen_subnet_disi',
+    ]);
+    expect(orows[0].slice(0, 6)).toEqual([
+      'GBNGXP01',
+      '10.1.2.10',
+      'corp.example',
+      '10.1.2.0/24',
+      '* 10.1.2.50 10.9.9.9',
+      '10.9.9.9',
+    ]);
+  });
+
+  it('UU9b okunamayan ağ / listen notu; boş alanlar; CSV notu; eşleşmeyen sunucu sayısı', async () => {
+    api.ozet.mockResolvedValue(
+      ozet({ totals: { ...ozet().totals!, agOlculdu: false, listenOlculdu: false } }),
+    );
+    api.liste.mockResolvedValue({
+      ok: true,
+      hazir: true,
+      serversOlculdu: true,
+      http2Olculdu: true,
+      agOlculdu: false,
+      satirlar: [],
+    });
+    render(<NginxUpstreamEnvanteri />);
+    const not = await screen.findByText(/Nginx Envanteri \(nginx_metadata\) okunamadı/);
+    expect(not.textContent).toMatch(/listen değerleri okunamadı/);
+    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    const hucre = within(satir).getAllByRole('cell');
+    expect(hucre.slice(1, 4).map((c) => c.textContent)).toEqual(['—', '—', '—']);
+    expect(screen.queryByTestId('ups-ag-bilinmeyen')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^CSV$/ }));
+    const indir = await screen.findByTestId('ups-indirme-notu');
+    expect(indir.textContent).toMatch(/Nginx Envanteri \(nginx_metadata\) okunamadı/);
+  });
+
+  it('UU9c subnet dışı adres sınırın ötesinde de görünür; eşleşmeyen sunucu sayılır', async () => {
+    const o = ozet();
+    o.hosts = [
+      host({
+        host: 'GBNGXP01',
+        bagli: true,
+        subnet: '10.1.2.0/24',
+        listenIp: ['*', '10.1.2.1', '10.1.2.2', '10.1.2.3', '10.9.9.9'],
+        subnetDisi: ['10.9.9.9'],
+      }),
+    ];
+    o.totals = { ...o.totals!, hosts: 1, agOlculdu: true, listenOlculdu: true, agBilinmeyen: 2 };
+    api.ozet.mockResolvedValue(o);
+    render(<NginxUpstreamEnvanteri />);
+    await screen.findByTestId('ups-ozet');
+    const satir = screen.getByRole('button', { name: /GBNGXP01/ }).closest('tr')!;
+    expect(within(satir).getByText(/10\.9\.9\.9 · subnet dışı/)).toBeTruthy();
+    expect(within(satir).getByText('+2')).toBeTruthy();
+    expect(screen.getByTestId('ups-ag-bilinmeyen').textContent).toMatch(
+      /2 sunucunun IP \/ domain \/ subnet bilgisi yok/,
+    );
   });
 });

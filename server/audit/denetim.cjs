@@ -2342,6 +2342,9 @@ function initDenetim(app) {
   //   ?liste=1       disa aktarim: sunucu / server_name / upstream / arka uc / HTTP/2 (location basina)
   // HTTP/2 (2026-11-19, "upstream ile http2 envanterini ortaklastiralim"): ozet sunucu basina acik
   // server blogu sayar, liste server_name basina durum verir. Servers.http2 kolonu yoksa null (olculmedi).
+  // Ag bilgisi (2026-11-19, "listen IP, domain ve subnet"): listen IP'leri Nginx_Audit_Servers.listen,
+  // ip / domain / subnet dbo.nginx_inventory (nginx_metadata, birincil arayuz). nginx_inventory
+  // okunamazsa sayfa bozulmaz: alanlar null, agOlculdu=false (ekran nedenini soyler).
   // Upstreams.servers kolonu yoksa (yeni tarama gelmedi) ekran "tam liste yok" der; eldeki tek
   // `server` (SON satir) tam liste SANILMAZ.
   router.get('/nginx-upstreams', async (req, res) => {
@@ -2371,6 +2374,11 @@ function initDenetim(app) {
       const serversKol = serversOlculdu ? 'servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers';
       const params = [{ name: 'scanDate', type: sql.Date, value: scanDate }];
       const es = await eskiSunucuSuzgec(req);
+      const agOku = () =>
+        query(`SELECT hostname, ip, domain, subnet FROM dbo.nginx_inventory`).then(
+          (x) => x.recordset || [],
+          () => null,
+        );
 
       if (host) {
         params.push({ name: 'host', type: sql.NVarChar(64), value: host });
@@ -2399,10 +2407,12 @@ function initDenetim(app) {
       }
 
       if (String(req.query.liste || '') === '1') {
+        const inv = await agOku();
         const r = await query(
           `SELECT DISTINCT l.host, s.server_name, l.proxy_target AS upstream, u.server,
                   ${serversOlculdu ? 'u.servers' : 'CAST(NULL AS NVARCHAR(1)) AS servers'},
-                  ${http2Olculdu ? 's.http2, s.http2_source' : 'CAST(NULL AS BIT) AS http2, CAST(NULL AS NVARCHAR(1)) AS http2_source'}
+                  ${http2Olculdu ? 's.http2, s.http2_source' : 'CAST(NULL AS BIT) AS http2, CAST(NULL AS NVARCHAR(1)) AS http2_source'},
+                  s.listen
              FROM dbo.Nginx_Audit_Locations l
              JOIN dbo.Nginx_Audit_Upstreams u
                ON u.scan_date = l.scan_date AND u.host = l.host AND u.name = l.proxy_target
@@ -2417,7 +2427,13 @@ function initDenetim(app) {
           scanDate,
           serversOlculdu,
           http2Olculdu,
-          ...ue.baglantiSatirlari(es.ayir(r.recordset || [], (x) => x.host), serversOlculdu, http2Olculdu),
+          agOlculdu: Boolean(inv),
+          ...ue.baglantiSatirlari(
+            es.ayir(r.recordset || [], (x) => x.host),
+            serversOlculdu,
+            http2Olculdu,
+            inv ? ue.agHaritasi(inv) : null,
+          ),
         });
       }
 
@@ -2445,7 +2461,7 @@ function initDenetim(app) {
       }
 
       const w = 'WHERE scan_date = @scanDate';
-      const [h, u, l, s2] = await Promise.all([
+      const [h, u, l, s2, inv, dl] = await Promise.all([
         query(`SELECT host, status FROM dbo.Nginx_Audit_Hosts ${w}`, params),
         query(
           `SELECT host, COUNT(*) AS n,
@@ -2470,6 +2486,11 @@ function initDenetim(app) {
               params,
             )
           : null,
+        agOku(),
+        query(`SELECT DISTINCT host, listen FROM dbo.Nginx_Audit_Servers ${w}`, params).then(
+          (x) => x.recordset || [],
+          () => null,
+        ),
       ]);
       const ayir = (rows) => es.ayir(rows || [], (x) => x.host);
       res.json({
@@ -2477,12 +2498,16 @@ function initDenetim(app) {
         hazir: true,
         scanDate,
         serversOlculdu,
-        ...ue.upstreamOzeti(
-          ayir(h.recordset),
-          ayir(u.recordset),
-          ayir(l.recordset),
-          envOfHost,
-          s2 ? ayir(s2.recordset) : null,
+        ...ue.agBilgisiEkle(
+          ue.upstreamOzeti(
+            ayir(h.recordset),
+            ayir(u.recordset),
+            ayir(l.recordset),
+            envOfHost,
+            s2 ? ayir(s2.recordset) : null,
+          ),
+          inv,
+          dl,
         ),
         eskiGizli: es.bilgi(),
       });

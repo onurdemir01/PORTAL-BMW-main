@@ -13,6 +13,9 @@
 //   UE6 HTTP/2 (upstream + http2 ortak, 2026-11-19): server_name basina durum (ayni adli TUM bloklar):
 //       acik / kismen / kapali / http_degil; acik yoksa ve biri olculmediyse olculmedi (kapali SANILMAZ);
 //       ozet sunucu basina acik / blok; kolon yoksa null ve http2Olculdu false
+//   UE7 ag bilgisi: listen metninden adresler (parametre / port / unix ayiklanir; 443, *:443, 0.0.0.0
+//       = '*'); IPv4 subnet icinde mi (karsilastirilamazsa null, uydurma yok); nginx_inventory kisa ad
+//       eslesmesi, 'unknown' = null; subnet disi yalniz belirli IP icin; okunamazsa agOlculdu false
 'use strict';
 
 const { test } = require('node:test');
@@ -419,4 +422,146 @@ test('UE6 HTTP/2 durumu: server_name basina, olculmeyen kapali sayilmaz', () => 
   assert.equal(yok.hosts[0].http2Acik, null);
   assert.equal(yok.totals.http2Olculdu, false);
   assert.equal(yok.totals.http2Host, 0);
+});
+
+test('UE7 ag bilgisi: listen IP, domain, subnet', () => {
+  assert.deepEqual(
+    ue.listenIpleri(
+      '443 ssl 10.1.2.3:8443 ssl http2 [::]:443 ipv6only=on 0.0.0.0:80 unix:/run/x.sock *:81 10.0.0.9 backlog=511',
+    ),
+    ['*', '[::]', '10.0.0.9', '10.1.2.3'],
+  );
+  assert.deepEqual(ue.listenIpleri('localhost:8080 default_server'), ['localhost']);
+  assert.deepEqual(ue.listenIpleri(null), [], 'bilinmeyen blok: adres uydurulmaz');
+  assert.deepEqual(ue.listenIpleri('unix:/x.sock'), []);
+  // listen'siz blok nginx'te *:80 dinler
+  assert.deepEqual(ue.listenIpleri(''), ['*']);
+  // portsuz ad (:80); ciplak parametreler adres sayilmaz
+  assert.deepEqual(ue.listenIpleri('localhost'), ['localhost']);
+  assert.deepEqual(ue.listenIpleri('app.example.com ssl default_server reuseport deferred bind'), [
+    'app.example.com',
+  ]);
+  assert.deepEqual(ue.listenIpleri('10.0.0.1:443 quic proxy_protocol http2 spdy default'), [
+    '10.0.0.1',
+  ]);
+  // analiz 400 karakterde keser: yarim son belirtec sahte '*' / IP uretmez
+  const bir = '10.0.0.1:443 reuseport' + ' ssl'.repeat(94) + ' 1';
+  assert.equal(bir.length, 400);
+  assert.deepEqual(ue.listenIpleri(bir), ['10.0.0.1'], 'yarim kalan 1 (1443) tum arayuz sanilmaz');
+  const tam400 = '10.0.0.1:443' + ' ssl'.repeat(96) + ' 10.1.2.3';
+  assert.equal(tam400.length, 405);
+  assert.deepEqual(ue.listenIpleri(tam400.slice(0, 400)), ['10.0.0.1'], 'yarim 10.1.2 atilir');
+  assert.deepEqual(
+    ue.listenIpleri('10.0.0.1:443 ssl 1'),
+    ['*', '10.0.0.1'],
+    'sinirin altinda dokunulmaz',
+  );
+
+  assert.equal(ue.subnetIcinde('10.1.2.3', '10.1.2.0/24'), true);
+  assert.equal(ue.subnetIcinde('10.1.3.3', '10.1.2.0/24'), false);
+  assert.equal(ue.subnetIcinde('10.1.3.3', '10.1.2.0/23'), true);
+  assert.equal(ue.subnetIcinde('10.1.2.3', '10.1.2.3/32'), true);
+  assert.equal(ue.subnetIcinde('[::1]', '10.1.2.0/24'), null);
+  assert.equal(ue.subnetIcinde('11.0.0.1', '10.0.0.0/8'), false, 'genis onekte de disari');
+  assert.equal(ue.subnetIcinde('10.255.0.1', '10.0.0.0/8'), true);
+  assert.equal(ue.subnetIcinde('10.1.2.3', '10.1.2.4/32'), false);
+  assert.equal(ue.subnetIcinde('10.1.2.3', 'unknown'), null);
+  assert.equal(ue.subnetIcinde('10.1.2.300', '10.1.2.0/24'), null);
+  assert.equal(ue.subnetIcinde('10.1.2.3', '10.1.2.0/33'), null);
+
+  const inv = [
+    {
+      hostname: 'gbngxp01.corp.example',
+      ip: '10.1.2.10',
+      domain: 'corp.example',
+      subnet: '10.1.2.0/24',
+    },
+    { hostname: 'GBNGXT01', ip: 'unknown', domain: 'unknown', subnet: 'unknown' },
+  ];
+  const ozet = ue.upstreamOzeti(
+    [
+      { host: 'GBNGXP01', status: 'ok' },
+      { host: 'GBNGXT01', status: 'ok' },
+      { host: 'GBNGXT02', status: 'ok' },
+    ],
+    [],
+    [],
+    () => 'TEST',
+  );
+  const o = ue.agBilgisiEkle(ozet, inv, [
+    { host: 'GBNGXP01', listen: '443 ssl' },
+    { host: 'gbngxp01', listen: '10.1.2.50:443 ssl 10.9.9.9:443' },
+    { host: 'GBNGXT01', listen: '10.9.9.9:80' },
+  ]);
+  const p01 = o.hosts.find((h) => h.host === 'GBNGXP01');
+  assert.deepEqual(
+    [p01.ip, p01.domain, p01.subnet, p01.listenIp, p01.subnetDisi],
+    ['10.1.2.10', 'corp.example', '10.1.2.0/24', ['*', '10.1.2.50', '10.9.9.9'], ['10.9.9.9']],
+  );
+  const t01 = o.hosts.find((h) => h.host === 'GBNGXT01');
+  assert.deepEqual(
+    [t01.ip, t01.subnet, t01.listenIp, t01.subnetDisi],
+    [null, null, ['10.9.9.9'], []],
+    'subnet bilinmiyorsa subnet disi denmez',
+  );
+  const t02 = o.hosts.find((h) => h.host === 'GBNGXT02');
+  assert.deepEqual([t02.ip, t02.listenIp], [null, []]);
+  assert.equal(o.totals.agOlculdu, true);
+  assert.equal(o.totals.agBilinmeyen, 1);
+  // karsilastirilamayan adres (IPv6, ad) subnet disi SAYILMAZ (kanitsiz uyari yok)
+  const v6 = ue.agBilgisiEkle(ozet, inv, [
+    { host: 'GBNGXP01', listen: '[::]:443 localhost:8080 10.9.9.9:1' },
+  ]);
+  assert.deepEqual(v6.hosts.find((h) => h.host === 'GBNGXP01').subnetDisi, ['10.9.9.9']);
+  const yok = ue.agBilgisiEkle(ozet, null, null);
+  assert.equal(yok.totals.agOlculdu, false);
+  assert.equal(yok.totals.listenOlculdu, false);
+  assert.equal(yok.hosts[0].listenIp, null, 'okunamayan listen bos liste sanilmaz');
+
+  const r = ue.baglantiSatirlari(
+    [
+      {
+        host: 'GBNGXP01',
+        server_name: 'a',
+        upstream: 'u',
+        server: 'x:1',
+        servers: 'x:1',
+        listen: '10.1.2.50:443 ssl',
+      },
+      {
+        host: 'GBNGXP01',
+        server_name: 'a',
+        upstream: 'u',
+        server: 'x:1',
+        servers: 'x:1',
+        listen: '10.9.9.9:443',
+      },
+      {
+        host: 'GBNGXP01',
+        server_name: 'b',
+        upstream: 'u',
+        server: 'x:1',
+        servers: 'x:1',
+        listen: '80',
+      },
+    ],
+    true,
+    false,
+    ue.agHaritasi(inv),
+  );
+  assert.deepEqual(
+    r.satirlar.map((x) => [x.serverName, x.hostIp, x.domain, x.subnet, x.listenIp, x.subnetDisi]),
+    [
+      ['a', '10.1.2.10', 'corp.example', '10.1.2.0/24', ['10.1.2.50', '10.9.9.9'], ['10.9.9.9']],
+      ['b', '10.1.2.10', 'corp.example', '10.1.2.0/24', ['*'], []],
+    ],
+  );
+  const agsiz = ue.baglantiSatirlari(
+    [{ host: 'H', server_name: 'a', upstream: 'u', servers: 'x:1' }],
+    true,
+  );
+  assert.deepEqual(
+    [agsiz.satirlar[0].hostIp, agsiz.satirlar[0].subnet, agsiz.satirlar[0].listenIp],
+    [null, null, []],
+  );
 });
