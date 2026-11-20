@@ -29,49 +29,51 @@ import { Pill, type Tone } from './ui';
 
 const nf = (n: number) => new Intl.NumberFormat('tr-TR').format(n);
 
-export const LOC_SINIF: Record<NginxMigrationLocSinif, { label: string; tone: Tone; hint: string }> =
-  {
-    'spa-disi': {
-      label: 'ad kalıbına uymuyor',
-      tone: 'warning',
-      hint: 'Hedefin adı -app-v / -app-emb-v kalıbında değil; uygulama tablosunda YOK. Yeni sunucuda tanımı yoksa elle taşınmalı.',
-    },
-    cozulemedi: {
-      label: 'envanterde yok',
-      tone: 'warning',
-      hint: 'Hedef ne route ne OpenShift envanterinde bulundu — kaldırılmış olabilir ya da envanter eksik.',
-    },
-    include: {
-      label: 'eski sunucuda include',
-      tone: 'neutral',
-      hint: 'Eski sunucuda proxy_pass değil application-confs include deseninde duruyor.',
-    },
-    spa: {
-      label: 'SPA',
-      tone: 'info',
-      hint: 'Ad kalıbına uyan SPA hedefi.',
-    },
-    statik: {
-      label: 'statik içerik',
-      tone: 'neutral',
-      hint: 'proxy_pass yok; root / alias / try_files ile dosya sunuyor (nginx -T).',
-    },
-    yonlendirme: {
-      label: 'return / rewrite',
-      tone: 'neutral',
-      hint: 'proxy_pass yok; return ya da rewrite ile yanıt veriyor / yönlendiriyor (nginx -T).',
-    },
-    'erisim-engeli': {
-      label: 'deny',
-      tone: 'neutral',
-      hint: 'Erişimi engelleyen location (deny) — nginx -T.',
-    },
-    diger: {
-      label: 'diğer',
-      tone: 'neutral',
-      hint: 'proxy_pass / statik / return olmayan location (nginx -T).',
-    },
-  };
+export const LOC_SINIF: Record<
+  NginxMigrationLocSinif,
+  { label: string; tone: Tone; hint: string }
+> = {
+  'spa-disi': {
+    label: 'ad kalıbına uymuyor',
+    tone: 'warning',
+    hint: 'Hedefin adı -app-v / -app-emb-v kalıbında değil; uygulama tablosunda YOK. Yeni sunucuda tanımı yoksa elle taşınmalı.',
+  },
+  cozulemedi: {
+    label: 'envanterde yok',
+    tone: 'warning',
+    hint: 'Hedef ne route ne OpenShift envanterinde bulundu — kaldırılmış olabilir ya da envanter eksik.',
+  },
+  include: {
+    label: 'eski sunucuda include',
+    tone: 'neutral',
+    hint: 'Eski sunucuda proxy_pass değil application-confs include deseninde duruyor.',
+  },
+  spa: {
+    label: 'SPA',
+    tone: 'info',
+    hint: 'Ad kalıbına uyan SPA hedefi.',
+  },
+  statik: {
+    label: 'statik içerik',
+    tone: 'neutral',
+    hint: 'proxy_pass yok; root / alias / try_files ile dosya sunuyor (nginx -T).',
+  },
+  yonlendirme: {
+    label: 'return / rewrite',
+    tone: 'neutral',
+    hint: 'proxy_pass yok; return ya da rewrite ile yanıt veriyor / yönlendiriyor (nginx -T).',
+  },
+  'erisim-engeli': {
+    label: 'deny',
+    tone: 'neutral',
+    hint: 'Erişimi engelleyen location (deny) — nginx -T.',
+  },
+  diger: {
+    label: 'diğer',
+    tone: 'neutral',
+    hint: 'proxy_pass / statik / return olmayan location (nginx -T).',
+  },
+};
 
 const CONFIG_YOK = {
   label: 'config taramasında yok',
@@ -132,7 +134,12 @@ export function suzLocationlar(
   return list.filter((l) => {
     if (durum === 'eksik' && !eksikMi(l)) return false;
     if (durum === 'yalniz-yeni' && l.eskide) return false;
-    if (durum !== 'eksik' && durum !== 'all' && durum !== 'yalniz-yeni' && (!l.eskide || l.newStatus !== durum))
+    if (
+      durum !== 'eksik' &&
+      durum !== 'all' &&
+      durum !== 'yalniz-yeni' &&
+      (!l.eskide || l.newStatus !== durum)
+    )
       return false;
     if (sinif !== 'all' && !l.siniflar.includes(sinif)) return false;
     if (kaynak === 'yalniz-nginx-T' && !yalnizNginxT(l)) return false;
@@ -162,7 +169,8 @@ export function tumLocOzeti(list: readonly NginxMigrationLocation[]) {
     if (yalnizNginxT(l)) nginxT++;
     // Uygulama tablosu yalnız config taramasının SPA satırlarından kurulur: bunun dışındaki eksik
     // location'lar (ad kalıbına uymayan, statik, yalnız nginx -T'nin gördüğü) orada hiç görünmez.
-    if (eksikMi(l) && !(l.siniflar.includes('spa') && l.kaynaklar.includes('config'))) tablodaYokEksik++;
+    if (eksikMi(l) && !(l.siniflar.includes('spa') && l.kaynaklar.includes('config')))
+      tablodaYokEksik++;
   }
   return {
     ...c,
@@ -249,8 +257,7 @@ export function TumLocationlar({
   if (!g.locations) return null;
   const baslikId = `tum-loc-${g.id}`;
   const nginxTYok =
-    nginxTHazir === false ||
-    (nginxTHazir == null && !!kaynakTarihleri && !kaynakTarihleri.nginxT);
+    nginxTHazir === false || (nginxTHazir == null && !!kaynakTarihleri && !kaynakTarihleri.nginxT);
   return (
     <section
       aria-labelledby={baslikId}
@@ -266,7 +273,11 @@ export function TumLocationlar({
           >
             Tüm location'lar — ad kalıbından bağımsız
           </h3>
-          <div className="text-sm" style={{ color: 'var(--text-primary)' }} data-testid="tum-loc-ozet">
+          <div
+            className="text-sm"
+            style={{ color: 'var(--text-primary)' }}
+            data-testid="tum-loc-ozet"
+          >
             Eski sunucularda <b className="tabular-nums">{nf(oz.eski)}</b> location;{' '}
             <b
               className="tabular-nums"

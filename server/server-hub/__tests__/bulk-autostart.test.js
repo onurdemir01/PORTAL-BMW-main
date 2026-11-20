@@ -15,6 +15,8 @@
 // (SB*) satir bazinda tek JVM ucu.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -71,38 +73,100 @@ test('BA4: TEK TEK duzeltme ucu DURUYOR (ozellik kaldirilmadi, daraltildi)', () 
 
 test('BA5: iki karar da kodda anlatiliyor (kaldirma gerekcesi + kontrollu model)', () => {
   assert.match(SRC, /TOPLU DUZELTME KALDIRILDI/, 'kaldirma gerekcesi kodda yazmiyor');
-  assert.match(SRC, /KONTROLLU TOPLU AUTO-START/, '2026-11-14 kontrollu toplu karari kodda yazmiyor');
-  assert.match(TOPLU, /YENIDEN BASLATMADA SESSIZ YENIDEN KOSMA YOK/, 'toplu modul basligi yeniden baslatma kuralini anlatmiyor');
+  assert.match(
+    SRC,
+    /KONTROLLU TOPLU AUTO-START/,
+    '2026-11-14 kontrollu toplu karari kodda yazmiyor',
+  );
+  assert.match(
+    TOPLU,
+    /YENIDEN BASLATMADA SESSIZ YENIDEN KOSMA YOK/,
+    'toplu modul basligi yeniden baslatma kuralini anlatmiyor',
+  );
 });
 
 test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uygulama yalniz onaydan sonra', () => {
-  assert.match(TOPLU, /_d\.ayarlar\.limit\('toplu_autostart'\)/, 'ust sinir Admin ayarindan okunmuyor');
+  assert.match(
+    TOPLU,
+    /_d\.ayarlar\.limit\('toplu_autostart'\)/,
+    'ust sinir Admin ayarindan okunmuyor',
+  );
   // 2026-11-15 host XML: extra_vars tek yerde (isDegiskenleri; CLI ve host XML dali ayni plan_only'yi tasir)
-  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /isDegiskenleri\(host, parca, true\)/, 'plan isi plan_only: true acmiyor');
-  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /isDegiskenleri\(host, tazeListe, false\)/, 'uygulama isi plan_only: false degil');
-  assert.equal((fonksiyon(TOPLU, 'isDegiskenleri').match(/plan_only: planOnly,/g) || []).length, 2, 'extra_vars dallarindan biri plan_only tasimiyor');
+  assert.match(
+    fonksiyon(TOPLU, 'planIlerlet'),
+    /isDegiskenleri\(host, parca, true\)/,
+    'plan isi plan_only: true acmiyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'uygulaIlerlet'),
+    /isDegiskenleri\(host, tazeListe, false\)/,
+    'uygulama isi plan_only: false degil',
+  );
+  assert.equal(
+    (fonksiyon(TOPLU, 'isDegiskenleri').match(/plan_only: planOnly,/g) || []).length,
+    2,
+    'extra_vars dallarindan biri plan_only tasimiyor',
+  );
   // uygulama ogesi yalniz CALISIYOR (onaylanmis) isin BEKLIYOR ogesinden sahiplenilir
-  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /durum = 'BEKLIYOR'[\s\S]*durum = 'CALISIYOR' AND kira_id/, 'uygulama onaysiz ise acilabiliyor');
-  assert.match(fonksiyon(TOPLU, 'onayla'), /durum !== 'PLAN_HAZIR'/, 'onay plan hazir olmadan veriliyor');
-  assert.match(fonksiyon(TOPLU, 'onayla'), /if \(planEskiMi\(is\)\) \{\s*await planEskit\(req, id\);\s*throw/, 'eski plan onaylanabiliyor');
-  assert.match(TOPLU, /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/);
+  assert.match(
+    fonksiyon(TOPLU, 'uygulaIlerlet'),
+    /durum = 'BEKLIYOR'[\s\S]*durum = 'CALISIYOR' AND kira_id/,
+    'uygulama onaysiz ise acilabiliyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'onayla'),
+    /durum !== 'PLAN_HAZIR'/,
+    'onay plan hazir olmadan veriliyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'onayla'),
+    /if \(planEskiMi\(is\)\) \{\s*await planEskit\(req, id\);\s*throw/,
+    'eski plan onaylanabiliyor',
+  );
+  assert.match(
+    TOPLU,
+    esnek(
+      /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/,
+    ),
+  );
 });
 
 test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRAYLA', () => {
   assert.ok(!/join\(','\)/.test(TOPLU), 'toplu modul virgullu hedef listesi uretiyor');
-  for (const ad of ['planIlerlet', 'uygulaIlerlet']) assert.match(fonksiyon(TOPLU, ad), /isDegiskenleri\(host, /, `${ad} tek hedef gondermiyor`);
-  assert.equal((fonksiyon(TOPLU, 'isDegiskenleri').match(/target_host: host,/g) || []).length, 2, 'extra_vars dallarindan biri tek hedef gondermiyor');
+  for (const ad of ['planIlerlet', 'uygulaIlerlet'])
+    assert.match(fonksiyon(TOPLU, ad), /isDegiskenleri\(host, /, `${ad} tek hedef gondermiyor`);
+  assert.equal(
+    (fonksiyon(TOPLU, 'isDegiskenleri').match(/target_host: host,/g) || []).length,
+    2,
+    'extra_vars dallarindan biri tek hedef gondermiyor',
+  );
   // 2026-11-15 parcalama: ayni hostun parcalari da birbirini bekler (host kosulu yok; parca disi tum ogeler)
   assert.match(
     fonksiyon(TOPLU, 'uygulaIlerlet'),
     /NOT EXISTS \(SELECT 1 FROM server_hub_toplu_ogeler x[\s\S]*x\.is_id = \$1 AND x\.id NOT IN \(\$\{yerTutucu\(ids, 3\)\}\) AND x\.durum IN \('BASLATILIYOR', 'CALISIYOR'\)/,
     'baska parca calisirken yeni parca baslatilabiliyor (sira yok)',
   );
-  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /\.slice\(0, n\)/, 'uygulama parcasi isBasinaJvm ile sinirlanmiyor');
-  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /parcala\(tazeOg\.filter\(\(o\) => o\.durum === 'ADAY'\), n\)/, 'plan parcalanmiyor');
+  assert.match(
+    fonksiyon(TOPLU, 'uygulaIlerlet'),
+    /\.slice\(0, n\)/,
+    'uygulama parcasi isBasinaJvm ile sinirlanmiyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'planIlerlet'),
+    esnek(/parcala\(tazeOg\.filter\(\(o\) => o\.durum === 'ADAY'\), n\)/),
+    'plan parcalanmiyor',
+  );
   // belirsiz launch isareti olmazsa toplu is "durdur" yolu uretimde olu kalir
-  assert.match(fonksiyon(SRC, 'launch'), /!\(st >= 400 && st < 500\)\) e\.launchBelirsiz = true;/, 'Server Hub launch belirsiz hatayi isaretlemiyor');
-  assert.match(fonksiyon(TOPLU, 'uygulaIlerlet'), /e\.launchBelirsiz === true[\s\S]*topluDurdur\(is,/, 'belirsiz launch toplu isi durdurmuyor');
+  assert.match(
+    fonksiyon(SRC, 'launch'),
+    /!\(st >= 400 && st < 500\)\) e\.launchBelirsiz = true;/,
+    'Server Hub launch belirsiz hatayi isaretlemiyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'uygulaIlerlet'),
+    /e\??\.launchBelirsiz === true[\s\S]*topluDurdur\(is,/,
+    'belirsiz launch toplu isi durdurmuyor',
+  );
 });
 
 test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
@@ -111,18 +175,42 @@ test('BA8: kontrollu toplu - kapilar /jvm-autostart ile AYNI fonksiyon', () => {
   assert.match(t, /jvmAutoStartKapisi\(j,/, 'toplu aday JVM kapisindan gecmiyor');
   const i = SRC.indexOf("router.post('/jvm-autostart'");
   const blok = rotaBlogu(i);
-  assert.match(blok, /sunucuYazmaKapisi\(a, h, host\)/, '/jvm-autostart ortak sunucu kapisini kullanmiyor');
-  assert.match(blok, /jvmAutoStartKapisi\(j, \{ host, jvm, gen, enable \}\)/, '/jvm-autostart ortak JVM kapisini kullanmiyor');
+  assert.match(
+    blok,
+    /sunucuYazmaKapisi\(a, h, host\)/,
+    '/jvm-autostart ortak sunucu kapisini kullanmiyor',
+  );
+  assert.match(
+    blok,
+    /jvmAutoStartKapisi\(j, \{ host, jvm, gen, enable \}\)/,
+    '/jvm-autostart ortak JVM kapisini kullanmiyor',
+  );
   // Istemciden gelen secim TAZE degerlendirmeden yeniden turetilir: 2026-11-14'ten beri istekte degil, yurutucunun
   // secimDogrula adiminda (istek yalniz secimi yazar; uretimde 33 JVM'lik istek taze okumada 500 donmustu).
-  assert.match(fonksiyon(TOPLU, 'secimDogrula'), /_d\.getAssessment\(true\)[\s\S]*adaylariTuret\(a\)[\s\S]*c\.action !== o\.eylem/, 'secim taze taramadan turetilmiyor');
-  assert.match(fonksiyon(TOPLU, 'planIlerlet'), /secimDogrula\(is, og\)/, 'plan secimi dogrulamadan ilerliyor');
-  assert.doesNotMatch(fonksiyon(TOPLU, 'olustur'), /getAssessment/, 'istek yine tum filoyu taze okuyor');
+  assert.match(
+    fonksiyon(TOPLU, 'secimDogrula'),
+    /_d\.getAssessment\(true\)[\s\S]*adaylariTuret\(a\)[\s\S]*c\.action !== o\.eylem/,
+    'secim taze taramadan turetilmiyor',
+  );
+  assert.match(
+    fonksiyon(TOPLU, 'planIlerlet'),
+    /secimDogrula\(is, og\)/,
+    'plan secimi dogrulamadan ilerliyor',
+  );
+  assert.doesNotMatch(
+    fonksiyon(TOPLU, 'olustur'),
+    /getAssessment/,
+    'istek yine tum filoyu taze okuyor',
+  );
 });
 
 test('BA9: kontrollu toplu - kirasi dusen is DEVAM ETTIRILMEZ (YARIM_KALDI)', () => {
   const t = fonksiyon(TOPLU, 'tick');
-  assert.match(t, /is\.kira_id !== SUREC_ID[\s\S]*yarimBirak\(is\)[\s\S]*continue;/, 'baska surecin isi ilerletiliyor');
+  assert.match(
+    t,
+    /is\.kira_id !== SUREC_ID[\s\S]*yarimBirak\(is\)[\s\S]*continue;/,
+    'baska surecin isi ilerletiliyor',
+  );
   const y = fonksiyon(TOPLU, 'yarimBirak');
   assert.ok(!/_d\.launch|launch\(/.test(y), 'yarim birakma is baslatiyor');
   assert.match(y, /awx_job_id IS NULL/, 'is numarasiz BASLATILIYOR oge ayrica isaretlenmiyor');
@@ -148,7 +236,10 @@ test('SB1 JVM hedefli uc var ve TEK (host, jvm) aliyor', () => {
   const i = SRC.indexOf("router.post('/jvm-autostart'");
   const blok = rotaBlogu(i);
   // Virgullu hedef listesi YOK: duzeltme playbook'u zaten reddediyor, uc de uretmemeli.
-  assert.ok(!/join\(','\)/.test(blok), 'uc virgullu hedef listesi uretiyor - toplu islem geri gelmis');
+  assert.ok(
+    !/join\(','\)/.test(blok),
+    'uc virgullu hedef listesi uretiyor - toplu islem geri gelmis',
+  );
   assert.match(blok, /target_host: host/, 'tek hedef gonderilmiyor');
 });
 
@@ -185,8 +276,12 @@ test('SB5 ekranda SATIR BAZINDA dugme var ve onay istiyor', () => {
   assert.match(UI, /jvmAutoStart\(j\)/, 'satir dugmesi yok');
   // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
   assert.match(UI, /await onayla\(\{/, 'tek tikla onaysiz degisiklik yapiliyor');
-  assert.doesNotMatch(UI, /window\.confirm\(/, 'tarayici onayi geri gelmis');
+  assert.doesNotMatch(UI, esnek(/window\.confirm\(/), 'tarayici onayi geri gelmis');
   assert.match(UI, /Yalnız bu JVM etkilenir/, 'onay metni kapsami soylemiyor');
   // Islem bitince tarama TAZELENIR; yoksa eski deger kalir ve kullanici tekrar tiklar.
-  assert.match(UI, /serverHubApi\s*\n?\s*\.host\(host, true\)/, 'islem sonrasi tarama tazelenmiyor');
+  assert.match(
+    UI,
+    /serverHubApi\s*\n?\s*\.host\(host, true\)/,
+    'islem sonrasi tarama tazelenmiyor',
+  );
 });

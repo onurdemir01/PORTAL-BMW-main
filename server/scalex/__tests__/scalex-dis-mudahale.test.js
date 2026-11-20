@@ -35,8 +35,13 @@ db.query = async (sqlText, params) => {
     const before = mirror.length;
     mirror = mirror.filter(
       (m) =>
-        !(m.env === env && m.tenant === tenant && m.cluster_name === cluster &&
-          m.namespace === ns && m.app_name === app),
+        !(
+          m.env === env &&
+          m.tenant === tenant &&
+          m.cluster_name === cluster &&
+          m.namespace === ns &&
+          m.app_name === app
+        ),
     );
     calls.cleared.push({ cluster, app });
     return { rowCount: before - mirror.length };
@@ -52,23 +57,44 @@ const state = require('../state.cjs');
 
 function row(over = {}) {
   return {
-    id: 1, env: 'test', tenant: 'ark', cluster_name: 'gbocptest1',
-    namespace: 'ns1', app_name: 'app1', workload_kind: 'DeploymentConfig',
-    previous_replicas: 1, phase: 'scaled_down', stopped_by: 'uxmid',
-    stopped_at: null, stopped_by_groups: null, restore_attempts: 0,
-    last_restore_at: null, last_restore_error: null, operation_id: 1,
-    last_seen_at: null, drift_status: 'in_sync', ...over,
+    id: 1,
+    env: 'test',
+    tenant: 'ark',
+    cluster_name: 'gbocptest1',
+    namespace: 'ns1',
+    app_name: 'app1',
+    workload_kind: 'DeploymentConfig',
+    previous_replicas: 1,
+    phase: 'scaled_down',
+    stopped_by: 'uxmid',
+    stopped_at: null,
+    stopped_by_groups: null,
+    restore_attempts: 0,
+    last_restore_at: null,
+    last_restore_error: null,
+    operation_id: 1,
+    last_seen_at: null,
+    drift_status: 'in_sync',
+    ...over,
   };
 }
 function live(over = {}) {
   return {
-    env: 'test', tenant: 'ark', clusterName: 'gbocptest1',
-    namespace: 'ns1', appName: 'app1', readyReplicas: 1, workloadAbsent: false, ...over,
+    env: 'test',
+    tenant: 'ark',
+    clusterName: 'gbocptest1',
+    namespace: 'ns1',
+    appName: 'app1',
+    readyReplicas: 1,
+    workloadAbsent: false,
+    ...over,
   };
 }
 const refresh = (liveStates) =>
   state.refreshDrift({
-    env: 'test', tenant: 'ark', scannedClusters: ['gbocptest1'],
+    env: 'test',
+    tenant: 'ark',
+    scannedClusters: ['gbocptest1'],
     clusterStates: [], // ConfigMap YOK
     liveStates,
   });
@@ -114,7 +140,10 @@ test('EX3 spec=1 ama ready=0 ise satir DURUR (olcut `ready`)', async () => {
 test('EX4 LIVE satiri hic gelmezse eski davranis (sapma isaretlenir)', async () => {
   await refresh([]);
   assert.equal(calls.cleared.length, 0);
-  assert.deepEqual(calls.updated.map((u) => u.drift), ['missing_on_cluster']);
+  assert.deepEqual(
+    calls.updated.map((u) => u.drift),
+    ['missing_on_cluster'],
+  );
 });
 
 // EX5 — UYGULAMA NAMESPACE'TE YOK. Silinmis; ayakta DEGIL, satir DURMALI.

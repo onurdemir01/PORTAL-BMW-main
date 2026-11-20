@@ -21,6 +21,8 @@ logs
 *.crt
 *.cer
 server/ansible/ocp-clusters.json
+# Ansible playbook'lari calisma zamaninda kullanilmaz ve kurumsal pakete de girmez (scripts/teslim.cjs).
+server/ansible/playbooks
 server/data
 sunum
 .agentic-security

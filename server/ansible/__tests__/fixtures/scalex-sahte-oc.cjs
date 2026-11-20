@@ -73,7 +73,7 @@ const TIPLER = {
 function tipBul(ad) {
   for (const [k, t] of Object.entries(TIPLER)) if (t.adlar.includes(ad)) return k;
   // KESFEDILEN CRD (`model.crdler`): kodu tam kaynak adinin kendisi.
-  if (model.crdler && model.crdler[ad]) return ad;
+  if (model.crdler?.[ad]) return ad;
   return null;
 }
 function tipBilgi(k) {
@@ -91,8 +91,8 @@ function listeYasakMi(k) {
   return (model.listeYasakTipler || []).includes(k);
 }
 function nesneler(k) {
-  if (model.crdler && model.crdler[k]) return model.crdler[k].nesneler || [];
-  return (model.nesneler && model.nesneler[k]) || [];
+  if (model.crdler?.[k]) return model.crdler[k].nesneler || [];
+  return model.nesneler?.[k] || [];
 }
 
 // ── Mini jsonpath: betigin kullandigi alt kume ──────────────────────────────
@@ -218,7 +218,7 @@ function secenek(ad) {
 }
 function jp() {
   const o = secenek('-o');
-  if (o && o.startsWith('jsonpath=')) return o.slice('jsonpath='.length);
+  if (o?.startsWith('jsonpath=')) return o.slice('jsonpath='.length);
   const j = args.find((a) => a.startsWith('jsonpath='));
   return j ? j.slice('jsonpath='.length) : null;
 }
@@ -376,7 +376,7 @@ if (k1 === 'patch') {
   const o = k && nesneler(k).find((x) => x.name === args[2]);
   const p = JSON.parse(secenek('-p'));
   if (args[1] === 'cm') {
-    const cm = (model.cm || {})[args[2]];
+    const cm = model.cm?.[args[2]];
     if (!cm) process.exit(1);
     Object.assign(cm, p.data || {});
     kaydet();
@@ -396,7 +396,7 @@ if (k1 === 'patch') {
   process.exit(0);
 }
 if (k1 === 'delete' && k2 === 'cm') {
-  delete (model.cm || {})[args[2]];
+  delete model.cm?.[args[2]];
   kaydet();
   process.exit(0);
 }

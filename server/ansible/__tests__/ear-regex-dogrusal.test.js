@@ -14,6 +14,7 @@
 //   EG4 kotu girdide (50k+ karakter) yeni desenler < 200 ms.
 //   EG5 desenlerde Python 3.6'da olmayan yapi yok (atomik grup / iyelik niceleyici 3.11+).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -22,7 +23,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { adaylar } = require('./fixtures/python-bul.cjs');
 
-const FILES = path.join(__dirname, '..', 'bmw_portal', 'ear_envanter', 'files');
+const FILES = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'ear_envanter', 'files');
 const EAR = path.join(FILES, 'ear_tara.py');
 const WEB = path.join(FILES, 'web_tara.py');
 const BETIK = path.join(__dirname, 'fixtures', 'ear_regex_esdeger.py');
@@ -102,7 +103,7 @@ test('EG5 desenler Python 3.6 ile uyumlu (atomik grup / iyelik niceleyici yok)',
   ];
   assert.equal(satirlar.length, 3, 'uc desen satiri bulunamadi');
   for (const l of satirlar) {
-    assert.doesNotMatch(l, /\(\?>/, `atomik grup: ${l}`);
+    assert.doesNotMatch(l, esnek(/\(\?>/), `atomik grup: ${l}`);
     assert.doesNotMatch(l, /[*+?}]\+/, `iyelik niceleyici: ${l}`);
   }
 });

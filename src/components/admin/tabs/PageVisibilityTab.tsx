@@ -204,7 +204,14 @@ export default function PageVisibilityTab() {
   }
 
   async function removeElement(key: string) {
-    if (!(await onayla({ baslik: 'Öğeyi sil', metin: `"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`, onayMetni: 'Sil', tehlikeli: true })))
+    if (
+      !(await onayla({
+        baslik: 'Öğeyi sil',
+        metin: `"${key}" öğesini ve tüm görünürlük kurallarını silmek istiyor musunuz?`,
+        onayMetni: 'Sil',
+        tehlikeli: true,
+      }))
+    )
       return;
     try {
       await elementsApi.remove(key);

@@ -120,7 +120,9 @@ test('DEP2 lock dosyasi package.json ile AYNI kok bagimliliklari tasiyor', () =>
       const lockDeps = lock.packages?.['']?.[alan] || {};
       for (const [name, range] of Object.entries(p[alan] || {})) {
         if (lockDeps[name] !== range) {
-          drift.push(`${dizin || '(kok)'} ${name}: package.json=${range} lock=${lockDeps[name] ?? '(yok)'}`);
+          drift.push(
+            `${dizin || '(kok)'} ${name}: package.json=${range} lock=${lockDeps[name] ?? '(yok)'}`,
+          );
         }
       }
     }

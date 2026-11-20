@@ -17,6 +17,8 @@
 //      BUTON ICI spinner'dir ve orada DOGRU olan spinner'dir; onlara dokunulmadi.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -143,7 +145,7 @@ test('D5: baslik menuyle AYNI kaynaktan turetilir (liste kopyalanmaz)', () => {
   const src = read('hooks/useDocumentTitle.ts');
   assert.match(
     src,
-    /from "@\/config\/elements"/,
+    esnek(/from "@\/config\/elements"/),
     'ayri bir yol->baslik eslemesi tutulursa yeni sayfa eklendiginde guncellemek unutulur',
   );
 });

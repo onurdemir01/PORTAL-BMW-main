@@ -13,7 +13,11 @@ const assert = require('node:assert/strict');
 const { summarizeLocations } = require('../nginx-api-locations.cjs');
 
 const row = (host, config_file, api_location, ip = null, srv = null) => ({
-  host, config_file, api_location, ip_rate_limit: ip, server_rate_limit: srv,
+  host,
+  config_file,
+  api_location,
+  ip_rate_limit: ip,
+  server_rate_limit: srv,
 });
 
 test('her yol icin ortam -> sunucu kirilimi', () => {
@@ -96,7 +100,11 @@ test('ayni yol FARKLI dosyalarda ayri satirdir', () => {
     row('GBNGWT03', 'b.conf', '/ortak'),
   ]);
   assert.equal(rows.length, 2);
-  assert.deepEqual(rows.map((r) => r.config), ['a.conf', 'b.conf'], 'dosya adina gore sirali');
+  assert.deepEqual(
+    rows.map((r) => r.config),
+    ['a.conf', 'b.conf'],
+    'dosya adina gore sirali',
+  );
 });
 
 test('bos/eksik alanlar atlanir, cokme olmaz', () => {
@@ -105,7 +113,10 @@ test('bos/eksik alanlar atlanir, cokme olmaz', () => {
     row('GBNGWT03', 'x.conf', ''),
     row('GBNGWT03', 'x.conf', '/var'),
   ]);
-  assert.deepEqual(rows.map((r) => r.location), ['/var']);
+  assert.deepEqual(
+    rows.map((r) => r.location),
+    ['/var'],
+  );
   assert.deepEqual(summarizeLocations([]).rows, []);
   assert.deepEqual(summarizeLocations(undefined).rows, []);
 });

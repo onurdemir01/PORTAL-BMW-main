@@ -200,7 +200,6 @@ const TERMINAL_EMPTY: Partial<OcpTerminalHostRow> = {
   is_active: true,
 };
 
-
 // Envanter tohumlaması (bootstrap seed) durumu. Portal ilk açılışta ~60 cluster'ı DB'ye
 // PASİF olarak ekler; bu panel onun çalışıp çalışmadığını gösterir ve gerekirse yeniden
 // çalıştırır. Yeniden çalıştırma var olan satırlara DOKUNMAZ — admin'in sildiği bir cluster
@@ -243,9 +242,9 @@ const BootstrapSeedPanel: React.FC<{ onSeeded: () => void }> = ({ onSeeded }) =>
   return (
     <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]/60 px-3 py-2.5 text-xs text-[var(--text-secondary)]">
       <div className="min-w-0">
-        <span className="font-medium text-[var(--text-secondary)]">Envanter tohumlaması:</span> {durum}. Yeniden
-        çalıştırmak mevcut satırlara dokunmaz, yalnızca eksik cluster'ları <strong>pasif</strong>{' '}
-        olarak ekler.
+        <span className="font-medium text-[var(--text-secondary)]">Envanter tohumlaması:</span>{' '}
+        {durum}. Yeniden çalıştırmak mevcut satırlara dokunmaz, yalnızca eksik cluster'ları{' '}
+        <strong>pasif</strong> olarak ekler.
         {note && <div className="mt-1 text-[var(--text-muted)]">{note}</div>}
       </div>
       <button
@@ -385,7 +384,9 @@ const LogXv2AdminTab: React.FC = () => {
               key={t.id}
               onClick={() => setSubTab(t.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                active ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                active
+                  ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
               }`}
             >
               <Icon className="w-3.5 h-3.5" />

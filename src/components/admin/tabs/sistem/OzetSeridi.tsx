@@ -42,8 +42,18 @@ export default function OzetSeridi({
       // "Varsayilanla calisiyor" DENMEZ: zorunlu ve fail-closed anahtarlarin varsayilani yok (SA15).
       alt: `${ozet.toplam - ozet.tanimsiz}/${ozet.toplam} tanımlı`,
     },
-    { suzgec: 'portalda', etiket: "Portal'da ayarlı", sayi: ozet.portalda, alt: 'Bu ekrandan kaydedilmiş' },
-    { suzgec: 'restart', etiket: 'Restart bekleyen', sayi: ozet.restart, alt: 'Bu sayfa açıkken kaydedilen' },
+    {
+      suzgec: 'portalda',
+      etiket: "Portal'da ayarlı",
+      sayi: ozet.portalda,
+      alt: 'Bu ekrandan kaydedilmiş',
+    },
+    {
+      suzgec: 'restart',
+      etiket: 'Restart bekleyen',
+      sayi: ozet.restart,
+      alt: 'Bu sayfa açıkken kaydedilen',
+    },
   ];
   return (
     <div className="grid grid-cols-2 @xl/sistem:grid-cols-4 gap-3">

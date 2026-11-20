@@ -71,18 +71,63 @@ function eslestir(kartlar, hedefTemplateleri, elleSecimler = {}) {
       sonuc.set(
         kart.id,
         t
-          ? { toT: Number(t.id), toAd: String(t.name), eslesme: 'elle', neden: null, adaylar: [], cakisma: false }
-          : { toT: null, toAd: '', eslesme: null, neden: 'elle_secim_yok', adaylar: [], cakisma: false },
+          ? {
+              toT: Number(t.id),
+              toAd: String(t.name),
+              eslesme: 'elle',
+              neden: null,
+              adaylar: [],
+              cakisma: false,
+            }
+          : {
+              toT: null,
+              toAd: '',
+              eslesme: null,
+              neden: 'elle_secim_yok',
+              adaylar: [],
+              cakisma: false,
+            },
       );
       continue;
     }
     const ad = adAnahtari(kart.kaynakAd);
     const adaylar = ad ? adla.get(ad) || [] : [];
-    if (!ad) sonuc.set(kart.id, { toT: null, toAd: '', eslesme: null, neden: 'kaynak_adi_yok', adaylar: [], cakisma: false });
-    else if (adaylar.length === 0) sonuc.set(kart.id, { toT: null, toAd: '', eslesme: null, neden: 'ad_yok', adaylar: [], cakisma: false });
+    if (!ad)
+      sonuc.set(kart.id, {
+        toT: null,
+        toAd: '',
+        eslesme: null,
+        neden: 'kaynak_adi_yok',
+        adaylar: [],
+        cakisma: false,
+      });
+    else if (adaylar.length === 0)
+      sonuc.set(kart.id, {
+        toT: null,
+        toAd: '',
+        eslesme: null,
+        neden: 'ad_yok',
+        adaylar: [],
+        cakisma: false,
+      });
     else if (adaylar.length > 1)
-      sonuc.set(kart.id, { toT: null, toAd: '', eslesme: null, neden: 'birden_fazla_aday', adaylar, cakisma: false });
-    else sonuc.set(kart.id, { toT: adaylar[0].id, toAd: adaylar[0].name, eslesme: 'ad', neden: null, adaylar: [], cakisma: false });
+      sonuc.set(kart.id, {
+        toT: null,
+        toAd: '',
+        eslesme: null,
+        neden: 'birden_fazla_aday',
+        adaylar,
+        cakisma: false,
+      });
+    else
+      sonuc.set(kart.id, {
+        toT: adaylar[0].id,
+        toAd: adaylar[0].name,
+        eslesme: 'ad',
+        neden: null,
+        adaylar: [],
+        cakisma: false,
+      });
   }
   // Iki kart ayni hedefe esleniyorsa ikisi de ENGEL (UNIQUE(awx_server_id, awx_template_id)).
   const sayac = new Map();
@@ -95,9 +140,12 @@ const ESLESME_NEDENI = {
   ad_yok: 'Hedef sunucuda aynı adda template yok; listeden elle seçin.',
   birden_fazla_aday: 'Hedef sunucuda aynı adda birden fazla template var; listeden elle seçin.',
   elle_secim_yok: 'Elle seçilen hedef template artık hedef sunucunun listesinde yok.',
-  kaynak_adi_yok: 'Kaynak template adı okunamadı (template kaynak sunucuda silinmiş olabilir); hedefi elle seçin.',
-  kaynak_okunamadi: 'Kaynak sunucunun template listesi okunamadı (bağlantı / yetki); ad eşlemesi yapılamadı.',
-  hedef_okunamadi: 'Hedef sunucunun template listesi okunamadı (bağlantı / yetki); ad eşlemesi yapılamadı.',
+  kaynak_adi_yok:
+    'Kaynak template adı okunamadı (template kaynak sunucuda silinmiş olabilir); hedefi elle seçin.',
+  kaynak_okunamadi:
+    'Kaynak sunucunun template listesi okunamadı (bağlantı / yetki); ad eşlemesi yapılamadı.',
+  hedef_okunamadi:
+    'Hedef sunucunun template listesi okunamadı (bağlantı / yetki); ad eşlemesi yapılamadı.',
 };
 
 // ---------------------------------------------------------------------------
@@ -105,7 +153,8 @@ const ESLESME_NEDENI = {
 // ---------------------------------------------------------------------------
 // Secenekler KIRPILMAZ: AWX " a" ile "a"yi ayri deger sayar. Yalniz bos satir atilir.
 function secenekler(c) {
-  if (Array.isArray(c)) return c.map((x) => String(x == null ? '' : x)).filter((x) => x.trim() !== '');
+  if (Array.isArray(c))
+    return c.map((x) => String(x == null ? '' : x)).filter((x) => x.trim() !== '');
   if (typeof c === 'string') return c.split(/\r?\n/).filter((x) => x.trim() !== '');
   return [];
 }
@@ -129,8 +178,14 @@ function varsayilanNormalize(type, d) {
     return n === null ? varsayilanMetni(d) : String(n);
   }
   if (type === 'multiselect') {
-    const l = (() => { if (Array.isArray(d)) return d.map((x) => String(x)); return String(d == null ? '' : d).split(/\r?\n/); })();
-    return l.filter((x) => x !== '').sort((a, b) => Number(a > b) - Number(a < b)).join('\n');
+    const l = (() => {
+      if (Array.isArray(d)) return d.map((x) => String(x));
+      return String(d == null ? '' : d).split(/\r?\n/);
+    })();
+    return l
+      .filter((x) => x !== '')
+      .sort((a, b) => Number(a > b) - Number(a < b))
+      .join('\n');
   }
   return varsayilanMetni(d);
 }
@@ -175,7 +230,14 @@ function surveyFarki(kaynakSpec, hedefSpec) {
   for (const k of K) {
     const h = hMap.get(k.variable);
     if (!h) {
-      satirlar.push({ variable: k.variable, etiket: 'yalniz_kaynakta', kritik: true, farklar: ['eksik'], kaynak: k, hedef: null });
+      satirlar.push({
+        variable: k.variable,
+        etiket: 'yalniz_kaynakta',
+        kritik: true,
+        farklar: ['eksik'],
+        kaynak: k,
+        hedef: null,
+      });
       continue;
     }
     const farklar = [];
@@ -192,7 +254,11 @@ function surveyFarki(kaynakSpec, hedefSpec) {
     // Kaynak zorunlu, hedef degil: bos deger playbook'a gider (kritik). Hedef zorunlu ve
     // varsayilansiz: kaynakta bos gecen form hedefte reddedilir (kritik).
     if (k.required !== h.required)
-      ekle('required', (k.required && !h.required) || (!k.required && h.required && (h.default === '' || h.default === null)));
+      ekle(
+        'required',
+        (k.required && !h.required) ||
+          (!k.required && h.required && (h.default === '' || h.default === null)),
+      );
     if (!k.parola && !h.parola && k.default !== h.default) ekle('default', true);
     if (k.question_name !== h.question_name) ekle('question_name', false);
     if (k.question_description !== h.question_description) ekle('question_description', false);
@@ -211,7 +277,14 @@ function surveyFarki(kaynakSpec, hedefSpec) {
   }
   for (const h of H) {
     if (kMap.has(h.variable)) continue;
-    satirlar.push({ variable: h.variable, etiket: 'yalniz_hedefte', kritik: true, farklar: ['fazla'], kaynak: null, hedef: h });
+    satirlar.push({
+      variable: h.variable,
+      etiket: 'yalniz_hedefte',
+      kritik: true,
+      farklar: ['fazla'],
+      kaynak: null,
+      hedef: h,
+    });
   }
   return {
     satirlar,
@@ -254,21 +327,29 @@ function surveyModu(detail, spec) {
  */
 function surveyKarari(kaynakModu, hedefModu, hedefDetail, hedefSpec, fark) {
   const uyarilar = [];
-  if (kaynakModu === 'OLCULEMEDI' || hedefModu === 'OLCULEMEDI') return { cip: null, eylem: null, olculemedi: true, uyarilar };
+  if (kaynakModu === 'OLCULEMEDI' || hedefModu === 'OLCULEMEDI')
+    return { cip: null, eylem: null, olculemedi: true, uyarilar };
   const hedefSoru = surveyNormalize(hedefSpec).length;
   if (kaynakModu === 'AWX') {
     if (hedefSoru === 0) return { cip: 'SURVEY_BOS', eylem: 'yaz', olculemedi: false, uyarilar };
-    if ((fark?.kritikVar) || !hedefDetail || hedefDetail.survey_enabled !== true)
+    if (fark?.kritikVar || hedefDetail?.survey_enabled !== true)
       return { cip: 'SURVEY_FARKLI', eylem: 'yaz', olculemedi: false, uyarilar };
     return { cip: null, eylem: null, olculemedi: false, uyarilar };
   }
   if (kaynakModu === 'TASARIMCI') {
-    if (hedefDetail?.survey_enabled === true) return { cip: 'SURVEY_FARKLI', eylem: 'kapat', olculemedi: false, uyarilar };
+    if (hedefDetail?.survey_enabled === true)
+      return { cip: 'SURVEY_FARKLI', eylem: 'kapat', olculemedi: false, uyarilar };
     return { cip: null, eylem: null, olculemedi: false, uyarilar };
   }
   // EXTRA_VARS: kaynak form alanlarini template extra_vars'tan uretiyor.
-  if (hedefModu === 'AWX') uyarilar.push("Kaynak survey'siz (extra_vars yedeği) çalışıyor, hedefte AWX survey'i var: form değişir.");
-  if (hedefModu === 'TASARIMCI') uyarilar.push("Kaynakta survey açık ama soru yok; hedefte survey kapalı: form alanları görünmez.");
+  if (hedefModu === 'AWX')
+    uyarilar.push(
+      "Kaynak survey'siz (extra_vars yedeği) çalışıyor, hedefte AWX survey'i var: form değişir.",
+    );
+  if (hedefModu === 'TASARIMCI')
+    uyarilar.push(
+      'Kaynakta survey açık ama soru yok; hedefte survey kapalı: form alanları görünmez.',
+    );
   return { cip: null, eylem: null, olculemedi: false, uyarilar };
 }
 
@@ -289,7 +370,7 @@ const TEMPLATE_ALANLARI = [
 ];
 
 function extraVarsAnahtarlari(detail) {
-  const ham = String((detail?.extra_vars) || '').trim();
+  const ham = String(detail?.extra_vars || '').trim();
   if (!ham) return [];
   let obj = null;
   try {
@@ -301,7 +382,9 @@ function extraVarsAnahtarlari(detail) {
       obj = null;
     }
   }
-  return obj && typeof obj === 'object' && !Array.isArray(obj) ? Object.keys(obj).sort((a, b) => Number(a > b) - Number(a < b)) : [];
+  return obj && typeof obj === 'object' && !Array.isArray(obj)
+    ? Object.keys(obj).sort((a, b) => Number(a > b) - Number(a < b))
+    : [];
 }
 
 function templateKarsilastir(kaynak, hedef) {
@@ -323,12 +406,17 @@ function templateKarsilastir(kaynak, hedef) {
     };
   };
   const satirlar = TEMPLATE_ALANLARI.map(([alan, etiket]) => satir(alan, etiket, (d) => d[alan]));
-  satirlar.push(satir('extra_vars', 'extra_vars anahtarları', (d) => extraVarsAnahtarlari(d).join(', ')));
-  satirlar.push(satir('inventory', 'Envanter', (d) => (d.summary_fields?.inventory?.name) || ''));
-  satirlar.push(satir('project', 'Proje', (d) => (d.summary_fields?.project?.name) || ''));
+  satirlar.push(
+    satir('extra_vars', 'extra_vars anahtarları', (d) => extraVarsAnahtarlari(d).join(', ')),
+  );
+  satirlar.push(satir('inventory', 'Envanter', (d) => d.summary_fields?.inventory?.name || ''));
+  satirlar.push(satir('project', 'Proje', (d) => d.summary_fields?.project?.name || ''));
   satirlar.push(
     satir('credentials', 'Kimlik bilgileri', (d) =>
-      ((d.summary_fields?.credentials) || []).map((c) => String((c?.name) || '')).sort((a, b) => Number(a > b) - Number(a < b)).join(', '),
+      (d.summary_fields?.credentials || [])
+        .map((c) => String(c?.name || ''))
+        .sort((a, b) => Number(a > b) - Number(a < b))
+        .join(', '),
     ),
   );
   return satirlar;
@@ -410,7 +498,8 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
   const specAdlari = new Set(spec.map((f) => String(f.variable)));
 
   // 1) /ss/custom ile ayni kurallar (ortak dogrulayici).
-  for (const m of require('./ss-ozellestirme-dogrulama.cjs').dogrula(spec, d)) hatalar.push(`Ayar doğrulaması: ${m}`);
+  for (const m of require('./ss-ozellestirme-dogrulama.cjs').dogrula(spec, d))
+    hatalar.push(`Ayar doğrulaması: ${m}`);
 
   const overrides = Array.isArray(data?.fieldOverrides) ? data.fieldOverrides : [];
   const ozelAlanlar = Array.isArray(data?.customSurveyFields) ? data.customSurveyFields : [];
@@ -420,7 +509,9 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
     for (const ov of overrides) {
       if (!ov?.fieldName) continue;
       if (!specAdlari.has(String(ov.fieldName)))
-        hatalar.push(`Alan geçersiz kılma "${ov.fieldName}": hedef survey'de yok, sessizce yok sayılır.`);
+        hatalar.push(
+          `Alan geçersiz kılma "${ov.fieldName}": hedef survey'de yok, sessizce yok sayılır.`,
+        );
       if (ov.dependsOn) {
         let kosullar = [];
         try {
@@ -429,8 +520,12 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
           kosullar = [];
         }
         for (const c of kosullar) {
-          const alan = String((c?.field) || '').trim();
-          if (alan && !specAdlari.has(alan) && !ozelAlanlar.some((o) => String((o?.name) || '') === alan))
+          const alan = String(c?.field || '').trim();
+          if (
+            alan &&
+            !specAdlari.has(alan) &&
+            !ozelAlanlar.some((o) => String(o?.name || '') === alan)
+          )
             hatalar.push(`"${ov.fieldName}" koşulu "${alan}" alanına bağlı; hedefte bu alan yok.`);
         }
       }
@@ -442,7 +537,7 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
   if (sa?.enabled) {
     const bilinen = new Set([
       ...specAdlari,
-      ...ozelAlanlar.map((o) => String((o?.name) || '')),
+      ...ozelAlanlar.map((o) => String(o?.name || '')),
       ...rawAnahtarlar(data.rawExtraVars),
       ...extraVarsAnahtarlari(hedefDetail),
     ]);
@@ -451,7 +546,10 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
       bilinen.add(String(data.injectUserInfo.usernameKey || '').trim() || 'username');
     }
     for (const v of metadataDegiskenleri(sa.metadataFields)) {
-      if (!bilinen.has(v)) hatalar.push(`Smart metadata şablonu {{extraVars.${v}}} kullanıyor, hedefte bu değişken yok.`);
+      if (!bilinen.has(v))
+        hatalar.push(
+          `Smart metadata şablonu {{extraVars.${v}}} kullanıyor, hedefte bu değişken yok.`,
+        );
     }
     // Istisna kurali alani yoksa kural TUTMAZ -> onay HER ZAMAN istenir (guvenli taraf): uyari.
     let kurallar = [];
@@ -463,12 +561,14 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
     const kucuk = new Set([...bilinen].map((x) => x.toLowerCase()));
     for (const r of kurallar) {
       if (!kucuk.has(r.field))
-        uyarilar.push(`Smart istisna kuralı "${r.field}" alanına bakıyor, hedefte yok: onay her zaman istenir.`);
+        uyarilar.push(
+          `Smart istisna kuralı "${r.field}" alanına bakıyor, hedefte yok: onay her zaman istenir.`,
+        );
     }
   }
 
   // 4) Launch secenekleri: hedefte "prompt on launch" kapaliysa AWX degeri SESSIZCE yok sayar.
-  for (const [anahtar, ov] of Object.entries((data?.launchOptionOverrides) || {})) {
+  for (const [anahtar, ov] of Object.entries(data?.launchOptionOverrides || {})) {
     if (!ov || typeof ov !== 'object') continue;
     const bayrak = LAUNCH_BAYRAGI[anahtar];
     if (!bayrak) continue;
@@ -476,30 +576,36 @@ function ozellestirmeUyumu(data, { hedefSpec, hedefDetail, kaynakDetail, kaynakM
     const k = kaynakDetail?.[bayrak];
     if (h === undefined) hatalar.push(`Hedef template'te ${bayrak} ölçülemedi.`);
     else if (h !== true && k === true)
-      hatalar.push(`Launch seçeneği "${anahtar}" ayarlı ama hedefte ${bayrak} kapalı: değer sessizce yok sayılır.`);
+      hatalar.push(
+        `Launch seçeneği "${anahtar}" ayarlı ama hedefte ${bayrak} kapalı: değer sessizce yok sayılır.`,
+      );
   }
 
   // 5) Survey disi ek degiskenler hedefte "Prompt on launch > Variables" ister.
   const ekDegisken =
-    String((data?.rawExtraVars) || '').trim() !== '' ||
-    !!(data?.injectUserInfo?.enabled) ||
+    String(data?.rawExtraVars || '').trim() !== '' ||
+    !!data?.injectUserInfo?.enabled ||
     (kaynakModu === 'TASARIMCI' && ozelAlanlar.length > 0);
   if (ekDegisken) {
     const h = hedefDetail?.ask_variables_on_launch;
     const k = kaynakDetail?.ask_variables_on_launch;
     if (h === undefined) hatalar.push("Hedef template'te ask_variables_on_launch ölçülemedi.");
     else if (h !== true) {
-      const m = "Servis survey dışı değişken gönderiyor (rawExtraVars / kullanıcı bilgisi / tasarımcı alanları) ama hedefte 'Prompt on launch > Variables' kapalı.";
+      const m =
+        "Servis survey dışı değişken gönderiyor (rawExtraVars / kullanıcı bilgisi / tasarımcı alanları) ama hedefte 'Prompt on launch > Variables' kapalı.";
       if (k === true) hatalar.push(m);
       else uyarilar.push(m + ' (Kaynakta da kapalı.)');
     }
   }
 
   // 6) Playbook: kodla playbook yoluna bagli davranislar.
-  const kp = String((kaynakDetail?.playbook) || '');
-  const hp = String((hedefDetail?.playbook) || '');
+  const kp = String(kaynakDetail?.playbook || '');
+  const hp = String(hedefDetail?.playbook || '');
   const ozel = OZEL_PLAYBOOKLAR.find((o) => o.test(kp));
-  if (ozel && !ozel.test(hp)) hatalar.push(`Kaynak playbook ${ozel.ad} (${kp}); hedef playbook (${hp || 'boş'}) değil: Portal'ın bu playbook'a özel davranışı kapanır.`);
+  if (ozel && !ozel.test(hp))
+    hatalar.push(
+      `Kaynak playbook ${ozel.ad} (${kp}); hedef playbook (${hp || 'boş'}) değil: Portal'ın bu playbook'a özel davranışı kapanır.`,
+    );
   else if (kp && hp && kp !== hp) uyarilar.push(`Playbook farklı: kaynak ${kp}, hedef ${hp}.`);
 
   return { hatalar, uyarilar, gomulu: gomuluKimlikTara(data) };
@@ -514,14 +620,16 @@ const ENGELLER = [
   {
     anahtar: 'smart',
     baslik: 'Onay bekleyen Smart bileti',
-    ipucu: "Admin > Smart Talepleri'nde sonuçlanmasını bekleyin ya da iptal edin. Onaylanırsa iş eski sunucuda koşar.",
+    ipucu:
+      "Admin > Smart Talepleri'nde sonuçlanmasını bekleyin ya da iptal edin. Onaylanırsa iş eski sunucuda koşar.",
     sql: `SELECT COUNT(*) AS n FROM smart_tickets
            WHERE awx_server_id = $1 AND awx_template_id = $2 AND status IN ('PENDING','LAUNCHING')`,
   },
   {
     anahtar: 'oco',
     baslik: 'OCO zamanlanmış başlatma',
-    ipucu: "Admin > Smart Talepleri > OCO Zamanlamaları'ndan iptal edin. AWX_SCHEDULED kaydı sunucunun kendi zamanlamasıdır.",
+    ipucu:
+      "Admin > Smart Talepleri > OCO Zamanlamaları'ndan iptal edin. AWX_SCHEDULED kaydı sunucunun kendi zamanlamasıdır.",
     sql: `SELECT COUNT(*) AS n FROM oco_scheduled_launches
            WHERE awx_server_id = $1 AND awx_template_id = $2 AND status IN ${AKTIF_OCO}`,
   },
@@ -542,7 +650,7 @@ async function engelleriSay(db, serverId, templateId, liste = ENGELLER) {
       const n = Number(rows?.[0]?.n) || 0;
       if (n > 0) engeller.push({ anahtar: e.anahtar, baslik: e.baslik, adet: n, ipucu: e.ipucu });
     } catch (err) {
-      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String((err?.message) || err) });
+      okunamayan.push({ anahtar: e.anahtar, baslik: e.baslik, hata: String(err?.message || err) });
     }
   }
   return { engeller, okunamayan };
@@ -551,7 +659,12 @@ async function engelleriSay(db, serverId, templateId, liste = ENGELLER) {
 // ---------------------------------------------------------------------------
 // Durum
 // ---------------------------------------------------------------------------
-function durumBelirle({ eslesmeYok = false, engelVar = false, surveyCip = null, uyumsuz = false } = {}) {
+function durumBelirle({
+  eslesmeYok = false,
+  engelVar = false,
+  surveyCip = null,
+  uyumsuz = false,
+} = {}) {
   const var_ = new Set();
   if (eslesmeYok) var_.add('ESLESME_YOK');
   if (engelVar) var_.add('ENGEL');
@@ -580,7 +693,7 @@ function planHash({ itemId, from, fromT, to, toT, kaynakData, hedefSurveyHash, h
 // olmadan kalici olmaz (AWX tuzagi), bu yuzden once spec.
 // ---------------------------------------------------------------------------
 function parolaTemizle(spec) {
-  return specListesi(spec).map((f) => (f && f.type === 'password' ? { ...f, default: '' } : f));
+  return specListesi(spec).map((f) => (f?.type === 'password' ? { ...f, default: '' } : f));
 }
 
 /**
@@ -593,13 +706,13 @@ function parolaTemizle(spec) {
 function parolaHazirla(spec, hedefOnceki) {
   const eski = new Map(
     specListesi(hedefOnceki)
-      .filter((f) => f && f.type === 'password' && f.variable)
+      .filter((f) => f?.type === 'password' && f.variable)
       .map((f) => [String(f.variable), f]),
   );
   const korunan = [];
   const elle = [];
   const out = specListesi(spec).map((f) => {
-    if (!f || f.type !== 'password') return f;
+    if (f?.type !== 'password') return f;
     const h = eski.get(String(f.variable));
     if (h && typeof h.default === 'string' && h.default !== '') {
       korunan.push(String(f.variable));
@@ -611,16 +724,22 @@ function parolaHazirla(spec, hedefOnceki) {
   return { spec: out, korunan, elle };
 }
 
-async function surveyYaz(istek, templateId, spec, { enable = true, name = '', description = '' } = {}) {
+async function surveyYaz(
+  istek,
+  templateId,
+  spec,
+  { enable = true, name = '', description = '' } = {},
+) {
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   // Hedefin su anki spec'i parola varsayilanlarini korumak icin okunur. 404 = survey yok;
   // baska hata FIRLATILIR (bilinmeyen hedefe kor yazim yok).
   let hedefOnceki = [];
   try {
     hedefOnceki = specListesi(await istek('GET', `/api/v2/job_templates/${id}/survey_spec/`));
   } catch (err) {
-    if (!(err && err.status === 404)) throw err;
+    if (!(err?.status === 404)) throw err;
   }
   const { spec: temiz, korunan, elle } = parolaHazirla(spec, hedefOnceki);
   await istek('POST', `/api/v2/job_templates/${id}/survey_spec/`, {
@@ -647,7 +766,8 @@ async function surveyYaz(istek, templateId, spec, { enable = true, name = '', de
 
 async function surveyKapat(istek, templateId) {
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   await istek('PATCH', `/api/v2/job_templates/${id}/`, { survey_enabled: false });
   const detail = await istek('GET', `/api/v2/job_templates/${id}/`);
   const geri = await istek('GET', `/api/v2/job_templates/${id}/survey_spec/`).catch(() => null);
@@ -748,15 +868,21 @@ END CATCH`;
 
 /** Transaction hatasi -> { status, message } ya da null (beklenmeyen hata). */
 function tasimaHatasi(err) {
-  const m = String(((err?.number ?? '')) || '') + ' ' + String((err?.message) || '');
-  if (/ss_tasima_cas|ss_geri_al_cas/.test(m)) return { status: 409, message: 'Kart siz bakarken değişti; raporu yenileyin.' };
+  const m = String((err?.number ?? '') || '') + ' ' + String(err?.message || '');
+  if (/ss_tasima_cas|ss_geri_al_cas/.test(m))
+    return { status: 409, message: 'Kart siz bakarken değişti; raporu yenileyin.' };
   if (/ss_tasima_engel_smart|ss_geri_al_engel_smart/.test(m))
     return { status: 409, message: `Onay bekleyen Smart bileti var. ${ENGELLER[0].ipucu}` };
-  if (/ss_tasima_engel_oco|ss_geri_al_engel_oco/.test(m)) return { status: 409, message: `Zamanlanmış OCO başlatması var. ${ENGELLER[1].ipucu}` };
-  if (/ss_tasima_kaynak_degisti/.test(m)) return { status: 409, message: 'Kaynak ayarları siz bakarken değişti; raporu yenileyin.' };
-  if (/ss_geri_al_kayit/.test(m)) return { status: 409, message: 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.' };
-  if (/UX_ss_migrations_acik/.test(m)) return { status: 409, message: 'Bu servis için başka bir taşıma açık.' };
-  if (/2627|2601|duplicate|UNIQUE/i.test(m)) return { status: 409, message: 'Hedef template başka bir servise bağlandı.' };
+  if (/ss_tasima_engel_oco|ss_geri_al_engel_oco/.test(m))
+    return { status: 409, message: `Zamanlanmış OCO başlatması var. ${ENGELLER[1].ipucu}` };
+  if (/ss_tasima_kaynak_degisti/.test(m))
+    return { status: 409, message: 'Kaynak ayarları siz bakarken değişti; raporu yenileyin.' };
+  if (/ss_geri_al_kayit/.test(m))
+    return { status: 409, message: 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.' };
+  if (/UX_ss_migrations_acik/.test(m))
+    return { status: 409, message: 'Bu servis için başka bir taşıma açık.' };
+  if (/2627|2601|duplicate|UNIQUE/i.test(m))
+    return { status: 409, message: 'Hedef template başka bir servise bağlandı.' };
   return null;
 }
 
@@ -810,14 +936,17 @@ function kayitSatiri(r) {
 function istemciKaydi(k) {
   if (!k) return null;
   const { onceki, uygulanan, hedefSurveyOnceki, ...geri } = k;
-  const anahtarlar = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.keys(o).sort((a, b) => Number(a > b) - Number(a < b)) : []);
+  const anahtarlar = (o) =>
+    o && typeof o === 'object' && !Array.isArray(o)
+      ? Object.keys(o).sort((a, b) => Number(a > b) - Number(a < b))
+      : [];
   return {
     ...geri,
     ozet: {
       hedefOncekiAyarAlanlari: anahtarlar(onceki?.hedefCustom),
       uygulananAyarAlanlari: anahtarlar(uygulanan?.kaynakCustom),
-      kaynakCustomHash: (uygulanan?.kaynakCustomHash) || null,
-      hedefCustomHash: (uygulanan?.hedefCustomHash) || null,
+      kaynakCustomHash: uygulanan?.kaynakCustomHash || null,
+      hedefCustomHash: uygulanan?.hedefCustomHash || null,
       hedefSurveyOncekiVar: !!hedefSurveyOnceki,
     },
   };
@@ -832,11 +961,12 @@ function istemciKaydi(k) {
 function kartBagIhlalleri(items, tasinanlar) {
   const bekl = new Map();
   for (const r of Array.isArray(tasinanlar) ? tasinanlar : []) {
-    if (r?.item_id != null) bekl.set(String(r.item_id), [Number(r.to_server), Number(r.to_template)]);
+    if (r?.item_id != null)
+      bekl.set(String(r.item_id), [Number(r.to_server), Number(r.to_template)]);
   }
   const out = [];
   for (const i of Array.isArray(items) ? items : []) {
-    const b = (bekl.get(String(i?.id)) ?? null);
+    const b = bekl.get(String(i?.id)) ?? null;
     if (!b) continue;
     if (Number(i.awxServerId) !== b[0] || Number(i.awxTemplateId) !== b[1])
       out.push({
@@ -871,8 +1001,15 @@ function alanFarki(once, simdi) {
   const a = once && typeof once === 'object' ? once : {};
   const b = simdi && typeof simdi === 'object' ? simdi : {};
   const out = [];
-  for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort((a, b) => Number(a > b) - Number(a < b))) {
-    if (kararliJson(a[k]) !== kararliJson(b[k])) out.push({ alan: k, once: a[k] === undefined ? null : a[k], simdi: b[k] === undefined ? null : b[k] });
+  for (const k of [...new Set([...Object.keys(a), ...Object.keys(b)])].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  )) {
+    if (kararliJson(a[k]) !== kararliJson(b[k]))
+      out.push({
+        alan: k,
+        once: a[k] === undefined ? null : a[k],
+        simdi: b[k] === undefined ? null : b[k],
+      });
   }
   return out;
 }
@@ -889,17 +1026,20 @@ function oncekiBaglariEkle(items, gocler) {
     if (!(sn >= 0) || !(tn > 0)) return;
     if (!baglar.has(id)) baglar.set(id, []);
     const l = baglar.get(id);
-    if (!l.some((b) => b.awxServerId === sn && b.awxTemplateId === tn)) l.push({ awxServerId: sn, awxTemplateId: tn });
+    if (!l.some((b) => b.awxServerId === sn && b.awxTemplateId === tn))
+      l.push({ awxServerId: sn, awxTemplateId: tn });
   };
   for (const g of Array.isArray(gocler) ? gocler : []) {
-    if (!g || g.item_id == null) continue;
+    if (g?.item_id == null) continue;
     const id = String(g.item_id);
-    if (g.status === 'TASINDI' || g.status === 'GERI_ALINDI') ekle(id, g.from_server, g.from_template);
+    if (g.status === 'TASINDI' || g.status === 'GERI_ALINDI')
+      ekle(id, g.from_server, g.from_template);
     if (g.status === 'GERI_ALINDI') ekle(id, g.to_server, g.to_template);
   }
   return (Array.isArray(items) ? items : []).map((i) => {
     const l = (baglar.get(String(i.id)) || []).filter(
-      (b) => !(b.awxServerId === Number(i.awxServerId) && b.awxTemplateId === Number(i.awxTemplateId)),
+      (b) =>
+        !(b.awxServerId === Number(i.awxServerId) && b.awxTemplateId === Number(i.awxTemplateId)),
     );
     return l.length ? { ...i, oncekiBaglar: l } : i;
   });

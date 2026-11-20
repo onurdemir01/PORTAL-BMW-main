@@ -17,6 +17,8 @@
 //      "kaydettim" sanir, production reddedilmeye devam eder (en bastaki sorun).
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -27,7 +29,10 @@ const OPSX = path.join(__dirname, '..');
 const SRC = path.join(__dirname, '..', '..', '..', 'src');
 const IDX = fs.readFileSync(path.join(OPSX, 'index.cjs'), 'utf8');
 const PAGE = fs.readFileSync(path.join(SRC, 'components', 'opsx', 'OpsXWizardPage.tsx'), 'utf8');
-const MODAL = fs.readFileSync(path.join(SRC, 'components', 'opsx', 'OpsXSmartConfigModal.tsx'), 'utf8');
+const MODAL = fs.readFileSync(
+  path.join(SRC, 'components', 'opsx', 'OpsXSmartConfigModal.tsx'),
+  'utf8',
+);
 
 // Sahte DB: tek bir blob satiri tutar. GERCEK sorgu metnini gorur, boylece "hangi
 // bolumu yazdi" sorusu olculebilir — her sorguya basarili demek bekciyi kor birakirdi.
@@ -42,7 +47,9 @@ function konfigIle(baslangicJson, fn) {
   mod.exports = {
     query: async (sql, params = []) => {
       if (/^\s*SELECT/i.test(sql)) {
-        return durum.data == null ? { rows: [], rowCount: 0 } : { rows: [{ data: durum.data }], rowCount: 1 };
+        return durum.data == null
+          ? { rows: [], rowCount: 0 }
+          : { rows: [{ data: durum.data }], rowCount: 1 };
       }
       if (/^\s*UPDATE/i.test(sql)) {
         if (durum.data == null) return { rows: [], rowCount: 0 };
@@ -61,8 +68,10 @@ function konfigIle(baslangicJson, fn) {
   delete require.cache[cfgPath];
 
   const geri = () => {
-    if (kayitliDb) require.cache[dbPath] = kayitliDb; else delete require.cache[dbPath];
-    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
+    if (kayitliDb) require.cache[dbPath] = kayitliDb;
+    else delete require.cache[dbPath];
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg;
+    else delete require.cache[cfgPath];
   };
   return Promise.resolve(fn(require(cfgPath), durum)).finally(geri);
 }
@@ -81,9 +90,16 @@ test('SC1 uclar ADMIN gerektirir ve requireAdmin fallback DENY', async () => {
     'PUT /smart-config admin gerektirmiyor',
   );
   // Auth modulu yuklenemezse admin guard'i KAPALI kalir (403), requireAuth'a DUSMEZ.
-  const blok = IDX.slice(IDX.indexOf('let requireAdmin'), IDX.indexOf('// OpsX sayfasi kullaniciya kapaliysa'));
-  assert.match(blok, /let requireAdmin = \(req, res, next\) =>\s*\n?\s*res\.status\(403\)/, 'requireAdmin fallback DENY degil');
-  assert.ok(!/requireAdmin = requireAuth/.test(IDX), 'requireAdmin requireAuth\'a baglanmis');
+  const blok = IDX.slice(
+    IDX.indexOf('let requireAdmin'),
+    IDX.indexOf('// OpsX sayfasi kullaniciya kapaliysa'),
+  );
+  assert.match(
+    blok,
+    /let requireAdmin = \(req, res, next\) =>\s*\n?\s*res\.status\(403\)/,
+    'requireAdmin fallback DENY degil',
+  );
+  assert.ok(!/requireAdmin = requireAuth/.test(IDX), "requireAdmin requireAuth'a baglanmis");
 });
 
 test('SC2 integrationKey DEGERI istemciye HIC donmez', async () => {
@@ -97,28 +113,41 @@ test('SC2 integrationKey DEGERI istemciye HIC donmez', async () => {
     assert.equal(pub.legacy.flowKey, 'F-L');
   });
   // Okuma ucu smartPublic KULLANMALI; ham `smart` nesnesini dondurmek token'i sizdirirdi.
-  const getBlok = IDX.slice(IDX.indexOf("app.get('/api/opsx/smart-config'"), IDX.indexOf("app.put(\n    '/api/opsx/smart-config'"));
+  const getBlok = IDX.slice(
+    IDX.indexOf("app.get('/api/opsx/smart-config'"),
+    IDX.indexOf("app.put(\n    '/api/opsx/smart-config'"),
+  );
   assert.match(getBlok, /smart:\s*cfg\.smartPublic\(/, 'okuma ucu smartPublic kullanmiyor');
   assert.ok(!/smart:\s*smart\b/.test(getBlok), 'ham smart nesnesi donduruluyor');
 });
 
 test('SC3 denetim kaydina DEGER yazilmaz, yalniz "dolu mu" bayragi', () => {
-  const blok = IDX.slice(IDX.indexOf("'opsx_smart_config_save'"), IDX.indexOf("res.json({ ok: true, smart: cfg.smartPublic(config)"));
+  const blok = IDX.slice(
+    IDX.indexOf("'opsx_smart_config_save'"),
+    IDX.indexOf('res.json({ ok: true, smart: cfg.smartPublic(config)'),
+  );
   assert.match(blok, /flowKeySet: Boolean\(/, 'denetimde bayrak yok');
   assert.match(blok, /integrationKeySet: Boolean\(/, 'denetimde integrationKey bayragi yok');
   // Degerin kendisi JSON'a girmemeli
-  assert.ok(!/config\[p\]\?\.integrationKey\s*[,}]/.test(blok), 'denetim kaydina token DEGERI yaziliyor');
+  assert.ok(
+    !/config\[p\]\?\.integrationKey\s*[,}]/.test(blok),
+    'denetim kaydina token DEGERI yaziliyor',
+  );
   assert.ok(!/detail: JSON\.stringify\(config\)/.test(blok), 'tum yapilandirma denetime yaziliyor');
 });
 
 test('SC4 bos integrationKey "degistirmedim" demektir, "sil" DEMEZ', async () => {
   // Okuma yolu degeri hic dondurmedigi icin panel onu geri gonderemez. Bos gelmesi
   // silme istegi sayilirsa, metadata eslemesini degistiren admin token'i de silerdi.
-  const baslangic = JSON.stringify({ smart: { legacy: { flowKey: 'F-1', metadataFields: 'A: 1', integrationKey: 'KORU-BENI' } } });
+  const baslangic = JSON.stringify({
+    smart: { legacy: { flowKey: 'F-1', metadataFields: 'A: 1', integrationKey: 'KORU-BENI' } },
+  });
   await konfigIle(baslangic, async (cfg, durum) => {
-    await cfg.saveSmartConfig({ legacy: { flowKey: 'F-2', metadataFields: 'A: 2', integrationKey: '' } });
+    await cfg.saveSmartConfig({
+      legacy: { flowKey: 'F-2', metadataFields: 'A: 2', integrationKey: '' },
+    });
     const yeni = JSON.parse(durum.data);
-    assert.equal(yeni.smart.legacy.integrationKey, 'KORU-BENI', 'bos deger token\'i SILDI');
+    assert.equal(yeni.smart.legacy.integrationKey, 'KORU-BENI', "bos deger token'i SILDI");
     assert.equal(yeni.smart.legacy.flowKey, 'F-2');
     assert.equal(yeni.smart.legacy.metadataFields, 'A: 2');
   });
@@ -128,7 +157,12 @@ test('SC5 Smart kaydi KOMSU bolumleri (parametre adlari) EZMEZ', async () => {
   // Ayni blob'da OpsX'in AWX parametre adlari da duruyor. Kosulsuz yazim, job'larin
   // yanlis extra_vars anahtarlariyla kosmasi demekti.
   const baslangic = JSON.stringify({
-    legacy: { applicationKey: 'ozel_app', operationKey: 'ozel_op', extraVars: 'x: 1', separator: ';' },
+    legacy: {
+      applicationKey: 'ozel_app',
+      operationKey: 'ozel_op',
+      extraVars: 'x: 1',
+      separator: ';',
+    },
     openshift: { ocClusterKey: 'ozel_cluster', ocInputKey: 'ozel_input' },
   });
   await konfigIle(baslangic, async (cfg, durum) => {
@@ -142,11 +176,13 @@ test('SC5 Smart kaydi KOMSU bolumleri (parametre adlari) EZMEZ', async () => {
 });
 
 test('SC6 parametre kaydi SMART bolumunu EZMEZ (ters yon)', async () => {
-  const baslangic = JSON.stringify({ smart: { legacy: { flowKey: 'F-KORU', metadataFields: 'A: 1', integrationKey: 'T' } } });
+  const baslangic = JSON.stringify({
+    smart: { legacy: { flowKey: 'F-KORU', metadataFields: 'A: 1', integrationKey: 'T' } },
+  });
   await konfigIle(baslangic, async (cfg, durum) => {
     await cfg.saveConfig({ legacy: { applicationKey: 'app2' } });
     const yeni = JSON.parse(durum.data);
-    assert.equal(yeni.smart?.legacy?.flowKey, 'F-KORU', 'parametre kaydi Smart flow key\'i sildi');
+    assert.equal(yeni.smart?.legacy?.flowKey, 'F-KORU', "parametre kaydi Smart flow key'i sildi");
     assert.equal(yeni.smart?.legacy?.integrationKey, 'T');
   });
 });
@@ -159,7 +195,10 @@ test('SC7 GECERSIZ desenli anahtar SESSIZCE atlanmaz, cagirana bildirilir', asyn
       openshift: { flowKey: '', metadataFields: '', integrationKey: 'kotu token!' },
     });
     assert.ok(reddedilen.includes('legacy.flowKey'), 'gecersiz flowKey bildirilmedi');
-    assert.ok(reddedilen.includes('openshift.integrationKey'), 'gecersiz integrationKey bildirilmedi');
+    assert.ok(
+      reddedilen.includes('openshift.integrationKey'),
+      'gecersiz integrationKey bildirilmedi',
+    );
     assert.equal(config.legacy.flowKey, '', 'gecersiz deger KAYDEDILDI');
     assert.equal(config.was.flowKey, 'IYI-KEY_1.2:3', 'gecerli deger kaydedilmedi');
     // Diske de gecersiz deger yazilmamali
@@ -167,10 +206,14 @@ test('SC7 GECERSIZ desenli anahtar SESSIZCE atlanmaz, cagirana bildirilir', asyn
   });
 });
 
-test('SC8 bos flow key ACIK bir silme istegidir (kapi fail-closed\'a doner)', async () => {
-  const baslangic = JSON.stringify({ smart: { legacy: { flowKey: 'F-1', metadataFields: '', integrationKey: '' } } });
+test("SC8 bos flow key ACIK bir silme istegidir (kapi fail-closed'a doner)", async () => {
+  const baslangic = JSON.stringify({
+    smart: { legacy: { flowKey: 'F-1', metadataFields: '', integrationKey: '' } },
+  });
   await konfigIle(baslangic, async (cfg) => {
-    const { config, reddedilen } = await cfg.saveSmartConfig({ legacy: { flowKey: '', metadataFields: '' } });
+    const { config, reddedilen } = await cfg.saveSmartConfig({
+      legacy: { flowKey: '', metadataFields: '' },
+    });
     assert.equal(config.legacy.flowKey, '', 'flow key silinemedi');
     assert.deepEqual(reddedilen, [], 'bos deger gecersiz sayildi');
   });
@@ -179,14 +222,16 @@ test('SC8 bos flow key ACIK bir silme istegidir (kapi fail-closed\'a doner)', as
 test('SC9 metadata eslemesi UZUNLUK siniri tasir (govde sismesi)', async () => {
   await konfigIle(null, async (cfg) => {
     const uzun = 'A'.repeat(cfg.SMART_METADATA_MAX + 500);
-    const { config } = await cfg.saveSmartConfig({ legacy: { flowKey: 'F-1', metadataFields: uzun } });
+    const { config } = await cfg.saveSmartConfig({
+      legacy: { flowKey: 'F-1', metadataFields: uzun },
+    });
     assert.equal(config.legacy.metadataFields.length, cfg.SMART_METADATA_MAX);
   });
 });
 
 test('SC10 ekran: dugme ADMINE OZEL, OCO yoklugu YAZILI, kod TEK kopya', () => {
   // Dugme admin kontrolu arkasinda olmali (kozmetik kapi; uclar ayrica requireAdmin).
-  assert.match(PAGE, /const admin = user\?\.role === "Admin"/, 'admin tespiti yok');
+  assert.match(PAGE, esnek(/const admin = user\?\.role === "Admin"/), 'admin tespiti yok');
   assert.match(PAGE, /\{admin && \(\s*\n?\s*<button/, 'dugme admin kontrolu arkasinda degil');
   assert.match(PAGE, /OpsXSmartConfigModal/, 'pencere sayfaya baglanmamis');
 
@@ -196,17 +241,28 @@ test('SC10 ekran: dugme ADMINE OZEL, OCO yoklugu YAZILI, kod TEK kopya', () => {
   assert.match(MODAL, /OCO numarası\s*\n?\s*toplamıyor/, 'OCO yoklugunun SEBEBI yazili degil');
 
   // Flow key bossa production'in REDDEDILDIGI yazili olmali (fail-closed seffafligi).
-  assert.match(MODAL, /Flow Key boşsa production işlem reddedilir/, 'fail-closed davranis yazili degil');
+  assert.match(
+    MODAL,
+    /Flow Key boşsa production işlem reddedilir/,
+    'fail-closed davranis yazili degil',
+  );
 
   // "Alanlari Getir" tablosu ve taslak uretici PAYLASILAN modulden gelmeli. Ikinci bir
   // kopya, bu depoda tekrar tekrar yasanan sinif: biri duzelir, oteki eski kalir.
-  assert.match(MODAL, /from '@\/components\/self_service\/smartMetadata'/, 'paylasilan modul kullanilmiyor');
+  assert.match(
+    MODAL,
+    /from '@\/components\/self_service\/smartMetadata'/,
+    'paylasilan modul kullanilmiyor',
+  );
   assert.ok(!/function buildMetadataTemplate/.test(MODAL), 'taslak uretici IKINCI KEZ yazilmis');
   assert.ok(!/<thead>/.test(MODAL), 'alan tablosu IKINCI KEZ yazilmis');
 
-  const ss = fs.readFileSync(path.join(SRC, 'components', 'self_service', 'FieldOverridesModal.tsx'), 'utf8');
+  const ss = fs.readFileSync(
+    path.join(SRC, 'components', 'self_service', 'FieldOverridesModal.tsx'),
+    'utf8',
+  );
   assert.match(ss, /from '\.\/smartMetadata'/, 'Self Service paylasilan module gecmemis');
-  assert.ok(!/function buildMetadataTemplate/.test(ss), 'Self Service\'te yerel kopya kalmis');
+  assert.ok(!/function buildMetadataTemplate/.test(ss), "Self Service'te yerel kopya kalmis");
 });
 
 test('SC11 SMART_KEY_RE bos diziyi REDDEDER (SC4 bu varsayima dayaniyor)', async () => {
@@ -221,7 +277,11 @@ test('SC11 SMART_KEY_RE bos diziyi REDDEDER (SC4 bu varsayima dayaniyor)', async
     assert.equal(cfg.SMART_KEY_RE.test(''), false, 'desen bos diziyi kabul ediyor');
     assert.equal(cfg.SMART_KEY_RE.test('   '), false, 'desen boslugu kabul ediyor');
     assert.equal(cfg.SMART_KEY_RE.test('A'.repeat(201)), false, 'uzunluk siniri yok');
-    assert.equal(cfg.SMART_KEY_RE.test('rff-request-flow.v1:2_3'), true, 'gercek flow adi reddedildi');
+    assert.equal(
+      cfg.SMART_KEY_RE.test('rff-request-flow.v1:2_3'),
+      true,
+      'gercek flow adi reddedildi',
+    );
   });
 });
 
@@ -240,8 +300,14 @@ test('SC11 SMART_KEY_RE bos diziyi REDDEDER (SC4 bu varsayima dayaniyor)', async
 
 test('SC12 VARSAYILAN ETKIN: kayit yoksa da onay istenir', async () => {
   await konfigIle(null, async (cfg) => {
-    assert.equal(cfg.DEFAULTS.smart.legacy.enabled, true, 'varsayilan KAPALI - deploy onayi kaldirirdi');
-    const { config } = await cfg.saveSmartConfig({ legacy: { flowKey: 'F-1', metadataFields: '' } });
+    assert.equal(
+      cfg.DEFAULTS.smart.legacy.enabled,
+      true,
+      'varsayilan KAPALI - deploy onayi kaldirirdi',
+    );
+    const { config } = await cfg.saveSmartConfig({
+      legacy: { flowKey: 'F-1', metadataFields: '' },
+    });
     assert.equal(config.legacy.enabled, true, 'enabled gonderilmeyince kapandi');
     assert.equal(config.was.enabled, true);
     assert.equal(config.openshift.enabled, true);
@@ -249,7 +315,9 @@ test('SC12 VARSAYILAN ETKIN: kayit yoksa da onay istenir', async () => {
 });
 
 test('SC13 KISMI govde kapiyi KAPATAMAZ (yalniz gercek boolean)', async () => {
-  const baslangic = JSON.stringify({ smart: { legacy: { enabled: true, flowKey: 'F-1', metadataFields: '', integrationKey: '' } } });
+  const baslangic = JSON.stringify({
+    smart: { legacy: { enabled: true, flowKey: 'F-1', metadataFields: '', integrationKey: '' } },
+  });
   await konfigIle(baslangic, async (cfg) => {
     // Alan HIC yok -> degismez
     let r = await cfg.saveSmartConfig({ legacy: { flowKey: 'F-2', metadataFields: '' } });
@@ -257,10 +325,16 @@ test('SC13 KISMI govde kapiyi KAPATAMAZ (yalniz gercek boolean)', async () => {
     // Dizge/sayi gibi truthy-falsy degerler YOK SAYILIR
     for (const v of ['false', '', 0, null, 'off']) {
       r = await cfg.saveSmartConfig({ legacy: { enabled: v, flowKey: 'F-2', metadataFields: '' } });
-      assert.equal(r.config.legacy.enabled, true, `boolean olmayan deger (${String(v)}) kapiyi kapatti`);
+      assert.equal(
+        r.config.legacy.enabled,
+        true,
+        `boolean olmayan deger (${String(v)}) kapiyi kapatti`,
+      );
     }
     // ACIK false kapatir
-    r = await cfg.saveSmartConfig({ legacy: { enabled: false, flowKey: 'F-2', metadataFields: '' } });
+    r = await cfg.saveSmartConfig({
+      legacy: { enabled: false, flowKey: 'F-2', metadataFields: '' },
+    });
     assert.equal(r.config.legacy.enabled, false, 'acik false kapatmadi');
   });
 });
@@ -281,7 +355,11 @@ test('SC15 YAPILANDIRMA OKUNAMAZSA kapi ETKIN sayilir (fail-closed)', async () =
   const kayitliCfg = require.cache[cfgPath];
   const kayitliGa = require.cache[gaPath];
   const mod = new Module(cfgPath, null);
-  mod.exports = { getConfig: async () => { throw new Error('DB yok'); } };
+  mod.exports = {
+    getConfig: async () => {
+      throw new Error('DB yok');
+    },
+  };
   mod.loaded = true;
   require.cache[cfgPath] = mod;
   delete require.cache[gaPath];
@@ -293,8 +371,10 @@ test('SC15 YAPILANDIRMA OKUNAMAZSA kapi ETKIN sayilir (fail-closed)', async () =
     assert.equal(await ga.smartOnayiEtkinMi('openshift'), true);
   } finally {
     console.warn = eskiWarn;
-    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
-    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg;
+    else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa;
+    else delete require.cache[gaPath];
   }
 });
 
@@ -306,13 +386,23 @@ test('SC16 ekran: UC durum ayri gosterilir, KAPALI uyarisi ve denetim izi yazili
   assert.match(MODAL, /onaysız ve Smart'ta kayıtsız/, 'kapatmanin sonucu ekranda yazili degil');
   assert.match(MODAL, /opsx_prod_onaysiz_calisti/, 'denetim izi ekranda yazili degil');
   // Anahtar kapaliyken "REDDEDILIR" uyarisi GOSTERILMEMELI (yanlis olur: islem kosar)
-  assert.match(MODAL, /guncel\.enabled && \(\s*\n?\s*<p className="text-\[11px\] text-red-600/,
-    'Flow Key uyarisi kapi kapaliyken de gosteriliyor');
+  assert.match(
+    MODAL,
+    /guncel\.enabled && \(\s*\n?\s*<p className="text-\[11px\] text-red-600/,
+    'Flow Key uyarisi kapi kapaliyken de gosteriliyor',
+  );
 
   // Kapi kapaliyken SESSIZ gecmemeli: denetim kaydi kapiya GOMULU olmali.
   const ga = fs.readFileSync(path.join(OPSX, 'prod-approval.cjs'), 'utf8');
-  const blok = ga.slice(ga.indexOf('if (!(await smartOnayiEtkinMi('), ga.indexOf('const smartApproval = await'));
-  assert.match(blok, /auditPortal\(req, 'opsx_prod_onaysiz_calisti'/, 'onaysiz calisma denetime yazilmiyor');
+  const blok = ga.slice(
+    ga.indexOf('if (!(await smartOnayiEtkinMi('),
+    ga.indexOf('const smartApproval = await'),
+  );
+  assert.match(
+    blok,
+    /auditPortal\(req, 'opsx_prod_onaysiz_calisti'/,
+    'onaysiz calisma denetime yazilmiyor',
+  );
   assert.match(blok, /return \{ proceed: true \}/, 'kapi kapaliyken islem gecmiyor');
 });
 
@@ -324,13 +414,17 @@ test('SC17 kapi KAPALIYKEN denetim kaydi GERCEKTEN yazilir (davranissal)', async
   const auditPath = require.resolve('../../audit/index.cjs');
   const gaPath = require.resolve('../prod-approval.cjs');
   const kayitli = {
-    cfg: require.cache[cfgPath], audit: require.cache[auditPath], ga: require.cache[gaPath],
+    cfg: require.cache[cfgPath],
+    audit: require.cache[auditPath],
+    ga: require.cache[gaPath],
   };
 
   const kayitlar = [];
   const cfgMod = new Module(cfgPath, null);
   cfgMod.exports = {
-    getConfig: async () => ({ smart: { legacy: { enabled: false, flowKey: '', metadataFields: '', integrationKey: '' } } }),
+    getConfig: async () => ({
+      smart: { legacy: { enabled: false, flowKey: '', metadataFields: '', integrationKey: '' } },
+    }),
   };
   cfgMod.loaded = true;
   require.cache[cfgPath] = cfgMod;
@@ -362,8 +456,13 @@ test('SC17 kapi KAPALIYKEN denetim kaydi GERCEKTEN yazilir (davranissal)', async
     assert.equal(d.islem, 'OpsX Legacy restart');
     assert.match(d.uretimSebebi, /ortam=prod/, 'uretim sebebi kayda girmedi');
   } finally {
-    for (const [k2, pth] of [['cfg', cfgPath], ['audit', auditPath], ['ga', gaPath]]) {
-      if (kayitli[k2]) require.cache[pth] = kayitli[k2]; else delete require.cache[pth];
+    for (const [k2, pth] of [
+      ['cfg', cfgPath],
+      ['audit', auditPath],
+      ['ga', gaPath],
+    ]) {
+      if (kayitli[k2]) require.cache[pth] = kayitli[k2];
+      else delete require.cache[pth];
     }
   }
 });
@@ -377,7 +476,9 @@ test('SC18 kapi ETKINken onaysiz GECMEZ (SC17 ters yonu)', async () => {
   const kayitliGa = require.cache[gaPath];
   const mod = new Module(cfgPath, null);
   mod.exports = {
-    getConfig: async () => ({ smart: { legacy: { enabled: true, flowKey: '', metadataFields: '', integrationKey: '' } } }),
+    getConfig: async () => ({
+      smart: { legacy: { enabled: true, flowKey: '', metadataFields: '', integrationKey: '' } },
+    }),
   };
   mod.loaded = true;
   require.cache[cfgPath] = mod;
@@ -387,24 +488,37 @@ test('SC18 kapi ETKINken onaysiz GECMEZ (SC17 ters yonu)', async () => {
     delete process.env.OPSX_SMART_FLOW_KEY_LEGACY;
     const ga = require(gaPath);
     const k = await ga.opsxProductionKapisi({
-      platform: 'legacy', serverId: 1, templateId: 9, extraVars: {}, limitValue: '',
+      platform: 'legacy',
+      serverId: 1,
+      templateId: 9,
+      extraVars: {},
+      limitValue: '',
       etiketler: [{ alan: 'ortam', deger: 'prod' }],
-      req: { session: { user: {} } }, islemAdi: 'OpsX Legacy restart',
+      req: { session: { user: {} } },
+      islemAdi: 'OpsX Legacy restart',
     });
     assert.equal(k.proceed, false, 'etkin kapi onaysiz gecirdi');
     assert.equal(k.body.blocked, 'opsx_prod_approval_unconfigured');
   } finally {
     process.env = eskiEnv;
-    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
-    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg;
+    else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa;
+    else delete require.cache[gaPath];
   }
 });
 
 test('SC12 entegrasyon anahtari base64 olabilir (= + / gecerli); bosluk ve satir sonu YASAK', async () => {
   // Kullanici (2026-10-12): "= karakteri de gecerli olmali"
   const cfg = require('../config.cjs');
-  for (const ok of ['QUJDREVGRw==', 'a+b/c=', 'rff-token.v1:abc_DEF~']) assert.equal(cfg.SMART_TOKEN_RE.test(ok), true, `gecerli token reddedildi: ${ok}`);
-  for (const kotu of ['abc def', 'abc\nX-Header: y', 'abc\r', '', 'a'.repeat(513)]) assert.equal(cfg.SMART_TOKEN_RE.test(kotu), false, `gecersiz token kabul edildi: ${JSON.stringify(kotu)}`);
+  for (const ok of ['QUJDREVGRw==', 'a+b/c=', 'rff-token.v1:abc_DEF~'])
+    assert.equal(cfg.SMART_TOKEN_RE.test(ok), true, `gecerli token reddedildi: ${ok}`);
+  for (const kotu of ['abc def', 'abc\nX-Header: y', 'abc\r', '', 'a'.repeat(513)])
+    assert.equal(
+      cfg.SMART_TOKEN_RE.test(kotu),
+      false,
+      `gecersiz token kabul edildi: ${JSON.stringify(kotu)}`,
+    );
   // Flow key deseni GEVSEMEDI
   assert.equal(cfg.SMART_KEY_RE.test('abc='), false, 'flow key deseni de gevsedi');
 });

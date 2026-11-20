@@ -39,8 +39,12 @@ test('taban normalize edilir: bastaki / eklenir, sondaki / atilir', () => {
 });
 
 test('MEVCUT sunucularin yollari DEGISMEZ (yan etki yok)', () => {
-  for (const p of ['/api/v2/tokens/', '/api/v2/ping/', '/api/v2/job_templates/?page_size=100',
-                   '/api/v2/jobs/42/stdout/?format=txt']) {
+  for (const p of [
+    '/api/v2/tokens/',
+    '/api/v2/ping/',
+    '/api/v2/job_templates/?page_size=100',
+    '/api/v2/jobs/42/stdout/?format=txt',
+  ]) {
     assert.strictEqual(mapApiPath(AWX, p), p);
     assert.strictEqual(mapApiPath(undefined, p), p, 'sunucu bilinmiyorsa da degismemeli');
     assert.strictEqual(mapApiPath({}, p), p, 'apiBase yoksa da degismemeli');

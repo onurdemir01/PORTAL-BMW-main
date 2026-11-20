@@ -16,14 +16,33 @@
 // ONCESI uyari; analizin "CPU-ms olculmedi (nginx olmayan hedef)" satiri da CPU'suz karar sayilir (CPU kademesi yazilmaz).
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ArrowsRightLeftIcon } from '@heroicons/react/24/outline';
-import { nginxLoadtestApi, sayiVeya, type NlKarsilastirma, type NlKosu, type NlProtokol } from '@/api/nginxLoadtestApi';
+import {
+  nginxLoadtestApi,
+  sayiVeya,
+  type NlKarsilastirma,
+  type NlKosu,
+  type NlProtokol,
+} from '@/api/nginxLoadtestApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { fmtDate, fmtNumber } from '@/utils/datetime';
 import { SM_BTN, TH_STIL, TON, smBtn } from '@/components/server_hub/retirementStil';
 import { Hap, UyariKutusu } from '@/components/server_hub/RetirementUi';
 import { Alan, Bolum, GIRDI, girdiStili } from './YukUi';
-import { NGINXSIZ_KARAR_NOTU, PROTOKOL_ETIKETI, farkMetni, gecerlilikBilgisi, hedefEtiketi, hedefNginxsiz, kademeMetni, kararBilgisi, kosuProtokolu, ondalik, yuzde, type AdimBirimi } from './yukTestiOrtak';
+import {
+  NGINXSIZ_KARAR_NOTU,
+  PROTOKOL_ETIKETI,
+  farkMetni,
+  gecerlilikBilgisi,
+  hedefEtiketi,
+  hedefNginxsiz,
+  kademeMetni,
+  kararBilgisi,
+  kosuProtokolu,
+  ondalik,
+  yuzde,
+  type AdimBirimi,
+} from './yukTestiOrtak';
 
 /** Tabloda gosterilen olculer (analiz.cjs FARK_ALANLARI'ndan); `iyi`: dusuk olan iyi mi. */
 const OLCULER: { k: string; ad: string; basamak: number; oran?: boolean; dusukIyi: boolean }[] = [
@@ -34,10 +53,12 @@ const OLCULER: { k: string; ad: string; basamak: number; oran?: boolean; dusukIy
   { k: 'host_cpu_ort', ad: 'Host CPU %', basamak: 0, dusukIyi: true },
 ];
 /** Secici metni; gecerlilik GECERLILIK tablosunun Turkce etiketiyle ("kısmen geçerli"; ham kod "kismi" DEGIL). */
-const kosuEtiketi = (k: NlKosu) => `#${k.id}${k.etiket ? ` · ${k.etiket}` : ''} · ${hedefEtiketi(k)}${k.hedefTuru === 'serbest' ? ' (serbest)' : ''}${k.motor === 'wrk' ? ' · wrk' : ''}${protokolAdi(k) === 'h2' ? ` · ${PROTOKOL_ETIKETI.h2}` : ''} · ${fmtDate(k.createdAt)}${k.gecerlilik && k.gecerlilik !== 'GECERLI' ? ` · ${gecerlilikBilgisi(k.gecerlilik)?.etiket}` : ''}`;
+const kosuEtiketi = (k: NlKosu) =>
+  `#${k.id}${k.etiket ? ` · ${k.etiket}` : ''} · ${hedefEtiketi(k)}${k.hedefTuru === 'serbest' ? ' (serbest)' : ''}${k.motor === 'wrk' ? ' · wrk' : ''}${protokolAdi(k) === 'h2' ? ` · ${PROTOKOL_ETIKETI.h2}` : ''} · ${fmtDate(k.createdAt)}${k.gecerlilik && k.gecerlilik !== 'GECERLI' ? ` · ${gecerlilikBilgisi(k.gecerlilik)?.etiket}` : ''}`;
 const motorAdi = (k: NlKosu) => (k.motor === 'wrk' ? 'wrk' : 'k6');
 /** Kosu satirinin protokolu (wrk her zaman HTTP/1.1; eski satir h1). */
-const protokolAdi = (k: Pick<NlKosu, 'motor' | 'protokol'>): NlProtokol => (k.motor === 'wrk' ? 'h1' : kosuProtokolu(k));
+const protokolAdi = (k: Pick<NlKosu, 'motor' | 'protokol'>): NlProtokol =>
+  k.motor === 'wrk' ? 'h1' : kosuProtokolu(k);
 
 export default function Karsilastir() {
   const [kosular, setKosular] = useState<NlKosu[] | null>(null);
@@ -51,7 +72,9 @@ export default function Karsilastir() {
   const [bekliyor, setBekliyor] = useState(false);
   // wrk kosularinin is parcacigi sayisi ve hiz tavani (liste satirinda parametre yok; ayrintidan bir kez okunur).
   // null: okunamadi (uyari gosterilmez).
-  const [wrkParam, setWrkParam] = useState<Record<number, { isParcacigi: number | null; tavanRps: number | null }>>({});
+  const [wrkParam, setWrkParam] = useState<
+    Record<number, { isParcacigi: number | null; tavanRps: number | null }>
+  >({});
   const istekNo = useRef(0);
 
   const yukle = useCallback(async () => {
@@ -64,35 +87,65 @@ export default function Karsilastir() {
       setListeHata(e instanceof Error ? e.message : String(e));
     }
   }, []);
-  useAsyncEffect(async (alive) => { if (alive()) await yukle(); }, [yukle]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await yukle();
+    },
+    [yukle],
+  );
 
   const refK = kosular?.find((k) => String(k.id) === ref) ?? null;
   const adayK = kosular?.find((k) => String(k.id) === aday) ?? null;
   const ikisiWrk = !!refK && !!adayK && refK.motor === 'wrk' && adayK.motor === 'wrk';
   // Iki wrk kosusu secildiyse is parcacigi ve hiz tavani ayrintidan okunur (karar oncesi uyari icin; karar sunucuda).
-  useAsyncEffect(async (alive) => {
-    if (!ikisiWrk || !refK || !adayK) return;
-    for (const id of [refK.id, adayK.id]) {
-      if (id in wrkParam) continue;
-      let w: { isParcacigi: number | null; tavanRps: number | null } = { isParcacigi: null, tavanRps: null };
-      try {
-        const p = (await nginxLoadtestApi.kosu(id)).kosu.parametreler;
-        w = { isParcacigi: sayiVeya(p?.is_parcacigi), tavanRps: sayiVeya(p?.tavan_rps) };
-      } catch { /* uyari gosterilmez; karar sunucuda yine VERI YOK der */ }
-      if (!alive()) return;
-      setWrkParam((m) => ({ ...m, [id]: w }));
-    }
-  }, [ikisiWrk, refK?.id, adayK?.id]);
-  const esik = (s: string) => (/^\d{1,2}(\.\d+)?$/.test(s.trim()) && Number(s) > 0 && Number(s) <= 50 ? Number(s) : null);
-  const hazir = !!refK && !!adayK && refK.id !== adayK.id && esik(esikCpu) != null && esik(esikP95) != null;
+  useAsyncEffect(
+    async (alive) => {
+      if (!ikisiWrk || !refK || !adayK) return;
+      for (const id of [refK.id, adayK.id]) {
+        if (id in wrkParam) continue;
+        let w: { isParcacigi: number | null; tavanRps: number | null } = {
+          isParcacigi: null,
+          tavanRps: null,
+        };
+        try {
+          const p = (await nginxLoadtestApi.kosu(id)).kosu.parametreler;
+          w = { isParcacigi: sayiVeya(p?.is_parcacigi), tavanRps: sayiVeya(p?.tavan_rps) };
+        } catch {
+          /* uyari gosterilmez; karar sunucuda yine VERI YOK der */
+        }
+        if (!alive()) return;
+        setWrkParam((m) => ({ ...m, [id]: w }));
+      }
+    },
+    [ikisiWrk, refK?.id, adayK?.id],
+  );
+  const esik = (s: string) =>
+    /^\d{1,2}(\.\d+)?$/.test(s.trim()) && Number(s) > 0 && Number(s) <= 50 ? Number(s) : null;
+  const hazir =
+    !!refK && !!adayK && refK.id !== adayK.id && esik(esikCpu) != null && esik(esikP95) != null;
   // Hedef karsilastirmasi etiketle (serbestte host yok: IP) ve hedef turuyla.
-  const farkliOrtam = refK && adayK && (hedefEtiketi(refK) !== hedefEtiketi(adayK) || refK.hedefTuru !== adayK.hedefTuru || refK.vhost !== adayK.vhost || refK.senaryoId !== adayK.senaryoId);
+  const farkliOrtam =
+    refK &&
+    adayK &&
+    (hedefEtiketi(refK) !== hedefEtiketi(adayK) ||
+      refK.hedefTuru !== adayK.hedefTuru ||
+      refK.vhost !== adayK.vhost ||
+      refK.senaryoId !== adayK.senaryoId);
   const farkliMotor = !!refK && !!adayK && motorAdi(refK) !== motorAdi(adayK);
   const wRef = refK ? wrkParam[refK.id] : undefined;
   const wAday = adayK ? wrkParam[adayK.id] : undefined;
-  const farkliIsParcacigi = ikisiWrk && wRef?.isParcacigi != null && wAday?.isParcacigi != null && wRef.isParcacigi !== wAday.isParcacigi;
-  const farkliTavan = ikisiWrk && wRef?.tavanRps != null && wAday?.tavanRps != null && wRef.tavanRps !== wAday.tavanRps;
-  const serbestVar = !!refK && !!adayK && (refK.hedefTuru === 'serbest' || adayK.hedefTuru === 'serbest');
+  const farkliIsParcacigi =
+    ikisiWrk &&
+    wRef?.isParcacigi != null &&
+    wAday?.isParcacigi != null &&
+    wRef.isParcacigi !== wAday.isParcacigi;
+  const farkliTavan =
+    ikisiWrk &&
+    wRef?.tavanRps != null &&
+    wAday?.tavanRps != null &&
+    wRef.tavanRps !== wAday.tavanRps;
+  const serbestVar =
+    !!refK && !!adayK && (refK.hedefTuru === 'serbest' || adayK.hedefTuru === 'serbest');
   const nginxsizVar = !!refK && !!adayK && (hedefNginxsiz(refK) || hedefNginxsiz(adayK));
   const farkliProtokol = !!refK && !!adayK && protokolAdi(refK) !== protokolAdi(adayK);
 
@@ -102,123 +155,358 @@ export default function Karsilastir() {
     setBekliyor(true);
     setHata('');
     try {
-      const r = await nginxLoadtestApi.karsilastir({ ref: refK.id, aday: adayK.id, esikCpu: esik(esikCpu) as number, esikP95: esik(esikP95) as number });
+      const r = await nginxLoadtestApi.karsilastir({
+        ref: refK.id,
+        aday: adayK.id,
+        esikCpu: esik(esikCpu) as number,
+        esikP95: esik(esikP95) as number,
+      });
       if (no === istekNo.current) setSonuc(r);
     } catch (e) {
-      if (no === istekNo.current) { setSonuc(null); setHata(e instanceof Error ? e.message : String(e)); }
+      if (no === istekNo.current) {
+        setSonuc(null);
+        setHata(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       if (no === istekNo.current) setBekliyor(false);
     }
   }
 
-  const gorunenOlculer = useMemo(() => OLCULER.filter((o) => sonuc?.tablo.some((t) => sayiVeya(t.ref?.[o.k]) != null || sayiVeya(t.aday?.[o.k]) != null)), [sonuc]);
+  const gorunenOlculer = useMemo(
+    () =>
+      OLCULER.filter((o) =>
+        sonuc?.tablo.some((t) => sayiVeya(t.ref?.[o.k]) != null || sayiVeya(t.aday?.[o.k]) != null),
+      ),
+    [sonuc],
+  );
   const karar = sonuc ? kararBilgisi(sonuc.karar) : null;
   // Kademe birimi referansin motoruyla (farkli motorda karar VERI YOK; tablo bos gelir).
   const birim: AdimBirimi = (sonuc?.ref.motor ?? refK?.motor) === 'wrk' ? 'bağlantı' : 'istek/sn';
   // CPU olculmediyse (bir taraf serbest ya da sunucu CPU'suz karar yolu: analiz.cjs "CPU olculmedi (...)" satiri)
   // "CPU kademesi" yazilmaz: karar p95 ve hata oranina gore verildi.
-  const cpuOlculmedi = !!sonuc && (sonuc.ref.hedefTuru === 'serbest' || sonuc.aday.hedefTuru === 'serbest' || serbestVar || nginxsizVar
-    || sonuc.ref.hedefNginx === false || sonuc.aday.hedefNginx === false || sonuc.nedenler.some((n) => n.startsWith('CPU olculmedi (') || n.startsWith('CPU-ms olculmedi (')));
+  const cpuOlculmedi =
+    !!sonuc &&
+    (sonuc.ref.hedefTuru === 'serbest' ||
+      sonuc.aday.hedefTuru === 'serbest' ||
+      serbestVar ||
+      nginxsizVar ||
+      sonuc.ref.hedefNginx === false ||
+      sonuc.aday.hedefNginx === false ||
+      sonuc.nedenler.some(
+        (n) => n.startsWith('CPU olculmedi (') || n.startsWith('CPU-ms olculmedi ('),
+      ));
   // Taraf protokolu: sunucu yaniti (yoksa secilen kosu satiri). Iki taraf HTTP/1.1 ise satir BIREBIR eskisi (yazilmaz).
-  const tarafProt = (t: 'ref' | 'aday'): NlProtokol => sonuc?.[t].protokol ?? ((t === 'ref' ? refK : adayK) ? protokolAdi((t === 'ref' ? refK : adayK) as NlKosu) : 'h1');
+  const tarafProt = (t: 'ref' | 'aday'): NlProtokol =>
+    sonuc?.[t].protokol ??
+    ((t === 'ref' ? refK : adayK) ? protokolAdi((t === 'ref' ? refK : adayK) as NlKosu) : 'h1');
   const protokolGoster = !!sonuc && (tarafProt('ref') === 'h2' || tarafProt('aday') === 'h2');
-  const tarafProtokolu = (t: 'ref' | 'aday') => (protokolGoster ? ` (${PROTOKOL_ETIKETI[tarafProt(t)]})` : '');
-  const secenekler = (haric: string) => (kosular || []).filter((k) => String(k.id) !== haric).map((k) => <option key={k.id} value={String(k.id)}>{kosuEtiketi(k)}</option>);
+  const tarafProtokolu = (t: 'ref' | 'aday') =>
+    protokolGoster ? ` (${PROTOKOL_ETIKETI[tarafProt(t)]})` : '';
+  const secenekler = (haric: string) =>
+    (kosular || [])
+      .filter((k) => String(k.id) !== haric)
+      .map((k) => (
+        <option key={k.id} value={String(k.id)}>
+          {kosuEtiketi(k)}
+        </option>
+      ));
 
   return (
     <div className="space-y-4">
-      <Bolum baslik="Karşılaştır" aciklama="Referans: değişiklikten önceki koşu. Aday: aynı hedef, vhost ve senaryoyla değişiklikten sonraki koşu. Karar yalnız geçerli adımlardan verilir.">
-        {listeHata && <div className="mb-3"><UyariKutusu ton="hata" rol="alert" baslik="Koşular okunamadı">{listeHata}</UyariKutusu></div>}
+      <Bolum
+        baslik="Karşılaştır"
+        aciklama="Referans: değişiklikten önceki koşu. Aday: aynı hedef, vhost ve senaryoyla değişiklikten sonraki koşu. Karar yalnız geçerli adımlardan verilir."
+      >
+        {listeHata && (
+          <div className="mb-3">
+            <UyariKutusu ton="hata" rol="alert" baslik="Koşular okunamadı">
+              {listeHata}
+            </UyariKutusu>
+          </div>
+        )}
         <div className="grid items-end gap-3 @lg/yuk:grid-cols-2 @5xl/yuk:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem_7rem_auto]">
           <Alan id="kar-ref" etiket="Referans koşu">
-            <select id="kar-ref" value={ref} onChange={(e) => { setRef(e.target.value); setSonuc(null); }} className={GIRDI} style={girdiStili()}>
-              <option value="">— seçin —</option>{secenekler(aday)}
+            <select
+              id="kar-ref"
+              value={ref}
+              onChange={(e) => {
+                setRef(e.target.value);
+                setSonuc(null);
+              }}
+              className={GIRDI}
+              style={girdiStili()}
+            >
+              <option value="">— seçin —</option>
+              {secenekler(aday)}
             </select>
           </Alan>
           <Alan id="kar-aday" etiket="Aday koşu">
-            <select id="kar-aday" value={aday} onChange={(e) => { setAday(e.target.value); setSonuc(null); }} className={GIRDI} style={girdiStili()}>
-              <option value="">— seçin —</option>{secenekler(ref)}
+            <select
+              id="kar-aday"
+              value={aday}
+              onChange={(e) => {
+                setAday(e.target.value);
+                setSonuc(null);
+              }}
+              className={GIRDI}
+              style={girdiStili()}
+            >
+              <option value="">— seçin —</option>
+              {secenekler(ref)}
             </select>
           </Alan>
           <div className="flex items-end gap-3 @lg/yuk:col-span-2 @5xl/yuk:contents">
-          <Alan id="kar-cpu" etiket="CPU eşiği %" className="w-28 @5xl/yuk:w-auto" hata={esik(esikCpu) == null ? '1–50' : null}>
-            <input id="kar-cpu" value={esikCpu} onChange={(e) => setEsikCpu(e.target.value)} inputMode="decimal" className={`${GIRDI} tabular-nums`} style={girdiStili(esik(esikCpu) == null)} />
-          </Alan>
-          <Alan id="kar-p95" etiket="p95 eşiği %" className="w-28 @5xl/yuk:w-auto" hata={esik(esikP95) == null ? '1–50' : null}>
-            <input id="kar-p95" value={esikP95} onChange={(e) => setEsikP95(e.target.value)} inputMode="decimal" className={`${GIRDI} tabular-nums`} style={girdiStili(esik(esikP95) == null)} />
-          </Alan>
-          <button type="button" onClick={() => void karsilastir()} disabled={!hazir || bekliyor} className={`${SM_BTN} h-8 justify-center`} style={smBtn(true)}>
-            <ArrowsRightLeftIcon className="h-3.5 w-3.5" aria-hidden /> {bekliyor ? 'Hesaplanıyor…' : 'Karşılaştır'}
-          </button>
+            <Alan
+              id="kar-cpu"
+              etiket="CPU eşiği %"
+              className="w-28 @5xl/yuk:w-auto"
+              hata={esik(esikCpu) == null ? '1–50' : null}
+            >
+              <input
+                id="kar-cpu"
+                value={esikCpu}
+                onChange={(e) => setEsikCpu(e.target.value)}
+                inputMode="decimal"
+                className={`${GIRDI} tabular-nums`}
+                style={girdiStili(esik(esikCpu) == null)}
+              />
+            </Alan>
+            <Alan
+              id="kar-p95"
+              etiket="p95 eşiği %"
+              className="w-28 @5xl/yuk:w-auto"
+              hata={esik(esikP95) == null ? '1–50' : null}
+            >
+              <input
+                id="kar-p95"
+                value={esikP95}
+                onChange={(e) => setEsikP95(e.target.value)}
+                inputMode="decimal"
+                className={`${GIRDI} tabular-nums`}
+                style={girdiStili(esik(esikP95) == null)}
+              />
+            </Alan>
+            <button
+              type="button"
+              onClick={() => void karsilastir()}
+              disabled={!hazir || bekliyor}
+              className={`${SM_BTN} h-8 justify-center`}
+              style={smBtn(true)}
+            >
+              <ArrowsRightLeftIcon className="h-3.5 w-3.5" aria-hidden />{' '}
+              {bekliyor ? 'Hesaplanıyor…' : 'Karşılaştır'}
+            </button>
           </div>
         </div>
-        {kosular && kosular.length < 2 && <p className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>Karşılaştırma için en az iki bitmiş koşu gerekir.</p>}
-        {(farkliOrtam || farkliMotor || farkliProtokol || farkliIsParcacigi || farkliTavan || serbestVar || nginxsizVar) && (
+        {kosular && kosular.length < 2 && (
+          <p className="mt-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+            Karşılaştırma için en az iki bitmiş koşu gerekir.
+          </p>
+        )}
+        {(farkliOrtam ||
+          farkliMotor ||
+          farkliProtokol ||
+          farkliIsParcacigi ||
+          farkliTavan ||
+          serbestVar ||
+          nginxsizVar) && (
           <div className="mt-3 space-y-2">
             {farkliProtokol && refK && adayK && (
-              <UyariKutusu ton="bilgi" baslik={`İki koşu farklı protokolle koşuldu (${PROTOKOL_ETIKETI[protokolAdi(refK)]} / ${PROTOKOL_ETIKETI[protokolAdi(adayK)]}); sonuç “Veri yok” döner, aynı protokolle yeniden koşun.`} />
+              <UyariKutusu
+                ton="bilgi"
+                baslik={`İki koşu farklı protokolle koşuldu (${PROTOKOL_ETIKETI[protokolAdi(refK)]} / ${PROTOKOL_ETIKETI[protokolAdi(adayK)]}); sonuç “Veri yok” döner, aynı protokolle yeniden koşun.`}
+              />
             )}
-            {farkliMotor && <UyariKutusu ton="uyari" baslik="Koşular farklı yük araçlarıyla alınmış (k6 / wrk): karar VERİ YOK döner." />}
-            {farkliIsParcacigi && <UyariKutusu ton="uyari" baslik="Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner." />}
+            {farkliMotor && (
+              <UyariKutusu
+                ton="uyari"
+                baslik="Koşular farklı yük araçlarıyla alınmış (k6 / wrk): karar VERİ YOK döner."
+              />
+            )}
+            {farkliIsParcacigi && (
+              <UyariKutusu
+                ton="uyari"
+                baslik="Koşular farklı iş parçacığı sayısıyla alınmış: karar VERİ YOK döner."
+              />
+            )}
             {farkliTavan && wRef && wAday && (
-              <UyariKutusu ton="uyari" baslik={`Farklı hız tavanı: referans ${fmtNumber(wRef.tavanRps)} istek/sn, aday ${fmtNumber(wAday.tavanRps)} istek/sn — wrk’de aynı bağlantı kademesi farklı yük demektir; aynı tavanla yeniden koşun.`} />
+              <UyariKutusu
+                ton="uyari"
+                baslik={`Farklı hız tavanı: referans ${fmtNumber(wRef.tavanRps)} istek/sn, aday ${fmtNumber(wAday.tavanRps)} istek/sn — wrk’de aynı bağlantı kademesi farklı yük demektir; aynı tavanla yeniden koşun.`}
+              />
             )}
-            {farkliOrtam && <UyariKutusu ton="uyari" baslik="İki koşu farklı hedef, vhost ya da senaryoyla yapılmış — karşılaştırma yalnız aynı ölçüm düzeninde anlamlıdır." />}
-            {serbestVar && <UyariKutusu ton="uyari" baslik="Bir koşu serbest hedefte (CPU ölçülmedi): KALICI verilmez; karar p95 ve hata oranına göre." />}
+            {farkliOrtam && (
+              <UyariKutusu
+                ton="uyari"
+                baslik="İki koşu farklı hedef, vhost ya da senaryoyla yapılmış — karşılaştırma yalnız aynı ölçüm düzeninde anlamlıdır."
+              />
+            )}
+            {serbestVar && (
+              <UyariKutusu
+                ton="uyari"
+                baslik="Bir koşu serbest hedefte (CPU ölçülmedi): KALICI verilmez; karar p95 ve hata oranına göre."
+              />
+            )}
             {nginxsizVar && <UyariKutusu ton="uyari" baslik={NGINXSIZ_KARAR_NOTU} />}
           </div>
         )}
       </Bolum>
 
-      {hata && <UyariKutusu ton="hata" rol="alert" baslik="Karşılaştırılamadı">{hata}</UyariKutusu>}
+      {hata && (
+        <UyariKutusu ton="hata" rol="alert" baslik="Karşılaştırılamadı">
+          {hata}
+        </UyariKutusu>
+      )}
       {sonuc && karar && (
         <Bolum govdeSinifi="p-4 space-y-4">
-          <div className="rounded-lg px-4 py-3" style={{ background: TON[karar.ton].zemin, boxShadow: `inset 4px 0 0 ${TON[karar.ton].renk}, inset 0 0 0 1px ${TON[karar.ton].kenar}` }} role="status">
+          <div
+            className="rounded-lg px-4 py-3"
+            style={{
+              background: TON[karar.ton].zemin,
+              boxShadow: `inset 4px 0 0 ${TON[karar.ton].renk}, inset 0 0 0 1px ${TON[karar.ton].kenar}`,
+            }}
+            role="status"
+          >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>Karar</span>
+              <span
+                className="text-[11px] font-semibold uppercase tracking-wide"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Karar
+              </span>
               <Hap label={karar.etiket} ton={karar.ton} />
-              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>#{sonuc.ref.id}{tarafProtokolu('ref')} → #{sonuc.aday.id}{tarafProtokolu('aday')}{sonuc.kademe ? `${cpuOlculmedi ? '' : ` · CPU kademesi ${kademeMetni(sonuc.kademe.cpu, birim)}`} · p95 kademesi ${kademeMetni(sonuc.kademe.p95, birim)}` : ''}</span>
+              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                #{sonuc.ref.id}
+                {tarafProtokolu('ref')} → #{sonuc.aday.id}
+                {tarafProtokolu('aday')}
+                {sonuc.kademe
+                  ? `${cpuOlculmedi ? '' : ` · CPU kademesi ${kademeMetni(sonuc.kademe.cpu, birim)}`} · p95 kademesi ${kademeMetni(sonuc.kademe.p95, birim)}`
+                  : ''}
+              </span>
             </div>
-            <p className="mt-1 text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>{karar.aciklama}</p>
+            <p className="mt-1 text-[13px] leading-5" style={{ color: 'var(--text-primary)' }}>
+              {karar.aciklama}
+            </p>
           </div>
           {sonuc.nedenler.length > 0 && (
             <div>
-              <h3 className="mb-1 text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>Gerekçe</h3>
-              <ul className="space-y-0.5 rounded-lg border px-3 py-2 font-mono text-[11px] leading-5" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
-                {sonuc.nedenler.map((n, i) => <li key={`${i}-${n}`} className="wrap-anywhere">{n}</li>)}
+              <h3
+                className="mb-1 text-[12px] font-semibold"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Gerekçe
+              </h3>
+              <ul
+                className="space-y-0.5 rounded-lg border px-3 py-2 font-mono text-[11px] leading-5"
+                style={{
+                  borderColor: 'var(--border-subtle)',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {sonuc.nedenler.map((n, i) => (
+                  <li key={`${i}-${n}`} className="wrap-anywhere">
+                    {n}
+                  </li>
+                ))}
               </ul>
             </div>
           )}
-          <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
-            <table className="pf-table-sticky w-full table-fixed border-collapse" style={{ minWidth: `${6 + gorunenOlculer.length * 7.5}rem` }} aria-label="Kademe karşılaştırması">
-              <colgroup><col style={{ width: '6rem' }} />{gorunenOlculer.map((o) => <col key={o.k} />)}</colgroup>
-              <thead><tr>
-                <th scope="col" className="px-2.5 py-1.5 text-left text-[11px]" style={{ ...TH_STIL, left: 0, zIndex: 3 }} title={birim === 'bağlantı' ? 'eşzamanlı bağlantı sayısı (wrk, kapalı döngü)' : undefined}>{birim === 'bağlantı' ? 'Bağlantı' : 'Hız'}</th>
-                {gorunenOlculer.map((o) => <th key={o.k} scope="col" className="px-2.5 py-1.5 text-right text-[11px]" style={TH_STIL} title="referans → aday (fark)">{o.ad}</th>)}
-              </tr></thead>
-              <tbody className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
-                {sonuc.tablo.length === 0 ? <TableEmptyRow colSpan={gorunenOlculer.length + 1} title="Ortak kademe yok." /> : sonuc.tablo.map((t) => (
-                  <tr key={String(t.hiz)} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
-                    <td className="sticky left-0 z-[1] truncate px-2.5 py-1.5 font-semibold tabular-nums" style={{ background: 'var(--bg-surface)' }} title={kademeMetni(t.hiz, birim)}>{kademeMetni(t.hiz, birim)}</td>
-                    {gorunenOlculer.map((o) => {
-                      const r = sayiVeya(t.ref?.[o.k]);
-                      const a = sayiVeya(t.aday?.[o.k]);
-                      const f = t.farkYuzde[o.k] ?? null;
-                      const bic = (x: number | null) => (o.oran ? yuzde(x, o.basamak) : ondalik(x, o.basamak));
-                      const ton = f == null || Math.abs(f) < 0.05 ? null : (f < 0) === o.dusukIyi ? 'basari' : 'hata';
-                      return (
-                        <td key={o.k} className="px-2.5 py-1.5 text-right tabular-nums">
-                          <div className="whitespace-nowrap">{bic(r)} → {bic(a)}</div>
-                          <div className="text-[11px] font-semibold" style={{ color: ton ? TON[ton].metin : 'var(--text-secondary)' }}>{farkMetni(f)}</div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+          <div
+            className="overflow-x-auto rounded-lg border"
+            style={{ borderColor: 'var(--border-subtle)' }}
+          >
+            <table
+              className="pf-table-sticky w-full table-fixed border-collapse"
+              style={{ minWidth: `${6 + gorunenOlculer.length * 7.5}rem` }}
+              aria-label="Kademe karşılaştırması"
+            >
+              <colgroup>
+                <col style={{ width: '6rem' }} />
+                {gorunenOlculer.map((o) => (
+                  <col key={o.k} />
                 ))}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th
+                    scope="col"
+                    className="px-2.5 py-1.5 text-left text-[11px]"
+                    style={{ ...TH_STIL, left: 0, zIndex: 3 }}
+                    title={
+                      birim === 'bağlantı'
+                        ? 'eşzamanlı bağlantı sayısı (wrk, kapalı döngü)'
+                        : undefined
+                    }
+                  >
+                    {birim === 'bağlantı' ? 'Bağlantı' : 'Hız'}
+                  </th>
+                  {gorunenOlculer.map((o) => (
+                    <th
+                      key={o.k}
+                      scope="col"
+                      className="px-2.5 py-1.5 text-right text-[11px]"
+                      style={TH_STIL}
+                      title="referans → aday (fark)"
+                    >
+                      {o.ad}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
+                {sonuc.tablo.length === 0 ? (
+                  <TableEmptyRow colSpan={gorunenOlculer.length + 1} title="Ortak kademe yok." />
+                ) : (
+                  sonuc.tablo.map((t) => (
+                    <tr
+                      key={String(t.hiz)}
+                      className="border-t align-top"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                    >
+                      <td
+                        className="sticky left-0 z-[1] truncate px-2.5 py-1.5 font-semibold tabular-nums"
+                        style={{ background: 'var(--bg-surface)' }}
+                        title={kademeMetni(t.hiz, birim)}
+                      >
+                        {kademeMetni(t.hiz, birim)}
+                      </td>
+                      {gorunenOlculer.map((o) => {
+                        const r = sayiVeya(t.ref?.[o.k]);
+                        const a = sayiVeya(t.aday?.[o.k]);
+                        const f = t.farkYuzde[o.k] ?? null;
+                        const bic = (x: number | null) =>
+                          o.oran ? yuzde(x, o.basamak) : ondalik(x, o.basamak);
+                        const ton =
+                          f == null || Math.abs(f) < 0.05
+                            ? null
+                            : f < 0 === o.dusukIyi
+                              ? 'basari'
+                              : 'hata';
+                        return (
+                          <td key={o.k} className="px-2.5 py-1.5 text-right tabular-nums">
+                            <div className="whitespace-nowrap">
+                              {bic(r)} → {bic(a)}
+                            </div>
+                            <div
+                              className="text-[11px] font-semibold"
+                              style={{ color: ton ? TON[ton].metin : 'var(--text-secondary)' }}
+                            >
+                              {farkMetni(f)}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>Fark = aday / referans − 1. Yeşil iyileşme, kırmızı kötüleşme (hepsinde düşük olan iyi). Eşik altı farklar gürültü sayılır; karar gerekçede yazan kademelerle verilir.</p>
+          <p className="text-[11px] leading-4" style={{ color: 'var(--text-secondary)' }}>
+            Fark = aday / referans − 1. Yeşil iyileşme, kırmızı kötüleşme (hepsinde düşük olan iyi).
+            Eşik altı farklar gürültü sayılır; karar gerekçede yazan kademelerle verilir.
+          </p>
         </Bolum>
       )}
     </div>

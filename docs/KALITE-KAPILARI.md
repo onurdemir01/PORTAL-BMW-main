@@ -33,9 +33,10 @@ Eşiklerin tek kaynağı: [`kalite/esikler.json`](../kalite/esikler.json).
 | K10 | Mutasyon testi | `npm run test:mutation` | CI | ≥ %85 mutant öldürülür |
 | K11 | SBOM ve lisans | `npm run sbom` | CI | 0 lisans ihlali |
 | K12 | Derleme + paket | `npm run build`, `npm run paket` | CI | ikisi de başarılı |
-| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
+| K13 | SonarQube kapısı | `node scripts/sonar-kapi.cjs` | CI (`sonar` işi), yerelde `npm run kapi:sonar` | "Portal Katı": 0 bug, 0 zafiyet, 0 kod kokusu, güvenilirlik ve güvenlik A (MQR: kod kokularının etkisi dahil), bakım A, kapsam ≥ %70, tekrar ≤ %3, hotspot %100 incelenmiş, 0 blocker / high |
 | K14 | Kurumsal iş provası | `npm run kurumsal:prova` | CI (`kurumsal` işi), yerelde aynı komut | temiz ağaçta groovy'nin komutları aynen geçer, paket eksiksiz, süre ≤ 10 dk |
-| K15 | Kurumsal Sonar taklidi | `node scripts/sonar-kapi.cjs --ci --kurumsal` | CI (`sonar` işi) | K13 ile aynı koşullar, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json)) ayrı projede |
+| K15 | Kurumsal Sonar taklidi | `node scripts/sonar-kapi.cjs --ci --kurumsal` | CI (`sonar` işi) | K13 koşulları + inceleme bekleyen 0 hotspot (inceleme kaydı uygulanmaz); kurumun sınıflandırması ve kural profiliyle ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json)) ayrı projede |
+| K16 | `main` geçmişi | `node scripts/gecmis-denetim.cjs` | commit mesajı (konu satırı), CI (`main` push aralığı, PR) | `main`'e giden her first-parent commit birleşmiş bir PR'dan gelir (`github-actions[bot]` muaf); konu satırı 8–120 karakter |
 
 **Commit öncesi biçim çırığı** (`scripts/bicim-kapisi.cjs`): biçimli (prettier) dosya biçimli kalır, yeni dosya biçimli olur. Biçimsiz eski dosyaya dokunmak serbesttir; toplu biçimleme ayrı, tek commit'te yapılır.
 
@@ -70,18 +71,24 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
   1. `git pull`
   2. `git rm -r -q .`: izlenen bütün dosyalar silinir. Kopyalarken "üzerine yaz / atla" sorusu çıkmaz ve main'de silinmiş dosyalar geride kalmaz.
   3. GitHub'dan main ZIP'i indirilir; `PORTAL-BMW-main-main` klasörünün **içeriği** klonun köküne kopyalanır. ZIP, GitHub Actions'taki "Teslim imzası" ve "Kapsam raporu" işleri bittikten sonra indirilir.
-  4. `git add -A`. Node varsa `node scripts/teslim.cjs --dogrula` çalıştırılır; `BIREBIR` yazmalı.
-  5. Commit (kurumun PBI biçimiyle), push, iş yeniden koşturulur.
+  4. Kuruma gitmeyen dizinler silinir: `.github`, `.claude`, `.agent`, `sunum`, `server/ansible/playbooks`.
+  5. `git add -A`. Node varsa `node scripts/teslim.cjs --dogrula` çalıştırılır; `BIREBIR` yazmalı.
+  6. Commit (kurumun PBI biçimiyle), push, iş yeniden koşturulur.
   - **Neden:** 2026-11-18'deki iş #48'de dal, main'in yarım bir kopyasıydı. Aynı commit'te gelen iki dosyadan `scripts/kurumsal-derle.cjs` gelmiş, `package.json` satırı gelmemişti; iş `npm error Missing script` ile düştü. Var olan dosyaların üzerine kopyalama bu tür karışık ağaç üretir.
-  - **Kuruma gitmeyenler:** `.github/`, `.claude/`, `.agent/` (GitHub CI ve ajan talimatları) ve `sunum/` (tanıtım sunumu). Kurumsal derlemede kullanılmazlar ve kurumsal depoya gitmezler. İmza onları iki yönde de yok sayar: kopyalansalar da kopyalanmasalar da ilk adım geçer (iş #50).
+  - **Kuruma gitmeyenler:** liste tek yerde, [`scripts/teslim.cjs`](../scripts/teslim.cjs) `KURUMA_GITMEYEN`. Kurumsal derlemede kullanılmazlar ve kurumsal depoya gitmezler. İmza onları iki yönde de yok sayar: kopyalansalar da kopyalanmasalar da ilk adım geçer.
+    - `.github/`, `.claude/`, `.agent/`: GitHub CI ve ajan talimatları (iş #50).
+    - `sunum/`: tanıtım sunumu (iş #50).
+    - `server/ansible/playbooks/`: Ansible playbook'ları; AWX aynası `bmw_portal/` ve tanı playbook'ları (iş #52). Portal bunları çalıştırmaz, AWX çalıştırır; AWX'e kopyalama [AWX-KOPYALAMA-HARITASI.md](AWX-KOPYALAMA-HARITASI.md). Kurumsal Sonar 14 hotspot'un 11'ini ve 6 Python bulgusunu burada buluyordu. Çalışma zamanı yalnız `server/ansible/playbook-revisions.json`'u okur; o bu dizinin dışındadır.
   - **Teslim imzası:** [`kalite/teslim.json`](../kalite/teslim.json), main'deki her izlenen dosyanın git blob sha'sı (`kalite/` ve kuruma gitmeyenler hariç). [`.github/workflows/teslim-imzasi.yml`](../.github/workflows/teslim-imzasi.yml) her main push'undan sonra tazeler; elle düzenlenmez. `kurumsal:derle`'nin ilk adımı ([`scripts/teslim.cjs`](../scripts/teslim.cjs) `--dogrula`) kodu bununla karşılaştırır. Fark varsa iş orada durur ve farkı dosya dosya söyler: içeriği farklı, eksik, fazla.
   - **Tazeleme penceresi:** main'e push'tan sonra yaklaşık bir dakika imza eskidir. O arada indirilen ZIP ilk adımda düşer; mesaj nedenini söyler, ZIP yeniden indirilir.
   - **Sınır:** `package.json`'ın kendisi eskiyse `kurumsal:derle` hiç çalışmaz (iş #48). Onu yalnız bu aktarım yöntemi önler.
 - **Prova (K14):** [`scripts/kurumsal-prova.cjs`](../scripts/kurumsal-prova.cjs) kurumsal işi CI'da tekrarlar. Kurumsal klon gibi temiz bir git ağacında, groovy'deki Node sürümüyle:
   - imzayı yazar;
+  - kuruma gitmeyen dizinleri ağaçtan ve indeksten siler (kurumsal depodaki ağaç);
   - `npm install` çalıştırır (kurumun `jf npm install`'ı);
   - groovy'nin geri kalan komutlarını aynen `npm <komut>` olarak koşturur;
   - `compress` dizininde çalışma zamanı paketinin eksiksiz olduğunu denetler;
+  - paketin içinde `server/index.cjs`'in yüklediği her modülü yükler (Ansible'sız ağaçta eksik dosya burada düşer);
   - toplam süre 10 dakikayı geçerse kırmızı olur (kurumun sınırı 15 dakika).
 
   Kayıt defteri ve JFrog'un `.npmrc`'si gibi kurum ortamı farkları provada yoktur.
@@ -89,13 +96,15 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 - **Kurumsal Sonar (iş #49):** kütüphanenin `scanOnSonar` adımı `sonar.sources=.`, `sonar.tests=.`, `sonar.test.inclusions=**/*.test.js,**/*.test.tsx` ve kendi `sonar.exclusions` listesini komut satırından verir; `sonar-project.properties`'teki karşılıkları ezilir (diğer anahtarları, ör. CPD dışlaması, okunur).
   - **Sonuç:** test olarak yalnız `*.test.js` ve `*.test.tsx` sayılır. 2026-11-18'e kadar Node testleri `*.test.cjs` idi; 511 test dosyası üretim kodu sayıldı. Kapsam %50'ye indi, testlerdeki sahte parolalar güvenlik bulgusu oldu.
   - **Kural:** Node testleri `*.test.js`. Klasördeki `package.json` (`"type": "commonjs"`; `server/` ve Node testi olan `src/**/__tests__/`) onları CommonJS yapar. `npm test` eski adı (`.test.cjs`) görünce durur; bekçi KK11.
-  - **Taklit (K15):** CI `sonar` işi, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json), iş #49 logundan) ayrı bir projeye de tarar ve aynı "Portal Katı" kapısını uygular. Kurumun göreceği kapsam ve bulgular merge'den önce görünür. Liste yalnız genel desenleri taşır (başka uygulamaların adları yazılmaz); bekçi KK12 dondurur.
-  - **Sınır:** taklit SonarQube Community ile koşar; kurumun Enterprise'a özgü JS güvenlik (taint) ve kurumsal sır analizi taklitte yoktur.
+  - **Taklit (K15):** CI `sonar` işi, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json), iş #49 logundan) ayrı bir projeye de tarar. Kapı K13 ile aynı ("Portal Katı"). Kurum yerel incelemelerimizi görmediği için K15 `kalite/sonar-inceleme.json` kayıtlarını uygulamaz ve inceleme bekleyen hotspot sayısını kendisi denetler: 0 değilse kırmızı (SonarQube `security_hotspots`'u kapı koşulu olarak kabul etmez). Kuruma gitmeyen dizinler kurumsal depoda olmadığı için taklitte de taranmaz (teslim listesinin aynısı). Kurumun göreceği kapsam ve bulgular merge'den önce görünür. Liste yalnız genel desenleri taşır (başka uygulamaların adları yazılmaz); bekçi KK12 dondurur.
+  - **Kural profili (iş #52):** kurumun "GT way" profili dışa aktarılamıyor; bulgulardan türetilir. K15 her dilde "Portal Kurumsal" profilini `kurumsal-sonar.json` `profil`den her koşuda sıfırdan kurar: Sonar way'in bug / zafiyet / hotspot kuralları + kurumun bulgu verdiği kurallar, parametreleriyle (ör. S5843 eşiği 20, Python S107 en çok 7 parametre). Yerel sunucuda etkinleşemeyen kural K15'i durdurur. Aynı JS / TS kuralları commit anında ESLint'te ([`eslint.config.js`](../eslint.config.js) `KURUM_JS` / `KURUM_TS`); bekçi KK14 ikisini eşit tutar. Kurumsal taramada yeni bir kural bulgu verirse ikisine de eklenir.
+  - **HTML:** kurumun HTML eklentisi yorumdaki `="`, `/>`, `</` gibi parçaları "yorumlanmış kod" sayar (iş #52, `index.html:12`). Bekçi KK13 aynı sezgiyi kuruma giden HTML'de uygular.
+  - **Sınır:** taklit SonarQube Community ile koşar; kurumun Enterprise'a özgü JS güvenlik (taint) ve kurumsal sır analizi taklitte yoktur. PL/SQL ve Ansible çözümleyicileri ve `docker:S6505` de yoktur (`profil.yereldeYok`); Dockerfile'daki betiksiz kurulumu KK15 bekler.
   - **Kurum talebi:** `scanOnSonar`'ın `sonar-project.properties`'e uyması (`.ai-workspace/kurum-talep.md`). Gelse de ad kuralı kalır.
 - **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.
   - Rapor kaynakla aynı değilse Sonar koşusunu düşürür; yanlış eşleşen kapsam yüklenmez.
   - Normal derlemede yalnız uyarır.
-- **Paket:** `build/BMWPORTAL/PORTAL-BMW-main` altında üretilir. Kütüphanenin Sonar adımı `build/**`'i taramaz; zip adımı çalışma alanı içinden okur. War'ın kökü `PORTAL-BMW-main/`, çünkü `deploy/release.sh` bunu bekler.
+- **Paket:** `build/BMWPORTAL/PORTAL-BMW-main` altında üretilir. Kurumsal hattın çalışma alanında açtığı `.npm-cache/` ve `.jfrog/` git dışıdır (iş #52'de ağacı "kirli" gösteriyorlardı); ağaç yine kirliyse paket ilk 10 yolu loga yazar. Kütüphanenin Sonar adımı `build/**`'i taramaz; zip adımı çalışma alanı içinden okur. War'ın kökü `PORTAL-BMW-main/`, çünkü `deploy/release.sh` bunu bekler.
 - **Adlar:** `BMWPORTAL.war` ve `BMWPORTAL-D`, uygulamanın SI/CMDB kaydındaki war ve deployment adlarıdır.
 - **TST ve PRD:** [`TST_…`](../deploy/jenkins/TST_JAVASCRIPT_GAR_BMW_PORTAL.groovy) ve [`PRD_…`](../deploy/jenkins/PRD_JAVASCRIPT_GAR_BMW_PORTAL.groovy). Derleme, paket, war ve staging DVL ile birebir aynıdır (bekçi KJ4).
   - TST deployment adı `BMWPORTAL-T`. Kurumdaki `-D` / `-T` / `-Q` kalıbından türetildi; TST SI kaydıyla doğrulanmalı.
@@ -113,14 +122,14 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 `npm run kur` kurar; `--no-verify` ile atlamak **yasaktır**. Atlansa bile CI aynı kapıları yeniden koşturur ve `main` koruması kırmızı PR'ı birleştirtmez.
 
 - `pre-commit`: değişen dosyalarda ESLint (0 uyarı), biçim çırığı, sır taraması (gitleaks kuruluysa o da).
-- `commit-msg`: konu satırı 8–120 karakter; mesajda sır yok. Türkçe serbest biçim geçerlidir.
+- `commit-msg`: konu satırı 8–120 karakter (kuralın tek kaynağı `scripts/gecmis-denetim.cjs`; CI aynı kuralı K16'da `main`'e giden commit'lere uygular); mesajda sır yok. Türkçe serbest biçim geçerlidir.
 - `pre-push`: `npm run kapi:hizli`.
 
 ## CI
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) her PR'da ve `main`'e her push'ta üç iş koşturur:
 
-- `verify`: K0–K12.
+- `verify`: K0–K12 ve K16. K16 commit → PR ilişkisini GitHub API'den okur; iş bunun için yalnız `pull-requests: read` izni alır. PR olayında yalnız PR commit'lerinin konu satırına bakar. Zorla push'ta (önceki uç yeni geçmişin atası değil) yalnız son commit denetlenir ve bu yazılır. İhlal push'u geri almaz; CI'ı kırmızı yapar ve iş özetine yazar (`main` koruması ayrı, aşağıda).
 - `kurumsal`: K14. Node sürümü groovy'den okunur; aşağıdaki "Kurumsal Jenkins" bölümüne bakın.
 - `sonar`: K13 ve K15. Taze bir SonarQube konteyneri açılır, kapı `kalite/esikler.json`'dan kurulur, kapsam raporu `verify` işinden gelir. K15 aynı kapıyla ikinci bir tarama yapar: kurumun sınıflandırmasıyla, ayrı projede (aşağıda "Kurumsal Sonar"). `verify` ve `kurumsal`'ı bekler; zorunlu kontrol olduğu için prova da fiilen zorunludur.
 
@@ -128,10 +137,10 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 
 ## SonarQube ayrıntısı
 
-- **Profil:** Sonar way (JS/TS/Python). **Kapı:** "Portal Katı"; koşulları `kalite/esikler.json` `sonar.kosullar`. Betik her koşuda kapıyı bu listeye eşitler.
+- **Profil:** K13 Sonar way (JS/TS/Python), K15 "Portal Kurumsal" (yukarıda "Kurumsal Sonar"). **Kapı:** "Portal Katı"; koşulları `kalite/esikler.json` `sonar.kosullar` (kod kokusu mutlak: 0). Betik her koşuda kapıyı bu listeye eşitler.
 - **Kopya (CPD) dışı:** yalnız bildirimsel veri dosyaları. Liste ve gerekçeleri `kalite/esikler.json` `sonar.cpdHaric`'tedir ve `sonar-project.properties` ile birebir aynıdır. Kod dosyası eklenmez.
 - **Kapsam dışlaması (`sonar.coverage.exclusions`) ve sorun bastırma (`sonar.issue.ignore.*`) yoktur.** Bunları eklemek kırmızıdır.
-- **Gerekçeli incelemeler** [`kalite/sonar-inceleme.json`](../kalite/sonar-inceleme.json)'da tutulur. Eşleşme ölçütü kural + dosya + satır içeriğidir. Betik eşleşen bulguyu işaretler:
+- **Gerekçeli incelemeler** [`kalite/sonar-inceleme.json`](../kalite/sonar-inceleme.json)'da tutulur (yalnız K13; K15 uygulamaz). Eşleşme ölçütü kural + dosya + satır içeriğidir. Betik eşleşen bulguyu işaretler:
   - hotspot ise "Reviewed – Safe";
   - sunucu sürümü aynı kuralı sorun olarak açmışsa (26.x'te S5443 gibi) "Accepted".
 

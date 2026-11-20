@@ -101,7 +101,15 @@ function ImageAssetEditor({
   };
 
   const onReset = async () => {
-    if (!(await onayla({ baslik: 'Görseli sıfırla', metin: 'Görsel silinip varsayılana dönülecek. Devam edilsin mi?', onayMetni: 'Varsayılana dön', tehlikeli: true }))) return;
+    if (
+      !(await onayla({
+        baslik: 'Görseli sıfırla',
+        metin: 'Görsel silinip varsayılana dönülecek. Devam edilsin mi?',
+        onayMetni: 'Varsayılana dön',
+        tehlikeli: true,
+      }))
+    )
+      return;
     setBusy(true);
     setError(null);
     setOkMsg(null);
@@ -279,10 +287,7 @@ const BrandingTab: React.FC = () => {
     await load();
   };
 
-  if (loading)
-    return (
-      <LoadingLogo compact />
-    );
+  if (loading) return <LoadingLogo compact />;
   if (yuklemeHatasi)
     return (
       <LoadError

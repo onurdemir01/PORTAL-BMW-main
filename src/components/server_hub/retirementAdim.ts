@@ -31,7 +31,12 @@ export interface RtAdim {
   yenile: boolean;
 }
 
-const BASLATILABILIR: ReadonlySet<RtTargetStatus> = new Set(['pending', 'failed', 'skipped', 'active']);
+const BASLATILABILIR: ReadonlySet<RtTargetStatus> = new Set([
+  'pending',
+  'failed',
+  'skipped',
+  'active',
+]);
 
 export function retirementAdimi(status: RtTargetStatus, kayitKapali: boolean): RtAdim {
   const yok: RtAdim = { tur: 'yok', etiket: '', ipucu: '', yenile: false };
@@ -48,7 +53,8 @@ export function retirementAdimi(status: RtTargetStatus, kayitKapali: boolean): R
     return {
       tur: 'baslat',
       etiket: status === 'failed' ? "Retirement'ı yeniden başlat" : "Retirement'ı başlat",
-      ipucu: '1. adım: sunucuda ön kontrol — ne yapılacağını okur, HİÇBİR ŞEY DEĞİŞMEZ. Bitince onay penceresi açılır.',
+      ipucu:
+        '1. adım: sunucuda ön kontrol — ne yapılacağını okur, HİÇBİR ŞEY DEĞİŞMEZ. Bitince onay penceresi açılır.',
       yenile: false,
     };
   return yok;

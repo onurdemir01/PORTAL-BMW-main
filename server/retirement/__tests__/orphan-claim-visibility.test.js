@@ -1,5 +1,6 @@
 // API/UI sozlesmesi: job ID'siz gecis claim'i "is hic baslatilmadi" diye yorumlanamaz.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -21,7 +22,7 @@ test('RO5 job ID yoklugu baslatilmadi diye sunulmaz ve otomatik retry onermez', 
     INDEX.indexOf("router.post('/:id/targets/:tid/refresh-status'"),
     INDEX.indexOf('// ── GERI AL', INDEX.indexOf("router.post('/:id/targets/:tid/refresh-status'")),
   );
-  assert.doesNotMatch(refresh, /iş hiç başlatılamamış/);
+  assert.doesNotMatch(refresh, esnek(/iş hiç başlatılamamış/));
   assert.match(refresh, /başlayıp başlamadığı doğrulanamıyor/);
   assert.match(refresh, /otomatik tekrar başlatılmaz/);
   assert.match(refresh, /jobMissing:\s*true/);

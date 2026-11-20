@@ -474,7 +474,8 @@ export default function ArkSpaRaporuPage() {
                       · {r.service}
                       {r.serviceEtiket && (
                         <span title="Sunucuların elle etiketi (Nginx Hub › Envanter); conf.d adı solda">
-                          {' '}→ {r.serviceEtiket} (etiket)
+                          {' '}
+                          → {r.serviceEtiket} (etiket)
                         </span>
                       )}{' '}
                       · {r.hosts.length} sunucu
@@ -488,7 +489,11 @@ export default function ArkSpaRaporuPage() {
                     className="px-2 py-1"
                     style={{ color: r.team.length ? undefined : 'var(--text-muted)' }}
                   >
-                    <EkipListesi groups={r.team} kaynaklar={r.teamKaynak} veriYok={!!r.teamVeriYok} />
+                    <EkipListesi
+                      groups={r.team}
+                      kaynaklar={r.teamKaynak}
+                      veriYok={!!r.teamVeriYok}
+                    />
                   </td>
                   <td className="px-2 py-1">
                     <YukHucre t={r.traffic} />
@@ -558,10 +563,10 @@ export default function ArkSpaRaporuPage() {
             log saklama süresi kısa): bunlar da “yük almıyor” <b>değildir</b>.
           </p>
           <p>
-            <QuestionMarkCircleIcon className="w-3.5 h-3.5 inline" /> Beyan <b>location
-            bazındadır</b>: bir satıra girdiğiniz değer aynı uygulamanın diğer
-            location’larını <b>etkilemez</b>. SPA Taşımaları ekranındaki <b>uygulama</b>{' '}
-            beyanı, kendi beyanı olmayan satırlarda <b>devralınmış</b> olarak görünür.
+            <QuestionMarkCircleIcon className="w-3.5 h-3.5 inline" /> Beyan{' '}
+            <b>location bazındadır</b>: bir satıra girdiğiniz değer aynı uygulamanın diğer
+            location’larını <b>etkilemez</b>. SPA Taşımaları ekranındaki <b>uygulama</b> beyanı,
+            kendi beyanı olmayan satırlarda <b>devralınmış</b> olarak görünür.
             {data?.skipped
               ? ` Uygulama/namespace bilgisi olmayan ${data.skipped} satır listeye alınmadı.`
               : ''}

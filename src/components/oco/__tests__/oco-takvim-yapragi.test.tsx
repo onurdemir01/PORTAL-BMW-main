@@ -26,10 +26,17 @@ import {
 } from '@/components/oco/takvimIzgara';
 import { saatEtiketi } from '@/components/oco/OcoTakvimYapragi';
 
-const yerel = (y: number, m: number, d: number, h = 0, dk = 0) => new Date(y, m - 1, d, h, dk).toISOString();
+const yerel = (y: number, m: number, d: number, h = 0, dk = 0) =>
+  new Date(y, m - 1, d, h, dk).toISOString();
 const gunEkleIso = (iso: string, n: number) => {
   const d = new Date(iso);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes()).toISOString();
+  return new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + n,
+    d.getHours(),
+    d.getMinutes(),
+  ).toISOString();
 };
 
 describe('TY1 ay ızgarası', () => {
@@ -56,20 +63,40 @@ describe('TY1 ay ızgarası', () => {
     expect(g[41].gun).toBe('2026-12-06');
   });
   it('artık Şubat 29 gün, artık olmayan 28', () => {
-    expect(ayIzgarasi(2028, 1).filter((h) => h.ayIci).map((h) => h.gun).pop()).toBe('2028-02-29');
-    expect(ayIzgarasi(2027, 1).filter((h) => h.ayIci).map((h) => h.gun).pop()).toBe('2027-02-28');
+    expect(
+      ayIzgarasi(2028, 1)
+        .filter((h) => h.ayIci)
+        .map((h) => h.gun)
+        .pop(),
+    ).toBe('2028-02-29');
+    expect(
+      ayIzgarasi(2027, 1)
+        .filter((h) => h.ayIci)
+        .map((h) => h.gun)
+        .pop(),
+    ).toBe('2027-02-28');
   });
   it('hafta Pazartesi-Pazar; Pazar gününden hesaplanınca önceki Pazartesi', () => {
     const h = haftaGunleri(new Date(2026, 10, 15)); // Pazar
     expect(h.map((x) => x.gun)).toEqual([
-      '2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15',
+      '2026-11-09',
+      '2026-11-10',
+      '2026-11-11',
+      '2026-11-12',
+      '2026-11-13',
+      '2026-11-14',
+      '2026-11-15',
     ]);
   });
 });
 
 describe('TY2 çok günlü OCO', () => {
   it('bitişi sonraki günlerde olan OCO her güne yayılır', () => {
-    expect(ocoGunleri(yerel(2026, 11, 13, 22), yerel(2026, 11, 15, 3))).toEqual(['2026-11-13', '2026-11-14', '2026-11-15']);
+    expect(ocoGunleri(yerel(2026, 11, 13, 22), yerel(2026, 11, 15, 3))).toEqual([
+      '2026-11-13',
+      '2026-11-14',
+      '2026-11-15',
+    ]);
   });
   it('tam gece yarısı biten pencere ertesi güne yayılmaz', () => {
     expect(ocoGunleri(yerel(2026, 11, 13, 20), yerel(2026, 11, 14, 0))).toEqual(['2026-11-13']);
@@ -105,20 +132,30 @@ describe('TY2 çok günlü OCO', () => {
     expect(saatEtiketi(gunler.get('2026-11-12')![0] as never)).toBe('22:00 →');
     expect(saatEtiketi(gunler.get('2026-11-13')![0] as never)).toBe('→ 24:00');
     // Tek günlük, ertesi gece yarısı biten: 20:00–24:00.
-    const t = gunlereYay([{ oco: 5, plannedStart: yerel(2026, 11, 13, 20), plannedEnd: yerel(2026, 11, 14, 0) }]);
+    const t = gunlereYay([
+      { oco: 5, plannedStart: yerel(2026, 11, 13, 20), plannedEnd: yerel(2026, 11, 14, 0) },
+    ]);
     expect(saatEtiketi(t.gunler.get('2026-11-13')![0] as never)).toBe('20:00–24:00');
     // Gece yarısı olmayan bitiş değişmez.
-    const u = gunlereYay([{ oco: 6, plannedStart: yerel(2026, 11, 12, 22), plannedEnd: yerel(2026, 11, 13, 4) }]);
+    const u = gunlereYay([
+      { oco: 6, plannedStart: yerel(2026, 11, 12, 22), plannedEnd: yerel(2026, 11, 13, 4) },
+    ]);
     expect(saatEtiketi(u.gunler.get('2026-11-13')![0] as never)).toBe('→ 04:00');
   });
   it('gunlereYay: devam/sürer işaretleri, sürenler önce, tarihsizler ayrı', () => {
-    const r = (oco: number, s: string | null, e: string | null) => ({ oco, plannedStart: s, plannedEnd: e });
+    const r = (oco: number, s: string | null, e: string | null) => ({
+      oco,
+      plannedStart: s,
+      plannedEnd: e,
+    });
     const { gunler, tarihsiz } = gunlereYay([
       r(1, yerel(2026, 11, 14, 9), null),
       r(2, yerel(2026, 11, 13, 22), yerel(2026, 11, 14, 2)),
       r(3, null, null),
     ]);
-    expect(gunler.get('2026-11-13')!.map((o) => [o.row.oco, o.devam, o.surer])).toEqual([[2, false, true]]);
+    expect(gunler.get('2026-11-13')!.map((o) => [o.row.oco, o.devam, o.surer])).toEqual([
+      [2, false, true],
+    ]);
     expect(gunler.get('2026-11-14')!.map((o) => [o.row.oco, o.devam, o.surer])).toEqual([
       [2, true, false],
       [1, false, false],
@@ -148,18 +185,49 @@ const bugunSaat = (h: number, gunFark = 0, dk = 0) => {
   return d.toISOString();
 };
 const satir = (oco: number, ek: Record<string, unknown> = {}) => ({
-  oco, subject: `konu ${oco}`, explanation: '', statusText: '', statusCode: 0, impactText: '', processText: '',
-  pcabRequired: false, plannedStart: bugunSaat(10), plannedEnd: null, actualStart: null, actualEnd: null,
-  openedAt: null, iliski: ['sorumlu'], ...ek,
+  oco,
+  subject: `konu ${oco}`,
+  explanation: '',
+  statusText: '',
+  statusCode: 0,
+  impactText: '',
+  processText: '',
+  pcabRequired: false,
+  plannedStart: bugunSaat(10),
+  plannedEnd: null,
+  actualStart: null,
+  actualEnd: null,
+  openedAt: null,
+  iliski: ['sorumlu'],
+  ...ek,
 });
 const yanit = (rows: unknown[], ek: Record<string, unknown> = {}) => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, rows, total: rows.length, fetched: rows.length, truncated: false, eksik: [], ...ek }) })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        rows,
+        total: rows.length,
+        fetched: rows.length,
+        truncated: false,
+        eksik: [],
+        ...ek,
+      }),
+    })),
+  );
 };
-const hucre = (gun: string) => document.querySelector(`[data-testid="oco-takvim-hucre"][data-gun="${gun}"]`) as HTMLElement;
+const hucre = (gun: string) =>
+  document.querySelector(`[data-testid="oco-takvim-hucre"][data-gun="${gun}"]`) as HTMLElement;
 const bugunKey = () => tarihAnahtari(new Date());
 
 beforeEach(() => {
-  try { window.localStorage.clear(); } catch { /* yok */ }
+  try {
+    window.localStorage.clear();
+  } catch {
+    /* yok */
+  }
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -174,13 +242,19 @@ describe('TY5 görünüm seçimi', () => {
   });
   it('?gorunum=takvim takvim yaprağını açar; Liste düğmesi geri döndürür ve seçim hatırlanır', async () => {
     yanit([satir(1)]);
-    const { unmount } = render(<OcoTakvimiPage />, { initialEntries: ['/oco-takvimi?gorunum=takvim'] });
+    const { unmount } = render(<OcoTakvimiPage />, {
+      initialEntries: ['/oco-takvimi?gorunum=takvim'],
+    });
     expect(await screen.findByTestId('oco-takvim')).toBeTruthy();
     expect(screen.queryByTestId('oco-gecmis')).toBeNull();
-    fireEvent.click(within(screen.getByTestId('oco-gorunum')).getByRole('radio', { name: 'Liste' }));
+    fireEvent.click(
+      within(screen.getByTestId('oco-gorunum')).getByRole('radio', { name: 'Liste' }),
+    );
     expect(screen.queryByTestId('oco-takvim')).toBeNull();
     expect(window.localStorage.getItem(GORUNUM_ANAHTARI)).toBe('liste');
-    fireEvent.click(within(screen.getByTestId('oco-gorunum')).getByRole('radio', { name: 'Takvim' }));
+    fireEvent.click(
+      within(screen.getByTestId('oco-gorunum')).getByRole('radio', { name: 'Takvim' }),
+    );
     expect(screen.getByTestId('oco-takvim')).toBeTruthy();
     expect(window.localStorage.getItem(GORUNUM_ANAHTARI)).toBe('takvim');
     unmount();
@@ -200,7 +274,12 @@ describe('TY5 görünüm seçimi', () => {
 describe('TY4/TY7 takvim yaprağı', () => {
   it('bugün vurgulu; taşma "+N daha" ve günün tam listesi; öğe ayrıntısı listedekiyle aynı', async () => {
     yanit([
-      satir(1, { plannedStart: bugunSaat(8), statusText: 'Yönetici Onayı', explanation: 'ayrıntı metni 1', pcabRequired: true }),
+      satir(1, {
+        plannedStart: bugunSaat(8),
+        statusText: 'Yönetici Onayı',
+        explanation: 'ayrıntı metni 1',
+        pcabRequired: true,
+      }),
       satir(2, { plannedStart: bugunSaat(9) }),
       satir(3, { plannedStart: bugunSaat(10) }),
       satir(4, { plannedStart: bugunSaat(11) }),
@@ -269,7 +348,11 @@ describe('TY9 klavye: odak geri dönüşü, Escape, seçili işareti, +N adı', 
     const panel = screen.getByTestId('oco-takvim-panel');
     expect(panel.contains(document.activeElement)).toBe(true);
     expect(oge.getAttribute('aria-pressed')).toBe('true');
-    expect(within(hucre(bugunKey())).getByRole('button', { name: /^OCO 1,/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(
+      within(hucre(bugunKey()))
+        .getByRole('button', { name: /^OCO 1,/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
     fireEvent.click(within(panel).getByRole('button', { name: /Kapat/ }));
     expect(screen.queryByTestId('oco-takvim-panel')).toBeNull();
     expect(document.activeElement).toBe(oge);
@@ -284,7 +367,9 @@ describe('TY9 klavye: odak geri dönüşü, Escape, seçili işareti, +N adı', 
     const fazla = within(h).getByText('+2 daha');
     // Erişilebilir ad gün numarası düğmesinden FARKLI ve gizli sayıyı söyler.
     expect(fazla.getAttribute('aria-label')).toMatch(/2 OCO daha gizli, günün tüm 5 OCO'sunu aç/);
-    const gunNo = within(h).getAllByRole('button').find((b) => /günün tüm listesini aç/.test(b.getAttribute('aria-label') || ''))!;
+    const gunNo = within(h)
+      .getAllByRole('button')
+      .find((b) => /günün tüm listesini aç/.test(b.getAttribute('aria-label') || ''))!;
     expect(gunNo.getAttribute('aria-label')).not.toBe(fazla.getAttribute('aria-label'));
     fazla.focus();
     fireEvent.click(fazla);
@@ -296,7 +381,7 @@ describe('TY9 klavye: odak geri dönüşü, Escape, seçili işareti, +N adı', 
     expect(screen.queryByTestId('oco-takvim-panel')).toBeNull();
     expect(document.activeElement).toBe(fazla);
   });
-  it('tetikleyici DOM\'dan kalkmışsa odak takvim başlığına', async () => {
+  it("tetikleyici DOM'dan kalkmışsa odak takvim başlığına", async () => {
     yanit([satir(1, { plannedStart: null })]);
     render(<OcoTakvimiPage />, { initialEntries: ['/oco-takvimi?gorunum=takvim'] });
     await screen.findByTestId('oco-takvim-tarihsiz');
@@ -305,7 +390,9 @@ describe('TY9 klavye: odak geri dönüşü, Escape, seçili işareti, +N adı', 
     fireEvent.click(oge);
     // Tetikleyiciyi kaldır (ör. veri yenilendi ve öğe kalktı).
     oge.remove();
-    fireEvent.click(within(screen.getByTestId('oco-takvim-panel')).getByRole('button', { name: /Kapat/ }));
+    fireEvent.click(
+      within(screen.getByTestId('oco-takvim-panel')).getByRole('button', { name: /Kapat/ }),
+    );
     expect(document.activeElement).toBe(screen.getByTestId('oco-takvim-baslik'));
   });
 });
@@ -324,8 +411,12 @@ describe('TY10 dar ekran ajandası boş metni', () => {
     render(<OcoTakvimiPage />, { initialEntries: ['/oco-takvimi?gorunum=takvim'] });
     await screen.findByTestId('oco-takvim-ajanda');
     await screen.findAllByTestId('oco-takvim-oge');
-    fireEvent.change(screen.getByLabelText('OCO takviminde ara'), { target: { value: 'yokboylebirsey' } });
-    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe('Bu ayda süzgece uyan OCO yok.');
+    fireEvent.change(screen.getByLabelText('OCO takviminde ara'), {
+      target: { value: 'yokboylebirsey' },
+    });
+    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe(
+      'Bu ayda süzgece uyan OCO yok.',
+    );
   });
   it('servisin en eski kaydından önceki ay: kesin "OCO yok" demez', async () => {
     darEkran();
@@ -335,7 +426,9 @@ describe('TY10 dar ekran ajandası boş metni', () => {
     await screen.findAllByTestId('oco-takvim-oge');
     fireEvent.click(screen.getByRole('button', { name: 'Önceki ay' }));
     expect(screen.getByTestId('oco-takvim-gecmis-notu')).toBeTruthy();
-    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe('Bu ay için servis veri döndürmedi.');
+    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe(
+      'Bu ay için servis veri döndürmedi.',
+    );
   });
   it('liste eksikse "görünen OCO yok (liste eksik olabilir)"', async () => {
     darEkran();
@@ -344,7 +437,9 @@ describe('TY10 dar ekran ajandası boş metni', () => {
     await screen.findByTestId('oco-takvim-ajanda');
     await screen.findAllByTestId('oco-takvim-oge');
     fireEvent.click(screen.getByRole('button', { name: 'Sonraki ay' }));
-    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe('Bu ayda görünen OCO yok (liste eksik olabilir).');
+    expect(screen.getByTestId('oco-takvim-ajanda-bos').textContent).toBe(
+      'Bu ayda görünen OCO yok (liste eksik olabilir).',
+    );
   });
   it('gerçekten boş ay (servis kapsıyor, süzgeç yok, eksik değil): "Bu ayda OCO yok."', async () => {
     darEkran();
@@ -371,7 +466,9 @@ describe('TY6 süzgeçler takvime de uygulanır', () => {
     expect(screen.getAllByTestId('oco-takvim-oge').length).toBe(1);
     expect(screen.getByRole('button', { name: /^OCO 1,/ })).toBeTruthy();
     fireEvent.change(screen.getByLabelText('OCO takviminde ara'), { target: { value: '' } });
-    fireEvent.click(within(screen.getByTestId('oco-iliski')).getByRole('radio', { name: /Bize açılan/ }));
+    fireEvent.click(
+      within(screen.getByTestId('oco-iliski')).getByRole('radio', { name: /Bize açılan/ }),
+    );
     expect(screen.getAllByTestId('oco-takvim-oge').length).toBe(1);
     expect(screen.getByRole('button', { name: /^OCO 2,/ })).toBeTruthy();
   });

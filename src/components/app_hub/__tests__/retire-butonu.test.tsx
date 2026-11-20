@@ -14,7 +14,9 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { username: 'onur', role: kimlik.role }, canViewPage: () => true }),
 }));
 const api = vi.hoisted(() => ({ detay: vi.fn(), config: vi.fn() }));
-vi.mock('@/api/appHubApi', () => ({ appHubApi: { detay: api.detay, ara: vi.fn().mockResolvedValue({ sonuclar: [] }) } }));
+vi.mock('@/api/appHubApi', () => ({
+  appHubApi: { detay: api.detay, ara: vi.fn().mockResolvedValue({ sonuclar: [] }) },
+}));
 vi.mock('@/api/retirementApi', () => ({ retirementApi: { config: api.config } }));
 const pencere = vi.hoisted(() => ({ props: null as null | Record<string, unknown> }));
 vi.mock('@/components/server_hub/RetirementTab', () => ({
@@ -22,7 +24,9 @@ vi.mock('@/components/server_hub/RetirementTab', () => ({
     pencere.props = p;
     return (
       <div data-testid="retire-penceresi">
-        <button type="button" onClick={() => (p.onCreated as (id: number) => void)(42)}>kaydı aç</button>
+        <button type="button" onClick={() => (p.onCreated as (id: number) => void)(42)}>
+          kaydı aç
+        </button>
       </div>
     );
   },
@@ -32,7 +36,15 @@ vi.mock('@/components/app_hub/WasGorunum', () => ({ default: () => null }));
 vi.mock('@/components/app_hub/OcpGorunum', () => ({ default: () => null }));
 vi.mock('@/components/app_hub/AramaKutusu', () => ({ default: () => null }));
 
-const jboss = { tip: 'jboss', ad: 'MUSTERI', varyantlar: ['MUSTERI'], ozet: {}, sunucular: [], webSunuculari: [], kaynaklar: {} };
+const jboss = {
+  tip: 'jboss',
+  ad: 'MUSTERI',
+  varyantlar: ['MUSTERI'],
+  ozet: {},
+  sunucular: [],
+  webSunuculari: [],
+  kaynaklar: {},
+};
 
 function ac(tip: string) {
   return render(<AppHubPage />, { initialEntries: [`/application-hub?tip=${tip}&ad=MUSTERI`] });

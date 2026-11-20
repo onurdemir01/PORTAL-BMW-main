@@ -64,11 +64,19 @@ function loadJvmAgir(host, opts) {
 const shSahte = {
   getAssessment: async () => ({
     latestScan: '2026-11-12',
-    hosts: HOSTLAR.map((h) => ({ host: h, fresh: true, scanDate: '2026-11-12', jvms: [{ name: 'MUSTERI', gen: 8, running: true }] })),
+    hosts: HOSTLAR.map((h) => ({
+      host: h,
+      fresh: true,
+      scanDate: '2026-11-12',
+      jvms: [{ name: 'MUSTERI', gen: 8, running: true }],
+    })),
   }),
   loadJvmAgir,
   hostDetail: (h, agir) => ({
-    jvms: h.jvms.map((j) => ({ ...j, jvmArgs: (agir.get(`${j.gen}|${j.name.toLowerCase()}`) || {}).jvm_args || null })),
+    jvms: h.jvms.map((j) => ({
+      ...j,
+      jvmArgs: (agir.get(`${j.gen}|${j.name.toLowerCase()}`) || {}).jvm_args || null,
+    })),
   }),
 };
 loadJvmAgir.semaOku = async () => {
@@ -133,7 +141,10 @@ test('AP2b ikinci cagri birincisi bitmeden baslar', async () => {
   }
   const ilkBitis = zaman.findIndex((z) => z.olay === 'bitir' && z.host === HOSTLAR[0]);
   const ikinciBaslama = zaman.findIndex((z) => z.olay === 'basla' && z.host === HOSTLAR[1]);
-  assert.ok(ikinciBaslama >= 0 && ikinciBaslama < ilkBitis, 'ikinci cagri birincinin bitmesini bekledi');
+  assert.ok(
+    ikinciBaslama >= 0 && ikinciBaslama < ilkBitis,
+    'ikinci cagri birincinin bitmesini bekledi',
+  );
 });
 
 test('AP3 tek sunucu duserse yalniz onun agir alani bos', async () => {
@@ -152,7 +163,9 @@ test('AP4 semaOku yoksa loadJvmAgir tek argumanla cagrilir', async () => {
   delete loadJvmAgir.semaOku;
   try {
     const d = await V.jbossDetay('MUSTERI');
-    assert.ok(izler.argSayilari.length === HOSTLAR.length && izler.argSayilari.every((n) => n === 1));
+    assert.ok(
+      izler.argSayilari.length === HOSTLAR.length && izler.argSayilari.every((n) => n === 1),
+    );
     assert.equal(izler.sema, 0);
     assert.equal(d.ozet.jvmSayisi, HOSTLAR.length);
   } finally {
@@ -166,17 +179,37 @@ test('AP5 ayni anahtara dusen iki kayit (kisa ad + FQDN): yavas olan once gelse 
   shSahte.getAssessment = async () => ({
     latestScan: '2026-11-12',
     hosts: [
-      { host: HOSTLAR[0], fresh: true, scanDate: 'ilk', jvms: [{ name: 'MUSTERI', gen: 8, running: true }] },
-      { host: `${HOSTLAR[0]}.bank.local`, fresh: true, scanDate: 'ikinci', jvms: [{ name: 'MUSTERI', gen: 8, running: true }] },
+      {
+        host: HOSTLAR[0],
+        fresh: true,
+        scanDate: 'ilk',
+        jvms: [{ name: 'MUSTERI', gen: 8, running: true }],
+      },
+      {
+        host: `${HOSTLAR[0]}.bank.local`,
+        fresh: true,
+        scanDate: 'ikinci',
+        jvms: [{ name: 'MUSTERI', gen: 8, running: true }],
+      },
     ],
   });
   ayar.gecikme = (h) => (h.includes('.') ? 2 : 40);
   try {
     const d = await V.jbossDetay('MUSTERI');
-    assert.deepEqual(izler.bitir, [`${HOSTLAR[0]}.bank.local`, HOSTLAR[0]], 'ters bitis kurulamadi');
+    assert.deepEqual(
+      izler.bitir,
+      [`${HOSTLAR[0]}.bank.local`, HOSTLAR[0]],
+      'ters bitis kurulamadi',
+    );
     const s = d.sunucular.find((x) => x.host === HOSTLAR[0]);
-    assert.deepEqual(s.jvmler.map((j) => j.taramaTarihi), ['ilk', 'ikinci']);
-    assert.deepEqual(s.jvmler.map((j) => j.jvmArgs), [`-Dhost=${HOSTLAR[0]}`, `-Dhost=${HOSTLAR[0]}.bank.local`]);
+    assert.deepEqual(
+      s.jvmler.map((j) => j.taramaTarihi),
+      ['ilk', 'ikinci'],
+    );
+    assert.deepEqual(
+      s.jvmler.map((j) => j.jvmArgs),
+      [`-Dhost=${HOSTLAR[0]}`, `-Dhost=${HOSTLAR[0]}.bank.local`],
+    );
   } finally {
     shSahte.getAssessment = asil;
   }

@@ -581,9 +581,12 @@ export function PodsTab({
     }
   }, [run]);
 
-  useAsyncEffect(async (alive) => {
-    if (alive()) await listele();
-  }, [tenantKey]);
+  useAsyncEffect(
+    async (alive) => {
+      if (alive()) await listele();
+    },
+    [tenantKey],
+  );
 
   const toggle = (name: string) =>
     setSec((s) => (s.includes(name) ? s.filter((x) => x !== name) : [...s, name]));

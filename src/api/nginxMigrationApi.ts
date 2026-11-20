@@ -3,9 +3,9 @@
 // Eski GBRVP* sunucusundaki bir proxy_pass location'ını yeni prod SPA sunucularında SPA
 // tanımı olarak oluşturan AWX job'ını tetikler. Playbook:
 //   gar_bmt_ansible_scripts/bmw_nginx/nginx_ops/nginx_prod_migration.yml
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/nginx-migration";
+const BASE = '/api/nginx-migration';
 
 export interface NginxMigrationConfig {
   awxServerId: number;
@@ -53,7 +53,11 @@ export interface NginxMigrationDeleteResult {
    */
   cancelOutcome?: string;
   /** warning: survey'deki new_fleet sorusu DIGER nginx_ops islerini bozuyor (silme yine guvenli). */
-  newFleetGuard?: { via: "prompt" | "survey"; postCheck: "dogrulandi" | "olculemedi"; warning?: string };
+  newFleetGuard?: {
+    via: 'prompt' | 'survey';
+    postCheck: 'dogrulandi' | 'olculemedi';
+    warning?: string;
+  };
 }
 
 /**
@@ -62,7 +66,7 @@ export interface NginxMigrationDeleteResult {
  */
 export interface NginxMigrationDeleteGuard {
   ok: boolean;
-  via?: "prompt" | "survey";
+  via?: 'prompt' | 'survey';
   /**
    * ok=true iken: survey'deki new_fleet sorusu (varsayilani false ya da zorunlu+varsayilansiz)
    * new_fleet gondermeyen DIGER nginx_ops islerini bozuyor. Silmeyi bloklamaz; yonetici icin.
@@ -95,15 +99,15 @@ export const nginxMigrationApi = {
     inputPath: string;
   }): Promise<NginxMigrationDeleteResult> =>
     fetch(`${BASE}/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
   saveConfig: (cfg: NginxMigrationConfig): Promise<{ ok: boolean; message?: string }> =>
     fetch(`${BASE}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cfg),
     }).then(safeJson),
 
@@ -117,8 +121,8 @@ export const nginxMigrationApi = {
     force?: boolean;
   }): Promise<NginxMigrationCreateResult> =>
     fetch(`${BASE}/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 };
@@ -183,17 +187,24 @@ export const nginxMigrationScanApi = {
    * Tarama tazeleme (2026-09-24): gunluk nginx_config_audit isini SIMDI, yalniz verilen
    * sunucular icin kosturur. Yeni acilan bir tanim ertesi gunu beklemeden ekrana duser.
    */
-  rescan: (hosts: string[], label?: string): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; message?: string }> =>
+  rescan: (
+    hosts: string[],
+    label?: string,
+  ): Promise<{ ok: boolean; jobId?: number | null; awxServerId?: number; message?: string }> =>
     fetch(`${BASE}/rescan`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hosts, label }),
     }).then(safeJson),
 };
 
 export const nginxMigrationTrackingApi = {
-  list: (): Promise<{ ok: boolean; rows: MigrationTracking[]; pathJobs?: MigrationPathJob[]; message?: string }> =>
-    fetch(`${BASE}/tracking`).then(safeJson),
+  list: (): Promise<{
+    ok: boolean;
+    rows: MigrationTracking[];
+    pathJobs?: MigrationPathJob[];
+    message?: string;
+  }> => fetch(`${BASE}/tracking`).then(safeJson),
 
   /**
    * TOPLU kayit (2026-09-24): ayni durum/tarih/not birden fazla uygulamaya yazilir.
@@ -205,10 +216,16 @@ export const nginxMigrationTrackingApi = {
     plannedDate?: string | null;
     migratedDate?: string | null;
     note?: string | null;
-  }): Promise<{ ok: boolean; written?: number; failed?: { namespace: string; application: string; message: string }[]; rows?: MigrationTracking[]; message?: string }> =>
+  }): Promise<{
+    ok: boolean;
+    written?: number;
+    failed?: { namespace: string; application: string; message: string }[];
+    rows?: MigrationTracking[];
+    message?: string;
+  }> =>
     fetch(`${BASE}/tracking/bulk`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
@@ -222,8 +239,8 @@ export const nginxMigrationTrackingApi = {
     note?: string | null;
   }): Promise<{ ok: boolean; row?: MigrationTracking; message?: string }> =>
     fetch(`${BASE}/tracking`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 };

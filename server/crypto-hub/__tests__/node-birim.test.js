@@ -5,6 +5,7 @@
 // (yer tutucu yeni_b64), N5 Smart metadata (yalniz maskeli), N17 deger dogrulama / maskeleme
 // (Python ile ayni kural), N18 launch oncesi kanca (sifreli kolon -> extra_vars).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -552,7 +553,7 @@ test('N5 cryptoNodeMetadata: OpsX sablonu ayni sozlukle render; yeni deger maske
     ozet.aciklama,
     /\nYeni node \(maskeli\): auth=\*\*\*\*; url=https:\/\/dot-c\.node\.invalid\/\*\*\*\*\n/,
   );
-  assert.doesNotMatch(ozet.aciklama, /boş değerle yazılacak/);
+  assert.doesNotMatch(ozet.aciklama, esnek(/boş değerle yazılacak/));
   const m = NODE.cryptoNodeMetadata(OPSX_SABLON, { username: 'nodecu', email: 'n@x' }, ozet, {
     job_type: 'run',
     openshift_operations: 'openshift_application_rollout',

@@ -9,7 +9,7 @@
 //
 // Yalnızca TEK bir iş aynı anda "büyütülmüş" (expanded) olabilir — diğerleri otomatik
 // küçültülür; bu, ekranı floating panel'lerle doldurmadan "tarayıcı sekmesi" hissini verir.
-import React, { createContext, useCallback, useContext, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 
 export interface TrackedJobResult {
   status: string;
@@ -54,9 +54,9 @@ interface JobTrackerContextValue {
 
 const JobTrackerContext = createContext<JobTrackerContextValue | null>(null);
 
-const TERMINAL = new Set(["successful", "failed", "error", "canceled"]);
-const RUN_MS = 1500;   // stdout akıyor → hızlı tazele
-const IDLE_MS = 3000;  // koşuyor ama henüz çıktı yok
+const TERMINAL = new Set(['successful', 'failed', 'error', 'canceled']);
+const RUN_MS = 1500; // stdout akıyor → hızlı tazele
+const IDLE_MS = 3000; // koşuyor ama henüz çıktı yok
 const MAX_ERRORS = 12; // geçici hataya tolerans (backoff ile ~50sn) — OpsX/Telnet/SS'teki AYNI desen
 
 // `Date.now()` tek yerde: test/zaman donduran ortamlarda degistirilebilir olsun.
@@ -79,47 +79,86 @@ export function JobTrackerProvider({ children }: { children: React.ReactNode }) 
     // ayni anda IKI pencere birden gorunmez.
     setJobs((prev) => [
       ...prev,
-      { id, title: input.title, status: "", output: "", pollErr: "", minimized: true, done: false, filterable: input.filterable, startedAt: nowMs() },
+      {
+        id,
+        title: input.title,
+        status: '',
+        output: '',
+        pollErr: '',
+        minimized: true,
+        done: false,
+        filterable: input.filterable,
+        startedAt: nowMs(),
+      },
     ]);
 
     const tick = (errCount: number) => {
       if (stoppedRef.current.has(id)) return;
-      input.fetchStatus().then((r) => {
-        if (stoppedRef.current.has(id)) return;
-        const terminal = TERMINAL.has(r.status);
-        setJobs((prev) => prev.map((j) => (j.id === id ? {
-          ...j,
-          status: r.status,
-          output: r.output || j.output,
-          // Sonuc yalnizca DOLU geldiginde yazilir: is bitmeden once null donen
-          // yoklamalar, daha once alinmis bir sonucu SILMEMELI.
-          result: r.result ?? j.result,
-          pollErr: "",
-          done: terminal,
-        } : j)));
-        if (terminal) {
-          if (!r.output && (r.status === "failed" || r.status === "error")) {
-            setJobs((prev) => prev.map((j) => (j.id === id
-              ? { ...j, output: "Job başarısız oldu ancak AWX bu iş için stdout döndürmedi. AWX arayüzünden job detayını kontrol edin." }
-              : j)));
+      input
+        .fetchStatus()
+        .then((r) => {
+          if (stoppedRef.current.has(id)) return;
+          const terminal = TERMINAL.has(r.status);
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.id === id
+                ? {
+                    ...j,
+                    status: r.status,
+                    output: r.output || j.output,
+                    // Sonuc yalnizca DOLU geldiginde yazilir: is bitmeden once null donen
+                    // yoklamalar, daha once alinmis bir sonucu SILMEMELI.
+                    result: r.result ?? j.result,
+                    pollErr: '',
+                    done: terminal,
+                  }
+                : j,
+            ),
+          );
+          if (terminal) {
+            if (!r.output && (r.status === 'failed' || r.status === 'error')) {
+              setJobs((prev) =>
+                prev.map((j) =>
+                  j.id === id
+                    ? {
+                        ...j,
+                        output:
+                          'Job başarısız oldu ancak AWX bu iş için stdout döndürmedi. AWX arayüzünden job detayını kontrol edin.',
+                      }
+                    : j,
+                ),
+              );
+            }
+            return;
           }
-          return;
-        }
-        window.setTimeout(() => tick(0), r.output ? RUN_MS : IDLE_MS);
-      }).catch((e: unknown) => {
-        if (stoppedRef.current.has(id)) return;
-        const next = errCount + 1;
-        if (next >= MAX_ERRORS) {
-          setJobs((prev) => prev.map((j) => (j.id === id
-            ? { ...j, pollErr: `Durum güncellenemiyor: ${e instanceof Error ? e.message : String(e)}`, done: true }
-            : j)));
-          return;
-        }
-        setJobs((prev) => prev.map((j) => (j.id === id
-          ? { ...j, pollErr: `Bağlantı yenileniyor… (deneme ${next}/${MAX_ERRORS})` }
-          : j)));
-        window.setTimeout(() => tick(next), Math.min(RUN_MS * next, 6000));
-      });
+          window.setTimeout(() => tick(0), r.output ? RUN_MS : IDLE_MS);
+        })
+        .catch((e: unknown) => {
+          if (stoppedRef.current.has(id)) return;
+          const next = errCount + 1;
+          if (next >= MAX_ERRORS) {
+            setJobs((prev) =>
+              prev.map((j) =>
+                j.id === id
+                  ? {
+                      ...j,
+                      pollErr: `Durum güncellenemiyor: ${e instanceof Error ? e.message : String(e)}`,
+                      done: true,
+                    }
+                  : j,
+              ),
+            );
+            return;
+          }
+          setJobs((prev) =>
+            prev.map((j) =>
+              j.id === id
+                ? { ...j, pollErr: `Bağlantı yenileniyor… (deneme ${next}/${MAX_ERRORS})` }
+                : j,
+            ),
+          );
+          window.setTimeout(() => tick(next), Math.min(RUN_MS * next, 6000));
+        });
     };
     tick(0);
 
@@ -148,6 +187,6 @@ export function JobTrackerProvider({ children }: { children: React.ReactNode }) 
 
 export function useJobTracker(): JobTrackerContextValue {
   const ctx = useContext(JobTrackerContext);
-  if (!ctx) throw new Error("useJobTracker, JobTrackerProvider içinde kullanılmalı.");
+  if (!ctx) throw new Error('useJobTracker, JobTrackerProvider içinde kullanılmalı.');
   return ctx;
 }

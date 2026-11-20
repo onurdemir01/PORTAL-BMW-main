@@ -46,7 +46,11 @@ test('EY1 varsayilanlar', () => {
   assert.equal(a.AYARLAR.deployment_kontrolu.dogrula('ACIK'), 'ACIK');
   assert.equal(a.AYARLAR.deployment_kontrolu.dogrula('EVET'), null);
   for (const k of ['zamanlayici', 'gun', 'saat', 'kip']) assert.ok(!(k in d), `eski anahtar ${k}`);
-  assert.deepEqual(a.planOzeti(d).map((p) => p.sonraki), [[], []], 'kapali plan sonraki zaman vermez');
+  assert.deepEqual(
+    a.planOzeti(d).map((p) => p.sonraki),
+    [[], []],
+    'kapali plan sonraki zaman vermez',
+  );
 });
 
 test('EY2 dogrulama', () => {
@@ -63,7 +67,13 @@ test('EY2 dogrulama', () => {
   assert.equal(AYARLAR.p2_birim.dogrula('GUN'), null);
   assert.equal(kapsamDogrula('ORTAM: test , prod,TEST'), 'ORTAM:PROD,TEST');
   assert.equal(kapsamDogrula('SORUNLU'), 'SORUNLU');
-  for (const k of ['', 'ORTAM:', 'ORTAM:a;b', 'HEPSI', `ORTAM:${Array.from({ length: 21 }, (_, i) => ("E" + i)).join(',')}`])
+  for (const k of [
+    '',
+    'ORTAM:',
+    'ORTAM:a;b',
+    'HEPSI',
+    `ORTAM:${Array.from({ length: 21 }, (_, i) => 'E' + i).join(',')}`,
+  ])
     assert.equal(kapsamDogrula(k), null, k);
   assert.equal(tarihDogrula('2026-02-28'), '2026-02-28');
   for (const t of ['2026-02-30', '2026-13-01', '26-01-01', '2019-12-31', ''])
@@ -100,11 +110,17 @@ test('EY4 zaman dogruluk tablosu (TR)', () => {
   ]);
   assert.equal(tr(a.ornek(p1, 0)), '2026-01-04 02:00');
   // TR 02:00 Pazar = UTC Cumartesi 23:00
-  assert.equal(a.sonZamanlama(p1, new Date('2026-11-07T23:00:00Z')).toISOString(), '2026-11-07T23:00:00.000Z');
+  assert.equal(
+    a.sonZamanlama(p1, new Date('2026-11-07T23:00:00Z')).toISOString(),
+    '2026-11-07T23:00:00.000Z',
+  );
   assert.equal(tr(a.sonZamanlama(p1, new Date('2026-11-07T22:59:00Z'))), '2026-10-11 02:00');
   // TR gece yarisi: Pazartesi 00:30 TR = Pazar 21:30 UTC
   const gece = plan('p1', { p1_aralik: '1', p1_gun: '1', p1_saat: '00:30' });
-  assert.equal(a.sonZamanlama(gece, new Date('2026-11-08T21:30:00Z')).toISOString(), '2026-11-08T21:30:00.000Z');
+  assert.equal(
+    a.sonZamanlama(gece, new Date('2026-11-08T21:30:00Z')).toISOString(),
+    '2026-11-08T21:30:00.000Z',
+  );
   assert.equal(a.trGun(a.sonZamanlama(gece, new Date('2026-11-08T21:30:00Z'))), '2026-11-09');
   // AY: 2 ayda bir ilk Pazar (Oca, Mar, May ... Kas 2026 = 1 Kas)
   const p2 = plan('p2', {});
@@ -120,25 +136,57 @@ test('EY4 zaman dogruluk tablosu (TR)', () => {
   assert.equal(a.ayinGunu(2027, 1, 5, 'SON'), 26);
   assert.equal(a.ayinGunu(2027, 1, 0, 'ILK'), 7);
   const son = plan('p2', { p2_aralik: '1', p2_sira: 'SON', p2_gun: '5', p2_saat: '23:45' });
-  assert.equal(tr(a.sonrakiZamanlamalar(son, new Date('2027-02-01T00:00:00Z'), 1)[0]), '2027-02-26 23:45');
+  assert.equal(
+    tr(a.sonrakiZamanlamalar(son, new Date('2027-02-01T00:00:00Z'), 1)[0]),
+    '2027-02-26 23:45',
+  );
   // Capa: baslangic 2026-11-10 -> ilk haftalik Pazar 15 Kasim; oncesinde calisma yok.
   const capa = plan('p1', { p1_aralik: '1', p1_baslangic: '2026-11-10' });
   assert.equal(a.sonZamanlama(capa, new Date('2026-11-12T00:00:00Z')), null);
-  assert.equal(tr(a.sonrakiZamanlamalar(capa, new Date('2026-11-12T00:00:00Z'), 1)[0]), '2026-11-15 02:00');
+  assert.equal(
+    tr(a.sonrakiZamanlamalar(capa, new Date('2026-11-12T00:00:00Z'), 1)[0]),
+    '2026-11-15 02:00',
+  );
   // AY capasi ayin ilk Pazarindan sonra: o ay atlanir, aralik capa ayindan sayilir (Kas + 2 = Oca).
   const capaAy = plan('p2', { p2_baslangic: '2026-11-05' });
-  assert.equal(tr(a.sonrakiZamanlamalar(capaAy, new Date('2026-11-05T00:00:00Z'), 1)[0]), '2027-01-03 03:00');
-  assert.equal(a.sonZamanlama(capaAy, new Date('2026-11-06T00:00:00Z')), null, 'baslangictan onceki ornek sayilmaz');
+  assert.equal(
+    tr(a.sonrakiZamanlamalar(capaAy, new Date('2026-11-05T00:00:00Z'), 1)[0]),
+    '2027-01-03 03:00',
+  );
+  assert.equal(
+    a.sonZamanlama(capaAy, new Date('2026-11-06T00:00:00Z')),
+    null,
+    'baslangictan onceki ornek sayilmaz',
+  );
   // Baslangictan bir gun onceki ornek 24 saatlik telafiye dusup ilk gun tarama ACMAMALI.
-  const ertesi = { ...a.varsayilanlar(), p2_acik: 'ACIK', p2_aralik: '1', p2_baslangic: '2026-11-02' };
-  assert.deepEqual(a.bekleyenZamanlama(ertesi, new Date('2026-11-01T21:30:00Z')), [], '1 Kas 03:00 baslangic oncesi');
+  const ertesi = {
+    ...a.varsayilanlar(),
+    p2_acik: 'ACIK',
+    p2_aralik: '1',
+    p2_baslangic: '2026-11-02',
+  };
+  assert.deepEqual(
+    a.bekleyenZamanlama(ertesi, new Date('2026-11-01T21:30:00Z')),
+    [],
+    '1 Kas 03:00 baslangic oncesi',
+  );
   // Telafi 24 saat; anahtar TR tarihiyle
   const d = { ...a.varsayilanlar(), p1_acik: 'ACIK' };
-  assert.deepEqual(a.bekleyenZamanlama(d, new Date('2026-11-07T23:30:00Z')).map((x) => x.anahtar), ['P1-2026-11-08']);
-  assert.deepEqual(a.bekleyenZamanlama(d, new Date('2026-11-08T23:01:00Z')), [], '24 saat sonra telafi yok');
+  assert.deepEqual(
+    a.bekleyenZamanlama(d, new Date('2026-11-07T23:30:00Z')).map((x) => x.anahtar),
+    ['P1-2026-11-08'],
+  );
+  assert.deepEqual(
+    a.bekleyenZamanlama(d, new Date('2026-11-08T23:01:00Z')),
+    [],
+    '24 saat sonra telafi yok',
+  );
   assert.deepEqual(a.bekleyenZamanlama(a.varsayilanlar(), new Date('2026-11-07T23:30:00Z')), []);
   assert.match(a.zamanlamaMetni(p1), /^Her 4 haftada bir · Pazar 02:00 \(TR\) · ÖZET · tüm filo$/);
-  assert.match(a.zamanlamaMetni(p2), /^Her 2 ayda bir · ayın ilk Pazarı 03:00 \(TR\) · TAM · tüm filo$/);
+  assert.match(
+    a.zamanlamaMetni(p2),
+    /^Her 2 ayda bir · ayın ilk Pazarı 03:00 \(TR\) · TAM · tüm filo$/,
+  );
   assert.match(a.zamanlamaMetni(son), /^Her ay · ayın son Cuması 23:45/);
 });
 
@@ -147,14 +195,26 @@ test('EY5 TAM onceligi', () => {
   const ikiAcik = { ...a.varsayilanlar(), p1_acik: 'ACIK', p2_acik: 'ACIK' };
   // 3 Ocak 2027: P1 02:00 OZET ve P2 03:00 TAM ayni gun.
   const gece = a.bekleyenZamanlama(ikiAcik, new Date('2027-01-02T23:30:00Z'));
-  assert.deepEqual(gece.map((x) => [x.anahtar, x.birlesti]), [['P1-2027-01-03', 'P2']]);
+  assert.deepEqual(
+    gece.map((x) => [x.anahtar, x.birlesti]),
+    [['P1-2027-01-03', 'P2']],
+  );
   assert.deepEqual(gece[0].esAnahtarlar, ['H-2027-01-03'], 'eski haftalik anahtar');
   const sonra = a.bekleyenZamanlama(ikiAcik, new Date('2027-01-03T00:30:00Z'));
-  assert.deepEqual(sonra.map((x) => [x.anahtar, x.birlesti]), [['P2-2027-01-03', null], ['P1-2027-01-03', 'P2']]);
+  assert.deepEqual(
+    sonra.map((x) => [x.anahtar, x.birlesti]),
+    [
+      ['P2-2027-01-03', null],
+      ['P1-2027-01-03', 'P2'],
+    ],
+  );
   assert.deepEqual(sonra[0].esAnahtarlar, []);
   // Kapsam kapsamiyor: TAM yalniz PROD, OZET filo -> birlesmez.
   const prod = { ...ikiAcik, p2_kapsam: 'ORTAM:PROD' };
-  assert.deepEqual(a.bekleyenZamanlama(prod, new Date('2027-01-03T00:30:00Z')).map((x) => x.birlesti), [null, null]);
+  assert.deepEqual(
+    a.bekleyenZamanlama(prod, new Date('2027-01-03T00:30:00Z')).map((x) => x.birlesti),
+    [null, null],
+  );
   // Ikisi de OZET -> birlesmez.
   const ozet = { ...ikiAcik, p2_kip: 'OZET' };
   assert.ok(a.bekleyenZamanlama(ozet, new Date('2027-01-03T00:30:00Z')).every((x) => !x.birlesti));
@@ -164,29 +224,56 @@ test('EY5 TAM onceligi', () => {
   assert.equal(a.kapsamKapsar('FILO', 'SORUNLU'), true);
   assert.equal(a.kapsamKapsar('SORUNLU', 'FILO'), false);
   // 8 Kasim: yalniz P1 (P2'nin Kasim ornegi 1 Kasim'di, 7 gun uzakta): birlesmez.
-  assert.deepEqual(a.bekleyenZamanlama(ikiAcik, new Date('2026-11-07T23:30:00Z')).map((x) => x.birlesti), [null]);
+  assert.deepEqual(
+    a.bekleyenZamanlama(ikiAcik, new Date('2026-11-07T23:30:00Z')).map((x) => x.birlesti),
+    [null],
+  );
 });
 
 test('EY6 yaz ve planYaz', async () => {
   let a = ayarYukle();
   const db = F.sahteDb([
-    [/SELECT anahtar, deger/, () => ({ rows: [{ anahtar: 'parti_tam', deger: '80' }, { anahtar: 'p1_aralik', deger: '2' }] })],
+    [
+      /SELECT anahtar, deger/,
+      () => ({
+        rows: [
+          { anahtar: 'parti_tam', deger: '80' },
+          { anahtar: 'p1_aralik', deger: '2' },
+        ],
+      }),
+    ],
   ]);
   F.dbKur(db);
   const r = await a.yaz('parti_tam', '50', 'ayse');
   assert.deepEqual([r.eski, r.yeni], ['80', '50']);
-  assert.ok(db.cagrilar.some((c) => /DELETE FROM ear_envanter_ayarlar WHERE anahtar = \$1/.test(c.sql)));
+  assert.ok(
+    db.cagrilar.some((c) => /DELETE FROM ear_envanter_ayarlar WHERE anahtar = \$1/.test(c.sql)),
+  );
   await assert.rejects(a.yaz('parti_tam', '500', 'ayse'), (e) => e.status === 400);
   await assert.rejects(a.yaz('yok', '1', 'ayse'), (e) => e.status === 400);
   const once = db.cagrilar.length;
-  await assert.rejects(a.planYaz('p1', { acik: 'ACIK', saat: '25:00' }, 'ayse'), (e) => e.status === 400);
-  await assert.rejects(a.planYaz('p3', { acik: 'ACIK' }, 'ayse'), (e) => e.code === 'bilinmeyen_plan');
+  await assert.rejects(
+    a.planYaz('p1', { acik: 'ACIK', saat: '25:00' }, 'ayse'),
+    (e) => e.status === 400,
+  );
+  await assert.rejects(
+    a.planYaz('p3', { acik: 'ACIK' }, 'ayse'),
+    (e) => e.code === 'bilinmeyen_plan',
+  );
   await assert.rejects(a.planYaz('p1', { yok: '1' }, 'ayse'), (e) => e.status === 400);
   assert.equal(db.cagrilar.length, once, 'gecersiz alanda DB ye hic gidilmez');
-  const p = await a.planYaz('p1', { acik: 'ACIK', aralik: '4', kapsam: 'ORTAM:test', saat: '02:00' }, 'ayse');
+  const p = await a.planYaz(
+    'p1',
+    { acik: 'ACIK', aralik: '4', kapsam: 'ORTAM:test', saat: '02:00' },
+    'ayse',
+  );
   assert.deepEqual(
     p.degisen.map((x) => [x.anahtar, x.yeni]),
-    [['p1_acik', 'ACIK'], ['p1_aralik', '4'], ['p1_kapsam', 'ORTAM:TEST']],
+    [
+      ['p1_acik', 'ACIK'],
+      ['p1_aralik', '4'],
+      ['p1_kapsam', 'ORTAM:TEST'],
+    ],
     'degismeyen alan yazilmaz; kapsam normalize',
   );
   const tx = db.cagrilar.at(-1);
@@ -197,7 +284,16 @@ test('EY6 yaz ve planYaz', async () => {
     { anahtar: 'p1_kapsam', deger: 'ORTAM:TEST' },
   ]);
   a = ayarYukle();
-  F.dbKur(F.sahteDb([[/SELECT anahtar, deger/, () => { throw new Error('DB yok'); }]]));
+  F.dbKur(
+    F.sahteDb([
+      [
+        /SELECT anahtar, deger/,
+        () => {
+          throw new Error('DB yok');
+        },
+      ],
+    ]),
+  );
   await assert.rejects(a.yaz('parti_tam', '60', 'ayse'), (e) => e.status === 424);
   await assert.rejects(a.planYaz('p2', { acik: 'ACIK' }, 'ayse'), (e) => e.status === 424);
 });
@@ -212,12 +308,15 @@ test('EY7 eski haftalik plan tasinir', async () => {
   ];
   let db = F.sahteDb([
     [/SELECT anahtar, deger/, () => ({ rows: satirlar })],
-    [/DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/, (params) => {
-      const sil = new Set(JSON.parse(params[0]));
-      const ekle = JSON.parse(params[1]);
-      satirlar = [...satirlar.filter((r) => !sil.has(r.anahtar)), ...ekle];
-      return {};
-    }],
+    [
+      /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/,
+      (params) => {
+        const sil = new Set(JSON.parse(params[0]));
+        const ekle = JSON.parse(params[1]);
+        satirlar = [...satirlar.filter((r) => !sil.has(r.anahtar)), ...ekle];
+        return {};
+      },
+    ],
   ]);
   F.dbKur(db);
   const o = await a.oku(true);
@@ -229,23 +328,39 @@ test('EY7 eski haftalik plan tasinir', async () => {
   );
   assert.equal(o.deger.parti_tam, '40', 'oteki ayarlar yerinde');
   assert.ok(!satirlar.some((r) => ['zamanlayici', 'gun', 'saat', 'kip'].includes(r.anahtar)));
-  assert.ok(!satirlar.some((r) => r.anahtar === 'p1_birim'), 'varsayilan deger satir olarak yazilmaz');
-  const tasima = db.cagrilar.filter((c) => /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/.test(c.sql));
+  assert.ok(
+    !satirlar.some((r) => r.anahtar === 'p1_birim'),
+    'varsayilan deger satir olarak yazilmaz',
+  );
+  const tasima = db.cagrilar.filter((c) =>
+    /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/.test(c.sql),
+  );
   assert.equal(tasima.length, 1);
   await a.oku(true);
-  assert.equal(db.cagrilar.filter((c) => /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/.test(c.sql)).length, 1, 'bir kez');
+  assert.equal(
+    db.cagrilar.filter((c) => /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/.test(c.sql))
+      .length,
+    1,
+    'bir kez',
+  );
 
   a = ayarYukle();
-  satirlar = [{ anahtar: 'kip', deger: 'OZET' }, { anahtar: 'saat', deger: '04:00' }];
+  satirlar = [
+    { anahtar: 'kip', deger: 'OZET' },
+    { anahtar: 'saat', deger: '04:00' },
+  ];
   let eklenen = null;
   db = F.sahteDb([
     [/SELECT anahtar, deger/, () => ({ rows: satirlar })],
-    [/DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/, (params) => {
-      const sil = new Set(JSON.parse(params[0]));
-      eklenen = JSON.parse(params[1]);
-      satirlar = [...satirlar.filter((r) => !sil.has(r.anahtar)), ...eklenen];
-      return {};
-    }],
+    [
+      /DELETE FROM ear_envanter_ayarlar WHERE anahtar IN/,
+      (params) => {
+        const sil = new Set(JSON.parse(params[0]));
+        eklenen = JSON.parse(params[1]);
+        satirlar = [...satirlar.filter((r) => !sil.has(r.anahtar)), ...eklenen];
+        return {};
+      },
+    ],
   ]);
   F.dbKur(db);
   const k = await a.oku(true);

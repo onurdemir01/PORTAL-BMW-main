@@ -93,8 +93,11 @@ test('server/**/*.cjs icinde TANIMSIZ KIMLIK yok (gateVars sinifi)', () => {
   // ONCE derleyicinin GERCEKTEN kostugunu kanitla; yoksa bos cikti "temiz" sanilir.
   assert.ok(calisti, 'tsc hic calismadi — bu test YESIL donse bile hicbir sey olcmedi');
   const unbound = cikti.split('\n').filter((l) => /error TS(2304|2552):/.test(l));
-  assert.deepEqual(unbound, [],
-    'bu satirlar CALISTIGINDA ReferenceError verir:\n' + unbound.join('\n'));
+  assert.deepEqual(
+    unbound,
+    [],
+    'bu satirlar CALISTIGINDA ReferenceError verir:\n' + unbound.join('\n'),
+  );
 });
 
 test('bekcinin kendisi kor DEGIL: sentetik bir ihlali yakalar', () => {
@@ -106,7 +109,10 @@ test('bekcinin kendisi kor DEGIL: sentetik bir ihlali yakalar', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'unbound-probe-'));
   try {
     const probe = path.join(dir, '__unbound_probe__.cjs');
-    fs.writeFileSync(probe, "'use strict';\nfunction f() { return buSeyTanimliDegil; }\nmodule.exports = { f };\n");
+    fs.writeFileSync(
+      probe,
+      "'use strict';\nfunction f() { return buSeyTanimliDegil; }\nmodule.exports = { f };\n",
+    );
     // Gercek yapilandirmayi DEVRALIR: olculen derleyici secenekleri gercek olanlar.
     const probeConfig = path.join(dir, 'tsconfig.probe.json');
     const posix = (p) => p.split(path.sep).join('/');
@@ -125,8 +131,11 @@ test('bekcinin kendisi kor DEGIL: sentetik bir ihlali yakalar', () => {
 
     const { cikti, calisti } = tscCalistir(probeConfig);
     assert.ok(calisti, 'tsc hic calismadi — sentetik ihlal SINANAMADI');
-    assert.match(cikti, /__unbound_probe__\.cjs.*error TS2304/,
-      'tsc sentetik ihlali yakalamadi — bekci kor, yesil olmasi hicbir sey ifade etmez');
+    assert.match(
+      cikti,
+      /__unbound_probe__\.cjs.*error TS2304/,
+      'tsc sentetik ihlali yakalamadi — bekci kor, yesil olmasi hicbir sey ifade etmez',
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

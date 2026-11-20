@@ -60,7 +60,11 @@ function kos(kapi, { rol, method = 'GET', path }) {
 
 test('AK1 Admin her uca gecer', () => {
   const k = _adminKapisi(() => true);
-  for (const [method, path] of [['GET', '/hosts'], ['POST', '/push'], ['GET', '/file/GBNGXP40']])
+  for (const [method, path] of [
+    ['GET', '/hosts'],
+    ['POST', '/push'],
+    ['GET', '/file/GBNGXP40'],
+  ])
     assert.equal(kos(k, { rol: 'Admin', method, path }).gecti, true, path);
 });
 
@@ -94,29 +98,54 @@ test('AK4 gorunurluk kapisi yoksa Admin olmayan SPA kesfine de gecemez', () => {
 });
 
 test('AK5 router kapiyi kullanir; gorunurluk kapisi (sayfa + sekme) ondan SONRA ve hazir isareti en sonda', () => {
-  const s = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  const s = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
   const kapi = s.indexOf('router.use(adminKapisi(() => gorunurlukKapisi));');
   const sayfa = s.indexOf("router.use(requireVisiblePrefix('NginxConsole'));");
   const sekme = s.indexOf("requireVisible('tab:nginx:' + hit[1])");
   const hazir = s.indexOf('gorunurlukKapisi = true;');
-  assert.ok(kapi > 0 && sayfa > kapi && sekme > sayfa && hazir > sekme, `${kapi} ${sayfa} ${sekme} ${hazir}`);
+  assert.ok(
+    kapi > 0 && sayfa > kapi && sekme > sayfa && hazir > sekme,
+    `${kapi} ${sayfa} ${sekme} ${hazir}`,
+  );
   // "hazir" yalniz kapilar BASARIYLA kurulunca (try icinde, catch'ten once) isaretlenir.
-  assert.ok(hazir < s.indexOf('} catch {', sekme), 'gorunurluk hazir isareti catch icinde/sonrasinda');
-  assert.ok(s.includes("[/^\\/spa-discovery(\\/|$)/, 'spadiscovery']"), 'SPA kesfi sekme kapisina bagli degil');
+  assert.ok(
+    hazir < s.indexOf('} catch {', sekme),
+    'gorunurluk hazir isareti catch icinde/sonrasinda',
+  );
+  assert.ok(
+    s.includes("[/^\\/spa-discovery(\\/|$)/, 'spadiscovery']"),
+    'SPA kesfi sekme kapisina bagli degil',
+  );
 });
 
 test('AK6 acilan her uc (/hosts haric) bir sekmeye bagli; /hosts hicbir sekmeye bagli degil', () => {
   for (const path of ACIK) {
     const sekme = _SEKME_YOLLARI.find(([re]) => re.test(path));
-    if (path === '/hosts') assert.equal(sekme, undefined, '/hosts bir sekmeye baglanmis - diger sekmeler kirilir');
-    else assert.ok(sekme, `${path} acik ama hicbir sekmeye bagli degil (sayfa erisimi olan herkes okur)`);
+    if (path === '/hosts')
+      assert.equal(sekme, undefined, '/hosts bir sekmeye baglanmis - diger sekmeler kirilir');
+    else
+      assert.ok(
+        sekme,
+        `${path} acik ama hicbir sekmeye bagli degil (sayfa erisimi olan herkes okur)`,
+      );
   }
   // Listedeki her desen en az bir ornekle sinanmis olmali (yeni acilan uc testsiz kalmasin).
-  for (const re of _ADMIN_DISI_OKUMA) assert.ok(ACIK.some((p) => re.test(p)), `ornegi olmayan desen: ${re}`);
+  for (const re of _ADMIN_DISI_OKUMA)
+    assert.ok(
+      ACIK.some((p) => re.test(p)),
+      `ornegi olmayan desen: ${re}`,
+    );
 });
 
 test('AK7 CIS: skor ve sunucu ayrintisi okunur; istisna, kabul edilen deger ve yeniden tarama Admin de', () => {
-  const k = adminOkumaKapisi({ okuma: _CIS_ADMIN_DISI_OKUMA, mesaj: 'CIS denetimi yalnız Admin.', hazir: () => true });
+  const k = adminOkumaKapisi({
+    okuma: _CIS_ADMIN_DISI_OKUMA,
+    mesaj: 'CIS denetimi yalnız Admin.',
+    hazir: () => true,
+  });
   assert.equal(kos(k, { rol: 'User', path: '/overview' }).gecti, true);
   assert.equal(kos(k, { rol: 'User', path: '/host/GBNGXP40' }).gecti, true);
   for (const [method, path] of [
@@ -126,11 +155,21 @@ test('AK7 CIS: skor ve sunucu ayrintisi okunur; istisna, kabul edilen deger ve y
     ['DELETE', '/overrides/5'],
     ['POST', '/rescan'],
     ['GET', '/job-status/1/2'],
-  ]) assert.equal(kos(k, { rol: 'User', method, path }).gecti, false, `${method} ${path}`);
-  const cis = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'nginx-cis', 'index.cjs'), 'utf8');
+  ])
+    assert.equal(kos(k, { rol: 'User', method, path }).gecti, false, `${method} ${path}`);
+  const cis = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'nginx-cis', 'index.cjs'),
+    'utf8',
+  );
   const kapi = cis.indexOf('adminOkumaKapisi({');
-  assert.ok(kapi > 0 && cis.indexOf("requireVisible('tab:nginx:cis')") > kapi, 'CIS kapisi sekme kapisindan once degil');
+  assert.ok(
+    kapi > 0 && cis.indexOf("requireVisible('tab:nginx:cis')") > kapi,
+    'CIS kapisi sekme kapisindan once degil',
+  );
   const sekme = cis.indexOf("requireVisible('tab:nginx:cis')");
   const hazir = cis.indexOf('gorunurlukKapisi = true;');
-  assert.ok(hazir > sekme && hazir < cis.indexOf('} catch', sekme), 'CIS hazir isareti try disinda (motor yokken de acik)');
+  assert.ok(
+    hazir > sekme && hazir < cis.indexOf('} catch', sekme),
+    'CIS hazir isareti try disinda (motor yokken de acik)',
+  );
 });

@@ -18,7 +18,8 @@ interface Props {
 }
 
 export function sebepMetni(sebep: OturumBitisSebebi): string {
-  if (sebep === 'idle') return 'Bir süredir işlem yapılmadığı için oturumunuz güvenlik gereği kapandı.';
+  if (sebep === 'idle')
+    return 'Bir süredir işlem yapılmadığı için oturumunuz güvenlik gereği kapandı.';
   if (sebep === 'absolute') return 'Oturumunuzun en uzun açık kalabileceği süre doldu.';
   return 'Oturumunuz sona erdi.';
 }
@@ -68,29 +69,51 @@ const ReloginOverlay: React.FC<Props> = ({ username, sebep, onLogin, onLogout })
       <form
         onSubmit={gonder}
         className="w-full max-w-sm px-6 py-6 space-y-4"
-        style={{ background: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)', borderRadius: 'var(--radius-md)' }}
+        style={{
+          background: 'var(--bg-surface)',
+          boxShadow: 'var(--shadow-lg)',
+          borderRadius: 'var(--radius-md)',
+        }}
       >
         <div className="flex items-start gap-3">
-          <LockClosedIcon className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+          <LockClosedIcon
+            className="w-5 h-5 flex-shrink-0 mt-0.5"
+            style={{ color: 'var(--accent)' }}
+            aria-hidden="true"
+          />
           <div>
-            <h2 id="relogin-baslik" style={{ fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+            <h2
+              id="relogin-baslik"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1.125rem',
+                fontWeight: 500,
+                color: 'var(--text-primary)',
+              }}
+            >
               Devam etmek için yeniden giriş yapın
             </h2>
             <p className="mt-1 text-[0.875rem]" style={{ color: 'var(--text-secondary)' }}>
-              {sebepMetni(sebep)} Açık sayfanız korunuyor; giriş yapınca kaldığınız yerden devam edersiniz.
+              {sebepMetni(sebep)} Açık sayfanız korunuyor; giriş yapınca kaldığınız yerden devam
+              edersiniz.
             </p>
           </div>
         </div>
 
         {hata && (
           <div className="pf-alert pf-alert--danger" role="alert">
-            <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: 'var(--status-danger)' }} />
+            <ExclamationCircleIcon
+              className="w-4 h-4 flex-shrink-0 mt-0.5"
+              style={{ color: 'var(--status-danger)' }}
+            />
             <span>{hata}</span>
           </div>
         )}
 
         <div>
-          <label htmlFor="relogin-kullanici" className="pf-label-text">Kullanıcı adı</label>
+          <label htmlFor="relogin-kullanici" className="pf-label-text">
+            Kullanıcı adı
+          </label>
           <input
             id="relogin-kullanici"
             type="text"
@@ -108,7 +131,9 @@ const ReloginOverlay: React.FC<Props> = ({ username, sebep, onLogin, onLogout })
           )}
         </div>
         <div>
-          <label htmlFor="relogin-sifre" className="pf-label-text">Şifre</label>
+          <label htmlFor="relogin-sifre" className="pf-label-text">
+            Şifre
+          </label>
           <input
             id="relogin-sifre"
             ref={sifreRef}
@@ -124,7 +149,12 @@ const ReloginOverlay: React.FC<Props> = ({ username, sebep, onLogin, onLogout })
           <button type="submit" className="btn-primary" disabled={gonderiliyor}>
             {gonderiliyor ? 'Giriş yapılıyor…' : 'Giriş yap ve devam et'}
           </button>
-          <button type="button" className="btn-secondary" onClick={onLogout} disabled={gonderiliyor}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onLogout}
+            disabled={gonderiliyor}
+          >
             Çıkış yap
           </button>
         </div>

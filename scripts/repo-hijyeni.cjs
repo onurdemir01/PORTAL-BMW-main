@@ -54,7 +54,7 @@ const modulKapsami = (f) =>
   /^(server|src|shared)\//.test(f) &&
   /\.(c?js|mjs|tsx?)$/.test(f) &&
   !testMi(f) &&
-  !f.startsWith('server/ansible/bmw_portal/');
+  !f.startsWith('server/ansible/playbooks/bmw_portal/');
 
 // Uzantili yol adaylari: `/` ile ayrilmis [\w.@-] parcalari (dogrusal; parcalar `/` ile ayrildigi
 // icin belirsizlik yok). Uzantinin yeri uzantiSonu ile bulunur: eski tek desen

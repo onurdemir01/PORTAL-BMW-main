@@ -23,10 +23,12 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const BETIK =
-  process.env.YUK_K6 || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
+  process.env.YUK_K6 ||
+  path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
 const KAYNAK = fs.readFileSync(BETIK, 'utf8');
 const WRK_KOS =
-  process.env.WRK_KOS || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'wrk_kos.sh');
+  process.env.WRK_KOS ||
+  path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'files', 'wrk_kos.sh');
 let GECICI;
 let SENARYO;
 let KOTU;
@@ -47,7 +49,9 @@ before(() => {
         sahte.cagrilar.push({ u, p });
         return sahte.yanit(u, p);
       },
-      CookieJar: function CookieJar() { this.bos = true; },
+      CookieJar: function CookieJar() {
+        this.bos = true;
+      },
     },
     metrics: {
       Counter: class {
@@ -98,7 +102,11 @@ const temel = () => ({
 });
 
 async function hataVerir(env, desen, mesaj) {
-  await assert.rejects(() => yukle(env), (e) => desen.test(String(e.message)), mesaj);
+  await assert.rejects(
+    () => yukle(env),
+    (e) => desen.test(String(e.message)),
+    mesaj,
+  );
 }
 
 test('K1 secenekler: hiz, sure, TLS 1.2, 429/http2 kesme esikleri, govde atilir, yonlendirme yok', async () => {
@@ -113,12 +121,22 @@ test('K1 secenekler: hiz, sure, TLS 1.2, 429/http2 kesme esikleri, govde atilir,
   assert.equal(o.thresholds.durum_429[0].abortOnFail, true);
   // h2 sozlesmesi D5: kesme esigi protokol_uyumsuz (beklenen surum disi yanit); http2_kullanildi yalniz bilgi (esiksiz)
   assert.deepEqual(o.thresholds.protokol_uyumsuz, [{ threshold: 'count<1', abortOnFail: true }]);
-  assert.equal(o.thresholds.http2_kullanildi, undefined, 'http2_kullanildi esigi YOK (h2 kosusunda her yanitta dolu)');
-  assert.ok(o.thresholds['dropped_iterations{scenario:olcum}'] && o.thresholds['durum_5xx{scenario:olcum}']);
+  assert.equal(
+    o.thresholds.http2_kullanildi,
+    undefined,
+    'http2_kullanildi esigi YOK (h2 kosusunda her yanitta dolu)',
+  );
+  assert.ok(
+    o.thresholds['dropped_iterations{scenario:olcum}'] && o.thresholds['durum_5xx{scenario:olcum}'],
+  );
   assert.equal(o.hosts, undefined, 'SNI yokken hosts eslemesi yok');
   assert.equal(o.discardResponseBodies, true);
   assert.equal(o.maxRedirects, 0);
-  assert.equal(o.userAgent, 'portal-yuktesti/R17_K_yeni_br_250_r1/setup/1', 'setup UA varsayilan onekle');
+  assert.equal(
+    o.userAgent,
+    'portal-yuktesti/R17_K_yeni_br_250_r1/setup/1',
+    'setup UA varsayilan onekle',
+  );
 });
 
 test('K2 istekler: URL = HEDEF + yol, yalniz uc baslik, Host = HOST_BASLIGI, bos cookie jar, UA portal-yuktesti', async () => {
@@ -153,7 +171,10 @@ test('K3 Portal: UA_ONEK ortamdan, HOST_BASLIGI zorunlu, GLOMO varsayilanlari yo
   const m = await yukle({ ...temel(), UA_ONEK: 'baska-onek', DENEME: '2' });
   sahte.cagrilar = [];
   m.olcum();
-  assert.equal(sahte.cagrilar[0].p.headers['User-Agent'], 'baska-onek/R17_K_yeni_br_250_r1/olcum/2');
+  assert.equal(
+    sahte.cagrilar[0].p.headers['User-Agent'],
+    'baska-onek/R17_K_yeni_br_250_r1/olcum/2',
+  );
   assert.equal(m.ozet_hesapla({ metrics: {} }).deneme, 2);
   await hataVerir({ ...temel(), HOST_BASLIGI: '' }, /HOST_BASLIGI/);
   const { HOST_BASLIGI, ...hostsuz } = temel();
@@ -161,7 +182,10 @@ test('K3 Portal: UA_ONEK ortamdan, HOST_BASLIGI zorunlu, GLOMO varsayilanlari yo
   await hataVerir(hostsuz, /HOST_BASLIGI/);
   await hataVerir({ ...temel(), UA_ONEK: 'Kotu Onek' }, /UA_ONEK/);
   await hataVerir({ ...temel(), UA_ONEK: 'a.b' }, /UA_ONEK/);
-  assert.ok(!KAYNAK.includes('glomo-yuktesti') && !KAYNAK.includes('garantibbva'), 'GLOMO UA/host varsayilani kalmamali');
+  assert.ok(
+    !KAYNAK.includes('glomo-yuktesti') && !KAYNAK.includes('garantibbva'),
+    'GLOMO UA/host varsayilani kalmamali',
+  );
 });
 
 test('K4 setup: sikistirma turu ve senaryodaki HER tekil yolun 200 on kontrolu', async () => {
@@ -170,7 +194,11 @@ test('K4 setup: sikistirma turu ve senaryodaki HER tekil yolun 200 on kontrolu',
   sahte.cagrilar = [];
   assert.equal(m.setup().sikistirma_turu, 'DINAMIK', 'Content-Length yok + br');
   assert.ok(sahte.cagrilar[0].u.endsWith('/assets/a.js'), 'sikistirma buyuk js ile denetlenir');
-  sahte.yanit = () => ({ status: 200, proto: 'HTTP/1.1', headers: { 'Content-Encoding': 'br', 'Content-Length': '100' } });
+  sahte.yanit = () => ({
+    status: 200,
+    proto: 'HTTP/1.1',
+    headers: { 'Content-Encoding': 'br', 'Content-Length': '100' },
+  });
   assert.equal(m.setup().sikistirma_turu, 'STATIK');
   sahte.yanit = () => ({ status: 200, proto: 'HTTP/1.1', headers: {} });
   assert.equal(m.setup().sikistirma_turu, 'YOK');
@@ -182,9 +210,17 @@ test('K4 setup: sikistirma turu ve senaryodaki HER tekil yolun 200 on kontrolu',
   sahte.cagrilar = [];
   m.setup();
   assert.equal(sahte.cagrilar.length, 2, 'her tekil yol bir kez');
-  assert.ok(sahte.cagrilar.every((c) => c.p.headers['User-Agent'] === 'portal-yuktesti/R17_K_yeni_br_250_r1/setup/1'));
-  sahte.yanit = (u) => (u.endsWith('/app-v1/') ? { status: 404, proto: 'HTTP/1.1', headers: {} } : brYanit());
-  assert.throws(() => m.setup(), (e) => /1\/2 yol 200 donmedi/.test(e.message) && e.message.includes('/app-v1/ -> HTTP 404'));
+  assert.ok(
+    sahte.cagrilar.every(
+      (c) => c.p.headers['User-Agent'] === 'portal-yuktesti/R17_K_yeni_br_250_r1/setup/1',
+    ),
+  );
+  sahte.yanit = (u) =>
+    u.endsWith('/app-v1/') ? { status: 404, proto: 'HTTP/1.1', headers: {} } : brYanit();
+  assert.throws(
+    () => m.setup(),
+    (e) => /1\/2 yol 200 donmedi/.test(e.message) && e.message.includes('/app-v1/ -> HTTP 404'),
+  );
   sahte.yanit = brYanit;
 });
 
@@ -193,7 +229,9 @@ test('K5 handleSummary: CSV kolonlari (Portal analizi ve karsilastir.py ile ayni
   const veri = {
     metrics: {
       'http_reqs{scenario:olcum}': { values: { count: 30000, rate: 250 } },
-      'http_req_duration{scenario:olcum}': { values: { count: 30000, med: 12.3456, 'p(95)': 40, 'p(99)': 80 } },
+      'http_req_duration{scenario:olcum}': {
+        values: { count: 30000, med: 12.3456, 'p(95)': 40, 'p(99)': 80 },
+      },
       'http_req_waiting{scenario:olcum}': { values: { count: 30000, 'p(95)': 30 } },
       'http_req_tls_handshaking{scenario:olcum}': { values: { count: 30000, 'p(95)': 5 } },
       'http_req_connecting{scenario:olcum}': { values: { count: 30000, 'p(95)': 1 } },
@@ -207,7 +245,10 @@ test('K5 handleSummary: CSV kolonlari (Portal analizi ve karsilastir.py ile ayni
   };
   const cikti = m.handleSummary(veri);
   const csvAd = 'C:/sonuc/R17/istemci_R17_K_yeni_br_250_r1.csv';
-  assert.ok(csvAd in cikti && 'C:/sonuc/R17/istemci_R17_K_yeni_br_250_r1.json' in cikti, Object.keys(cikti).join(','));
+  assert.ok(
+    csvAd in cikti && 'C:/sonuc/R17/istemci_R17_K_yeni_br_250_r1.json' in cikti,
+    Object.keys(cikti).join(','),
+  );
   const [bas, satir] = cikti[csvAd].trim().split('\n');
   assert.equal(
     bas,
@@ -245,7 +286,13 @@ test('K6 sinirlar ve girdi dogrulamasi; SNI=1 hosts eslemesi HOST_BASLIGI ile', 
   await hataVerir({ ...temel(), HIZ: '5001' }, /5000|LIMIT_MUAF/);
   await hataVerir({ ...temel(), MAXVU: '1001' }, /MAXVU/);
   // K1 (2026-11-03): HIZ 5000 / MAXVU 1000 kabul; onVU HIZ <= 450'de kit kurali, ustunde max(90, HIZ/20), MAXVU ile sinirli.
-  for (const [hiz, maxvu, bek] of [['250', '150', 50], ['450', '199', 90], ['451', '1000', 90], ['5000', '1000', 250], ['5000', '100', 100]]) {
+  for (const [hiz, maxvu, bek] of [
+    ['250', '150', 50],
+    ['450', '199', 90],
+    ['451', '1000', 90],
+    ['5000', '1000', 250],
+    ['5000', '100', 100],
+  ]) {
     const y = await yukle({ ...temel(), HIZ: hiz, MAXVU: maxvu });
     assert.equal(y.options.scenarios.olcum.preAllocatedVUs, bek, `onVU HIZ=${hiz} MAXVU=${maxvu}`);
     assert.equal(y.options.scenarios.olcum.maxVUs, Number(maxvu));
@@ -266,19 +313,28 @@ test('K6 sinirlar ve girdi dogrulamasi; SNI=1 hosts eslemesi HOST_BASLIGI ile', 
 
 test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun istemci JSON semasi ayni)', async () => {
   const m = await yukle(temel());
-  const jsonAnahtarlari = (fs.readFileSync(WRK_KOS, 'utf8').match(/^JSON_ANAHTARLARI="([^"]*)"$/m) || [])[1];
+  const jsonAnahtarlari = (fs
+    .readFileSync(WRK_KOS, 'utf8')
+    .match(/^JSON_ANAHTARLARI="([^"]*)"$/m) || [])[1];
   assert.ok(jsonAnahtarlari, 'wrk_kos.sh JSON_ANAHTARLARI satiri okunamadi');
   const bos = Object.keys(m.ozet_hesapla({ metrics: {} }));
   const dolu = Object.keys(
     m.ozet_hesapla({
-      metrics: { 'http_reqs{scenario:olcum}': { values: { count: 10 } }, 'data_received{scenario:olcum}': { values: { count: 100 } } },
+      metrics: {
+        'http_reqs{scenario:olcum}': { values: { count: 10 } },
+        'data_received{scenario:olcum}': { values: { count: 100 } },
+      },
       setup_data: { sikistirma_turu: 'STATIK' },
     }),
   );
   // 2026-11-03 (kip dogrulamasi): k6'ya ozgu bilgi anahtari `kodlama` (Content-Encoding sayaclari) SONDA; wrk olcmez,
   // JSON'unda yok (Portal ikisini de okur: anahtar yoksa 'olculmedi'). Geri kalan sira iki motorda AYNI.
   assert.equal(bos[bos.length - 1], 'kodlama', 'k6 JSON son anahtari kodlama');
-  assert.deepEqual(bos.slice(0, -1), jsonAnahtarlari.split(' '), 'ozet_hesapla (bos metrik, kodlama haric) anahtar sirasi');
+  assert.deepEqual(
+    bos.slice(0, -1),
+    jsonAnahtarlari.split(' '),
+    'ozet_hesapla (bos metrik, kodlama haric) anahtar sirasi',
+  );
   assert.deepEqual(dolu, bos, 'anahtar sirasi metrik dolulugundan bagimsiz');
   // handleSummary'nin yazdigi JSON da ayni sirada (wrk_kos.sh JSON'u bununla karsilastirilir)
   const cikti = m.handleSummary({ metrics: {} });
@@ -289,11 +345,22 @@ test('K7 ozet_hesapla anahtar sirasi = wrk_kos.sh JSON_ANAHTARLARI (iki motorun 
   const kolonlar = (KAYNAK.match(/const KOLONLAR = \[([^\]]*)\]/) || [])[1];
   const liste = [...String(kolonlar).matchAll(/'([a-z0-9_]+)'/g)].map((x) => x[1]);
   assert.equal(liste.length, 32, 'KOLONLAR 32');
-  assert.deepEqual(liste.slice(-2), ['protokol', 'protokol_uyumsuz'], 'son iki kolon protokol, protokol_uyumsuz');
+  assert.deepEqual(
+    liste.slice(-2),
+    ['protokol', 'protokol_uyumsuz'],
+    'son iki kolon protokol, protokol_uyumsuz',
+  );
   // 2026-11-03 (bant genisligi): protokol_uyumsuz'dan sonra ag_alinan_bayt / ag_gonderilen_bayt / ag_sure_sn (CSV'de YOK), sonra kodlama.
-  assert.deepEqual(bos.slice(-6, -1), ['protokol', 'protokol_uyumsuz', 'ag_alinan_bayt', 'ag_gonderilen_bayt', 'ag_sure_sn'], 'ozet_hesapla kodlama oncesi son bes anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)');
+  assert.deepEqual(
+    bos.slice(-6, -1),
+    ['protokol', 'protokol_uyumsuz', 'ag_alinan_bayt', 'ag_gonderilen_bayt', 'ag_sure_sn'],
+    'ozet_hesapla kodlama oncesi son bes anahtar (wrk JSON_ANAHTARLARI sonu ile ayni)',
+  );
   assert.ok(!liste.some((k) => k.startsWith('ag_')), 'ag_ CSV kolonu DEGIL (32 kolon aynen)');
-  assert.ok(!liste.includes('kodlama'), 'kodlama CSV kolonu DEGIL (32 kolon aynen; eski Portal CSV okuyucusu)');
+  assert.ok(
+    !liste.includes('kodlama'),
+    'kodlama CSV kolonu DEGIL (32 kolon aynen; eski Portal CSV okuyucusu)',
+  );
 });
 
 // ---------------------------------------------------------------- h2 sozlesmesi (A1-A5)
@@ -314,11 +381,31 @@ async function tekIstek(env, yanit) {
 test('K-H1 istek(): beklenen surum disi yanit protokol_uyumsuz, HTTP/2.0 yanit http2_kullanildi (bilgi)', async () => {
   const h2 = { ...temel(), PROTOKOL: 'h2', KIP: 'ka' };
   const yanit = (proto) => () => ({ status: 200, proto, headers: {} });
-  assert.deepEqual(await tekIstek(temel(), yanit('HTTP/2.0')), { uyumsuz: 1, http2: 1 }, 'h1 + HTTP/2.0');
-  assert.deepEqual(await tekIstek(temel(), yanit('HTTP/1.1')), { uyumsuz: 0, http2: 0 }, 'h1 + HTTP/1.1');
-  assert.deepEqual(await tekIstek(h2, yanit('HTTP/1.1')), { uyumsuz: 1, http2: 0 }, 'h2 + HTTP/1.1');
-  assert.deepEqual(await tekIstek(h2, yanit('HTTP/2.0')), { uyumsuz: 0, http2: 1 }, 'h2 + HTTP/2.0');
-  assert.deepEqual(await tekIstek(h2, yanit('')), { uyumsuz: 0, http2: 0 }, 'h2 + bos proto (basarisiz istek: hata oranina girer)');
+  assert.deepEqual(
+    await tekIstek(temel(), yanit('HTTP/2.0')),
+    { uyumsuz: 1, http2: 1 },
+    'h1 + HTTP/2.0',
+  );
+  assert.deepEqual(
+    await tekIstek(temel(), yanit('HTTP/1.1')),
+    { uyumsuz: 0, http2: 0 },
+    'h1 + HTTP/1.1',
+  );
+  assert.deepEqual(
+    await tekIstek(h2, yanit('HTTP/1.1')),
+    { uyumsuz: 1, http2: 0 },
+    'h2 + HTTP/1.1',
+  );
+  assert.deepEqual(
+    await tekIstek(h2, yanit('HTTP/2.0')),
+    { uyumsuz: 0, http2: 1 },
+    'h2 + HTTP/2.0',
+  );
+  assert.deepEqual(
+    await tekIstek(h2, yanit('')),
+    { uyumsuz: 0, http2: 0 },
+    'h2 + bos proto (basarisiz istek: hata oranina girer)',
+  );
   assert.deepEqual(await tekIstek(temel(), yanit('')), { uyumsuz: 0, http2: 0 }, 'h1 + bos proto');
 });
 
@@ -327,20 +414,24 @@ test('K-H2 setup(): HER kontrol yolunun surumu beklenenle karsilastirilir (200 d
   sahte.yanit = h2Yanit;
   assert.equal(h2.setup().sikistirma_turu, 'DINAMIK', 'h2 + butun yollar HTTP/2.0 gecer');
   // sikistirma denetim yolu (a.js) h2, ikinci yol (/app-v1/) h1
-  sahte.yanit = (u) => (u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/1.1', headers: {} } : h2Yanit());
+  sahte.yanit = (u) =>
+    u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/1.1', headers: {} } : h2Yanit();
   assert.throws(
     () => h2.setup(),
     (e) =>
-      /1 yol HTTP\/2\.0 disinda yanit verdi \(ilk: \/app-v1\/ -> HTTP\/1\.1\)/.test(e.message) && /ALPN/.test(e.message) &&
+      /1 yol HTTP\/2\.0 disinda yanit verdi \(ilk: \/app-v1\/ -> HTTP\/1\.1\)/.test(e.message) &&
+      /ALPN/.test(e.message) &&
       !/GODEBUG/.test(e.message),
   );
   const h1 = await yukle(temel());
-  sahte.yanit = (u) => (u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/2.0', headers: {} } : brYanit());
+  sahte.yanit = (u) =>
+    u.endsWith('/app-v1/') ? { status: 200, proto: 'HTTP/2.0', headers: {} } : brYanit();
   assert.throws(
     () => h1.setup(),
     (e) =>
       /1 yol HTTP\/1\.1 disinda yanit verdi \(ilk: \/app-v1\/ -> HTTP\/2\.0\)/.test(e.message) &&
-      /GODEBUG=http2client=0/.test(e.message) && !/ALPN/.test(e.message),
+      /GODEBUG=http2client=0/.test(e.message) &&
+      !/ALPN/.test(e.message),
     'h1: IKINCI yolun HTTP/2.0 yaniti da reddedilir (bugun yalniz ilk yola bakiliyordu)',
   );
   // 200 denetimi once: 404 + yanlis surum -> 200 iletisi
@@ -352,19 +443,31 @@ test('K-H2 setup(): HER kontrol yolunun surumu beklenenle karsilastirilir (200 d
 test('K-H3 PROTOKOL girdisi: h1 | h2, h2 yalniz KIP=ka, yoksa h1', async () => {
   await hataVerir({ ...temel(), PROTOKOL: 'h3' }, /PROTOKOL h1 ya da h2 olmali/);
   await hataVerir({ ...temel(), PROTOKOL: 'H2', KIP: 'ka' }, /PROTOKOL h1 ya da h2 olmali/);
-  await hataVerir({ ...temel(), PROTOKOL: 'h2' }, /PROTOKOL=h2 yalniz KIP=ka/, 'KIP verilmezse yeni: h2 reddedilir');
+  await hataVerir(
+    { ...temel(), PROTOKOL: 'h2' },
+    /PROTOKOL=h2 yalniz KIP=ka/,
+    'KIP verilmezse yeni: h2 reddedilir',
+  );
   await hataVerir({ ...temel(), PROTOKOL: 'h2', KIP: 'yeni' }, /PROTOKOL=h2 yalniz KIP=ka/);
   const varsayilan = await yukle(temel());
   assert.equal(varsayilan.ozet_hesapla({ metrics: {} }).protokol, 'h1', 'PROTOKOL yoksa h1');
   const h2 = await yukle({ ...temel(), PROTOKOL: 'h2', KIP: 'ka' });
   assert.equal(h2.options.noConnectionReuse, false, 'h2 + ka: baglanti yeniden kullanilir');
-  const o = h2.ozet_hesapla({ metrics: { protokol_uyumsuz: { values: { count: 4 } }, http2_kullanildi: { values: { count: 900 } } } });
+  const o = h2.ozet_hesapla({
+    metrics: {
+      protokol_uyumsuz: { values: { count: 4 } },
+      http2_kullanildi: { values: { count: 900 } },
+    },
+  });
   assert.equal(o.protokol, 'h2');
   assert.equal(o.protokol_uyumsuz, 4);
   assert.equal(o.http2, 900, 'http2 kolonu HTTP/2.0 yanit sayisi (bilgi)');
   const cikti = h2.handleSummary({ metrics: { protokol_uyumsuz: { values: { count: 4 } } } });
   assert.match(cikti.stdout, / protokol=h2 {2}uyumsuz=4/, 'ozet metin satiri protokol ve uyumsuz');
-  const csv = Object.entries(cikti).find(([ad]) => ad.endsWith('.csv'))[1].trim().split('\n');
+  const csv = Object.entries(cikti)
+    .find(([ad]) => ad.endsWith('.csv'))[1]
+    .trim()
+    .split('\n');
   assert.ok(csv[1].endsWith(',h2,4'), `CSV son iki hucre h2,4: ${csv[1]}`);
 });
 
@@ -375,8 +478,15 @@ test('K-KD olcum yanitlarinin Content-Encoding sayaclari; JSON kodlama, CSV 32 k
   const m = await yukle(temel());
   const asil = sahte.yanit;
   const yanitlar = [
-    { 'Content-Encoding': 'br' }, { 'Content-Encoding': 'BR ' }, { 'Content-Encoding': 'gzip' }, { 'Content-Encoding': 'deflate' },
-    { 'Content-Encoding': 'zstd' }, { 'Content-Encoding': 'gzip, br' }, {}, { 'Content-Length': '1023' }, { 'Content-Length': '1024' },
+    { 'Content-Encoding': 'br' },
+    { 'Content-Encoding': 'BR ' },
+    { 'Content-Encoding': 'gzip' },
+    { 'Content-Encoding': 'deflate' },
+    { 'Content-Encoding': 'zstd' },
+    { 'Content-Encoding': 'gzip, br' },
+    {},
+    { 'Content-Length': '1023' },
+    { 'Content-Length': '1024' },
   ];
   try {
     for (const h of yanitlar) {
@@ -391,17 +501,42 @@ test('K-KD olcum yanitlarinin Content-Encoding sayaclari; JSON kodlama, CSV 32 k
   }
   const s = sahte.sayaclar;
   assert.deepEqual(
-    [s.kodlama_br, s.kodlama_gzip, s.kodlama_deflate, s.kodlama_zstd, s.kodlama_yok, s.kodlama_diger, s.kodlama_yok_1kb_alti],
+    [
+      s.kodlama_br,
+      s.kodlama_gzip,
+      s.kodlama_deflate,
+      s.kodlama_zstd,
+      s.kodlama_yok,
+      s.kodlama_diger,
+      s.kodlama_yok_1kb_alti,
+    ],
     [2, 1, 1, 1, 3, 1, 1],
     'yalniz olcum fazi; buyuk/kucuk harf ve bosluk normallesir; 1 KB alti yalniz Content-Length < 1024',
   );
   const metr = (ad, n) => ({ [ad]: { values: { count: n } } });
-  const o = m.ozet_hesapla({ metrics: { ...metr('kodlama_br', 7), ...metr('kodlama_yok', 3), ...metr('kodlama_yok_1kb_alti', 2) } });
-  assert.deepEqual(o.kodlama, { br: 7, gzip: 0, deflate: 0, zstd: 0, yok: 3, diger: 0, yok_1kb_alti: 2 });
+  const o = m.ozet_hesapla({
+    metrics: {
+      ...metr('kodlama_br', 7),
+      ...metr('kodlama_yok', 3),
+      ...metr('kodlama_yok_1kb_alti', 2),
+    },
+  });
+  assert.deepEqual(o.kodlama, {
+    br: 7,
+    gzip: 0,
+    deflate: 0,
+    zstd: 0,
+    yok: 3,
+    diger: 0,
+    yok_1kb_alti: 2,
+  });
   const cikti = m.handleSummary({ metrics: metr('kodlama_br', 7) });
   const json = JSON.parse(Object.entries(cikti).find(([ad]) => ad.endsWith('.json'))[1]);
   assert.equal(json.kodlama.br, 7, 'JSON kodlama');
-  const csv = Object.entries(cikti).find(([ad]) => ad.endsWith('.csv'))[1].trim().split('\n');
+  const csv = Object.entries(cikti)
+    .find(([ad]) => ad.endsWith('.csv'))[1]
+    .trim()
+    .split('\n');
   assert.equal(csv[0].split(',').length, 32, 'CSV baslik 32 kolon');
   assert.ok(!csv[0].includes('kodlama'), 'CSV kodlama kolonu yok');
 });

@@ -621,7 +621,10 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
   assert.equal(sonraProg.kayit.durum, 'tamam');
   // v4: yonetici ozeti API'de (ekran) ve raporda ayni sayilarla
   const yon = sonraProg.kayit.ozet.sonra.yonetici;
-  assert.deepEqual([yon.oran.birakildi.metin, yon.oran.birakildi.pay, yon.oran.birakildi.payda], ['%100', 1, 1]);
+  assert.deepEqual(
+    [yon.oran.birakildi.metin, yon.oran.birakildi.pay, yon.oran.birakildi.payda],
+    ['%100', 1, 1],
+  );
   assert.equal(sonraProg.kayit.ozet.sonra.kapsamDisi, 0);
   const repRes = await fetch(`${base}/api/server-hub/reboot-check/1/rapor`);
   assert.equal(repRes.status, 200);
@@ -630,7 +633,10 @@ test('server/server-hub/index + reboot-check: overview, findings, host, scan, fi
   assert.match(repHtml, /Yönetici Özeti/);
   // 2026-11-17: rapor ozeti sunucu seviyesi (ozet.sonra.seviye, API ile ayni); uzun yonetici paragrafi KALDIRILDI.
   const sev = sonraProg.kayit.ozet.sonra.seviye;
-  assert.ok(repHtml.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`), 'rapor basari orani API seviye ozetiyle ayni degil');
+  assert.ok(
+    repHtml.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`),
+    'rapor basari orani API seviye ozetiyle ayni degil',
+  );
   assert.ok(!repHtml.includes(yon.metin), 'uzun yonetici paragrafi raporda kalmis');
   // e-posta gorunumu: ayni uc, tum paneller acik
   const ep = await (await fetch(`${base}/api/server-hub/reboot-check/1/rapor?eposta=1`)).text();

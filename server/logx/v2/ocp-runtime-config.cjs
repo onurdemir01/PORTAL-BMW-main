@@ -26,9 +26,9 @@ const DEFAULTS = Object.freeze({
   // ilgili cluster anlasilir bir dogrulama hatasi verir (sessizce tum job dusmez).
   defaultOcpUsername: 'uxmid',
   // Saniye. Playbook'taki ayni adli degiskenleri ezer.
-  ocAsyncTimeout: 120,   // namespace kesfi (oc login + get projects)
-  ocListTimeout: 120,    // pod listeleme
-  ocLogTimeout: 300,     // pod loglarinin cekilmesi
+  ocAsyncTimeout: 120, // namespace kesfi (oc login + get projects)
+  ocListTimeout: 120, // pod listeleme
+  ocLogTimeout: 300, // pod loglarinin cekilmesi
 
   // ── Kesif onbellegi (ocp_namespace_cache / ocp_app_cache) ──────────────────
   // TTL dolunca kayit SILINMEZ; "bayat" isaretiyle gosterilmeye devam eder.
@@ -39,8 +39,8 @@ const DEFAULTS = Object.freeze({
   // VARSAYILAN KAPALI: ilk surumde opt-in. Acilinca aktif cluster'lari gezip
   // onbellegi tazeler.
   periodicSyncEnabled: false,
-  periodicSyncIntervalMin: 360,   // 6 saat
-  periodicSyncMaxClusters: 25,    // tek turda taranacak azami cluster
+  periodicSyncIntervalMin: 360, // 6 saat
+  periodicSyncMaxClusters: 25, // tek turda taranacak azami cluster
   // Namespace taramasindan sonra UYGULAMA kesfi de yapilir (uygulama onbellegi bos
   // kalmasin diye — kullanicinin en sik bekledigi job budur). Kontrolsuz AWX yuku
   // olmasin diye tur basina taranacak namespace sayisi sinirlidir; 0 = uygulama
@@ -108,9 +108,10 @@ function normalize(raw) {
     // ANAHTAR YOKSA varsayilan, VARSA (bos olsa bile) admin'in dedigi. Ayrimi yapmazsak
     // ya (a) hic kaydedilmemis kurulumlarda varsayilan kaybolur ve her cluster duser,
     // ya da (b) admin alani BILEREK bosaltamaz.
-    defaultOcpUsername: raw?.defaultOcpUsername === undefined
-      ? DEFAULTS.defaultOcpUsername
-      : normalizeUsername(raw.defaultOcpUsername),
+    defaultOcpUsername:
+      raw?.defaultOcpUsername === undefined
+        ? DEFAULTS.defaultOcpUsername
+        : normalizeUsername(raw.defaultOcpUsername),
     ocBinaryCandidates: cleaned.length ? cleaned : [...DEFAULTS.ocBinaryCandidates],
     ocAsyncTimeout: normalizeTimeout(raw?.ocAsyncTimeout, DEFAULTS.ocAsyncTimeout),
     ocListTimeout: normalizeTimeout(raw?.ocListTimeout, DEFAULTS.ocListTimeout),
@@ -118,9 +119,24 @@ function normalize(raw) {
     nsCacheTtlHours: normalizeHours(raw?.nsCacheTtlHours, DEFAULTS.nsCacheTtlHours),
     appCacheTtlHours: normalizeHours(raw?.appCacheTtlHours, DEFAULTS.appCacheTtlHours),
     periodicSyncEnabled: raw?.periodicSyncEnabled === true,
-    periodicSyncIntervalMin: normalizeInt(raw?.periodicSyncIntervalMin, DEFAULTS.periodicSyncIntervalMin, 15, 10080),
-    periodicSyncMaxClusters: normalizeInt(raw?.periodicSyncMaxClusters, DEFAULTS.periodicSyncMaxClusters, 1, 500),
-    periodicSyncMaxNamespaces: normalizeInt(raw?.periodicSyncMaxNamespaces, DEFAULTS.periodicSyncMaxNamespaces, 0, 500),
+    periodicSyncIntervalMin: normalizeInt(
+      raw?.periodicSyncIntervalMin,
+      DEFAULTS.periodicSyncIntervalMin,
+      15,
+      10080,
+    ),
+    periodicSyncMaxClusters: normalizeInt(
+      raw?.periodicSyncMaxClusters,
+      DEFAULTS.periodicSyncMaxClusters,
+      1,
+      500,
+    ),
+    periodicSyncMaxNamespaces: normalizeInt(
+      raw?.periodicSyncMaxNamespaces,
+      DEFAULTS.periodicSyncMaxNamespaces,
+      0,
+      500,
+    ),
   };
 }
 
@@ -134,9 +150,13 @@ async function getConfig() {
   if (_cache) return _cache;
   let parsed = null;
   try {
-    const { rows } = await db().query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
+    const { rows } = await db().query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      BLOB_NAME,
+    ]);
     if (rows.length) parsed = JSON.parse(rows[0].data);
-  } catch { /* okunamadiysa varsayilana dus (DB kesintisi isi durdurmasin) */ }
+  } catch {
+    /* okunamadiysa varsayilana dus (DB kesintisi isi durdurmasin) */
+  }
   _cache = normalize(parsed || {});
   return _cache;
 }
@@ -146,15 +166,28 @@ async function saveConfig(input) {
   const json = JSON.stringify(next);
   const upd = await db().query(
     `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
-    [json, BLOB_NAME]
+    [json, BLOB_NAME],
   );
   if (!upd.rowCount) {
-    await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, json]);
+    await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+      BLOB_NAME,
+      json,
+    ]);
   }
   _cache = next;
   return next;
 }
 
-function invalidate() { _cache = null; }
+function invalidate() {
+  _cache = null;
+}
 
-module.exports = { getConfig, saveConfig, invalidate, normalize, DEFAULTS, TIMEOUT_KEYS, BLOB_NAME };
+module.exports = {
+  getConfig,
+  saveConfig,
+  invalidate,
+  normalize,
+  DEFAULTS,
+  TIMEOUT_KEYS,
+  BLOB_NAME,
+};

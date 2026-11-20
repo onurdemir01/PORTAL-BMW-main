@@ -50,7 +50,7 @@ const {
 } = require('./fixtures/python-bul.cjs');
 const { normalize } = require('../../util/guard-text.cjs');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'logx', 'legacy');
 const KESIF = path.join(DIR, 'logx_legacy_discovery.yml');
 const AKTARIM = path.join(DIR, 'logx_legacy_transfer.yml');
 const README = path.join(DIR, 'README.md');

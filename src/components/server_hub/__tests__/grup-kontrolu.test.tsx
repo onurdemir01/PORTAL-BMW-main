@@ -8,7 +8,10 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { ShGrupKarar } from '@/api/serverHubApi';
 
 const m = vi.hoisted(() => ({ iliskiGrupKontrol: vi.fn() }));
-vi.mock('@/api/serverHubApi', async (orig) => ({ ...(await orig<typeof import('@/api/serverHubApi')>()), serverHubApi: m }));
+vi.mock('@/api/serverHubApi', async (orig) => ({
+  ...(await orig<typeof import('@/api/serverHubApi')>()),
+  serverHubApi: m,
+}));
 vi.mock('@/hooks/useToast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import GrupKontrolu from '@/components/server_hub/GrupKontrolu';
@@ -34,31 +37,70 @@ beforeEach(() => m.iliskiGrupKontrol.mockReset());
 describe('Grup kontrolü', () => {
   it('GK1 doğrula: gerekçe zorunlu, imzayla kaydedilir', async () => {
     const onRA = vi.fn();
-    m.iliskiGrupKontrol.mockResolvedValue({ ok: true, grup: grup({ durum: 'DOGRULANDI', kayitHazir: true, kontrol: { sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', isaretleyen: 'onur', zaman: null } }) });
+    m.iliskiGrupKontrol.mockResolvedValue({
+      ok: true,
+      grup: grup({
+        durum: 'DOGRULANDI',
+        kayitHazir: true,
+        kontrol: {
+          sonuc: 'DOGRULANDI',
+          aciklama: 'sahip onayladi',
+          isaretleyen: 'onur',
+          zaman: null,
+        },
+      }),
+    });
     render(<GrupKontrolu gruplar={[grup()]} onRetirementAc={onRA} />);
     expect(screen.queryByRole('button', { name: 'Retirement kaydı aç' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Doğrulandı olarak işaretle' }));
     const kaydet = screen.getByRole('button', { name: 'Kaydet' });
     expect(kaydet).toBeDisabled();
-    fireEvent.change(screen.getByLabelText(/Neye bakıldı/), { target: { value: 'sahip onayladi' } });
+    fireEvent.change(screen.getByLabelText(/Neye bakıldı/), {
+      target: { value: 'sahip onayladi' },
+    });
     fireEvent.click(kaydet);
-    await waitFor(() => expect(m.iliskiGrupKontrol).toHaveBeenCalledWith({ anahtar: 'grup:APP1|PROD|8', sonuc: 'DOGRULANDI', aciklama: 'sahip onayladi', imza: 'a'.repeat(32) }));
+    await waitFor(() =>
+      expect(m.iliskiGrupKontrol).toHaveBeenCalledWith({
+        anahtar: 'grup:APP1|PROD|8',
+        sonuc: 'DOGRULANDI',
+        aciklama: 'sahip onayladi',
+        imza: 'a'.repeat(32),
+      }),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Retirement kaydı aç' }));
     expect(onRA).toHaveBeenCalledWith('APP1', expect.stringContaining('onur doğruladı'));
   });
 
   it('GK2 doğrulanmış ama veri değişmiş grupta kayıt düğmesi yok', () => {
-    render(<GrupKontrolu gruplar={[grup({ durum: 'VERI_DEGISTI', kayitHazir: false, kontrol: { sonuc: 'DOGRULANDI', aciklama: 'x', isaretleyen: 'onur', zaman: null } })]} onRetirementAc={vi.fn()} />);
+    render(
+      <GrupKontrolu
+        gruplar={[
+          grup({
+            durum: 'VERI_DEGISTI',
+            kayitHazir: false,
+            kontrol: { sonuc: 'DOGRULANDI', aciklama: 'x', isaretleyen: 'onur', zaman: null },
+          }),
+        ]}
+        onRetirementAc={vi.fn()}
+      />,
+    );
     expect(screen.queryByRole('button', { name: 'Retirement kaydı aç' })).toBeNull();
     expect(screen.getByText(/veri değişti/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Doğrulandı olarak işaretle' })).toBeInTheDocument();
   });
 
   it('GK3 aday olmayan / okunamayan', () => {
-    const { unmount } = render(<GrupKontrolu gruplar={[grup({ karar: 'KULLANIMDA', anahtar: 'grup:APP1|TEST|8' })]} onRetirementAc={vi.fn()} />);
+    const { unmount } = render(
+      <GrupKontrolu
+        gruplar={[grup({ karar: 'KULLANIMDA', anahtar: 'grup:APP1|TEST|8' })]}
+        onRetirementAc={vi.fn()}
+      />,
+    );
     expect(screen.queryByRole('button', { name: 'Doğrulandı olarak işaretle' })).toBeNull();
     unmount();
-    render(<GrupKontrolu gruplar={[grup({ durum: 'BILINMIYOR' })]} okunamadi onRetirementAc={vi.fn()} />);
+    render(
+      <GrupKontrolu gruplar={[grup({ durum: 'BILINMIYOR' })]} okunamadi onRetirementAc={vi.fn()} />,
+    );
     const k = screen.getByTestId('grup-kontrolu');
     expect(within(k).getByText(/kontrol kayıtları okunamadı/)).toBeInTheDocument();
     expect(within(k).queryAllByRole('button')).toHaveLength(0);

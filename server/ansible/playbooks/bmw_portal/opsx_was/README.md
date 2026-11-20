@@ -23,7 +23,7 @@ Tasarım: 2026-10-02 (OpsX Legacy WAS tasarımı). Kullanıcı kararları:
 | `files/opsx_was.sh` | Ölçüm + işlem betiği (`MODE=discover` ya da `MODE=op`). Tek sınıflandırıcı (`classify`). |
 | `files/update_wasapp_status.py` | `dbo.WASAppsInventory` tek satır `UPDATE ... WHERE host = ? AND app = ?`. |
 
-Portal'daki birebir aynası: `server/ansible/bmw_portal/opsx_was/**` (iki kopya **bayt bayt aynı**).
+Portal'daki birebir aynası: `server/ansible/playbooks/bmw_portal/opsx_was/**` (iki kopya **bayt bayt aynı**).
 
 ## Akış
 

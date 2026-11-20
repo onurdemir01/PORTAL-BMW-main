@@ -71,7 +71,13 @@ const SMART_DURUMU = {
 
 function kur(s) {
   sim.sifirla();
-  sim.smartKipi((() => { if (s.kip === 'oco_only') return 'oco_only'; if (s.kip === 'required') return 'required'; return undefined; })());
+  sim.smartKipi(
+    (() => {
+      if (s.kip === 'oco_only') return 'oco_only';
+      if (s.kip === 'required') return 'required';
+      return undefined;
+    })(),
+  );
   if (s.smart === 'hazir' || s.smart === 'baglantisiz')
     sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
   if (s.smart === 'akissiz')
@@ -180,7 +186,11 @@ test('KM1 karar matrisi: her hucrede alti degismez', async (t) => {
     const prodApply = s.env === 'prod' && s.mode === 'apply';
     assert.equal(
       p.oco,
-      (() => { if (!prodApply) return 'skip'; if (s.action === 'restore') return 'warn'; return 'require'; })(),
+      (() => {
+        if (!prodApply) return 'skip';
+        if (s.action === 'restore') return 'warn';
+        return 'require';
+      })(),
       `${ad}: policy.oco`,
     );
     assert.equal(
@@ -1405,7 +1415,10 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
     ],
     [
       'istisna_namespace',
-      () => (sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR, skipWhen: 'namespace: odeme' } }),
+      () =>
+        (sim.ayar.ozellestirme = {
+          smartApproval: { ...sim.SMART_HAZIR, skipWhen: 'namespace: odeme' },
+        }),
     ],
     [
       'oco_kapali_yalniz_oco',
@@ -1417,7 +1430,9 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
   ]) {
     sim.sifirla();
     hazirla();
-    ozet[ad] = sabitle((await sim.istek('GET', '/api/scalex/gate-summary?env=prod&tenant=t1&clusters=c1')).json);
+    ozet[ad] = sabitle(
+      (await sim.istek('GET', '/api/scalex/gate-summary?env=prod&tenant=t1&clusters=c1')).json,
+    );
   }
   sim.sifirla();
   sim.ayar.ozellestirme = { ocoCheck: { enabled: true, environments: ['prod', 'test'] } };
@@ -1425,7 +1440,9 @@ test('KM19 ekran testlerinin ornek yanitlari GERCEK sunucu yanitlariyla ayni', a
     (await sim.istek('GET', '/api/scalex/gate-summary?env=test&tenant=t1&clusters=c1')).json,
   );
   sim.sifirla();
-  ozet.prod_disi = sabitle((await sim.istek('GET', '/api/scalex/gate-summary?env=test&tenant=t1&clusters=c1')).json);
+  ozet.prod_disi = sabitle(
+    (await sim.istek('GET', '/api/scalex/gate-summary?env=test&tenant=t1&clusters=c1')).json,
+  );
 
   const uretilen = { kurgular, bitenIs, kart, ozet };
   if (ORNEK_YAZ) {
@@ -1585,9 +1602,17 @@ test('KM22 zamanlanmis islemler listesi: her rolde DIZI; Admin herkesinkini, kul
 
   const admin = await liste('yonetici');
   assert.equal(admin.scope, 'all');
-  assert.deepEqual(admin.items.map((x) => x.id), [z.json.scheduleId], 'Admin baskasinin kaydini gormedi / ScaleX disi kayit listelendi');
+  assert.deepEqual(
+    admin.items.map((x) => x.id),
+    [z.json.scheduleId],
+    'Admin baskasinin kaydini gormedi / ScaleX disi kayit listelendi',
+  );
   const ayse = await liste('ayse');
-  assert.deepEqual(ayse.items.map((x) => x.id), [z.json.scheduleId], 'ScaleX panelinde Self Service kaydi');
+  assert.deepEqual(
+    ayse.items.map((x) => x.id),
+    [z.json.scheduleId],
+    'ScaleX panelinde Self Service kaydi',
+  );
   assert.deepEqual((await liste('bora')).items, [], 'baska ekibin kaydi gorundu');
 
   // HAM PAKET GITMEZ: ne `pendingLaunch` ne degiskenler (parola dahil).
@@ -1614,11 +1639,17 @@ test('KM22 zamanlanmis islemler listesi: her rolde DIZI; Admin herkesinkini, kul
   sim.ayar.kullanici = sim.KULLANICILAR.ayse;
   const ssIptal = await sim.istek('POST', '/api/scalex/oco-schedules/99001/cancel', {});
   nginxeUlasmayanRed(ssIptal, 404, 'baska modulun kaydi iptal');
-  const ssGuncel = await sim.istek('POST', '/api/scalex/oco-schedules/99001/update', { ocoNumber: '7654321' });
+  const ssGuncel = await sim.istek('POST', '/api/scalex/oco-schedules/99001/update', {
+    ocoNumber: '7654321',
+  });
   nginxeUlasmayanRed(ssGuncel, 404, 'baska modulun kaydi guncelleme');
   assert.equal(sim.ocoKaydi(99001).status, 'SCHEDULED');
   // ScaleX kaydinin iptal yaniti da ham paketi tasimaz.
-  const iptal = await sim.istek('POST', `/api/scalex/oco-schedules/${z.json.scheduleId}/cancel`, {});
+  const iptal = await sim.istek(
+    'POST',
+    `/api/scalex/oco-schedules/${z.json.scheduleId}/cancel`,
+    {},
+  );
   assert.equal(iptal.status, 200, iptal.metin);
   assert.ok(!iptal.metin.includes('pendingLaunch'), 'iptal yaniti ham paketi tasiyor');
   assert.equal(iptal.json.record.kapsam.namespace, 'odeme');
@@ -1665,9 +1696,15 @@ test('KM23 zamanlanan is pencere saatinde ANLIK isle AYNI degiskenlerle baslar; 
   assert.equal(zIs.ev.oco_number, OCO_NO);
   assert.equal(zIs.ev.requester_username, 'ayse', 'is zamanlayana atfedilmedi');
   assert.equal(zIs.ev.requester_is_fallback, false);
-  assert.deepEqual(sim.kayit.smartTalepleri, [], '"yalniz OCO" iken pencere saatinde SMART bileti acildi');
+  assert.deepEqual(
+    sim.kayit.smartTalepleri,
+    [],
+    '"yalniz OCO" iken pencere saatinde SMART bileti acildi',
+  );
   assert.ok(
-    sim.kayit.isGecmisi.some((r) => r.kaynak === 'ortak' && Number(r.job_id) === Number(kayit.awxJobId)),
+    sim.kayit.isGecmisi.some(
+      (r) => r.kaynak === 'ortak' && Number(r.job_id) === Number(kayit.awxJobId),
+    ),
     'pencere saatinde baslayan is gecmise yazilmadi',
   );
   assert.equal((await sim.reconciler.tick()).scheduledAdopted, 1);
@@ -1767,7 +1804,10 @@ test('KM25 ertelenen baslatmada AWX degisken yutarsa is IPTAL edilir; bayraksiz 
   const bilet = sim.kayit.biletler.find((b) => b.id === Number(r.json.ticketId));
   assert.equal(bilet.pendingLaunch.yutmaKorumasi, true);
   sim.ayar.awx.promptAcik = false;
-  await assert.rejects(() => sim.onayBaslaticisi(bilet), (e) => e.code === 'awx_prompt_on_launch_disabled');
+  await assert.rejects(
+    () => sim.onayBaslaticisi(bilet),
+    (e) => e.code === 'awx_prompt_on_launch_disabled',
+  );
   assert.equal(sim.iptaller().length, 1);
 
   // 3) Bayraksiz plan (Self Service kaydi): ayni durumda is AYNEN baslar, iptal yok.
@@ -1814,7 +1854,16 @@ test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince AN
     for (const smart of ['yok', 'hazir', 'akissiz'])
       for (const kim of ['ayse', 'yonetici-atlar'])
         for (const env of ['prod', 'test']) {
-          const s = { env, action: 'stop', mode: 'apply', kip, smart, kim, oco: 'numarasiz', eylem: '-' };
+          const s = {
+            env,
+            action: 'stop',
+            mode: 'apply',
+            kip,
+            smart,
+            kim,
+            oco: 'numarasiz',
+            eylem: '-',
+          };
           kur(s);
           const oz = await ozetAl(env);
           for (const action of ['stop', 'scale', 'restore']) {
@@ -1823,7 +1872,11 @@ test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince AN
             assert.equal(on.status, 200, on.metin);
             const beklenenPolitika = on.json.gatePolicy;
             const ozetteki = action === 'restore' ? oz.restore : oz.change;
-            assert.deepEqual(ozetteki, beklenenPolitika, `${etiket({ ...s, action })}: ozet onizlemeden ayrisiyor`);
+            assert.deepEqual(
+              ozetteki,
+              beklenenPolitika,
+              `${etiket({ ...s, action })}: ozet onizlemeden ayrisiyor`,
+            );
             hucre++;
           }
           // Beklenen SMART durumu karar tablosuyla da tutarli (prod + apply).
@@ -1853,7 +1906,10 @@ test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince AN
   const kartListeli = (await sim.istek('GET', '/api/scalex/admin/gate-status')).json;
   assert.deepEqual(kartListeli.oco, { enabled: true, environments: ['prod', 'test'] });
   sim.ayar.ozellestirme = { ocoCheck: { enabled: false } };
-  assert.deepEqual((await sim.istek('GET', '/api/scalex/admin/gate-status')).json.oco, { enabled: false, environments: null });
+  assert.deepEqual((await sim.istek('GET', '/api/scalex/admin/gate-status')).json.oco, {
+    enabled: false,
+    environments: null,
+  });
   sim.ayar.kullanici = sim.KULLANICILAR.ayse;
 
   // SECIME BAGLI KURAL: namespace/islem kurali varsa ekran "kesin karar onizlemede" der;
@@ -1871,7 +1927,11 @@ test('KM26 kapi ozeti (kapsam adimi) = onizleme karari; admin ayari degisince AN
   assert.equal(bos.status, 400);
   sim.sifirla();
   sim.ayar.ozellestirme = { smartApproval: { ...sim.SMART_HAZIR } };
-  const once = [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length];
+  const once = [
+    sim.kayit.awxIstekleri.length,
+    sim.kayit.ocoSorgulari.length,
+    sim.kayit.smartTalepleri.length,
+  ];
   await ozetAl('prod');
   assert.deepEqual(
     [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length],
@@ -1891,7 +1951,11 @@ test('KM27 is gecmisi UNKNOWN esigini AYARDAN soyler (ekran "24 saat" diye sabit
     assert.ok(Array.isArray(varsayilan.json.items));
     assert.equal(varsayilan.json.unknownAfterHours, 24);
     process.env.SCALEX_RECONCILE_STALE_HOURS = '6';
-    assert.equal((await sim.istek('GET', '/api/scalex/history')).json.unknownAfterHours, 6, 'ayar ANINDA yansimadi');
+    assert.equal(
+      (await sim.istek('GET', '/api/scalex/history')).json.unknownAfterHours,
+      6,
+      'ayar ANINDA yansimadi',
+    );
   } finally {
     if (eski === undefined) delete process.env.SCALEX_RECONCILE_STALE_HOURS;
     else process.env.SCALEX_RECONCILE_STALE_HOURS = eski;
@@ -1908,7 +1972,11 @@ test('KM27 is gecmisi UNKNOWN esigini AYARDAN soyler (ekran "24 saat" diye sabit
 test('KM28 onizleme sonuc kontrolu esigini, hedef tavanini ve yazili onay esigini AYARDAN verir; calistirma ayni esigi AWX e gonderir', async (t) => {
   sim.konsoluSustur(t);
   sim.sifirla();
-  const ANAHTARLAR = ['SCALEX_VERIFY_FAIL_MULTIPLIER', 'SCALEX_MAX_TARGETS', 'SCALEX_PROD_CONFIRM_THRESHOLD'];
+  const ANAHTARLAR = [
+    'SCALEX_VERIFY_FAIL_MULTIPLIER',
+    'SCALEX_MAX_TARGETS',
+    'SCALEX_PROD_CONFIRM_THRESHOLD',
+  ];
   const eski = Object.fromEntries(ANAHTARLAR.map((k) => [k, process.env[k]]));
   try {
     for (const k of ANAHTARLAR) delete process.env[k];
@@ -1918,16 +1986,27 @@ test('KM28 onizleme sonuc kontrolu esigini, hedef tavanini ve yazili onay esigin
     assert.equal(fabrika.json.blastRadius.maxTargets, 200);
     assert.equal(fabrika.json.blastRadius.writtenConfirmThreshold, 5);
     // Butce verilmezse sunucu varsayilani: esik onun uzerinden.
-    assert.deepEqual((await sim.onizle()).json.verification, { warnSeconds: 300, failSeconds: 600 });
+    assert.deepEqual((await sim.onizle()).json.verification, {
+      warnSeconds: 300,
+      failSeconds: 600,
+    });
 
     process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '3';
     process.env.SCALEX_MAX_TARGETS = '40';
     process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '7';
     const on = await sim.onizle({ verificationTimeout: '240' });
     assert.equal(on.status, 200, on.metin);
-    assert.deepEqual(on.json.verification, { warnSeconds: 240, failSeconds: 720 }, 'carpan ANINDA yansimadi');
+    assert.deepEqual(
+      on.json.verification,
+      { warnSeconds: 240, failSeconds: 720 },
+      'carpan ANINDA yansimadi',
+    );
     assert.equal(on.json.blastRadius.maxTargets, 40, 'hedef tavani ayardan gelmiyor');
-    assert.equal(on.json.blastRadius.writtenConfirmThreshold, 7, 'yazili onay esigi ayardan gelmiyor');
+    assert.equal(
+      on.json.blastRadius.writtenConfirmThreshold,
+      7,
+      'yazili onay esigi ayardan gelmiyor',
+    );
 
     // Calistirma AYNI esigi AWX'e gonderir.
     sim.smartKipi('oco_only');
@@ -1936,7 +2015,11 @@ test('KM28 onizleme sonuc kontrolu esigini, hedef tavanini ve yazili onay esigin
     assert.equal(c.status, 200, c.metin);
     const ev = sim.kayit.isler.get(Number(c.json.jobId)).ev;
     assert.equal(Number(ev.verify_warn_seconds), on.json.verification.warnSeconds);
-    assert.equal(Number(ev.verify_fail_seconds), on.json.verification.failSeconds, 'onizleme ile calistirma ayrisiyor');
+    assert.equal(
+      Number(ev.verify_fail_seconds),
+      on.json.verification.failSeconds,
+      'onizleme ile calistirma ayrisiyor',
+    );
   } finally {
     for (const k of ANAHTARLAR) {
       if (eski[k] === undefined) delete process.env[k];
@@ -2053,29 +2136,51 @@ test('KM30 admin kartinin kural kutusu = onizleme ve calistirma karari; ayar deg
         kartlar[ad] = k;
 
         // Prod disi ornek ortam ve dry_run: onizlemenin AYNI secimdeki karari.
-        let on = await sim.onizle(kurulum({ env: k.prodDisi.ortam, action: 'stop', mode: 'apply' }));
+        let on = await sim.onizle(
+          kurulum({ env: k.prodDisi.ortam, action: 'stop', mode: 'apply' }),
+        );
         assert.equal(on.status, 200, on.metin);
-        assert.deepEqual(ozet(k.prodDisi), ozet(on.json.gatePolicy), `${ad}: prod disi kurali onizlemeden ayrisiyor`);
+        assert.deepEqual(
+          ozet(k.prodDisi),
+          ozet(on.json.gatePolicy),
+          `${ad}: prod disi kurali onizlemeden ayrisiyor`,
+        );
         on = await sim.onizle(kurulum({ env: 'prod', action: 'stop', mode: 'dry_run' }));
         assert.equal(on.status, 200, on.metin);
-        assert.deepEqual(ozet(k.dryRun), ozet(on.json.gatePolicy), `${ad}: dry_run kurali onizlemeden ayrisiyor`);
+        assert.deepEqual(
+          ozet(k.dryRun),
+          ozet(on.json.gatePolicy),
+          `${ad}: dry_run kurali onizlemeden ayrisiyor`,
+        );
 
         // Ortami bilinmeyen istek: SMART icin prod sayilir. OCO ortam LISTESI tanimliysa bos
         // ortam listede olmadigi icin OCO istenmez (cozucunun bugunku davranisi; kart bunu
         // ayrica yazar). Bu yola istekle ULASILAMAZ: asagida bos ortam her uctan 400 alir.
-        assert.equal(k.bilinmeyenOrtam.prodSayilir, true, `${ad}: bilinmeyen ortam prod sayilmiyor`);
+        assert.equal(
+          k.bilinmeyenOrtam.prodSayilir,
+          true,
+          `${ad}: bilinmeyen ortam prod sayilmiyor`,
+        );
         assert.deepEqual(
           [k.bilinmeyenOrtam.smart, k.bilinmeyenOrtam.smartStatus],
           [kart.policy.smart, kart.policy.smartStatus],
           `${ad}: bilinmeyen ortamda SMART prod kararindan ayrisiyor`,
         );
-        assert.equal(k.bilinmeyenOrtam.oco, ocoAdi === 'listeli' ? 'skip' : kart.policy.oco, `${ad}: bilinmeyen ortamin OCO karari`);
+        assert.equal(
+          k.bilinmeyenOrtam.oco,
+          ocoAdi === 'listeli' ? 'skip' : kart.policy.oco,
+          `${ad}: bilinmeyen ortamin OCO karari`,
+        );
 
         // Geri Al: karar onizlemeyle ayni; gerekce kurali `/run`in uyguladigiyla ayni.
         const geriAlGovde = kurulum({ env: 'prod', action: 'restore', mode: 'apply' });
         on = await sim.onizle(geriAlGovde);
         assert.equal(on.status, 200, on.metin);
-        assert.deepEqual(ozet(k.geriAl), ozet(on.json.gatePolicy), `${ad}: Geri Al kurali onizlemeden ayrisiyor`);
+        assert.deepEqual(
+          ozet(k.geriAl),
+          ozet(on.json.gatePolicy),
+          `${ad}: Geri Al kurali onizlemeden ayrisiyor`,
+        );
         const gerekcesiz = { ...geriAlGovde };
         delete gerekcesiz.reason;
         const r = await sim.calistir(gerekcesiz);
@@ -2092,11 +2197,22 @@ test('KM30 admin kartinin kural kutusu = onizleme ve calistirma karari; ayar deg
 
   // BOS ORTAM HICBIR KARAR UCUNA ULASMAZ (bilinmeyen ortam kurali yalniz savunma katmani).
   kur({ kip: 'varsayilan', smart: 'hazir', kim: 'ayse', oco: 'numarasiz', eylem: '-' });
-  const once = [sim.kayit.awxIstekleri.length, sim.kayit.ocoSorgulari.length, sim.kayit.smartTalepleri.length];
+  const once = [
+    sim.kayit.awxIstekleri.length,
+    sim.kayit.ocoSorgulari.length,
+    sim.kayit.smartTalepleri.length,
+  ];
   for (const [ad, r] of [
     ['onizleme', await sim.onizle({ env: '' })],
     ['calistirma', await sim.calistir({ env: '' })],
-    ['toplu geri alma', await sim.istek('POST', '/api/scalex/restore-all', { env: '', tenant: 't1', reason: 'INC-1' })],
+    [
+      'toplu geri alma',
+      await sim.istek('POST', '/api/scalex/restore-all', {
+        env: '',
+        tenant: 't1',
+        reason: 'INC-1',
+      }),
+    ],
     ['kapi ozeti', await sim.istek('GET', '/api/scalex/gate-summary?env=')],
   ]) {
     assert.equal(r.status, 400, `${ad}: bos ortam reddedilmedi (${r.status} ${r.metin})`);
@@ -2111,10 +2227,21 @@ test('KM30 admin kartinin kural kutusu = onizleme ve calistirma karari; ayar deg
   const v = kartlar['kip=varsayilan smart=hazir oco=varsayilan'];
   assert.equal(v.prodDisi.smart, 'skip');
   assert.deepEqual([v.dryRun.oco, v.dryRun.smart], ['skip', 'skip']);
-  assert.deepEqual([v.geriAl.oco, v.geriAl.gerekceZorunlu, v.geriAl.smart], ['warn', true, 'require']);
+  assert.deepEqual(
+    [v.geriAl.oco, v.geriAl.gerekceZorunlu, v.geriAl.smart],
+    ['warn', true, 'require'],
+  );
   const kapali = kartlar['kip=varsayilan smart=hazir oco=kapali'];
-  assert.deepEqual([kapali.geriAl.oco, kapali.geriAl.gerekceZorunlu], ['skip', false], 'OCO kapaliyken Geri Al karti degismedi');
-  assert.equal(kartlar['kip=oco_only smart=hazir oco=varsayilan'].geriAl.smart, 'skip', 'yalniz OCO kipi Geri Al kartina yansimadi');
+  assert.deepEqual(
+    [kapali.geriAl.oco, kapali.geriAl.gerekceZorunlu],
+    ['skip', false],
+    'OCO kapaliyken Geri Al karti degismedi',
+  );
+  assert.equal(
+    kartlar['kip=oco_only smart=hazir oco=varsayilan'].geriAl.smart,
+    'skip',
+    'yalniz OCO kipi Geri Al kartina yansimadi',
+  );
 });
 
 // ── KM31 NGINX'IN YAKALADIGI REDLER EKRANA ULASIR ─────────────────────────────────
@@ -2130,7 +2257,11 @@ test('KM31 yetki / sahiplik reddi 409 + asil kodla ekrana ulasir; is baslamaz, d
     [
       'kesif',
       await sim.istek('POST', '/api/scalex/discover', {
-        env: 'test', tenant: 't1', namespace: 'yasak-ns', clusters: ['c1'], apps: ['api'],
+        env: 'test',
+        tenant: 't1',
+        namespace: 'yasak-ns',
+        clusters: ['c1'],
+        apps: ['api'],
       }),
     ],
   ]) {
@@ -2145,8 +2276,16 @@ test('KM31 yetki / sahiplik reddi 409 + asil kodla ekrana ulasir; is baslamaz, d
   assert.equal(is.status, 200, is.metin);
   const { serverId, jobId } = is.json;
   sim.ayar.kullanici = sim.KULLANICILAR.bora;
-  nginxeUlasmayanRed(await sim.istek('GET', `/api/scalex/run/${serverId}/${jobId}/status`), 403, 'baskasinin isinin durumu');
-  nginxeUlasmayanRed(await sim.istek('POST', `/api/scalex/cancel/${serverId}/${jobId}`, {}), 403, 'baskasinin isini iptal');
+  nginxeUlasmayanRed(
+    await sim.istek('GET', `/api/scalex/run/${serverId}/${jobId}/status`),
+    403,
+    'baskasinin isinin durumu',
+  );
+  nginxeUlasmayanRed(
+    await sim.istek('POST', `/api/scalex/cancel/${serverId}/${jobId}`, {}),
+    403,
+    'baskasinin isini iptal',
+  );
   assert.equal(sim.denetimde('scalex_access_denied').length, 2, 'yetkisiz deneme izlenmedi');
   assert.equal(sim.iptaller().length, 0, 'baskasinin isi iptal edildi');
 

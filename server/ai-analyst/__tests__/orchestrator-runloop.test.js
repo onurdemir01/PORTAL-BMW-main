@@ -15,22 +15,31 @@ function collectEmits() {
 
 test('runLoop(): isDone=true ise tek turda biter, pushAssistantTurn/pushToolResults ASLA cagrilmaz', async () => {
   const { events, emit } = collectEmits();
-  let assistantPushed = false, resultsPushed = false;
+  let assistantPushed = false,
+    resultsPushed = false;
   await runLoop({
     tools: [],
     emit,
     deadline: Date.now() + 10_000,
     callApi: async () => ({ text: 'final cevap' }),
     parseResponse: (resp) => ({ textParts: [resp.text], toolCalls: [], isDone: true }),
-    pushAssistantTurn: () => { assistantPushed = true; },
-    pushToolResults: () => { resultsPushed = true; },
+    pushAssistantTurn: () => {
+      assistantPushed = true;
+    },
+    pushToolResults: () => {
+      resultsPushed = true;
+    },
   });
-  assert.equal(assistantPushed, false, 'final yanitta assistant turu convo\'ya yazilmamali (orijinal davranis)');
+  assert.equal(
+    assistantPushed,
+    false,
+    "final yanitta assistant turu convo'ya yazilmamali (orijinal davranis)",
+  );
   assert.equal(resultsPushed, false);
   assert.deepEqual(events, [{ type: 'text', text: 'final cevap' }]);
 });
 
-test('runLoop(): arac basariyla calisirsa tool_call + tool_result(ok:true) emit edilir, sonuc pushToolResults\'a gider', async () => {
+test("runLoop(): arac basariyla calisirsa tool_call + tool_result(ok:true) emit edilir, sonuc pushToolResults'a gider", async () => {
   const { events, emit } = collectEmits();
   let callCount = 0;
   let pushedResults = null;
@@ -42,15 +51,20 @@ test('runLoop(): arac basariyla calisirsa tool_call + tool_result(ok:true) emit 
     deadline: Date.now() + 10_000,
     callApi: async () => {
       callCount++;
-      return callCount === 1
-        ? { hasTool: true }
-        : { hasTool: false };
+      return callCount === 1 ? { hasTool: true } : { hasTool: false };
     },
-    parseResponse: (resp) => resp.hasTool
-      ? { textParts: [], toolCalls: [{ id: 't1', name: 'test_tool', args: { x: 42 } }], isDone: false }
-      : { textParts: ['bitti'], toolCalls: [], isDone: true },
+    parseResponse: (resp) =>
+      resp.hasTool
+        ? {
+            textParts: [],
+            toolCalls: [{ id: 't1', name: 'test_tool', args: { x: 42 } }],
+            isDone: false,
+          }
+        : { textParts: ['bitti'], toolCalls: [], isDone: true },
     pushAssistantTurn: () => {},
-    pushToolResults: (results) => { pushedResults = results; },
+    pushToolResults: (results) => {
+      pushedResults = results;
+    },
   });
 
   assert.equal(callCount, 2, 'ilk turda arac cagrisi, ikinci turda final yanit');
@@ -68,10 +82,14 @@ test('runLoop(): bilinmeyen arac adi HATA olarak yakalanir, dongu cokmez', async
     tools: [], // hicbir arac tanimli degil
     emit,
     deadline: Date.now() + 10_000,
-    callApi: async () => { turn++; return { turn }; },
-    parseResponse: (resp) => resp.turn === 1
-      ? { textParts: [], toolCalls: [{ id: 'x', name: 'olmayan_arac', args: {} }], isDone: false }
-      : { textParts: ['tamam'], toolCalls: [], isDone: true },
+    callApi: async () => {
+      turn++;
+      return { turn };
+    },
+    parseResponse: (resp) =>
+      resp.turn === 1
+        ? { textParts: [], toolCalls: [{ id: 'x', name: 'olmayan_arac', args: {} }], isDone: false }
+        : { textParts: ['tamam'], toolCalls: [], isDone: true },
     pushAssistantTurn: () => {},
     pushToolResults: () => {},
   });
@@ -83,13 +101,20 @@ test('runLoop(): bilinmeyen arac adi HATA olarak yakalanir, dongu cokmez', async
 test('runLoop(): deadline gecmisse hemen hata firlatir (API cagirilmadan)', async () => {
   let called = false;
   await assert.rejects(
-    () => runLoop({
-      tools: [], emit: () => {}, deadline: Date.now() - 1,
-      callApi: async () => { called = true; return {}; },
-      parseResponse: () => ({ textParts: [], toolCalls: [], isDone: true }),
-      pushAssistantTurn: () => {}, pushToolResults: () => {},
-    }),
-    /süre bütçesi aşıldı/
+    () =>
+      runLoop({
+        tools: [],
+        emit: () => {},
+        deadline: Date.now() - 1,
+        callApi: async () => {
+          called = true;
+          return {};
+        },
+        parseResponse: () => ({ textParts: [], toolCalls: [], isDone: true }),
+        pushAssistantTurn: () => {},
+        pushToolResults: () => {},
+      }),
+    /süre bütçesi aşıldı/,
   );
   assert.equal(called, false);
 });
@@ -98,10 +123,17 @@ test('runLoop(): MAX_ITERATIONS (15) turu da arac istegi donerse azami-iterasyon
   const { events, emit } = collectEmits();
   const fakeTool = { name: 't', exec: async () => 'ok' };
   await runLoop({
-    tools: [fakeTool], emit, deadline: Date.now() + 30_000,
+    tools: [fakeTool],
+    emit,
+    deadline: Date.now() + 30_000,
     callApi: async () => ({}),
-    parseResponse: () => ({ textParts: [], toolCalls: [{ id: '1', name: 't', args: {} }], isDone: false }),
-    pushAssistantTurn: () => {}, pushToolResults: () => {},
+    parseResponse: () => ({
+      textParts: [],
+      toolCalls: [{ id: '1', name: 't', args: {} }],
+      isDone: false,
+    }),
+    pushAssistantTurn: () => {},
+    pushToolResults: () => {},
   });
   const last = events[events.length - 1];
   assert.equal(last.type, 'text');

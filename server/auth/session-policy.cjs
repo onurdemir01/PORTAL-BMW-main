@@ -34,7 +34,9 @@ function oku([anahtar, alt, ust, vars]) {
     const k = `${anahtar}=${ham}`;
     if (!_uyarildi.has(k)) {
       _uyarildi.add(k);
-      console.warn(`[Oturum] ${anahtar}="${ham}" gecersiz (${alt}-${ust}); varsayilan ${vars} kullaniliyor.`);
+      console.warn(
+        `[Oturum] ${anahtar}="${ham}" gecersiz (${alt}-${ust}); varsayilan ${vars} kullaniliyor.`,
+      );
     }
     return vars;
   }
@@ -86,7 +88,10 @@ function etkinlikMi(req) {
   const isaret = String(req.headers['x-portal-activity'] || '').toLowerCase();
   if (isaret === 'background') return false;
   if (isaret === 'user') return true;
-  if (req.method === 'GET' && ARKA_PLAN_YOLLARI.has(String(req.path || req.originalUrl || '').split('?')[0]))
+  if (
+    req.method === 'GET' &&
+    ARKA_PLAN_YOLLARI.has(String(req.path || req.originalUrl || '').split('?')[0])
+  )
     return false;
   return true;
 }
@@ -124,7 +129,7 @@ function yeniMeta(req, { remember = false } = {}, now = saat()) {
     lastSeenAt: now,
     remember: !!remember,
     ip: String(req.ip || '').slice(0, 64),
-    ua: String((req.headers?.['user-agent']) || '').slice(0, 200),
+    ua: String(req.headers?.['user-agent'] || '').slice(0, 200),
   };
 }
 
@@ -132,8 +137,7 @@ function yeniMeta(req, { remember = false } = {}, now = saat()) {
 // Mutlak sure girisin kendisinden sayilir (`loginAt`) — eski cerez zaten 8 sa ile
 // sinirliydi, yani 12 sa'lik sinir kimseyi erken atmaz.
 function eksikMetaTamamla(sess, now = saat()) {
-  if (Number.isFinite(sess.meta?.createdAt) && Number.isFinite(sess.meta.lastSeenAt))
-    return false;
+  if (Number.isFinite(sess.meta?.createdAt) && Number.isFinite(sess.meta.lastSeenAt)) return false;
   const giris = Date.parse(sess.user?.loginAt);
   const createdAt = Number.isFinite(giris) && giris <= now ? giris : now;
   sess.meta = { id: kisaKimlik(), createdAt, lastSeenAt: now, remember: false, ip: '', ua: '' };

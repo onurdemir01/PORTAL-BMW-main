@@ -4,6 +4,7 @@
 // Kullanici bildirimi: "Atlayan / Tanimsiz / Ayar sapmasi ne demek", "sunucuya
 // tiklayinca yeni sayfa acilsin". Bu kilitler kaynak metin uzerinden calisir.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -243,13 +244,13 @@ test('Nginx SPA: ORTAM OZETI en ustte (SPA sayisi + envanter payi, nginx ilerlem
   assert.ok(
     covSrv.includes('internetServices,') &&
       // 2026-11-13: addSvc dorduncu arguman (RP tanimi) aldi; kirilimin iki kaynagi ayni.
-      covSrv.includes("addSvc('PROD', String(res.application).toLowerCase(), r.service, ") &&
-      covSrv.includes('addSvc(e, app.toLowerCase(), r.service, '),
+      iceriyor(covSrv, "addSvc('PROD', String(res.application).toLowerCase(), r.service, ") &&
+      iceriyor(covSrv, 'addSvc(e, app.toLowerCase(), r.service, '),
     'servis kirilimi hesaplanmali (include vhost + PROD proxy vhost)',
   );
   assert.ok(
     sum.includes('function ServiceBar(') &&
-      sum.includes('<ServiceBar total={c.internetTotal} services={c.internetServices || []}'),
+      iceriyor(sum, '<ServiceBar total={c.internetTotal} services={c.internetServices || []}'),
     'internet hucresinde servis cubugu yok',
   );
   // 2026-09-18: uc ayri olcu - deploy edilmis (H+A, internet sunuculari) / servise tanimli / yuk aliyor

@@ -38,15 +38,31 @@ function numEnv(raw, fallback, { min, max }) {
 function getConfig() {
   return {
     hour: numEnv(process.env.DB_HOUSEKEEPING_HOUR, 3, { min: 0, max: 23 }),
-    checkIntervalMinutes: numEnv(process.env.DB_HOUSEKEEPING_CHECK_INTERVAL_MINUTES, 15, { min: 1, max: 60 }),
+    checkIntervalMinutes: numEnv(process.env.DB_HOUSEKEEPING_CHECK_INTERVAL_MINUTES, 15, {
+      min: 1,
+      max: 60,
+    }),
     alertPercent: numEnv(process.env.DB_USAGE_ALERT_PERCENT, 85, { min: 50, max: 99 }),
-    webhookUrl: (process.env.DB_USAGE_ALERT_WEBHOOK_URL || process.env.TEAMS_LONGJOB_WEBHOOK_URL || '').trim(),
-    logxBlobRetentionDays: numEnv(process.env.LOGX_V2_BLOB_RETENTION_DAYS, 30, { min: 1, max: 3650 }),
-    logxRowRetentionDays: numEnv(process.env.LOGX_V2_ROW_RETENTION_DAYS, 180, { min: 7, max: 3650 }),
+    webhookUrl: (
+      process.env.DB_USAGE_ALERT_WEBHOOK_URL ||
+      process.env.TEAMS_LONGJOB_WEBHOOK_URL ||
+      ''
+    ).trim(),
+    logxBlobRetentionDays: numEnv(process.env.LOGX_V2_BLOB_RETENTION_DAYS, 30, {
+      min: 1,
+      max: 3650,
+    }),
+    logxRowRetentionDays: numEnv(process.env.LOGX_V2_ROW_RETENTION_DAYS, 180, {
+      min: 7,
+      max: 3650,
+    }),
     batchSize: numEnv(process.env.DB_HOUSEKEEPING_BATCH, 2000, { min: 100, max: 50000 }),
     // Nginx Yuk Testi kosulari + adimlari (2026-10-27): bir yil; karsilastirma icin referans
     // kosular aylar sonra da okunur. Senaryolar silinmez (kucuk, yumusak silinir).
-    nginxLoadtestRetentionDays: numEnv(process.env.NGINX_LOADTEST_RETENTION_DAYS, 365, { min: 30, max: 3650 }),
+    nginxLoadtestRetentionDays: numEnv(process.env.NGINX_LOADTEST_RETENTION_DAYS, 365, {
+      min: 30,
+      max: 3650,
+    }),
   };
 }
 
@@ -117,9 +133,11 @@ async function readUsage() {
 
   let dbInfo = { log_reuse_wait_desc: null, recovery_model_desc: null };
   try {
-    const rs = await pool.request().query(
-      `SELECT log_reuse_wait_desc, recovery_model_desc FROM sys.databases WHERE name = DB_NAME()`,
-    );
+    const rs = await pool
+      .request()
+      .query(
+        `SELECT log_reuse_wait_desc, recovery_model_desc FROM sys.databases WHERE name = DB_NAME()`,
+      );
     if (rs.recordset[0]) dbInfo = rs.recordset[0];
   } catch {
     /* yoksay */
@@ -191,17 +209,25 @@ function buildAlertCard(usage, files, cfg) {
     title: `${f.name} (${f.kind === 'log' ? 'log' : 'veri'})`,
     value:
       `%${f.alert_pct.toFixed(1)} — ${fmt(f.used_mb)} / ` +
-      (() => { if (f.cap_mb) return `${fmt(f.cap_mb)} üst sınır`; if (f.volume_free_mb != null) return `disk boş ${fmt(f.volume_free_mb)}`; return `${fmt(f.size_mb)} dosya`; })(),
+      (() => {
+        if (f.cap_mb) return `${fmt(f.cap_mb)} üst sınır`;
+        if (f.volume_free_mb != null) return `disk boş ${fmt(f.volume_free_mb)}`;
+        return `${fmt(f.size_mb)} dosya`;
+      })(),
   }));
   if (usage.logReuseWait && usage.logReuseWait !== 'NOTHING') {
     facts.push({ title: 'Log neden boşalmıyor', value: usage.logReuseWait });
   }
   const hints = [];
   if (files.some((f) => f.kind === 'log')) {
-    hints.push('Log: `BACKUP LOG ... TO DISK` (AG üyesi — yalnız log backup boşaltır); kalıcı çözüm 15 dk\'lık Agent log backup job\'ı.');
+    hints.push(
+      "Log: `BACKUP LOG ... TO DISK` (AG üyesi — yalnız log backup boşaltır); kalıcı çözüm 15 dk'lık Agent log backup job'ı.",
+    );
   }
   if (files.some((f) => f.kind === 'data' && f.cap_mb)) {
-    hints.push('Veri: `ALTER DATABASE ... MODIFY FILE (NAME=..., MAXSIZE=UNLIMITED, FILEGROWTH=512MB)` ve Admin › DB Yedekleme ekranındaki büyük tablolara bak.');
+    hints.push(
+      'Veri: `ALTER DATABASE ... MODIFY FILE (NAME=..., MAXSIZE=UNLIMITED, FILEGROWTH=512MB)` ve Admin › DB Yedekleme ekranındaki büyük tablolara bak.',
+    );
   }
   return {
     type: 'message',
@@ -218,8 +244,20 @@ function buildAlertCard(usage, files, cfg) {
               style: 'attention',
               bleed: true,
               items: [
-                { type: 'TextBlock', text: `🛢️ Veritabanı doluluk uyarısı — ${usage.database || 'Portal DB'}`, weight: 'Bolder', size: 'Large', wrap: true },
-                { type: 'TextBlock', text: `Eşik %${cfg.alertPercent} aşıldı. Bu uyarı dosya başına günde bir kez gelir.`, isSubtle: true, wrap: true, spacing: 'none' },
+                {
+                  type: 'TextBlock',
+                  text: `🛢️ Veritabanı doluluk uyarısı — ${usage.database || 'Portal DB'}`,
+                  weight: 'Bolder',
+                  size: 'Large',
+                  wrap: true,
+                },
+                {
+                  type: 'TextBlock',
+                  text: `Eşik %${cfg.alertPercent} aşıldı. Bu uyarı dosya başına günde bir kez gelir.`,
+                  isSubtle: true,
+                  wrap: true,
+                  spacing: 'none',
+                },
               ],
             },
             { type: 'FactSet', spacing: 'Medium', facts },
@@ -257,7 +295,9 @@ async function checkAndAlert(usage) {
   const due = filesNeedingAlert(usage, cfg, state.alertsSent);
   if (!due.length) return 0;
   for (const f of due) {
-    console.warn(`[DBHousekeeping] DOLULUK UYARISI ${f.name}: %${f.alert_pct.toFixed(1)} (esik %${cfg.alertPercent})`);
+    console.warn(
+      `[DBHousekeeping] DOLULUK UYARISI ${f.name}: %${f.alert_pct.toFixed(1)} (esik %${cfg.alertPercent})`,
+    );
   }
   if (!cfg.webhookUrl) return 0; // webhook yoksa yalniz log + ekran
   await postTeams(cfg, buildAlertCard(usage, due, cfg));
@@ -377,7 +417,10 @@ async function persistState() {
       [payload, BLOB_NAME],
     );
     if (!upd.rowCount) {
-      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [BLOB_NAME, payload]);
+      await db.query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+        BLOB_NAME,
+        payload,
+      ]);
     }
   } catch (e) {
     console.warn('[DBHousekeeping] durum kaydedilemedi:', e.message);
@@ -387,7 +430,9 @@ async function persistState() {
 async function loadPersistedState() {
   try {
     const db = require('./index.cjs');
-    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [BLOB_NAME]);
+    const { rows } = await db.query(`SELECT data FROM portal_config_blobs WHERE name = $1`, [
+      BLOB_NAME,
+    ]);
     if (rows.length) {
       const saved = JSON.parse(rows[0].data);
       if (saved.status === 'running') saved.status = 'idle'; // restart ortasinda kalmis
@@ -446,14 +491,21 @@ function initDbHousekeeping(app) {
       res.json({ ok: true, usage, config: configForClient(), state: stateForClient() });
     } catch (e) {
       console.error('[DBHousekeeping] doluluk yaniti hatasi:', e.message);
-      res.status(500).json({ ok: false, message: 'Veritabanı doluluk bilgisi okunamadı.', state: stateForClient() });
+      res.status(500).json({
+        ok: false,
+        message: 'Veritabanı doluluk bilgisi okunamadı.',
+        state: stateForClient(),
+      });
     }
   });
 
   app.post('/api/admin/db-housekeeping/run', (req, res) => {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
-    if (state.status === 'running') return res.status(409).json({ ok: false, message: 'Zaten çalışıyor.' });
-    runHousekeeping().catch((e) => console.error('[DBHousekeeping] manuel calisma hatasi:', e.message));
+    if (state.status === 'running')
+      return res.status(409).json({ ok: false, message: 'Zaten çalışıyor.' });
+    runHousekeeping().catch((e) =>
+      console.error('[DBHousekeeping] manuel calisma hatasi:', e.message),
+    );
     try {
       require('../audit/index.cjs').auditPortal(req, 'db_housekeeping_manual_run', { detail: '' });
     } catch {
@@ -462,7 +514,9 @@ function initDbHousekeeping(app) {
     res.json({ ok: true, started: true });
   });
 
-  console.log('[DBHousekeeping] endpoints mounted at /api/admin/db-usage, /api/admin/db-housekeeping');
+  console.log(
+    '[DBHousekeeping] endpoints mounted at /api/admin/db-usage, /api/admin/db-housekeeping',
+  );
 }
 
 function stateForClient() {

@@ -69,7 +69,13 @@ test('KD1 prod 1/5: tek satir, sayilar ve kapali sunucular', () => {
       ['P5', 'kapali', 'stopped', true, '2026-11-14'],
     ],
   );
-  assert.deepEqual(r.ozet, { grup: 1, tutarsiz: 1, prodTutarsiz: 1, calismaTutarsiz: 1, autoStartTutarsiz: 0 });
+  assert.deepEqual(r.ozet, {
+    grup: 1,
+    tutarsiz: 1,
+    prodTutarsiz: 1,
+    calismaTutarsiz: 1,
+    autoStartTutarsiz: 0,
+  });
 });
 
 test('KD2 bayat / olculemeyen kopya bilinmiyor: kapali sayilmaz, karar vermez; dusen sunucu yok', () => {
@@ -87,11 +93,21 @@ test('KD2 bayat / olculemeyen kopya bilinmiyor: kapali sayilmaz, karar vermez; d
   assert.deepEqual([p2.durum, p2.running, p2.fresh, p2.sapma], ['bilinmiyor', false, false, []]);
   assert.equal(g.copies.find((k) => k.host === 'P3').running, null);
   assert.ok(!g.copies.some((k) => k.host === 'P4'), 'taramadan dusen sunucu satira girdi');
-  assert.deepEqual(g.dusen, [{ host: 'P4', scanDate: '2026-11-14' }], 'taramadan dusen kopya sessizce kayboldu');
+  assert.deepEqual(
+    g.dusen,
+    [{ host: 'P4', scanDate: '2026-11-14' }],
+    'taramadan dusen kopya sessizce kayboldu',
+  );
   // Iki kopyali grubun ikincisi taramadan dustu: grup kaybolmaz, "1/1 + 1 dustu" olarak gorunur.
-  r = kopyaDurumu([H('P1', 'PROD', [J('PAY')]), H('P2', 'PROD', [J('PAY')], { taramadanDustu: true })]);
+  r = kopyaDurumu([
+    H('P1', 'PROD', [J('PAY')]),
+    H('P2', 'PROD', [J('PAY')], { taramadanDustu: true }),
+  ]);
   g = grubu(r, 'PAY');
-  assert.deepEqual([g.total, g.running, g.tutarsiz, g.dusen.map((d) => d.host)], [1, 1, false, ['P2']]);
+  assert.deepEqual(
+    [g.total, g.running, g.tutarsiz, g.dusen.map((d) => d.host)],
+    [1, 1, false, ['P2']],
+  );
   // Yalniz dusen sunucularda olan grup listelenmez.
   r = kopyaDurumu([
     H('P1', 'PROD', [J('ESKI')], { taramadanDustu: true }),
@@ -99,14 +115,23 @@ test('KD2 bayat / olculemeyen kopya bilinmiyor: kapali sayilmaz, karar vermez; d
   ]);
   assert.equal(r.gruplar.length, 0);
   // Taze kopya yalniz bir sunucuda: karar yok ama satir (2 sunucu) var.
-  r = kopyaDurumu([H('P1', 'PROD', [J('PAY')]), H('P2', 'PROD', [J('PAY', KAPALI)], { fresh: false })]);
+  r = kopyaDurumu([
+    H('P1', 'PROD', [J('PAY')]),
+    H('P2', 'PROD', [J('PAY', KAPALI)], { fresh: false }),
+  ]);
   g = grubu(r, 'PAY');
   assert.deepEqual([g.total, g.unknown, g.tutarsiz], [2, 1, false]);
 });
 
 test('KD3 gruplama: ortam / nesil / ad ayri; tek sunucu listelenmez; ad buyuk / kucuk harf duyarsiz', () => {
   const r = kopyaDurumu([
-    H('P1', 'PROD', [J('PAY'), J('PAY', { gen: 8 }), J('TEK'), J('IKI'), J('IKI', { serverState: 'x' })]),
+    H('P1', 'PROD', [
+      J('PAY'),
+      J('PAY', { gen: 8 }),
+      J('TEK'),
+      J('IKI'),
+      J('IKI', { serverState: 'x' }),
+    ]),
     H('P2', 'PROD', [J('pay', KAPALI), J('PAY1')]),
     H('Q1', 'QA', [J('PAY')]),
     H('Q2', 'QA', [J('PAY')]),
@@ -151,7 +176,11 @@ test('KD4 KOPYA_TUTARSIZ ile birebir: sapan kopyalar ve tutarsiz gruplar ayni', 
   assert.ok(beklenen.length > 3, 'fikstur tutarsizlik uretmedi');
   assert.deepEqual(bulunan.sort(), beklenen.sort());
   for (const g of r.gruplar)
-    assert.equal(g.tutarsiz, g.copies.some((k) => k.sapma.length), `${g.anahtar} tutarsiz bayragi`);
+    assert.equal(
+      g.tutarsiz,
+      g.copies.some((k) => k.sapma.length),
+      `${g.anahtar} tutarsiz bayragi`,
+    );
 });
 
 test('KD5 auto-start uyumsuzlugu, Retirement ve OpenShift ozeti', () => {
@@ -164,7 +193,14 @@ test('KD5 auto-start uyumsuzlugu, Retirement ve OpenShift ozeti', () => {
   ]);
   const g = grubu(r, 'PAY');
   assert.deepEqual(
-    [g.tutarsiz, g.calismaTutarsiz, g.autoStartTutarsiz, g.autoStartUyumsuz, g.autoStartAcik, g.autoStartKapali],
+    [
+      g.tutarsiz,
+      g.calismaTutarsiz,
+      g.autoStartTutarsiz,
+      g.autoStartUyumsuz,
+      g.autoStartAcik,
+      g.autoStartKapali,
+    ],
     [true, false, true, 1, 2, 1],
   );
   assert.deepEqual(g.copies.find((k) => k.host === 'P2').sapma, ['autostart']);
@@ -188,11 +224,33 @@ test('KD6 siralama: prod once, en kotu oran, kopya sayisi', () => {
   // Yalniz auto-start farkli 0/5 grup, "1/5 calisiyor" grubunun ONUNE gecmez; bilinmiyor paydaya girmez;
   // hic olculmeyen grup en sona.
   const r2 = kopyaDurumu([
-    H('P1', 'PROD', [J('ASFARK', { ...KAPALI, autoStart: 'false' }), J('BIRDE5'), J('BIL'), J('UCDE5'), J('OLCULMEZ', { runningKnown: false })]),
-    H('P2', 'PROD', [J('ASFARK', KAPALI), J('BIRDE5', KAPALI), J('BIL'), J('UCDE5'), J('OLCULMEZ', { runningKnown: false })]),
+    H('P1', 'PROD', [
+      J('ASFARK', { ...KAPALI, autoStart: 'false' }),
+      J('BIRDE5'),
+      J('BIL'),
+      J('UCDE5'),
+      J('OLCULMEZ', { runningKnown: false }),
+    ]),
+    H('P2', 'PROD', [
+      J('ASFARK', KAPALI),
+      J('BIRDE5', KAPALI),
+      J('BIL'),
+      J('UCDE5'),
+      J('OLCULMEZ', { runningKnown: false }),
+    ]),
     H('P3', 'PROD', [J('ASFARK', KAPALI), J('BIRDE5', KAPALI), J('BIL', KAPALI), J('UCDE5')]),
-    H('P4', 'PROD', [J('ASFARK', KAPALI), J('BIRDE5', KAPALI), J('BIL', { runningKnown: false }), J('UCDE5', KAPALI)]),
-    H('P5', 'PROD', [J('ASFARK', KAPALI), J('BIRDE5', KAPALI), J('BIL', { runningKnown: false }), J('UCDE5', KAPALI)]),
+    H('P4', 'PROD', [
+      J('ASFARK', KAPALI),
+      J('BIRDE5', KAPALI),
+      J('BIL', { runningKnown: false }),
+      J('UCDE5', KAPALI),
+    ]),
+    H('P5', 'PROD', [
+      J('ASFARK', KAPALI),
+      J('BIRDE5', KAPALI),
+      J('BIL', { runningKnown: false }),
+      J('UCDE5', KAPALI),
+    ]),
   ]);
   assert.deepEqual(
     r2.gruplar.map((g) => g.app),
@@ -214,13 +272,22 @@ test('KD7 bulgu metni: x/y kopya calisiyor', () => {
   ];
   const cx = caprazAnaliz(hs);
   const k = cx.jvm('P2', hs[1].jvms[0]).kopya;
-  assert.deepEqual([k.calisanSayisi, k.bilinmeyenSayisi, k.toplamSayisi, k.kopyaSayisi], [1, 1, 4, 4]);
-  assert.match(kopyaMetni(hs[1].jvms[0], k), /^1\/4 kopya çalışıyor \(1 bilinmiyor\); bu kopya kapalı/);
+  assert.deepEqual(
+    [k.calisanSayisi, k.bilinmeyenSayisi, k.toplamSayisi, k.kopyaSayisi],
+    [1, 1, 4, 4],
+  );
+  assert.match(
+    kopyaMetni(hs[1].jvms[0], k),
+    /^1\/4 kopya çalışıyor \(1 bilinmiyor\); bu kopya kapalı/,
+  );
   // Bayat kopya: Bulgular paydasi sekmeyle AYNI (bayat dahil toplam, bilinmiyor olarak).
   const hb = [...hs, H('P5', 'PROD', [J('PAY')], { fresh: false })];
   const kb = caprazAnaliz(hb).jvm('P2', hb[1].jvms[0]).kopya;
   const gb = grubu(kopyaDurumu(hb), 'PAY');
-  assert.deepEqual([kb.calisanSayisi, kb.toplamSayisi, kb.bilinmeyenSayisi], [gb.running, gb.total, gb.unknown]);
+  assert.deepEqual(
+    [kb.calisanSayisi, kb.toplamSayisi, kb.bilinmeyenSayisi],
+    [gb.running, gb.total, gb.unknown],
+  );
   assert.deepEqual([gb.running, gb.total, gb.unknown], [1, 5, 2]);
   assert.match(kopyaMetni(hb[1].jvms[0], kb), /^1\/5 kopya çalışıyor \(2 bilinmiyor\)/);
   // Eski bicimdeki nesne (sayi yok): metin degismez.
@@ -255,7 +322,10 @@ test('KD8 uc: liste + esleme aciklamasi, tablo yok, 424', async () => {
   try {
     let r = await al('/kopya-durumu');
     assert.equal(r.status, 200);
-    assert.deepEqual([r.body.gruplar.length, r.body.gruplar[0].running, r.body.ozet.tutarsiz], [1, 1, 1]);
+    assert.deepEqual(
+      [r.body.gruplar.length, r.body.gruplar[0].running, r.body.ozet.tutarsiz],
+      [1, 1, 1],
+    );
     assert.deepEqual(r.body.eslesme, ESLESME);
     assert.match(r.body.eslesme.kacirabilir, /Farklı JVM adıyla/);
     assert.match(r.body.eslesme.digerSinirlar, /envanterden/);

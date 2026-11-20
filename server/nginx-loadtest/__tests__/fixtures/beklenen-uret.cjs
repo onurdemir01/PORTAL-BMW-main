@@ -31,9 +31,10 @@ function yaprakMi(x) {
 function yaz(x, girinti) {
   if (x === null || typeof x !== 'object' || yaprakMi(x)) return JSON.stringify(x);
   const ic = girinti + ' ';
-  if (Array.isArray(x)) return x.length ? `[\n${x.map((e) => ic + yaz(e, ic)).join(',\n')}\n${girinti}]` : '[]';
+  if (Array.isArray(x))
+    return x.length ? `[\n${x.map((e) => ic + yaz(e, ic)).join(',\n')}\n${girinti}]` : '[]';
   const anahtarlar = Object.keys(x).sort(varsayilanSira);
-  return `{\n${anahtarlar.map((k) => (String(ic) + JSON.stringify(k) + ": " + yaz(x[k], ic))).join(',\n')}\n${girinti}}`;
+  return `{\n${anahtarlar.map((k) => String(ic) + JSON.stringify(k) + ': ' + yaz(x[k], ic)).join(',\n')}\n${girinti}}`;
 }
 
 function main(argv) {
@@ -55,7 +56,11 @@ function main(argv) {
     const durumYolu = path.join(kok, '..', `${path.basename(kok)}-durumlar.json`);
     const cikti = path.join(kok, '..', `${path.basename(kok)}-cikti.json`);
     fs.writeFileSync(durumYolu, JSON.stringify(durumlar));
-    const r = spawnSync(python, ['-I', path.join(__dirname, 'karsilastir_referans.py'), betik, kok, durumYolu, cikti], { encoding: 'utf8' });
+    const r = spawnSync(
+      python,
+      ['-I', path.join(__dirname, 'karsilastir_referans.py'), betik, kok, durumYolu, cikti],
+      { encoding: 'utf8' },
+    );
     if (r.status !== 0) {
       console.error(`referans kosusu basarisiz (rc=${r.status}):\n${r.stdout}\n${r.stderr}`);
       return 1;
@@ -66,20 +71,36 @@ function main(argv) {
     for (const k of sonuc.kararlar) {
       const d = k.durum;
       const arg = ['-I', betik, kok, '--referans', d.ref, '--aday', d.aday];
-      for (const [ad, bayrak] of [['esik_cpu', '--esik-cpu'], ['esik_p95', '--esik-p95'], ['esik_zarar', '--esik-zarar'], ['kademe_cpu', '--kademe-cpu'], ['kademe_p95', '--kademe-p95']]) {
+      for (const [ad, bayrak] of [
+        ['esik_cpu', '--esik-cpu'],
+        ['esik_p95', '--esik-p95'],
+        ['esik_zarar', '--esik-zarar'],
+        ['kademe_cpu', '--kademe-cpu'],
+        ['kademe_p95', '--kademe-p95'],
+      ]) {
         if (d[ad] !== undefined) arg.push(bayrak, String(d[ad]));
       }
       const c = spawnSync(python, arg, { encoding: 'utf8' });
-      const ilk = c.status === 0 ? fs.readFileSync(path.join(kok, 'karar.txt'), 'utf8').split('\n')[0].replace('KARAR: ', '') : `rc=${c.status}`;
+      const ilk =
+        c.status === 0
+          ? fs
+              .readFileSync(path.join(kok, 'karar.txt'), 'utf8')
+              .split('\n')[0]
+              .replace('KARAR: ', '')
+          : `rc=${c.status}`;
       if (ilk !== k.karar) {
-        console.error(`CLI capraz kontrolu tutmadi: ${d.ref}->${d.aday}: modul=${k.karar} cli=${ilk}\n${c.stderr}`);
+        console.error(
+          `CLI capraz kontrolu tutmadi: ${d.ref}->${d.aday}: modul=${k.karar} cli=${ilk}\n${c.stderr}`,
+        );
         return 1;
       }
     }
     sonuc.parmak_izleri = izler;
     const hedef = path.join(__dirname, 'karsilastir-beklenen.json');
     fs.writeFileSync(hedef, yaz(sonuc, '') + '\n');
-    console.log(`yazildi: ${hedef} (adim=${ADIMLAR.length}, karar=${sonuc.kararlar.length}, python=${sonuc.python})`);
+    console.log(
+      `yazildi: ${hedef} (adim=${ADIMLAR.length}, karar=${sonuc.kararlar.length}, python=${sonuc.python})`,
+    );
     return 0;
   } finally {
     fs.rmSync(kok, { recursive: true, force: true });

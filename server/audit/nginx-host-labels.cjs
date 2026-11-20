@@ -28,13 +28,19 @@ function bol(v) {
 function dogrula(govde) {
   const mod = String(govde?.mod || 'degistir');
   if (!MODLAR.has(mod)) return { hata: 'Kip geçersiz (degistir | ekle).' };
-  const ham = Array.isArray(govde?.etiketler) ? govde.etiketler.flatMap(bol) : bol(govde?.etiketler);
+  const ham = Array.isArray(govde?.etiketler)
+    ? govde.etiketler.flatMap(bol)
+    : bol(govde?.etiketler);
   const etiketler = [...new Set(ham)];
   if (!etiketler.length) return { hata: 'En az bir etiket gerekli.' };
   if (etiketler.length > EN_COK_ETIKET) return { hata: `En çok ${EN_COK_ETIKET} etiket.` };
   const kotu = etiketler.find((e) => !ETIKET_RE.test(e) || e.toLowerCase() === 'too_many');
-  if (kotu) return { hata: `Etiket geçersiz: "${kotu.slice(0, 64)}" (harf, rakam, . _ - ; en çok 64).` };
-  const not = String(govde?.not || '').trim().slice(0, 500) || null;
+  if (kotu)
+    return { hata: `Etiket geçersiz: "${kotu.slice(0, 64)}" (harf, rakam, . _ - ; en çok 64).` };
+  const not =
+    String(govde?.not || '')
+      .trim()
+      .slice(0, 500) || null;
   return { mod, etiketler, not };
 }
 
@@ -46,7 +52,11 @@ function dogrula(govde) {
 function etiketUygula(rows, etiketler) {
   if (!etiketler?.size) return rows;
   return rows.map((r) => {
-    const e = etiketler.get(String(r.hostname || '').trim().toUpperCase());
+    const e = etiketler.get(
+      String(r.hostname || '')
+        .trim()
+        .toUpperCase(),
+    );
     if (!e) return r;
     const oto = bol(r.services);
     const etkin = etkinListe(oto, e);
@@ -54,7 +64,14 @@ function etiketUygula(rows, etiketler) {
       ...r,
       services: etkin.join(','),
       service_count: etkin.includes('too_many') ? r.service_count : etkin.length,
-      etiket: { mod: e.mod, etiketler: e.etiketler, not: e.not || null, by: e.by || null, at: e.at || null, oto },
+      etiket: {
+        mod: e.mod,
+        etiketler: e.etiketler,
+        not: e.not || null,
+        by: e.by || null,
+        at: e.at || null,
+        oto,
+      },
     };
   });
 }
@@ -88,7 +105,10 @@ function etkinListe(oto, e) {
   if (e.mod !== 'ekle') return [...e.etiketler];
   // Ustune ekle: harf duyarsiz tekil (otomatik 'GLOMO' + etiket 'glomo' iki kez sayilmaz); otomatik yazim kalir.
   const gorulen = new Set(oto.map((x) => String(x).toLowerCase()));
-  return [...oto, ...e.etiketler.filter((x) => !gorulen.has(x.toLowerCase()) && gorulen.add(x.toLowerCase()))];
+  return [
+    ...oto,
+    ...e.etiketler.filter((x) => !gorulen.has(x.toLowerCase()) && gorulen.add(x.toLowerCase())),
+  ];
 }
 
 // -- HER YERDE GECERLI (kullanici, 2026-11-12: "etiket her yerde gecerli olsun, SPA'ya da bagla") --
@@ -125,7 +145,14 @@ function tanimEtiketi(rows, m, anahtar, hostOf = (r) => r.host) {
       const a = anahtar(r);
       const t = tekEtiket(m, hostOf(r));
       const v = k.get(a);
-      k.set(a, (() => { if (v === undefined) return t; if (v === t) return v; return null; })());
+      k.set(
+        a,
+        (() => {
+          if (v === undefined) return t;
+          if (v === t) return v;
+          return null;
+        })(),
+      );
     }
   return (r) => (m?.size ? k.get(anahtar(r)) || null : null);
 }
@@ -135,8 +162,15 @@ function tanimEtiketi(rows, m, anahtar, hostOf = (r) => r.host) {
  * Diger durumlarda null (coklu etiket / ustune ekle bir tanimin hangi servise ait oldugunu soylemez).
  */
 function tekEtiket(m, host) {
-  const e = (m?.get?.(String(host || '').trim().toUpperCase()) ?? null);
-  return e?.mod === 'degistir' && e.etiketler?.length === 1 ? String(e.etiketler[0]).toUpperCase() : null;
+  const e =
+    m?.get?.(
+      String(host || '')
+        .trim()
+        .toUpperCase(),
+    ) ?? null;
+  return e?.mod === 'degistir' && e.etiketler?.length === 1
+    ? String(e.etiketler[0]).toUpperCase()
+    : null;
 }
 
 function degisti() {

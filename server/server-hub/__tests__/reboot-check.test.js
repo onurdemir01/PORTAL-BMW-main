@@ -4,6 +4,7 @@
 // SORUNSUZ ancak son goruntu OLCULDU ve once ile farki yoksa. Duzeltme JVM/web baslatir ve durdurur;
 // onaysiz baslamaz.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -348,21 +349,35 @@ test('RC8 KONTROL GEREKLI: once bos ya da "dokunulmadi" denen oge simdi calisiyo
       },
     },
     ['BOS', 'BOS2', 'BOS3', 'NEW', 'KAPALI', 'TAMAM', 'SORUN'],
-    { BOS2: ['BOOT|b1||'], BOS3: ['BOOT|b1||'], TAMAM: ['BOOT|b1||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'] },
+    {
+      BOS2: ['BOOT|b1||'],
+      BOS3: ['BOOT|b1||'],
+      TAMAM: ['BOOT|b1||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'],
+    },
   );
   assert.equal(d.BOS.durum, 'kontrol');
   // v4: bos once korumaz -> hala calisan JBoss 8 KALAN (sorunlu); sorunsuz da kontrol de denmez
   assert.equal(d.BOS2.durum, 'sorunlu', 'once bos iken hala calisan urun sorunsuz/kontrol denildi');
   assert.ok(d.BOS2.kalan > 0);
   assert.match(d.BOS2.bilgi.join(' '), /izlenen ürün\/JVM yoktu/);
-  assert.equal(d.BOS3.durum, 'kontrol', 'once satirlarinda izlenen satir yokken kapatilan urun sorunsuz denildi');
-  assert.match(d.BOS3.sebep, /JBoss 8 reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/);
+  assert.equal(
+    d.BOS3.durum,
+    'kontrol',
+    'once satirlarinda izlenen satir yokken kapatilan urun sorunsuz denildi',
+  );
+  assert.match(
+    d.BOS3.sebep,
+    /JBoss 8 reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/,
+  );
   assert.match(d.BOS3.sebep, /izlenen ürün\/JVM yoktu/);
   assert.equal(d.NEW.durum, 'kontrol');
   // Once verilmeyen (eski cagiran) yol + ESKI betigin "dokunulmadi" notlari: yeni kurala gore kapatilmasi gerekirdi
   // (inceleme R2 #5; kapinin korudugu not 'kapatilmadi' icerir - RC16).
   // v3: betik_surum yok -> AWX'teki betik eski nedeni de yazilir (kesin dil); kapanmali nedeni yine var.
-  assert.match(d.NEW.neden.join(' '), /2 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appA — AWX'teki betik eski/);
+  assert.match(
+    d.NEW.neden.join(' '),
+    /2 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appA — AWX'teki betik eski/,
+  );
   assert.match(d.NEW.neden.join(' '), /reboot_check betiği eski \(sürüm yok, gerekli 4\)/);
   assert.equal(d.KAPALI.durum, 'sorunsuz', 'dokunulmayan ama simdi KAPALI oge kontrol sayildi');
   assert.equal(d.TAMAM.durum, 'sorunsuz');
@@ -445,8 +460,24 @@ test("RC10 sonra bitince: kontrol nedeni olan + sorunsuz -> kayit 'kontrol'; onc
   const son = ['BOOT|c||', 'URUN|NGINX||'];
   const sunucular = {
     // v4: bos once'de her urun (CTG dahil) kapatilir; kapatilan CTG ile "kontrol" (hala calissaydi kalan olurdu).
-    A: { once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|c||', 'URUN|CTG||'], son_goruntu: ['BOOT|c||'], plan: [], islemler: ['SONUC|durdur|CTG||OK|x'], betik_surum: 4 },
-    B: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: son, plan: [], betik_surum: 4 },
+    A: {
+      once_var: true,
+      son_olculdu: true,
+      son_fark: [],
+      goruntu: ['BOOT|c||', 'URUN|CTG||'],
+      son_goruntu: ['BOOT|c||'],
+      plan: [],
+      islemler: ['SONUC|durdur|CTG||OK|x'],
+      betik_surum: 4,
+    },
+    B: {
+      once_var: true,
+      son_olculdu: true,
+      son_fark: [],
+      son_goruntu: son,
+      plan: [],
+      betik_surum: 4,
+    },
   };
   const upd = await ilerletKos(
     {
@@ -503,8 +534,15 @@ test('RC12 kontrol nedeni once <-> son goruntuden: plandan SONRA kalkan yeni uru
   );
   // 2026-11-15 ("nasil bulduysan oyle birak"): once calismayan urun KAPATILIR; hala calisiyorsa KALAN (sorunlu).
   assert.deepEqual([d.A.durum, d.A.kalan], ['sorunlu', 2], JSON.stringify(d.A));
-  assert.match(d.A.neden.join(' '), /3 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: NGINX, WAS, WAS\/s1/);
-  assert.doesNotMatch(d.A.neden.join(' '), /dokunulmadı/, 'kapatilmasi gereken oge "dokunulmadi" diye anlatildi');
+  assert.match(
+    d.A.neden.join(' '),
+    /3 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: NGINX, WAS, WAS\/s1/,
+  );
+  assert.doesNotMatch(
+    d.A.neden.join(' '),
+    /dokunulmadı/,
+    'kapatilmasi gereken oge "dokunulmadi" diye anlatildi',
+  );
   const yeniJvm = sonraDegerlendir(
     {
       A: {
@@ -550,18 +588,60 @@ test("RC13 eski surum once (SURUM yok) + yeni son: JBoss satirlari cevrilir, sah
 
 test('RC13b eski surum once: cevrilen JBoss JVM farki Portal kalaninda; cevrilebilen once kontrol nedeni URETMEZ', () => {
   const { onceNesilCevir } = require('../reboot-check.cjs');
-  const once = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|app2|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS7|v8|jboss_home=/vhosting8/jboss/AppServer'];
-  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS7||', 'URUN|JBOSS8||', 'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer', 'JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer'];
+  const once = [
+    'BOOT|b1||',
+    'URUN|JBOSS7||',
+    'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer',
+    'JVM|JBOSS7|app2|jboss_home=/usr/jboss/AppServer',
+    'JVM|JBOSS7|v8|jboss_home=/vhosting8/jboss/AppServer',
+  ];
+  const son = [
+    'BOOT|b2||',
+    'SURUM|2||',
+    'URUN|JBOSS7||',
+    'URUN|JBOSS8||',
+    'JVM|JBOSS7|app1|jboss_home=/usr/jboss/AppServer',
+    'JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer',
+  ];
   const c = onceNesilCevir(once, son);
   assert.equal(c.cevrildi, true);
   assert.deepEqual(c.belirsiz, []);
   assert.ok(c.satirlar.includes('JVM|JBOSS8|v8|jboss_home=/vhosting8/jboss/AppServer'));
-  assert.deepEqual(onceNesilCevir(['SURUM|2||', ...once], son).satirlar, ['SURUM|2||', ...once], 'yeni surum once degistirildi');
-  const d = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: son, plan: ['BILGI|NESIL|||x'], betik_surum: 4 } }, ['A'], { A: once });
+  assert.deepEqual(
+    onceNesilCevir(['SURUM|2||', ...once], son).satirlar,
+    ['SURUM|2||', ...once],
+    'yeni surum once degistirildi',
+  );
+  const d = sonraDegerlendir(
+    {
+      A: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: son,
+        plan: ['BILGI|NESIL|||x'],
+        betik_surum: 4,
+      },
+    },
+    ['A'],
+    { A: once },
+  );
   assert.deepEqual([d.A.durum, d.A.kalan], ['sorunlu', 1], JSON.stringify(d.A));
   assert.equal(d.A.neden, undefined, 'cevrilebilen eski once kontrol nedeni uretti');
   // AWX'te ESKI betik (JBoss'a dokunmadi): fark Portal kalaninda gorunur ve yeniden calistirma soylenir.
-  const e = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: son, plan: ['BILGI|ESKI|||x'] } }, ['A'], { A: once });
+  const e = sonraDegerlendir(
+    {
+      A: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: son,
+        plan: ['BILGI|ESKI|||x'],
+      },
+    },
+    ['A'],
+    { A: once },
+  );
   assert.equal(e.A.durum, 'sorunlu');
   assert.match(e.A.neden.join(' '), /yeniden çalıştırın/);
 });
@@ -651,8 +731,24 @@ test('RC15 2026-11-15 "nasil bulduysan oyle birak": hala calisan yeni URUN porta
   assert.deepEqual(portalKalan(once, calisan), ['FARK|NEW|URUN|IHS||']);
   const d = sonraDegerlendir(
     {
-      KALDI: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: calisan, plan: ['ISLEM|www|durdur|IHS||'], islemler: ['SONUC|durdur|IHS||FAIL|x'], betik_surum: 4 },
-      KAPANDI: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once, plan: ['ISLEM|www|durdur|IHS||'], islemler: ['SONUC|durdur|IHS||OK|x'], betik_surum: 4 },
+      KALDI: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: calisan,
+        plan: ['ISLEM|www|durdur|IHS||'],
+        islemler: ['SONUC|durdur|IHS||FAIL|x'],
+        betik_surum: 4,
+      },
+      KAPANDI: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: once,
+        plan: ['ISLEM|www|durdur|IHS||'],
+        islemler: ['SONUC|durdur|IHS||OK|x'],
+        betik_surum: 4,
+      },
     },
     ['KALDI', 'KAPANDI'],
     { KALDI: once, KAPANDI: once },
@@ -660,29 +756,85 @@ test('RC15 2026-11-15 "nasil bulduysan oyle birak": hala calisan yeni URUN porta
   assert.deepEqual([d.KALDI.durum, d.KALDI.kalan], ['sorunlu', 1]);
   assert.match(d.KALDI.neden.join(' '), /hâlâ çalışıyor; otomatik kapatılması gerekiyordu: IHS/);
   assert.doesNotMatch(d.KALDI.neden.join(' '), /dokunulmadı/);
-  assert.doesNotMatch(d.KALDI.neden.join(' '), /otomasyon KAPATTI/, 'kapatilamayan urun "KAPATTI" diye yazildi');
+  assert.doesNotMatch(
+    d.KALDI.neden.join(' '),
+    esnek(/otomasyon KAPATTI/),
+    'kapatilamayan urun "KAPATTI" diye yazildi',
+  );
   // v3 B2 ("kapatip, kontrol edilecek yaz"): kapatilan urun fark kalmasa da SORUNSUZ sayilmaz -> kontrol
   assert.equal(d.KAPANDI.durum, 'kontrol');
-  assert.match(d.KAPANDI.sebep, /IBM HTTP Server \(IHS\) reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin\./);
+  assert.match(
+    d.KAPANDI.sebep,
+    /IBM HTTP Server \(IHS\) reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin\./,
+  );
   // KAPI 1 (v4, "Her yerde kapat"): bos once -> HER urun (web + CTG/JBoss/WAS) KAPATILIR; hala calisan kalan'da (sorunlu),
   // kapatilan "kontrol edilecek" (kontrol); bos kapida "dokunulmadi" nedeni URETILMEZ
   assert.equal(kapatmaKapisi(['BOOT|b1||']), 'bos');
-  assert.deepEqual(portalKalan(['BOOT|b1||'], calisan), ['FARK|NEW|URUN|IHS||', 'FARK|NEW|URUN|RHA||']);
-  const bos = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: calisan, plan: [], betik_surum: 4 } }, ['A'], { A: ['BOOT|b1||'] });
+  assert.deepEqual(portalKalan(['BOOT|b1||'], calisan), [
+    'FARK|NEW|URUN|IHS||',
+    'FARK|NEW|URUN|RHA||',
+  ]);
+  const bos = sonraDegerlendir(
+    {
+      A: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: calisan,
+        plan: [],
+        betik_surum: 4,
+      },
+    },
+    ['A'],
+    { A: ['BOOT|b1||'] },
+  );
   assert.deepEqual([bos.A.durum, bos.A.kalan], ['sorunlu', 2]);
   const bosCtg = ['BOOT|b2||', 'SURUM|2||', 'URUN|CTG||', 'URUN|WAS||'];
-  assert.deepEqual(portalKalan(['BOOT|b1||'], bosCtg), ['FARK|NEW|URUN|CTG||', 'FARK|NEW|URUN|WAS||']);
-  const bos2 = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: bosCtg, plan: [], betik_surum: 4 } }, ['A'], { A: ['BOOT|b1||'] });
+  assert.deepEqual(portalKalan(['BOOT|b1||'], bosCtg), [
+    'FARK|NEW|URUN|CTG||',
+    'FARK|NEW|URUN|WAS||',
+  ]);
+  const bos2 = sonraDegerlendir(
+    {
+      A: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: bosCtg,
+        plan: [],
+        betik_surum: 4,
+      },
+    },
+    ['A'],
+    { A: ['BOOT|b1||'] },
+  );
   assert.deepEqual([bos2.A.durum, bos2.A.kalan], ['sorunlu', 2]);
-  assert.match(bos2.A.neden.join(' '), /2 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: CTG, WAS/);
+  assert.match(
+    bos2.A.neden.join(' '),
+    /2 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: CTG, WAS/,
+  );
   assert.doesNotMatch(bos2.A.neden.join(' '), /dokunulmadı/);
   const bos3 = sonraDegerlendir(
-    { A: { once_var: true, son_olculdu: true, son_fark: [], goruntu: bosCtg, son_goruntu: ['BOOT|b2||', 'SURUM|2||'], plan: [], islemler: ['SONUC|durdur|CTG||OK|x', 'SONUC|durdur|WAS||OK|x'], betik_surum: 4 } },
+    {
+      A: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        goruntu: bosCtg,
+        son_goruntu: ['BOOT|b2||', 'SURUM|2||'],
+        plan: [],
+        islemler: ['SONUC|durdur|CTG||OK|x', 'SONUC|durdur|WAS||OK|x'],
+        betik_surum: 4,
+      },
+    },
     ['A'],
     { A: ['BOOT|b1||'] },
   );
   assert.deepEqual([bos3.A.durum, bos3.A.kalan], ['kontrol', 0]);
-  assert.match(bos3.A.sebep, /CTG, WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/);
+  assert.match(
+    bos3.A.sebep,
+    /CTG, WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/,
+  );
   // KAPI 3: eski surum once, JVM'siz URUN|JBOSS7 belirsiz -> bugunku JBOSS8 kalan sayilmaz; JBoss disi yeni urun sayilir
   const eski = ['BOOT|b1||', 'URUN|JBOSS7||', 'URUN|NGINX||'];
   const s2 = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|NGINX||', 'URUN|CTG||'];
@@ -692,28 +844,52 @@ test('RC15 2026-11-15 "nasil bulduysan oyle birak": hala calisan yeni URUN porta
   assert.match(n, /1 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: CTG/);
 });
 
-test('RC16 inceleme 2026-11-15: kapi yalniz ham once (eski surum -> JBoss korunur; BOOT yok -> bos); JVM\'den urun cikarimi; eski cagiran notlari', () => {
+test("RC16 inceleme 2026-11-15: kapi yalniz ham once (eski surum -> JBoss korunur; BOOT yok -> bos); JVM'den urun cikarimi; eski cagiran notlari", () => {
   const { portalKalan, kontrolNedenleri, kapatmaKapisi, sonKume } = require('../reboot-check.cjs');
   // R1 B1: eski surum once + son goruntude yalniz HC (JVM yok) -> JVM JBOSS7 kalir, belirsiz URETILMEZ; yine de JBOSS8 korunur
   const eski = ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|srv1|jboss_home=/usr/jboss/AppServer'];
   const yalnizHc = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|IHS||'];
   assert.equal(kapatmaKapisi(eski), 'eski');
-  assert.ok(!portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|JBOSS8||'), 'eski surum once\'de JBOSS8 kalan sayildi');
-  assert.ok(portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|IHS||'), 'JBoss disi yeni urun eski surumde de kapatilir');
-  assert.match(kontrolNedenleri(eski, { son_goruntu: yalnizHc, plan: [] }).join(' '), /şimdi çalışıyor ve dokunulmadı .*JBOSS8/);
+  assert.ok(
+    !portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|JBOSS8||'),
+    "eski surum once'de JBOSS8 kalan sayildi",
+  );
+  assert.ok(
+    portalKalan(eski, yalnizHc).includes('FARK|NEW|URUN|IHS||'),
+    'JBoss disi yeni urun eski surumde de kapatilir',
+  );
+  assert.match(
+    kontrolNedenleri(eski, { son_goruntu: yalnizHc, plan: [] }).join(' '),
+    /şimdi çalışıyor ve dokunulmadı .*JBOSS8/,
+  );
   assert.equal(kapatmaKapisi(['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS7||']), '');
   // R1 B5: BOOT'suz once -> 'bootsuz' (v3: 'bos'tan ayrildi; betik plan HATA, hicbir sey yapmaz, kalan saymaz)
   assert.equal(kapatmaKapisi(['URUN|RHA||']), 'bootsuz');
   assert.deepEqual(portalKalan(['URUN|RHA||'], ['BOOT|b2||', 'URUN|RHA||', 'URUN|NGINX||']), []);
   // R2 #2: urun satiri olmayip JVM'i calisan yeni urun calisiyor sayilir -> kalan; once calisan urunun DOWN'u degismez
   const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
-  const jvmli = ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||', 'JVM|JBOSS8|app1|jboss_home=/usr/jboss8/AppServer'];
+  const jvmli = [
+    'BOOT|b2||',
+    'SURUM|2||',
+    'URUN|RHA||',
+    'JVM|JBOSS8|app1|jboss_home=/usr/jboss8/AppServer',
+  ];
   assert.deepEqual(portalKalan(once, jvmli), ['FARK|NEW|URUN|JBOSS8||']);
   assert.ok(sonKume(jvmli, new Set(['RHA'])).urun.has('JBOSS8'));
   assert.ok(!sonKume(jvmli, new Set(['JBOSS8'])).urun.has('JBOSS8'));
-  assert.deepEqual(portalKalan(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'], ['BOOT|b2||', 'URUN|RHA||', 'JVM|JBOSS8|app1|x']), ['FARK|DOWN|URUN|JBOSS8||']);
-  const dj = sonraDegerlendir({ A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: jvmli, plan: [] } }, ['A'], { A: once });
-  assert.equal(dj.A.durum, 'sorunlu', 'HC\'siz calisan yeni JBoss urunu sorunsuz/kontrol sayildi');
+  assert.deepEqual(
+    portalKalan(
+      ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|app1|x'],
+      ['BOOT|b2||', 'URUN|RHA||', 'JVM|JBOSS8|app1|x'],
+    ),
+    ['FARK|DOWN|URUN|JBOSS8||'],
+  );
+  const dj = sonraDegerlendir(
+    { A: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: jvmli, plan: [] } },
+    ['A'],
+    { A: once },
+  );
+  assert.equal(dj.A.durum, 'sorunlu', "HC'siz calisan yeni JBoss urunu sorunsuz/kontrol sayildi");
   // R2 #5: once verilmeyen yol - yeni betigin kapi notu ('kapatilmadi') korunan; ESKI betigin 'dokunulmadi' notu kapanmali
   const son = ['BOOT|b2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x', 'URUN|IHS||'];
   const n = kontrolNedenleri(null, {
@@ -724,51 +900,108 @@ test('RC16 inceleme 2026-11-15: kapi yalniz ham once (eski surum -> JBoss korunu
       'BILGI|NEW|IHS||reboot oncesi calismiyordu, simdi calisiyor - dokunulmadi',
     ],
   }).join(' ');
-  assert.match(n, /2 öğe şimdi çalışıyor ve dokunulmadı \(plan notuna göre\): JBOSS8, JBOSS8\/appA/);
+  assert.match(
+    n,
+    /2 öğe şimdi çalışıyor ve dokunulmadı \(plan notuna göre\): JBOSS8, JBOSS8\/appA/,
+  );
   assert.match(n, /1 öğe hâlâ çalışıyor; otomatik kapatılması gerekiyordu: IHS/);
 });
 
 // ---- v3 (2026-11-15 aksam, kullanici: "Nginx, apache, ihs urunlerini halen kapatmamissin kontrol edilecek yazmissin.
 // Kapatip, kontrol edilecek yaz ... Otomasyon basarili ve basarisizi net ayirmiyor, dokunmayi da ayirmiyor") ----
 
-test('RC17 v4 kapi: bos once HICBIR urunu KORUMAZ (web + CTG/JBoss/WAS kapatilir, prod dahil); BOOT\'suz once hepsini korur', () => {
-  const { kapatmaKapisi, kapiKorur, portalKalan, kontrolNedenleri } = require('../reboot-check.cjs');
+test("RC17 v4 kapi: bos once HICBIR urunu KORUMAZ (web + CTG/JBoss/WAS kapatilir, prod dahil); BOOT'suz once hepsini korur", () => {
+  const {
+    kapatmaKapisi,
+    kapiKorur,
+    portalKalan,
+    kontrolNedenleri,
+  } = require('../reboot-check.cjs');
   const bos = ['BOOT|b1||'];
   assert.equal(kapatmaKapisi(bos), 'bos');
-  for (const u of ['NGINX', 'RHA', 'IHS']) assert.equal(kapiKorur('bos', u), false, `${u} bos kapida korundu`);
-  for (const u of ['CTG', 'JBOSS7', 'JBOSS8', 'WAS']) assert.equal(kapiKorur('bos', u), false, `${u} bos kapida korundu (v4: her yerde kapat)`);
-  for (const u of ['NGINX', 'RHA', 'IHS', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS']) assert.equal(kapiKorur('bootsuz', u), true);
+  for (const u of ['NGINX', 'RHA', 'IHS'])
+    assert.equal(kapiKorur('bos', u), false, `${u} bos kapida korundu`);
+  for (const u of ['CTG', 'JBOSS7', 'JBOSS8', 'WAS'])
+    assert.equal(kapiKorur('bos', u), false, `${u} bos kapida korundu (v4: her yerde kapat)`);
+  for (const u of ['NGINX', 'RHA', 'IHS', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS'])
+    assert.equal(kapiKorur('bootsuz', u), true);
   // 'eski' kapi degismedi: yalniz JBoss
-  assert.deepEqual(['NGINX', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS'].map((u) => kapiKorur('eski', u)), [false, false, true, true, false]);
+  assert.deepEqual(
+    ['NGINX', 'CTG', 'JBOSS7', 'JBOSS8', 'WAS'].map((u) => kapiKorur('eski', u)),
+    [false, false, true, true, false],
+  );
   assert.equal(kapiKorur('', 'NGINX'), false);
   const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a|x'];
   assert.deepEqual(portalKalan(bos, son), ['FARK|NEW|URUN|JBOSS8||', 'FARK|NEW|URUN|NGINX||']);
   // bos once metni (v4): calisan her urun kapatilir ve kontrol edilecek; "yalniz web" / "hicbir sey acilip kapatilmadi" DENMEZ
-  const n = kontrolNedenleri(bos, { son_goruntu: ['BOOT|b2||'], plan: [], betik_surum: 4 }).join(' ');
-  assert.match(n, /reboot sonrası çalışan her ürün \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) reboot öncesi haline \(kapalı\) döndürülür ve kontrol edilecek/);
-  assert.doesNotMatch(n, /yalnız web|dokunulmadı/);
-  assert.doesNotMatch(n, /hiçbir şey açılıp kapatılmadı/);
-  const p = kontrolNedenleri(null, { son_goruntu: ['BOOT|b2||'], plan: ['BILGI|BOS|||x'], betik_surum: 4 }).join(' ');
-  assert.doesNotMatch(p, /hiçbir şey açılıp kapatılmadı/);
+  const n = kontrolNedenleri(bos, { son_goruntu: ['BOOT|b2||'], plan: [], betik_surum: 4 }).join(
+    ' ',
+  );
+  assert.match(
+    n,
+    /reboot sonrası çalışan her ürün \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) reboot öncesi haline \(kapalı\) döndürülür ve kontrol edilecek/,
+  );
+  assert.doesNotMatch(n, esnek(/yalnız web|dokunulmadı/));
+  assert.doesNotMatch(n, esnek(/hiçbir şey açılıp kapatılmadı/));
+  const p = kontrolNedenleri(null, {
+    son_goruntu: ['BOOT|b2||'],
+    plan: ['BILGI|BOS|||x'],
+    betik_surum: 4,
+  }).join(' ');
+  assert.doesNotMatch(p, esnek(/hiçbir şey açılıp kapatılmadı/));
 });
 
 test('RC18 v3 B2: otomasyonun KAPATTIGI URUN sunucuyu kontrol yapar (fark kalmasa da); JVM durdurma ve kapanmayan urun bu nedeni uretmez', () => {
   const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x'];
   const d = sonraDegerlendir(
     {
-      WEB: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once, betik_surum: 4, islemler: ['SONUC|durdur|NGINX||OK|x', 'SONUC|durdur|IHS||OK|x'] },
-      JVM: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once, betik_surum: 4, islemler: ['SONUC|durdur|JBOSS8|a2|OK|x'] },
-      KALDI: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: [...once, 'URUN|CTG||'], betik_surum: 4, islemler: ['SONUC|durdur|CTG||OK|x'] },
-      SKIP: { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once, betik_surum: 4, islemler: ['SONUC|durdur|NGINX||SKIP|zaten kapali'] },
+      WEB: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: once,
+        betik_surum: 4,
+        islemler: ['SONUC|durdur|NGINX||OK|x', 'SONUC|durdur|IHS||OK|x'],
+      },
+      JVM: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: once,
+        betik_surum: 4,
+        islemler: ['SONUC|durdur|JBOSS8|a2|OK|x'],
+      },
+      KALDI: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: [...once, 'URUN|CTG||'],
+        betik_surum: 4,
+        islemler: ['SONUC|durdur|CTG||OK|x'],
+      },
+      SKIP: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        son_goruntu: once,
+        betik_surum: 4,
+        islemler: ['SONUC|durdur|NGINX||SKIP|zaten kapali'],
+      },
     },
     ['WEB', 'JVM', 'KALDI', 'SKIP'],
     { WEB: once, JVM: once, KALDI: once, SKIP: once },
   );
   assert.equal(d.WEB.durum, 'kontrol');
-  assert.deepEqual(d.WEB.neden, ['Nginx, IBM HTTP Server (IHS) reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.']);
+  assert.deepEqual(d.WEB.neden, [
+    'Nginx, IBM HTTP Server (IHS) reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.',
+  ]);
   assert.equal(d.JVM.durum, 'sorunsuz', 'fazla JVM kapatilmasi urun kapatma gibi kontrol sayildi');
   assert.equal(d.KALDI.durum, 'sorunlu');
-  assert.doesNotMatch(d.KALDI.neden.join(' '), /KAPATTI/, 'hala calisan urun "KAPATTI" diye yazildi');
+  assert.doesNotMatch(
+    d.KALDI.neden.join(' '),
+    /KAPATTI/,
+    'hala calisan urun "KAPATTI" diye yazildi',
+  );
   assert.equal(d.SKIP.durum, 'sorunsuz', 'SKIP (komut gerekmedi) kapatma sayildi');
 });
 
@@ -787,12 +1020,20 @@ test('RC19 v4 B3 surum isareti: betik_surum yok / < 4 -> kontrol (kesin dil); >=
   const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
   const temiz = { once_var: true, son_olculdu: true, son_fark: [], son_goruntu: once };
   const d = sonraDegerlendir(
-    { YOK: { ...temiz }, IKI: { ...temiz, betik_surum: 2 }, UC: { ...temiz, betik_surum: 3 }, DORT: { ...temiz, betik_surum: 4 } },
+    {
+      YOK: { ...temiz },
+      IKI: { ...temiz, betik_surum: 2 },
+      UC: { ...temiz, betik_surum: 3 },
+      DORT: { ...temiz, betik_surum: 4 },
+    },
     ['YOK', 'IKI', 'UC', 'DORT'],
     { YOK: once, IKI: once, UC: once, DORT: once },
   );
   assert.equal(d.YOK.durum, 'kontrol');
-  assert.match(d.YOK.sebep, /^AWX'teki reboot_check betiği eski \(sürüm yok, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU\. ZIP'i AWX'e yükleyip projeyi Sync edin/);
+  assert.match(
+    d.YOK.sebep,
+    /^AWX'teki reboot_check betiği eski \(sürüm yok, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU\. ZIP'i AWX'e yükleyip projeyi Sync edin/,
+  );
   assert.match(d.IKI.sebep, /\(sürüm 2, gerekli 4\)/);
   // 2026-11-16 (uretim, 104 sunucu "hepsi kontrol gerekli"): surum 3 ile 4'un tek farki bos once'de CTG/JBoss/WAS kapatma;
   // dolu once'de surum 3 guncel sayilir -> hicbir 'eski' notu yok, sorunsuz.
@@ -800,7 +1041,11 @@ test('RC19 v4 B3 surum isareti: betik_surum yok / < 4 -> kontrol (kesin dil); >=
   assert.equal(d.UC.neden, undefined);
   assert.equal(d.DORT.durum, 'sorunsuz');
   // surum biliniyorken "eski betik olabilir" / "eski betikle degerlendirildiyse" gibi belirsiz cumle yok
-  const kalan = sonraDegerlendir({ A: { ...temiz, betik_surum: 4, son_goruntu: [...once, 'URUN|IHS||'] } }, ['A'], { A: once });
+  const kalan = sonraDegerlendir(
+    { A: { ...temiz, betik_surum: 4, son_goruntu: [...once, 'URUN|IHS||'] } },
+    ['A'],
+    { A: once },
+  );
   assert.equal(kalan.A.durum, 'sorunlu');
   assert.doesNotMatch(kalan.A.neden.join(' '), /eski|olabilir/);
   assert.match(kalan.A.neden.join(' '), /kapatma sonucunu kontrol edin\.$/);
@@ -808,60 +1053,196 @@ test('RC19 v4 B3 surum isareti: betik_surum yok / < 4 -> kontrol (kesin dil); >=
 
 test('RC20 v3 B4 otomasyonOzeti: basarili / basarisiz / dokunmadi karsilikli dislayici; teknoloji satirlari calistirildi / calistirilmadi nedeniyle', () => {
   const { otomasyonOzeti } = require('../reboot-check.cjs');
-  const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x', 'JVM|JBOSS8|a3|x', 'JVM|JBOSS8|a4|x', 'URUN|RHA||'];
+  const once = [
+    'BOOT|b1||',
+    'SURUM|2||',
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'JVM|JBOSS8|a1|x',
+    'JVM|JBOSS8|a2|x',
+    'JVM|JBOSS8|a3|x',
+    'JVM|JBOSS8|a4|x',
+    'URUN|RHA||',
+  ];
   const ilk = ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||', 'URUN|RHA||', 'URUN|IHS||'];
-  const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x', 'JVM|JBOSS8|a3|x', 'URUN|RHA||'];
+  const son = [
+    'BOOT|b2||',
+    'SURUM|2||',
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'JVM|JBOSS8|a1|x',
+    'JVM|JBOSS8|a2|x',
+    'JVM|JBOSS8|a3|x',
+    'URUN|RHA||',
+  ];
   const r = {
-    son_olculdu: true, goruntu: ilk, son_goruntu: son, betik_surum: 4,
+    son_olculdu: true,
+    goruntu: ilk,
+    son_goruntu: son,
+    betik_surum: 4,
     islemler: [
       'SONUC|baslat|NGINX||OK|startNginx ile baslatildi (2. denemede, 150 sn)',
-      'SONUC|baslat|JBOSS8|a1|OK|x', 'SONUC|baslat|JBOSS8|a2|OK|x', 'SONUC|baslat|JBOSS8|a3|OK|x', 'SONUC|baslat|JBOSS8|a4|FAIL|x',
+      'SONUC|baslat|JBOSS8|a1|OK|x',
+      'SONUC|baslat|JBOSS8|a2|OK|x',
+      'SONUC|baslat|JBOSS8|a3|OK|x',
+      'SONUC|baslat|JBOSS8|a4|FAIL|x',
       'SONUC|durdur|IHS||OK|x',
     ],
   };
   const oz = otomasyonOzeti(once, r);
   assert.equal(oz.sinif, 'basarisiz');
   const by = Object.fromEntries(oz.teknoloji.map((t) => [t.urun, t]));
-  assert.deepEqual(oz.teknoloji.map((t) => t.urun), ['NGINX', 'RHA', 'IHS', 'JBOSS8']);
-  assert.deepEqual(by.NGINX, { urun: 'NGINX', ad: 'Nginx', calistirildi: true, ozet: 'açıldı ✓ (2. denemede)', sonuc: 'ok' });
-  assert.deepEqual([by.JBOSS8.ozet, by.JBOSS8.sonuc], ['3 JVM açıldı ✓, 1 JVM açılamadı ✗', 'hata']);
+  assert.deepEqual(
+    oz.teknoloji.map((t) => t.urun),
+    ['NGINX', 'RHA', 'IHS', 'JBOSS8'],
+  );
+  assert.deepEqual(by.NGINX, {
+    urun: 'NGINX',
+    ad: 'Nginx',
+    calistirildi: true,
+    ozet: 'açıldı ✓ (2. denemede)',
+    sonuc: 'ok',
+  });
+  assert.deepEqual(
+    [by.JBOSS8.ozet, by.JBOSS8.sonuc],
+    ['3 JVM açıldı ✓, 1 JVM açılamadı ✗', 'hata'],
+  );
   assert.deepEqual([by.IHS.ozet, by.IHS.sonuc, by.IHS.calistirildi], ['kapatıldı ✓', 'ok', true]);
-  assert.deepEqual([by.RHA.calistirildi, by.RHA.ozet, by.RHA.sonuc], [false, 'değişiklik yok', 'yok']);
+  assert.deepEqual(
+    [by.RHA.calistirildi, by.RHA.ozet, by.RHA.sonuc],
+    [false, 'değişiklik yok', 'yok'],
+  );
   // basarili: hepsi OK ve hedefte; 1. denemede acilan urunde "denemede" yazilmaz
-  const ok = otomasyonOzeti(once, { ...r, islemler: ['SONUC|baslat|NGINX||OK|ile baslatildi (1. denemede, 20 sn)', 'SONUC|durdur|IHS||OK|x', 'SONUC|baslat|RHA||SKIP|zaten'] });
+  const ok = otomasyonOzeti(once, {
+    ...r,
+    islemler: [
+      'SONUC|baslat|NGINX||OK|ile baslatildi (1. denemede, 20 sn)',
+      'SONUC|durdur|IHS||OK|x',
+      'SONUC|baslat|RHA||SKIP|zaten',
+    ],
+  });
   assert.equal(ok.sinif, 'basarili');
   assert.equal(ok.teknoloji.find((t) => t.urun === 'NGINX').ozet, 'açıldı ✓');
-  assert.equal(ok.teknoloji.find((t) => t.urun === 'RHA').ozet, 'zaten doğru durumdaydı (komut gerekmedi)');
+  assert.equal(
+    ok.teknoloji.find((t) => t.urun === 'RHA').ozet,
+    'zaten doğru durumdaydı (komut gerekmedi)',
+  );
   // OK ama son goruntude hedefte degil -> basarisiz ("kapatilamadi")
-  const yalanci = otomasyonOzeti(once, { ...r, son_goruntu: [...son, 'URUN|IHS||'], islemler: ['SONUC|durdur|IHS||OK|x'] });
+  const yalanci = otomasyonOzeti(once, {
+    ...r,
+    son_goruntu: [...son, 'URUN|IHS||'],
+    islemler: ['SONUC|durdur|IHS||OK|x'],
+  });
   assert.equal(yalanci.sinif, 'basarisiz');
-  assert.deepEqual([yalanci.teknoloji.find((t) => t.urun === 'IHS').ozet, yalanci.teknoloji.find((t) => t.urun === 'IHS').sonuc], ['kapatılamadı ✗', 'hata']);
+  assert.deepEqual(
+    [
+      yalanci.teknoloji.find((t) => t.urun === 'IHS').ozet,
+      yalanci.teknoloji.find((t) => t.urun === 'IHS').sonuc,
+    ],
+    ['kapatılamadı ✗', 'hata'],
+  );
   // urun durdur: JVM'i hala calisiyorsa hedefte degil
-  const jvmKaldi = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'JVM|JBOSS8|z|x'], betik_surum: 4, islemler: ['SONUC|durdur|JBOSS8||OK|x'] });
+  const jvmKaldi = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'JVM|JBOSS8|z|x'],
+    betik_surum: 4,
+    islemler: ['SONUC|durdur|JBOSS8||OK|x'],
+  });
   assert.equal(jvmKaldi.sinif, 'basarisiz');
   // son olculemedi -> komut kostuysa basarisiz; tum teknolojiler "son durum olculemedi" ya da komut sonucu
-  const olcmedi = otomasyonOzeti(once, { ...r, son_olculdu: false, islemler: ['SONUC|baslat|NGINX||OK|x'] });
+  const olcmedi = otomasyonOzeti(once, {
+    ...r,
+    son_olculdu: false,
+    islemler: ['SONUC|baslat|NGINX||OK|x'],
+  });
   assert.equal(olcmedi.sinif, 'basarisiz');
   assert.equal(olcmedi.teknoloji.find((t) => t.urun === 'RHA').ozet, 'son durum ölçülemedi');
   // inceleme F2: komut OK ama son goruntu yok -> "acilamadi" denmez, dogrulanamadi (hata sinifinda kalir)
-  assert.deepEqual(olcmedi.teknoloji.find((t) => t.urun === 'NGINX'), { urun: 'NGINX', ad: 'Nginx', calistirildi: true, ozet: 'açma komutu OK — son durum ölçülemedi ✗', sonuc: 'hata' });
+  assert.deepEqual(
+    olcmedi.teknoloji.find((t) => t.urun === 'NGINX'),
+    {
+      urun: 'NGINX',
+      ad: 'Nginx',
+      calistirildi: true,
+      ozet: 'açma komutu OK — son durum ölçülemedi ✗',
+      sonuc: 'hata',
+    },
+  );
   // dokunmadi: yalniz SKIP / hic komut
-  assert.equal(otomasyonOzeti(once, { ...r, islemler: ['SONUC|baslat|NGINX||SKIP|x'] }).sinif, 'dokunmadi');
+  assert.equal(
+    otomasyonOzeti(once, { ...r, islemler: ['SONUC|baslat|NGINX||SKIP|x'] }).sinif,
+    'dokunmadi',
+  );
   assert.equal(otomasyonOzeti(once, { ...r, islemler: [] }).sinif, 'dokunmadi');
   // calistirilmama nedenleri: bos once (v4: KORUNMAZ - komutsuz kalan CTG "fark kaldi"), eski surum once (JBoss), eski betik,
   // kendiliginden duzeldi
-  const bos = otomasyonOzeti(['BOOT|b1||'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'URUN|CTG||'], betik_surum: 4, islemler: [] });
-  assert.deepEqual(bos.teknoloji, [{ urun: 'CTG', ad: 'CTG', calistirildi: false, ozet: 'komut çalışmadı — fark kaldı', sonuc: 'yok' }]);
-  const bosK = otomasyonOzeti(['BOOT|b1||'], { son_olculdu: true, goruntu: ['BOOT|b2||', 'URUN|CTG||'], son_goruntu: ['BOOT|b2||'], betik_surum: 4, islemler: ['SONUC|durdur|CTG||OK|x'] });
+  const bos = otomasyonOzeti(['BOOT|b1||'], {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'URUN|CTG||'],
+    betik_surum: 4,
+    islemler: [],
+  });
+  assert.deepEqual(bos.teknoloji, [
+    {
+      urun: 'CTG',
+      ad: 'CTG',
+      calistirildi: false,
+      ozet: 'komut çalışmadı — fark kaldı',
+      sonuc: 'yok',
+    },
+  ]);
+  const bosK = otomasyonOzeti(['BOOT|b1||'], {
+    son_olculdu: true,
+    goruntu: ['BOOT|b2||', 'URUN|CTG||'],
+    son_goruntu: ['BOOT|b2||'],
+    betik_surum: 4,
+    islemler: ['SONUC|durdur|CTG||OK|x'],
+  });
   assert.equal(bosK.sinif, 'basarili');
-  assert.deepEqual(bosK.teknoloji, [{ urun: 'CTG', ad: 'CTG', calistirildi: true, ozet: 'kapatıldı ✓', sonuc: 'ok' }]);
-  const eski = otomasyonOzeti(['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|s1|jboss_home=/usr/jboss/AppServer'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||'], betik_surum: 4, islemler: [] });
-  assert.equal(eski.teknoloji.find((t) => t.urun === 'JBOSS8').ozet, 'eski sürüm önce — JBoss dokunulmadı');
-  const eb = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'URUN|IHS||'], islemler: [] });
-  assert.equal(eb.teknoloji.find((t) => t.urun === 'IHS').ozet, "AWX'teki betik eski — işlem yapılmadı");
-  const gc = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'URUN|IHS||'], betik_surum: 4, islemler: [] });
+  assert.deepEqual(bosK.teknoloji, [
+    { urun: 'CTG', ad: 'CTG', calistirildi: true, ozet: 'kapatıldı ✓', sonuc: 'ok' },
+  ]);
+  const eski = otomasyonOzeti(
+    ['BOOT|b1||', 'URUN|JBOSS7||', 'JVM|JBOSS7|s1|jboss_home=/usr/jboss/AppServer'],
+    {
+      son_olculdu: true,
+      goruntu: [],
+      son_goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|JBOSS8||'],
+      betik_surum: 4,
+      islemler: [],
+    },
+  );
+  assert.equal(
+    eski.teknoloji.find((t) => t.urun === 'JBOSS8').ozet,
+    'eski sürüm önce — JBoss dokunulmadı',
+  );
+  const eb = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'URUN|IHS||'],
+    islemler: [],
+  });
+  assert.equal(
+    eb.teknoloji.find((t) => t.urun === 'IHS').ozet,
+    "AWX'teki betik eski — işlem yapılmadı",
+  );
+  const gc = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'URUN|RHA||', 'URUN|IHS||'],
+    betik_surum: 4,
+    islemler: [],
+  });
   assert.equal(gc.teknoloji.find((t) => t.urun === 'IHS').ozet, 'komut çalışmadı — fark kaldı');
-  const kd = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], { son_olculdu: true, goruntu: ['BOOT|b2||'], son_goruntu: ['BOOT|b2||', 'URUN|RHA||'], betik_surum: 4, islemler: [] });
+  const kd = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], {
+    son_olculdu: true,
+    goruntu: ['BOOT|b2||'],
+    son_goruntu: ['BOOT|b2||', 'URUN|RHA||'],
+    betik_surum: 4,
+    islemler: [],
+  });
   assert.equal(kd.teknoloji[0].ozet, 'kendiliğinden düzeldi (komut gerekmedi)');
 });
 
@@ -870,10 +1251,40 @@ test('RC21 v3 B4 sonraDegerlendir her sunucuya otomasyon koyar (olculemeyen dahi
   const son = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||'];
   const d = sonraDegerlendir(
     {
-      OK: { once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|b2||'], son_goruntu: son, betik_surum: 4, islemler: ['SONUC|baslat|NGINX||OK|x'] },
-      HATA: { once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|b2||'], son_goruntu: ['BOOT|b2||'], betik_surum: 4, islemler: ['SONUC|baslat|NGINX||FAIL|x'] },
-      YOK: { once_var: true, son_olculdu: true, son_fark: [], goruntu: son, son_goruntu: son, betik_surum: 4, islemler: [] },
-      OLCMEDI: { once_var: true, son_olculdu: false, goruntu: ['BOOT|b2||'], betik_surum: 4, islemler: ['SONUC|baslat|NGINX||OK|x'] },
+      OK: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        goruntu: ['BOOT|b2||'],
+        son_goruntu: son,
+        betik_surum: 4,
+        islemler: ['SONUC|baslat|NGINX||OK|x'],
+      },
+      HATA: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        goruntu: ['BOOT|b2||'],
+        son_goruntu: ['BOOT|b2||'],
+        betik_surum: 4,
+        islemler: ['SONUC|baslat|NGINX||FAIL|x'],
+      },
+      YOK: {
+        once_var: true,
+        son_olculdu: true,
+        son_fark: [],
+        goruntu: son,
+        son_goruntu: son,
+        betik_surum: 4,
+        islemler: [],
+      },
+      OLCMEDI: {
+        once_var: true,
+        son_olculdu: false,
+        goruntu: ['BOOT|b2||'],
+        betik_surum: 4,
+        islemler: ['SONUC|baslat|NGINX||OK|x'],
+      },
       ONCESIZ: { once_var: false, son_olculdu: true, betik_surum: 4, islemler: [] },
       GELMEDI: { sonuc_yok: true },
     },
@@ -881,28 +1292,78 @@ test('RC21 v3 B4 sonraDegerlendir her sunucuya otomasyon koyar (olculemeyen dahi
     { OK: once, HATA: once, YOK: once, OLCMEDI: once },
   );
   const sinif = Object.fromEntries(Object.entries(d).map(([h, x]) => [h, x.otomasyon?.sinif]));
-  assert.deepEqual(sinif, { OK: 'basarili', HATA: 'basarisiz', YOK: 'dokunmadi', OLCMEDI: 'basarisiz', ONCESIZ: 'dokunmadi', GELMEDI: 'basarisiz', HIC: 'basarisiz' });
+  assert.deepEqual(sinif, {
+    OK: 'basarili',
+    HATA: 'basarisiz',
+    YOK: 'dokunmadi',
+    OLCMEDI: 'basarisiz',
+    ONCESIZ: 'dokunmadi',
+    GELMEDI: 'basarisiz',
+    HIC: 'basarisiz',
+  });
   // inceleme F3: sonuc gelmeyen sunucu "dokunmadi" sayilmaz (komut kosmus olabilir); nedeni yazilir
-  assert.deepEqual(d.GELMEDI.otomasyon, { sinif: 'basarisiz', teknoloji: [], not: 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)' });
-  assert.deepEqual([d.OK.durum, d.HATA.durum, d.YOK.durum, d.OLCMEDI.durum], ['sorunsuz', 'sorunlu', 'sorunsuz', 'olculemedi']);
-  assert.deepEqual(d.YOK.otomasyon.teknoloji, [{ urun: 'NGINX', ad: 'Nginx', calistirildi: false, ozet: 'değişiklik yok', sonuc: 'yok' }]);
+  assert.deepEqual(d.GELMEDI.otomasyon, {
+    sinif: 'basarisiz',
+    teknoloji: [],
+    not: 'sunucudan sonuç gelmedi — otomasyonun ne yaptığı bilinmiyor (doğrulanamadı)',
+  });
+  assert.deepEqual(
+    [d.OK.durum, d.HATA.durum, d.YOK.durum, d.OLCMEDI.durum],
+    ['sorunsuz', 'sorunlu', 'sorunsuz', 'olculemedi'],
+  );
+  assert.deepEqual(d.YOK.otomasyon.teknoloji, [
+    { urun: 'NGINX', ad: 'Nginx', calistirildi: false, ozet: 'değişiklik yok', sonuc: 'yok' },
+  ]);
 });
 
-test('RC22 inceleme F2/F4/F5: JVM komutu OK ama olculemedi; BOOT\'suz once / plan HATA nedeni; SKIP mesaji gorunur', () => {
+test("RC22 inceleme F2/F4/F5: JVM komutu OK ama olculemedi; BOOT'suz once / plan HATA nedeni; SKIP mesaji gorunur", () => {
   const { otomasyonOzeti } = require('../reboot-check.cjs');
   const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x'];
   const jv = otomasyonOzeti(once, {
-    son_olculdu: false, goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'], betik_surum: 4,
-    islemler: ['SONUC|baslat|JBOSS8|a1|OK|x', 'SONUC|baslat|JBOSS8|a2|FAIL|x', 'SONUC|durdur|JBOSS8|z|OK|x'],
+    son_olculdu: false,
+    goruntu: ['BOOT|b2||', 'URUN|JBOSS8||'],
+    betik_surum: 4,
+    islemler: [
+      'SONUC|baslat|JBOSS8|a1|OK|x',
+      'SONUC|baslat|JBOSS8|a2|FAIL|x',
+      'SONUC|durdur|JBOSS8|z|OK|x',
+    ],
   });
   assert.equal(jv.sinif, 'basarisiz');
-  assert.deepEqual([jv.teknoloji[0].ozet, jv.teknoloji[0].sonuc], ['1 JVM açma komutu OK — son durum ölçülemedi ✗, 1 JVM açılamadı ✗, 1 JVM kapatma komutu OK — son durum ölçülemedi ✗', 'hata']);
-  const son = { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'URUN|RHA||'], betik_surum: 4, islemler: [] };
+  assert.deepEqual(
+    [jv.teknoloji[0].ozet, jv.teknoloji[0].sonuc],
+    [
+      '1 JVM açma komutu OK — son durum ölçülemedi ✗, 1 JVM açılamadı ✗, 1 JVM kapatma komutu OK — son durum ölçülemedi ✗',
+      'hata',
+    ],
+  );
+  const son = {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'URUN|RHA||'],
+    betik_surum: 4,
+    islemler: [],
+  };
   // F4: BOOT'suz once -> plan HATA, islem yapilmadi ("komut calismadi" denmez)
-  assert.equal(otomasyonOzeti(['URUN|RHA||'], son).teknoloji[0].ozet, 'önce görüntüsü eski biçimde / BOOT yok — işlem yapılmadı');
-  assert.equal(otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'], { ...son, plan: ['BILGI|HATA|||gecici dosya acilamadi - islem yapilmadi'] }).teknoloji.find((t) => t.urun === 'RHA').ozet, 'plan hata verdi — işlem yapılmadı');
+  assert.equal(
+    otomasyonOzeti(['URUN|RHA||'], son).teknoloji[0].ozet,
+    'önce görüntüsü eski biçimde / BOOT yok — işlem yapılmadı',
+  );
+  assert.equal(
+    otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'], {
+      ...son,
+      plan: ['BILGI|HATA|||gecici dosya acilamadi - islem yapilmadi'],
+    }).teknoloji.find((t) => t.urun === 'RHA').ozet,
+    'plan hata verdi — işlem yapılmadı',
+  );
   // F5: SKIP sonrasi fark kaldi -> betigin SKIP nedeni gorunur
-  const sk = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'], { son_olculdu: true, goruntu: [], son_goruntu: ['BOOT|b2||', 'SURUM|2||'], betik_surum: 4, islemler: ['SONUC|baslat|NGINX||SKIP|zaten baslatiliyordu'] });
+  const sk = otomasyonOzeti(['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'], {
+    son_olculdu: true,
+    goruntu: [],
+    son_goruntu: ['BOOT|b2||', 'SURUM|2||'],
+    betik_surum: 4,
+    islemler: ['SONUC|baslat|NGINX||SKIP|zaten baslatiliyordu'],
+  });
   assert.equal(sk.sinif, 'dokunmadi');
   assert.equal(sk.teknoloji[0].ozet, 'komut koşulmadı (betik: zaten baslatiliyordu) — fark kaldı');
 });
@@ -911,10 +1372,24 @@ test('RC22 inceleme F2/F4/F5: JVM komutu OK ama olculemedi; BOOT\'suz once / pla
 // ile Otomatik Duzeltme sayilari eslesmiyor; %'sel executive summary") ----
 
 const BOS_ONCE = ['BOOT|b1||'];
-const bosR = (ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], goruntu: ['BOOT|b2||'], son_goruntu: ['BOOT|b2||'], betik_surum: 4, islemler: [], plan: [], ...ek });
+const bosR = (ek = {}) => ({
+  once_var: true,
+  son_olculdu: true,
+  son_fark: [],
+  goruntu: ['BOOT|b2||'],
+  son_goruntu: ['BOOT|b2||'],
+  betik_surum: 4,
+  islemler: [],
+  plan: [],
+  ...ek,
+});
 
 test('RC23 v4 kapsam_disi YALNIZ tek neden once-bos iken; baska neden (web kapatildi / reboot dogrulanamadi / eski betik) kazanir; fark kalirsa sorunlu', () => {
-  const { KAPSAM_DISI_ACIKLAMA, kontrolNedenAyrimi, rebootDogrulanamadi } = require('../reboot-check.cjs');
+  const {
+    KAPSAM_DISI_ACIKLAMA,
+    kontrolNedenAyrimi,
+    rebootDogrulanamadi,
+  } = require('../reboot-check.cjs');
   const d = sonraDegerlendir(
     {
       TEMIZ: bosR(),
@@ -925,37 +1400,76 @@ test('RC23 v4 kapsam_disi YALNIZ tek neden once-bos iken; baska neden (web kapat
       // v4: bos once CTG'yi korumaz -> komutsuz kalan CTG sorunlu; kapatilan CTG kontrol
       CTG: bosR({ son_goruntu: ['BOOT|b2||', 'URUN|CTG||'] }),
       CTGK: bosR({ goruntu: ['BOOT|b2||', 'URUN|CTG||'], islemler: ['SONUC|durdur|CTG||OK|x'] }),
-      DOLU: bosR({ goruntu: ['BOOT|b2||', 'URUN|RHA||'], son_goruntu: ['BOOT|b2||', 'URUN|RHA||'] }),
+      DOLU: bosR({
+        goruntu: ['BOOT|b2||', 'URUN|RHA||'],
+        son_goruntu: ['BOOT|b2||', 'URUN|RHA||'],
+      }),
     },
     ['TEMIZ', 'WEB', 'AYNI', 'ESKI', 'KALDI', 'CTG', 'CTGK', 'DOLU'],
-    { TEMIZ: BOS_ONCE, WEB: BOS_ONCE, AYNI: BOS_ONCE, ESKI: BOS_ONCE, KALDI: BOS_ONCE, CTG: BOS_ONCE, CTGK: BOS_ONCE, DOLU: ['BOOT|b1||', 'URUN|RHA||'] },
+    {
+      TEMIZ: BOS_ONCE,
+      WEB: BOS_ONCE,
+      AYNI: BOS_ONCE,
+      ESKI: BOS_ONCE,
+      KALDI: BOS_ONCE,
+      CTG: BOS_ONCE,
+      CTGK: BOS_ONCE,
+      DOLU: ['BOOT|b1||', 'URUN|RHA||'],
+    },
   );
-  assert.deepEqual(
-    Object.fromEntries(Object.entries(d).map(([h, x]) => [h, x.durum])),
-    { TEMIZ: 'kapsam_disi', WEB: 'kontrol', AYNI: 'kontrol', ESKI: 'kontrol', KALDI: 'sorunlu', CTG: 'sorunlu', CTGK: 'kontrol', DOLU: 'sorunsuz' },
+  assert.deepEqual(Object.fromEntries(Object.entries(d).map(([h, x]) => [h, x.durum])), {
+    TEMIZ: 'kapsam_disi',
+    WEB: 'kontrol',
+    AYNI: 'kontrol',
+    ESKI: 'kontrol',
+    KALDI: 'sorunlu',
+    CTG: 'sorunlu',
+    CTGK: 'kontrol',
+    DOLU: 'sorunsuz',
+  });
+  assert.match(
+    d.CTGK.sebep,
+    /CTG reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/,
   );
-  assert.match(d.CTGK.sebep, /CTG reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI/);
   // kapsam disi: uyari nedeni YOK, aciklama notr; once-bos metni bilgi notu
   assert.equal(d.TEMIZ.neden, undefined, 'kapsam disi sunucuda uyari nedeni yazildi');
   assert.equal(d.TEMIZ.sebep, KAPSAM_DISI_ACIKLAMA);
-  assert.match(KAPSAM_DISI_ACIKLAMA, /izlenen uygulama \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) çalışmıyordu; karşılaştırılacak bir şey yoktu/);
+  assert.match(
+    KAPSAM_DISI_ACIKLAMA,
+    /izlenen uygulama \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) çalışmıyordu; karşılaştırılacak bir şey yoktu/,
+  );
   assert.equal(d.TEMIZ.bilgi.length, 1);
   // web kapatildi: KAPATTI nedeni kazanir; once-bos bilgi olarak eslik eder (neden'de degil), sebep ikisini de soyler
-  assert.deepEqual(d.WEB.neden, ['Nginx reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.']);
+  assert.deepEqual(d.WEB.neden, [
+    'Nginx reboot öncesi çalışmıyordu, reboot sonrası çalışıyordu — otomasyon KAPATTI; beklenen durum mu kontrol edin.',
+  ]);
   assert.match(d.WEB.bilgi[0], /izlenen ürün\/JVM yoktu/);
   assert.match(d.WEB.sebep, /otomasyon KAPATTI.*izlenen ürün\/JVM yoktu/);
   // reboot dogrulanamadi (boot ayni) -> hicbir sey dogrulanmadi, kontrol
   assert.match(d.AYNI.neden.join(' '), /reboot doğrulanamadı/);
   assert.equal(rebootDogrulanamadi(BOS_ONCE, { goruntu: ['BOOT|b1||'] }), true);
   assert.equal(rebootDogrulanamadi(BOS_ONCE, { goruntu: ['BOOT|b2||'] }), false);
-  assert.equal(rebootDogrulanamadi(['BOOT|bilinmiyor||'], { goruntu: ['BOOT|bilinmiyor||'] }), false);
+  assert.equal(
+    rebootDogrulanamadi(['BOOT|bilinmiyor||'], { goruntu: ['BOOT|bilinmiyor||'] }),
+    false,
+  );
   assert.equal(rebootDogrulanamadi(BOS_ONCE, { goruntu: [] }), false);
   // dolu once'de boot ayni olmasi (v3 gibi) kontrol nedeni DEGIL; yalniz kapsam disi karari icin bakilir
-  const doluAyni = sonraDegerlendir({ A: bosR({ goruntu: ['BOOT|b1||', 'URUN|RHA||'], son_goruntu: ['BOOT|b1||', 'URUN|RHA||'] }) }, ['A'], { A: ['BOOT|b1||', 'URUN|RHA||'] });
+  const doluAyni = sonraDegerlendir(
+    { A: bosR({ goruntu: ['BOOT|b1||', 'URUN|RHA||'], son_goruntu: ['BOOT|b1||', 'URUN|RHA||'] }) },
+    ['A'],
+    { A: ['BOOT|b1||', 'URUN|RHA||'] },
+  );
   assert.equal(doluAyni.A.durum, 'sorunsuz');
   // ayrim: once-bos ayri doner; kontrolNedenleri eski bicimde (once-bos ilk sirada)
   assert.deepEqual(kontrolNedenAyrimi(BOS_ONCE, bosR()), { onceBos: true, neden: [] });
-  assert.equal(kontrolNedenAyrimi(['BOOT|b1||', 'URUN|RHA||'], bosR({ son_goruntu: ['BOOT|b2||', 'URUN|RHA||'] })).onceBos, false);
+  assert.equal(
+    kontrolNedenAyrimi(
+      ['BOOT|b1||', 'URUN|RHA||'],
+      bosR({ son_goruntu: ['BOOT|b2||', 'URUN|RHA||'] }),
+    ).onceBos,
+    false,
+  );
   assert.equal(kontrolNedenAyrimi(null, bosR({ plan: ['BILGI|BOS|||x'] })).onceBos, true);
 });
 
@@ -978,41 +1492,119 @@ test('RC25 v4 komut koprusu: Otomatik Duzeltme KOMUT, Otomasyon Ozeti SUNUCU say
   const { komutSayaci, komutKoprusu, otomasyonOzeti } = require('../reboot-check.cjs');
   const once = ['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|RHA||'];
   const A = {
-    once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4,
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
     goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||', 'URUN|IHS||'],
     son_goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|RHA||', 'URUN|IHS||'],
-    islemler: ['SONUC|baslat|NGINX||OK|x', 'SONUC|durdur|IHS||OK|x', 'SONUC|baslat|RHA||SKIP|zaten', 'SONUC|durdur|CTG||FAIL|x'],
+    islemler: [
+      'SONUC|baslat|NGINX||OK|x',
+      'SONUC|durdur|IHS||OK|x',
+      'SONUC|baslat|RHA||SKIP|zaten',
+      'SONUC|durdur|CTG||FAIL|x',
+    ],
   };
-  const B = { ...A, goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||'], son_goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|RHA||'], islemler: ['SONUC|baslat|NGINX||OK|x'] };
-  assert.deepEqual(komutSayaci(once, A), { ok: 2, fail: 1, skip: 1, okHedefteDegil: 1, okOlculemedi: 0 });
-  assert.deepEqual(komutSayaci(once, B), { ok: 1, fail: 0, skip: 0, okHedefteDegil: 0, okOlculemedi: 0 });
+  const B = {
+    ...A,
+    goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|RHA||'],
+    son_goruntu: ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|RHA||'],
+    islemler: ['SONUC|baslat|NGINX||OK|x'],
+  };
+  assert.deepEqual(komutSayaci(once, A), {
+    ok: 2,
+    fail: 1,
+    skip: 1,
+    okHedefteDegil: 1,
+    okOlculemedi: 0,
+  });
+  assert.deepEqual(komutSayaci(once, B), {
+    ok: 1,
+    fail: 0,
+    skip: 0,
+    okHedefteDegil: 0,
+    okOlculemedi: 0,
+  });
   // son olculemedi: OK komut basarili sayilmaz (otomasyonOzeti 'olcmedi' -> basarisiz ile ayni) AMA "hedefte degil" de denmez;
   // inceleme Y3 (tanim degisikligi): ayri okOlculemedi sayaci (dogrulanamadi).
-  assert.deepEqual(komutSayaci(once, { ...B, son_olculdu: false }), { ok: 1, fail: 0, skip: 0, okHedefteDegil: 0, okOlculemedi: 1 });
+  assert.deepEqual(komutSayaci(once, { ...B, son_olculdu: false }), {
+    ok: 1,
+    fail: 0,
+    skip: 0,
+    okHedefteDegil: 0,
+    okOlculemedi: 1,
+  });
   assert.equal(otomasyonOzeti(once, { ...B, son_olculdu: false }).sinif, 'basarisiz');
   const ko = komutKoprusu({ B, U: { ...B, son_olculdu: false } }, ['B', 'U'], { B: once, U: once });
   assert.deepEqual([ko.ok, ko.okHedefteDegil, ko.okOlculemedi, ko.basarili], [2, 0, 1, 1]);
   assert.equal(otomasyonOzeti(once, A).sinif, 'basarisiz');
   assert.equal(otomasyonOzeti(once, B).sinif, 'basarili');
-  const k = komutKoprusu({ A, B, C: { sonuc_yok: true } }, ['A', 'B', 'C', 'YOK'], { A: once, B: once });
-  assert.deepEqual(k, { ok: 3, fail: 1, skip: 1, okHedefteDegil: 1, okOlculemedi: 0, sunucu: 2, komut: 5, basarili: 2 });
+  const k = komutKoprusu({ A, B, C: { sonuc_yok: true } }, ['A', 'B', 'C', 'YOK'], {
+    A: once,
+    B: once,
+  });
+  assert.deepEqual(k, {
+    ok: 3,
+    fail: 1,
+    skip: 1,
+    okHedefteDegil: 1,
+    okOlculemedi: 0,
+    sunucu: 2,
+    komut: 5,
+    basarili: 2,
+  });
 });
 
 test('RC26 v4 yoneticiOzeti: yuzdeler ve paydalar (sunucu / oge / otomasyon / ilk sapma); Turkce yuzde; payda 0 -> "—"', () => {
   const { yoneticiOzeti, yuzdeMetni, sonraOzeti } = require('../reboot-check.cjs');
   assert.deepEqual(
-    [yuzdeMetni(25, 27), yuzdeMetni(13, 14), yuzdeMetni(1, 1), yuzdeMetni(0, 0), yuzdeMetni(1, 3), yuzdeMetni(0, 5), yuzdeMetni(7, 8), yuzdeMetni(1999, 2000), yuzdeMetni(1, 5000), yuzdeMetni(2000, 2000)],
+    [
+      yuzdeMetni(25, 27),
+      yuzdeMetni(13, 14),
+      yuzdeMetni(1, 1),
+      yuzdeMetni(0, 0),
+      yuzdeMetni(1, 3),
+      yuzdeMetni(0, 5),
+      yuzdeMetni(7, 8),
+      yuzdeMetni(1999, 2000),
+      yuzdeMetni(1, 5000),
+      yuzdeMetni(2000, 2000),
+    ],
     ['%92,6', '%92,9', '%100', '—', '%33,3', '%0', '%87,5', '%99,9', '%0,1', '%100'],
   );
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const onceA = ['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x'];
+  const onceA = [
+    'BOOT|b1||',
+    'SURUM|2||',
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'JVM|JBOSS8|a1|x',
+    'JVM|JBOSS8|a2|x',
+  ];
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
-  const r = (goruntu, sonGoruntu, islemler) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [] });
+  const r = (goruntu, sonGoruntu, islemler) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
+    goruntu,
+    son_goruntu: sonGoruntu,
+    islemler,
+    plan: [],
+  });
   const sunucular = {
     // A: NGINX ve a2 ilkte kapali; NGINX otomasyonla, a2 kendiliginden (SKIP) duzeldi -> sorunsuz
-    A: r([...v, 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x'], [...v, 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x'], ['SONUC|baslat|NGINX||OK|x', 'SONUC|baslat|JBOSS8|a2|SKIP|x']),
+    A: r(
+      [...v, 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x'],
+      [...v, 'URUN|NGINX||', 'URUN|JBOSS8||', 'JVM|JBOSS8|a1|x', 'JVM|JBOSS8|a2|x'],
+      ['SONUC|baslat|NGINX||OK|x', 'SONUC|baslat|JBOSS8|a2|SKIP|x'],
+    ),
     // B: IHS fazladan; kapatma FAIL, hala calisiyor -> sorunlu
-    B: r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||', 'URUN|IHS||'], ['SONUC|durdur|IHS||FAIL|x']),
+    B: r(
+      [...v, 'URUN|RHA||', 'URUN|IHS||'],
+      [...v, 'URUN|RHA||', 'URUN|IHS||'],
+      ['SONUC|durdur|IHS||FAIL|x'],
+    ),
     // C: once bos, temiz -> kapsam disi
     C: r(['BOOT|b2||'], ['BOOT|b2||'], []),
     D: { sonuc_yok: true },
@@ -1022,33 +1614,118 @@ test('RC26 v4 yoneticiOzeti: yuzdeler ve paydalar (sunucu / oge / otomasyon / il
   const onceSat = { A: onceA, B: onceR, C: ['BOOT|b1||'], D: onceR, E: onceR };
   const hedef = ['A', 'B', 'C', 'D', 'E'];
   const y = yoneticiOzeti(sunucular, hedef, onceSat);
-  assert.deepEqual(y.sunucu, { toplam: 5, olculen: 4, olculemeyen: 1, onceYok: 0, onceBos: 1, onceBosDiger: 0, onceBosKontrol: 0, onceBosSorunlu: 0, karsilastirilabilir: 3, sorunsuz: 1, kontrol: 1, sorunlu: 1, birakilan: 2, birakilanKontrolNotlu: 1, kontrolBekleyen: 0 });
-  assert.deepEqual(y.oge, { once: 6, hedef: 8, dogru: 7, ilkSapan: 4, ilkDown: 2, ilkNew: 2, otomatik: 2, kendiliginden: 1, halaSapan: 1, korunan: 0 });
-  assert.deepEqual(y.komut, { ok: 2, fail: 1, skip: 1, okHedefteDegil: 0, okOlculemedi: 0, sunucu: 3, komut: 4, basarili: 2 });
-  assert.deepEqual(y.komutOlculen, y.komut, 'olculemeyen sunucuda komut yokken iki kume ayni olmali');
+  assert.deepEqual(y.sunucu, {
+    toplam: 5,
+    olculen: 4,
+    olculemeyen: 1,
+    onceYok: 0,
+    onceBos: 1,
+    onceBosDiger: 0,
+    onceBosKontrol: 0,
+    onceBosSorunlu: 0,
+    karsilastirilabilir: 3,
+    sorunsuz: 1,
+    kontrol: 1,
+    sorunlu: 1,
+    birakilan: 2,
+    birakilanKontrolNotlu: 1,
+    kontrolBekleyen: 0,
+  });
+  assert.deepEqual(y.oge, {
+    once: 6,
+    hedef: 8,
+    dogru: 7,
+    ilkSapan: 4,
+    ilkDown: 2,
+    ilkNew: 2,
+    otomatik: 2,
+    kendiliginden: 1,
+    halaSapan: 1,
+    korunan: 0,
+  });
+  assert.deepEqual(y.komut, {
+    ok: 2,
+    fail: 1,
+    skip: 1,
+    okHedefteDegil: 0,
+    okOlculemedi: 0,
+    sunucu: 3,
+    komut: 4,
+    basarili: 2,
+  });
+  assert.deepEqual(
+    y.komutOlculen,
+    y.komut,
+    'olculemeyen sunucuda komut yokken iki kume ayni olmali',
+  );
   // Y7: birakildi = kalan 0 ve korunan oge yok (A sorunsuz + E kontrol notlu); B sorunlu -> 2 / 3
   assert.deepEqual(y.oran.birakildi, { pay: 2, payda: 3, metin: '%66,7' });
   assert.deepEqual(y.oran.donus, { pay: 7, payda: 8, metin: '%87,5' });
   assert.deepEqual(y.oran.otomasyon, { pay: 2, payda: 3, metin: '%66,7' });
   assert.deepEqual(y.oran.komut, { pay: 2, payda: 3, metin: '%66,7' });
   assert.deepEqual(y.oran.kapanan, { pay: 3, payda: 4, metin: '%75' });
-  assert.match(y.metin, /^Kayıttaki 5 sunucunun 4 tanesinde reboot sonrası son durum ölçüldü, 1 sunucu ölçülemedi\. 1 sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı\. /);
-  assert.match(y.metin, /Karşılaştırılabilen 3 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%66,7\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 1 sunucuda sorun kaldı\./);
-  assert.doesNotMatch(y.metin, /sunucu kontrol bekliyor/, 'birakilan kontrol notlu sunucu "kontrol bekliyor" diye de sayildi');
-  assert.match(y.metin, /Karşılaştırılabilen sunucularda öğe bazında \(ürün \+ JVM\) reboot öncesi hale dönüş %87,5 \(7 \/ 8\); reboot öncesi çalışan öğe sayısı 6\./);
-  assert.match(y.metin, /Bu sunucularda reboot sonrası ilk kontrolde 4 öğe reboot öncesinden farklıydı \(2 kapalı, 2 fazladan çalışan\); 2 tanesini otomasyon düzeltti, 1 tanesi kendiliğinden düzeldi \(%75 kapatıldı\), 1 öğe hâlâ farklı\./);
-  assert.match(y.metin, /Otomasyon son durumu ölçülen sunucularda 3 açma\/kapatma komutu çalıştırdı; 2 tanesinin hedefi son kontrolde doğrulandı \(%66,7\)\. Komut başarı oranı \(dönüş kodu\) %66,7 \(2 \/ 3\); 1 öğede komuta gerek kalmadı\.$/);
+  assert.match(
+    y.metin,
+    /^Kayıttaki 5 sunucunun 4 tanesinde reboot sonrası son durum ölçüldü, 1 sunucu ölçülemedi\. 1 sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı\. /,
+  );
+  assert.match(
+    y.metin,
+    /Karşılaştırılabilen 3 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%66,7\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 1 sunucuda sorun kaldı\./,
+  );
+  assert.doesNotMatch(
+    y.metin,
+    esnek(/sunucu kontrol bekliyor/),
+    'birakilan kontrol notlu sunucu "kontrol bekliyor" diye de sayildi',
+  );
+  assert.match(
+    y.metin,
+    /Karşılaştırılabilen sunucularda öğe bazında \(ürün \+ JVM\) reboot öncesi hale dönüş %87,5 \(7 \/ 8\); reboot öncesi çalışan öğe sayısı 6\./,
+  );
+  assert.match(
+    y.metin,
+    /Bu sunucularda reboot sonrası ilk kontrolde 4 öğe reboot öncesinden farklıydı \(2 kapalı, 2 fazladan çalışan\); 2 tanesini otomasyon düzeltti, 1 tanesi kendiliğinden düzeldi \(%75 kapatıldı\), 1 öğe hâlâ farklı\./,
+  );
+  assert.match(
+    y.metin,
+    /Otomasyon son durumu ölçülen sunucularda 3 açma\/kapatma komutu çalıştırdı; 2 tanesinin hedefi son kontrolde doğrulandı \(%66,7\)\. Komut başarı oranı \(dönüş kodu\) %66,7 \(2 \/ 3\); 1 öğede komuta gerek kalmadı\.$/,
+  );
   // once bos ama baska neden (web kapatildi) -> karsilastirma disi sayilir; kontrol bekledigi ACIKCA yazilir
-  const web = yoneticiOzeti({ C: r(['BOOT|b2||', 'URUN|NGINX||'], ['BOOT|b2||'], ['SONUC|durdur|NGINX||OK|x']) }, ['C'], { C: ['BOOT|b1||'] });
-  assert.deepEqual([web.sunucu.onceBos, web.sunucu.onceBosDiger, web.sunucu.onceBosKontrol, web.sunucu.onceBosSorunlu, web.sunucu.karsilastirilabilir], [1, 1, 1, 0, 0]);
+  const web = yoneticiOzeti(
+    { C: r(['BOOT|b2||', 'URUN|NGINX||'], ['BOOT|b2||'], ['SONUC|durdur|NGINX||OK|x']) },
+    ['C'],
+    { C: ['BOOT|b1||'] },
+  );
+  assert.deepEqual(
+    [
+      web.sunucu.onceBos,
+      web.sunucu.onceBosDiger,
+      web.sunucu.onceBosKontrol,
+      web.sunucu.onceBosSorunlu,
+      web.sunucu.karsilastirilabilir,
+    ],
+    [1, 1, 1, 0, 0],
+  );
   assert.match(web.metin, /karşılaştırma dışı kaldı \(bunlardan 1 tanesi kontrol bekliyor\)\./);
-  assert.match(web.metin, /Karşılaştırılabilen \(önce görüntüsü dolu ve son durumu ölçülen\) sunucu yok\./);
+  assert.match(
+    web.metin,
+    /Karşılaştırılabilen \(önce görüntüsü dolu ve son durumu ölçülen\) sunucu yok\./,
+  );
   // payda 0: hepsi '—'
   const bos = yoneticiOzeti({}, [], {});
-  assert.deepEqual(Object.values(bos.oran).map((o) => o.metin), ['—', '—', '—', '—', '—']);
+  assert.deepEqual(
+    Object.values(bos.oran).map((o) => o.metin),
+    ['—', '—', '—', '—', '—'],
+  );
   assert.match(bos.metin, /Otomasyonun müdahalesine gerek olmadı\.$/);
   // sonraOzeti ayni sonucu ozet.sonra.yonetici olarak tasir; kapsamDisi sayisi
-  const kayit = { hosts_json: JSON.stringify(hedef), once_json: JSON.stringify({ sunucular: Object.fromEntries(Object.entries(onceSat).map(([h, g]) => [h, { goruntu_ok: true, goruntu: g }])) }) };
+  const kayit = {
+    hosts_json: JSON.stringify(hedef),
+    once_json: JSON.stringify({
+      sunucular: Object.fromEntries(
+        Object.entries(onceSat).map(([h, g]) => [h, { goruntu_ok: true, goruntu: g }]),
+      ),
+    }),
+  };
   const { durum, ozet } = sonraOzeti(kayit, { sunucular }, 'successful');
   assert.equal(durum, 'sorunlu');
   assert.equal(ozet.sonra.kapsamDisi, 1);
@@ -1056,129 +1733,326 @@ test('RC26 v4 yoneticiOzeti: yuzdeler ve paydalar (sunucu / oge / otomasyon / il
 });
 
 test('RC27 v4 inceleme Y1/Y2/Y3/Y4/Y9: once-bos sorun paragrafta; urunle kalkan JVM otomasyon; olculemeyen komut oranda degil; onceYok; korunan oge', () => {
-  const { yoneticiOzeti, ogeSayaci, sonraOzeti, raporHtml } = { ...require('../reboot-check.cjs'), ...require('../reboot-rapor.cjs') };
+  const { yoneticiOzeti, ogeSayaci, sonraOzeti, raporHtml } = {
+    ...require('../reboot-check.cjs'),
+    ...require('../reboot-rapor.cjs'),
+  };
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
+  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
+    goruntu,
+    son_goruntu: sonGoruntu,
+    islemler,
+    plan: [],
+    ...ek,
+  });
   const onceN = ['BOOT|b1||', 'SURUM|2||', 'URUN|NGINX||'];
   // Y1: once-bos sunucuda kapatma FAIL, NGINX hala calisiyor -> sorunlu; paragraf "sorun kaldi" der, otomasyon %0 ile celismez
   const y1 = yoneticiOzeti(
-    { A: r([...v, 'URUN|NGINX||'], [...v, 'URUN|NGINX||'], []), B: r(['BOOT|b2||', 'URUN|NGINX||'], ['BOOT|b2||', 'URUN|NGINX||'], ['SONUC|durdur|NGINX||FAIL|x']) },
-    ['A', 'B'], { A: onceN, B: ['BOOT|b1||'] },
+    {
+      A: r([...v, 'URUN|NGINX||'], [...v, 'URUN|NGINX||'], []),
+      B: r(
+        ['BOOT|b2||', 'URUN|NGINX||'],
+        ['BOOT|b2||', 'URUN|NGINX||'],
+        ['SONUC|durdur|NGINX||FAIL|x'],
+      ),
+    },
+    ['A', 'B'],
+    { A: onceN, B: ['BOOT|b1||'] },
   );
-  assert.deepEqual([y1.sunucu.onceBos, y1.sunucu.onceBosSorunlu, y1.sunucu.onceBosKontrol], [1, 1, 0]);
-  assert.match(y1.metin, /1 sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı \(bunlardan 1 tanesinde sorun kaldı\)\./);
-  assert.match(y1.metin, /Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu\./);
+  assert.deepEqual(
+    [y1.sunucu.onceBos, y1.sunucu.onceBosSorunlu, y1.sunucu.onceBosKontrol],
+    [1, 1, 0],
+  );
+  assert.match(
+    y1.metin,
+    /1 sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı \(bunlardan 1 tanesinde sorun kaldı\)\./,
+  );
+  assert.match(
+    y1.metin,
+    /Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu\./,
+  );
   assert.deepEqual(y1.oran.otomasyon, { pay: 0, payda: 1, metin: '%0' });
   // Y2: JBoss 8 domain + 3 JVM kapali; yalniz URUN baslat OK (auto-start JVM'ler onunla kalkti; JVM SKIP olabilir) -> 4 otomatik
-  const onceJ = ['BOOT|b1||', 'SURUM|2||', 'URUN|JBOSS8||', 'JVM|JBOSS8|j1|x', 'JVM|JBOSS8|j2|x', 'JVM|JBOSS8|j3|x'];
+  const onceJ = [
+    'BOOT|b1||',
+    'SURUM|2||',
+    'URUN|JBOSS8||',
+    'JVM|JBOSS8|j1|x',
+    'JVM|JBOSS8|j2|x',
+    'JVM|JBOSS8|j3|x',
+  ];
   const sonJ = [...v, 'URUN|JBOSS8||', 'JVM|JBOSS8|j1|x', 'JVM|JBOSS8|j2|x', 'JVM|JBOSS8|j3|x'];
-  const j = ogeSayaci(onceJ, r([...v], sonJ, ['SONUC|baslat|JBOSS8||OK|x', 'SONUC|baslat|JBOSS8|j2|SKIP|auto-start']));
+  const j = ogeSayaci(
+    onceJ,
+    r([...v], sonJ, ['SONUC|baslat|JBOSS8||OK|x', 'SONUC|baslat|JBOSS8|j2|SKIP|auto-start']),
+  );
   assert.deepEqual([j.ilkSapan, j.otomatik, j.kendiliginden], [4, 4, 0]);
   // JVM'in KENDI komutu FAIL ise urunle birlikte sayilmaz (FAIL donup kalkan = kendiliginden, rapor KOMUT_HATALI_ACILDI ile ayni)
-  const jf = ogeSayaci(onceJ, r([...v], sonJ, ['SONUC|baslat|JBOSS8||OK|x', 'SONUC|baslat|JBOSS8|j2|FAIL|x']));
+  const jf = ogeSayaci(
+    onceJ,
+    r([...v], sonJ, ['SONUC|baslat|JBOSS8||OK|x', 'SONUC|baslat|JBOSS8|j2|FAIL|x']),
+  );
   assert.deepEqual([jf.otomatik, jf.kendiliginden], [3, 1]);
   // urun komutsuz (urun ilkte calisiyordu) JVM kalktiysa kendiliginden kalir
   const jk = ogeSayaci(onceJ, r([...v, 'URUN|JBOSS8||'], sonJ, []));
   assert.deepEqual([jk.otomatik, jk.kendiliginden], [0, 3]);
   // Y3: olculemeyen sunucudaki OK komut otomasyon oranina girmez, "dogrulanamadi" diye ayrica yazilir
   const y3 = yoneticiOzeti(
-    { A: r([...v], [...v, 'URUN|NGINX||'], ['SONUC|baslat|NGINX||OK|x']), U: r([...v], [], ['SONUC|baslat|NGINX||OK|x'], { son_olculdu: false }) },
-    ['A', 'U'], { A: onceN, U: onceN },
+    {
+      A: r([...v], [...v, 'URUN|NGINX||'], ['SONUC|baslat|NGINX||OK|x']),
+      U: r([...v], [], ['SONUC|baslat|NGINX||OK|x'], { son_olculdu: false }),
+    },
+    ['A', 'U'],
+    { A: onceN, U: onceN },
   );
   assert.deepEqual(y3.oran.otomasyon, { pay: 1, payda: 1, metin: '%100' });
   assert.deepEqual([y3.komut.okOlculemedi, y3.komut.okHedefteDegil, y3.komutOlculen.ok], [1, 0, 1]);
-  assert.match(y3.metin, /1 tanesinin hedefi son kontrolde doğrulandı \(%100\); ölçülemeyen sunucularda çalışan 1 komutun sonucu doğrulanamadı\. Komut başarı oranı \(dönüş kodu\) %100 \(2 \/ 2\)\./);
-  const y3b = yoneticiOzeti({ U: r([...v], [], ['SONUC|baslat|NGINX||OK|x'], { son_olculdu: false }) }, ['U'], { U: onceN });
-  assert.match(y3b.metin, /Otomasyon yalnız ölçülemeyen sunucularda 1 komut çalıştırdı; sonucu doğrulanamadı\./);
+  assert.match(
+    y3.metin,
+    /1 tanesinin hedefi son kontrolde doğrulandı \(%100\); ölçülemeyen sunucularda çalışan 1 komutun sonucu doğrulanamadı\. Komut başarı oranı \(dönüş kodu\) %100 \(2 \/ 2\)\./,
+  );
+  const y3b = yoneticiOzeti(
+    { U: r([...v], [], ['SONUC|baslat|NGINX||OK|x'], { son_olculdu: false }) },
+    ['U'],
+    { U: onceN },
+  );
+  assert.match(
+    y3b.metin,
+    /Otomasyon yalnız ölçülemeyen sunucularda 1 komut çalıştırdı; sonucu doğrulanamadı\./,
+  );
   assert.equal(y3b.oran.otomasyon.metin, '—');
   // Y4: once goruntusu alinamayan sunucu (sonra hedefi degil) ekran (sonraOzeti) ve raporda AYNI kapsam kalemi
-  const onceJson = { sunucular: { A: { goruntu_ok: true, goruntu: onceN }, X: { goruntu_ok: false, goruntu: [] } } };
+  const onceJson = {
+    sunucular: { A: { goruntu_ok: true, goruntu: onceN }, X: { goruntu_ok: false, goruntu: [] } },
+  };
   const sonraS = { A: r([...v], [...v, 'URUN|NGINX||'], ['SONUC|baslat|NGINX||OK|x']) };
-  const so = sonraOzeti({ hosts_json: JSON.stringify(['A', 'X']), once_json: JSON.stringify(onceJson), sonra_hedef_json: JSON.stringify(['A']) }, { sunucular: sonraS }, 'successful');
+  const so = sonraOzeti(
+    {
+      hosts_json: JSON.stringify(['A', 'X']),
+      once_json: JSON.stringify(onceJson),
+      sonra_hedef_json: JSON.stringify(['A']),
+    },
+    { sunucular: sonraS },
+    'successful',
+  );
   const yon = so.ozet.sonra.yonetici;
-  assert.deepEqual([yon.sunucu.toplam, yon.sunucu.olculen, yon.sunucu.olculemeyen, yon.sunucu.onceYok], [2, 1, 0, 1]);
-  assert.match(yon.metin, /^Kayıttaki 2 sunucunun 1 tanesinde reboot sonrası son durum ölçüldü, 1 sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı\./);
-  const html = raporHtml({ id: 1, hosts: ['A', 'X'], once: { sonuc: onceJson }, sonra: { sonuc: { sunucular: sonraS } } });
+  assert.deepEqual(
+    [yon.sunucu.toplam, yon.sunucu.olculen, yon.sunucu.olculemeyen, yon.sunucu.onceYok],
+    [2, 1, 0, 1],
+  );
+  assert.match(
+    yon.metin,
+    /^Kayıttaki 2 sunucunun 1 tanesinde reboot sonrası son durum ölçüldü, 1 sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı\./,
+  );
+  const html = raporHtml({
+    id: 1,
+    hosts: ['A', 'X'],
+    once: { sonuc: onceJson },
+    sonra: { sonuc: { sunucular: sonraS } },
+  });
   // 2026-11-17: rapor ozeti sunucu seviyesi (sunucuSeviyesi; ekran ozet.sonra.seviye ile AYNI): once goruntusu alinamayan X
   // "hic islem yapilamadi" kovasinda, nedeniyle.
   const sev = so.ozet.sonra.seviye;
   assert.deepEqual(sev.kova.yapilamadi, ['X']);
-  assert.ok(html.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`), 'rapor ozeti ekrandaki (sonraOzeti) seviye ile ayni degil');
-  assert.match(html, /<td class='host'>X<\/td><td class='minor'><span class='sessiz'>işlem yok<\/span><\/td><td class='minor'>Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı<\/td>/);
+  assert.ok(
+    html.includes(`<span class='hero-oran'>${sev.basari.metin}</span>`),
+    'rapor ozeti ekrandaki (sonraOzeti) seviye ile ayni degil',
+  );
+  assert.match(
+    html,
+    /<td class='host'>X<\/td><td class='minor'><span class='sessiz'>işlem yok<\/span><\/td><td class='minor'>Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı<\/td>/,
+  );
   // Y9: eski surum once'nin korudugu yeni JBoss 7 urunu hedef kumesine girmez, 'korunan' sayilir
   const onceE = ['BOOT|b1||', 'URUN|NGINX||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
-  const sonE = ['BOOT|b2||', 'SURUM|2||', 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|JBOSS7||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
+  const sonE = [
+    'BOOT|b2||',
+    'SURUM|2||',
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'URUN|JBOSS7||',
+    'JVM|JBOSS8|z|jboss_home=/opt/jb',
+  ];
   const y9 = yoneticiOzeti({ E: r(sonE, sonE, []) }, ['E'], { E: onceE });
-  assert.deepEqual([y9.oge.hedef, y9.oge.dogru, y9.oge.halaSapan, y9.oge.korunan, y9.sunucu.kontrol], [3, 3, 0, 1, 1]);
-  assert.match(y9.metin, /reboot öncesi çalışmayan 1 öğe kapatma güvenli olmadığı için dokunulmadı \(kontrol bekliyor\)\./);
+  assert.deepEqual(
+    [y9.oge.hedef, y9.oge.dogru, y9.oge.halaSapan, y9.oge.korunan, y9.sunucu.kontrol],
+    [3, 3, 0, 1, 1],
+  );
+  assert.match(
+    y9.metin,
+    /reboot öncesi çalışmayan 1 öğe kapatma güvenli olmadığı için dokunulmadı \(kontrol bekliyor\)\./,
+  );
 });
 
 test('RC28 inceleme Y7: "Bulundugu gibi birakildi" = kalan 0 + korunan calisan oge yok (kontrol notlu dahil); kontrol bekleyen yalniz birakilmayan', () => {
   const { yoneticiOzeti } = require('../reboot-check.cjs');
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
+  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
+    goruntu,
+    son_goruntu: sonGoruntu,
+    islemler,
+    plan: [],
+    ...ek,
+  });
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
   // KAPATTI: otomasyon fazladan IHS'i kapatti, fark yok -> kontrol notlu BIRAKILAN
-  const KAPATTI = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x']);
+  const KAPATTI = r(
+    [...v, 'URUN|RHA||', 'URUN|IHS||'],
+    [...v, 'URUN|RHA||'],
+    ['SONUC|durdur|IHS||OK|x'],
+  );
   // KORUNAN: eski surum once'nin korudugu JBoss 7 calisiyor (kalan 0 ama korunan 1) -> birakilan DEGIL, kontrol bekliyor
   const onceE = ['BOOT|b1||', 'URUN|NGINX||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
-  const sonE = [...v, 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|JBOSS7||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
+  const sonE = [
+    ...v,
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'URUN|JBOSS7||',
+    'JVM|JBOSS8|z|jboss_home=/opt/jb',
+  ];
   const KORUNAN = r(sonE, sonE, []);
   // KALDI: fazladan IHS hala calisiyor (kalan 1) -> birakilan DEGIL
-  const KALDI = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||', 'URUN|IHS||'], ['SONUC|durdur|IHS||FAIL|x']);
+  const KALDI = r(
+    [...v, 'URUN|RHA||', 'URUN|IHS||'],
+    [...v, 'URUN|RHA||', 'URUN|IHS||'],
+    ['SONUC|durdur|IHS||FAIL|x'],
+  );
   // TEMIZ: sorunsuz -> birakilan, kontrol notu yok
   const TEMIZ = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []);
-  const y = yoneticiOzeti({ KAPATTI, KORUNAN, KALDI, TEMIZ }, ['KAPATTI', 'KORUNAN', 'KALDI', 'TEMIZ'], { KAPATTI: onceR, KORUNAN: onceE, KALDI: onceR, TEMIZ: onceR });
+  const y = yoneticiOzeti(
+    { KAPATTI, KORUNAN, KALDI, TEMIZ },
+    ['KAPATTI', 'KORUNAN', 'KALDI', 'TEMIZ'],
+    { KAPATTI: onceR, KORUNAN: onceE, KALDI: onceR, TEMIZ: onceR },
+  );
   const sn = y.sunucu;
   assert.deepEqual(
-    [sn.karsilastirilabilir, sn.sorunsuz, sn.kontrol, sn.sorunlu, sn.birakilan, sn.birakilanKontrolNotlu, sn.kontrolBekleyen],
+    [
+      sn.karsilastirilabilir,
+      sn.sorunsuz,
+      sn.kontrol,
+      sn.sorunlu,
+      sn.birakilan,
+      sn.birakilanKontrolNotlu,
+      sn.kontrolBekleyen,
+    ],
     [4, 1, 2, 1, 2, 1, 1],
   );
   assert.deepEqual(y.oran.birakildi, { pay: 2, payda: 4, metin: '%50' });
-  assert.match(y.metin, /Karşılaştırılabilen 4 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%50\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 1 sunucu kontrol bekliyor, 1 sunucuda sorun kaldı\./);
+  assert.match(
+    y.metin,
+    /Karşılaştırılabilen 4 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%50\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 1 sunucu kontrol bekliyor, 1 sunucuda sorun kaldı\./,
+  );
   // tek tek: korunan oge calisan sunucu birakilan SAYILMAZ; kalan > 0 birakilan sayilmaz; kontrol notlu birakilan
   const tek = (h, s, o) => yoneticiOzeti({ [h]: s }, [h], { [h]: o }).sunucu;
-  assert.deepEqual([tek('K', KORUNAN, onceE).birakilan, tek('K', KORUNAN, onceE).kontrolBekleyen], [0, 1]);
+  assert.deepEqual(
+    [tek('K', KORUNAN, onceE).birakilan, tek('K', KORUNAN, onceE).kontrolBekleyen],
+    [0, 1],
+  );
   assert.deepEqual([tek('L', KALDI, onceR).birakilan, tek('L', KALDI, onceR).sorunlu], [0, 1]);
-  assert.deepEqual([tek('P', KAPATTI, onceR).birakilan, tek('P', KAPATTI, onceR).birakilanKontrolNotlu, tek('P', KAPATTI, onceR).kontrolBekleyen], [1, 1, 0]);
+  assert.deepEqual(
+    [
+      tek('P', KAPATTI, onceR).birakilan,
+      tek('P', KAPATTI, onceR).birakilanKontrolNotlu,
+      tek('P', KAPATTI, onceR).kontrolBekleyen,
+    ],
+    [1, 1, 0],
+  );
   const yalnizNotlu = yoneticiOzeti({ P: KAPATTI }, ['P'], { P: onceR });
-  assert.match(yalnizNotlu.metin, /Karşılaştırılabilen 1 sunucudan 1 tanesi reboot öncesi haliyle bırakıldı \(%100\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\)\./);
+  assert.match(
+    yalnizNotlu.metin,
+    /Karşılaştırılabilen 1 sunucudan 1 tanesi reboot öncesi haliyle bırakıldı \(%100\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\)\./,
+  );
   // kontrol notu olmayan birakilanda ek yazilmaz
-  assert.doesNotMatch(yoneticiOzeti({ T: TEMIZ }, ['T'], { T: onceR }).metin, /kontrol notu var/);
+  assert.doesNotMatch(
+    yoneticiOzeti({ T: TEMIZ }, ['T'], { T: onceR }).metin,
+    esnek(/kontrol notu var/),
+  );
 });
 
 test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI" notlu; surum 3 metni; BOOT\'suz once karsilastirilamaz; sayac esitligi', () => {
   const { yoneticiOzeti, kontrolNedenleri } = require('../reboot-check.cjs');
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
+  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
+    goruntu,
+    son_goruntu: sonGoruntu,
+    islemler,
+    plan: [],
+    ...ek,
+  });
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
   // V3: dolu once, surum 2 (eski, her sunucuda etkili), aynen -> kalan 0 ama tek neden "betik eski" -> birakilan DEGIL, kontrol
   // bekliyor (B2). 2026-11-16: surum 3 dolu once'de artik guncel sayilir (asagida U3); B2 kurali surum 2 ile sinanir.
   const V3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 2 });
   // K3: surum 2 + otomasyon fazladan IHS'i kapatti -> iki neden (betik eski + KAPATTI) -> birakilan DEGIL
-  const K3 = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x'], { betik_surum: 2 });
+  const K3 = r(
+    [...v, 'URUN|RHA||', 'URUN|IHS||'],
+    [...v, 'URUN|RHA||'],
+    ['SONUC|durdur|IHS||OK|x'],
+    { betik_surum: 2 },
+  );
   // K4: guncel betik + yalniz KAPATTI notu -> kontrol notlu birakilan
-  const K4 = r([...v, 'URUN|RHA||', 'URUN|IHS||'], [...v, 'URUN|RHA||'], ['SONUC|durdur|IHS||OK|x']);
+  const K4 = r(
+    [...v, 'URUN|RHA||', 'URUN|IHS||'],
+    [...v, 'URUN|RHA||'],
+    ['SONUC|durdur|IHS||OK|x'],
+  );
   const T = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []);
   // BOOTSUZ: once BOOT'suz (onceSat'ta kullanilabilir once yok) -> karsilastirilamaz, 'onceYok' (B4)
   const BOOTSUZ = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []);
   const hedef = ['V3', 'K3', 'K4', 'T', 'BOOTSUZ'];
-  const y = yoneticiOzeti({ V3, K3, K4, T, BOOTSUZ }, hedef, { V3: onceR, K3: onceR, K4: onceR, T: onceR, BOOTSUZ: ['URUN|RHA||'] });
+  const y = yoneticiOzeti({ V3, K3, K4, T, BOOTSUZ }, hedef, {
+    V3: onceR,
+    K3: onceR,
+    K4: onceR,
+    T: onceR,
+    BOOTSUZ: ['URUN|RHA||'],
+  });
   const sn = y.sunucu;
   assert.deepEqual(
-    [sn.toplam, sn.olculen, sn.onceYok, sn.karsilastirilabilir, sn.sorunsuz, sn.kontrol, sn.sorunlu, sn.birakilan, sn.birakilanKontrolNotlu, sn.kontrolBekleyen],
+    [
+      sn.toplam,
+      sn.olculen,
+      sn.onceYok,
+      sn.karsilastirilabilir,
+      sn.sorunsuz,
+      sn.kontrol,
+      sn.sorunlu,
+      sn.birakilan,
+      sn.birakilanKontrolNotlu,
+      sn.kontrolBekleyen,
+    ],
     [5, 4, 1, 4, 1, 3, 0, 2, 1, 2],
   );
   // B4: esitlik her zaman tutar; bolumleme toplam = olculen + olculemeyen + onceYok
   assert.equal(sn.birakilan + sn.kontrolBekleyen + sn.sorunlu, sn.karsilastirilabilir);
   assert.equal(sn.olculen + sn.olculemeyen + sn.onceYok, sn.toplam);
   assert.deepEqual(y.oran.birakildi, { pay: 2, payda: 4, metin: '%50' });
-  assert.match(y.metin, /Karşılaştırılabilen 4 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%50\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 2 sunucu kontrol bekliyor\./);
-  assert.match(y.metin, /1 sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı/);
+  assert.match(
+    y.metin,
+    /Karşılaştırılabilen 4 sunucudan 2 tanesi reboot öncesi haliyle bırakıldı \(%50\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\); 2 sunucu kontrol bekliyor\./,
+  );
+  assert.match(
+    y.metin,
+    /1 sunucunun reboot öncesi görüntüsü alınamadığı için karşılaştırma yapılmadı/,
+  );
   // tek basina V3: cumle "otomasyon kapatti" DEMEZ, kontrol bekler
   const v3 = yoneticiOzeti({ V3 }, ['V3'], { V3: onceR });
-  assert.deepEqual([v3.sunucu.birakilan, v3.sunucu.birakilanKontrolNotlu, v3.sunucu.kontrolBekleyen], [0, 0, 1]);
-  assert.doesNotMatch(v3.metin, /otomasyon fazladan çalışan ürünü kapattı/);
+  assert.deepEqual(
+    [v3.sunucu.birakilan, v3.sunucu.birakilanKontrolNotlu, v3.sunucu.kontrolBekleyen],
+    [0, 0, 1],
+  );
+  assert.doesNotMatch(v3.metin, esnek(/otomasyon fazladan çalışan ürünü kapattı/));
   // 2026-11-16: ayni kayit surum 3 ile -> betik eskiligi bu sunucuda etkisiz, bulundugu gibi birakildi (kontrol beklemez)
   const U3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 3 });
   const u3 = yoneticiOzeti({ U3 }, ['U3'], { U3: onceR });
@@ -1186,17 +2060,35 @@ test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI"
   // B1: bos once + surum 3 + CTG hala calisiyor -> kapanmasi gereken; neden v3'un gercek eksigini soyler ("kapatma yoktu" demez)
   const bos3 = r(['BOOT|b2||', 'URUN|CTG||'], ['BOOT|b2||', 'URUN|CTG||'], [], { betik_surum: 3 });
   const n = kontrolNedenleri(['BOOT|b1||'], bos3).join(' ');
-  assert.match(n, /otomatik kapatılması gerekiyordu: CTG — AWX'teki betik eski \(sürüm 3\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini/);
-  assert.doesNotMatch(n, /kapatma yoktu|YOKTU/);
+  assert.match(
+    n,
+    /otomatik kapatılması gerekiyordu: CTG — AWX'teki betik eski \(sürüm 3\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini/,
+  );
+  assert.doesNotMatch(n, esnek(/kapatma yoktu|YOKTU/));
 });
 
 test('RC30 2026-11-16 uretim (104 sunucu "hepsi kontrol gerekli"): betik eski SUNUCU BAZINDA ve ETKIYE gore; surum 3 yalniz bos once + calisan CTG/JBoss/WAS', () => {
-  const { sonraDegerlendir, betikEtkisi, betikEskiBandi, otomasyonOzeti, kayitDurumu } = require('../reboot-check.cjs');
+  const {
+    sonraDegerlendir,
+    betikEtkisi,
+    betikEskiBandi,
+    otomasyonOzeti,
+    kayitDurumu,
+  } = require('../reboot-check.cjs');
   const v = ['BOOT|b2||', 'SURUM|2||'];
   const dolu = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
   const doluSon = [...v, 'URUN|RHA||', 'URUN|JBOSS8||', 'JVM|JBOSS8|appA|x'];
   const bos = ['BOOT|b1||'];
-  const r = (goruntu, son, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], goruntu, son_goruntu: son, islemler: [], plan: [], ...ek });
+  const r = (goruntu, son, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    goruntu,
+    son_goruntu: son,
+    islemler: [],
+    plan: [],
+    ...ek,
+  });
   const RE = /reboot_check betiği eski/;
   const sunucular = {
     // surum 3 + dolu once, fark yok -> eski notu YOK, sorunsuz
@@ -1214,87 +2106,204 @@ test('RC30 2026-11-16 uretim (104 sunucu "hepsi kontrol gerekli"): betik eski SU
     // surum 4 + bos once + calisan JBoss -> eski notu YOK (kalan ayri)
     JB4: r([...v, 'URUN|JBOSS8||'], [...v, 'URUN|JBOSS8||'], { betik_surum: 4 }),
   };
-  const once = { DOLU3: dolu, WEB3: bos, JB3: bos, WAS3: bos, DOLU2: dolu, DOLUYOK: dolu, JB4: bos };
+  const once = {
+    DOLU3: dolu,
+    WEB3: bos,
+    JB3: bos,
+    WAS3: bos,
+    DOLU2: dolu,
+    DOLUYOK: dolu,
+    JB4: bos,
+  };
   const hedef = Object.keys(sunucular);
   const d = sonraDegerlendir(sunucular, hedef, once);
   const eskiVar = (h) => (d[h].neden || []).some((x) => RE.test(x));
   assert.deepEqual(hedef.filter(eskiVar), ['JB3', 'DOLU2', 'DOLUYOK']);
   assert.equal(d.DOLU3.durum, 'sorunsuz', 'surum 3 + dolu once kontrol sayildi');
   assert.equal(d.WEB3.durum, 'kontrol'); // yalniz "otomasyon KAPATTI" notu
-  assert.ok(d.WEB3.neden.every((x) => !/eski/.test(x)), 'surum 3 web kapattigi halde betik eski denildi');
+  assert.ok(
+    d.WEB3.neden.every((x) => !/eski/.test(x)),
+    'surum 3 web kapattigi halde betik eski denildi',
+  );
   // KARAR: hala calisan CTG/JBoss/WAS 'kontrol'e cekilmez - v4 kuraliyla kalan (sorunlu); aciklama "surum 3 kapatmadi"
   assert.equal(d.JB3.durum, 'sorunlu');
   assert.ok(d.JB3.kalan > 0);
   const jb = d.JB3.neden.join(' ');
-  assert.match(jb, /^AWX'teki reboot_check betiği eski \(sürüm 3, gerekli 4\): JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz \(sürüm 4 kapatır\)\. ZIP'i AWX'e yükleyip projeyi Sync edin/);
-  assert.match(jb, /otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appX — AWX'teki betik eski \(sürüm 3\)/);
+  assert.match(
+    jb,
+    /^AWX'teki reboot_check betiği eski \(sürüm 3, gerekli 4\): JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş sunucuda AWX'teki betik sürüm 3 bunları kapatmaz \(sürüm 4 kapatır\)\. ZIP'i AWX'e yükleyip projeyi Sync edin/,
+  );
+  assert.match(
+    jb,
+    /otomatik kapatılması gerekiyordu: JBOSS8, JBOSS8\/appX — AWX'teki betik eski \(sürüm 3\)/,
+  );
   assert.equal(d.WAS3.durum, 'kontrol');
-  assert.match(d.WAS3.neden[0], /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; sürüm 3 betik .*Son durum reboot öncesiyle aynı \(yeniden çalıştırmak bir şey değiştirmez\) — beklenen durum mu kontrol edin\.$/);
-  assert.ok(d.WAS3.neden.every((x) => !/ZIP|betiği eski|betik eski/.test(x)), 'kendiliginden kapanan urun icin ZIP/betik eski denildi');
+  assert.match(
+    d.WAS3.neden[0],
+    /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; sürüm 3 betik .*Son durum reboot öncesiyle aynı \(yeniden çalıştırmak bir şey değiştirmez\) — beklenen durum mu kontrol edin\.$/,
+  );
+  assert.ok(
+    d.WAS3.neden.every((x) => !/ZIP|betiği eski|betik eski/.test(x)),
+    'kendiliginden kapanan urun icin ZIP/betik eski denildi',
+  );
   assert.equal(d.DOLU2.durum, 'kontrol');
-  assert.match(d.DOLU2.sebep, /\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU/);
+  assert.match(
+    d.DOLU2.sebep,
+    /\(sürüm 2, gerekli 4\): bu koşuda ürün kapatma ve yeniden deneme YOKTU/,
+  );
   assert.match(d.DOLUYOK.sebep, /\(sürüm yok, gerekli 4\)/);
   assert.equal(d.JB4.durum, 'sorunlu');
   assert.ok(!eskiVar('JB4'));
   // betikEtkisi: surum 3 + bos once + calisan CTG ve web karisik -> kapatmaz yalniz CTG/JBoss/WAS; urun bazli kuyruk
-  const k = betikEtkisi(bos, r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], { betik_surum: 3 }));
-  assert.deepEqual([k.eski, k.urunler, k.kapatmaz('CTG'), k.kapatmaz('IHS')], [true, ['CTG'], true, false]);
-  const kar = sonraDegerlendir({ K: r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], { betik_surum: 3 }) }, ['K'], { K: bos });
-  assert.match(kar.K.neden.join(' '), /gerekiyordu: CTG, IHS — CTG için AWX'teki betik eski \(sürüm 3\): .*; IHS için kapatma sonucunu kontrol edin\./);
+  const k = betikEtkisi(
+    bos,
+    r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], { betik_surum: 3 }),
+  );
+  assert.deepEqual(
+    [k.eski, k.urunler, k.kapatmaz('CTG'), k.kapatmaz('IHS')],
+    [true, ['CTG'], true, false],
+  );
+  const kar = sonraDegerlendir(
+    {
+      K: r([...v, 'URUN|CTG||', 'URUN|IHS||'], [...v, 'URUN|CTG||', 'URUN|IHS||'], {
+        betik_surum: 3,
+      }),
+    },
+    ['K'],
+    { K: bos },
+  );
+  assert.match(
+    kar.K.neden.join(' '),
+    /gerekiyordu: CTG, IHS — CTG için AWX'teki betik eski \(sürüm 3\): .*; IHS için kapatma sonucunu kontrol edin\./,
+  );
   // once verilmeyen (eski cagiran): bos kapi plandaki BILGI|BOS'tan
-  assert.equal(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], { betik_surum: 3, plan: ['BILGI|BOS|||x'] })).eski, true);
+  assert.equal(
+    betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], { betik_surum: 3, plan: ['BILGI|BOS|||x'] }))
+      .eski,
+    true,
+  );
   assert.equal(betikEtkisi(undefined, r(v, [...v, 'URUN|CTG||'], { betik_surum: 3 })).eski, false);
   // otomasyon ozeti: surum 3 dolu once'de DOWN urun icin "betik eski" denmez; bos once JBoss'ta denir
-  const oz = otomasyonOzeti(dolu, r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], { betik_surum: 3 }));
+  const oz = otomasyonOzeti(
+    dolu,
+    r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], { betik_surum: 3 }),
+  );
   assert.equal(oz.teknoloji.find((t) => t.urun === 'JBOSS8').ozet, 'komut çalışmadı — fark kaldı');
   const ozB = otomasyonOzeti(bos, sunucular.JB3);
-  assert.equal(ozB.teknoloji.find((t) => t.urun === 'JBOSS8').ozet, "AWX'teki betik eski — işlem yapılmadı");
+  assert.equal(
+    ozB.teknoloji.find((t) => t.urun === 'JBOSS8').ozet,
+    "AWX'teki betik eski — işlem yapılmadı",
+  );
   // 104 sunuculu uretim kaydinin kucugu: surum 3, dolu once'li sunucular eskiden hep 'kontrol' idi -> artik kayit 'tamam'
-  const u = sonraDegerlendir({ A: sunucular.DOLU3, B: r(doluSon, doluSon, { betik_surum: 3 }) }, ['A', 'B'], { A: dolu, B: dolu });
+  const u = sonraDegerlendir(
+    { A: sunucular.DOLU3, B: r(doluSon, doluSon, { betik_surum: 3 }) },
+    ['A', 'B'],
+    { A: dolu, B: dolu },
+  );
   assert.equal(kayitDurumu(Object.values(u), true), 'tamam');
   // kayit bandi metni sayisiyla
-  assert.match(betikEskiBandi(['sürüm 3'], 2), /\(sürüm 3, gerekli 4\): .*yeniden çalıştırın\. \(2 sunucuda etkili\)$/);
+  assert.match(
+    betikEskiBandi(['sürüm 3'], 2),
+    /\(sürüm 3, gerekli 4\): .*yeniden çalıştırın\. \(2 sunucuda etkili\)$/,
+  );
 });
 
 test('RC31 inceleme 2026-11-16: B1 once kaynagi onceGirdisi; B2 yalniz ilk goruntude calisan + hala calisan karisik; B5 "3.0"', () => {
   const { sonraDegerlendir, betikEtkisi, kontrolNedenleri } = require('../reboot-check.cjs');
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const r = (goruntu, son, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], goruntu, son_goruntu: son, islemler: [], plan: [], ...ek });
+  const r = (goruntu, son, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    goruntu,
+    son_goruntu: son,
+    islemler: [],
+    plan: [],
+    ...ek,
+  });
   // B2: JBoss 8 hala calisiyor, WAS yalniz ilk goruntude -> eski yalniz JBoss 8 icin; WAS ayri notr not; bant sayisi 1
-  const e = betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|JBOSS8||', 'URUN|WAS||'], [...v, 'URUN|JBOSS8||'], { betik_surum: 3 }));
+  const e = betikEtkisi(
+    ['BOOT|b1||'],
+    r([...v, 'URUN|JBOSS8||', 'URUN|WAS||'], [...v, 'URUN|JBOSS8||'], { betik_surum: 3 }),
+  );
   assert.deepEqual([e.eski, e.urunler, e.hala, e.gecti], [true, ['JBOSS8'], ['JBOSS8'], ['WAS']]);
-  assert.match(e.metin, /: JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş/);
+  assert.match(
+    e.metin,
+    /: JBoss 8 reboot öncesi çalışmıyordu ve hâlâ çalışıyor; reboot öncesi görüntüsü boş/,
+  );
   assert.doesNotMatch(e.metin, /WebSphere/);
-  assert.match(e.gectiNotu, /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; /);
+  assert.match(
+    e.gectiNotu,
+    /^WebSphere reboot öncesi çalışmıyordu, reboot sonrası çalıştı ve son kontrolde kendiliğinden kapanmıştı; /,
+  );
   const g = betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 3 }));
   assert.deepEqual([g.eski, g.metin, g.gecti], [false, '', ['CTG']]);
   // surum 2 / 4: gecti notu yok
-  assert.equal(betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 2 })).gectiNotu, '');
-  assert.equal(betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 4 })).gectiNotu, '');
+  assert.equal(
+    betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 2 })).gectiNotu,
+    '',
+  );
+  assert.equal(
+    betikEtkisi(['BOOT|b1||'], r([...v, 'URUN|CTG||'], v, { betik_surum: 4 })).gectiNotu,
+    '',
+  );
   // B1: once goruntusu alinamadi (goruntu_ok=false) ama ham satirda BOOT var -> onceGirdisi dusurur, plan BILGI|HATA -> eski degil
-  const sun = { X: r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { betik_surum: 3, plan: ['BILGI|HATA|||once yok'] }) };
+  const sun = {
+    X: r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], {
+      betik_surum: 3,
+      plan: ['BILGI|HATA|||once yok'],
+    }),
+  };
   const { onceGirdisi } = require('../reboot-check.cjs');
   const onceSat = onceGirdisi({ X: { goruntu_ok: false, goruntu: ['BOOT|b1||'] } });
   assert.deepEqual(onceSat, {});
-  assert.ok(!(sonraDegerlendir(sun, ['X'], onceSat).X.neden || []).some((x) => /betiği eski/.test(x)));
+  assert.ok(
+    !(sonraDegerlendir(sun, ['X'], onceSat).X.neden || []).some((x) => /betiği eski/.test(x)),
+  );
   // B5: "3.0" surum 3 sayilir; kuyruk metni de surum 3 metni (YOKTU denmez)
-  const n = kontrolNedenleri(['BOOT|b1||'], r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { betik_surum: '3.0' })).join(' ');
+  const n = kontrolNedenleri(
+    ['BOOT|b1||'],
+    r([...v, 'URUN|CTG||'], [...v, 'URUN|CTG||'], { betik_surum: '3.0' }),
+  ).join(' ');
   assert.match(n, /\(sürüm 3\.0, gerekli 4\): CTG reboot öncesi çalışmıyordu ve hâlâ çalışıyor/);
-  assert.match(n, /AWX'teki betik eski \(sürüm 3\.0\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu/);
+  assert.match(
+    n,
+    /AWX'teki betik eski \(sürüm 3\.0\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu/,
+  );
   assert.doesNotMatch(n, /YOKTU/);
 });
 
 test('RC-SV1 2026-11-17 sunucuSeviyesi: her sunucu TEK kovada; kontrol / komutsuz fark / olculemeyen komut / once yok / korunan; basari paydasi tum sunucular', () => {
   const { sunucuSeviyesi, SEVIYE_KOVALARI } = require('../reboot-check.cjs');
   const v = ['BOOT|b2||', 'SURUM|2||'];
-  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({ once_var: true, son_olculdu: true, son_fark: [], betik_surum: 4, goruntu, son_goruntu: sonGoruntu, islemler, plan: [], ...ek });
+  const r = (goruntu, sonGoruntu, islemler, ek = {}) => ({
+    once_var: true,
+    son_olculdu: true,
+    son_fark: [],
+    betik_surum: 4,
+    goruntu,
+    son_goruntu: sonGoruntu,
+    islemler,
+    plan: [],
+    ...ek,
+  });
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
   const onceE = ['BOOT|b1||', 'URUN|NGINX||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
-  const sonE = [...v, 'URUN|NGINX||', 'URUN|JBOSS8||', 'URUN|JBOSS7||', 'JVM|JBOSS8|z|jboss_home=/opt/jb'];
+  const sonE = [
+    ...v,
+    'URUN|NGINX||',
+    'URUN|JBOSS8||',
+    'URUN|JBOSS7||',
+    'JVM|JBOSS8|z|jboss_home=/opt/jb',
+  ];
   const sunucular = {
     TEMIZ: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], []),
     // reboot dogrulanamadi (boot ayni) ama fark yok: Portal kurali 'sorunsuz' (rapor ayrica uyarir) -> mudahalesiz
-    BOOTAYNI: r(['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'], []),
+    BOOTAYNI: r(
+      ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'],
+      ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'],
+      [],
+    ),
     // AWX'teki betik eski (surum 2) -> kontrol notu, fark yok -> kontrol (basari DEGIL)
     ESKIBETIK: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 2 }),
     // kalan var ama hic komut kosmadi -> yapilamadi
@@ -1309,7 +2318,15 @@ test('RC-SV1 2026-11-17 sunucuSeviyesi: her sunucu TEK kovada; kontrol / komutsu
     SKIPLI: r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], ['SONUC|baslat|RHA||SKIP|zaten']),
   };
   const hedef = Object.keys(sunucular);
-  const onceSat = { TEMIZ: onceR, BOOTAYNI: onceR, ESKIBETIK: onceR, KOMUTSUZ: onceR, OLCULMEDI: onceR, KORUNAN: onceE, SKIPLI: onceR };
+  const onceSat = {
+    TEMIZ: onceR,
+    BOOTAYNI: onceR,
+    ESKIBETIK: onceR,
+    KOMUTSUZ: onceR,
+    OLCULMEDI: onceR,
+    KORUNAN: onceE,
+    SKIPLI: onceR,
+  };
   const s = sunucuSeviyesi(sunucular, hedef, onceSat);
   assert.deepEqual(s.kova, {
     mudahalesiz: ['TEMIZ', 'BOOTAYNI', 'SKIPLI'],
@@ -1333,13 +2350,23 @@ test('RC-SV1 2026-11-17 sunucuSeviyesi: her sunucu TEK kovada; kontrol / komutsu
   assert.deepEqual(s.otomasyon, { pay: 0, payda: 1, metin: '%0' });
   const ul = sunucuSeviyesi({ U: { sonuc_yok: true } }, ['U'], { U: onceR });
   assert.deepEqual([ul.sunucu.U.altNeden, ul.yapilamadiNeden.ulasilamadi], ['ulasilamadi', 1]);
-  assert.deepEqual(s.sunucu.ONCESIZ.neden, ['Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı']);
+  assert.deepEqual(s.sunucu.ONCESIZ.neden, [
+    'Reboot öncesi görüntüsü yok; karşılaştırma yapılamadı',
+  ]);
   assert.match(s.sunucu.OLCULMEDI.neden[0], /son durum ölçülemedi/);
-  assert.deepEqual(s.sunucu.OLCULMEDI.komutlar, [{ islem: 'baslat', urun: 'RHA', ad: '', sonuc: 'OK', hedefte: false }]);
+  assert.deepEqual(s.sunucu.OLCULMEDI.komutlar, [
+    { islem: 'baslat', urun: 'RHA', ad: '', sonuc: 'OK', hedefte: false },
+  ]);
   assert.match(s.sunucu.KOMUTSUZ.neden.join(' '), /öğe reboot öncesinden farklı kaldı/);
-  assert.ok(s.sunucu.ESKIBETIK.neden.length > 0 && /betiği eski/.test(s.sunucu.ESKIBETIK.neden.join(' ')), 'kontrol nedeni tasinmali');
+  assert.ok(
+    s.sunucu.ESKIBETIK.neden.length > 0 && /betiği eski/.test(s.sunucu.ESKIBETIK.neden.join(' ')),
+    'kontrol nedeni tasinmali',
+  );
   // islemler: SKIP sayilmaz; OK ama olculemeyen hedefte degil
-  assert.deepEqual(s.islemler.map((x) => [x.anahtar, x.komut, x.ok, x.fail, x.hedefte, x.sunucular]), [['baslat|RHA|urun', 1, 1, 0, 0, ['OLCULMEDI']]]);
+  assert.deepEqual(
+    s.islemler.map((x) => [x.anahtar, x.komut, x.ok, x.fail, x.hedefte, x.sunucular]),
+    [['baslat|RHA|urun', 1, 1, 0, 0, ['OLCULMEDI']]],
+  );
   // bos kayit: payda 0 -> "—"
   assert.equal(sunucuSeviyesi({}, [], {}).basari.metin, '—');
 });

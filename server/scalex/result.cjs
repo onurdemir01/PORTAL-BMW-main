@@ -6,7 +6,7 @@
 'use strict';
 
 // ── PAKET SURUM SOZLESMESI ──────────────────────────────────────────────────
-// `server/ansible/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
+// `server/ansible/playbooks/bmw_portal/scalex/scalex_app/VERSION` ile AYNI sayi olmali (test kilitler).
 // Paket AWX'e ELLE kopyalaniyor; bu iki sayinin ayrismasi "portal yeni, AWX eski"
 // durumunun TEK kaniti. Pakette portalin okudugu bir alan degistiginde artirilir.
 const EXPECTED_PACKAGE_VERSION = '24';
@@ -152,7 +152,7 @@ function extractScaleXResult(rawArtifacts) {
 
 // Kesif satirlarindaki `detail` alani `anahtar=deger` ciftleri tasir. Bosluk ayrac;
 // DEGERLER bosluk ICERMEZ — playbook tarafinda `disc_val` her degeri temizler
-// (server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh, `discover` fazi).
+// (server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh, `discover` fazi).
 function parseDetailPairs(detail) {
   const out = {};
   for (const part of String(detail || '').split(' ')) {
@@ -182,7 +182,12 @@ function extractDiscoveryResult(rawArtifacts) {
     // kullanir. Bu liste "hangi namespace'ler GERCEKTEN tarandi" sorusunu
     // cevaplar — katalog supurmesi (`is_deleted=1`) yalnizca taranmis bir
     // namespace icin mesrudur.
-    namespaces: (() => { if (Array.isArray(raw.namespaces)) return raw.namespaces.map((x) => String(x).trim()).filter(Boolean); if (String(raw.namespace || '').trim()) return [String(raw.namespace).trim()]; return []; })(),
+    namespaces: (() => {
+      if (Array.isArray(raw.namespaces))
+        return raw.namespaces.map((x) => String(x).trim()).filter(Boolean);
+      if (String(raw.namespace || '').trim()) return [String(raw.namespace).trim()];
+      return [];
+    })(),
     platform: String(raw.platform || ''),
     environment: String(raw.environment || ''),
     catalogSource: String(raw.catalog_source || 'file'),
@@ -190,7 +195,7 @@ function extractDiscoveryResult(rawArtifacts) {
     failedClusters: Array.isArray(raw.failed_clusters) ? raw.failed_clusters : [],
     counts: { ok: toInt(counts.ok), warn: toInt(counts.warn), fail: toInt(counts.fail) },
     // PDB namespace duzeyinde bildirilir (hangi workload'u kapsadigi ucuza kanitlanamaz).
-    pdbWarning: (items.find((i) => String(i.step) === 'PDB') || {}).detail || null,
+    pdbWarning: items.find((i) => String(i.step) === 'PDB')?.detail || null,
     problems: items
       .filter((i) => normalizeStatus(i.status) === 'FAIL' || normalizeStatus(i.status) === 'WARN')
       .map((i) => ({
@@ -215,7 +220,7 @@ function extractDiscoveryResult(rawArtifacts) {
   // GERI DUSUS SART: `namespace=` alanini basmayan ESKI bir paket kosuyorsa ust
   // duzey deger dogrudur (o paket zaten tek namespace tariyordu).
   const satirNs = (d) =>
-    d && d.namespace && d.namespace !== '-' ? String(d.namespace) : base.namespace;
+    d?.namespace && d.namespace !== '-' ? String(d.namespace) : base.namespace;
 
   // ── SURE OLCUMU ────────────────────────────────────────────────────────────
   //
@@ -243,7 +248,11 @@ function extractDiscoveryResult(rawArtifacts) {
         kinds: msOrNull(d.kinds),
         // ucuncu bir deger var: onbellegin HIC sorulmadigi modlar ('-' → null).
         // `false` demek "onbellek vardi ama tutmadi" olurdu — ayri bir arizadir.
-        cached: (() => { if (d.cached === 'yes') return true; if (d.cached === 'no') return false; return null; })(),
+        cached: (() => {
+          if (d.cached === 'yes') return true;
+          if (d.cached === 'no') return false;
+          return null;
+        })(),
         setupMs: msOrNull(d.setup_ms),
         discoverMs: msOrNull(d.discover_ms),
         elapsedMs: msOrNull(d.elapsed_ms),
@@ -288,7 +297,13 @@ function extractDiscoveryResult(rawArtifacts) {
     const al = (c) => {
       const k = String(c || '');
       if (!perCluster.has(k)) {
-        perCluster.set(k, { cluster: k, kinds: [], rbac: {}, resourcesReadable: true, scanned: false });
+        perCluster.set(k, {
+          cluster: k,
+          kinds: [],
+          rbac: {},
+          resourcesReadable: true,
+          scanned: false,
+        });
       }
       return perCluster.get(k);
     };
@@ -363,7 +378,11 @@ function extractDiscoveryResult(rawArtifacts) {
           // CronJob'a ozgu; digerlerinde null. `disc_val` bosluklari alt cizgiye
           // cevirdigi icin cron ifadesi geri cevrilir ("0_2_*_*_*" -> "0 2 * * *").
           schedule: d.schedule ? String(d.schedule).replace(/_/g, ' ') : null,
-          suspended: (() => { if (d.suspended === 'true') return true; if (d.suspended === 'false') return false; return null; })(),
+          suspended: (() => {
+            if (d.suspended === 'true') return true;
+            if (d.suspended === 'false') return false;
+            return null;
+          })(),
           // DaemonSet'e ozgu: dugum sayisi.
           desired: d.desired != null ? toInt(d.desired) : null,
           resource: d.resource || '',

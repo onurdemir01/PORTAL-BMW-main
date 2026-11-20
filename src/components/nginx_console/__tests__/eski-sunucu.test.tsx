@@ -18,7 +18,12 @@ import { _eskiGizliSifirla, eskiGizliBirlesik, eskiGizliKaydet } from '@/api/ngi
 import { nginxConsoleApi } from '@/api/nginxConsoleApi';
 
 const yanit = (govde: unknown, status = 200) =>
-  Promise.resolve(new Response(JSON.stringify(govde), { status, headers: { 'Content-Type': 'application/json' } }));
+  Promise.resolve(
+    new Response(JSON.stringify(govde), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
 
 const ADAYLAR = {
   ok: true,
@@ -51,7 +56,13 @@ describe('Nginx Hub eski sunucular', () => {
       hosts: [],
       consoleDir: '/x',
       inventoryError: null,
-      eskiGizli: { sayi: 2, hostlar: ['GBOLU001', 'GBOLU002'], gun: 14, gosteriliyor: false, olculemedi: false },
+      eskiGizli: {
+        sayi: 2,
+        hostlar: ['GBOLU001', 'GBOLU002'],
+        gun: 14,
+        gosteriliyor: false,
+        olculemedi: false,
+      },
     };
     vi.stubGlobal(
       'fetch',
@@ -65,7 +76,15 @@ describe('Nginx Hub eski sunucular', () => {
             toplamSatir: 42,
             butceDoldu: false,
             kalanVar: false,
-            hosts: [{ host: 'GBOLU001', silinenSatir: { 'dbo.Nginx_Audit_Hosts': 30 }, dosyalar: ['GBOLU001.txt'], hatalar: [], tamam: true }],
+            hosts: [
+              {
+                host: 'GBOLU001',
+                silinenSatir: { 'dbo.Nginx_Audit_Hosts': 30 },
+                dosyalar: ['GBOLU001.txt'],
+                hatalar: [],
+                tamam: true,
+              },
+            ],
           });
         if (url.endsWith('/eski-sunucular')) return yanit(ADAYLAR);
         if (url.includes('/hosts')) return yanit(hostsGovde);
@@ -78,12 +97,20 @@ describe('Nginx Hub eski sunucular', () => {
   it('EN1 not: gizlenen sunucu sayısı ve gerekçesi açık sekmede görünür', async () => {
     render(<NginxConsolePage />, { initialEntries: ['/nginx-console?tab=instances'] });
     const not = await screen.findByTestId('nc-eski-notu');
-    expect(not.textContent).toContain('2 eski sunucu gizlendi (envanterde yok, 14+ gündür taranmadı)');
+    expect(not.textContent).toContain(
+      '2 eski sunucu gizlendi (envanterde yok, 14+ gündür taranmadı)',
+    );
     expect(not.textContent).toContain('GBOLU001, GBOLU002');
   });
 
   it('EN2 not: gizlenen yoksa ya da ölçülemediyse not yok', async () => {
-    hostsGovde = { ok: true, hosts: [], consoleDir: '/x', inventoryError: null, eskiGizli: { sayi: 0, hostlar: [], gun: 14, olculemedi: true } };
+    hostsGovde = {
+      ok: true,
+      hosts: [],
+      consoleDir: '/x',
+      inventoryError: null,
+      eskiGizli: { sayi: 0, hostlar: [], gun: 14, olculemedi: true },
+    };
     render(<NginxConsolePage />, { initialEntries: ['/nginx-console?tab=instances'] });
     await waitFor(() => expect(cagrilar.some((c) => c.url.includes('/hosts'))).toBe(true));
     expect(screen.queryByTestId('nc-eski-notu')).toBeNull();
@@ -92,7 +119,10 @@ describe('Nginx Hub eski sunucular', () => {
   it('EN3 birleşik kaynak: aynı sunucu iki uçta gizlense de bir kez sayılır', () => {
     eskiGizliKaydet('api')({ eskiGizli: { sayi: 2, hostlar: ['A1', 'B1'], gun: 14 } });
     eskiGizliKaydet('apiLocations')({ eskiGizli: { sayi: 2, hostlar: ['B1', 'C1'], gun: 14 } });
-    expect(eskiGizliBirlesik(['api', 'apiLocations'])).toMatchObject({ sayi: 3, hostlar: ['A1', 'B1', 'C1'] });
+    expect(eskiGizliBirlesik(['api', 'apiLocations'])).toMatchObject({
+      sayi: 3,
+      hostlar: ['A1', 'B1', 'C1'],
+    });
     expect(eskiGizliBirlesik(['cis'])).toBeNull();
     const govde = { ok: true, x: 1 };
     expect(eskiGizliKaydet('cis')(govde)).toBe(govde);

@@ -37,7 +37,12 @@ async function opsBaslat(h, user, body) {
 async function planUret(h, user = U.ali, secenek = {}, govde = PLAN_GOVDE) {
   const r = await opsBaslat(h, user, govde);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  h.bitir(r.body.jobId, 'resources_plan', govde.tenant, ornek.plan({ t: govde.tenant, ...secenek }));
+  h.bitir(
+    r.body.jobId,
+    'resources_plan',
+    govde.tenant,
+    ornek.plan({ t: govde.tenant, ...secenek }),
+  );
   const s = await h.istek('GET', `/ops-result/1/${r.body.jobId}`, user);
   assert.equal(s.status, 200, JSON.stringify(s.body));
   return { jobId: r.body.jobId, res: s.body.result.resources };
@@ -66,31 +71,56 @@ test('B4 /ops-result: uygulama kapisi + sahiplik, kayit yoksa 403, DB okunamazsa
     assert.match(veli.body.message, /size ait değil/);
     const mete = await h.istek('GET', `/ops-result/1/${j}`, { ...U.metacocu, username: 'ali' });
     assert.equal(mete.status, 403, 'ayni ad ama uygulamaya yetkisiz: uygulama kapisi');
-    assert.equal((await h.istek('GET', `/ops-result/1/999999`, U.admin)).status, 403, 'kayitsiz is (Admin dahil)');
+    assert.equal(
+      (await h.istek('GET', `/ops-result/1/999999`, U.admin)).status,
+      403,
+      'kayitsiz is (Admin dahil)',
+    );
     // Bellek bos (baska Portal ornegi): ansible_job_history'den cozulur.
     h.RES._sifirla();
     assert.equal((await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status, 200, 'DB yedegi');
     assert.equal((await h.istek('GET', `/ops-result/1/${j}`, U.veli)).status, 403);
     // Crypto Hub disi bir is (baska modulun gecmis kaydi).
-    h.durum.history.push({ username: 'ali', awx_server_id: 1, job_id: 4242, template_name: 'OpsX: restart' });
+    h.durum.history.push({
+      username: 'ali',
+      awx_server_id: 1,
+      job_id: 4242,
+      template_name: 'OpsX: restart',
+    });
     const yab = await h.istek('GET', `/ops-result/1/4242`, U.ali);
     assert.equal(yab.status, 403, 'yabanci is');
-    assert.match(yab.body.message, /Crypto Hub işi değil/, 'yabanci is kendi nedeniyle reddedilmeli');
+    assert.match(
+      yab.body.message,
+      /Crypto Hub işi değil/,
+      'yabanci is kendi nedeniyle reddedilmeli',
+    );
     // DB okunamiyor ve bellekte yok: erisim VERILMEZ.
     h.durum.dbBozuk = true;
     assert.equal((await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status, 503);
     h.durum.dbBozuk = false;
     // Is ciktisi kayittaki kiraciyla celisiyorsa sonuc verilmez.
     h.bitir(j, 'pods', 'wyden_qa_h3', [`POD\twyden_qa_h3\tp-0\tRunning\ttrue,\t0,\tx\tn1`]);
-    assert.equal((await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status, 403, 'cikti baska kiraci');
+    assert.equal(
+      (await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status,
+      403,
+      'cikti baska kiraci',
+    );
     h.bitir(j, 'values_get', T, [`VAL\t${T}\tdb:`]);
-    assert.equal((await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status, 403, 'cikti baska islem');
+    assert.equal(
+      (await h.istek('GET', `/ops-result/1/${j}`, U.ali)).status,
+      403,
+      'cikti baska islem',
+    );
     // Gecmis kaydi YAZILAMASA da sahibi kendi isini izler (bellek kaydi); baskasi izleyemez.
     h.durum.dbBozuk = true;
     const r2 = await opsBaslat(h, U.ali, { tenant: T, action: 'pods', targets: [] });
     assert.equal(r2.status, 200);
     h.bitir(r2.body.jobId, 'pods', T, [`POD\t${T}\tp-1\tRunning\ttrue,\t0,\tx\tn1`]);
-    assert.equal((await h.istek('GET', `/ops-result/1/${r2.body.jobId}`, U.ali)).status, 200, 'bellek kaydi');
+    assert.equal(
+      (await h.istek('GET', `/ops-result/1/${r2.body.jobId}`, U.ali)).status,
+      200,
+      'bellek kaydi',
+    );
     assert.equal((await h.istek('GET', `/ops-result/1/${r2.body.jobId}`, U.veli)).status, 403);
     h.durum.dbBozuk = false;
   } finally {
@@ -110,12 +140,20 @@ test('B4 /job-status: yalniz kendi Crypto Hub isi (onceden HER AWX isi donuyordu
     assert.equal((await h.istek('GET', `/job-status/1/${j}`, U.veli)).status, 403);
     assert.equal((await h.istek('GET', `/job-status/1/${j}`, U.metacocu)).status, 403);
     assert.equal((await h.istek('GET', `/job-status/1/31337`, U.ali)).status, 403, 'rastgele is');
-    assert.equal((await h.istek('GET', `/job-status/1/31337`, U.admin)).status, 403, 'kayitsiz is Admin icin de');
+    assert.equal(
+      (await h.istek('GET', `/job-status/1/31337`, U.admin)).status,
+      403,
+      'kayitsiz is Admin icin de',
+    );
     // Tarama baslarken gecmis yazilamadi: sahiplik bellekten (DB okunamasa da).
     h.durum.dbBozuk = true;
     const r2 = await h.istek('POST', '/rescan', U.ali, { tenant: T });
     assert.equal(r2.status, 200);
-    assert.equal((await h.istek('GET', `/job-status/1/${r2.body.jobId}`, U.ali)).status, 200, 'bellek kaydi');
+    assert.equal(
+      (await h.istek('GET', `/job-status/1/${r2.body.jobId}`, U.ali)).status,
+      200,
+      'bellek kaydi',
+    );
     h.RES._sifirla();
     assert.equal((await h.istek('GET', `/job-status/1/${j}`, U.ali)).status, 503);
   } finally {
@@ -143,7 +181,10 @@ test('K3 gecmis kaydi: icerik YOK, sha256 + boyut; runner redaksiyonu da uygulan
     assert.ok(!g.params.includes('COKGIZLI'), 'parola gecmiste');
     assert.ok(!g.params.includes(b64), 'base64 icerik gecmiste');
     const p = JSON.parse(g.params);
-    assert.equal(p.crypto_hub_values_b64.sha256, require('node:crypto').createHash('sha256').update(icerik).digest('hex'));
+    assert.equal(
+      p.crypto_hub_values_b64.sha256,
+      require('node:crypto').createHash('sha256').update(icerik).digest('hex'),
+    );
     assert.equal(p.crypto_hub_values_b64.bayt, Buffer.byteLength(icerik));
     assert.equal(p.crypto_hub_targets, '***gizli***', "runner'in redaksiyonu uygulanmadi");
     // configmap_put patch'i de icerik tasir.
@@ -156,7 +197,10 @@ test('K3 gecmis kaydi: icerik YOK, sha256 + boyut; runner redaksiyonu da uygulan
       data: { 'app.properties': 'db.password=COKGIZLI456' },
     });
     const g2 = h.durum.history.at(-1).params;
-    assert.ok(!g2.includes('COKGIZLI456') && !g2.includes(Buffer.from('COKGIZLI456').toString('base64').slice(0, 12)));
+    assert.ok(
+      !g2.includes('COKGIZLI456') &&
+        !g2.includes(Buffer.from('COKGIZLI456').toString('base64').slice(0, 12)),
+    );
     assert.match(g2, /sha256/);
     // ESKI satirlar (/api/ansible/history cevabi): icerik ozetlenir.
     const eski = {
@@ -169,7 +213,10 @@ test('K3 gecmis kaydi: icerik YOK, sha256 + boyut; runner redaksiyonu da uygulan
     const baska = { template_name: 'OpsX: x', params: '{"a":"b"}' };
     assert.equal(h.RES.gecmisSatiriniTemizle(baska), baska, 'Crypto Hub disi satira dokunulmaz');
     const bozuk = { template_name: 'Crypto Hub: x @ y', params: 'x'.repeat(5000) };
-    assert.ok(h.RES.gecmisSatiriniTemizle(bozuk).params.length < 500, 'JSON olmayan uzun params ozetlenir');
+    assert.ok(
+      h.RES.gecmisSatiriniTemizle(bozuk).params.length < 500,
+      'JSON olmayan uzun params ozetlenir',
+    );
     // Anahtar adi degisse bile uzun deger ozetlenir (B3 korlugu).
     const ad = h.RES.gecmisParametreleri({ crypto_hub_baska_ad: 'A'.repeat(3000), kisa: 'x' });
     assert.equal(ad.crypto_hub_baska_ad.gecmiseYazilmadi, true);
@@ -234,7 +281,14 @@ test('K3 helm_template onizlemesi: Secret data/stringData ve sir adli degerler M
     assert.equal(s.status, 200);
     const metin = s.body.result.template.lines.join('\n');
     assert.match(metin, /level: debug/, 'blok skaler sonrasi sirsiz satir korunur');
-    for (const sir of ['U0VDUkVUMQ', 'SECRETBLOCK2', 'BEGIN KEY', 'SECRET3', 'SECRET4', 'SECRET7']) {
+    for (const sir of [
+      'U0VDUkVUMQ',
+      'SECRETBLOCK2',
+      'BEGIN KEY',
+      'SECRET3',
+      'SECRET4',
+      'SECRET7',
+    ]) {
       assert.ok(!metin.includes(sir), `onizlemede sir: ${sir}`);
     }
     assert.match(metin, /DB_PASSWORD: \*\*\*\*/);
@@ -262,12 +316,20 @@ test('KP plan kapilari: prod 403, Metaco 501, dosya tanimsiz 409, kayitsiz/olu y
     const prod = await opsBaslat(h, U.ali, { ...PLAN_GOVDE, tenant: 'wyden_prod_h3' });
     assert.equal(prod.status, 403, 'PRODUCTION_ENABLED acik olsa bile prod plan KAPALI');
     assert.equal(prod.body.code, 'PROD_KAPALI');
-    const prodGet = await opsBaslat(h, U.ali, { tenant: 'wyden_prod_h3', action: 'resources_get', targets: [] });
+    const prodGet = await opsBaslat(h, U.ali, {
+      tenant: 'wyden_prod_h3',
+      action: 'resources_get',
+      targets: [],
+    });
     assert.equal(prodGet.status, 200, 'prod okuma (resources_get) serbest');
     const metaco = await opsBaslat(h, U.metacocu, { ...PLAN_GOVDE, tenant: 'metaco_das_test' });
     assert.equal(metaco.status, 501);
     assert.equal(metaco.body.code, 'CHART_YOK');
-    const metacoGet = await opsBaslat(h, U.metacocu, { tenant: 'metaco_das_test', action: 'resources_get', targets: [] });
+    const metacoGet = await opsBaslat(h, U.metacocu, {
+      tenant: 'metaco_das_test',
+      action: 'resources_get',
+      targets: [],
+    });
     assert.equal(metacoGet.status, 200, 'Metaco gosterim acik');
     const dev = await opsBaslat(h, U.ali, { ...PLAN_GOVDE, tenant: 'wyden_dev' });
     assert.equal(dev.status, 409);
@@ -292,7 +354,12 @@ test('KP plan kapilari: prod 403, Metaco 501, dosya tanimsiz 409, kayitsiz/olu y
     const pol = await opsBaslat(h, U.ali, {
       ...PLAN_GOVDE,
       changes: [{ alan: 'limits.memory', eski: '2Gi', yeni: '8Gi' }],
-      live: { 'requests.cpu': '500m', 'requests.memory': null, 'limits.cpu': '2', 'limits.memory': '2Gi' },
+      live: {
+        'requests.cpu': '500m',
+        'requests.memory': null,
+        'limits.cpu': '2',
+        'limits.memory': '2Gi',
+      },
     });
     assert.equal(pol.status, 422);
     assert.equal(pol.body.code, 'POLITIKA');
@@ -307,7 +374,12 @@ test('KP plan kapilari: prod 403, Metaco 501, dosya tanimsiz 409, kayitsiz/olu y
     const asim = await opsBaslat(h, U.admin, {
       ...PLAN_GOVDE,
       changes: [{ alan: 'limits.memory', eski: '2Gi', yeni: '8Gi' }],
-      live: { 'requests.cpu': '500m', 'requests.memory': null, 'limits.cpu': '2', 'limits.memory': '2Gi' },
+      live: {
+        'requests.cpu': '500m',
+        'requests.memory': null,
+        'limits.cpu': '2',
+        'limits.memory': '2Gi',
+      },
       policyOverride: true,
       reason: 'kapasite testi icin gecici artis',
     });
@@ -315,20 +387,30 @@ test('KP plan kapilari: prod 403, Metaco 501, dosya tanimsiz 409, kayitsiz/olu y
     assert.equal(h.durum.launches.length, once + 1);
     const ev = h.durum.launches.at(-1).extraVars;
     assert.equal(ev.crypto_hub_res_policy_override, true);
-    assert.ok(!JSON.stringify(ev).includes('kapasite testi'), 'gerekce AWX\'e GITMEZ');
-    const den = h.durum.audits.find((a) => a.action === 'crypto_hub_resources_plan' && /kapasite testi/.test(a.opts.detail));
+    assert.ok(!JSON.stringify(ev).includes('kapasite testi'), "gerekce AWX'e GITMEZ");
+    const den = h.durum.audits.find(
+      (a) => a.action === 'crypto_hub_resources_plan' && /kapasite testi/.test(a.opts.detail),
+    );
     assert.ok(den, 'gerekce denetim kaydina girmeli');
     // Bicimi bozuk birim / requests > limits (K8S) Admin asimiyla da gecmez.
     const k8s = await opsBaslat(h, U.admin, {
       ...PLAN_GOVDE,
       changes: [{ alan: 'requests.cpu', eski: '500m', yeni: '3' }],
-      live: { 'requests.cpu': '500m', 'requests.memory': null, 'limits.cpu': '2', 'limits.memory': '2Gi' },
+      live: {
+        'requests.cpu': '500m',
+        'requests.memory': null,
+        'limits.cpu': '2',
+        'limits.memory': '2Gi',
+      },
       policyOverride: true,
       reason: 'kapasite testi icin gecici artis',
     });
     assert.equal(k8s.status, 422);
     assert.equal(k8s.body.code, 'K8S_KURAL');
-    const birim = await opsBaslat(h, U.ali, { ...PLAN_GOVDE, changes: [{ alan: 'limits.memory', eski: '2Gi', yeni: '3G' }] });
+    const birim = await opsBaslat(h, U.ali, {
+      ...PLAN_GOVDE,
+      changes: [{ alan: 'limits.memory', eski: '2Gi', yeni: '3G' }],
+    });
     assert.equal(birim.status, 400);
   } finally {
     await h.kapat();
@@ -343,7 +425,12 @@ test('KP canli deger SUNUCUNUN olcumunden (istemcinin soyledigi degil)', async (
       // Dosyada yok (eski ''), canlida yok: oran tabani yok -> yalniz requests <= limits.
       changes: [{ alan: 'requests.memory', eski: '', yeni: '3Gi' }],
       // Istemci limiti 100Gi gosteriyor (bayat ya da uydurma).
-      live: { 'requests.cpu': '500m', 'requests.memory': null, 'limits.cpu': '2', 'limits.memory': '100Gi' },
+      live: {
+        'requests.cpu': '500m',
+        'requests.memory': null,
+        'limits.cpu': '2',
+        'limits.memory': '100Gi',
+      },
     };
     // Sunucu olcumu YOKKEN istemcinin degeri yalniz on eleme: gecer, kaynak 'istemci'.
     const once = await opsBaslat(h, U.ali, govde);
@@ -357,7 +444,10 @@ test('KP canli deger SUNUCUNUN olcumunden (istemcinin soyledigi degil)', async (
     const r = await opsBaslat(h, U.ali, govde);
     assert.equal(r.status, 422, JSON.stringify(r.body));
     assert.equal(r.body.code, 'K8S_KURAL');
-    const iyi = await opsBaslat(h, U.ali, { ...govde, changes: [{ alan: 'requests.memory', eski: '', yeni: '2Gi' }] });
+    const iyi = await opsBaslat(h, U.ali, {
+      ...govde,
+      changes: [{ alan: 'requests.memory', eski: '', yeni: '2Gi' }],
+    });
     assert.equal(iyi.status, 200);
     assert.equal(iyi.body.canliKaynagi, 'sunucu');
   } finally {
@@ -378,12 +468,27 @@ test('KJ plan jetonu: kullaniciya + kiraciya bagli, yalniz temiz plana, tek kull
     const ikinci = await h.istek('GET', `/ops-result/1/${jobId}`, U.ali);
     assert.equal(ikinci.body.result.resources.planJetonu, res.planJetonu);
     const tok = res.planJetonu;
-    assert.equal((await opsBaslat(h, U.ali, { ...APPLY(tok), confirmed: undefined })).status, 428, 'onaysiz');
+    assert.equal(
+      (await opsBaslat(h, U.ali, { ...APPLY(tok), confirmed: undefined })).status,
+      428,
+      'onaysiz',
+    );
     assert.equal((await opsBaslat(h, U.veli, APPLY(tok))).body.code, 'JETON_BASKASI');
-    assert.equal((await opsBaslat(h, U.ali, { ...APPLY(tok), tenant: 'wyden_qa_h3' })).body.code, 'JETON_KIRACI');
-    assert.equal((await opsBaslat(h, U.ali, APPLY(hex('uydurma')))).status, 409, 'bilinmeyen jeton');
+    assert.equal(
+      (await opsBaslat(h, U.ali, { ...APPLY(tok), tenant: 'wyden_qa_h3' })).body.code,
+      'JETON_KIRACI',
+    );
+    assert.equal(
+      (await opsBaslat(h, U.ali, APPLY(hex('uydurma')))).status,
+      409,
+      'bilinmeyen jeton',
+    );
     const once = h.durum.launches.length;
-    const ap = await opsBaslat(h, U.ali, { ...APPLY(tok), planSha: hex('sahte'), component: 'storage' });
+    const ap = await opsBaslat(h, U.ali, {
+      ...APPLY(tok),
+      planSha: hex('sahte'),
+      component: 'storage',
+    });
     assert.equal(ap.status, 200, JSON.stringify(ap.body));
     assert.equal(h.durum.launches.length, once + 1);
     const ev = h.durum.launches.at(-1).extraVars;
@@ -400,7 +505,11 @@ test('KJ plan jetonu: kullaniciya + kiraciya bagli, yalniz temiz plana, tek kull
     const yeniden = await h.istek('GET', `/ops-result/1/${jobId}`, U.ali);
     assert.equal(yeniden.status, 200);
     assert.equal(yeniden.body.result.resources.planJetonDurumu, 'kullanildi');
-    assert.equal(yeniden.body.result.resources.planJetonu, null, 'kullanilmis plana yeni jeton verildi');
+    assert.equal(
+      yeniden.body.result.resources.planJetonu,
+      null,
+      'kullanilmis plana yeni jeton verildi',
+    );
     assert.equal(h.durum.launches.length, sayi);
     // Kilit de 409 verir; burada nedenin JETON oldugu olculur (kilit bosaltilir).
     h.durum.locks.clear();
@@ -415,7 +524,10 @@ test('KJ plan jetonu: kullaniciya + kiraciya bagli, yalniz temiz plana, tek kull
     const p2 = await planUret(h);
     const simdi = Date.now();
     assert.ok(h.RES.planAl(p2.res.planJetonu, 'ali', T, simdi + 14 * 60 * 1000).plan);
-    assert.equal(h.RES.planAl(p2.res.planJetonu, 'ali', T, simdi + 16 * 60 * 1000).hata, 'JETON_SURESI');
+    assert.equal(
+      h.RES.planAl(p2.res.planJetonu, 'ali', T, simdi + 16 * 60 * 1000).hata,
+      'JETON_SURESI',
+    );
   } finally {
     await h.kapat();
   }
@@ -448,14 +560,19 @@ test('KR riskli bilesen ve bekleyen fark: ayri onay SUNUCUDA zorunlu', async () 
     assert.equal(evet.status, 200);
     assert.equal(h.durum.launches.at(-1).extraVars.crypto_hub_res_risky_ack, true);
     // Kayit riskli (aeron) ise RESPLAN 'hayir' dese de onay gerekir.
-    const aeron = await planUret(h, U.ali, {}, {
-      ...PLAN_GOVDE,
-      component: 'aeron-cluster',
-      container: 'aeron-node',
-      kind: 'StatefulSet',
-      name: 'wydenapp-aeron-cluster',
-      changes: [{ alan: 'limits.cpu', eski: '', yeni: '2' }],
-    });
+    const aeron = await planUret(
+      h,
+      U.ali,
+      {},
+      {
+        ...PLAN_GOVDE,
+        component: 'aeron-cluster',
+        container: 'aeron-node',
+        kind: 'StatefulSet',
+        name: 'wydenapp-aeron-cluster',
+        changes: [{ alan: 'limits.cpu', eski: '', yeni: '2' }],
+      },
+    );
     h.durum.locks.clear();
     const a1 = await opsBaslat(h, U.ali, APPLY(aeron.res.planJetonu));
     assert.equal(a1.status, 428, 'ad deseni riskli');
@@ -492,9 +609,16 @@ test('KK DB kilidi: ikinci uygulama 409; is bitince UPDATE ile birakilir; DELETE
     assert.equal(h.durum.locks.get(`${T}|wydenapp`).held, 0);
     assert.ok(!h.durum.sqlLog.some((q) => /DELETE/i.test(q)), 'TBMWANS: DELETE yok');
     const denetim = h.durum.audits.filter((a) => a.action === 'crypto_hub_resources_apply');
-    assert.deepEqual(denetim.map((a) => JSON.parse(a.opts.detail).asama), ['baslatildi', 'sonuc']);
+    assert.deepEqual(
+      denetim.map((a) => JSON.parse(a.opts.detail).asama),
+      ['baslatildi', 'sonuc'],
+    );
     await h.istek('GET', `/ops-result/1/${a1.body.jobId}`, U.ali);
-    assert.equal(h.durum.audits.filter((a) => a.action === 'crypto_hub_resources_apply').length, 2, 'sonuc bir kez denetlenir');
+    assert.equal(
+      h.durum.audits.filter((a) => a.action === 'crypto_hub_resources_apply').length,
+      2,
+      'sonuc bir kez denetlenir',
+    );
     // Ikinci plan artik uygulanabilir (onceki jeton kullanilmadi).
     const p3 = await planUret(h);
     const a3 = await opsBaslat(h, U.ali, APPLY(p3.res.planJetonu));
@@ -538,24 +662,41 @@ test('KK DB kilidi: ikinci uygulama 409; is bitince UPDATE ile birakilir; DELETE
 test('B3 resources_* extra_vars ve gecmis: dosya icerigi YOK, her deger <= 2048, yol yok', async () => {
   const h = await kur();
   try {
-    await opsBaslat(h, U.ali, { tenant: T, action: 'resources_get', targets: [], content: 'x'.repeat(4000) });
+    await opsBaslat(h, U.ali, {
+      tenant: T,
+      action: 'resources_get',
+      targets: [],
+      content: 'x'.repeat(4000),
+    });
     const p = await planUret(h);
-    await opsBaslat(h, U.ali, APPLY(p.res.planJetonu, { content: 'GIZLI'.repeat(900), valuesPath: '/vhosting/z' }));
-    const kaynak = h.durum.launches.filter((l) => /^resources_/.test(l.extraVars.crypto_hub_action));
+    await opsBaslat(
+      h,
+      U.ali,
+      APPLY(p.res.planJetonu, { content: 'GIZLI'.repeat(900), valuesPath: '/vhosting/z' }),
+    );
+    const kaynak = h.durum.launches.filter((l) =>
+      /^resources_/.test(l.extraVars.crypto_hub_action),
+    );
     assert.equal(kaynak.length, 3);
     for (const l of kaynak) {
       for (const [k, v] of Object.entries(l.extraVars)) {
-        assert.ok(!/values_b64|values_path|values_paths|content|chart_ref|backup_path/.test(k), `${k} kaynak isinde olmamali`);
+        assert.ok(
+          !/values_b64|values_path|values_paths|content|chart_ref|backup_path/.test(k),
+          `${k} kaynak isinde olmamali`,
+        );
         assert.ok(String(v).length <= 2048, `${k} 2048'i asiyor`);
       }
       if (l.extraVars.crypto_hub_res_changes_b64) {
-        const ch = JSON.parse(Buffer.from(l.extraVars.crypto_hub_res_changes_b64, 'base64').toString('utf8'));
+        const ch = JSON.parse(
+          Buffer.from(l.extraVars.crypto_hub_res_changes_b64, 'base64').toString('utf8'),
+        );
         for (const o of ch) assert.deepEqual(Object.keys(o).sort(), ['alan', 'eski', 'yeni']);
       }
     }
     for (const g of h.durum.history.filter((x) => /resources_/.test(x.template_name))) {
       const p2 = JSON.parse(g.params);
-      for (const [k, v] of Object.entries(p2)) assert.ok(JSON.stringify(v).length <= 2100, `gecmis ${k}`);
+      for (const [k, v] of Object.entries(p2))
+        assert.ok(JSON.stringify(v).length <= 2100, `gecmis ${k}`);
       assert.ok(!g.params.includes('GIZLI'), 'gecmiste icerik');
     }
   } finally {
@@ -574,7 +715,11 @@ test('RES ayristirici: olculemedi ile yok/gecti KARISMAZ', () => {
     `RESERR\t${T}\tlimitrange\tForbidden`,
     `RESEND\t${T}\tresources_get\tkismi\tOLCULEMEDI`,
   ]);
-  assert.equal(b.limitRange.durum, 'olculemedi', 'okunamadi satiri varken kismi satir olculdu SAYILMAZ');
+  assert.equal(
+    b.limitRange.durum,
+    'olculemedi',
+    'okunamadi satiri varken kismi satir olculdu SAYILMAZ',
+  );
   assert.equal(b.quota.durum, 'olculemedi', 'satir hic yoksa olculemedi (yok DEGIL)');
   // M3 (entegrasyon denetcisi): LimitRange/kota satiri HIC gelmezse (bastion'da python3 yok,
   // cikti kesik) durum 'olculemedi' kalir - 'yok' DEGIL. Iki kaynak icin de ayri olculur.
@@ -583,18 +728,32 @@ test('RES ayristirici: olculemedi ile yok/gecti KARISMAZ', () => {
   assert.equal(hic.quota.durum, 'olculemedi', 'kota satiri yokken yok sayildi');
   const yalnizKota = parseResourceLines([`RESQUOTA\t${T}\t-\t-\t-\tYOK`]);
   assert.equal(yalnizKota.quota.durum, 'yok');
-  assert.equal(yalnizKota.limitRange.durum, 'olculemedi', 'kota yok satiri LimitRange icin yok SAYILMAZ');
+  assert.equal(
+    yalnizKota.limitRange.durum,
+    'olculemedi',
+    'kota yok satiri LimitRange icin yok SAYILMAZ',
+  );
   // RESAFFECT 7. alan: bekleyen is yuku (eski betik basmaz -> hedef).
   const af = parseResourceLines([
     `RESAFFECT\t${T}\tStatefulSet\twydenapp-aeron-cluster\tRollingUpdate\t3\tevet\tbekleyen`,
     `RESAFFECT\t${T}\tDeployment\twydenapp-access-gateway\tRollingUpdate\t2\thayir`,
   ]);
-  assert.deepEqual(af.affect.map((a) => [a.ad, a.riskli, a.bekleyen]), [
-    ['wydenapp-aeron-cluster', true, true],
-    ['wydenapp-access-gateway', false, false],
+  assert.deepEqual(
+    af.affect.map((a) => [a.ad, a.riskli, a.bekleyen]),
+    [
+      ['wydenapp-aeron-cluster', true, true],
+      ['wydenapp-access-gateway', false, false],
+    ],
+  );
+  const c = parseResourceLines([
+    `RESPLAN\t${T}\tok\t-\tkisa\t${hex(1)}\t${hex(2)}\t-\thayir\t${hex(3)}`,
+    `RESEND\t${T}\tresources_plan\tok\t-`,
   ]);
-  const c = parseResourceLines([`RESPLAN\t${T}\tok\t-\tkisa\t${hex(1)}\t${hex(2)}\t-\thayir\t${hex(3)}`, `RESEND\t${T}\tresources_plan\tok\t-`]);
-  assert.equal(require('../resources.cjs').planTemizMi(c), false, 'sha bicimi bozuk plan temiz SAYILMAZ');
+  assert.equal(
+    require('../resources.cjs').planTemizMi(c),
+    false,
+    'sha bicimi bozuk plan temiz SAYILMAZ',
+  );
   // CELISKILI cikti (RESPLAN dur ama jeton ve RESEND ok): jeton VERILMEZ - her parca ayri sart.
   const celiski = parseResourceLines([
     `RESPLAN\t${T}\tdur\tOLU_ANAHTAR\t${hex(1)}\t${hex(2)}\t${hex(3)}\t-\thayir\t${hex(4)}`,
@@ -605,7 +764,11 @@ test('RES ayristirici: olculemedi ile yok/gecti KARISMAZ', () => {
     `RESPLAN\t${T}\tok\t-\t${hex(1)}\t${hex(2)}\t${hex(3)}\t-\thayir\t${hex(4)}`,
     `RESEND\t${T}\tresources_plan\tdur\tKOTA`,
   ]);
-  assert.equal(require('../resources.cjs').planTemizMi(sonsuz), false, 'RESEND dur iken temiz sayildi');
+  assert.equal(
+    require('../resources.cjs').planTemizMi(sonsuz),
+    false,
+    'RESEND dur iken temiz sayildi',
+  );
   const tam = parseResourceLines([
     `RESPLAN\t${T}\tok\t-\t${hex(1)}\t${hex(2)}\t${hex(3)}\t-\thayir\t${hex(4)}`,
     `RESEND\t${T}\tresources_plan\tok\t-`,
@@ -620,7 +783,9 @@ test('RES ayristirici: olculemedi ile yok/gecti KARISMAZ', () => {
 
 function sonucKayitlari(h) {
   return h.durum.audits
-    .filter((x) => x.action === 'crypto_hub_resources_apply' && /"asama":"sonuc"/.test(x.opts.detail))
+    .filter(
+      (x) => x.action === 'crypto_hub_resources_apply' && /"asama":"sonuc"/.test(x.opts.detail),
+    )
     .map((x) => ({ ...x, detay: JSON.parse(x.opts.detail) }));
 }
 
@@ -639,14 +804,28 @@ test('KJ jeton suresi plan URETILDIGINDE baslar: eski plan isi taze jeton ALAMAZ
     // (a) AWX bitis ani biliniyor: jeton bitis + 15 dk'da biter; 20 dk sonra yoklanan plan almaz.
     const a = await opsBaslat(h, U.ali, PLAN_GOVDE);
     const t0 = gercek();
-    h.bitir(a.body.jobId, 'resources_plan', T, ornek.plan(), 'successful', new Date(t0 + 60000).toISOString());
+    h.bitir(
+      a.body.jobId,
+      'resources_plan',
+      T,
+      ornek.plan(),
+      'successful',
+      new Date(t0 + 60000).toISOString(),
+    );
     const ra = await yokla(a.body.jobId, 20 * 60000, t0);
     assert.equal(ra.planJetonDurumu, 'suresi_doldu');
     assert.equal(ra.planJetonu, null, 'suresi dolmus plana jeton verildi');
     // Ayni durum 10 dk sonra: jeton var, bitisi AWX bitisi + 15 dk (ilk yoklama + 15 DEGIL).
     const b = await opsBaslat(h, U.ali, PLAN_GOVDE);
     const t1 = gercek();
-    h.bitir(b.body.jobId, 'resources_plan', T, ornek.plan(), 'successful', new Date(t1 + 60000).toISOString());
+    h.bitir(
+      b.body.jobId,
+      'resources_plan',
+      T,
+      ornek.plan(),
+      'successful',
+      new Date(t1 + 60000).toISOString(),
+    );
     const rb = await yokla(b.body.jobId, 10 * 60000, t1);
     assert.match(rb.planJetonu, /^[0-9a-f]{64}$/);
     assert.equal(rb.planBitis, t1 + 16 * 60000);
@@ -673,7 +852,11 @@ test('KR bekleyen riskli is yuku: RESPLAN riskli=hayir olsa da RESAFFECT riskli 
   try {
     const r = await opsBaslat(h, U.ali, PLAN_GOVDE);
     const lines = ornek.plan();
-    lines.splice(lines.length - 2, 0, `RESAFFECT\t${T}\tStatefulSet\twydenapp-aeron-cluster\tRollingUpdate\t3\tevet\tbekleyen`);
+    lines.splice(
+      lines.length - 2,
+      0,
+      `RESAFFECT\t${T}\tStatefulSet\twydenapp-aeron-cluster\tRollingUpdate\t3\tevet\tbekleyen`,
+    );
     h.bitir(r.body.jobId, 'resources_plan', T, lines);
     const s = await h.istek('GET', `/ops-result/1/${r.body.jobId}`, U.ali);
     const tok = s.body.result.resources.planJetonu;
@@ -699,11 +882,21 @@ test('B4 is kapisi: kapali (prod) kiracinin isi kapali; DB-only tarama kaydi sah
     }
     // MK6: Portal yeniden basladi (bellek bos); tarama kaydi yalniz DB'de "Crypto Hub: <kiraci>".
     h.RES._sifirla();
-    h.durum.history.push({ username: 'ali', awx_server_id: 1, job_id: 7777, template_name: 'Crypto Hub: wyden_qa_h2' });
+    h.durum.history.push({
+      username: 'ali',
+      awx_server_id: 1,
+      job_id: 7777,
+      template_name: 'Crypto Hub: wyden_qa_h2',
+    });
     const ok = await h.istek('GET', '/job-status/1/7777', U.ali);
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
     assert.equal((await h.istek('GET', '/job-status/1/7777', U.veli)).status, 403);
-    h.durum.history.push({ username: 'veli', awx_server_id: 1, job_id: 7778, template_name: 'Crypto Hub: pods @ wyden_qa_h2' });
+    h.durum.history.push({
+      username: 'veli',
+      awx_server_id: 1,
+      job_id: 7778,
+      template_name: 'Crypto Hub: pods @ wyden_qa_h2',
+    });
     assert.equal((await h.istek('GET', '/job-status/1/7778', U.veli)).status, 200);
   } finally {
     await h.kapat();
@@ -721,7 +914,10 @@ test('KK kilitAl yarisi: UPDATE 0 satir + INSERT UNIQUE hatasi -> mesgul (alindi
         if (/^SELECT TOP 1 held/.test(s)) {
           secim += 1;
           if (secim === 1 || !ikinciSatir) return { rows: [], rowCount: 0 };
-          return { rows: [{ held: 1, holder: 'veli', awx_server_id: 1, awx_job_id: 9 }], rowCount: 1 };
+          return {
+            rows: [{ held: 1, holder: 'veli', awx_server_id: 1, awx_job_id: 9 }],
+            rowCount: 1,
+          };
         }
         if (/^INSERT INTO crypto_hub_locks/.test(s)) throw new Error('UNIQUE KEY ihlali');
         throw new Error(`beklenmeyen sorgu: ${s.slice(0, 60)}`);
@@ -743,9 +939,30 @@ test('KK values_put / values_restore / helm_upgrade: CPU/bellek uygulamasi surer
     assert.equal(a.status, 200);
     const yol = '/vhosting/a/garanti_values.yaml';
     const govdeler = [
-      { tenant: T, action: 'values_put', targets: [], confirmed: true, valuesPath: yol, content: 'a: 1\n' },
-      { tenant: T, action: 'values_restore', targets: [], confirmed: true, valuesPath: yol, backupPath: `${yol}.20261002.bak` },
-      { tenant: T, action: 'helm_upgrade', targets: [], confirmed: true, release: 'wydenapp', valuesPath: yol },
+      {
+        tenant: T,
+        action: 'values_put',
+        targets: [],
+        confirmed: true,
+        valuesPath: yol,
+        content: 'a: 1\n',
+      },
+      {
+        tenant: T,
+        action: 'values_restore',
+        targets: [],
+        confirmed: true,
+        valuesPath: yol,
+        backupPath: `${yol}.20261002.bak`,
+      },
+      {
+        tenant: T,
+        action: 'helm_upgrade',
+        targets: [],
+        confirmed: true,
+        release: 'wydenapp',
+        valuesPath: yol,
+      },
     ];
     const once = h.durum.launches.length;
     for (const g of govdeler) {
@@ -764,7 +981,10 @@ test('KK values_put / values_restore / helm_upgrade: CPU/bellek uygulamasi surer
     assert.equal(sonra.status, 200, JSON.stringify(sonra.body));
     const s = sonucKayitlari(h);
     assert.equal(s.length, 1);
-    assert.deepEqual([s[0].detay.yol, s[0].detay.isSahibi, s[0].detay.yoklayan], ['devralma', 'ali', 'veli']);
+    assert.deepEqual(
+      [s[0].detay.yol, s[0].detay.isSahibi, s[0].detay.yoklayan],
+      ['devralma', 'ali', 'veli'],
+    );
   } finally {
     await h.kapat();
   }
@@ -777,11 +997,20 @@ test('KS uygulama SONUC kaydi istemciden bagimsiz: /job-status, devralma, suresi
     // (1) Ekran kapandi; is-takipcisi yalniz /job-status'u yokluyor.
     const p1 = await planUret(h);
     const a1 = await opsBaslat(h, U.ali, APPLY(p1.res.planJetonu));
-    h.bitir(a1.body.jobId, 'resources_apply', T, ornek.apply({ sonuc: 'geri_alinamadi' }), 'failed');
+    h.bitir(
+      a1.body.jobId,
+      'resources_apply',
+      T,
+      ornek.apply({ sonuc: 'geri_alinamadi' }),
+      'failed',
+    );
     assert.equal((await h.istek('GET', `/job-status/1/${a1.body.jobId}`, U.ali)).status, 200);
     let s = sonucKayitlari(h);
     assert.equal(s.length, 1, '/job-status yolunda sonuc kaydi yazilmadi');
-    assert.deepEqual([s[0].detay.sonuc, s[0].detay.yol, s[0].opts.username], ['geri_alinamadi', 'job-status', 'ali']);
+    assert.deepEqual(
+      [s[0].detay.sonuc, s[0].detay.yol, s[0].opts.username],
+      ['geri_alinamadi', 'job-status', 'ali'],
+    );
     assert.equal(kilit().held, 0);
     await h.istek('GET', `/ops-result/1/${a1.body.jobId}`, U.ali);
     assert.equal(sonucKayitlari(h).length, 1, 'ayni sonuc ikinci kez yazildi');
@@ -795,7 +1024,13 @@ test('KS uygulama SONUC kaydi istemciden bagimsiz: /job-status, devralma, suresi
     s = sonucKayitlari(h);
     assert.equal(s.length, 2, 'devralmada onceki isin sonucu kaydedilmedi');
     assert.deepEqual(
-      [s[1].detay.sonuc, s[1].detay.yol, s[1].detay.isSahibi, s[1].detay.yoklayan, s[1].opts.username],
+      [
+        s[1].detay.sonuc,
+        s[1].detay.yol,
+        s[1].detay.isSahibi,
+        s[1].detay.yoklayan,
+        s[1].opts.username,
+      ],
       ['uygulandi_sorunlu', 'devralma', 'ali', 'veli', 'ali'],
     );
     // (3) Suresi dolmus (yetim) kilit: CAS UPDATE devralmadan ONCE onceki isin sonucu kapatilir.
@@ -835,7 +1070,10 @@ test('KS sonucu ilk Admin acsa da kayit IS SAHIBI adina; yoklayan ayri alan', as
     assert.equal((await h.istek('GET', `/ops-result/1/${a.body.jobId}`, U.admin)).status, 200);
     const s = sonucKayitlari(h);
     assert.equal(s.length, 1);
-    assert.deepEqual([s[0].opts.username, s[0].detay.isSahibi, s[0].detay.yoklayan], ['ali', 'ali', 'boss']);
+    assert.deepEqual(
+      [s[0].opts.username, s[0].detay.isSahibi, s[0].detay.yoklayan],
+      ['ali', 'ali', 'boss'],
+    );
     await h.istek('GET', `/ops-result/1/${a.body.jobId}`, U.ali);
     assert.equal(sonucKayitlari(h).length, 1);
   } finally {

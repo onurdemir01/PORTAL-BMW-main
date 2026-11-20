@@ -82,7 +82,7 @@ function grupHesapla(g, veriler, nowMs, tazeSaat) {
       durum: d.durum,
       neden: d.neden,
       seenAt: v.seenAt || null,
-      dumpedAt: (v.ozet && v.ozet.dumpedAt) || null,
+      dumpedAt: v.ozet?.dumpedAt || null,
       paketSayisi: pkgs ? pkgs.filter((p) => p.durum === 'var').length : null,
       pkgs,
     };
@@ -201,7 +201,7 @@ function uygulamaSatiri(key, m, okunan) {
     cogunluk,
     sunucular: hostlar.map((h) => {
       const p = m.get(h);
-      if (p && p.durum === 'var') {
+      if (p?.durum === 'var') {
         return {
           host: h,
           version: p.version,
@@ -212,7 +212,7 @@ function uygulamaSatiri(key, m, okunan) {
           bayatSikistirma: p.bayatSikistirma || 0,
         };
       }
-      if (p && p.durum === 'okunamadi') return { host: h, okunamadi: true, version: p.version };
+      if (p?.durum === 'okunamadi') return { host: h, okunamadi: true, version: p.version };
       return { host: h, yok: true };
     }),
   };

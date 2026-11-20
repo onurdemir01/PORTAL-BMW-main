@@ -51,7 +51,7 @@ function bagla(kok = KOK) {
   const hedef = path.join(kok, 'gelistirme', 'node_modules');
   const bag = path.join(kok, 'node_modules');
   const s = durum(bag);
-  if (s && s.isSymbolicLink()) fs.unlinkSync(bag);
+  if (s?.isSymbolicLink()) fs.unlinkSync(bag);
   else if (s) fs.rmSync(bag, { recursive: true, force: true });
   // Goreli hedef: depo tasinsa da bag gecerli kalir. Windows'ta yonetici izni istemeyen junction
   // (junction mutlak yol ister).
@@ -63,7 +63,7 @@ function bagla(kok = KOK) {
 function coz(kok = KOK) {
   const bag = path.join(kok, 'node_modules');
   const s = durum(bag);
-  if (s && s.isSymbolicLink()) fs.unlinkSync(bag);
+  if (s?.isSymbolicLink()) fs.unlinkSync(bag);
   fs.rmSync(path.join(kok, 'gelistirme', 'node_modules'), { recursive: true, force: true });
 }
 

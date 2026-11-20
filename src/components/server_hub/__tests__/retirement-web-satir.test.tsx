@@ -15,10 +15,24 @@
 // Korluk: CSS hizasi olculmez (jsdom yerlesim yapmaz); gorsel olcut sartname §11.
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { WebAyrinti, WebKaynak, WebVhostListesi, trafikBirlestir, webGrupla, webKey } from '@/components/server_hub/RetirementWebSatir';
+import {
+  WebAyrinti,
+  WebKaynak,
+  WebVhostListesi,
+  trafikBirlestir,
+  webGrupla,
+  webKey,
+} from '@/components/server_hub/RetirementWebSatir';
 import type { RtVhostTrafik, RtWeb } from '@/api/retirementApi';
 
-const w = (ek: Partial<RtWeb> = {}): RtWeb => ({ host: 'GBJBOAP13', serverName: 'gbcepposdashboard.fw.garantibbva.com.tr', product: 'IHS', port: '80', confFile: '/usr/IBMIHS/conf/mod-jk.conf', ...ek });
+const w = (ek: Partial<RtWeb> = {}): RtWeb => ({
+  host: 'GBJBOAP13',
+  serverName: 'gbcepposdashboard.fw.garantibbva.com.tr',
+  product: 'IHS',
+  port: '80',
+  confFile: '/usr/IBMIHS/conf/mod-jk.conf',
+  ...ek,
+});
 
 describe('Retirement web satiri', () => {
   it('RWS1 port, conf dosya adi ve urun; tam yol ipucunda', () => {
@@ -45,7 +59,10 @@ describe('Retirement web satiri', () => {
   });
 
   it('RWS5 buyuk/kucuk harf farki ve :80/:443 -> 1 grup, 1 satir, 1 bag', () => {
-    const g = webGrupla([w({ host: 'GBJBOWP13' }), w({ host: 'gbjbowp13', serverName: 'GBCEPPOSDASHBOARD.fw.garantibbva.com.tr', port: '443' })]);
+    const g = webGrupla([
+      w({ host: 'GBJBOWP13' }),
+      w({ host: 'gbjbowp13', serverName: 'GBCEPPOSDASHBOARD.fw.garantibbva.com.tr', port: '443' }),
+    ]);
     expect(g).toHaveLength(1);
     expect(g[0].host).toBe('GBJBOWP13');
     expect(g[0].satirlar).toHaveLength(1);
@@ -63,7 +80,11 @@ describe('Retirement web satiri', () => {
   });
 
   it('RWS7 iki host; ilk gorulme sirasi korunur', () => {
-    const g = webGrupla([w({ host: 'ZZWEB01', serverName: 'b.ornek' }), w({ host: 'AAWEB01', serverName: 'a.ornek' }), w({ host: 'ZZWEB01', serverName: 'a.ornek' })]);
+    const g = webGrupla([
+      w({ host: 'ZZWEB01', serverName: 'b.ornek' }),
+      w({ host: 'AAWEB01', serverName: 'a.ornek' }),
+      w({ host: 'ZZWEB01', serverName: 'a.ornek' }),
+    ]);
     expect(g.map((x) => x.host)).toEqual(['ZZWEB01', 'AAWEB01']);
     expect(g[0].satirlar.map((s) => s.serverName)).toEqual(['b.ornek', 'a.ornek']);
     expect(g[0].satirlar[1].indeksler).toEqual([2]);
@@ -85,19 +106,28 @@ describe('Retirement web satiri', () => {
     expect(b?.req7).toBe(9);
     expect(b?.sampled).toBe(true);
     // Kucuk sayi alt sinirsa birlesik deger de alt sinir.
-    const c = trafikBirlestir([{ durum: 'var', req7: 12 }, { durum: 'var', req7: 3, sampled: true }]);
+    const c = trafikBirlestir([
+      { durum: 'var', req7: 12 },
+      { durum: 'var', req7: 3, sampled: true },
+    ]);
     expect(c?.req7).toBe(12);
     expect(c?.sampled).toBe(true);
     // Satirin trafigi birlestirilmis deger.
-    expect(webGrupla([w({ trafik: yok }), w({ port: '443', trafik: v5 })])[0].satirlar[0].trafik).toBe(v5);
+    expect(
+      webGrupla([w({ trafik: yok }), w({ port: '443', trafik: v5 })])[0].satirlar[0].trafik,
+    ).toBe(v5);
   });
 
   it('RWS9 sag deger ayni izgara satirinda; host grup basina bir kez', () => {
     const web = [
-      w({ host: 'GBJBOWP13', serverName: 'a.ornek' }), w({ host: 'GBJBOWP13', serverName: 'a.ornek', port: '443' }),
-      w({ host: 'GBJBOWP13', serverName: 'b.ornek' }), w({ host: 'GBJBOWP14', serverName: 'a.ornek' }),
+      w({ host: 'GBJBOWP13', serverName: 'a.ornek' }),
+      w({ host: 'GBJBOWP13', serverName: 'a.ornek', port: '443' }),
+      w({ host: 'GBJBOWP13', serverName: 'b.ornek' }),
+      w({ host: 'GBJBOWP14', serverName: 'a.ornek' }),
     ];
-    const { container } = render(<WebVhostListesi web={web} sag={(s) => <span>sag:{s.serverName}</span>} />);
+    const { container } = render(
+      <WebVhostListesi web={web} sag={(s) => <span>sag:{s.serverName}</span>} />,
+    );
     const sag = [...container.querySelectorAll('[data-rt-vhost-sag]')];
     expect(sag).toHaveLength(3);
     for (const el of sag) {
@@ -107,11 +137,18 @@ describe('Retirement web satiri', () => {
     }
     expect(screen.getAllByText('GBJBOWP13')).toHaveLength(1);
     expect(screen.getAllByText('GBJBOWP14')).toHaveLength(1);
-    expect(screen.getAllByTestId('rt-web-ayrinti').map((x) => x.textContent)).toEqual([':80 :443 · mod-jk.conf · IHS', ':80 · mod-jk.conf · IHS', ':80 · mod-jk.conf · IHS']);
+    expect(screen.getAllByTestId('rt-web-ayrinti').map((x) => x.textContent)).toEqual([
+      ':80 :443 · mod-jk.conf · IHS',
+      ':80 · mod-jk.conf · IHS',
+      ':80 · mod-jk.conf · IHS',
+    ]);
   });
 
   it('RWS10 kaynak belirtecleri birlesir; elle ilk dolu olandan; cipler kirilmaz', () => {
-    const s = webGrupla([w({ kaynak: 'ad' }), w({ port: '443', kaynak: 'ajp', ajpHedef: 'gbjexp05:8009', elle: 'in-place: elle kontrol' })])[0].satirlar[0];
+    const s = webGrupla([
+      w({ kaynak: 'ad' }),
+      w({ port: '443', kaynak: 'ajp', ajpHedef: 'gbjexp05:8009', elle: 'in-place: elle kontrol' }),
+    ])[0].satirlar[0];
     expect(s.kaynak.kaynak).toBe('ad+ajp');
     expect(s.kaynak.ajpHedef).toBe('gbjexp05:8009');
     expect(s.kaynak.elle).toBe('in-place: elle kontrol');
@@ -125,7 +162,12 @@ describe('Retirement web satiri', () => {
     expect(y.kaynak.kaynak).toBe('ajp');
   });
   it('RWS11 (denetim B5) WebAyrinti kolondan tasmaz: max-w-full truncate, tam yol ipucunda', () => {
-    render(<WebAyrinti w={w({ confFile: '/usr/IBMIHS/conf/GBCORPORATEBANKINGSERVICE-T.conf' })} portlar={['8543']} />);
+    render(
+      <WebAyrinti
+        w={w({ confFile: '/usr/IBMIHS/conf/GBCORPORATEBANKINGSERVICE-T.conf' })}
+        portlar={['8543']}
+      />,
+    );
     const el = screen.getByTestId('rt-web-ayrinti');
     expect(el.className).toMatch(/\bmax-w-full\b/);
     expect(el.className).toMatch(/\btruncate\b/);
@@ -133,9 +175,13 @@ describe('Retirement web satiri', () => {
   });
 
   it('RWS12 sag deger 20px kutuda dikey ortali (taban cizgisine oturan 16px cip 1px asagida kaliyordu)', () => {
-    const { container } = render(<WebVhostListesi web={[w()]} sag={() => <span data-cip>istek yok (7g)</span>} />);
+    const { container } = render(
+      <WebVhostListesi web={[w()]} sag={() => <span data-cip>istek yok (7g)</span>} />,
+    );
     const ic = container.querySelector('[data-rt-vhost-sag] > div') as HTMLElement;
-    expect(ic.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex', 'h-5', 'items-center']));
+    expect(ic.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['flex', 'h-5', 'items-center']),
+    );
     expect(ic).toContainElement(container.querySelector('[data-cip]') as HTMLElement);
   });
 });

@@ -3,12 +3,12 @@
 // LogX log İNDİRİR; OpsX uygulama üzerinde İŞLEM yapar (restart/stop/start).
 // Uygulama listesi ve cluster kataloğu LogX ile AYNI kaynaktan gelir (backend
 // server/opsx/index.cjs bunları yeniden kullanır) — burada ayrı bir gerçek yok.
-import { safeJson } from "./http";
+import { safeJson } from './http';
 
-const BASE = "/api/opsx";
+const BASE = '/api/opsx';
 
-export type OpsxPlatform = "legacy" | "openshift";
-export type OpsxOperation = "restart" | "stop" | "start" | "threaddump" | "heapdump";
+export type OpsxPlatform = 'legacy' | 'openshift';
+export type OpsxOperation = 'restart' | 'stop' | 'start' | 'threaddump' | 'heapdump';
 
 export interface OpsxHost {
   host: string;
@@ -30,7 +30,7 @@ export interface OpsxOperationDef {
 }
 
 // Openshift bacağındaki 4 işlem butonu — sadece "enabled: true" olan tıklanabilir.
-export type OpsxOcpOperation = "restart" | "threaddump" | "heapdump" | "tcpdump" | "poddelete";
+export type OpsxOcpOperation = 'restart' | 'threaddump' | 'heapdump' | 'tcpdump' | 'poddelete';
 export interface OpsxOcpOperationDef {
   key: OpsxOcpOperation;
   label: string;
@@ -57,10 +57,16 @@ export interface OpsxOcpPair {
 /** Namespace geneli secim (2026-10-14): envanterde "uygulamasi" olmayan batch / job pod'lari icin. */
 export const OCP_TUM_PODLAR = '*';
 /** "Tum pod'lar" seciminde yapilabilen (pod duzeyindeki) islemler. */
-export const OCP_POD_ISLEMLERI: ReadonlySet<string> = new Set(['threaddump', 'heapdump', 'poddelete']);
+export const OCP_POD_ISLEMLERI: ReadonlySet<string> = new Set([
+  'threaddump',
+  'heapdump',
+  'poddelete',
+]);
 /** Ekranda cift etiketi: '*' yerine anlasilir metin. */
 export const ocpCiftEtiketi = (p: OpsxOcpPair) =>
-  p.application === OCP_TUM_PODLAR ? `${p.namespace} / tüm pod'lar (batch / job dahil)` : `${p.namespace} / ${p.application}`;
+  p.application === OCP_TUM_PODLAR
+    ? `${p.namespace} / tüm pod'lar (batch / job dahil)`
+    : `${p.namespace} / ${p.application}`;
 
 export interface OpsxRunResult {
   ok: boolean;
@@ -97,7 +103,7 @@ export interface OpsxJobStatus {
 
 // Thread/Heap dump — restart/stop/start'tan AYRI bir akış: iş bitince bir dosya üretir
 // ve kullanıcı onu indirir (bkz. server/opsx/downloads.cjs).
-export type OpsxDumpType = "threaddump" | "heapdump";
+export type OpsxDumpType = 'threaddump' | 'heapdump';
 
 // Backend'in playbook set_stats çıktısını (opsx_dump_result.results) OLDUĞU GİBİ
 // ilettiği alan adları — host bazlı (Legacy) veya namespace/application/pod bazlı
@@ -106,12 +112,12 @@ export type OpsxDumpType = "threaddump" | "heapdump";
 // opsx_get_dump.yaml (ikisi de `oc rsync`/`cp` ile paylaşılan staging dizinine yazar).
 export interface OpsxDumpResultItem {
   host?: string;
-  pid?: string;    // Legacy: dump'ın alındığı JVM (bkz. LegacyJvmSelectStep)
+  pid?: string; // Legacy: dump'ın alındığı JVM (bkz. LegacyJvmSelectStep)
   namespace?: string;
   application?: string;
   cluster?: string; // Openshift: kaydın ait olduğu gerçek cluster (birden fazlaysa "," ile)
   namespaces?: string[]; // Openshift: arşiv kaydının kapsadığı namespace'ler
-  pod?: string;   // Openshift: BAŞARISIZ tek pod kaydı
+  pod?: string; // Openshift: BAŞARISIZ tek pod kaydı
   pods?: string[]; // Openshift: arşiv kaydının kapsadığı pod'lar
   ok: boolean;
   staged_path?: string;
@@ -136,14 +142,14 @@ export interface OpsxPodDeleteResultItem {
   cluster: string;
   namespace: string;
   pod: string;
-  existence: "Exist" | "Not Exist";
+  existence: 'Exist' | 'Not Exist';
   ok: boolean;
   error?: string;
 }
 export interface OpsxPodDeleteStatus {
   ok: boolean;
   status: string;
-  overallStatus?: "ok" | "partial" | "failed" | null;
+  overallStatus?: 'ok' | 'partial' | 'failed' | null;
   message?: string;
   results?: OpsxPodDeleteResultItem[];
 }
@@ -163,12 +169,12 @@ export interface OpsxDumpStatus {
 // HANGİ cluster'dan VE HANGİ namespace'ten geldiğini taşır.
 export interface OpsxPod {
   name: string;
-  cluster: string;   // gerçek cluster adı (ocp_cluster_index.cluster_name)
+  cluster: string; // gerçek cluster adı (ocp_cluster_index.cluster_name)
   namespace: string;
-  ready: string;    // "1/1"
-  status: string;   // "Running" | "Pending" | ...
+  ready: string; // "1/1"
+  status: string; // "Running" | "Pending" | ...
   restarts: string; // "0" veya "2 (3d ago)"
-  age: string;      // "5d"
+  age: string; // "5d"
 }
 
 export interface OpsxPodDiscoveryLaunch {
@@ -262,17 +268,17 @@ export interface OpsxServerConfigSelection {
 // JBoss akışından AYRI uçlar (server/opsx/was.cjs). Kurallar: TEK host + TEK JVM,
 // işlem öncesi canlı keşif (en çok 15 dk geçerli), JVM adı elle yazılarak onay.
 // "Ölçülemedi" ile "durmuş" ASLA karışmaz: OLCULEMEDI ayrı bir durumdur ve işlem yapılmaz.
-export type WasState = "RUNNING" | "STOPPED" | "ASKIDA" | "COKLU_SUREC" | "OLCULEMEDI";
-export type WasOperation = "restart" | "stop" | "start";
-export type WasOpResultCode = "OK" | "SKIP" | "FAIL" | "OLCULEMEDI";
+export type WasState = 'RUNNING' | 'STOPPED' | 'ASKIDA' | 'COKLU_SUREC' | 'OLCULEMEDI';
+export type WasOperation = 'restart' | 'stop' | 'start';
+export type WasOpResultCode = 'OK' | 'SKIP' | 'FAIL' | 'OLCULEMEDI';
 
 export interface WasHost {
   host: string;
-  env: string;     // normalize edilmiş: PROD → Production
-  envRaw: string;  // envanterdeki ham değer
+  env: string; // normalize edilmiş: PROD → Production
+  envRaw: string; // envanterdeki ham değer
   os: string;
   wasVersion: string;
-  status: string;  // envanterdeki (gece taraması) durum — canlı DEĞİL
+  status: string; // envanterdeki (gece taraması) durum — canlı DEĞİL
   selectable: boolean; // yalnız Linux
   reason: string;
 }
@@ -293,8 +299,8 @@ export interface WasTarget {
   pids: number;
   ss: string;
   reason: string;
-  kimlik: "var" | "yok" | "olculemedi";
-  hostOverall: "ok" | "olculemedi";
+  kimlik: 'var' | 'yok' | 'olculemedi';
+  hostOverall: 'ok' | 'olculemedi';
   selectable: boolean;
   allowedOps: WasOperation[];
   // clusterKnown=false: küme bilgisi ölçülemedi (cluster "?") — "son çalışan" uyarısı her zaman sorulur.
@@ -304,7 +310,7 @@ export interface WasTarget {
 
 export interface WasHostResult {
   host: string;
-  overall: "ok" | "olculemedi";
+  overall: 'ok' | 'olculemedi';
   reason: string;
   hasApp: boolean;
 }
@@ -360,7 +366,12 @@ export interface WasRunResult {
   message?: string;
   code?: string;
   warnings?: WasWarning[];
-  lock?: { scope: "app" | "target"; holder: string | null; target: string | null; jobId: number | null };
+  lock?: {
+    scope: 'app' | 'target';
+    holder: string | null;
+    target: string | null;
+    jobId: number | null;
+  };
 }
 
 // status = adımın HEDEFİNE ulaşıp ulaşmadığı. warning: OK ama mesajı "UYARI:" ile başlıyor
@@ -392,7 +403,7 @@ export interface WasRunStatus {
   status: string;
   output?: string;
   result?: WasOpResult;
-  severity?: "ok" | "skip" | "fail" | "unknown";
+  severity?: 'ok' | 'skip' | 'fail' | 'unknown';
   message?: string;
 }
 
@@ -400,17 +411,21 @@ const WAS = `${BASE}/was`;
 
 export const opsxWasApi = {
   // NOAPP satırları ve (Admin değilseniz) kısıtlı uygulamalar listelenmez.
-  searchApps: (search: string): Promise<{ ok: boolean; apps?: string[]; truncated?: boolean; message?: string }> =>
+  searchApps: (
+    search: string,
+  ): Promise<{ ok: boolean; apps?: string[]; truncated?: boolean; message?: string }> =>
     fetch(`${WAS}/apps?search=${encodeURIComponent(search)}`).then(safeJson),
 
-  getHosts: (app: string): Promise<{ ok: boolean; hosts?: WasHost[]; maxDiscoverHosts?: number; message?: string }> =>
+  getHosts: (
+    app: string,
+  ): Promise<{ ok: boolean; hosts?: WasHost[]; maxDiscoverHosts?: number; message?: string }> =>
     fetch(`${WAS}/hosts?app=${encodeURIComponent(app)}`).then(safeJson),
 
   // Salt okunur keşif. `hosts` verilmezse uygulamanın tüm Linux sunucuları (en çok 10).
   discover: (app: string, hosts?: string[]): Promise<WasDiscoverLaunch> =>
     fetch(`${WAS}/discover`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(hosts ? { app, hosts } : { app }),
     }).then(safeJson),
 
@@ -419,8 +434,8 @@ export const opsxWasApi = {
 
   run: (body: WasRunBody): Promise<WasRunResult> =>
     fetch(`${WAS}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
@@ -431,7 +446,7 @@ export const opsxWasApi = {
 // ── Smart onay yapilandirmasi (admin, OpsX sayfasinin kendi icinde) ─────────────────
 // `integrationKey` DEGERI sunucudan HIC DONMEZ (bir RFF token'idir); yalnizca tanimli mi
 // bayragi gelir. Kaydederken bos birakilirsa mevcut deger KORUNUR, silinmez.
-export type OpsxSmartPlatform = "legacy" | "was" | "openshift";
+export type OpsxSmartPlatform = 'legacy' | 'was' | 'openshift';
 
 export interface OpsxSmartPlatformConfig {
   /** Kapali ise bu platformda production islem ONAYSIZ kosar (denetime yazilir). */
@@ -472,8 +487,8 @@ export const opsxApi = {
     smart: Partial<Record<OpsxSmartPlatform, OpsxSmartConfigSave>>,
   ): Promise<OpsxSmartConfigResponse & { reddedilen?: string[] }> =>
     fetch(`${BASE}/smart-config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ smart }),
     }).then(safeJson),
 
@@ -499,11 +514,19 @@ export const opsxApi = {
   // Openshift_Inventory'den, seçilen env/tenant'a ait cluster'larda görülmüş namespace'ler.
   // Kullanıcı bunlardan seçebilir ya da bilmiyorsa serbest metin girebilir.
   getOcpNamespaces: (env: string, tenant: string): Promise<{ ok: boolean; namespaces: string[] }> =>
-    fetch(`${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`).then(safeJson),
+    fetch(
+      `${BASE}/ocp/namespaces?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}`,
+    ).then(safeJson),
 
   // Namespace seçildiğinde otomatik dolan, SADECE listeden seçilebilen uygulama dropdown'u.
-  getOcpApps: (env: string, tenant: string, namespace: string): Promise<{ ok: boolean; apps: string[] }> =>
-    fetch(`${BASE}/ocp/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&namespace=${encodeURIComponent(namespace)}`).then(safeJson),
+  getOcpApps: (
+    env: string,
+    tenant: string,
+    namespace: string,
+  ): Promise<{ ok: boolean; apps: string[] }> =>
+    fetch(
+      `${BASE}/ocp/apps?env=${encodeURIComponent(env)}&tenant=${encodeURIComponent(tenant)}&namespace=${encodeURIComponent(namespace)}`,
+    ).then(safeJson),
 
   // Openshift bacağındaki işlem butonları (restart/threaddump/heapdump/tcpdump) — hangisi aktif sunucudan gelir.
   // env/tenant verilirse sunucu her işleme `blocked` ekler (geçici production kapısı).
@@ -548,8 +571,8 @@ export const opsxApi = {
     cluster?: string;
   }): Promise<OpsxRunResult> =>
     fetch(`${BASE}/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).then(safeJson),
 
@@ -561,10 +584,14 @@ export const opsxApi = {
 
   // application adına host başında çalışan JVM'leri listelemek için anlık bir AWX
   // keşif job'ı tetikler (bkz. OpsxJvm) — OCP pod keşfiyle AYNI desen.
-  discoverLegacyJvms: (application: string, hosts: string[], hostMajors?: string[]): Promise<OpsxJvmDiscoveryLaunch> =>
+  discoverLegacyJvms: (
+    application: string,
+    hosts: string[],
+    hostMajors?: string[],
+  ): Promise<OpsxJvmDiscoveryLaunch> =>
     fetch(`${BASE}/legacy/jvm/discover`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ application, hosts, hostMajors }),
     }).then(safeJson),
 
@@ -575,15 +602,22 @@ export const opsxApi = {
   // restart/stop/start için: application adına uyan server-config'leri (JVM'leri) VE
   // her birinin o anki STARTED/STOPPED durumunu listelemek için anlık bir AWX keşif
   // job'ı tetikler (bkz. OpsxServerConfig) — PID-bazlı dump keşfinden AYRI bir uç.
-  discoverLegacyServerConfigs: (application: string, hosts: string[], hostMajors?: string[]): Promise<OpsxServerConfigDiscoveryLaunch> =>
+  discoverLegacyServerConfigs: (
+    application: string,
+    hosts: string[],
+    hostMajors?: string[],
+  ): Promise<OpsxServerConfigDiscoveryLaunch> =>
     fetch(`${BASE}/legacy/serverconfig/discover`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ application, hosts, hostMajors }),
     }).then(safeJson),
 
   // Keşif job'ının durumu — terminal + başarılıysa `serverConfigs` dolu döner.
-  legacyServerConfigStatus: (awxServerId: number, jobId: number): Promise<OpsxServerConfigDiscoveryStatus> =>
+  legacyServerConfigStatus: (
+    awxServerId: number,
+    jobId: number,
+  ): Promise<OpsxServerConfigDiscoveryStatus> =>
     fetch(`${BASE}/legacy/serverconfig/${awxServerId}/${jobId}/status`).then(safeJson),
 
   // Legacy thread/heap dump başlatır — AYRI bir AWX template'e (opsx_legacy_dump) gider,
@@ -592,22 +626,29 @@ export const opsxApi = {
   // host için birden fazla dump üretilir; jbossMajor playbook'un hangi SABİT JDK yolunu
   // (/usr/jboss/ | /usr/jboss8/) kullanacağını belirler.
   dumpLegacy: (
-    application: string, hosts: string[], dumpType: OpsxDumpType, pidMap: Record<string, OpsxPidSelection[]>,
+    application: string,
+    hosts: string[],
+    dumpType: OpsxDumpType,
+    pidMap: Record<string, OpsxPidSelection[]>,
     hostMajors?: string[],
   ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/legacy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ application, hosts, dumpType, pidMap, hostMajors }),
     }).then(safeJson),
 
   // Seçili namespace'lerdeki (birden fazla olabilir) pod'ları listelemek için anlık bir
   // AWX keşif job'ı tetikler — `pairs`, OcpTargetStep'in ürettiği (namespace,uygulama)
   // çiftlerinin AYNISI (artık tek bir namespace'e zorlanmıyor).
-  discoverOcpPods: (env: string, tenant: string, pairs: OpsxOcpPair[]): Promise<OpsxPodDiscoveryLaunch> =>
+  discoverOcpPods: (
+    env: string,
+    tenant: string,
+    pairs: OpsxOcpPair[],
+  ): Promise<OpsxPodDiscoveryLaunch> =>
     fetch(`${BASE}/ocp/pods/discover`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ env, tenant, pairs }),
     }).then(safeJson),
 
@@ -631,9 +672,17 @@ export const opsxApi = {
     threadDumpInterval?: number,
   ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/dump/openshift`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ env, tenant, pairs, pods, dumpType, threadDumpCount, threadDumpInterval }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        env,
+        tenant,
+        pairs,
+        pods,
+        dumpType,
+        threadDumpCount,
+        threadDumpInterval,
+      }),
     }).then(safeJson),
 
   // Pod silme/restart (2026-09-18): dump ile AYNI kesif + pod secimi; `consent` zorunlu.
@@ -645,8 +694,8 @@ export const opsxApi = {
     consent: boolean,
   ): Promise<OpsxDumpLaunchResult> =>
     fetch(`${BASE}/poddelete/openshift`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ env, tenant, pairs, pods, consent }),
     }).then(safeJson),
   podDeleteStatus: (awxServerId: number, jobId: number): Promise<OpsxPodDeleteStatus> =>

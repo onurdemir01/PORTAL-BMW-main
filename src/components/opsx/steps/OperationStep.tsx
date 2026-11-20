@@ -76,25 +76,28 @@ const OperationStep: React.FC<{
     }
   }, []);
 
-  useAsyncEffect(async (alive) => {
-    setStatusLoading(true);
-    setStatusError(null);
-    try {
-      const r = await opsxApi.getHosts(application);
-      if (!alive()) return;
-      if (!r.ok) {
-        setStatusError('Sunucu durumu alınamadı.');
-        return;
+  useAsyncEffect(
+    async (alive) => {
+      setStatusLoading(true);
+      setStatusError(null);
+      try {
+        const r = await opsxApi.getHosts(application);
+        if (!alive()) return;
+        if (!r.ok) {
+          setStatusError('Sunucu durumu alınamadı.');
+          return;
+        }
+        const map: Record<string, string> = {};
+        for (const h of r.hosts) map[h.host] = h.status;
+        setStatuses(map);
+      } catch (err) {
+        if (alive()) setStatusError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (alive()) setStatusLoading(false);
       }
-      const map: Record<string, string> = {};
-      for (const h of r.hosts) map[h.host] = h.status;
-      setStatuses(map);
-    } catch (err) {
-      if (alive()) setStatusError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (alive()) setStatusLoading(false);
-    }
-  }, [application, checkNonce]);
+    },
+    [application, checkNonce],
+  );
 
   const anyRunning = useMemo(() => hosts.some((h) => statuses[h] === 'running'), [hosts, statuses]);
   const anyStopped = useMemo(() => hosts.some((h) => statuses[h] === 'stopped'), [hosts, statuses]);
@@ -125,8 +128,7 @@ const OperationStep: React.FC<{
     return null;
   }
 
-  if (loading)
-    return <LoadingLogo compact />;
+  if (loading) return <LoadingLogo compact />;
   if (error)
     return (
       <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-700">

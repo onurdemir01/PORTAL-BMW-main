@@ -18,7 +18,7 @@ const ID_RE = /^\d{1,9}$/;
 
 /** @param {*} router @param {{ iliskiHesabi: any, audit?: (req: any, info: any) => void }} opts */
 function mount(router, { iliskiHesabi, audit = (_req, _info) => {} }) {
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const kim = (req) => req.session?.user?.username || 'unknown';
   const gonder = (res, err) =>
     res
       .status([400, 409, 422, 424].includes(err.status) ? err.status : 424)
@@ -27,7 +27,7 @@ function mount(router, { iliskiHesabi, audit = (_req, _info) => {} }) {
   const grafikCtx = async () => {
     try {
       const h = await iliskiHesabi(false);
-      return h && h.grafik ? h : null;
+      return h?.grafik ? h : null;
     } catch {
       return null;
     }
@@ -35,7 +35,7 @@ function mount(router, { iliskiHesabi, audit = (_req, _info) => {} }) {
   // Sinif tablosu okunamazsa varsayilanlar doner: varsayilan olmayan sinif "bilinmeyen" (422) degil 424.
   const yazimSiniflari = async (b) => {
     const s = await N.siniflariOku();
-    const ad = String((b && b.sinif) || '')
+    const ad = String(b?.sinif || '')
       .trim()
       .toUpperCase();
     if (s.okunamadi && !s.siniflar.some((x) => x.ad === ad))

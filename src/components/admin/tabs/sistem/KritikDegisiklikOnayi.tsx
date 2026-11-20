@@ -107,8 +107,12 @@ export default function KritikDegisiklikOnayi({
           <table className="w-full text-left text-[13px] border border-[var(--border-subtle)]">
             <thead className="bg-[var(--bg-elevated)] text-[11px] uppercase tracking-wide text-[var(--text-muted)]">
               <tr>
-                <th scope="col" className="px-3 py-1.5 font-medium">Şimdiki</th>
-                <th scope="col" className="px-3 py-1.5 font-medium">Yeni</th>
+                <th scope="col" className="px-3 py-1.5 font-medium">
+                  Şimdiki
+                </th>
+                <th scope="col" className="px-3 py-1.5 font-medium">
+                  Yeni
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -121,15 +125,20 @@ export default function KritikDegisiklikOnayi({
           <ul className="space-y-2 text-[13px] leading-relaxed">
             {g.includes('kritik') && (
               <li>
-                Bu ayar Portal&apos;ın veritabanı, dizin ya da giriş güvenliği bağlantısını belirler.
-                Yanlış değer girişleri engelleyebilir ya da Portal&apos;ın açılmasını durdurabilir.{' '}
-                {canli ? 'Kaydettiğiniz anda geçerli olur.' : 'Sunucu yeniden başlatılınca geçerli olur.'}
+                Bu ayar Portal&apos;ın veritabanı, dizin ya da giriş güvenliği bağlantısını
+                belirler. Yanlış değer girişleri engelleyebilir ya da Portal&apos;ın açılmasını
+                durdurabilir.{' '}
+                {canli
+                  ? 'Kaydettiğiniz anda geçerli olur.'
+                  : 'Sunucu yeniden başlatılınca geçerli olur.'}
               </li>
             )}
             {sabitleme && <li>{SABITLEME_IPUCU}</li>}
             {(g.includes('bosaltma') || g.includes('gizliSilme')) && <li>{BOSALTMA_METNI}</li>}
             {tehlike && (
-              <li className="font-medium text-[var(--status-danger-text)]">{TEHLIKE_METNI[tehlike]}</li>
+              <li className="font-medium text-[var(--status-danger-text)]">
+                {TEHLIKE_METNI[tehlike]}
+              </li>
             )}
           </ul>
           <p

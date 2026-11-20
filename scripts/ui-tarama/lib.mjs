@@ -40,7 +40,9 @@ export const enjekte = (mod, ozel = {}) => `(() => {
 })();`;
 
 export async function sekme(cdpPort, taban) {
-  const info = await (await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })).json();
+  const info = await (
+    await fetch(`http://127.0.0.1:${cdpPort}/json/new?about:blank`, { method: 'PUT' })
+  ).json();
   const ws = new WebSocket(info.webSocketDebuggerUrl);
   await new Promise((r, j) => {
     ws.onopen = r;
@@ -57,9 +59,20 @@ export async function sekme(cdpPort, taban) {
       if (m.error) j(new Error(JSON.stringify(m.error)));
       else r(m.result);
     } else if (m.method === 'Runtime.exceptionThrown') {
-      konsol.push('EXC ' + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).slice(0, 300));
+      konsol.push(
+        'EXC ' +
+          (
+            m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text
+          ).slice(0, 300),
+      );
     } else if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
-      konsol.push('ERR ' + m.params.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 300));
+      konsol.push(
+        'ERR ' +
+          m.params.args
+            .map((a) => a.value ?? a.description ?? '')
+            .join(' ')
+            .slice(0, 300),
+      );
     }
   };
   const send = (method, params = {}) => {
@@ -73,14 +86,33 @@ export async function sekme(cdpPort, taban) {
     send,
     konsol,
     async eval(expr) {
-      const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-      if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || JSON.stringify(r.exceptionDetails));
+      const r = await send('Runtime.evaluate', {
+        expression: expr,
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      if (r.exceptionDetails)
+        throw new Error(
+          r.exceptionDetails.exception?.description || JSON.stringify(r.exceptionDetails),
+        );
       return r.result.value;
     },
-    async ac(yol, { tema = 'light', w = 1440, h = 900, mod = 'bos', ozel = {}, bekle: ms = 2600 } = {}) {
-      await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
-      await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: tema }] });
-      await send('Page.addScriptToEvaluateOnNewDocument', { source: enjekte(mod, ozel) + `try { localStorage.setItem('theme', '${tema}'); } catch {}` });
+    async ac(
+      yol,
+      { tema = 'light', w = 1440, h = 900, mod = 'bos', ozel = {}, bekle: ms = 2600 } = {},
+    ) {
+      await send('Emulation.setDeviceMetricsOverride', {
+        width: w,
+        height: h,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await send('Emulation.setEmulatedMedia', {
+        features: [{ name: 'prefers-color-scheme', value: tema }],
+      });
+      await send('Page.addScriptToEvaluateOnNewDocument', {
+        source: enjekte(mod, ozel) + `try { localStorage.setItem('theme', '${tema}'); } catch {}`,
+      });
       await send('Page.navigate', { url: taban + yol });
       await sleep(ms);
     },
@@ -96,8 +128,20 @@ export async function sekme(cdpPort, taban) {
         if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
       if (!c) return false;
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: c.x, y: c.y });
-      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: c.x, y: c.y, button: 'left', clickCount: 1 });
-      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: c.x, y: c.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', {
+        type: 'mousePressed',
+        x: c.x,
+        y: c.y,
+        button: 'left',
+        clickCount: 1,
+      });
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        x: c.x,
+        y: c.y,
+        button: 'left',
+        clickCount: 1,
+      });
       await sleep(900);
       return true;
     },

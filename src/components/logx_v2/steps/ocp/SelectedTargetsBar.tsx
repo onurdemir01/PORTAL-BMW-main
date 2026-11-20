@@ -8,9 +8,9 @@
 // değiştirmeden sürdürüyor ve ne topladığını her an görüyor.
 //
 // Her hedef AYRI bir arşiv üretir: `<cluster>__<namespace>__<uygulama>__<id>.zip`.
-import React from "react";
-import { XMarkIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
-import type { OcpFetchTarget } from "@/api/logxV2Api";
+import React from 'react';
+import { XMarkIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import type { OcpFetchTarget } from '@/api/logxV2Api';
 
 interface Props {
   targets: OcpFetchTarget[];
@@ -22,7 +22,14 @@ interface Props {
   onSubmit: () => void;
 }
 
-const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onClear, onSubmit }) => {
+const SelectedTargetsBar: React.FC<Props> = ({
+  targets,
+  max,
+  busy,
+  onRemove,
+  onClear,
+  onSubmit,
+}) => {
   // Sepet boşken hiç yer kaplamaz — kullanıcı henüz bir şey toplamadıysa gösterecek bir şey yok.
   if (targets.length === 0) return null;
 
@@ -53,7 +60,12 @@ const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onC
       <div className="max-h-40 overflow-y-auto space-y-1.5">
         {[...byNamespace.entries()].map(([namespace, entries]) => (
           <div key={namespace}>
-            <p className="text-[11px] font-mono text-[var(--text-muted)] truncate" title={namespace}>{namespace}</p>
+            <p
+              className="text-[11px] font-mono text-[var(--text-muted)] truncate"
+              title={namespace}
+            >
+              {namespace}
+            </p>
             <div className="flex flex-wrap gap-1.5 mt-0.5">
               {entries.map(({ target, index }) => (
                 <span
@@ -65,7 +77,12 @@ const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onC
                   {/* `title` KIRPILAN ogenin kendisinde olmali — ebeveyne koymak
                      dogru gorunuyordu ama ipucu, metnin uzerinde degil rozetin
                      bosluklarinda da cikardi. (D7 test bekcisi bunu yakaladi.) */}
-                  <span className="min-w-0 truncate" title={`${target.namespace}/${target.appName}`}>{target.appName}</span>
+                  <span
+                    className="min-w-0 truncate"
+                    title={`${target.namespace}/${target.appName}`}
+                  >
+                    {target.appName}
+                  </span>
                   <button
                     onClick={() => onRemove(index)}
                     disabled={busy}
@@ -88,7 +105,7 @@ const SelectedTargetsBar: React.FC<Props> = ({ targets, max, busy, onRemove, onC
         className="btn-primary w-full inline-flex items-center justify-center gap-1.5"
       >
         <ArrowDownTrayIcon aria-hidden="true" className="w-4 h-4" />
-        {busy ? "Başlatılıyor…" : `Logları Getir (${targets.length})`}
+        {busy ? 'Başlatılıyor…' : `Logları Getir (${targets.length})`}
       </button>
     </div>
   );

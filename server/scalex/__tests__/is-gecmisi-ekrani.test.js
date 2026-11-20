@@ -10,6 +10,7 @@
 //
 // Bu tur SUNUCUYA DOKUNMUYOR — yalnizca ekran. Bekciler de bunu kilitliyor.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -53,11 +54,7 @@ test('IG3 SMART/OCO onay zinciri TABLODA gosteriliyor', () => {
   // silindiginde ayni alan adlari CSV SUTUN LISTESINDE gecmeye devam ediyor ve
   // bekci geciyordu. Bu oturumda dorduncu kez ayni desen — tanimlayicinin
   // VARLIGI degil, DOGRU YERDE olmasi sorulmali.
-  const d = dilim(
-    TAB(),
-    "{r.smart_ticket_id",
-    '</td>',
-  );
+  const d = dilim(TAB(), '{r.smart_ticket_id', '</td>');
   for (const alan of ['smart_ticket_id', 'oco_number', 'approval_state']) {
     assert.ok(d.includes(alan), `${alan} tablo satirinda gosterilmiyor — yalniz DB'de kalir`);
   }
@@ -71,7 +68,7 @@ test('IG4 CSV EKRANDA GORULENI disa aktarir (ham listeyi degil)', () => {
   assert.ok(i > 0, 'CSV disa aktarma yok');
   const csv = d.slice(i, d.indexOf('return (', i));
   assert.match(csv, /suzulmus\.map/, 'CSV suzulmemis listeyi veriyor — ekranla tutarsiz');
-  assert.doesNotMatch(csv, /\brows\.map\(/, 'CSV ham listeyi veriyor');
+  assert.doesNotMatch(csv, esnek(/\brows\.map\(/), 'CSV ham listeyi veriyor');
 });
 
 test('IG5 200 satir KIRPMASI kullaniciya soylenir', () => {
@@ -87,7 +84,11 @@ test('IG6 SUNUCUYA DOKUNULMADI — uc ve sorgu aynen duruyor', () => {
   const d = dilim(s, "'/history'", 'app.use(');
   assert.match(d, /SELECT TOP 200/, 'sunucu sorgusu degismis');
   assert.match(d, /WHERE username = \$1/, 'kullanici suzgeci kaybolmus — herkes hepsini gorur');
-  assert.doesNotMatch(d, /result_json/, 'result_json listeye geri eklenmis — yanit onlarca MB olur');
+  assert.doesNotMatch(
+    d,
+    /result_json/,
+    'result_json listeye geri eklenmis — yanit onlarca MB olur',
+  );
 });
 
 test('IG7 bos ve suzulmus-bos durumlari AYRI anlatilir', () => {

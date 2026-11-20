@@ -32,14 +32,28 @@ function load(rel) {
 const { humanizeHealth } = load('utils/scalexHealth.ts');
 const { humanizeRunLog } = load('utils/scalexLog.ts');
 
-const row = (over) => ({ app: 'odeme-api', cluster: 'c1', step: 'PODS', status: 'OK', detail: '', ...over });
+const row = (over) => ({
+  app: 'odeme-api',
+  cluster: 'c1',
+  step: 'PODS',
+  status: 'OK',
+  detail: '',
+  ...over,
+});
 
 // ── H1 Yetki yokluğu ────────────────────────────────────────────────────────
 
 test('H1 yetki yoklugu HATA degil BILGI, ve ne istenecegini SOYLER', () => {
-  const out = humanizeHealth([
-    row({ step: 'EVENTS', status: 'INFO', detail: 'permission_missing=yes verb=list resource=events' }),
-  ], 'odeme-prod');
+  const out = humanizeHealth(
+    [
+      row({
+        step: 'EVENTS',
+        status: 'INFO',
+        detail: 'permission_missing=yes verb=list resource=events',
+      }),
+    ],
+    'odeme-prod',
+  );
 
   assert.equal(out.lines.length, 1);
   assert.equal(out.lines[0].tone, 'info', 'yetki yoklugu uyari tonunda gosteriliyor');
@@ -54,17 +68,34 @@ test('H2 blok YALNIZCA yetki uyarilarindan ibaretse ACILMAZ', () => {
   // Iki satir "okuyamadim" gostermek ekrani doldurup hicbir sey soylememek olurdu.
   const out = humanizeHealth([
     row({ step: 'PODS', status: 'INFO', detail: 'permission_missing=yes verb=list resource=pods' }),
-    row({ step: 'EVENTS', status: 'INFO', detail: 'permission_missing=yes verb=list resource=events' }),
+    row({
+      step: 'EVENTS',
+      status: 'INFO',
+      detail: 'permission_missing=yes verb=list resource=events',
+    }),
   ]);
   assert.equal(out.hasContent, false, 'yalnizca yetki satirlari varken blok acilmamali');
   assert.equal(out.asks.length, 2, 'istenecek yetkiler yine de bildirilmeli');
 });
 
 test('H3 ayni yetki iki kez gelirse istek TEKRARLANMAZ', () => {
-  const out = humanizeHealth([
-    row({ app: 'a', step: 'EVENTS', status: 'INFO', detail: 'permission_missing=yes verb=list resource=events' }),
-    row({ app: 'b', step: 'EVENTS', status: 'INFO', detail: 'permission_missing=yes verb=list resource=events' }),
-  ], 'ns');
+  const out = humanizeHealth(
+    [
+      row({
+        app: 'a',
+        step: 'EVENTS',
+        status: 'INFO',
+        detail: 'permission_missing=yes verb=list resource=events',
+      }),
+      row({
+        app: 'b',
+        step: 'EVENTS',
+        status: 'INFO',
+        detail: 'permission_missing=yes verb=list resource=events',
+      }),
+    ],
+    'ns',
+  );
   assert.equal(out.asks.length, 1);
 });
 
@@ -85,14 +116,18 @@ test('H4 HAZIR pod sakin, HAZIR OLMAYAN pod uyari tonunda', () => {
 });
 
 test('H5 yeniden baslatma sayisi GORUNUR ve tonu uyariya cevirir', () => {
-  const out = humanizeHealth([row({ detail: 'pod=api-1 ready=1/1 status=Running restarts=7 age=1h' })]);
+  const out = humanizeHealth([
+    row({ detail: 'pod=api-1 ready=1/1 status=Running restarts=7 age=1h' }),
+  ]);
   assert.equal(out.lines[0].tone, 'warn', 'surekli yeniden baslayan pod sakin gosteriliyor');
   assert.match(out.lines[0].text, /7 yeniden başlatma/);
 });
 
 test('H6 `ready=0/0` TAM sayilmaz', () => {
   // 0/0 "hazir" degil, "hic pod yok" demek. Esitlik kontrolu tek basina yanilirdi.
-  const out = humanizeHealth([row({ detail: 'pod=api-1 ready=0/0 status=Pending restarts=0 age=5s' })]);
+  const out = humanizeHealth([
+    row({ detail: 'pod=api-1 ready=0/0 status=Pending restarts=0 age=5s' }),
+  ]);
   assert.equal(out.lines[0].tone, 'warn');
 });
 
@@ -137,7 +172,6 @@ test('H10 bos girdi patlamaz', () => {
     assert.deepEqual([out.lines.length, out.asks.length, out.hasContent], [0, 0, false]);
   }
 });
-
 
 // ── L. ISLEM GUNLUGU (rows[]) ───────────────────────────────────────────────
 //
@@ -191,7 +225,8 @@ test('L3 olgular cumleye giriyor (uydurma yok)', () => {
   assert.equal(out.find((e) => e.step === 'HPA').text, 'HPA yok.');
   assert.equal(
     humanizeRunLog(['c;j;a;k;HPA;INFO;HPA_PRESENT read-only policy left untouched'])[0].text,
-    'HPA var; üzerinde değişiklik yapılmadı.');
+    'HPA var; üzerinde değişiklik yapılmadı.',
+  );
 });
 
 test('L4 HAM metin kaybolmuyor', () => {
@@ -203,7 +238,11 @@ test('L4 HAM metin kaybolmuyor', () => {
 test('L5 BILINMEYEN adim sessizce ATILMAZ', () => {
   const out = humanizeRunLog(['c;j;a;k;YEPYENI_ADIM;WARN;bir sey oldu']);
   assert.equal(out.length, 1);
-  assert.equal(out[0].text, 'bir sey oldu', 'taninmayan adim kayboldu — kullanici yine AWX log\'una gider');
+  assert.equal(
+    out[0].text,
+    'bir sey oldu',
+    "taninmayan adim kayboldu — kullanici yine AWX log'una gider",
+  );
   assert.equal(out[0].tone, 'warn');
 });
 
@@ -216,6 +255,14 @@ test('L6 bozuk satir ve bos girdi patlamaz', () => {
 });
 
 test('L7 durum → ton eslemesi', () => {
-  const rows = ['c;j;a;k;PRECHECK;OK;x', 'c;j;a;k;PRECHECK;WARN;x', 'c;j;a;k;PRECHECK;FAIL;x', 'c;j;a;k;PRECHECK;INFO;x'];
-  assert.deepEqual(humanizeRunLog(rows).map((e) => e.tone), ['ok', 'warn', 'fail', 'info']);
+  const rows = [
+    'c;j;a;k;PRECHECK;OK;x',
+    'c;j;a;k;PRECHECK;WARN;x',
+    'c;j;a;k;PRECHECK;FAIL;x',
+    'c;j;a;k;PRECHECK;INFO;x',
+  ];
+  assert.deepEqual(
+    humanizeRunLog(rows).map((e) => e.tone),
+    ['ok', 'warn', 'fail', 'info'],
+  );
 });

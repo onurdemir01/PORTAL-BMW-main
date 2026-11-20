@@ -11,10 +11,10 @@
 // yanit gelene kadar ONCEKI talebin son tarihi sayacta gorunmesin.
 // sonDurumAlindiMs (2026-10-15 denetim): o yanitin istemciye ULASTIGI yerel an; sayac saat kaymasini
 // sunucu saati ile bu an arasindan olcer (kurulus anindan degil - bayat yanitla kurulursa sasardi).
-import { useEffect, useRef, useState } from "react";
-import { ansibleApi, type SmartTicketStatusYaniti } from "@/api/ansibleApi";
+import { useEffect, useRef, useState } from 'react';
+import { ansibleApi, type SmartTicketStatusYaniti } from '@/api/ansibleApi';
 
-const BEKLEYEN = ["PENDING", "LAUNCHING"];
+const BEKLEYEN = ['PENDING', 'LAUNCHING'];
 
 export interface TalepSonu {
   status: string;
@@ -32,7 +32,11 @@ export function useOnaySonrasiTakip(
   sonDurumAlindiMs: number | null;
 } {
   const [talepSonu, setTalepSonu] = useState<TalepSonu | null>(null);
-  const [son, setSon] = useState<{ ticketId: number; yanit: SmartTicketStatusYaniti; alindiMs: number } | null>(null);
+  const [son, setSon] = useState<{
+    ticketId: number;
+    yanit: SmartTicketStatusYaniti;
+    alindiMs: number;
+  } | null>(null);
   // Geri cagrinin EN GUNCEL hali (effect her render'da yeniden kurulmasin).
   const basladiRef = useRef(onBasladi);
   useEffect(() => {
@@ -48,7 +52,7 @@ export function useOnaySonrasiTakip(
         const r = await ansibleApi.smartTicketStatus(ticketId as number);
         if (cancelled) return;
         if (r.ok) setSon({ ticketId: ticketId as number, yanit: r, alindiMs: Date.now() });
-        if (r.ok && r.status === "LAUNCHED" && r.jobId) {
+        if (r.ok && r.status === 'LAUNCHED' && r.jobId) {
           basladiRef.current({ jobId: r.jobId, awxServerId: Number(r.awxServerId ?? 0) });
           return;
         }

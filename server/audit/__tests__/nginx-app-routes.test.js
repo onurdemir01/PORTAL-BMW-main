@@ -27,7 +27,11 @@ const r = (ns, routeName, addr, tt = 'reencrypt', cluster = 'gbocpprod1') => ({
 
 test('NR1 kurumsal kalip: adresten eslesir ve URL doner', () => {
   const rows = [
-    r('accounts-prod', 'digital-accounts-app-v0', 'digital-accounts-app-v0-accounts-prod.apps.fw.garanti.com.tr'),
+    r(
+      'accounts-prod',
+      'digital-accounts-app-v0',
+      'digital-accounts-app-v0-accounts-prod.apps.fw.garanti.com.tr',
+    ),
     r('accounts-prod', 'baska-app-v0', 'baska-app-v0-accounts-prod.apps.fw.garanti.com.tr'),
   ];
   const out = resolveRouteForApp(rows, 'accounts-prod', 'digital-accounts-app-v0');
@@ -58,7 +62,11 @@ test('NR2 COKLU ROUTE: otomatik secim YOK, aday listesiyle reddedilir', () => {
 });
 
 test('NR3 ROUTE YOK: URL UYDURULMAZ, sebep yazilir', () => {
-  const out = resolveRouteForApp([r('baska-prod', 'app-v0', 'app-v0-baska-prod.apps.fw.garanti.com.tr')], 'x-prod', 'app-v0');
+  const out = resolveRouteForApp(
+    [r('baska-prod', 'app-v0', 'app-v0-baska-prod.apps.fw.garanti.com.tr')],
+    'x-prod',
+    'app-v0',
+  );
   assert.equal(out.ok, false);
   assert.equal(out.code, 'no_route');
   // "no_route" ile "ambiguous" AYRI kodlar: biri "envanteri tazele", oteki "listeden sec"
@@ -168,7 +176,10 @@ test('NR9 input_url Self Servis secenek kaynagina BAGLI: elle URL giremez', () =
 });
 
 test('NR10 hostOf: sema ve yol atilir', () => {
-  assert.equal(hostOf('https://app-v0-x-prod.apps.fw.garanti.com.tr/'), 'app-v0-x-prod.apps.fw.garanti.com.tr');
+  assert.equal(
+    hostOf('https://app-v0-x-prod.apps.fw.garanti.com.tr/'),
+    'app-v0-x-prod.apps.fw.garanti.com.tr',
+  );
   assert.equal(hostOf('http://a.b.c/yol/x'), 'a.b.c');
   assert.equal(hostOf('  A.B.C  '), 'a.b.c');
   assert.equal(hostOf(null), '');

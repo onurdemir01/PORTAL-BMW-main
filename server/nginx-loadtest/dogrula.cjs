@@ -120,10 +120,11 @@ const ISLEMLER = new Set(['on_kontrol', 'kosu', 'durdur']);
 // Desenler playbook assert'leriyle AYNI (sozlesme bolum 3). Birinde degisirse digeri de.
 const HOST_RE = /^[A-Z0-9][A-Z0-9-]{1,30}$/;
 const RUN_ID_RE = /^[0-9]{1,10}$/;
-const IPV4_OCTET = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
+const IPV4_OCTET = '(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])';
 const IPV4_RE = new RegExp(`^${IPV4_OCTET}(\\.${IPV4_OCTET}){3}$`);
 // RFC 1123 ad: kucuk harf, port YOK, joker YOK, '~' (regex server_name) YOK, bosluk YOK.
-const VHOST_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
+const VHOST_RE =
+  /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 const HIZLAR_RE = /^[0-9]{1,4}( [0-9]{1,4}){0,4}$/;
 const UA_ONEK_RE = /^[a-z][a-z0-9-]{2,30}$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -150,9 +151,31 @@ const EPOSTA_ALAN_MAX = 253;
 const RAKAM_11 = /(?<!\d)\d{11}(?!\d)/;
 // Yol parametresi (`;jsessionid=...`, `;sid=`): JBoss/JSF ilk yanitta oturum kimligini yola yazar.
 // Oturum bilgisi senaryoya (DB, ekran, AWX extra_vars, k6) GIREMEZ.
-const NOKTALI_VIRGUL_NEDENI = 'yolda ";" parametresi var (ör. ;jsessionid) — oturum bilgisi senaryoya giremez';
-const STATIK_UZANTI = ['.js', '.mjs', '.css', '.json', '.map', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
-  '.webp', '.woff', '.woff2', '.ttf', '.otf', '.eot', '.html', '.htm', '.txt', '.wasm'];
+const NOKTALI_VIRGUL_NEDENI =
+  'yolda ";" parametresi var (ör. ;jsessionid) — oturum bilgisi senaryoya giremez';
+const STATIK_UZANTI = [
+  '.js',
+  '.mjs',
+  '.css',
+  '.json',
+  '.map',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.svg',
+  '.ico',
+  '.webp',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.eot',
+  '.html',
+  '.htm',
+  '.txt',
+  '.wasm',
+];
 // Kodlanmis nokta / egik cizgi / ters egik cizgi / NUL / satir sonu / cift kodlama: nginx'in
 // yol normallestirmesini sasirtmanin yolu. Statik bir dosya yolunda mesru karsiligi yok.
 const KODLU_TEHLIKE = /%(2e|2f|5c|00|0a|0d|25)/i;
@@ -178,25 +201,35 @@ const SON_EPOCH_UST_PAY_SN = 1800;
 
 // ── SABIT UYARILAR (sunucuda; uyariOnay zorunlu, ekran yalniz gosterir) ───────────────────
 
-const SERBEST_UYARISI = 'Serbest hedef: sunucu tarafı ölçüm (CPU, nginx logu) yapılmaz; sonuçlar yalnız istemci ölçümüdür. Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn ve 50 bağlantı). Yük bir yük dengeleyici (LB) üzerinden gidiyorsa nginx isteği (realip yoksa) LB\'nin IP\'sinden görür: IP başına 500 istek/sn ve 200 bağlantı sınırı LB arkasındaki herkesle, vhost başına 5000 istek/sn sınırı tüm istemcilerle paylaşılır; başka kullanıcılar 429 alabilir.';
-const WRK_UYARISI = 'wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst\'ü bağlantı sayısından küçük ya da burst\'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req\'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10\'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk\'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.';
+const SERBEST_UYARISI =
+  "Serbest hedef: sunucu tarafı ölçüm (CPU, nginx logu) yapılmaz; sonuçlar yalnız istemci ölçümüdür. Hedefte limit_req olmayabilir: yükün tek freni Portal tavanıdır (en çok 200 istek/sn ve 50 bağlantı). Yük bir yük dengeleyici (LB) üzerinden gidiyorsa nginx isteği (realip yoksa) LB'nin IP'sinden görür: IP başına 500 istek/sn ve 200 bağlantı sınırı LB arkasındaki herkesle, vhost başına 5000 istek/sn sınırı tüm istemcilerle paylaşılır; başka kullanıcılar 429 alabilir.";
+const WRK_UYARISI =
+  "wrk kapalı döngüdür: her bağlantı yanıtı alınca yeni istek gönderir. Portal her isteğe bağlantı başına sabit bekleme ekler; toplam hız ORTALAMADA koşunun tavanını (sunucu hedefinde en çok 5000; serbest hedefte 200 istek/sn) aşmaz; bağlantılar birlikte başlar, ilk istekler rastgele yayılır ama istekler kümelenebilir. limit_req burst'ü bağlantı sayısından küçük ya da burst'süz yollarda 429 alınır ve koşu durur; böyle yollarda k6 kullanın ya da bağlantı sayısını düşük tutun. Sunucu hedefinde tavan hedefin ölçülmüş limit_req değerine göre düşürülmez ve bunun için ayrıca uyarı çıkmaz: ölçülmüş limit_req'i olan hedefte gerçek hız onu aşabilir; böyle hedefte k6 kullanın. İlk 429 ya da 5xx yanıtta iş parçacığı yük üretmeyi keser; 429, 5xx, 10'dan fazla soket hatası ya da %1 üstü hata oranında koşu durur (DUR). Gecikme yüzdelikleri wrk'nin koordineli ihmal düzeltmesiyle hesaplanır; wrk sonuçları k6 sonuçlarıyla karşılaştırılmaz.";
 // TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx bulamadi (on_kontrol.hedef_nginx false). Ekran ayni metni gosterir
 // (yukTestiOrtak.ts NGINX_YOK_UYARISI, birebir).
-const NGINX_YOK_UYARISI = 'Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür.';
+const NGINX_YOK_UYARISI =
+  'Nginx bulunamadı: ayrıntılı metrikler ve sunucu ayarları kapalı; CPU ve istemci metrikleri ölçülür.';
 const NGINX_YOK_AYAR_ENGELI = 'hedefte nginx yok: sunucu ayarı uygulanamaz';
-const NGINX_BELIRSIZ_ENGELI = 'hedefte nginx durumu belirlenemedi (nginx -T ve nginx master birbirini tutmuyor); ön kontrolü yeniden çalıştırın';
+const NGINX_BELIRSIZ_ENGELI =
+  'hedefte nginx durumu belirlenemedi (nginx -T ve nginx master birbirini tutmuyor); ön kontrolü yeniden çalıştırın';
 // D7: Host basligi server_name listesinde olmamak ENGEL degil, onay isteyen UYARI.
-const HOST_LISTEDE_YOK_UYARISI = "Host başlığı (vhost) hedefin nginx -T çıktısındaki server_name'ler arasında yok ya da ölçülemedi (joker / regex ad olabilir; değilse istek default_server'a düşer). Ön kontroldeki 200 sonuçlarına bakın.";
-const WRK_SNI_MESAJI = "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın.";
+const HOST_LISTEDE_YOK_UYARISI =
+  "Host başlığı (vhost) hedefin nginx -T çıktısındaki server_name'ler arasında yok ya da ölçülemedi (joker / regex ad olabilir; değilse istek default_server'a düşer). Ön kontroldeki 200 sonuçlarına bakın.";
+const WRK_SNI_MESAJI =
+  "wrk SNI'yi Host başlığına göre seçemez (IP adresi SNI olarak gider); SNI kutusunu kapatın.";
 
 // Plan uyarilari (serbest hedefte Host basligi uyarilari, sunucu hedefinde limitUyarilari; satirda saklanir,
 // kosu aninda yeniden kurulur).
 // Host listeleri sirali, ilk 5 (metin deterministik: saklanan liste ile yeniden kurulan karsilastirilir).
 const ilkBesHost = (P) => [...new Set(P)].sort(varsayilanSira).slice(0, 5).join(', ');
-const HOST_TARAMADA_YOK_UYARISI = (vhost) => `Host başlığı (${vhost}) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.`;
-const HOST_URETIMDE_DE_VAR_UYARISI = (vhost, P) => `Host başlığı (${vhost}) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (${ilkBesHost(P)}): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.`;
-const YUK_MAKINESI_HAVUZDA_UYARISI = (vhost, yukHost) => `Host başlığı (${vhost}) yük sunucusunun (${yukHost}) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.`;
-const YUK_MAKINESI_RP_UYARISI = (yukHost) => `Yük sunucusu (${yukHost}) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.`;
+const HOST_TARAMADA_YOK_UYARISI = (vhost) =>
+  `Host başlığı (${vhost}) son nginx taramasında hiçbir sunucunun server_name listesinde yok: hedefin (LB / yönetilmeyen sunucu) bu adı nereye yönlendireceği bilinmiyor.`;
+const HOST_URETIMDE_DE_VAR_UYARISI = (vhost, P) =>
+  `Host başlığı (${vhost}) üretim / EDU / ortamı bilinmeyen sunucularda da tanımlı (${ilkBesHost(P)}): LB ya da reverse proxy bu adı üretim havuzuna yönlendirebilir; VIP’in hangi havuza gittiğini doğrulayın.`;
+const YUK_MAKINESI_HAVUZDA_UYARISI = (vhost, yukHost) =>
+  `Host başlığı (${vhost}) yük sunucusunun (${yukHost}) kendi server_name listesinde: VIP’in havuzunda yük sunucusu da olabilir; yükün bir kısmı yük sunucusunun kendi nginx’ine döner ve istemci ölçümü bozulur. Mümkünse başka bir yük sunucusu seçin.`;
+const YUK_MAKINESI_RP_UYARISI = (yukHost) =>
+  `Yük sunucusu (${yukHost}) bir internet reverse proxy’si; hedef VIP’in havuzunda kendisi de olabilir. Havuzu doğrulayın.`;
 
 // ── KUCUK YARDIMCILAR ─────────────────────────────────────────────────────────────────────
 
@@ -206,7 +239,9 @@ function red(status, code, message, ek) {
 }
 
 function hostNormalle(v) {
-  const h = String(v ?? '').trim().toUpperCase();
+  const h = String(v ?? '')
+    .trim()
+    .toUpperCase();
   return HOST_RE.test(h) ? h : '';
 }
 
@@ -253,7 +288,10 @@ function kisaMetin(v, max) {
 }
 
 function sha256Hex(metin) {
-  return crypto.createHash('sha256').update(Buffer.from(String(metin), 'utf8')).digest('hex');
+  return crypto
+    .createHash('sha256')
+    .update(Buffer.from(String(metin), 'utf8'))
+    .digest('hex');
 }
 
 // ── SENARYO ───────────────────────────────────────────────────────────────────────────────
@@ -271,7 +309,12 @@ function kisiselVeriSuphesi(yol) {
   for (const seg of String(yol).split('/')) {
     if (!seg) continue;
     if (RAKAM_SEGMENT.test(seg)) return true;
-    if (seg.includes('@') && !STATIK_UZANTI.some((u) => seg.toLowerCase().endsWith(u)) && epostaMi(seg)) return true;
+    if (
+      seg.includes('@') &&
+      !STATIK_UZANTI.some((u) => seg.toLowerCase().endsWith(u)) &&
+      epostaMi(seg)
+    )
+      return true;
   }
   return RAKAM_11.test(String(yol));
 }
@@ -279,14 +322,17 @@ function kisiselVeriSuphesi(yol) {
 /** Tek yolu denetler. Donus: '' (gecerli) ya da red sebebi (Turkce, ekranda gosterilir). */
 function yolDenetle(yol) {
   if (typeof yol !== 'string' || !yol) return 'yol yok';
-  if (yol.length > SINIRLAR.maxYolUzunlugu) return `yol çok uzun (${yol.length} > ${SINIRLAR.maxYolUzunlugu})`;
-  if (!BEYAZ_LISTE.test(yol)) return 'yol beyaz listeye uymuyor (sorgu, parça, boşluk ya da ters eğik çizgi olabilir)';
+  if (yol.length > SINIRLAR.maxYolUzunlugu)
+    return `yol çok uzun (${yol.length} > ${SINIRLAR.maxYolUzunlugu})`;
+  if (!BEYAZ_LISTE.test(yol))
+    return 'yol beyaz listeye uymuyor (sorgu, parça, boşluk ya da ters eğik çizgi olabilir)';
   if (yol.includes(';')) return NOKTALI_VIRGUL_NEDENI;
   if (yol.startsWith('//')) return "yol '//' ile başlıyor";
   if (yol.split('/').some((s) => s === '..')) return "yolda '..' parçası var";
   if (BOZUK_YUZDE.test(yol)) return "yolda bozuk '%' kodlaması var";
   if (KODLU_TEHLIKE.test(yol)) return 'yolda kodlanmış nokta / eğik çizgi / kontrol karakteri var';
-  if (kisiselVeriSuphesi(yol)) return 'yolda kişisel veri şüphesi var (6+ haneli parça, e-posta ya da 11 haneli numara)';
+  if (kisiselVeriSuphesi(yol))
+    return 'yolda kişisel veri şüphesi var (6+ haneli parça, e-posta ya da 11 haneli numara)';
   return '';
 }
 
@@ -305,30 +351,45 @@ function agirlikBicim(v) {
  * Donus: { ok:true, tsv, sha256, yolSayisi, satirSayisi } | red(...)
  */
 function senaryoSatirlari(satirlar) {
-  if (!Array.isArray(satirlar) || satirlar.length === 0) return red(400, 'gecersiz_istek', 'Senaryoda en az bir satır olmalı.');
+  if (!Array.isArray(satirlar) || satirlar.length === 0)
+    return red(400, 'gecersiz_istek', 'Senaryoda en az bir satır olmalı.');
   if (satirlar.length > SINIRLAR.maxSatir) {
-    return red(409, 'sinir_asildi', `Senaryo en çok ${SINIRLAR.maxSatir} satır olabilir (${satirlar.length} gönderildi).`);
+    return red(
+      409,
+      'sinir_asildi',
+      `Senaryo en çok ${SINIRLAR.maxSatir} satır olabilir (${satirlar.length} gönderildi).`,
+    );
   }
   // Bayt siniri satir denetiminden ONCE: tavani asan govde hic taranmaz. Alt sinir = yol baytlari +
   // satir basina 5 ayirac (4 sekme + LF); kanonik TSV her zaman bundan buyuktur, yani gecerli bir
   // senaryo burada reddedilmez.
   let altSinir = 0;
   for (const s of satirlar) {
-    altSinir += (s && typeof s === 'object' && typeof s.yol === 'string' ? Buffer.byteLength(s.yol, 'utf8') : 0) + 5;
+    altSinir +=
+      (s && typeof s === 'object' && typeof s.yol === 'string'
+        ? Buffer.byteLength(s.yol, 'utf8')
+        : 0) + 5;
   }
   if (altSinir > SINIRLAR.maxTsvBayt) {
-    return red(409, 'sinir_asildi', `Senaryo en az ${Math.ceil(altSinir / 1024)} KB; en çok ${SINIRLAR.maxTsvBayt / 1024} KB olabilir.`);
+    return red(
+      409,
+      'sinir_asildi',
+      `Senaryo en az ${Math.ceil(altSinir / 1024)} KB; en çok ${SINIRLAR.maxTsvBayt / 1024} KB olabilir.`,
+    );
   }
   const hatalar = [];
   const out = [];
   const yollar = new Set();
   satirlar.forEach((s, i) => {
     const no = i + 1;
-    if (!s || typeof s !== 'object' || Array.isArray(s)) return void hatalar.push({ satir: no, neden: 'satır nesne değil' });
+    if (!s || typeof s !== 'object' || Array.isArray(s))
+      return void hatalar.push({ satir: no, neden: 'satır nesne değil' });
     const agirlik = agirlikBicim(s.agirlik);
-    if (agirlik === null) return void hatalar.push({ satir: no, neden: 'ağırlık pozitif sayı olmalı' });
+    if (agirlik === null)
+      return void hatalar.push({ satir: no, neden: 'ağırlık pozitif sayı olmalı' });
     const har = tamSayi(s.har);
-    if (har === null || har < 0 || har > 999) return void hatalar.push({ satir: no, neden: 'har 0..999 tam sayı olmalı' });
+    if (har === null || har < 0 || har > 999)
+      return void hatalar.push({ satir: no, neden: 'har 0..999 tam sayı olmalı' });
     if (!TURLER.has(s.tur)) return void hatalar.push({ satir: no, neden: 'tür tanınmadı' });
     if (!BOYUTLAR.has(s.boyut)) return void hatalar.push({ satir: no, neden: 'boyut tanınmadı' });
     const neden = yolDenetle(s.yol);
@@ -337,21 +398,38 @@ function senaryoSatirlari(satirlar) {
     out.push(`${agirlik}\t${har}\t${s.tur}\t${s.boyut}\t${s.yol}`);
   });
   if (hatalar.length) {
-    return red(400, 'gecersiz_istek', `${hatalar.length} satır reddedildi: ${hatalar.slice(0, 3).map((h) => ("#" + h.satir + " " + h.neden)).join('; ')}`, {
-      hatalar: hatalar.slice(0, 50),
-    });
+    return red(
+      400,
+      'gecersiz_istek',
+      `${hatalar.length} satır reddedildi: ${hatalar
+        .slice(0, 3)
+        .map((h) => '#' + h.satir + ' ' + h.neden)
+        .join('; ')}`,
+      {
+        hatalar: hatalar.slice(0, 50),
+      },
+    );
   }
   const tsv = out.join('\n') + '\n';
   // Son kapi (har_senaryo.py ile ayni): yazilacak her satir yeniden denetlenir.
   for (const satir of out) {
     const yol = satir.split('\t')[4];
-    if (satir.split('\t').length !== 5 || !BEYAZ_LISTE.test(yol) || satir.includes('?') || satir.includes('#')) {
+    if (
+      satir.split('\t').length !== 5 ||
+      !BEYAZ_LISTE.test(yol) ||
+      satir.includes('?') ||
+      satir.includes('#')
+    ) {
       return red(400, 'gecersiz_istek', 'Hazırlanan bir satır son denetimi geçemedi.');
     }
   }
   const bayt = Buffer.byteLength(tsv, 'utf8');
   if (bayt > SINIRLAR.maxTsvBayt) {
-    return red(409, 'sinir_asildi', `Senaryo ${Math.ceil(bayt / 1024)} KB; en çok ${SINIRLAR.maxTsvBayt / 1024} KB olabilir.`);
+    return red(
+      409,
+      'sinir_asildi',
+      `Senaryo ${Math.ceil(bayt / 1024)} KB; en çok ${SINIRLAR.maxTsvBayt / 1024} KB olabilir.`,
+    );
   }
   return { ok: true, tsv, sha256: sha256Hex(tsv), yolSayisi: yollar.size, satirSayisi: out.length };
 }
@@ -362,7 +440,8 @@ function ozetTemizle(v, derinlik = 0) {
   if (derinlik > 4) return { ok: false };
   if (typeof v === 'number') return Number.isFinite(v) ? { ok: true, deger: v } : { ok: false };
   if (typeof v === 'boolean') return { ok: true, deger: v };
-  if (typeof v === 'string') return v.length <= 200 && !KONTROL_KARAKTERI.test(v) ? { ok: true, deger: v } : { ok: false };
+  if (typeof v === 'string')
+    return v.length <= 200 && !KONTROL_KARAKTERI.test(v) ? { ok: true, deger: v } : { ok: false };
   if (Array.isArray(v)) {
     if (v.length > 200) return { ok: false };
     const d = [];
@@ -378,7 +457,14 @@ function ozetTemizle(v, derinlik = 0) {
     if (anahtarlar.length > 200) return { ok: false };
     const d = {};
     for (const k of anahtarlar) {
-      if (k.length > 80 || KONTROL_KARAKTERI.test(k) || k === '__proto__' || k === 'constructor' || k === 'prototype') return { ok: false };
+      if (
+        k.length > 80 ||
+        KONTROL_KARAKTERI.test(k) ||
+        k === '__proto__' ||
+        k === 'constructor' ||
+        k === 'prototype'
+      )
+        return { ok: false };
       const r = ozetTemizle(v[k], derinlik + 1);
       if (!r.ok) return r;
       d[k] = r.deger;
@@ -395,11 +481,13 @@ function senaryoBilgisi(b) {
   const ad = kisaMetin(g.ad, 120);
   if (!ad) return red(400, 'gecersiz_istek', 'Senaryo adı gerekli (en çok 120 karakter).');
   const aciklama = kisaMetin(g.aciklama, 500);
-  if (aciklama === null) return red(400, 'gecersiz_istek', 'Açıklama en çok 500 karakter olabilir.');
+  if (aciklama === null)
+    return red(400, 'gecersiz_istek', 'Açıklama en çok 500 karakter olabilir.');
   let vhost = null;
   if (g.vhost !== undefined && g.vhost !== null && g.vhost !== '') {
     vhost = String(g.vhost).trim().toLowerCase();
-    if (!gecerliVhost(vhost)) return red(400, 'gecersiz_istek', 'vhost geçerli bir ad değil (port, joker, regex yok).');
+    if (!gecerliVhost(vhost))
+      return red(400, 'gecersiz_istek', 'vhost geçerli bir ad değil (port, joker, regex yok).');
   }
   return { ok: true, deger: { ad, aciklama: aciklama || null, vhost } };
 }
@@ -408,8 +496,10 @@ function senaryoGovdesi(b) {
   const g = b && typeof b === 'object' ? b : {};
   const bilgi = senaryoBilgisi(g);
   if (!bilgi.ok) return bilgi;
-  if (!SENARYO_TURLERI.has(g.senaryoTur)) return red(400, 'gecersiz_istek', "senaryoTur 'K' ya da 'B' olmalı.");
-  if (!KAYNAKLAR.has(g.kaynak)) return red(400, 'gecersiz_istek', "kaynak 'har' ya da 'liste' olmalı.");
+  if (!SENARYO_TURLERI.has(g.senaryoTur))
+    return red(400, 'gecersiz_istek', "senaryoTur 'K' ya da 'B' olmalı.");
+  if (!KAYNAKLAR.has(g.kaynak))
+    return red(400, 'gecersiz_istek', "kaynak 'har' ya da 'liste' olmalı.");
   const s = senaryoSatirlari(g.satirlar);
   if (!s.ok) return s;
   const oz = ozetTemizle(g.ozet);
@@ -417,10 +507,19 @@ function senaryoGovdesi(b) {
     return red(400, 'gecersiz_istek', 'Özet yalnız sayı/kısa metin taşıyan bir nesne olmalı.');
   }
   const ozetJson = oz.deger === null ? null : JSON.stringify(oz.deger);
-  if (ozetJson && ozetJson.length > 32 * 1024) return red(409, 'sinir_asildi', 'Özet çok büyük (en çok 32 KB).');
+  if (ozetJson && ozetJson.length > 32 * 1024)
+    return red(409, 'sinir_asildi', 'Özet çok büyük (en çok 32 KB).');
   return {
     ok: true,
-    deger: { ...bilgi.deger, senaryoTur: g.senaryoTur, kaynak: g.kaynak, tsv: s.tsv, sha256: s.sha256, yolSayisi: s.yolSayisi, ozet: ozetJson },
+    deger: {
+      ...bilgi.deger,
+      senaryoTur: g.senaryoTur,
+      kaynak: g.kaynak,
+      tsv: s.tsv,
+      sha256: s.sha256,
+      yolSayisi: s.yolSayisi,
+      ozet: ozetJson,
+    },
   };
 }
 
@@ -434,7 +533,7 @@ function senaryoGovdesi(b) {
  */
 const ADIM_EK_SN = 20;
 function adimSayisi(p) {
-  const d = p && p.motor === 'wrk' ? p.baglantilar : p && p.hizlar;
+  const d = p?.motor === 'wrk' ? p.baglantilar : p?.hizlar;
   return Array.isArray(d) ? d.length : 0;
 }
 function butceSn(p) {
@@ -453,22 +552,42 @@ function srvDizinGecerli(v) {
  */
 function sunucuAyarKanonik(ham, { serbest, ae }) {
   if (ham === undefined || ham === null) return { ok: true, deger: null };
-  if (typeof ham !== 'object' || Array.isArray(ham)) return red(400, 'gecersiz_istek', 'sunucuAyar nesne olmalı.');
-  if (serbest) return red(400, 'gecersiz_istek', 'Sunucuyu koşu öncesi ayarlama yalnız sunucu hedefinde seçilebilir; serbest hedefe bağlanılmaz.');
+  if (typeof ham !== 'object' || Array.isArray(ham))
+    return red(400, 'gecersiz_istek', 'sunucuAyar nesne olmalı.');
+  if (serbest)
+    return red(
+      400,
+      'gecersiz_istek',
+      'Sunucuyu koşu öncesi ayarlama yalnız sunucu hedefinde seçilebilir; serbest hedefe bağlanılmaz.',
+    );
   let seviye = null;
   const seviyeVar = ham.seviye !== undefined && ham.seviye !== null && ham.seviye !== '';
   if (ae === 'identity') {
-    if (seviyeVar) return red(400, 'gecersiz_istek', 'Sıkıştırmasız (identity) koşuda sıkıştırma seviyesi seçilmez.');
+    if (seviyeVar)
+      return red(
+        400,
+        'gecersiz_istek',
+        'Sıkıştırmasız (identity) koşuda sıkıştırma seviyesi seçilmez.',
+      );
   } else {
     const ust = SRV_SEVIYE_MAX[ae];
     seviye = seviyeVar ? tamSayi(ham.seviye) : null;
     if (seviye === null || seviye < 1 || seviye > ust) {
-      return red(400, 'gecersiz_istek', `Sıkıştırma seviyesi ${ae === 'br' ? 'brotli' : 'gzip'} için 1–${ust} arası olmalı.`);
+      return red(
+        400,
+        'gecersiz_istek',
+        `Sıkıştırma seviyesi ${ae === 'br' ? 'brotli' : 'gzip'} için 1–${ust} arası olmalı.`,
+      );
     }
   }
-  if (ham.static !== undefined && typeof ham.static !== 'boolean') return red(400, 'gecersiz_istek', 'sunucuAyar.static true/false olmalı.');
+  if (ham.static !== undefined && typeof ham.static !== 'boolean')
+    return red(400, 'gecersiz_istek', 'sunucuAyar.static true/false olmalı.');
   if (!srvDizinGecerli(ham.dizin)) {
-    return red(400, 'gecersiz_istek', 'Dizin /usr/nginx/applications/ altında olmalı (yalnız harf, rakam, . _ - ve /; ".." yok).');
+    return red(
+      400,
+      'gecersiz_istek',
+      'Dizin /usr/nginx/applications/ altında olmalı (yalnız harf, rakam, . _ - ve /; ".." yok).',
+    );
   }
   return { ok: true, deger: { seviye, static: ham.static === true, dizin: ham.dizin } };
 }
@@ -491,10 +610,12 @@ function sunucuAyarKanonik(ham, { serbest, ae }) {
 function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   const g = ham && typeof ham === 'object' && !Array.isArray(ham) ? ham : null;
   if (!g) return red(400, 'gecersiz_istek', 'parametreler nesnesi gerekli.');
-  if (!HEDEF_TURLERI.includes(hedefTuru)) return red(400, 'gecersiz_istek', "hedefTuru 'sunucu' ya da 'serbest' olmalı.");
+  if (!HEDEF_TURLERI.includes(hedefTuru))
+    return red(400, 'gecersiz_istek', "hedefTuru 'sunucu' ya da 'serbest' olmalı.");
   const serbest = hedefTuru === 'serbest';
   const motor = g.motor === undefined ? VARSAYILAN.motor : g.motor;
-  if (!MOTORLAR.includes(motor)) return red(400, 'gecersiz_istek', "motor 'k6' ya da 'wrk' olmalı.");
+  if (!MOTORLAR.includes(motor))
+    return red(400, 'gecersiz_istek', "motor 'k6' ya da 'wrk' olmalı.");
   const wrk = motor === 'wrk';
   const al = (k) => {
     if (g[k] !== undefined) return g[k];
@@ -505,31 +626,48 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   let isParcacigi = null;
   if (!wrk) {
     const hamHizlar = al('hizlar');
-    if (!Array.isArray(hamHizlar) || hamHizlar.length === 0) return red(400, 'gecersiz_istek', 'hizlar en az bir değer içermeli.');
+    if (!Array.isArray(hamHizlar) || hamHizlar.length === 0)
+      return red(400, 'gecersiz_istek', 'hizlar en az bir değer içermeli.');
     hizlar = hamHizlar.map(tamSayi);
-    if (hizlar.some((h) => h === null)) return red(400, 'gecersiz_istek', 'hizlar tam sayı olmalı.');
+    if (hizlar.some((h) => h === null))
+      return red(400, 'gecersiz_istek', 'hizlar tam sayı olmalı.');
   } else {
     const hamBaglantilar = al('baglantilar');
-    if (!Array.isArray(hamBaglantilar) || hamBaglantilar.length === 0) return red(400, 'gecersiz_istek', 'baglantilar en az bir değer içermeli.');
+    if (!Array.isArray(hamBaglantilar) || hamBaglantilar.length === 0)
+      return red(400, 'gecersiz_istek', 'baglantilar en az bir değer içermeli.');
     baglantilar = hamBaglantilar.map(tamSayi);
-    if (baglantilar.some((n) => n === null)) return red(400, 'gecersiz_istek', 'baglantilar tam sayı olmalı.');
+    if (baglantilar.some((n) => n === null))
+      return red(400, 'gecersiz_istek', 'baglantilar tam sayı olmalı.');
     isParcacigi = tamSayi(al('is_parcacigi'));
     if (isParcacigi === null) return red(400, 'gecersiz_istek', 'is_parcacigi tam sayı olmalı.');
   }
   const sayilar = {};
-  for (const k of wrk ? ['tekrar', 'isinma', 'sure', 'bosluk', 'bosta'] : ['tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'maxvu']) {
+  for (const k of wrk
+    ? ['tekrar', 'isinma', 'sure', 'bosluk', 'bosta']
+    : ['tekrar', 'isinma', 'sure', 'bosluk', 'bosta', 'maxvu']) {
     sayilar[k] = tamSayi(al(k));
     if (sayilar[k] === null) return red(400, 'gecersiz_istek', `${k} tam sayı olmalı.`);
   }
   const kip = al('kip');
   const ae = al('ae');
   if (!KIPLER.has(kip)) return red(400, 'gecersiz_istek', "kip 'yeni' ya da 'ka' olmalı.");
-  if (!AE_DEGERLERI.has(ae)) return red(400, 'gecersiz_istek', "ae 'br', 'gzip' ya da 'identity' olmalı.");
+  if (!AE_DEGERLERI.has(ae))
+    return red(400, 'gecersiz_istek', "ae 'br', 'gzip' ya da 'identity' olmalı.");
   const protokol = g.protokol === undefined ? VARSAYILAN.protokol : g.protokol;
-  if (!PROTOKOLLER.includes(protokol)) return red(400, 'gecersiz_istek', "protokol 'h1' ya da 'h2' olmalı.");
-  if (wrk && protokol === 'h2') return red(400, 'gecersiz_istek', 'HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur.');
+  if (!PROTOKOLLER.includes(protokol))
+    return red(400, 'gecersiz_istek', "protokol 'h1' ya da 'h2' olmalı.");
+  if (wrk && protokol === 'h2')
+    return red(
+      400,
+      'gecersiz_istek',
+      'HTTP/2 yalnız k6 ile seçilebilir; wrk yalnız HTTP/1.1 konuşur.',
+    );
   if (protokol === 'h2' && kip !== 'ka') {
-    return red(400, 'gecersiz_istek', 'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur; HTTP/2’de her isteğe yeni bağlantı tarayıcı davranışı değildir.');
+    return red(
+      400,
+      'gecersiz_istek',
+      'HTTP/2 yalnız keep-alive (ka) bağlantı kipiyle koşulur; HTTP/2’de her isteğe yeni bağlantı tarayıcı davranışı değildir.',
+    );
   }
   const sa = sunucuAyarKanonik(g.sunucuAyar, { serbest, ae });
   if (!sa.ok) return sa;
@@ -541,7 +679,8 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   const SERBEST_EKI = ', serbest hedef tavanı';
   const asim = [];
   const aralik = (k, min, max, ad, ek = '') => {
-    if (sayilar[k] < min || sayilar[k] > max) asim.push(`${ad} ${sayilar[k]} (izinli ${min}..${max}${ek})`);
+    if (sayilar[k] < min || sayilar[k] > max)
+      asim.push(`${ad} ${sayilar[k]} (izinli ${min}..${max}${ek})`);
   };
   let tavanRps = null;
   if (!wrk) {
@@ -556,21 +695,28 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   } else {
     const tavanBaglanti = serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti;
     tavanRps = serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxTavanRps;
-    if (baglantilar.length > SINIRLAR.maxBaglantiSayisi) asim.push(`en çok ${SINIRLAR.maxBaglantiSayisi} bağlantı kademesi`);
+    if (baglantilar.length > SINIRLAR.maxBaglantiSayisi)
+      asim.push(`en çok ${SINIRLAR.maxBaglantiSayisi} bağlantı kademesi`);
     if (new Set(baglantilar).size !== baglantilar.length) asim.push('aynı bağlantı sayısı iki kez');
     for (const n of baglantilar) {
       if (n < SINIRLAR.baglantiMin || n > tavanBaglanti) {
-        asim.push(`bağlantı ${n} izinli aralıkta değil (1..${tavanBaglanti}${serbest ? SERBEST_EKI : ''})`);
+        asim.push(
+          `bağlantı ${n} izinli aralıkta değil (1..${tavanBaglanti}${serbest ? SERBEST_EKI : ''})`,
+        );
       }
     }
     if (isParcacigi < SINIRLAR.isParcacigiMin || isParcacigi > SINIRLAR.maxIsParcacigi) {
-      asim.push(`iş parçacığı ${isParcacigi} (izinli ${SINIRLAR.isParcacigiMin}..${SINIRLAR.maxIsParcacigi})`);
+      asim.push(
+        `iş parçacığı ${isParcacigi} (izinli ${SINIRLAR.isParcacigiMin}..${SINIRLAR.maxIsParcacigi})`,
+      );
     } else {
       // wrk baglantilari c / t tam sayi bolmesiyle dagitir: bolunmeyen sayi TUR adindaki N'yi yalanlar.
       const enKucuk = Math.min(...baglantilar);
-      if (isParcacigi > enKucuk) asim.push(`iş parçacığı ${isParcacigi} en küçük bağlantı sayısından (${enKucuk}) büyük`);
+      if (isParcacigi > enKucuk)
+        asim.push(`iş parçacığı ${isParcacigi} en küçük bağlantı sayısından (${enKucuk}) büyük`);
       for (const n of baglantilar) {
-        if (n % isParcacigi !== 0) asim.push(`bağlantı ${n}, iş parçacığı sayısına (${isParcacigi}) tam bölünmüyor`);
+        if (n % isParcacigi !== 0)
+          asim.push(`bağlantı ${n}, iş parçacığı sayısına (${isParcacigi}) tam bölünmüyor`);
       }
     }
   }
@@ -579,16 +725,38 @@ function parametreler(ham, { sni, hedefTuru = 'sunucu' } = {}) {
   aralik('sure', SINIRLAR.sureMin, SINIRLAR.sureMax, 'süre');
   aralik('bosluk', SINIRLAR.boslukMin, SINIRLAR.boslukMax, 'boşluk');
   aralik('bosta', SINIRLAR.bostaMin, SINIRLAR.bostaMax, 'boşta başlangıç');
-  if (!wrk) aralik('maxvu', SINIRLAR.maxVuMin, serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu, 'maxvu', serbest ? SERBEST_EKI : '');
+  if (!wrk)
+    aralik(
+      'maxvu',
+      SINIRLAR.maxVuMin,
+      serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu,
+      'maxvu',
+      serbest ? SERBEST_EKI : '',
+    );
   const p = wrk
-    ? { motor: 'wrk', baglantilar, is_parcacigi: isParcacigi, tavan_rps: tavanRps, ...sayilar, kip, ae, sni: false, protokol: 'h1', sunucuAyar }
+    ? {
+        motor: 'wrk',
+        baglantilar,
+        is_parcacigi: isParcacigi,
+        tavan_rps: tavanRps,
+        ...sayilar,
+        kip,
+        ae,
+        sni: false,
+        protokol: 'h1',
+        sunucuAyar,
+      }
     : { motor: 'k6', hizlar, ...sayilar, kip, ae, sni, protokol, sunucuAyar };
   if (!asim.length) {
     const b = butceSn(p);
     const tavan = sunucuAyar ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
-    if (b > tavan) asim.push(`toplam süre ${b} sn > ${tavan} sn${sunucuAyar ? ' (sunucu ayarlı koşu)' : ''} (hız/tekrar/süre azaltın)`);
+    if (b > tavan)
+      asim.push(
+        `toplam süre ${b} sn > ${tavan} sn${sunucuAyar ? ' (sunucu ayarlı koşu)' : ''} (hız/tekrar/süre azaltın)`,
+      );
   }
-  if (asim.length) return red(409, 'sinir_asildi', `Sınır aşıldı: ${asim.join('; ')}.`, { asimlar: asim });
+  if (asim.length)
+    return red(409, 'sinir_asildi', `Sınır aşıldı: ${asim.join('; ')}.`, { asimlar: asim });
   return { ok: true, deger: { ...p, butceSn: butceSn(p) } };
 }
 
@@ -608,18 +776,27 @@ function limitUyarilari(p, { limitReq = null, limitConn = null } = {}) {
   const u = [];
   if (!p || typeof p !== 'object') return u;
   const wrk = p.motor === 'wrk';
-  const req = typeof limitReq === 'number' && Number.isFinite(limitReq) && limitReq > 0 ? limitReq : null;
+  const req =
+    typeof limitReq === 'number' && Number.isFinite(limitReq) && limitReq > 0 ? limitReq : null;
   const conn = Number.isInteger(limitConn) && limitConn > 0 ? limitConn : null;
   if (req !== null && !wrk && Array.isArray(p.hizlar) && p.hizlar.length) {
     const x = Math.max(...p.hizlar);
-    if (x > req) u.push(`Seçilen hız (${x}/sn) hedefin ölçülmüş limit_req değerini (${limitMetni(req)} r/s) aşıyor; 429 alınırsa koşu durur.`);
+    if (x > req)
+      u.push(
+        `Seçilen hız (${x}/sn) hedefin ölçülmüş limit_req değerini (${limitMetni(req)} r/s) aşıyor; 429 alınırsa koşu durur.`,
+      );
   }
   if (conn !== null) {
     if (wrk && Array.isArray(p.baglantilar) && p.baglantilar.length) {
       const x = Math.max(...p.baglantilar);
-      if (x > conn) u.push(`Seçilen en çok bağlantı (${x}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.`);
+      if (x > conn)
+        u.push(
+          `Seçilen en çok bağlantı (${x}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; fazla bağlantılar reddedilir (429 ya da 503) ve koşu durur.`,
+        );
     } else if (!wrk && Number.isInteger(p.maxvu) && p.maxvu > conn) {
-      u.push(`Seçilen en çok VU (${p.maxvu}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.`);
+      u.push(
+        `Seçilen en çok VU (${p.maxvu}) hedefin ölçülmüş limit_conn değerini (${conn}) aşıyor; bu kadar bağlantı aynı anda açılırsa fazlası reddedilir (429 ya da 503) ve koşu durur ya da adım geçersiz sayılır.`,
+      );
     }
   }
   return u;
@@ -643,12 +820,16 @@ function yukMakinesiUyarilari(ok, p) {
     if (hiz > tavan) {
       const tw = SAYI(ok.yukm_tw_reuse);
       const ts = SAYI(ok.yukm_tcp_ts);
-      u.push(`Yük makinesinin yerel port aralığı ${port} port (tcp_tw_reuse ${tw === null ? '?' : tw}, tcp_timestamps ${ts === null ? '?' : ts}): "yeni" kipte istemci bağlantıyı önce kapatırsa saniyede yaklaşık ${tavan} yeni bağlantıya yeter; seçilen hız (${hiz}/sn) bunu aşıyor. Bağlantıyı hangi tarafın önce kapattığı (TIME_WAIT'in nerede biriktiği) doğrulanmadı; bağlantı hatası görürseniz hızı düşürün ya da "ka" kipini seçin.`);
+      u.push(
+        `Yük makinesinin yerel port aralığı ${port} port (tcp_tw_reuse ${tw === null ? '?' : tw}, tcp_timestamps ${ts === null ? '?' : ts}): "yeni" kipte istemci bağlantıyı önce kapatırsa saniyede yaklaşık ${tavan} yeni bağlantıya yeter; seçilen hız (${hiz}/sn) bunu aşıyor. Bağlantıyı hangi tarafın önce kapattığı (TIME_WAIT'in nerede biriktiği) doğrulanmadı; bağlantı hatası görürseniz hızı düşürün ya da "ka" kipini seçin.`,
+      );
     }
   }
   const mem = SAYI(ok.yukm_mem_kb);
   if (!wrk && Number.isInteger(p.maxvu) && mem !== null && mem < p.maxvu * 8192) {
-    u.push(`Yük makinesinde boş bellek ${Math.floor(mem / 1024)} MB; en çok ${p.maxvu} VU için önerilen en az ${p.maxvu * 8} MB. k6 bellek yetmezliğinden düşebilir; en çok VU'yu azaltın.`);
+    u.push(
+      `Yük makinesinde boş bellek ${Math.floor(mem / 1024)} MB; en çok ${p.maxvu} VU için önerilen en az ${p.maxvu * 8} MB. k6 bellek yetmezliğinden düşebilir; en çok VU'yu azaltın.`,
+    );
   }
   return u;
 }
@@ -691,28 +872,59 @@ function uretimIsareti(k) {
 function hostOrtami(host, k) {
   const { envOfHost, envFromInventory } = require('../audit/nginx-hosts.cjs');
   const ret = (code, sebep, message, env) => ({ ...red(409, code, message, { env }), sebep });
-  if (typeof host !== 'string' || !HOST_RE.test(host)) return ret('hedef_uretim', 'adı geçersiz', `${host} geçerli bir sunucu adı değil.`, 'BILINMIYOR');
+  if (typeof host !== 'string' || !HOST_RE.test(host))
+    return ret(
+      'hedef_uretim',
+      'adı geçersiz',
+      `${host} geçerli bir sunucu adı değil.`,
+      'BILINMIYOR',
+    );
   const adEnv = envOfHost(host);
   if (adEnv === 'PROD' || adEnv === 'EDU') {
-    return ret('hedef_uretim', `ortamı ${adEnv}`, adEnv === 'PROD'
-      ? `${host} üretim sunucusu (ad kuralı); yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`
-      : `${host} ortamı EDU; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`, adEnv);
+    return ret(
+      'hedef_uretim',
+      `ortamı ${adEnv}`,
+      adEnv === 'PROD'
+        ? `${host} üretim sunucusu (ad kuralı); yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`
+        : `${host} ortamı EDU; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`,
+      adEnv,
+    );
   }
-  const satirlar = k && k.invTum && typeof k.invTum.get === 'function' ? k.invTum.get(host) || [] : [];
+  const satirlar = k?.invTum && typeof k.invTum.get === 'function' ? k.invTum.get(host) || [] : [];
   if (!satirlar.length) {
-    return ret('hedef_envanterde_yok', "dbo.Inventory'de kayıtlı değil", `${host} dbo.Inventory'de kayıtlı değil (ortam kanıtlanamıyor).`, adEnv);
+    return ret(
+      'hedef_envanterde_yok',
+      "dbo.Inventory'de kayıtlı değil",
+      `${host} dbo.Inventory'de kayıtlı değil (ortam kanıtlanamıyor).`,
+      adEnv,
+    );
   }
   const envler = [...new Set(satirlar.map((v) => envFromInventory(v)))].sort(varsayilanSira);
   if (envler.some((e) => !IZINLI_ORTAM.has(e))) {
-    const ham = satirlar.map((v) => (v == null || String(v).trim() === '' ? '(boş)' : String(v).trim()));
+    const ham = satirlar.map((v) =>
+      v == null || String(v).trim() === '' ? '(boş)' : String(v).trim(),
+    );
     const metin = [...new Set(ham)].join(' / ');
-    return ret('hedef_uretim', `dbo.Inventory ortamı ${metin}`, `${host} dbo.Inventory ortamı ${metin}; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`,
-      envler.find((e) => !IZINLI_ORTAM.has(e)));
+    return ret(
+      'hedef_uretim',
+      `dbo.Inventory ortamı ${metin}`,
+      `${host} dbo.Inventory ortamı ${metin}; yük testi yalnız DEV/TEST/QA makinelerinde yapılır.`,
+      envler.find((e) => !IZINLI_ORTAM.has(e)),
+    );
   }
-  const nginxEnv = typeof k?.nginx?.get === 'function' ? k.nginx.get(host)?.env ?? null : null;
-  const isaret = uretimIsareti({ host, nginxEnv, invEnv: null }) || satirlar.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) || null;
+  const nginxEnv = typeof k?.nginx?.get === 'function' ? (k.nginx.get(host)?.env ?? null) : null;
+  const isaret =
+    uretimIsareti({ host, nginxEnv, invEnv: null }) ||
+    satirlar.map((v) => uretimIsareti({ host, nginxEnv: null, invEnv: v })).find(Boolean) ||
+    null;
   const env = IZINLI_ORTAM.has(adEnv) ? adEnv : envler.join('/');
-  if (isaret) return ret('hedef_uretim', `üretim işareti: ${isaret}`, `${host} için üretim işareti var (${isaret}); yük testi yapılmaz.`, env);
+  if (isaret)
+    return ret(
+      'hedef_uretim',
+      `üretim işareti: ${isaret}`,
+      `${host} için üretim işareti var (${isaret}); yük testi yapılmaz.`,
+      env,
+    );
   return { ok: true, env, envler };
 }
 
@@ -729,12 +941,27 @@ function hedefKapisi(host, k) {
  */
 function yukHostKapisi(host, k, { hedef = null, izinli = [] } = {}) {
   const { envOfHost } = require('../audit/nginx-hosts.cjs');
-  if (hedef && host === hedef) return red(409, 'ayni_host', 'Yük makinesi hedefle aynı olamaz.', { env: envOfHost(host) });
+  if (hedef && host === hedef)
+    return red(409, 'ayni_host', 'Yük makinesi hedefle aynı olamaz.', { env: envOfHost(host) });
   if (!izinli.includes(host)) {
-    return red(409, 'yuk_host_izinsiz', `${host} yük makinesi izin listesinde değil (Yük Testi › Araçlar › Yük makineleri).`, { env: envOfHost(host) });
+    return red(
+      409,
+      'yuk_host_izinsiz',
+      `${host} yük makinesi izin listesinde değil (Yük Testi › Araçlar › Yük makineleri).`,
+      { env: envOfHost(host) },
+    );
   }
   const o = hostOrtami(host, k);
-  if (!o.ok) return red(409, 'yuk_host_izinsiz', o.message.replace('yük testi yalnız DEV/TEST/QA makinelerinde yapılır', 'yük makinesi yalnız DEV/TEST/QA olabilir'), { env: o.env });
+  if (!o.ok)
+    return red(
+      409,
+      'yuk_host_izinsiz',
+      o.message.replace(
+        'yük testi yalnız DEV/TEST/QA makinelerinde yapılır',
+        'yük makinesi yalnız DEV/TEST/QA olabilir',
+      ),
+      { env: o.env },
+    );
   return { ok: true, env: o.env };
 }
 
@@ -742,9 +969,16 @@ function yukHostKapisi(host, k, { hedef = null, izinli = [] } = {}) {
 
 // retirement/dns-ip.cjs ipOf ile ayni ayristirma: `10.1.2.3:443 ssl` -> 10.1.2.3; `443` -> ''.
 function listenIp(listen) {
-  const ilk = String(listen || '').trim().split(/[\s,]+/)[0] || '';
+  const ilk =
+    String(listen || '')
+      .trim()
+      .split(/[\s,]+/)[0] || '';
   const i = ilk.lastIndexOf(':');
-  return (() => { if (i > 0) return ilk.slice(0, i); if (ilk.includes('.')) return ilk; return ''; })().replace(/^\[|\]$/g, '');
+  return (() => {
+    if (i > 0) return ilk.slice(0, i);
+    if (ilk.includes('.')) return ilk;
+    return '';
+  })().replace(/^\[|\]$/g, '');
 }
 
 // Tarayici (nginx_audit_scan.sh) bir server blogunun TUM listen direktiflerini tek alanda boslukla
@@ -752,7 +986,11 @@ function listenIp(listen) {
 // IPv4 (ssl / http2 / default_server / 443 / [::] belirtecleri IP uretmez). Ilk belirtece bakmak
 // ikinci listen'deki IP'yi sahipsiz gosterirdi (PROD nginx'in VIP'i serbest siniflanirdi).
 function listenIpleri(listen) {
-  return String(listen || '').trim().split(/[\s,]+/).map((t) => listenIp(t)).filter((ip) => gecerliIpv4(ip));
+  return String(listen || '')
+    .trim()
+    .split(/[\s,]+/)
+    .map((t) => listenIp(t))
+    .filter((ip) => gecerliIpv4(ip));
 }
 
 /** Hedefin aday IP'leri: tarama listen IP'leri (her belirtec) + envanter IP'si; yalniz kullanilabilir IPv4. */
@@ -835,8 +1073,10 @@ function rateLimitTavani(satirlar = []) {
 
 // ── ON KONTROL DEGERLENDIRMESI (korkuluk 5) ───────────────────────────────────────────────
 
-const EVET = (v) => v === true || (typeof v === 'string' && ['true', 'yes', '1'].includes(v.trim().toLowerCase()));
-const HAYIR = (v) => v === false || (typeof v === 'string' && ['false', 'no', '0'].includes(v.trim().toLowerCase()));
+const EVET = (v) =>
+  v === true || (typeof v === 'string' && ['true', 'yes', '1'].includes(v.trim().toLowerCase()));
+const HAYIR = (v) =>
+  v === false || (typeof v === 'string' && ['false', 'no', '0'].includes(v.trim().toLowerCase()));
 const SAYI = (v) => {
   if (v === null || v === undefined || v === '' || v === '-') return null;
   const n = Number(v);
@@ -868,66 +1108,99 @@ const SAYI = (v) => {
  * NGINX_YOK_UYARISI. hedef_nginx alani var ama true / false degilse (playbook '-': nginx -T ile master tutmuyor)
  * ip_yerel'den hemen sonra NGINX_BELIRSIZ_ENGELI. Alan yoksa (eski playbook) cikti BIREBIR eskisi.
  */
-function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli = false, aracSha256 = null, protokol = 'h1', parametreler: kp = null } = {}) {
+function onKontrolDegerlendir(
+  ok,
+  {
+    hedefTuru = 'sunucu',
+    motor = 'k6',
+    aracli = false,
+    aracSha256 = null,
+    protokol = 'h1',
+    parametreler: kp = null,
+  } = {},
+) {
   const engeller = [];
   const uyarilar = [];
   if (!ok || typeof ok !== 'object') return { engeller: ['ön kontrol sonucu okunamadı'], uyarilar };
   if (!HEDEF_TURLERI.includes(hedefTuru) || !MOTORLAR.includes(motor)) {
-    return { engeller: ['ön kontrol sonucu okunamadı (hedef türü ya da yük aracı tanınmadı)'], uyarilar };
+    return {
+      engeller: ['ön kontrol sonucu okunamadı (hedef türü ya da yük aracı tanınmadı)'],
+      uyarilar,
+    };
   }
-  if (!PROTOKOLLER.includes(protokol)) return { engeller: ['ön kontrol sonucu okunamadı (protokol tanınmadı)'], uyarilar };
+  if (!PROTOKOLLER.includes(protokol))
+    return { engeller: ['ön kontrol sonucu okunamadı (protokol tanınmadı)'], uyarilar };
   const serbest = hedefTuru === 'serbest';
   // TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx'i olcer (set_stats on_kontrol.hedef_nginx true | false | null).
   // Alan YOKSA (eski playbook: yalniz nginx hedefe kosabilirdi) cikti BIREBIR eskisi; null = belirlenemedi (ENGEL).
-  const nginxAlani = !serbest && Object.prototype.hasOwnProperty.call(ok, 'hedef_nginx');
+  const nginxAlani = !serbest && Object.hasOwn(ok, 'hedef_nginx');
   const nginxsiz = nginxAlani && ok.hedef_nginx === false;
   const belirsiz = nginxAlani && ok.hedef_nginx !== true && ok.hedef_nginx !== false;
   if (serbest) {
-    if (!HAYIR(ok.ip_yuk_makinesinde)) engeller.push('hedef IP yük makinesinde yerel ya da ölçülemedi');
+    if (!HAYIR(ok.ip_yuk_makinesinde))
+      engeller.push('hedef IP yük makinesinde yerel ya da ölçülemedi');
   } else {
-    if (!EVET(ok.ip_yerel)) engeller.push('seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)');
+    if (!EVET(ok.ip_yerel))
+      engeller.push('seçilen IP hedef sunucuda yerel değil (ya da ölçülemedi)');
     if (belirsiz) engeller.push(NGINX_BELIRSIZ_ENGELI);
     if (!nginxsiz && !EVET(ok.server_name_var)) uyarilar.push(HOST_LISTEDE_YOK_UYARISI);
   }
   if (motor === 'wrk') {
     if (!EVET(ok.wrk_var)) {
-      engeller.push(EVET(ok.wrk_calisiyor)
-        ? `wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (${ok.wrk_surum || '-'}); araç setini yeniden hazırlayın (Yük Testi › Araçlar)`
-        : 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor');
+      engeller.push(
+        EVET(ok.wrk_calisiyor)
+          ? `wrk yük makinesinde çalışıyor ama sürümü okunamadı ya da 4 altında (${ok.wrk_surum || '-'}); araç setini yeniden hazırlayın (Yük Testi › Araçlar)`
+          : 'wrk yük makinesinde bulunamadı ya da çalıştırılamıyor',
+      );
     }
   } else if (!EVET(ok.k6_var)) engeller.push('k6 yük makinesinde bulunamadı');
   if (protokol === 'h2') {
     const h2Engeli = (() => {
-      if (typeof ok.protokol === 'string' && ok.protokol !== 'h2') return 'ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın';
+      if (typeof ok.protokol === 'string' && ok.protokol !== 'h2')
+        return 'ön kontrol HTTP/2 için yapılmadı; ön kontrolü yeniden çalıştırın';
       // curl h2'siz: yeni playbook ALPN'i openssl ile olcer (alpn_kaynak 'openssl'); kaynak yoksa / baska ise eski engel.
       const opensslAlpn = ok.alpn_kaynak === 'openssl';
-      if (ok.curl_h2 === false && !opensslAlpn) return 'yük makinesindeki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı';
+      if (ok.curl_h2 === false && !opensslAlpn)
+        return 'yük makinesindeki curl HTTP/2 desteklemiyor; HTTP/2 ön kontrolü yapılamadı';
       if (ok.alpn_h2 === false) {
-        if (opensslAlpn) return 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
+        if (opensslAlpn)
+          return 'Hedef bu Host için HTTP/2 sunmuyor (ALPN, openssl ile ölçüldü; yük makinesindeki curl HTTP/2 desteklemediği için yollar HTTP/1.1 ile denendi). nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.';
         const s = (v) => (SAYI(v) === null ? '?' : String(SAYI(v)));
         return `Hedef bu Host için HTTP/2 sunmuyor (ALPN): ${s(ok.yollar_h2)}/${s(ok.yollar_yanitli)} yol HTTP/2 ile yanıt verdi. nginx’te bu server bloğunda http2 açık değil ya da SNI kapalıyken IP:443’ün varsayılan sunucusu HTTP/2 sunmuyor; HTTP/1.1 ile koşun ya da SNI’yi açın.`;
       }
-      if (ok.alpn_h2 !== true) return 'HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin)';
+      if (ok.alpn_h2 !== true)
+        return 'HTTP/2 desteği ölçülemedi (playbook HTTP/2 ön kontrolünü desteklemiyor olabilir; Ansible deposunu güncelleyin)';
       return null;
     })();
     if (h2Engeli) engeller.push(h2Engeli);
   }
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
-  if (!serbest && !nginxsiz && HAYIR(ok.log_dizini_okunur)) engeller.push('log dizini /web_log okunamıyor');
-  if (nginxsiz && kp && kp.sunucuAyar) engeller.push(NGINX_YOK_AYAR_ENGELI);
-  else if (!serbest && kp && kp.sunucuAyar && ok.srv_hazirlik !== 'ok') {
-    engeller.push(ok.srv_hazirlik === 'fail' ? 'sunucu ayarı uygulanamadı (iş çıktısına bakın)' : 'sunucu ayarı ön kontrolde doğrulanmadı (playbook sunucu ayarını desteklemiyor olabilir; Ansible deposunu güncelleyin)');
+  if (!serbest && !nginxsiz && HAYIR(ok.log_dizini_okunur))
+    engeller.push('log dizini /web_log okunamıyor');
+  if (nginxsiz && kp?.sunucuAyar) engeller.push(NGINX_YOK_AYAR_ENGELI);
+  else if (!serbest && kp?.sunucuAyar && ok.srv_hazirlik !== 'ok') {
+    engeller.push(
+      ok.srv_hazirlik === 'fail'
+        ? 'sunucu ayarı uygulanamadı (iş çıktısına bakın)'
+        : 'sunucu ayarı ön kontrolde doğrulanmadı (playbook sunucu ayarını desteklemiyor olabilir; Ansible deposunu güncelleyin)',
+    );
   }
-  if (!serbest && !(kp && kp.sunucuAyar) && ok.hazirlik_yedek === true) {
-    engeller.push('hedefte önceki bir koşudan geri alınmamış sunucu ayarı vardı (değişmiş konfigürasyon ölçülürdü); bu ön kontrol geri almayı denedi, ön kontrolü yeniden çalıştırın');
+  if (!serbest && !kp?.sunucuAyar && ok.hazirlik_yedek === true) {
+    engeller.push(
+      'hedefte önceki bir koşudan geri alınmamış sunucu ayarı vardı (değişmiş konfigürasyon ölçülürdü); bu ön kontrol geri almayı denedi, ön kontrolü yeniden çalıştırın',
+    );
   }
   // Tur 4: arac setiyle baslatilan satir (arac_id dolu). Eski satir (aracli false) BIREBIR eskisi gibi.
   if (aracli) {
-    const aracHata = typeof ok.arac_hata === 'string' && ok.arac_hata.trim() ? ok.arac_hata.trim() : '';
+    const aracHata =
+      typeof ok.arac_hata === 'string' && ok.arac_hata.trim() ? ok.arac_hata.trim() : '';
     if (ok.arac_dogrulandi !== true) {
-      engeller.push(`yük aracı kopyası doğrulanamadı: ${aracHata || 'ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu güncelleyin)'}`);
+      engeller.push(
+        `yük aracı kopyası doğrulanamadı: ${aracHata || 'ölçülemedi (playbook araç kopyalamayı desteklemiyor olabilir; Ansible deposunu güncelleyin)'}`,
+      );
     } else {
-      if (aracSha256 && ok.arac_sha256 !== aracSha256) engeller.push("yük aracı kopyasının sha256'sı araç setiyle aynı değil");
+      if (aracSha256 && ok.arac_sha256 !== aracSha256)
+        engeller.push("yük aracı kopyasının sha256'sı araç setiyle aynı değil");
       if (aracHata) engeller.push(`yük aracı çalıştırılamadı: ${aracHata}`);
     }
   }
@@ -936,18 +1209,26 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
   if (!(toplam > 0)) engeller.push('ön kontrolde hiçbir yol denenmedi');
   else if (iki === null) uyarilar.push('200 dönen yol sayısı ölçülemedi');
   else if (iki < toplam) uyarilar.push(`${toplam - iki}/${toplam} yol 200 dönmedi`);
-  const statik = SAYI(ok.sikistirma && ok.sikistirma.statik);
+  const statik = SAYI(ok.sikistirma?.statik);
   // Sunucu ayarli kosuda dizinin durumu kosu oncesi kurulur: bu uyari gece kuyrugunda "yeni uyari" diye ogeyi atlatmasin.
-  if (statik > 0 && !(kp && kp.sunucuAyar)) uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
+  if (statik > 0 && !kp?.sunucuAyar)
+    uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
   if (!serbest && !nginxsiz) {
     const df = SAYI(ok.web_log_df);
     if (df === null) uyarilar.push('/web_log doluluğu ölçülemedi');
-    else if (df >= 65) uyarilar.push(`/web_log %${df} dolu (>= %65: disk temizleyici koşu sırasında logları silebilir)`);
-    if (HAYIR(ok.log_format_ua)) uyarilar.push("etkin log_format'ta user-agent= yok: sunucu tarafı ölçüm eksik kalır");
+    else if (df >= 65)
+      uyarilar.push(
+        `/web_log %${df} dolu (>= %65: disk temizleyici koşu sırasında logları silebilir)`,
+      );
+    if (HAYIR(ok.log_format_ua))
+      uyarilar.push("etkin log_format'ta user-agent= yok: sunucu tarafı ölçüm eksik kalır");
     // cpu_kaydedici.sh 0 ya da 1'den fazla master gorurse baslamaz: olculmus != 1 ENGEL, olculemedi UYARI.
     const master = SAYI(ok.master_sayisi);
     if (master === null) uyarilar.push('nginx master süreç sayısı ölçülemedi (1 bekleniyor)');
-    else if (master !== 1) engeller.push(`nginx master süreç sayısı ${master} (1 bekleniyor; CPU kaydedici bu durumda başlamaz)`);
+    else if (master !== 1)
+      engeller.push(
+        `nginx master süreç sayısı ${master} (1 bekleniyor; CPU kaydedici bu durumda başlamaz)`,
+      );
   }
   // 2026-11-03: yuk makinesi port / bellek olcumu (yeni playbook; alan yoksa uyari yok). Sabit uyarilardan once.
   if (kp && typeof kp === 'object') uyarilar.push(...yukMakinesiUyarilari(ok, { ...kp, motor }));
@@ -959,7 +1240,12 @@ function onKontrolDegerlendir(ok, { hedefTuru = 'sunucu', motor = 'k6', aracli =
 
 /** Onay metni: sunucu hedefinde hedef host adi, serbest hedefte hedef IP (birebir, kirpilmis). */
 function onayMetniDogru(confirmText, beklenen) {
-  return typeof beklenen === 'string' && beklenen !== '' && typeof confirmText === 'string' && confirmText.trim() === beklenen;
+  return (
+    typeof beklenen === 'string' &&
+    beklenen !== '' &&
+    typeof confirmText === 'string' &&
+    confirmText.trim() === beklenen
+  );
 }
 
 // ── ORTAM DEGISKENLERI ────────────────────────────────────────────────────────────────────
@@ -968,7 +1254,14 @@ function onayMetniDogru(confirmText, beklenen) {
 function yukHostlari(env = process.env) {
   const ham = String(env.NGINX_LOADTEST_YUK_HOSTLARI ?? '').trim();
   if (!ham) return [...VARSAYILAN_YUK_HOSTLARI];
-  return [...new Set(ham.split(/[\s,;]+/).map(hostNormalle).filter(Boolean))];
+  return [
+    ...new Set(
+      ham
+        .split(/[\s,;]+/)
+        .map(hostNormalle)
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function yolGuvenli(v, re) {
@@ -983,7 +1276,9 @@ function birKezUyar(degisken, ham, neden, sonuc = 'kullanilmadi') {
   const anahtar = `${degisken}|${ham}`;
   if (_uyarilanGirdiler.has(anahtar) || _uyarilanGirdiler.size >= 1000) return;
   _uyarilanGirdiler.add(anahtar);
-  console.warn(`[NginxYukTesti] ${degisken} girdisi ${sonuc} (${neden}): ${JSON.stringify(String(ham)).slice(0, 80)}`);
+  console.warn(
+    `[NginxYukTesti] ${degisken} girdisi ${sonuc} (${neden}): ${JSON.stringify(String(ham)).slice(0, 80)}`,
+  );
 }
 
 /**
@@ -994,7 +1289,8 @@ function agGirdisiCoz(ham, minOnek) {
   const m = /^([0-9.]{7,15})(?:\/([0-9]{1,2}))?$/.exec(ham);
   if (!m || !gecerliIpv4(m[1])) return { ok: false, neden: 'bicimsiz' };
   const onek = m[2] === undefined ? 32 : Number(m[2]);
-  if (onek > 32 || (m[2] !== undefined && m[2] !== String(onek))) return { ok: false, neden: 'bicimsiz' };
+  if (onek > 32 || (m[2] !== undefined && m[2] !== String(onek)))
+    return { ok: false, neden: 'bicimsiz' };
   if (onek < minOnek) return { ok: false, neden: `onek /${onek} < /${minOnek}` };
   const ag = ipSayi(m[1]);
   const blok = 2 ** (32 - onek);
@@ -1002,7 +1298,12 @@ function agGirdisiCoz(ham, minOnek) {
   return {
     ok: true,
     ag: Object.freeze({
-      metin: `${m[1]}/${onek}`, ag, maske: onek === 0 ? 0 : (0xffffffff << (32 - onek)) >>> 0, onek, agAdresi: m[1], yayin: ipMetni(ag + blok - 1),
+      metin: `${m[1]}/${onek}`,
+      ag,
+      maske: onek === 0 ? 0 : (0xffffffff << (32 - onek)) >>> 0,
+      onek,
+      agAdresi: m[1],
+      yayin: ipMetni(ag + blok - 1),
     }),
   };
 }
@@ -1020,7 +1321,12 @@ function serbestAglar(env = process.env) {
   const gorulen = new Set();
   for (const girdi of ham.split(/[\s,;]+/).filter(Boolean)) {
     const r = agGirdisiCoz(girdi, SINIRLAR.serbestMinOnek);
-    const neden = (() => { if (!r.ok) return r.neden; if (!kullanilabilirIp(r.ag.agAdresi)) return 'ag adresi kullanilamaz (0/8, 127/8, 169.254/16, 224+)'; return null; })();
+    const neden = (() => {
+      if (!r.ok) return r.neden;
+      if (!kullanilabilirIp(r.ag.agAdresi))
+        return 'ag adresi kullanilamaz (0/8, 127/8, 169.254/16, 224+)';
+      return null;
+    })();
     if (neden) {
       birKezUyar('NGINX_LOADTEST_SERBEST_AGLAR', girdi, neden);
       continue;
@@ -1050,7 +1356,12 @@ function serbestYasak(env = process.env) {
   for (const girdi of ham.split(/[\s,;]+/).filter(Boolean)) {
     const r = agGirdisiCoz(girdi, 0);
     if (!r.ok) {
-      birKezUyar('NGINX_LOADTEST_SERBEST_YASAK', girdi, r.neden, 'gecersiz, liste duzeltilene kadar yuk testi kapali');
+      birKezUyar(
+        'NGINX_LOADTEST_SERBEST_YASAK',
+        girdi,
+        r.neden,
+        'gecersiz, liste duzeltilene kadar yuk testi kapali',
+      );
       hatali.push(girdi);
       continue;
     }
@@ -1063,18 +1374,32 @@ function serbestYasak(env = process.env) {
 
 /** IP agin icinde mi (saf). Gecersiz IP / ag -> false. */
 function agIcinde(ip, a) {
-  if (!gecerliIpv4(ip) || !a || !Number.isInteger(a.onek) || a.onek < 0 || a.onek > 32 || !Number.isFinite(a.ag)) return false;
+  if (
+    !gecerliIpv4(ip) ||
+    !a ||
+    !Number.isInteger(a.onek) ||
+    a.onek < 0 ||
+    a.onek > 32 ||
+    !Number.isFinite(a.ag)
+  )
+    return false;
   const blok = 2 ** (32 - a.onek);
   return Math.floor(ipSayi(ip) / blok) === Math.floor(a.ag / blok);
 }
 
 /** IP'yi kapsayan ilk izinli ag; /30 ve altinda ag ve yayin adresi hedef olamaz (/31, /32 serbest). */
 function serbestAgBul(ip, aglar) {
-  return (Array.isArray(aglar) ? aglar : []).find((a) => agIcinde(ip, a) && !(a.onek <= 30 && (ip === a.agAdresi || ip === a.yayin))) || null;
+  return (
+    (Array.isArray(aglar) ? aglar : []).find(
+      (a) => agIcinde(ip, a) && !(a.onek <= 30 && (ip === a.agAdresi || ip === a.yayin)),
+    ) || null
+  );
 }
 
 function ciktiKok(env = process.env) {
-  const v = String(env.NGINX_LOADTEST_DIR ?? '').trim().replace(/(?<!\/)\/+$/, '');
+  const v = String(env.NGINX_LOADTEST_DIR ?? '')
+    .trim()
+    .replace(/(?<!\/)\/+$/, '');
   if (!v) return VARSAYILAN_CIKTI_KOK;
   if (yolGuvenli(v, CIKTI_KOK_RE)) return v;
   console.warn('[NginxYukTesti] NGINX_LOADTEST_DIR gecersiz, varsayilan kullaniliyor');
@@ -1093,14 +1418,44 @@ function kosuDizini(kok, kosuId) {
 // playbook README tablosuyla ayni), ardindan HTTP/2 secimi yuk_protokol (34), ardindan kosu oncesi sunucu ayari
 // yuk_srv_* (38).
 const EKSTRA_ANAHTARLAR = Object.freeze([
-  'yuk_islem', 'yuk_run_id', 'yuk_hedef_host', 'yuk_yuk_host', 'yuk_hedef_ip', 'yuk_host_basligi', 'yuk_sni',
-  'yuk_senaryo_tur', 'yuk_senaryo_b64', 'yuk_senaryo_sha256', 'yuk_hizlar', 'yuk_tekrar', 'yuk_kip', 'yuk_ae',
-  'yuk_isinma_sn', 'yuk_sure_sn', 'yuk_bosluk_sn', 'yuk_bosta_bas_sn', 'yuk_maxvu', 'yuk_butce_sn', 'yuk_k6_yolu',
-  'yuk_ua_onek', 'yuk_cikti_kok',
-  'yuk_hedef_turu', 'yuk_motor', 'yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_wrk_yolu', 'yuk_tavan_rps', 'yuk_son_epoch',
-  'yuk_arac_dizin', 'yuk_k6_sha256', 'yuk_wrk_sha256',
+  'yuk_islem',
+  'yuk_run_id',
+  'yuk_hedef_host',
+  'yuk_yuk_host',
+  'yuk_hedef_ip',
+  'yuk_host_basligi',
+  'yuk_sni',
+  'yuk_senaryo_tur',
+  'yuk_senaryo_b64',
+  'yuk_senaryo_sha256',
+  'yuk_hizlar',
+  'yuk_tekrar',
+  'yuk_kip',
+  'yuk_ae',
+  'yuk_isinma_sn',
+  'yuk_sure_sn',
+  'yuk_bosluk_sn',
+  'yuk_bosta_bas_sn',
+  'yuk_maxvu',
+  'yuk_butce_sn',
+  'yuk_k6_yolu',
+  'yuk_ua_onek',
+  'yuk_cikti_kok',
+  'yuk_hedef_turu',
+  'yuk_motor',
+  'yuk_baglantilar',
+  'yuk_is_parcacigi',
+  'yuk_wrk_yolu',
+  'yuk_tavan_rps',
+  'yuk_son_epoch',
+  'yuk_arac_dizin',
+  'yuk_k6_sha256',
+  'yuk_wrk_sha256',
   'yuk_protokol',
-  'yuk_srv_ayar', 'yuk_srv_seviye', 'yuk_srv_static', 'yuk_srv_dizin',
+  'yuk_srv_ayar',
+  'yuk_srv_seviye',
+  'yuk_srv_static',
+  'yuk_srv_dizin',
 ]);
 
 /**
@@ -1114,7 +1469,21 @@ const EKSTRA_ANAHTARLAR = Object.freeze([
  * yuk_srv_* HER ZAMAN gonderilir: ayar yalniz on kontrol / kosuda '1' (playbook baska islemde reddeder; durdur kipinde
  * geri alma hedefteki yedege gore calisir, degiskene bakmaz). ayar '0' iken seviye / dizin '' ve static '0'.
  */
-function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, senaryo, p, ua = UA_ONEK, kok, hedefTuru = 'sunucu', arac = null, simdiSn = Math.floor(Date.now() / 1000) }) {
+function ekstraDegiskenler({
+  islem,
+  kosuId,
+  hedefHost,
+  yukHost,
+  hedefIp,
+  vhost,
+  senaryo,
+  p,
+  ua = UA_ONEK,
+  kok,
+  hedefTuru = 'sunucu',
+  arac = null,
+  simdiSn = Math.floor(Date.now() / 1000),
+}) {
   const wrkMi = p.motor === 'wrk';
   const liste = (v) => (Array.isArray(v) ? v.join(' ') : '');
   const srv = islem !== 'durdur' && p.sunucuAyar ? p.sunucuAyar : null;
@@ -1154,8 +1523,8 @@ function ekstraDegiskenler({ islem, kosuId, hedefHost, yukHost, hedefIp, vhost, 
     yuk_wrk_sha256: arac ? String(arac.wrkSha256 ?? '') : '',
     yuk_protokol: p.protokol === 'h2' ? 'h2' : 'h1',
     yuk_srv_ayar: srv ? '1' : '0',
-    yuk_srv_seviye: srv && srv.seviye != null ? String(srv.seviye) : '',
-    yuk_srv_static: srv && srv.static ? '1' : '0',
+    yuk_srv_seviye: srv?.seviye != null ? String(srv.seviye) : '',
+    yuk_srv_static: srv?.static ? '1' : '0',
     yuk_srv_dizin: srv ? String(srv.dizin) : '',
   };
 }
@@ -1182,7 +1551,12 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   if (!metin('yuk_run_id') || !RUN_ID_RE.test(ev.yuk_run_id)) ihlal.push('yuk_run_id');
   const durdur = ev.yuk_islem === 'durdur';
   // Sunucu ayari yalniz on kontrol / kosuda '1': durdur kipinde de playbook kapisi '1'i reddeder.
-  if (ev.yuk_srv_ayar !== undefined && ev.yuk_srv_ayar !== '0' && (ev.yuk_srv_ayar !== '1' || durdur)) ihlal.push('yuk_srv_ayar');
+  if (
+    ev.yuk_srv_ayar !== undefined &&
+    ev.yuk_srv_ayar !== '0' &&
+    (ev.yuk_srv_ayar !== '1' || durdur)
+  )
+    ihlal.push('yuk_srv_ayar');
   // Playbook 'ayar 0 iken seviye, static, dizin bos' kuralini durdurda da uygular (eski Portal: anahtar yok, gecer).
   if (durdur && ev.yuk_srv_ayar === '0') {
     if (ev.yuk_srv_seviye !== '') ihlal.push('yuk_srv_seviye');
@@ -1193,8 +1567,10 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
   const tur = ev.yuk_hedef_turu === undefined && durdur ? 'sunucu' : ev.yuk_hedef_turu;
   if (!HEDEF_TURLERI.includes(tur)) ihlal.push('yuk_hedef_turu');
   const serbest = tur === 'serbest';
-  if (serbest ? ev.yuk_hedef_host !== '' : !(metin('yuk_hedef_host') && adUygun(ev.yuk_hedef_host))) ihlal.push('yuk_hedef_host');
-  if (!metin('yuk_yuk_host') || !adUygun(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host) ihlal.push('yuk_yuk_host');
+  if (serbest ? ev.yuk_hedef_host !== '' : !(metin('yuk_hedef_host') && adUygun(ev.yuk_hedef_host)))
+    ihlal.push('yuk_hedef_host');
+  if (!metin('yuk_yuk_host') || !adUygun(ev.yuk_yuk_host) || ev.yuk_yuk_host === ev.yuk_hedef_host)
+    ihlal.push('yuk_yuk_host');
   if (!durdur) {
     if (!MOTORLAR.includes(ev.yuk_motor)) ihlal.push('yuk_motor');
     const wrk = ev.yuk_motor === 'wrk';
@@ -1203,7 +1579,8 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (ev.yuk_sni !== '0' && (ev.yuk_sni !== '1' || wrk)) ihlal.push('yuk_sni');
     if (!SENARYO_TURLERI.has(ev.yuk_senaryo_tur)) ihlal.push('yuk_senaryo_tur');
     let tsv = null;
-    if (!metin('yuk_senaryo_b64') || !/^[A-Za-z0-9+/]+={0,2}$/.test(ev.yuk_senaryo_b64)) ihlal.push('yuk_senaryo_b64');
+    if (!metin('yuk_senaryo_b64') || !/^[A-Za-z0-9+/]+={0,2}$/.test(ev.yuk_senaryo_b64))
+      ihlal.push('yuk_senaryo_b64');
     else {
       tsv = Buffer.from(ev.yuk_senaryo_b64, 'base64').toString('utf8');
       const satirlar = tsv.split('\n').filter((s) => s !== '');
@@ -1211,9 +1588,19 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
         const k = s.split('\t');
         return k.length !== 5 || yolDenetle(k[4]) !== '' || /[?#\\]/.test(s);
       });
-      if (Buffer.byteLength(tsv, 'utf8') > SINIRLAR.maxTsvBayt || !satirlar.length || satirlar.length > SINIRLAR.maxSatir || bozuk) ihlal.push('yuk_senaryo_b64');
+      if (
+        Buffer.byteLength(tsv, 'utf8') > SINIRLAR.maxTsvBayt ||
+        !satirlar.length ||
+        satirlar.length > SINIRLAR.maxSatir ||
+        bozuk
+      )
+        ihlal.push('yuk_senaryo_b64');
     }
-    if (!metin('yuk_senaryo_sha256') || !SHA256_RE.test(ev.yuk_senaryo_sha256) || (tsv !== null && sha256Hex(tsv) !== ev.yuk_senaryo_sha256)) {
+    if (
+      !metin('yuk_senaryo_sha256') ||
+      !SHA256_RE.test(ev.yuk_senaryo_sha256) ||
+      (tsv !== null && sha256Hex(tsv) !== ev.yuk_senaryo_sha256)
+    ) {
       ihlal.push('yuk_senaryo_sha256');
     }
     const kademeler = (k, max) => {
@@ -1226,17 +1613,31 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
       if (ev.yuk_hizlar !== '') ihlal.push('yuk_hizlar');
       if (ev.yuk_maxvu !== '') ihlal.push('yuk_maxvu');
     } else {
-      if (!kademeler('yuk_hizlar', serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz)) ihlal.push('yuk_hizlar');
-      aralik('yuk_maxvu', SINIRLAR.maxVuMin, serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu);
+      if (!kademeler('yuk_hizlar', serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxHiz))
+        ihlal.push('yuk_hizlar');
+      aralik(
+        'yuk_maxvu',
+        SINIRLAR.maxVuMin,
+        serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxVu,
+      );
     }
     // wrk adimlari (k6'da bos): baglantilar tekil, is parcacigi en kucuk baglantiyi asmaz ve her birini boler.
     if (!wrk) {
-      for (const k of ['yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_tavan_rps']) if (ev[k] !== '') ihlal.push(k);
+      for (const k of ['yuk_baglantilar', 'yuk_is_parcacigi', 'yuk_tavan_rps'])
+        if (ev[k] !== '') ihlal.push(k);
     } else {
-      const b = kademeler('yuk_baglantilar', serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti);
-      if (!b || new Set(b).size !== b.length) ihlal.push('yuk_baglantilar');
+      const b = kademeler(
+        'yuk_baglantilar',
+        serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti,
+      );
+      if (new Set(b).size !== b?.length) ihlal.push('yuk_baglantilar');
       const t = sayi('yuk_is_parcacigi');
-      if (t === null || t < SINIRLAR.isParcacigiMin || t > SINIRLAR.maxIsParcacigi || (b && (t > Math.min(...b) || b.some((n) => n % t !== 0)))) {
+      if (
+        t === null ||
+        t < SINIRLAR.isParcacigiMin ||
+        t > SINIRLAR.maxIsParcacigi ||
+        (b && (t > Math.min(...b) || b.some((n) => n % t !== 0)))
+      ) {
         ihlal.push('yuk_is_parcacigi');
       }
       aralik('yuk_tavan_rps', 1, serbest ? SINIRLAR.serbestTavanRps : SINIRLAR.maxTavanRps);
@@ -1245,15 +1646,23 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     if (!KIPLER.has(ev.yuk_kip)) ihlal.push('yuk_kip');
     if (!AE_DEGERLERI.has(ev.yuk_ae)) ihlal.push('yuk_ae');
     // Protokol: h1 | h2; h2 yalniz k6 ve kip ka (playbook kapisinin uc satiri).
-    if (!PROTOKOLLER.includes(ev.yuk_protokol) || (wrk && ev.yuk_protokol !== 'h1') || (ev.yuk_protokol === 'h2' && ev.yuk_kip !== 'ka')) {
+    if (
+      !PROTOKOLLER.includes(ev.yuk_protokol) ||
+      (wrk && ev.yuk_protokol !== 'h1') ||
+      (ev.yuk_protokol === 'h2' && ev.yuk_kip !== 'ka')
+    ) {
       ihlal.push('yuk_protokol');
     }
     // Sunucu ayari: ayar 1 yalniz sunucu hedefinde; seviye ae'ye bagli; dizin ayar 1 iken HER ZAMAN zorunlu (silme icin).
     if (ev.yuk_srv_ayar === '1') {
       if (serbest) ihlal.push('yuk_srv_ayar');
       const ust = SRV_SEVIYE_MAX[ev.yuk_ae];
-      const seviye = metin('yuk_srv_seviye') && SRV_SEVIYE_RE.test(ev.yuk_srv_seviye) ? Number(ev.yuk_srv_seviye) : null;
-      if (ust ? seviye === null || seviye > ust : ev.yuk_srv_seviye !== '') ihlal.push('yuk_srv_seviye');
+      const seviye =
+        metin('yuk_srv_seviye') && SRV_SEVIYE_RE.test(ev.yuk_srv_seviye)
+          ? Number(ev.yuk_srv_seviye)
+          : null;
+      if (ust ? seviye === null || seviye > ust : ev.yuk_srv_seviye !== '')
+        ihlal.push('yuk_srv_seviye');
       if (ev.yuk_srv_static !== '0' && ev.yuk_srv_static !== '1') ihlal.push('yuk_srv_static');
       if (!srvDizinGecerli(ev.yuk_srv_dizin)) ihlal.push('yuk_srv_dizin');
     } else if (ev.yuk_srv_ayar === '0') {
@@ -1266,24 +1675,42 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
     aralik('yuk_bosluk_sn', SINIRLAR.boslukMin, SINIRLAR.boslukMax);
     aralik('yuk_bosta_bas_sn', SINIRLAR.bostaMin, SINIRLAR.bostaMax);
     // Is gecerlilik suresi: simdi <= deger <= simdi + 1800 (Portal simdi + 900 gonderir).
-    const epoch = metin('yuk_son_epoch') && EPOCH_RE.test(ev.yuk_son_epoch) ? Number(ev.yuk_son_epoch) : null;
-    if (epoch === null || epoch < simdiSn || epoch > simdiSn + SON_EPOCH_UST_PAY_SN) ihlal.push('yuk_son_epoch');
+    const epoch =
+      metin('yuk_son_epoch') && EPOCH_RE.test(ev.yuk_son_epoch) ? Number(ev.yuk_son_epoch) : null;
+    if (epoch === null || epoch < simdiSn || epoch > simdiSn + SON_EPOCH_UST_PAY_SN)
+      ihlal.push('yuk_son_epoch');
     // Butce: <= 2700 (sunucu ayarli 1800) ve >= bosta + adim_sayisi * tekrar * (isinma + sure + bosluk) + 120 (ek paysiz formul).
     const butce = sayi('yuk_butce_sn');
-    const adimlar = (() => { if (metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar')) return ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length; return Number.NaN; })();
-    const altSinir = Number(ev.yuk_bosta_bas_sn) + adimlar * Number(ev.yuk_tekrar) * (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) + 120;
-    const butceTavani = ev.yuk_srv_ayar === '1' ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
-    if (butce === null || butce < 1 || butce > butceTavani || !(butce >= altSinir)) ihlal.push('yuk_butce_sn');
+    const adimlar = (() => {
+      if (metin(wrk ? 'yuk_baglantilar' : 'yuk_hizlar'))
+        return ev[wrk ? 'yuk_baglantilar' : 'yuk_hizlar'].split(' ').length;
+      return Number.NaN;
+    })();
+    const altSinir =
+      Number(ev.yuk_bosta_bas_sn) +
+      adimlar *
+        Number(ev.yuk_tekrar) *
+        (Number(ev.yuk_isinma_sn) + Number(ev.yuk_sure_sn) + Number(ev.yuk_bosluk_sn)) +
+      120;
+    const butceTavani =
+      ev.yuk_srv_ayar === '1' ? SINIRLAR.maxButceSnSunucuAyar : SINIRLAR.maxButceSn;
+    if (butce === null || butce < 1 || butce > butceTavani || !(butce >= altSinir))
+      ihlal.push('yuk_butce_sn');
     // Tur 4: eski yol degiskenleri yalniz isaret degeri; arac dizini <yuk_cikti_kok>/araclar/<id>.
     if (ev.yuk_k6_yolu !== ESKI_K6_ISARETI) ihlal.push('yuk_k6_yolu');
     if (ev.yuk_wrk_yolu !== ESKI_WRK_ISARETI) ihlal.push('yuk_wrk_yolu');
     if (!metin('yuk_ua_onek') || !UA_ONEK_RE.test(ev.yuk_ua_onek)) ihlal.push('yuk_ua_onek');
     if (!yolGuvenli(ev.yuk_cikti_kok, CIKTI_KOK_RE)) ihlal.push('yuk_cikti_kok');
-    if (!yolGuvenli(ev.yuk_arac_dizin, ARAC_DIZIN_RE) || !metin('yuk_cikti_kok') || !ev.yuk_arac_dizin.startsWith(`${ev.yuk_cikti_kok}/araclar/`)) {
+    if (
+      !yolGuvenli(ev.yuk_arac_dizin, ARAC_DIZIN_RE) ||
+      !metin('yuk_cikti_kok') ||
+      !ev.yuk_arac_dizin.startsWith(`${ev.yuk_cikti_kok}/araclar/`)
+    ) {
       ihlal.push('yuk_arac_dizin');
     }
     if (!metin('yuk_k6_sha256') || !SHA256_RE.test(ev.yuk_k6_sha256)) ihlal.push('yuk_k6_sha256');
-    if (!metin('yuk_wrk_sha256') || !SHA256_RE.test(ev.yuk_wrk_sha256)) ihlal.push('yuk_wrk_sha256');
+    if (!metin('yuk_wrk_sha256') || !SHA256_RE.test(ev.yuk_wrk_sha256))
+      ihlal.push('yuk_wrk_sha256');
   }
   // Bilinmeyen anahtar gonderilmez (LIMIT_MUAF, proxy degiskenleri, ...); eksik anahtar da yok.
   for (const k of Object.keys(ev)) if (!EKSTRA_ANAHTARLAR.includes(k)) ihlal.push(k);
@@ -1294,7 +1721,8 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
 /** ansible_job_history icin: senaryo govdesi yerine boyut izi (nginx-console content_b64 deseni). */
 function gecmisIcinMaskele(ev) {
   const o = { ...ev };
-  if (typeof o.yuk_senaryo_b64 === 'string') o.yuk_senaryo_b64 = `<${o.yuk_senaryo_b64.length} b64>`;
+  if (typeof o.yuk_senaryo_b64 === 'string')
+    o.yuk_senaryo_b64 = `<${o.yuk_senaryo_b64.length} b64>`;
   return o;
 }
 
@@ -1311,11 +1739,18 @@ function inListesi(onek, degerler, sql) {
 }
 
 const okunamadi = (kaynak, e) =>
-  Object.assign(new Error(`${kaynak} okunamadı: ${(e && e.message) || e}`), { status: 424, code: 'envanter_okunamadi' });
+  Object.assign(new Error(`${kaynak} okunamadı: ${e?.message || e}`), {
+    status: 424,
+    code: 'envanter_okunamadi',
+  });
 
 /** Sahiplik kaynaklarindaki ad -> kisa host adi (FQDN alani atilir); gecersizse ''. */
 function sahipAdi(v) {
-  return hostNormalle(String(v ?? '').trim().split('.')[0]);
+  return hostNormalle(
+    String(v ?? '')
+      .trim()
+      .split('.')[0],
+  );
 }
 
 /** MSSQL tam sayi sonucu -> sayi ya da null (olculmedi). */
@@ -1333,7 +1768,8 @@ function tamSayiYaDaNull(v) {
 // limitler her hostun bu iki gun icindeki EN SON gunu (henuz yazilmamis host dunku tam verisine duser).
 // Tazelik (taramaYasGun) MAX(scan_date) uzerinde kalir. Indeks dostu: IX_NgxAS_scan / IX_NgxASt_scan
 // (scan_date, host) seek; Settings'te tam tablo taramasi yok (gun seek'i + host basina EXISTS seek'i).
-const SON_IKI_TARAMA_GUNU = 'DATEADD(day, -1, (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers))';
+const SON_IKI_TARAMA_GUNU =
+  'DATEADD(day, -1, (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Servers))';
 const LIMIT_DIREKTIFLERI = "('limit_req_zone', 'limit_conn_zone', 'limit_req', 'limit_conn')";
 
 /** Tarama satirinin gunu (CONVERT 23: 'YYYY-MM-DD') -> metin; '' = bilinmiyor (hepsi ayni gun sayilir). */
@@ -1359,7 +1795,10 @@ function enSonGunler(satirlar, anahtar) {
  * cok IP'li bir hucrenin icindeki IP'nin sahibi kacmaz (paylasilan VIP'te uretim sahibi).
  */
 function hucreIpleri(v) {
-  return String(v ?? '').trim().split(/[\s,;]+/).filter(Boolean);
+  return String(v ?? '')
+    .trim()
+    .split(/[\s,;]+/)
+    .filter(Boolean);
 }
 
 // dbo.Inventory host hucresi -> SQL'de kisa ad (ilk '.' oncesi, buyuk harf). FQDN ile kayitli satir
@@ -1378,7 +1817,7 @@ function parcala(liste, n = 500) {
  * Host adi sahipAdi ile kisaltilir: FQDN satiri kisa adin satirlarina katilir (atilmaz).
  */
 function invSatiriEkle({ inv, invTum, invIp }, x) {
-  const h = sahipAdi(x && x.host);
+  const h = sahipAdi(x?.host);
   if (!h) return;
   const env = x.env == null ? null : String(x.env);
   inv.set(h, env);
@@ -1386,7 +1825,8 @@ function invSatiriEkle({ inv, invTum, invIp }, x) {
   invTum.get(h).push(env);
   if (invIp) {
     const ipler = hucreIpleri(x.ip).filter((v) => kullanilabilirIp(v));
-    if (ipler.length) invIp.set(h, [...new Set([...(invIp.get(h) || []), ...ipler])].sort(ipSirala));
+    if (ipler.length)
+      invIp.set(h, [...new Set([...(invIp.get(h) || []), ...ipler])].sort(ipSirala));
   }
 }
 
@@ -1408,29 +1848,47 @@ function invSatiriEkle({ inv, invTum, invIp }, x) {
  *          taramaVar, ipEnvanteriVar, ipEnvanteriYasSaat, ipEnvanteriSon, taramaYasGun, taramaSon,
  *          taramaAdlari: [{host, server_name, guncel}]|null (yalniz vhost verildiyse) }
  */
-async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = null, vhost = null }) {
+async function kaynaklariOku({
+  query,
+  sql,
+  hostlar = null,
+  ekHostlar = [],
+  ip = null,
+  vhost = null,
+}) {
   if (ip !== null && ip !== undefined && !gecerliIpv4(ip)) {
-    throw Object.assign(new Error('hedefIp noktalı IPv4 olmalı.'), { status: 400, code: 'gecersiz_istek' });
+    throw Object.assign(new Error('hedefIp noktalı IPv4 olmalı.'), {
+      status: 400,
+      code: 'gecersiz_istek',
+    });
   }
   const ipModu = ip !== null && ip !== undefined;
   let nginxSatirlari;
   try {
-    nginxSatirlari = (await query(`SELECT hostname, env, ip, service FROM dbo.nginx_inventory`)).recordset || [];
+    nginxSatirlari =
+      (await query(`SELECT hostname, env, ip, service FROM dbo.nginx_inventory`)).recordset || [];
   } catch (e) {
     throw okunamadi('dbo.nginx_inventory', e);
   }
   // TRUNCATE + yeniden yukleme: bos tablo "envanterde yok" DEGIL, "su an okunamiyor"dur.
-  if (!nginxSatirlari.length) throw okunamadi('dbo.nginx_inventory', new Error('tablo boş (yeniden yükleniyor olabilir)'));
+  if (!nginxSatirlari.length)
+    throw okunamadi('dbo.nginx_inventory', new Error('tablo boş (yeniden yükleniyor olabilir)'));
   const nginx = new Map();
   for (const r of nginxSatirlari) {
     const h = hostNormalle(r.hostname);
-    if (h && !nginx.has(h)) nginx.set(h, { host: h, env: r.env == null ? null : String(r.env), ip: r.ip == null ? null : String(r.ip), service: r.service || null });
+    if (h && !nginx.has(h))
+      nginx.set(h, {
+        host: h,
+        env: r.env == null ? null : String(r.env),
+        ip: r.ip == null ? null : String(r.ip),
+        service: r.service || null,
+      });
   }
 
   const tabloVar = async (ad) => {
     try {
       const r = await query(`SELECT OBJECT_ID('${ad}') AS oid`);
-      return !!(r.recordset && r.recordset[0] && r.recordset[0].oid);
+      return !!r.recordset?.[0]?.oid;
     } catch (e) {
       throw okunamadi(ad, e);
     }
@@ -1464,7 +1922,8 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
   };
   const ipParam = (ad, deger) => [{ name: ad, type: sql.NVarChar(64), value: deger }];
   let taramaVarMi = null;
-  const taramaTablosu = async () => (taramaVarMi === null ? (taramaVarMi = await tabloVar('dbo.Nginx_Audit_Servers')) : taramaVarMi);
+  const taramaTablosu = async () =>
+    taramaVarMi === null ? (taramaVarMi = await tabloVar('dbo.Nginx_Audit_Servers')) : taramaVarMi;
   let ipEnvanteriVar = false;
   let ipEnvanteriYasSaat = null;
   let ipEnvanteriSon = null;
@@ -1476,7 +1935,10 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
     try {
       // Aday IP uretimiyle AYNI ayristirma (hucreIpleri): LIKE genis okur, kesin eslesme JS'te her parcada.
-      const r = await query(`SELECT host, env, ip FROM dbo.Inventory WHERE ip LIKE @ip0`, ipParam('ip0', `%${ip}%`));
+      const r = await query(
+        `SELECT host, env, ip FROM dbo.Inventory WHERE ip LIKE @ip0`,
+        ipParam('ip0', `%${ip}%`),
+      );
       for (const x of r.recordset || []) {
         if (!hucreIpleri(x.ip).includes(ip)) continue;
         const h = sahipEkle(x.host, 'dbo.Inventory');
@@ -1487,7 +1949,8 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
     if (await tabloVar('dbo.IPInventory')) {
       // Gunluk TRUNCATE + yeniden yukleme: bos tablo "sahipsiz" DEGIL (serbest siniflandirma 424 der).
-      const dolu = (await ilkSatir('dbo.IPInventory', `SELECT TOP 1 1 AS x FROM dbo.IPInventory`)).x != null;
+      const dolu =
+        (await ilkSatir('dbo.IPInventory', `SELECT TOP 1 1 AS x FROM dbo.IPInventory`)).x != null;
       if (dolu) {
         ipEnvanteriVar = true;
         try {
@@ -1505,8 +1968,10 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
         } catch (e) {
           throw okunamadi('dbo.IPInventory', e);
         }
-        const t = await ilkSatir('dbo.IPInventory',
-          `SELECT DATEDIFF(HOUR, MAX(last_seen_at), GETDATE()) AS yas_saat, CONVERT(varchar(19), MAX(last_seen_at), 120) AS son FROM dbo.IPInventory`);
+        const t = await ilkSatir(
+          'dbo.IPInventory',
+          `SELECT DATEDIFF(HOUR, MAX(last_seen_at), GETDATE()) AS yas_saat, CONVERT(varchar(19), MAX(last_seen_at), 120) AS son FROM dbo.IPInventory`,
+        );
         ipEnvanteriYasSaat = tamSayiYaDaNull(t.yas_saat);
         ipEnvanteriSon = t.son == null ? null : String(t.son);
       }
@@ -1520,12 +1985,15 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
           ipParam('ip3', `%${ip}%`),
         );
         // Kesin eslesme HER listen belirtecinde (tarayici bloktaki tum listen'leri birlestirir).
-        for (const x of r.recordset || []) if (listenIpleri(x.listen).includes(ip)) sahipEkle(x.host, 'tarama');
+        for (const x of r.recordset || [])
+          if (listenIpleri(x.listen).includes(ip)) sahipEkle(x.host, 'tarama');
       } catch (e) {
         throw okunamadi('dbo.Nginx_Audit_Servers', e);
       }
-      const t = await ilkSatir('dbo.Nginx_Audit_Servers',
-        `SELECT DATEDIFF(DAY, MAX(scan_date), CAST(GETDATE() AS DATE)) AS yas_gun, CONVERT(varchar(10), MAX(scan_date), 23) AS son FROM dbo.Nginx_Audit_Servers`);
+      const t = await ilkSatir(
+        'dbo.Nginx_Audit_Servers',
+        `SELECT DATEDIFF(DAY, MAX(scan_date), CAST(GETDATE() AS DATE)) AS yas_gun, CONVERT(varchar(10), MAX(scan_date), 23) AS son FROM dbo.Nginx_Audit_Servers`,
+      );
       taramaYasGun = tamSayiYaDaNull(t.yas_gun);
       taramaSon = t.son == null ? null : String(t.son);
     }
@@ -1544,8 +2012,13 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
         );
         const satirlar = r.recordset || [];
         const son = enSonGunler(satirlar, (x) => sahipAdi(x.host));
-        taramaAdlari = satirlar.filter((x) => x.server_name != null)
-          .map((x) => ({ host: x.host, server_name: x.server_name, guncel: gunMetni(x.gun) === son.get(sahipAdi(x.host)) }));
+        taramaAdlari = satirlar
+          .filter((x) => x.server_name != null)
+          .map((x) => ({
+            host: x.host,
+            server_name: x.server_name,
+            guncel: gunMetni(x.gun) === son.get(sahipAdi(x.host)),
+          }));
       } catch (e) {
         throw okunamadi('dbo.Nginx_Audit_Servers', e);
       }
@@ -1560,24 +2033,39 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     const taramaHostlari = [];
     if (await taramaTablosu()) {
       try {
-        const r = await query(`SELECT DISTINCT host FROM dbo.Nginx_Audit_Servers WHERE scan_date >= ${SON_IKI_TARAMA_GUNU}`);
+        const r = await query(
+          `SELECT DISTINCT host FROM dbo.Nginx_Audit_Servers WHERE scan_date >= ${SON_IKI_TARAMA_GUNU}`,
+        );
         for (const x of r.recordset || []) taramaHostlari.push(sahipAdi(x.host));
       } catch (e) {
         throw okunamadi('dbo.Nginx_Audit_Servers', e);
       }
     }
-    adayHostlar = [...new Set([...nginx.keys(), ...taramaHostlari])].filter(Boolean).sort(varsayilanSira);
+    adayHostlar = [...new Set([...nginx.keys(), ...taramaHostlari])]
+      .filter(Boolean)
+      .sort(varsayilanSira);
   }
-  const temel = [...new Set([
-    ...(hostlar ? hostlar.map(hostNormalle).filter(Boolean) : adayHostlar),
-    ...ipSahipleri.keys(),
-  ])];
+  const temel = [
+    ...new Set([
+      ...(hostlar ? hostlar.map(hostNormalle).filter(Boolean) : adayHostlar),
+      ...ipSahipleri.keys(),
+    ]),
+  ];
   // Host basligi sahipleri (2026-11-16, GBJWLT01): server_name'i vhost'la eslesen hostlarin dbo.Inventory satirlari da okunur;
   // hostBasligiDegerlendir ad kalibi tutmayan sahibin ortamini hostOrtami ile (envanterden) bulur.
   const vhostSahipleri = Array.isArray(taramaAdlari)
-    ? taramaAdlari.filter((x) => String(x.server_name ?? '').split(/\s+/).some((ad) => serverNameEslesir(ad, vhost))).map((x) => sahipAdi(x.host)).filter(Boolean)
+    ? taramaAdlari
+        .filter((x) =>
+          String(x.server_name ?? '')
+            .split(/\s+/)
+            .some((ad) => serverNameEslesir(ad, vhost)),
+        )
+        .map((x) => sahipAdi(x.host))
+        .filter(Boolean)
     : [];
-  const invHostlari = [...new Set([...temel, ...ekHostlar.map(hostNormalle).filter(Boolean), ...vhostSahipleri])];
+  const invHostlari = [
+    ...new Set([...temel, ...ekHostlar.map(hostNormalle).filter(Boolean), ...vhostSahipleri]),
+  ];
 
   if (invHostlari.length) {
     try {
@@ -1585,8 +2073,12 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
       const istenen = new Set(invHostlari);
       for (const parca of parcala(invHostlari)) {
         const il = inListesi('h', parca, sql);
-        const r = await query(`SELECT host, env, ip FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`, il.params);
-        for (const x of r.recordset || []) if (istenen.has(sahipAdi(x.host))) invSatiriEkle({ inv, invTum, invIp }, x);
+        const r = await query(
+          `SELECT host, env, ip FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`,
+          il.params,
+        );
+        for (const x of r.recordset || [])
+          if (istenen.has(sahipAdi(x.host))) invSatiriEkle({ inv, invTum, invIp }, x);
       }
     } catch (e) {
       throw okunamadi('dbo.Inventory', e);
@@ -1594,7 +2086,12 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
   }
   const ilgili = hostlar
     ? temel
-    : [...new Set([...adayHostlar.filter((h) => hostOrtami(h, { nginx, invTum }).ok), ...ipSahipleri.keys()])];
+    : [
+        ...new Set([
+          ...adayHostlar.filter((h) => hostOrtami(h, { nginx, invTum }).ok),
+          ...ipSahipleri.keys(),
+        ]),
+      ];
 
   let sunucular = null;
   // ip / vhost yoksa OBJECT_ID burada (tur 2 sirasi); varsa yukarida bir kez olculdu.
@@ -1631,11 +2128,14 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     const gunParam = (ad, deger) => ({ name: ad, type: sql.NVarChar(10), value: deger });
     try {
       // Son iki tarama gunu, seek ile: d = MAX(scan_date), o = d'den onceki gun (yoksa null).
-      const g = ((await query(
-        `SELECT CONVERT(varchar(10), m.d, 23) AS d,
+      const g =
+        ((
+          await query(
+            `SELECT CONVERT(varchar(10), m.d, 23) AS d,
                 CONVERT(varchar(10), (SELECT MAX(scan_date) FROM dbo.Nginx_Audit_Settings WHERE scan_date < m.d), 23) AS o
            FROM (SELECT MAX(scan_date) AS d FROM dbo.Nginx_Audit_Settings) AS m`,
-      )).recordset || [])[0] || {};
+          )
+        ).recordset || [])[0] || {};
       const d = g.d == null ? null : gunMetni(g.d);
       const o = g.o == null ? null : gunMetni(g.o);
       if (d) {
@@ -1648,11 +2148,15 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
             `SELECT h.host,
                     CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @d, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS d_var,
                     CASE WHEN EXISTS (SELECT 1 FROM dbo.Nginx_Audit_Settings s WHERE s.scan_date = CONVERT(date, @o, 23) AND s.host = h.host) THEN 1 ELSE 0 END AS o_var
-               FROM (VALUES ${il.params.map((p) => ("(@" + p.name + ")")).join(', ')}) AS h(host)`,
+               FROM (VALUES ${il.params.map((p) => '(@' + p.name + ')').join(', ')}) AS h(host)`,
             [...il.params, gunParam('d', d), gunParam('o', o)],
           );
           for (const x of r0.recordset || []) {
-            const gun = (() => { if (Number(x.d_var) === 1) return d; if (Number(x.o_var) === 1 && o) return o; return null; })();
+            const gun = (() => {
+              if (Number(x.d_var) === 1) return d;
+              if (Number(x.o_var) === 1 && o) return o;
+              return null;
+            })();
             if (!gun) continue;
             if (!gunHostlari.has(gun)) gunHostlari.set(gun, []);
             gunHostlari.get(gun).push(String(x.host));
@@ -1681,9 +2185,20 @@ async function kaynaklariOku({ query, sql, hostlar = null, ekHostlar = [], ip = 
     }
   }
   return {
-    nginx, inv, invTum, invIp, sunucular, ayarlar, ipSahipleri, ipTaninmayan,
+    nginx,
+    inv,
+    invTum,
+    invIp,
+    sunucular,
+    ayarlar,
+    ipSahipleri,
+    ipTaninmayan,
     taramaVar: taramaVarMi === null ? sunucular !== null : taramaVarMi,
-    ipEnvanteriVar, ipEnvanteriYasSaat, ipEnvanteriSon, taramaYasGun, taramaSon,
+    ipEnvanteriVar,
+    ipEnvanteriYasSaat,
+    ipEnvanteriSon,
+    taramaYasGun,
+    taramaSon,
     ...(vhost !== null && vhost !== undefined ? { taramaAdlari } : {}),
   };
 }
@@ -1699,8 +2214,17 @@ function hedefAyrintisi(k, host) {
   const ipler = invIpler.length ? [...new Set([...ipler0, ...invIpler])].sort(ipSirala) : ipler0;
   // Tarama verisi yoksa (tablo yok ya da host taranmamis) vhost listesi BILINMIYOR: null.
   const vh = s ? vhostlar(s.serverName) : null;
-  const t = k.ayarlar ? rateLimitTavani(k.ayarlar.get(host) || []) : { hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null };
-  return { ipler, vhostlar: vh, hizSiniri: t.hizSiniri, vuSiniri: t.vuSiniri, limitReq: t.limitReq, limitConn: t.limitConn };
+  const t = k.ayarlar
+    ? rateLimitTavani(k.ayarlar.get(host) || [])
+    : { hizSiniri: null, vuSiniri: null, limitReq: null, limitConn: null };
+  return {
+    ipler,
+    vhostlar: vh,
+    hizSiniri: t.hizSiniri,
+    vuSiniri: t.vuSiniri,
+    limitReq: t.limitReq,
+    limitConn: t.limitConn,
+  };
 }
 
 // dbo.Inventory urun kolonlari (server-hub/index.cjs PRODUCT_COLS ile ayni adlar; kolon yoksa ipucu null).
@@ -1721,8 +2245,14 @@ const URUN_KOLONLARI = Object.freeze([
 async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null }) {
   let kolonlar;
   try {
-    const r = await query(`SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`);
-    kolonlar = new Set((r.recordset || []).map((c) => String(c && c.name != null ? c.name : '').toLowerCase()).filter(Boolean));
+    const r = await query(
+      `SELECT name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Inventory')`,
+    );
+    kolonlar = new Set(
+      (r.recordset || [])
+        .map((c) => String(c?.name != null ? c.name : '').toLowerCase())
+        .filter(Boolean),
+    );
   } catch (e) {
     throw okunamadi('dbo.Inventory', e);
   }
@@ -1734,10 +2264,17 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
       const hs = [...new Set(hostlar.map(hostNormalle).filter(Boolean))];
       if (!hs.length) return new Map();
       const il = inListesi('h', hs, sql);
-      satirlar = ((await query(`SELECT ${sec} FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`, il.params)).recordset || [])
-        .filter((x) => hs.includes(sahipAdi(x && x.host)));
+      satirlar = (
+        (
+          await query(
+            `SELECT ${sec} FROM dbo.Inventory WHERE ${INV_KISA_AD} IN (${il.sqlText})`,
+            il.params,
+          )
+        ).recordset || []
+      ).filter((x) => hs.includes(sahipAdi(x?.host)));
     } else {
-      satirlar = (await query(`SELECT ${sec} FROM dbo.Inventory WHERE host IS NOT NULL`)).recordset || [];
+      satirlar =
+        (await query(`SELECT ${sec} FROM dbo.Inventory WHERE host IS NOT NULL`)).recordset || [];
     }
   } catch (e) {
     throw okunamadi('dbo.Inventory', e);
@@ -1747,7 +2284,7 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
   const nginxKolonu = urunKolonlari.some((u) => u.urun === 'NGINX');
   for (const x of satirlar) {
     // FQDN satiri (gbx01.bmw.local) kisa adin adayidir (atilmaz; IP yolu ve ortam kurali da kisa adla calisir).
-    const h = sahipAdi(x && x.host);
+    const h = sahipAdi(x?.host);
     if (!h) continue;
     if (!adaylar.has(h)) adaylar.set(h, { nginxEnvanter: nginxKolonu ? false : null, urunler: [] });
     const a = adaylar.get(h);
@@ -1775,18 +2312,40 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
  * ip_belirsiz -> sahip yoksa serbest (izin listesi acik, tarama ve IPInventory var ve TAZE, IP izinli bir agda ve
  * ag / yayin adresi degil). Cagiran hedefHost icin ONCE hedefKapisi'ni calistirir.
  */
-function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedefHost = null, yukHost = null } = {}) {
-  if (!kullanilabilirIp(ip)) return red(400, 'gecersiz_istek', 'hedefIp kullanılabilir bir IPv4 değil (0/8, 127/8, 169.254/16, 224+ olamaz).');
+function ipSinifla(
+  ip,
+  k,
+  { aglar = [], yasak = { liste: [], hatali: [] }, hedefHost = null, yukHost = null } = {},
+) {
+  if (!kullanilabilirIp(ip))
+    return red(
+      400,
+      'gecersiz_istek',
+      'hedefIp kullanılabilir bir IPv4 değil (0/8, 127/8, 169.254/16, 224+ olamaz).',
+    );
   const ys = yasak && typeof yasak === 'object' ? yasak : { liste: [], hatali: [] };
   const hatali = Array.isArray(ys.hatali) ? ys.hatali : [];
   if (hatali.length) {
-    return red(409, 'ip_yasak_listesi_gecersiz', `NGINX_LOADTEST_SERBEST_YASAK okunamadı (geçersiz girdi: ${hatali[0]}); liste düzeltilene kadar yük testi yapılmaz.`);
+    return red(
+      409,
+      'ip_yasak_listesi_gecersiz',
+      `NGINX_LOADTEST_SERBEST_YASAK okunamadı (geçersiz girdi: ${hatali[0]}); liste düzeltilene kadar yük testi yapılmaz.`,
+    );
   }
   const yasakli = (Array.isArray(ys.liste) ? ys.liste : []).find((a) => agIcinde(ip, a));
-  if (yasakli) return red(409, 'ip_yasakli_agda', `${ip} yasaklı bir ağda (${yasakli.metin}, NGINX_LOADTEST_SERBEST_YASAK); yük testi yapılmaz.`);
+  if (yasakli)
+    return red(
+      409,
+      'ip_yasakli_agda',
+      `${ip} yasaklı bir ağda (${yasakli.metin}, NGINX_LOADTEST_SERBEST_YASAK); yük testi yapılmaz.`,
+    );
   const taninmayan = [...new Set(Array.isArray(k.ipTaninmayan) ? k.ipTaninmayan : [])];
   if (taninmayan.length) {
-    return red(409, 'ip_sahibi_cozulemedi', `${ip} adı çözülemeyen bir envanter kaydına ait (${taninmayan.join(', ')}); IP'nin sahibi bilinmediği için yük testi yapılmaz.`);
+    return red(
+      409,
+      'ip_sahibi_cozulemedi',
+      `${ip} adı çözülemeyen bir envanter kaydına ait (${taninmayan.join(', ')}); IP'nin sahibi bilinmediği için yük testi yapılmaz.`,
+    );
   }
   const sahipMap = k.ipSahipleri instanceof Map ? k.ipSahipleri : new Map();
   // TEK HEDEF MODELI (2026-11-13): her sahip (nginx olsun olmasin) hostOrtami kuralindan gecmeli. `nginx` alani
@@ -1801,11 +2360,22 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
   });
   const ek = { sahipler: sahipler.slice(0, 10) };
   if (yukHost && sahipler.some((s) => s.host === yukHost)) {
-    return red(409, 'ayni_host', `${ip} yük makinesinin (${yukHost}) kendi IP'si; hedef olamaz.`, ek);
+    return red(
+      409,
+      'ayni_host',
+      `${ip} yük makinesinin (${yukHost}) kendi IP'si; hedef olamaz.`,
+      ek,
+    );
   }
   for (const s of sahipler) {
     const o = ortamlar.get(s.host);
-    if (!o.ok) return red(409, 'hedef_uretim', `${ip}, ${s.host} sunucusuna ait (${o.sebep}); yük testi yapılmaz.`, ek);
+    if (!o.ok)
+      return red(
+        409,
+        'hedef_uretim',
+        `${ip}, ${s.host} sunucusuna ait (${o.sebep}); yük testi yapılmaz.`,
+        ek,
+      );
   }
   const sahipAdlari = sahipler.map((s) => s.host);
   if (hedefHost) {
@@ -1816,28 +2386,63 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
   }
   if (sahipAdlari.length === 1) return { ok: true, tur: 'sunucu', host: sahipAdlari[0] };
   if (sahipAdlari.length >= 2) {
-    return red(409, 'ip_belirsiz', `${ip} birden çok sunucuda tanımlı (${sahipAdlari.join(', ')}); hedef sunucuyu listeden seçin.`, ek);
+    return red(
+      409,
+      'ip_belirsiz',
+      `${ip} birden çok sunucuda tanımlı (${sahipAdlari.join(', ')}); hedef sunucuyu listeden seçin.`,
+      ek,
+    );
   }
   // Hicbir envanterde sahibi yok: serbest adayi. "Sahipsiz" PROD olmadiginin kaniti DEGIL; asil koruma izin listesi.
   const izinli = Array.isArray(aglar) ? aglar : [];
   if (!izinli.length) {
-    return red(409, 'serbest_kapali', `${ip} hiçbir envanterde kayıtlı değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).`, ek);
+    return red(
+      409,
+      'serbest_kapali',
+      `${ip} hiçbir envanterde kayıtlı değil ve serbest hedef kapalı (NGINX_LOADTEST_SERBEST_AGLAR tanımlı değil).`,
+      ek,
+    );
   }
   if (!(k.taramaVar && k.ipEnvanteriVar)) {
-    const eksik = [k.taramaVar ? null : 'dbo.Nginx_Audit_Servers', k.ipEnvanteriVar ? null : 'dbo.IPInventory'].filter(Boolean).join(' ve ');
-    return red(424, 'envanter_okunamadi', `Serbest hedef için IP sahipliği doğrulanamadı: ${eksik} okunamadı ya da boş.`, ek);
+    const eksik = [
+      k.taramaVar ? null : 'dbo.Nginx_Audit_Servers',
+      k.ipEnvanteriVar ? null : 'dbo.IPInventory',
+    ]
+      .filter(Boolean)
+      .join(' ve ');
+    return red(
+      424,
+      'envanter_okunamadi',
+      `Serbest hedef için IP sahipliği doğrulanamadı: ${eksik} okunamadı ya da boş.`,
+      ek,
+    );
   }
   const parcalar = [];
   if (k.ipEnvanteriYasSaat == null || k.ipEnvanteriYasSaat > SINIRLAR.ipEnvanteriMaxYasSaat) {
-    parcalar.push(`dbo.IPInventory son yükleme ${k.ipEnvanteriSon ?? '?'} (${k.ipEnvanteriYasSaat ?? '?'} saat önce, en çok ${SINIRLAR.ipEnvanteriMaxYasSaat})`);
+    parcalar.push(
+      `dbo.IPInventory son yükleme ${k.ipEnvanteriSon ?? '?'} (${k.ipEnvanteriYasSaat ?? '?'} saat önce, en çok ${SINIRLAR.ipEnvanteriMaxYasSaat})`,
+    );
   }
   if (k.taramaYasGun == null || k.taramaYasGun > SINIRLAR.taramaMaxYasGun) {
-    parcalar.push(`nginx taraması ${k.taramaSon ?? '?'} (${k.taramaYasGun ?? '?'} gün önce, en çok ${SINIRLAR.taramaMaxYasGun})`);
+    parcalar.push(
+      `nginx taraması ${k.taramaSon ?? '?'} (${k.taramaYasGun ?? '?'} gün önce, en çok ${SINIRLAR.taramaMaxYasGun})`,
+    );
   }
-  if (parcalar.length) return red(424, 'envanter_bayat', `Serbest hedef için envanter bayat: ${parcalar.join('; ')}; yükleyici / tarama işlerini kontrol edin.`, ek);
+  if (parcalar.length)
+    return red(
+      424,
+      'envanter_bayat',
+      `Serbest hedef için envanter bayat: ${parcalar.join('; ')}; yükleyici / tarama işlerini kontrol edin.`,
+      ek,
+    );
   const ag = serbestAgBul(ip, izinli);
   if (!ag) {
-    return red(409, 'ip_izinli_agda_degil', `${ip} hiçbir envanterde kayıtlı değil ve izinli ağların (${izinli.map((a) => a.metin).join(', ')}) dışında.`, ek);
+    return red(
+      409,
+      'ip_izinli_agda_degil',
+      `${ip} hiçbir envanterde kayıtlı değil ve izinli ağların (${izinli.map((a) => a.metin).join(', ')}) dışında.`,
+      ek,
+    );
   }
   // Sahip yoksa digerSahipler her zaman bos (alan geriye uyum icin kalir).
   return { ok: true, tur: 'serbest', host: null, ag: ag.metin, digerSahipler: [] };
@@ -1851,8 +2456,14 @@ function ipSinifla(ip, k, { aglar = [], yasak = { liste: [], hatali: [] }, hedef
  * (zaman asimsiz Node regex'i olay dongusunu kilitleyebilir; asil koruma izin listesi: bilinen bosluk).
  */
 function serverNameEslesir(ad, vhost) {
-  const a = String(ad ?? '').trim().toLowerCase().replace(/(?<!;);+$/, '').replace(/^["']+|(?<!["'])["']+$/g, '');
-  const v = String(vhost ?? '').trim().toLowerCase();
+  const a = String(ad ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/(?<!;);+$/, '')
+    .replace(/^["']+|(?<!["'])["']+$/g, '');
+  const v = String(vhost ?? '')
+    .trim()
+    .toLowerCase();
   if (!a || !v || a === '_' || a.startsWith('~')) return false;
   if (a === v) return true;
   if (a.startsWith('*.')) return v.endsWith(`.${a.slice(2)}`) && a.length > 2;
@@ -1877,15 +2488,24 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
   const serbest = hedefTuru === 'serbest';
   if (!Array.isArray(k.taramaAdlari)) {
     if (!serbest) return { ok: true, uyarilar: [] };
-    return red(424, 'envanter_okunamadi', 'Serbest hedef için Host başlığı denetlenemedi: nginx taraması (dbo.Nginx_Audit_Servers) okunamadı ya da boş.');
+    return red(
+      424,
+      'envanter_okunamadi',
+      'Serbest hedef için Host başlığı denetlenemedi: nginx taraması (dbo.Nginx_Audit_Servers) okunamadı ya da boş.',
+    );
   }
   const { envOfHost, internetRpHosts } = require('../audit/nginx-hosts.cjs');
   const birlesim = new Set();
   const guncel = new Set();
   for (const r of k.taramaAdlari) {
-    const h = sahipAdi(r && r.host);
+    const h = sahipAdi(r?.host);
     if (!h) continue;
-    if (!String((r && r.server_name) ?? '').split(/\s+/).some((ad) => serverNameEslesir(ad, vhost))) continue;
+    if (
+      !String(r?.server_name ?? '')
+        .split(/\s+/)
+        .some((ad) => serverNameEslesir(ad, vhost))
+    )
+      continue;
     birlesim.add(h);
     if (r.guncel !== false) guncel.add(h);
   }
@@ -1893,23 +2513,39 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
   // envOfHost BILINMIYOR) artik dogrudan "ortami bilinmeyen" SAYILMAZ: hedef kapisiyla ayni kural (hostOrtami,
   // dbo.Inventory'nin TUM satirlari DEV/TEST/QA ve uretim isareti yok). Envanterde yoksa yine engellenir (2026-11-16).
   const uretimMi = (h) => {
-    if (IZINLI_ORTAM.has(envOfHost(h))) return !!uretimIsareti({ host: h, nginxEnv: k.nginx.get(h)?.env ?? null, invEnv: k.inv.get(h) ?? null });
+    if (IZINLI_ORTAM.has(envOfHost(h)))
+      return !!uretimIsareti({
+        host: h,
+        nginxEnv: k.nginx.get(h)?.env ?? null,
+        invEnv: k.inv.get(h) ?? null,
+      });
     return !hostOrtami(h, k).ok;
   };
   const P = [...birlesim].filter(uretimMi).sort(varsayilanSira);
   const N = [...guncel].filter((h) => !P.includes(h));
   const S = new Set([...P, ...N]);
   if (P.length && !N.length) {
-    return red(409, 'host_uretim', `Host başlığı (${vhost}) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (${P.slice(0, 5).join(', ')}${P.length > 5 ? ' …' : ''}); bu adla yük testi yapılmaz.`, {
-      sahipler: P.slice(0, 10).map((h) => ({ host: h, env: envOfHost(h), nginx: true, kaynaklar: ['tarama'] })),
-    });
+    return red(
+      409,
+      'host_uretim',
+      `Host başlığı (${vhost}) son taramada yalnız üretim / EDU / ortamı bilinmeyen nginx sunucularında tanımlı (${P.slice(0, 5).join(', ')}${P.length > 5 ? ' …' : ''}); bu adla yük testi yapılmaz.`,
+      {
+        sahipler: P.slice(0, 10).map((h) => ({
+          host: h,
+          env: envOfHost(h),
+          nginx: true,
+          kaynaklar: ['tarama'],
+        })),
+      },
+    );
   }
   const uyarilar = [];
   if (serbest) {
     if (!S.size) uyarilar.push(HOST_TARAMADA_YOK_UYARISI(vhost));
     if (P.length) uyarilar.push(HOST_URETIMDE_DE_VAR_UYARISI(vhost, P));
     if (yukHost && S.has(yukHost)) uyarilar.push(YUK_MAKINESI_HAVUZDA_UYARISI(vhost, yukHost));
-    if (yukHost && internetRpHosts().all.has(yukHost)) uyarilar.push(YUK_MAKINESI_RP_UYARISI(yukHost));
+    if (yukHost && internetRpHosts().all.has(yukHost))
+      uyarilar.push(YUK_MAKINESI_RP_UYARISI(yukHost));
   }
   return { ok: true, uyarilar };
 }

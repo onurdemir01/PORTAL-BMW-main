@@ -66,7 +66,11 @@ test('DA2 min/max ve diger tavanlar da AYNI ISTEKTE degisiyor', () => {
   process.env.SCALEX_VERIFY_TIMEOUT_MAX = '900';
   assert.equal(launch.normalizeVerificationTimeout('45'), null, 'yeni MIN uygulanmadi');
   assert.equal(launch.normalizeVerificationTimeout('1200'), null, 'yeni MAX uygulanmadi');
-  assert.equal(launch.normalizeVerificationTimeout('600'), 600, 'yeni aralik icindeki deger reddedildi');
+  assert.equal(
+    launch.normalizeVerificationTimeout('600'),
+    600,
+    'yeni aralik icindeki deger reddedildi',
+  );
 });
 
 // DA3 — AYARIN AWX'E GERCEKTEN ULASTIGI. Sinirlari dinamiklestirip `extra_vars`i
@@ -81,15 +85,26 @@ test('DA3 extra_vars YENI degerlerle uretiliyor (carpan dahil)', async () => {
   const saveHosts = adminData.resolveTerminalHosts;
   const saveMeta = adminData.resolveClusterMeta;
   const saveVault = ocp.assertVaultKeysKnownOrThrow;
-  adminData.resolveTerminalHosts = async () => ({ hosts: [{ cluster: 'c1', host: 'h1' }], missing: [] });
+  adminData.resolveTerminalHosts = async () => ({
+    hosts: [{ cluster: 'c1', host: 'h1' }],
+    missing: [],
+  });
   adminData.resolveClusterMeta = async () => [{ cluster: 'c1', vaultKey: 'k' }];
   ocp.assertVaultKeysKnownOrThrow = async () => {};
   try {
     process.env.SCALEX_VERIFY_TIMEOUT_DEFAULT = '240';
     process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '3';
     const vars = await launch.buildRunExtraVars({
-      env: 'test', tenant: 'ark', namespace: 'ns1', clusters: ['c1'], apps: ['app1'],
-      action: 'stop', executionMode: 'apply', allowPartial: true, mailTo: 'a@b.c', mailCc: '',
+      env: 'test',
+      tenant: 'ark',
+      namespace: 'ns1',
+      clusters: ['c1'],
+      apps: ['app1'],
+      action: 'stop',
+      executionMode: 'apply',
+      allowPartial: true,
+      mailTo: 'a@b.c',
+      mailCc: '',
     });
     assert.equal(Number(vars.verification_timeout), 240, 'butce admin degerinden gelmiyor');
     assert.equal(Number(vars.verify_warn_seconds), 240, 'uyari esigi admin degerinden gelmiyor');
@@ -160,12 +175,20 @@ test('DA7 ekran fallback degerleri sunucu fabrika degerleriyle AYNI', () => {
   for (const [uiText, key] of pairs) {
     assert.ok(ui.includes(uiText), `ekran fallback'i "${uiText}" degil`);
     const num = Number(uiText.match(/([0-9]+)/)[1]);
-    assert.equal(config.TUNABLES[key].fallback, num, `${key}: ekran ${num}, sunucu ${config.TUNABLES[key].fallback}`);
+    assert.equal(
+      config.TUNABLES[key].fallback,
+      num,
+      `${key}: ekran ${num}, sunucu ${config.TUNABLES[key].fallback}`,
+    );
   }
   // StoppedPanel'in kendi fabrika degeri de ayni olmali.
   const panel = fs.readFileSync(path.join(ROOT, 'src/components/scalex/StoppedPanel.tsx'), 'utf8');
   assert.match(panel, /const MAX_AUDIT_GROUPS = 12;/, 'panel fabrika tavani ayrismis');
-  assert.match(panel, /const MAX_AUDIT_NAMESPACES = 60;/, 'panel namespace fabrika tavani ayrismis');
+  assert.match(
+    panel,
+    /const MAX_AUDIT_NAMESPACES = 60;/,
+    'panel namespace fabrika tavani ayrismis',
+  );
 });
 
 // DA8 — UCUN KARARI. DA6 yalnizca LISTENIN var oldugunu kontrol ediyordu; mutasyon
@@ -184,8 +207,12 @@ test('DA8 admin ucu sicak anahtar icin "restart gerekir" DEMIYOR', async () => {
   try {
     const routes = {};
     const fakeApp = {
-      get: (p, h) => { routes[`GET ${p}`] = h; },
-      put: (p, _mw, h) => { routes[`PUT ${p}`] = h || _mw; },
+      get: (p, h) => {
+        routes[`GET ${p}`] = h;
+      },
+      put: (p, _mw, h) => {
+        routes[`PUT ${p}`] = h || _mw;
+      },
     };
     require('../../admin/system-config.cjs').initSystemConfig(fakeApp);
 
@@ -275,7 +302,11 @@ test('DA9 esik > tavan ise kapi SESSIZCE olmuyor — fabrikaya doner ve SEBEBI y
 // duser ve "uyar ama beklemeye devam et" davranisi coker.
 test('DA10 fail carpani 1 ise kullanici UYARILIYOR', () => {
   process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '1';
-  assert.match(config.publicConfig().problems.join(' '), /çarpan/i, 'carpan=1 sessizce kabul edildi');
+  assert.match(
+    config.publicConfig().problems.join(' '),
+    /çarpan/i,
+    'carpan=1 sessizce kabul edildi',
+  );
 });
 
 // ── PROD SMART KIPI (2026-10-13) ────────────────────────────────────────────
@@ -293,7 +324,11 @@ test('DA11 SMART kipi HER cagrida okunur; bos/taninmayan deger `required` kalir 
     assert.equal(config.publicConfig().prodSmartMode, 'required');
 
     process.env[SMART_KEY] = 'oco_only';
-    assert.deepEqual(config.smartMode(), { value: 'oco_only', source: 'admin', problem: null }, 'degisiklik restart istiyor');
+    assert.deepEqual(
+      config.smartMode(),
+      { value: 'oco_only', source: 'admin', problem: null },
+      'degisiklik restart istiyor',
+    );
     assert.equal(config.publicConfig().prodSmartMode, 'oco_only');
     assert.equal(config.publicConfig().sources[SMART_KEY], 'admin');
 
@@ -305,7 +340,10 @@ test('DA11 SMART kipi HER cagrida okunur; bos/taninmayan deger `required` kalir 
       const k = config.smartMode();
       assert.equal(k.value, 'required', `"${yanlis}" SMART kapisini indirdi`);
       assert.match(k.problem, /tanınmıyor/, `"${yanlis}" sessizce yok sayildi`);
-      assert.ok(config.publicConfig().problems.some((p) => p.includes(SMART_KEY)), 'sorun ekrana tasinmiyor');
+      assert.ok(
+        config.publicConfig().problems.some((p) => p.includes(SMART_KEY)),
+        'sorun ekrana tasinmiyor',
+      );
     }
   } finally {
     if (onceki === undefined) delete process.env[SMART_KEY];
@@ -318,13 +356,24 @@ test('DA12 SMART kipi KAYDEDILMEDEN once dogrulanir (yanlis deger 400, baska ana
     assert.equal(config.ayarHatasi(SMART_KEY, gecerli), null, `"${gecerli}" reddedildi`);
   }
   for (const yanlis of ['oco-only', 'kapali', 'true', 'required,oco_only']) {
-    assert.match(config.ayarHatasi(SMART_KEY, yanlis), /required.*oco_only/, `"${yanlis}" kabul edildi`);
+    assert.match(
+      config.ayarHatasi(SMART_KEY, yanlis),
+      /required.*oco_only/,
+      `"${yanlis}" kabul edildi`,
+    );
   }
-  assert.equal(config.ayarHatasi('SCALEX_MAX_TARGETS', 'sacma'), null, 'baska anahtarin dogrulamasina karisiyor');
+  assert.equal(
+    config.ayarHatasi('SCALEX_MAX_TARGETS', 'sacma'),
+    null,
+    'baska anahtarin dogrulamasina karisiyor',
+  );
 
   const eo = require('../../db/env-overrides.cjs');
   assert.ok(eo.SYSTEM_CONFIG_KEYS.includes(SMART_KEY), 'anahtar admin ekranindan yazilamiyor');
-  assert.ok(eo.HOT_RELOADABLE_KEYS.includes(SMART_KEY), 'anahtar sicak yuklenmiyor — kaydedince etki etmez');
+  assert.ok(
+    eo.HOT_RELOADABLE_KEYS.includes(SMART_KEY),
+    'anahtar sicak yuklenmiyor — kaydedince etki etmez',
+  );
 
   // Admin ucu dogrulamayi KAYITTAN ONCE cagirir (kayittan sonra cagirmak, yanlis degeri
   // DB'ye yazip 400 donmek olurdu).
@@ -337,7 +386,11 @@ test('DA12 SMART kipi KAYDEDILMEDEN once dogrulanir (yanlis deger 400, baska ana
   const kaydet = uc.indexOf('await setEnvOverride(key, strValue');
   assert.ok(dogrula > 0, 'admin ucu ScaleX ayarini dogrulamiyor');
   assert.ok(kaydet > dogrula, 'dogrulama kayittan SONRA');
-  assert.match(uc.slice(dogrula, kaydet), /if \(scalexHatasi\) return res\.status\(400\)/, 'hata 400 ile donmuyor');
+  assert.match(
+    uc.slice(dogrula, kaydet),
+    /if \(scalexHatasi\) return res\.status\(400\)/,
+    'hata 400 ile donmuyor',
+  );
 });
 
 // DA13 — EKRANA GIDEN SAYI = KARARI VEREN SAYI. Patlama yaricapi tavan ve esigi
@@ -347,10 +400,22 @@ test('DA13 patlama yaricapi tavan ve esigi bayraklarla AYNI degerden tasir; sonu
   process.env.SCALEX_MAX_TARGETS = '4';
   process.env.SCALEX_PROD_CONFIRM_THRESHOLD = '2';
   const yaricap = (clusters, apps) =>
-    launch.computeBlastRadius({ clusters, apps, environment: 'prod', action: 'stop', executionMode: 'apply' });
+    launch.computeBlastRadius({
+      clusters,
+      apps,
+      environment: 'prod',
+      action: 'stop',
+      executionMode: 'apply',
+    });
   const sinirda = yaricap(['c1', 'c2'], ['a', 'b']);
   assert.deepEqual(
-    [sinirda.targets, sinirda.maxTargets, sinirda.exceedsMaxTargets, sinirda.writtenConfirmThreshold, sinirda.requiresWrittenConfirm],
+    [
+      sinirda.targets,
+      sinirda.maxTargets,
+      sinirda.exceedsMaxTargets,
+      sinirda.writtenConfirmThreshold,
+      sinirda.requiresWrittenConfirm,
+    ],
     [4, 4, false, 2, true],
   );
   const ustunde = yaricap(['c1', 'c2', 'c3'], ['a', 'b']);
@@ -360,5 +425,9 @@ test('DA13 patlama yaricapi tavan ve esigi bayraklarla AYNI degerden tasir; sonu
 
   assert.deepEqual(launch.verifyThresholds(300), { warnSeconds: 300, failSeconds: 600 });
   process.env.SCALEX_VERIFY_FAIL_MULTIPLIER = '5';
-  assert.deepEqual(launch.verifyThresholds(120), { warnSeconds: 120, failSeconds: 600 }, 'carpan dinamik degil');
+  assert.deepEqual(
+    launch.verifyThresholds(120),
+    { warnSeconds: 120, failSeconds: 600 },
+    'carpan dinamik degil',
+  );
 });

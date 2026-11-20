@@ -66,7 +66,13 @@ function eslenikAnahtarSaglayici(kosu) {
     const out = [];
     for (const [anahtar, k] of a.kopyaKarari) {
       const v = k[alan];
-      if ((() => { if (op === 'bos') return v == null; if (op === 'dolu') return v != null; return kararlar && kararlar.includes(v); })())
+      if (
+        (() => {
+          if (op === 'bos') return v == null;
+          if (op === 'dolu') return v != null;
+          return kararlar?.includes(v);
+        })()
+      )
         out.push(anahtar);
     }
     return out;
@@ -78,7 +84,7 @@ async function uygulamaEkleri(satirlar, kosu) {
   if (!satirlar.length) return satirlar;
   const anahtarlar = satirlar.map((r) => ({ kosu_id: r.kosu_id, host: r.host, uyg_no: r.uyg_no }));
   const { rows } = await db().query(
-    `SELECT w.kosu_id, w.host, w.uyg_no, w.ad, ${kolonlar.WAR_TEK.map((k) => ("w." + k)).join(', ')}
+    `SELECT w.kosu_id, w.host, w.uyg_no, w.ad, ${kolonlar.WAR_TEK.map((k) => 'w.' + k).join(', ')}
        FROM ear_envanter_warlari w
        JOIN OPENJSON($1) WITH (kosu_id INT, host NVARCHAR(128), uyg_no INT) k
          ON k.kosu_id = w.kosu_id AND k.host = w.host AND k.uyg_no = w.uyg_no
@@ -88,10 +94,12 @@ async function uygulamaEkleri(satirlar, kosu) {
   const ek = new Map();
   for (const r of rows || []) {
     const a = `${r.kosu_id}|${r.host}|${r.uyg_no}`;
-    if (!ek.has(a)) ek.set(a, { warlar: [], ...Object.fromEntries(kolonlar.WAR_TEK.map((k) => [k, new Set()])) });
+    if (!ek.has(a))
+      ek.set(a, { warlar: [], ...Object.fromEntries(kolonlar.WAR_TEK.map((k) => [k, new Set()])) });
     const e = ek.get(a);
     e.warlar.push(r.ad);
-    for (const k of kolonlar.WAR_TEK) if (r[k]) for (const p of String(r[k]).split(', ')) e[k].add(p);
+    for (const k of kolonlar.WAR_TEK)
+      if (r[k]) for (const p of String(r[k]).split(', ')) e[k].add(p);
   }
   let analiz = null;
   try {
@@ -107,7 +115,10 @@ async function uygulamaEkleri(satirlar, kosu) {
       ...r,
       war_adlari: e ? e.warlar.join(', ') : '',
       ...Object.fromEntries(
-        kolonlar.WAR_TEK.map((t) => [t, e && e[t].size ? [...e[t]].sort(varsayilanSira).join(', ') : null]),
+        kolonlar.WAR_TEK.map((t) => [
+          t,
+          e?.[t].size ? [...e[t]].sort(varsayilanSira).join(', ') : null,
+        ]),
       ),
       eslenik_ortam_ici: k ? k.ortam_ici : null,
       eslenik_ortamlar_arasi: k ? k.ortamlar_arasi : null,
@@ -138,13 +149,13 @@ async function uygulamalar({ kosu, q, ortam, jboss, durum, servlet, f, s, limit,
     `WITH ${SON_CTE}
      SELECT ${UYG_SECIM}, COUNT(*) OVER() AS toplam
        FROM ${kolonlar.GORUNUMLER.uygulamalar.kaynak}
-      ${kos.where.length ? ("WHERE " + kos.where.join('\n        AND ')) : ''}
+      ${kos.where.length ? 'WHERE ' + kos.where.join('\n        AND ') : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [k, ...kos.params, ...sy.params],
   );
   const satirlar = await uygulamaEkleri(rows || [], k);
-  return { satirlar, toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar, toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** WAR listesi (sutun suzgeci + sayfa). limit verilmezse tum satirlar. */
@@ -160,12 +171,12 @@ async function warlar({ kosu, q, f, s, limit, offset } = {}) {
     `WITH ${SON_CTE}
      SELECT ${WAR_SECIM}, COUNT(*) OVER() AS toplam
        FROM ${kolonlar.GORUNUMLER.warlar.kaynak}
-      ${kos.where.length ? ("WHERE " + kos.where.join('\n        AND ')) : ''}
+      ${kos.where.length ? 'WHERE ' + kos.where.join('\n        AND ') : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [k, ...kos.params, ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** Her hostun son satiri (veri tasimasa da) + son verisinin kosusu + neden metni. */
@@ -205,10 +216,14 @@ const KULLANIM_CTE = `${SON_CTE},
 
 /** Kutuphane -> surum -> kac host / uygulama (sutun suzgeci + sayfa + toplam; limit yoksa hepsi). */
 async function kutuphaneler({ kosu, q, f, s, limit, offset } = {}) {
-  const kos = await kolonlar.kosullar('kutuphaneler', kolonlar.suzgecleriAyristir('kutuphaneler', f), {
-    ilk: 2,
-    q,
-  });
+  const kos = await kolonlar.kosullar(
+    'kutuphaneler',
+    kolonlar.suzgecleriAyristir('kutuphaneler', f),
+    {
+      ilk: 2,
+      q,
+    },
+  );
   const sira = kolonlar.siraAyristir('kutuphaneler', s);
   const sy = sayfa(limit, offset, 2 + kos.params.length);
   const { rows } = await db().query(
@@ -217,14 +232,14 @@ async function kutuphaneler({ kosu, q, f, s, limit, offset } = {}) {
             COUNT(DISTINCT CONCAT(k.host, '|', k.uyg_no)) AS uygulama_sayisi, COUNT(*) AS kopya,
             COUNT(*) OVER() AS toplam
        FROM k JOIN ear_envanter_set_kutuphaneleri s ON s.iz = k.iz
-      ${kos.where.length ? ("WHERE " + kos.where.join(' AND ')) : ''}
+      ${kos.where.length ? 'WHERE ' + kos.where.join(' AND ') : ''}
       GROUP BY s.ad, s.surum
-      ${kos.having.length ? ("HAVING " + kos.having.join(' AND ')) : ''}
+      ${kos.having.length ? 'HAVING ' + kos.having.join(' AND ') : ''}
       ORDER BY ${sira}
       ${sy.sql}`,
     [kosuNo(kosu), ...kos.params, ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** Bir kutuphane surumunu kullanan uygulamalar (sayfa + toplam; limit yoksa hepsi). */
@@ -243,7 +258,7 @@ async function kutuphaneKullananlar({ kosu, ad, surum, limit, offset }) {
       ${sy.sql}`,
     [kosuNo(kosu), String(ad || '').slice(0, 200), String(surum ?? '').slice(0, 100), ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /**
@@ -252,8 +267,11 @@ async function kutuphaneKullananlar({ kosu, ad, surum, limit, offset }) {
  */
 async function degerler({ gorunum, kolon, kosu, q, f, ara }) {
   const kol = kolonlar.kolonOf(gorunum, kolon);
-  if (!kol || !kol.secim)
-    throw Object.assign(new Error('Bu kolon için değer listesi yok.'), { status: 400, code: 'gecersiz_kolon' });
+  if (!kol?.secim)
+    throw Object.assign(new Error('Bu kolon için değer listesi yok.'), {
+      status: 400,
+      code: 'gecersiz_kolon',
+    });
   const k = kosuNo(kosu);
   if (kol.eslenik) {
     const a = await eslenik().analiz({ kosu: k });
@@ -294,14 +312,17 @@ async function degerler({ gorunum, kolon, kosu, q, f, ara }) {
     `WITH ${cte}
      SELECT TOP (${kolonlar.SINIR_SECENEK}) ${kol.ifade} AS deger, ${sayim} AS sayi, COUNT(*) OVER() AS farkli
        FROM ${kaynak}
-      ${where.length ? ("WHERE " + where.join(' AND ')) : ''}
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       GROUP BY ${kol.ifade}
       ORDER BY ${sayim} DESC, ${kol.ifade}`,
     params,
   );
   return {
-    degerler: (rows || []).map((r) => ({ deger: r.deger == null ? null : r.deger, sayi: Number(r.sayi) })),
-    farkli: rows && rows[0] ? Number(rows[0].farkli) : 0,
+    degerler: (rows || []).map((r) => ({
+      deger: r.deger == null ? null : r.deger,
+      sayi: Number(r.sayi),
+    })),
+    farkli: rows?.[0] ? Number(rows[0].farkli) : 0,
   };
 }
 
@@ -313,7 +334,7 @@ async function uygulamaDetay({ kosu, host, uygNo }) {
       WHERE u.kosu_id = $1 AND u.host = $2 AND u.uyg_no = $3`,
     [kosu, host, uygNo],
   );
-  const u = a.rows && a.rows[0];
+  const u = a.rows?.[0];
   if (!u) return null;
   const w = await db().query(
     `SELECT * FROM ear_envanter_warlari WHERE kosu_id = $1 AND host = $2 AND uyg_no = $3 ORDER BY war_no`,
@@ -373,7 +394,21 @@ async function setSatirlari(izler) {
  * Eslenik listesi (sunucuda suzulur, sayfalanir). tur: ORTAM_ICI | ORTAMLAR_ARASI | NESIL | ORTAM_YOK.
  * Eski cagri (tur yok) { gruplar, ikiNesil } dondurur; ortam suzgeci BIREBIR (normalize).
  */
-async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane, yapi, jboss, tarihFarki, tarihFarkiMax, limit, offset } = {}) {
+async function eslenikler({
+  kosu,
+  ortam,
+  tumu = false,
+  tur,
+  q,
+  karar,
+  kutuphane,
+  yapi,
+  jboss,
+  tarihFarki,
+  tarihFarkiMax,
+  limit,
+  offset,
+} = {}) {
   const a = await eslenik().analiz({ kosu });
   const liste = (v) =>
     String(v || '')
@@ -384,13 +419,17 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
   const kararlar = liste(karar);
   const kut = liste(kutuphane);
   const yap = liste(yapi);
-  const qd = String(q || '').trim().toLowerCase();
+  const qd = String(q || '')
+    .trim()
+    .toLowerCase();
   const tfg = Number(tarihFarki);
   const tfm = tarihFarkiMax === '' || tarihFarkiMax == null ? Number.NaN : Number(tarihFarkiMax);
   const uygun = (g) =>
     (tumu || g.karar !== 'TEK') &&
     (!ortamlar.length ||
-      (g.ortamlar ? g.ortamlar.some((o) => ortamlar.includes(o.ortam)) : ortamlar.includes(g.ortam))) &&
+      (g.ortamlar
+        ? g.ortamlar.some((o) => ortamlar.includes(o.ortam))
+        : ortamlar.includes(g.ortam))) &&
     (!kararlar.length || kararlar.includes(String(g.karar))) &&
     (!kut.length || kut.includes(String(g.kutuphane))) &&
     (!yap.length || yap.includes(String(g.yapi))) &&
@@ -410,8 +449,10 @@ async function eslenikler({ kosu, ortam, tumu = false, tur, q, karar, kutuphane,
   }
   const tumListe = eslenik().turListesi(a, tur).filter(uygun);
   const sayilar = {};
-  for (const g of tumListe) sayilar[g.karar || 'ORTAM_YOK'] = (sayilar[g.karar || 'ORTAM_YOK'] || 0) + 1;
-  const lim = limit == null ? tumListe.length : Math.max(1, Math.min(SAYFA_UST, Number(limit) || 100));
+  for (const g of tumListe)
+    sayilar[g.karar || 'ORTAM_YOK'] = (sayilar[g.karar || 'ORTAM_YOK'] || 0) + 1;
+  const lim =
+    limit == null ? tumListe.length : Math.max(1, Math.min(SAYFA_UST, Number(limit) || 100));
   const off = Math.max(0, Number(offset) || 0);
   return {
     satirlar: tumListe.slice(off, off + lim).map((g) => ({ ...g, kopyalar: undefined })),
@@ -444,7 +485,7 @@ async function kosuDetay(id, { hostlarla = true } = {}) {
             hata, zamanlayici_anahtari, created_at, finished_at FROM ear_envanter_kosulari WHERE id = $1`,
     [id],
   );
-  const kosu = k.rows && k.rows[0];
+  const kosu = k.rows?.[0];
   if (!kosu) return null;
   const p = await db().query(
     `SELECT parti_no, host_sayisi, durum, awx_server_id, awx_job_id, awx_durum, baslatma_denemesi, alim_denemesi, hata,
@@ -472,7 +513,7 @@ async function sayilar() {
             (SELECT COUNT(*) FROM ear_envanter_warlari w JOIN son ON son.host = w.host AND son.kosu_id = w.kosu_id) AS war`,
     [0],
   );
-  const r = (rows && rows[0]) || {};
+  const r = rows?.[0] || {};
   return {
     host: Number(r.host || 0),
     uygulama: Number(r.uygulama || 0),

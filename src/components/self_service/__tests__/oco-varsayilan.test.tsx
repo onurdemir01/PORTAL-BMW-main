@@ -48,7 +48,13 @@ describe('FieldOverridesModal OCO varsayılanı', () => {
   beforeEach(() => {
     Object.values(api).forEach((f) => f.mockReset());
     api.choiceSources.mockResolvedValue({ ok: true, sources: [] });
-    api.surveySpecAdmin.mockResolvedValue({ ok: true, fields: [], surveyEnabled: true, launchOptions: null, askVariables: false });
+    api.surveySpecAdmin.mockResolvedValue({
+      ok: true,
+      fields: [],
+      surveyEnabled: true,
+      launchOptions: null,
+      askVariables: false,
+    });
     api.saveCustomization.mockResolvedValue({ ok: true });
   });
 
@@ -74,7 +80,10 @@ describe('FieldOverridesModal OCO varsayılanı', () => {
   });
 
   it('OV4 ScaleX yönetim sekmesi pencereyi "ayar yoksa açık" kipinde açıyor', () => {
-    const s = readFileSync(join(__dirname, '..', '..', 'admin', 'tabs', 'ScaleXAdminTab.tsx'), 'utf8');
+    const s = readFileSync(
+      join(__dirname, '..', '..', 'admin', 'tabs', 'ScaleXAdminTab.tsx'),
+      'utf8',
+    );
     expect(s).toMatch(/<FieldOverridesModal[\s\S]{0,600}ocoAyarYoksaAcik[\s\S]{0,200}\/>/);
   });
 });

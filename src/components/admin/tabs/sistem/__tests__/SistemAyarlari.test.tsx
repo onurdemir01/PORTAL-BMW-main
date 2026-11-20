@@ -17,7 +17,9 @@ import { toast } from '@/hooks/useToast';
 // Oturum deposu KULLANICIYA BAGLI (denetim 2026-10-15): cikis + baska admin girisi sayfayi
 // yenilemez; onceki adminin taslagi yeni admine gorunmemeli. Kimlik testte degistirilebilir.
 const kimlik = vi.hoisted(() => ({ kullanici: 'admin1' }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: kimlik.kullanici } }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: kimlik.kullanici } }),
+}));
 
 type Yanit = () => Response | Promise<Response>;
 const json =
@@ -27,15 +29,78 @@ const json =
 
 const DEGERLER = [
   { key: 'PORT', value: '3000', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'MSSQL_SERVER', value: 'db01.kurum', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'MSSQL_DATABASE', value: 'TBMWANS', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'MSSQL_RO_PASSWORD', value: 'qx•••zz', defined: true, masked: true, source: 'db', hotReloadable: false },
-  { key: 'LDAP_URL', value: 'ldaps://dc', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'LDAP_BASE_DN', value: 'DC=kurum', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'AWX_URL', value: 'https://awx', defined: true, masked: false, source: 'env', hotReloadable: false },
-  { key: 'SESSION_IDLE_MINUTES', value: '60', defined: true, masked: false, source: 'env', hotReloadable: true },
-  { key: 'CSRF_ORIGIN_CHECK', value: 'enforce', defined: true, masked: false, source: 'env', hotReloadable: true },
-  { key: 'OPSX_SMART_FLOW_KEY_LEGACY', value: '', defined: false, masked: false, source: 'env', hotReloadable: false },
+  {
+    key: 'MSSQL_SERVER',
+    value: 'db01.kurum',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
+  {
+    key: 'MSSQL_DATABASE',
+    value: 'TBMWANS',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
+  {
+    key: 'MSSQL_RO_PASSWORD',
+    value: 'qx•••zz',
+    defined: true,
+    masked: true,
+    source: 'db',
+    hotReloadable: false,
+  },
+  {
+    key: 'LDAP_URL',
+    value: 'ldaps://dc',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
+  {
+    key: 'LDAP_BASE_DN',
+    value: 'DC=kurum',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
+  {
+    key: 'AWX_URL',
+    value: 'https://awx',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
+  {
+    key: 'SESSION_IDLE_MINUTES',
+    value: '60',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: true,
+  },
+  {
+    key: 'CSRF_ORIGIN_CHECK',
+    value: 'enforce',
+    defined: true,
+    masked: false,
+    source: 'env',
+    hotReloadable: true,
+  },
+  {
+    key: 'OPSX_SMART_FLOW_KEY_LEGACY',
+    value: '',
+    defined: false,
+    masked: false,
+    source: 'env',
+    hotReloadable: false,
+  },
 ];
 
 /** Istek kurallari: (url, yontem) -> yanit. Eslesmeyen her istek "basarili ve bos". */
@@ -85,7 +150,9 @@ async function yuklendi() {
 
 function duzenle(key: string) {
   const s = satir(key);
-  fireEvent.click(within(s).getByRole('button', { name: new RegExp(`\\(${key}\\) ayarını düzenle$`) }));
+  fireEvent.click(
+    within(s).getByRole('button', { name: new RegExp(`\\(${key}\\) ayarını düzenle$`) }),
+  );
   return s;
 }
 
@@ -113,7 +180,9 @@ describe('Admin > Sistem', () => {
     expect(kutu.type).toBe('password');
     expect(kutu.getAttribute('autocomplete')).toBe('new-password');
     expect(kutu.value).toBe('');
-    expect((within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     // Maskeli onizleme title ya da kopyalama tasimaz.
     expect(within(s).queryByTitle(/qx/)).toBeNull();
     // Yazilan sir DOM'un `value` OZNITELIGINE dusmez (kontrollu input React'te onu esitler;
@@ -121,7 +190,9 @@ describe('Admin > Sistem', () => {
     fireEvent.change(kutu, { target: { value: 'Sir-Deger-7788' } });
     expect(kutu.getAttribute('value') ?? '').not.toContain('Sir-Deger-7788');
     expect(document.body.innerHTML).not.toContain('Sir-Deger-7788');
-    expect((within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('SA2 "Değeri sil…" onay ister; İptal PUT gondermez, "Yine de kaydet" bos deger yazar', async () => {
@@ -137,7 +208,9 @@ describe('Admin > Sistem', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(putlar).toEqual([]);
 
-    fireEvent.click(within(satir('MSSQL_RO_PASSWORD')).getByRole('button', { name: 'Değeri sil…' }));
+    fireEvent.click(
+      within(satir('MSSQL_RO_PASSWORD')).getByRole('button', { name: 'Değeri sil…' }),
+    );
     pencere = await screen.findByRole('dialog');
     fireEvent.click(within(pencere).getByRole('button', { name: 'Yine de kaydet' }));
     await waitFor(() => expect(putlar).toEqual([{ key: 'MSSQL_RO_PASSWORD', value: '' }]));
@@ -145,7 +218,9 @@ describe('Admin > Sistem', () => {
 
   it('SA3 sunucu dogrulama hatasi alanin altinda; aria-invalid; duzenleyici acik kalir', async () => {
     kural = (u, y) =>
-      y === 'PUT' ? json(400, { ok: false, error: 'SESSION_IDLE_MINUTES 5 ile 720 arasında olmalı.' }) : null;
+      y === 'PUT'
+        ? json(400, { ok: false, error: 'SESSION_IDLE_MINUTES 5 ile 720 arasında olmalı.' })
+        : null;
     render(<SystemConfigTab />);
     await yuklendi();
     const s = duzenle('SESSION_IDLE_MINUTES');
@@ -166,7 +241,10 @@ describe('Admin > Sistem', () => {
   it('SA4 restart bandi PUT yanitina bagli: sicakta yok, soguktta ayari listeler', async () => {
     kural = (u, y, g) =>
       y === 'PUT'
-        ? json(200, { ok: true, restartRequired: (g as { key: string }).key !== 'SESSION_IDLE_MINUTES' })
+        ? json(200, {
+            ok: true,
+            restartRequired: (g as { key: string }).key !== 'SESSION_IDLE_MINUTES',
+          })
         : null;
     render(<SystemConfigTab />);
     await yuklendi();
@@ -174,14 +252,20 @@ describe('Admin > Sistem', () => {
     fireEvent.change(within(s).getByLabelText('Yeni değer'), { target: { value: '90' } });
     fireEvent.click(within(s).getByRole('button', { name: 'Kaydet' }));
     await waitFor(() => expect(putlar.length).toBe(1));
-    await waitFor(() => expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull());
+    await waitFor(() =>
+      expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull(),
+    );
     expect(screen.queryByText(/sunucu yeniden başlatılınca geçerli olacak/)).toBeNull();
 
     s = duzenle('AWX_URL');
     fireEvent.change(within(s).getByLabelText('Yeni değer'), { target: { value: 'https://awx2' } });
     fireEvent.click(within(s).getByRole('button', { name: 'Kaydet' }));
     const bant = await screen.findByText(/1 değişiklik sunucu yeniden başlatılınca geçerli olacak/);
-    expect(within(bant.closest('[role="status"]') as HTMLElement).getByRole('button', { name: 'AWX URL' })).toBeTruthy();
+    expect(
+      within(bant.closest('[role="status"]') as HTMLElement).getByRole('button', {
+        name: 'AWX URL',
+      }),
+    ).toBeTruthy();
     const kutu = screen.getByRole('button', { name: /Restart bekleyen/ });
     expect(kutu.textContent).toMatch(/1/);
     // Liste modul degiskeninde: F5'te kaybolur ve ekran bunu soyler ("tarayici oturumu" degil).
@@ -210,7 +294,8 @@ describe('Admin > Sistem', () => {
   });
 
   it('SA6 nobet onbellegi 404: "Temizlendi" denmez, HTTP 404 soylenir', async () => {
-    kural = (u) => (u.includes('/api/admin/cache/nobetci') ? json(404, { ok: false, error: 'Not found' }) : null);
+    kural = (u) =>
+      u.includes('/api/admin/cache/nobetci') ? json(404, { ok: false, error: 'Not found' }) : null;
     render(<SystemConfigTab />);
     fireEvent.click(screen.getByRole('button', { name: 'Nöbet listesi önbelleği: temizle' }));
     expect(await screen.findByText(/HTTP 404/)).toBeTruthy();
@@ -233,7 +318,9 @@ describe('Admin > Sistem', () => {
     fireEvent.click(within(s).getByLabelText('off'));
     fireEvent.click(within(s).getByRole('button', { name: 'Kaydet' }));
     pencere = await screen.findByRole('dialog');
-    expect(within(pencere).getByRole('button', { name: 'Yine de kaydet' }).className).toMatch(/btn-danger/);
+    expect(within(pencere).getByRole('button', { name: 'Yine de kaydet' }).className).toMatch(
+      /btn-danger/,
+    );
     expect(pencere.textContent).toMatch(/CSRF\) denetimi kapanır/);
     fireEvent.click(within(pencere).getByRole('button', { name: 'İptal' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -251,7 +338,12 @@ describe('Admin > Sistem', () => {
     await yuklendi();
     const salt = ENV_VARS.filter((m) => m.saltOkunur).map((m) => m.key);
     expect(salt).toEqual(
-      expect.arrayContaining(['NODE_ENV', 'SMART_TICKET_TIMEOUT_MINUTES', 'OPSX_SMART_FLOW_KEY_LEGACY', 'OPSX_SMART_INTEGRATION_KEY']),
+      expect.arrayContaining([
+        'NODE_ENV',
+        'SMART_TICKET_TIMEOUT_MINUTES',
+        'OPSX_SMART_FLOW_KEY_LEGACY',
+        'OPSX_SMART_INTEGRATION_KEY',
+      ]),
     );
     for (const k of salt) {
       expect(within(satir(k)).queryByRole('button', { name: /ayarını düzenle/ })).toBeNull();
@@ -268,7 +360,8 @@ describe('Admin > Sistem', () => {
     expect(new Set(adlar).size).toBe(adlar.length);
     const duzenlenebilir = ENV_VARS.filter((m) => !m.saltOkunur);
     expect(dugmeler.length).toBe(duzenlenebilir.length);
-    for (const m of duzenlenebilir) expect(adlar).toContain(`${m.label} (${m.key}) ayarını düzenle`);
+    for (const m of duzenlenebilir)
+      expect(adlar).toContain(`${m.label} (${m.key}) ayarını düzenle`);
   });
 
   it('SA10 arama: etiket/aciklama/deger eslesir, gizli degerde aranmaz, sonuc yoksa bos durum', async () => {
@@ -279,7 +372,9 @@ describe('Admin > Sistem', () => {
     expect(document.getElementById('ayar-LDAP_URL')).not.toBeNull();
     expect(document.getElementById('ayar-LDAP_BASE_DN')).not.toBeNull();
     expect(document.getElementById('ayar-MSSQL_SERVER')).toBeNull();
-    expect(screen.getByText(`${document.querySelectorAll('[id^="ayar-"]').length} ayar gösteriliyor`)).toBeTruthy();
+    expect(
+      screen.getByText(`${document.querySelectorAll('[id^="ayar-"]').length} ayar gösteriliyor`),
+    ).toBeTruthy();
 
     fireEvent.change(ara, { target: { value: 'db01.kurum' } });
     expect(document.getElementById('ayar-MSSQL_SERVER')).not.toBeNull();
@@ -306,7 +401,9 @@ describe('Admin > Sistem', () => {
 
     render(<SystemConfigTab />);
     await waitFor(() => expect(within(satir('PORT')).getByText('Kaydedilmedi')).toBeTruthy());
-    expect((within(satir('PORT')).getByLabelText('Yeni değer') as HTMLInputElement).value).toBe('4000');
+    expect((within(satir('PORT')).getByLabelText('Yeni değer') as HTMLInputElement).value).toBe(
+      '4000',
+    );
     expect(within(satir('MSSQL_RO_PASSWORD')).queryByLabelText('Yeni değer')).toBeNull();
     expect(document.body.innerHTML).not.toContain('cokgizli123');
   });
@@ -330,7 +427,9 @@ describe('Admin > Sistem', () => {
 
   it('SA12 degerler okunamazsa ozet kutulari "—"; "hepsi tanimli" denmez', async () => {
     kural = (u, y) =>
-      u.includes('/api/admin/system-config') && y === 'GET' ? json(500, { ok: false, message: 'DB yok' }) : null;
+      u.includes('/api/admin/system-config') && y === 'GET'
+        ? json(500, { ok: false, message: 'DB yok' })
+        : null;
     render(<SystemConfigTab />);
     await screen.findByTestId('sistem-ayar-hatasi');
     const kutu = screen.getByRole('button', { name: /Eksik zorunlu/ });
@@ -355,7 +454,9 @@ describe('Admin > Sistem', () => {
     expect(putlar.length).toBe(1);
     // Kayit surerken "İptal" kapali ve Esc duzenleyiciyi kapatmaz: kapansaydi sunucu hatasi
     // hicbir yerde gorunmezdi (eski ekran bu durumda bildirim balonu gosteriyordu).
-    expect((within(s).getByRole('button', { name: 'İptal' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(s).getByRole('button', { name: 'İptal' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     fireEvent.keyDown(kutu, { key: 'Escape' });
     expect(within(satir('AWX_URL')).getByLabelText('Yeni değer')).toBe(kutu);
     // Admin sekmesi degisti (bilesen sokuldu), ardindan sunucu hata dondu.
@@ -364,14 +465,20 @@ describe('Admin > Sistem', () => {
       coz(await json(500, { ok: false, error: 'Veritabanına yazılamadı.' })());
     });
     await waitFor(() =>
-      expect(hataBalonu).toHaveBeenCalledWith(expect.stringMatching(/AWX URL kaydedilemedi: Veritabanına yazılamadı\./)),
+      expect(hataBalonu).toHaveBeenCalledWith(
+        expect.stringMatching(/AWX URL kaydedilemedi: Veritabanına yazılamadı\./),
+      ),
     );
   });
 
   it('SA15 tanimsiz satir "varsayilan kullanilir" demez (zorunlu ve fail-closed anahtarlarin varsayilani yok)', async () => {
-    const degerler = DEGERLER.map((v) => (v.key === 'LDAP_URL' ? { ...v, value: '', defined: false } : v));
+    const degerler = DEGERLER.map((v) =>
+      v.key === 'LDAP_URL' ? { ...v, value: '', defined: false } : v,
+    );
     kural = (u, y) =>
-      u.includes('/api/admin/system-config') && y === 'GET' ? json(200, { ok: true, values: degerler }) : null;
+      u.includes('/api/admin/system-config') && y === 'GET'
+        ? json(200, { ok: true, values: degerler })
+        : null;
     render(<SystemConfigTab />);
     await yuklendi();
     const ldap = satir('LDAP_URL');
@@ -424,9 +531,17 @@ describe('Admin > Sistem', () => {
     const awx = ENV_VARS.find((m) => m.key === 'AWX_URL')!;
     const sir = ENV_VARS.find((m) => m.key === 'MSSQL_RO_PASSWORD')!;
     const cerceve = ENV_VARS.find((m) => m.key === 'PORTAL_FRAME_ANCESTORS')!;
-    const cv = (o: Partial<ConfigValue>): ConfigValue => ({ key: 'X', value: 'v', defined: true, masked: false, ...o });
+    const cv = (o: Partial<ConfigValue>): ConfigValue => ({
+      key: 'X',
+      value: 'v',
+      defined: true,
+      masked: false,
+      ...o,
+    });
     expect(onayGerekce(awx, cv({ value: 'https://awx' }), '   ')?.gerekceler).toContain('bosaltma');
-    expect(onayGerekce(sir, cv({ value: 'qx•••zz', masked: true }), ' ')?.gerekceler).toContain('gizliSilme');
+    expect(onayGerekce(sir, cv({ value: 'qx•••zz', masked: true }), ' ')?.gerekceler).toContain(
+      'gizliSilme',
+    );
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', 'https://*')).toBe('frameYildiz');
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', "'self' http://*:8443")).toBe('frameYildiz');
     expect(tehlikeliDeger('PORTAL_FRAME_ANCESTORS', '*')).toBe('frameYildiz');
@@ -478,7 +593,9 @@ describe('Admin > Sistem', () => {
     const pencere = await screen.findByRole('dialog');
     fireEvent.click(within(pencere).getByRole('button', { name: 'Yine de kaydet' }));
     await waitFor(() => expect(putlar.length).toBe(1));
-    expect((within(pencere).getByRole('button', { name: 'İptal' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (within(pencere).getByRole('button', { name: 'İptal' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.keyDown(pencere, { key: 'Escape' });
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -500,9 +617,13 @@ describe('Admin > Sistem', () => {
     const s = duzenle('SESSION_IDLE_MINUTES');
     fireEvent.change(within(s).getByLabelText('Yeni değer'), { target: { value: '90' } });
     fireEvent.click(within(s).getByRole('button', { name: 'Kaydet' }));
-    await waitFor(() => expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull());
+    await waitFor(() =>
+      expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull(),
+    );
     // Basari bildirim balonuyla (kendi aria-live bolgesi) duyurulur; ikinci bir gizli duyuru yok.
-    const ikinci = screen.queryAllByRole('status').filter((e) => /kaydedildi/.test(e.textContent || ''));
+    const ikinci = screen
+      .queryAllByRole('status')
+      .filter((e) => /kaydedildi/.test(e.textContent || ''));
     expect(ikinci).toEqual([]);
   });
 
@@ -514,7 +635,20 @@ describe('Admin > Sistem', () => {
     kap.append(cubuk, hedef);
     document.body.append(kap);
     Object.defineProperty(kap, 'scrollTop', { value: 500, configurable: true });
-    const kutu = (top: number, height = 0) => () => ({ top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    const kutu =
+      (top: number, height = 0) =>
+      () =>
+        ({
+          top,
+          height,
+          bottom: top + height,
+          left: 0,
+          right: 0,
+          width: 0,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }) as DOMRect;
     kap.getBoundingClientRect = kutu(64);
     cubuk.getBoundingClientRect = kutu(64, 130);
     hedef.getBoundingClientRect = kutu(900);
@@ -552,14 +686,18 @@ describe('Admin > Sistem', () => {
     });
     await waitFor(() => expect(baslik.getAttribute('aria-expanded')).toBe('true'));
     expect(satir('AWX_URL').closest('[inert]')).toBeNull();
-    expect(within(satir('AWX_URL')).getByRole('alert').textContent).toMatch(/Veritabanına yazılamadı/);
+    expect(within(satir('AWX_URL')).getByRole('alert').textContent).toMatch(
+      /Veritabanına yazılamadı/,
+    );
     // Satir DOM'da ve gorunur: ikinci kanal (balon) gerekmez.
     expect(hataBalonu).not.toHaveBeenCalled();
     // Iptal'den sonra grup kullanicinin altindan kapanmaz (odak "Duzenle"ye donebilsin).
     fireEvent.click(within(satir('AWX_URL')).getByRole('button', { name: 'İptal' }));
     expect(baslik.getAttribute('aria-expanded')).toBe('true');
     await waitFor(() =>
-      expect(document.activeElement).toBe(within(satir('AWX_URL')).getByRole('button', { name: /\(AWX_URL\) ayarını düzenle$/ })),
+      expect(document.activeElement).toBe(
+        within(satir('AWX_URL')).getByRole('button', { name: /\(AWX_URL\) ayarını düzenle$/ }),
+      ),
     );
   });
 
@@ -579,11 +717,15 @@ describe('Admin > Sistem', () => {
     await act(async () => {
       coz(await json(500, { ok: false, error: 'Veritabanına yazılamadı.' })());
     });
-    await waitFor(() => expect(hataBalonu).toHaveBeenCalledWith('AWX URL kaydedilemedi: Veritabanına yazılamadı.'));
+    await waitFor(() =>
+      expect(hataBalonu).toHaveBeenCalledWith('AWX URL kaydedilemedi: Veritabanına yazılamadı.'),
+    );
     expect(hataBalonu).toHaveBeenCalledTimes(1);
     // Arama temizlenince hata satirda da durur (taslak ve hata kaybolmadi).
     fireEvent.change(ara, { target: { value: '' } });
-    expect(within(satir('AWX_URL')).getByRole('alert').textContent).toMatch(/Veritabanına yazılamadı/);
+    expect(within(satir('AWX_URL')).getByRole('alert').textContent).toMatch(
+      /Veritabanına yazılamadı/,
+    );
   });
 
   // AyarDuzenleyici: "kullanici bu arada baska yere gectiyse odak calinmaz" iddiasi testsizdi.
@@ -601,7 +743,9 @@ describe('Admin > Sistem', () => {
     ara.focus();
     expect(document.activeElement).toBe(ara);
     await act(async () => {
-      coz(await json(400, { ok: false, error: 'SESSION_IDLE_MINUTES 5 ile 720 arasında olmalı.' })());
+      coz(
+        await json(400, { ok: false, error: 'SESSION_IDLE_MINUTES 5 ile 720 arasında olmalı.' })(),
+      );
     });
     expect((await within(s).findByRole('alert')).textContent).toMatch(/5 ile 720/);
     await act(async () => {});
@@ -643,7 +787,9 @@ describe('Admin > Sistem', () => {
     await yuklendi();
     let s = duzenle('SESSION_IDLE_MINUTES');
     const kutu = within(s).getByLabelText('Yeni değer');
-    const sabitle = within(s).getByRole('button', { name: "Portal'a sabitle" }) as HTMLButtonElement;
+    const sabitle = within(s).getByRole('button', {
+      name: "Portal'a sabitle",
+    }) as HTMLButtonElement;
     expect(sabitle.disabled).toBe(false);
     const ipucu = within(s).getByText(
       "Değer ortam dosyasından geliyor; kaydederseniz Portal'da sabitlenir ve ortam dosyasındaki sonraki değişiklik etkisiz kalır.",
@@ -660,7 +806,9 @@ describe('Admin > Sistem', () => {
     fireEvent.click(within(s).getByRole('button', { name: "Portal'a sabitle" }));
     await waitFor(() => expect(putlar).toEqual([{ key: 'SESSION_IDLE_MINUTES', value: '60' }]));
     expect(screen.queryByRole('dialog')).toBeNull();
-    await waitFor(() => expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull());
+    await waitFor(() =>
+      expect(within(satir('SESSION_IDLE_MINUTES')).queryByLabelText('Yeni değer')).toBeNull(),
+    );
 
     // Kritik anahtar: sabitleme de onay penceresinden gecer (gerekce kritik).
     s = duzenle('MSSQL_SERVER');
@@ -684,13 +832,18 @@ describe('Admin > Sistem', () => {
             : v,
     );
     kural = (u, y) =>
-      u.includes('/api/admin/system-config') && y === 'GET' ? json(200, { ok: true, values: degerler }) : null;
+      u.includes('/api/admin/system-config') && y === 'GET'
+        ? json(200, { ok: true, values: degerler })
+        : null;
     render(<SystemConfigTab />);
     await yuklendi();
     for (const key of ['MSSQL_RO_PASSWORD', 'AWX_URL', 'LDAP_BASE_DN']) {
       const s = duzenle(key);
       expect(within(s).queryByRole('button', { name: "Portal'a sabitle" }), key).toBeNull();
-      expect((within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled, key).toBe(true);
+      expect(
+        (within(s).getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled,
+        key,
+      ).toBe(true);
       expect(within(s).queryByText(/Portal'da sabitlenir/), key).toBeNull();
     }
     expect(putlar).toEqual([]);
@@ -701,22 +854,35 @@ describe('Admin > Sistem', () => {
   it('SA27 TEAMS_LONGJOB_WEBHOOK_URL sunucu maskeliyse gizli: acik deger, title ve aramada yok; duzenleyici bos', async () => {
     const degerler = [
       ...DEGERLER,
-      { key: 'TEAMS_LONGJOB_WEBHOOK_URL', value: 'ht•••Zq', defined: true, masked: true, source: 'db', hotReloadable: false },
+      {
+        key: 'TEAMS_LONGJOB_WEBHOOK_URL',
+        value: 'ht•••Zq',
+        defined: true,
+        masked: true,
+        source: 'db',
+        hotReloadable: false,
+      },
     ];
     kural = (u, y) =>
-      u.includes('/api/admin/system-config') && y === 'GET' ? json(200, { ok: true, values: degerler }) : null;
+      u.includes('/api/admin/system-config') && y === 'GET'
+        ? json(200, { ok: true, values: degerler })
+        : null;
     render(<SystemConfigTab />);
     await yuklendi();
     let s = satir('TEAMS_LONGJOB_WEBHOOK_URL');
     expect(within(s).getByText('Gizli')).toBeTruthy();
     expect(within(s).queryByTitle(/ht/)).toBeNull();
-    expect(ENV_VARS.find((m) => m.key === 'TEAMS_LONGJOB_WEBHOOK_URL')!.description).toMatch(/Gizli değer/);
+    expect(ENV_VARS.find((m) => m.key === 'TEAMS_LONGJOB_WEBHOOK_URL')!.description).toMatch(
+      /Gizli değer/,
+    );
     s = duzenle('TEAMS_LONGJOB_WEBHOOK_URL');
     const kutu = within(s).getByLabelText('Yeni değer') as HTMLInputElement;
     expect(kutu.type).toBe('password');
     expect(kutu.value).toBe('');
     fireEvent.click(within(s).getByRole('button', { name: 'İptal' }));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Ayarlarda ara' }), { target: { value: 'ht•••' } });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Ayarlarda ara' }), {
+      target: { value: 'ht•••' },
+    });
     expect(document.getElementById('ayar-TEAMS_LONGJOB_WEBHOOK_URL')).toBeNull();
   });
 });

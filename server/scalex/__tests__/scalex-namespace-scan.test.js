@@ -10,6 +10,7 @@
 // zamanla ayrisir ve ayni tabloya FARKLI sekiller yazilir. Bu yuzden yazma tek bir
 // paylasilan fonksiyonda (`ocp.cacheNamespaceDiscovery`) durur.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -45,7 +46,7 @@ test('NS2 sonuc PAYLASILAN onbellege, PAYLASILAN fonksiyonla yazilir', () => {
   );
   assert.doesNotMatch(
     SCALEX,
-    /putNamespaces\(/,
+    esnek(/putNamespaces\(/),
     'ScaleX onbellege DOGRUDAN yaziyor — LogX ile ayrisir, ayni tabloya iki sekil girer',
   );
   // Ve paylasilan fonksiyon gercekten onbellege yaziyor olmali.

@@ -56,7 +56,7 @@ AWX zip'ine yeni `files/arac_hazirla.sh`, (2026-11-03) `files/yuk_cpu_kaydedici.
 hepsini denetler; biri eksikse her kip "files/ altindaki betiklerden biri yok (AWX proje kopyasi eksik); hicbir sey
 yapilmadi" ile düşer.
 
-Portal'daki birebir aynası: `server/ansible/bmw_portal/nginx_loadtest/**` (iki kopya **bayt bayt
+Portal'daki birebir aynası: `server/ansible/playbooks/bmw_portal/nginx_loadtest/**` (iki kopya **bayt bayt
 aynı**; Portal testi `nginx-loadtest-ayna.test.cjs` sabit sha256 listesiyle ve
 `NGINX_LOADTEST_ANSIBLE_DEPO` verilirse bu depoyla karşılaştırır).
 

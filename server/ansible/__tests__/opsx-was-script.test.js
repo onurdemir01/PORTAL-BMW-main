@@ -38,16 +38,23 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BASH, BASH_SURUM, posixYol } = require('./fixtures/kabuk.cjs');
 
-const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'bmw_portal', 'opsx_was');
+const DIR =
+  process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');
 
 // `timeout` node'un gozuyle degil betigin kabugunun gozuyle olculur (Windows'ta ayni adli
 // baska bir komut var).
-const TIMEOUT_VAR = spawnSync(BASH, ['-c', 'timeout 1 true && sleep 0'], { stdio: 'ignore' }).status === 0;
+const TIMEOUT_VAR =
+  spawnSync(BASH, ['-c', 'timeout 1 true && sleep 0'], { stdio: 'ignore' }).status === 0;
 // Betik uretimde RHEL 8/9 bash'inde (4.4 / 5.1) kosar ve bash 4 ister (mapfile). macOS'un 3.2'si
 // uretimi temsil etmez: orada kirmizi, betigin degil kabugun sucu olurdu.
 const KABUK_VAR = TIMEOUT_VAR && BASH_SURUM >= 4;
-const SKIP = (() => { if (KABUK_VAR) return false; if (!TIMEOUT_VAR) return 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI'; return `bash ${BASH_SURUM} bulundu, betik bash 4+ ister (uretim RHEL 8/9: 4.4 / 5.1) - WAS betik davranis bekcileri KOSMADI. macOS: brew install bash`; })();
+const SKIP = (() => {
+  if (KABUK_VAR) return false;
+  if (!TIMEOUT_VAR)
+    return 'bash/timeout bulunamadi (Git Bash gerekir) - WAS betik davranis bekcileri KOSMADI';
+  return `bash ${BASH_SURUM} bulundu, betik bash 4+ ister (uretim RHEL 8/9: 4.4 / 5.1) - WAS betik davranis bekcileri KOSMADI. macOS: brew install bash`;
+})();
 
 const SOAP_GIZLI = 'KzosKw0gizliSOAP';
 const SOAP_KULLANICI = 'srv_gizli_kullanici';
@@ -193,7 +200,7 @@ function serverindex(sunucular) {
 
 function yaz(f, icerik, mode = 0o600) {
   fs.mkdirSync(path.dirname(f), { recursive: true });
-  const safeMode = (mode & 0o100) ? 0o700 : 0o600;
+  const safeMode = mode & 0o100 ? 0o700 : 0o600;
   fs.writeFileSync(f, icerik, { mode: safeMode });
 }
 
@@ -201,7 +208,8 @@ class Dunya {
   constructor({ soap = 'var', sunucular } = {}) {
     this.w = fs.mkdtempSync(path.join(os.tmpdir(), 'opsx-was-'));
     this.fake = path.join(this.w, 'fake');
-    for (const d of ['bin', 'procs', 'respawn', 'unresp']) fs.mkdirSync(path.join(this.fake, d), { recursive: true });
+    for (const d of ['bin', 'procs', 'respawn', 'unresp'])
+      fs.mkdirSync(path.join(this.fake, d), { recursive: true });
     yaz(path.join(this.fake, 'pids.all'), '');
     yaz(path.join(this.fake, 'lib.sh'), LIB);
     yaz(path.join(this.fake, 'bin', 'ps'), PS, 0o755);
@@ -242,7 +250,18 @@ class Dunya {
 
   env(ek = {}) {
     const e = { ...process.env };
-    for (const k of ['MODE', 'OP', 'PROFILE', 'CELL', 'NODE', 'SERVER', 'CONSENT', 'CONFIRM', 'SERVER_FILTER', 'FAKE_USER'])
+    for (const k of [
+      'MODE',
+      'OP',
+      'PROFILE',
+      'CELL',
+      'NODE',
+      'SERVER',
+      'CONSENT',
+      'CONFIRM',
+      'SERVER_FILTER',
+      'FAKE_USER',
+    ])
       delete e[k];
     return {
       ...e,
@@ -267,17 +286,24 @@ class Dunya {
   }
 
   surec(cell, node, server) {
-    const r = spawnSync(BASH, ['-c', '. "$FAKE/lib.sh"; spawn "$1" "$2" "$3"', 'x', cell, node, server], {
-      encoding: 'utf8',
-      env: this.env(),
-    });
+    const r = spawnSync(
+      BASH,
+      ['-c', '. "$FAKE/lib.sh"; spawn "$1" "$2" "$3"', 'x', cell, node, server],
+      {
+        encoding: 'utf8',
+        env: this.env(),
+      },
+    );
     const pid = (r.stdout || '').trim();
     assert.match(pid, /^\d+$/, `kukla surec baslatilamadi: ${r.stderr}`);
     return pid;
   }
 
   canli(pid) {
-    return spawnSync(BASH, ['-c', 'kill -0 "$1" 2>/dev/null', 'x', pid], { env: this.env() }).status === 0;
+    return (
+      spawnSync(BASH, ['-c', 'kill -0 "$1" 2>/dev/null', 'x', pid], { env: this.env() }).status ===
+      0
+    );
   }
 
   log(ad) {
@@ -286,7 +312,8 @@ class Dunya {
   }
 
   kos(ortam) {
-    for (const ad of ['status', 'stop', 'start', 'ps']) fs.rmSync(path.join(this.fake, `log.${ad}`), { force: true });
+    for (const ad of ['status', 'stop', 'start', 'ps'])
+      fs.rmSync(path.join(this.fake, `log.${ad}`), { force: true });
     const r = spawnSync(BASH, ['-c', 'export PATH="$FAKEBIN:$PATH"; exec bash "$SH"'], {
       encoding: 'utf8',
       env: this.env(ortam),
@@ -304,14 +331,18 @@ class Dunya {
     const e = this.env(ortam);
     const p = spawn(
       BASH,
-      ['-c', 'export PATH="$FAKEBIN:$PATH"; timeout -k 3 300 bash "$SH" & t=$!; echo "$t" > "$FAKE/outer.pid"; wait "$t"'],
+      [
+        '-c',
+        'export PATH="$FAKEBIN:$PATH"; timeout -k 3 300 bash "$SH" & t=$!; echo "$t" > "$FAKE/outer.pid"; wait "$t"',
+      ],
       { env: e },
     );
     let stdout = '';
     p.stdout.on('data', (c) => (stdout += c));
     const bitti = new Promise((r) => p.on('close', r));
     const son = Date.now() + 120000;
-    while (Date.now() < son && this.hangPids().length === 0 && p.exitCode === null) await new Promise((r) => setTimeout(r, 300));
+    while (Date.now() < son && this.hangPids().length === 0 && p.exitCode === null)
+      await new Promise((r) => setTimeout(r, 300));
     const t0 = Date.now();
     spawnSync(BASH, ['-c', 'kill -TERM "$(cat "$FAKE/outer.pid")"'], { env: e });
     await Promise.race([bitti, new Promise((r) => setTimeout(r, 120000))]);
@@ -320,14 +351,26 @@ class Dunya {
 
   hangPids() {
     const f = path.join(this.fake, 'hang.pids');
-    return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split(/\s+/).filter((x) => /^\d+$/.test(x)) : [];
+    return fs.existsSync(f)
+      ? fs
+          .readFileSync(f, 'utf8')
+          .split(/\s+/)
+          .filter((x) => /^\d+$/.test(x))
+      : [];
   }
 
   temizle() {
     try {
-      spawnSync(BASH, ['-c', 'for p in $(cat "$FAKE/pids.all" "$FAKE/hang.pids" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done; true'], {
-        env: this.env(),
-      });
+      spawnSync(
+        BASH,
+        [
+          '-c',
+          'for p in $(cat "$FAKE/pids.all" "$FAKE/hang.pids" 2>/dev/null); do kill -9 "$p" 2>/dev/null; done; true',
+        ],
+        {
+          env: this.env(),
+        },
+      );
     } finally {
       fs.rmSync(this.w, { recursive: true, force: true });
     }
@@ -354,7 +397,8 @@ function sonuc(r) {
     steps: lines.filter((l) => l.startsWith('STEP\t')).map((l) => l.split('\t')),
     disc,
     sunucu(ad) {
-      for (const p of disc?.profiles || []) for (const x of p.servers || []) if (x.server === ad) return x;
+      for (const p of disc?.profiles || [])
+        for (const x of p.servers || []) if (x.server === ad) return x;
       return null;
     },
     step(ad) {
@@ -362,7 +406,10 @@ function sonuc(r) {
     },
   };
   // Ortak degismezler.
-  assert.ok((lines[lines.length - 1] || '').startsWith('RESULT\t'), `son satir RESULT degil:\n${out}\n${s.err}`);
+  assert.ok(
+    (lines[lines.length - 1] || '').startsWith('RESULT\t'),
+    `son satir RESULT degil:\n${out}\n${s.err}`,
+  );
   assert.equal(R.length, 6, `RESULT 6 alan degil: ${R}`);
   const rc = { OK: 0, SKIP: 0, FAIL: 1, OLCULEMEDI: 3 }[s.status];
   assert.equal(s.rc, rc, `rc ${s.rc} RESULT ${s.status} ile tutarsiz`);
@@ -370,9 +417,13 @@ function sonuc(r) {
     assert.ok(!out.includes(g) && !s.err.includes(g), `ciktida gizli deger: ${g}`);
   }
   // STEP durumu = adimin HEDEFINE ulasip ulasmadigi: OK dogrulama adimi hedef durumu bildirir.
-  for (const [ad, hedef] of [['stop_dogrulama', 'STOPPED:'], ['start_dogrulama', 'RUNNING:']]) {
+  for (const [ad, hedef] of [
+    ['stop_dogrulama', 'STOPPED:'],
+    ['start_dogrulama', 'RUNNING:'],
+  ]) {
     for (const st of s.step(ad)) {
-      if (st[2] === 'OK') assert.ok(st[3].startsWith(hedef), `${ad} OK ama hedef durum degil: ${st[3]}`);
+      if (st[2] === 'OK')
+        assert.ok(st[3].startsWith(hedef), `${ad} OK ama hedef durum degil: ${st[3]}`);
     }
   }
   return s;
@@ -407,36 +458,49 @@ test('S0 betik bekcileri bash olmadan YESIL donmez: atlandigi acikca yazilir', (
   assert.ok(fs.existsSync(BETIK), `betik yok: ${BETIK}`);
 });
 
-test('S1 kimlik hatasi -> OLCULEMEDI, ASLA STOPPED; kimlik satiri yoksa serverStatus kosmaz', { skip: SKIP }, () => {
-  dunyada({}, (d) => {
-    d.ayar('ss_mode', 'auth');
-    const k = d.kos({ MODE: 'discover' });
-    const a1 = k.sunucu('app1');
-    assert.equal(a1?.state, 'OLCULEMEDI', `SECJ + ADMU0509I STOPPED sayildi: ${JSON.stringify(a1)}`);
-    assert.equal(a1?.ss, '?');
-    const s = d.kos(islem('start'));
-    assert.equal(s.status, 'OLCULEMEDI', `kimlik hatasinda start: ${s.msg}`);
-    assert.deepEqual(d.log('start'), [], 'kimlik hatasinda startServer kostu');
-  });
-  dunyada({ soap: 'yok' }, (d) => {
-    const k = d.kos({ MODE: 'discover' });
-    assert.ok(k.disc.profiles[0].servers.length > 0);
-    for (const x of k.disc.profiles[0].servers) assert.equal(x.state, 'OLCULEMEDI', JSON.stringify(x));
-    assert.equal(k.disc.profiles[0].kimlik, 'yok');
-    assert.deepEqual(d.log('status'), [], 'kimlik yokken serverStatus kostu');
-    const s = d.kos(islem('stop'));
-    assert.equal(s.status, 'OLCULEMEDI');
-    assert.equal(s.before, '-');
-    assert.deepEqual(d.log('stop'), [], 'kimlik yokken stopServer kostu');
-  });
-});
+test(
+  'S1 kimlik hatasi -> OLCULEMEDI, ASLA STOPPED; kimlik satiri yoksa serverStatus kosmaz',
+  { skip: SKIP },
+  () => {
+    dunyada({}, (d) => {
+      d.ayar('ss_mode', 'auth');
+      const k = d.kos({ MODE: 'discover' });
+      const a1 = k.sunucu('app1');
+      assert.equal(
+        a1?.state,
+        'OLCULEMEDI',
+        `SECJ + ADMU0509I STOPPED sayildi: ${JSON.stringify(a1)}`,
+      );
+      assert.equal(a1?.ss, '?');
+      const s = d.kos(islem('start'));
+      assert.equal(s.status, 'OLCULEMEDI', `kimlik hatasinda start: ${s.msg}`);
+      assert.deepEqual(d.log('start'), [], 'kimlik hatasinda startServer kostu');
+    });
+    dunyada({ soap: 'yok' }, (d) => {
+      const k = d.kos({ MODE: 'discover' });
+      assert.ok(k.disc.profiles[0].servers.length > 0);
+      for (const x of k.disc.profiles[0].servers)
+        assert.equal(x.state, 'OLCULEMEDI', JSON.stringify(x));
+      assert.equal(k.disc.profiles[0].kimlik, 'yok');
+      assert.deepEqual(d.log('status'), [], 'kimlik yokken serverStatus kostu');
+      const s = d.kos(islem('stop'));
+      assert.equal(s.status, 'OLCULEMEDI');
+      assert.equal(s.before, '-');
+      assert.deepEqual(d.log('stop'), [], 'kimlik yokken stopServer kostu');
+    });
+  },
+);
 
 test('S2 app1 / app10 karismaz (uclu TAM eslesme)', { skip: SKIP }, () => {
   dunyada({}, (d) => {
     const p10 = d.surec('C1', 'N1', 'app10');
     d.surec('C1', 'N2', 'app1');
     const k = d.kos({ MODE: 'discover' });
-    assert.equal(k.sunucu('app1')?.state, 'STOPPED', `app10/baska node app1 sayildi: ${JSON.stringify(k.sunucu('app1'))}`);
+    assert.equal(
+      k.sunucu('app1')?.state,
+      'STOPPED',
+      `app10/baska node app1 sayildi: ${JSON.stringify(k.sunucu('app1'))}`,
+    );
     assert.equal(k.sunucu('app1')?.pids, 0);
     assert.equal(k.sunucu('app10')?.state, 'RUNNING');
     assert.equal(k.sunucu('app1')?.cluster, 'CL1');
@@ -482,119 +546,179 @@ test('S5 id -un != was -> FAIL, hicbir WAS komutu kosmaz', { skip: SKIP }, () =>
     const s = d.kos(islem('stop', { FAKE_USER: 'uxmid' }));
     assert.equal(s.status, 'FAIL');
     assert.equal(s.before, '-');
-    assert.deepEqual([...d.log('status'), ...d.log('stop'), ...d.log('ps')], [], 'was disi kullanici ile olcum/komut');
+    assert.deepEqual(
+      [...d.log('status'), ...d.log('stop'), ...d.log('ps')],
+      [],
+      'was disi kullanici ile olcum/komut',
+    );
   });
 });
 
-test('S6 K3-a: stop suresi dolar -> FAIL ve kill YOK; restart + TEK PID -> kill -9 + start; iki PID -> kill YOK', { skip: SKIP }, () => {
-  dunyada({}, (d) => {
-    const p1 = d.surec('C1', 'N1', 'app1');
-    d.ayar('stop_mode', 'hang');
-    const s = d.kos(islem('stop', { STOP_TIMEOUT: '1', CMD_GRACE: '1' }));
-    assert.equal(s.status, 'FAIL', s.msg);
-    assert.match(s.msg, /durdurulamadi/);
-    assert.ok(s.msg.includes(p1), 'FAIL mesajinda PID yok');
-    assert.ok(d.canli(p1), "stop'ta JVM oldurulmus (K3-a)");
-    assert.deepEqual(s.step('kill'), [], "stop'ta kill adimi var");
-
-    d.ayar('stop_mode', 'fail');
-    const r = d.kos(islem('restart'));
-    assert.deepEqual([r.status, r.before, r.after], ['OK', 'RUNNING', 'RUNNING'], r.msg);
-    const kl = r.step('kill');
-    assert.equal(kl[0]?.[2], 'OK', `kill -9 adimi yok: ${JSON.stringify(kl)}`);
-    assert.ok(kl[0][3].includes(p1));
-    assert.ok(!d.canli(p1), 'eski app1 sureci oldurulmedi');
-    assert.equal(d.log('start').length, 1, 'kill sonrasi start kosmadi');
-  });
-  dunyada({}, (d) => {
-    const p1 = d.surec('C1', 'N1', 'app1');
-    d.ayar('stop_mode', 'dup');
-    const r = d.kos(islem('restart'));
-    assert.deepEqual([r.status, r.after], ['FAIL', 'COKLU_SUREC'], r.msg);
-    assert.ok(d.canli(p1), 'iki PID eslesirken kill -9 yapildi');
-    assert.deepEqual(d.log('start'), [], 'iki PID iken start kostu');
-  });
-});
-
-test('S7 K3-a "stop SURESI dolarsa": hizli ret / calistirilamayan stopServer kill DEGIL; ASKIDA kill', { skip: SKIP }, () => {
-  for (const [mod, kod] of [['red', 'ADMN0022E'], ['rc126', 'rc 126']]) {
+test(
+  'S6 K3-a: stop suresi dolar -> FAIL ve kill YOK; restart + TEK PID -> kill -9 + start; iki PID -> kill YOK',
+  { skip: SKIP },
+  () => {
     dunyada({}, (d) => {
       const p1 = d.surec('C1', 'N1', 'app1');
-      d.ayar('stop_mode', mod);
+      d.ayar('stop_mode', 'hang');
+      const s = d.kos(islem('stop', { STOP_TIMEOUT: '1', CMD_GRACE: '1' }));
+      assert.equal(s.status, 'FAIL', s.msg);
+      assert.match(s.msg, /durdurulamadi/);
+      assert.ok(s.msg.includes(p1), 'FAIL mesajinda PID yok');
+      assert.ok(d.canli(p1), "stop'ta JVM oldurulmus (K3-a)");
+      assert.deepEqual(s.step('kill'), [], "stop'ta kill adimi var");
+
+      d.ayar('stop_mode', 'fail');
       const r = d.kos(islem('restart'));
-      assert.deepEqual([r.status, r.before, r.after], ['FAIL', 'RUNNING', 'RUNNING'], `${mod}: ${r.msg}`);
-      assert.match(r.msg, /kill -9 YAPILMADI/);
-      assert.ok(r.msg.includes(kod), `${mod}: gercek sebep yok: ${r.msg}`);
-      assert.ok(d.canli(p1), `${mod}: yanit veren JVM'e kill -9 atildi`);
-      assert.deepEqual(d.log('start'), [], `${mod}: stop basarisizken start kostu`);
-      assert.equal(r.step('kill')[0]?.[2], 'SKIP', JSON.stringify(r.step('kill')));
-      assert.equal(r.step('stop_dogrulama')[0]?.[2], 'FAIL', 'hedefe ulasmayan stop_dogrulama FAIL degil');
+      assert.deepEqual([r.status, r.before, r.after], ['OK', 'RUNNING', 'RUNNING'], r.msg);
+      const kl = r.step('kill');
+      assert.equal(kl[0]?.[2], 'OK', `kill -9 adimi yok: ${JSON.stringify(kl)}`);
+      assert.ok(kl[0][3].includes(p1));
+      assert.ok(!d.canli(p1), 'eski app1 sureci oldurulmedi');
+      assert.equal(d.log('start').length, 1, 'kill sonrasi start kosmadi');
     });
-  }
-  dunyada({}, (d) => {
-    const p1 = d.surec('C1', 'N1', 'app1');
-    d.ayar('unresp/app1');
-    d.ayar('stop_mode', 'red');
-    const r = d.kos(islem('restart'));
-    assert.deepEqual([r.status, r.before, r.after], ['OK', 'ASKIDA', 'RUNNING'], r.msg);
-    assert.equal(r.step('kill')[0]?.[2], 'OK');
-    assert.match(r.step('kill')[0][3], /ASKIDA/);
-    assert.ok(!d.canli(p1), 'ASKIDA JVM oldurulmedi');
-    assert.match(r.msg, /kill -9/, 'OK sonucu kill -9 yapildigini soylemiyor');
-  });
-});
+    dunyada({}, (d) => {
+      const p1 = d.surec('C1', 'N1', 'app1');
+      d.ayar('stop_mode', 'dup');
+      const r = d.kos(islem('restart'));
+      assert.deepEqual([r.status, r.after], ['FAIL', 'COKLU_SUREC'], r.msg);
+      assert.ok(d.canli(p1), 'iki PID eslesirken kill -9 yapildi');
+      assert.deepEqual(d.log('start'), [], 'iki PID iken start kostu');
+    });
+  },
+);
 
-test('S8 serbest metin sozcukleri ADIN icinde: OLCULEMEDI yok; kod tespiti ve kodsuz hata korunur', { skip: SKIP }, () => {
-  const adlar = ['AuthorizationWS', 'PasswordReset', 'DeniedPartyScreening', 'ExceptionMonitor'];
-  dunyada({ sunucular: adlar.map((a) => [a, 'APPLICATION_SERVER']) }, (d) => {
-    for (const a of adlar) d.surec('C1', 'N1', a);
-    const k = d.kos({ MODE: 'discover' });
-    for (const a of adlar) {
-      assert.deepEqual([k.sunucu(a)?.state, k.sunucu(a)?.ss], ['RUNNING', 'UP'], `${a} kendi adi yuzunden: ${JSON.stringify(k.sunucu(a))}`);
+test(
+  'S7 K3-a "stop SURESI dolarsa": hizli ret / calistirilamayan stopServer kill DEGIL; ASKIDA kill',
+  { skip: SKIP },
+  () => {
+    for (const [mod, kod] of [
+      ['red', 'ADMN0022E'],
+      ['rc126', 'rc 126'],
+    ]) {
+      dunyada({}, (d) => {
+        const p1 = d.surec('C1', 'N1', 'app1');
+        d.ayar('stop_mode', mod);
+        const r = d.kos(islem('restart'));
+        assert.deepEqual(
+          [r.status, r.before, r.after],
+          ['FAIL', 'RUNNING', 'RUNNING'],
+          `${mod}: ${r.msg}`,
+        );
+        assert.match(r.msg, /kill -9 YAPILMADI/);
+        assert.ok(r.msg.includes(kod), `${mod}: gercek sebep yok: ${r.msg}`);
+        assert.ok(d.canli(p1), `${mod}: yanit veren JVM'e kill -9 atildi`);
+        assert.deepEqual(d.log('start'), [], `${mod}: stop basarisizken start kostu`);
+        assert.equal(r.step('kill')[0]?.[2], 'SKIP', JSON.stringify(r.step('kill')));
+        assert.equal(
+          r.step('stop_dogrulama')[0]?.[2],
+          'FAIL',
+          'hedefe ulasmayan stop_dogrulama FAIL degil',
+        );
+      });
     }
-  });
-  dunyada({ sunucular: [['J', 'APPLICATION_SERVER'], ['SECJ0305I', 'APPLICATION_SERVER']] }, (d) => {
-    d.ayar('ss_mode', 'auth');
-    const k = d.kos({ MODE: 'discover' });
-    for (const a of ['J', 'SECJ0305I']) assert.deepEqual([k.sunucu(a)?.state, k.sunucu(a)?.ss], ['OLCULEMEDI', '?'], a);
-  });
-  dunyada({}, (d) => {
-    d.ayar('ss_mode', 'login');
-    const k = d.kos({ MODE: 'discover', SERVER_FILTER: 'app10' });
-    assert.deepEqual([k.sunucu('app10')?.state, k.sunucu('app10')?.ss], ['OLCULEMEDI', '?'], 'kodsuz kimlik hatasi olculmus sayildi');
-  });
-});
+    dunyada({}, (d) => {
+      const p1 = d.surec('C1', 'N1', 'app1');
+      d.ayar('unresp/app1');
+      d.ayar('stop_mode', 'red');
+      const r = d.kos(islem('restart'));
+      assert.deepEqual([r.status, r.before, r.after], ['OK', 'ASKIDA', 'RUNNING'], r.msg);
+      assert.equal(r.step('kill')[0]?.[2], 'OK');
+      assert.match(r.step('kill')[0][3], /ASKIDA/);
+      assert.ok(!d.canli(p1), 'ASKIDA JVM oldurulmedi');
+      assert.match(r.msg, /kill -9/, 'OK sonucu kill -9 yapildigini soylemiyor');
+    });
+  },
+);
 
-test('S9 kesif sure butcesi: serverStatus kosmaz, JVM OLCULEMEDI, mesaj acik', { skip: SKIP }, () => {
-  dunyada({}, (d) => {
-    d.surec('C1', 'N1', 'app1');
-    const k = d.kos({ MODE: 'discover', DISC_DEADLINE_S: '0' });
-    const sv = k.disc.profiles[0].servers;
-    assert.equal(sv.length, 2);
-    for (const x of sv) assert.deepEqual([x.state, x.ss], ['OLCULEMEDI', '?'], JSON.stringify(x));
-    assert.deepEqual(d.log('status'), [], 'butce asildiktan sonra serverStatus kostu');
-    assert.match(k.msg, /2 JVM .*butce/, k.msg);
-    assert.match(k.disc.reason, /butce/);
-  });
-});
+test(
+  'S8 serbest metin sozcukleri ADIN icinde: OLCULEMEDI yok; kod tespiti ve kodsuz hata korunur',
+  { skip: SKIP },
+  () => {
+    const adlar = ['AuthorizationWS', 'PasswordReset', 'DeniedPartyScreening', 'ExceptionMonitor'];
+    dunyada({ sunucular: adlar.map((a) => [a, 'APPLICATION_SERVER']) }, (d) => {
+      for (const a of adlar) d.surec('C1', 'N1', a);
+      const k = d.kos({ MODE: 'discover' });
+      for (const a of adlar) {
+        assert.deepEqual(
+          [k.sunucu(a)?.state, k.sunucu(a)?.ss],
+          ['RUNNING', 'UP'],
+          `${a} kendi adi yuzunden: ${JSON.stringify(k.sunucu(a))}`,
+        );
+      }
+    });
+    dunyada(
+      {
+        sunucular: [
+          ['J', 'APPLICATION_SERVER'],
+          ['SECJ0305I', 'APPLICATION_SERVER'],
+        ],
+      },
+      (d) => {
+        d.ayar('ss_mode', 'auth');
+        const k = d.kos({ MODE: 'discover' });
+        for (const a of ['J', 'SECJ0305I'])
+          assert.deepEqual([k.sunucu(a)?.state, k.sunucu(a)?.ss], ['OLCULEMEDI', '?'], a);
+      },
+    );
+    dunyada({}, (d) => {
+      d.ayar('ss_mode', 'login');
+      const k = d.kos({ MODE: 'discover', SERVER_FILTER: 'app10' });
+      assert.deepEqual(
+        [k.sunucu('app10')?.state, k.sunucu('app10')?.ss],
+        ['OLCULEMEDI', '?'],
+        'kodsuz kimlik hatasi olculmus sayildi',
+      );
+    });
+  },
+);
 
-test('S10 dis sinir dolarsa RESULT basilir ve ic WAS komutu YETIM KALMAZ', { skip: SKIP }, async () => {
-  const d = new Dunya();
-  try {
-    d.surec('C1', 'N1', 'app1');
-    d.ayar('stop_mode', 'hang');
-    const r = await d.kosDisSinir(islem('stop', { STOP_TIMEOUT: '60', CMD_GRACE: '1' }));
-    assert.ok(r.gecenMs < 10000, `dis sinir sinyalinden sonra betik ${r.gecenMs} ms surdu (trap ertelendi)`);
-    const satirlar = (r.stdout || '').replace(/\r/g, '').split('\n').filter(Boolean);
-    const son = (satirlar[satirlar.length - 1] || '').split('\t');
-    assert.deepEqual(son.slice(0, 5), ['RESULT', 'stop', 'OLCULEMEDI', 'RUNNING', 'OLCULEMEDI'], `dis sinirda RESULT yok: ${r.stdout}`);
-    assert.match(son[5] || '', /sonlandirildi/);
-    const pids = d.hangPids();
-    assert.ok(pids.length > 0, 'sahte stopServer baslamadi');
-    const bitis = Date.now() + 8000;
-    while (Date.now() < bitis && pids.some((p) => d.canli(p))) spawnSync(BASH, ['-c', 'sleep 0.5']);
-    assert.ok(!pids.some((p) => d.canli(p)), `ic WAS komutu yetim kaldi: ${pids}`);
-  } finally {
-    d.temizle();
-  }
-});
+test(
+  'S9 kesif sure butcesi: serverStatus kosmaz, JVM OLCULEMEDI, mesaj acik',
+  { skip: SKIP },
+  () => {
+    dunyada({}, (d) => {
+      d.surec('C1', 'N1', 'app1');
+      const k = d.kos({ MODE: 'discover', DISC_DEADLINE_S: '0' });
+      const sv = k.disc.profiles[0].servers;
+      assert.equal(sv.length, 2);
+      for (const x of sv) assert.deepEqual([x.state, x.ss], ['OLCULEMEDI', '?'], JSON.stringify(x));
+      assert.deepEqual(d.log('status'), [], 'butce asildiktan sonra serverStatus kostu');
+      assert.match(k.msg, /2 JVM .*butce/, k.msg);
+      assert.match(k.disc.reason, /butce/);
+    });
+  },
+);
+
+test(
+  'S10 dis sinir dolarsa RESULT basilir ve ic WAS komutu YETIM KALMAZ',
+  { skip: SKIP },
+  async () => {
+    const d = new Dunya();
+    try {
+      d.surec('C1', 'N1', 'app1');
+      d.ayar('stop_mode', 'hang');
+      const r = await d.kosDisSinir(islem('stop', { STOP_TIMEOUT: '60', CMD_GRACE: '1' }));
+      assert.ok(
+        r.gecenMs < 10000,
+        `dis sinir sinyalinden sonra betik ${r.gecenMs} ms surdu (trap ertelendi)`,
+      );
+      const satirlar = (r.stdout || '').replace(/\r/g, '').split('\n').filter(Boolean);
+      const son = (satirlar[satirlar.length - 1] || '').split('\t');
+      assert.deepEqual(
+        son.slice(0, 5),
+        ['RESULT', 'stop', 'OLCULEMEDI', 'RUNNING', 'OLCULEMEDI'],
+        `dis sinirda RESULT yok: ${r.stdout}`,
+      );
+      assert.match(son[5] || '', /sonlandirildi/);
+      const pids = d.hangPids();
+      assert.ok(pids.length > 0, 'sahte stopServer baslamadi');
+      const bitis = Date.now() + 8000;
+      while (Date.now() < bitis && pids.some((p) => d.canli(p)))
+        spawnSync(BASH, ['-c', 'sleep 0.5']);
+      assert.ok(!pids.some((p) => d.canli(p)), `ic WAS komutu yetim kaldi: ${pids}`);
+    } finally {
+      d.temizle();
+    }
+  },
+);

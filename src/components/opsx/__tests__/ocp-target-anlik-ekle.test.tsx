@@ -28,10 +28,18 @@ async function namespaceSec() {
 
 describe('OpenShift hedefi: secilen uygulama aninda listeye girer', () => {
   let gonderilen: unknown;
-  beforeEach(() => { gonderilen = null; });
+  beforeEach(() => {
+    gonderilen = null;
+  });
 
   it('OT1 uygulamaya tiklamak cifti ekler ve Devam Et acilir (ayri "Listeye Ekle" yok)', async () => {
-    render(<OcpTargetStep onSubmit={(v) => { gonderilen = v; }} />);
+    render(
+      <OcpTargetStep
+        onSubmit={(v) => {
+          gonderilen = v;
+        }}
+      />,
+    );
     await namespaceSec();
     const devam = screen.getByRole('button', { name: 'Devam Et' }) as HTMLButtonElement;
     expect(devam.disabled).toBe(true);
@@ -41,10 +49,14 @@ describe('OpenShift hedefi: secilen uygulama aninda listeye girer', () => {
     expect(await screen.findByText('ns-a / app-1')).toBeTruthy();
     await waitFor(() => expect(devam.disabled).toBe(false));
     fireEvent.click(devam);
-    expect(gonderilen).toEqual({ env: 'PROD', tenant: 'ark', pairs: [{ namespace: 'ns-a', application: 'app-1' }] });
+    expect(gonderilen).toEqual({
+      env: 'PROD',
+      tenant: 'ark',
+      pairs: [{ namespace: 'ns-a', application: 'app-1' }],
+    });
   });
 
-  it('OT2 ayni namespace\'ten ikinci uygulama da eklenir; eklenen listeden duser', async () => {
+  it("OT2 ayni namespace'ten ikinci uygulama da eklenir; eklenen listeden duser", async () => {
     render(<OcpTargetStep onSubmit={() => {}} />);
     await namespaceSec();
     fireEvent.click(screen.getByText('app-1'));

@@ -364,7 +364,7 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzin
 // AYNI sorunu cozen, production'da kanitlanmis mekanizmasi burada YENIDEN KULLANILIR
 // (sifirdan yazilmaz): cluster basina bastion+metadata (api_url/vault anahtari) DB'den
 // cozulur, playbook'un `ocp_clusters[]`/`terminal_hosts[]` ile fan-out yapabilmesi icin
-// extra_vars kurulur — bkz. server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
+// extra_vars kurulur — bkz. server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
 async function resolveOcpClusterFanout(envKey, tenantKey, clusterNames) {
   const adminData = require('../logx/v2/admin.cjs');
   const { buildOcpExtraVars } = require('../logx/v2/ocp.cjs');
@@ -482,7 +482,9 @@ async function appsForNamespace(env, tenant, namespace, user) {
   const out = await ocpInventory
     .getApps({ clusterNames, namespace: ns })
     .catch(() => ({ items: [] }));
-  return [...new Set((out.items || []).map((i) => i.name))].sort((a, b) => Number(a > b) - Number(a < b));
+  return [...new Set((out.items || []).map((i) => i.name))].sort(
+    (a, b) => Number(a > b) - Number(a < b),
+  );
 }
 
 // Legacy restart / stop / start isteginin dogrulamasi ve AWX girdisi (2026-11-14, POST /api/opsx/run'dan
@@ -579,7 +581,7 @@ async function legacyIstegiHazirla(
     ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
   };
 
-  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
+  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ' jboss_version=' + jbossVersion : ''}`;
   return { requested, seciliEnvler, limitValue, extraVars, logSummary };
 }
 
@@ -624,7 +626,7 @@ async function opsxIsiBaslat({
       req.session?.user,
     );
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
     throw e;
   }
@@ -731,11 +733,11 @@ async function legacyLimitKontrol() {
   } catch (e) {
     throw hataVer(
       503,
-      `AWX şablonunun "Limit" ayarı okunamadı (${e && e.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
+      `AWX şablonunun "Limit" ayarı okunamadı (${e?.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
       'limit_olculemedi',
     );
   }
-  if (!st || st.askLimitOnLaunch !== true)
+  if (st?.askLimitOnLaunch !== true)
     throw hataVer(
       409,
       `"${keyName}" AWX şablonunda Limit "Prompt on launch" kapalı — AWX limit'i yutar ve restart tüm envanterde çalışırdı; toplu restart başlatılmaz. Yönetici şablonda Limit'i "Prompt on launch" yapmalı.`,
@@ -2315,12 +2317,10 @@ function initOpsX(app) {
             .json({ ok: false, message: `Bu cluster seçilen tenant altında değil: ${p?.cluster}` });
         }
         if (!allowedNamespaces.has(namespace)) {
-          return res
-            .status(400)
-            .json({
-              ok: false,
-              message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
-            });
+          return res.status(400).json({
+            ok: false,
+            message: `Bu namespace seçilenler arasında değil: ${p?.namespace}`,
+          });
         }
         if (!podNameRe.test(pod) || pod.length > 253) {
           return res.status(400).json({ ok: false, message: `Geçersiz pod adı: ${p?.pod}` });

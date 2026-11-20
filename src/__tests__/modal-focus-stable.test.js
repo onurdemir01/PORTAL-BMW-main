@@ -7,13 +7,18 @@
 // onClose ref uzerinden okunur.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'components/common/Modal.tsx'), 'utf8');
-const code = src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const code = src
+  .split('\n')
+  .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+  .join('\n');
 
 test('MF1 odak efekti onClose kimligine BAGLI DEGIL (yalniz open)', () => {
   const i = code.indexOf('returnFocusRef.current = document.activeElement');
@@ -21,7 +26,15 @@ test('MF1 odak efekti onClose kimligine BAGLI DEGIL (yalniz open)', () => {
   const tail = code.slice(i);
   const deps = /\n\s*\}, \[([^\]]*)\]\);/.exec(tail);
   assert.ok(deps, 'efekt bagimlilik listesi bulunamadi');
-  assert.equal(deps[1].trim(), 'open', `odak efekti [${deps[1]}] bagimli — inline onClose her tusta odagi X'e tasir`);
+  assert.equal(
+    deps[1].trim(),
+    'open',
+    `odak efekti [${deps[1]}] bagimli — inline onClose her tusta odagi X'e tasir`,
+  );
   assert.match(code, /const onCloseRef = useRef\(onClose\)/, 'onClose ref tutulmuyor');
-  assert.match(code, /if \(e\.key === "Escape"\) \{ onCloseRef\.current\(\); return; \}/, 'ESC ref uzerinden cagirmiyor (eski onClose kapanir)');
+  assert.match(
+    code,
+    esnek(/if \(e\.key === "Escape"\) \{ onCloseRef\.current\(\); return; \}/),
+    'ESC ref uzerinden cagirmiyor (eski onClose kapanir)',
+  );
 });

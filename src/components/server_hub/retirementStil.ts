@@ -10,16 +10,49 @@ import type { RtTargetStatus } from '@/api/retirementApi';
 export type Ton = 'notr' | 'bilgi' | 'aksan' | 'uyari' | 'basari' | 'hata';
 const kenar = (v: string) => `color-mix(in srgb, ${v} 32%, transparent)`;
 export const TON: Record<Ton, { renk: string; zemin: string; metin: string; kenar: string }> = {
-  notr: { renk: 'var(--status-neutral)', zemin: 'var(--status-neutral-bg)', metin: 'var(--text-secondary)', kenar: 'var(--border)' },
-  bilgi: { renk: 'var(--status-info)', zemin: 'var(--status-info-bg)', metin: 'var(--status-info)', kenar: kenar('var(--status-info)') },
-  aksan: { renk: 'var(--accent)', zemin: 'var(--accent-bg)', metin: 'var(--accent)', kenar: kenar('var(--accent)') },
-  uyari: { renk: 'var(--status-warning)', zemin: 'var(--status-warning-bg)', metin: 'var(--status-warning-text)', kenar: kenar('var(--status-warning)') },
-  basari: { renk: 'var(--status-success)', zemin: 'var(--status-success-bg)', metin: 'var(--status-success)', kenar: kenar('var(--status-success)') },
-  hata: { renk: 'var(--status-danger)', zemin: 'var(--status-danger-bg)', metin: 'var(--status-danger-text)', kenar: kenar('var(--status-danger)') },
+  notr: {
+    renk: 'var(--status-neutral)',
+    zemin: 'var(--status-neutral-bg)',
+    metin: 'var(--text-secondary)',
+    kenar: 'var(--border)',
+  },
+  bilgi: {
+    renk: 'var(--status-info)',
+    zemin: 'var(--status-info-bg)',
+    metin: 'var(--status-info)',
+    kenar: kenar('var(--status-info)'),
+  },
+  aksan: {
+    renk: 'var(--accent)',
+    zemin: 'var(--accent-bg)',
+    metin: 'var(--accent)',
+    kenar: kenar('var(--accent)'),
+  },
+  uyari: {
+    renk: 'var(--status-warning)',
+    zemin: 'var(--status-warning-bg)',
+    metin: 'var(--status-warning-text)',
+    kenar: kenar('var(--status-warning)'),
+  },
+  basari: {
+    renk: 'var(--status-success)',
+    zemin: 'var(--status-success-bg)',
+    metin: 'var(--status-success)',
+    kenar: kenar('var(--status-success)'),
+  },
+  hata: {
+    renk: 'var(--status-danger)',
+    zemin: 'var(--status-danger-bg)',
+    metin: 'var(--status-danger-text)',
+    kenar: kenar('var(--status-danger)'),
+  },
 };
 
 /** Web (vhost) adiminin durumu; `oncelik` en kotu girdiyi secer. Bilinmeyen: { etiket: status, ton: 'notr', oncelik: 3 }. */
-export const WEB_DURUM: Record<string, { etiket: string; ton: Ton; oncelik: number; canli?: boolean }> = {
+export const WEB_DURUM: Record<
+  string,
+  { etiket: string; ton: Ton; oncelik: number; canli?: boolean }
+> = {
   failed: { etiket: 'BAŞARISIZ', ton: 'hata', oncelik: 9 },
   restore_failed: { etiket: 'geri açma BAŞARISIZ', ton: 'hata', oncelik: 9 },
   manual: { etiket: 'elle yapılmalı', ton: 'uyari', oncelik: 7 },
@@ -37,15 +70,20 @@ export const WEB_DURUM: Record<string, { etiket: string; ton: Ton; oncelik: numb
  * de "basarili" ama biri uygulamanin kapali, oteki ACIK oldugu anlamina geliyor (hapta ikon).
  */
 export const HEDEF_DURUM: Record<RtTargetStatus, { label: string; ton: Ton }> = {
-  pending: { label: 'bekliyor', ton: 'notr' }, planning: { label: 'ön kontrol sürüyor', ton: 'bilgi' }, planned: { label: 'onay bekliyor', ton: 'aksan' },
+  pending: { label: 'bekliyor', ton: 'notr' },
+  planning: { label: 'ön kontrol sürüyor', ton: 'bilgi' },
+  planned: { label: 'onay bekliyor', ton: 'aksan' },
   stop_scheduled: { label: 'OCO penceresine zamanlandı', ton: 'bilgi' },
-  stopping: { label: 'durduruluyor', ton: 'uyari' }, stopped: { label: 'DURDURULDU', ton: 'basari' },
-  deleting: { label: 'siliniyor', ton: 'uyari' }, deleted: { label: 'SİLİNDİ', ton: 'notr' },
+  stopping: { label: 'durduruluyor', ton: 'uyari' },
+  stopped: { label: 'DURDURULDU', ton: 'basari' },
+  deleting: { label: 'siliniyor', ton: 'uyari' },
+  deleted: { label: 'SİLİNDİ', ton: 'notr' },
   // GERI ALMA (2026-10-07).
   rolling_back: { label: 'geri alınıyor', ton: 'uyari' },
   active: { label: 'GERİ AKTİF', ton: 'basari' },
   rollback_failed: { label: 'geri alma BAŞARISIZ', ton: 'hata' },
-  failed: { label: 'başarısız', ton: 'hata' }, skipped: { label: 'atlandı', ton: 'notr' },
+  failed: { label: 'başarısız', ton: 'hata' },
+  skipped: { label: 'atlandı', ton: 'notr' },
 };
 /** AWX isinin ekran durumu (is ciktisi listesi). */
 export const IS_DURUM: Record<string, { etiket: string; ton: Ton; canli?: boolean }> = {
@@ -58,21 +96,51 @@ export const IS_DURUM: Record<string, { etiket: string; ton: Ton; canli?: boolea
 
 // outline-offset-2 ONEMLI (!): index.css'teki katmansiz `:focus-visible { outline-offset: 1px }` katmanli
 // Tailwind sinifini ezer; halka aksan dolgulu dugmeye yapisik gorunuyordu (denetim B6).
-export const SM_BTN = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+export const SM_BTN =
+  'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 /** Tablo ici dugme (24px). */
-export const TBL_BTN = 'inline-flex items-center gap-1 h-6 px-2 text-[11px] font-medium leading-none rounded-md border whitespace-nowrap transition-[filter] duration-150 hover:brightness-95 active:brightness-90 focus-visible:outline-offset-2! disabled:opacity-40 disabled:hover:brightness-100';
+export const TBL_BTN =
+  'inline-flex items-center gap-1 h-6 px-2 text-[11px] font-medium leading-none rounded-md border whitespace-nowrap transition-[filter] duration-150 hover:brightness-95 active:brightness-90 focus-visible:outline-offset-2! disabled:opacity-40 disabled:hover:brightness-100';
 /** Bag gorunumlu ikincil eylem. */
-export const LINK = 'inline-flex items-center gap-1 rounded-sm text-[11px] font-medium leading-4 underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-offset-2! disabled:opacity-40 disabled:no-underline';
+export const LINK =
+  'inline-flex items-center gap-1 rounded-sm text-[11px] font-medium leading-4 underline decoration-dotted underline-offset-2 hover:decoration-solid focus-visible:outline-offset-2! disabled:opacity-40 disabled:no-underline';
 // Birincil dalin metni --text-on-accent (acikta #fff, koyuda koyu); eskiden tanimsiz --accent-fg -> #fff idi.
-export const smBtn = (primary = false): React.CSSProperties => (primary
-  ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }
-  : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
-export const BTN_TEHLIKE: React.CSSProperties = { background: 'var(--status-danger)', borderColor: 'var(--status-danger)', color: 'var(--text-on-accent)' };
-export const BTN_BASARI: React.CSSProperties = { background: 'var(--status-success)', borderColor: 'var(--status-success)', color: 'var(--text-on-accent)' };
-export const BTN_BASARI_IKINCIL: React.CSSProperties = { background: 'var(--bg-surface)', borderColor: 'var(--status-success)', color: 'var(--status-success)' };
+export const smBtn = (primary = false): React.CSSProperties =>
+  primary
+    ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--text-on-accent)' }
+    : {
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      };
+export const BTN_TEHLIKE: React.CSSProperties = {
+  background: 'var(--status-danger)',
+  borderColor: 'var(--status-danger)',
+  color: 'var(--text-on-accent)',
+};
+export const BTN_BASARI: React.CSSProperties = {
+  background: 'var(--status-success)',
+  borderColor: 'var(--status-success)',
+  color: 'var(--text-on-accent)',
+};
+export const BTN_BASARI_IKINCIL: React.CSSProperties = {
+  background: 'var(--bg-surface)',
+  borderColor: 'var(--status-success)',
+  color: 'var(--status-success)',
+};
 // Sari dolgulu dugme yok: sari zemin uzerinde hicbir metin tokeni AA vermiyor.
-export const BTN_UYARI: React.CSSProperties = { background: 'var(--bg-surface)', borderColor: 'var(--status-warning)', color: 'var(--status-warning-text)' };
+export const BTN_UYARI: React.CSSProperties = {
+  background: 'var(--bg-surface)',
+  borderColor: 'var(--status-warning)',
+  color: 'var(--status-warning-text)',
+};
 export const SECILI_ZEMIN = 'color-mix(in srgb, var(--accent) 5%, var(--bg-surface))';
 export const ACIK_ZEMIN = 'color-mix(in srgb, var(--accent) 4%, var(--bg-surface))';
 // `thead th` kurali katmansiz (index.css): renk, agirlik ve yazi tipi yalniz satir ici stille gecer.
-export const TH_STIL: React.CSSProperties = { fontFamily: 'var(--font-sans)', fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', boxShadow: 'inset 0 -1px 0 var(--border)' };
+export const TH_STIL: React.CSSProperties = {
+  fontFamily: 'var(--font-sans)',
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  background: 'var(--bg-elevated)',
+  boxShadow: 'inset 0 -1px 0 var(--border)',
+};

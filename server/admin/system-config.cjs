@@ -8,7 +8,10 @@
 
 const express = require('express');
 const {
-  SYSTEM_CONFIG_KEYS, HOT_RELOADABLE_KEYS, setEnvOverride, isFromDb,
+  SYSTEM_CONFIG_KEYS,
+  HOT_RELOADABLE_KEYS,
+  setEnvOverride,
+  isFromDb,
 } = require('../db/env-overrides.cjs');
 // server/db/env-overrides.cjs ile PAYLASILAN tek desen — eskiden iki dosyada birebir kopya
 // tutuluyordu (kurumsal AI kod incelemesi, review.md #21); artik ikisi de bagimliliksiz
@@ -20,16 +23,16 @@ const { oturumAyariHatasi } = require('../auth/oturum-ayarlari.cjs');
 // gosteriliyordu; kisa bir parolanin ucte biri, bir belirtecin oneki demekti). "Tanimli mi"
 // sorusunun cevabi yanittaki `defined` alanidir; maske uzunlugu da degeri ele vermez.
 function maskValue(key, value) {
-  if (!value) return "";
+  if (!value) return '';
   if (!SECRET_PATTERN.test(key)) return value;
-  return "•••";
+  return '•••';
 }
 
 function initSystemConfig(app) {
-  app.get("/api/admin/system-config", (req, res) => {
-    if (req.session?.user?.role !== "Admin") return res.status(403).json({ ok: false });
+  app.get('/api/admin/system-config', (req, res) => {
+    if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
     const values = SYSTEM_CONFIG_KEYS.map((key) => {
-      const raw = process.env[key] || "";
+      const raw = process.env[key] || '';
       const masked = SECRET_PATTERN.test(key);
       return {
         key,
@@ -37,7 +40,7 @@ function initSystemConfig(app) {
         defined: !!raw,
         masked,
         // Kaynak bilgisi: bu deger admin tarafindan DB'ye yazilmis bir override mi?
-        source: isFromDb(key) ? "db" : "env",
+        source: isFromDb(key) ? 'db' : 'env',
         // RESTART GEREKIYOR MU. Cogu modul env'i boot'ta okuyup sabite donduruyor;
         // onlar icin `false`. ScaleX sinirlari gibi HER KULLANIMDA yeniden okunan
         // anahtarlar icin `true` — degisiklik aninda gecerli. Bunu soylememek,
@@ -48,15 +51,15 @@ function initSystemConfig(app) {
     res.json({ ok: true, values });
   });
 
-  app.put("/api/admin/system-config", express.json(), async (req, res) => {
-    if (req.session?.user?.role !== "Admin") return res.status(403).json({ ok: false });
+  app.put('/api/admin/system-config', express.json(), async (req, res) => {
+    if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
     const { key, value } = req.body || {};
     if (!SYSTEM_CONFIG_KEYS.includes(key)) {
-      return res.status(400).json({ ok: false, error: "Bu anahtar düzenlenemez." });
+      return res.status(400).json({ ok: false, error: 'Bu anahtar düzenlenemez.' });
     }
-    const strValue = String(value ?? "");
-    if (strValue.includes("\n")) {
-      return res.status(400).json({ ok: false, error: "Değer tek satır olmalı." });
+    const strValue = String(value ?? '');
+    if (strValue.includes('\n')) {
+      return res.status(400).json({ ok: false, error: 'Değer tek satır olmalı.' });
     }
     // Oturum anahtarlari KAYDETMEDEN once dogrulanir (Faz E): bozuk deger okuyan tarafta
     // sessizce varsayilana duserdi, admin "kaydettim ama etki etmedi" durumuna duserdi.
@@ -71,9 +74,11 @@ function initSystemConfig(app) {
       // Denetim kaydi — deger secret olabilir, yalnizca anahtar adi yazilir.
       try {
         require('../audit/index.cjs').auditPortal(req, 'system_config_update', {
-          detail: `key=${key}${SECRET_PATTERN.test(key) ? ' (value redacted)' : (" value=" + strValue.slice(0, 200))}`,
+          detail: `key=${key}${SECRET_PATTERN.test(key) ? ' (value redacted)' : ' value=' + strValue.slice(0, 200)}`,
         });
-      } catch { /* yoksay */ }
+      } catch {
+        /* yoksay */
+      }
       console.log(`[Config] ${req.session.user.username} -> ${key} guncellendi (DB override).`);
       // `restartRequired` ARTIK ANAHTARA GORE. Sabit `true` yaziyordu ve sicak
       // yuklenen bir ayar icin de "yeniden baslatin" diyordu — dogru olmayan ama
@@ -83,14 +88,14 @@ function initSystemConfig(app) {
         ok: true,
         key,
         restartRequired: !HOT_RELOADABLE_KEYS.includes(key),
-        source: "db",
+        source: 'db',
       });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
     }
   });
 
-  console.log("[SystemConfig] admin env endpoints mounted at /api/admin/system-config");
+  console.log('[SystemConfig] admin env endpoints mounted at /api/admin/system-config');
 }
 
 module.exports = { initSystemConfig, _maskValue: maskValue };

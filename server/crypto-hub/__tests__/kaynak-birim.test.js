@@ -53,8 +53,7 @@ test('KR1 birimler normallestirilir; 512M != 512Mi, 8 == 8000m; e/eksi/bellek-m 
 });
 
 test('KR2 standart bicim (yazilacak deger) ve oneriler', () => {
-  for (const ok of ['1500m', '2', '100', '1m', '999999m'])
-    assert.ok(KR.standartMi(ok, 'cpu'), ok);
+  for (const ok of ['1500m', '2', '100', '1m', '999999m']) assert.ok(KR.standartMi(ok, 'cpu'), ok);
   for (const kotu of ['0', '1.5', '1500', '0500m', '1000000m', '2Gi', ''])
     assert.ok(!KR.standartMi(kotu, 'cpu'), kotu);
   for (const ok of ['512Mi', '4Gi', '9999999Gi']) assert.ok(KR.standartMi(ok, 'memory'), ok);
@@ -86,9 +85,19 @@ test('KR3 degisiklik girdisi: 1-4 oge, yalniz alan/eski/yeni, ayni deger RET, 20
       ]),
     /iki kez/,
   );
-  assert.throws(() => coz([{ alan: 'limits.memory', eski: '', yeni: '4G' }]), (e) => e.kod === 'BIRIM_GECERSIZ');
-  assert.throws(() => coz([{ alan: 'limits.cpu', eski: '2', yeni: '2000m' }]), /aynı/, '2 == 2000m');
-  assert.throws(() => coz([{ alan: 'limits.cpu', eski: '1e3', yeni: '2' }]), (e) => e.kod === 'BIRIM_GECERSIZ');
+  assert.throws(
+    () => coz([{ alan: 'limits.memory', eski: '', yeni: '4G' }]),
+    (e) => e.kod === 'BIRIM_GECERSIZ',
+  );
+  assert.throws(
+    () => coz([{ alan: 'limits.cpu', eski: '2', yeni: '2000m' }]),
+    /aynı/,
+    '2 == 2000m',
+  );
+  assert.throws(
+    () => coz([{ alan: 'limits.cpu', eski: '1e3', yeni: '2' }]),
+    (e) => e.kod === 'BIRIM_GECERSIZ',
+  );
   const k = coz([
     { alan: 'limits.memory', eski: '2Gi', yeni: '3Gi' },
     { alan: 'requests.cpu', eski: '', yeni: '500m' },
@@ -108,7 +117,12 @@ test('KR3 degisiklik girdisi: 1-4 oge, yalniz alan/eski/yeni, ayni deger RET, 20
   );
 });
 
-const tam = { 'requests.cpu': '500m', 'requests.memory': '1Gi', 'limits.cpu': '2', 'limits.memory': '2Gi' };
+const tam = {
+  'requests.cpu': '500m',
+  'requests.memory': '1Gi',
+  'limits.cpu': '2',
+  'limits.memory': '2Gi',
+};
 const lrYok = { durum: 'yok', kurallar: [] };
 
 test('KR4 requests <= limits CALISAN degerlerle; girilmeyen alan canlidan; ASILAMAZ', () => {
@@ -162,7 +176,11 @@ test('KR5 politika: 2 kat / yari / 16 cekirdek / 32Gi / 512Mi; Admin + gerekce a
   const p = (deg, ek = {}) =>
     KR.dogrula({ degisiklikler: deg, canli: tam, limitRange: lrYok, ...ek });
   assert.ok(p([{ alan: 'limits.memory', eski: '2Gi', yeni: '4Gi' }]).ok, 'tam 2 kat serbest');
-  assert.equal(p([{ alan: 'limits.memory', eski: '2Gi', yeni: '4097Mi' }]).ok, false, '2 kattan fazla');
+  assert.equal(
+    p([{ alan: 'limits.memory', eski: '2Gi', yeni: '4097Mi' }]).ok,
+    false,
+    '2 kattan fazla',
+  );
   assert.ok(p([{ alan: 'limits.memory', eski: '2Gi', yeni: '1Gi' }]).ok, 'tam yari serbest');
   // requests.memory canlida YOK: ret yalniz ORAN kuralindan gelmeli (K8S degil).
   const yari = KR.dogrula({
@@ -171,7 +189,10 @@ test('KR5 politika: 2 kat / yari / 16 cekirdek / 32Gi / 512Mi; Admin + gerekce a
     limitRange: lrYok,
   });
   assert.equal(yari.ok, false, 'yaridan az');
-  assert.deepEqual(yari.hatalar.map((h) => h.kod), ['POLITIKA']);
+  assert.deepEqual(
+    yari.hatalar.map((h) => h.kod),
+    ['POLITIKA'],
+  );
   assert.match(yari.hatalar[0].mesaj, /yarıya/);
   // Taban CANLI degerdir (dosya degil): canli 2 cekirdek, dosya 1 -> 4 serbest.
   assert.ok(p([{ alan: 'limits.cpu', eski: '1', yeni: '4' }]).ok);
@@ -215,7 +236,11 @@ test('KR5 politika: 2 kat / yari / 16 cekirdek / 32Gi / 512Mi; Admin + gerekce a
 
 test('KR6 LimitRange: okunamadi -> olculemedi (gecti DEGIL); max/min ASILAMAZ', () => {
   const deg = [{ alan: 'limits.memory', eski: '2Gi', yeni: '3Gi' }];
-  const olcmedi = KR.dogrula({ degisiklikler: deg, canli: tam, limitRange: { durum: 'olculemedi' } });
+  const olcmedi = KR.dogrula({
+    degisiklikler: deg,
+    canli: tam,
+    limitRange: { durum: 'olculemedi' },
+  });
   assert.equal(olcmedi.kontroller.find((k) => k.kontrol === 'limitrange').durum, 'olculemedi');
   assert.ok(olcmedi.uyarilar.some((u) => u.kod === 'LIMITRANGE' && u.durum === 'olculemedi'));
   const bos = KR.dogrula({ degisiklikler: deg, canli: tam });
@@ -260,7 +285,11 @@ test('KR7 yol KAYDI: yalniz kayitli yaziya acik; olu / tahmin / kapsam disi YAZI
   assert.equal(KR.yazilabilirKayit(ag), true);
   assert.equal(ag.kap, 'app');
   assert.ok(ag.kanit, 'kayitli yolun kaniti olmali');
-  for (const y of ['aeron-cluster.memory-requester', 'target-registry.connectorTemplate', 'wyden-ui']) {
+  for (const y of [
+    'aeron-cluster.memory-requester',
+    'target-registry.connectorTemplate',
+    'wyden-ui',
+  ]) {
     const k = KR.yolKaydi('wyden', y);
     assert.ok(k, `${y} kayitta olmali (aciklamasiyla)`);
     assert.equal(KR.yazilabilirKayit(k), false, `${y} yaziya KAPALI olmali (${k.durum})`);
@@ -276,21 +305,41 @@ test('KR7 yol KAYDI: yalniz kayitli yaziya acik; olu / tahmin / kapsam disi YAZI
     assert.ok(k.kap && k.kanit && KR.BILESEN_RE.test(k.yol) && KR.KAP_RE.test(k.kap), k.yol);
   }
   // Is yuku -> kayit: ad <release>-<is>, tur da eslesmeli.
-  const ar = KR.isYukuKayitlari('wyden', 'wydenapp', 'Deployment', 'wydenapp-aeron-cluster-archive');
+  const ar = KR.isYukuKayitlari(
+    'wyden',
+    'wydenapp',
+    'Deployment',
+    'wydenapp-aeron-cluster-archive',
+  );
   assert.deepEqual(ar.map((k) => k.kap).sort(), ['backup', 'snapshot']);
-  assert.equal(KR.isYukuKayitlari('wyden', 'wydenapp', 'StatefulSet', 'wydenapp-access-gateway').length, 0);
+  assert.equal(
+    KR.isYukuKayitlari('wyden', 'wydenapp', 'StatefulSet', 'wydenapp-access-gateway').length,
+    0,
+  );
   assert.equal(KR.isYukuKayitlari('wyden', '', 'Deployment', 'access-gateway').length, 0);
 });
 
 test('KR8 riskli bilesen adi Ansible RISKLI_BILESEN ile AYNI', () => {
-  for (const y of ['aeron-cluster', 'aeron-cluster.archive.backup', 'storage', 'x.archive', 'indexers.btc'])
+  for (const y of [
+    'aeron-cluster',
+    'aeron-cluster.archive.backup',
+    'storage',
+    'x.archive',
+    'indexers.btc',
+  ])
     assert.equal(KR.riskliYol(y), true, y);
   for (const y of ['access-gateway', 'archiver', 'storage-console', 'components.indexers'])
     assert.equal(KR.riskliYol(y), false, y);
   const kok =
     process.env.CRYPTO_HUB_ANSIBLE_ROOT ||
     path.join('C:', 'Users', 'demir', 'Downloads', 'Compressed', 'gar_bmt_ansible_scripts');
-  const py = path.join(kok, 'bmw_automation_folder', 'crypto_hub', 'files', 'crypto_hub_resources.py');
+  const py = path.join(
+    kok,
+    'bmw_automation_folder',
+    'crypto_hub',
+    'files',
+    'crypto_hub_resources.py',
+  );
   if (!fs.existsSync(py)) return; // Ansible deposu bu makinede yoksa karsilastirma ATLANIR
   const m = /RISKLI_BILESEN = re\.compile\(r'([^']+)'\)/.exec(fs.readFileSync(py, 'utf8'));
   assert.ok(m, 'Ansible RISKLI_BILESEN deseni bulunamadi');
@@ -311,16 +360,24 @@ test('KR9 yazma kapisi KATALOGDAN: prod 403, Metaco 501, values dosyasi tanimsiz
   assert.equal(KR.kaynakYazmaKapisi({ ...tenantOf('wyden_qa_h2'), production: true }).acik, false);
   for (const t of CRYPTO_TENANTS) {
     assert.equal(typeof t.resValuesPath, 'string', `${t.key}: resValuesPath yok`);
-    assert.equal(t.resValuesVerified, false, `${t.key}: dogrulanmamis esleme 'dogrulandi' yazilmis`);
+    assert.equal(
+      t.resValuesVerified,
+      false,
+      `${t.key}: dogrulanmamis esleme 'dogrulandi' yazilmis`,
+    );
     assert.ok(Array.isArray(t.resPeerTenants), `${t.key}: resPeerTenants yok`);
     if (t.resValuesPath) {
       assert.match(t.resValuesPath, /^\/vhosting\/[A-Za-z0-9._/-]+$/, t.key);
       assert.ok(!t.resValuesPath.includes('..'), t.key);
-      assert.ok(t.resValuesEvidence && !/^BULUNAMADI/.test(t.resValuesEvidence), `${t.key}: dolu yolun kaniti yok`);
+      assert.ok(
+        t.resValuesEvidence && !/^BULUNAMADI/.test(t.resValuesEvidence),
+        `${t.key}: dolu yolun kaniti yok`,
+      );
     } else {
       assert.match(t.resValuesEvidence, /^BULUNAMADI/, `${t.key}: bos yol BULUNAMADI demeli`);
     }
-    if (t.app === 'metaco') assert.equal(t.resValuesPath, '', `${t.key}: Metaco yolu tahminle doldurulmus`);
+    if (t.app === 'metaco')
+      assert.equal(t.resValuesPath, '', `${t.key}: Metaco yolu tahminle doldurulmus`);
     for (const e of t.resPeerTenants) {
       const p = tenantOf(e);
       assert.ok(p, `${t.key}: es kiraci yok ${e}`);

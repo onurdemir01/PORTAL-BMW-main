@@ -36,11 +36,29 @@ export function gunEkle(d: Date, n: number): Date {
 }
 
 export const AY_ADLARI = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+  'Ocak',
+  'Şubat',
+  'Mart',
+  'Nisan',
+  'Mayıs',
+  'Haziran',
+  'Temmuz',
+  'Ağustos',
+  'Eylül',
+  'Ekim',
+  'Kasım',
+  'Aralık',
 ] as const;
 /** Pazartesi'den başlar. */
-export const GUN_ADLARI = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'] as const;
+export const GUN_ADLARI = [
+  'Pazartesi',
+  'Salı',
+  'Çarşamba',
+  'Perşembe',
+  'Cuma',
+  'Cumartesi',
+  'Pazar',
+] as const;
 export const GUN_KISA = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'] as const;
 
 /** Haftanın Pazartesi'si (yerel). */
@@ -55,11 +73,18 @@ export function haftaSonuMu(d: Date): boolean {
 }
 
 /** Ay yaprağı: HER ZAMAN 6x7 = 42 gün, Pazartesi başlar. Ay dışı günler `ayIci: false`. */
-export function ayIzgarasi(yil: number, ay0: number): { gun: string; tarih: Date; ayIci: boolean }[] {
+export function ayIzgarasi(
+  yil: number,
+  ay0: number,
+): { gun: string; tarih: Date; ayIci: boolean }[] {
   const bas = haftaBasi(new Date(yil, ay0, 1));
   return Array.from({ length: 42 }, (_, i) => {
     const t = gunEkle(bas, i);
-    return { gun: tarihAnahtari(t), tarih: t, ayIci: t.getMonth() === ay0 && t.getFullYear() === yil };
+    return {
+      gun: tarihAnahtari(t),
+      tarih: t,
+      ayIci: t.getMonth() === ay0 && t.getFullYear() === yil,
+    };
   });
 }
 
@@ -82,7 +107,9 @@ export function geceYarisiMi(iso: string | null): boolean {
   if (!iso) return false;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return false;
-  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+  return (
+    d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0
+  );
 }
 
 /** OCO'nun takvimde göründüğü günler (yerel) ve YAYILIM_SINIRI'na takılıp kırpılıp kırpılmadığı.
@@ -129,9 +156,9 @@ export interface TakvimOgesi<R> {
 
 /** Satırları yayıldıkları her güne dağıtır. Gün içi sıra: önce önceki günden sürenler,
  *  sonra başlangıç saatine göre. Tarihsizler ayrı döner. */
-export function gunlereYay<R extends { oco: number; plannedStart: string | null; plannedEnd: string | null }>(
-  rows: R[],
-): { gunler: Map<string, TakvimOgesi<R>[]>; tarihsiz: R[] } {
+export function gunlereYay<
+  R extends { oco: number; plannedStart: string | null; plannedEnd: string | null },
+>(rows: R[]): { gunler: Map<string, TakvimOgesi<R>[]>; tarihsiz: R[] } {
   const gunler = new Map<string, TakvimOgesi<R>[]>();
   const tarihsiz: R[] = [];
   for (const r of rows) {
@@ -156,7 +183,9 @@ export function gunlereYay<R extends { oco: number; plannedStart: string | null;
     return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
   };
   for (const liste of gunler.values()) {
-    liste.sort((a, b) => Number(b.devam) - Number(a.devam) || zaman(a) - zaman(b) || a.row.oco - b.row.oco);
+    liste.sort(
+      (a, b) => Number(b.devam) - Number(a.devam) || zaman(a) - zaman(b) || a.row.oco - b.row.oco,
+    );
   }
   return { gunler, tarihsiz };
 }

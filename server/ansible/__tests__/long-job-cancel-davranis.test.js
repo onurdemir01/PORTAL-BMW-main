@@ -48,6 +48,7 @@
 //   LJ29 tarama hic bitmiyorsa (in-flight) tek Teams karti + denetim fail
 //   LJ30 durum teyidi 50 kayit sinirinda adil ilerler; butce disindaki kayit ac kalmaz
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -68,11 +69,7 @@ const ACTIVE = ['new', 'pending', 'waiting', 'running'];
 const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
 // Turkce harfleri ASCII'ye katlar: kart metni bicimden bagimsiz karsilastirilir.
 const fold = (s) =>
-  String(s)
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/ı/g, 'i')
-    .replace(/’/g, "'");
+  String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/’/g, "'");
 
 // ── SAHTE AWX ────────────────────────────────────────────────────────────────
 const awx = {
@@ -118,7 +115,14 @@ function awxSifirla() {
 }
 
 function isEkle(j) {
-  awx.jobs.set(j.id, { kind: 'job', status: 'running', created: j.started || ago(1), cancel: 'ok', tplName: `tpl-${j.tpl}`, ...j });
+  awx.jobs.set(j.id, {
+    kind: 'job',
+    status: 'running',
+    created: j.started || ago(1),
+    cancel: 'ok',
+    tplName: `tpl-${j.tpl}`,
+    ...j,
+  });
 }
 
 function siralama(order) {
@@ -159,7 +163,11 @@ function awxJson(j) {
 
 function awxIstegi(req, res) {
   const u = new URL(req.url, 'http://x');
-  awx.istekler.push({ method: req.method, path: u.pathname, query: Object.fromEntries(u.searchParams) });
+  awx.istekler.push({
+    method: req.method,
+    path: u.pathname,
+    query: Object.fromEntries(u.searchParams),
+  });
   // AAP 2.5: API yalniz gateway onekinin altinda; /api/v2 404 doner.
   let yol = u.pathname;
   if (awx.prefix) {
@@ -174,18 +182,24 @@ function awxIstegi(req, res) {
   // Kullanici/sifreli kurulum: Portal token'i Basic auth ile kendisi alir (fetchTokenV2).
   if (req.method === 'POST' && yol === '/api/v2/tokens/') {
     const basic = 'Basic ' + Buffer.from('portal_svc:gizli-sifre-123').toString('base64');
-    if (req.headers.authorization !== basic) return send(401, { detail: 'Invalid username/password.' });
+    if (req.headers.authorization !== basic)
+      return send(401, { detail: 'Invalid username/password.' });
     return send(201, { token: TOKEN, expires: new Date(Date.now() + 3600e3).toISOString() });
   }
-  if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { detail: 'Authentication credentials were not provided.' });
+  if (req.headers.authorization !== `Bearer ${TOKEN}`)
+    return send(401, { detail: 'Authentication credentials were not provided.' });
   let m;
-  if (req.method === 'GET' && yol === '/api/v2/me/') return send(200, { count: 1, results: [{ id: 9, username: awx.me }] });
+  if (req.method === 'GET' && yol === '/api/v2/me/')
+    return send(200, { count: 1, results: [{ id: 9, username: awx.me }] });
   if (req.method === 'GET' && (m = yol.match(/^\/api\/v2\/(jobs|workflow_jobs)\/$/))) {
     const kind = m[1] === 'jobs' ? 'job' : 'workflow';
     if (awx.listStatus) return send(awx.listStatus, { detail: 'Invalid token.' });
-    if (awx.listFail || awx.listFailKind === kind) return send(500, { detail: 'veritabani gecici olarak yok' });
+    if (awx.listFail || awx.listFailKind === kind)
+      return send(500, { detail: 'veritabani gecici olarak yok' });
     if (awx.onListPage) awx.onListPage(kind, Number(u.searchParams.get('page') || 1));
-    const st = (u.searchParams.get('status__in') || u.searchParams.get('status') || '').split(',').filter(Boolean);
+    const st = (u.searchParams.get('status__in') || u.searchParams.get('status') || '')
+      .split(',')
+      .filter(Boolean);
     const rows = [...awx.jobs.values()]
       .filter((j) => j.kind === kind && (!st.length || st.includes(j.status)))
       .sort(siralama((u.searchParams.get('order_by') || 'id').split(',')));
@@ -194,18 +208,31 @@ function awxIstegi(req, res) {
     const nq = new URLSearchParams(u.searchParams);
     nq.set('page', String(page + 1));
     // job listesi GORELI, workflow listesi MUTLAK `next` doner (AWX ikisini de yapabilir).
-    const next =
-      (() => { if (page * ps < rows.length) { if (kind === 'job') return v2(`/api/v2/jobs/?${nq}`); return `http://127.0.0.1:${awx.port}${v2('/api/v2/workflow_jobs/?' + nq)}`; } return null; })();
-    return send(200, { count: rows.length, next, results: rows.slice((page - 1) * ps, page * ps).map(awxJson) });
+    const next = (() => {
+      if (page * ps < rows.length) {
+        if (kind === 'job') return v2(`/api/v2/jobs/?${nq}`);
+        return `http://127.0.0.1:${awx.port}${v2('/api/v2/workflow_jobs/?' + nq)}`;
+      }
+      return null;
+    })();
+    return send(200, {
+      count: rows.length,
+      next,
+      results: rows.slice((page - 1) * ps, page * ps).map(awxJson),
+    });
   }
   if (req.method === 'GET' && (m = yol.match(/^\/api\/v2\/(jobs|workflow_jobs)\/(\d+)\/$/))) {
     const kind = m[1] === 'jobs' ? 'job' : 'workflow';
     if (awx.stateFail) return send(500, { detail: 'is detayi gecici olarak okunamiyor' });
     const j = awx.jobs.get(Number(m[2]));
-    if (!j || j.kind !== kind || awx.detail404.has(j.id)) return send(404, { detail: 'Not found.' });
+    if (!j || j.kind !== kind || awx.detail404.has(j.id))
+      return send(404, { detail: 'Not found.' });
     return send(200, awxJson(j));
   }
-  if (req.method === 'POST' && (m = yol.match(/^\/api\/v2\/(jobs|workflow_jobs)\/(\d+)\/cancel\/$/))) {
+  if (
+    req.method === 'POST' &&
+    (m = yol.match(/^\/api\/v2\/(jobs|workflow_jobs)\/(\d+)\/cancel\/$/))
+  ) {
     const kind = m[1] === 'jobs' ? 'job' : 'workflow';
     const j = awx.jobs.get(Number(m[2]));
     if (!j || j.kind !== kind) return send(404, { detail: 'Not found.' });
@@ -213,7 +240,9 @@ function awxIstegi(req, res) {
     if (j.cancel === 'proxy405') return send(405, { detail: 'Method Not Allowed (proxy)' });
     const denied = () =>
       send(403, {
-        detail: 'You do not have permission to perform this action.' + (awx.echoAuth ? ` (got ${req.headers.authorization})` : ''),
+        detail:
+          'You do not have permission to perform this action.' +
+          (awx.echoAuth ? ` (got ${req.headers.authorization})` : ''),
       });
     // GERCEK AWX: superuser her zaman gecer; degilse JobAccess.can_cancel ilk satiri
     // `if not obj.can_cancel: return False` -> BITMIS ise 403 (405 DEGIL).
@@ -224,12 +253,19 @@ function awxIstegi(req, res) {
     if (j.cancel !== 'ignore') j.status = 'canceled';
     return send(202);
   }
-  if (req.method === 'GET' && (m = yol.match(/^\/api\/v2\/(job_templates|workflow_job_templates)\/(\d+)\/$/))) {
+  if (
+    req.method === 'GET' &&
+    (m = yol.match(/^\/api\/v2\/(job_templates|workflow_job_templates)\/(\d+)\/$/))
+  ) {
     const kind = m[1] === 'job_templates' ? 'job' : 'workflow';
     const t = awx.templates.get(`${kind}:${m[2]}`);
     if (!t) return send(404, { detail: 'Not found.' });
     if (t.caps === 'error') return send(500, { detail: 'gecici AWX hatasi' });
-    return send(200, { id: Number(m[2]), name: t.name, summary_fields: t.caps === null ? {} : { user_capabilities: t.caps } });
+    return send(200, {
+      id: Number(m[2]),
+      name: t.name,
+      summary_fields: t.caps === null ? {} : { user_capabilities: t.caps },
+    });
   }
   return send(404, { detail: 'Not found.' });
 }
@@ -237,16 +273,21 @@ function awxIstegi(req, res) {
 // ── SAHTE TEAMS ──────────────────────────────────────────────────────────────
 const teams = { srv: null, url: '', kartlar: [] };
 const kartBaslik = (k) => k?.attachments?.[0]?.content?.body?.[0]?.items?.[0]?.text || '';
-const basarisizKartlar = () => teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
-const durmadiKartlar = () => teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL ISTENDI AMA IS DURMADI'));
-const iptalKartlari = () => teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('Portal tarafindan iptal edildi'));
-const taramaKartlari = () => teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('OTOMATIK IPTAL CALISMIYOR'));
+const basarisizKartlar = () =>
+  teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
+const durmadiKartlar = () =>
+  teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL ISTENDI AMA IS DURMADI'));
+const iptalKartlari = () =>
+  teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('Portal tarafindan iptal edildi'));
+const taramaKartlari = () =>
+  teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('OTOMATIK IPTAL CALISMIYOR'));
 
 before(async () => {
   awx.srv = http.createServer((req, res) => {
     req.resume();
     req.on('end', () => {
-      const run = () => (awx.delayMs ? setTimeout(() => awxIstegi(req, res), awx.delayMs) : awxIstegi(req, res));
+      const run = () =>
+        awx.delayMs ? setTimeout(() => awxIstegi(req, res), awx.delayMs) : awxIstegi(req, res);
       if (awx.gate) awx.gate.then(run);
       else run();
     });
@@ -331,7 +372,10 @@ test('LJ1 403: Teams IPTAL EDILEMEDI karti + denetim fail + durum kirmizi; ikinc
 
   await watcher.tick({ db, runner, audit });
 
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/700/cancel/']);
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/700/cancel/'],
+  );
   const kart = basarisizKartlar();
   assert.equal(kart.length, 1, 'IPTAL EDILEMEDI karti gitmedi — basarisizlik yine SESSIZ');
   const metin = fold(JSON.stringify(kart[0]));
@@ -343,7 +387,11 @@ test('LJ1 403: Teams IPTAL EDILEMEDI karti + denetim fail + durum kirmizi; ikinc
   const fails = audits.filter((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail');
   assert.equal(fails.length, 1, 'denetimde fail kaydi yok');
   assert.equal(JSON.parse(fails[0].detail).httpStatus, 403);
-  assert.equal(audits.filter((a) => a.result === 'ok').length, 0, 'basarisiz iptal ok diye denetlendi');
+  assert.equal(
+    audits.filter((a) => a.result === 'ok').length,
+    0,
+    'basarisiz iptal ok diye denetlendi',
+  );
 
   const st = ljc.getStatus();
   const row = st.lastTick.jobs.find((j) => j.jobId === 700);
@@ -358,7 +406,10 @@ test('LJ1 403: Teams IPTAL EDILEMEDI karti + denetim fail + durum kirmizi; ikinc
   await watcher.tick({ db, runner, audit });
   assert.equal(posts().length, 1, 'kalici 403 tekrar denendi');
   assert.equal(basarisizKartlar().length, 1, 'ayni basarisizlik icin ikinci kart');
-  assert.equal(ljc.getStatus().lastTick.jobs.find((j) => j.jobId === 700).decision, 'cancel_failed');
+  assert.equal(
+    ljc.getStatus().lastTick.jobs.find((j) => j.jobId === 700).decision,
+    'cancel_failed',
+  );
 });
 
 // ── LJ2 ──────────────────────────────────────────────────────────────────────
@@ -366,14 +417,27 @@ test('LJ2 workflow job listelenir ve iptal /api/v2/workflow_jobs/<id>/cancel/ uc
   t.mock.method(console, 'warn', () => {});
   isEkle({ id: 800, kind: 'workflow', tpl: 55, tplName: 'gece_bakim_wf', started: ago(120) });
   isEkle({ id: 801, kind: 'job', tpl: 55, tplName: 'baska_job_tpl', started: ago(120) }); // ayni id, JOB template
-  const db = dbOf(CFG({ templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }] }));
+  const db = dbOf(
+    CFG({ templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }] }),
+  );
 
   const s = await cycle(db);
 
-  assert.ok(awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/workflow_jobs/'), 'workflow job listesi hic istenmedi');
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/workflow_jobs/800/cancel/'], 'workflow iptali yanlis uca gitti');
+  assert.ok(
+    awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/workflow_jobs/'),
+    'workflow job listesi hic istenmedi',
+  );
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/workflow_jobs/800/cancel/'],
+    'workflow iptali yanlis uca gitti',
+  );
   assert.equal(awx.jobs.get(800).status, 'canceled');
-  assert.equal(awx.jobs.get(801).status, 'running', 'ayni id li JOB template i workflow izni ile iptal edildi');
+  assert.equal(
+    awx.jobs.get(801).status,
+    'running',
+    'ayni id li JOB template i workflow izni ile iptal edildi',
+  );
   const wf = s.jobs.find((j) => j.jobId === 800);
   assert.equal(wf.kind, 'workflow');
   assert.equal(wf.decision, 'cancel_requested');
@@ -397,9 +461,20 @@ test('LJ3 en eski once + TUM sayfalar: ikinci sayfadaki izinli eski is bulunur; 
   const s = await cycle(db);
 
   const listeler = awx.istekler.filter((r) => r.method === 'GET' && r.path === '/api/v2/jobs/');
-  assert.match(listeler[0].query.order_by, /^started/, `en eski once degil: ${listeler[0].query.order_by}`);
-  assert.ok(listeler.some((r) => r.query.page === '2'), 'ikinci sayfa istenmedi');
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/900/cancel/'], 'ikinci sayfadaki izinli eski is iptal edilmedi');
+  assert.match(
+    listeler[0].query.order_by,
+    /^started/,
+    `en eski once degil: ${listeler[0].query.order_by}`,
+  );
+  assert.ok(
+    listeler.some((r) => r.query.page === '2'),
+    'ikinci sayfa istenmedi',
+  );
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/900/cancel/'],
+    'ikinci sayfadaki izinli eski is iptal edilmedi',
+  );
   assert.equal(s.jobsTotal, 5, 'tum sayfalar okunmadi');
   assert.equal(s.servers[0].kinds.job.pages, 3);
   assert.equal(s.servers[0].truncated, false);
@@ -480,7 +555,11 @@ test('LJ6 DB okunamazsa son gecerli yapilandirmayla devam eder; hic yoksa KAPALI
   isEkle({ id: 1200, tpl: 42, started: ago(120) });
   ljc._expireCache();
   const s = await cycle(brokenDb);
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1200/cancel/'], 'DB hatasinda otomatik iptal sessizce kapandi');
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/1200/cancel/'],
+    'DB hatasinda otomatik iptal sessizce kapandi',
+  );
   assert.match(s.configError.message, /Failed to connect/);
   assert.equal(s.usingLastGoodConfig, true);
   assert.ok(
@@ -520,12 +599,19 @@ test('LJ7 kuru calistirma HICBIR iptal istegi gondermez (statik token: sifir POS
   assert.equal(audits.length, 0);
   assert.equal(s.dryRun, true);
   assert.equal(s.jobs[0].decision, 'would_cancel');
-  assert.equal(ljc.getStatus().lastTick, null, 'kuru calistirma gercek tick ozetinin yerine yazildi');
+  assert.equal(
+    ljc.getStatus().lastTick,
+    null,
+    'kuru calistirma gercek tick ozetinin yerine yazildi',
+  );
   assert.equal(ljc.getStatus().lastDryRun.jobs[0].jobId, 1300);
 
   // durum makinesi isaretlenmedi: gercek tur ayni isi iptal eder
   await cycle(db);
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1300/cancel/']);
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/1300/cancel/'],
+  );
 
   // HTTP ucu da ayni sozu verir
   awxSifirla();
@@ -533,7 +619,9 @@ test('LJ7 kuru calistirma HICBIR iptal istegi gondermez (statik token: sifir POS
   isEkle({ id: 1301, tpl: 42, started: ago(120) });
   const { base, kapat } = await uygulama({ db });
   try {
-    const r = await fetch(`${base}/api/ansible/longjob-cancel/dry-run`, { method: 'POST' }).then((x) => x.json());
+    const r = await fetch(`${base}/api/ansible/longjob-cancel/dry-run`, { method: 'POST' }).then(
+      (x) => x.json(),
+    );
     assert.equal(r.ok, true);
     assert.equal(r.result.jobs.find((j) => j.jobId === 1301).decision, 'would_cancel');
     assert.equal(posts().length, 0, 'dry-run ucu AWX e POST yapti');
@@ -560,7 +648,10 @@ test('LJ8 yetki on kontrolu: edit=false -> EDEMEZ; okunamazsa / alan yoksa OLCUL
     ],
     { runner },
   );
-  assert.deepEqual(p.map((x) => x.state), ['no_admin', 'admin', 'admin', 'unknown', 'unknown', 'unknown']);
+  assert.deepEqual(
+    p.map((x) => x.state),
+    ['no_admin', 'admin', 'admin', 'unknown', 'unknown', 'unknown'],
+  );
   assert.match(fold(p[0].message), /BASKALARININ .*iptal EDEMEZ/);
   assert.match(fold(p[0].message), /Admin rolu/);
   for (const u of p.slice(3)) assert.match(fold(u.message), /Olculemedi/);
@@ -582,7 +673,9 @@ test('LJ8 yetki on kontrolu: edit=false -> EDEMEZ; okunamazsa / alan yoksa OLCUL
     assert.equal(put.ok, true, 'yetki eksigi kaydi ENGELLEDI (uyari olmaliydi)');
     assert.equal(put.permissions[0].state, 'no_admin');
     assert.match(fold(put.warnings.join(' ')), /EDEMEZ/);
-    const g = await fetch(`${base}/api/ansible/longjob-cancel/permissions?t=1:44:job`).then((x) => x.json());
+    const g = await fetch(`${base}/api/ansible/longjob-cancel/permissions?t=1:44:job`).then((x) =>
+      x.json(),
+    );
     assert.equal(g.permissions[0].state, 'unknown');
   } finally {
     await kapat();
@@ -601,7 +694,10 @@ test('LJ9 kuyruk secenegi KAPALIYKEN pending iptal edilmez; ACIKKEN created a go
 
   ljc._reset();
   s = await cycle(dbOf(CFG({ cancelQueued: true })));
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1400/cancel/']);
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/1400/cancel/'],
+  );
   assert.equal(s.jobs.find((j) => j.jobId === 1401).decision, 'below_threshold');
   assert.equal(awx.jobs.get(1401).status, 'waiting');
 });
@@ -614,11 +710,23 @@ async function uygulama({ db, requireAdmin } = {}) {
   app.use(express.json());
   const kayit = [];
   const gercekApp = {
-    get: (p, ...h) => { kayit.push({ m: 'get', p, h }); return app.get(p, ...h); },
-    put: (p, ...h) => { kayit.push({ m: 'put', p, h }); return app.put(p, ...h); },
-    post: (p, ...h) => { kayit.push({ m: 'post', p, h }); return app.post(p, ...h); },
+    get: (p, ...h) => {
+      kayit.push({ m: 'get', p, h });
+      return app.get(p, ...h);
+    },
+    put: (p, ...h) => {
+      kayit.push({ m: 'put', p, h });
+      return app.put(p, ...h);
+    },
+    post: (p, ...h) => {
+      kayit.push({ m: 'post', p, h });
+      return app.post(p, ...h);
+    },
     // Iptal token'i silme ucu (DELETE /api/ansible/longjob-cancel/tokens/:serverId).
-    delete: (p, ...h) => { kayit.push({ m: 'delete', p, h }); return app.delete(p, ...h); },
+    delete: (p, ...h) => {
+      kayit.push({ m: 'delete', p, h });
+      return app.delete(p, ...h);
+    },
   };
   const requireAuth = (_q, _s, n) => n();
   const adm = requireAdmin || ((_q, _s, n) => n());
@@ -646,7 +754,10 @@ test('LJ10 uclarin TAMAMI requireAuth + requireAdmin: Admin degilse AWX e de DB 
   isEkle({ id: 1500, tpl: 42, started: ago(120) });
   const db = dbOf(CFG());
   const red = (_q, res) => res.status(403).json({ ok: false, message: 'Admin gerekli' });
-  const { base, kayit, requireAuth, requireAdmin, kapat } = await uygulama({ db, requireAdmin: red });
+  const { base, kayit, requireAuth, requireAdmin, kapat } = await uygulama({
+    db,
+    requireAdmin: red,
+  });
   try {
     assert.ok(kayit.length >= 6, `uc sayisi beklenenden az: ${kayit.length}`);
     for (const k of kayit) {
@@ -667,13 +778,23 @@ test('LJ10 uclarin TAMAMI requireAuth + requireAdmin: Admin degilse AWX e de DB 
   } finally {
     await kapat();
   }
-  assert.throws(() => ljc.registerRoutes({ get() {}, put() {}, post() {} }, { requireAuth: () => {} }), /requireAdmin/);
+  assert.throws(
+    () => ljc.registerRoutes({ get() {}, put() {}, post() {} }, { requireAuth: () => {} }),
+    /requireAdmin/,
+  );
 
   // runner.cjs uclari GERCEK bekcilerle kaydeder (bicimden bagimsiz metin bekcisi)
   const { normalize } = require('../../util/guard-text.cjs');
   const src = normalize(fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8'));
-  assert.match(src, /registerRoutes\(app, \{ requireAuth, requireAdmin, getRunner: \(\) => module\.exports,/);
-  assert.doesNotMatch(src, /app\.(get|put|post)\('\/api\/ansible\/longjob-cancel/, 'runner.cjs te bekcisiz eski uc kaldi');
+  assert.match(
+    src,
+    /registerRoutes\(app, \{ requireAuth, requireAdmin, getRunner: \(\) => module\.exports,/,
+  );
+  assert.doesNotMatch(
+    src,
+    esnek(/app\.(get|put|post)\('\/api\/ansible\/longjob-cancel/),
+    'runner.cjs te bekcisiz eski uc kaldi',
+  );
 });
 
 // ── LJ11 ─────────────────────────────────────────────────────────────────────
@@ -709,7 +830,11 @@ test('LJ12 gecici hata en fazla 3 deneme, SON denemede tek Teams karti', async (
   assert.equal(posts().filter((p) => p.path === '/api/v2/jobs/1700/cancel/').length, 3);
   assert.equal(basarisizKartlar().length, 1, 'tukenen gecici hata icin tek kart beklenir');
   assert.match(fold(JSON.stringify(basarisizKartlar()[0])), /#1700/);
-  assert.equal(audits.filter((a) => a.result === 'fail').length, 3, 'her basarisiz deneme denetime fail yazmali');
+  assert.equal(
+    audits.filter((a) => a.result === 'fail').length,
+    3,
+    'her basarisiz deneme denetime fail yazmali',
+  );
   const st = ljc.getStatus().lastTick;
   assert.equal(st.jobs.find((j) => j.jobId === 1700).decision, 'cancel_failed');
   assert.match(fold(st.jobs.find((j) => j.jobId === 1700).reason), /tekrar denenmiyor/);
@@ -722,10 +847,15 @@ test('LJ13 watcher: ust uste binen tick atlanir; kapali ya da BOS izin listesind
   isEkle({ id: 1800, tpl: 42, started: ago(120) });
   awx.delayMs = 150;
   const db = dbOf(CFG());
-  const [a, b] = await Promise.all([watcher.tick({ db, runner, audit }), watcher.tick({ db, runner, audit })]);
+  const [a, b] = await Promise.all([
+    watcher.tick({ db, runner, audit }),
+    watcher.tick({ db, runner, audit }),
+  ]);
   assert.deepEqual([a.skipped, b.skipped].sort(), ['in-flight', null].sort());
   assert.equal(posts().length, 1, 'ust uste binen tick ayni isi iki kez iptal etti');
-  assert.ok(warns.mock.calls.some((c) => /onceki tarama hala suruyor/.test(String(c.arguments[0]))));
+  assert.ok(
+    warns.mock.calls.some((c) => /onceki tarama hala suruyor/.test(String(c.arguments[0]))),
+  );
 
   for (const cfg of [CFG({ enabled: false }), CFG({ templates: [] })]) {
     awxSifirla();
@@ -748,12 +878,24 @@ test('LJ14 AAP 2.5 (api tabani /api/controller/v2): tarama, sayfalama, workflow 
     isEkle({ id: 1902, kind: 'workflow', tpl: 99, started: ago(200) });
     isEkle({ id: 1900, kind: 'workflow', tpl: 55, started: ago(120) }); // 2. sayfa
     awx.templates.set('workflow:55', { name: 'gece_bakim_wf', caps: { edit: false } });
-    const db = dbOf(CFG({ templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }] }));
+    const db = dbOf(
+      CFG({
+        templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }],
+      }),
+    );
     const s = await cycle(db);
     assert.equal(s.servers[0].ok, true, `AAP 2.5 sunucusu taranamadi: ${s.servers[0].error}`);
-    assert.deepEqual(posts().map((p) => p.path), ['/api/controller/v2/workflow_jobs/1900/cancel/']);
-    assert.ok(awx.istekler.every((r) => r.path.startsWith('/api/controller/v2/')), 'onek disi istek gitti');
-    const p = await ljc.checkPermissions([{ serverId: 1, templateId: 55, kind: 'workflow' }], { runner });
+    assert.deepEqual(
+      posts().map((p) => p.path),
+      ['/api/controller/v2/workflow_jobs/1900/cancel/'],
+    );
+    assert.ok(
+      awx.istekler.every((r) => r.path.startsWith('/api/controller/v2/')),
+      'onek disi istek gitti',
+    );
+    const p = await ljc.checkPermissions([{ serverId: 1, templateId: 55, kind: 'workflow' }], {
+      runner,
+    });
     assert.equal(p[0].state, 'no_admin');
   } finally {
     delete process.env.AWX_1_API_BASE;
@@ -780,7 +922,8 @@ function ikinciOrnek() {
 }
 
 const sus = (t, ...names) => {
-  for (const n of names.length ? names : ['error', 'warn', 'log']) t.mock.method(console, n, () => {});
+  for (const n of names.length ? names : ['error', 'warn', 'log'])
+    t.mock.method(console, n, () => {});
 };
 const detay = (a) => JSON.parse(a.detail);
 
@@ -798,8 +941,15 @@ test('LJ15 tarama->is biter->POST yarisi ve iki Portal ornegi: gercek AWX 403 "z
   let row = s.jobs.find((j) => j.jobId === 1950);
   assert.equal(row.decision, 'already_terminal', `bitmis is icin karar ${row.decision}`);
   assert.equal(row.problem, false);
-  assert.ok(awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/jobs/1950/'), '403 sonrasi isin durumu okunmadi');
-  assert.equal(basarisizKartlar().length, 0, 'bitmis is icin "IPTAL EDILEMEDI - CALISMAYA DEVAM EDIYOR" karti gitti');
+  assert.ok(
+    awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/jobs/1950/'),
+    '403 sonrasi isin durumu okunmadi',
+  );
+  assert.equal(
+    basarisizKartlar().length,
+    0,
+    'bitmis is icin "IPTAL EDILEMEDI - CALISMAYA DEVAM EDIYOR" karti gitti',
+  );
   assert.equal(audits.filter((a) => a.result === 'fail').length, 0);
   await cycle(db); // sonraki tur: listede yok, durum terminal -> kayit sessizce silinir
   assert.equal(ljc.hasOpenWork(), false);
@@ -815,10 +965,17 @@ test('LJ15 tarama->is biter->POST yarisi ve iki Portal ornegi: gercek AWX 403 "z
   await kos(scanA);
   assert.equal(awx.jobs.get(1951).status, 'canceled');
   const sB = await kos(scanB, B);
-  assert.equal(sB.jobs.find((j) => j.jobId === 1951).decision, 'already_terminal', 'coklu ornek "zararsiz" degil');
+  assert.equal(
+    sB.jobs.find((j) => j.jobId === 1951).decision,
+    'already_terminal',
+    'coklu ornek "zararsiz" degil',
+  );
   assert.equal(basarisizKartlar().length, 0, 'ikinci ornek yanlis IPTAL EDILEMEDI alarmi verdi');
   assert.equal(iptalKartlari().length, 1);
-  assert.deepEqual(audits.map((a) => a.result), ['ok']);
+  assert.deepEqual(
+    audits.map((a) => a.result),
+    ['ok'],
+  );
 
   // C) superuser: bitmis ise 405 -> durum okunur -> zaten bitmis
   sifirlaHepsi();
@@ -838,14 +995,14 @@ test('LJ15 tarama->is biter->POST yarisi ve iki Portal ornegi: gercek AWX 403 "z
   row = s.jobs.find((j) => j.jobId === 1953);
   assert.equal(row.decision, 'cancel_failed');
   assert.match(fold(row.reason), /OLCULEMEDI/);
-  assert.doesNotMatch(fold(row.reason), /CALISMAYA DEVAM/);
+  assert.doesNotMatch(fold(row.reason), esnek(/CALISMAYA DEVAM/));
   await cycle(db);
   await cycle(db);
   assert.equal(posts().length, 3, 'durumu olculemeyen 403 kalici sayildi');
   assert.equal(basarisizKartlar().length, 1);
   const baslik = fold(kartBaslik(basarisizKartlar()[0]));
   assert.match(baslik, /OLCULEMEDI/);
-  assert.doesNotMatch(baslik, /CALISMAYA DEVAM/);
+  assert.doesNotMatch(baslik, esnek(/CALISMAYA DEVAM/));
 
   // E) 403 + saniyeler once aktif listelenen isin detayi 404: "silinmis = bitti" DENMEZ
   sifirlaHepsi();
@@ -868,11 +1025,19 @@ test('LJ16 tarama sagligi: AWX taranamazsa SCAN_FAIL_TICKS sonra TEK kart + dene
   assert.equal(taramaKartlari().length, 0, 'erken alarm');
   // kuru calistirma sayaci ILERLETMEZ (alarmi yutmaz / one cekmez)
   await cycle(db, { dryRun: true });
-  assert.equal(ljc.getStatus().scanHealth[0].fails, ljc.SCAN_FAIL_TICKS - 1, 'kuru calistirma tarama sagligi sayacina dokundu');
+  assert.equal(
+    ljc.getStatus().scanHealth[0].fails,
+    ljc.SCAN_FAIL_TICKS - 1,
+    'kuru calistirma tarama sagligi sayacina dokundu',
+  );
   await watcher.tick({ db, runner, audit });
   assert.equal(taramaKartlari().length, 1, 'AWX taranamiyor ama Teams e haber yok — SESSIZ');
   assert.match(fold(JSON.stringify(taramaKartlari()[0])), /401/);
-  assert.equal(audits.filter((a) => a.result === 'fail' && detay(a).phase === 'scan').length, 1, 'denetimde scan fail yok');
+  assert.equal(
+    audits.filter((a) => a.result === 'fail' && detay(a).phase === 'scan').length,
+    1,
+    'denetimde scan fail yok',
+  );
   let st = ljc.getStatus();
   assert.equal(st.open.scanFailing, 1);
   assert.equal(st.attempts[0].outcome, 'scan_failed');
@@ -883,8 +1048,14 @@ test('LJ16 tarama sagligi: AWX taranamazsa SCAN_FAIL_TICKS sonra TEK kart + dene
 
   awx.listStatus = 0; // duzeldi
   await watcher.tick({ db, runner, audit });
-  assert.deepEqual(posts().map((p) => p.path), ['/api/v2/jobs/1960/cancel/']);
-  assert.ok(audits.some((a) => a.result === 'ok' && detay(a).phase === 'scan' && detay(a).recovered), 'duzelme denetime yazilmadi');
+  assert.deepEqual(
+    posts().map((p) => p.path),
+    ['/api/v2/jobs/1960/cancel/'],
+  );
+  assert.ok(
+    audits.some((a) => a.result === 'ok' && detay(a).phase === 'scan' && detay(a).recovered),
+    'duzelme denetime yazilmadi',
+  );
   st = ljc.getStatus();
   assert.equal(st.open.scanFailing, 0);
   assert.ok(st.attempts.some((a) => a.outcome === 'scan_recovered'));
@@ -892,18 +1063,30 @@ test('LJ16 tarama sagligi: AWX taranamazsa SCAN_FAIL_TICKS sonra TEK kart + dene
   // yalniz workflow listesi bozuk: izin listesinde workflow YOKSA alarm yok, VARSA var
   for (const [templates, beklenen] of [
     [[{ serverId: 1, templateId: 42, kind: 'job' }], 0],
-    [[{ serverId: 1, templateId: 42, kind: 'job' }, { serverId: 1, templateId: 55, kind: 'workflow' }], 1],
+    [
+      [
+        { serverId: 1, templateId: 42, kind: 'job' },
+        { serverId: 1, templateId: 55, kind: 'workflow' },
+      ],
+      1,
+    ],
   ]) {
     sifirlaHepsi();
     awx.listFailKind = 'workflow';
-    for (let i = 0; i < ljc.SCAN_FAIL_TICKS; i++) await watcher.tick({ db: dbOf(CFG({ templates })), runner, audit });
-    assert.equal(taramaKartlari().length, beklenen, `workflow listesi hatasi, izin listesi ${JSON.stringify(templates)}`);
+    for (let i = 0; i < ljc.SCAN_FAIL_TICKS; i++)
+      await watcher.tick({ db: dbOf(CFG({ templates })), runner, audit });
+    assert.equal(
+      taramaKartlari().length,
+      beklenen,
+      `workflow listesi hatasi, izin listesi ${JSON.stringify(templates)}`,
+    );
   }
 
   // otomatik iptal KAPALI: tarama hatasi alarm uretmez
   sifirlaHepsi();
   awx.listStatus = 401;
-  for (let i = 0; i < ljc.SCAN_FAIL_TICKS; i++) await watcher.tick({ db: dbOf(CFG({ enabled: false })), runner, audit });
+  for (let i = 0; i < ljc.SCAN_FAIL_TICKS; i++)
+    await watcher.tick({ db: dbOf(CFG({ enabled: false })), runner, audit });
   assert.equal(taramaKartlari().length, 0);
 
   // tarama TAMAMEN patlarsa (istisna) da sayilir; durum kaydi korunur
@@ -921,7 +1104,11 @@ test('LJ16 tarama sagligi: AWX taranamazsa SCAN_FAIL_TICKS sonra TEK kart + dene
   // izin listesindeki template'in sunucusu Portal'da TANIMLI DEGIL
   sifirlaHepsi();
   for (let i = 0; i < ljc.SCAN_FAIL_TICKS; i++) {
-    await watcher.tick({ db: dbOf(CFG({ templates: [{ serverId: 7, templateId: 1, kind: 'job' }] })), runner, audit });
+    await watcher.tick({
+      db: dbOf(CFG({ templates: [{ serverId: 7, templateId: 1, kind: 'job' }] })),
+      runner,
+      audit,
+    });
   }
   assert.equal(taramaKartlari().length, 1, 'tanimsiz sunucu sessiz kaldi');
   assert.match(fold(JSON.stringify(taramaKartlari()[0])), /tanimli degil/);
@@ -958,7 +1145,10 @@ test('LJ17 405 dogrulamasiz kabul edilmez: vekil 405 + is aktif -> IPTAL EDILEME
   row = s.jobs.find((j) => j.jobId === 1966);
   assert.equal(row.decision, 'still_running', 'is calisiyor ama "zaten bitmis" diye SESSIZ');
   assert.equal(row.problem, true);
-  assert.equal(teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILMEDI')).length, 1);
+  assert.equal(
+    teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('IPTAL EDILMEDI')).length,
+    1,
+  );
   const vf = audits.filter((a) => a.result === 'fail' && detay(a).phase === 'verify');
   assert.equal(vf.length, 1);
   assert.equal(detay(vf[0]).awxSaidTerminal, true);
@@ -993,11 +1183,22 @@ test('LJ18 ofset sayfa kaymasi: "listede yok" durumu okunmadan "bitti" sayilmaz;
   assert.ok(oldu(), 'kurgu: kayma tetiklenmedi');
   assert.equal(s2.servers[0].kinds.job.truncated, false);
   assert.ok(!s2.jobs.some((j) => j.jobId === 43), 'kurgu: kayma isi dusurmedi');
-  assert.ok(awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/jobs/43/'), '"listede yok" durum okunarak teyit edilmedi');
-  assert.equal(ljc.getStatus().attempts.filter((a) => a.jobId === 43 && a.outcome === 'stopped').length, 0, 'CALISAN is "iptal dogrulandi" yazildi');
+  assert.ok(
+    awx.istekler.some((r) => r.method === 'GET' && r.path === '/api/v2/jobs/43/'),
+    '"listede yok" durum okunarak teyit edilmedi',
+  );
+  assert.equal(
+    ljc.getStatus().attempts.filter((a) => a.jobId === 43 && a.outcome === 'stopped').length,
+    0,
+    'CALISAN is "iptal dogrulandi" yazildi',
+  );
   assert.equal(ljc.hasOpenWork(), true);
   await cycle(db);
-  assert.equal(posts().filter((p) => p.path === '/api/v2/jobs/43/cancel/').length, 1, 'kayan is yeniden iptal edildi');
+  assert.equal(
+    posts().filter((p) => p.path === '/api/v2/jobs/43/cancel/').length,
+    1,
+    'kayan is yeniden iptal edildi',
+  );
   assert.equal(iptalKartlari().length, 1, 'ikinci "iptal edildi" karti');
   assert.equal(durmadiKartlar().length, 1, '"durmadi" alarmi kayma yuzunden sifirlandi');
 
@@ -1013,7 +1214,11 @@ test('LJ18 ofset sayfa kaymasi: "listede yok" durumu okunmadan "bitti" sayilmaz;
   awx.onListPage = null;
   assert.ok(oldu2());
   await cycle(db);
-  assert.equal(posts().filter((p) => p.path === '/api/v2/jobs/53/cancel/').length, 1, 'kalici 403 kayma sonrasi tekrar denendi');
+  assert.equal(
+    posts().filter((p) => p.path === '/api/v2/jobs/53/cancel/').length,
+    1,
+    'kalici 403 kayma sonrasi tekrar denendi',
+  );
   assert.equal(basarisizKartlar().length, 1);
 
   // C) 202 sonrasi is iptalle degil KENDILIGINDEN bitti -> "iptal edildi" DENMEZ
@@ -1057,7 +1262,10 @@ test('LJ18 ofset sayfa kaymasi: "listede yok" durumu okunmadan "bitti" sayilmaz;
   awx.detail404.clear();
   assert.ok(oldu3());
   assert.equal(ljc.hasOpenWork(), true, 'tek 404 "silinmis = bitti" sayildi');
-  assert.equal(ljc.getStatus().attempts.filter((x) => x.jobId === 63 && x.outcome !== 'requested').length, 0);
+  assert.equal(
+    ljc.getStatus().attempts.filter((x) => x.jobId === 63 && x.outcome !== 'requested').length,
+    0,
+  );
   await cycle(db);
   assert.equal(posts().filter((p) => p.path === '/api/v2/jobs/63/cancel/').length, 1);
   awx.jobs.delete(63); // AWX'ten silindi
@@ -1076,7 +1284,11 @@ test('LJ19 AWX te yetki verilip Kaydet e basilinca 403 almis is YENIDEN denenir 
   await cycle(db);
   await cycle(db);
   assert.equal(posts().length, 1);
-  assert.match(fold(JSON.stringify(basarisizKartlar()[0])), /Kaydet/, 'kart yeniden deneme yolunu soylemiyor');
+  assert.match(
+    fold(JSON.stringify(basarisizKartlar()[0])),
+    /Kaydet/,
+    'kart yeniden deneme yolunu soylemiyor',
+  );
   awx.jobs.get(1975).cancel = 'ok'; // AWX'te Admin rolu verildi
   await ljc.writeConfig(db, CFG());
   await cycle(db);
@@ -1139,12 +1351,19 @@ test('LJ22 taranamayan sunucuda _failed korunur ve o sunucuya is durumu istegi y
   awx.listFail = true;
   awx.istekler.length = 0;
   await cycle(db);
-  assert.equal(awx.istekler.filter((r) => r.path === '/api/v2/jobs/1990/').length, 0, 'listesi okunamayan sunucuya durum istegi gitti');
+  assert.equal(
+    awx.istekler.filter((r) => r.path === '/api/v2/jobs/1990/').length,
+    0,
+    'listesi okunamayan sunucuya durum istegi gitti',
+  );
   awx.listFail = false;
   await cycle(db);
   assert.equal(posts().length, 0, 'kalici 403 tarama hatasindan sonra yeniden denendi');
   assert.equal(basarisizKartlar().length, 1);
-  assert.equal(ljc.getStatus().lastTick.jobs.find((j) => j.jobId === 1990).decision, 'cancel_failed');
+  assert.equal(
+    ljc.getStatus().lastTick.jobs.find((j) => j.jobId === 1990).decision,
+    'cancel_failed',
+  );
 });
 
 // ── LJ23 ─────────────────────────────────────────────────────────────────────
@@ -1155,7 +1374,11 @@ test('LJ23 kuru calistirma iptal EDILEMEYEN isi "iptal edilirdi" gostermez', asy
   await cycle(db);
   const s = await cycle(db, { dryRun: true });
   const row = s.jobs.find((j) => j.jobId === 1995);
-  assert.equal(row.decision, 'cancel_failed', `kuru calistirma ${row.decision} dedi; gercek tick tekrar denemez`);
+  assert.equal(
+    row.decision,
+    'cancel_failed',
+    `kuru calistirma ${row.decision} dedi; gercek tick tekrar denemez`,
+  );
   assert.equal(row.problem, true);
   assert.equal(posts().length, 1);
 });
@@ -1165,7 +1388,8 @@ test('LJ24 30 dk bildirimi: tarama hatasinda ayni is TEKRAR bildirilmez', async 
   sus(t);
   process.env.TEAMS_LONGJOB_WEBHOOK_URL = teams.url;
   const db = dbOf(CFG({ enabled: false }));
-  const uzunKartlar = () => teams.kartlar.filter((k) => fold(JSON.stringify(k)).includes('Uzun Suredir Calisan'));
+  const uzunKartlar = () =>
+    teams.kartlar.filter((k) => fold(JSON.stringify(k)).includes('Uzun Suredir Calisan'));
   isEkle({ id: 2005, tpl: 99, started: ago(45) });
   await watcher.tick({ db, runner, audit });
   assert.equal(uzunKartlar().length, 1);
@@ -1210,11 +1434,18 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
   sifirlaHepsi();
   isEkle({ id: 2021, tpl: 42, started: ago(120), cancel: '403', createdBy: 'portal_svc' });
   const s = await cycle(db);
-  assert.ok(awx.istekler.some((r) => r.path === '/api/v2/me/'), 'Portal AWX kullanicisi olculmedi');
+  assert.ok(
+    awx.istekler.some((r) => r.path === '/api/v2/me/'),
+    'Portal AWX kullanicisi olculmedi',
+  );
   kart = fold(JSON.stringify(basarisizKartlar()[0]));
   assert.match(kart, /sebep template Admin rolu DEGIL/);
   assert.match(kart, /'write' kapsami/);
-  assert.doesNotMatch(kart, /Admin rolu verin/, 'Portal in kendi isi icin yanlis cozum (Admin rolu) onerildi');
+  assert.doesNotMatch(
+    kart,
+    esnek(/Admin rolu verin/),
+    'Portal in kendi isi icin yanlis cozum (Admin rolu) onerildi',
+  );
   assert.match(fold(s.jobs.find((j) => j.jobId === 2021).reason), /token'da 'write' kapsami yok/);
 
   // C) ortak cancelJobOnServer (Telnet/ScaleX/LogX de cagirir): Admin ipucu YOK, is calisiyor denir
@@ -1225,7 +1456,7 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
     (e) => e,
   );
   assert.ok(err, 'kurgu: 403 hata vermedi');
-  assert.doesNotMatch(err.message, /Admin rol/);
+  assert.doesNotMatch(err.message, esnek(/Admin rol/));
   assert.match(err.message, /ÇALIŞMAYA DEVAM/);
   assert.equal(err.permanent, true);
   assert.equal(err.createdByPortal, true);
@@ -1236,26 +1467,38 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
   assert.equal(p[0].state, 'admin');
   assert.equal(p[0].tokenScope, 'unknown');
   assert.match(fold(p[0].message), /Token kapsami OLCULEMEDI/);
-  assert.doesNotMatch(fold(p[0].message), /tum islerini iptal edebilir/);
+  assert.doesNotMatch(fold(p[0].message), esnek(/tum islerini iptal edebilir/));
   assert.match(fold(ljc.permissionWarnings(p).join(' ')), /token kapsami olculemedi/);
 });
 
 // ── LJ27 ─────────────────────────────────────────────────────────────────────
 test('LJ27 workflow iptali alt isleri de keser: kart, denetim ve durum bunu soyler; "hicbir zaman" denmez', async (t) => {
   sus(t);
-  const db = dbOf(CFG({ templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }] }));
+  const db = dbOf(
+    CFG({ templates: [{ serverId: 1, templateId: 55, kind: 'workflow', name: 'gece_bakim_wf' }] }),
+  );
   isEkle({ id: 2030, kind: 'workflow', tpl: 55, tplName: 'gece_bakim_wf', started: ago(120) });
-  isEkle({ id: 2031, kind: 'job', tpl: 77, tplName: 'db_upgrade', started: ago(110), parentWf: 2030 });
+  isEkle({
+    id: 2031,
+    kind: 'job',
+    tpl: 77,
+    tplName: 'db_upgrade',
+    started: ago(110),
+    parentWf: 2030,
+  });
   isEkle({ id: 2032, kind: 'job', tpl: 78, tplName: 'alakasiz', started: ago(110) });
   const s = await cycle(db);
   assert.equal(iptalKartlari().length, 1);
   assert.match(fold(JSON.stringify(iptalKartlari()[0])), /alt islerini de keser/);
   const ok = audits.find((a) => a.result === 'ok');
   assert.equal(detay(ok).childJobsCanceledToo, true);
-  assert.match(fold(s.jobs.find((j) => j.jobId === 2031).reason), /ust workflow #2030 izin listesinde/);
+  assert.match(
+    fold(s.jobs.find((j) => j.jobId === 2031).reason),
+    /ust workflow #2030 izin listesinde/,
+  );
   const alakasiz = fold(s.jobs.find((j) => j.jobId === 2032).reason);
-  assert.doesNotMatch(alakasiz, /hicbir zaman/);
-  assert.doesNotMatch(alakasiz, /ust workflow/);
+  assert.doesNotMatch(alakasiz, esnek(/hicbir zaman/));
+  assert.doesNotMatch(alakasiz, esnek(/ust workflow/));
 });
 
 // ── LJ28 ─────────────────────────────────────────────────────────────────────
@@ -1270,17 +1513,29 @@ test('LJ28 kullanici/sifreli AWX: kuru calistirma /cancel/ ucuna SIFIR POST (yal
     const db = dbOf(CFG());
     const { base, kapat } = await uygulama({ db });
     try {
-      const r = await fetch(`${base}/api/ansible/longjob-cancel/dry-run`, { method: 'POST' }).then((x) => x.json());
+      const r = await fetch(`${base}/api/ansible/longjob-cancel/dry-run`, { method: 'POST' }).then(
+        (x) => x.json(),
+      );
       assert.equal(r.ok, true, r.message);
       assert.equal(r.result.jobs.find((j) => j.jobId === 2040).decision, 'would_cancel');
     } finally {
       await kapat();
     }
-    assert.equal(posts().filter((p) => /\/cancel\/$/.test(p.path)).length, 0, 'kuru calistirma iptal istegi gonderdi');
-    assert.deepEqual(posts().map((p) => p.path), ['/api/v2/tokens/'], 'kurgu: token kullanici/sifreyle alinmadi');
+    assert.equal(
+      posts().filter((p) => /\/cancel\/$/.test(p.path)).length,
+      0,
+      'kuru calistirma iptal istegi gonderdi',
+    );
+    assert.deepEqual(
+      posts().map((p) => p.path),
+      ['/api/v2/tokens/'],
+      'kurgu: token kullanici/sifreyle alinmadi',
+    );
     assert.equal(awx.jobs.get(2040).status, 'running');
     awx.templates.set('job:42', { name: 'nginx_config_audit', caps: { edit: true } });
-    const p = await ljc.checkPermissions([{ serverId: 1, templateId: 42, kind: 'job' }], { runner });
+    const p = await ljc.checkPermissions([{ serverId: 1, templateId: 42, kind: 'job' }], {
+      runner,
+    });
     assert.equal(p[0].tokenScope, 'write');
     assert.doesNotMatch(fold(p[0].message), /OLCULEMEDI/);
   } finally {
@@ -1301,8 +1556,10 @@ test('LJ29 tarama hic bitmiyorsa (in-flight) tarama basina TEK Teams karti + den
   awx.gate = new Promise((r) => (ac = r));
   const ilk = watcher.tick({ db, runner, audit });
   await new Promise((r) => setTimeout(r, 50));
-  const takildi = () => teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('tarama bitmiyor'));
-  for (let i = 0; i < 2; i++) assert.equal((await watcher.tick({ db, runner, audit })).skipped, 'in-flight');
+  const takildi = () =>
+    teams.kartlar.filter((k) => fold(kartBaslik(k)).includes('tarama bitmiyor'));
+  for (let i = 0; i < 2; i++)
+    assert.equal((await watcher.tick({ db, runner, audit })).skipped, 'in-flight');
   assert.equal(takildi().length, 0, 'erken alarm');
   await watcher.tick({ db, runner, audit });
   assert.equal(takildi().length, 1, 'tarama bitmiyor ama kimseye haber yok');
@@ -1344,11 +1601,19 @@ test('LJ30 durum teyidi 50 kayit sinirinda adil ilerler; ilk grup okunamasa da d
     started: ago(120),
   }));
   const complete = [
-    { serverId: 1, serverName: 'maestro-test', complete: { job: true }, kinds: { job: { ok: true } } },
+    {
+      serverId: 1,
+      serverName: 'maestro-test',
+      complete: { job: true },
+      kinds: { job: { ok: true } },
+    },
   ];
 
   await ljc.runCycle({ jobs, servers: complete }, { db, runner: fairRunner });
-  const firstCheck = await ljc.runCycle({ jobs: [], servers: complete }, { db, runner: fairRunner });
+  const firstCheck = await ljc.runCycle(
+    { jobs: [], servers: complete },
+    { db, runner: fairRunner },
+  );
   assert.equal(calls.length, 50, 'ilk tur durum okuma butcesini asmadi');
   assert.deepEqual(firstCheck.verify, { asked: 50, measured: 0, unmeasured: 50 });
   const deferred = jobs.map((job) => job.jobId).find((jobId) => !calls.includes(jobId));
@@ -1356,6 +1621,13 @@ test('LJ30 durum teyidi 50 kayit sinirinda adil ilerler; ilk grup okunamasa da d
   terminalJobId = deferred;
 
   await ljc.runCycle({ jobs: [], servers: complete }, { db, runner: fairRunner });
-  assert.ok(calls.includes(deferred), 'ilk tur butcesi disindaki kayit onceki okumalar hata verdigi icin suresiz ac kaldi');
-  assert.equal(ljc.getStatus().open.awaitingVerify, 50, 'terminal oldugu dogrulanan ertelenmis kayit kapanmadi');
+  assert.ok(
+    calls.includes(deferred),
+    'ilk tur butcesi disindaki kayit onceki okumalar hata verdigi icin suresiz ac kaldi',
+  );
+  assert.equal(
+    ljc.getStatus().open.awaitingVerify,
+    50,
+    'terminal oldugu dogrulanan ertelenmis kayit kapanmadi',
+  );
 });

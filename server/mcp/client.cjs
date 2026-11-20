@@ -32,7 +32,10 @@ function isNoProxyHost(hostname) {
   const raw = process.env.NO_PROXY || process.env.no_proxy || '';
   if (!raw.trim()) return false;
   const host = hostname.toLowerCase();
-  for (const entry of raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+  for (const entry of raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)) {
     if (entry === '*') return true;
     const e = entry.startsWith('.') ? entry.slice(1) : entry;
     if (host === e || host.endsWith('.' + e)) return true;
@@ -50,9 +53,7 @@ function buildDispatcher(targetUrl, name) {
   try {
     target = new URL(targetUrl);
   } catch (error) {
-    throw new Error(
-      `[MCP:${name}] Geçersiz MCP URL: ${targetUrl} — ${error.message}`
-    );
+    throw new Error(`[MCP:${name}] Geçersiz MCP URL: ${targetUrl} — ${error.message}`);
   }
 
   let Agent;
@@ -61,18 +62,10 @@ function buildDispatcher(targetUrl, name) {
   try {
     ({ Agent, ProxyAgent } = require('undici'));
   } catch (error) {
-    throw new Error(
-      `[MCP:${name}] undici yüklenemedi: ${error.message}`
-    );
+    throw new Error(`[MCP:${name}] undici yüklenemedi: ${error.message}`);
   }
 
-  const {
-    ca,
-    caPath,
-    rootCount,
-    corporateCount,
-    corporateFileCount,
-  } = buildCombinedCa();
+  const { ca, caPath, rootCount, corporateCount, corporateFileCount } = buildCombinedCa();
 
   // Guvensiz TLS modu yalnizca kurumsal CA hic yuklenmemisse, gecici teshis amaciyla
   // kullanilabilir. Deger HESAPLANIR; kaynakta sabit `false` bulunmaz
@@ -98,12 +91,10 @@ function buildDispatcher(targetUrl, name) {
 
   if (!dogrula) {
     console.warn(
-      `[MCP:${name}] TLS dogrulamasi KAPALI. Bu ayar yalnizca gecici teshis icin kullanilmalidir.`
+      `[MCP:${name}] TLS dogrulamasi KAPALI. Bu ayar yalnizca gecici teshis icin kullanilmalidir.`,
     );
   } else if (guvensizIstendi) {
-    console.warn(
-      `[MCP:${name}] Kurumsal CA mevcut; MCP_TLS_INSECURE yok sayildi.`
-    );
+    console.warn(`[MCP:${name}] Kurumsal CA mevcut; MCP_TLS_INSECURE yok sayildi.`);
   }
 
   const proxyUrl =
@@ -114,9 +105,7 @@ function buildDispatcher(targetUrl, name) {
     '';
 
   if (proxyUrl && !isNoProxyHost(target.hostname)) {
-    console.log(
-      `[MCP:${name}] Proxy uzerinden baglanilacak: ${proxyUrl} -> ${target.hostname}`
-    );
+    console.log(`[MCP:${name}] Proxy uzerinden baglanilacak: ${proxyUrl} -> ${target.hostname}`);
 
     return new ProxyAgent({
       uri: proxyUrl,
@@ -133,7 +122,7 @@ function buildDispatcher(targetUrl, name) {
 
   if (proxyUrl) {
     console.log(
-      `[MCP:${name}] ${target.hostname} NO_PROXY kapsaminda; dogrudan baglanti kullanilacak.`
+      `[MCP:${name}] ${target.hostname} NO_PROXY kapsaminda; dogrudan baglanti kullanilacak.`,
     );
   }
 
@@ -154,9 +143,7 @@ function buildFetch(targetUrl, name) {
   try {
     fetchImpl = require('undici').fetch;
   } catch (error) {
-    throw new Error(
-      `[MCP:${name}] undici fetch yüklenemedi: ${error.message}`
-    );
+    throw new Error(`[MCP:${name}] undici fetch yüklenemedi: ${error.message}`);
   }
 
   return async (url, init = {}) => {
@@ -166,9 +153,7 @@ function buildFetch(targetUrl, name) {
     };
 
     if (!options.signal) {
-      options.signal = AbortSignal.timeout(
-        CONNECT_TIMEOUT_MS + 20_000
-      );
+      options.signal = AbortSignal.timeout(CONNECT_TIMEOUT_MS + 20_000);
     }
 
     try {
@@ -214,9 +199,9 @@ function describeError(err) {
 function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxMs } = {}) {
   let _client = null;
   let _transport = null;
-  let _connecting = null;     // baglanma devam ediyorsa paylasilan in-flight Promise
-  let _lastError = null;      // { message, at, url }
-  let _connectedUrl = null;   // basarili varyant (orijinal ya da /mcp ekli)
+  let _connecting = null; // baglanma devam ediyorsa paylasilan in-flight Promise
+  let _lastError = null; // { message, at, url }
+  let _connectedUrl = null; // basarili varyant (orijinal ya da /mcp ekli)
 
   // ── GERI CEKILME (backoff) ────────────────────────────────────────────────
   //
@@ -239,10 +224,10 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
   const BACKOFF_BASE_MS = Number.isFinite(_backoffBaseMs) ? _backoffBaseMs : 5_000;
   const BACKOFF_MAX_MS = Number.isFinite(_backoffMaxMs) ? _backoffMaxMs : 5 * 60_000;
   const TAM_LOG_ESIGI = 3; // ilk 3 hata tam yazilir
-  let _ardArda = 0;        // ardisik basarisiz deneme sayisi
-  let _sonrakiDeneme = 0;  // bu ana kadar yeni deneme YAPILMAZ
-  let _ilkHataAt = null;   // kesintisiz basarisizligin baslangici
-  let _sonKademe = 0;      // en son loglanan bekleme suresi
+  let _ardArda = 0; // ardisik basarisiz deneme sayisi
+  let _sonrakiDeneme = 0; // bu ana kadar yeni deneme YAPILMAZ
+  let _ilkHataAt = null; // kesintisiz basarisizligin baslangici
+  let _sonKademe = 0; // en son loglanan bekleme suresi
 
   function setError(err, attemptedUrl) {
     const detail = describeError(err);
@@ -257,7 +242,8 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
 
   async function tryConnect(targetUrl) {
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+    const { StreamableHTTPClientTransport } =
+      await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
     const transport = new StreamableHTTPClientTransport(new URL(targetUrl), {
       requestInit: { headers },
@@ -268,7 +254,12 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
     // client.connect kendi icinde asili kalabilir — acik timeout ile yaristir
     await Promise.race([
       client.connect(transport),
-      new Promise((_, rej) => setTimeout(() => rej(new Error(`MCP connect timeout (${CONNECT_TIMEOUT_MS}ms)`)), CONNECT_TIMEOUT_MS)),
+      new Promise((_, rej) =>
+        setTimeout(
+          () => rej(new Error(`MCP connect timeout (${CONNECT_TIMEOUT_MS}ms)`)),
+          CONNECT_TIMEOUT_MS,
+        ),
+      ),
     ]);
 
     transport.onclose = () => {
@@ -303,7 +294,11 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
     _connecting = (async () => {
       // Varyantlar: baglanilmis URL biliniyorsa once o; yoksa verilen URL, sonra /mcp eki
       const base = url.replace(/(?<!\/)\/+$/, '');
-      const variants = (() => { if (_connectedUrl) return [_connectedUrl]; if (base.endsWith('/mcp')) return [base]; return [base, `${base}/mcp`]; })();
+      const variants = (() => {
+        if (_connectedUrl) return [_connectedUrl];
+        if (base.endsWith('/mcp')) return [base];
+        return [base, `${base}/mcp`];
+      })();
 
       let lastErr = null;
       for (const variant of variants) {
@@ -350,7 +345,9 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
         );
       }
       throw lastErr || new Error('MCP bağlantısı kurulamadı');
-    })().finally(() => { _connecting = null; });
+    })().finally(() => {
+      _connecting = null;
+    });
 
     return _connecting;
   }
@@ -378,8 +375,11 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
         originalBytes: Buffer.byteLength(textContent, 'utf8'),
       };
     }
-    try { return JSON.parse(textContent); }
-    catch { return { text: textContent }; }
+    try {
+      return JSON.parse(textContent);
+    } catch {
+      return { text: textContent };
+    }
   }
 
   async function listTools() {
@@ -404,8 +404,11 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
   // AI Analist sistem promptuna enjekte edilir
   async function getServerInstructions() {
     const client = await getClient();
-    try { return client.getInstructions() || ''; }
-    catch { return ''; }
+    try {
+      return client.getInstructions() || '';
+    } catch {
+      return '';
+    }
   }
 
   async function disconnect() {
@@ -433,11 +436,23 @@ function createMcpClient({ name, url, headers = {}, _backoffBaseMs, _backoffMaxM
 
   // Health check icin: baglanmayi dener, sonucu boolean doner (hata firlatmaz)
   async function checkConnect() {
-    try { await getClient(); return true; }
-    catch { return false; }
+    try {
+      await getClient();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
-  return { callTool, listTools, listToolsFull, getServerInstructions, disconnect, getStatus, checkConnect };
+  return {
+    callTool,
+    listTools,
+    listToolsFull,
+    getServerInstructions,
+    disconnect,
+    getStatus,
+    checkConnect,
+  };
 }
 
 // buildDispatcher disa acik: MCP-disi dis servis client'lari (or. server/splunk/client.cjs)

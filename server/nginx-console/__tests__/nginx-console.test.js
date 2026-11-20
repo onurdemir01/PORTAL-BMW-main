@@ -3,6 +3,7 @@
 // birlestirme (ayni parmak izi = tek satir, host/kullanim listesi), kalan gun.
 // NH5-NH7: yol beyaz listesi, kayitlar (paths/seed/nav/route), push betigi sozlesmesi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -143,7 +144,7 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
       fs.existsSync(
         path.join(
           ROOT,
-          'server/ansible/bmw_portal',
+          'server/ansible/playbooks/bmw_portal',
           PLAYBOOKS[k === 'nginx_console_fetch' ? 'nginxConsoleFetch' : 'nginxConsolePush'],
         ),
       ),
@@ -190,7 +191,7 @@ test('NH6 kayitlar: PLAYBOOKS, registry seed, sayfa elementi (Admin), nav, route
 });
 
 test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma, reload, RESULT satiri', () => {
-  const sh = read('server/ansible/bmw_portal/nginx_console/files/nginx_console_push.sh');
+  const sh = read('server/ansible/playbooks/bmw_portal/nginx_console/files/nginx_console_push.sh');
   assert.match(sh, /"\$PREFIX\/conf\.d\/"\*\|"\$PREFIX\/conf\/"\*\)/);
   assert.match(sh, /deploy_lock_acquire/);
   assert.match(sh, /\.console_backup/);
@@ -199,11 +200,13 @@ test('NH7 push betigi sozlesmesi: beyaz liste, kilit, yedek, nginx -t geri alma,
   assert.match(sh, /-s reload/);
   assert.match(sh, /echo "RESULT\|ok\|/);
   // dump betigi anahtar dosyalarini okumaz
-  const dump = read('server/ansible/bmw_portal/nginx_console/files/nginx_console_dump.sh');
+  const dump = read(
+    'server/ansible/playbooks/bmw_portal/nginx_console/files/nginx_console_dump.sh',
+  );
   assert.match(dump, /\*\.key\|\*\.pem_key\|\*private\*\) continue/);
   // playbook'lar: add_host ile hedef (AWX limit'e guvenilmez), www ile dzdo, GBLABT02 uzerinden /sw
   for (const f of ['nginx_console_fetch.yml', 'nginx_console_push.yml']) {
-    const y = read('server/ansible/bmw_portal/nginx_console/' + f);
+    const y = read('server/ansible/playbooks/bmw_portal/nginx_console/' + f);
     assert.match(y, /ansible\.builtin\.add_host/);
     assert.match(y, /become_user: www/);
     assert.match(y, /delegate_to: GBLABT02/);
@@ -523,7 +526,9 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
   // Tek MAX(scan_date) bugun login'i dusen cluster'in dunku verisini ekrandan siliyordu.
   assert.doesNotMatch(
     src,
-    /FROM dbo\.BMW_Spa_Discovery WHERE scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.BMW_Spa_Discovery\)/,
+    esnek(
+      /FROM dbo\.BMW_Spa_Discovery WHERE scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.BMW_Spa_Discovery\)/,
+    ),
     'tek global MAX(scan_date) geri gelmis',
   );
   assert.match(

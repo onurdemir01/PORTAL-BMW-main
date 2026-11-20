@@ -38,15 +38,13 @@ test('PV1 GERCEK hesap: haric tutulan hedefler sayiya girmez', () => {
 
   // 12 hedeften 5'i haric tutuldu → 7 kalmali.
   const secili = [];
-  for (const c of KAPSAM.clusters) for (const a of KAPSAM.apps) secili.push({ cluster: c, name: a });
+  for (const c of KAPSAM.clusters)
+    for (const a of KAPSAM.apps) secili.push({ cluster: c, name: a });
   const kalan = secili.slice(0, 7);
 
   const daraltilmis = launch.computeBlastRadius({ ...KAPSAM, selectedTargets: kalan });
   assert.equal(daraltilmis.targets, 7, 'haric tutulanlar hala sayiliyor');
-  assert.ok(
-    daraltilmis.targets < hepsi.targets,
-    'daraltma patlama yaricapini hic etkilemiyor',
-  );
+  assert.ok(daraltilmis.targets < hepsi.targets, 'daraltma patlama yaricapini hic etkilemiyor');
 });
 
 test('PV2 ONIZLEME ve CALISTIRMA ayni girdide AYNI sonucu verir', () => {
@@ -90,7 +88,11 @@ test('PV5 `targets` istemci TIPINDE var (sessiz eksik tekrar etmesin)', () => {
   // kullandigi icin TypeScript'in fazla-ozellik denetimi hic devreye girmemisti.
   const api = kodOnly(oku('src/api/scalexApi.ts'));
   const d = dilimArasi(api, '  preview(', '  run(');
-  assert.match(d, /targets\?:\s*\{\s*cluster:\s*string;\s*name:\s*string\s*\}\[\]/, 'preview tipinde targets yok');
+  assert.match(
+    d,
+    /targets\?:\s*\{\s*cluster:\s*string;\s*name:\s*string\s*\}\[\]/,
+    'preview tipinde targets yok',
+  );
 
   function dilimArasi(src, bas, son) {
     const a = src.indexOf(bas);
@@ -113,7 +115,11 @@ test('PV6 hedefler ONIZLEME bilesenine PROP olarak geciriliyor', () => {
     const i = kod.indexOf(etiket);
     assert.ok(i > 0, `${dosya}: ${etiket} render edilmiyor`);
     const d = kod.slice(i, kod.indexOf('/>', i));
-    assert.match(d, /selectedTargets=\{selectedTargets\}/, `${dosya}: hedefler onizlemeye gecirilmiyor`);
+    assert.match(
+      d,
+      /selectedTargets=\{selectedTargets\}/,
+      `${dosya}: hedefler onizlemeye gecirilmiyor`,
+    );
   }
 });
 
@@ -122,5 +128,9 @@ test('PV7 onizleme LISTESI de haric tutulani gostermiyor', () => {
   const i = kod.indexOf('const picked =');
   assert.ok(i > 0, 'picked listesi bulunamadi');
   const d = kod.slice(i, i + 400);
-  assert.match(d, /haricKumesi/, 'liste yalnizca uygulama ADINA bakiyor — cikarilan satir listede kaliyor');
+  assert.match(
+    d,
+    /haricKumesi/,
+    'liste yalnizca uygulama ADINA bakiyor — cikarilan satir listede kaliyor',
+  );
 });

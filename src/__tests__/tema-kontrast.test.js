@@ -99,10 +99,18 @@ const METIN_CIFTLERI = [
   ['--text-on-accent', '--status-success', 'yesil dolu dugme metni (BTN_BASARI)'],
   // Nginx Hub dolu yesil dugmeler (2026-11-07): marka yesili #009639 beyaz metinle 3.87:1 idi.
   ['--text-on-dark', '--nginx-green-dolgu', 'Nginx Hub dolu yesil dugme metni'],
-  ['--status-warning-text', '--bg-elevated', 'uyari metni yukseltilmis zeminde (SourceNote "tarama kaydi yok")'],
+  [
+    '--status-warning-text',
+    '--bg-elevated',
+    'uyari metni yukseltilmis zeminde (SourceNote "tarama kaydi yok")',
+  ],
   // Retirement kayit ayrintisi / is ciktisi (2026-10-26): tablo basligi, kutu govdeleri, hata ozeti.
   ['--text-secondary', '--bg-elevated', 'tablo basligi (TH_STIL)'],
-  ['--text-secondary', '--status-warning-bg', 'uyari kutusunda ikincil metin (in-place listesi / kontrol listesi notu)'],
+  [
+    '--text-secondary',
+    '--status-warning-bg',
+    'uyari kutusunda ikincil metin (in-place listesi / kontrol listesi notu)',
+  ],
   ['--text-primary', '--status-warning-bg', 'uyari kutusu govde metni'],
   ['--text-secondary', '--status-danger-bg', 'hata ozeti satir numarasi'],
   ['--text-primary', '--status-danger-bg', 'hata kutusu / hata ozeti govde metni'],
@@ -387,5 +395,8 @@ test('TK10 `--accent-fg` tanimli ve `--text-on-accent`in takma adi (kapsam disi 
   assert.equal(ACIK['--accent-fg'], 'var(--text-on-accent)');
   assert.ok(!('--accent-fg' in tokenlar(blok(':root[data-theme="dark"] {'))));
   const kullanan = KOD.filter(([f, s]) => KAPSAM_DISI.test(f) && /var\(--accent-fg\b/.test(s));
-  assert.ok(kullanan.length > 0, 'kapsam disinda --accent-fg kullanan kalmadiysa takma ad silinebilir');
+  assert.ok(
+    kullanan.length > 0,
+    'kapsam disinda --accent-fg kullanan kalmadiysa takma ad silinebilir',
+  );
 });

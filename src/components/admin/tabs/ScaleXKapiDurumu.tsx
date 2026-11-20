@@ -97,7 +97,8 @@ function smartMetni(d: ScaleXKapiKurallari['geriAl'] | ScaleXKapiKurallari['dryR
 export function kuralCumleleri(k: ScaleXKapiKurallari, prod: ScaleXGatePolicy): string[] {
   const dryRunSerbest = k.dryRun.oco === 'skip' && k.dryRun.smart === 'skip';
   const b = k.bilinmeyenOrtam;
-  const prodGibi = b.oco === prod.oco && b.smart === prod.smart && b.smartStatus === prod.smartStatus;
+  const prodGibi =
+    b.oco === prod.oco && b.smart === prod.smart && b.smartStatus === prod.smartStatus;
   return [
     k.prodDisi.smart === 'skip'
       ? `SMART yalnızca production'da sorulur; prod dışı ortamda (örnek: ${k.prodDisi.ortam}) istenmez.`

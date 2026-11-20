@@ -65,12 +65,17 @@ const KaynakKarti: React.FC<{
   const k = r.restriction;
 
   return (
-    <div className="border border-[var(--border)] rounded-xl p-3 space-y-2" data-testid="logx-kaynak">
+    <div
+      className="border border-[var(--border)] rounded-xl p-3 space-y-2"
+      data-testid="logx-kaynak"
+    >
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
           {TIP_ETIKET[r.resourceType] || r.resourceType}
         </span>
-        <span className="text-sm font-semibold text-[var(--text-primary)] font-mono">{r.resourceKey}</span>
+        <span className="text-sm font-semibold text-[var(--text-primary)] font-mono">
+          {r.resourceKey}
+        </span>
         <span
           className={`text-xs px-1.5 py-0.5 rounded-full ${
             k ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'
@@ -123,7 +128,10 @@ const KaynakKarti: React.FC<{
           </p>
           <div className="flex flex-wrap gap-1.5">
             {k.grants.map((u) => (
-              <span key={`u-${u}`} className="text-xs px-2 py-0.5 rounded-full bg-[var(--bg-elevated)]">
+              <span
+                key={`u-${u}`}
+                className="text-xs px-2 py-0.5 rounded-full bg-[var(--bg-elevated)]"
+              >
                 {u}
                 <button
                   aria-label={`${u} iznini kaldır`}
@@ -603,7 +611,9 @@ const RedGunlugu: React.FC = () => {
           <tbody className="divide-y divide-[var(--border)]">
             {satirlar.map((d) => (
               <tr key={d.id}>
-                <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">{fmtDateTime(d.at)}</td>
+                <td className="py-1 pr-2 whitespace-nowrap text-[var(--text-muted)]">
+                  {fmtDateTime(d.at)}
+                </td>
                 <td className="py-1 pr-2">{d.username}</td>
                 <td className="py-1 pr-2 font-mono">
                   {d.resourceType ? `${TIP_ETIKET[d.resourceType] || d.resourceType}: ` : ''}
@@ -640,7 +650,9 @@ const Altyapi: React.FC = () => {
   const sorunlu = rows.filter((r) => r.active && r.eksik.length);
   return (
     <div className="border border-[var(--border)] rounded-xl p-4 space-y-2">
-      <p className="text-sm font-medium text-[var(--text-primary)]">Kural dışı sebepler (altyapı)</p>
+      <p className="text-sm font-medium text-[var(--text-primary)]">
+        Kural dışı sebepler (altyapı)
+      </p>
       <p className="text-xs text-[var(--text-muted)]">
         Kural izin verdiği hâlde prod&apos;da hata alınıyorsa sebep çoğunlukla altyapıdadır:
         OCP&apos;de servis hesabının <code>projects</code> list ve <code>pods/log</code> get yetkisi

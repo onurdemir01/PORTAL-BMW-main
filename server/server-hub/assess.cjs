@@ -68,7 +68,7 @@ const FRESH_MAX_DAYS = 2;
  *  jboss-cli ve host XML yok; ya da dogru kullanici (was) ust dizine giremiyor (izin). Ikisi de
  *  'CLI calistirilamadi' degil 'kullanilan kurulum yok' demektir. */
 function jbKalinti(b) {
-  if (!b || b.cli !== 'SKIP') return false;
+  if (b?.cli !== 'SKIP') return false;
   const n = String(b.note || '');
   if (/^jboss-cli yok\b/.test(n) && /host XML (bulunamadi|okunamadi)/.test(n)) return true;
   return /JBoss dizini GORULEMEDI/.test(n) && /giremiyor \(izin\)/.test(n);
@@ -91,11 +91,13 @@ function domainKapaliOzeti(gen, nj) {
   const autoStartAcik = liste.filter((j) => j.running !== true && j.autoStart === 'true').length;
   const hepsiKapali = liste.length > 0 && liste.every((j) => j.autoStart === 'false');
   const kosan = liste.length > durmus ? `, ${liste.length - durmus} JVM süreci görünüyor` : '';
-  const jvmMetni = !liste.length
-    ? 'JVM tanımı okunamadı'
-    : hepsiKapali
-      ? `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`
-      : `${durmus} JVM durmuş${autoStartAcik ? ` (${autoStartAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)` : ''}${kosan}`;
+  const acikEki = autoStartAcik
+    ? ` (${autoStartAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)`
+    : '';
+  let jvmMetni = `${durmus} JVM durmuş${acikEki}${kosan}`;
+  if (!liste.length) jvmMetni = 'JVM tanımı okunamadı';
+  else if (hepsiKapali)
+    jvmMetni = `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`;
   return {
     durmus,
     autoStartAcik,
@@ -146,11 +148,13 @@ function yalnizTekrarOzeti(vhostlar) {
     }
   return {
     istek: trafikli.reduce((a, v) => a + v.req7d, 0),
-    uriler: [...uriler.values()].sort((a, b) => b.istek - a.istek || (a.yol < b.yol ? -1 : 1)).slice(0, 3),
+    uriler: [...uriler.values()]
+      .sort((a, b) => b.istek - a.istek || (a.yol < b.yol ? -1 : 1))
+      .slice(0, 3),
   };
 }
 const tekrarMetni = (t) =>
-  t && t.uriler.length ? t.uriler.map((u) => `${u.metot} ${u.yol}`).join(', ') : 'URI kaydı yok';
+  t?.uriler.length ? t.uriler.map((u) => `${u.metot} ${u.yol}`).join(', ') : 'URI kaydı yok';
 const zamanMs = (x) => {
   if (x == null || x === '') return null;
   if (typeof x === 'number') return Number.isFinite(x) ? x : null;
@@ -348,11 +352,11 @@ const regexKacis = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * @returns {Array<{ jvms: object[], tur: 'ad'|'ad-sayi'|'grup'|'domain'|null }>} apps ile ayni sirada
  */
 function envanterEslestir(apps, jvms) {
-  const taranan = (jvms || []).filter((j) => j && j.name && j.source !== 'envanter');
+  const taranan = (jvms || []).filter((j) => j?.name && j.source !== 'envanter');
   // Ayni host + uygulama icin domain basina ayri envanter satiri gelebilir: esleme AD basina bir kez.
   const adlar = new Map();
   for (const a of apps || []) {
-    const ad = L(a && a.app);
+    const ad = L(a?.app);
     if (!ad) continue;
     if (!adlar.has(ad)) adlar.set(ad, { domainler: new Set(), jvms: [], tur: null });
     if (L(a.domain)) adlar.get(ad).domainler.add(L(a.domain));
@@ -381,13 +385,10 @@ function envanterEslestir(apps, jvms) {
     for (const j of taranan) {
       if (alinan.has(j)) continue;
       const g = L(j.group);
-      const tur = sayiRe.test(L(j.name))
-        ? 'ad-sayi'
-        : g && (g === ad || g === `${ad}_group` || g === `${ad}-group`)
-          ? 'grup'
-          : g && x.domainler.has(g) && domainSayisi.get(g) === 1
-            ? 'domain'
-            : null;
+      let tur = null;
+      if (sayiRe.test(L(j.name))) tur = 'ad-sayi';
+      else if (g && (g === ad || g === `${ad}_group` || g === `${ad}-group`)) tur = 'grup';
+      else if (g && x.domainler.has(g) && domainSayisi.get(g) === 1) tur = 'domain';
       if (!tur) continue;
       const o = talep.get(j);
       // Daha uzun ad daha ozgul; esitlikte once gelen eslesme turu (ad-sayi > grup > domain).
@@ -408,7 +409,7 @@ function envanterEslestir(apps, jvms) {
   for (const x of adlar.values())
     x.jvms.sort((p, q) => (p.gen || 0) - (q.gen || 0) || L(p.name).localeCompare(L(q.name)));
   return (apps || []).map((a) => {
-    const x = adlar.get(L(a && a.app));
+    const x = adlar.get(L(a?.app));
     return x ? { jvms: x.jvms, tur: x.tur } : { jvms: [], tur: null };
   });
 }
@@ -425,7 +426,7 @@ function assess(data, opts = {}) {
   // yalniz eski semanin kolonlari secilir; running_src / scan_ver / vhost_trust / traffic_state
   // GELMEZ. Bu durumda KAPALI kalinir: running=0 "kapali" kaniti degildir, hicbir eylem
   // onerilmez, geri alma "serbest" denmez, hazirlik "unknown"dur.
-  const semaBilinmiyor = !!(data && data.schemaUnknown === true);
+  const semaBilinmiyor = !!(data?.schemaUnknown === true);
   const byHost = new Map();
   const H = (h) => {
     const k = shortHost(h);
@@ -706,7 +707,7 @@ function assess(data, opts = {}) {
   // Envanterdeki urunler (dbo.Inventory) - tarama sonucundan AYRI tutulur (kullanici, 2026-09-24)
   const invProductsByHost = new Map();
   for (const r of data.invEnv || []) {
-    if (!r || !r.host) continue;
+    if (!r?.host) continue;
     const k = U(shortHost(r.host));
     if ((r.invProducts || []).length) invProductsByHost.set(k, r.invProducts);
   }
@@ -942,7 +943,7 @@ function assess(data, opts = {}) {
     if (YEREL_HEDEF.has(s) || /^127\./.test(s)) return webHost;
     if (ipMi(s)) {
       const k = ipSahipleri.get(s);
-      return k && k.size === 1 ? [...k][0] : null;
+      return k?.size === 1 ? [...k][0] : null;
     }
     const k = U(shortHost(s));
     return byHost.has(k) || envanterHostlari.has(k) ? k : null;
@@ -978,7 +979,7 @@ function assess(data, opts = {}) {
       // JVM'in kendi sunucusunda calisir): trafik ancak o sunucudaki olculmus bir vhost onu
       // yeniden sayarsa kaybolmaz.
       const ts = byHost.get(th);
-      if (!ts || !ts.jvms.length) jvmsizHedefler.push({ w, v, target: parca, port: t.port, th });
+      if (!ts?.jvms.length) jvmsizHedefler.push({ w, v, target: parca, port: t.port, th });
       if (!perHost.has(th)) perHost.set(th, []);
       perHost.get(th).push(t.port);
     }
@@ -1106,7 +1107,7 @@ function assess(data, opts = {}) {
       .map(Number);
   const sonrakiHop = (th, port) => {
     const t = byHost.get(th);
-    if (!t || !t.measured) return false;
+    if (!t?.measured) return false;
     return t.vhosts.some((x) => port == null || listenPortlari(x.listen).includes(port));
   };
   for (const c of jvmsizHedefler)
@@ -1181,7 +1182,7 @@ function assess(data, opts = {}) {
       for (const m of j.vhosts) gate.add(U(shortHost(m.host)));
       // TUM 3-tier adaylari (A->W ve son harf P, 2026-10-12): kapi kumesi genisledikce daha temkinli.
       for (const wh of webHostAdaylari(h.host)) gate.add(U(shortHost(wh)));
-      if (j.webMatch && j.webMatch.webHost) gate.add(U(shortHost(j.webMatch.webHost)));
+      if (j.webMatch?.webHost) gate.add(U(shortHost(j.webMatch.webHost)));
       j.gateHosts = [...gate];
       j.trustBad = j.gateHosts.some((n) => {
         const b = hostBilgi(n);
@@ -1240,7 +1241,7 @@ function assess(data, opts = {}) {
     const liste = [];
     for (const { host, v, ports } of proxyIdx.get(h.host) || []) {
       const w = byHost.get(host);
-      if (!w || !w.fresh) continue;
+      if (!w?.fresh) continue;
       for (const p of ports) {
         if (p == null || sahipli.has(p)) continue;
         liste.push({
@@ -1535,24 +1536,24 @@ function assess(data, opts = {}) {
   // Yalniz SEVIYE degisir (sunucu durumu, sayaclar, siralama); kod, metin ve eylem ayni. Degisen
   // bulgu varsayilanini defaultSeverity'de tasir: ekran "seviye degistirildi" der, gizlemez.
   // 'ok' (sorun yok) bulgusu listede kalir ama sayilmaz ve sunucu durumunu etkilemez.
-  const seviyeler = (opts && opts.seviyeler) || {};
+  const seviyeler = opts?.seviyeler || {};
   const seviyeOf = (code, severity) => (SEV[seviyeler[code]] != null ? seviyeler[code] : severity);
   // Kokte yok sayilan girdiler (Admin, ayarlar.cjs 'liste:kok_yoksay'); buyuk / kucuk harf duyarsiz.
-  const kokYoksay = new Set(((opts && opts.kokYoksay) || KOK_YOKSAY_VARSAYILAN).map(L));
-  const earVeri = (data && data.ear) || null;
+  const kokYoksay = new Set((opts?.kokYoksay || KOK_YOKSAY_VARSAYILAN).map(L));
+  const earVeri = data?.ear || null;
   const earByHost = new Map();
-  for (const x of (earVeri && earVeri.hostlar) || []) earByHost.set(U(shortHost(x.host)), x);
+  for (const x of earVeri?.hostlar || []) earByHost.set(U(shortHost(x.host)), x);
   // CAPRAZ KONTROLLER bulgu dongusunden ONCE: sunucu basina dongu bulgulari eklerken durumu ve
   // sayaclari da kapatir; capraz bulgu oraya kendi sunucusunda girer. Ortam, tazelik, calisma ve
   // trafik bu noktada hesaplanmis. Envanter (taranmamis sunucular dahil) "prod'da kopyasi var mi"
   // sorusuna girer. EAR verisi henuz h.ear'a yazilmadi: celiski kontrolu earByHost'tan, h.ear ile AYNI
   // tazelik kuraliyla (EAR_VERI_MAX_GUN) okur.
   const earTaze = (e) => {
-    const yas = e && e.taranma ? Math.floor((now - Date.parse(e.taranma)) / GUN_MS) : null;
+    const yas = e?.taranma ? Math.floor((now - Date.parse(e.taranma)) / GUN_MS) : null;
     return yas != null && yas <= EAR_VERI_MAX_GUN;
   };
   const capraz = caprazAnaliz([...byHost.values()], {
-    capraz: (data && data.capraz) || null,
+    capraz: data?.capraz || null,
     envanter: [...appsByHost.values()].flat(),
     earOf: (host) => {
       const e = earByHost.get(U(host));
@@ -1784,16 +1785,17 @@ function assess(data, opts = {}) {
       // URETILMEZ. Tek bilgi bulgusu yazilir; Retirement kaydi bilgi olarak satirda kalir.
       if (yalnizEnvanter(j)) {
         const cx0 = capraz.jvm(h.host, j);
-        if (cx0 && cx0.retirement.length) j.retirement = cx0.retirement;
+        if (cx0?.retirement.length) j.retirement = cx0.retirement;
         // Taramadan HIC JVM satiri gelmediyse (JVM_DATA_MISSING) "eslesmedi" denmez: olculemedi.
         const taramaJvmYok = !h.jvms.some((x) => x.source === 'cli');
+        const envanterDurumu = j.invStatus ? `, durum ${j.invStatus}` : '';
         add(
           'info',
           'jvm',
           'INV_ONLY_APP',
           taramaJvmYok
-            ? `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
-            : `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
+            ? `${j.name}: yalnız envanterde (MWAppsInventory${envanterDurumu}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
+            : `${j.name}: yalnız envanterde (MWAppsInventory${envanterDurumu}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
         );
         continue;
       }
@@ -1875,7 +1877,7 @@ function assess(data, opts = {}) {
       }
       // ── CAPRAZ KONTROLLER (capraz.cjs): her biri hem bulgu hem etiket adayi (R9-R12). ──
       const cx = capraz.jvm(h.host, j);
-      if (cx && cx.retirement.length) j.retirement = cx.retirement;
+      if (cx?.retirement.length) j.retirement = cx.retirement;
       // Uygulama 360 (uygulama-360.cjs) kopya basina capraz sonucu buradan okur (bulgu metnini ayristirmaz).
       if (cx && (cx.kopya || cx.kalinti || cx.ocp || cx.celiski.length))
         j.capraz = { kopya: cx.kopya, kalinti: cx.kalinti, ocp: cx.ocp, celiski: cx.celiski };
@@ -1888,7 +1890,7 @@ function assess(data, opts = {}) {
           gen: j.gen,
           engel: null,
         });
-      if (cx && cx.kopya) {
+      if (cx?.kopya) {
         add(
           'warning',
           'capraz',
@@ -1899,7 +1901,7 @@ function assess(data, opts = {}) {
         );
         jAday('R9');
       }
-      if (cx && cx.kalinti) {
+      if (cx?.kalinti) {
         add(
           'warning',
           'capraz',
@@ -1910,13 +1912,13 @@ function assess(data, opts = {}) {
         );
         jAday('R10');
       }
-      if (cx && cx.ocp) {
+      if (cx?.ocp) {
         add('info', 'capraz', 'OCP_KOPYASI', `${id}: ${ocpMetni(cx.ocp)}`, null, {
           capraz: { tur: 'ocp', ...cx.ocp },
         });
         if (cx.ocp.aday) jAday('R11');
       }
-      if (cx && cx.celiski.length) {
+      if (cx?.celiski.length) {
         add(
           'danger',
           'capraz',
@@ -2140,7 +2142,7 @@ function assess(data, opts = {}) {
     // ── UYGULAMA (EAR) (2026-11-06) ── Uygulama Envanteri'nin son taramasi. Veri yoksa, okunamadiysa
     // ya da EAR_VERI_MAX_GUN'den eskiyse bulgu ve etiket URETILMEZ; h.ear nedenini tasir (ekran soyler).
     const ear = earByHost.get(h.host) || null;
-    const earYas = ear && ear.taranma ? Math.floor((now - Date.parse(ear.taranma)) / GUN_MS) : null;
+    const earYas = ear?.taranma ? Math.floor((now - Date.parse(ear.taranma)) / GUN_MS) : null;
     h.ear = (() => {
       if (!earVeri || earVeri.okunamadi) return { durum: 'OKUNAMADI' };
       if (!ear) return { durum: 'YOK' };
@@ -2193,11 +2195,14 @@ function assess(data, opts = {}) {
         // KULLANIM KANITI (2026-11-17, DACRPAP01 canli Node.js): tarayici yalniz JVM_YOK EAR'da olcer. Dizini
         // gosteren surec ya da TARAMA anindan 7 gun icinde yazma varsa EAR "artik" degildir: ne "silinebilir"
         // metni ne R3 / R5 retire adayi. Referans tarama ani (veri 35 gune kadar kullanilir), duvar saati degil.
-        const kk = x && x.durum === 'JVM_YOK' ? kullanimKaniti(u.kullanim || x.kullanim, ear.taranma, now) : null;
+        const kk =
+          x?.durum === 'JVM_YOK'
+            ? kullanimKaniti(u.kullanim || x.kullanim, ear.taranma, now)
+            : null;
         const kullanim = (kk && (u.kullanim || x.kullanim)) || null;
         // KISMI taranan EAR'da WAR'lar eksik olabilir: "WAR yok" yalniz TAM taramada.
         if (u.durum === 'TAM' && u.warSayisi === 0) {
-          if (kk && kk.aktif) {
+          if (kk?.aktif) {
             add(
               'warning',
               'ear',
@@ -2218,7 +2223,7 @@ function assess(data, opts = {}) {
             h.retireAdaylari.push({ kural: 'R3', tur: 'EAR', ad: u.ad, host: h.host, kok: u.kok });
           }
         }
-        if (x && x.durum === 'JVM_YOK') {
+        if (x?.durum === 'JVM_YOK') {
           const dep = (x.deploymentlar || []).map((d) => d.ad).filter(Boolean);
           const gruplar = [
             ...new Set((x.deploymentlar || []).flatMap((d) => (d.gruplar || []).map((g) => g.ad))),
@@ -2243,11 +2248,9 @@ function assess(data, opts = {}) {
             );
           } else {
             const nedenEki = kk.neden ? ` (${kk.neden})` : '';
-            const ek = kk.olculemedi
-              ? ` — ${OLCULEMEDI_EKI}${nedenEki}`
-              : kk.kor
-                ? ` — dizin kullanımı görülmedi ama ${kk.kor}`
-                : '';
+            let ek = '';
+            if (kk.olculemedi) ek = ` — ${OLCULEMEDI_EKI}${nedenEki}`;
+            else if (kk.kor) ek = ` — dizin kullanımı görülmedi ama ${kk.kor}`;
             add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}${ek}`, null, {
               ear: { ...konu, neden: x.neden || 'TANIM_YOK' },
             });
@@ -2260,7 +2263,7 @@ function assess(data, opts = {}) {
               neden: x.neden || 'TANIM_YOK',
             });
           }
-        } else if (x && x.durum === 'OLCULEMEDI') {
+        } else if (x?.durum === 'OLCULEMEDI') {
           const k = x.neden || 'neden bilinmiyor';
           if (!olcmeyen.has(k)) olcmeyen.set(k, []);
           olcmeyen.get(k).push(u.ad);
@@ -2352,7 +2355,7 @@ function assess(data, opts = {}) {
       if (ear.kokGirdileri) {
         const kokBasina = new Map();
         for (const g of ear.kokGirdileri.girdiler) {
-          if (!g || !g.ad || kokYoksay.has(L(g.ad))) continue;
+          if (!g?.ad || kokYoksay.has(L(g.ad))) continue;
           if (!kokBasina.has(g.kok)) kokBasina.set(g.kok, []);
           kokBasina.get(g.kok).push(g);
         }
@@ -2511,7 +2514,7 @@ function assess(data, opts = {}) {
         // UNREADABLE (-1) "bosta" DEGILDIR -> bulgu yok.
         if (v.trafficState !== 'NO_RECENT_TRAFFIC' || v.trafficReason !== 'OK') continue;
         const wr = h.web.find((w) => w.product === v.product);
-        if (!wr || wr.vhostTrust !== 'FULL') continue;
+        if (wr?.vhostTrust !== 'FULL') continue;
         // Sigorta (fuse:VHOST) bu sunucunun vhost envanterini kestiyse eylem onerilmez.
         const eylemOk = !h.fuseVhost && v.product !== 'NGINX' && !!v.confFile;
         add(
@@ -2549,7 +2552,7 @@ function assess(data, opts = {}) {
           `${ip.ip} (${ip.iface}) hiçbir vhost/soket kullanmıyor — boşta IP`,
         );
     // sshd: MaxSessions dusuk (varsayilan 10) -> Ansible delegate/forks ile "mux_client_request_session"
-    if (h.sshd && h.sshd.maxSessions != null) {
+    if (h.sshd?.maxSessions != null) {
       const near =
         h.sshd.activeSessions != null &&
         h.sshd.activeSessions >= Math.max(1, Math.floor(h.sshd.maxSessions * 0.8));
@@ -2783,9 +2786,8 @@ function assess(data, opts = {}) {
     },
     ssh: {
       hosts: genel.filter((h) => h.sshd).length,
-      lowMaxSessions: genel.filter(
-        (h) => h.sshd && h.sshd.maxSessions != null && h.sshd.maxSessions <= 10,
-      ).length,
+      lowMaxSessions: genel.filter((h) => h.sshd?.maxSessions != null && h.sshd.maxSessions <= 10)
+        .length,
       near: genel.reduce(
         (a, h) => a + h.findings.filter((f) => f.code === 'SSH_SESSIONS_NEAR').length,
         0,
@@ -3147,7 +3149,11 @@ function flattenFindings(hosts) {
         stale: f.stale === true,
         // JBOSS_DOMAIN_DOWN (2026-11-15): dogrulama katmani (uygulaBulgu) nesli ve sayiyi buradan okur
         ...(f.code === 'JBOSS_DOMAIN_DOWN'
-          ? { gen: f.gen, autoStartAcik: f.autoStartAcik, ...(f.adminSeviye ? { adminSeviye: true } : {}) }
+          ? {
+              gen: f.gen,
+              autoStartAcik: f.autoStartAcik,
+              ...(f.adminSeviye ? { adminSeviye: true } : {}),
+            }
           : {}),
       });
   out.sort(

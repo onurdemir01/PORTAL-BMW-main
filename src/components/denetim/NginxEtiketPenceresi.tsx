@@ -37,7 +37,9 @@ export function NginxEtiketPenceresi({
   const e = host.etiket || null;
   const oto = e ? e.oto : (host.services || '').split(/[\s,;]+/).filter(Boolean);
   const [mod, setMod] = useState<'degistir' | 'ekle'>(e?.mod || 'degistir');
-  const [metin, setMetin] = useState((e?.etiketler || oto.filter((x) => x !== 'too_many')).join(', '));
+  const [metin, setMetin] = useState(
+    (e?.etiketler || oto.filter((x) => x !== 'too_many')).join(', '),
+  );
   const [not, setNot] = useState(e?.not || '');
   const [mesgul, setMesgul] = useState(false);
 
@@ -59,7 +61,11 @@ export function NginxEtiketPenceresi({
     if (hata) return;
     setMesgul(true);
     try {
-      const r = await denetimApi.nginxInventoryLabelSet(host.hostname, { mod, etiketler, not: not.trim() || undefined });
+      const r = await denetimApi.nginxInventoryLabelSet(host.hostname, {
+        mod,
+        etiketler,
+        not: not.trim() || undefined,
+      });
       if (!r.ok) throw new Error(r.message || 'Kaydedilemedi.');
       toast.success(`${host.hostname} etiketi kaydedildi`);
       onKaydedildi();
@@ -111,7 +117,10 @@ export function NginxEtiketPenceresi({
     >
       <div className="space-y-4 text-[13px]" data-testid="etiket-penceresi">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Otomatik keşif (conf.d)
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -120,26 +129,43 @@ export function NginxEtiketPenceresi({
                 <span
                   key={s}
                   className="px-2 py-0.5 rounded-md text-[12px]"
-                  style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    background: 'var(--bg-elevated)',
+                    color: 'var(--text-secondary)',
+                  }}
                 >
                   {s === 'too_many' ? '5+ service (liste toplanmadı)' : s}
                 </span>
               ))
             ) : (
-              <span style={{ color: 'var(--text-muted)' }}>conf.d altında service dosyası bulunmadı</span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                conf.d altında service dosyası bulunmadı
+              </span>
             )}
           </div>
         </div>
 
         <fieldset>
-          <legend className="text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          <legend
+            className="text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Kip
           </legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {(
               [
-                { id: 'degistir', ad: 'Yerine geç', acik: 'Otomatik liste yok sayılır; yalnız sizin etiketleriniz görünür.' },
-                { id: 'ekle', ad: 'Üstüne ekle', acik: 'Otomatik keşif sürer; etiketleriniz listeye eklenir.' },
+                {
+                  id: 'degistir',
+                  ad: 'Yerine geç',
+                  acik: 'Otomatik liste yok sayılır; yalnız sizin etiketleriniz görünür.',
+                },
+                {
+                  id: 'ekle',
+                  ad: 'Üstüne ekle',
+                  acik: 'Otomatik keşif sürer; etiketleriniz listeye eklenir.',
+                },
               ] as const
             ).map((k) => (
               <label
@@ -150,11 +176,22 @@ export function NginxEtiketPenceresi({
                   background: mod === k.id ? 'var(--accent-bg)' : 'var(--bg-surface)',
                 }}
               >
-                <input type="radio" name="etiket-kip" className="mt-0.5" checked={mod === k.id} onChange={() => setMod(k.id)} />
+                <input
+                  type="radio"
+                  name="etiket-kip"
+                  className="mt-0.5"
+                  checked={mod === k.id}
+                  onChange={() => setMod(k.id)}
+                />
                 {/* Kip adi etiketin ikinci duzeyinde (Sonar S6853: ic ice uc duzeyde ad okunmuyor). */}
                 <span className="block font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {k.ad}
-                  <span className="block text-[12px] font-normal" style={{ color: 'var(--text-muted)' }}>{k.acik}</span>
+                  <span
+                    className="block text-[12px] font-normal"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    {k.acik}
+                  </span>
                 </span>
               </label>
             ))}
@@ -162,7 +199,10 @@ export function NginxEtiketPenceresi({
         </fieldset>
 
         <label className="block">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          <span
+            className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Etiketler
           </span>
           <input
@@ -175,13 +215,20 @@ export function NginxEtiketPenceresi({
             // Pencere kullanici eylemiyle acilir: WAI-ARIA dialog deseni odagi ilk alana tasir (autoFocus degil; bkz. pencereKlavye).
             ref={acilincaOdakla}
           />
-          <span id="etiket-ipucu" className="block mt-1 text-[12px]" style={{ color: hata ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+          <span
+            id="etiket-ipucu"
+            className="block mt-1 text-[12px]"
+            style={{ color: hata ? 'var(--status-danger)' : 'var(--text-muted)' }}
+          >
             {hata || 'Virgül ya da boşlukla ayırın.'}
           </span>
         </label>
 
         <label className="block">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-muted)' }}>
+          <span
+            className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Not (isteğe bağlı)
           </span>
           <input
@@ -194,7 +241,10 @@ export function NginxEtiketPenceresi({
         </label>
 
         <div className="rounded-lg px-3 py-2" style={{ background: 'var(--bg-elevated)' }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wide mb-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
             Envanterde görünecek
           </div>
           <div className="flex flex-wrap gap-1.5" data-testid="etiket-sonuc">

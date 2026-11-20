@@ -120,7 +120,9 @@ const KISISEL_EN_COK = 20;
 function kisiselOku(kimlik: string): EarGorunum[] {
   try {
     const v = JSON.parse(window.localStorage.getItem(`ear-tablo-gorunum:${kimlik}`) || '[]');
-    return Array.isArray(v) ? v.filter((g) => g && typeof g.ad === 'string' && Array.isArray(g.f)) : [];
+    return Array.isArray(v)
+      ? v.filter((g) => g && typeof g.ad === 'string' && Array.isArray(g.f))
+      : [];
   } catch {
     return [];
   }
@@ -195,7 +197,9 @@ export function yerelUyar(deger: unknown, s: Suzgec, simdi = Date.now()): boolea
     case 'max':
       return !bos && Number(deger) <= Number(s.v);
     case 'gun': {
-      const t = bos ? Number.NaN : Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(metin) ? metin : `${metin}Z`);
+      const t = bos
+        ? Number.NaN
+        : Date.parse(/Z$|[+-]\d\d:?\d\d$/.test(metin) ? metin : `${metin}Z`);
       return Number.isFinite(t) && t >= simdi - Number(s.v) * 86400000;
     }
     case 'evet':
@@ -541,7 +545,9 @@ export function EarTablo<T>({
   const [acikSatir, setAcikSatir] = useState<string | null>(null);
   const [gorunumPencere, setGorunumPencere] = useState<{ sol: number; ust: number } | null>(null);
   const menuVar = !!(gorunumler || ortak);
-  const [kisisel, setKisisel] = useState<EarGorunum[]>(() => (gorunumler || ortak ? kisiselOku(kimlik) : []));
+  const [kisisel, setKisisel] = useState<EarGorunum[]>(() =>
+    gorunumler || ortak ? kisiselOku(kimlik) : [],
+  );
   const [yeniAd, setYeniAd] = useState('');
   const [ortakHata, setOrtakHata] = useState('');
   const [ortakMesgul, setOrtakMesgul] = useState(false);
@@ -601,8 +607,7 @@ export function EarTablo<T>({
       const [a, yon] = s.split(':');
       const k = kOf(a);
       l = [...l].sort(
-        (x, y) =>
-          karsilastir(duzDeger(ham(k, x)), duzDeger(ham(k, y))) * (yon === 'desc' ? -1 : 1),
+        (x, y) => karsilastir(duzDeger(ham(k, x)), duzDeger(ham(k, y))) * (yon === 'desc' ? -1 : 1),
       );
     }
     return l;
@@ -710,7 +715,9 @@ export function EarTablo<T>({
   const kisiselKaydet = () => {
     const ad = yeniAd.trim().slice(0, 60);
     if (!ad) return;
-    const yeni = [...kisisel.filter((g) => g.ad !== ad), { ad, f, s, kolonlar: gorunur }].slice(-KISISEL_EN_COK);
+    const yeni = [...kisisel.filter((g) => g.ad !== ad), { ad, f, s, kolonlar: gorunur }].slice(
+      -KISISEL_EN_COK,
+    );
     setKisisel(yeni);
     kisiselYaz(kimlik, yeni);
     setYeniAd('');
@@ -810,7 +817,8 @@ export function EarTablo<T>({
             disabled={!yerel.length}
             title="Süzgeç ve aramaya uyan satırların tamamı, görünen kolonlarla"
           >
-            <ArrowDownTrayIcon className="w-3.5 h-3.5" aria-hidden /> CSV ({fmtNumber(yerel.length)})
+            <ArrowDownTrayIcon className="w-3.5 h-3.5" aria-hidden /> CSV ({fmtNumber(yerel.length)}
+            )
           </button>
         )}
         <span className="ml-auto flex items-center gap-1">{ustSag}</span>
@@ -1022,7 +1030,8 @@ export function EarTablo<T>({
                             // Soluk metin (--text-muted, PF6 gray-50) düz --bg-elevated üstünde açık temada
                             // 4.42:1 (AA altı); yüzeyle karışık zemin 4.70 / koyu 5.23 (Nginx tablosu deseni).
                             style={{
-                              background: 'color-mix(in srgb, var(--bg-elevated) 45%, var(--bg-surface))',
+                              background:
+                                'color-mix(in srgb, var(--bg-elevated) 45%, var(--bg-surface))',
                             }}
                           >
                             <div
@@ -1133,7 +1142,11 @@ export function EarTablo<T>({
         menuVar &&
         createPortal(
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setGorunumPencere(null)} aria-hidden />
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setGorunumPencere(null)}
+              aria-hidden
+            />
             <div
               role="dialog"
               aria-label="Görünümler"
@@ -1194,7 +1207,9 @@ export function EarTablo<T>({
                         aria-pressed={aktifGorunum === g}
                         onClick={() => gorunumUygula(g)}
                         className="flex-1 text-left rounded px-1.5 py-1"
-                        style={{ background: aktifGorunum === g ? 'var(--bg-elevated)' : undefined }}
+                        style={{
+                          background: aktifGorunum === g ? 'var(--bg-elevated)' : undefined,
+                        }}
                         title={g.aciklama}
                       >
                         {g.ad}
@@ -1236,7 +1251,11 @@ export function EarTablo<T>({
                     >
                       {g.ad}
                     </button>
-                    <button type="button" aria-label={`${g.ad} görünümünü sil`} onClick={() => kisiselSil(g.ad)}>
+                    <button
+                      type="button"
+                      aria-label={`${g.ad} görünümünü sil`}
+                      onClick={() => kisiselSil(g.ad)}
+                    >
                       <XMarkIcon className="w-3 h-3" aria-hidden />
                     </button>
                   </div>
@@ -1259,7 +1278,12 @@ export function EarTablo<T>({
                   value={yeniAd}
                   onChange={(e) => setYeniAd(e.target.value)}
                 />
-                <button type="submit" className={BTN} style={btnStil(true)} disabled={!yeniAd.trim()}>
+                <button
+                  type="submit"
+                  className={BTN}
+                  style={btnStil(true)}
+                  disabled={!yeniAd.trim()}
+                >
                   Kaydet
                 </button>
                 {ortak && ortak.kaydet && (
@@ -1276,7 +1300,11 @@ export function EarTablo<T>({
                 )}
               </form>
               {ortakHata && (
-                <div role="alert" className="text-[11px]" style={{ color: 'var(--status-danger-text)' }}>
+                <div
+                  role="alert"
+                  className="text-[11px]"
+                  style={{ color: 'var(--status-danger-text)' }}
+                >
                   {ortakHata}
                 </div>
               )}

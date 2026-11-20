@@ -12,10 +12,19 @@
 // Tek hedefte eski kural aynen: is 'successful' DEGILSE OK sayilmaz.
 'use strict';
 
-const U = (s) => String(s ?? '').trim().toUpperCase();
+const U = (s) =>
+  String(s ?? '')
+    .trim()
+    .toUpperCase();
 
 /** artifacts + hedef sunucu -> { sonuc, coklu }. Sonuc bulunamazsa sonuc=null (uydurulmaz). */
-function stopSonucu(artifacts, host, extract, tekAnahtar = 'app_retirement_stop_result', cokAnahtar = 'app_retirement_stop_results') {
+function stopSonucu(
+  artifacts,
+  host,
+  extract,
+  tekAnahtar = 'app_retirement_stop_result',
+  cokAnahtar = 'app_retirement_stop_results',
+) {
   const cok = cokAnahtar ? extract(artifacts, cokAnahtar) : null;
   if (cok && typeof cok === 'object' && !Array.isArray(cok)) {
     const anahtarlar = Object.keys(cok);
@@ -33,8 +42,23 @@ function stopKarari(jobStatus, { sonuc, coklu }) {
   const line = String(sonuc?.line || '');
   const kod = line.split('\t')[2] || '';
   const mesaj = line.split('\t').slice(2).join(' — ') || jobStatus;
-  if (coklu) return { line, kod, mesaj, ok: kod === 'OK', plan: kod === 'PLAN', planOnly: sonuc ? !!sonuc.plan_only : null };
-  return { line, kod, mesaj, ok: jobStatus === 'successful' && kod === 'OK', plan: jobStatus === 'successful', planOnly: sonuc ? !!sonuc.plan_only : null };
+  if (coklu)
+    return {
+      line,
+      kod,
+      mesaj,
+      ok: kod === 'OK',
+      plan: kod === 'PLAN',
+      planOnly: sonuc ? !!sonuc.plan_only : null,
+    };
+  return {
+    line,
+    kod,
+    mesaj,
+    ok: jobStatus === 'successful' && kod === 'OK',
+    plan: jobStatus === 'successful',
+    planOnly: sonuc ? !!sonuc.plan_only : null,
+  };
 }
 
 // ── ON KONTROL LISTESI + IZIN LISTESI (kullanici, 2026-10-22) ─────────────────────────────────────
@@ -52,7 +76,13 @@ function stopKarari(jobStatus, { sonuc, coklu }) {
 // (betik ve playbook [A-Za-z0-9_.-] ile sinirliyor), dolayisiyla onekler karismaz.
 const ONAY_ONEKI = Object.freeze({ stop: 'onay:', delete: 'onay:sil:', rollback: 'onay:geri-al:' });
 function onayVar(iz, kind) {
-  if (kind === 'stop') return iz.some((x) => x.startsWith('onay:') && !x.startsWith(ONAY_ONEKI.delete) && !x.startsWith(ONAY_ONEKI.rollback));
+  if (kind === 'stop')
+    return iz.some(
+      (x) =>
+        x.startsWith('onay:') &&
+        !x.startsWith(ONAY_ONEKI.delete) &&
+        !x.startsWith(ONAY_ONEKI.rollback),
+    );
   return iz.some((x) => x.startsWith(ONAY_ONEKI[kind]));
 }
 
@@ -83,10 +113,20 @@ function planKaydi(result, jobId) {
   if (st || rn || ok) {
     const d = { steps: st || [], renamed: rn || [], onkontrol: ok || [] };
     detailJson = JSON.stringify(d);
-    if (detailJson.length > 60000) detailJson = JSON.stringify({ ...d, steps: d.steps.slice(0, 100), kisaltildi: true });
-    if (detailJson.length > 60000) detailJson = JSON.stringify({ steps: [], renamed: d.renamed.slice(0, 100), onkontrol: d.onkontrol.slice(0, 200), kisaltildi: true });
+    if (detailJson.length > 60000)
+      detailJson = JSON.stringify({ ...d, steps: d.steps.slice(0, 100), kisaltildi: true });
+    if (detailJson.length > 60000)
+      detailJson = JSON.stringify({
+        steps: [],
+        renamed: d.renamed.slice(0, 100),
+        onkontrol: d.onkontrol.slice(0, 200),
+        kisaltildi: true,
+      });
   }
-  const izinJson = iz && onayVar(iz, 'stop') ? JSON.stringify({ jobId: Number(jobId), at: new Date().toISOString(), izinler: iz }) : null;
+  const izinJson =
+    iz && onayVar(iz, 'stop')
+      ? JSON.stringify({ jobId: Number(jobId), at: new Date().toISOString(), izinler: iz })
+      : null;
   return { detailJson, izinJson };
 }
 
@@ -111,7 +151,12 @@ function onKontrolOku(json) {
 
 /** Baslatilan on kontrolun kaydi (JSON). */
 function onKontrolBasladi(jobId, ek = {}) {
-  return JSON.stringify({ ...ek, jobId: jobId == null ? null : Number(jobId), at: new Date().toISOString(), durum: jobId == null ? 'baslatiliyor' : 'running' });
+  return JSON.stringify({
+    ...ek,
+    jobId: jobId == null ? null : Number(jobId),
+    at: new Date().toISOString(),
+    durum: jobId == null ? 'baslatiliyor' : 'running',
+  });
 }
 
 /** Biten on kontrol isi -> kayit (JSON). Basari: is 'successful' + RESULT PLAN + bu isin onay kimligi.
@@ -125,7 +170,8 @@ function onKontrolSonucu(kind, jobStatus, result, jobId, onceki = null) {
   const ok = plan && onayVar(iz, kind);
   let mesaj = line.split('\t').slice(2).join(' — ') || `iş ${jobStatus || 'sonucu okunamadı'}`;
   if (plan && !ok)
-    mesaj = 'Ön kontrolün izin listesi gelmedi — AWX’teki retirement betikleri güncel değil (ön kontrol listesini üretmiyor). Betikler yüklenmeden bu işlem yapılmaz.';
+    mesaj =
+      'Ön kontrolün izin listesi gelmedi — AWX’teki retirement betikleri güncel değil (ön kontrol listesini üretmiyor). Betikler yüklenmeden bu işlem yapılmaz.';
   const o = {
     ...(onceki || {}),
     jobId: Number(jobId),
@@ -138,7 +184,8 @@ function onKontrolSonucu(kind, jobStatus, result, jobId, onceki = null) {
   delete o.kullanildi;
   let s = JSON.stringify(o);
   // Liste cok uzunsa EKRAN listesi kisaltilir; izinler (onaylanacak olan) ASLA kesilmez.
-  if (s.length > 60000) s = JSON.stringify({ ...o, onkontrol: o.onkontrol.slice(0, 300), kisaltildi: true });
+  if (s.length > 60000)
+    s = JSON.stringify({ ...o, onkontrol: o.onkontrol.slice(0, 300), kisaltildi: true });
   return s;
 }
 
@@ -146,13 +193,14 @@ function onKontrolSonucu(kind, jobStatus, result, jobId, onceki = null) {
  *  onay kimligini tasiyor; `jobId` verilirse ayni is, `maxYasDk` verilirse sonuc o kadar dakikadan taze. */
 function onKontrolGecerli(json, kind, { jobId = null, maxYasDk = null, now = new Date() } = {}) {
   const o = onKontrolOku(json);
-  if (!o || o.durum !== 'ok' || o.kullanildi) return null;
+  if (o?.durum !== 'ok' || o.kullanildi) return null;
   const iz = Array.isArray(o.izinler) ? o.izinler.map((x) => String(x)).filter(Boolean) : [];
   if (!onayVar(iz, kind)) return null;
   if (jobId != null && Number(o.jobId) !== Number(jobId)) return null;
   if (maxYasDk != null) {
     const t = Date.parse(o.at);
-    if (!Number.isFinite(t) || now.getTime() - t > maxYasDk * 60000 || t - now.getTime() > 60000) return null;
+    if (!Number.isFinite(t) || now.getTime() - t > maxYasDk * 60000 || t - now.getTime() > 60000)
+      return null;
   }
   return iz;
 }

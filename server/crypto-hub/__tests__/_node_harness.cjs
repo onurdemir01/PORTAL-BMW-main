@@ -13,7 +13,8 @@ const express = require('express');
 
 // Sabit TEST anahtari (gercek deger degil): yeni node degeri kolonda enc:v1: ile sifreli durur.
 if (!process.env.ENV_OVERRIDES_ENCRYPTION_KEY) {
-  process.env.ENV_OVERRIDES_ENCRYPTION_KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+  process.env.ENV_OVERRIDES_ENCRYPTION_KEY =
+    '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
 }
 
 const KOK = path.join(__dirname, '..', '..');
@@ -93,40 +94,150 @@ function satirlar(o = {}) {
     [D.prc, 'processor'],
   ]) {
     add(
-      'NODEDEP', t, G_EVM, ad, b, o.replicas == null ? 1 : o.replicas, 1, 4, (o.gitops && o.gitops[b]) || 'hayir', 'hmz',
+      'NODEDEP',
+      t,
+      G_EVM,
+      ad,
+      b,
+      o.replicas == null ? 1 : o.replicas,
+      1,
+      4,
+      o.gitops?.[b] || 'hayir',
+      'hmz',
       b === 'processor' ? 'var' : '-',
     );
   }
   add('NODEALLOW', t, G_EVM, 'rpc', 'NODE_ADDR', 'url');
   add('NODEALLOW', t, G_EVM, 'rpc', 'NODE_URI_EVM_ETHEREUM_MAINNET', 'url');
-  add('NODEENV', t, G_EVM, D.idx, 'app', 'NODE_URI_EVM_ETHEREUM_MAINNET', 'rpc', o.kaynak || 'literal', URL_A, SHA.a, 'hayir');
   add(
-    'NODEENV', t, G_EVM, D.adp, 'app', 'NODE_ADDR', 'rpc', 'literal',
-    o.tutarsiz ? URL_B : URL_A, o.tutarsiz ? SHA.b : SHA.a, 'evet',
+    'NODEENV',
+    t,
+    G_EVM,
+    D.idx,
+    'app',
+    'NODE_URI_EVM_ETHEREUM_MAINNET',
+    'rpc',
+    o.kaynak || 'literal',
+    URL_A,
+    SHA.a,
+    'hayir',
   );
-  if (!o.apiTasimaz) add('NODEENV', t, G_EVM, D.api, 'app', 'NODE_ADDR', 'rpc', 'literal', URL_A, SHA.a, 'hayir');
+  add(
+    'NODEENV',
+    t,
+    G_EVM,
+    D.adp,
+    'app',
+    'NODE_ADDR',
+    'rpc',
+    'literal',
+    o.tutarsiz ? URL_B : URL_A,
+    o.tutarsiz ? SHA.b : SHA.a,
+    'evet',
+  );
+  if (!o.apiTasimaz)
+    add('NODEENV', t, G_EVM, D.api, 'app', 'NODE_ADDR', 'rpc', 'literal', URL_A, SHA.a, 'hayir');
 
   add('NODEGRP', t, G_BTC, 'eski', 'eski-nbxplorer-mainnet', 'nbxplorer-mainnet (BTC)');
   add('NODEDEP', t, G_BTC, D.nbx, '-', 1, 1, 9, 'hayir', 'hmz');
   add('NODEALLOW', t, G_BTC, 'p2p', 'NBXPLORER_BTCNODEENDPOINT', 'hostport');
   add('NODEALLOW', t, G_BTC, 'rpc', 'NBXPLORER_BTCRPCURL', 'url');
-  add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.3:8333', SHA.btcP2p, 'hayir');
-  add('NODEENV', t, G_BTC, D.nbx, 'nbxplorer', 'NBXPLORER_BTCRPCURL', 'rpc', 'literal', 'https://10.1.2.3:8332/****', SHA.btcRpc, 'hayir');
+  add(
+    'NODEENV',
+    t,
+    G_BTC,
+    D.nbx,
+    'nbxplorer',
+    'NBXPLORER_BTCNODEENDPOINT',
+    'p2p',
+    'literal',
+    '10.1.2.3:8333',
+    SHA.btcP2p,
+    'hayir',
+  );
+  add(
+    'NODEENV',
+    t,
+    G_BTC,
+    D.nbx,
+    'nbxplorer',
+    'NBXPLORER_BTCRPCURL',
+    'rpc',
+    'literal',
+    'https://10.1.2.3:8332/****',
+    SHA.btcRpc,
+    'hayir',
+  );
 
   add('NODEGRP', t, G_LTC, 'eski', 'eski-nbxplorer-mainnet', 'nbxplorer-mainnet (LTC)');
   add('NODEDEP', t, G_LTC, D.nbx, '-', 1, 1, 9, 'hayir', 'hmz');
   add('NODEALLOW', t, G_LTC, 'p2p', 'NBXPLORER_LTCNODEENDPOINT', 'hostport');
   add('NODEALLOW', t, G_LTC, 'rpc', 'NBXPLORER_LTCRPCURL', 'url');
-  add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCNODEENDPOINT', 'p2p', 'literal', '10.1.2.4:9333', SHA.ltcP2p, 'hayir');
-  add('NODEENV', t, G_LTC, D.nbx, 'nbxplorer', 'NBXPLORER_LTCRPCURL', 'rpc', 'literal', 'https://10.1.2.4:9332/****', SHA.ltcRpc, 'hayir');
+  add(
+    'NODEENV',
+    t,
+    G_LTC,
+    D.nbx,
+    'nbxplorer',
+    'NBXPLORER_LTCNODEENDPOINT',
+    'p2p',
+    'literal',
+    '10.1.2.4:9333',
+    SHA.ltcP2p,
+    'hayir',
+  );
+  add(
+    'NODEENV',
+    t,
+    G_LTC,
+    D.nbx,
+    'nbxplorer',
+    'NBXPLORER_LTCRPCURL',
+    'rpc',
+    'literal',
+    'https://10.1.2.4:9332/****',
+    SHA.ltcRpc,
+    'hayir',
+  );
 
   // Polkadot: SIDECAR_AUTH_VALUE SIRDIR. Betik hatasi benzetimi: maskeli alanlarda HAM sir.
-  add('NODEGRP', t, G_DOT, 'eski', 'eski-substrate-polkadot-assethub', 'substrate-polkadot-assethub');
+  add(
+    'NODEGRP',
+    t,
+    G_DOT,
+    'eski',
+    'eski-substrate-polkadot-assethub',
+    'substrate-polkadot-assethub',
+  );
   add('NODEDEP', t, G_DOT, D.dot, '-', 1, 1, 2, 'hayir', 'hmz');
   add('NODEALLOW', t, G_DOT, 'auth', 'SIDECAR_AUTH_VALUE', 'sir');
   add('NODEALLOW', t, G_DOT, 'url', 'SIDECAR_URL', 'url');
-  add('NODEENV', t, G_DOT, D.dot, 'sidecar', 'SIDECAR_URL', 'url', 'literal', `https://dot.example.net/v1/${SIR}`, SHA.dotUrl, 'hayir');
-  add('NODEENV', t, G_DOT, D.dot, 'sidecar', 'SIDECAR_AUTH_VALUE', 'auth', 'literal', SIR, SHA.dotAuth, 'hayir');
+  add(
+    'NODEENV',
+    t,
+    G_DOT,
+    D.dot,
+    'sidecar',
+    'SIDECAR_URL',
+    'url',
+    'literal',
+    `https://dot.example.net/v1/${SIR}`,
+    SHA.dotUrl,
+    'hayir',
+  );
+  add(
+    'NODEENV',
+    t,
+    G_DOT,
+    D.dot,
+    'sidecar',
+    'SIDECAR_AUTH_VALUE',
+    'auth',
+    'literal',
+    SIR,
+    SHA.dotAuth,
+    'hayir',
+  );
 
   if (!o.endYok) add('NODEEND', t, 'node_env_get', o.eksik ? 'eksik' : 'ok');
   return L;
@@ -192,9 +303,22 @@ function yeniDurum() {
 }
 
 const SUTUN_SIRASI = [
-  'tenant_key', 'grup', 'kilit', 'lokasyon', 'eski_ozet', 'yeni_ozet',
-  'hedefler', 'plan_sha', 'gerekce', 'username', 'es_talep_id', 'yeni_deger_secret', 'sonuc_kod',
-  'oco_no', 'oco_pencere_bas', 'oco_pencere_son',
+  'tenant_key',
+  'grup',
+  'kilit',
+  'lokasyon',
+  'eski_ozet',
+  'yeni_ozet',
+  'hedefler',
+  'plan_sha',
+  'gerekce',
+  'username',
+  'es_talep_id',
+  'yeni_deger_secret',
+  'sonuc_kod',
+  'oco_no',
+  'oco_pencere_bas',
+  'oco_pencere_son',
 ];
 
 const OCO_KOLONLAR = ['oco_no', 'oco_pencere_bas', 'oco_pencere_son'];
@@ -213,11 +337,26 @@ function dbSorgu(d, sqlText, p) {
   d.logs.push(s);
   (d.dbParams = d.dbParams || []).push(p);
   if (d.dbBozuk) return Promise.reject(new Error('db erisilemez'));
-  const ok = (rows, rowCount) => Promise.resolve({ rows, rowCount: rowCount == null ? rows.length : rowCount });
-  if (/portal_config_blobs/.test(s) && p[p.length - 1] !== 'crypto-hub:smart' && p[0] !== 'crypto-hub:smart') return ok([], 0);
+  const ok = (rows, rowCount) =>
+    Promise.resolve({ rows, rowCount: rowCount == null ? rows.length : rowCount });
+  if (
+    /portal_config_blobs/.test(s) &&
+    p[p.length - 1] !== 'crypto-hub:smart' &&
+    p[0] !== 'crypto-hub:smart'
+  )
+    return ok([], 0);
   if (/^SELECT data FROM portal_config_blobs/.test(s)) {
     if (d.cryptoSmartBozuk) return Promise.reject(new Error('blob okunamadi'));
-    return ok(d.cryptoSmart == null ? [] : [{ data: typeof d.cryptoSmart === 'string' ? d.cryptoSmart : JSON.stringify(d.cryptoSmart) }]);
+    return ok(
+      d.cryptoSmart == null
+        ? []
+        : [
+            {
+              data:
+                typeof d.cryptoSmart === 'string' ? d.cryptoSmart : JSON.stringify(d.cryptoSmart),
+            },
+          ],
+    );
   }
   if (/^UPDATE portal_config_blobs SET data = \$1/.test(s)) {
     if (d.cryptoSmart == null) return ok([], 0);
@@ -245,18 +384,35 @@ function dbSorgu(d, sqlText, p) {
     );
   }
   if (/^INSERT INTO ansible_job_history/.test(s)) {
-    d.history.push({ username: p[0], awx_server_id: p[1], template_id: p[2], template_name: p[3], job_id: p[4], status: p[5], params: p[6] });
+    d.history.push({
+      username: p[0],
+      awx_server_id: p[1],
+      template_id: p[2],
+      template_name: p[3],
+      job_id: p[4],
+      status: p[5],
+      params: p[6],
+    });
     return ok([], 1);
   }
   if (/^SELECT TOP 1 username, template_name FROM ansible_job_history/.test(s)) {
-    const r = d.history.find((h) => Number(h.job_id) === Number(p[0]) && Number(h.awx_server_id) === Number(p[1]));
+    const r = d.history.find(
+      (h) => Number(h.job_id) === Number(p[0]) && Number(h.awx_server_id) === Number(p[1]),
+    );
     return ok(r ? [r] : []);
   }
   if (/^INSERT INTO crypto_hub_node_changes/.test(s)) {
     const row = {};
     SUTUN_SIRASI.forEach((k, i) => (row[k] = p[i] === undefined ? null : p[i]));
-    if (d.indeks && d.rows.some((r) => r.kapandi_at == null && r.tenant_key === row.tenant_key && r.kilit === row.kilit)) {
-      return Promise.reject(Object.assign(new Error('Cannot insert duplicate key row in object'), { number: 2601 }));
+    if (
+      d.indeks &&
+      d.rows.some(
+        (r) => r.kapandi_at == null && r.tenant_key === row.tenant_key && r.kilit === row.kilit,
+      )
+    ) {
+      return Promise.reject(
+        Object.assign(new Error('Cannot insert duplicate key row in object'), { number: 2601 }),
+      );
     }
     Object.assign(row, {
       id: d.nextId++,
@@ -273,7 +429,11 @@ function dbSorgu(d, sqlText, p) {
     d.rows.push(row);
     return ok([{ id: row.id }], 1);
   }
-  if (/^UPDATE crypto_hub_node_changes SET durum = \$1, sonuc_kod = \$2, sonuc_json = \$3, kapandi_at = SYSUTCDATETIME\(\)/.test(s)) {
+  if (
+    /^UPDATE crypto_hub_node_changes SET durum = \$1, sonuc_kod = \$2, sonuc_json = \$3, kapandi_at = SYSUTCDATETIME\(\)/.test(
+      s,
+    )
+  ) {
     const cas = /WHERE id = \$4 AND kapandi_at IS NULL/.test(s);
     let n = 0;
     for (const r of d.rows) {
@@ -285,7 +445,11 @@ function dbSorgu(d, sqlText, p) {
     }
     return ok([], n);
   }
-  if (/^UPDATE crypto_hub_node_changes SET durum = 'BEKLIYOR', smart_ticket_id = \$1, external_ticket_id = \$2/.test(s)) {
+  if (
+    /^UPDATE crypto_hub_node_changes SET durum = 'BEKLIYOR', smart_ticket_id = \$1, external_ticket_id = \$2/.test(
+      s,
+    )
+  ) {
     if (d.baglamaNoop) return ok([], 0);
     let n = 0;
     for (const r of d.rows) {
@@ -320,9 +484,17 @@ function dbSorgu(d, sqlText, p) {
     if (r && /yeni_deger_secret = NULL/.test(s)) r.yeni_deger_secret = null;
     return ok([], r ? 1 : 0);
   }
-  if (/^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND grup = \$2 AND created_at >= DATEADD\(day, -(\d+), SYSUTCDATETIME\(\)\) AND durum NOT IN \('REDDEDILDI', 'HATA', 'IPTAL'\) AND id NOT IN \(SELECT es_talep_id FROM crypto_hub_node_changes WHERE es_talep_id IS NOT NULL AND tenant_key = \$3\) ORDER BY created_at DESC, id DESC$/.test(s)) {
+  if (
+    /^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND grup = \$2 AND created_at >= DATEADD\(day, -(\d+), SYSUTCDATETIME\(\)\) AND durum NOT IN \('REDDEDILDI', 'HATA', 'IPTAL'\) AND id NOT IN \(SELECT es_talep_id FROM crypto_hub_node_changes WHERE es_talep_id IS NOT NULL AND tenant_key = \$3\) ORDER BY created_at DESC, id DESC$/.test(
+      s,
+    )
+  ) {
     const gun = Number(/DATEADD\(day, -(\d+)/.exec(s)[1]);
-    const bagli = new Set(d.rows.filter((x) => x.es_talep_id != null && x.tenant_key === p[2]).map((x) => Number(x.es_talep_id)));
+    const bagli = new Set(
+      d.rows
+        .filter((x) => x.es_talep_id != null && x.tenant_key === p[2])
+        .map((x) => Number(x.es_talep_id)),
+    );
     const r = d.rows
       .filter((x) => x.tenant_key === p[0] && x.grup === p[1])
       .filter((x) => Date.now() - new Date(x.created_at).getTime() <= gun * 86400000)
@@ -334,11 +506,19 @@ function dbSorgu(d, sqlText, p) {
   if (!d.ocoKolon && /\boco_(no|pencere_bas|pencere_son)\b/.test(s)) {
     return Promise.reject(new Error("Invalid column name 'oco_no'."));
   }
-  if (/^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND kilit = \$2 AND kapandi_at IS NULL/.test(s)) {
+  if (
+    /^SELECT TOP 1 id, external_ticket_id FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND kilit = \$2 AND kapandi_at IS NULL/.test(
+      s,
+    )
+  ) {
     const r = d.rows.find((x) => x.tenant_key === p[0] && x.kilit === p[1] && x.kapandi_at == null);
     return ok(r ? [{ ...r }] : []);
   }
-  if (/^SELECT TOP 1 id, external_ticket_id FROM smart_tickets WHERE pending_launch_json LIKE \$1/.test(s)) {
+  if (
+    /^SELECT TOP 1 id, external_ticket_id FROM smart_tickets WHERE pending_launch_json LIKE \$1/.test(
+      s,
+    )
+  ) {
     const desen = new RegExp(
       '^' +
         String(p[0])
@@ -354,7 +534,9 @@ function dbSorgu(d, sqlText, p) {
     return ok(r ? [izdusum(s, r)] : []);
   }
   if (/FROM crypto_hub_node_changes WHERE tenant_key = \$1 AND kapandi_at IS NULL$/.test(s)) {
-    return ok(d.rows.filter((x) => x.tenant_key === p[0] && x.kapandi_at == null).map((x) => izdusum(s, x)));
+    return ok(
+      d.rows.filter((x) => x.tenant_key === p[0] && x.kapandi_at == null).map((x) => izdusum(s, x)),
+    );
   }
   if (/^SELECT TOP 20 .* FROM crypto_hub_node_changes WHERE tenant_key = \$1 ORDER BY/.test(s)) {
     return ok(
@@ -393,7 +575,7 @@ async function kur(o = {}) {
         next();
       },
       requireAdmin(req, res, next) {
-        if (!(req.session && req.session.user && req.session.user.role === 'Admin')) {
+        if (!(req.session?.user?.role === 'Admin')) {
           return res.status(403).json({ ok: false });
         }
         next();
@@ -407,11 +589,13 @@ async function kur(o = {}) {
         return (user.yetkiler || []).includes(key);
       },
     },
-    'auth/utils.cjs': { getRequestUser: (req) => (req.session && req.session.user) || null },
+    'auth/utils.cjs': { getRequestUser: (req) => req.session?.user || null },
     'ansible/playbook-registry.cjs': {
       async getByKey(key) {
-        if (key === 'crypto_hub_ops') return d.registryYok ? null : { key, enabled: true, awxServerId: 1, tid: 77 };
-        if (key === 'opsx_openshift_operation') return { key, enabled: true, awxServerId: 1, tid: 55 };
+        if (key === 'crypto_hub_ops')
+          return d.registryYok ? null : { key, enabled: true, awxServerId: 1, tid: 77 };
+        if (key === 'opsx_openshift_operation')
+          return { key, enabled: true, awxServerId: 1, tid: 55 };
         return null;
       },
       getEffectiveTemplateId: (row) => row.tid,
@@ -464,7 +648,8 @@ async function kur(o = {}) {
         d.sira.push('prefill');
         d.prefill.push({ serverId, templateId });
         // Ankette zorunlu + varsayilanli password sorusu benzetimi: bos alan '$encrypted$' olur.
-        const yeni = ev.crypto_hub_node_yeni_b64 === '' ? '$encrypted$' : ev.crypto_hub_node_yeni_b64;
+        const yeni =
+          ev.crypto_hub_node_yeni_b64 === '' ? '$encrypted$' : ev.crypto_hub_node_yeni_b64;
         return { ...ev, zorunlu_alan: 'varsayilan', crypto_hub_node_yeni_b64: yeni };
       },
       async getTemplateVariableDefaultsOnServer(serverId, templateId) {
@@ -493,7 +678,14 @@ async function kur(o = {}) {
       },
     },
     'smart/store.cjs': {
-      async createTicket({ externalTicketId, username, awxServerId, awxTemplateId, flowKey, pendingLaunch }) {
+      async createTicket({
+        externalTicketId,
+        username,
+        awxServerId,
+        awxTemplateId,
+        flowKey,
+        pendingLaunch,
+      }) {
         if (d.storeHata) throw new Error(d.storeHata);
         const t = {
           id: d.nextTicket++,
@@ -553,7 +745,9 @@ async function kur(o = {}) {
           }));
       },
       async markApproved(id, stateName) {
-        const t = d.smartTickets.find((x) => x.id === Number(id) && x.status === 'PENDING' && !x.approved_at);
+        const t = d.smartTickets.find(
+          (x) => x.id === Number(id) && x.status === 'PENDING' && !x.approved_at,
+        );
         if (!t) return false;
         t.approved_at = new Date();
         t.state = stateName || null;
@@ -568,7 +762,12 @@ async function kur(o = {}) {
       async markState(id, { status, smartStateName, awxJobId, errorMessage, expected }) {
         const t = d.smartTickets.find((x) => x.id === Number(id));
         if (!t || (expected && ![].concat(expected).includes(t.status))) return false;
-        Object.assign(t, { status, state: smartStateName || null, awx_job_id: awxJobId || null, error: errorMessage || null });
+        Object.assign(t, {
+          status,
+          state: smartStateName || null,
+          awx_job_id: awxJobId || null,
+          error: errorMessage || null,
+        });
         return true;
       },
     },
@@ -581,7 +780,9 @@ async function kur(o = {}) {
         return {
           payload: {
             GetChangeOrderByWfInstanceIdResult: {
-              Result: d.oco ? { PlannedStartDate: tarih(d.oco.basMs), PlannedEndDate: tarih(d.oco.sonMs) } : {},
+              Result: d.oco
+                ? { PlannedStartDate: tarih(d.oco.basMs), PlannedEndDate: tarih(d.oco.sonMs) }
+                : {},
             },
           },
           result: {},
@@ -596,10 +797,9 @@ async function kur(o = {}) {
       SMART_TOKEN_RE: GERCEK_OPSX_CFG.SMART_TOKEN_RE,
       SMART_METADATA_MAX: GERCEK_OPSX_CFG.SMART_METADATA_MAX,
     },
-    'opsx/index.cjs': { extractStatsKey: (a, k) => (a && a[k]) || null },
+    'opsx/index.cjs': { extractStatsKey: (a, k) => a?.[k] || null },
     'audit/index.cjs': {
-      auditPortal: (req, action, opts) =>
-        d.audits.push({ action, opts, user: req && req.session && req.session.user }),
+      auditPortal: (req, action, opts) => d.audits.push({ action, opts, user: req?.session?.user }),
     },
     'inventory/mssql.cjs': {
       sql: { NVarChar: () => 'nvarchar' },
@@ -621,7 +821,15 @@ async function kur(o = {}) {
     require.cache[r] = { id: r, filename: r, loaded: true, exports: exp };
   }
   // GERCEK olup sahteleri kullanmasi gerekenler taze yuklenir.
-  const taze = ['crypto-hub/index.cjs', 'crypto-hub/resources.cjs', 'crypto-hub/node.cjs', 'crypto-hub/smart-ayar.cjs', 'opsx/prod-approval.cjs', 'smart/metadata.cjs', 'smart/poller.cjs'].map(yol);
+  const taze = [
+    'crypto-hub/index.cjs',
+    'crypto-hub/resources.cjs',
+    'crypto-hub/node.cjs',
+    'crypto-hub/smart-ayar.cjs',
+    'opsx/prod-approval.cjs',
+    'smart/metadata.cjs',
+    'smart/poller.cjs',
+  ].map(yol);
   const tazeOnceki = new Map(taze.map((r) => [r, require.cache[r]]));
   for (const r of taze) delete require.cache[r];
   const mod = require('../index.cjs');
@@ -634,7 +842,8 @@ async function kur(o = {}) {
   // console.* casusu: hicbir log satirinda sir dizesi olmamali (N11).
   const konsol = { log: console.log, warn: console.warn, error: console.error };
   for (const k of Object.keys(konsol)) {
-    console[k] = (...a) => d.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
+    console[k] = (...a) =>
+      d.logs.push(a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
   }
 
   const oncekiTarama = process.env.CRYPTO_HUB_SONUC_TARAMA_SN;
@@ -685,7 +894,11 @@ async function kur(o = {}) {
 
   /** Kiraci icin taze okuma (NODE_OKUMA'ya dogrudan; ucun kendisi ayrica sinanir). */
   function okumaVer(o = {}, at = Date.now(), t = T) {
-    NODE.okumaKaydet(t, NODE.parseNodeLines(satirlar({ ...o, t })), at, { jobId: 1, serverId: 1, username: 'okuyan' });
+    NODE.okumaKaydet(t, NODE.parseNodeLines(satirlar({ ...o, t })), at, {
+      jobId: 1,
+      serverId: 1,
+      username: 'okuyan',
+    });
   }
 
   function bitir(jobId, lines, status = 'successful', tenant = T, finished = null) {
@@ -712,7 +925,10 @@ async function kur(o = {}) {
   /** Poller'in onay sonrasi kancasi: smart_tickets kaydindan gercek launchOncesiDegerEkle. */
   async function kanca(ticketId) {
     const t = d.smartTickets.find((x) => x.id === Number(ticketId));
-    return NODE.launchOncesiDegerEkle({ id: t.id, pendingLaunch: JSON.parse(t.pending_launch_json) });
+    return NODE.launchOncesiDegerEkle({
+      id: t.id,
+      pendingLaunch: JSON.parse(t.pending_launch_json),
+    });
   }
 
   /** Gercek poller'in bir turu. Geri cagri runner'daki sirayi izler: pencere karari, kanca, launch. */
@@ -728,7 +944,12 @@ async function kur(o = {}) {
       const k = await NODE.launchOncesiDegerEkle(ticket);
       const jobId = d.nextJob++;
       d.jobs.set(jobId, { status: 'running', artifacts: {} });
-      d.ssLaunches.push({ serverId: ticket.awxServerId, templateId: ticket.awxTemplateId, extraVars: k.extraVars, jobId });
+      d.ssLaunches.push({
+        serverId: ticket.awxServerId,
+        templateId: ticket.awxTemplateId,
+        extraVars: k.extraVars,
+        jobId,
+      });
       return { jobId };
     });
     poller.stopPoller();
@@ -746,7 +967,12 @@ async function kur(o = {}) {
 }
 
 const K = {
-  nodecu: { username: 'nodecu', role: 'User', mail: 'nodecu@x.test', yetkiler: ['cryptohub:node:degistir'] },
+  nodecu: {
+    username: 'nodecu',
+    role: 'User',
+    mail: 'nodecu@x.test',
+    yetkiler: ['cryptohub:node:degistir'],
+  },
   metacocu: { username: 'mete', role: 'User', yetkiler: ['cryptohub:app:metaco'] },
   wydenci: { username: 'wy', role: 'User', yetkiler: ['cryptohub:app:wyden'] },
   yetkisiz: { username: 'yok', role: 'User', yetkiler: [] },
@@ -755,7 +981,10 @@ const K = {
 
 /** Talep govdesi: `yeni` verilmezse grubun YENI_GOVDE degerleri. */
 /** Simdiden dakika olarak OCO penceresi. */
-const ocoPencere = (basDk, sonDk) => ({ basMs: Date.now() + basDk * 60000, sonMs: Date.now() + sonDk * 60000 });
+const ocoPencere = (basDk, sonDk) => ({
+  basMs: Date.now() + basDk * 60000,
+  sonMs: Date.now() + sonDk * 60000,
+});
 
 const GOVDE = (o = {}) => {
   const grup = o.grup || G_EVM;
@@ -769,5 +998,25 @@ const GOVDE = (o = {}) => {
 };
 
 module.exports = {
-  kur, satirlar, hex, SIR, T, G_EVM, G_BTC, G_LTC, G_DOT, D, SHA, VAL, YENI, YENI_GOVDE, URL_A, URL_B, K, GOVDE, ocoPencere, dbSorgu, yeniDurum,
+  kur,
+  satirlar,
+  hex,
+  SIR,
+  T,
+  G_EVM,
+  G_BTC,
+  G_LTC,
+  G_DOT,
+  D,
+  SHA,
+  VAL,
+  YENI,
+  YENI_GOVDE,
+  URL_A,
+  URL_B,
+  K,
+  GOVDE,
+  ocoPencere,
+  dbSorgu,
+  yeniDurum,
 };

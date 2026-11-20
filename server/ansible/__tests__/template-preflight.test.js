@@ -26,21 +26,27 @@ function withTemplates(templates, fn, { servers = [{ id: 1, name: 'awx1' }] } = 
 const VARS = { ocp_clusters: [{ cluster_name: 'gbocpprod2' }], terminal_host: 'GBARKP52' };
 
 test('ask_variables=false + DOLU extra_vars → 409 ile reddedilir (proxy 5xx govdesini yutuyor)', async () => {
-  await withTemplates([{ id: 42, name: 'LogX OCP App Discovery', ask_variables: false }], async () => {
-    await assert.rejects(
-      () => preflight.assertTemplateAcceptsExtraVars(1, 42, VARS, { label: 'logx_ocp_app_discovery' }),
-      (err) => {
-        // 503 DEGIL: ters-proxy 5xx govdesini SPA ile degistirdigi icin mesaj kullaniciya
-        // hic ulasmiyordu (bkz. template-preflight.cjs basligi).
-        assert.equal(err.status, 409);
-        assert.equal(err.code, 'awx_prompt_on_launch_disabled');
-        // Mesaj NE YAPILACAGINI soylemeli — teshis uretimde saatler almisti.
-        assert.match(err.message, /Prompt on launch/i);
-        assert.match(err.message, /logx_ocp_app_discovery/);
-        return true;
-      }
-    );
-  });
+  await withTemplates(
+    [{ id: 42, name: 'LogX OCP App Discovery', ask_variables: false }],
+    async () => {
+      await assert.rejects(
+        () =>
+          preflight.assertTemplateAcceptsExtraVars(1, 42, VARS, {
+            label: 'logx_ocp_app_discovery',
+          }),
+        (err) => {
+          // 503 DEGIL: ters-proxy 5xx govdesini SPA ile degistirdigi icin mesaj kullaniciya
+          // hic ulasmiyordu (bkz. template-preflight.cjs basligi).
+          assert.equal(err.status, 409);
+          assert.equal(err.code, 'awx_prompt_on_launch_disabled');
+          // Mesaj NE YAPILACAGINI soylemeli — teshis uretimde saatler almisti.
+          assert.match(err.message, /Prompt on launch/i);
+          assert.match(err.message, /logx_ocp_app_discovery/);
+          return true;
+        },
+      );
+    },
+  );
 });
 
 test('ask_variables=true → launch bloklanmaz', async () => {
@@ -49,12 +55,15 @@ test('ask_variables=true → launch bloklanmaz', async () => {
   });
 });
 
-test('extra_vars BOSSA kontrol hic calismaz (AWX\'e gidilmez)', async () => {
+test("extra_vars BOSSA kontrol hic calismaz (AWX'e gidilmez)", async () => {
   let listed = false;
   const origServers = runner.getServers;
   const origList = runner.listTemplatesForServer;
   runner.getServers = () => [{ id: 1 }];
-  runner.listTemplatesForServer = async () => { listed = true; return []; };
+  runner.listTemplatesForServer = async () => {
+    listed = true;
+    return [];
+  };
   try {
     await preflight.assertTemplateAcceptsExtraVars(1, 42, {});
     await preflight.assertTemplateAcceptsExtraVars(1, 42, null);
@@ -79,7 +88,9 @@ test('FAIL-OPEN: template metadata alinamazsa mesru is DURDURULMAZ', async () =>
   const origServers = runner.getServers;
   const origList = runner.listTemplatesForServer;
   runner.getServers = () => [{ id: 1 }];
-  runner.listTemplatesForServer = async () => { throw new Error('AWX 500'); };
+  runner.listTemplatesForServer = async () => {
+    throw new Error('AWX 500');
+  };
   try {
     await assert.doesNotReject(preflight.assertTemplateAcceptsExtraVars(1, 42, VARS));
   } finally {

@@ -37,8 +37,24 @@ const VERI: VeriKataloguResult = {
   hesaplandi: '2026-11-13T10:00:00.000Z',
   ayniFiziksel: false,
   veritabanlari: [
-    { db: 'Portal', ok: true, dbAdi: 'PORTAL', boyutVar: true, tabloSayisi: 3, toplamMb: 3, katalogSayisi: 2 },
-    { db: 'TBMWANS', ok: true, dbAdi: 'TBMWANS', boyutVar: true, tabloSayisi: 2, toplamMb: 100, katalogSayisi: 2 },
+    {
+      db: 'Portal',
+      ok: true,
+      dbAdi: 'PORTAL',
+      boyutVar: true,
+      tabloSayisi: 3,
+      toplamMb: 3,
+      katalogSayisi: 2,
+    },
+    {
+      db: 'TBMWANS',
+      ok: true,
+      dbAdi: 'TBMWANS',
+      boyutVar: true,
+      tabloSayisi: 2,
+      toplamMb: 100,
+      katalogSayisi: 2,
+    },
   ],
   tablolar: [
     T({
@@ -46,26 +62,65 @@ const VERI: VeriKataloguResult = {
       tablo: 'portal_users',
       alan: 'Kimlik / Oturum',
       amac: 'Portal kullanıcıları ve rolleri',
-      yazanlar: [{ tur: 'portal', ad: 'Giriş akışı', dosya: 'server/auth/users.cjs:12', nasil: 'MERGE', ne_zaman: 'Her girişte' }],
-      okuyanlar: [{ ad: 'Admin kullanıcı listesi', dosya: 'server/admin/users.cjs:5', uzerinden: 'server/auth/user-store.cjs' }],
+      yazanlar: [
+        {
+          tur: 'portal',
+          ad: 'Giriş akışı',
+          dosya: 'server/auth/users.cjs:12',
+          nasil: 'MERGE',
+          ne_zaman: 'Her girişte',
+        },
+      ],
+      okuyanlar: [
+        {
+          ad: 'Admin kullanıcı listesi',
+          dosya: 'server/admin/users.cjs:5',
+          uzerinden: 'server/auth/user-store.cjs',
+        },
+      ],
       saklama: 'süresiz',
       notlar: 'LDAP ile eşlenir',
       satir: 50,
     }),
-    T({ db: 'Portal', tablo: 'splunk_products', alan: 'Ayarlar', kullanilmiyor: true, guven: 'MAKUL', durum: 'yok', satir: null, mb: null }),
+    T({
+      db: 'Portal',
+      tablo: 'splunk_products',
+      alan: 'Ayarlar',
+      kullanilmiyor: true,
+      guven: 'MAKUL',
+      durum: 'yok',
+      satir: null,
+      mb: null,
+    }),
     T({
       db: 'TBMWANS',
       tablo: 'Inventory',
       amac: 'Sunucu envanteri (İstanbul)',
-      yazanlar: [{ tur: 'playbook', ad: 'middleware_inventory', dosya: 'bmw_inventory/middleware_inventory.yml', nasil: 'TRUNCATE + INSERT', ne_zaman: 'Günlük' }],
+      yazanlar: [
+        {
+          tur: 'playbook',
+          ad: 'middleware_inventory',
+          dosya: 'bmw_inventory/middleware_inventory.yml',
+          nasil: 'TRUNCATE + INSERT',
+          ne_zaman: 'Günlük',
+        },
+      ],
       satir: 9000,
       mb: 120,
     }),
-    T({ db: 'TBMWANS', tablo: 'Servers', yazanlar: [{ tur: 'bilinmiyor', ad: 'bilinmiyor', dosya: '', nasil: '', ne_zaman: '' }], kullanilmiyor: true, satir: 3 }),
+    T({
+      db: 'TBMWANS',
+      tablo: 'Servers',
+      yazanlar: [{ tur: 'bilinmiyor', ad: 'bilinmiyor', dosya: '', nasil: '', ne_zaman: '' }],
+      kullanilmiyor: true,
+      satir: 3,
+    }),
   ],
   sapma: {
     katalogdaYok: [{ db: 'Portal', tablo: 'yeni_tablo', satir: 7, mb: 0.1 }],
-    veritabanindaYok: [{ db: 'Portal', tablo: 'splunk_products', alan: 'Ayarlar', kullanilmiyor: true }],
+    veritabanindaYok: [
+      { db: 'Portal', tablo: 'splunk_products', alan: 'Ayarlar', kullanilmiyor: true },
+    ],
   },
   secenekler: {
     veritabanlari: ['Portal', 'TBMWANS'],
@@ -75,7 +130,10 @@ const VERI: VeriKataloguResult = {
   },
 };
 
-const tablolar = () => screen.getAllByTestId('katalog-satir').map((r) => within(r).getAllByRole('cell')[1].querySelector('.font-mono')?.textContent);
+const tablolar = () =>
+  screen
+    .getAllByTestId('katalog-satir')
+    .map((r) => within(r).getAllByRole('cell')[1].querySelector('.font-mono')?.textContent);
 
 async function ac(veri: VeriKataloguResult = VERI) {
   mockApi.mockResolvedValue(veri);
@@ -134,7 +192,10 @@ describe('VeriKatalogu', () => {
     expect(within(a).getByText('süresiz')).toBeInTheDocument();
     expect(within(a).getByText('LDAP ile eşlenir')).toBeInTheDocument();
     expect(within(a).getByText(/KESİN/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'portal_users ayrıntısı' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'portal_users ayrıntısı' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     fireEvent.click(screen.getByRole('button', { name: 'portal_users ayrıntısı' }));
     expect(screen.queryByTestId('katalog-ayrinti')).toBeNull();
   });
@@ -147,7 +208,9 @@ describe('VeriKatalogu', () => {
     expect(within(s).getByText('yeni_tablo')).toBeInTheDocument();
     expect(within(s).getByText('splunk_products')).toBeInTheDocument();
     // Satırdaki rozet
-    const satir = screen.getAllByTestId('katalog-satir').find((r) => r.textContent?.includes('splunk_products'))!;
+    const satir = screen
+      .getAllByTestId('katalog-satir')
+      .find((r) => r.textContent?.includes('splunk_products'))!;
     expect(within(satir).getByText('veritabanında yok')).toBeInTheDocument();
     expect(within(satir).getByText('kullanılmıyor')).toBeInTheDocument();
     expect(within(satir).getByText('MAKUL')).toBeInTheDocument();
@@ -156,12 +219,19 @@ describe('VeriKatalogu', () => {
   it('okunamayan veritabanı: uyarı ve "?" hücreleri, sayfa yine çizilir', async () => {
     await ac({
       ...VERI,
-      veritabanlari: [{ db: 'Portal', ok: false, hata: 'Login failed', katalogSayisi: 2 }, VERI.veritabanlari[1]],
-      tablolar: VERI.tablolar.map((t) => (t.db === 'Portal' ? { ...t, durum: 'bilinmiyor', satir: null, mb: null } : t)),
+      veritabanlari: [
+        { db: 'Portal', ok: false, hata: 'Login failed', katalogSayisi: 2 },
+        VERI.veritabanlari[1],
+      ],
+      tablolar: VERI.tablolar.map((t) =>
+        t.db === 'Portal' ? { ...t, durum: 'bilinmiyor', satir: null, mb: null } : t,
+      ),
       sapma: { katalogdaYok: [], veritabanindaYok: [] },
     });
     expect(screen.getByText('Portal DB okunamadı')).toBeInTheDocument();
-    const satir = screen.getAllByTestId('katalog-satir').find((r) => r.textContent?.includes('portal_users'))!;
+    const satir = screen
+      .getAllByTestId('katalog-satir')
+      .find((r) => r.textContent?.includes('portal_users'))!;
     expect(within(satir).getAllByText('?').length).toBe(2);
   });
 
@@ -170,10 +240,17 @@ describe('VeriKatalogu', () => {
     await ac({
       ...VERI,
       ayniFiziksel: true,
-      veritabanlari: VERI.veritabanlari.map((v) => ({ ...v, ...ortak, dbAdi: 'TBMWANS', ayniFiziksel: true })),
+      veritabanlari: VERI.veritabanlari.map((v) => ({
+        ...v,
+        ...ortak,
+        dbAdi: 'TBMWANS',
+        ayniFiziksel: true,
+      })),
     });
     // StatTile ipucunu title olarak taşır.
-    const ipuclari = screen.getAllByTitle('Ortak fiziksel veritabanı (iki kutucuk aynı): 186 tablo · 2 GB');
+    const ipuclari = screen.getAllByTitle(
+      'Ortak fiziksel veritabanı (iki kutucuk aynı): 186 tablo · 2 GB',
+    );
     expect(ipuclari).toHaveLength(2);
     expect(screen.queryByTitle(/^Veritabanında 186 tablo/)).toBeNull();
   });
@@ -182,14 +259,19 @@ describe('VeriKatalogu', () => {
     await ac({
       ...VERI,
       sapmaKismi: true,
-      veritabanlari: [{ db: 'Portal', ok: false, hata: 'zaman aşımı', katalogSayisi: 2 }, VERI.veritabanlari[1]],
+      veritabanlari: [
+        { db: 'Portal', ok: false, hata: 'zaman aşımı', katalogSayisi: 2 },
+        VERI.veritabanlari[1],
+      ],
     });
     expect(screen.getByTestId('sapma-kismi')).toHaveTextContent('iki kataloğun birleşimine göre');
   });
 
   it('alan sıralamasında grup başlıkları; satır sütununa göre sıralama', async () => {
     await ac();
-    expect(screen.getAllByTestId('alan-basligi').map((x) => x.textContent?.split(' ·')[0])).toEqual(['Ayarlar', 'Envanter', 'Kimlik / Oturum']);
+    expect(screen.getAllByTestId('alan-basligi').map((x) => x.textContent?.split(' ·')[0])).toEqual(
+      ['Ayarlar', 'Envanter', 'Kimlik / Oturum'],
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Satır' }));
     expect(screen.queryAllByTestId('alan-basligi')).toHaveLength(0);
     expect(tablolar()).toEqual(['Inventory', 'portal_users', 'Servers', 'splunk_products']);

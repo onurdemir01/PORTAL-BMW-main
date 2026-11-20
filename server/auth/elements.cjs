@@ -21,8 +21,10 @@ function normElement(row) {
     strict: (() => {
       try {
         const m = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
-        return !!(m?.strict);
-      } catch { return false; }
+        return !!m?.strict;
+      } catch {
+        return false;
+      }
     })(),
     description: row.description || null,
     createdAt: row.created_at || null,
@@ -32,7 +34,7 @@ function normElement(row) {
 function normRule(row) {
   return {
     elementKey: row.element_key,
-    principalType: row.principal_type,   // 'role' | 'user' | 'group' (AD grubu) | 'email' (2026-09-26)
+    principalType: row.principal_type, // 'role' | 'user' | 'group' (AD grubu) | 'email' (2026-09-26)
     principalId: row.principal_id,
     allow: row.allow === true || row.allow === 1,
   };
@@ -41,14 +43,14 @@ function normRule(row) {
 async function listElements() {
   const { rows } = await db.query(
     `SELECT element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible, metadata, description, created_at
-       FROM portal_elements ORDER BY element_type, sort_order, element_key`
+       FROM portal_elements ORDER BY element_type, sort_order, element_key`,
   );
   return rows.map(normElement);
 }
 
 async function listRules() {
   const { rows } = await db.query(
-    `SELECT element_key, principal_type, principal_id, allow FROM portal_element_visibility`
+    `SELECT element_key, principal_type, principal_id, allow FROM portal_element_visibility`,
   );
   return rows.map(normRule);
 }
@@ -64,7 +66,13 @@ async function upsertElement(el) {
   const sortOrder = Number.isFinite(Number(el.sortOrder)) ? Number(el.sortOrder) : 0;
   const enabled = el.enabled === false ? 0 : 1;
   const defaultVisible = el.defaultVisible === false ? 0 : 1;
-  const metadata = (() => { if (el.metadata != null) { if (typeof el.metadata === 'string') return el.metadata; return JSON.stringify(el.metadata); } return null; })();
+  const metadata = (() => {
+    if (el.metadata != null) {
+      if (typeof el.metadata === 'string') return el.metadata;
+      return JSON.stringify(el.metadata);
+    }
+    return null;
+  })();
   const description = el.description != null ? String(el.description).trim() || null : null;
 
   const exists = await db.query(`SELECT id FROM portal_elements WHERE element_key = $1`, [key]);
@@ -73,13 +81,35 @@ async function upsertElement(el) {
       `UPDATE portal_elements SET element_type=$1, parent_key=$2, label=$3, route=$4,
          sort_order=$5, enabled=$6, default_visible=$7, metadata=$8, description=$9, updated_at=GETUTCDATE()
        WHERE element_key=$10`,
-      [type, parentKey, label, route, sortOrder, enabled, defaultVisible, metadata, description, key]
+      [
+        type,
+        parentKey,
+        label,
+        route,
+        sortOrder,
+        enabled,
+        defaultVisible,
+        metadata,
+        description,
+        key,
+      ],
     );
   } else {
     await db.query(
       `INSERT INTO portal_elements (element_key, element_type, parent_key, label, route, sort_order, enabled, default_visible, metadata, description)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [key, type, parentKey, label, route, sortOrder, enabled, defaultVisible, metadata, description]
+      [
+        key,
+        type,
+        parentKey,
+        label,
+        route,
+        sortOrder,
+        enabled,
+        defaultVisible,
+        metadata,
+        description,
+      ],
     );
   }
   return true;
@@ -105,7 +135,7 @@ async function setElementRules(key, rules) {
       `INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
        VALUES ($1,$2,$3,$4)`,
       // user ve group kucuk harf (motor kucuk harfle eslestirir; grup DN ya da CN olabilir)
-      [key, pt, pt === 'role' ? pid : pid.toLowerCase(), allow]
+      [key, pt, pt === 'role' ? pid : pid.toLowerCase(), allow],
     );
   }
   return true;
@@ -114,8 +144,14 @@ async function setElementRules(key, rules) {
 /** metadata'dan strict bayragi (string ya da nesne olabilir). */
 function isStrict(el) {
   try {
-    const m = (() => { if (el.metadata) { if (typeof el.metadata === 'string') return JSON.parse(el.metadata); return el.metadata; } return null; })();
-    return !!(m?.strict);
+    const m = (() => {
+      if (el.metadata) {
+        if (typeof el.metadata === 'string') return JSON.parse(el.metadata);
+        return el.metadata;
+      }
+      return null;
+    })();
+    return !!m?.strict;
   } catch {
     return false;
   }
@@ -184,7 +220,9 @@ async function propagateToStrictDescendants(key, rules) {
     );
     let eklendi = false;
     for (const r of kisiKurallari) {
-      const pid = String(r.principalId || '').trim().toLowerCase();
+      const pid = String(r.principalId || '')
+        .trim()
+        .toLowerCase();
       if (!pid || var_.has(`${r.principalType}|${pid}`)) continue;
       await db.query(
         `INSERT INTO portal_element_visibility (element_key, principal_type, principal_id, allow)
@@ -202,21 +240,26 @@ async function propagateToStrictDescendants(key, rules) {
 async function setElementEnabled(key, enabled) {
   const { rowCount } = await db.query(
     `UPDATE portal_elements SET enabled=$1, updated_at=GETUTCDATE() WHERE element_key=$2`,
-    [enabled ? 1 : 0, key]
+    [enabled ? 1 : 0, key],
   );
   return rowCount > 0;
 }
 
 /** Sikilik bayragini degistirir. metadata icindeki DIGER alanlar korunur. */
 async function setElementStrict(key, strict) {
-  const { rows } = await db.query(`SELECT metadata FROM portal_elements WHERE element_key = $1`, [key]);
+  const { rows } = await db.query(`SELECT metadata FROM portal_elements WHERE element_key = $1`, [
+    key,
+  ]);
   if (!rows.length) return false;
   let meta = {};
   try {
     const m = rows[0].metadata;
     meta = (typeof m === 'string' ? JSON.parse(m) : m) || {};
-  } catch { meta = {}; }
-  if (strict) meta.strict = true; else delete meta.strict;
+  } catch {
+    meta = {};
+  }
+  if (strict) meta.strict = true;
+  else delete meta.strict;
   const bos = Object.keys(meta).length === 0;
   const { rowCount } = await db.query(
     `UPDATE portal_elements SET metadata=$1, updated_at=GETUTCDATE() WHERE element_key=$2`,
@@ -226,7 +269,12 @@ async function setElementStrict(key, strict) {
 }
 
 module.exports = {
-  listElements, listRules, upsertElement, deleteElement, setElementRules, setElementEnabled,
+  listElements,
+  listRules,
+  upsertElement,
+  deleteElement,
+  setElementRules,
+  setElementEnabled,
   propagateToStrictDescendants,
   setElementStrict,
 };

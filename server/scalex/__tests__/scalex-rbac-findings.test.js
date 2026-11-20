@@ -169,7 +169,7 @@ test('RB7 kesif tamamlandiginda birikim GERCEKTEN cagriliyor', () => {
   const idx = norm(codeOnly(read('index.cjs')));
   assert.match(
     idx,
-    /if \(status\.finished && parsed && parsed\.mode === "workloads"\) \{[\s\S]{0,200}rbacFindings\.record\(/,
+    /if \(status\.finished && (?:parsed && parsed\.mode|parsed\?\.mode) === "workloads"\) \{[\s\S]{0,200}rbacFindings\.record\(/,
     'kesif bitince RBAC bulgulari kaydedilmiyor — birikim hic dolmaz',
   );
 });
@@ -224,8 +224,24 @@ test('RB10 satir namespace`i kapsam degerini EZER (cok namespace`li is)', async 
       // KAPSAM DEGERI ilk namespace; satirlar kendi namespace'lerini tasiyor.
       namespace: 'ns-a',
       kindReports: [
-        { cluster: 'c1', namespace: 'ns-a', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
-        { cluster: 'c1', namespace: 'ns-b', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
+        {
+          cluster: 'c1',
+          namespace: 'ns-a',
+          kind: 'sts',
+          resource: 'statefulsets.apps',
+          readable: false,
+          reason: 'no_permission',
+          verb: 'list',
+        },
+        {
+          cluster: 'c1',
+          namespace: 'ns-b',
+          kind: 'sts',
+          resource: 'statefulsets.apps',
+          readable: false,
+          reason: 'no_permission',
+          verb: 'list',
+        },
       ],
     });
     const ins = calls.filter((c) => /^\s*INSERT/i.test(c.sql));
@@ -248,7 +264,14 @@ test('RB11 satirda namespace YOKSA kapsam degerine DUSER (eski paket)', async ()
       // `namespace=` alanini basmayan ESKI bir paket: o paket zaten tek namespace
       // tariyordu, yani kapsam degeri DOGRU.
       kindReports: [
-        { cluster: 'c1', kind: 'sts', resource: 'statefulsets.apps', readable: false, reason: 'no_permission', verb: 'list' },
+        {
+          cluster: 'c1',
+          kind: 'sts',
+          resource: 'statefulsets.apps',
+          readable: false,
+          reason: 'no_permission',
+          verb: 'list',
+        },
       ],
     });
     const ins = calls.find((c) => /^\s*INSERT/i.test(c.sql));

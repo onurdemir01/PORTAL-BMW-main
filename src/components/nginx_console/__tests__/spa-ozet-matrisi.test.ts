@@ -4,7 +4,18 @@ import { eslenikDurumu, spaOzeti } from '@/components/nginx_console/SpaOzetMatri
 import type { NgSpaApp } from '@/api/nginxConsoleApi';
 
 const app = (o: Partial<NgSpaApp>): NgSpaApp =>
-  ({ application: 'a', namespace: 'n-prod', env: 'prod', spa: 'evet', ag: 'internet', pattern: 'uyuyor', rp: 'tanimli', rpIstek: 'var', rpHost: '4/4', ...o }) as NgSpaApp;
+  ({
+    application: 'a',
+    namespace: 'n-prod',
+    env: 'prod',
+    spa: 'evet',
+    ag: 'internet',
+    pattern: 'uyuyor',
+    rp: 'tanimli',
+    rpIstek: 'var',
+    rpHost: '4/4',
+    ...o,
+  }) as NgSpaApp;
 
 describe('SPA özet matrisi', () => {
   it('RP eşlenik: sunucunun servis bazlı kararı (rpEslenik); sorun kodu = hatalı; rpHost paydası kullanılmaz', () => {
@@ -27,7 +38,9 @@ describe('SPA özet matrisi', () => {
     ]);
     expect(satirlar.map((s) => s.ortam)).toEqual(['prod', 'test']);
     const [p, t] = satirlar;
-    expect([p.spa, p.internet, p.intranet, p.kalipUymuyor, p.rpTanimli, p.yukVar, p.esTam]).toEqual([2, 1, 1, 1, 1, 1, 1]);
+    expect([p.spa, p.internet, p.intranet, p.kalipUymuyor, p.rpTanimli, p.yukVar, p.esTam]).toEqual(
+      [2, 1, 1, 1, 1, 1, 1],
+    );
     expect([t.spa, t.bilinmiyor, t.yukYok, t.esEksik]).toEqual([1, 1, 1, 1]);
     expect(toplam.spa).toBe(3);
   });

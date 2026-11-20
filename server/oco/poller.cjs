@@ -61,18 +61,26 @@ async function _tickBody(now) {
   try {
     bagli = await require('../smart/store.cjs').findByOcoRecordIds(scheduled.map((r) => r.id));
   } catch (e) {
-    console.warn('[OCO] bagli Smart biletleri okunamadi - bu tur hicbir kayit baslatilmadi:', e.message);
+    console.warn(
+      '[OCO] bagli Smart biletleri okunamadi - bu tur hicbir kayit baslatilmadi:',
+      e.message,
+    );
     return;
   }
   const kalan = [];
   for (const rec of scheduled) {
     const t = bagli.get(Number(rec.id));
-    if (!t) { kalan.push(rec); continue; }
+    if (!t) {
+      kalan.push(rec);
+      continue;
+    }
     const yeni = await store.adoptTicket(rec.id, t).catch((e) => {
       console.warn(`[OCO] #${rec.id} bilete esitlenemedi:`, e.message);
       return null;
     });
-    console.log(`[OCO] #${rec.id} zaten Smart biletine bagli (#${t.externalTicketId}, ${t.status}) - ikinci bilet ACILMADI; kayit -> ${yeni || 'degismedi'}.`);
+    console.log(
+      `[OCO] #${rec.id} zaten Smart biletine bagli (#${t.externalTicketId}, ${t.status}) - ikinci bilet ACILMADI; kayit -> ${yeni || 'degismedi'}.`,
+    );
   }
 
   for (const rec of kalan) {
@@ -80,7 +88,9 @@ async function _tickBody(now) {
     const windowEnd = new Date(rec.windowEnd);
 
     if (now.getTime() > windowEnd.getTime()) {
-      await store.markExpired(rec.id).catch((e) => console.warn('[OCO] EXPIRED yazilamadi:', e.message));
+      await store
+        .markExpired(rec.id)
+        .catch((e) => console.warn('[OCO] EXPIRED yazilamadi:', e.message));
       console.log(`[OCO] #${rec.id} penceresi kapandi (OCO ${rec.ocoNumber}) - tetiklenmedi.`);
       continue;
     }
@@ -96,7 +106,9 @@ async function _tickBody(now) {
       return null;
     });
     if (!claimed) {
-      console.log(`[OCO] #${rec.id} atlandi — kayit artik SCHEDULED degil (iptal edilmis ya da baska bir ornek kapmis).`);
+      console.log(
+        `[OCO] #${rec.id} atlandi — kayit artik SCHEDULED degil (iptal edilmis ya da baska bir ornek kapmis).`,
+      );
       continue;
     }
 
@@ -109,16 +121,22 @@ async function _tickBody(now) {
           smartTicketId: result.ticketId,
           externalTicketId: result.externalTicketId,
         });
-        console.log(`[OCO] #${rec.id} icin Smart onay talebi acildi (bilet #${result.externalTicketId}) — is HENUZ tetiklenmedi.`);
+        console.log(
+          `[OCO] #${rec.id} icin Smart onay talebi acildi (bilet #${result.externalTicketId}) — is HENUZ tetiklenmedi.`,
+        );
         continue;
       }
       const written = await store.markLaunched(rec.id, result?.jobId ?? null);
       if (!written) {
         // Job AWX'te BASLADI ama kayit arada iptal edilmis. Sessizce yutulmaz —
         // operatorun calisan job'i bilmesi gerekir.
-        console.warn(`[OCO] #${rec.id} AWX job ${result?.jobId} BASLATILDI ama kayit arada iptal edilmis — job AWX'te calisiyor.`);
+        console.warn(
+          `[OCO] #${rec.id} AWX job ${result?.jobId} BASLATILDI ama kayit arada iptal edilmis — job AWX'te calisiyor.`,
+        );
       } else {
-        console.log(`[OCO] #${rec.id} tetiklendi (OCO ${rec.ocoNumber}) -> AWX job ${result?.jobId}`);
+        console.log(
+          `[OCO] #${rec.id} tetiklendi (OCO ${rec.ocoNumber}) -> AWX job ${result?.jobId}`,
+        );
       }
     } catch (e) {
       // Tetikleme hatasi TEKRAR DENENMEZ: pencere daralirken her tick'te yeniden
@@ -134,12 +152,17 @@ function startPoller(launchFn) {
   _launch = launchFn;
   if (_timer) return;
   const cfg = getConfig();
-  _timer = setInterval(() => { tick().catch((e) => console.warn('[OCO] poller tick hatasi:', e.message)); }, cfg.pollIntervalSeconds * 1000);
+  _timer = setInterval(() => {
+    tick().catch((e) => console.warn('[OCO] poller tick hatasi:', e.message));
+  }, cfg.pollIntervalSeconds * 1000);
   _timer.unref?.();
 }
 
 function stopPoller() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
 }
 
 module.exports = { startPoller, stopPoller, tick };

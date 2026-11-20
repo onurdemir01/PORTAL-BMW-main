@@ -115,9 +115,7 @@ function upstreamHint(text) {
     const t = /<title[^>]*>([^<]{1,120})<\/title>/i.exec(raw);
     return t ? t[1].trim() : '';
   }
-  const plain = etiketleriBosluga(raw)
-    .replace(/\s+/g, ' ')
-    .trim();
+  const plain = etiketleriBosluga(raw).replace(/\s+/g, ' ').trim();
   return plain.slice(0, 120);
 }
 
@@ -224,7 +222,7 @@ async function getChangeOrder(ocoNumber) {
 // dokunmaz); err.status semantik olarak kalir, yalnizca HTTP katmanina cevrilir.
 const NGINX_INTERCEPTED = new Set([403, 404, 500, 502, 503, 504]);
 function httpStatus(err) {
-  const s = Number((err?.status) || 400);
+  const s = Number(err?.status || 400);
   return NGINX_INTERCEPTED.has(s) ? 400 : s;
 }
 

@@ -145,7 +145,9 @@ describe('FileSelectionStep', () => {
   it('F2 eski playbook kopyasi: numarali dizinlerin TARANMADIGI soylenir', () => {
     render(
       <FileSelectionStep
-        result={{ overall_status: 'success', hosts: [{ host: 'OK1', status: 'ok', files: [] }] } as never}
+        result={
+          { overall_status: 'success', hosts: [{ host: 'OK1', status: 'ok', files: [] }] } as never
+        }
         onSubmit={() => {}}
       />,
     );
@@ -172,7 +174,9 @@ describe('FileSelectionStep', () => {
     );
     expect(screen.queryByTestId('logx-eski-kesif')).not.toBeInTheDocument();
     expect(screen.getByText('Taranan sunucularda dosya bulunamadı.')).toBeInTheDocument();
-    expect(screen.getByTestId('logx-tarama-kapsami').textContent).toMatch(/log, logs ve numaralı \(log1, logs2…\) dizinlere bakıldı/);
+    expect(screen.getByTestId('logx-tarama-kapsami').textContent).toMatch(
+      /log, logs ve numaralı \(log1, logs2…\) dizinlere bakıldı/,
+    );
   });
 });
 

@@ -20,7 +20,8 @@ const path = require('node:path');
 const DIR = path.join(__dirname, '..', 'components');
 const FILES = [
   path.join(DIR, 'DenetimPage.tsx'),
-  ...fs.readdirSync(path.join(DIR, 'denetim'))
+  ...fs
+    .readdirSync(path.join(DIR, 'denetim'))
     .filter((f) => f.endsWith('.tsx'))
     .map((f) => path.join(DIR, 'denetim', f)),
 ];
@@ -40,7 +41,8 @@ test('Denetim dosyalarinda SABIT gri/beyaz Tailwind sinifi kalmadi', () => {
     }
   }
   assert.deepStrictEqual(
-    bulunan, [],
+    bulunan,
+    [],
     'Sabit renk yerine token kullanin (--text-muted, --border-subtle, --bg-elevated ...):\n  ' +
       bulunan.join('\n  '),
   );

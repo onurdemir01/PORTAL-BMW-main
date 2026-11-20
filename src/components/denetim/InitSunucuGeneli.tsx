@@ -131,12 +131,7 @@ function Dosya({ f }: { f: InitSunucuGeneliFile }) {
             >
               {ekip ? 'referans: ekip sürümü (depo)' : 'referans: çoğunluk'}
             </span>
-            <CodeChip
-              value={refHash}
-              label={`${refHash.slice(0, 10)}…`}
-              wrap="truncate"
-              copyable
-            />
+            <CodeChip value={refHash} label={`${refHash.slice(0, 10)}…`} wrap="truncate" copyable />
           </span>
         )}
         {f.special && (
@@ -210,7 +205,16 @@ function Dosya({ f }: { f: InitSunucuGeneliFile }) {
               onClick={() =>
                 csvDownload(
                   `init_sunucu_geneli_${f.key}${cls === 'ozel' ? '_ozel' : ''}`,
-                  ['host', 'durum', 'hash', 'kaynak_kok', 'kokler', 'kok_farki', 'diger_hash', 'tarih'],
+                  [
+                    'host',
+                    'durum',
+                    'hash',
+                    'kaynak_kok',
+                    'kokler',
+                    'kok_farki',
+                    'diger_hash',
+                    'tarih',
+                  ],
                   rows.map((r) => [
                     r.host,
                     r.durum,

@@ -32,7 +32,9 @@ describe('Ekip kaynağı', () => {
     expect(app.getAttribute('title')).toContain('CMDB Code Repository kaydı — Agile Takım');
     expect(app.parentElement?.textContent).not.toContain('namespace sahibi');
     const ns = screen.getByText('GT-NS-TEST');
-    expect(ns.getAttribute('title')).toContain('Namespace sahibi — uygulama düzeyinde sahip bulunamadı ya da aranmadı');
+    expect(ns.getAttribute('title')).toContain(
+      'Namespace sahibi — uygulama düzeyinde sahip bulunamadı ya da aranmadı',
+    );
     // ARK disi cluster'larda uygulama duzeyi sahip hic aranmaz (lookup_status ARK_DISI): metin bunu soylemeli.
     expect(ns.getAttribute('title')).toContain('yalnız ARK cluster’larında aranır');
     expect(ns.parentElement?.textContent).toContain('(namespace sahibi)');
@@ -40,17 +42,31 @@ describe('Ekip kaynağı', () => {
   });
 
   it('EK2 kaynak bilgisi yoksa (uygulama tablosu henüz yok) eskisi gibi: işaret yok', () => {
-    render(<OwnerCell owner={{ groups: ['GT-NS'], emails: ['ns@x'], unknownNs: [], namespaces: ['a-prod'], kaynaklar: [] }} />);
+    render(
+      <OwnerCell
+        owner={{
+          groups: ['GT-NS'],
+          emails: ['ns@x'],
+          unknownNs: [],
+          namespaces: ['a-prod'],
+          kaynaklar: [],
+        }}
+      />,
+    );
     expect(screen.getByText('GT-NS').getAttribute('title')).toBe('GT-NS\nns@x\nnamespace: a-prod');
     expect(screen.queryByText('(namespace sahibi)')).toBeNull();
   });
 
   it('EK3 veri yok / bilinmiyor durumları değişmedi', () => {
     const { unmount } = render(<OwnerCell ready={false} />);
-    expect(screen.getByText('veri yok').getAttribute('title')).toContain('dbo.Openshift_App_Owners');
+    expect(screen.getByText('veri yok').getAttribute('title')).toContain(
+      'dbo.Openshift_App_Owners',
+    );
     unmount();
     render(<OwnerCell owner={{ groups: [], emails: [], unknownNs: ['x-prod'], kaynaklar: [] }} />);
-    expect(screen.getByText('bilinmiyor').getAttribute('title')).toBe('CMDB\'de sorumlu bulunamadı: x-prod');
+    expect(screen.getByText('bilinmiyor').getAttribute('title')).toBe(
+      "CMDB'de sorumlu bulunamadı: x-prod",
+    );
   });
 
   it('EK4 EkipListesi: karışık kaynak, boş metin, bilinmeyen kod', () => {
@@ -58,7 +74,9 @@ describe('Ekip kaynağı', () => {
       <EkipListesi groups={['A', 'B', 'C']} kaynaklar={['ARK997_YAZILIM', 'NAMESPACE', '']} />,
     );
     expect(container.textContent).toBe('A, B (namespace sahibi), C');
-    expect(screen.getByText('A').getAttribute('title')).toBe('A\nCMDB ARK Application kaydı — Yazılım Geliştirme Sorumlusu');
+    expect(screen.getByText('A').getAttribute('title')).toBe(
+      'A\nCMDB ARK Application kaydı — Yazılım Geliştirme Sorumlusu',
+    );
     expect(screen.getByText('C').getAttribute('title')).toBe('C');
     unmount();
     render(<EkipListesi groups={[]} bos="—" />);
@@ -69,7 +87,16 @@ describe('Ekip kaynağı', () => {
 
   it('EK5 namespace tablosu okunamadı (veriYokNs): "bilinmiyor" değil "veri yok", ipucunda neden', () => {
     const { unmount } = render(
-      <OwnerCell owner={{ groups: [], emails: [], unknownNs: [], veriYokNs: ['b-prod'], kaynaklar: [], appReady: true }} />,
+      <OwnerCell
+        owner={{
+          groups: [],
+          emails: [],
+          unknownNs: [],
+          veriYokNs: ['b-prod'],
+          kaynaklar: [],
+          appReady: true,
+        }}
+      />,
     );
     expect(screen.queryByText('bilinmiyor')).toBeNull();
     const v = screen.getByText('veri yok');
@@ -78,7 +105,16 @@ describe('Ekip kaynağı', () => {
     unmount();
     // Bir ortamda sahip var, diğerinde veri yok: grup + "+veri yok" işareti.
     const r2 = render(
-      <OwnerCell owner={{ groups: ['GT-Uyg'], emails: [], unknownNs: [], veriYokNs: ['b-test'], kaynaklar: ['SI51_AGILE'], appReady: true }} />,
+      <OwnerCell
+        owner={{
+          groups: ['GT-Uyg'],
+          emails: [],
+          unknownNs: [],
+          veriYokNs: ['b-test'],
+          kaynaklar: ['SI51_AGILE'],
+          appReady: true,
+        }}
+      />,
     );
     expect(screen.getByText('GT-Uyg')).toBeTruthy();
     expect(screen.getByText('+veri yok').getAttribute('title')).toContain('b-test');

@@ -7,14 +7,20 @@ const assert = require('node:assert/strict');
 const { parseObjectLine, parseAppDiscoveryResult } = require('../ocp-app-parse.cjs');
 
 test('parseObjectLine(): is yuku satiri tam ayristirilir', () => {
-  const o = parseObjectLine('Deployment|odeme-api|3|registry/odeme:1.4||odeme|2026-01-05T10:00:00Z');
+  const o = parseObjectLine(
+    'Deployment|odeme-api|3|registry/odeme:1.4||odeme|2026-01-05T10:00:00Z',
+  );
   assert.deepEqual(o, {
-    kind: 'Deployment', name: 'odeme-api', replicas: 3,
-    image: 'registry/odeme:1.4', labelApp: 'odeme', created: '2026-01-05T10:00:00Z',
+    kind: 'Deployment',
+    name: 'odeme-api',
+    replicas: 3,
+    image: 'registry/odeme:1.4',
+    labelApp: 'odeme',
+    created: '2026-01-05T10:00:00Z',
   });
 });
 
-test('parseObjectLine(): Pod\'da image spec.containers[0]\'dan gelir (podImage alani)', () => {
+test("parseObjectLine(): Pod'da image spec.containers[0]'dan gelir (podImage alani)", () => {
   const o = parseObjectLine('Pod|odeme-api-7c9|||registry/odeme:1.4|odeme|2026-01-05T10:00:00Z');
   assert.equal(o.kind, 'Pod');
   assert.equal(o.image, 'registry/odeme:1.4', 'is yuku image bosken pod image kullanilmali');
@@ -79,7 +85,13 @@ test('parseAppDiscoveryResult(): hatali namespace girdisi objesiz ama HATA MESAJ
   const out = parseAppDiscoveryResult({
     overall_status: 'partial',
     results: [
-      { cluster_name: 'c1', namespace: 'ns1', status: 'error', error: 'login basarisiz', lines: [] },
+      {
+        cluster_name: 'c1',
+        namespace: 'ns1',
+        status: 'error',
+        error: 'login basarisiz',
+        lines: [],
+      },
       { cluster_name: 'c1', namespace: 'ns2', status: 'ok', lines: ['Pod|p|||img|x|t'] },
     ],
   });

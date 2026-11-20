@@ -52,27 +52,39 @@ function kaydet(app, { requireAuth, requireAdmin, registry, kullanim, audit }) {
 
   app.delete('/api/ansible/playbooks/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
-      const sonuc = await reg().remove(req.params.id, { username: req.session?.user?.username || null });
+      const sonuc = await reg().remove(req.params.id, {
+        username: req.session?.user?.username || null,
+      });
       if (!sonuc) return res.status(404).json({ ok: false, message: 'Kayıt bulunamadı.' });
       const kullanan = kul().kullananOzellik(sonuc.keyName);
-      denetle(req, 'playbook_kayit_sil', { keyName: sonuc.keyName, varsayilan: sonuc.varsayilan, kullanan });
+      denetle(req, 'playbook_kayit_sil', {
+        keyName: sonuc.keyName,
+        varsayilan: sonuc.varsayilan,
+        kullanan,
+      });
       res.json({ ok: true, keyName: sonuc.keyName, varsayilan: sonuc.varsayilan, kullanan });
     } catch (err) {
       res.status(500).json({ ok: false, message: err.message });
     }
   });
 
-  app.post('/api/ansible/playbooks/silinen/:keyName/geri-yukle', requireAuth, requireAdmin, async (req, res) => {
-    const keyName = String(req.params.keyName || '');
-    if (!/^[a-z0-9_]+$/.test(keyName)) return res.status(400).json({ ok: false, message: 'Geçersiz anahtar adı.' });
-    try {
-      const row = await reg().geriYukle(keyName);
-      denetle(req, 'playbook_varsayilan_geri_yukle', { keyName });
-      res.json({ ok: true, playbook: row });
-    } catch (err) {
-      res.status(err.status === 400 ? 400 : 500).json({ ok: false, message: err.message });
-    }
-  });
+  app.post(
+    '/api/ansible/playbooks/silinen/:keyName/geri-yukle',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const keyName = String(req.params.keyName || '');
+      if (!/^[a-z0-9_]+$/.test(keyName))
+        return res.status(400).json({ ok: false, message: 'Geçersiz anahtar adı.' });
+      try {
+        const row = await reg().geriYukle(keyName);
+        denetle(req, 'playbook_varsayilan_geri_yukle', { keyName });
+        res.json({ ok: true, playbook: row });
+      } catch (err) {
+        res.status(err.status === 400 ? 400 : 500).json({ ok: false, message: err.message });
+      }
+    },
+  );
 }
 
 module.exports = { kaydet };

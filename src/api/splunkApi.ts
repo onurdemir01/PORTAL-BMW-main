@@ -1,4 +1,4 @@
-import { safeJson } from "./http";
+import { safeJson } from './http';
 // src/api/splunkApi.ts — Splunk REST API proxy client
 //
 // dynatraceApi.ts ile aynı şekli takip eder (health/friendly-error deseni).
@@ -35,7 +35,11 @@ export const splunkApi = {
   products: (): Promise<{ ok: boolean; products?: string[]; message?: string }> =>
     fetch(`${BASE}/products`).then(safeJson),
 
-  search: (opts: { product: string; windowMinutes?: number; refresh?: boolean }): Promise<SplunkSearchResult> => {
+  search: (opts: {
+    product: string;
+    windowMinutes?: number;
+    refresh?: boolean;
+  }): Promise<SplunkSearchResult> => {
     const qs = new URLSearchParams({ product: opts.product });
     if (opts.windowMinutes) qs.set('windowMinutes', String(opts.windowMinutes));
     if (opts.refresh) qs.set('refresh', '1');

@@ -37,6 +37,13 @@ const DOGRUDAN_TURLER = ['fqdn', 'variable', 'unix', 'undefined'];
  * "a:443 resolve ; b:443 backup ; +3" -> {liste: ['a:443 resolve', 'b:443 backup'], kesik: 3};
  * NULL -> null (olculmedi).
  */
+/** Dinleme adresi sirasi: '*' (tum adresler) once, gerisi yerel ayar sirasiyla. */
+function yildizOnce(a, b) {
+  if (a === '*') return -1;
+  if (b === '*') return 1;
+  return a.localeCompare(b);
+}
+
 function serverListesi(servers) {
   if (servers == null) return null;
   const parca = String(servers)
@@ -106,7 +113,7 @@ function listenIpleri(listen) {
     if (ip === '0.0.0.0') ip = '*';
     if (ip) out.add(ip);
   }
-  return [...out].sort((a, b) => (a === '*' ? -1 : b === '*' ? 1 : a.localeCompare(b)));
+  return [...out].sort(yildizOnce);
 }
 
 const ipSayi = (ip) => {
@@ -166,11 +173,7 @@ function agBilgisiEkle(ozet, invRows, listenRows) {
   }
   const hosts = (ozet.hosts || []).map((h) => {
     const a = ag ? ag.get(h.host) || null : null;
-    const listenIp = listenRows
-      ? [...(dinle.get(h.host) || [])].sort((x, y) =>
-          x === '*' ? -1 : y === '*' ? 1 : x.localeCompare(y),
-        )
-      : null;
+    const listenIp = listenRows ? [...(dinle.get(h.host) || [])].sort(yildizOnce) : null;
     return {
       ...h,
       ip: a ? a.ip : null,
@@ -351,7 +354,7 @@ function upstreamDetayi(upsRows, locRows, srvRows, serversOlculdu) {
       servers: sl ? sl.liste : null,
       serversKesik: sl ? sl.kesik : 0,
       // servers olculmediyse elde yalniz SON server satiri var (tam liste degil)
-      sonServer: sl ? null : u.server ? String(u.server) : null,
+      sonServer: !sl && u.server ? String(u.server) : null,
       resolve: bit(u.resolve),
       keepalive: bit(u.keepalive),
       zone: bit(u.zone),
@@ -445,9 +448,7 @@ function baglantiSatirlari(rows, serversOlculdu, http2Olculdu = false, ag = null
       const ayni = h2.get(`${host}\u0000${serverName}`) || [r];
       const http2 = http2Olculdu ? http2Durumu(ayni) : null;
       const a = ag ? ag.get(host) || null : null;
-      const listenIp = [...new Set(ayni.flatMap((x) => listenIpleri(x.listen)))].sort((x, y) =>
-        x === '*' ? -1 : y === '*' ? 1 : x.localeCompare(y),
-      );
+      const listenIp = [...new Set(ayni.flatMap((x) => listenIpleri(x.listen)))].sort(yildizOnce);
       out.push({
         host,
         hostIp: a ? a.ip : null,

@@ -57,7 +57,9 @@ function parsePodDiscoveryResult(artifacts) {
     const namespace = String(cr?.namespace || '').trim();
     if (namespace) namespaceSet.add(namespace);
     if (cr?.ok === false) {
-      errors.push(`${cluster || '?'}/${namespace || '?'}: ${String(cr?.error || 'Pod listesi alınamadı').trim()}`);
+      errors.push(
+        `${cluster || '?'}/${namespace || '?'}: ${String(cr?.error || 'Pod listesi alınamadı').trim()}`,
+      );
       continue;
     }
     const lines = Array.isArray(cr?.lines) ? cr.lines : [];

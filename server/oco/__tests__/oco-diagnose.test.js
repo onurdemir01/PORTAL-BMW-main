@@ -60,7 +60,12 @@ test('OD1 `READ_FIELDS` listesi KODLA ayrismiyor (ekran yalan soylemez)', () => 
 test('OD2 kodun okudugu bir alan listede EKSIK degil', () => {
   // Ters yon: `window.cjs` bir tarih alani okuyorsa listede de olmali. Aksi
   // halde ekran "yok sayiliyor" der, kod okur — kullanici yanlis karar verir.
-  const beklenen = ['PlannedStartDate', 'PlannedEndDate', 'InterruptionStartDate', 'InterruptionEndDate'];
+  const beklenen = [
+    'PlannedStartDate',
+    'PlannedEndDate',
+    'InterruptionStartDate',
+    'InterruptionEndDate',
+  ];
   const listede = new Set(diag.READ_FIELDS.map((f) => f.path.split('.').pop()));
   for (const alan of beklenen) {
     if (!SRC['window.cjs'].includes(alan)) continue;
@@ -181,9 +186,6 @@ test('OD10 OCO yaniti BAYT TAVANI tasiyor', () => {
   assert.match(src, /OCO_RESPONSE_MAX_BYTES/, 'bayt tavani yok');
   // `.text()` ile sinirsiz okuma KALMAMALI.
   const govde = src.slice(src.indexOf('async function getChangeOrder'));
-  assert.ok(
-    !/await res\.body\.text\(\)/.test(govde),
-    'hala sinirsiz `.text()` ile okunuyor',
-  );
+  assert.ok(!/await res\.body\.text\(\)/.test(govde), 'hala sinirsiz `.text()` ile okunuyor');
   assert.match(govde, /okuSinirli\(/, 'sinirli okuyucu KARAR NOKTASINDA kullanilmiyor');
 });

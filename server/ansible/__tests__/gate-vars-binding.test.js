@@ -59,9 +59,10 @@ test('runner.cjs: gateVars kullanan HER kapsamda gateVars BAGLI', () => {
   const src = fs.readFileSync(SRC, 'utf-8');
   const bad = unboundScopes(src, 'gateVars');
   assert.deepStrictEqual(
-    bad, [],
+    bad,
+    [],
     'gateVars su kapsam(lar)da bagli degil - calisma aninda "gateVars is not defined" verir:\n  ' +
-      bad.join('\n  ')
+      bad.join('\n  '),
   );
 });
 

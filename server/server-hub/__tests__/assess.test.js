@@ -269,7 +269,12 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
   assert.deepEqual(hedefListesi('a.bmw.de:80,~TRUNC').parcalar, ['a.bmw.de:80']);
   // ayristirici da jetonu hedef saymaz (README: '~TRUNC' host[:port] desenine uyar)
   assert.deepEqual(parseTargets('a.bmw.de:80,~TRUNC'), [{ host: 'A', port: 80 }]);
-  assert.deepEqual(hedefListesi('u:p@a.bmw.de:80'), { parcalar: ['a.bmw.de:80'], eksik: false, dinamik: false, gosterim: 'a.bmw.de:80' });
+  assert.deepEqual(hedefListesi('u:p@a.bmw.de:80'), {
+    parcalar: ['a.bmw.de:80'],
+    eksik: false,
+    dinamik: false,
+    gosterim: 'a.bmw.de:80',
+  });
   // DINAMIK PROXY JETONU (tur 3, #6): '~DYNAMIC' kesme DEGIL (liste tam), hedef de DEGIL
   assert.deepEqual(hedefListesi('a.bmw.de:80,~DYNAMIC'), {
     parcalar: ['a.bmw.de:80'],
@@ -277,7 +282,12 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
     dinamik: true,
     gosterim: 'a.bmw.de:80,~DYNAMIC',
   });
-  assert.deepEqual(hedefListesi('~DYNAMIC'), { parcalar: [], eksik: false, dinamik: true, gosterim: '~DYNAMIC' });
+  assert.deepEqual(hedefListesi('~DYNAMIC'), {
+    parcalar: [],
+    eksik: false,
+    dinamik: true,
+    gosterim: '~DYNAMIC',
+  });
   // tarayici bicimi (A, scan.sh rec()): jeton listenin BASINDA; sira gosterimde korunur
   assert.deepEqual(hedefListesi('~DYNAMIC,crm-vip.bmw.local:8180'), {
     parcalar: ['crm-vip.bmw.local:8180'],
@@ -299,7 +309,11 @@ test('SH8: parseTargets host:port / ajp / IPv6 / bos', () => {
     dinamik: false,
     gosterim: 'a.bmw.de:80,~',
   });
-  assert.deepEqual(parseTargets('a.bmw.de:80,~DYNAMIC'), [{ host: 'A', port: 80 }], 'jeton hedef sanildi');
+  assert.deepEqual(
+    parseTargets('a.bmw.de:80,~DYNAMIC'),
+    [{ host: 'A', port: 80 }],
+    'jeton hedef sanildi',
+  );
 });
 
 // ── 2026-09-22 (job 3339002 sonrasi) ─────────────────────────────────────────────
@@ -829,7 +843,15 @@ test('KP4 JVM: envanter (MWAppsInventory) vs taramadan GELEN', () => {
 });
 
 test('KP4b JVM veri cekilen envanteri ASAMAZ: fazlasi ve envanter disi ayri sayilir (%108, 2026-11-11)', () => {
-  const jvm = (host, ad) => ({ host, gen: 7, jvm: ad, running: 1, auto_start: 'true', server_state: 'running', ports: '' });
+  const jvm = (host, ad) => ({
+    host,
+    gen: 7,
+    jvm: ad,
+    running: 1,
+    auto_start: 'true',
+    server_state: 'running',
+    ports: '',
+  });
   const d = {
     ...KP_DATA,
     jvms: [
@@ -845,10 +867,18 @@ test('KP4b JVM veri cekilen envanteri ASAMAZ: fazlasi ve envanter disi ayri sayi
   assert.equal(c.scanned, 1, 'GBAPP01 envanterde 1 JVM: fazlasi veri cekilen sayilmamali');
   assert.ok(c.scanned <= c.inventory, 'kapsama %100u asti');
   assert.equal(c.scannedOverInventory, 2, 'envanterden fazla bulunan JVM sayilmiyor');
-  assert.equal(c.scannedNotInInventory, 2, 'envanterde JBoss olmayan sunucunun JVMleri ayri sayilmiyor');
+  assert.equal(
+    c.scannedNotInInventory,
+    2,
+    'envanterde JBoss olmayan sunucunun JVMleri ayri sayilmiyor',
+  );
   assert.equal(c.scannedNotInInventoryHosts, 1);
   assert.equal(c.scannedTotal, 5);
-  assert.equal(c.scannedTotal, c.scanned + c.scannedOverInventory + c.scannedNotInInventory, 'ozdeslik bozuk');
+  assert.equal(
+    c.scannedTotal,
+    c.scanned + c.scannedOverInventory + c.scannedNotInInventory,
+    'ozdeslik bozuk',
+  );
 });
 
 test('KP5 ESKI `coverage` alani EZILMEDI (ekranin urun kartlari ona bagli)', () => {
@@ -1075,7 +1105,12 @@ test("SHX4 run_as='dzdo' (scan_ver 2.2 estate bicimi) duzeltme onerisini ENGELLE
     assert.ok(s, `SYNTAX_FAIL yok (run_as=${runAs})`);
     assert.deepEqual(
       s.fix,
-      { action: 'apache_comment_line', product: 'IHS', file: '/usr/IBMIHS/conf/httpd.conf', line: 13 },
+      {
+        action: 'apache_comment_line',
+        product: 'IHS',
+        file: '/usr/IBMIHS/conf/httpd.conf',
+        line: 13,
+      },
       `run_as=${runAs} icin duzeltme onerilmedi`,
     );
   }
@@ -1125,7 +1160,14 @@ const pu = () => {
   d.jvms = [];
   d.jboss = [
     { host: 'H-RHA-JB8', gen: 8, host_name: 'primary', host_state: 'running', cli: 'OK', note: '' },
-    { host: 'H-IHS-JB7', gen: 7, host_name: 'master', host_state: 'running', cli: 'DENIED', note: 'x' },
+    {
+      host: 'H-IHS-JB7',
+      gen: 7,
+      host_name: 'master',
+      host_state: 'running',
+      cli: 'DENIED',
+      note: 'x',
+    },
     // ayni sunucuda IKI nesil: biri OK biri FAIL -> sunucu "okundu" SAYILMAZ
     { host: 'H-DORT', gen: 7, host_name: 'master', host_state: 'running', cli: 'OK', note: '' },
     { host: 'H-DORT', gen: 8, host_name: 'primary', host_state: 'running', cli: 'FAIL', note: 'y' },
@@ -1161,10 +1203,7 @@ test('PU2 olcut dosyasi OLMAYAN sunucu uyumsuz SAYILMAZ, paydaya da girmez', () 
   assert.equal(pi.NGINX.noOlcutHosts, 1);
   assert.equal(pi.NGINX.compliant, 1);
   // pay ve payda AYNI kumeden: "1/1 uyumlu", "1/2" DEGIL
-  assert.ok(
-    pi.NGINX.compliant <= pi.NGINX.olcutHosts,
-    'pay paydadan buyuk - kart yaniltir',
-  );
+  assert.ok(pi.NGINX.compliant <= pi.NGINX.olcutHosts, 'pay paydadan buyuk - kart yaniltir');
   assert.equal(pi.NGINX.olcutDosyasi, 'start.sh');
 });
 

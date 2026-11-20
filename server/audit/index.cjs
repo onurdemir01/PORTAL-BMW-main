@@ -14,10 +14,13 @@ const spool = require('./spool.cjs');
 const HASH_PREFIX = 'v3:';
 
 function computeEntryHash(prevHash, username, action, detail) {
-  return HASH_PREFIX + crypto
-    .createHash('sha256')
-    .update([prevHash, username, action, String(detail || '')].join('|'))
-    .digest('hex');
+  return (
+    HASH_PREFIX +
+    crypto
+      .createHash('sha256')
+      .update([prevHash, username, action, String(detail || '')].join('|'))
+      .digest('hex')
+  );
 }
 
 // Tablo basina bagimsiz zincir + tek-yazar kuyrugu.
@@ -35,9 +38,7 @@ function createAuditChain(tableName) {
   // Firlatmak dogru davranis: yazim tumuyle duser ve girdi spool'a gider, yani
   // KAYIT KAYBOLMAZ, yalnizca gecikir.
   async function getLastHash() {
-    const { rows } = await db.query(
-      `SELECT TOP 1 entry_hash FROM ${tableName} ORDER BY id DESC`
-    );
+    const { rows } = await db.query(`SELECT TOP 1 entry_hash FROM ${tableName} ORDER BY id DESC`);
     return rows[0]?.entry_hash || '';
   }
 
@@ -52,8 +53,16 @@ function createAuditChain(tableName) {
    */
   async function writeEntry(entry, { spoolOnFailure = true } = {}) {
     const {
-      sessionId, username, authSource, role, targetHost, targetIp,
-      action, result, detail, clientIp,
+      sessionId,
+      username,
+      authSource,
+      role,
+      targetHost,
+      targetIp,
+      action,
+      result,
+      detail,
+      clientIp,
     } = entry;
     try {
       const prevHash = await getLastHash();
@@ -65,13 +74,19 @@ function createAuditChain(tableName) {
            (session_id, username, auth_source, role, target_host, target_ip, action, result, detail, client_ip, prev_hash, entry_hash)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
-          sessionId || null, username || 'system',
-          authSource || 'local', role || null,
-          targetHost || null, targetIp || null,
-          action, result || null,
+          sessionId || null,
+          username || 'system',
+          authSource || 'local',
+          role || null,
+          targetHost || null,
+          targetIp || null,
+          action,
+          result || null,
           storedDetail,
-          clientIp || null, prevHash, entryHash,
-        ]
+          clientIp || null,
+          prevHash,
+          entryHash,
+        ],
       );
       return true;
     } catch (err) {
@@ -87,7 +102,9 @@ function createAuditChain(tableName) {
       console.error(
         `[audit:${tableName}] write failed:`,
         err.message,
-        alindi ? '— kayit spool`a alindi, DB donunce aktarilacak.' : '— SPOOL DA DUSTU, KAYIT KAYIP.',
+        alindi
+          ? '— kayit spool`a alindi, DB donunce aktarilacak.'
+          : '— SPOOL DA DUSTU, KAYIT KAYIP.',
       );
       return false;
     }
@@ -110,25 +127,49 @@ function createAuditChain(tableName) {
   //
   // `dateFrom`/`dateTo`: denetim kaydinda tarih araligi HIC YOKTU — bir olayin
   // gununu bilen kullanici 50'serlik sayfalari geriye dogru cevirmek zorundaydi.
-  async function getLogs({ limit = 200, offset = 0, username, targetHost, action, actionPrefix, dateFrom, dateTo } = {}) {
+  async function getLogs({
+    limit = 200,
+    offset = 0,
+    username,
+    targetHost,
+    action,
+    actionPrefix,
+    dateFrom,
+    dateTo,
+  } = {}) {
     const conditions = [];
     const params = [];
-    if (username)   { params.push(username);   conditions.push(`username = $${params.length}`);    }
-    if (targetHost) { params.push(targetHost); conditions.push(`target_host = $${params.length}`); }
-    if (action)     { params.push(action);     conditions.push(`action = $${params.length}`);      }
+    if (username) {
+      params.push(username);
+      conditions.push(`username = $${params.length}`);
+    }
+    if (targetHost) {
+      params.push(targetHost);
+      conditions.push(`target_host = $${params.length}`);
+    }
+    if (action) {
+      params.push(action);
+      conditions.push(`action = $${params.length}`);
+    }
     if (actionPrefix) {
       params.push(`${String(actionPrefix).replace(/[%_[]/g, '')}%`);
       conditions.push(`action LIKE $${params.length}`);
     }
-    if (dateFrom)   { params.push(dateFrom);   conditions.push(`created_at >= $${params.length}`); }
-    if (dateTo)     { params.push(dateTo);     conditions.push(`created_at < $${params.length}`);  }
+    if (dateFrom) {
+      params.push(dateFrom);
+      conditions.push(`created_at >= $${params.length}`);
+    }
+    if (dateTo) {
+      params.push(dateTo);
+      conditions.push(`created_at < $${params.length}`);
+    }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(offset, limit);
     const { rows } = await db.query(
       `SELECT * FROM ${tableName} ${where}
        ORDER BY created_at DESC
        OFFSET $${params.length - 1} ROWS FETCH NEXT $${params.length} ROWS ONLY`,
-      params
+      params,
     );
     return rows;
   }
@@ -263,7 +304,9 @@ function auditMutations(prefix, { exclude = [] } = {}) {
           const body = JSON.stringify(redactObject(req.body));
           if (body && body !== '{}') detail += ' ' + body.slice(0, 800);
         }
-      } catch { /* body serilestirilemedi — yalnizca URL */ }
+      } catch {
+        /* body serilestirilemedi — yalnizca URL */
+      }
       auditPortal(req, `${prefix}_${req.method.toLowerCase()}`, { detail });
     });
     next();
@@ -280,7 +323,9 @@ function initPortalAudit(app) {
     const auth = require('../auth/index.cjs');
     requireAuth = auth.requireAuth;
     requireAdmin = auth.requireAdmin;
-  } catch { /* auth yok → endpoint acilmaz */ }
+  } catch {
+    /* auth yok → endpoint acilmaz */
+  }
   if (!requireAuth || !requireAdmin) return;
 
   app.get('/api/portal-audit', requireAuth, requireAdmin, async (req, res) => {

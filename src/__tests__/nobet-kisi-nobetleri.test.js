@@ -10,10 +10,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const SRC = fs.readFileSync(
-  path.join(__dirname, '..', 'components', 'DutyRosterPage.tsx'),
-  'utf8',
-);
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'components', 'DutyRosterPage.tsx'), 'utf8');
 
 test('kişi listesi AY FİLTRESİNDEN etkilenmez (en sinsi hata)', () => {
   // `filtered` seçili aya göre süzülmüş listedir. Modala onu vermek "tüm nöbetleri"
@@ -68,8 +65,5 @@ test('tabloda hem nöbetçi hem yedek adı tıklanabilir', () => {
 });
 
 test('yardım bölümü bu özelliği anlatıyor', () => {
-  assert.ok(
-    /Bir Kişinin Tüm Nöbetleri/.test(SRC),
-    'yeni özellik yardım metnine eklenmemiş',
-  );
+  assert.ok(/Bir Kişinin Tüm Nöbetleri/.test(SRC), 'yeni özellik yardım metnine eklenmemiş');
 });

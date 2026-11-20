@@ -15,7 +15,10 @@ const { summarize, servicesOfHosts } = require('../nginx-api-summary.cjs');
 const { envOfHost } = require('../nginx-hosts.cjs');
 
 const row = (host, config_file, locations, no_limit = 0) => ({
-  host, config_file, locations, no_limit,
+  host,
+  config_file,
+  locations,
+  no_limit,
 });
 
 test('ortam SUNUCU ADINDAN turetilir (tabloda ortam kolonu yok)', () => {
@@ -63,7 +66,10 @@ test('sunucu sirasi ortama gore (DEV, TEST, QA, PROD) sonra ada gore', () => {
     row('GBNGWP01', 'a.conf', 1),
     row('GBNGWT03', 'a.conf', 1),
   ]);
-  assert.deepEqual(s.byHost.map((h) => h.host), ['GBNGWD01', 'GBNGWT03', 'GBNGWP01', 'GBNGWP02']);
+  assert.deepEqual(
+    s.byHost.map((h) => h.host),
+    ['GBNGWD01', 'GBNGWT03', 'GBNGWP01', 'GBNGWP02'],
+  );
 });
 
 test('konfigurasyon bazinda: hangi ortamda VAR, hangisinde YOK', () => {
@@ -108,9 +114,12 @@ test('ORTAMLAR ARASI suruklenme: ortamlarin beklenen sayisi farkliysa isaretleni
 
 test('tutarli dagitimda HICBIR suruklenme bayragi yanmaz', () => {
   const s = summarize([
-    row('GBNGWD01', 'x.conf', 9), row('GBNGWD02', 'x.conf', 9),
-    row('GBNGWT03', 'x.conf', 9), row('GBNGWT04', 'x.conf', 9),
-    row('GBNGWP01', 'x.conf', 9), row('GBNGWAP01', 'x.conf', 9),
+    row('GBNGWD01', 'x.conf', 9),
+    row('GBNGWD02', 'x.conf', 9),
+    row('GBNGWT03', 'x.conf', 9),
+    row('GBNGWT04', 'x.conf', 9),
+    row('GBNGWP01', 'x.conf', 9),
+    row('GBNGWAP01', 'x.conf', 9),
   ]);
   const c = s.byConfig[0];
   assert.equal(c.hostInconsistent, false);
@@ -133,10 +142,7 @@ test('rate limit tanimi OLMAYAN konfigurasyonlar', () => {
 });
 
 test('BILINMIYOR bir ortam DEGILDIR: eksik ortam listesine girmez', () => {
-  const s = summarize([
-    row('GBNGWD01', 'x.conf', 3),
-    row('tanimsizsunucu', 'x.conf', 3),
-  ]);
+  const s = summarize([row('GBNGWD01', 'x.conf', 3), row('tanimsizsunucu', 'x.conf', 3)]);
   const c = s.byConfig[0];
   assert.ok(!c.missingEnvs.includes('BILINMIYOR'));
   assert.ok(s.envs.includes('BILINMIYOR'), 'ama GIZLENMEZ - ekranda gorunur');
@@ -168,18 +174,44 @@ test('bos girdi cokmez ve DOLU yanitla ayni sekli tasir', () => {
 
 test('sunucu basina SERVIS: vhost dosyasindan (ortam eki ve .conf atilir), audit verisi yoksa bos; siralama ortam > servis > ad (2026-09-17)', () => {
   const servers = [
-    { host: 'GBNGWP02', conf_file: '/usr/nginx/conf.d/mblcustomers-PROD.conf', server_name: 'mblcustomers.garantibbva.com.tr' },
-    { host: 'GBNGWP01', conf_file: '/usr/nginx/conf.d/customers-PROD.conf', server_name: 'customers.garantibbva.com.tr www.customers.garantibbva.com.tr' },
-    { host: 'GBNGWP01', conf_file: '/usr/nginx/conf.d/customers-PROD.conf', server_name: 'customers.garantibbva.com.tr' }, // ikinci server blogu (443)
+    {
+      host: 'GBNGWP02',
+      conf_file: '/usr/nginx/conf.d/mblcustomers-PROD.conf',
+      server_name: 'mblcustomers.garantibbva.com.tr',
+    },
+    {
+      host: 'GBNGWP01',
+      conf_file: '/usr/nginx/conf.d/customers-PROD.conf',
+      server_name: 'customers.garantibbva.com.tr www.customers.garantibbva.com.tr',
+    },
+    {
+      host: 'GBNGWP01',
+      conf_file: '/usr/nginx/conf.d/customers-PROD.conf',
+      server_name: 'customers.garantibbva.com.tr',
+    }, // ikinci server blogu (443)
     { host: 'GBNGWD01', conf_file: 'mcustomers-dev.conf' },
   ];
   const m = servicesOfHosts(servers);
-  assert.deepEqual(m.get('GBNGWP01'), { services: ['customers'], names: ['customers.garantibbva.com.tr', 'www.customers.garantibbva.com.tr'] });
+  assert.deepEqual(m.get('GBNGWP01'), {
+    services: ['customers'],
+    names: ['customers.garantibbva.com.tr', 'www.customers.garantibbva.com.tr'],
+  });
   assert.deepEqual(m.get('GBNGWD01').services, ['mcustomers']);
-  const out = summarize([row('GBNGWP01', 'a.conf', 3), row('GBNGWP02', 'a.conf', 3), row('GBNGWP03', 'a.conf', 3), row('GBNGWD01', 'a.conf', 1)], servers);
+  const out = summarize(
+    [
+      row('GBNGWP01', 'a.conf', 3),
+      row('GBNGWP02', 'a.conf', 3),
+      row('GBNGWP03', 'a.conf', 3),
+      row('GBNGWD01', 'a.conf', 1),
+    ],
+    servers,
+  );
   const by = Object.fromEntries(out.byHost.map((h) => [h.host, h]));
   assert.deepEqual(by.GBNGWP02.services, ['mblcustomers']);
   assert.deepEqual(by.GBNGWP03.services, []); // audit verisi yok -> "—"
-  assert.deepEqual(out.byHost.map((h) => h.host), ['GBNGWD01', 'GBNGWP03', 'GBNGWP01', 'GBNGWP02']); // DEV once; PROD icinde servissiz ('') once, sonra customers, mblcustomers
+  assert.deepEqual(
+    out.byHost.map((h) => h.host),
+    ['GBNGWD01', 'GBNGWP03', 'GBNGWP01', 'GBNGWP02'],
+  ); // DEV once; PROD icinde servissiz ('') once, sonra customers, mblcustomers
   assert.deepEqual(summarize([row('GBNGWP01', 'a.conf', 1)]).byHost[0].services, []); // serverRows verilmezse de calisir
 });

@@ -34,7 +34,7 @@ const ROLLER: NodeRol[] = [
   { rol: 'rpc', envler: ['SOLRPC'], bicim: 'url' },
   { rol: 'ws', envler: ['SOLWSRPC'], bicim: 'url' },
 ];
-const grup =(ek: Partial<NodeGrup> = {}): NodeGrup => ({
+const grup = (ek: Partial<NodeGrup> = {}): NodeGrup => ({
   id: 'eski:solana-mainnet',
   tur: 'eski',
   baslik: 'solana-mainnet',
@@ -69,7 +69,12 @@ describe('O1 sekmeler', () => {
     expect(sekmeListesi('wyden', true).map(([id]) => id)).not.toContain('node');
   });
   it('node görünümü sekme çubuğunda değil', () => {
-    expect(navSekmeleri(sekmeListesi('metaco', false)).map(([id]) => id)).toEqual(['durum', 'podlar', 'surumler', 'configmap']);
+    expect(navSekmeleri(sekmeListesi('metaco', false)).map(([id]) => id)).toEqual([
+      'durum',
+      'podlar',
+      'surumler',
+      'configmap',
+    ]);
     expect(navSekmeleri(sekmeListesi('metaco', true))).toEqual([]);
     expect(navSekmeleri(sekmeListesi('wyden', false))).toEqual(sekmeListesi('wyden', false));
   });
@@ -189,7 +194,10 @@ describe('O4 sonuç metinleri (9.2)', () => {
       rollback: [],
       yedek: ['/vhosting/crypto-hub/node-backup/x/20261102-t42'],
       hatalar: [
-        { stage: 'geri_alma', message: 'hmz-harmonize-uis-adapter-evm-ethereum-mainnet: oc set env rc=1' },
+        {
+          stage: 'geri_alma',
+          message: 'hmz-harmonize-uis-adapter-evm-ethereum-mainnet: oc set env rc=1',
+        },
         { stage: 'geri_alma', message: '/vhosting/crypto-hub/node-backup/x/20261102-t42' },
       ],
     };
@@ -198,7 +206,12 @@ describe('O4 sonuç metinleri (9.2)', () => {
     );
     const yalnizNeden: NodeSonuc = {
       ...s,
-      hatalar: [{ stage: 'geri_alma', message: 'hmz-harmonize-uis-adapter-evm-ethereum-mainnet: oc set env rc=1' }],
+      hatalar: [
+        {
+          stage: 'geri_alma',
+          message: 'hmz-harmonize-uis-adapter-evm-ethereum-mainnet: oc set env rc=1',
+        },
+      ],
     };
     expect(sonucMetni('BASARISIZ', 'GERI_ALMA', yalnizNeden)).toContain(
       'yedek: /vhosting/crypto-hub/node-backup/x/20261102-t42.',
@@ -287,7 +300,14 @@ describe('O7 rozetler ve sonuç tablosu', () => {
     const s: NodeSonuc = {
       sum: { sonuc: 'geri_alindi', planSha: 'a'.repeat(64), talepId: '4', kod: 'ROLLOUT' },
       degisiklikler: [
-        { deployment: 'd1', container: 'app', env: 'SOLRPC', eski: 'e', yeni: 'y', durum: 'geri_alindi' },
+        {
+          deployment: 'd1',
+          container: 'app',
+          env: 'SOLRPC',
+          eski: 'e',
+          yeni: 'y',
+          durum: 'geri_alindi',
+        },
         { deployment: 'd2', container: 'app', env: 'SOLRPC', eski: 'e', yeni: 'y', durum: 'BAYAT' },
       ],
       rollout: [{ deployment: 'd1', durum: 'timeout', sureSn: 600 }],
@@ -303,7 +323,12 @@ describe('O7 rozetler ve sonuç tablosu', () => {
       geriOkuma: 'uyusmuyor',
       durum: 'geri alma: ok',
     });
-    expect(b).toMatchObject({ yazildi: 'hayır', rollout: '—', geriOkuma: '—', durum: 'bayat — yazılmadı' });
+    expect(b).toMatchObject({
+      yazildi: 'hayır',
+      rollout: '—',
+      geriOkuma: '—',
+      durum: 'bayat — yazılmadı',
+    });
     expect(sonucSatirlari(null)).toEqual([]);
   });
 });
@@ -330,7 +355,13 @@ describe('O9 PS7 talep numarası sunucuyla aynı biçimde', () => {
     expect(smartNo(null, 12)).toBe('Portal #12');
     expect(smartNo('SM-1', 4)).toBe(N.talepNoMetni('SM-1', 4));
     expect(smartNo(null, 12)).toBe(N.talepNoMetni(null, 12));
-    const b = bekleyenMetni({ talepId: 12, externalTicketId: null, username: 'ali', createdAt: '2026-11-02T08:00:00Z', durum: 'ACILIYOR' });
+    const b = bekleyenMetni({
+      talepId: 12,
+      externalTicketId: null,
+      username: 'ali',
+      createdAt: '2026-11-02T08:00:00Z',
+      durum: 'ACILIYOR',
+    });
     expect(b).toMatch(/^Onay bekleyen değişiklik: Portal #12 — ali, /);
     expect(b).not.toMatch(/Smart #Portal/);
   });
@@ -338,8 +369,12 @@ describe('O9 PS7 talep numarası sunucuyla aynı biçimde', () => {
   it('biletsiz koşan talep onay bekliyor demez; biletli ya da açılan talep metni değişmez', async () => {
     const { bekleyenMetni, METIN } = await import('@/components/crypto_hub/nodeOrtak');
     const t = { talepId: 12, username: 'ali', createdAt: '2026-11-02T08:00:00Z' };
-    expect(bekleyenMetni({ ...t, externalTicketId: null, durum: 'CALISIYOR' })).toMatch(/^Uygulanan değişiklik: Portal #12 — ali, /);
-    expect(bekleyenMetni({ ...t, externalTicketId: 'SM-1', durum: 'CALISIYOR' })).toMatch(/^Onay bekleyen değişiklik: Smart #SM-1/);
+    expect(bekleyenMetni({ ...t, externalTicketId: null, durum: 'CALISIYOR' })).toMatch(
+      /^Uygulanan değişiklik: Portal #12 — ali, /,
+    );
+    expect(bekleyenMetni({ ...t, externalTicketId: 'SM-1', durum: 'CALISIYOR' })).toMatch(
+      /^Onay bekleyen değişiklik: Smart #SM-1/,
+    );
     expect(METIN.islemKart.ipucu).not.toMatch(/Smart onayıyla değiştirir/);
     expect(METIN.islemKart.ipucu).toMatch(/production'da Smart onayı zorunludur/);
   });
@@ -359,10 +394,17 @@ describe('O9 PS7 talep numarası sunucuyla aynı biçimde', () => {
         govde = x;
       },
     };
-    nginxRedCevirici({ onek: 'portal', eylem5xx: true })({ method: 'POST', path: '/crypto-hub/node-change' }, res, () => {});
+    nginxRedCevirici({ onek: 'portal', eylem5xx: true })(
+      { method: 'POST', path: '/crypto-hub/node-change' },
+      res,
+      () => {},
+    );
     res.json({ ok: false, blocked: 'crypto_node_smart_yarim', message: 'Ayar eksik.' });
     expect(kod).toBe(424);
-    const yanit = new Response(JSON.stringify(govde), { status: kod, headers: { 'Content-Type': 'application/json' } });
+    const yanit = new Response(JSON.stringify(govde), {
+      status: kod,
+      headers: { 'Content-Type': 'application/json' },
+    });
     await expect(safeJson(yanit)).rejects.toMatchObject({
       message: 'Ayar eksik.',
       status: 503,
@@ -388,14 +430,34 @@ describe('O11 bileşen seçimi yardımcıları', () => {
     const V1 = 'https://n1.node.invalid/v3/K1';
     const V2 = 'https://n2.node.invalid/v3/K2';
     const e = (deployment: string, deger: string) => ({
-      deployment, container: 'app', env: 'NODE_ADDR', rol: 'rpc', kaynak: 'literal', maskeli: 'x', sha: sha(deger), helm: 'hayir' as const,
+      deployment,
+      container: 'app',
+      env: 'NODE_ADDR',
+      rol: 'rpc',
+      kaynak: 'literal',
+      maskeli: 'x',
+      sha: sha(deger),
+      helm: 'hayir' as const,
     });
     const d = (ad: string, bilesen: 'adapter' | 'api' | 'indexer' | 'processor', ek = {}) => ({
-      ad, bilesen, durum: 'running' as const, istenen: 1, hazir: 1, gitops: 'hayir' as const, nodeBagli: true, secilebilir: true, ...ek,
+      ad,
+      bilesen,
+      durum: 'running' as const,
+      istenen: 1,
+      hazir: 1,
+      gitops: 'hayir' as const,
+      nodeBagli: true,
+      secilebilir: true,
+      ...ek,
     });
     const g = grup({
       roller: [{ rol: 'rpc', envler: ['NODE_ADDR'], bicim: 'url' }],
-      deploymentlar: [d('a', 'adapter'), d('b', 'api'), d('c', 'indexer'), d('p', 'processor', { nodeBagli: false, secilebilir: false })],
+      deploymentlar: [
+        d('a', 'adapter'),
+        d('b', 'api'),
+        d('c', 'indexer'),
+        d('p', 'processor', { nodeBagli: false, secilebilir: false }),
+      ],
       envler: [e('a', V1), e('b', V2), e('c', V2)],
     });
     expect(o.secilebilirler(g).map((x) => x.ad)).toEqual(['a', 'b', 'c']);
@@ -464,7 +526,12 @@ describe('O12 kullanıcıya görünen metinlerde "katalog" yok; değer yalnız m
     expect(out.length, 'bekçi boş koşuyor').toBeGreaterThan(80);
     // Sunucu METIN'i de kullanıcıya gider (ret mesajları).
     const sunucu = await import('../../server/crypto-hub/node.cjs');
-    metinler((sunucu as unknown as { METIN: unknown }).METIN ?? (sunucu as unknown as { default: { METIN: unknown } }).default.METIN, 'SUNUCU', out);
+    metinler(
+      (sunucu as unknown as { METIN: unknown }).METIN ??
+        (sunucu as unknown as { default: { METIN: unknown } }).default.METIN,
+      'SUNUCU',
+      out,
+    );
     expect(out.some(([y]) => y.startsWith('SUNUCU.sifrelemeYok'))).toBe(true);
     const kotu = out.filter(([, v]) => /katalog/i.test(v));
     expect(kotu).toEqual([]);
@@ -475,8 +542,18 @@ describe('O12 kullanıcıya görünen metinlerde "katalog" yok; değer yalnız m
   it('mevcut değer her yerde yalnız maskeli; node listesi yardımcıları ve metinleri yok', async () => {
     const o = await import('@/components/crypto_hub/nodeOrtak');
     const mn = { maskeli: { rpc: 'https://a/****', ws: 'wss://a/****' } };
-    const dep = { ad: 'd', bilesen: null, durum: 'running' as const, istenen: 1, hazir: 1, gitops: 'hayir' as const, nodeBagli: true };
-    expect(o.mevcutNodeMetni({ ...dep, mevcutNode: mn }, ROLLER)).toBe('rpc: https://a/****; ws: wss://a/****');
+    const dep = {
+      ad: 'd',
+      bilesen: null,
+      durum: 'running' as const,
+      istenen: 1,
+      hazir: 1,
+      gitops: 'hayir' as const,
+      nodeBagli: true,
+    };
+    expect(o.mevcutNodeMetni({ ...dep, mevcutNode: mn }, ROLLER)).toBe(
+      'rpc: https://a/****; ws: wss://a/****',
+    );
     expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1] }))).toBe(
       "Tüm bileşenler aynı node'a bağlı: rpc: https://a/****; ws: wss://a/****",
     );
@@ -485,33 +562,77 @@ describe('O12 kullanıcıya görünen metinlerde "katalog" yok; değer yalnız m
     expect(o.uisOzetMetni(grup({ mevcutNode: mn }))).toBeNull();
     // Özet "tüm bileşenler" diyemiyorsa yok: referanslı grup (sunucu maskeli '' verir), bir rolün
     // değeri yok, node'a bağlı bir bileşenin literal değeri yok, ölçülemedi.
-    expect(o.uisOzetMetni(grup({ mevcutNode: { maskeli: { rpc: '', ws: '' } }, envler: [ENV1], referans: true }))).toBeNull();
-    expect(o.uisOzetMetni(grup({ mevcutNode: { maskeli: { rpc: 'https://a/****', ws: '' } }, envler: [ENV1] }))).toBeNull();
+    expect(
+      o.uisOzetMetni(
+        grup({ mevcutNode: { maskeli: { rpc: '', ws: '' } }, envler: [ENV1], referans: true }),
+      ),
+    ).toBeNull();
+    expect(
+      o.uisOzetMetni(
+        grup({ mevcutNode: { maskeli: { rpc: 'https://a/****', ws: '' } }, envler: [ENV1] }),
+      ),
+    ).toBeNull();
     expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], referans: true }))).toBeNull();
     expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], olculemedi: true }))).toBeNull();
     const literalDep = { ...dep, ad: 'adapter', mevcutNode: mn };
     const refDep = { ...dep, ad: 'indexer', mevcutNode: null };
     const isleyici = { ...dep, ad: 'processor', nodeBagli: false, mevcutNode: null };
-    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, refDep] }))).toBeNull();
-    expect(o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, isleyici] }))).toBe(
-      "Tüm bileşenler aynı node'a bağlı: rpc: https://a/****; ws: wss://a/****",
-    );
+    expect(
+      o.uisOzetMetni(grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, refDep] })),
+    ).toBeNull();
+    expect(
+      o.uisOzetMetni(
+        grup({ mevcutNode: mn, envler: [ENV1], deploymentlar: [literalDep, isleyici] }),
+      ),
+    ).toBe("Tüm bileşenler aynı node'a bağlı: rpc: https://a/****; ws: wss://a/****");
     const ad = o as unknown as Record<string, unknown>;
     for (const k of [
-      'katalogRozeti', 'nodeRozeti', 'adaySecilebilir', 'adayEtiketi', 'maskeliOzet', 'secimAdaydaMi', 'adaySizNotu', 'adayYokMetni',
+      'katalogRozeti',
+      'nodeRozeti',
+      'adaySecilebilir',
+      'adayEtiketi',
+      'maskeliOzet',
+      'secimAdaydaMi',
+      'adaySizNotu',
+      'adayYokMetni',
     ])
       expect(ad[k], k).toBeUndefined();
     const m = o.METIN as unknown as Record<string, unknown>;
     for (const k of [
-      'katalogda', 'katalogdaYok', 'nodeRozet', 'nodeTanimsiz', 'mevcutAciklama', 'yeniNodeYerTutucu', 'ekKullanimda',
-      'ekCozulemedi', 'adayYokListeBos', 'adayYokGrup', 'kartListeBos', 'kartGrupBos',
+      'katalogda',
+      'katalogdaYok',
+      'nodeRozet',
+      'nodeTanimsiz',
+      'mevcutAciklama',
+      'yeniNodeYerTutucu',
+      'ekKullanimda',
+      'ekCozulemedi',
+      'adayYokListeBos',
+      'adayYokGrup',
+      'kartListeBos',
+      'kartGrupBos',
     ])
       expect(m[k], k).toBeUndefined();
-    expect(o.METIN.mevcutBasliklar).toEqual(['Bileşen', 'Kap', 'Env değişkeni', 'Şu anki değer (maskeli)']);
-    expect(o.METIN.uisBasliklar).toEqual(['Bileşen', 'Deployment', 'Durum', 'Node değişkeni', 'Şu anki değer']);
+    expect(o.METIN.mevcutBasliklar).toEqual([
+      'Bileşen',
+      'Kap',
+      'Env değişkeni',
+      'Şu anki değer (maskeli)',
+    ]);
+    expect(o.METIN.uisBasliklar).toEqual([
+      'Bileşen',
+      'Deployment',
+      'Durum',
+      'Node değişkeni',
+      'Şu anki değer',
+    ]);
     expect(o.METIN.gecmisBasliklar[2]).toBe('Yeni değer (maskeli)');
     expect(o.METIN.yeniNodeEtiket).toBe('Yeni değer (maskeli)');
-    expect(o.METIN.smartGorunum('https://a.invalid/****')).toBe("Smart'ta böyle görünecek: https://a.invalid/****");
-    expect(o.METIN.bosUyari('p2p')).toBe("p2p boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.");
+    expect(o.METIN.smartGorunum('https://a.invalid/****')).toBe(
+      "Smart'ta böyle görünecek: https://a.invalid/****",
+    );
+    expect(o.METIN.bosUyari('p2p')).toBe(
+      "p2p boş bırakıldı: env değişkeni BOŞ değere yazılır, uygulama node'suz kalabilir.",
+    );
   });
 });

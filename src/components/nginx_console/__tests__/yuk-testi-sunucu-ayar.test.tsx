@@ -14,18 +14,58 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRequire } from 'node:module';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
-import { kosuNormalle, type NlKosuAyrinti, type NlParametreler, type NlSinirlar, type NlSunucuAyari, type NlVarsayilanlar } from '@/api/nginxLoadtestApi';
+import {
+  kosuNormalle,
+  type NlKosuAyrinti,
+  type NlParametreler,
+  type NlSinirlar,
+  type NlSunucuAyari,
+  type NlVarsayilanlar,
+} from '@/api/nginxLoadtestApi';
 import { nedenAcikla } from '../yukTesti/nedenler';
-import { SRV_DIZIN_ANAHTARI, butceTavani, hazirlikPayiSn, kalanSurecDurdurulabilir, parametreHatalari, parametreSunucuAyari, srvDizinGecerli, sunucuAyarHatalari, sunucuAyarMetni, sunucuAyariSatiri } from '../yukTesti/yukTestiOrtak';
+import {
+  SRV_DIZIN_ANAHTARI,
+  butceTavani,
+  hazirlikPayiSn,
+  kalanSurecDurdurulabilir,
+  parametreHatalari,
+  parametreSunucuAyari,
+  srvDizinGecerli,
+  sunucuAyarHatalari,
+  sunucuAyarMetni,
+  sunucuAyariSatiri,
+} from '../yukTesti/yukTestiOrtak';
 import { yukMetni } from '../yukTesti/BaslatOnayi';
 
 const api = vi.hoisted(() => ({
-  hedefler: vi.fn(), senaryolar: vi.fn(), senaryo: vi.fn(), senaryoKaydet: vi.fn(), senaryoSil: vi.fn(), onKontrol: vi.fn(),
-  baslat: vi.fn(), kosular: vi.fn(), kosu: vi.fn(), durum: vi.fn(), durdur: vi.fn(), yenidenOku: vi.fn(), karsilastir: vi.fn(), ipSinifi: vi.fn(),
-  araclar: vi.fn(), araclariHazirla: vi.fn(), aracGeriCek: vi.fn(),
+  hedefler: vi.fn(),
+  senaryolar: vi.fn(),
+  senaryo: vi.fn(),
+  senaryoKaydet: vi.fn(),
+  senaryoSil: vi.fn(),
+  onKontrol: vi.fn(),
+  baslat: vi.fn(),
+  kosular: vi.fn(),
+  kosu: vi.fn(),
+  durum: vi.fn(),
+  durdur: vi.fn(),
+  yenidenOku: vi.fn(),
+  karsilastir: vi.fn(),
+  ipSinifi: vi.fn(),
+  araclar: vi.fn(),
+  araclariHazirla: vi.fn(),
+  aracGeriCek: vi.fn(),
 }));
-vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({ ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()), nginxLoadtestApi: api }));
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }));
+vi.mock('@/api/nginxLoadtestApi', async (orijinal) => ({
+  ...(await orijinal<typeof import('@/api/nginxLoadtestApi')>()),
+  nginxLoadtestApi: api,
+}));
+const toast = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warning: vi.fn(),
+}));
 vi.mock('@/hooks/useToast', () => ({ toast }));
 
 import { YukTestiTab } from '../YukTestiTab';
@@ -34,23 +74,86 @@ import KosuAyrinti from '../yukTesti/KosuAyrinti';
 import { SunucuAyarUyarilari } from '../yukTesti/YukUi';
 
 const SINIR: NlSinirlar = {
-  maxHiz: 450, maxTekrar: 3, sureMin: 40, sureMax: 300, isinmaMax: 60, maxVu: 199, maxButceSn: 2700,
-  baglantiMin: 1, maxBaglanti: 199, maxBaglantiSayisi: 5, isParcacigiMin: 1, maxIsParcacigi: 16, serbestTavanRps: 200, serbestMaxBaglanti: 50,
+  maxHiz: 450,
+  maxTekrar: 3,
+  sureMin: 40,
+  sureMax: 300,
+  isinmaMax: 60,
+  maxVu: 199,
+  maxButceSn: 2700,
+  baglantiMin: 1,
+  maxBaglanti: 199,
+  maxBaglantiSayisi: 5,
+  isParcacigiMin: 1,
+  maxIsParcacigi: 16,
+  serbestTavanRps: 200,
+  serbestMaxBaglanti: 50,
 };
 const VARSAYILAN: NlVarsayilanlar = {
-  motor: 'k6', hizlar: [100, 250, 400], maxvu: 150, baglantilar: [2, 4, 8], is_parcacigi: 2, tekrar: 2, isinma: 30, sure: 120, bosluk: 30, bosta: 60,
-  kip: 'yeni', ae: 'br', serbest: { hizlar: [50, 100, 200], maxvu: 50 }, protokol: 'h1',
+  motor: 'k6',
+  hizlar: [100, 250, 400],
+  maxvu: 150,
+  baglantilar: [2, 4, 8],
+  is_parcacigi: 2,
+  tekrar: 2,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  kip: 'yeni',
+  ae: 'br',
+  serbest: { hizlar: [50, 100, 200], maxvu: 50 },
+  protokol: 'h1',
 };
 const HEDEFLER = {
   ok: true,
-  hedefler: [{ host: 'GBNGXT33', env: 'TEST', ipler: ['192.168.133.27'], vhostlar: ['glomo-test.garantibbva.com.tr'], vhostVerisi: true, uygun: true, neden: null }],
+  hedefler: [
+    {
+      host: 'GBNGXT33',
+      env: 'TEST',
+      ipler: ['192.168.133.27'],
+      vhostlar: ['glomo-test.garantibbva.com.tr'],
+      vhostVerisi: true,
+      uygun: true,
+      neden: null,
+    },
+  ],
   yukHostlari: [{ host: 'GBNGXT34', env: 'TEST', uygun: true, neden: null }],
-  sinirlar: SINIR, varsayilan: VARSAYILAN, serbest: { acik: true, aglar: [] }, motorlar: ['k6', 'wrk'], protokoller: ['h1', 'h2'],
-  araclar: { hazir: true, aracId: 5, k6Surum: 'v0.49.0', wrkSurum: '4.2.0', kod: null, mesaj: null },
+  sinirlar: SINIR,
+  varsayilan: VARSAYILAN,
+  serbest: { acik: true, aglar: [] },
+  motorlar: ['k6', 'wrk'],
+  protokoller: ['h1', 'h2'],
+  araclar: {
+    hazir: true,
+    aracId: 5,
+    k6Surum: 'v0.49.0',
+    wrkSurum: '4.2.0',
+    kod: null,
+    mesaj: null,
+  },
 };
-const SENARYO = { id: 3, ad: 'GLOMO', aciklama: null, vhost: 'glomo-test.garantibbva.com.tr', senaryoTur: 'K', yolSayisi: 264, sha256: 'b'.repeat(64), kaynak: 'har', createdBy: 'onur', createdAt: '2026-10-26T10:00:00Z' };
+const SENARYO = {
+  id: 3,
+  ad: 'GLOMO',
+  aciklama: null,
+  vhost: 'glomo-test.garantibbva.com.tr',
+  senaryoTur: 'K',
+  yolSayisi: 264,
+  sha256: 'b'.repeat(64),
+  kaynak: 'har',
+  createdBy: 'onur',
+  createdAt: '2026-10-26T10:00:00Z',
+};
 const DIZIN = '/usr/nginx/applications/glomo';
-const SERBEST_SINIF = { ok: true, tur: 'serbest', ip: '10.20.30.40', host: null, ag: '10.20.30.0/24', digerSahipler: [] };
+const SERBEST_SINIF = {
+  ok: true,
+  tur: 'serbest',
+  ip: '10.20.30.40',
+  host: null,
+  ag: '10.20.30.0/24',
+  digerSahipler: [],
+};
 
 beforeEach(() => {
   for (const f of Object.values(api)) f.mockReset();
@@ -59,10 +162,34 @@ beforeEach(() => {
   api.kosular.mockResolvedValue({ ok: true, kosular: [], dahaVar: false });
   api.senaryolar.mockResolvedValue({ ok: true, senaryolar: [SENARYO] });
   api.hedefler.mockResolvedValue(HEDEFLER);
-  api.durum.mockResolvedValue({ ok: true, status: 'running', finished: false, output: '', result: null, kosuDurum: 'RUNNING' });
-  api.onKontrol.mockResolvedValue({ ok: false, code: 'kilit_dolu', message: 'Başka bir yük testi sürüyor.', _httpStatus: 409 });
+  api.durum.mockResolvedValue({
+    ok: true,
+    status: 'running',
+    finished: false,
+    output: '',
+    result: null,
+    kosuDurum: 'RUNNING',
+  });
+  api.onKontrol.mockResolvedValue({
+    ok: false,
+    code: 'kilit_dolu',
+    message: 'Başka bir yük testi sürüyor.',
+    _httpStatus: 409,
+  });
   api.ipSinifi.mockImplementation(async (ip: string) => ({
-    ok: true, tur: 'sunucu', ip, host: 'GBNGXT33', env: 'TEST', vhostlar: ['glomo-test.garantibbva.com.tr'], vhostVerisi: true, hizSiniri: null, vuSiniri: null, uygun: true, neden: null, kod: null, kaynaklar: [],
+    ok: true,
+    tur: 'sunucu',
+    ip,
+    host: 'GBNGXT33',
+    env: 'TEST',
+    vhostlar: ['glomo-test.garantibbva.com.tr'],
+    vhostVerisi: true,
+    hizSiniri: null,
+    vuSiniri: null,
+    uygun: true,
+    neden: null,
+    kod: null,
+    kaynaklar: [],
   }));
 });
 
@@ -70,11 +197,14 @@ async function formAc() {
   render(<YukTestiTab isAdmin />);
   fireEvent.click(await screen.findByRole('tab', { name: /Yeni koşu/ }));
   fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
-  fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), { target: { value: 'GBNGXT33' } });
+  fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
+    target: { value: 'GBNGXT33' },
+  });
   fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '192.168.133.27' } });
   await screen.findByLabelText(/Sunucuyu koşu öncesi ayarla/);
 }
-const okDugmesi = () => screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
+const okDugmesi = () =>
+  screen.getByRole('button', { name: /Ön kontrolü (başlat|yeniden çalıştır)/ });
 const kutu = () => screen.getByLabelText(/Sunucuyu koşu öncesi ayarla/);
 const seviye = () => screen.getByLabelText(/seviyesi \(1–/) as HTMLInputElement;
 const dizin = () => screen.getByLabelText('Uygulama dizini') as HTMLInputElement;
@@ -93,20 +223,30 @@ describe('Yük Testi sunucu ayarı — form (SRV-1..5)', () => {
     const g = await onKontrolGovdesi();
     expect('sunucuAyar' in g.parametreler).toBe(false);
 
-    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
+      target: { value: '' },
+    });
     api.ipSinifi.mockResolvedValue(SERBEST_SINIF);
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
-    await waitFor(() => expect(screen.queryByLabelText(/Sunucuyu koşu öncesi ayarla/)).toBeNull(), { timeout: 3000 });
+    await waitFor(() => expect(screen.queryByLabelText(/Sunucuyu koşu öncesi ayarla/)).toBeNull(), {
+      timeout: 3000,
+    });
   });
 
   it('SRV-1b kutu işaretliyken hedef serbeste dönerse gövdeye girmez', async () => {
     await formAc();
     fireEvent.click(kutu());
-    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
+      target: { value: '' },
+    });
     api.ipSinifi.mockResolvedValue(SERBEST_SINIF);
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '10.20.30.40' } });
-    fireEvent.change(screen.getByLabelText('Host başlığı (vhost)'), { target: { value: 'glomo-test.garantibbva.com.tr' } });
-    await waitFor(() => expect(screen.queryByLabelText(/Sunucuyu koşu öncesi ayarla/)).toBeNull(), { timeout: 3000 });
+    fireEvent.change(screen.getByLabelText('Host başlığı (vhost)'), {
+      target: { value: 'glomo-test.garantibbva.com.tr' },
+    });
+    await waitFor(() => expect(screen.queryByLabelText(/Sunucuyu koşu öncesi ayarla/)).toBeNull(), {
+      timeout: 3000,
+    });
     const g = await onKontrolGovdesi();
     expect('sunucuAyar' in g.parametreler).toBe(false);
   });
@@ -126,21 +266,35 @@ describe('Yük Testi sunucu ayarı — form (SRV-1..5)', () => {
     fireEvent.click(screen.getByLabelText(/static \(önceden sıkıştırılmış dosya\)/));
     const g = await onKontrolGovdesi();
     expect(g.parametreler.sunucuAyar).toEqual({ seviye: 11, static: true, dizin: DIZIN });
-    expect(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ }).textContent).toContain('sunucu ayarı: HTTP/2 kapalı · brotli 11 · static');
+    expect(screen.getByRole('button', { name: /^Gelişmiş ayarlar/ }).textContent).toContain(
+      'sunucu ayarı: HTTP/2 kapalı · brotli 11 · static',
+    );
 
     // gzip en çok 9 (kullanıcının örneğindeki 10 geçersiz).
-    fireEvent.change(screen.getByLabelText('Sıkıştırma (Accept-Encoding)'), { target: { value: 'gzip' } });
+    fireEvent.change(screen.getByLabelText('Sıkıştırma (Accept-Encoding)'), {
+      target: { value: 'gzip' },
+    });
     expect(screen.getByLabelText('Gzip seviyesi (1–9)')).toBeInTheDocument();
     expect(screen.getByText('Gzip seviyesi 1–9 olmalı.')).toBeInTheDocument();
     fireEvent.change(seviye(), { target: { value: '10' } });
     expect(okDugmesi()).toBeDisabled();
     fireEvent.change(seviye(), { target: { value: '9' } });
-    expect((await onKontrolGovdesi(2)).parametreler.sunucuAyar).toEqual({ seviye: 9, static: true, dizin: DIZIN });
+    expect((await onKontrolGovdesi(2)).parametreler.sunucuAyar).toEqual({
+      seviye: 9,
+      static: true,
+      dizin: DIZIN,
+    });
 
     // identity: seviye alanı yok, gövdede null.
-    fireEvent.change(screen.getByLabelText('Sıkıştırma (Accept-Encoding)'), { target: { value: 'identity' } });
+    fireEvent.change(screen.getByLabelText('Sıkıştırma (Accept-Encoding)'), {
+      target: { value: 'identity' },
+    });
     expect(screen.queryByLabelText(/seviyesi \(1–/)).toBeNull();
-    expect((await onKontrolGovdesi(3)).parametreler.sunucuAyar).toEqual({ seviye: null, static: true, dizin: DIZIN });
+    expect((await onKontrolGovdesi(3)).parametreler.sunucuAyar).toEqual({
+      seviye: null,
+      static: true,
+      dizin: DIZIN,
+    });
   });
 
   it('SRV-3 kutu açıkken h2 /hedefler’de olmasa da seçilir; kutu kapalıyken eski davranış; wrk kapalı kalır', async () => {
@@ -166,7 +320,17 @@ describe('Yük Testi sunucu ayarı — form (SRV-1..5)', () => {
 
   it('SRV-4 ayar değişince imza değişir (ön kontrol eskir); dizin yalnız geçerliyse hatırlanır ve yeni formda gelir', async () => {
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 11, jobId: 900 });
-    api.kosu.mockResolvedValue({ ok: true, kosu: kosuNormalle({ id: 11, islem: 'on_kontrol', durum: 'RUNNING', hedefTuru: 'sunucu', parametreler: {} }), adimlar: [] });
+    api.kosu.mockResolvedValue({
+      ok: true,
+      kosu: kosuNormalle({
+        id: 11,
+        islem: 'on_kontrol',
+        durum: 'RUNNING',
+        hedefTuru: 'sunucu',
+        parametreler: {},
+      }),
+      adimlar: [],
+    });
     await formAc();
     fireEvent.click(kutu());
     fireEvent.change(seviye(), { target: { value: '6' } });
@@ -191,19 +355,25 @@ describe('Yük Testi sunucu ayarı — form (SRV-1..5)', () => {
     const ekle = vi.fn();
     render(<YeniKosu onBasladi={vi.fn()} onSenaryolar={vi.fn()} onKuyrugaEkle={ekle} />);
     fireEvent.change(await screen.findByLabelText('Senaryo'), { target: { value: '3' } });
-    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), { target: { value: 'GBNGXT33' } });
+    fireEvent.change(screen.getByLabelText('Hedef sunucu (isteğe bağlı)'), {
+      target: { value: 'GBNGXT33' },
+    });
     fireEvent.change(screen.getByLabelText('Hedef IP'), { target: { value: '192.168.133.27' } });
     fireEvent.click(await screen.findByLabelText(/Sunucuyu koşu öncesi ayarla/));
     fireEvent.change(seviye(), { target: { value: '6' } });
     fireEvent.change(dizin(), { target: { value: DIZIN } });
-    fireEvent.change(screen.getByLabelText('Kuyruk etiketi (zorunlu)'), { target: { value: 'A1' } });
+    fireEvent.change(screen.getByLabelText('Kuyruk etiketi (zorunlu)'), {
+      target: { value: 'A1' },
+    });
     const ekleDugmesi = () => screen.getByRole('button', { name: /Kuyruğa ekle/ });
     await waitFor(() => expect(ekleDugmesi()).toBeEnabled(), { timeout: 3000 });
     fireEvent.click(ekleDugmesi());
     const kapali = ekle.mock.calls[0][0];
     expect(kapali.ozet).toContain('sunucu ayarı: HTTP/2 kapalı · brotli 6');
     fireEvent.click(screen.getByLabelText(/static \(önceden sıkıştırılmış dosya\)/));
-    fireEvent.change(screen.getByLabelText('Kuyruk etiketi (zorunlu)'), { target: { value: 'A2' } });
+    fireEvent.change(screen.getByLabelText('Kuyruk etiketi (zorunlu)'), {
+      target: { value: 'A2' },
+    });
     await waitFor(() => expect(ekleDugmesi()).toBeEnabled());
     fireEvent.click(ekleDugmesi());
     const acik = ekle.mock.calls[1][0];
@@ -212,17 +382,61 @@ describe('Yük Testi sunucu ayarı — form (SRV-1..5)', () => {
   });
 });
 
-const P: NlParametreler = { motor: 'k6', hizlar: [100], maxvu: 150, tekrar: 1, isinma: 30, sure: 120, bosluk: 30, bosta: 60, kip: 'ka', ae: 'br', protokol: 'h2', sunucuAyar: { seviye: 6, static: true, dizin: DIZIN } };
+const P: NlParametreler = {
+  motor: 'k6',
+  hizlar: [100],
+  maxvu: 150,
+  tekrar: 1,
+  isinma: 30,
+  sure: 120,
+  bosluk: 30,
+  bosta: 60,
+  kip: 'ka',
+  ae: 'br',
+  protokol: 'h2',
+  sunucuAyar: { seviye: 6, static: true, dizin: DIZIN },
+};
 function ayrinti(sunucuAyari?: NlSunucuAyari | null) {
   return {
-    id: 7, islem: 'kosu', etiket: null, adim: 'R7', hedefHost: 'GBNGXT33', hedefIp: '192.168.133.27', vhost: 'glomo-test.garantibbva.com.tr', yukHost: 'GBNGXT34',
-    senaryoId: 3, senaryoAd: 'GLOMO', durum: 'DONE', gecerlilik: 'GECERLI', createdBy: 'onur', createdAt: '2026-11-02T11:45:00Z', startedAt: '2026-11-02T11:46:00Z',
-    finishedAt: '2026-11-02T12:08:00Z', awxJobId: 3500000, hedefTuru: 'sunucu', motor: 'k6', protokol: 'h2', parametreler: P, sunucuAyari,
+    id: 7,
+    islem: 'kosu',
+    etiket: null,
+    adim: 'R7',
+    hedefHost: 'GBNGXT33',
+    hedefIp: '192.168.133.27',
+    vhost: 'glomo-test.garantibbva.com.tr',
+    yukHost: 'GBNGXT34',
+    senaryoId: 3,
+    senaryoAd: 'GLOMO',
+    durum: 'DONE',
+    gecerlilik: 'GECERLI',
+    createdBy: 'onur',
+    createdAt: '2026-11-02T11:45:00Z',
+    startedAt: '2026-11-02T11:46:00Z',
+    finishedAt: '2026-11-02T12:08:00Z',
+    awxJobId: 3500000,
+    hedefTuru: 'sunucu',
+    motor: 'k6',
+    protokol: 'h2',
+    parametreler: P,
+    sunucuAyari,
   } as unknown as NlKosuAyrinti;
 }
 const AYAR: NlSunucuAyari = {
-  http2: true, ae: 'br', seviye: 6, static: true, dizin: DIZIN,
-  kanit: { durum: 'uyumlu', sapmalar: [], gzUretilen: 0, brUretilen: 100, atlanan: 20, uyarilar: [] }, geriAlma: { durum: 'ok', metin: null },
+  http2: true,
+  ae: 'br',
+  seviye: 6,
+  static: true,
+  dizin: DIZIN,
+  kanit: {
+    durum: 'uyumlu',
+    sapmalar: [],
+    gzUretilen: 0,
+    brUretilen: 100,
+    atlanan: 20,
+    uyarilar: [],
+  },
+  geriAlma: { durum: 'ok', metin: null },
 };
 
 describe('Yük Testi sunucu ayarı — ayrıntı (SRV-6)', () => {
@@ -232,7 +446,9 @@ describe('Yük Testi sunucu ayarı — ayrıntı (SRV-6)', () => {
   };
   it('SRV-6 satır metni, ok iken uyarı yok', async () => {
     await ac(AYAR);
-    expect((await screen.findByText('Sunucu ayarı')).nextElementSibling?.textContent).toBe('HTTP/2 açık · brotli 6 · static · 120 .br');
+    expect((await screen.findByText('Sunucu ayarı')).nextElementSibling?.textContent).toBe(
+      'HTTP/2 açık · brotli 6 · static · 120 .br',
+    );
     expect(screen.queryByText(/Sunucu ayarı geri alın/)).toBeNull();
     const { container } = render(<SunucuAyarUyarilari ayar={AYAR} />);
     expect(container.querySelector('.space-y-2')).toBeNull();
@@ -244,7 +460,11 @@ describe('Yük Testi sunucu ayarı — ayrıntı (SRV-6)', () => {
     expect(screen.getByText('Sunucu ayarı geri alınamadı')).toBeInTheDocument();
   });
   it('SRV-6c uyarı metni ve betik uyarısı', async () => {
-    await ac({ ...AYAR, geriAlma: { durum: 'uyari', metin: null }, kanit: { ...AYAR.kanit!, uyarilar: ['baska dosyada gzip_comp_level var'] } });
+    await ac({
+      ...AYAR,
+      geriAlma: { durum: 'uyari', metin: null },
+      kanit: { ...AYAR.kanit!, uyarilar: ['baska dosyada gzip_comp_level var'] },
+    });
     expect(await screen.findByText('Sunucu ayarı geri alınırken uyarı')).toBeInTheDocument();
     expect(screen.getByText(/başkası tarafından değiştirilmiş/)).toBeInTheDocument();
     expect(screen.getByText('baska dosyada gzip_comp_level var')).toBeInTheDocument();
@@ -258,17 +478,33 @@ describe('Yük Testi sunucu ayarı — ayrıntı (SRV-6)', () => {
 
 describe('Yük Testi sunucu ayarı — geri alma düğmesi (SRV-8)', () => {
   const ac = async (a: NlSunucuAyari | null, ek: Record<string, unknown> = {}) => {
-    api.kosu.mockResolvedValue({ ok: true, kosu: kosuNormalle({ ...ayrinti(a), ...ek }), adimlar: [] });
+    api.kosu.mockResolvedValue({
+      ok: true,
+      kosu: kosuNormalle({ ...ayrinti(a), ...ek }),
+      adimlar: [],
+    });
     return render(<KosuAyrinti kosuId={7} isAdmin onGeri={vi.fn()} />);
   };
-  const HATA: NlSunucuAyari = { ...AYAR, kanit: null, geriAlma: { durum: 'hata', metin: 'Geri alma sonucu yok' } };
+  const HATA: NlSunucuAyari = {
+    ...AYAR,
+    kanit: null,
+    geriAlma: { durum: 'hata', metin: 'Geri alma sonucu yok' },
+  };
   const dugme = () => screen.queryByRole('button', { name: 'Sunucu ayarını geri al' });
   it('SRV-8 DONE koşuda hata: düğme, onay penceresi, durdurma işi', async () => {
-    api.durdur.mockResolvedValue({ ok: true, iptal: { alreadyTerminal: true }, iptalHatasi: null, durdurIsi: { jobId: 901, awxServerId: 3 }, durdurHatasi: null });
+    api.durdur.mockResolvedValue({
+      ok: true,
+      iptal: { alreadyTerminal: true },
+      iptalHatasi: null,
+      durdurIsi: { jobId: 901, awxServerId: 3 },
+      durdurHatasi: null,
+    });
     await ac(HATA);
     await screen.findByText('Geri alma sonucu yok');
     fireEvent.click(dugme() as HTMLElement);
-    expect(await screen.findByText(/başka bir koşunun yedeği varsa ona dokunulmaz/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/başka bir koşunun yedeği varsa ona dokunulmaz/),
+    ).toBeInTheDocument();
     const dugmeler = screen.getAllByRole('button', { name: 'Sunucu ayarını geri al' });
     fireEvent.click(dugmeler[dugmeler.length - 1]);
     await waitFor(() => expect(api.durdur).toHaveBeenCalledWith(7));
@@ -276,7 +512,13 @@ describe('Yük Testi sunucu ayarı — geri alma düğmesi (SRV-8)', () => {
     expect(toast.success.mock.calls[0][0]).toContain('AWX #901');
   });
   it('SRV-8b ayarlı ön kontrol: durdurma işi yoksa basarı denmez, FAILED satırda düğme var', async () => {
-    api.durdur.mockResolvedValue({ ok: true, iptal: { alreadyTerminal: true }, iptalHatasi: null, durdurIsi: null, durdurHatasi: 'AWX yok' });
+    api.durdur.mockResolvedValue({
+      ok: true,
+      iptal: { alreadyTerminal: true },
+      iptalHatasi: null,
+      durdurIsi: null,
+      durdurHatasi: 'AWX yok',
+    });
     await ac(HATA, { islem: 'on_kontrol', durum: 'FAILED', gecerlilik: null, adim: null });
     await screen.findByText('Geri alma sonucu yok');
     fireEvent.click(dugme() as HTMLElement);
@@ -299,7 +541,9 @@ describe('Yük Testi sunucu ayarı — geri alma düğmesi (SRV-8)', () => {
     await screen.findAllByText('Protokol');
     expect(dugme()).toBeNull();
     await ac(null, { durum: 'CANCELED' });
-    expect(await screen.findByRole('button', { name: 'Kalan süreçleri durdur' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Kalan süreçleri durdur' }),
+    ).toBeInTheDocument();
   });
   it('SRV-8d yönetici değilse düğme yok, uyarı görünür', async () => {
     api.kosu.mockResolvedValue({ ok: true, kosu: kosuNormalle(ayrinti(HATA)), adimlar: [] });
@@ -316,7 +560,18 @@ describe('Yük Testi sunucu ayarı — ön kontrol ekranı (SRV-10)', () => {
     fireEvent.change(seviye(), { target: { value: '5' } });
     fireEvent.change(dizin(), { target: { value: DIZIN } });
     api.onKontrol.mockResolvedValue({ ok: true, kosuId: 9, jobId: 1 });
-    const satir = { ...ayrinti({ ...AYAR, kanit: null, geriAlma: { durum: 'hata', metin: 'nginx -t düştü' }, uyarilar: ['vhost.conf icinde gzip_comp_level var; seviye ayari etkisiz olabilir'] }), id: 9, islem: 'on_kontrol', adim: null, gecerlilik: null };
+    const satir = {
+      ...ayrinti({
+        ...AYAR,
+        kanit: null,
+        geriAlma: { durum: 'hata', metin: 'nginx -t düştü' },
+        uyarilar: ['vhost.conf icinde gzip_comp_level var; seviye ayari etkisiz olabilir'],
+      }),
+      id: 9,
+      islem: 'on_kontrol',
+      adim: null,
+      gecerlilik: null,
+    };
     api.kosu.mockResolvedValue({ ok: true, kosu: kosuNormalle(satir), adimlar: [] });
     await onKontrolGovdesi();
     expect(await screen.findByText(/seviye ayari etkisiz olabilir/)).toBeInTheDocument();
@@ -326,26 +581,61 @@ describe('Yük Testi sunucu ayarı — ön kontrol ekranı (SRV-10)', () => {
 
 describe('Yük Testi sunucu ayarı — saf kurallar (SRV-7)', () => {
   it('SRV-9 Durdur açık mı, bütçe tavanı', () => {
-    const g = (durum: 'ok' | 'uyari' | 'hata' | 'bekliyor') => ({ ...AYAR, geriAlma: { durum, metin: null } });
+    const g = (durum: 'ok' | 'uyari' | 'hata' | 'bekliyor') => ({
+      ...AYAR,
+      geriAlma: { durum, metin: null },
+    });
     expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'CANCELED' })).toBe(true);
     expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'FAILED' })).toBe(false);
     expect(kalanSurecDurdurulabilir({ islem: 'on_kontrol', durum: 'CANCELED' })).toBe(false);
-    expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: g('hata') })).toBe(true);
-    expect(kalanSurecDurdurulabilir({ islem: 'on_kontrol', durum: 'CANCELED', sunucuAyari: g('hata') })).toBe(true);
-    for (const d of ['ok', 'uyari', 'bekliyor'] as const) expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: g(d) })).toBe(false);
-    expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: null })).toBe(false);
+    expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: g('hata') })).toBe(
+      true,
+    );
+    expect(
+      kalanSurecDurdurulabilir({ islem: 'on_kontrol', durum: 'CANCELED', sunucuAyari: g('hata') }),
+    ).toBe(true);
+    for (const d of ['ok', 'uyari', 'bekliyor'] as const)
+      expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: g(d) })).toBe(
+        false,
+      );
+    expect(kalanSurecDurdurulabilir({ islem: 'kosu', durum: 'DONE', sunucuAyari: null })).toBe(
+      false,
+    );
     expect(butceTavani({ maxButceSn: 2700 }, false)).toBe(2700);
     expect(butceTavani({ maxButceSn: 2700 }, true)).toBe(1800);
     expect(butceTavani({ maxButceSn: 2700, maxButceSnSunucuAyar: 1500 }, true)).toBe(1500);
-    const uzun: NlParametreler = { ...P, hizlar: [100, 200, 300, 400, 500], tekrar: 1, isinma: 30, sure: 300, bosluk: 30, bosta: 60, maxvu: 150 };
-    expect(parametreHatalari(uzun, { ...SINIR, maxHiz: 5000 }).butce).toMatch(/üst sınır 30 dk \(sunucu ayarlı koşu\)/);
-    expect(parametreHatalari({ ...uzun, sunucuAyar: null }, { ...SINIR, maxHiz: 5000 }).butce).toBeUndefined();
+    const uzun: NlParametreler = {
+      ...P,
+      hizlar: [100, 200, 300, 400, 500],
+      tekrar: 1,
+      isinma: 30,
+      sure: 300,
+      bosluk: 30,
+      bosta: 60,
+      maxvu: 150,
+    };
+    expect(parametreHatalari(uzun, { ...SINIR, maxHiz: 5000 }).butce).toMatch(
+      /üst sınır 30 dk \(sunucu ayarlı koşu\)/,
+    );
+    expect(
+      parametreHatalari({ ...uzun, sunucuAyar: null }, { ...SINIR, maxHiz: 5000 }).butce,
+    ).toBeUndefined();
   });
   it('SRV-7 metinler, neden cümlesi, onay satırı', () => {
-    expect(sunucuAyarMetni({ http2: false, ae: 'gzip', seviye: 9, static: false })).toBe('HTTP/2 kapalı · gzip 9');
-    expect(sunucuAyarMetni({ http2: true, ae: 'identity', seviye: null, static: true }, 7)).toBe('HTTP/2 açık · sıkıştırmasız · static · 7 .gz');
+    expect(sunucuAyarMetni({ http2: false, ae: 'gzip', seviye: 9, static: false })).toBe(
+      'HTTP/2 kapalı · gzip 9',
+    );
+    expect(sunucuAyarMetni({ http2: true, ae: 'identity', seviye: null, static: true }, 7)).toBe(
+      'HTTP/2 açık · sıkıştırmasız · static · 7 .gz',
+    );
     expect(sunucuAyariSatiri({ ...AYAR, kanit: null })).toBe('HTTP/2 açık · brotli 6 · static');
-    expect(sunucuAyariSatiri({ ...AYAR, ae: 'gzip', kanit: { ...AYAR.kanit!, gzUretilen: 5, atlanan: 1 } })).toBe('HTTP/2 açık · gzip 6 · static · 6 .gz');
+    expect(
+      sunucuAyariSatiri({
+        ...AYAR,
+        ae: 'gzip',
+        kanit: { ...AYAR.kanit!, gzUretilen: 5, atlanan: 1 },
+      }),
+    ).toBe('HTTP/2 açık · gzip 6 · static · 6 .gz');
     expect(sunucuAyariSatiri({ ...AYAR, static: false })).toBe('HTTP/2 açık · brotli 6');
     expect(parametreSunucuAyari({ ...P, sunucuAyar: null })).toBe('');
     expect(hazirlikPayiSn(P)).toBe(180);
@@ -353,7 +643,10 @@ describe('Yük Testi sunucu ayarı — saf kurallar (SRV-7)', () => {
     expect(hazirlikPayiSn(null)).toBe(0);
     expect(yukMetni(P)).toContain('sunucu ayarı: HTTP/2 açık · brotli 6 · static');
     expect(yukMetni({ ...P, sunucuAyar: null })).not.toContain('sunucu ayarı');
-    expect(nedenAcikla('sunucu_ayari_kanitsiz(yok)')).toMatchObject({ ton: 'hata', kod: 'sunucu_ayari_kanitsiz(yok)' });
+    expect(nedenAcikla('sunucu_ayari_kanitsiz(yok)')).toMatchObject({
+      ton: 'hata',
+      kod: 'sunucu_ayari_kanitsiz(yok)',
+    });
     expect(nedenAcikla('sunucu_ayari_kanitsiz(yok)').cumle).toMatch(/hazırlık kanıtı yok/);
     expect(nedenAcikla('sunucu_ayari_kanitsiz(http2,seviye)').cumle).toContain('(http2, seviye)');
     expect(nedenAcikla('sunucu_ayari_kanitsiz(yok)').bilinmiyor).toBeFalsy();
@@ -366,13 +659,27 @@ describe('Yük Testi sunucu ayarı — saf kurallar (SRV-7)', () => {
     const durumlar: [Parameters<typeof sunucuAyarHatalari>[0], string, string][] = [];
     for (const ae of ['br', 'gzip', 'identity'] as const) {
       for (const sv of ['', '0', '1', '9', '10', '11', '12']) {
-        for (const d of [DIZIN, `${DIZIN}/alt.dizin`, '', '/usr/nginx/applications', '/usr/nginx/applications/', '/usr/nginx/applications/a/../b', '/usr/nginx/applications/a..b', '/etc/nginx', '/usr/nginx/applications/a b']) durumlar.push([ae, sv, d]);
+        for (const d of [
+          DIZIN,
+          `${DIZIN}/alt.dizin`,
+          '',
+          '/usr/nginx/applications',
+          '/usr/nginx/applications/',
+          '/usr/nginx/applications/a/../b',
+          '/usr/nginx/applications/a..b',
+          '/etc/nginx',
+          '/usr/nginx/applications/a b',
+        ])
+          durumlar.push([ae, sv, d]);
       }
     }
     for (const [ae, sv, d] of durumlar) {
       const form = Object.keys(sunucuAyarHatalari(ae, sv, d)).length === 0;
       // identity'de form seviyeyi gondermez (alan gizli).
-      const sunucu = dg.parametreler({ ae, sunucuAyar: { seviye: ae === 'identity' ? null : sv, dizin: d } }, { sni: false }).ok;
+      const sunucu = dg.parametreler(
+        { ae, sunucuAyar: { seviye: ae === 'identity' ? null : sv, dizin: d } },
+        { sni: false },
+      ).ok;
       expect([ae, sv, d, form]).toEqual([ae, sv, d, sunucu]);
     }
     expect(srvDizinGecerli(DIZIN)).toBe(true);

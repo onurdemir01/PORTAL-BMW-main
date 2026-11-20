@@ -5,7 +5,7 @@
 
 let requests = 0;
 let errors5xx = 0;
-const latencies = [];         // son N istek suresi (ms) — kayan pencere
+const latencies = []; // son N istek suresi (ms) — kayan pencere
 const MAX_SAMPLES = 2000;
 let loopLagMs = 0;
 
@@ -35,15 +35,15 @@ function slowHttpThresholdMs() {
 
 /** Rota KALIBI: '/api/oco' + '/calendar'. Rota eslesmediyse yalniz baseUrl (ham URL degil). */
 function routeOf(req) {
-  const base = typeof req.baseUrl === "string" ? req.baseUrl : "";
-  const rp = typeof req.route?.path === "string" ? req.route.path : "";
-  return (base + rp) || "?";
+  const base = typeof req.baseUrl === 'string' ? req.baseUrl : '';
+  const rp = typeof req.route?.path === 'string' ? req.route.path : '';
+  return base + rp || '?';
 }
 
 function middleware(req, res, next) {
   const start = Date.now();
   requests++;
-  res.on("finish", () => {
+  res.on('finish', () => {
     const ms = Date.now() - start;
     latencies.push(ms);
     if (latencies.length > MAX_SAMPLES) latencies.shift();
@@ -52,11 +52,13 @@ function middleware(req, res, next) {
       if (ms > slowHttpThresholdMs()) {
         slowHttpCount++;
         console.warn(
-          `[SlowHttp] method=${String(req.method || "?").replace(/[^A-Z]/gi, "")} route=${routeOf(req)} ` +
-          `status=${res.statusCode} ms=${ms} loopLag=${Math.round(loopLagMs)}ms`
+          `[SlowHttp] method=${String(req.method || '?').replace(/[^A-Z]/gi, '')} route=${routeOf(req)} ` +
+            `status=${res.statusCode} ms=${ms} loopLag=${Math.round(loopLagMs)}ms`,
         );
       }
-    } catch { /* gozlem istegi bozmamali */ }
+    } catch {
+      /* gozlem istegi bozmamali */
+    }
   });
   next();
 }
@@ -69,21 +71,25 @@ function percentile(p) {
 
 function poolStats() {
   try {
-    const portal = require("./db/portal-mssql.cjs");
-    if (typeof portal.poolStats === "function") return portal.poolStats();
-  } catch { /* yoksay */ }
+    const portal = require('./db/portal-mssql.cjs');
+    if (typeof portal.poolStats === 'function') return portal.poolStats();
+  } catch {
+    /* yoksay */
+  }
   return null;
 }
 
 // TBMWANS (envanter) havuzlari: ana + uzun-sorgu. Modul yuklenemezse null.
 function tbmwansPoolStats() {
   try {
-    const inv = require("./inventory/mssql.cjs");
+    const inv = require('./inventory/mssql.cjs');
     return {
-      main: typeof inv.poolStats === "function" ? inv.poolStats() : null,
-      long: typeof inv.longPoolStats === "function" ? inv.longPoolStats() : null,
+      main: typeof inv.poolStats === 'function' ? inv.poolStats() : null,
+      long: typeof inv.longPoolStats === 'function' ? inv.longPoolStats() : null,
     };
-  } catch { /* yoksay */ }
+  } catch {
+    /* yoksay */
+  }
   return null;
 }
 
@@ -93,19 +99,19 @@ function tarnPoolStats(connectionPool) {
   try {
     const p = connectionPool?.pool;
     if (!p) return null;
-    const num = (fn) => (typeof p[fn] === "function" ? p[fn]() : null);
-    const used = num("numUsed");
-    const free = num("numFree");
-    const pendingAcquires = num("numPendingAcquires");
+    const num = (fn) => (typeof p[fn] === 'function' ? p[fn]() : null);
+    const used = num('numUsed');
+    const free = num('numFree');
+    const pendingAcquires = num('numPendingAcquires');
     return {
       connected: true,
-      size: typeof used === "number" && typeof free === "number" ? used + free : null,
+      size: typeof used === 'number' && typeof free === 'number' ? used + free : null,
       used,
       free,
       pending: pendingAcquires,
       pendingAcquires,
-      max: typeof p.max === "number" ? p.max : null,
-      min: typeof p.min === "number" ? p.min : null,
+      max: typeof p.max === 'number' ? p.max : null,
+      min: typeof p.min === 'number' ? p.min : null,
     };
   } catch {
     return null;
@@ -127,19 +133,20 @@ function slowQueryThresholdMs() {
 }
 
 function sqlPreview(text) {
-  if (typeof text !== "string") return "";
-  return text.replace(/\s+/g, " ").trim().slice(0, SQL_PREVIEW_CHARS);
+  if (typeof text !== 'string') return '';
+  return text.replace(/\s+/g, ' ').trim().slice(0, SQL_PREVIEW_CHARS);
 }
 
 function nsToMs(ns) {
-  return typeof ns === "bigint" ? Number(ns) / 1e6 : 0;
+  return typeof ns === 'bigint' ? Number(ns) / 1e6 : 0;
 }
 
 function rowCountOf(result) {
   if (!result) return null;
   if (Array.isArray(result.recordset)) return result.recordset.length;
   if (Array.isArray(result.rows)) return result.rows.length;
-  if (Array.isArray(result.rowsAffected)) return result.rowsAffected.reduce((a, b) => a + (Number(b) || 0), 0);
+  if (Array.isArray(result.rowsAffected))
+    return result.rowsAffected.reduce((a, b) => a + (Number(b) || 0), 0);
   return null;
 }
 
@@ -150,13 +157,13 @@ function reportQueryTiming({ pool, waitNs, queryNs, result, sqlText, failed, ret
     const queryMs = nsToMs(queryNs);
     if (!(waitMs + queryMs > slowQueryThresholdMs())) return false;
     slowQueryCount++;
-    const rows = failed ? "-" : rowCountOf(result);
+    const rows = failed ? '-' : rowCountOf(result);
     console.warn(
-      `[SlowQuery] pool=${pool || "?"} wait=${waitMs.toFixed(1)}ms query=${queryMs.toFixed(1)}ms ` +
-      // loopLag: "query=" suresi SQL mi yoksa olay dongusu (ayristirma/GC) mu - ayirt etmek icin.
-      `loopLag=${Math.round(loopLagMs)}ms ` +
-      `rows=${rows === null || rows === undefined ? "?" : rows}${failed ? " status=error" : ""}${retry ? " retry=1" : ""} ` +
-      `sql="${sqlPreview(sqlText)}"`
+      `[SlowQuery] pool=${pool || '?'} wait=${waitMs.toFixed(1)}ms query=${queryMs.toFixed(1)}ms ` +
+        // loopLag: "query=" suresi SQL mi yoksa olay dongusu (ayristirma/GC) mu - ayirt etmek icin.
+        `loopLag=${Math.round(loopLagMs)}ms ` +
+        `rows=${rows === null || rows === undefined ? '?' : rows}${failed ? ' status=error' : ''}${retry ? ' retry=1' : ''} ` +
+        `sql="${sqlPreview(sqlText)}"`,
     );
     return true;
   } catch {
@@ -175,7 +182,13 @@ async function timeQuery(pool, waitNs, sqlText, run, opts = {}) {
     return result;
   } finally {
     reportQueryTiming({
-      pool, waitNs, queryNs: process.hrtime.bigint() - t0, result, sqlText, failed, retry: !!opts.retry,
+      pool,
+      waitNs,
+      queryNs: process.hrtime.bigint() - t0,
+      result,
+      sqlText,
+      failed,
+      retry: !!opts.retry,
     });
   }
 }
@@ -187,7 +200,12 @@ function snapshot() {
     uptimeSec: Math.floor(process.uptime()),
     requests,
     errors5xx,
-    latencyMs: { p50: percentile(50), p95: percentile(95), p99: percentile(99), samples: latencies.length },
+    latencyMs: {
+      p50: percentile(50),
+      p95: percentile(95),
+      p99: percentile(99),
+      samples: latencies.length,
+    },
     eventLoopLagMs: Math.round(loopLagMs),
     memoryMB: { rss: Math.round(mem.rss / 1048576), heapUsed: Math.round(mem.heapUsed / 1048576) },
     portalDbPool: poolStats(),
@@ -204,16 +222,26 @@ const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 
 async function writeSnapshotToDb() {
   try {
-    const db = require("./db/index.cjs");
+    const db = require('./db/index.cjs');
     const s = snapshot();
     await db.query(
       `INSERT INTO metrics_snapshots
          (requests, errors_5xx, p50_ms, p95_ms, p99_ms, event_loop_lag_ms, rss_mb, heap_used_mb)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [s.requests, s.errors5xx, s.latencyMs.p50, s.latencyMs.p95, s.latencyMs.p99,
-       s.eventLoopLagMs, s.memoryMB.rss, s.memoryMB.heapUsed]
+      [
+        s.requests,
+        s.errors5xx,
+        s.latencyMs.p50,
+        s.latencyMs.p95,
+        s.latencyMs.p99,
+        s.eventLoopLagMs,
+        s.memoryMB.rss,
+        s.memoryMB.heapUsed,
+      ],
     );
-  } catch { /* DB yok/erisilemez → snapshot atlanir */ }
+  } catch {
+    /* DB yok/erisilemez → snapshot atlanir */
+  }
 }
 
 function startSnapshotWriter() {
@@ -225,35 +253,45 @@ function startSnapshotWriter() {
 function initMetrics(app) {
   let requireAuth, requireAdmin;
   try {
-    const auth = require("./auth/index.cjs");
+    const auth = require('./auth/index.cjs');
     requireAuth = auth.requireAuth;
     requireAdmin = auth.requireAdmin;
-  } catch { /* auth yok → endpoint acilmaz */ }
+  } catch {
+    /* auth yok → endpoint acilmaz */
+  }
   if (requireAuth && requireAdmin) {
-    app.get("/api/metrics-lite", requireAuth, requireAdmin, (req, res) => res.json(snapshot()));
+    app.get('/api/metrics-lite', requireAuth, requireAdmin, (req, res) => res.json(snapshot()));
     // Gecmis snapshot'lar (trend) — metrics_snapshots tablosundan.
-    app.get("/api/metrics-lite/history", requireAuth, requireAdmin, async (req, res) => {
+    app.get('/api/metrics-lite/history', requireAuth, requireAdmin, async (req, res) => {
       const hours = Math.min(Number(req.query.hours) || 24, 24 * 30);
       try {
-        const db = require("./db/index.cjs");
+        const db = require('./db/index.cjs');
         const { rows } = await db.query(
           `SELECT TOP 2000 * FROM metrics_snapshots
            WHERE captured_at >= DATEADD(hour, -${hours}, GETUTCDATE())
-           ORDER BY captured_at DESC`
+           ORDER BY captured_at DESC`,
         );
         res.json({ ok: true, snapshots: rows });
       } catch (e) {
         res.status(500).json({ ok: false, error: e.message, snapshots: [] });
       }
     });
-    console.log("[Metrics] /api/metrics-lite (admin) mounted");
+    console.log('[Metrics] /api/metrics-lite (admin) mounted');
   }
   startSnapshotWriter();
 }
 
 module.exports = {
-  middleware, snapshot, initMetrics,
+  middleware,
+  snapshot,
+  initMetrics,
   // db katmani yardimcilari (yavas sorgu gunlugu, havuz dolulugu)
-  timeQuery, reportQueryTiming, tarnPoolStats, sqlPreview, slowQueryThresholdMs,
-  slowHttpThresholdMs, routeOf, loopLag: () => loopLagMs,
+  timeQuery,
+  reportQueryTiming,
+  tarnPoolStats,
+  sqlPreview,
+  slowQueryThresholdMs,
+  slowHttpThresholdMs,
+  routeOf,
+  loopLag: () => loopLagMs,
 };

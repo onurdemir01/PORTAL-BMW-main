@@ -37,7 +37,11 @@ const SessionTimeoutModal: React.FC<SessionTimeoutModalProps> = ({
       open={isOpen}
       onClose={onDismiss}
       title={extendable ? 'Oturumunuz kapanmak üzere' : 'Oturum süresi doluyor'}
-      subtitle={extendable ? 'Bir süredir işlem yapmadınız.' : 'Bu oturum en uzun açık kalma süresine ulaştı.'}
+      subtitle={
+        extendable
+          ? 'Bir süredir işlem yapmadınız.'
+          : 'Bu oturum en uzun açık kalma süresine ulaştı.'
+      }
       icon={ExclamationTriangleIcon}
       size="md"
       // Arka plana YANLISLIKLA tiklamak uyariyi kapatmasin: kapatmak sureyi uzatmaz ve

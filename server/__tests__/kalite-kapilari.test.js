@@ -21,6 +21,7 @@ const kapsam = require('../../scripts/kapsam-esik.cjs');
 const bicim = require('../../scripts/bicim-kapisi.cjs');
 const sonar = require('../../scripts/sonar-kapi.cjs');
 const { KAPILAR, CI_EK } = require('../../scripts/kapi.cjs');
+const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
 
 test('KK1 sir taramasi: gercek desen yakalanir, yer tutucu ve tanimlayici gecer', () => {
   const yakalanir = [
@@ -107,18 +108,31 @@ test('KK2 kapsam esigi: yalniz kaynak dosyalari, satir birlestirme, esik tek kay
   assert.equal(kapsam.esikOku(), ESIK.kapsam.satirMin);
 });
 
-test('KK3 bicim cirigi: bicimli dosya bicimli kalir, bicimsize dokunmak serbest', () => {
-  assert.equal(bicim.ihlalMi(true, false), true, 'bicimli dosya bozuldu ama gecti');
-  assert.equal(bicim.ihlalMi(null, false), true, 'yeni bicimsiz dosya gecti');
-  assert.equal(bicim.ihlalMi(false, false), false, 'eski bicimsiz dosyaya dokunmak engellendi');
-  assert.equal(bicim.ihlalMi(true, true), false);
-  assert.equal(bicim.ihlalMi(null, true), false);
+test('KK3 bicim kapisi: her JS/TS dosyasi bicimli, istisna yok (is #52)', () => {
+  assert.equal(bicim.ihlalMi(false), true, 'bicimsiz dosya gecti');
+  assert.equal(bicim.ihlalMi(undefined), true, 'bicimi olculemeyen dosya gecti');
+  assert.equal(bicim.ihlalMi(true), false);
+  // Tum agac: npm run lint (K2 ve CI) --tum'u kosar; Ansible agaci yalniz .prettierignore ile disarida.
+  const pkg = JSON.parse(oku('package.json'));
+  assert.match(pkg.scripts.lint, /&& node scripts\/bicim-kapisi\.cjs --tum$/);
+  assert.deepEqual(
+    oku('.prettierignore')
+      .split('\n')
+      .filter((l) => l.trim() && !l.startsWith('#')),
+    ['server/ansible/playbooks/'],
+    '.prettierignore yalniz Ansible agacini disarida birakir',
+  );
+  assert.match(
+    oku('.git-blame-ignore-revs'),
+    /^[0-9a-f]{40}$/m,
+    'toplu bicim commit i kayitli degil',
+  );
   assert.ok(
     bicim.KOD.test('src/a.tsx') && bicim.KOD.test('server/a.cjs') && !bicim.KOD.test('docs/a.md'),
   );
 });
 
-test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okunur', () => {
+test('KK3b bicim kapisi gercek depoda: bicimsiz eski dosya da, yeni dosya da, yeniden adlandirma da KIRMIZI', () => {
   // Saf ayristirici: R satiri eski + yeni yol tasir.
   assert.deepEqual(bicim.degisenler('M\0a.cjs\0R087\0x.test.cjs\0x.test.js\0A\0y.ts\0'), [
     { yol: 'a.cjs', eski: 'a.cjs' },
@@ -126,8 +140,8 @@ test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okun
     { yol: 'y.ts', eski: 'y.ts' },
   ]);
   assert.deepEqual(bicim.degisenler(''), []);
-  // Gercek git deposu: bicimsiz eski dosyanin yeniden adlandirilmasi serbest; yeni bicimsiz dosya ve
-  // bicimli dosyanin yeniden adlandirilirken bozulmasi KIRMIZI.
+  // Gercek git deposu: istisna yok. Bicimsiz eski dosyaya dokunmak (yeniden adlandirma dahil), yeni
+  // bicimsiz dosya ve bicimli dosyanin bozulmasi KIRMIZI; bicimli sahne yesil. --tum butun agaca bakar.
   const os = require('node:os');
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bicim-ad-'));
   const g = (...a) =>
@@ -162,15 +176,39 @@ test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okun
     g('add', '-A');
     g('commit', '-q', '-m', 'ilk', '--no-verify');
     g('mv', 'eski.test.cjs', 'eski.test.js');
-    assert.equal(kapi(), 0, 'bicimsiz eski dosyanin yeniden adlandirilmasi engellendi');
+    assert.equal(kapi(), 1, 'bicimsiz eski dosyanin yeniden adlandirilmasi gecti (istisna yok)');
+    fs.writeFileSync(path.join(d, 'eski.test.js'), 'const a = 1;\n');
+    g('add', 'eski.test.js');
+    assert.equal(kapi(), 0, 'bicimlenmis yeniden adlandirma engellendi');
     fs.writeFileSync(path.join(d, 'yeni.test.js'), 'const   b=2\n');
     g('add', 'yeni.test.js');
     assert.equal(kapi(), 1, 'yeni bicimsiz dosya gecti');
     g('rm', '-q', '--cached', 'yeni.test.js');
+    fs.rmSync(path.join(d, 'yeni.test.js'));
     g('mv', 'bicimli.test.cjs', 'bicimli.test.js');
     fs.writeFileSync(path.join(d, 'bicimli.test.js'), 'const   a=1;\n');
     g('add', 'bicimli.test.js');
     assert.equal(kapi(), 1, 'bicimli dosya yeniden adlandirilirken bozuldu ama gecti');
+    // --tum: izlenen butun agac. Commit'lenmis bicimsiz dosya kancasiz gelse de (dogrudan main) KIRMIZI.
+    const tum = () => {
+      try {
+        execFileSync(process.execPath, [path.join(KOK, 'scripts', 'bicim-kapisi.cjs'), '--tum'], {
+          cwd: d,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        return 0;
+      } catch (e) {
+        return e.status;
+      }
+    };
+    fs.writeFileSync(path.join(d, 'bicimli.test.js'), 'const a = 1;\n');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'bicimli', '--no-verify');
+    assert.equal(tum(), 0, 'bicimli agac kirmizi');
+    fs.writeFileSync(path.join(d, 'kancasiz.cjs'), 'const   c=3\n');
+    g('add', 'kancasiz.cjs');
+    g('commit', '-q', '-m', 'kancasiz', '--no-verify');
+    assert.equal(tum(), 1, 'commitlenmis bicimsiz dosya --tum da gecti');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -224,7 +262,16 @@ test('KK12 kurumsal Sonar taklidi (K15): kurumun siniflandirmasi birebir, kod di
     '-Dsonar.tests=.',
     '-Dsonar.test.inclusions=**/*.test.js,**/*.test.tsx',
   ]);
-  assert.equal(a[3], `-Dsonar.exclusions=${k.exclusions.join(',')}`);
+  // Ek dislama YALNIZ kurumsal depoda bulunmayan dizinler (teslim listesinin aynisi; is #52).
+  const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
+  assert.deepEqual(
+    sonar.KURUM_AGACINDA_YOK,
+    KURUMA_GITMEYEN.map((d) => `${d}**`),
+  );
+  assert.equal(
+    a[3],
+    `-Dsonar.exclusions=${[...k.exclusions, ...sonar.KURUM_AGACINDA_YOK].join(',')}`,
+  );
   assert.equal(a[4], `-Dsonar.coverage.exclusions=${k.coverageExclusions.join(',')}`);
   assert.equal(a[5], `-Dsonar.javascript.lcov.reportPaths=${sonar.KURUMSAL_LCOV}`);
   assert.equal(sonar.KURUMSAL_PROJE, 'bmw-portal-kurumsal');
@@ -296,6 +343,8 @@ const TABAN = {
     security_hotspots_reviewed: ['LT', 100],
     software_quality_blocker_issues: ['GT', 0],
     software_quality_high_issues: ['GT', 0],
+    // Mutlak (2026-11-20, kurumsal is #52): kurum kod kokularini sayiyor; yerel tarama 0 koku gormeli.
+    code_smells: ['GT', 0],
   },
   bastirma: {
     NOSONAR: 0,
@@ -428,7 +477,7 @@ test('KK8 CI ve `npm run kapi` ayni kapilari kosturur; hicbir kapi yumusatilmami
   assert.equal(pkg.scripts['kapi:sonar'], 'node scripts/sonar-kapi.cjs');
   assert.match(
     pkg.scripts.lint,
-    /^eslint src\/ server\/ shared\/ scripts\/ --max-warnings 0$/,
+    /^eslint src\/ server\/ shared\/ scripts\/ --max-warnings 0 && node scripts\/bicim-kapisi\.cjs --tum$/,
     'lint kapsami daraldi ya da uyari serbest',
   );
   assert.ok(KAPILAR.filter((k) => k.hizli).length >= 6, 'hizli kapilar azaltildi');
@@ -525,5 +574,99 @@ test('KK10 Sonar inceleme kayitlari gerekceli ve bayat degil', () => {
     sonar.incelemeBul({ ...h, component: 'proje:a/c.cjs' }, "'/tmp/x'", [k0]),
     null,
     'dosya farkli ama eslesti',
+  );
+});
+
+// Kurumun SonarQube 2025.4.3'undeki HTML eklentisi (sonar-html, 2025 surumu) "yorumlanmis kod" kuralini
+// (Web:AvoidCommentedOutCodeCheck) analyzer-commons CodeRecognizer ile uygular: yorumun TAMAMI tek satir
+// sayilir; `>` ile bitme 0.9 (her `-->` yorumu), bosluklar silinince `="` / `='` 0.7, `/>` `</` `<%` `%>`
+// 0.8 (her eslesme ayri); olasiliklar 1 - (1 - p)^n ile birlesir, esik `> 0.9`. Is #52'de index.html:12
+// yalniz yorumdaki `rel="icon"` yuzunden bulgu oldu. Yeni eklenti (2026-07) daha secici; kurum eskisini
+// kullaniyor, bekci de onu taklit eder.
+function kurumHtmlYorumuKodMu(yorum) {
+  if (/copyright/i.test(yorum) || yorum.startsWith('<!--[if') || yorum.startsWith('<!--#'))
+    return false;
+  if (['@thymesVar', '@elvariable'].some((a) => yorum.includes(a))) return false;
+  const bosluksuz = yorum.replace(/\s+/g, '');
+  const say = (parcalar) => parcalar.reduce((n, p) => n + bosluksuz.split(p).length - 1, 0);
+  const sonKarakter = /[^\s*/]/.exec([...yorum].reverse().join(''));
+  const dedektorler = [
+    [0.7, say(['="', "='"])],
+    [0.8, say(['/>', '</', '<%', '%>'])],
+    [0.9, sonKarakter && sonKarakter[0] === '>' ? 1 : 0],
+  ];
+  let olasilik = 0;
+  for (const [p, n] of dedektorler) if (n) olasilik = 1 - (1 - olasilik) * (1 - p) ** n;
+  return olasilik - 0.9 > 0;
+}
+
+test("KK13 kuruma giden HTML yorumlari kurum Sonar'inin yorumlanmis kod sezgisine takilmaz", () => {
+  // Sezginin kendisi (mutasyon): is #52'deki yorum bicimi yakalanir, duz yorum gecer.
+  assert.equal(kurumHtmlYorumuKodMu('<!-- birden fazla rel="icon" verildiginde -->'), true);
+  assert.equal(kurumHtmlYorumuKodMu('<!-- <link rel="icon" /> -->'), true);
+  assert.equal(
+    kurumHtmlYorumuKodMu("<!-- Sekme logosu: Admin > Marka; icon link'i tek -->"),
+    false,
+  );
+  assert.equal(kurumHtmlYorumuKodMu('<!--[if IE]><p class="x"></p><![endif]-->'), false);
+  const dosyalar = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8' })
+    .split('\0')
+    .filter((f) => /\.(html?|xhtml|jsp|shtml|twig|erb|cshtml|vue)$/i.test(f))
+    .filter((f) => !KURUMA_GITMEYEN.some((d) => f.startsWith(d)));
+  assert.ok(dosyalar.includes('index.html'), 'index.html taranmadi');
+  const bulgular = [];
+  for (const f of dosyalar) {
+    const metin = oku(f);
+    for (const m of metin.matchAll(/<!--[\s\S]*?-->/g))
+      if (kurumHtmlYorumuKodMu(m[0]))
+        bulgular.push(`${f}:${metin.slice(0, m.index).split('\n').length}`);
+  }
+  assert.deepEqual(bulgular, [], 'yorumdaki ="  /> </ kurumda "yorumlanmis kod" sayilir');
+});
+
+test("KK14 K15 kurum profili: kurallar genel Sonar anahtari, ESLint taklidiyle esit, kapi hotspot'ta mutlak", () => {
+  const k = JSON.parse(oku('kalite/kurumsal-sonar.json'));
+  const kurallar = sonar.profilKurallari(k);
+  assert.ok(kurallar.length >= 25, `kurum profili kuculdu (${kurallar.length})`);
+  for (const r of kurallar) {
+    assert.match(r.kural, /^(?:javascript|typescript|python|docker|Web):[A-Za-z0-9]+$/, r.kural);
+    assert.match(r.params, /^(?:|[a-zA-Z]+=[^;=]+(?:;[a-zA-Z]+=[^;=]+)*)$/, r.kural);
+  }
+  assert.deepEqual(
+    kurallar.filter((r) => r.params).map((r) => `${r.kural} ${r.params}`),
+    ['javascript:S5843 threshold=20', 'python:S107 max=7', 'python:S3776 threshold=15'],
+  );
+  // Kurumun JS / TS bulgu verdigi her kural commit aninda da ESLint'te (eslint.config.js yorumu).
+  const eslint = oku('eslint.config.js');
+  for (const r of kurallar.filter((x) => x.dil === 'js' || x.dil === 'ts')) {
+    const anahtar = r.kural.split(':')[1];
+    assert.match(eslint, new RegExp(`//[^\n]*\\b${anahtar}\\b`), `${r.kural} ESLint'te yok`);
+  }
+  const e = JSON.parse(oku('kalite/esikler.json'));
+  assert.ok(sonar.kosullar(e).some((c) => c.metric === 'code_smells' && c.error === '0'));
+  const kod = oku('scripts/sonar-kapi.cjs');
+  assert.match(kod, /inceleme: false/, 'K15 inceleme kaydi uygulamamali');
+  assert.match(kod, /kurum profili kurulamadi/, 'eksik kural sessizce gecmemeli');
+  // SonarQube `security_hotspots`i kapi kosulu olarak almaz: K15 sayiyi kendisi denetler.
+  assert.match(kod, /if \(!tamam \|\| bekleyenHotspot\)/, 'K15 bekleyen hotspot mutlak 0 degil');
+});
+
+// Kurumsal is #52 docker:S6505 (kurulumda betik calistirma) ve S6470 (`COPY . .`) kodda kapandi; S6505
+// SonarQube 26.11 Community'de yok (kalite/kurumsal-sonar.json profil.yereldeYok), bu yuzden burada.
+test('KK15 Dockerfile: her npm kurulumu betiksiz, baglamin tamami kopyalanmaz', () => {
+  const satirlar = oku('Dockerfile')
+    .replace(/\\\n/g, ' ')
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l));
+  const kurulumlar = satirlar.filter((l) => /^\s*RUN\b.*\bnpm\s+(?:ci|install|i)\b/.test(l));
+  assert.ok(kurulumlar.length >= 2, 'Dockerfile npm kurulumu bulunamadi');
+  for (const l of kurulumlar) assert.match(l, /--ignore-scripts\b/, `betikli kurulum: ${l.trim()}`);
+  assert.ok(
+    satirlar.some((l) => /^\s*ENV\s+npm_config_ignore_scripts=true\b/.test(l)),
+    'npm_config_ignore_scripts ortam degiskeni yok',
+  );
+  assert.ok(
+    !satirlar.some((l) => /^\s*(?:COPY|ADD)\s+(?:--\S+\s+)*\.\s+\S+/.test(l)),
+    'COPY . . var',
   );
 });

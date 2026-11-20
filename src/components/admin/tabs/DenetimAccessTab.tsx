@@ -13,7 +13,16 @@ import { denetimAccessApi } from '@/api/adminApi';
 import { TabAccessPanel } from './TabAccessPanel';
 
 const TAB_LABELS: Record<string, string> = {
-  ocp: 'OpenShift', ocproute: 'OpenShift Route', init: 'Init Script', deploy: 'Deployment Scripts', routetraffic: 'Route Trafiği', envanter: 'Envanter', degisim: 'Envanter Değişim', appenvs: 'JBoss/WAS', webapp: 'Web-App', katalog: 'Veri Kataloğu',
+  ocp: 'OpenShift',
+  ocproute: 'OpenShift Route',
+  init: 'Init Script',
+  deploy: 'Deployment Scripts',
+  routetraffic: 'Route Trafiği',
+  envanter: 'Envanter',
+  degisim: 'Envanter Değişim',
+  appenvs: 'JBoss/WAS',
+  webapp: 'Web-App',
+  katalog: 'Veri Kataloğu',
 };
 
 export default function DenetimAccessTab() {
@@ -26,11 +35,14 @@ export default function DenetimAccessTab() {
       emptyText="Henüz kimseye açılmamış — Denetim sayfasını yalnız yöneticiler görüyor."
       intro={
         <>
-          Middleware İç Denetim sayfası <b>yalnız yöneticilere</b> açıktır. Buradan bir <b>kullanıcıya</b> ya da bir <b>LDAP (AD) grubuna</b> seçtiğiniz
-          sekmeleri açabilirsiniz; kişi yalnız o sekmeleri görür, diğer sekmelerin verisi sunucu tarafında da kapalıdır (403).
-          Grup için CN adı (örn. <code className="px-1 rounded bg-[var(--bg-elevated)]">GT-Middleware</code>) ya da tam DN girilebilir; eşleşme
-          kullanıcının oturumundaki <code className="px-1 rounded bg-[var(--bg-elevated)]">memberOf</code> listesine göre yapılır. Değişiklik anında
-          yayılır (açık oturumlar yeniden giriş yapmadan görür).
+          Middleware İç Denetim sayfası <b>yalnız yöneticilere</b> açıktır. Buradan bir{' '}
+          <b>kullanıcıya</b> ya da bir <b>LDAP (AD) grubuna</b> seçtiğiniz sekmeleri açabilirsiniz;
+          kişi yalnız o sekmeleri görür, diğer sekmelerin verisi sunucu tarafında da kapalıdır
+          (403). Grup için CN adı (örn.{' '}
+          <code className="px-1 rounded bg-[var(--bg-elevated)]">GT-Middleware</code>) ya da tam DN
+          girilebilir; eşleşme kullanıcının oturumundaki{' '}
+          <code className="px-1 rounded bg-[var(--bg-elevated)]">memberOf</code> listesine göre
+          yapılır. Değişiklik anında yayılır (açık oturumlar yeniden giriş yapmadan görür).
         </>
       }
     />

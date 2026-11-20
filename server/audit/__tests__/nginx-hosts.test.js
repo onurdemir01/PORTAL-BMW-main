@@ -39,8 +39,16 @@ test('intranet SPA sunuculari dogru ortama duser', () => {
 
 test('KATMAN: on 10 sunucu intranet, digerleri internet', () => {
   const intranet = [
-    'GBNGXD50', 'GBNGXT50', 'GBNGXT51', 'GBNGXQ50',
-    'GBNGXP50', 'GBNGXP51', 'GBNGXP52', 'GBNGXP53', 'GBNGXAP50', 'GBNGXAP51',
+    'GBNGXD50',
+    'GBNGXT50',
+    'GBNGXT51',
+    'GBNGXQ50',
+    'GBNGXP50',
+    'GBNGXP51',
+    'GBNGXP52',
+    'GBNGXP53',
+    'GBNGXAP50',
+    'GBNGXAP51',
   ];
   for (const h of intranet) assert.equal(tierOfHost(h), 'intranet', h);
 });

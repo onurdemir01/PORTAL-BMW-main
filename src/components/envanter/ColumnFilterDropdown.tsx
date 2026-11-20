@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from "@heroicons/react/24/outline";
-import { inventoryApi } from "@/api/inventoryApi";
+import React, { useState, useEffect, useRef } from 'react';
+import { MagnifyingGlassIcon, XMarkIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { inventoryApi } from '@/api/inventoryApi';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { acilincaOdakla } from '@/components/common/pencereKlavye';
 
@@ -16,12 +16,21 @@ interface Props {
   onClose: () => void;
 }
 
-export function ColumnFilterDropdown({ table, col, selected, activeFilters, anchorRef, anchorEl, onApply, onClose }: Props) {
-  const [search, setSearch]       = useState("");
-  const [values, setValues]       = useState<{ value: string; count: number }[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [pending, setPending]     = useState<Set<string>>(new Set(selected));
-  const panelRef                  = useRef<HTMLDivElement>(null);
+export function ColumnFilterDropdown({
+  table,
+  col,
+  selected,
+  activeFilters,
+  anchorRef,
+  anchorEl,
+  onApply,
+  onClose,
+}: Props) {
+  const [search, setSearch] = useState('');
+  const [values, setValues] = useState<{ value: string; count: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState<Set<string>>(new Set(selected));
+  const panelRef = useRef<HTMLDivElement>(null);
 
   // Position dropdown below anchor
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -38,13 +47,17 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
     function handler(e: MouseEvent) {
       const target = e.target as Node;
       const anchor = anchorEl ?? anchorRef?.current ?? null;
-      if (panelRef.current && !panelRef.current.contains(target) &&
-          anchor && !anchor.contains(target)) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(target) &&
+        anchor &&
+        !anchor.contains(target)
+      ) {
         onClose();
       }
     }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [onClose, anchorEl, anchorRef]);
 
   // Secenekleri getir. DIGER kolonlardaki aktif filtreler de gonderilir ki liste onlara
@@ -55,24 +68,38 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
   useEffect(() => {
     let alive = true;
     const filters = filterKey ? (JSON.parse(filterKey) as Record<string, string[]>) : undefined;
-    void Promise.resolve().then(() => { if (alive) setLoading(true); });
-    inventoryApi.distinct(table, col, search || undefined, filters)
-      .then((r) => { if (alive && r.ok) setValues(r.values); })
+    void Promise.resolve().then(() => {
+      if (alive) setLoading(true);
+    });
+    inventoryApi
+      .distinct(table, col, search || undefined, filters)
+      .then((r) => {
+        if (alive && r.ok) setValues(r.values);
+      })
       .catch(() => {})
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [table, col, search, filterKey]);
 
   function toggle(val: string) {
     setPending((prev) => {
       const next = new Set(prev);
-      if (next.has(val)) next.delete(val); else next.add(val);
+      if (next.has(val)) next.delete(val);
+      else next.add(val);
       return next;
     });
   }
 
-  function selectAll() { setPending(new Set(values.map((v) => v.value))); }
-  function clearAll()  { setPending(new Set()); }
+  function selectAll() {
+    setPending(new Set(values.map((v) => v.value)));
+  }
+  function clearAll() {
+    setPending(new Set());
+  }
 
   function handleSearchChange(s: string) {
     setSearch(s);
@@ -81,12 +108,14 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
   return (
     <div
       ref={panelRef}
-      style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 9999 }}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
       className="w-72 bg-white border border-gray-200 rounded-xl shadow-xl flex flex-col"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 pt-3 pb-2">
-        <span className="text-xs font-semibold text-gray-700 truncate max-w-[180px]" title={col}>{col}</span>
+        <span className="text-xs font-semibold text-gray-700 truncate max-w-[180px]" title={col}>
+          {col}
+        </span>
         <button onClick={onClose} className="p-0.5 text-gray-400 hover:text-gray-700 rounded">
           <XMarkIcon className="w-3.5 h-3.5" />
         </button>
@@ -110,8 +139,12 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
 
       {/* Select all / clear */}
       <div className="flex gap-3 px-3 pb-2">
-        <button onClick={selectAll} className="text-xs text-[#1A56DB] hover:underline">Tümü</button>
-        <button onClick={clearAll}  className="text-xs text-gray-400 hover:text-gray-700">Temizle</button>
+        <button onClick={selectAll} className="text-xs text-[#1A56DB] hover:underline">
+          Tümü
+        </button>
+        <button onClick={clearAll} className="text-xs text-gray-400 hover:text-gray-700">
+          Temizle
+        </button>
         {pending.size > 0 && (
           <span className="ml-auto text-xs text-gray-500">{pending.size} seçili</span>
         )}
@@ -129,17 +162,21 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
               key={value}
               onClick={() => toggle(value)}
               className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 transition-colors text-left ${
-                pending.has(value) ? "bg-blue-50/50" : ""
+                pending.has(value) ? 'bg-blue-50/50' : ''
               }`}
             >
-              <span className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                pending.has(value)
-                  ? "bg-[#1A56DB] border-[#1A56DB] text-white"
-                  : "border-gray-300 bg-white"
-              }`}>
+              <span
+                className={`flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                  pending.has(value)
+                    ? 'bg-[#1A56DB] border-[#1A56DB] text-white'
+                    : 'border-gray-300 bg-white'
+                }`}
+              >
                 {pending.has(value) && <CheckIcon className="w-3 h-3" />}
               </span>
-              <span className="flex-1 truncate text-gray-700">{value || <span className="italic text-gray-400">(boş)</span>}</span>
+              <span className="flex-1 truncate text-gray-700">
+                {value || <span className="italic text-gray-400">(boş)</span>}
+              </span>
               <span className="text-gray-400 flex-shrink-0">{count}</span>
             </button>
           ))
@@ -149,13 +186,19 @@ export function ColumnFilterDropdown({ table, col, selected, activeFilters, anch
       {/* Footer */}
       <div className="flex gap-2 px-3 py-2.5 border-t border-gray-100">
         <button
-          onClick={() => { onApply([]); onClose(); }}
+          onClick={() => {
+            onApply([]);
+            onClose();
+          }}
           className="flex-1 py-1.5 text-xs border border-gray-200 rounded-lg hover:bg-gray-50"
         >
           Sıfırla
         </button>
         <button
-          onClick={() => { onApply(Array.from(pending)); onClose(); }}
+          onClick={() => {
+            onApply(Array.from(pending));
+            onClose();
+          }}
           className="flex-1 py-1.5 text-xs bg-[#1A56DB] text-white rounded-lg hover:bg-blue-700"
         >
           Uygula {pending.size > 0 && `(${pending.size})`}

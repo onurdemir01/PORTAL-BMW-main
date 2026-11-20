@@ -114,7 +114,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: false,
     resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
   },
   {
@@ -138,7 +139,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: false,
     resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
   },
   {
@@ -162,7 +164,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: false,
     resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
   },
   {
@@ -186,7 +189,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: false,
     resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
   },
   {
@@ -213,7 +217,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: false,
     resValuesPath: '',
     resValuesVerified: false,
-    resValuesEvidence: 'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
+    resValuesEvidence:
+      'BULUNAMADI: Metaco values dizini kosan surume gore degisiyor, katalogda yok',
     resPeerTenants: [],
   },
 
@@ -266,7 +271,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: true,
     resValuesPath: '/vhosting/setup-wyden/4-wyden/test2/1.14.0/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 1:20,27,83 (2026-09-23) giocp3rdwytest2 / wyden-test kurulumu bu dosyayla; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 1:20,27,83 (2026-09-23) giocp3rdwytest2 / wyden-test kurulumu bu dosyayla; canli release ile eslesmesi olculmedi',
     resPeerTenants: [],
   },
   {
@@ -290,7 +296,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: true,
     resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa1/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 3:20,27,141 (2026-08-05) giocp3rdwytest1 / wyden-qa 1.5.19 clqa1; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 3:20,27,141 (2026-08-05) giocp3rdwytest1 / wyden-qa 1.5.19 clqa1; canli release ile eslesmesi olculmedi',
     resPeerTenants: ['wyden_qa_h3'],
   },
   {
@@ -314,7 +321,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: true,
     resValuesPath: '/vhosting/setup-wyden/4-wyden/qa/1.5.19/clqa2/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'MAKUL: runbook 5:150,162,242 (2026-04-30) giocp3rdwytest2 / wyden-qa 1.5.17/clqa2 kullandi; 1.5.19/clqa2 dizini clqa1 ile ayni surumde (runbook 3:141)',
+    resValuesEvidence:
+      'MAKUL: runbook 5:150,162,242 (2026-04-30) giocp3rdwytest2 / wyden-qa 1.5.17/clqa2 kullandi; 1.5.19/clqa2 dizini clqa1 ile ayni surumde (runbook 3:141)',
     resPeerTenants: ['wyden_qa_h2'],
   },
   {
@@ -338,7 +346,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: true,
     resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod2/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'wyden runbook 2:20,27,147 (2026-08-05) giocp3rdwyprod2 / wyden-prod 1.5.19 clprod2; canli release ile eslesmesi olculmedi',
+    resValuesEvidence:
+      'wyden runbook 2:20,27,147 (2026-08-05) giocp3rdwyprod2 / wyden-prod 1.5.19 clprod2; canli release ile eslesmesi olculmedi',
     resPeerTenants: ['wyden_prod_h2', 'wyden_prod_ank'],
   },
   {
@@ -362,7 +371,8 @@ const CRYPTO_TENANTS = Object.freeze([
     chartListing: true,
     resValuesPath: '/vhosting/setup-wyden/4-wyden/prod/1.5.19/clprod1/garanti_values.yaml',
     resValuesVerified: false,
-    resValuesEvidence: 'MAKUL: runbook 6:20,121 (2026-04-13) giocp3rdwyprod1 prod/1.5.16/clprod1 kullandi; 1.5.19/clprod1 dizini clprod2 ile ayni surumde (runbook 2:147)',
+    resValuesEvidence:
+      'MAKUL: runbook 6:20,121 (2026-04-13) giocp3rdwyprod1 prod/1.5.16/clprod1 kullandi; 1.5.19/clprod1 dizini clprod2 ile ayni surumde (runbook 2:147)',
     resPeerTenants: ['wyden_prod_h3', 'wyden_prod_ank'],
   },
   {

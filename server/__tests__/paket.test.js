@@ -15,6 +15,7 @@
 //   PK8 dagitim betikleri: calisma zamani paketinde --omit=dev, kaynak agacta build sonrasi prune
 //   PK9 Jenkinsfile: Guvenlik asamasi var, Paket asamasi uretici ile
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -31,13 +32,20 @@ const { karar } = require('../../scripts/guvenlik-denetim.cjs');
 // (scripts/manifest.cjs); onunla sinamak budamayi BOS gecirirdi.
 const PKG = {
   ...JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8')),
-  ...(({ dependencies, devDependencies, overrides }) => ({ dependencies, devDependencies, overrides }))(
-    JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package.json'), 'utf8')),
-  ),
+  ...(({ dependencies, devDependencies, overrides }) => ({
+    dependencies,
+    devDependencies,
+    overrides,
+  }))(JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package.json'), 'utf8'))),
 };
-const KILIT = JSON.parse(fs.readFileSync(path.join(KOK, 'gelistirme', 'package-lock.json'), 'utf8'));
+const KILIT = JSON.parse(
+  fs.readFileSync(path.join(KOK, 'gelistirme', 'package-lock.json'), 'utf8'),
+);
 test('PK0 tam manifest gelistirme paketlerini tasir (budama sinanabilir)', () => {
-  assert.ok(Object.keys(PKG.devDependencies || {}).length > 10, 'tam manifestte gelistirme paketleri yok');
+  assert.ok(
+    Object.keys(PKG.devDependencies || {}).length > 10,
+    'tam manifestte gelistirme paketleri yok',
+  );
 });
 const oku = (p) => fs.readFileSync(path.join(KOK, p), 'utf8');
 
@@ -287,7 +295,11 @@ test('PK9 Jenkinsfile: Guvenlik asamasi ve uretici ile Paket', () => {
     "Guvenlik Testler'den once",
   );
   assert.match(j, /npm run paket -- --cikti .* --zip .* --derleme-yok/);
-  assert.doesNotMatch(j, /cp -r dist server scripts deploy/, 'eski elle paketleme geri gelmis');
+  assert.doesNotMatch(
+    j,
+    esnek(/cp -r dist server scripts deploy/),
+    'eski elle paketleme geri gelmis',
+  );
 });
 
 test('PK-YER cikti repo disinda ya da yalniz build/ altinda (kurumsal Jenkins isi; paket kendini kopyalamaz)', () => {
@@ -295,8 +307,18 @@ test('PK-YER cikti repo disinda ya da yalniz build/ altinda (kurumsal Jenkins is
   const hata = (p) => P.ciktiYeriHatasi(path.resolve(p), kok);
   assert.equal(hata('/baska/paket/PORTAL-BMW-main'), null, 'repo disi kabul edilmeli');
   assert.equal(hata('/depo/build/BMWPORTAL/PORTAL-BMW-main'), null, 'build/ alti kabul edilmeli');
-  for (const yasak of ['/depo', '/depo/scripts/x', '/depo/build', '/depo/buildx/y', '/depo/dist/p']) {
-    assert.match(String(hata(yasak)), /DISINDA ya da repo icinde build\/ altinda/, `${yasak} reddedilmeli`);
+  for (const yasak of [
+    '/depo',
+    '/depo/scripts/x',
+    '/depo/build',
+    '/depo/buildx/y',
+    '/depo/dist/p',
+  ]) {
+    assert.match(
+      String(hata(yasak)),
+      /DISINDA ya da repo icinde build\/ altinda/,
+      `${yasak} reddedilmeli`,
+    );
   }
   assert.ok(!P.DAHIL.includes('build'), 'build/ pakete kopyalanirsa cikti kendini kopyalar');
 });

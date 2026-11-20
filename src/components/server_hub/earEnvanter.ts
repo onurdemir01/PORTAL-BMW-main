@@ -124,7 +124,8 @@ const KARAR: Record<string, DurumBilgisi> = {
   AYNI_SURUM_FARKLI_DOSYA: {
     etiket: 'aynı sürüm, farklı dosya',
     ton: 'uyari',
-    aciklama: 'Jar adları ve sürümleri aynı, en az bir jar dosyasının boyutu farklı (yeniden derlenmiş olabilir).',
+    aciklama:
+      'Jar adları ve sürümleri aynı, en az bir jar dosyasının boyutu farklı (yeniden derlenmiş olabilir).',
   },
   FARKLI_YAPI: {
     etiket: 'yapı farklı',
@@ -151,11 +152,16 @@ const PARTI: Record<string, DurumBilgisi> = {
 // JBoss eşlemesi (tarayıcı sürüm 2). JVM'e bağlı olmak "sağlıklı" demek değil (JVM kapalı olabilir):
 // yeşil değil, bilgi. Okunamayan yapılandırma "JVM yok" sayılmaz.
 const JBOSS: Record<string, DurumBilgisi> = {
-  VAR: { etiket: 'JVM’e bağlı', ton: 'bilgi', aciklama: 'domain.xml ve host.xml bu EAR’ı en az bir JVM’e bağlıyor.' },
+  VAR: {
+    etiket: 'JVM’e bağlı',
+    ton: 'bilgi',
+    aciklama: 'domain.xml ve host.xml bu EAR’ı en az bir JVM’e bağlıyor.',
+  },
   TANIM_YOK: {
     etiket: 'tanım yok',
     ton: 'uyari',
-    aciklama: 'domain.xml’de bu EAR için deployment yok: diskte duruyor ama hiçbir JVM’e yüklenmiyor olabilir.',
+    aciklama:
+      'domain.xml’de bu EAR için deployment yok: diskte duruyor ama hiçbir JVM’e yüklenmiyor olabilir.',
   },
   GRUPTA_YOK: {
     etiket: 'grupta yok',
@@ -175,7 +181,8 @@ const JBOSS: Record<string, DurumBilgisi> = {
   OLCULMEDI: {
     etiket: 'ölçülmedi',
     ton: 'notr',
-    aciklama: 'Bu tarama JBoss yapılandırmasını okumayan eski tarayıcıyla yapıldı. Yeni tarama sonucu gösterir.',
+    aciklama:
+      'Bu tarama JBoss yapılandırmasını okumayan eski tarayıcıyla yapıldı. Yeni tarama sonucu gösterir.',
   },
 };
 
@@ -194,7 +201,8 @@ export function xmlEslesmeOku(ham: string | null | undefined): EarXmlEslesme | n
   if (!ham) return null;
   try {
     const x = JSON.parse(ham) as EarXmlEslesme;
-    if (!x || typeof x !== 'object' || !['VAR', 'JVM_YOK', 'OLCULEMEDI'].includes(x.durum)) return null;
+    if (!x || typeof x !== 'object' || !['VAR', 'JVM_YOK', 'OLCULEMEDI'].includes(x.durum))
+      return null;
     return { ...x, deploymentlar: x.deploymentlar || [], jvmler: x.jvmler || [] };
   } catch {
     return null;
@@ -250,7 +258,8 @@ const KULLANIM: Record<string, DurumBilgisi> = {
   GELECEK: {
     etiket: 'son yazma ileri tarihli',
     ton: 'uyari',
-    aciklama: 'Son yazma tarama anından ileri tarihli (saat kayması?): kanıt sayılmadı, “kullanılmıyor” denemez.',
+    aciklama:
+      'Son yazma tarama anından ileri tarihli (saat kayması?): kanıt sayılmadı, “kullanılmıyor” denemez.',
   },
 };
 
@@ -266,9 +275,13 @@ export function utcMs(utc: string | number | null | undefined): number | null {
  * Kullanım kanıtı -> rozet; null = ölçülmedi (eski tarayıcı ya da JVM'e bağlı EAR). Referans TARAMA anıdır
  * (taramaMs): eski bir taramada taramadan hemen önce yazılmış dizin de "yakında yazılmış" kalır.
  */
-export function kullanimDurumu(k: EarKullanim | null | undefined, taramaMs: number): DurumBilgisi | null {
+export function kullanimDurumu(
+  k: EarKullanim | null | undefined,
+  taramaMs: number,
+): DurumBilgisi | null {
   if (!k || typeof k !== 'object') return null;
-  if (k.durum === 'VAR' && Array.isArray(k.surecler) && k.surecler.length > 0) return KULLANIM.SUREC;
+  if (k.durum === 'VAR' && Array.isArray(k.surecler) && k.surecler.length > 0)
+    return KULLANIM.SUREC;
   if (k.son_yazma != null) {
     const fark = taramaMs - k.son_yazma * 1000;
     if (fark < -GUN_MS) return KULLANIM.GELECEK;

@@ -2,6 +2,7 @@
 // giris ekranina dusurmesini saglar; ust servisten yansiyan 401'ler (AWX
 // token'i dusmesi gibi) kullaniciyi portaldan ATMAMALIDIR.
 const test = require('node:test');
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,9 +18,9 @@ function kodOnly(src) {
 
 /** Fail-closed dilim: sinir bulunamazsa testi DUSUR, sessizce bos dilim dondurme. */
 function dilim(src, bas, son) {
-  const i = src.indexOf(bas);
+  const i = konum(src, bas);
   assert.ok(i >= 0, `dilim baslangici bulunamadi: ${bas}`);
-  const j = src.indexOf(son, i + bas.length);
+  const j = konum(src, son, i + 1);
   assert.ok(j > i, `dilim sonu bulunamadi: ${son}`);
   return src.slice(i, j);
 }
@@ -41,19 +42,29 @@ test('OB1 — requireAuth 401i CANLI olarak imzalar', async () => {
   const { requireAuth } = require('../index.cjs');
   const r = await istek((app) => app.get('/x', requireAuth, (_q, s) => s.json({ ok: true })), '/x');
   assert.strictEqual(r.status, 401);
-  assert.strictEqual(r.imza, 'expired', 'oturum 401i imzasiz cikti — istemci kapisi HIC ATESLENMEZ');
+  assert.strictEqual(
+    r.imza,
+    'expired',
+    'oturum 401i imzasiz cikti — istemci kapisi HIC ATESLENMEZ',
+  );
 });
 
 test('OB2 — requireAdmin: oturumsuz 401 imzali, YETKISIZ 403 imzasiz', async () => {
   const { requireAdmin } = require('../index.cjs');
-  const yok = await istek((app) => app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true })), '/x');
+  const yok = await istek(
+    (app) => app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true })),
+    '/x',
+  );
   assert.strictEqual(yok.status, 401);
   assert.strictEqual(yok.imza, 'expired');
 
   // Oturum VAR ama rol yetersiz → 403. Bu bitmis bir oturum DEGILDIR; imzalanirsa
   // admin olmayan bir kullanici bir admin ucuna dokundugunda portaldan atilirdi.
   const rolsuz = await istek((app) => {
-    app.use((req, _s, next) => { req.session = { user: { username: 'u', role: 'User' } }; next(); });
+    app.use((req, _s, next) => {
+      req.session = { user: { username: 'u', role: 'User' } };
+      next();
+    });
     app.get('/x', requireAdmin, (_q, s) => s.json({ ok: true }));
   }, '/x');
   assert.strictEqual(rolsuz.status, 403);
@@ -90,7 +101,11 @@ test('OB4 — server/auth icindeki HER oturum 401i oturumYokdan gecer', () => {
   }
   assert.deepStrictEqual(imzasiz, [], `beklenmeyen imzasiz 401:\n${imzasiz.join('\n')}`);
   assert.match(d, /res\.status\(status\)\.json\(/, 'giris hatasi yaniti bulunamadi');
-  assert.doesNotMatch(d, /oturumYok\(/, 'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir');
+  assert.doesNotMatch(
+    d,
+    esnek(/oturumYok\(/),
+    'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir',
+  );
 });
 
 test('OB5 — imza capraz kokende OKUNABILIR olsun diye expose edilir', () => {
@@ -98,7 +113,7 @@ test('OB5 — imza capraz kokende OKUNABILIR olsun diye expose edilir', () => {
   // Dilim, CORS ara katmaninin `origin === allowedOrigin` DALIDIR: baslik orada
   // degil de disarida/olu bir dalda durursa bekci ateslenmeli.
   const cors = dilim(src, 'Access-Control-Allow-Origin', 'req.method === "OPTIONS"');
-  assert.doesNotMatch(cors, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'CORS dali olu');
+  assert.doesNotMatch(cors, esnek(/if\s*\(\s*(false|0|null|undefined)\s*\)/), 'CORS dali olu');
   assert.match(
     cors,
     /Access-Control-Expose-Headers[^)]*X-Portal-Session/,
@@ -111,5 +126,9 @@ test('OB6 — istemci ile sunucu AYNI baslik adini kullanir', () => {
   const istemci = oku('src/api/sessionGuard.ts');
   const m = istemci.match(/export const SESSION_HEADER = '([^']+)'/);
   assert.ok(m, 'istemci tarafinda SESSION_HEADER bulunamadi');
-  assert.strictEqual(m[1], SESSION_HEADER, 'iki taraf farkli baslik adi kullaniyor — kapi hic atesleyemez');
+  assert.strictEqual(
+    m[1],
+    SESSION_HEADER,
+    'iki taraf farkli baslik adi kullaniyor — kapi hic atesleyemez',
+  );
 });

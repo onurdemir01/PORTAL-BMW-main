@@ -11,6 +11,7 @@
 // `/legacy/hosts` ve `discover` uclarini koruyor, Telnet hicbirini korumuyordu.
 // Ayni kisit, ayni tablo, iki farkli sonuc.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -43,7 +44,11 @@ test('TY1 `/hosts` kisitli uygulamanin SUNUCU LISTESINI vermez', () => {
   const kapi = d.indexOf('assertAllowed');
   const okuma = d.indexOf('hostsForApp(');
   assert.ok(kapi >= 0 && okuma > kapi, 'kapi listeyi OKUDUKTAN sonra calisiyor');
-  assert.doesNotMatch(d, /if\s*\(\s*(true|false|0|null|undefined)\s*\)/, 'sabit kosullu dal');
+  assert.doesNotMatch(
+    d,
+    esnek(/if\s*\(\s*(true|false|0|null|undefined)\s*\)/),
+    'sabit kosullu dal',
+  );
 });
 
 test('TY2 legacy `run` ISLEMIN KENDISINI de kapidan gecirir', () => {
@@ -89,7 +94,7 @@ test('TY3 HER kapi PAYLASILAN modulu kullanir (yerel taklit kabul edilmez)', () 
   // Yerel bir `assertAllowed` TANIMI hicbir zaman olmamali.
   assert.doesNotMatch(
     telnet,
-    /assertAllowed\s*:\s*(async\s*)?\(/,
+    esnek(/assertAllowed\s*:\s*(async\s*)?\(/),
     'Telnet icinde yerel bir assertAllowed tanimi var',
   );
 });

@@ -8,17 +8,21 @@
 function initMcp(app) {
   // Paylasilan auth guard'lari (secret-kapili). Auth modulu yuklenemezse fallback KAPALI
   // (deny) — MCP admin endpoint'leri asla guard'siz acilmasin.
-  let requireAuth = (req, res, next) => res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
-  let requireAdmin = (req, res, next) => res.status(403).json({ ok: false, message: 'Auth modülü yok.' });
+  let requireAuth = (req, res, next) =>
+    res.status(401).json({ ok: false, message: 'Auth modülü yok.' });
+  let requireAdmin = (req, res, next) =>
+    res.status(403).json({ ok: false, message: 'Auth modülü yok.' });
   try {
     const auth = require('../auth/index.cjs');
     if (typeof auth.requireAuth === 'function') requireAuth = auth.requireAuth;
     if (typeof auth.requireAdmin === 'function') requireAdmin = auth.requireAdmin;
-  } catch { /* auth modulu yoksa deny kalir */ }
+  } catch {
+    /* auth modulu yoksa deny kalir */
+  }
 
   function getServerModule(name) {
     if (name === 'dynatrace') return require('../dynatrace/client.cjs');
-    if (name === 'instana')   return require('../instana/client.cjs');
+    if (name === 'instana') return require('../instana/client.cjs');
     return null;
   }
 
@@ -53,7 +57,11 @@ function initMcp(app) {
       return res.status(400).json({ ok: false, message: 'tool alanı gerekli.' });
     }
     try {
-      const result = (await (async () => { if (req.params.server === 'instana') return await mod.callTool(tool, args, env === 'prod' ? 'prod' : 'nonprod'); return await mod.callTool(tool, args); })());
+      const result = await (async () => {
+        if (req.params.server === 'instana')
+          return await mod.callTool(tool, args, env === 'prod' ? 'prod' : 'nonprod');
+        return await mod.callTool(tool, args);
+      })();
       res.json({ ok: true, result });
     } catch (err) {
       res.status(502).json({ ok: false, message: err.message });

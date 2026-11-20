@@ -18,10 +18,25 @@ const {
 } = require('../nginx-inventory-summary.cjs');
 
 const host = (o) => ({
-  hostname: 'H', env: 'test', location: 'pendik', nginx_version: '1.24.0', os: 'RHEL 8',
-  kernel: '4.18', architecture: 'x86_64', cpu: '4', memory: '16G', disk_usr_nginx: '50G',
-  disk_web_log: '100G', services: 'mobile', service_count: '1', config_count: '10',
-  metadata_version: '1', nginx_user: 'www', domain: 'd', subnet: 's', ...o,
+  hostname: 'H',
+  env: 'test',
+  location: 'pendik',
+  nginx_version: '1.24.0',
+  os: 'RHEL 8',
+  kernel: '4.18',
+  architecture: 'x86_64',
+  cpu: '4',
+  memory: '16G',
+  disk_usr_nginx: '50G',
+  disk_web_log: '100G',
+  services: 'mobile',
+  service_count: '1',
+  config_count: '10',
+  metadata_version: '1',
+  nginx_user: 'www',
+  domain: 'd',
+  subnet: 's',
+  ...o,
 });
 
 test('toGiB: birimler donusturulur, cozulemeyen NULL doner', () => {
@@ -38,7 +53,7 @@ test('toplamlar yalnizca COZULEBILEN degerlerden; gerisi ayrica bildirilir', () 
   const s = summarizeNginxInventory([
     host({ hostname: 'a', memory: '16G' }),
     host({ hostname: 'b', memory: '32G' }),
-    host({ hostname: 'c', memory: '' }),        // cozulemez
+    host({ hostname: 'c', memory: '' }), // cozulemez
     host({ hostname: 'd', memory: 'bilinmiyor' }), // cozulemez
   ]);
   assert.equal(s.totals.memory.totalGiB, 48, '16 + 32');
@@ -65,10 +80,14 @@ test('ortam x lokasyon kirilimi', () => {
   ]);
   const prod = s.byEnv.find((e) => e.env === 'production');
   assert.equal(prod.hosts, 3);
-  assert.deepEqual(prod.locations, [
-    { location: 'ankara', hosts: 2 },
-    { location: 'pendik', hosts: 1 },
-  ], 'cok gorulen once');
+  assert.deepEqual(
+    prod.locations,
+    [
+      { location: 'ankara', hosts: 2 },
+      { location: 'pendik', hosts: 1 },
+    ],
+    'cok gorulen once',
+  );
   assert.equal(s.byEnv[0].env, 'production', 'ortamlar sunucu sayisina gore sirali');
 });
 
@@ -127,11 +146,11 @@ test('bos girdi cokmez', () => {
 test('ortam: ad kalibi tablo degerini duzeltir, celisenler sayilir, kalip disi tablo degerini korur', () => {
   const { summarizeNginxInventory } = require('../nginx-inventory-summary.cjs');
   const out = summarizeNginxInventory([
-    { hostname: 'GBNGXP50', env: 'non-production', location: 'Pendik' },   // intranet prod SPA: vhost yok
-    { hostname: 'GBNGXAP24', env: 'non-production', location: 'Ankara' },  // yeni prod SPA
-    { hostname: 'GBNGXT34', env: 'production', location: '' },             // unutulmus X-PROD.conf
-    { hostname: 'GBRVPP07', env: 'production', location: 'Pendik' },       // dogru
-    { hostname: 'GBLABT02', env: 'non-production', location: '' },         // kalip disi: tablo degeri
+    { hostname: 'GBNGXP50', env: 'non-production', location: 'Pendik' }, // intranet prod SPA: vhost yok
+    { hostname: 'GBNGXAP24', env: 'non-production', location: 'Ankara' }, // yeni prod SPA
+    { hostname: 'GBNGXT34', env: 'production', location: '' }, // unutulmus X-PROD.conf
+    { hostname: 'GBRVPP07', env: 'production', location: 'Pendik' }, // dogru
+    { hostname: 'GBLABT02', env: 'non-production', location: '' }, // kalip disi: tablo degeri
   ]);
   const by = Object.fromEntries(out.hosts.map((h) => [h.hostname, h]));
   assert.equal(by.GBNGXP50.env, 'production');

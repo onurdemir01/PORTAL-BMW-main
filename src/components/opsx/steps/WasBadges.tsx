@@ -1,10 +1,12 @@
 // src/components/opsx/steps/WasBadges.tsx — WAS adımlarının ortam ve durum rozetleri.
-import React from "react";
-import { envBadgeClass, wasStateInfo } from "./wasLabels";
+import React from 'react';
+import { envBadgeClass, wasStateInfo } from './wasLabels';
 
 export const WasEnvBadge: React.FC<{ env: string }> = ({ env }) => (
-  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${envBadgeClass(env)}`}>
-    {env || "ortam yok"}
+  <span
+    className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${envBadgeClass(env)}`}
+  >
+    {env || 'ortam yok'}
   </span>
 );
 

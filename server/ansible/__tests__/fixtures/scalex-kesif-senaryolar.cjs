@@ -20,7 +20,7 @@ const { BASH, kabukPath, posixYol } = require('./kabuk.cjs');
 const ROOT = path.join(__dirname, '..', '..', '..', '..');
 const RUNNER = path.join(
   ROOT,
-  'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
+  'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
 );
 const SAHTE_OC = path.join(__dirname, 'scalex-sahte-oc.cjs');
 

@@ -78,7 +78,10 @@ const HostSelectStep: React.FC<Props> = ({ app, busy, onSubmit, initialManual = 
   }, [app]);
 
   const envs = useMemo(
-    () => [...new Set((hosts || []).map((h) => h.env).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set((hosts || []).map((h) => h.env).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
     [hosts],
   );
   // ÇİPLER MAJÖR BAZINDA. Eskiden ham sürüm string'leri çip oluyordu ("7.3.10",

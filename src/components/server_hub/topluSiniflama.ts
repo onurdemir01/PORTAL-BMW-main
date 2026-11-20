@@ -23,7 +23,15 @@
 // ÇALIŞIYORSA (ya da yazma sırasında açıldıysa) domain artık kapalı değildir: tarama eski (metin "domain kapali" geçse
 // de hc_kapali değil). Dosya / ps hiç okunamadıysa ("<dosya> okunamadi", "ps okunamadi; ...") ortam / yetki. Betiğin "istek durduruldu (baska JVM reddedildi)" satırı o JVM'in değil başka JVM'in nedenidir: iptal.
 
-export type TopluKategori = 'hc_kapali' | 'ortam_yetki' | 'tarama_eski' | 'tanim' | 'elle' | 'iptal' | 'baglanti_sure' | 'diger';
+export type TopluKategori =
+  | 'hc_kapali'
+  | 'ortam_yetki'
+  | 'tarama_eski'
+  | 'tanim'
+  | 'elle'
+  | 'iptal'
+  | 'baglanti_sure'
+  | 'diger';
 
 export const KATEGORI_SIRASI: readonly TopluKategori[] = [
   'hc_kapali',
@@ -71,7 +79,20 @@ export const KATEGORI: Record<TopluKategori, { etiket: string; ne: string }> = {
   },
 };
 
-const TR: Record<string, string> = { ç: 'c', ğ: 'g', ı: 'i', İ: 'i', ö: 'o', ş: 's', ü: 'u', Ç: 'c', Ğ: 'g', Ö: 'o', Ş: 's', Ü: 'u' };
+const TR: Record<string, string> = {
+  ç: 'c',
+  ğ: 'g',
+  ı: 'i',
+  İ: 'i',
+  ö: 'o',
+  ş: 's',
+  ü: 'u',
+  Ç: 'c',
+  Ğ: 'g',
+  Ö: 'o',
+  Ş: 's',
+  Ü: 'u',
+};
 /** Küçük harf + Türkçe harfler ASCII + kıvrık kesme işareti düz. */
 export function sade(s: string | null | undefined): string {
   return String(s ?? '')
@@ -119,7 +140,10 @@ const AWX_CIKTI = /awx ciktisina bakin/g;
  * Başarısız öğenin kategorisi. durum: öğe durumu (IPTAL / YARIM_KALDI metin eşleşmezse 'iptal').
  * Metin hiçbir desene uymazsa 'diger'.
  */
-export function siniflandir(neden: string | null | undefined, durum?: string | null): TopluKategori {
+export function siniflandir(
+  neden: string | null | undefined,
+  durum?: string | null,
+): TopluKategori {
   const t = sade(neden).replace(AWX_CIKTI, '');
   // Hiç çalıştırılmayan satır (Toplu Restart "toplu iş durduruldu: <başka öğe> <neden>", Toplu Auto-Start "çalıştırılmadı:
   // toplu iş durduruldu — <başka öğe> <neden>"): içteki neden başka öğenindir (ör. "yazıldı ama geri okunan" elle değil).
@@ -132,7 +156,10 @@ export function siniflandir(neden: string | null | undefined, durum?: string | n
   if (/semasi \(sys\.columns\) okunamadi/.test(t)) return 'diger';
   // server_hub_fix.sh JN eki (rc != 0): JDK yok / JAVA_HOME geçersiz. jboss-cli hiç başlamadıysa "host controller'a
   // bağlanılamadı" sarmalayıcısı da yazılır ama neden host controller değil, sunucu kurulumudur.
-  if (/java_home='[^']*' gecersiz/.test(t) && !/connection refused|could not connect|controller is not available/.test(t))
+  if (
+    /java_home='[^']*' gecersiz/.test(t) &&
+    !/connection refused|could not connect|controller is not available/.test(t)
+  )
     return 'ortam_yetki';
   // "artık aday değil (<iç neden>)": iç neden bir kümeye uyuyorsa o.
   const ic = /artik aday degil \((.*)$/.exec(t);
@@ -154,7 +181,14 @@ function desenle(t: string, durum?: string | null): TopluKategori | null {
 /** Toplu Auto-Start: başarısız sayılan öğe durumları (SKIP: zaten hedefteydi, tarama eskiydi). */
 export const AUTOSTART_BASARISIZ = new Set(['FAIL', 'DUSTU', 'YARIM_KALDI', 'IPTAL', 'SKIP']);
 /** Toplu Restart: başarısız sayılan öğe durumları (KAPANMADI: restart edildi ama fark kapanmadı). */
-export const RESTART_BASARISIZ = new Set(['FAIL', 'DUSTU', 'YARIM_KALDI', 'IPTAL', 'ATLANDI', 'KAPANMADI']);
+export const RESTART_BASARISIZ = new Set([
+  'FAIL',
+  'DUSTU',
+  'YARIM_KALDI',
+  'IPTAL',
+  'ATLANDI',
+  'KAPANMADI',
+]);
 
 /** Kategori sayımı: yalnız sıfır olmayanlar, KATEGORI_SIRASI'yla. */
 export function kategoriSayimi(
@@ -177,6 +211,8 @@ export function kategoriyeGore<T extends { durum: string; neden?: string | null 
   secili: TopluKategori | null,
 ): T[] {
   if (!secili) return ogeler;
-  const s = ogeler.filter((o) => basarisiz.has(o.durum) && siniflandir(o.neden, o.durum) === secili);
+  const s = ogeler.filter(
+    (o) => basarisiz.has(o.durum) && siniflandir(o.neden, o.durum) === secili,
+  );
   return s.length ? s : ogeler;
 }

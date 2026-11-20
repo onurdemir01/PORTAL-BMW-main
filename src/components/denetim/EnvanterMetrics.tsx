@@ -32,7 +32,6 @@ const EMPTY_LABEL = '(boş)';
 
 const nf = (n: number) => fmtNumber(n);
 
-
 export default function EnvanterMetrics() {
   const [source, setSource] = useState('hosts');
   const [sum, setSum] = useState<EnvanterSummary | null>(null);
@@ -96,8 +95,7 @@ export default function EnvanterMetrics() {
     };
   }, [source]);
 
-  if (loading && !sum)
-    return <LoadingLogo />;
+  if (loading && !sum) return <LoadingLogo />;
   if (err)
     return (
       <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
@@ -131,8 +129,8 @@ export default function EnvanterMetrics() {
       {sum && <Totals sum={sum} />}
       {sum && !!sum.eksikBoyutlar?.length && (
         <p className="text-[11px] text-[var(--text-muted)]" data-testid="eksik-boyutlar">
-          {sum.eksikBoyutlar.join(', ')} kırılımı gösterilmiyor: tabloda henüz bu kolon yok (middleware_inventory işi yeni şemayla
-          çalıştığında görünür).
+          {sum.eksikBoyutlar.join(', ')} kırılımı gösterilmiyor: tabloda henüz bu kolon yok
+          (middleware_inventory işi yeni şemayla çalıştığında görünür).
         </p>
       )}
       {sum && sum.products.length > 0 && <ProductCoverage sum={sum} />}
@@ -383,9 +381,7 @@ function BarList({
           onClick={() => setAll(!all)}
           className="mt-1 text-[11px] text-[var(--accent)] hover:underline"
         >
-          {all
-            ? 'daha az göster'
-            : `tümünü göster (${nf(rows.length)} değer)`}
+          {all ? 'daha az göster' : `tümünü göster (${nf(rows.length)} değer)`}
         </button>
       )}
     </div>
@@ -483,16 +479,30 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
       }
     >
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <label htmlFor={`${pivotId}-x`} className="text-[11px] text-[var(--text-muted)]">Sütun</label>
-        <Select id={`${pivotId}-x`} sizeVariant="sm" value={x} onChange={(e) => setX(e.target.value)}>
+        <label htmlFor={`${pivotId}-x`} className="text-[11px] text-[var(--text-muted)]">
+          Sütun
+        </label>
+        <Select
+          id={`${pivotId}-x`}
+          sizeVariant="sm"
+          value={x}
+          onChange={(e) => setX(e.target.value)}
+        >
           {sum.dims.map((d) => (
             <option key={d.key} value={d.key}>
               {d.label}
             </option>
           ))}
         </Select>
-        <label htmlFor={`${pivotId}-y`} className="text-[11px] text-[var(--text-muted)] ml-1">Satır</label>
-        <Select id={`${pivotId}-y`} sizeVariant="sm" value={y} onChange={(e) => setY(e.target.value)}>
+        <label htmlFor={`${pivotId}-y`} className="text-[11px] text-[var(--text-muted)] ml-1">
+          Satır
+        </label>
+        <Select
+          id={`${pivotId}-y`}
+          sizeVariant="sm"
+          value={y}
+          onChange={(e) => setY(e.target.value)}
+        >
           {sum.dims.map((d) => (
             <option key={d.key} value={d.key}>
               {d.label}
@@ -501,7 +511,12 @@ function Pivot({ source, sum }: { source: string; sum: EnvanterSummary }) {
         </Select>
         {source !== 'hosts' && (
           <>
-            <label htmlFor={`${pivotId}-sayim`} className="text-[11px] text-[var(--text-muted)] ml-1">Sayım</label>
+            <label
+              htmlFor={`${pivotId}-sayim`}
+              className="text-[11px] text-[var(--text-muted)] ml-1"
+            >
+              Sayım
+            </label>
             <Select
               id={`${pivotId}-sayim`}
               sizeVariant="sm"

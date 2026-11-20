@@ -34,14 +34,28 @@ export const KD_DURUM: Record<
   ShKopyaDurum,
   { etiket: string; renk: string; dolu: boolean; kenar: 'solid' | 'dashed'; sira: number }
 > = {
-  calisiyor: { etiket: 'çalışıyor', renk: 'var(--status-success)', dolu: true, kenar: 'solid', sira: 0 },
+  calisiyor: {
+    etiket: 'çalışıyor',
+    renk: 'var(--status-success)',
+    dolu: true,
+    kenar: 'solid',
+    sira: 0,
+  },
   kapali: { etiket: 'kapalı', renk: 'var(--status-danger)', dolu: false, kenar: 'solid', sira: 1 },
-  bilinmiyor: { etiket: 'bilinmiyor', renk: 'var(--status-neutral)', dolu: false, kenar: 'dashed', sira: 2 },
+  bilinmiyor: {
+    etiket: 'bilinmiyor',
+    renk: 'var(--status-neutral)',
+    dolu: false,
+    kenar: 'dashed',
+    sira: 2,
+  },
 };
 /** Ortam seçeneklerinin sabit sırası (prod önce); listede olmayan ortam sona, ada göre. */
 const ORTAM_SIRA = ['PROD', 'QA', 'TEST', 'DEV', 'EDU'];
-const ortamNo = (o: string) => (ORTAM_SIRA.indexOf(o) < 0 ? ORTAM_SIRA.length : ORTAM_SIRA.indexOf(o));
-export const kdOrtamSirala = (o: string[]) => [...o].sort((a, b) => ortamNo(a) - ortamNo(b) || a.localeCompare(b));
+const ortamNo = (o: string) =>
+  ORTAM_SIRA.indexOf(o) < 0 ? ORTAM_SIRA.length : ORTAM_SIRA.indexOf(o);
+export const kdOrtamSirala = (o: string[]) =>
+  [...o].sort((a, b) => ortamNo(a) - ortamNo(b) || a.localeCompare(b));
 /**
  * Bulgular geçişi: KOPYA_TUTARSIZ metni `JBoss<nesil> <JVM>: ...` diye başlar; iki nokta alt dize
  * eşleşmesini (PAY / PAYMENT) keser, ortam grubu prod ile prod dışını ayırır.
@@ -53,12 +67,14 @@ export const kdBulguSuzgeci = (g: Pick<ShKopyaGrubu, 'app' | 'gen' | 'env'>) => 
 });
 
 const ESLESME_VARSAYILAN = {
-  kural: 'Aynı ortam + aynı JBoss nesli (7 / 8) + aynı JVM adı (büyük / küçük harf duyarsız), farklı sunucular.',
+  kural:
+    'Aynı ortam + aynı JBoss nesli (7 / 8) + aynı JVM adı (büyük / küçük harf duyarsız), farklı sunucular.',
   kacirabilir:
     'Farklı JVM adıyla kurulmuş kopyalar (ör. PAY1 / PAY2) aynı grup sayılmaz; bu ekran onları ayrı uygulama olarak görür ya da hiç göstermez.',
   aktifPasif:
     'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; karar vermeden önce uygulama sahibine sorun.',
-  bayat: 'Bayat sunucudaki ya da çalışması ölçülemeyen kopya “bilinmiyor” sayılır, kapalı sayılmaz ve tutarsızlık kararına girmez.',
+  bayat:
+    'Bayat sunucudaki ya da çalışması ölçülemeyen kopya “bilinmiyor” sayılır, kapalı sayılmaz ve tutarsızlık kararına girmez.',
   dusen:
     'Son tam taramada hiç görülmeyen (taramadan düşen) sunucudaki kopya toplama girmez; satırda ayrıca “taramadan düştü” diye yazılır (sunucu silinmiş de olabilir).',
   digerSinirlar:
@@ -80,14 +96,19 @@ export function kdSuz(gruplar: ShKopyaGrubu[], s: KdSuzgec): ShKopyaGrubu[] {
       (!s.yalnizTutarsiz || g.tutarsiz) &&
       (s.env === 'all' || g.env === s.env) &&
       (s.gen === 'all' || String(g.gen) === s.gen) &&
-      (!n || g.app.toLowerCase().includes(n) || g.copies.some((k) => k.host.toLowerCase().includes(n))),
+      (!n ||
+        g.app.toLowerCase().includes(n) ||
+        g.copies.some((k) => k.host.toLowerCase().includes(n))),
   );
 }
 
 const asMetni = (v: string) => (v === 'true' ? 'açık' : v === 'false' ? 'kapalı' : 'bilinmiyor');
 
 /** CSV satırları (test edilir): grup başına bir satır. */
-export function kdCsv(gruplar: ShKopyaGrubu[]): { baslik: string[]; satirlar: (string | number)[][] } {
+export function kdCsv(gruplar: ShKopyaGrubu[]): {
+  baslik: string[];
+  satirlar: (string | number)[][];
+} {
   return {
     baslik: [
       'Uygulama (JVM)',
@@ -116,7 +137,10 @@ export function kdCsv(gruplar: ShKopyaGrubu[]): { baslik: string[]; satirlar: (s
       g.autoStartUyumsuz,
       g.stoppedHosts.join(' '),
       g.copies
-        .map((k) => `${k.host}:${KD_DURUM[k.durum].etiket}/auto-start ${asMetni(k.autoStart)}${k.fresh ? '' : '/bayat'}`)
+        .map(
+          (k) =>
+            `${k.host}:${KD_DURUM[k.durum].etiket}/auto-start ${asMetni(k.autoStart)}${k.fresh ? '' : '/bayat'}`,
+        )
         .join(' '),
       g.retirement.map((r) => `#${r.kayit}`).join(' '),
       g.ocp.map((o) => `${o.namespace}@${o.cluster}`).join(' '),
@@ -235,7 +259,14 @@ export default function KopyaDurumuTab({
   };
 
   if (!veri && hata)
-    return <LoadError title="Kopya durumu okunamadı" message={hata} onRetry={() => setHata('')} retrying={yuk} />;
+    return (
+      <LoadError
+        title="Kopya durumu okunamadı"
+        message={hata}
+        onRetry={() => setHata('')}
+        retrying={yuk}
+      />
+    );
   if (!veri)
     return (
       <div className="py-10 flex justify-center">
@@ -248,19 +279,23 @@ export default function KopyaDurumuTab({
     <div className="space-y-3" data-testid="kopya-durumu">
       <div className="text-xs space-y-1" style={MUTED}>
         <p>
-          Aynı uygulamanın kopyaları kaç sunucuda çalışıyor? Kopya grubu: {e.kural} Yalnız iki ya da daha çok
-          sunucuya yayılan gruplar listelenir.
+          Aynı uygulamanın kopyaları kaç sunucuda çalışıyor? Kopya grubu: {e.kural} Yalnız iki ya da
+          daha çok sunucuya yayılan gruplar listelenir.
         </p>
         <p>
           {e.aktifPasif} {e.bayat}
         </p>
         <p>
-          <b>Eşleşme sınırı:</b> {e.kacirabilir} {e.digerSinirlar || ESLESME_VARSAYILAN.digerSinirlar}{' '}
+          <b>Eşleşme sınırı:</b> {e.kacirabilir}{' '}
+          {e.digerSinirlar || ESLESME_VARSAYILAN.digerSinirlar}{' '}
           {e.dusen || ESLESME_VARSAYILAN.dusen}
         </p>
         {veri.capraz && (veri.capraz.ocp?.okunamadi || veri.capraz.retirement?.okunamadi) && (
           <p data-testid="kopya-kaynak-notu">
-            {[veri.capraz.ocp?.okunamadi && 'OpenShift', veri.capraz.retirement?.okunamadi && 'Retirement']
+            {[
+              veri.capraz.ocp?.okunamadi && 'OpenShift',
+              veri.capraz.retirement?.okunamadi && 'Retirement',
+            ]
               .filter(Boolean)
               .join(' ve ')}{' '}
             kaynağı okunamadı: bu bağlantılar eksik olabilir.
@@ -277,7 +312,8 @@ export default function KopyaDurumuTab({
             color: 'var(--status-danger-text)',
           }}
         >
-          Yenileme başarısız: {hata}. Gösterilen veri {veri.latestScan || 'önceki okuma'} taramasından.
+          Yenileme başarısız: {hata}. Gösterilen veri {veri.latestScan || 'önceki okuma'}{' '}
+          taramasından.
         </div>
       )}
       {veri.staleFleet && (
@@ -313,8 +349,10 @@ export default function KopyaDurumuTab({
                   onClick={() => setS((x) => ({ ...x, yalnizTutarsiz: b.v }))}
                   className="px-2.5 py-1 rounded-lg border"
                   style={{
-                    borderColor: s.yalnizTutarsiz === b.v ? 'var(--accent)' : 'var(--border-subtle)',
-                    background: s.yalnizTutarsiz === b.v ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+                    borderColor:
+                      s.yalnizTutarsiz === b.v ? 'var(--accent)' : 'var(--border-subtle)',
+                    background:
+                      s.yalnizTutarsiz === b.v ? 'var(--bg-elevated)' : 'var(--bg-surface)',
                   }}
                 >
                   {b.etiket} <b className="tabular-nums">{fmtNumber(b.n)}</b>
@@ -373,10 +411,22 @@ export default function KopyaDurumuTab({
               style={{ background: 'var(--bg-surface)', borderColor: 'var(--border-subtle)' }}
             />
             <span className="ml-auto flex items-center gap-2">
-              <button type="button" className={BTN} style={btnStil()} onClick={csvIndir} disabled={!satirlar.length}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                onClick={csvIndir}
+                disabled={!satirlar.length}
+              >
                 <ArrowDownTrayIcon className="w-3.5 h-3.5" /> CSV
               </button>
-              <button type="button" className={BTN} style={btnStil()} onClick={() => void yukle(true)} disabled={yuk}>
+              <button
+                type="button"
+                className={BTN}
+                style={btnStil()}
+                onClick={() => void yukle(true)}
+                disabled={yuk}
+              >
                 <ArrowPathIcon className={`w-3.5 h-3.5 ${yuk ? 'animate-spin' : ''}`} /> Yenile
               </button>
             </span>
@@ -390,10 +440,16 @@ export default function KopyaDurumuTab({
                 : 'Birden çok sunucuya yayılan kopya grubu yok.'}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div
+              className="overflow-x-auto rounded-lg border"
+              style={{ borderColor: 'var(--border-subtle)' }}
+            >
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left" style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+                  <tr
+                    className="text-left"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}
+                  >
                     <th className="px-2 py-1.5 font-medium">Uygulama (JVM)</th>
                     <th className="px-2 py-1.5 font-medium">Ortam</th>
                     <th className="px-2 py-1.5 font-medium">Çalışan</th>
@@ -431,7 +487,11 @@ export default function KopyaDurumuTab({
                           </span>{' '}
                           <KopyaCubugu g={g} />
                           {g.unknown > 0 && (
-                            <span className="ml-1" style={MUTED} title="Bayat ya da ölçülemeyen kopya: kapalı sayılmadı">
+                            <span
+                              className="ml-1"
+                              style={MUTED}
+                              title="Bayat ya da ölçülemeyen kopya: kapalı sayılmadı"
+                            >
                               · {g.unknown} bilinmiyor
                             </span>
                           )}
@@ -512,7 +572,10 @@ export default function KopyaDurumuTab({
                               ),
                             )}
                             {g.ocp.length > 0 && (
-                              <span style={MUTED} title={g.ocp.map((o) => `${o.namespace} @ ${o.cluster}`).join(', ')}>
+                              <span
+                                style={MUTED}
+                                title={g.ocp.map((o) => `${o.namespace} @ ${o.cluster}`).join(', ')}
+                              >
                                 OpenShift: {g.ocp[0].namespace}
                                 {g.ocp.length > 1 ? ` +${g.ocp.length - 1}` : ''}
                               </span>
@@ -535,7 +598,9 @@ export default function KopyaDurumuTab({
                                   >
                                     {k.host}
                                   </button>
-                                  <span style={MUTED}>{kopyaBasligi(k).replace(`${k.host}: `, '')}</span>
+                                  <span style={MUTED}>
+                                    {kopyaBasligi(k).replace(`${k.host}: `, '')}
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -550,17 +615,28 @@ export default function KopyaDurumuTab({
           )}
           {satirlar.length > KD_SATIR_SINIRI && (
             <div className="text-xs" style={MUTED}>
-              İlk {fmtNumber(KD_SATIR_SINIRI)} grup gösteriliyor ({fmtNumber(satirlar.length)} grup); hepsi için CSV.
+              İlk {fmtNumber(KD_SATIR_SINIRI)} grup gösteriliyor ({fmtNumber(satirlar.length)}{' '}
+              grup); hepsi için CSV.
             </div>
           )}
           {host && (
             <div data-testid="kopya-durumu-panel" className="space-y-1" ref={panelRef}>
               <div className="flex justify-end">
-                <button type="button" className={BTN} style={btnStil()} onClick={() => setHost(null)}>
+                <button
+                  type="button"
+                  className={BTN}
+                  style={btnStil()}
+                  onClick={() => setHost(null)}
+                >
                   Kapat
                 </button>
               </div>
-              <SunucuPaneli key={host} host={host} retire={null} onEtiketDegisti={() => undefined} />
+              <SunucuPaneli
+                key={host}
+                host={host}
+                retire={null}
+                onEtiketDegisti={() => undefined}
+              />
             </div>
           )}
         </>

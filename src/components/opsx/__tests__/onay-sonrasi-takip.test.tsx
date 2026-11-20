@@ -18,6 +18,7 @@ const durum = vi.hoisted(() => vi.fn());
 vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { smartTicketStatus: durum } }));
 import { useOnaySonrasiTakip } from '../useOnaySonrasiTakip';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const HIZLI = { ilkMs: 5, aralikMs: 5 };
 
@@ -47,7 +48,12 @@ describe('useOnaySonrasiTakip', () => {
     durum.mockResolvedValue({ ok: true, status: 'REJECTED', errorMessage: 'Onaylayan reddetti' });
     const basladi = vi.fn();
     const { result } = renderHook(() => useOnaySonrasiTakip(78, basladi, HIZLI));
-    await waitFor(() => expect(result.current.talepSonu).toEqual({ status: 'REJECTED', errorMessage: 'Onaylayan reddetti' }));
+    await waitFor(() =>
+      expect(result.current.talepSonu).toEqual({
+        status: 'REJECTED',
+        errorMessage: 'Onaylayan reddetti',
+      }),
+    );
     expect(basladi).not.toHaveBeenCalled();
   });
 
@@ -69,8 +75,8 @@ describe('useOnaySonrasiTakip', () => {
   it('OS5 sihirbaz hook\'u kullanir, sonucu cizer ve "Yeni Islem" sifirlar', () => {
     const s = readFileSync(join(__dirname, '..', 'OpsXWizardPage.tsx'), 'utf8');
     expect(s).toMatch(/useOnaySonrasiTakip\(bekleyenTalep,/);
-    expect(s).toContain('pendingApproval: false, jobId, awxServerId');
-    expect(s).toContain('if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });');
+    expect(iceriyor(s, 'pendingApproval: false, jobId, awxServerId')).toBe(true);
+    expect(iceriyor(s, 'if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });')).toBe(true);
     expect(s).toContain('data-testid="opsx-talep-sonu"');
     const restart = s.slice(s.indexOf('function restart()'), s.indexOf('function restart()') + 800);
     expect(restart).toContain('talepSonuSifirla();');
@@ -125,11 +131,21 @@ describe('useOnaySonrasiTakip', () => {
       });
     // Sihirbazdaki satirin aynisi (OS7 kaynak iddiasi asagida bunu sabitler).
     function Bekleme({ id }: { id: number }) {
-      const { sonDurum: talepDurumu, sonDurumAlindiMs: talepDurumuAlindiMs } = useOnaySonrasiTakip(id, vi.fn(), {
-        ilkMs: 5,
-        aralikMs: 300,
-      });
-      return <SmartTalepSayaci talep={talepDurumu} serverNow={talepDurumu?.serverNow} alindiMs={talepDurumuAlindiMs} />;
+      const { sonDurum: talepDurumu, sonDurumAlindiMs: talepDurumuAlindiMs } = useOnaySonrasiTakip(
+        id,
+        vi.fn(),
+        {
+          ilkMs: 5,
+          aralikMs: 300,
+        },
+      );
+      return (
+        <SmartTalepSayaci
+          talep={talepDurumu}
+          serverNow={talepDurumu?.serverNow}
+          alindiMs={talepDurumuAlindiMs}
+        />
+      );
     }
     render(<Bekleme id={82} />);
     expect(screen.queryByRole('timer')).toBeNull(); // ilk yanit gelmeden cizilmez
@@ -146,7 +162,10 @@ describe('useOnaySonrasiTakip', () => {
     expect(s).toMatch(
       /sonDurum: talepDurumu,\s*sonDurumAlindiMs: talepDurumuAlindiMs,?\s*\} = useOnaySonrasiTakip\(bekleyenTalep,/,
     );
-    const bekleme = s.slice(s.indexOf('Onay bekleniyor — iş henüz başlamadı.'), s.indexOf('<KapamaOnayiUyarisi smartNo='));
+    const bekleme = s.slice(
+      s.indexOf('Onay bekleniyor — iş henüz başlamadı.'),
+      s.indexOf('<KapamaOnayiUyarisi smartNo='),
+    );
     expect(bekleme).toMatch(
       /<SmartTalepSayaci\s+talep=\{talepDurumu\}\s+serverNow=\{talepDurumu\?\.serverNow\}\s+alindiMs=\{talepDurumuAlindiMs\}/,
     );

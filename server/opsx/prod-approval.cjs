@@ -158,8 +158,7 @@ async function smartApprovalFor(platform) {
 
   const blob = await smartYapilandirma(plat);
 
-  const flowKey =
-    String(blob?.flowKey || '').trim() || String(process.env[envAdi] || '').trim();
+  const flowKey = String(blob?.flowKey || '').trim() || String(process.env[envAdi] || '').trim();
   if (!flowKey) return null;
 
   return {
@@ -250,7 +249,12 @@ async function opsxProductionKapisi({
   // Platform ayari DEGISMEZ; yalniz bu Admin'in bu istegi onaysiz kosar ve denetime yazilir.
   const atla = require('../ansible/admin-smart-atla.cjs');
   if (await atla.adminSmartAtliyor(req)) {
-    atla.atlamayiDenetle(req, 'opsx_production', { platform, islem: islemAdi, uretimSebebi: sebep, templateId });
+    atla.atlamayiDenetle(req, 'opsx_production', {
+      platform,
+      islem: islemAdi,
+      uretimSebebi: sebep,
+      templateId,
+    });
     return { proceed: true };
   }
 
@@ -330,7 +334,10 @@ async function opsxProductionKapisi({
   try {
     sablonVarsayilan = await runner.getTemplateVariableDefaultsOnServer(serverId, templateId);
   } catch (e) {
-    console.warn('[OpsX] template degiskenleri okunamadi (Smart sablonu yalniz gonderilen degerleri gorur):', e.message);
+    console.warn(
+      '[OpsX] template degiskenleri okunamadi (Smart sablonu yalniz gonderilen degerleri gorur):',
+      e.message,
+    );
   }
 
   const user = req?.session?.user || {};

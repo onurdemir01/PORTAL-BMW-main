@@ -8,6 +8,7 @@
 //   YT5 rota SIRASI (statik): Smart engeli ve OCO penceresi SAHIPLENMEDEN once; sahiplenme
 //       AWX cagrisindan once; rota requireAdmin ile korunur
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -27,12 +28,24 @@ const ocoTalep = (o = {}) => ({
   },
   ...o,
 });
-const duzTalep = () => ({ id: 5, status: 'TIMEOUT', pendingLaunch: { detail: { id: 1 }, extraVars: { a: '1' } } });
+const duzTalep = () => ({
+  id: 5,
+  status: 'TIMEOUT',
+  pendingLaunch: { detail: { id: 1 }, extraVars: { a: '1' } },
+});
 const NOT = 'onayci izinde, ekip lideri onay verdi';
 
 test('YT1 uygunluk', () => {
   assert.equal(rt.uygunluk(null).status, 404);
-  for (const s of ['PENDING', 'LAUNCHING', 'LAUNCHED', 'REJECTED', 'CANCELLED', 'ERROR', 'SCHEDULED']) {
+  for (const s of [
+    'PENDING',
+    'LAUNCHING',
+    'LAUNCHED',
+    'REJECTED',
+    'CANCELLED',
+    'ERROR',
+    'SCHEDULED',
+  ]) {
     const u = rt.uygunluk(ocoTalep({ status: s }));
     assert.equal(u.ok, false, s);
     assert.equal(u.status, 409);
@@ -75,18 +88,45 @@ test('YT2 Smart karari (fail-closed)', () => {
 
 test('YT3 istek dogrulama', () => {
   const t = ocoTalep();
-  assert.equal(rt.istekDogrula({ mode: 'pencereDisi', outsideWindowConfirm: true }, t).ok, false, 'gerekce yok');
-  assert.equal(rt.istekDogrula({ note: 'kisa', mode: 'pencereDisi', outsideWindowConfirm: true }, t).ok, false);
-  assert.equal(rt.istekDogrula({ note: 'x'.repeat(1001), mode: 'pencereDisi', outsideWindowConfirm: true }, t).ok, false);
+  assert.equal(
+    rt.istekDogrula({ mode: 'pencereDisi', outsideWindowConfirm: true }, t).ok,
+    false,
+    'gerekce yok',
+  );
+  assert.equal(
+    rt.istekDogrula({ note: 'kisa', mode: 'pencereDisi', outsideWindowConfirm: true }, t).ok,
+    false,
+  );
+  assert.equal(
+    rt.istekDogrula({ note: 'x'.repeat(1001), mode: 'pencereDisi', outsideWindowConfirm: true }, t)
+      .ok,
+    false,
+  );
   assert.equal(rt.istekDogrula({ note: NOT }, t).ok, false, 'OCO talebinde mod zorunlu');
   assert.equal(rt.istekDogrula({ note: NOT, mode: 'pencereDisi' }, t).ok, false, 'onay kutusu yok');
-  assert.equal(rt.istekDogrula({ note: NOT, mode: 'pencereDisi', outsideWindowConfirm: 'true' }, t).ok, false, 'yalniz true');
-  const pd = rt.istekDogrula({ note: `  ${NOT}  `, mode: 'pencereDisi', outsideWindowConfirm: true }, t);
+  assert.equal(
+    rt.istekDogrula({ note: NOT, mode: 'pencereDisi', outsideWindowConfirm: 'true' }, t).ok,
+    false,
+    'yalniz true',
+  );
+  const pd = rt.istekDogrula(
+    { note: `  ${NOT}  `, mode: 'pencereDisi', outsideWindowConfirm: true },
+    t,
+  );
   assert.deepEqual(pd, { ok: true, mod: 'pencereDisi', not: NOT, ocoNumber: '' });
   assert.equal(rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: '' }, t).ok, false);
   assert.equal(rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: '12a45' }, t).ok, false);
-  assert.equal(rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: '23737284' }, t).ok, false, 'eski OCO');
-  assert.deepEqual(rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: ' 23800001 ' }, t), { ok: true, mod: 'oco', not: NOT, ocoNumber: '23800001' });
+  assert.equal(
+    rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: '23737284' }, t).ok,
+    false,
+    'eski OCO',
+  );
+  assert.deepEqual(rt.istekDogrula({ note: NOT, mode: 'oco', ocoNumber: ' 23800001 ' }, t), {
+    ok: true,
+    mod: 'oco',
+    not: NOT,
+    ocoNumber: '23800001',
+  });
   assert.equal(rt.istekDogrula({ note: NOT, mode: 'baska' }, t).ok, false);
   // OCO'suz talep: mod ne gelirse gelsin 'dogrudan'.
   assert.equal(rt.istekDogrula({ note: NOT, mode: 'pencereDisi' }, duzTalep()).mod, 'dogrudan');
@@ -98,25 +138,48 @@ test('YT3 istek dogrulama', () => {
 
 test('YT4 yeni OCO degiskenleri kaynagi degistirmez', () => {
   const kaynak = { a: '1', oco_number: '1' };
-  const yeni = rt.yeniOcoDegiskenleri(kaynak, '999999', { windowStartText: 'S', windowEndText: 'E' });
-  assert.deepEqual(yeni, { a: '1', oco_number: '999999', oco_window_start: 'S', oco_window_end: 'E' });
+  const yeni = rt.yeniOcoDegiskenleri(kaynak, '999999', {
+    windowStartText: 'S',
+    windowEndText: 'E',
+  });
+  assert.deepEqual(yeni, {
+    a: '1',
+    oco_number: '999999',
+    oco_window_start: 'S',
+    oco_window_end: 'E',
+  });
   assert.deepEqual(kaynak, { a: '1', oco_number: '1' });
   const m = rt.sonucMetni({ admin: 'onur', mod: 'pencereDisi', smartDurum: 'bekliyor', not: NOT });
   assert.match(m, /admin onur/);
   assert.match(m, /DIŞINDA/);
   assert.match(m, /atlandı/);
-  assert.match(rt.sonucMetni({ admin: 'o', mod: 'oco', ocoNumber: '42424', smartDurum: 'onayli', not: NOT, zamanlandi: '12.11.2026 23:00' }), /42424.*zamanlandı.*onaylamıştı/);
+  assert.match(
+    rt.sonucMetni({
+      admin: 'o',
+      mod: 'oco',
+      ocoNumber: '42424',
+      smartDurum: 'onayli',
+      not: NOT,
+      zamanlandi: '12.11.2026 23:00',
+    }),
+    /42424.*zamanlandı.*onaylamıştı/,
+  );
 });
 
 test('YT5 rota sirasi ve yetki (statik)', () => {
   const kod = fs.readFileSync(path.join(__dirname, '../../ansible/runner.cjs'), 'utf8');
-  const bas = kod.indexOf("app.post('/api/ansible/ss/smart-ticket/:id/retrigger'");
+  const bas = konum(kod, "app.post('/api/ansible/ss/smart-ticket/:id/retrigger'");
   assert.ok(bas > 0, 'rota yok');
-  const govde = kod.slice(bas, kod.indexOf('app.get(', bas + 10));
-  assert.match(govde.slice(0, 200), /requireAuth, requireAdmin/);
-  assert.match(kod, /app\.get\('\/api\/ansible\/ss\/smart-ticket\/:id\/retrigger-check', requireAuth, requireAdmin/);
+  const govde = kod.slice(bas, konum(kod, 'app.get(', bas + 10));
+  assert.match(govde.slice(0, 200), esnek(/requireAuth, requireAdmin/));
+  assert.match(
+    kod,
+    esnek(
+      /app\.get\('\/api\/ansible\/ss\/smart-ticket\/:id\/retrigger-check', requireAuth, requireAdmin/,
+    ),
+  );
   const i = (s) => {
-    const n = govde.indexOf(s);
+    const n = konum(govde, s);
     assert.ok(n > 0, `bulunamadi: ${s}`);
     return n;
   };
@@ -127,12 +190,28 @@ test('YT5 rota sirasi ve yetki (statik)', () => {
   const launch = i('performSsLaunch(');
   assert.ok(engel < claim && gecmis < claim, 'Smart engeli ve gecmis pencere sahiplenmeden ONCE');
   assert.ok(i('retriggerScalexBagliMi(') < claim, 'ScaleX bileti sahiplenmeden ONCE reddedilir');
-  assert.ok(i("sonuc: 'LAUNCHED'") < i("status: 'LAUNCHED', smartStateName"), 'basari denetimi bilet yaziminden ONCE');
-  assert.ok(i("sonuc: 'SCHEDULED'") < i("status: 'SCHEDULED', smartStateName"), 'zamanlama denetimi bilet yaziminden ONCE');
-  assert.equal((govde.match(/markRetriggered\(ocoRecordId/g) || []).length, 2, 'OCO kaydi iki dalda da (zamanla + hemen) guncellenir');
+  assert.ok(
+    i("sonuc: 'LAUNCHED'") < i("status: 'LAUNCHED', smartStateName"),
+    'basari denetimi bilet yaziminden ONCE',
+  );
+  assert.ok(
+    i("sonuc: 'SCHEDULED'") < i("status: 'SCHEDULED', smartStateName"),
+    'zamanlama denetimi bilet yaziminden ONCE',
+  );
+  assert.equal(
+    (govde.match(/markRetriggered\(ocoRecordId/g) || []).length,
+    2,
+    'OCO kaydi iki dalda da (zamanla + hemen) guncellenir',
+  );
   assert.match(govde, /createAwxScheduled\(/);
   assert.ok(claim < zamanla && claim < launch, 'sahiplenme AWX cagrisindan ONCE');
   assert.ok(govde.indexOf('basladi = true', launch) > launch, 'launch sonrasi basladi bayragi');
-  assert.ok(govde.indexOf('basladi = true', zamanla) > zamanla, 'zamanlama sonrasi basladi bayragi');
-  assert.ok(govde.indexOf('if (basladi)') < govde.indexOf("status: 'ERROR'"), 'is basladiysa ERROR yazilmaz');
+  assert.ok(
+    govde.indexOf('basladi = true', zamanla) > zamanla,
+    'zamanlama sonrasi basladi bayragi',
+  );
+  assert.ok(
+    govde.indexOf('if (basladi)') < govde.indexOf("status: 'ERROR'"),
+    'is basladiysa ERROR yazilmaz',
+  );
 });

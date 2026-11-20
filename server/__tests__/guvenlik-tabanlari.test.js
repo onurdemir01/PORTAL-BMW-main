@@ -20,7 +20,12 @@
 //   GT7 `prepare` husky yokken kurulumu DUSURMEZ (davranis: bos dizinde kosulur)
 //   GT8 gelistirici kurulumu: bag kurulur / cozulur (davranis: gecici dizin); arac-kontrol
 //   GT9 guvenlik kapisi TAM agaca bakar; Jenkins tam kurulumu kullanir
+//
+// 2026-11-20 (is #52, 1 ihlal): express-rate-limit 8.7.3 -> 8.7.5 (XRAY-1169476). Surum 7 gun dolmadan
+// alindi: docs/GUVENLIK-0-ZAFIYET.md guvenlik duzeltmesi istisnasi (en dusuk duzelten surum, ayni
+// yayimci + SLSA provenance, tarball farki yalniz Object.create(null) duzeltmesi, yeni alt paket yok).
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,7 +57,8 @@ const TABAN = {
   hono: { 4: '4.13.18' },
   '@hono/node-server': { 2: '2.1.7' },
   'fast-uri': { 3: '3.1.9' },
-  'express-rate-limit': { 8: '8.7.2' },
+  // 8.7.5: XRAY-1169476 / GHSA-cppf-2hm6-mrvm (is #52, 2026-11-20; Object.prototype kirlenmesi limiti kapatir).
+  'express-rate-limit': { 8: '8.7.5' },
   debug: { 4: '4.0.0' },
   minimatch: { 11: '11.0.8' },
   'brace-expansion': { 5: '5.0.13' },
@@ -195,7 +201,7 @@ test('GT7 prepare husky yokken kurulumu dusurmez', () => {
   // Baska bir hata (bozuk husky) YUTULMAZ.
   assert.match(
     oku('scripts', 'kanca-kur.mjs'),
-    /e\.code === 'ERR_MODULE_NOT_FOUND'\) process\.exit\(0\);\s*throw e;/,
+    /e\??\.code === 'ERR_MODULE_NOT_FOUND'\) process\.exit\(0\);\s*throw e;/,
   );
 });
 
@@ -255,7 +261,7 @@ test('GT9 guvenlik kapisi tam agaca bakar; Jenkins tam kurulumu kullanir', () =>
   assert.match(jenkins, /sh 'node --version && npm run kur'/);
   assert.doesNotMatch(
     jenkins,
-    /\bnpm ci\b/,
+    esnek(/\bnpm ci\b/),
     'Jenkins kokte npm ci calistiriyor (gelistirme araclari kurulmaz)',
   );
   // Dependabot tam manifesti izler.

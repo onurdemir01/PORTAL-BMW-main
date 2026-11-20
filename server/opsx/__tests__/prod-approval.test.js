@@ -25,10 +25,23 @@ const IDX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 
 test('PA1 URETIM etiketleri yakalanir (serbest yazim + kelime icine gomulu)', () => {
   for (const e of [
-    'prod', 'PROD', 'Prod', 'prd', 'PRD', 'production', 'Production',
-    'prod1', 'prod-tr', 'tr-prod', 'ark_prod', 'canli', 'canlı',
+    'prod',
+    'PROD',
+    'Prod',
+    'prd',
+    'PRD',
+    'production',
+    'Production',
+    'prod1',
+    'prod-tr',
+    'tr-prod',
+    'ark_prod',
+    'canli',
+    'canlı',
     // GERCEK cluster/host adlari: isaret ayirici olmadan gomulu
-    'gbocpprod1', 'giocpank3rdwyprod1', 'DACRWAP01-PROD',
+    'gbocpprod1',
+    'giocpank3rdwyprod1',
+    'DACRWAP01-PROD',
   ])
     assert.equal(ga.uretimEtiketi(e), true, `uretim sayilmadi: ${e}`);
 });
@@ -82,8 +95,10 @@ function konfigIle(smart, fn) {
   require.cache[cfgPath] = mod;
   delete require.cache[gaPath];
   const geri = () => {
-    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
-    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg;
+    else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa;
+    else delete require.cache[gaPath];
   };
   return Promise.resolve(fn(require(gaPath))).finally(geri);
 }
@@ -95,7 +110,11 @@ test('PA6 PLATFORM BASINA flow key (kullanici karari)', async () => {
     await konfigIle({}, async (m) => {
       delete process.env.OPSX_SMART_FLOW_KEY_LEGACY;
       // FAIL-CLOSED: anahtar yoksa null -> cagiran REDDEDER
-      assert.equal(await m.smartApprovalFor('legacy'), null, 'anahtar yokken onay yapilandirmasi uretildi');
+      assert.equal(
+        await m.smartApprovalFor('legacy'),
+        null,
+        'anahtar yokken onay yapilandirmasi uretildi',
+      );
       process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'FLOW-LEGACY';
       assert.equal((await m.smartApprovalFor('legacy')).flowKey, 'FLOW-LEGACY');
       // Platformlar BIRBIRINDEN BAGIMSIZ: legacy tanimliyken openshift hala kapali
@@ -133,13 +152,16 @@ test('PA14 PANEL degeri ortam degiskenini EZER, panel bossa env GECERLI kalir', 
   try {
     process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'ENV-LEGACY';
     process.env.OPSX_SMART_FLOW_KEY_WAS = 'ENV-WAS';
-    await konfigIle({ legacy: { flowKey: 'PANEL-LEGACY', metadataFields: 'KONU: x' } }, async (m) => {
-      const l = await m.smartApprovalFor('legacy');
-      assert.equal(l.flowKey, 'PANEL-LEGACY', 'panel degeri env tarafindan eziliyor');
-      assert.equal(l.metadataFields, 'KONU: x');
-      // Panelde HIC girilmemis platform env'e duser
-      assert.equal((await m.smartApprovalFor('was')).flowKey, 'ENV-WAS');
-    });
+    await konfigIle(
+      { legacy: { flowKey: 'PANEL-LEGACY', metadataFields: 'KONU: x' } },
+      async (m) => {
+        const l = await m.smartApprovalFor('legacy');
+        assert.equal(l.flowKey, 'PANEL-LEGACY', 'panel degeri env tarafindan eziliyor');
+        assert.equal(l.metadataFields, 'KONU: x');
+        // Panelde HIC girilmemis platform env'e duser
+        assert.equal((await m.smartApprovalFor('was')).flowKey, 'ENV-WAS');
+      },
+    );
   } finally {
     process.env = eski;
   }
@@ -155,7 +177,10 @@ test('PA15 metadata eslemesi PLATFORM BASINA ayrisir (ortak env sizmaz)', async 
     process.env.OPSX_SMART_FLOW_KEY_OPENSHIFT = 'F-O';
     process.env.OPSX_SMART_METADATA_FIELDS = 'ORTAK: env-degeri';
     await konfigIle(
-      { legacy: { flowKey: '', metadataFields: 'SADECE_LEGACY: 1' }, openshift: { flowKey: '', metadataFields: '' } },
+      {
+        legacy: { flowKey: '', metadataFields: 'SADECE_LEGACY: 1' },
+        openshift: { flowKey: '', metadataFields: '' },
+      },
       async (m) => {
         assert.equal((await m.smartApprovalFor('legacy')).metadataFields, 'SADECE_LEGACY: 1');
         // OpenShift'in kendi eslemesi YOK -> ortak env degeri (eski davranis) surer
@@ -176,7 +201,11 @@ test('PA16 yapilandirma OKUNAMAZSA ortam degiskenine duser, SESSIZ KALMAZ', asyn
   const kayitliGa = require.cache[gaPath];
   const Module = require('node:module');
   const mod = new Module(cfgPath, null);
-  mod.exports = { getConfig: async () => { throw new Error('DB yok'); } };
+  mod.exports = {
+    getConfig: async () => {
+      throw new Error('DB yok');
+    },
+  };
   mod.loaded = true;
   require.cache[cfgPath] = mod;
   delete require.cache[gaPath];
@@ -188,12 +217,17 @@ test('PA16 yapilandirma OKUNAMAZSA ortam degiskenine duser, SESSIZ KALMAZ', asyn
     process.env.OPSX_SMART_FLOW_KEY_LEGACY = 'ENV-ONLY';
     const m = require(gaPath);
     assert.equal((await m.smartApprovalFor('legacy')).flowKey, 'ENV-ONLY');
-    assert.ok(uyarilar.some((u) => /okunamadi/i.test(u)), 'yapilandirma okunamadi uyarisi basilmadi');
+    assert.ok(
+      uyarilar.some((u) => /okunamadi/i.test(u)),
+      'yapilandirma okunamadi uyarisi basilmadi',
+    );
   } finally {
     console.warn = eskiWarn;
     process.env = eski;
-    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg; else delete require.cache[cfgPath];
-    if (kayitliGa) require.cache[gaPath] = kayitliGa; else delete require.cache[gaPath];
+    if (kayitliCfg) require.cache[cfgPath] = kayitliCfg;
+    else delete require.cache[cfgPath];
+    if (kayitliGa) require.cache[gaPath] = kayitliGa;
+    else delete require.cache[gaPath];
   }
 });
 
@@ -411,7 +445,11 @@ test('PA17 ONAY SURESI 15 DK: bilet kurali tasir (Legacy + Openshift), kullanici
         islemAdi: `${platform} islem`,
       });
       assert.ok(gecen, `${platform}: Smart bileti acilmadi`);
-      assert.equal(gecen.pendingLaunchExtras?.onayZamanAsimiDk, 15, `${platform}: bilet 15 dk kuralini tasimiyor`);
+      assert.equal(
+        gecen.pendingLaunchExtras?.onayZamanAsimiDk,
+        15,
+        `${platform}: bilet 15 dk kuralini tasimiyor`,
+      );
       const { talepSonTarihi } = require('../../smart/deadline.cjs');
       const r = talepSonTarihi(
         { createdAt: '2026-10-15T08:00:00.000Z', pendingLaunch: { ...gecen.pendingLaunchExtras } },

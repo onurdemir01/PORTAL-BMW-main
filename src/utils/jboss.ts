@@ -39,13 +39,21 @@ export function jbossLabel(major: string): string {
  *  bu dosyanin var olus sebebi. Host adi buyuk harfe cevrilir: envanter bazi
  *  satirlarda kucuk harf donebiliyor ve ayni sunucu iki kez secilebilir hale gelirdi. */
 export function hostKey(host: string, major: string): string {
-  return `${String(host || '').trim().toUpperCase()}|${major}`;
+  return `${String(host || '')
+    .trim()
+    .toUpperCase()}|${major}`;
 }
 
 /** `hostKey` cozumlemesi — secilen anahtarlari sunucuya gonderilecek cifte cevirir. */
 export function parseHostKey(key: string): { host: string; jbossMajor: string } {
   const i = String(key || '').indexOf('|');
-  if (i < 0) return { host: String(key || '').trim().toUpperCase(), jbossMajor: '' };
+  if (i < 0)
+    return {
+      host: String(key || '')
+        .trim()
+        .toUpperCase(),
+      jbossMajor: '',
+    };
   return {
     host: String(key).slice(0, i).trim().toUpperCase(),
     jbossMajor: String(key).slice(i + 1),
@@ -77,7 +85,10 @@ export function kurulumDizini(kol: string): string {
   return kol === '8' ? '/usr/jboss8' : kol === '7' ? '/usr/jboss' : '';
 }
 /** Urun surumu ile kurulum dizini standarda uymuyorsa (JBoss 8, /usr/jboss altinda) true. */
-export function standartDisiKurulum(h: { kurulum?: string | null; jbossVersion?: string | null }): boolean {
+export function standartDisiKurulum(h: {
+  kurulum?: string | null;
+  jbossVersion?: string | null;
+}): boolean {
   const k = kurulumOf(h);
   const m = majorOfHost(h);
   return !!k && !!m && k !== m;

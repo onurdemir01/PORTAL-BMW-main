@@ -16,7 +16,7 @@ const db = require('../../db/index.cjs');
 const { varsayilanSira } = require('../../util/siralama.cjs');
 
 let _timer = null;
-let _running = false;   // ust uste calismayi onler (uzun suren tur bir sonrakini bloklamasin)
+let _running = false; // ust uste calismayi onler (uzun suren tur bir sonrakini bloklamasin)
 
 // Arka plan isteklerinin sahibi. Admin ekranindaki istek listesi bu adla filtrelenebilsin
 // ve temizlik bu satirlari tanisin diye tek yerde tanimli.
@@ -33,7 +33,7 @@ async function listSyncableClusters(limit) {
      WHERE is_active = 1
        AND api_url IS NOT NULL AND LEN(api_url) > 0
        AND vault_credential_key IS NOT NULL AND LEN(vault_credential_key) > 0
-     ORDER BY CASE WHEN last_synced_at IS NULL THEN 0 ELSE 1 END, last_synced_at ASC`
+     ORDER BY CASE WHEN last_synced_at IS NULL THEN 0 ELSE 1 END, last_synced_at ASC`,
   );
   return rows;
 }
@@ -44,8 +44,13 @@ async function markSync(cluster, status, error) {
       `UPDATE ocp_cluster_index
          SET last_synced_at = GETUTCDATE(), sync_status = $1, sync_error = $2
        WHERE env=$3 AND tenant=$4 AND cluster_name=$5`,
-      [String(status).slice(0, 32), error ? String(error).slice(0, 1000) : null,
-       cluster.env, cluster.tenant, cluster.cluster_name]
+      [
+        String(status).slice(0, 32),
+        error ? String(error).slice(0, 1000) : null,
+        cluster.env,
+        cluster.tenant,
+        cluster.cluster_name,
+      ],
     );
   } catch (e) {
     console.warn('[OcpSync] durum yazilamadi:', e.message);
@@ -87,12 +92,16 @@ async function runOnce() {
         for (const c of group) {
           const err = perCluster.get(c.cluster_name);
           await markSync(c, err ? 'error' : 'ok', err || null);
-          if (err) report.failed++; else report.ok++;
+          if (err) report.failed++;
+          else report.ok++;
         }
       } catch (e) {
         for (const c of group) await markSync(c, 'error', e.message);
         report.failed += group.length;
-        console.warn(`[OcpSync] grup taramasi basarisiz (${group[0].tenant}/${group[0].env}):`, e.message);
+        console.warn(
+          `[OcpSync] grup taramasi basarisiz (${group[0].tenant}/${group[0].env}):`,
+          e.message,
+        );
       }
     }
     return report;
@@ -120,7 +129,8 @@ async function syncGroup(group) {
   // Sabit, oturuma karsilik gelmeyen bir belirtec kullaniyoruz (hicbir oturum dogrulamasi
   // bu degeri kabul etmez, yalniz kolonu doldurur).
   const request = await requests.createRequest(
-    { username: SYNC_USERNAME, sessionToken: 'ocp-sync', role: 'System' }, 'openshift'
+    { username: SYNC_USERNAME, sessionToken: 'ocp-sync', role: 'System' },
+    'openshift',
   );
   await requests.updateRequest(request.id, {
     state: 'draft',
@@ -147,9 +157,14 @@ async function syncGroup(group) {
     const reported = new Set();
     for (const c of last.artifacts.clusters || []) {
       reported.add(c.cluster_name);
-      if (c.status !== 'ok') { errors.set(c.cluster_name, c.error || 'Cluster taranamadi.'); continue; }
+      if (c.status !== 'ok') {
+        errors.set(c.cluster_name, c.error || 'Cluster taranamadi.');
+        continue;
+      }
       await cache.putNamespaces({
-        env: first.env, tenant: first.tenant, clusterName: c.cluster_name,
+        env: first.env,
+        tenant: first.tenant,
+        clusterName: c.cluster_name,
         namespaces: (c.namespaces || []).map((n) => String(n).replace(/^.*\//, '').trim()),
         source: 'periodic',
       });
@@ -173,10 +188,14 @@ async function syncGroup(group) {
     // Teknik istek satiri isini bitirdi. Silinmezse her turda bir satir birikir ve
     // `namespace_discovering` durumunda takili kalarak admin istek listesini doldurur.
     // Job satirlari ON DELETE CASCADE ile birlikte gider.
-    await db.query('DELETE FROM logx_v2_requests WHERE request_id = $1 AND username = $2',
-      [request.id, SYNC_USERNAME]).catch((e) => {
-      console.warn('[OcpSync] teknik istek satiri silinemedi:', e.message);
-    });
+    await db
+      .query('DELETE FROM logx_v2_requests WHERE request_id = $1 AND username = $2', [
+        request.id,
+        SYNC_USERNAME,
+      ])
+      .catch((e) => {
+        console.warn('[OcpSync] teknik istek satiri silinemedi:', e.message);
+      });
   }
 }
 
@@ -207,7 +226,9 @@ async function syncApps({ request, first, artifacts }) {
   if (!namespaces.length) return;
   if (nsSet.size > namespaces.length) {
     // Sessiz kirpma YOK: hangi kismin taranmadigi loga yazilir.
-    console.warn(`[OcpSync] ${first.tenant}/${first.env}: ${nsSet.size} namespace'ten ilk ${namespaces.length} tanesi tarandi (periodicSyncMaxNamespaces).`);
+    console.warn(
+      `[OcpSync] ${first.tenant}/${first.env}: ${nsSet.size} namespace'ten ilk ${namespaces.length} tanesi tarandi (periodicSyncMaxNamespaces).`,
+    );
   }
 
   const row = await requests.getRequestRow(request.id);
@@ -225,9 +246,14 @@ async function syncApps({ request, first, artifacts }) {
 
   const parsed = require('./ocp-app-parse.cjs').parseAppDiscoveryResult(last.artifacts);
   const { written } = await cache.putApps({
-    env: first.env, tenant: first.tenant, entries: parsed.entries, source: 'periodic',
+    env: first.env,
+    tenant: first.tenant,
+    entries: parsed.entries,
+    source: 'periodic',
   });
-  console.log(`[OcpSync] ${first.tenant}/${first.env}: ${namespaces.length} namespace, ${written} uygulama onbellege yazildi.`);
+  console.log(
+    `[OcpSync] ${first.tenant}/${first.env}: ${namespaces.length} namespace, ${written} uygulama onbellege yazildi.`,
+  );
 }
 
 // Boot'ta cagrilir. Ilk tur 5 dk gecikmeli (acilis yukunu artirmasin).
@@ -241,17 +267,32 @@ function startOcpSync() {
       if (!cfg.periodicSyncEnabled || process.env.LOGX_OCP_SYNC_DISABLED === '1') {
         console.log('[OcpSync] periyodik besleme KAPALI (admin ekranindan acilabilir).');
       }
-    } catch { /* varsayilan araligi kullan */ }
+    } catch {
+      /* varsayilan araligi kullan */
+    }
 
-    _timer = setInterval(() => { runOnce().catch(() => {}); }, intervalMin * 60 * 1000);
+    _timer = setInterval(
+      () => {
+        runOnce().catch(() => {});
+      },
+      intervalMin * 60 * 1000,
+    );
     if (_timer.unref) _timer.unref();
     runOnce().catch(() => {});
   };
-  setTimeout(() => { boot().catch(() => {}); }, 5 * 60 * 1000).unref?.();
+  setTimeout(
+    () => {
+      boot().catch(() => {});
+    },
+    5 * 60 * 1000,
+  ).unref?.();
 }
 
 function stopOcpSync() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
+  if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
 }
 
 module.exports = { startOcpSync, stopOcpSync, runOnce, listSyncableClusters };

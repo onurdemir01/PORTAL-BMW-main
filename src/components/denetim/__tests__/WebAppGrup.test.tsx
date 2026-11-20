@@ -19,23 +19,59 @@ const mockWebApp = vi.hoisted(() => vi.fn());
 const mockDns = vi.hoisted(() => vi.fn());
 vi.mock('@/api/denetimApi', () => ({ denetimApi: { webApp: mockWebApp, webAppDns: mockDns } }));
 
-const vh = (host: string, ip: string, site: string, ek: Record<string, unknown> = {}) =>
-  ({ host, ip, port: '443', serverName: 'crm.gtdmz.com.tr', confFile: '/c', product: 'IHS', site, ...ek });
+const vh = (host: string, ip: string, site: string, ek: Record<string, unknown> = {}) => ({
+  host,
+  ip,
+  port: '443',
+  serverName: 'crm.gtdmz.com.tr',
+  confFile: '/c',
+  product: 'IHS',
+  site,
+  ...ek,
+});
 const satir = (appHost: string, ek: Partial<WebAppRow> = {}): WebAppRow => ({
-  app: 'crm', appHost, env: 'Production', domain: 'gtdmz.com.tr', dnsBolge: 'gtdmz', tier: '3-tier', tierKaynak: 'domain',
-  how: 'harf-dönüşümü + server_name (tam ad) + mod_cluster', matched: true,
-  nasil: [`Topoloji 3-tier: envanterdeki domain gtdmz.com.tr`, `${appHost} → GBCRWP01: 5. harf A→W — server_name'de "crm" geçiyor`],
-  web: [vh('GBCRWP01', '10.0.0.1', 'Pendik'), vh('GBCRWP02', '10.0.0.2', 'Pendik', { kaynak: 'mc', mcBalancer: 'crm' })],
-  webHostCandidate: 'GBCRWP01', vhostCountOnHost: 2, ...ek,
+  app: 'crm',
+  appHost,
+  env: 'Production',
+  domain: 'gtdmz.com.tr',
+  dnsBolge: 'gtdmz',
+  tier: '3-tier',
+  tierKaynak: 'domain',
+  how: 'harf-dönüşümü + server_name (tam ad) + mod_cluster',
+  matched: true,
+  nasil: [
+    `Topoloji 3-tier: envanterdeki domain gtdmz.com.tr`,
+    `${appHost} → GBCRWP01: 5. harf A→W — server_name'de "crm" geçiyor`,
+  ],
+  web: [
+    vh('GBCRWP01', '10.0.0.1', 'Pendik'),
+    vh('GBCRWP02', '10.0.0.2', 'Pendik', { kaynak: 'mc', mcBalancer: 'crm' }),
+  ],
+  webHostCandidate: 'GBCRWP01',
+  vhostCountOnHost: 2,
+  ...ek,
 });
 const veri = (rows: WebAppRow[]): WebAppResult => ({
-  ok: true, source: 'mw', label: 'JBoss', sources: [{ key: 'mw', label: 'JBoss' }], certMissing: false,
-  total: rows.length, shown: rows.length, capped: false, matchedTotal: rows.length,
-  matchSummary: [{ how: 'harf-dönüşümü + server_name (tam ad)', count: rows.length }], tierSummary: [{ tier: '3-tier', count: rows.length }], rows,
+  ok: true,
+  source: 'mw',
+  label: 'JBoss',
+  sources: [{ key: 'mw', label: 'JBoss' }],
+  certMissing: false,
+  total: rows.length,
+  shown: rows.length,
+  capped: false,
+  matchedTotal: rows.length,
+  matchSummary: [{ how: 'harf-dönüşümü + server_name (tam ad)', count: rows.length }],
+  tierSummary: [{ tier: '3-tier', count: rows.length }],
+  rows,
 });
 
 describe('Web-App: uygulama başına tek satır', () => {
-  beforeEach(() => { mockWebApp.mockReset(); mockDns.mockReset(); mockDns.mockResolvedValue({ ok: true, sonuc: {} }); });
+  beforeEach(() => {
+    mockWebApp.mockReset();
+    mockDns.mockReset();
+    mockDns.mockResolvedValue({ ok: true, sonuc: {} });
+  });
 
   it('WG1 aynı uygulama + ortamın iki sunucusu tek satır; aynı web sunucuları bir kez', async () => {
     mockWebApp.mockResolvedValue(veri([satir('GBCRAP01'), satir('GBCRAP02')]));
@@ -55,8 +91,16 @@ describe('Web-App: uygulama başına tek satır', () => {
     render(<WebApp />);
     const bloklar = await screen.findAllByTestId('webapp-nasil');
     expect(bloklar).toHaveLength(2);
-    expect(within(bloklar[0]).getByText('GBCRAP01 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor')).toBeInTheDocument();
-    expect(within(bloklar[1]).getByText('GBCRAP02 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor')).toBeInTheDocument();
+    expect(
+      within(bloklar[0]).getByText(
+        'GBCRAP01 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(bloklar[1]).getByText(
+        'GBCRAP02 → GBCRWP01: 5. harf A→W — server_name\'de "crm" geçiyor',
+      ),
+    ).toBeInTheDocument();
     expect(within(bloklar[0]).getByText('eşleşti')).toBeInTheDocument();
   });
 
@@ -66,13 +110,23 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(await screen.findAllByTestId('webapp-satir')).toHaveLength(2);
   });
 
-  it('WG4 domain boş: Ankara üyesi server_name bölgesiyle Ankara DNS\'ine sorulur, Pendik cevabı gösterilmez', async () => {
+  it("WG4 domain boş: Ankara üyesi server_name bölgesiyle Ankara DNS'ine sorulur, Pendik cevabı gösterilmez", async () => {
     const r = satir('DACRAAB01', {
-      domain: '', dnsBolge: null, tierKaynak: 'eşleşme',
+      domain: '',
+      dnsBolge: null,
+      tierKaynak: 'eşleşme',
       web: [vh('DACRWAP01', '20.0.0.1', 'Ankara', { dnsBolge: 'gtdmz' })],
     });
     mockWebApp.mockResolvedValue(veri([r]));
-    mockDns.mockResolvedValue({ ok: true, sonuc: { 'gtdmz|crm.gtdmz.com.tr': { Pendik: { ips: ['10.9.9.9'] }, Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '10.236.238.22' } } } });
+    mockDns.mockResolvedValue({
+      ok: true,
+      sonuc: {
+        'gtdmz|crm.gtdmz.com.tr': {
+          Pendik: { ips: ['10.9.9.9'] },
+          Ankara: { ips: ['20.9.9.9'], dnsSunucusu: '10.236.238.22' },
+        },
+      },
+    });
     render(<WebApp />);
     expect(await screen.findByText('20.9.9.9')).toBeInTheDocument();
     expect(screen.queryByText('10.9.9.9')).not.toBeInTheDocument();
@@ -84,7 +138,10 @@ describe('Web-App: uygulama başına tek satır', () => {
     mockWebApp.mockResolvedValue(veri([satir('GBCRAP01', { domain: '', tierKaynak: 'eşleşme' })]));
     render(<WebApp />);
     const tr = (await screen.findAllByTestId('webapp-satir'))[0];
-    expect(within(tr).getByText('3-tier')).toHaveAttribute('title', 'Envanterde domain yok — eşleşme kanıtından');
+    expect(within(tr).getByText('3-tier')).toHaveAttribute(
+      'title',
+      'Envanterde domain yok — eşleşme kanıtından',
+    );
   });
 
   // WG7 (2026-10-23, kullanıcı: "Eşleşme yolları ... aşırı kalabalık gözü yoruyor ... sadece satırların
@@ -96,8 +153,12 @@ describe('Web-App: uygulama başına tek satır', () => {
     expect(await screen.findAllByTestId('webapp-nasil')).toHaveLength(1);
     expect(screen.queryByText(/Eşleşme yolları/)).not.toBeInTheDocument();
     expect(screen.queryByText('Eşleştirme kuralları')).not.toBeInTheDocument();
-    expect(screen.queryByText(/harf-dönüşümü \+ server_name \(tam ad\) · 1/)).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Server Hub okunamadı (vhost: zaman aşımı)');
+    expect(
+      screen.queryByText(/harf-dönüşümü \+ server_name \(tam ad\) · 1/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Server Hub okunamadı (vhost: zaman aşımı)',
+    );
   });
 
   // WG8-WG9 (2026-10-23, kullanıcı: "sorgulama yaparken bir türlü getirmedi ... 'Yenile' butonu dönüp
@@ -117,7 +178,12 @@ describe('Web-App: uygulama başına tek satır', () => {
     let eskiCoz: (v: WebAppResult) => void = () => {};
     mockWebApp
       .mockResolvedValueOnce(veri([satir('GBCRAP01')]))
-      .mockImplementationOnce(() => new Promise<WebAppResult>((ok) => { eskiCoz = ok; }))
+      .mockImplementationOnce(
+        () =>
+          new Promise<WebAppResult>((ok) => {
+            eskiCoz = ok;
+          }),
+      )
       .mockResolvedValueOnce(veri([satir('GBYENI01', { app: 'yeni' })]));
     render(<WebApp />);
     await screen.findAllByTestId('webapp-satir');
@@ -151,7 +217,11 @@ describe('Web-App: uygulama başına tek satır', () => {
   });
 
   it('WG6 grupla: vhost tekil, bulan uygulama sunucuları birikir; eşleşmeyen sunucu da satırda', () => {
-    const g = grupla([satir('GBCRAP01'), satir('GBCRAP02'), satir('GBCRAP03', { matched: false, web: [], how: 'eşleşmedi' })]);
+    const g = grupla([
+      satir('GBCRAP01'),
+      satir('GBCRAP02'),
+      satir('GBCRAP03', { matched: false, web: [], how: 'eşleşmedi' }),
+    ]);
     expect(g).toHaveLength(1);
     expect(g[0].satirlar.map((r) => r.appHost)).toEqual(['GBCRAP01', 'GBCRAP02', 'GBCRAP03']);
     expect(g[0].web.map((w) => w.host)).toEqual(['GBCRWP01', 'GBCRWP02']);

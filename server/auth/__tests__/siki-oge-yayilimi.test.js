@@ -15,6 +15,8 @@
 // yazildigi yanitta doner. Motorun anlambilimi DEGISMEDI.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,10 +24,7 @@ const path = require('node:path');
 
 const ELEMENTS = fs.readFileSync(path.join(__dirname, '..', 'elements.cjs'), 'utf8');
 const ROUTES = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
-const SEED = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'),
-  'utf8',
-);
+const SEED = fs.readFileSync(path.join(__dirname, '..', '..', 'db', 'mssql-setup.cjs'), 'utf8');
 
 /** elements.cjs'i sahte bir db ile yukler. */
 function yukle(elements, rules) {
@@ -89,9 +88,16 @@ test('SY2 SIKI OLMAYAN cocuga YAZILMAZ (kaskad zaten yetiyor)', async () => {
 });
 
 test('SY3 ZATEN VAR OLAN kural tekrar yazilmaz (idempotent)', async () => {
-  const { mod, yazilan } = yukle([...CRYPTO], [
-    { element_key: 'CryptoHub', principal_type: 'email', principal_id: 'osmankoz@garantibbva.com.tr' },
-  ]);
+  const { mod, yazilan } = yukle(
+    [...CRYPTO],
+    [
+      {
+        element_key: 'CryptoHub',
+        principal_type: 'email',
+        principal_id: 'osmankoz@garantibbva.com.tr',
+      },
+    ],
+  );
   const etkilenen = await mod.propagateToStrictDescendants('navgroup:cryptohub', [
     { principalType: 'email', principalId: 'OsmanKoz@garantibbva.com.tr', allow: true },
   ]);
@@ -114,7 +120,7 @@ test('SY5 uc yayilimi CAGIRIYOR ve sonucu BILDIRIYOR; CryptoHub hala siki', () =
   assert.match(
     ROUTES,
     /propagateToStrictDescendants\(req\.params\.key, rules\)/,
-    "kural ucu yayilimi cagirmiyor - ataya yazilan kural siki cocukta ISE YARAMAZ",
+    'kural ucu yayilimi cagirmiyor - ataya yazilan kural siki cocukta ISE YARAMAZ',
   );
   assert.match(ROUTES, /strictChildren/, 'hangi siki cocuklara yazildigi bildirilmiyor');
   // 2026-10-01: sikilik KALDIRILDI (kullanici: "adminlerin yetkisi gitti bu sefer").
@@ -142,7 +148,7 @@ const VIS = fs.readFileSync(path.join(__dirname, '..', 'visibility.cjs'), 'utf8'
 test('AM1 decide(): Admin SIKI ogede de gecer', () => {
   assert.match(
     VIS,
-    /if \(role === 'Admin'\) \{ not\('admin muafiyeti'\); return true; \}/,
+    esnek(/if \(role === 'Admin'\) \{ not\('admin muafiyeti'\); return true; \}/),
     'admin muafiyeti hala sikilige bagli - yoneticiler kapida kalir',
   );
   assert.ok(
@@ -154,7 +160,7 @@ test('AM1 decide(): Admin SIKI ogede de gecer', () => {
 test('AM2 strict NON-ADMIN icin hala baglayici (yalniz istedigin kisiler korunuyor)', () => {
   assert.match(
     VIS,
-    /if \(strict\) \{ not\('SIKI oge ve eslesen kural YOK -> kapali'\); return false; \}/,
+    esnek(/if \(strict\) \{ not\('SIKI oge ve eslesen kural YOK -> kapali'\); return false; \}/),
     'strict tamamen islevsiz kalmis - "yalniz istedigim kisiler" kurali kaybolur',
   );
 });

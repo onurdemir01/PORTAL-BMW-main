@@ -94,9 +94,12 @@ async function assertAppAllowed(app, user) {
   try {
     await restrictions.assertAllowed('legacy_app', app, user);
   } catch (err) {
-    if (err && err.status === 403) throw err;
+    if (err?.status === 403) throw err;
     console.warn('[OpsX WAS] erisim kisiti dogrulanamadi - istek reddedildi:', err?.message);
-    throw httpError(503, 'Erişim kısıtlaması doğrulanamadı — işlem reddedildi, lütfen tekrar deneyin.');
+    throw httpError(
+      503,
+      'Erişim kısıtlaması doğrulanamadı — işlem reddedildi, lütfen tekrar deneyin.',
+    );
   }
 }
 
@@ -132,9 +135,17 @@ async function resolveTemplate(kind) {
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.OPSX_AWX_SERVER_ID || '').trim());
-  const serverId =
-    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
-  return { templateId: templateId || null, serverId, keyName, playbookPath: row.playbookPath || '' };
+  const serverId = (() => {
+    if (row.awxServerId != null) return Number(row.awxServerId);
+    if (Number.isInteger(envServer) && envServer >= 0) return envServer;
+    return 0;
+  })();
+  return {
+    templateId: templateId || null,
+    serverId,
+    keyName,
+    playbookPath: row.playbookPath || '',
+  };
 }
 
 function notConfigured(kind, keyName) {
@@ -147,7 +158,9 @@ function notConfigured(kind, keyName) {
 }
 
 function basenameOf(p) {
-  const s = String(p || '').replace(/\\/g, '/').trim();
+  const s = String(p || '')
+    .replace(/\\/g, '/')
+    .trim();
   return s.slice(s.lastIndexOf('/') + 1).toLowerCase();
 }
 
@@ -201,7 +214,12 @@ async function loadJob(serverId, jobId, { opsFallback = false } = {}) {
     if (!own.rows.length) {
       const op = opsFallback ? await ws.loadOpRecord(db, serverId, jobId) : null;
       if (op) {
-        return { ok: true, found: true, owner: String(op.username || ''), params: parseParams(op.params) };
+        return {
+          ok: true,
+          found: true,
+          owner: String(op.username || ''),
+          params: parseParams(op.params),
+        };
       }
       return { ok: true, found: false, owner: null, params: {} };
     }
@@ -217,7 +235,11 @@ async function loadJob(serverId, jobId, { opsFallback = false } = {}) {
     };
   } catch (e) {
     console.warn('[OpsX WAS] is kaydi okunamadi - erisim reddedildi:', e.message);
-    return { ok: false, status: 503, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' };
+    return {
+      ok: false,
+      status: 503,
+      message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.',
+    };
   }
 }
 
@@ -337,7 +359,7 @@ async function verifyDiscovery(user, { serverId, jobId, app, host }) {
   const st = await runner.getJobStatusOnServer(serverId, jobId);
   if (!TERMINAL.has(st.status)) throw httpError(409, 'Keşif henüz bitmedi.');
   if (st.playbook && basenameOf(st.playbook) !== EXPECTED_PLAYBOOK.discover) {
-    throw httpError(409, 'Gönderilen iş WAS keşif playbook\'u ile çalışmamış.');
+    throw httpError(409, "Gönderilen iş WAS keşif playbook'u ile çalışmamış.");
   }
   const age = ws.discoveryAge(st.finished);
   if (!age.ok) {
@@ -382,7 +404,11 @@ async function finalizeOpJob({ serverId, jobId, st, owner, params, req, observer
       st.status === 'successful'
         ? "İş tamamlandı ancak sonuç alınamadı — gerçek durum bilinmiyor (playbook'un set_stats adımını kontrol edin)."
         : `İş ${st.status} ile bitti ve sonuç üretmedi — gerçek durum bilinmiyor.`;
-  } else if (parsed && (result.result === 'OK' || result.result === 'SKIP') && st.status !== 'successful') {
+  } else if (
+    parsed &&
+    (result.result === 'OK' || result.result === 'SKIP') &&
+    st.status !== 'successful'
+  ) {
     message = `İşlem sonucu ${result.result}, ancak AWX işi "${st.status}" ile bitti — sonraki adımlar (ör. envanter yazımı) başarısız olmuş olabilir.`;
   }
 
@@ -490,7 +516,8 @@ let reconcileTimer = null;
 function startWasReconciler() {
   if (reconcileTimer) return;
   const sn = Math.max(Number(process.env.OPSX_WAS_RECONCILE_INTERVAL_SECONDS) || 120, 30);
-  const run = () => reconcileTick().catch((e) => console.warn('[OpsX WAS] uzlastirici tick hatasi:', e.message));
+  const run = () =>
+    reconcileTick().catch((e) => console.warn('[OpsX WAS] uzlastirici tick hatasi:', e.message));
   reconcileTimer = setInterval(run, sn * 1000);
   reconcileTimer.unref?.();
   const kick = setTimeout(run, 20_000);
@@ -500,7 +527,10 @@ function startWasReconciler() {
 function lockBusyError(lock) {
   const row = lock.busy || {};
   const which = String(lock.busyKey || '').startsWith('A|') ? 'Bu uygulamada' : 'Bu JVM üzerinde';
-  const who = (() => { if (row.holder) return ` (${row.holder}` + (row.awx_job_id ? `, AWX #${row.awx_job_id})` : ')'); return ''; })();
+  const who = (() => {
+    if (row.holder) return ` (${row.holder}` + (row.awx_job_id ? `, AWX #${row.awx_job_id})` : ')');
+    return '';
+  })();
   return httpError(
     409,
     `${which} süren bir WAS işlemi var${who}. Aynı uygulamanın iki sunucusu aynı anda indirilmez — ` +
@@ -535,7 +565,9 @@ function initOpsXWas(app, deps = {}) {
   app.get('/api/opsx/was/apps', requireAuth, async (req, res) => {
     try {
       const user = currentUser(req);
-      const term = String(req.query.search || '').trim().slice(0, 100);
+      const term = String(req.query.search || '')
+        .trim()
+        .slice(0, 100);
       const pool = await inventoryPool();
       const r = pool.request();
       r.input('q', `%${term}%`);
@@ -553,7 +585,10 @@ function initOpsXWas(app, deps = {}) {
       try {
         allowed = await restrictions.filterAllowed('legacy_app', apps, user);
       } catch (e) {
-        console.warn('[OpsX WAS] uygulama listesi kisit filtresi basarisiz - liste verilmedi:', e.message);
+        console.warn(
+          '[OpsX WAS] uygulama listesi kisit filtresi basarisiz - liste verilmedi:',
+          e.message,
+        );
         throw httpError(503, 'Erişim kısıtlamaları okunamadı — liste gösterilemiyor.');
       }
       res.json({ ok: true, apps: allowed, truncated, limit: APP_LIST_MAX });
@@ -577,85 +612,99 @@ function initOpsXWas(app, deps = {}) {
 
   // POST /api/opsx/was/discover - SALT OKUNUR kesif. `hosts` verilmezse uygulamanin
   // TUM Linux sunuculari (en cok 10); verilirse her biri envanterde ve Linux olmali.
-  app.post('/api/opsx/was/discover', requireAuth, express.json({ limit: '16kb' }), async (req, res) => {
-    try {
-      const user = currentUser(req);
-      const appName = cleanApp(req.body?.app);
-      await assertAppAllowed(appName, user);
-      const inv = await inventoryHostsForApp(appName);
-      if (!inv.length) throw httpError(404, `${appName} WAS envanterinde bulunamadı.`);
-      let hosts;
-      if (req.body?.hosts !== undefined) {
-        if (!Array.isArray(req.body.hosts)) throw httpError(400, 'hosts bir liste olmalı.');
-        hosts = [...new Set(req.body.hosts.map((h) => ws.normalizeHost(h)).filter(Boolean))];
-        for (const h of hosts) {
-          const row = inv.find((x) => x.host === h);
-          if (!row) throw httpError(400, `${h} bu uygulamanın envanterinde yok.`);
-          if (!row.selectable) throw httpError(400, `${h}: ${row.reason}`);
-        }
-      } else {
-        hosts = inv.filter((h) => h.selectable).map((h) => h.host);
-      }
-      if (!hosts.length) {
-        throw httpError(400, 'Keşfedilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor).');
-      }
-      if (hosts.length > ws.MAX_DISCOVER_HOSTS) {
-        throw httpError(
-          400,
-          `Tek keşifte en çok ${ws.MAX_DISCOVER_HOSTS} sunucu taranır (${hosts.length} seçildi) — sunucu seçin.`,
-          { code: 'cok_sunucu' },
-        );
-      }
-
-      const tpl = await resolveTemplate('discover');
-      if (!tpl.templateId) throw notConfigured('discover', tpl.keyName);
-      await assertTemplatePlaybook('discover', tpl);
-      // was_server_filter = uygulama (JVM) adi: betik yalniz o JVM'i ve ayni kumedeki
-      // kardeslerini olcer. Cok JVM'li hostta hedef JVM kesif butcesi (300 sn) dolmadan
-      // olculur; peers mantigi (ayni ad + ayni kume) icin gereken her sey yine olculur.
-      const extraVars = { target_hosts: hosts.join(','), was_server_filter: appName };
-      await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
-        tpl.serverId,
-        tpl.templateId,
-        extraVars,
-        { label: tpl.keyName },
-      );
-      const runner = require('../ansible/runner.cjs');
-      // limit BILEREK '' - AWX'e limit GONDERILMEZ (dosya basi).
-      const result = await runner.launchJobOnServer(tpl.serverId, tpl.templateId, extraVars, '', user);
+  app.post(
+    '/api/opsx/was/discover',
+    requireAuth,
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
       try {
-        await insertHistory(req, {
-          serverId: tpl.serverId,
-          templateId: tpl.templateId,
-          templateName: 'OpsX: WAS keşfi',
-          jobId: result?.jobId,
-          status: result?.status,
-          params: { platform: PLATFORM.discover, app: appName, target_hosts: hosts.join(',') },
-        });
-      } catch (e) {
-        console.warn('[OpsX WAS] kesif gecmisi yazilamadi:', e.message);
-        throw httpError(
-          503,
-          'Keşif başlatıldı ama kaydı yazılamadı; sonucu size gösterilemez. Lütfen tekrar deneyin.',
+        const user = currentUser(req);
+        const appName = cleanApp(req.body?.app);
+        await assertAppAllowed(appName, user);
+        const inv = await inventoryHostsForApp(appName);
+        if (!inv.length) throw httpError(404, `${appName} WAS envanterinde bulunamadı.`);
+        let hosts;
+        if (req.body?.hosts !== undefined) {
+          if (!Array.isArray(req.body.hosts)) throw httpError(400, 'hosts bir liste olmalı.');
+          hosts = [...new Set(req.body.hosts.map((h) => ws.normalizeHost(h)).filter(Boolean))];
+          for (const h of hosts) {
+            const row = inv.find((x) => x.host === h);
+            if (!row) throw httpError(400, `${h} bu uygulamanın envanterinde yok.`);
+            if (!row.selectable) throw httpError(400, `${h}: ${row.reason}`);
+          }
+        } else {
+          hosts = inv.filter((h) => h.selectable).map((h) => h.host);
+        }
+        if (!hosts.length) {
+          throw httpError(
+            400,
+            'Keşfedilecek Linux sunucusu yok (AIX ve diğerleri bu sürümde desteklenmiyor).',
+          );
+        }
+        if (hosts.length > ws.MAX_DISCOVER_HOSTS) {
+          throw httpError(
+            400,
+            `Tek keşifte en çok ${ws.MAX_DISCOVER_HOSTS} sunucu taranır (${hosts.length} seçildi) — sunucu seçin.`,
+            { code: 'cok_sunucu' },
+          );
+        }
+
+        const tpl = await resolveTemplate('discover');
+        if (!tpl.templateId) throw notConfigured('discover', tpl.keyName);
+        await assertTemplatePlaybook('discover', tpl);
+        // was_server_filter = uygulama (JVM) adi: betik yalniz o JVM'i ve ayni kumedeki
+        // kardeslerini olcer. Cok JVM'li hostta hedef JVM kesif butcesi (300 sn) dolmadan
+        // olculur; peers mantigi (ayni ad + ayni kume) icin gereken her sey yine olculur.
+        const extraVars = { target_hosts: hosts.join(','), was_server_filter: appName };
+        await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
+          tpl.serverId,
+          tpl.templateId,
+          extraVars,
+          { label: tpl.keyName },
         );
+        const runner = require('../ansible/runner.cjs');
+        // limit BILEREK '' - AWX'e limit GONDERILMEZ (dosya basi).
+        const result = await runner.launchJobOnServer(
+          tpl.serverId,
+          tpl.templateId,
+          extraVars,
+          '',
+          user,
+        );
+        try {
+          await insertHistory(req, {
+            serverId: tpl.serverId,
+            templateId: tpl.templateId,
+            templateName: 'OpsX: WAS keşfi',
+            jobId: result?.jobId,
+            status: result?.status,
+            params: { platform: PLATFORM.discover, app: appName, target_hosts: hosts.join(',') },
+          });
+        } catch (e) {
+          console.warn('[OpsX WAS] kesif gecmisi yazilamadi:', e.message);
+          throw httpError(
+            503,
+            'Keşif başlatıldı ama kaydı yazılamadı; sonucu size gösterilemez. Lütfen tekrar deneyin.',
+          );
+        }
+        audit(req, 'opsx_was_discover', {
+          detail: JSON.stringify({ app: appName, hosts, jobId: result?.jobId ?? null }),
+        });
+        console.log(
+          `[OpsX WAS] ${user.username} -> kesif app=${appName} hosts=${hosts.join(',')} template=${tpl.templateId} server=${tpl.serverId} job=${result?.jobId ?? '?'}`,
+        );
+        res.json({
+          ok: true,
+          jobId: result?.jobId ?? null,
+          status: result?.status ?? null,
+          awxServerId: tpl.serverId,
+          hosts,
+        });
+      } catch (err) {
+        sendError(res, err);
       }
-      audit(req, 'opsx_was_discover', {
-        detail: JSON.stringify({ app: appName, hosts, jobId: result?.jobId ?? null }),
-      });
-      console.log(
-        `[OpsX WAS] ${user.username} -> kesif app=${appName} hosts=${hosts.join(',')} template=${tpl.templateId} server=${tpl.serverId} job=${result?.jobId ?? '?'}`,
-      );
-      res.json({
-        ok: true,
-        jobId: result?.jobId ?? null,
-        status: result?.status ?? null,
-        awxServerId: tpl.serverId,
-        hosts,
-      });
-    } catch (err) {
-      sendError(res, err);
-    }
-  });
+    },
+  );
 
   // GET /api/opsx/was/discover/:serverId/:jobId/status
   app.get('/api/opsx/was/discover/:serverId/:jobId/status', requireAuth, async (req, res) => {
@@ -687,7 +736,11 @@ function initOpsXWas(app, deps = {}) {
       try {
         const row = await ws.activeAppLock(require('../db/index.cjs'), appName);
         if (row) {
-          appLock = { holder: row.holder || null, target: row.target_desc || null, jobId: row.awx_job_id ?? null };
+          appLock = {
+            holder: row.holder || null,
+            target: row.target_desc || null,
+            jobId: row.awx_job_id ?? null,
+          };
         }
       } catch {
         /* bilgi amacli; karar /run'da kilitle verilir */
@@ -761,7 +814,12 @@ function initOpsXWas(app, deps = {}) {
       // 6) Kesif: ayni kullanici, <= 15 dk, hedef olculmus.
       const discoverJobId = Number(b.discoverJobId);
       const discoverServerId = Number(b.discoverServerId);
-      if (!Number.isInteger(discoverJobId) || discoverJobId <= 0 || !Number.isInteger(discoverServerId) || discoverServerId < 0) {
+      if (
+        !Number.isInteger(discoverJobId) ||
+        discoverJobId <= 0 ||
+        !Number.isInteger(discoverServerId) ||
+        discoverServerId < 0
+      ) {
         throw httpError(400, 'Keşif iş numarası gerekli — önce keşfi çalıştırın.');
       }
       const { discovery, started: discoveryStarted } = await verifyDiscovery(user, {
@@ -836,7 +894,10 @@ function initOpsXWas(app, deps = {}) {
       } catch (e) {
         await ws.releaseLocks(db, keys, requestId).catch(() => {});
         console.warn('[OpsX WAS] son islem zamani okunamadi - islem reddedildi:', e.message);
-        throw httpError(503, 'Uygulamanın son işlem zamanı okunamadı — işlem başlatılmadı, lütfen tekrar deneyin.');
+        throw httpError(
+          503,
+          'Uygulamanın son işlem zamanı okunamadı — işlem başlatılmadı, lütfen tekrar deneyin.',
+        );
       }
       if (bayat) {
         await ws.releaseLocks(db, keys, requestId).catch(() => {});
@@ -862,7 +923,10 @@ function initOpsXWas(app, deps = {}) {
         throw e;
       }
       try {
-        await ws.bindLocks(db, keys, requestId, { awxServerId: tpl.serverId, awxJobId: result.jobId });
+        await ws.bindLocks(db, keys, requestId, {
+          awxServerId: tpl.serverId,
+          awxJobId: result.jobId,
+        });
       } catch (e) {
         // Kilit tam TTL ile alindi; baglanamamasi yalniz erken birakmayi geciktirir.
         console.warn('[OpsX WAS] kilit isle baglanamadi (TTL ile dusecek):', e.message);
@@ -952,7 +1016,9 @@ function initOpsXWas(app, deps = {}) {
       const st = await runner.getJobStatusOnServer(ids.serverId, ids.jobId);
       let output = '';
       try {
-        output = ws.maskSecrets((await runner.getJobOutputOnServer(ids.serverId, ids.jobId))?.output || '');
+        output = ws.maskSecrets(
+          (await runner.getJobOutputOnServer(ids.serverId, ids.jobId))?.output || '',
+        );
       } catch {
         /* cikti ikincil; durum yine doner */
       }

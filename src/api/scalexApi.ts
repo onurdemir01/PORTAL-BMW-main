@@ -818,10 +818,12 @@ export const scalexApi = {
    * penceresini devam ettirmek, doğrulanmamış bir OCO ile iş başlatmak olurdu.
    */
   async ocoScheduleUpdate(id: number, patch: { ocoNumber?: string }) {
-    return post<{ ok: boolean; message?: string; record?: ScaleXOcoSchedule; ocoExpired?: boolean }>(
-      `/oco-schedules/${id}/update`,
-      patch,
-    );
+    return post<{
+      ok: boolean;
+      message?: string;
+      record?: ScaleXOcoSchedule;
+      ocoExpired?: boolean;
+    }>(`/oco-schedules/${id}/update`, patch);
   },
 
   /**

@@ -47,7 +47,7 @@ const TARGETS = [
       },
       {
         id: 'tes-haric',
-        find: 'if (KURUMA_GITMEYEN.some((h) => yol.startsWith(h))) continue;',
+        find: 'if (IMZA_DISI.some((h) => yol.startsWith(h))) continue;',
         replace: '',
         desc: 'include kalite/ and non-delivered dirs (.github, sunum, ...) in the signature',
       },
@@ -82,8 +82,8 @@ const TARGETS = [
       },
       {
         id: 'ah-platform',
-        find: "params.platform !== 'app-hub-ocp') return null;",
-        replace: 'false) return null;',
+        find: "params?.platform !== 'app-hub-ocp'\n  )\n    return null;",
+        replace: 'false\n  )\n    return null;',
         desc: 'skip platform ownership check',
       },
       {
@@ -100,8 +100,8 @@ const TARGETS = [
       },
       {
         id: 'ah-eksik-yazim',
-        find: 'if (rowCount !== hedefler.length) throw',
-        replace: 'if (false) throw',
+        find: 'if (rowCount !== hedefler.length)\n      throw',
+        replace: 'if (false)\n      throw',
         desc: 'accept short write as success',
       },
       {
@@ -126,26 +126,26 @@ const TARGETS = [
       },
       {
         id: 'dg-obj-test',
-        find: 'SIR_ANAHTARI.test(k) || icindeSirVar(v)',
-        replace: 'SIR_ANAHTARI.test(k) && icindeSirVar(v)',
+        find: 'sirAnahtariMi(k) || icindeSirVar(v)',
+        replace: 'sirAnahtariMi(k) && icindeSirVar(v)',
         desc: 'require both secret key AND value in nested obj',
       },
       {
         id: 'dg-top-test',
-        find: 'if (SIR_ANAHTARI.test(k) || icindeSirVar(v)) gizlenen.push(k);',
-        replace: 'if (SIR_ANAHTARI.test(k)) gizlenen.push(k);',
+        find: 'if (sirAnahtariMi(k) || icindeSirVar(v)) gizlenen.push(k);',
+        replace: 'if (sirAnahtariMi(k)) gizlenen.push(k);',
         desc: 'skip nested secret scan in nesnedenAyikla',
       },
       {
         id: 'dg-top-drop-key',
-        find: 'if (SIR_ANAHTARI.test(k) || icindeSirVar(v)) gizlenen.push(k);',
+        find: 'if (sirAnahtariMi(k) || icindeSirVar(v)) gizlenen.push(k);',
         replace: 'if (icindeSirVar(v)) gizlenen.push(k);',
         desc: 'skip key-name check in nesnedenAyikla',
       },
       {
         id: 'dg-yaml-block',
-        find: 'if (SIR_ANAHTARI.test(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);',
-        replace: 'if (SIR_ANAHTARI.test(b.anahtar)) gizlenen.push(b.anahtar);',
+        find: 'if (sirAnahtariMi(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);',
+        replace: 'if (sirAnahtariMi(b.anahtar)) gizlenen.push(b.anahtar);',
         desc: 'skip YAML nested key & value scan',
       },
       {
@@ -175,20 +175,20 @@ const TARGETS = [
     specs: [
       {
         id: 'vis-killswitch',
-        find: "if (!truthy(el.enabled)) { not('kill-switch: oge kapali (enabled=false)'); return false; }",
-        replace: "if (!truthy(el.enabled)) { not('kill-switch'); return true; }",
+        find: "if (!truthy(el.enabled)) {\n    not('kill-switch: oge kapali (enabled=false)');\n    return false;\n  }",
+        replace: "if (!truthy(el.enabled)) {\n    not('kill-switch');\n    return true;\n  }",
         desc: 'bypass element kill-switch',
       },
       {
         id: 'vis-admin',
-        find: "if (role === 'Admin') { not('admin muafiyeti'); return true; }",
-        replace: "if (role !== 'Admin') { not('admin muafiyeti'); return true; }",
+        find: "if (role === 'Admin') {\n    not('admin muafiyeti');\n    return true;\n  }",
+        replace: "if (role !== 'Admin') {\n    not('admin muafiyeti');\n    return true;\n  }",
         desc: 'invert Admin exemption check',
       },
       {
         id: 'vis-strict-default',
-        find: "if (strict) { not('SIKI oge ve eslesen kural YOK -> kapali'); return false; }",
-        replace: "if (strict) { not('SIKI'); return true; }",
+        find: "if (strict) {\n    not('SIKI oge ve eslesen kural YOK -> kapali');\n    return false;\n  }",
+        replace: "if (strict) {\n    not('SIKI');\n    return true;\n  }",
         desc: 'fail-open when strict element has no matching rule',
       },
       {
@@ -205,9 +205,8 @@ const TARGETS = [
       },
       {
         id: 'vis-group-break',
-        find: 'if (ruleIndex.has(gKey)) { seen = true; if (ruleIndex.get(gKey)) { allow = true; eslesen = gKey; break; } }',
-        replace:
-          'if (ruleIndex.has(gKey)) { seen = true; if (!ruleIndex.get(gKey)) { allow = true; eslesen = gKey; break; } }',
+        find: 'seen = true;\n        if (ruleIndex.get(gKey)) {\n          allow = true;',
+        replace: 'seen = true;\n        if (!ruleIndex.get(gKey)) {\n          allow = true;',
         desc: 'invert group allow evaluation',
       },
       {
@@ -218,8 +217,8 @@ const TARGETS = [
       },
       {
         id: 'vis-truthy',
-        find: "function truthy(v) { return v === true || v === 1 || v === '1'; }",
-        replace: 'function truthy(v) { return v === true && v === 1; }',
+        find: "function truthy(v) {\n  return v === true || v === 1 || v === '1';\n}",
+        replace: 'function truthy(v) {\n  return v === true && v === 1;\n}',
         desc: 'break truthy helper',
       },
     ],

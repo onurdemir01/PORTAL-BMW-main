@@ -24,8 +24,11 @@ async function resolveTarget() {
   }
   const templateId = playbookRegistry.getEffectiveTemplateId(row);
   const envServer = Number(String(process.env.FILEX_AWX_SERVER_ID || '').trim());
-  const serverId =
-    (() => { if (row.awxServerId != null) return Number(row.awxServerId); if (Number.isInteger(envServer) && envServer >= 0) return envServer; return 0; })();
+  const serverId = (() => {
+    if (row.awxServerId != null) return Number(row.awxServerId);
+    if (Number.isInteger(envServer) && envServer >= 0) return envServer;
+    return 0;
+  })();
   return { templateId: templateId || null, serverId };
 }
 
@@ -139,21 +142,23 @@ async function isDurumu(runner, serverId, jobId) {
     try {
       return durumCevabi(await runner.getJobStatusOnServer(serverId, jobId));
     } catch (e) {
-      if (!e || !e.tooLarge) throw e;
+      if (!e?.tooLarge) throw e;
       sinirliEkle(_buyuk.buyukIsler, anahtar);
     }
   }
 
   let ucus = _buyuk.ucusta.get(anahtar);
   if (!ucus) {
-    ucus = sirayla(() => runner.getJobStatusOnServer(serverId, jobId, { maxBytes: FILEX_SONUC_MAX_BYTES }))
+    ucus = sirayla(() =>
+      runner.getJobStatusOnServer(serverId, jobId, { maxBytes: FILEX_SONUC_MAX_BYTES }),
+    )
       .then((statusInfo) => {
         const cevap = durumCevabi(statusInfo);
         if (cevap.finished) sonucuSakla(anahtar, cevap);
         return cevap;
       })
       .catch((e) => {
-        if (e && e.tooLarge) sinirliEkle(_buyuk.cokBuyuk, anahtar, e);
+        if (e?.tooLarge) sinirliEkle(_buyuk.cokBuyuk, anahtar, e);
         throw e;
       })
       .finally(() => _buyuk.ucusta.delete(anahtar));
@@ -364,7 +369,7 @@ function initFileX(app) {
       const runner = require('../ansible/runner.cjs');
       res.json(await isDurumu(runner, serverId, jobId));
     } catch (err) {
-      if (err && err.tooLarge) {
+      if (err?.tooLarge) {
         // KALICI ve KULLANICIYA OKUNUR: 422 vekilden degismeden gecer (5xx gecmez) ve
         // ekran yoklamayi durdurup bu metni gosterir. "Tekrar deneyin" DENMEZ: ayni
         // sunucunun listesi bir sonraki denemede kuculmez.

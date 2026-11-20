@@ -30,7 +30,8 @@ export interface LdapGroup {
 export async function ldapGroupSearch(q: string): Promise<{ groups: LdapGroup[]; error?: string }> {
   const r = await fetch(`/api/visibility/ldap-groups?q=${encodeURIComponent(q)}`);
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.ok === false) return { groups: [], error: j.error || 'LDAP grup araması yapılamadı.' };
+  if (!r.ok || j.ok === false)
+    return { groups: [], error: j.error || 'LDAP grup araması yapılamadı.' };
   return { groups: Array.isArray(j.groups) ? j.groups : [] };
 }
 
@@ -49,12 +50,36 @@ export function grupEtiketi(g: string): string {
   return m ? m[1].trim() : g.trim();
 }
 
-const grupAnahtari = (g: string) => g.trim().toLowerCase().replace(/(?:(?<!\s)\s+)?,\s*/g, ',');
+const grupAnahtari = (g: string) =>
+  g
+    .trim()
+    .toLowerCase()
+    .replace(/(?:(?<!\s)\s+)?,\s*/g, ',');
 
-const SECENEKLER: { mod: SsErisimModu; baslik: string; aciklama: string; icon: React.ElementType }[] = [
-  { mod: 'kapali', baslik: 'Kapalı', aciklama: 'Yalnız yöneticiler görür ve çalıştırır.', icon: LockClosedIcon },
-  { mod: 'ekipler', baslik: 'Seçili ekipler', aciklama: 'Seçtiğiniz LDAP gruplarının üyeleri.', icon: UserGroupIcon },
-  { mod: 'herkes', baslik: 'Herkes', aciklama: 'Portala giren tüm kullanıcılar.', icon: GlobeAltIcon },
+const SECENEKLER: {
+  mod: SsErisimModu;
+  baslik: string;
+  aciklama: string;
+  icon: React.ElementType;
+}[] = [
+  {
+    mod: 'kapali',
+    baslik: 'Kapalı',
+    aciklama: 'Yalnız yöneticiler görür ve çalıştırır.',
+    icon: LockClosedIcon,
+  },
+  {
+    mod: 'ekipler',
+    baslik: 'Seçili ekipler',
+    aciklama: 'Seçtiğiniz LDAP gruplarının üyeleri.',
+    icon: UserGroupIcon,
+  },
+  {
+    mod: 'herkes',
+    baslik: 'Herkes',
+    aciklama: 'Portala giren tüm kullanıcılar.',
+    icon: GlobeAltIcon,
+  },
 ];
 
 export function SsErisimBolumu({
@@ -160,7 +185,11 @@ export function SsErisimBolumu({
         </p>
       </div>
 
-      <div role="radiogroup" aria-labelledby="ss-erisim-baslik" className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+      <div
+        role="radiogroup"
+        aria-labelledby="ss-erisim-baslik"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+      >
         {SECENEKLER.map((s) => {
           const aktif = mode === s.mod;
           const Icon = s.icon;
@@ -189,11 +218,22 @@ export function SsErisimBolumu({
                 aria-describedby={`${secenekId}-${s.mod}-aciklama`}
               />
               <span className="min-w-0">
-                <span id={`${secenekId}-${s.mod}-ad`} className="flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]">
-                  <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: aktif ? 'var(--accent)' : 'var(--text-muted)' }} />
+                <span
+                  id={`${secenekId}-${s.mod}-ad`}
+                  className="flex items-center gap-1 text-xs font-semibold text-[var(--text-primary)]"
+                >
+                  <Icon
+                    className="w-3.5 h-3.5 shrink-0"
+                    style={{ color: aktif ? 'var(--accent)' : 'var(--text-muted)' }}
+                  />
                   {s.baslik}
                 </span>
-                <span id={`${secenekId}-${s.mod}-aciklama`} className="block text-[11px] text-[var(--text-muted)]">{s.aciklama}</span>
+                <span
+                  id={`${secenekId}-${s.mod}-aciklama`}
+                  className="block text-[11px] text-[var(--text-muted)]"
+                >
+                  {s.aciklama}
+                </span>
               </span>
             </label>
           );
@@ -207,18 +247,27 @@ export function SsErisimBolumu({
           style={{ borderColor: 'var(--status-danger)', color: 'var(--status-danger)' }}
         >
           <ExclamationTriangleIcon className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          Kayıtlı ekip listesi okunamadı; servis şu an yöneticiler dışında kimseye açık değil. Ekipleri yeniden seçip kaydedin.
+          Kayıtlı ekip listesi okunamadı; servis şu an yöneticiler dışında kimseye açık değil.
+          Ekipleri yeniden seçip kaydedin.
         </div>
       )}
 
       {mode === 'ekipler' && (
         <div className="space-y-2">
           {groups.length === 0 ? (
-            <p className="text-[11px]" style={{ color: 'var(--status-warning-text)' }} data-testid="ss-erisim-ekip-yok">
+            <p
+              className="text-[11px]"
+              style={{ color: 'var(--status-warning-text)' }}
+              data-testid="ss-erisim-ekip-yok"
+            >
               Henüz ekip seçilmedi. Kaydetmek için en az bir LDAP grubu ekleyin.
             </p>
           ) : (
-            <ul className="flex flex-wrap gap-1.5" aria-label="Seçili ekipler" data-testid="ss-erisim-ekip-listesi">
+            <ul
+              className="flex flex-wrap gap-1.5"
+              aria-label="Seçili ekipler"
+              data-testid="ss-erisim-ekip-listesi"
+            >
               {groups.map((g) => (
                 <li
                   key={g}
@@ -287,7 +336,10 @@ export function SsErisimBolumu({
                   </div>
                 ) : hata ? (
                   // Arama düştüyse "grup yok" demeyiz: kullanıcı olmayan bir sorunu arar.
-                  <div className="px-3 py-2 text-[11px] flex items-start gap-1.5" style={{ color: 'var(--status-danger)' }}>
+                  <div
+                    className="px-3 py-2 text-[11px] flex items-start gap-1.5"
+                    style={{ color: 'var(--status-danger)' }}
+                  >
                     <ExclamationTriangleIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span>{hata} Grup adını yazıp "Elle ekle" ile ekleyebilirsiniz.</span>
                   </div>
@@ -313,7 +365,11 @@ export function SsErisimBolumu({
                       >
                         <div className="text-xs text-[var(--text-primary)]">
                           {g.cn}
-                          {var_ && <span className="ml-2 text-[10px] text-[var(--text-muted)]">seçili</span>}
+                          {var_ && (
+                            <span className="ml-2 text-[10px] text-[var(--text-muted)]">
+                              seçili
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] truncate text-[var(--text-muted)]" title={g.dn}>
                           {[g.description, g.dn].filter(Boolean).join(' · ')}
@@ -326,8 +382,9 @@ export function SsErisimBolumu({
             )}
           </div>
           <p className="text-[11px] text-[var(--text-muted)]">
-            Eşleşme doğrudan grup üyeliğiyle yapılır; iç içe (nested) gruplar sayılmaz. Ayar kaydedilince hemen geçerlidir;
-            bir kişinin AD'deki grup üyeliği değişirse bu, portala bir sonraki girişinde yansır.
+            Eşleşme doğrudan grup üyeliğiyle yapılır; iç içe (nested) gruplar sayılmaz. Ayar
+            kaydedilince hemen geçerlidir; bir kişinin AD'deki grup üyeliği değişirse bu, portala
+            bir sonraki girişinde yansır.
           </p>
         </div>
       )}

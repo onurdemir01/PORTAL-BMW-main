@@ -61,7 +61,7 @@ function mssql() {
   return require('../inventory/mssql.cjs');
 }
 
-const hataMetni = (e) => String((e && e.message) || e || 'okunamadi').slice(0, 300);
+const hataMetni = (e) => String(e?.message || e || 'okunamadi').slice(0, 300);
 
 /** Bir sorguyu calistirir; hata firlatmaz, { rows, hata } doner (OLCULEMEDI ayrimi icin). */
 async function guvenli(sqlText, params) {
@@ -227,19 +227,22 @@ async function retirementOku() {
  */
 function retirementKaynagi(capRet, taze) {
   if (!capRet)
-    return { bagliOkunamadi: true, hata: 'Server Hub değerlendirmesi retirement durumunu taşımıyor' };
-  if (capRet.okunamadi)
-    return { bagliOkunamadi: true, hata: String(capRet.hata || 'okunamadı') };
+    return {
+      bagliOkunamadi: true,
+      hata: 'Server Hub değerlendirmesi retirement durumunu taşımıyor',
+    };
+  if (capRet.okunamadi) return { bagliOkunamadi: true, hata: String(capRet.hata || 'okunamadı') };
   if (!taze || taze.okunamadi)
     return {
       bagliOkunamadi: false,
-      hata: `güncel durum ve STOP tarihi okunamadı (${String((taze && taze.hata) || 'okunamadı')}); Server Hub değerlendirmesindeki durum gösteriliyor`,
+      hata: `güncel durum ve STOP tarihi okunamadı (${String(taze?.hata || 'okunamadı')}); Server Hub değerlendirmesindeki durum gösteriliyor`,
     };
   return { bagliOkunamadi: false, hata: null };
 }
 
 const CELISKI_NEDENLERI = ['calisiyor', 'autostart', 'paket'];
-const anISO = (ms) => (typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
+const anISO = (ms) =>
+  typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 
 /**
  * JVM'e bagli hedeflerden ekranda gosterilecek TEK hedef: once STOP / silme yapilmis olan, sonra en
@@ -310,7 +313,7 @@ async function jbossDetay(adHam) {
     const sh = require('../server-hub/index.cjs');
     const a = await sh.getAssessment(false);
     hub.sonTarama = a.latestScan || null;
-    hub.retirement = (a.capraz && a.capraz.retirement) || null;
+    hub.retirement = a.capraz?.retirement || null;
     if (a.tableMissing) hub.hata = 'Server Hub tablolari bulunamadi.';
     const hedef = new Set(hostlar);
     const eslesen = (a.hosts || []).filter(
@@ -319,7 +322,7 @@ async function jbossDetay(adHam) {
     const hedefHostlar = eslesen.slice(0, HOST_TAVAN);
     // N+1 yerine: kolon semasi istek basina bir kez, sunucu basina agir okuma SINIRLI paralel
     // (JVM_AGIR_ESZAMAN). Sonuc dizisi girdi sirasini korur; birlestirme asagida eski sirayla.
-    const semaOku = hedefHostlar.length && sh.loadJvmAgir && sh.loadJvmAgir.semaOku;
+    const semaOku = hedefHostlar.length && sh.loadJvmAgir?.semaOku;
     const kolP =
       typeof semaOku === 'function'
         ? Promise.resolve()
@@ -328,7 +331,9 @@ async function jbossDetay(adHam) {
         : null;
     const agirlar = await sinirliParalel(hedefHostlar, JVM_AGIR_ESZAMAN, (h) =>
       Promise.resolve()
-        .then(() => (kolP !== null ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host)))
+        .then(() =>
+          kolP !== null ? sh.loadJvmAgir(h.host, { kol: kolP }) : sh.loadJvmAgir(h.host),
+        )
         .catch(() => new Map()),
     );
     for (let i = 0; i < hedefHostlar.length; i++) {
@@ -375,7 +380,7 @@ async function jbossDetay(adHam) {
         };
         retBagli.set(jvmSatiri, {
           bagli: Array.isArray(j.retirement) ? j.retirement : [],
-          celiski: (j.capraz && j.capraz.celiski) || [],
+          celiski: j.capraz?.celiski || [],
         });
         hub.jvmler.push(jvmSatiri);
       }
@@ -401,8 +406,7 @@ async function jbossDetay(adHam) {
     hubIx.get(k).push(j);
   }
   const hedefIx = new Map();
-  for (const tg of (disc.d && disc.d.targets) || [])
-    hedefIx.set(`${U(tg.host)}|${L(tg.appName)}`, tg);
+  for (const tg of disc.d?.targets || []) hedefIx.set(`${U(tg.host)}|${L(tg.appName)}`, tg);
 
   // TEKILLESTIRME (kullanici, 2026-11-12: "sunucu sekmeleri ya acilmiyor ya kapanmiyor"):
   // MWAppsInventory ayni host + uygulama icin domain basina ayri satir tasiyabiliyor; her satir
@@ -423,23 +427,23 @@ async function jbossDetay(adHam) {
       return {
         host,
         uygulama: String(r.app),
-        ortam: (tg && tg.env) || nz(r.env),
-        site: (tg && tg.site) || null,
+        ortam: tg?.env || nz(r.env),
+        site: tg?.site || null,
         jbossSurum: nz(r.jboss_version),
-        nesil: (tg && tg.gen) || (jvms[0] && jvms[0].nesil) || null,
+        nesil: tg?.gen || jvms[0]?.nesil || null,
         jdk: nz(r.jdk_type),
         jre: nz(r.jre_version),
         envanterDurumu: nz(r.status),
         uygulamaYolu: nz(r.app_path),
-        tier: (tg && tg.tier) || nz(r.tier),
+        tier: tg?.tier || nz(r.tier),
         jvmSayisi: sayi(r.jvm_count),
         minHeap: heap(r.min_heap),
         maxHeap: heap(r.max_heap),
         autoStartEnvanter: nz(r.autostarts),
         jvmler: jvms,
         domainler: [...domainler].sort(varsayilanSira),
-        web: (tg && tg.web) || [],
-        webUyari: (tg && tg.webUyari) || null,
+        web: tg?.web || [],
+        webUyari: tg?.webUyari || null,
         kapasite: kap.harita.get(host) || null,
       };
     })
@@ -461,10 +465,10 @@ async function jbossDetay(adHam) {
       const g = webIx.get(k);
       if (w.serverName) g.vhostlar.add(w.serverName);
       g.uygulamaSunuculari.add(s.host);
-      if (w.trafik && w.trafik.durum === 'var') {
+      if (w.trafik?.durum === 'var') {
         g.istek7g += Number(w.trafik.req7) || 0;
         g.olculdu = true;
-      } else if (w.trafik && w.trafik.durum === 'yok') g.olculdu = true;
+      } else if (w.trafik?.durum === 'yok') g.olculdu = true;
     }
   }
   const webSunuculari = [...webIx.values()]
@@ -476,7 +480,9 @@ async function jbossDetay(adHam) {
     }))
     .sort((a, b) => a.host.localeCompare(b.host));
 
-  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort(varsayilanSira);
+  const surumler = [...new Set(sunucular.map((s) => s.jbossSurum).filter(Boolean))].sort(
+    varsayilanSira,
+  );
   const ortamlar = [...new Set(sunucular.map((s) => s.ortam).filter(Boolean))];
   return {
     tip: 'jboss',
@@ -489,12 +495,11 @@ async function jbossDetay(adHam) {
       jvmSayisi: hub.jvmler.length,
       calisanJvm: hub.jvmler.filter((j) => j.calisiyor === true).length,
       webSunucuSayisi: webSunuculari.length,
-      toplamCpu: sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.cpu) || 0), 0) || null,
+      toplamCpu: sunucular.reduce((a, s) => a + (s.kapasite?.cpu || 0), 0) || null,
       toplamBellekGb:
-        Math.round(
-          sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10,
-        ) / 10 || null,
-      yuk: disc.d && disc.d.summary ? disc.d.summary.trafik || null : null,
+        Math.round(sunucular.reduce((a, s) => a + (s.kapasite?.bellekGb || 0), 0) * 10) / 10 ||
+        null,
+      yuk: disc.d?.summary ? disc.d.summary.trafik || null : null,
     },
     sunucular,
     webSunuculari,
@@ -502,7 +507,7 @@ async function jbossDetay(adHam) {
       envanter: { hata: mw.hata },
       kesif: {
         hata: disc.hata,
-        serverHubOkunamadi: !!(disc.d && disc.d.summary && disc.d.summary.hubUnavailable),
+        serverHubOkunamadi: !!disc.d?.summary?.hubUnavailable,
       },
       serverHub: { hata: hub.hata, sonTarama: hub.sonTarama },
       retirement: { hata: retKaynak.hata, okunamadi: !!retKaynak.bagliOkunamadi && !hub.hata },
@@ -553,7 +558,7 @@ async function wasOzetleri(hostlar) {
 function wasSunucuBilgisi(oz, ad) {
   if (!oz || typeof oz !== 'object') return null;
   const sunucular = Array.isArray(oz.sunucular) ? oz.sunucular : [];
-  const s = sunucular.find((x) => L(x && x.ad) === L(ad));
+  const s = sunucular.find((x) => L(x?.ad) === L(ad));
   if (!s) return null;
   const j = s.jvm && typeof s.jvm === 'object' ? s.jvm : null;
   const okundu = !!j && j.durum === 'OKUNDU';
@@ -626,7 +631,7 @@ async function wasDetay(ad) {
             };
           return null;
         })(),
-        jvmToplandi: !!(bilgi && bilgi.jvmDurumu === 'OKUNDU'),
+        jvmToplandi: !!(bilgi?.jvmDurumu === 'OKUNDU'),
         web:
           m && Array.isArray(m.web)
             ? m.web.map((w) => ({
@@ -669,11 +674,10 @@ async function wasDetay(ad) {
       ortamlar: [...new Set(sunucular.map((s) => s.ortam).filter(Boolean))],
       surumler: [...new Set(sunucular.map((s) => s.wasSurum).filter(Boolean))].sort(varsayilanSira),
       webSunucuSayisi: webSunuculari.length,
-      toplamCpu: sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.cpu) || 0), 0) || null,
+      toplamCpu: sunucular.reduce((a, s) => a + (s.kapasite?.cpu || 0), 0) || null,
       toplamBellekGb:
-        Math.round(
-          sunucular.reduce((a, s) => a + ((s.kapasite && s.kapasite.bellekGb) || 0), 0) * 10,
-        ) / 10 || null,
+        Math.round(sunucular.reduce((a, s) => a + (s.kapasite?.bellekGb || 0), 0) * 10) / 10 ||
+        null,
     },
     sunucular,
     webSunuculari,

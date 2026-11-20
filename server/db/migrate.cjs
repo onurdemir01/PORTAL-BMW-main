@@ -14,7 +14,9 @@
 // islemleri calisan portalin gordugu DB'ye HIC ISLEMIYORDU. Sessiz ve tesbiti zor bir
 // tuzak: komut "tamamlandi" diyor ama portal degismiyor.
 const path0 = require('path');
-const APP_ENV = String(process.env.APP_ENV || process.argv[2] || '').trim().toLowerCase();
+const APP_ENV = String(process.env.APP_ENV || process.argv[2] || '')
+  .trim()
+  .toLowerCase();
 if (APP_ENV) {
   process.env.APP_ENV = APP_ENV;
   require('dotenv').config({ path: path0.resolve(__dirname, `../../.env.${APP_ENV}`) });
@@ -23,7 +25,9 @@ require('dotenv').config({ path: path0.resolve(__dirname, '../../.env.local') })
 require('dotenv').config({ path: path0.resolve(__dirname, '../../.env') });
 // Hangi veritabanina baglanildigi ACIKCA yazilir - "calistirdim ama degismedi"
 // durumunda ilk bakilacak yer burasi (bkz. server/db/portal-mssql.cjs degisken adlari).
-console.log(`[migrate] APP_ENV=${APP_ENV || '(yok)'} DB=${process.env.PORTAL_DB_DATABASE || process.env.MSSQL_DATABASE || '(tanimsiz)'} @ ${process.env.PORTAL_DB_SERVER || process.env.MSSQL_SERVER || '(tanimsiz)'}`);
+console.log(
+  `[migrate] APP_ENV=${APP_ENV || '(yok)'} DB=${process.env.PORTAL_DB_DATABASE || process.env.MSSQL_DATABASE || '(tanimsiz)'} @ ${process.env.PORTAL_DB_SERVER || process.env.MSSQL_SERVER || '(tanimsiz)'}`,
+);
 
 const { setupTables } = require('./mssql-setup.cjs');
 

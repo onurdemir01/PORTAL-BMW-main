@@ -13,10 +13,19 @@
 //   AR3 ss-erisim grup anahtari (replace, g): virgul cevresindeki bosluk. Eski `\s*,\s*` uzun bosluk
 //       dizisinin her konumundan virgul arardi. Yeni: bosluk yalniz dizinin basindan yenir; bir onceki
 //       eslesmenin yuttugu boslugu izleyen virgul ikinci kolla (`,\s*`) yine eslesir.
+//   2026-11-20 (Sonar S5843 karmasiklik / S5869 sinifta kopya; davranis ayni):
+//   AR4 runner Bearer maskesi: /i altinda `[A-Za-z0-9._~+/=-]` -> `[\w.~+/=-]` (ayni 69 karakter).
+//   AR5 degisken-gizle sir anahtari: tek desen (31) iki desene ayrildi (biri eslesirse sir).
+//       `pass(word|wd|phrase)?` yalniz test()'te kullanildigi icin `pass` ile ayni.
+//   AR6 degisken-gizle sir degerleri: `(?:export\s+)?` dustu (export'tan sonraki bosluk zaten ayirici
+//       sinifinda), `[A-Za-z0-9_]` -> `\w`, Bearer / Basic siniflari /i altinda sadelesti. Liste bir
+//       butun olarak (herhangi biri eslesir mi) eski listeyle ayni.
 'use strict';
 
 const { test } = require('node:test');
+const assert = require('node:assert/strict');
 const H = require('../../__tests__/fixtures/regex-esdeger.cjs');
+const { sirAnahtariMi, SIR_DEGERI } = require('../degisken-gizle.cjs');
 
 const CHOICE = H.kaynak('server/ansible/choice-sources.cjs');
 const RUNNER = H.kaynak('server/ansible/runner.cjs');
@@ -103,4 +112,139 @@ test('AR3 ss-erisim grup anahtari: virgul cevresi bosluk silme ciktisi ayni, kot
   });
   H.hizli(yeni, `${' '.repeat(50000)}a`, { kip: 'replace', yerine: ',' });
   H.hizli(yeni, `a${' \t'.repeat(25000)}b,`, { kip: 'replace', yerine: ',' });
+});
+
+// Kelvin isareti ve uzun s: /i altinda ASCII harfle eslesmeyen, ama toLowerCase'te k / s olan karakterler.
+const HARF_UC = ['\u212a', '\u017f', 'İ', 'ı', 'ş', 'K', 'k'];
+
+test('AR4 runner Bearer maskesi: replace ciktisi ayni, kotu girdide hizli', () => {
+  const yeni = H.literalAl(RUNNER, 'return s.replace(');
+  H.esdeger({
+    eski: /(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
+    yeni,
+    kip: 'replace',
+    yerine: '$1***',
+    tokenlar: [
+      'Bearer',
+      'bearer',
+      ' ',
+      '\t',
+      'abc',
+      'Z9',
+      '.',
+      '_',
+      '~',
+      '+',
+      '/',
+      '=',
+      '-',
+      ':',
+      '"',
+      ...HARF_UC,
+    ],
+    onek: ['Authorization: Bearer ', 'x Bearer '],
+    adet: 8000,
+    enAzEslesen: 2000,
+  });
+  H.hizli(yeni, `Bearer ${'a'.repeat(100000)}`, { kip: 'replace', yerine: '$1***' });
+});
+
+test('AR5 sir anahtari: iki desen eski tek desenle ayni sonuc', () => {
+  const eski =
+    /pass(word|wd|phrase)?|parola|sifre|secret|token|api[_-]?key|private[_-]?key|credential|webhook|(?:(?:^|[_-])pwd(?:[_-]|$))|(?:(?:^|[_-])key$)/i;
+  H.esdeger({
+    eski: (s) => eski.test(s),
+    yeni: sirAnahtariMi,
+    kip: 'fn',
+    tokenlar: [
+      'pass',
+      'word',
+      'wd',
+      'phrase',
+      'parola',
+      'sifre',
+      'secret',
+      'token',
+      'api',
+      'private',
+      'key',
+      'KEY',
+      'credential',
+      'webhook',
+      'pwd',
+      '_',
+      '-',
+      '.',
+      'db',
+      'x',
+      'monkey',
+      ...HARF_UC,
+    ],
+    adet: 20000,
+    maks: 6,
+    enAzEslesen: 8000,
+  });
+  for (const [ad, beklenen] of [
+    ['DB_PASSWORD', true],
+    ['ssh_key', true],
+    ['keystore', false],
+    ['db_pwd_eski', true],
+    ['pwdx', false],
+    ['monkey', false],
+    [undefined, false],
+  ])
+    assert.equal(sirAnahtariMi(ad), beklenen, String(ad));
+});
+
+test('AR6 sir degerleri: liste eskisiyle ayni sonuc, kotu girdide hizli', () => {
+  const eskiListe = [
+    /\b(pwd|password|parola|sifre)\s*=\s*[^;\s"']+/i,
+    /(?:^|[\s;|&"'])(?:export\s+)?[A-Za-z0-9_]*(?:password|passwd|pwd|parola|sifre|secret|token|api[_-]?key)[A-Za-z0-9_]*\s*=\s*[^\s"';]+/i,
+    /:\/\/[^/\s:@]+:[^@\s/]+@/,
+    /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/i,
+    /\bBasic\s+[A-Za-z0-9+/]{8,}={0,2}\b/i,
+    /[?&](sig|signature|token|access_token|api[_-]?key|code)=[^&\s"']{8,}/i,
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /--(password|passwd|pwd|token|secret|api-key)[= ]\S+/i,
+  ];
+  assert.equal(SIR_DEGERI.length, eskiListe.length);
+  const herhangi = (liste) => (s) => liste.some((d) => d.test(s));
+  H.esdeger({
+    eski: herhangi(eskiListe),
+    yeni: herhangi(SIR_DEGERI),
+    kip: 'fn',
+    tokenlar: [
+      'export',
+      'PG',
+      'PASSWORD',
+      'passwd',
+      'MY_',
+      'token',
+      'api-key',
+      'apikey',
+      '=',
+      ' ',
+      '\t',
+      ';',
+      '|',
+      '&',
+      '"',
+      "'",
+      'v4l',
+      'Bearer ',
+      'Basic ',
+      'abcdefgh12345678',
+      'QUJD+/==',
+      '://u:p@h',
+      '?sig=',
+      '--token ',
+      ...HARF_UC,
+    ],
+    onek: ['export ', 'x ', 'cmd;'],
+    adet: 20000,
+    maks: 10,
+    enAzEslesen: 6000,
+  });
+  H.hizli(herhangi(SIR_DEGERI), `${'export '.repeat(20000)}x`, { kip: 'fn' });
+  H.hizli(herhangi(SIR_DEGERI), ` ${'a'.repeat(100000)}=`, { kip: 'fn' });
 });

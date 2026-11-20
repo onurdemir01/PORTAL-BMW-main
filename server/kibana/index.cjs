@@ -8,7 +8,9 @@ function initKibana(app) {
   try {
     const { requireAuth: ra } = require('../auth/index.cjs');
     if (typeof ra === 'function') requireAuth = ra;
-  } catch { /* auth modulu yoksa passthrough */ }
+  } catch {
+    /* auth modulu yoksa passthrough */
+  }
 
   app.get('/api/kibana/health', requireAuth, async (req, res) => {
     const configured = isConfigured();
@@ -17,7 +19,13 @@ function initKibana(app) {
       ok: true,
       configured,
       reachable,
-      message: (() => { if (configured) { if (reachable) return undefined; return 'Kibana sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).'; } return 'KIBANA_BASE_URL tanımlı değil — Kibana entegrasyonu devre dışı.'; })(),
+      message: (() => {
+        if (configured) {
+          if (reachable) return undefined;
+          return 'Kibana sunucusuna ulaşılamıyor (ağ/VPN erişimi gerekli olabilir).';
+        }
+        return 'KIBANA_BASE_URL tanımlı değil — Kibana entegrasyonu devre dışı.';
+      })(),
     });
   });
 }

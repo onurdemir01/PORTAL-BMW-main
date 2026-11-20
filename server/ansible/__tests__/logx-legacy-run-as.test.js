@@ -30,7 +30,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'logx', 'legacy');
 const DOSYALAR = ['logx_legacy_transfer.yml', 'logx_legacy_discovery.yml'];
 const metin = (f) => fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\r\n/g, '\n');
 const WAS = /^\s+become_user: "\{\{ logx_legacy_user \| default\('was'\) \}\}"$/m;
@@ -290,20 +290,97 @@ test('gecici dizin HER durumda SAHIBIYLE temizlenir (always: iki gorev)', () => 
 //   - salt okur: yonlendirme yalniz 2>/dev/null; yazan / yetki yukselten komut yok;
 //   - changed_when false, failed_when false (yoklama dusse de normal yorumlayici kesfi surer), kendi
 //     become'u yok; ardindaki set_fact YALNIZ ansible_python_interpreter'i, cikti varsa, yoklamadan kurar.
-const YAZAN_KOMUT = new RegExp('(^|[\\s;|&(`$])(' + ['rm','mv','cp','tee','chmod','chown','chgrp','mkdir','rmdir','touch','ln','dd','truncate','install','dzdo','sudo','su','kill','pkill','curl','wget','scp','rsync','crontab','systemctl','yum','dnf','rpm','pip3?','sh','bash','ksh','zsh','eval','exec','source'].join('|') + ')(\\s|$)|sed\\s+-i');
+const YAZAN_KOMUT = new RegExp(
+  '(^|[\\s;|&(`$])(' +
+    [
+      'rm',
+      'mv',
+      'cp',
+      'tee',
+      'chmod',
+      'chown',
+      'chgrp',
+      'mkdir',
+      'rmdir',
+      'touch',
+      'ln',
+      'dd',
+      'truncate',
+      'install',
+      'dzdo',
+      'sudo',
+      'su',
+      'kill',
+      'pkill',
+      'curl',
+      'wget',
+      'scp',
+      'rsync',
+      'crontab',
+      'systemctl',
+      'yum',
+      'dnf',
+      'rpm',
+      'pip3?',
+      'sh',
+      'bash',
+      'ksh',
+      'zsh',
+      'eval',
+      'exec',
+      'source',
+    ].join('|') +
+    ')(\\s|$)|sed\\s+-i',
+);
 // Python -c metninde yazan / calistiran / ice aktaran her sey yasak (surum olcumu yalniz sys ister).
-const PY_YAZAN = new RegExp('\\b(' + ['open','exec','eval','compile','__import__','importlib','subprocess','shutil','socket','pathlib','write\\w*','unlink','remove','rename','replace','mkdir','makedirs','chmod','chown','system','popen','spawn\\w*','fork'].join('|') + ')\\b|\\bos\\b');
+const PY_YAZAN = new RegExp(
+  '\\b(' +
+    [
+      'open',
+      'exec',
+      'eval',
+      'compile',
+      '__import__',
+      'importlib',
+      'subprocess',
+      'shutil',
+      'socket',
+      'pathlib',
+      'write\\w*',
+      'unlink',
+      'remove',
+      'rename',
+      'replace',
+      'mkdir',
+      'makedirs',
+      'chmod',
+      'chown',
+      'system',
+      'popen',
+      'spawn\\w*',
+      'fork',
+    ].join('|') +
+    ')\\b|\\bos\\b',
+);
 // Modul ANAHTARI olarak (kisa ad ve ansible.legacy dahil): metin aramasi "- raw:" / "shell:" kisa adlarini kacirirdi.
-const modulAnahtari = (ad) => new RegExp('^( +)(?:- +)?(?:ansible\\.(?:builtin|legacy)\\.)?' + ad + ':(.*)$', 'gm');
+const modulAnahtari = (ad) =>
+  new RegExp('^( +)(?:- +)?(?:ansible\\.(?:builtin|legacy)\\.)?' + ad + ':(.*)$', 'gm');
 function yorumlayiciYoklamasi(f) {
   const t = metin(f);
   for (const yasak of ['shell', 'script'])
     assert.equal([...t.matchAll(modulAnahtari(yasak))].length, 0, f + ': ' + yasak + ' modulu');
   const rawAnahtar = [...t.matchAll(modulAnahtari('raw'))];
-  assert.equal(rawAnahtar.length, 1, f + ': raw gorevi ' + rawAnahtar.length + ' (yalniz yorumlayici yoklamasi olabilir)');
+  assert.equal(
+    rawAnahtar.length,
+    1,
+    f + ': raw gorevi ' + rawAnahtar.length + ' (yalniz yorumlayici yoklamasi olabilir)',
+  );
   const kaynak = playler(t).filter((p) => [...p.metin.matchAll(modulAnahtari('raw'))].length > 0);
   assert.equal(kaynak.length, 1, f + ': raw tasiyan play ' + kaynak.length);
-  assert.ok(!yerel(kaynak[0]), f + ': yoklama yerel play' + "'de - kaynak sunucunun yorumlayicisini olcmez");
+  assert.ok(
+    !yerel(kaynak[0]),
+    f + ': yoklama yerel play' + "'de - kaynak sunucunun yorumlayicisini olcmez",
+  );
   const pre = (kaynak[0].metin.match(/^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m) || [])[1];
   assert.ok(pre, f + ': raw pre_tasks disinda');
   const g = gorevler('-\n' + pre);
@@ -315,7 +392,12 @@ function yorumlayiciYoklamasi(f) {
   const satirlar = raw.split('\n');
   const mi = satirlar.findIndex((l) => /^( +)(?:ansible\.(?:builtin|legacy)\.)?raw:/.test(l));
   const mm = satirlar[mi].match(/^( +)(?:ansible\.(?:builtin|legacy)\.)?raw:\s*(.*)$/);
-  assert.match(mm[2], /^\|[-+]?\s*$/, f + ': raw metni blok skaler (| ya da |-) degil - beklenen bicim "ansible.builtin.raw: |"; katlanmis (>) skaler kabuk satirlarini birlestirir');
+  assert.match(
+    mm[2],
+    /^\|[-+]?\s*$/,
+    f +
+      ': raw metni blok skaler (| ya da |-) degil - beklenen bicim "ansible.builtin.raw: |"; katlanmis (>) skaler kabuk satirlarini birlestirir',
+  );
   const ind = mm[1].length;
   const govdeSatir = [];
   for (const l of satirlar.slice(mi + 1)) {
@@ -323,29 +405,82 @@ function yorumlayiciYoklamasi(f) {
     govdeSatir.push(l);
   }
   const govde = govdeSatir.join('\n');
-  assert.ok(/python/.test(govde), f + ': raw govdesi okunamadi (beklenen: "ansible.builtin.raw: |" blok skaleri)');
-  assert.ok(!/\{\{|\{%|\{#/.test(govde), f + ': raw metnine Jinja yerlesiyor - dis girdi kabuga girer');
+  assert.ok(
+    /python/.test(govde),
+    f + ': raw govdesi okunamadi (beklenen: "ansible.builtin.raw: |" blok skaleri)',
+  );
+  assert.ok(
+    !/\{\{|\{%|\{#/.test(govde),
+    f + ': raw metnine Jinja yerlesiyor - dis girdi kabuga girer',
+  );
   // Python -c metni ayri denetlenir (orada > / >= karsilastirmadir); kabuk kopyasindan cikarilir.
   const pyDeseni = /("\$py"|\$py|python[0-9.]*)\s+-c\s+'([^']*)'/g;
   for (const m of govde.matchAll(pyDeseni))
-    assert.ok(!PY_YAZAN.test(m[2]), f + ': yoklamanin Python metni yazan / calistiran kod iceriyor: ' + (m[2].match(PY_YAZAN) || [''])[0]);
+    assert.ok(
+      !PY_YAZAN.test(m[2]),
+      f +
+        ': yoklamanin Python metni yazan / calistiran kod iceriyor: ' +
+        (m[2].match(PY_YAZAN) || [''])[0],
+    );
   const kabuk = govde.replace(pyDeseni, '$1 -c ' + "''");
-  const yonlendirmesiz = kabuk.replace(/[0-9]?>\s*\/dev\/null(?![\w./-])/g, '').replace(/[0-9]?>&[0-9]-?/g, '');
-  assert.ok(!/>/.test(yonlendirmesiz), f + ': raw icinde dosyaya yonlendirme var (yalniz >/dev/null ve 2>&1 bicimleri serbest)');
-  assert.ok(!YAZAN_KOMUT.test(kabuk), f + ': raw icinde yazan / yetki yukselten / ic kabuk acan komut: ' + (kabuk.match(YAZAN_KOMUT) || [''])[0].trim());
-  assert.ok(!/\bfind\b[^\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/.test(kabuk), f + ': raw icindeki find yazan / calistiran eylem kullaniyor');
+  const yonlendirmesiz = kabuk
+    .replace(/[0-9]?>\s*\/dev\/null(?![\w./-])/g, '')
+    .replace(/[0-9]?>&[0-9]-?/g, '');
+  assert.ok(
+    !/>/.test(yonlendirmesiz),
+    f + ': raw icinde dosyaya yonlendirme var (yalniz >/dev/null ve 2>&1 bicimleri serbest)',
+  );
+  assert.ok(
+    !YAZAN_KOMUT.test(kabuk),
+    f +
+      ': raw icinde yazan / yetki yukselten / ic kabuk acan komut: ' +
+      (kabuk.match(YAZAN_KOMUT) || [''])[0].trim(),
+  );
+  assert.ok(
+    !/\bfind\b[^\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b/.test(kabuk),
+    f + ': raw icindeki find yazan / calistiran eylem kullaniyor',
+  );
   const anahtar = (k) => new RegExp('^ {' + ind + '}' + k + ':\\s*(.*)$', 'm');
-  assert.equal((raw.match(anahtar('register')) || [])[1], 'logx_python_probe', f + ': yoklama kaydi');
-  assert.equal((raw.match(anahtar('changed_when')) || [])[1], 'false', f + ': yoklama degisiklik raporluyor');
-  assert.equal((raw.match(anahtar('failed_when')) || [])[1], 'false', f + ': yoklama dusunce is duser');
-  assert.ok(!new RegExp('^ {' + ind + '}become(_user|_method)?:', 'm').test(raw), f + ": yoklamanin kendi become'u var");
+  assert.equal(
+    (raw.match(anahtar('register')) || [])[1],
+    'logx_python_probe',
+    f + ': yoklama kaydi',
+  );
+  assert.equal(
+    (raw.match(anahtar('changed_when')) || [])[1],
+    'false',
+    f + ': yoklama degisiklik raporluyor',
+  );
+  assert.equal(
+    (raw.match(anahtar('failed_when')) || [])[1],
+    'false',
+    f + ': yoklama dusunce is duser',
+  );
+  assert.ok(
+    !new RegExp('^ {' + ind + '}become(_user|_method)?:', 'm').test(raw),
+    f + ": yoklamanin kendi become'u var",
+  );
   const sf = g.filter((x) => /ansible\.builtin\.set_fact:/.test(x));
   assert.equal(sf.length, 1, f + ': pre_tasks set_fact sayisi ' + sf.length);
-  assert.match(sf[0], /set_fact:\n\s+ansible_python_interpreter: "\{\{ logx_python_probe\.stdout_lines /, f + ': set_fact yalniz yorumlayiciyi yoklamadan kurmuyor');
+  assert.match(
+    sf[0],
+    /set_fact:\n\s+ansible_python_interpreter: "\{\{ logx_python_probe\.stdout_lines /,
+    f + ': set_fact yalniz yorumlayiciyi yoklamadan kurmuyor',
+  );
   const sfGirinti = (sf[0].match(/^( +)ansible\.builtin\.set_fact:$/m) || ['', ''])[1].length + 2;
-  const sfAnahtar = [...sf[0].matchAll(new RegExp('^ {' + sfGirinti + '}([A-Za-z_]+):', 'gm'))].map((m) => m[1]);
-  assert.deepEqual(sfAnahtar, ['ansible_python_interpreter'], f + ': set_fact yorumlayici disinda degisken kuruyor (' + sfAnahtar + ')');
-  assert.match(sf[0], /^\s+when: \(logx_python_probe\.stdout_lines \| default\(\[\]\) \| length\) > 0$/m, f + ': yoklama bos donunce de yorumlayici degisiyor');
+  const sfAnahtar = [...sf[0].matchAll(new RegExp('^ {' + sfGirinti + '}([A-Za-z_]+):', 'gm'))].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(
+    sfAnahtar,
+    ['ansible_python_interpreter'],
+    f + ': set_fact yorumlayici disinda degisken kuruyor (' + sfAnahtar + ')',
+  );
+  assert.match(
+    sf[0],
+    /^\s+when: \(logx_python_probe\.stdout_lines \| default\(\[\]\) \| length\) > 0$/m,
+    f + ': yoklama bos donunce de yorumlayici degisiyor',
+  );
   assert.equal(g.length, 2, f + ": pre_tasks'ta yoklama disinda gorev (" + g.length + ')');
 }
 
@@ -382,8 +517,15 @@ test('transfer yorumlayicisi: PATH yerine trusted sistem yollarini iki kimlikte 
   for (const raw of rawlar) {
     const govde = raw.slice(raw.indexOf('ansible.builtin.raw: |'));
     assert.ok(!/\{\{|\{%|\{#/.test(govde), 'raw metnine Jinja/dis girdi yerlesiyor');
-    assert.ok(!/command -v|\/usr\/local|\$PATH|\bpython\b(?!3)/.test(govde), 'PATH veya trusted olmayan aday kullaniliyor');
-    assert.match(govde, /for py in \/usr\/bin\/python3\.14 .* \/usr\/bin\/python3\.8 \/usr\/bin\/python3;/, 'literal allowlist eksik');
+    assert.ok(
+      !/command -v|\/usr\/local|\$PATH|\bpython\b(?!3)/.test(govde),
+      'PATH veya trusted olmayan aday kullaniliyor',
+    );
+    assert.match(
+      govde,
+      /for py in \/usr\/bin\/python3\.14 .* \/usr\/bin\/python3\.8 \/usr\/bin\/python3;/,
+      'literal allowlist eksik',
+    );
     assert.ok(!/\[0-9\]|\*/.test(govde.split('do\n', 1)[0]), 'allowlist glob kullaniyor');
     assert.match(
       govde,
@@ -406,13 +548,20 @@ test('transfer yorumlayicisi: PATH yerine trusted sistem yollarini iki kimlikte 
       .filter(
         (satir) =>
           !/^\s*\[ -x "\$py" \] \|\| continue$/.test(satir) &&
-          !/^\s*real=\$\(\/usr\/bin\/readlink -f "\$py" 2>\/dev\/null\) \|\| continue$/.test(satir) &&
-          !/^\s*(owner|mode)=\$\(\/usr\/bin\/stat -Lc '[%][ua]' "\$py" 2>\/dev\/null\) \|\| continue$/.test(satir) &&
+          !/^\s*real=\$\(\/usr\/bin\/readlink -f "\$py" 2>\/dev\/null\) \|\| continue$/.test(
+            satir,
+          ) &&
+          !/^\s*(owner|mode)=\$\(\/usr\/bin\/stat -Lc '[%][ua]' "\$py" 2>\/dev\/null\) \|\| continue$/.test(
+            satir,
+          ) &&
           !/^\s*ver=\$\("\$py" -c 'import sys;.*' 2>\/dev\/null\) \|\| continue$/.test(satir) &&
           !/^\s*printf '%s:%s\\n' "\$ver" "\$py"$/.test(satir),
       )
       .join('\n');
-    assert.ok(!/\$py\b/.test(izinliPySatirlariCikmis), 'aday yolu izinli probe disinda kullaniliyor');
+    assert.ok(
+      !/\$py\b/.test(izinliPySatirlariCikmis),
+      'aday yolu izinli probe disinda kullaniliyor',
+    );
     assert.match(raw, /^\s+changed_when: false$/m);
     assert.match(raw, /^\s+failed_when: false$/m);
   }
@@ -430,9 +579,9 @@ test('transfer yorumlayicisi: PATH yerine trusted sistem yollarini iki kimlikte 
 
 test('transfer yorumlayicisi: ortak modern Python yoksa acik artifact ile fail-closed', () => {
   const t = metin('logx_legacy_transfer.yml');
-  const pre = (playler(t).find((p) => !yerel(p) && /pre_tasks:/.test(p.metin)).metin.match(
-    /^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m,
-  ) || [])[1];
+  const pre = (playler(t)
+    .find((p) => !yerel(p) && /pre_tasks:/.test(p.metin))
+    .metin.match(/^ {2}pre_tasks:\n([\s\S]*?)^ {2}tasks:$/m) || [])[1];
   const gs = gorevler('-\n' + pre);
   const sonuc = gs.find((g) => /host_logx_result:/.test(g));
   assert.ok(sonuc, 'yorumlayici yoklugunda host sonucu yazilmiyor');
@@ -456,8 +605,17 @@ test('gecici alan on kontrolu YAN ETKISIZ: yalniz stat ve argv`li df; kabuk yok'
   const t = metin('logx_legacy_transfer.yml');
   // `raw` yalniz pre_tasks'taki yorumlayici yoklamasinda (yukaridaki bekci); gecici alan olcumu kabuksuz.
   for (const yasak of ['shell', 'script'])
-    assert.equal([...t.matchAll(modulAnahtari(yasak))].length, 0, `transfer playbook'unda ${yasak} modulu`);
-  assert.equal([...t.replace(/^ {2}pre_tasks:\n[\s\S]*?(?=^ {2}tasks:$)/gm, '').matchAll(modulAnahtari('raw'))].length, 0, 'transfer gorevlerinde (pre_tasks disi) raw');
+    assert.equal(
+      [...t.matchAll(modulAnahtari(yasak))].length,
+      0,
+      `transfer playbook'unda ${yasak} modulu`,
+    );
+  assert.equal(
+    [...t.replace(/^ {2}pre_tasks:\n[\s\S]*?(?=^ {2}tasks:$)/gm, '').matchAll(modulAnahtari('raw'))]
+      .length,
+    0,
+    'transfer gorevlerinde (pre_tasks disi) raw',
+  );
   const tum = kaynakGorevleri();
   const komut = tum.filter((g) => /ansible\.builtin\.command:/.test(g));
   assert.equal(komut.length, 1, 'tek komut gorevi beklenir (bos alan olcumu)');

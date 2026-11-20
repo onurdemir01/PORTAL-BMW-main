@@ -27,7 +27,11 @@ interface Durum {
   restartBekleyen: ReadonlyMap<string, string>;
 }
 
-const bosDurum = (sahip: string | null): Durum => ({ sahip, taslaklar: new Map(), restartBekleyen: new Map() });
+const bosDurum = (sahip: string | null): Durum => ({
+  sahip,
+  taslaklar: new Map(),
+  restartBekleyen: new Map(),
+});
 
 let durum: Durum = bosDurum(null);
 const dinleyiciler = new Set<() => void>();

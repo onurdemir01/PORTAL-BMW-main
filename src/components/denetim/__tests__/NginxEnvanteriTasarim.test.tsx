@@ -14,50 +14,129 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { render } from '@/test/test-utils';
-import { NginxEnvanteri, surumAyristir, surumKarsilastir } from '@/components/denetim/NginxEnvanteri';
+import {
+  NginxEnvanteri,
+  surumAyristir,
+  surumKarsilastir,
+} from '@/components/denetim/NginxEnvanteri';
 import type { NginxInventoryResult, NginxInvHost } from '@/api/denetimApi';
 
 const api = vi.hoisted(() => ({ inv: vi.fn(), set: vi.fn(), clear: vi.fn() }));
 vi.mock('@/api/denetimApi', () => ({
-  denetimApi: { nginxInventory: api.inv, nginxInventoryLabelSet: api.set, nginxInventoryLabelClear: api.clear },
+  denetimApi: {
+    nginxInventory: api.inv,
+    nginxInventoryLabelSet: api.set,
+    nginxInventoryLabelClear: api.clear,
+  },
 }));
 const kimlik = vi.hoisted(() => ({ role: 'Admin' }));
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { username: 'onur', role: kimlik.role } }) }));
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { username: 'onur', role: kimlik.role } }),
+}));
 vi.mock('@/hooks/useToast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const host = (o: Partial<NginxInvHost>): NginxInvHost => ({
-  hostname: 'H', fqdn: null, env: 'production', location: 'pendik', service: null, services: 'glomo',
-  service_count: 1, domain: null, ip: null, subnet: null, os: 'RHEL 8', kernel: null, architecture: null,
-  cpu: 4, memory: '16G', nginx_version: '1.24.0', nginx_user: 'www', nginx_prefix: null, config_count: 3,
-  disk_usr_nginx: null, disk_web_log: null, source_last_update: null, metadata_version: 1, ...o,
+  hostname: 'H',
+  fqdn: null,
+  env: 'production',
+  location: 'pendik',
+  service: null,
+  services: 'glomo',
+  service_count: 1,
+  domain: null,
+  ip: null,
+  subnet: null,
+  os: 'RHEL 8',
+  kernel: null,
+  architecture: null,
+  cpu: 4,
+  memory: '16G',
+  nginx_version: '1.24.0',
+  nginx_user: 'www',
+  nginx_prefix: null,
+  config_count: 3,
+  disk_usr_nginx: null,
+  disk_web_log: null,
+  source_last_update: null,
+  metadata_version: 1,
+  ...o,
 });
 const size = { totalGiB: 0, parsed: 0, unparsed: 0 };
 const veri = (): NginxInventoryResult => ({
   ok: true,
   lastUpdate: '2026-11-12T06:30:00',
-  totals: { hosts: 5, envs: 2, services: 3, servicesUnlisted: [], nginxVersions: 2, osVersions: 1, cpuTotal: 20, memory: size, diskNginx: size, diskWebLog: size },
+  totals: {
+    hosts: 5,
+    envs: 2,
+    services: 3,
+    servicesUnlisted: [],
+    nginxVersions: 2,
+    osVersions: 1,
+    cpuTotal: 20,
+    memory: size,
+    diskNginx: size,
+    diskWebLog: size,
+  },
   byEnv: [],
   byService: [],
   versions: {
-    nginx: [{ value: '1.24.0', count: 4 }, { value: '1.20.1', count: 1 }],
-    os: [], kernel: [], architecture: [], metadata: [],
+    nginx: [
+      { value: '1.24.0', count: 4 },
+      { value: '1.20.1', count: 1 },
+    ],
+    os: [],
+    kernel: [],
+    architecture: [],
+    metadata: [],
   },
-  resources: { cpu: [], memory: [], diskNginx: [], diskWebLog: [], configCount: [], serviceCount: [] },
+  resources: {
+    cpu: [],
+    memory: [],
+    diskNginx: [],
+    diskWebLog: [],
+    configCount: [],
+    serviceCount: [],
+  },
   other: { domain: [], subnet: [], nginxUser: [] },
   hosts: [
     host({ hostname: 'GBNGXP01', envByName: 'PROD', disk_usr_nginx: '50G', disk_web_log: '1.5T' }),
-    host({ hostname: 'GBNGXAP01', envByName: 'PROD', location: 'ankara', disk_usr_nginx: '20G', disk_web_log: 'N/A' }),
-    host({ hostname: 'GBNGXQ01', envByName: 'QA', env: 'non-production', nginx_version: '1.20.1', disk_usr_nginx: '7.5G', disk_web_log: '100G' }),
     host({
-      hostname: 'GBNGXT01', envByName: 'TEST', env: 'non-production', services: 'glomo,mobile',
-      etiket: { mod: 'ekle', etiketler: ['mobile'], not: null, by: 'onur', at: null, oto: ['glomo'] },
+      hostname: 'GBNGXAP01',
+      envByName: 'PROD',
+      location: 'ankara',
+      disk_usr_nginx: '20G',
+      disk_web_log: 'N/A',
+    }),
+    host({
+      hostname: 'GBNGXQ01',
+      envByName: 'QA',
+      env: 'non-production',
+      nginx_version: '1.20.1',
+      disk_usr_nginx: '7.5G',
+      disk_web_log: '100G',
+    }),
+    host({
+      hostname: 'GBNGXT01',
+      envByName: 'TEST',
+      env: 'non-production',
+      services: 'glomo,mobile',
+      etiket: {
+        mod: 'ekle',
+        etiketler: ['mobile'],
+        not: null,
+        by: 'onur',
+        at: null,
+        oto: ['glomo'],
+      },
     }),
     host({ hostname: 'XYZWEB01', envByName: 'BILINMIYOR', env: 'non-production' }),
   ],
 });
 
 const satirAdlari = () =>
-  screen.getAllByTestId('sunucu-satiri').map((r) => r.querySelector('td')!.textContent!.trim().split(/\s/)[0]);
+  screen
+    .getAllByTestId('sunucu-satiri')
+    .map((r) => r.querySelector('td')!.textContent!.trim().split(/\s/)[0]);
 
 describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
   beforeEach(() => {
@@ -70,7 +149,12 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     render(<NginxEnvanteri />);
     const ozet = await screen.findByTestId('filo-ozeti');
     expect(within(ozet).getByText('5')).toBeTruthy();
-    for (const [ad, n] of [['PROD', '2'], ['QA', '1'], ['TEST', '1'], ['Kalıp dışı', '1']]) {
+    for (const [ad, n] of [
+      ['PROD', '2'],
+      ['QA', '1'],
+      ['TEST', '1'],
+      ['Kalıp dışı', '1'],
+    ]) {
       const d = within(ozet).getByRole('button', { name: new RegExp(`^${ad}\\s*${n}$`) });
       expect(d).toBeTruthy();
     }
@@ -85,7 +169,11 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     expect(screen.queryByText(/en yaygın/i)).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const kart = screen.getByTestId('surum-aile-karti');
-    expect(within(kart).getAllByTestId('surum-ailesi').map((a) => a.textContent!.slice(0, 4))).toEqual(['1.24', '1.20']);
+    expect(
+      within(kart)
+        .getAllByTestId('surum-ailesi')
+        .map((a) => a.textContent!.slice(0, 4)),
+    ).toEqual(['1.24', '1.20']);
     // her tam sürüm kendi satırında: [sürüm | çubuk | sayı | %]
     const rozet = within(kart).getByTitle('1.20.1: 1 sunucu — listele');
     expect(rozet.textContent).toBe('1.20.1: 1 sunucu%20');
@@ -122,7 +210,11 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     expect(within(p).getByTestId('etiket-sonuc').textContent).toBe('glomomobile-api');
     fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }));
     await waitFor(() =>
-      expect(api.set).toHaveBeenCalledWith('GBNGXP01', { mod: 'degistir', etiketler: ['glomo', 'mobile-api'], not: undefined }),
+      expect(api.set).toHaveBeenCalledWith('GBNGXP01', {
+        mod: 'degistir',
+        etiketler: ['glomo', 'mobile-api'],
+        not: undefined,
+      }),
     );
     await waitFor(() => expect(api.inv).toHaveBeenCalledTimes(2));
   });
@@ -131,8 +223,12 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
     fireEvent.click(screen.getByRole('button', { name: 'GBNGXP01 etiketini düzenle' }));
-    fireEvent.change(screen.getByPlaceholderText('glomo, mobile-api'), { target: { value: 'too_many' } });
-    expect((screen.getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByPlaceholderText('glomo, mobile-api'), {
+      target: { value: 'too_many' },
+    });
+    expect((screen.getByRole('button', { name: 'Kaydet' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('ET6 Admin olmayan kullanıcıda düzenle düğmesi yok', async () => {
@@ -145,7 +241,8 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
   it('ET7 sunucu satırında disk boyutları; çözülemeyen "—", kolon sıralanır', async () => {
     render(<NginxEnvanteri />);
     fireEvent.click(await screen.findByRole('tab', { name: /Sunucular/ }));
-    const satir = (ad: string) => screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
+    const satir = (ad: string) =>
+      screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith(ad))!;
     const p01 = satir('GBNGXP01');
     expect(within(p01).getByTestId('disk-usr-nginx').textContent).toBe('50 GiB');
     expect(within(p01).getByTestId('disk-web-log').textContent).toBe('1,5 TiB');
@@ -154,7 +251,11 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     expect(na.querySelector('[aria-hidden="true"]')!.textContent).toBe('—');
     expect(na.textContent).toContain('çözümlenemedi');
     expect(na.getAttribute('title')).toBe('/web_log: "N/A" çözümlenemedi');
-    expect(within(satir('GBNGXT01')).getByTestId('disk-usr-nginx').firstElementChild!.getAttribute('title')).toBe('/usr/nginx: değer yok');
+    expect(
+      within(satir('GBNGXT01'))
+        .getByTestId('disk-usr-nginx')
+        .firstElementChild!.getAttribute('title'),
+    ).toBe('/usr/nginx: değer yok');
 
     // değeri olmayanlar ("—") iki yönde de en altta
     fireEvent.click(screen.getByRole('button', { name: /\/usr\/nginx/ }));
@@ -165,29 +266,62 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
   });
 
   it('ET8 sürüm ayrıştırma ve yeniden eskiye sıralama', () => {
-    expect(surumAyristir('1.24.0')).toMatchObject({ aile: '1.24', yama: '.0', ek: '', bilinmiyor: false });
+    expect(surumAyristir('1.24.0')).toMatchObject({
+      aile: '1.24',
+      yama: '.0',
+      ek: '',
+      bilinmiyor: false,
+    });
     expect(surumAyristir('nginx/1.26.3')).toMatchObject({ aile: '1.26', yama: '.3' });
-    expect(surumAyristir('1.25.1 (nginx-plus-r30)')).toMatchObject({ aile: '1.25', yama: '.1', ek: '(nginx-plus-r30)' });
+    expect(surumAyristir('1.25.1 (nginx-plus-r30)')).toMatchObject({
+      aile: '1.25',
+      yama: '.1',
+      ek: '(nginx-plus-r30)',
+    });
     expect(surumAyristir('unknown').bilinmiyor).toBe(true);
     expect(surumAyristir('(bilinmiyor)').bilinmiyor).toBe(true);
     expect(surumAyristir('').bilinmiyor).toBe(true);
     expect(['1.20.1', 'unknown', '1.9.15', '1.24.0', '1.24.10'].sort(surumKarsilastir)).toEqual([
-      '1.24.10', '1.24.0', '1.20.1', '1.9.15', 'unknown',
+      '1.24.10',
+      '1.24.0',
+      '1.20.1',
+      '1.9.15',
+      'unknown',
     ]);
   });
 
   it('ET9 bilinmeyen sürümler tek rozet; OS süzgeci nginx ile karışmaz; satır rozeti süzer', async () => {
     const d = veri();
-    d.versions.nginx = [...d.versions.nginx, { value: 'unknown', count: 1 }, { value: '(bilinmiyor)', count: 1 }];
-    d.versions.os = [{ value: 'RHEL 8', count: 5 }, { value: '(bilinmiyor)', count: 1 }];
-    d.hosts = d.hosts.map((h) => (h.hostname === 'XYZWEB01' ? { ...h, nginx_version: 'unknown' } : h));
-    d.hosts.push(host({ hostname: 'GBNGXT02', envByName: 'TEST', env: 'non-production', nginx_version: null, os: null, disk_usr_nginx: '512M' }));
+    d.versions.nginx = [
+      ...d.versions.nginx,
+      { value: 'unknown', count: 1 },
+      { value: '(bilinmiyor)', count: 1 },
+    ];
+    d.versions.os = [
+      { value: 'RHEL 8', count: 5 },
+      { value: '(bilinmiyor)', count: 1 },
+    ];
+    d.hosts = d.hosts.map((h) =>
+      h.hostname === 'XYZWEB01' ? { ...h, nginx_version: 'unknown' } : h,
+    );
+    d.hosts.push(
+      host({
+        hostname: 'GBNGXT02',
+        envByName: 'TEST',
+        env: 'non-production',
+        nginx_version: null,
+        os: null,
+        disk_usr_nginx: '512M',
+      }),
+    );
     api.inv.mockReset().mockResolvedValue(d);
     render(<NginxEnvanteri />);
     await screen.findByTestId('filo-ozeti');
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
     const kart = screen.getByTestId('surum-aile-karti');
-    const bilinmeyen = within(kart).getAllByTestId('dagilim-satiri').filter((r) => r.textContent!.startsWith('bilinmiyor'));
+    const bilinmeyen = within(kart)
+      .getAllByTestId('dagilim-satiri')
+      .filter((r) => r.textContent!.startsWith('bilinmiyor'));
     expect(bilinmeyen).toHaveLength(1);
     expect(bilinmeyen[0].getAttribute('data-anahtar')).toBe('(bilinmiyor)');
     expect(bilinmeyen[0].textContent).toBe('bilinmiyor: 2 sunucu%40');
@@ -195,7 +329,9 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
     fireEvent.click(within(bilinmeyen[0]).getByRole('button'));
     expect(satirAdlari()).toEqual(['GBNGXT02', 'XYZWEB01']);
     expect(within(screen.getByTestId('surum-suzgeci')).getByTestId('surum-rozeti')).toBeTruthy();
-    expect(within(screen.getAllByTestId('sunucu-satiri')[0]).getByTestId('disk-usr-nginx').textContent).toBe('512 MiB');
+    expect(
+      within(screen.getAllByTestId('sunucu-satiri')[0]).getByTestId('disk-usr-nginx').textContent,
+    ).toBe('512 MiB');
 
     // OS "(bilinmiyor)" yalnız OS'u boş sunucuyu getirir (nginx'i unknown olanı değil)
     fireEvent.click(screen.getByRole('tab', { name: /Sürümler/ }));
@@ -205,7 +341,9 @@ describe('NginxEnvanteri — yeniden tasarım ve elle etiket', () => {
 
     // Sunucular satırındaki rozet o sürüme süzer
     fireEvent.click(screen.getByRole('button', { name: 'Sürüm süzgecini kaldır' }));
-    const q01 = screen.getAllByTestId('sunucu-satiri').find((r) => r.textContent!.startsWith('GBNGXQ01'))!;
+    const q01 = screen
+      .getAllByTestId('sunucu-satiri')
+      .find((r) => r.textContent!.startsWith('GBNGXQ01'))!;
     fireEvent.click(within(q01).getByTestId('surum-rozeti'));
     expect(satirAdlari()).toEqual(['GBNGXQ01']);
   });

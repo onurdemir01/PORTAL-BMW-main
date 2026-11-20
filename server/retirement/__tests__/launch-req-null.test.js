@@ -23,12 +23,23 @@ function govde(ad) {
 test('RQ1 launch() req null iken patlamaz: req yalniz req?. ile okunur', () => {
   const b = govde('launch');
   const ciplak = [...b.matchAll(/(?<![?\w.])req\.(\w+)/g)].map((m) => m[0]);
-  assert.deepEqual(ciplak, [], `launch() icinde null'a dayaniksiz req erisimi: ${ciplak.join(', ')}`);
-  assert.match(b, /req\?\.session\?\.user \|\| \{ username: 'Portal \(zamanlanmis\)' \}/, 'zamanlayici isinde kullanici adi bos kaliyor');
+  assert.deepEqual(
+    ciplak,
+    [],
+    `launch() icinde null'a dayaniksiz req erisimi: ${ciplak.join(', ')}`,
+  );
+  assert.match(
+    b,
+    /req\?\.session\?\.user \|\| \{ username: 'Portal \(zamanlanmis\)' \}/,
+    'zamanlayici isinde kullanici adi bos kaliyor',
+  );
 });
 
 test('RQ2 zamanlayici gercekten launch(null, ...) ile cagiriyor (RQ1 bunun icin var)', () => {
   const i = SRC.indexOf("require('./poller.cjs').startPoller(");
   const blok = SRC.slice(i, i + 3000);
-  assert.ok((blok.match(/return launch\(\s*null,/g) || []).length >= 2, 'STOP ve DELETE launch(null, ...) ile baslatilmiyor - RQ1 varsayimi degisti');
+  assert.ok(
+    (blok.match(/return launch\(\s*null,/g) || []).length >= 2,
+    'STOP ve DELETE launch(null, ...) ile baslatilmiyor - RQ1 varsayimi degisti',
+  );
 });

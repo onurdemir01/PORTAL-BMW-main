@@ -64,7 +64,20 @@ export function ortamGruplari(satirlar: OrtamSatiri[]): Grup[] {
   for (const s of satirlar) {
     const o = s.ortam || BILINMIYOR;
     if (!m.has(o))
-      m.set(o, { ortam: o, hostlar: new Set(), surumler: new Map(), javalar: new Set(), calisan: 0, kapali: 0, retire: 0, celiski: 0, dogrulama: 0, olculemedi: 0, cpu: 0, bellekGb: 0 });
+      m.set(o, {
+        ortam: o,
+        hostlar: new Set(),
+        surumler: new Map(),
+        javalar: new Set(),
+        calisan: 0,
+        kapali: 0,
+        retire: 0,
+        celiski: 0,
+        dogrulama: 0,
+        olculemedi: 0,
+        cpu: 0,
+        bellekGb: 0,
+      });
     const g = m.get(o)!;
     g.hostlar.add(s.host);
     const surum = s.surum || '—';
@@ -119,8 +132,14 @@ export function OrtamOzeti({
   const tumHost = new Set(satirlar.map((s) => s.host)).size;
   return (
     <section className="card p-0 overflow-hidden" data-testid="ortam-ozeti">
-      <header className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        <h2 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
+      <header
+        className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3"
+        style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      >
+        <h2
+          className="text-[15px] font-semibold"
+          style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}
+        >
           Ortamlar
         </h2>
         <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
@@ -136,7 +155,9 @@ export function OrtamOzeti({
               <th className={TH}>{surumBasligi}</th>
               <th className={TH}>Java</th>
               {jvmGoster && <th className={TH}>JVM</th>}
-              <th className={TH} title="Sunucuların toplam CPU / belleği; anlık kullanım değil">Kapasite</th>
+              <th className={TH} title="Sunucuların toplam CPU / belleği; anlık kullanım değil">
+                Kapasite
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -144,37 +165,56 @@ export function OrtamOzeti({
               const sec = secili === g.ortam;
               const toplamJvm = g.calisan + g.kapali + g.retire + g.olculemedi;
               // RETIREMENT (2026-11-16): retire edilmis kapali JVM kirmizi "kapali"ya girmez; ayri notr "N retire".
-              const ekler: { k: string; n: number; metin: string; renk: string; title?: string }[] = [
-                { k: 'kapali', n: g.kapali, metin: 'kapalı', renk: 'var(--status-danger)' },
-                {
-                  k: 'celiski',
-                  n: g.celiski,
-                  metin: 'Retirement çelişkisi',
-                  renk: 'var(--status-danger)',
-                  title: 'Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor',
-                },
-                {
-                  k: 'dogrulama',
-                  n: g.dogrulama,
-                  metin: 'doğrulama bekliyor',
-                  renk: 'var(--status-warning-text)',
-                  title: "Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil",
-                },
-                { k: 'retire', n: g.retire, metin: 'retire', renk: 'var(--text-muted)', title: 'Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)' },
-                { k: 'olculemedi', n: g.olculemedi, metin: 'ölçülemedi', renk: 'var(--text-muted)' },
-              ].filter((e) => e.n > 0);
+              const ekler: { k: string; n: number; metin: string; renk: string; title?: string }[] =
+                [
+                  { k: 'kapali', n: g.kapali, metin: 'kapalı', renk: 'var(--status-danger)' },
+                  {
+                    k: 'celiski',
+                    n: g.celiski,
+                    metin: 'Retirement çelişkisi',
+                    renk: 'var(--status-danger)',
+                    title:
+                      'Retirement hedefi STOP edilmiş / silinmiş ama STOP sonrası Server Hub taraması aksini gösteriyor',
+                  },
+                  {
+                    k: 'dogrulama',
+                    n: g.dogrulama,
+                    metin: 'doğrulama bekliyor',
+                    renk: 'var(--status-warning-text)',
+                    title:
+                      "Retirement hedefi STOP edilmiş; JVM çalışıyor görünüyor ama tarama STOP'tan sonra değil",
+                  },
+                  {
+                    k: 'retire',
+                    n: g.retire,
+                    metin: 'retire',
+                    renk: 'var(--text-muted)',
+                    title: 'Retirement ile STOP edilmiş / silinmiş JVM (beklenen kapanma)',
+                  },
+                  {
+                    k: 'olculemedi',
+                    n: g.olculemedi,
+                    metin: 'ölçülemedi',
+                    renk: 'var(--text-muted)',
+                  },
+                ].filter((e) => e.n > 0);
               return (
                 <tr
                   key={g.ortam || 'bilinmiyor'}
                   onClick={() => onSec(sec ? '' : g.ortam)}
                   aria-selected={sec}
                   className="cursor-pointer hover:bg-[var(--bg-inset)]"
-                  style={{ borderTop: '1px solid var(--border-subtle)', background: sec ? 'var(--ah-hue-soft)' : undefined }}
+                  style={{
+                    borderTop: '1px solid var(--border-subtle)',
+                    background: sec ? 'var(--ah-hue-soft)' : undefined,
+                  }}
                   title={sec ? 'Süzgeci kaldır' : 'Sunucu tablosunu bu ortama süz'}
                   data-testid="ortam-satiri"
                 >
                   <td className={TD}>
-                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{g.ortam || 'Bilinmiyor'}</span>
+                    <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      {g.ortam || 'Bilinmiyor'}
+                    </span>
                   </td>
                   <td className={`${TD} tabular-nums`}>{fmtNumber(g.hostlar.size)}</td>
                   <td className={TD}>
@@ -187,11 +227,24 @@ export function OrtamOzeti({
                           const surumSecili = sec && seciliSurum === surum;
                           const icerik = (
                             <>
-                              <code className="px-1.5 py-0.5 rounded" style={{ fontFamily: 'var(--font-mono)', background: surumSecili ? 'var(--ah-hue-soft)' : 'var(--bg-inset)', border: `1px solid ${surumSecili ? 'var(--ah-hue)' : 'var(--border-subtle)'}`, color: 'var(--text-primary)', fontWeight: surumSecili ? 600 : 400 }}>
+                              <code
+                                className="px-1.5 py-0.5 rounded"
+                                style={{
+                                  fontFamily: 'var(--font-mono)',
+                                  background: surumSecili
+                                    ? 'var(--ah-hue-soft)'
+                                    : 'var(--bg-inset)',
+                                  border: `1px solid ${surumSecili ? 'var(--ah-hue)' : 'var(--border-subtle)'}`,
+                                  color: 'var(--text-primary)',
+                                  fontWeight: surumSecili ? 600 : 400,
+                                }}
+                              >
                                 {surum}
                               </code>
                               {g.surumler.size > 1 && (
-                                <span style={{ color: 'var(--text-muted)' }}>{hostlar.size} sunucu</span>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  {hostlar.size} sunucu
+                                </span>
                               )}
                             </>
                           );
@@ -205,13 +258,21 @@ export function OrtamOzeti({
                                 onSurumSec(g.ortam, surumSecili ? '' : surum);
                               }}
                               className="inline-flex items-center gap-1.5 text-[12px] self-start rounded hover:underline focus-visible:outline focus-visible:outline-2"
-                              title={surumSecili ? 'Sürüm süzgecini kaldır' : `Sunucu tablosunu ${g.ortam || 'Bilinmiyor'} · ${surum} sunucularına süz`}
+                              title={
+                                surumSecili
+                                  ? 'Sürüm süzgecini kaldır'
+                                  : `Sunucu tablosunu ${g.ortam || 'Bilinmiyor'} · ${surum} sunucularına süz`
+                              }
                               data-testid="surum"
                             >
                               {icerik}
                             </button>
                           ) : (
-                            <span key={surum} className="inline-flex items-center gap-1.5 text-[12px]" data-testid="surum">
+                            <span
+                              key={surum}
+                              className="inline-flex items-center gap-1.5 text-[12px]"
+                              data-testid="surum"
+                            >
                               {icerik}
                             </span>
                           );
@@ -219,35 +280,49 @@ export function OrtamOzeti({
                     </div>
                   </td>
                   <td className={`${TD} text-[12px]`}>
-                    {g.javalar.size ? [...g.javalar].sort((a, b) => a.localeCompare(b)).map((j) => <div key={j}>{j}</div>) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                  </td>
-                  {jvmGoster && (
-                  <td className={`${TD} text-[12px] tabular-nums`}>
-                    {toplamJvm ? (
-                      <div className="space-y-0.5">
-                        <div style={{ color: 'var(--text-primary)' }}>
-                          {g.calisan} / {toplamJvm} çalışıyor
-                        </div>
-                        {ekler.length > 0 && (
-                          <div>
-                            {ekler.map((e, i) => (
-                              <React.Fragment key={e.k}>
-                                {i > 0 && ' · '}
-                                <span style={{ color: e.renk }} title={e.title} data-testid={`ortam-${e.k}`}>
-                                  {e.n} {e.metin}
-                                </span>
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                    {g.javalar.size ? (
+                      [...g.javalar]
+                        .sort((a, b) => a.localeCompare(b))
+                        .map((j) => <div key={j}>{j}</div>)
                     ) : (
-                      <span style={{ color: 'var(--text-muted)' }}>Server Hub'da yok</span>
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
                     )}
                   </td>
+                  {jvmGoster && (
+                    <td className={`${TD} text-[12px] tabular-nums`}>
+                      {toplamJvm ? (
+                        <div className="space-y-0.5">
+                          <div style={{ color: 'var(--text-primary)' }}>
+                            {g.calisan} / {toplamJvm} çalışıyor
+                          </div>
+                          {ekler.length > 0 && (
+                            <div>
+                              {ekler.map((e, i) => (
+                                <React.Fragment key={e.k}>
+                                  {i > 0 && ' · '}
+                                  <span
+                                    style={{ color: e.renk }}
+                                    title={e.title}
+                                    data-testid={`ortam-${e.k}`}
+                                  >
+                                    {e.n} {e.metin}
+                                  </span>
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>Server Hub'da yok</span>
+                      )}
+                    </td>
                   )}
                   <td className={`${TD} text-[12px] tabular-nums`}>
-                    {g.cpu || g.bellekGb ? `${fmtNumber(g.cpu)} vCPU · ${fmtNumber(Math.round(g.bellekGb * 10) / 10)} GB` : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                    {g.cpu || g.bellekGb ? (
+                      `${fmtNumber(g.cpu)} vCPU · ${fmtNumber(Math.round(g.bellekGb * 10) / 10)} GB`
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
                   </td>
                 </tr>
               );

@@ -9,8 +9,21 @@
 // Adres: /application-hub?tip=jboss|was|ocp&ad=<ad> (Dashboard araması buraya getirir).
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowPathIcon, Squares2X2Icon, WrenchScrewdriverIcon, DocumentTextIcon, TrashIcon, ScaleIcon } from '@heroicons/react/24/outline';
-import { appHubApi, type AppAramaSonucu, type AppDetay, type AppTip, type OcpDetay } from '@/api/appHubApi';
+import {
+  ArrowPathIcon,
+  Squares2X2Icon,
+  WrenchScrewdriverIcon,
+  DocumentTextIcon,
+  TrashIcon,
+  ScaleIcon,
+} from '@heroicons/react/24/outline';
+import {
+  appHubApi,
+  type AppAramaSonucu,
+  type AppDetay,
+  type AppTip,
+  type OcpDetay,
+} from '@/api/appHubApi';
 import LoadError from '@/components/common/LoadError';
 import Button from '@/components/common/Button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -33,12 +46,25 @@ function derinLinkler(d: AppDetay, ocpHedef: number) {
       .filter(([, v]) => v)
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
       .join('&');
-  if (d.tip === 'jboss') return { opsx: `/opsx?${q({ platform: 'jboss', app: d.varyantlar.length === 1 ? d.varyantlar[0] : d.ad })}`, logx: `/logx?${q({ platform: 'legacy', app: d.varyantlar.length === 1 ? d.varyantlar[0] : d.ad })}` };
+  if (d.tip === 'jboss')
+    return {
+      opsx: `/opsx?${q({ platform: 'jboss', app: d.varyantlar.length === 1 ? d.varyantlar[0] : d.ad })}`,
+      logx: `/logx?${q({ platform: 'legacy', app: d.varyantlar.length === 1 ? d.varyantlar[0] : d.ad })}`,
+    };
   if (d.tip === 'was') return { opsx: `/opsx?${q({ platform: 'was', app: d.ad })}`, logx: null };
   const y = (d as OcpDetay).yerler.filter((x) => x.katalogda)[ocpHedef];
   if (!y) return { opsx: null, logx: null };
-  const ortak = { app: d.ad, env: y.ortam, tenant: y.tenant, namespace: y.namespace, cluster: y.cluster };
-  return { opsx: `/opsx?${q({ platform: 'ocp', ...ortak })}`, logx: `/logx?${q({ platform: 'openshift', ...ortak })}` };
+  const ortak = {
+    app: d.ad,
+    env: y.ortam,
+    tenant: y.tenant,
+    namespace: y.namespace,
+    cluster: y.cluster,
+  };
+  return {
+    opsx: `/opsx?${q({ platform: 'ocp', ...ortak })}`,
+    logx: `/logx?${q({ platform: 'openshift', ...ortak })}`,
+  };
 }
 
 export default function AppHubPage() {
@@ -122,14 +148,25 @@ export default function AppHubPage() {
               Application <span style={{ color: 'var(--ah-hue)' }}>Hub</span>
             </h1>
           </div>
-          <p className="max-w-xl text-[14px]" style={{ color: 'var(--text-muted)', textWrap: 'balance' as React.CSSProperties['textWrap'] }}>
+          <p
+            className="max-w-xl text-[14px]"
+            style={{
+              color: 'var(--text-muted)',
+              textWrap: 'balance' as React.CSSProperties['textWrap'],
+            }}
+          >
             Uygulamanız ne ve nerede olursa olsun tüm bilgilerine ulaşın
           </p>
         </div>
         <AramaKutusu ilk="" onSec={sec} buyuk />
         {isAdmin && (
-          <Button variant="ghost" size="sm" icon={<ScaleIcon className="w-4 h-4" />} onClick={() => navigate('/application-hub/jvm-karsilastir')}
-            title="Birden çok JBoss uygulamasının JVM argümanlarını sunucuları arasında karşılaştırır. Yalnız Admin; salt okunur.">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<ScaleIcon className="w-4 h-4" />}
+            onClick={() => navigate('/application-hub/jvm-karsilastir')}
+            title="Birden çok JBoss uygulamasının JVM argümanlarını sunucuları arasında karşılaştırır. Yalnız Admin; salt okunur."
+          >
             Toplu JVM argümanı karşılaştır
           </Button>
         )}
@@ -143,38 +180,79 @@ export default function AppHubPage() {
         <AramaKutusu key={`${tip}-${ad}`} ilk={ad} onSec={sec} buyuk={false} />
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
-            <Button variant="ghost" size="sm" icon={<ScaleIcon className="w-4 h-4" />} onClick={() => navigate(tip === 'jboss' ? `/application-hub/jvm-karsilastir?uygulamalar=${encodeURIComponent(detay?.ad || ad)}` : '/application-hub/jvm-karsilastir')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<ScaleIcon className="w-4 h-4" />}
+              onClick={() =>
+                navigate(
+                  tip === 'jboss'
+                    ? `/application-hub/jvm-karsilastir?uygulamalar=${encodeURIComponent(detay?.ad || ad)}`
+                    : '/application-hub/jvm-karsilastir',
+                )
+              }
+            >
               Toplu JVM karşılaştır
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/application-hub')}>Yeni arama</Button>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/application-hub')}>
+            Yeni arama
+          </Button>
         </div>
       </div>
 
-      <header className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4" style={{ borderTop: '3px solid var(--ah-hue)' }}>
+      <header
+        className="card px-5 py-4 flex flex-wrap items-center justify-between gap-4"
+        style={{ borderTop: '3px solid var(--ah-hue)' }}
+      >
         <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="truncate" title={detay?.ad || ad} style={{ fontFamily: 'var(--font-mono)', fontSize: '1.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>{detay?.ad || ad}</h1>
+            <h1
+              className="truncate"
+              title={detay?.ad || ad}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '1.5rem',
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}
+            >
+              {detay?.ad || ad}
+            </h1>
             <TipHap tip={tip} />
             {detay && detay.tip === 'jboss' && detay.varyantlar.length > 1 && (
-              <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{detay.varyantlar.join(' · ')}</span>
+              <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+                {detay.varyantlar.join(' · ')}
+              </span>
             )}
           </div>
           {okundu && (
-            <p className="text-[12px]" style={{ color: 'var(--text-muted)' }} title={fmtDateTime(okundu)}>
-              Veriler {fmtRelative(okundu)} okundu · envanter ve tarama kaynaklarının kendi tazeliği bölümlerde yazar
+            <p
+              className="text-[12px]"
+              style={{ color: 'var(--text-muted)' }}
+              title={fmtDateTime(okundu)}
+            >
+              Veriler {fmtRelative(okundu)} okundu · envanter ve tarama kaynaklarının kendi tazeliği
+              bölümlerde yazar
             </p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {ocpYerleri.length > 1 && (
-            <label className="text-[12px] flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
+            <label
+              className="text-[12px] flex items-center gap-1.5"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               Hedef
               <select
                 value={ocpHedef}
                 onChange={(e) => setOcpHedef(Number(e.target.value))}
                 className="rounded border px-2 py-1 text-[12px]"
-                style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+                style={{
+                  background: 'var(--bg-surface)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text-primary)',
+                }}
               >
                 {ocpYerleri.map((y, i) => (
                   <option key={`${y.cluster}|${y.namespace}`} value={i}>
@@ -185,33 +263,58 @@ export default function AppHubPage() {
             </label>
           )}
           {linkler?.opsx && canViewPage('OpsX') && (
-            <Button variant="primary" icon={<WrenchScrewdriverIcon className="w-4 h-4" />} onClick={() => navigate(linkler.opsx!)}>
+            <Button
+              variant="primary"
+              icon={<WrenchScrewdriverIcon className="w-4 h-4" />}
+              onClick={() => navigate(linkler.opsx!)}
+            >
               OpsX'te işlem yap
             </Button>
           )}
           {linkler?.logx && canViewPage('LogX') && (
-            <Button variant="secondary" icon={<DocumentTextIcon className="w-4 h-4" />} onClick={() => navigate(linkler.logx!)}>
+            <Button
+              variant="secondary"
+              icon={<DocumentTextIcon className="w-4 h-4" />}
+              onClick={() => navigate(linkler.logx!)}
+            >
               LogX'te log al
             </Button>
           )}
           {isAdmin && detay?.tip === 'jboss' && (
-            <Button variant="danger" icon={<TrashIcon className="w-4 h-4" />} onClick={() => void retireAc()} loading={retireYukleniyor}
-              title="Retirement kaydı açar (Smart silme kaydı gerekir). Yalnız Admin.">
+            <Button
+              variant="danger"
+              icon={<TrashIcon className="w-4 h-4" />}
+              onClick={() => void retireAc()}
+              loading={retireYukleniyor}
+              title="Retirement kaydı açar (Smart silme kaydı gerekir). Yalnız Admin."
+            >
               Uygulamamı retire et
             </Button>
           )}
-          <Button variant="ghost" icon={<ArrowPathIcon className={`w-4 h-4 ${yukleniyor ? 'animate-spin' : ''}`} />} onClick={yenile} disabled={yukleniyor}>
+          <Button
+            variant="ghost"
+            icon={<ArrowPathIcon className={`w-4 h-4 ${yukleniyor ? 'animate-spin' : ''}`} />}
+            onClick={yenile}
+            disabled={yukleniyor}
+          >
             Yenile
           </Button>
         </div>
       </header>
 
       {acilanKayit != null && (
-        <div role="status" className="card px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-[13px]" style={{ borderLeft: '3px solid var(--status-success)' }}>
+        <div
+          role="status"
+          className="card px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-[13px]"
+          style={{ borderLeft: '3px solid var(--status-success)' }}
+        >
           <span style={{ color: 'var(--text-primary)' }}>
-            Retirement kaydı <b>#{acilanKayit}</b> açıldı. STOP, silme ve IP/LB/DNS adımları BMW Hub › Retirement'tan yürür.
+            Retirement kaydı <b>#{acilanKayit}</b> açıldı. STOP, silme ve IP/LB/DNS adımları BMW Hub
+            › Retirement'tan yürür.
           </span>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/retirement')}>BMW Hub'da aç</Button>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/retirement')}>
+            BMW Hub'da aç
+          </Button>
         </div>
       )}
 
@@ -228,7 +331,12 @@ export default function AppHubPage() {
       )}
 
       {hata ? (
-        <LoadError title={`${ad} yüklenemedi`} message={hata} onRetry={yenile} retrying={yukleniyor} />
+        <LoadError
+          title={`${ad} yüklenemedi`}
+          message={hata}
+          onRetry={yenile}
+          retrying={yukleniyor}
+        />
       ) : !detay ? (
         <div className="space-y-3">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">

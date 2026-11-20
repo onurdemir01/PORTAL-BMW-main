@@ -66,11 +66,20 @@ function awxSunucuDurumuBellekteUygula(no, enabled, satir = {}) {
   if (!Number.isInteger(id) || id < 1 || enabled) return;
   const onceki = (_awxServersCache || []).find((s) => Number(s.id) === id);
   if (_awxServersCache) _awxServersCache = _awxServersCache.filter((s) => Number(s.id) !== id);
-  _awxDevreDisi.set(id, { name: satir.name || onceki?.name || `AWX ${id}`, url: satir.url || onceki?.url || '' });
+  _awxDevreDisi.set(id, {
+    name: satir.name || onceki?.name || `AWX ${id}`,
+    url: satir.url || onceki?.url || '',
+  });
   const sirlar = [
-    onceki?.token, onceki?.password, onceki?.clientSecret,
-    process.env[`AWX_${id}_TOKEN`], process.env[`AWX_${id}_PASSWORD`], process.env[`AWX_${id}_CLIENT_SECRET`],
-  ].filter(Boolean).map(String);
+    onceki?.token,
+    onceki?.password,
+    onceki?.clientSecret,
+    process.env[`AWX_${id}_TOKEN`],
+    process.env[`AWX_${id}_PASSWORD`],
+    process.env[`AWX_${id}_CLIENT_SECRET`],
+  ]
+    .filter(Boolean)
+    .map(String);
   _awxDevreDisiSirlar = [...new Set([..._awxDevreDisiSirlar, ...sirlar])];
 }
 
@@ -130,7 +139,10 @@ async function loadAwxServers() {
       // okundu mu" sorusu bu satirla cevaplanir (aksi halde restart sonrasi tek yol
       // hatayi tekrar tetiklemekti).
       const ozet = _awxServersCache
-        .map((x) => `${x.name}${x.apiBase && x.apiBase !== DEFAULT_API_BASE ? ' [' + x.apiBase + ']' : ''}`)
+        .map(
+          (x) =>
+            `${x.name}${x.apiBase && x.apiBase !== DEFAULT_API_BASE ? ' [' + x.apiBase + ']' : ''}`,
+        )
         .join(', ');
       console.log(`[Ansible] ${_awxServersCache.length} AWX sunucusu DB'den yuklendi: ${ozet}`);
     }
@@ -172,7 +184,7 @@ function normalizeApiBase(value) {
 
 /** `/api/v2/...` yolunu sunucunun API tabanina tasir. Diger yollara DOKUNMAZ. */
 function mapApiPath(server, pathname) {
-  const base = (server?.apiBase) || DEFAULT_API_BASE;
+  const base = server?.apiBase || DEFAULT_API_BASE;
   if (base === DEFAULT_API_BASE) return pathname;
   const p = String(pathname || '');
   return p.startsWith(DEFAULT_API_BASE) ? base + p.slice(DEFAULT_API_BASE.length) : p;
@@ -286,7 +298,11 @@ const MAX_TEMPLATE_PAGES = 50;
 
 // `startPath`: varsayilan job_templates; uzun-is iptali ekrani ayni sayfalayiciyla
 // workflow_job_templates'i de dolasir (bkz. listCancelableTemplatesForServer).
-async function fetchAllTemplatePages(requestFn, baseUrl, startPath = '/api/v2/job_templates/?page_size=100') {
+async function fetchAllTemplatePages(
+  requestFn,
+  baseUrl,
+  startPath = '/api/v2/job_templates/?page_size=100',
+) {
   const allResults = [];
   let nextUrl = startPath;
   let pageCount = 0;
@@ -406,7 +422,9 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
   // genisletmek icindir (FileX: bitmis isin sonucu, tek seferde ve sirayla okunur).
   // Uzlastirici gibi toplu okuyanlar bunu GECMEZ; OOM kapisi onlar icin degismez.
   const jsonTavan =
-    opts && Number.isFinite(opts.maxBytes) && opts.maxBytes > 0 ? opts.maxBytes : AWX_JSON_MAX_BYTES;
+    opts && Number.isFinite(opts.maxBytes) && opts.maxBytes > 0
+      ? opts.maxBytes
+      : AWX_JSON_MAX_BYTES;
   const lib = parsed.protocol === 'https:' ? https : http;
   const bodyStr = body ? JSON.stringify(body) : null;
   // `opts.gizliler`: cagiranin bildirdigi gizli metinler (Crypto Hub node degeri, launch kancasi).
@@ -416,7 +434,8 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
     .filter((g) => typeof g === 'string' && g.length >= 4)
     .flatMap((g) => [g, g.split('/').join('\\/')])
     .sort((x, y) => y.length - x.length);
-  const gizliSil = (m) => gizliler.reduce((acc, g) => acc.split(g).join('****'), String(m == null ? '' : m));
+  const gizliSil = (m) =>
+    gizliler.reduce((acc, g) => acc.split(g).join('****'), String(m == null ? '' : m));
 
   return new Promise((resolve, reject) => {
     const options = {
@@ -505,7 +524,9 @@ function awxRequestToServer(server, token, method, pathname, body = null, opts =
           // davranisi degismesin.
           reject(
             Object.assign(
-              new Error(`AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`),
+              new Error(
+                `AWX yanıtı JSON değil (${res.statusCode}): ${maskRequestSecrets(gizliSil(data), token).slice(0, 200)}`,
+              ),
               { httpStatus: res.statusCode },
             ),
           );
@@ -766,7 +787,14 @@ function fetchTokenV2(baseUrl, user, pass, apiBase = DEFAULT_API_BASE) {
 }
 
 // fetchNewToken: OAuth2 (when client creds are present), v2/tokens fallback/default
-async function fetchNewToken(baseUrl, user, pass, clientId = null, clientSecret = null, apiBase = DEFAULT_API_BASE) {
+async function fetchNewToken(
+  baseUrl,
+  user,
+  pass,
+  clientId = null,
+  clientSecret = null,
+  apiBase = DEFAULT_API_BASE,
+) {
   const hasClientId = !!(clientId && String(clientId).trim());
   const hasClientSecret = !!(clientSecret && String(clientSecret).trim());
   const canTryOAuth = hasClientId && hasClientSecret;
@@ -1145,7 +1173,6 @@ function fetchAwxPlainText(baseUrl, token, pathname) {
 // kullaniciya SANKI GERCEK STDOUT'MUS gibi gosterilirdi. job_events yedegine
 // (sayfalanmis, boyut siniri olmayan) dusmek icin bu deseni ayrica tespit ederiz.
 
-
 function isAwxStdoutTooLarge(text) {
   return typeof text === 'string' && /Standard Output too large to display/i.test(text);
 }
@@ -1435,7 +1462,13 @@ const _anketBellegi = new Map();
  *     (mesaj zaten hangi alanin eksik oldugunu soyluyor).
  * Survey okunamazsa (404 / yetki / AWX erisilemez) hicbir sey yapilmaz: fail-open.
  */
-async function fillRequiredSurveyDefaults(server, token, templateId, extraVars, { bellek = false } = {}) {
+async function fillRequiredSurveyDefaults(
+  server,
+  token,
+  templateId,
+  extraVars,
+  { bellek = false } = {},
+) {
   try {
     // Bellek YALNIZ `bellek: true` iken okunur/yazilir (yukaridaki not). Okuma bu
     // fonksiyonun ICINDE kalir: survey-required-defaults testi govdeyi tek basina calistirir.
@@ -1444,11 +1477,20 @@ async function fillRequiredSurveyDefaults(server, token, templateId, extraVars, 
     if (kayit?.bitis > Date.now()) {
       fields = kayit.fields;
     } else {
-      const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${templateId}/survey_spec/`);
-      fields = (spec?.spec) || [];
+      const spec = await awxRequestToServer(
+        server,
+        token,
+        'GET',
+        `/api/v2/job_templates/${templateId}/survey_spec/`,
+      );
+      fields = spec?.spec || [];
       if (bellek) {
-        if (_anketBellegi.size >= ANKET_BELLEK_MAX) _anketBellegi.delete(_anketBellegi.keys().next().value);
-        _anketBellegi.set(`${server.id}:${templateId}`, { fields, bitis: Date.now() + ANKET_BELLEK_TTL_MS });
+        if (_anketBellegi.size >= ANKET_BELLEK_MAX)
+          _anketBellegi.delete(_anketBellegi.keys().next().value);
+        _anketBellegi.set(`${server.id}:${templateId}`, {
+          fields,
+          bitis: Date.now() + ANKET_BELLEK_TTL_MS,
+        });
       }
     }
     if (!fields.length) return extraVars;
@@ -1463,10 +1505,14 @@ async function fillRequiredSurveyDefaults(server, token, templateId, extraVars, 
       out[name] = def; // parola alanlarinda def === '$encrypted$'
       filled.push(name);
     }
-    if (filled.length) console.log(`[AWX] template ${templateId}: zorunlu survey alanlari varsayilanla dolduruldu: ${filled.join(', ')}`);
+    if (filled.length)
+      console.log(
+        `[AWX] template ${templateId}: zorunlu survey alanlari varsayilanla dolduruldu: ${filled.join(', ')}`,
+      );
     return out;
   } catch (e) {
-    if (e && e.status !== 404) console.warn(`[AWX] survey_spec okunamadi (template ${templateId}):`, e.message);
+    if (e && e.status !== 404)
+      console.warn(`[AWX] survey_spec okunamadi (template ${templateId}):`, e.message);
     return extraVars;
   }
 }
@@ -1489,7 +1535,9 @@ async function launchJobOnServer(
 
   const token = await getTokenForServer(server);
   // Zorunlu survey alanlari (or. tbmwans_pwd) payload'da yoksa template varsayilanindan tamamla.
-  const withDefaults = await fillRequiredSurveyDefaults(server, token, id, extraVars, { bellek: anketBellegi });
+  const withDefaults = await fillRequiredSurveyDefaults(server, token, id, extraVars, {
+    bellek: anketBellegi,
+  });
   const finalExtraVars = withRequesterVars(withDefaults, requester);
   const payload = { extra_vars: JSON.stringify(finalExtraVars) };
   if (limit) payload.limit = limit;
@@ -1544,7 +1592,9 @@ function ignoredFieldNames(raw) {
       try {
         ev = JSON.parse(ev);
       } catch {
-        const keys = [...ev.matchAll(/^["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*:/gm)].map((m) => m[1]);
+        const keys = [...ev.matchAll(/^["']?([A-Za-z_][A-Za-z0-9_]*)["']?[ \t]*:/gm)].map(
+          (m) => m[1],
+        );
         if (keys.length) for (const k of keys) out.push(`extra_vars.${k}`);
         else if (ev.trim()) out.push('extra_vars.?');
         continue;
@@ -1566,7 +1616,8 @@ async function getJobStatusOnServer(serverId, jobId, opts = null) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
   const data = await awxRequestToServer(
@@ -1597,17 +1648,22 @@ async function getJobStatusOnServer(serverId, jobId, opts = null) {
     launchedBy: data.summary_fields?.launched_by?.name || '',
     // Isin AWX job template'i (2026-10-04, nginx-migration job-status sahiplik kontrolu).
     // Alan yoksa / sayi degilse undefined: cagiran "OLCULEMEDI" der, "baska template" DEMEZ.
-    templateId: Number.isInteger(data.job_template) && data.job_template > 0 ? data.job_template : undefined,
+    templateId:
+      Number.isInteger(data.job_template) && data.job_template > 0 ? data.job_template : undefined,
     // Erken / parse hatasinda stdout BOS doner; sebep bu iki alandadir (2026-10-26, Retirement is ciktisi).
     // HAM doner: ekrana giden yol maskeler (retirement/is-ciktisi.cjs maskele).
     resultTraceback: data.result_traceback || '',
     jobExplanation: data.job_explanation || '',
     // Is bitse de AWX olaylari islerken stdout eksik olabilir (arsiv bunu bekler); alan yoksa undefined.
-    eventProcessingFinished: typeof data.event_processing_finished === 'boolean' ? data.event_processing_finished : undefined,
+    eventProcessingFinished:
+      typeof data.event_processing_finished === 'boolean'
+        ? data.event_processing_finished
+        : undefined,
     // Is bir AWX workflow'unun dugumuyse workflow isinin numarasi (2026-11-17, Reboot Kontrolu AWX alimi: ayni
     // workflow'un once/sonra islerini eslestirir). Workflow disi is: undefined.
     workflowJobId:
-      Number.isInteger(data.summary_fields?.source_workflow_job?.id) && data.summary_fields.source_workflow_job.id > 0
+      Number.isInteger(data.summary_fields?.source_workflow_job?.id) &&
+      data.summary_fields.source_workflow_job.id > 0
         ? data.summary_fields.source_workflow_job.id
         : undefined,
     // Isin extra_vars'i HAM metin (AWX JSON/YAML metni; workflow artifacts'i dahil). Cagiran kendisi cozer; sir
@@ -1636,7 +1692,8 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const token = await getTokenForServer(server);
 
@@ -1650,8 +1707,12 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
     if (kayit?.lines > 0) {
       try {
         const parca = await fetchAwxPlainText(
-          server.url, token,
-          mapApiPath(server, `/api/v2/jobs/${id}/stdout/?format=txt&start_line=${stdoutCache.baslangicSatiri(kayit.lines)}`),
+          server.url,
+          token,
+          mapApiPath(
+            server,
+            `/api/v2/jobs/${id}/stdout/?format=txt&start_line=${stdoutCache.baslangicSatiri(kayit.lines)}`,
+          ),
         );
         if (!isAwxStdoutTooLarge(parca)) {
           const b = stdoutCache.birlestir(kayit.text, parca);
@@ -1661,10 +1722,14 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
             stdoutCache.yaz(serverId, id, b.text, b.lines);
             return { output: b.text, artimliKullanildi: true };
           }
-          console.warn(`[AWX] artimli stdout birlestirilemedi (job ${id}): ${b.sebep} — tam cekime dusuluyor`);
+          console.warn(
+            `[AWX] artimli stdout birlestirilemedi (job ${id}): ${b.sebep} — tam cekime dusuluyor`,
+          );
         }
       } catch (err) {
-        console.warn(`[AWX] artimli stdout cekilemedi (job ${id}): ${err.message} — tam cekime dusuluyor`);
+        console.warn(
+          `[AWX] artimli stdout cekilemedi (job ${id}): ${err.message} — tam cekime dusuluyor`,
+        );
       }
       // BURADA ACIK BIR GECERSIZ KILMA YOK — ve bu BILEREK boyle.
       //
@@ -1680,7 +1745,11 @@ async function getJobOutputOnServer(serverId, jobId, { artimli = false } = {}) {
 
   let output = '';
   try {
-    output = await fetchAwxPlainText(server.url, token, mapApiPath(server, `/api/v2/jobs/${id}/stdout/?format=txt`));
+    output = await fetchAwxPlainText(
+      server.url,
+      token,
+      mapApiPath(server, `/api/v2/jobs/${id}/stdout/?format=txt`),
+    );
   } catch (err) {
     console.warn(`[AWX] stdout cekilemedi (job ${id}, server ${serverId}): ${err.message}`);
   }
@@ -1707,10 +1776,15 @@ const awxJobSegment = (kind) => (kind === 'workflow' ? 'workflow_jobs' : 'jobs')
  */
 async function readJobState(server, token, kind, id) {
   try {
-    const j = await awxRequestToServer(server, token, 'GET', `/api/v2/${awxJobSegment(kind)}/${id}/`);
+    const j = await awxRequestToServer(
+      server,
+      token,
+      'GET',
+      `/api/v2/${awxJobSegment(kind)}/${id}/`,
+    );
     const status = j?.status ? String(j.status) : null;
     if (!status) throw new Error('AWX yanıtında iş durumu (status) yok');
-    return { status, createdBy: (j.summary_fields?.created_by?.username) || null };
+    return { status, createdBy: j.summary_fields?.created_by?.username || null };
   } catch (err) {
     if (err?.status === 404) return { status: 'missing', createdBy: null };
     throw err;
@@ -1722,7 +1796,8 @@ async function getJobStateOnServer(serverId, jobId, kind = 'job') {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(jobId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   return readJobState(server, token, kind === 'workflow' ? 'workflow' : 'job', id);
 }
@@ -1756,7 +1831,11 @@ async function whoAmIWithTokenOnServer(serverId, token) {
   const me = await awxRequestToServer(server, String(token || ''), 'GET', '/api/v2/me/');
   const u = Array.isArray(me?.results) ? me.results[0] : null;
   if (!u?.username) throw new Error('AWX /api/v2/me/ yanıtında kullanıcı adı yok.');
-  return { username: String(u.username), id: u.id != null ? Number(u.id) : null, isSuperuser: u.is_superuser === true };
+  return {
+    username: String(u.username),
+    id: u.id != null ? Number(u.id) : null,
+    isSuperuser: u.is_superuser === true,
+  };
 }
 
 // AWX'te calisan bir job'i iptal eder (POST /api/v2/jobs/:id/cancel/). Is zaten terminal
@@ -1792,7 +1871,8 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
   if (!server) throw sunucuYokHatasi(serverId);
 
   const id = Number(jobId);
-  if (Number.isNaN(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (Number.isNaN(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
 
   const kind = opts?.kind === 'workflow' ? 'workflow' : 'job';
   const segment = awxJobSegment(kind);
@@ -1812,7 +1892,14 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
             'AWX arayüzünden iptal edin ve Admin ekranından yeni token girin.' +
             (err?.message ? ` [AWX yanıtı: ${String(err.message).slice(0, 300)}]` : ''),
         ),
-        { status: 401, permanent: true, cancelTokenInvalid: true, via: 'cancel_token', tokenOwner, jobState: null },
+        {
+          status: 401,
+          permanent: true,
+          cancelTokenInvalid: true,
+          via: 'cancel_token',
+          tokenOwner,
+          jobState: null,
+        },
       );
     }
     if (status !== 403 && status !== 405 && status !== 409) throw err;
@@ -1830,7 +1917,7 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
     try {
       state = await readJobState(server, readToken, kind, id);
     } catch (e) {
-      stateError = (e?.message) || String(e);
+      stateError = e?.message || String(e);
     }
     // Saniyeler once aktif listede olan isin detayi 404 ise bu "bitti" kaniti DEGIL
     // (AWX calisan isin silinmesine izin vermez): durum OLCULEMEDI sayilir.
@@ -1839,10 +1926,22 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
       state = null;
     }
     if (state && !AWX_ACTIVE_JOB_STATUSES.has(state.status)) {
-      return { canceled: false, alreadyTerminal: true, awxStatus: state.status, stateVerified: true };
+      return {
+        canceled: false,
+        alreadyTerminal: true,
+        awxStatus: state.status,
+        stateVerified: true,
+      };
     }
     if (status === 405 || status === 409) {
-      if (!state) return { canceled: false, alreadyTerminal: true, awxStatus: null, stateVerified: false, stateError };
+      if (!state)
+        return {
+          canceled: false,
+          alreadyTerminal: true,
+          awxStatus: null,
+          stateVerified: false,
+          stateError,
+        };
       throw Object.assign(
         new Error(
           `İş İPTAL EDİLEMEDİ: iptal isteği HTTP ${status} ile reddedildi ama iş AWX'te hâlâ '${state.status}' ` +
@@ -1880,11 +1979,23 @@ async function cancelJobOnServer(serverId, jobId, opts = {}) {
         ? tokenOwner || (await awxWhoAmI(server, token, { viaToken: true }))
         : await awxWhoAmI(server, token);
       const createdByPortal =
-        portalUser && state.createdBy ? portalUser.toLowerCase() === state.createdBy.toLowerCase() : null;
+        portalUser && state.createdBy
+          ? portalUser.toLowerCase() === state.createdBy.toLowerCase()
+          : null;
       const who = portalUser || 'bilinmiyor';
-      const head = (() => { if (!viaToken) return 'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında bu işi iptal yetkisi yok (AWX 403). '; if (createdByPortal === true) return `İş İPTAL EDİLEMEDİ (AWX 403): işi iptal token'ının sahibi ${who} başlatmış — sebep template Admin ` +
-            "rolü DEĞİL; token 'write' kapsamlı olmayabilir. "; return `İş İPTAL EDİLEMEDİ (AWX 403): token sahibi ${who} bu template'te Admin değil ` +
-            "(ya da token 'write' kapsamlı değil). "; })();
+      const head = (() => {
+        if (!viaToken)
+          return 'İş İPTAL EDİLEMEDİ: portalın AWX kullanıcısında bu işi iptal yetkisi yok (AWX 403). ';
+        if (createdByPortal === true)
+          return (
+            `İş İPTAL EDİLEMEDİ (AWX 403): işi iptal token'ının sahibi ${who} başlatmış — sebep template Admin ` +
+            "rolü DEĞİL; token 'write' kapsamlı olmayabilir. "
+          );
+        return (
+          `İş İPTAL EDİLEMEDİ (AWX 403): token sahibi ${who} bu template'te Admin değil ` +
+          "(ya da token 'write' kapsamlı değil). "
+        );
+      })();
       throw Object.assign(
         new Error(
           head +
@@ -2028,7 +2139,10 @@ function redactExtraVarsForHistory(extraVars, specFields, overrides) {
  */
 async function performSsLaunchOnServer(serverId, templateId, args) {
   if (typeof _ssLaunch !== 'function') {
-    throw Object.assign(new Error('AWX başlatıcısı hazır değil.'), { status: 503, code: 'ss_launch_hazir_degil' });
+    throw Object.assign(new Error('AWX başlatıcısı hazır değil.'), {
+      status: 503,
+      code: 'ss_launch_hazir_degil',
+    });
   }
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
@@ -2121,7 +2235,11 @@ function initAnsibleRunner(app) {
           error = err.message;
         }
         const responseTimeMs = Date.now() - startedAt;
-        const status = (() => { if (reachable) return 'ok'; if (authOk) return 'unreachable'; return 'auth_failed'; })();
+        const status = (() => {
+          if (reachable) return 'ok';
+          if (authOk) return 'unreachable';
+          return 'auth_failed';
+        })();
 
         // Best-effort kalicilik — yalniz DB'den yuklenmis sunucular icin bir satir bulunur
         // (env-only sunucularda ansible_awx_servers satiri olmayabilir, UPDATE 0 satir doner).
@@ -2220,21 +2338,26 @@ function initAnsibleRunner(app) {
     return rows[0] || null;
   }
 
-  app.get('/api/ansible/awx-servers/:no/bagimlilik', requireAuth, requireAdmin, async (req, res) => {
-    const no = sunucuNo(req.params.no);
-    if (!no) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu numarası.' });
-    try {
-      const satir = await awxSunucuSatiri(no);
-      if (!satir) return res.status(404).json({ ok: false, message: `AWX #${no} kaydı yok.` });
-      const ozet = await awxBagimlilik.bagimlilikOzeti(no, {
-        db: require('../db/index.cjs'),
-        sunucuUrl: satir.url,
-      });
-      res.json({ ok: true, ozet });
-    } catch (e) {
-      res.status(503).json({ ok: false, message: `Bağımlılık özeti alınamadı: ${e.message}` });
-    }
-  });
+  app.get(
+    '/api/ansible/awx-servers/:no/bagimlilik',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const no = sunucuNo(req.params.no);
+      if (!no) return res.status(400).json({ ok: false, message: 'Geçersiz sunucu numarası.' });
+      try {
+        const satir = await awxSunucuSatiri(no);
+        if (!satir) return res.status(404).json({ ok: false, message: `AWX #${no} kaydı yok.` });
+        const ozet = await awxBagimlilik.bagimlilikOzeti(no, {
+          db: require('../db/index.cjs'),
+          sunucuUrl: satir.url,
+        });
+        res.json({ ok: true, ozet });
+      } catch (e) {
+        res.status(503).json({ ok: false, message: `Bağımlılık özeti alınamadı: ${e.message}` });
+      }
+    },
+  );
 
   app.post('/api/ansible/awx-servers/:no/durum', requireAuth, requireAdmin, async (req, res) => {
     const no = sunucuNo(req.params.no);
@@ -2256,7 +2379,8 @@ function initAnsibleRunner(app) {
         if (!etkin.some((r) => Number(r.server_no) !== no)) {
           return res.status(409).json({
             ok: false,
-            message: "Son etkin AWX sunucusu devre dışı bırakılamaz (Portal .env'deki sunuculara geri döner).",
+            message:
+              "Son etkin AWX sunucusu devre dışı bırakılamaz (Portal .env'deki sunuculara geri döner).",
           });
         }
         const ozet = await awxBagimlilik.bagimlilikOzeti(no, { db: dbx, sunucuUrl: satir.url });
@@ -2284,19 +2408,28 @@ function initAnsibleRunner(app) {
           username: req.session?.user?.username || null,
           detail: JSON.stringify({ no, name: satir.name, enabled }),
         });
-      } catch { /* audit yoksa yoksay */ }
-      console.log(`[Ansible] AWX #${no} (${satir.name}) ${enabled ? 'etkinlestirildi' : 'devre disi birakildi'}`);
+      } catch {
+        /* audit yoksa yoksay */
+      }
+      console.log(
+        `[Ansible] AWX #${no} (${satir.name}) ${enabled ? 'etkinlestirildi' : 'devre disi birakildi'}`,
+      );
       if (enabled && !yuklendi) {
         return res.status(503).json({
           ok: false,
           yuklendi: false,
-          message: 'Kaydedildi ama sunucu listesi bellekte yenilenemedi; sunucu güvenli olarak etkinleştirilmedi.',
+          message:
+            'Kaydedildi ama sunucu listesi bellekte yenilenemedi; sunucu güvenli olarak etkinleştirilmedi.',
         });
       }
       res.json({
         ok: true,
         yuklendi,
-        message: (() => { if (yuklendi) return `AWX #${no} (${satir.name}) ${enabled ? 'etkinleştirildi' : 'devre dışı bırakıldı'}.`; return `AWX #${no} (${satir.name}) devre dışı bırakıldı; sunucu listesinin tamamı yenilenemedi.`; })(),
+        message: (() => {
+          if (yuklendi)
+            return `AWX #${no} (${satir.name}) ${enabled ? 'etkinleştirildi' : 'devre dışı bırakıldı'}.`;
+          return `AWX #${no} (${satir.name}) devre dışı bırakıldı; sunucu listesinin tamamı yenilenemedi.`;
+        })(),
       });
     } catch (e) {
       res.status(500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
@@ -2560,7 +2693,7 @@ function initAnsibleRunner(app) {
         if (['successful', 'failed', 'error', 'canceled'].includes(jobStatus.status)) break;
         attempts++;
       }
-      if (!jobStatus || jobStatus.status !== 'successful') {
+      if (jobStatus?.status !== 'successful') {
         return res.status(502).json({
           ok: false,
           message: `AWX job ${jobStatus?.status || 'timeout'}`,
@@ -2793,7 +2926,9 @@ function initAnsibleRunner(app) {
       throw new Error(`Self Service listesi en fazla ${SS_YAZIM_TAVAN} servis tutabilir.`);
     }
     if (!ilkGoc && _ssItems === null) {
-      throw yazimHatasi("Self Servis listesi DB'den yüklenemedi; eski dosya yedeğinden yazım yapılmaz. Portal'ı yeniden başlatın.");
+      throw yazimHatasi(
+        "Self Servis listesi DB'den yüklenemedi; eski dosya yedeğinden yazım yapılmaz. Portal'ı yeniden başlatın.",
+      );
     }
     if (_ssItemsKirli) {
       try {
@@ -2801,13 +2936,20 @@ function initAnsibleRunner(app) {
       } catch {
         /* hala tazelenemiyor: asagidaki hata yeterli */
       }
-      throw yazimHatasi('Self Servis listesi önbelleği güncel değildi; liste yenilendi. Sayfayı yenileyip işlemi tekrar yapın.');
+      throw yazimHatasi(
+        'Self Servis listesi önbelleği güncel değildi; liste yenilendi. Sayfayı yenileyip işlemi tekrar yapın.',
+      );
     }
     let tasinanlar;
     try {
-      tasinanlar = (await dbx.query(`SELECT item_id, to_server, to_template FROM ansible_ss_migrations WHERE status = 'TASINDI'`)).rows;
+      tasinanlar = (
+        await dbx.query(
+          `SELECT item_id, to_server, to_template FROM ansible_ss_migrations WHERE status = 'TASINDI'`,
+        )
+      ).rows;
     } catch (e) {
-      if (!ilkGoc) throw yazimHatasi(`Taşıma kayıtları okunamadı (${e.message}); liste yazımı reddedildi.`);
+      if (!ilkGoc)
+        throw yazimHatasi(`Taşıma kayıtları okunamadı (${e.message}); liste yazımı reddedildi.`);
       tasinanlar = [];
     }
     const ihlal = require('./ss-tasima.cjs').kartBagIhlalleri(items, tasinanlar);
@@ -2894,7 +3036,11 @@ function initAnsibleRunner(app) {
   const SS_CUSTOM_TTL_MS = 30 * 1000;
   async function freshCustom(serverId, templateId) {
     if (!_ssCustom || Date.now() - _ssCustomLoadedAt > SS_CUSTOM_TTL_MS) {
-      try { await reloadSsCustomCache(); } catch (e) { console.warn('[AnsibleSS] ayar onbellegi tazelenemedi:', e.message); }
+      try {
+        await reloadSsCustomCache();
+      } catch (e) {
+        console.warn('[AnsibleSS] ayar onbellegi tazelenemedi:', e.message);
+      }
     }
     return readCustom(serverId, templateId);
   }
@@ -3026,7 +3172,13 @@ function initAnsibleRunner(app) {
       return {
         name: field.variable,
         label: ov.label || field.question_name,
-        type: (() => { if (choicesSource) { if (field.type === 'multiselect') return 'multiselect'; return 'multiplechoice'; } return field.type; })(),
+        type: (() => {
+          if (choicesSource) {
+            if (field.type === 'multiselect') return 'multiselect';
+            return 'multiplechoice';
+          }
+          return field.type;
+        })(),
         required: required || !!ov.requiredWhenActive,
         defaultValue: ov.defaultValue !== undefined ? ov.defaultValue : field.default || '',
         choices: choicesSource ? [] : field.choices || [],
@@ -3071,13 +3223,16 @@ function initAnsibleRunner(app) {
 
   function resolveLaunchExtraVars(rawFields, overrides, submittedValues) {
     const extraVars = {};
-    const ovOf = (field) => (overrides.fieldOverrides || []).find((o) => o.fieldName === field.variable) || {};
+    const ovOf = (field) =>
+      (overrides.fieldOverrides || []).find((o) => o.fieldName === field.variable) || {};
     // KOSUL icin etkin degerler (resolveCustomSurveyExtraVars ile ayni): gizliyse admin varsayilani,
     // degilse kullanicinin gonderdigi ham deger.
     const effective = {};
     for (const field of rawFields || []) {
       const ov = ovOf(field);
-      if (ov.hidden) effective[field.variable] = ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
+      if (ov.hidden)
+        effective[field.variable] =
+          ov.defaultValue !== undefined ? ov.defaultValue : field.default || '';
       else {
         const raw = submittedValues?.[field.variable];
         effective[field.variable] = raw === undefined || raw === null ? '' : String(raw).trim();
@@ -3123,9 +3278,10 @@ function initAnsibleRunner(app) {
 
       if (field.type === 'multiselect') {
         const picked = splitMulti(raw);
-        const bad = Array.isArray(field.choices) && field.choices.length > 0
-          ? picked.filter((v) => !field.choices.includes(v))
-          : [];
+        const bad =
+          Array.isArray(field.choices) && field.choices.length > 0
+            ? picked.filter((v) => !field.choices.includes(v))
+            : [];
         if (bad.length) {
           throw Object.assign(new Error(`Geçersiz seçim (${label}): ${bad.join(', ')}`), {
             status: 400,
@@ -3193,7 +3349,11 @@ function initAnsibleRunner(app) {
       const val = extraVars[f.name];
       if (val === undefined || val === null || String(val) === '') continue;
       // Coklu secim: her deger ayri dogrulanir (liste ya da '\n' ile birlesik dizge).
-      const vals = (() => { if (Array.isArray(val)) return val; if (f.type === 'multiselect') return splitMulti(val); return [String(val)]; })();
+      const vals = (() => {
+        if (Array.isArray(val)) return val;
+        if (f.type === 'multiselect') return splitMulti(val);
+        return [String(val)];
+      })();
       try {
         for (const v of vals) {
           await choiceSources.assertValueInSource(cs, String(v), extraVars, f.label || f.name);
@@ -3267,9 +3427,10 @@ function initAnsibleRunner(app) {
 
       if (field.type === 'multiselect') {
         const picked = splitMulti(submittedValues ? submittedValues[field.name] : val);
-        const bad = Array.isArray(field.choices) && field.choices.length > 0
-          ? picked.filter((v) => !field.choices.includes(v))
-          : [];
+        const bad =
+          Array.isArray(field.choices) && field.choices.length > 0
+            ? picked.filter((v) => !field.choices.includes(v))
+            : [];
         if (bad.length) {
           throw Object.assign(new Error(`Geçersiz seçim (${label}): ${bad.join(', ')}`), {
             status: 400,
@@ -3431,7 +3592,12 @@ function initAnsibleRunner(app) {
     if (!requesterUser && username) {
       try {
         const ident = await require('../auth/users.cjs').getUserIdentity(username);
-        if (ident) requesterUser = { username: ident.username || username, displayName: ident.displayName, mail: ident.mail };
+        if (ident)
+          requesterUser = {
+            username: ident.username || username,
+            displayName: ident.displayName,
+            mail: ident.mail,
+          };
         else requesterUser = { username };
       } catch (e) {
         console.warn('[Ansible] tetikleyen kimligi cozulemedi:', e.message);
@@ -3470,11 +3636,21 @@ function initAnsibleRunner(app) {
           iptalEdildi = false;
           console.warn(`[Ansible] yutulan degiskenli is #${jobId} iptal edilemedi:`, e.message);
         }
-        require('../audit/index.cjs').auditPortal(req || null, 'ansible_launch_ignored_vars_cancelled', {
-          username,
-          result: 'fail',
-          detail: JSON.stringify({ awxServerId: server.id, templateId, jobId, yutulan, iptalEdildi }),
-        });
+        require('../audit/index.cjs').auditPortal(
+          req || null,
+          'ansible_launch_ignored_vars_cancelled',
+          {
+            username,
+            result: 'fail',
+            detail: JSON.stringify({
+              awxServerId: server.id,
+              templateId,
+              jobId,
+              yutulan,
+              iptalEdildi,
+            }),
+          },
+        );
         throw Object.assign(
           new Error(
             `AWX şablonunda "Prompt on launch > Variables" kapalı: ${yutulan.length} değişken yok sayıldı; ` +
@@ -3620,7 +3796,8 @@ function initAnsibleRunner(app) {
       // Crypto Hub bileti asagidaki AWX schedule dalina GIRMEZ: schedule extraVars'i yer tutucuyla
       // kaldirirdi, launchExtraVars ise degeri AWX schedule'a yazardi. Pencere karari kancadan once:
       // pencere disinda sifreli deger hic cozulmez.
-      const cryptoBilet = !!ticket.pendingLaunch && ticket.pendingLaunch.launchOncesi === 'crypto_hub_node';
+      const cryptoBilet =
+        !!ticket.pendingLaunch && ticket.pendingLaunch.launchOncesi === 'crypto_hub_node';
       if (cryptoBilet) {
         nodeMod = require('../crypto-hub/node.cjs');
         nodeMod.launchPenceresiDenetle(ticket.pendingLaunch);
@@ -3633,12 +3810,18 @@ function initAnsibleRunner(app) {
       // ZATEN GECILDIGI icin AWX-native zamanlama guvenlidir.
       if (!cryptoBilet && ocoWindowStartIso && ocoWindowEndIso) {
         const ocoWindow = require('../oco/window.cjs');
-        const plan = ocoWindow.nextRunAt({ windowStart: new Date(ocoWindowStartIso), windowEnd: new Date(ocoWindowEndIso) });
+        const plan = ocoWindow.nextRunAt({
+          windowStart: new Date(ocoWindowStartIso),
+          windowEnd: new Date(ocoWindowEndIso),
+        });
         if (plan.mode === 'none') throw new Error(plan.reason);
         if (plan.mode === 'schedule') {
           const schedName = `PORTAL_OCO_${ocoNumber || 'X'}_${ticket.awxTemplateId}_${Date.now()}`;
           const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, detail, {
-            name: schedName, runAt: plan.runAt, extraVars, resolvedLaunchOptions,
+            name: schedName,
+            runAt: plan.runAt,
+            extraVars,
+            resolvedLaunchOptions,
             requester: username ? { username } : null,
           });
           if (ocoRecordId) {
@@ -3649,18 +3832,28 @@ function initAnsibleRunner(app) {
             // olabilir); istisna ise gercek bir DB hatasidir. Ikisi AYRI loglanir.
             try {
               const yazildi = await require('../oco/store.cjs').markAwxScheduledAfterApproval(
-                ocoRecordId, { awxScheduleId: sched.scheduleId, runAt: plan.runAt },
+                ocoRecordId,
+                { awxScheduleId: sched.scheduleId, runAt: plan.runAt },
               );
               if (!yazildi) {
                 console.warn(
                   `[OCO] #${ocoRecordId} AWX_SCHEDULED yazilamadi: kayit PENDING_APPROVAL ` +
-                  `degil (iptal edilmis olabilir). AWX schedule ${sched.scheduleId} KURULDU.`,
+                    `degil (iptal edilmis olabilir). AWX schedule ${sched.scheduleId} KURULDU.`,
                 );
               }
-            } catch (e) { console.warn('[OCO] onay sonrasi zamanlama kaydi guncellenemedi:', e.message); }
+            } catch (e) {
+              console.warn('[OCO] onay sonrasi zamanlama kaydi guncellenemedi:', e.message);
+            }
           }
-          console.log(`[Smart] ticket #${ticket.id} onaylandi -> is ${plan.text} kesinti penceresine zamanlandi (AWX schedule ${sched.scheduleId}).`);
-          return { jobId: null, scheduled: true, runAtText: plan.text, awxScheduleId: sched.scheduleId };
+          console.log(
+            `[Smart] ticket #${ticket.id} onaylandi -> is ${plan.text} kesinti penceresine zamanlandi (AWX schedule ${sched.scheduleId}).`,
+          );
+          return {
+            jobId: null,
+            scheduled: true,
+            runAtText: plan.text,
+            awxScheduleId: sched.scheduleId,
+          };
         }
         // plan.mode === 'now': pencere acik, asagidaki normal launch calisir.
       }
@@ -3682,7 +3875,10 @@ function initAnsibleRunner(app) {
         if (!gizliler.length) throw e;
         // poller bu metni smart_tickets.error_message'a yazar: AWX hata govdesi degeri yansitsa da
         // DB'ye / loga dusmesin.
-        throw Object.assign(new Error(nodeMod.gizliTemizle(e.message, gizliler)), { status: e.status, code: e.code });
+        throw Object.assign(new Error(nodeMod.gizliTemizle(e.message, gizliler)), {
+          status: e.status,
+          code: e.code,
+        });
       }
     });
   } catch (e) {
@@ -3775,9 +3971,14 @@ function initAnsibleRunner(app) {
       const server = getServerById(rec.awxServerId);
       if (!server) throw new Error(`AWX sunucusu bulunamadı: ${rec.awxServerId}`);
       // Pencere ve OCO numarasi KAYDIN kolonlarindan (ScaleX guncellemesi pakete dokunmaz).
-      return launchOrRequestApproval(server, rec.awxTemplateId, require('../oco/kayit-plani.cjs').ocoKaydiPlani(rec), {
-        ocoRecordId: rec.id,
-      });
+      return launchOrRequestApproval(
+        server,
+        rec.awxTemplateId,
+        require('../oco/kayit-plani.cjs').ocoKaydiPlani(rec),
+        {
+          ocoRecordId: rec.id,
+        },
+      );
     });
   } catch (e) {
     console.warn('[OCO] poller baslatilamadi:', e.message);
@@ -3820,8 +4021,13 @@ function initAnsibleRunner(app) {
   app.get('/api/ansible/ss/choices/:source/details', requireAuth, async (req, res) => {
     try {
       const params = {};
-      for (const [k, v] of Object.entries(req.query || {})) if (k !== 'value') params[k] = String(v ?? '');
-      const detay = await choiceSources.loadChoiceDetails(req.params.source, params, String(req.query.value ?? ''));
+      for (const [k, v] of Object.entries(req.query || {}))
+        if (k !== 'value') params[k] = String(v ?? '');
+      const detay = await choiceSources.loadChoiceDetails(
+        req.params.source,
+        params,
+        String(req.query.value ?? ''),
+      );
       res.json({ ok: true, detay });
     } catch (err) {
       res.status(err.status || 503).json({ ok: false, message: err.message });
@@ -3919,7 +4125,9 @@ function initAnsibleRunner(app) {
         try {
           await writeSsItems(items);
         } catch (e) {
-          return res.status(e.status || 500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+          return res
+            .status(e.status || 500)
+            .json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
         }
         return res.json({ ok: true, item: items[idx], items });
       }
@@ -3940,7 +4148,9 @@ function initAnsibleRunner(app) {
     try {
       await writeSsItems(items);
     } catch (e) {
-      return res.status(e.status || 500).json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
+      return res
+        .status(e.status || 500)
+        .json({ ok: false, message: `Kaydedilemedi: ${e.message}` });
     }
     res.json({ ok: true, item: newItem, items });
   });
@@ -3967,7 +4177,9 @@ function initAnsibleRunner(app) {
         username: req.session?.user?.username || null,
         detail: JSON.stringify({ id, mode: d.accessMode, groups: d.accessGroups }),
       });
-    } catch { /* audit yoksa yoksay */ }
+    } catch {
+      /* audit yoksa yoksay */
+    }
     res.json({ ok: true, item: readSsItems().find((i) => i.id === id) || null });
   });
 
@@ -4015,7 +4227,13 @@ function initAnsibleRunner(app) {
       const gates = {
         oco: !!overrides.ocoCheck?.enabled,
         ocoEnvironments: Array.isArray(overrides.ocoCheck?.environments)
-          ? overrides.ocoCheck.environments.map((e) => String(e ?? '').trim().toLowerCase()).filter(Boolean)
+          ? overrides.ocoCheck.environments
+              .map((e) =>
+                String(e ?? '')
+                  .trim()
+                  .toLowerCase(),
+              )
+              .filter(Boolean)
           : null,
         smart: !!overrides.smartApproval?.enabled,
       };
@@ -4033,7 +4251,10 @@ function initAnsibleRunner(app) {
       const launchOptions = extractLaunchOptions(detail);
       // API Generator: chosen_api KODLA envanter listesine bagli (selfservice/api-generator-secim.cjs).
       // Launch (resolveSsLaunchPlan) AYNI etkin ayarlari kullanir.
-      const etkinOv = require('../selfservice/api-generator-secim.cjs').etkinOverrides(detail, overrides);
+      const etkinOv = require('../selfservice/api-generator-secim.cjs').etkinOverrides(
+        detail,
+        overrides,
+      );
       // AWX'in "Prompt on Launch → Variables" bayragi — FieldOverridesModal'in serbest
       // "Ek Degiskenler" kutusunu bilgilendirmek icin (bkz. plan: free-form extra_vars gap).
       const askVariables = !!detail.ask_variables_on_launch;
@@ -4127,85 +4348,95 @@ function initAnsibleRunner(app) {
   // requireAnsiblePage (2026-10-26): tek cagiran Ansible sayfasi (template listesi zaten bu
   // kapinin arkasinda). Kapisiz uc, ekip kisitli bir servisin template ayrintisini (extra_vars
   // dahil) her oturuma aciyordu.
-  app.get('/api/ansible/template-detail/:serverId/:templateId', requireAuth, requireAnsiblePage, async (req, res) => {
-    const server = getServerById(req.params.serverId);
-    if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
-    try {
-      const token = await getTokenForServer(server);
-      const [detail, surveySpec] = await Promise.all([
-        awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${req.params.templateId}/`),
-        awxRequestToServer(
-          server,
-          token,
-          'GET',
-          `/api/v2/job_templates/${req.params.templateId}/survey_spec/`,
-        ).catch((e) => {
-          if (e.status === 404) return { spec: [] };
-          throw e instanceof Error ? e : Object.assign(new Error(String(e)), e);
-        }),
-      ]);
+  app.get(
+    '/api/ansible/template-detail/:serverId/:templateId',
+    requireAuth,
+    requireAnsiblePage,
+    async (req, res) => {
+      const server = getServerById(req.params.serverId);
+      if (!server) return res.status(404).json({ ok: false, message: 'Sunucu bulunamadı.' });
+      try {
+        const token = await getTokenForServer(server);
+        const [detail, surveySpec] = await Promise.all([
+          awxRequestToServer(
+            server,
+            token,
+            'GET',
+            `/api/v2/job_templates/${req.params.templateId}/`,
+          ),
+          awxRequestToServer(
+            server,
+            token,
+            'GET',
+            `/api/v2/job_templates/${req.params.templateId}/survey_spec/`,
+          ).catch((e) => {
+            if (e.status === 404) return { spec: [] };
+            throw e instanceof Error ? e : Object.assign(new Error(String(e)), e);
+          }),
+        ]);
 
-      // Ayni override/required/hidden mantigini survey route'uyla paylasmak icin
-      // mapSurveySpec kullanilir, ama bu route'un mevcut frontend tuketicisi (`AwxTemplateDetail`)
-      // `default` alan adini bekledigi icin geriye donuk uyumlu sekilde yeniden sekillendirilir.
-      const isAdmin = req.session?.user?.role === 'Admin';
-      const mappedFields = mapSurveySpec(
-        surveySpec.spec,
-        require('../selfservice/api-generator-secim.cjs').etkinOverrides(
-          detail,
-          readCustom(server.id, req.params.templateId),
-        ),
-        { includeHidden: isAdmin },
-      );
-      const surveyFields = mappedFields.map((f) => ({
-        name: f.name,
-        label: f.label,
-        type: f.type,
-        required: f.required,
-        default: f.defaultValue,
-        choices: f.choices,
-        description: f.description,
-      }));
+        // Ayni override/required/hidden mantigini survey route'uyla paylasmak icin
+        // mapSurveySpec kullanilir, ama bu route'un mevcut frontend tuketicisi (`AwxTemplateDetail`)
+        // `default` alan adini bekledigi icin geriye donuk uyumlu sekilde yeniden sekillendirilir.
+        const isAdmin = req.session?.user?.role === 'Admin';
+        const mappedFields = mapSurveySpec(
+          surveySpec.spec,
+          require('../selfservice/api-generator-secim.cjs').etkinOverrides(
+            detail,
+            readCustom(server.id, req.params.templateId),
+          ),
+          { includeHidden: isAdmin },
+        );
+        const surveyFields = mappedFields.map((f) => ({
+          name: f.name,
+          label: f.label,
+          type: f.type,
+          required: f.required,
+          default: f.defaultValue,
+          choices: f.choices,
+          description: f.description,
+        }));
 
-      const degiskenler = awxDegiskenleriniAyikla(detail.extra_vars);
-      res.json({
-        ok: true,
-        template: {
-          id: detail.id,
-          name: detail.name,
-          description: detail.description || '',
-          jobType: detail.job_type || '',
-          playbook: detail.playbook || '',
-          inventory: detail.summary_fields?.inventory?.name || '',
-          project: detail.summary_fields?.project?.name || '',
-          credentials: (detail.summary_fields?.credentials || []).map((c) => ({
-            name: c.name,
-            kind: c.kind || c.credential_type_name || '',
-          })),
-          extraVars: degiskenler.metin,
-          extraVarsParsed: parseSimpleYaml(degiskenler.metin),
-          hiddenVariables: degiskenler.gizlenen,
-          limit: detail.limit || '',
-          verbosity: detail.verbosity ?? 0,
-          askVariables: !!detail.ask_variables_on_launch,
-          askLimit: !!detail.ask_limit_on_launch,
-          askInventory: !!detail.ask_inventory_on_launch,
-          surveyEnabled: detail.survey_enabled !== false,
-          launchOptions: extractLaunchOptions(detail),
-          created: detail.created || null,
-          modified: detail.modified || null,
-          recentJobs: (detail.summary_fields?.recent_jobs || []).map((j) => ({
-            id: j.id,
-            status: j.status,
-            finished: j.finished || null,
-          })),
-          surveyFields,
-        },
-      });
-    } catch (err) {
-      res.status(502).json({ ok: false, message: err.message });
-    }
-  });
+        const degiskenler = awxDegiskenleriniAyikla(detail.extra_vars);
+        res.json({
+          ok: true,
+          template: {
+            id: detail.id,
+            name: detail.name,
+            description: detail.description || '',
+            jobType: detail.job_type || '',
+            playbook: detail.playbook || '',
+            inventory: detail.summary_fields?.inventory?.name || '',
+            project: detail.summary_fields?.project?.name || '',
+            credentials: (detail.summary_fields?.credentials || []).map((c) => ({
+              name: c.name,
+              kind: c.kind || c.credential_type_name || '',
+            })),
+            extraVars: degiskenler.metin,
+            extraVarsParsed: parseSimpleYaml(degiskenler.metin),
+            hiddenVariables: degiskenler.gizlenen,
+            limit: detail.limit || '',
+            verbosity: detail.verbosity ?? 0,
+            askVariables: !!detail.ask_variables_on_launch,
+            askLimit: !!detail.ask_limit_on_launch,
+            askInventory: !!detail.ask_inventory_on_launch,
+            surveyEnabled: detail.survey_enabled !== false,
+            launchOptions: extractLaunchOptions(detail),
+            created: detail.created || null,
+            modified: detail.modified || null,
+            recentJobs: (detail.summary_fields?.recent_jobs || []).map((j) => ({
+              id: j.id,
+              status: j.status,
+              finished: j.finished || null,
+            })),
+            surveyFields,
+          },
+        });
+      } catch (err) {
+        res.status(502).json({ ok: false, message: err.message });
+      }
+    },
+  );
 
   // POST /api/ansible/ss/custom/:serverId/:templateId — Admin, field override kaydet
   // Kayittan once CANLI AWX survey spec'ine karsi dogrular: zorunlu bir alan asla
@@ -4241,7 +4472,10 @@ function initAnsibleRunner(app) {
         // launch secenegi varsayilani, cikti filtresi, Survey Tasarimcisi) 2026-11-10'da
         // ss-ozellestirme-dogrulama.cjs'e cikarildi: Self Servis Tasima ekrani AYNI kurallari
         // hedef template'e karsi kuru calistirir. Ilk hata eskiden donen 400 mesajinin aynisidir.
-        const dogrulamaHatalari = require('./ss-ozellestirme-dogrulama.cjs').dogrula(specFields, data);
+        const dogrulamaHatalari = require('./ss-ozellestirme-dogrulama.cjs').dogrula(
+          specFields,
+          data,
+        );
         if (dogrulamaHatalari.length) {
           return res.status(400).json({ ok: false, message: dogrulamaHatalari[0] });
         }
@@ -4253,13 +4487,17 @@ function initAnsibleRunner(app) {
           require('../audit/index.cjs').auditPortal(req, 'ss_custom_save', {
             username: by,
             detail: JSON.stringify({
-              awxServerId: server.id, templateId: Number(req.params.templateId),
+              awxServerId: server.id,
+              templateId: Number(req.params.templateId),
               fieldOverrides: (data.fieldOverrides || []).length,
               customSurveyFields: (data.customSurveyFields || []).length,
-              smart: !!data.smartApproval?.enabled, oco: !!data.ocoCheck?.enabled,
+              smart: !!data.smartApproval?.enabled,
+              oco: !!data.ocoCheck?.enabled,
             }),
           });
-        } catch { /* audit yoksa yoksay */ }
+        } catch {
+          /* audit yoksa yoksay */
+        }
         res.json({ ok: true });
       } catch (err) {
         const { status, message } = friendlyAwxError(err);
@@ -4269,67 +4507,104 @@ function initAnsibleRunner(app) {
   );
 
   // GET /api/ansible/ss/custom/:serverId/:templateId — Admin, mevcut override'lari getir
-  app.get('/api/ansible/ss/custom/:serverId/:templateId', requireAuth, requireAdmin, async (req, res) => {
-    const server = getServerById(req.params.serverId);
-    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
-    try {
-      // Admin ekrani DB'deki GUNCEL hali gormeli (bkz. freshCustom); nginx 404/500'u HTML'e
-      // cevirdigi icin hata 400 ile doner ve ekran KAYDETMEYI KILITLER (bos halle ezmesin).
-      res.json({ ok: true, customization: await freshCustom(server.id, req.params.templateId) });
-    } catch (err) {
-      res.status(400).json({ ok: false, message: 'Ayarlar okunamadı: ' + err.message });
-    }
-  });
+  app.get(
+    '/api/ansible/ss/custom/:serverId/:templateId',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const server = getServerById(req.params.serverId);
+      if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
+      try {
+        // Admin ekrani DB'deki GUNCEL hali gormeli (bkz. freshCustom); nginx 404/500'u HTML'e
+        // cevirdigi icin hata 400 ile doner ve ekran KAYDETMEYI KILITLER (bos halle ezmesin).
+        res.json({ ok: true, customization: await freshCustom(server.id, req.params.templateId) });
+      } catch (err) {
+        res.status(400).json({ ok: false, message: 'Ayarlar okunamadı: ' + err.message });
+      }
+    },
+  );
 
   // GECMIS (2026-09-16): son 30 surum ozetle; geri yukleme mevcut hali de gecmise yazar.
-  app.get('/api/ansible/ss/custom/:serverId/:templateId/history', requireAuth, requireAdmin, async (req, res) => {
-    const server = getServerById(req.params.serverId);
-    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
-    try {
-      const { rows } = await dbx.query(
-        `SELECT TOP 30 id, saved_by, reason, saved_at, data FROM ansible_ss_customizations_history
-          WHERE awx_server_id = $1 AND template_id = $2 ORDER BY id DESC`,
-        [Number(server.id), Number(req.params.templateId)],
-      );
-      const items = rows.map((r) => {
-        let d = {};
-        try { d = JSON.parse(r.data); } catch { /* bozuk */ }
-        return {
-          id: r.id, savedBy: r.saved_by, reason: r.reason, savedAt: r.saved_at,
-          fieldOverrides: (d.fieldOverrides || []).length,
-          customSurveyFields: (d.customSurveyFields || []).length,
-          customFieldNames: (d.customSurveyFields || []).map((f) => f.name).filter(Boolean).slice(0, 12),
-          smart: !!d.smartApproval?.enabled, oco: !!d.ocoCheck?.enabled,
-        };
-      });
-      res.json({ ok: true, items });
-    } catch (err) {
-      res.status(400).json({ ok: false, message: 'Geçmiş okunamadı: ' + err.message });
-    }
-  });
-
-  app.post('/api/ansible/ss/custom/:serverId/:templateId/restore/:historyId', requireAuth, requireAdmin, async (req, res) => {
-    const server = getServerById(req.params.serverId);
-    if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
-    try {
-      const { rows } = await dbx.query(
-        `SELECT data FROM ansible_ss_customizations_history WHERE id = $1 AND awx_server_id = $2 AND template_id = $3`,
-        [Number(req.params.historyId), Number(server.id), Number(req.params.templateId)],
-      );
-      if (!rows[0]) return res.status(400).json({ ok: false, message: 'Geçmiş kaydı bulunamadı.' });
-      const data = JSON.parse(rows[0].data);
-      const by = req.session?.user?.username || null;
-      await writeCustom(server.id, req.params.templateId, data, { by, reason: 'restore:' + req.params.historyId });
+  app.get(
+    '/api/ansible/ss/custom/:serverId/:templateId/history',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const server = getServerById(req.params.serverId);
+      if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
       try {
-        require('../audit/index.cjs').auditPortal(req, 'ss_custom_restore', {
-          username: by, detail: JSON.stringify({ awxServerId: server.id, templateId: Number(req.params.templateId), historyId: Number(req.params.historyId) }),
+        const { rows } = await dbx.query(
+          `SELECT TOP 30 id, saved_by, reason, saved_at, data FROM ansible_ss_customizations_history
+          WHERE awx_server_id = $1 AND template_id = $2 ORDER BY id DESC`,
+          [Number(server.id), Number(req.params.templateId)],
+        );
+        const items = rows.map((r) => {
+          let d = {};
+          try {
+            d = JSON.parse(r.data);
+          } catch {
+            /* bozuk */
+          }
+          return {
+            id: r.id,
+            savedBy: r.saved_by,
+            reason: r.reason,
+            savedAt: r.saved_at,
+            fieldOverrides: (d.fieldOverrides || []).length,
+            customSurveyFields: (d.customSurveyFields || []).length,
+            customFieldNames: (d.customSurveyFields || [])
+              .map((f) => f.name)
+              .filter(Boolean)
+              .slice(0, 12),
+            smart: !!d.smartApproval?.enabled,
+            oco: !!d.ocoCheck?.enabled,
+          };
         });
-      } catch { /* yoksay */ }
-      res.json({ ok: true, customization: data });
-    } catch (err) {
-      res.status(400).json({ ok: false, message: 'Geri yükleme başarısız: ' + err.message });
-    }
-  });
+        res.json({ ok: true, items });
+      } catch (err) {
+        res.status(400).json({ ok: false, message: 'Geçmiş okunamadı: ' + err.message });
+      }
+    },
+  );
+
+  app.post(
+    '/api/ansible/ss/custom/:serverId/:templateId/restore/:historyId',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const server = getServerById(req.params.serverId);
+      if (!server) return res.status(400).json({ ok: false, message: 'Sunucu bulunamadı.' });
+      try {
+        const { rows } = await dbx.query(
+          `SELECT data FROM ansible_ss_customizations_history WHERE id = $1 AND awx_server_id = $2 AND template_id = $3`,
+          [Number(req.params.historyId), Number(server.id), Number(req.params.templateId)],
+        );
+        if (!rows[0])
+          return res.status(400).json({ ok: false, message: 'Geçmiş kaydı bulunamadı.' });
+        const data = JSON.parse(rows[0].data);
+        const by = req.session?.user?.username || null;
+        await writeCustom(server.id, req.params.templateId, data, {
+          by,
+          reason: 'restore:' + req.params.historyId,
+        });
+        try {
+          require('../audit/index.cjs').auditPortal(req, 'ss_custom_restore', {
+            username: by,
+            detail: JSON.stringify({
+              awxServerId: server.id,
+              templateId: Number(req.params.templateId),
+              historyId: Number(req.params.historyId),
+            }),
+          });
+        } catch {
+          /* yoksay */
+        }
+        res.json({ ok: true, customization: data });
+      } catch (err) {
+        res.status(400).json({ ok: false, message: 'Geri yükleme başarısız: ' + err.message });
+      }
+    },
+  );
 
   // GET /api/ansible/ss/smart-flow-metadata/:flowKey — Admin arac-kutusu: Smart RFF'in
   // "Metadata Service Required to Start Request Flow - REST" ucu (client.cjs.getFlowMetadata,
@@ -4446,7 +4721,8 @@ function initAnsibleRunner(app) {
         extraVars = resolveLaunchExtraVars(specFields, overrides, submittedExtraVars);
         await assertChoiceSources(
           specFields.map((f) => {
-            const ov = (overrides.fieldOverrides || []).find((o) => o.fieldName === f.variable) || {};
+            const ov =
+              (overrides.fieldOverrides || []).find((o) => o.fieldName === f.variable) || {};
             return { name: f.variable, label: f.question_name, choicesSource: ov.choicesSource };
           }),
           extraVars,
@@ -4544,7 +4820,8 @@ function initAnsibleRunner(app) {
   app.post('/api/ansible/ss/smart-metadata-preview', requireAuth, requireAdmin, (req, res) => {
     try {
       const raw = String(req.body?.metadataFields || '');
-      const extraVars = req.body?.extraVars && typeof req.body.extraVars === 'object' ? req.body.extraVars : {};
+      const extraVars =
+        req.body?.extraVars && typeof req.body.extraVars === 'object' ? req.body.extraVars : {};
       const u = req.session?.user || {};
       const metadata = buildSmartMetadata(raw, {
         username: u.username || 'onizleme',
@@ -4554,7 +4831,8 @@ function initAnsibleRunner(app) {
         extraVars,
         opsx: req.body?.opsx && typeof req.body.opsx === 'object' ? req.body.opsx : undefined,
         // ScaleX (2026-10-13): {{scalex.*}} degiskenleri ornek degerlerle onizlenir.
-        scalex: req.body?.scalex && typeof req.body.scalex === 'object' ? req.body.scalex : undefined,
+        scalex:
+          req.body?.scalex && typeof req.body.scalex === 'object' ? req.body.scalex : undefined,
       });
       res.json({ ok: true, metadata });
     } catch (err) {
@@ -4583,9 +4861,10 @@ function initAnsibleRunner(app) {
         Number(i.awxTemplateId) === templateId,
     );
     if (!ssItem) {
-      return res
-        .status(403)
-        .json({ ok: false, message: 'Bu servis Self Service listesinde kayıtlı değil ya da size açık değil.' });
+      return res.status(403).json({
+        ok: false,
+        message: 'Bu servis Self Service listesinde kayıtlı değil ya da size açık değil.',
+      });
     }
 
     const username = req.session?.user?.username || 'anonymous';
@@ -4796,8 +5075,13 @@ function initAnsibleRunner(app) {
       const gates = require('./change-gates.cjs');
       // Admin KENDI tetiklemesinde Smart onayini atlamis olabilir (admin-smart-atla.cjs; denetime yazilir).
       const smartGerekli = gates.isSmartRequired(overrides.smartApproval, gateVars);
-      const adminAtladi = smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
-      if (adminAtladi) require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'selfservice_test_scenario_run', { templateId, templateName });
+      const adminAtladi =
+        smartGerekli && (await require('./admin-smart-atla.cjs').adminSmartAtliyor(req));
+      if (adminAtladi)
+        require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'selfservice_test_scenario_run', {
+          templateId,
+          templateName,
+        });
       if (smartGerekli && !adminAtladi) {
         let opened;
         try {
@@ -4818,7 +5102,10 @@ function initAnsibleRunner(app) {
           if (smartErr.code === 'smart_flow_key_missing') {
             return {
               status: 400,
-              body: { ok: false, message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.' },
+              body: {
+                ok: false,
+                message: 'Bu servis için Smart Flow Key tanımlanmamış — yöneticiye başvurun.',
+              },
             };
           }
           // Bilet ACILDI ama yerel kayit dustuyse mesaj "acilamadi" DEMEMELI —
@@ -4826,7 +5113,11 @@ function initAnsibleRunner(app) {
           if (smartErr.code === 'smart_ticket_store_failed') {
             return {
               status: smartErr.status || 500,
-              body: { ok: false, message: smartErr.message, externalTicketId: smartErr.externalTicketId },
+              body: {
+                ok: false,
+                message: smartErr.message,
+                externalTicketId: smartErr.externalTicketId,
+              },
             };
           }
           return {
@@ -4858,7 +5149,10 @@ function initAnsibleRunner(app) {
       return { status: 200, body: { ok: true, jobId: result.jobId, status: result.status } };
     } catch (err) {
       if (err.field) {
-        return { status: err.status || 500, body: { ok: false, message: err.message, field: err.field } };
+        return {
+          status: err.status || 500,
+          body: { ok: false, message: err.message, field: err.field },
+        };
       }
       const { status, message } = friendlyAwxError(err);
       return { status, body: { ok: false, message } };
@@ -4901,7 +5195,8 @@ function initAnsibleRunner(app) {
     // null / bos: hedef girdisi SILINIR (tasimada kaynakta ayar yoksa hedef satir da silinir).
     setCustomCache: (serverId, templateId, data) => {
       if (!_ssCustom) return;
-      if (data && typeof data === 'object' && Object.keys(data).length) _ssCustom.set(customKey(serverId, templateId), data);
+      if (data && typeof data === 'object' && Object.keys(data).length)
+        _ssCustom.set(customKey(serverId, templateId), data);
       else _ssCustom.delete(customKey(serverId, templateId));
     },
     ssItemsKirliIsaretle,
@@ -4960,7 +5255,9 @@ function initAnsibleRunner(app) {
       });
     } catch (err) {
       // 404/502/503 nginx tarafindan HTML hata sayfasina cevriliyordu -> 400 (bkz. oco/client httpStatus)
-      res.status(require('../oco/client.cjs').httpStatus(err)).json({ ok: false, message: err.message });
+      res
+        .status(require('../oco/client.cjs').httpStatus(err))
+        .json({ ok: false, message: err.message });
     }
   });
 
@@ -5490,7 +5787,8 @@ function initAnsibleRunner(app) {
   // SCALEX BILETI REDDEDILIR (2026-11-11 inceleme): scalex_operations satiri bilet TIMEOUT olunca
   // uzlastiricida CANCELLED olur (geri yukleme kilidi de birakilir) ve yalniz PENDING_APPROVAL
   // satiri benimsenir; buradan kosturmak ScaleX aynasini / kilidini isten habersiz birakirdi.
-  const RETRIGGER_SCALEX_MESAJI = 'Bu talep bir ScaleX işlemine bağlı; buradan tetiklenmez (ScaleX ayna ve kilit kaydı güncellenmezdi). İşlemi ScaleX ekranından yeniden başlatın.';
+  const RETRIGGER_SCALEX_MESAJI =
+    'Bu talep bir ScaleX işlemine bağlı; buradan tetiklenmez (ScaleX ayna ve kilit kaydı güncellenmezdi). İşlemi ScaleX ekranından yeniden başlatın.';
   async function retriggerScalexBagliMi(ticketId) {
     const { rows } = await require('../db/index.cjs').query(
       'SELECT TOP 1 id FROM scalex_operations WHERE smart_ticket_id = $1',
@@ -5503,7 +5801,9 @@ function initAnsibleRunner(app) {
     if (!username) return null;
     try {
       const ident = await require('../auth/users.cjs').getUserIdentity(username);
-      return ident ? { username: ident.username || username, displayName: ident.displayName, mail: ident.mail } : { username };
+      return ident
+        ? { username: ident.username || username, displayName: ident.displayName, mail: ident.mail }
+        : { username };
     } catch (e) {
       console.warn('[Smart] yeniden tetikleme: talep sahibi kimligi cozulemedi:', e.message);
       return { username };
@@ -5515,7 +5815,11 @@ function initAnsibleRunner(app) {
     let son;
     for (let deneme = 0; deneme < 3; deneme += 1) {
       try {
-        return await smartStore.markState(ticketId, { ...alanlar, resolved: true, expected: 'LAUNCHING' });
+        return await smartStore.markState(ticketId, {
+          ...alanlar,
+          resolved: true,
+          expected: 'LAUNCHING',
+        });
       } catch (e) {
         son = e;
         await new Promise((r) => setTimeout(r, 300 * (deneme + 1)));
@@ -5525,232 +5829,368 @@ function initAnsibleRunner(app) {
   }
 
   // GET .../retrigger-check: modal acilinca Smart durumu + OCO baglami (hicbir sey degismez).
-  app.get('/api/ansible/ss/smart-ticket/:id/retrigger-check', requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const rt = require('../smart/yeniden-tetikle.cjs');
-      const ticket = await require('../smart/store.cjs').getTicket(Number(req.params.id));
-      const u = rt.uygunluk(ticket);
-      if (!u.ok) return res.status(u.status).json({ ok: false, message: u.message });
-      if (await retriggerScalexBagliMi(ticket.id)) return res.status(409).json({ ok: false, message: RETRIGGER_SCALEX_MESAJI });
-      let smart;
+  app.get(
+    '/api/ansible/ss/smart-ticket/:id/retrigger-check',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
       try {
-        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
-      } catch (e) {
-        smart = rt.smartKarari({ hata: e.message });
+        const rt = require('../smart/yeniden-tetikle.cjs');
+        const ticket = await require('../smart/store.cjs').getTicket(Number(req.params.id));
+        const u = rt.uygunluk(ticket);
+        if (!u.ok) return res.status(u.status).json({ ok: false, message: u.message });
+        if (await retriggerScalexBagliMi(ticket.id))
+          return res.status(409).json({ ok: false, message: RETRIGGER_SCALEX_MESAJI });
+        let smart;
+        try {
+          smart = rt.smartKarari({
+            status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId),
+          });
+        } catch (e) {
+          smart = rt.smartKarari({ hata: e.message });
+        }
+        const pl = ticket.pendingLaunch || {};
+        res.json({
+          ok: true,
+          smart,
+          oco: {
+            kapsamli: rt.ocoKapsamli(ticket),
+            ocoNumber: String(pl.extraVars?.oco_number ?? '') || null,
+            windowStartIso: pl.ocoWindowStartIso || null,
+            windowEndIso: pl.ocoWindowEndIso || null,
+          },
+          notEnAz: rt.NOT_EN_AZ,
+        });
+      } catch (err) {
+        res.status(500).json({ ok: false, message: err.message });
       }
-      const pl = ticket.pendingLaunch || {};
-      res.json({
-        ok: true,
-        smart,
-        oco: {
-          kapsamli: rt.ocoKapsamli(ticket),
-          ocoNumber: String(pl.extraVars?.oco_number ?? '') || null,
-          windowStartIso: pl.ocoWindowStartIso || null,
-          windowEndIso: pl.ocoWindowEndIso || null,
-        },
-        notEnAz: rt.NOT_EN_AZ,
-      });
-    } catch (err) {
-      res.status(500).json({ ok: false, message: err.message });
-    }
-  });
+    },
+  );
 
   // POST .../retrigger { note, mode: 'oco'|'pencereDisi', ocoNumber, outsideWindowConfirm }
   // DENETIM: her ret 'selfservice_smart_ticket_retrigger_denied', her sonuc (basari / AWX hatasi /
   // bilet yazilamadi) 'selfservice_smart_ticket_retrigger'. Basari denetimi bilet yazimindan ONCE.
-  app.post('/api/ansible/ss/smart-ticket/:id/retrigger', requireAuth, requireAdmin, async (req, res) => {
-    const rt = require('../smart/yeniden-tetikle.cjs');
-    const smartStore = require('../smart/store.cjs');
-    const audit = require('../audit/index.cjs');
-    const admin = req.session?.user?.username || 'admin';
-    const denetim = { ticketId: Number(req.params.id), admin };
-    const denetle = (eylem, ek) => {
-      try {
-        audit.auditPortal(req, eylem, { detail: JSON.stringify({ ...denetim, ...ek }) });
-      } catch (e) {
-        console.warn('[Smart] yeniden tetikleme denetimi yazilamadi:', e.message);
-      }
-    };
-    const reddet = (status, message, ek = {}) => {
-      denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'RED', status, message, ...ek });
-      return res.status(status).json({ ok: false, message, ...ek });
-    };
-    let claimed = null;
-    // Is AWX'te baslatildi/zamanlandi mi? Sonraki DB yazimi patlarsa bilet ERROR'a CEKILMEZ
-    // (is kosuyor; ERROR "baslamadi" anlamina gelirdi).
-    let basladi = false;
-    /** @type {{status: 'SCHEDULED'|'LAUNCHED'|null, jobId: number|null, awxScheduleId: number|null, runAtText: string|null}} */
-    const sonuc = { status: null, jobId: null, awxScheduleId: null, runAtText: null };
-    try {
-      const ticket = await smartStore.getTicket(denetim.ticketId);
-      const u = rt.uygunluk(ticket);
-      if (!u.ok) return reddet(u.status, u.message);
-      Object.assign(denetim, { owner: ticket.username, externalTicketId: ticket.externalTicketId });
-      if (await retriggerScalexBagliMi(ticket.id)) return reddet(409, RETRIGGER_SCALEX_MESAJI);
-      const istek = rt.istekDogrula(req.body, ticket);
-      if (!istek.ok) return reddet(400, istek.message);
-      const pl = ticket.pendingLaunch;
-      Object.assign(denetim, {
-        mod: istek.mod, ocoNumber: istek.ocoNumber || null,
-        eskiOcoNumber: pl.extraVars?.oco_number || null, note: istek.not,
-      });
-      const server = getServerById(ticket.awxServerId);
-      if (!server) return reddet(409, sunucuYokHatasi(ticket.awxServerId).message);
-
-      // 1) SMART: reddedildiyse ya da okunamadiysa tetiklenmez (fail-closed).
-      let smart;
-      try {
-        smart = rt.smartKarari({ status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId) });
-      } catch (e) {
-        smart = rt.smartKarari({ hata: e.message });
-      }
-      Object.assign(denetim, { smartDurum: smart.durum, smartStatusCode: smart.statusCode, smartStateName: smart.stateName });
-      if (smart.engel) return reddet(409, smart.message, { smart });
-
-      // 2) OCO: yeni numara verildiyse pencere AYNI kurallarla (change-gates) degerlendirilir.
-      let extraVars = { ...(pl.extraVars || {}) };
-      let pencere = null;
-      let order = null;
-      if (istek.mod === 'oco') {
-        const ocoClient = require('../oco/client.cjs');
-        const ocoWindow = require('../oco/window.cjs');
+  app.post(
+    '/api/ansible/ss/smart-ticket/:id/retrigger',
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const rt = require('../smart/yeniden-tetikle.cjs');
+      const smartStore = require('../smart/store.cjs');
+      const audit = require('../audit/index.cjs');
+      const admin = req.session?.user?.username || 'admin';
+      const denetim = { ticketId: Number(req.params.id), admin };
+      const denetle = (eylem, ek) => {
         try {
-          order = await ocoClient.getChangeOrder(istek.ocoNumber);
+          audit.auditPortal(req, eylem, { detail: JSON.stringify({ ...denetim, ...ek }) });
         } catch (e) {
-          return reddet(ocoClient.httpStatus(e), e.message);
+          console.warn('[Smart] yeniden tetikleme denetimi yazilamadi:', e.message);
         }
-        const pi = ocoWindow.extractPlannedInterruption(order.payload);
-        if (!pi?.startDate) {
-          return reddet(400, `OCO ${istek.ocoNumber} kaydında planlanan kesinti tarihi yok; işlem yapılmadı.`);
-        }
-        pencere = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
-        if (!pencere.ok) return reddet(400, pencere.message);
-        if (pencere.phase === 'expired') {
-          return reddet(400, `OCO ${istek.ocoNumber} kesinti penceresi (${pencere.windowEndText}) kapanmış; başka bir OCO girin.`);
-        }
-        extraVars = rt.yeniOcoDegiskenleri(extraVars, istek.ocoNumber, pencere);
-      }
+      };
+      const reddet = (status, message, ek = {}) => {
+        denetle('selfservice_smart_ticket_retrigger_denied', {
+          sonuc: 'RED',
+          status,
+          message,
+          ...ek,
+        });
+        return res.status(status).json({ ok: false, message, ...ek });
+      };
+      let claimed = null;
+      // Is AWX'te baslatildi/zamanlandi mi? Sonraki DB yazimi patlarsa bilet ERROR'a CEKILMEZ
+      // (is kosuyor; ERROR "baslamadi" anlamina gelirdi).
+      let basladi = false;
+      /** @type {{status: 'SCHEDULED'|'LAUNCHED'|null, jobId: number|null, awxScheduleId: number|null, runAtText: string|null}} */
+      const sonuc = { status: null, jobId: null, awxScheduleId: null, runAtText: null };
+      try {
+        const ticket = await smartStore.getTicket(denetim.ticketId);
+        const u = rt.uygunluk(ticket);
+        if (!u.ok) return reddet(u.status, u.message);
+        Object.assign(denetim, {
+          owner: ticket.username,
+          externalTicketId: ticket.externalTicketId,
+        });
+        if (await retriggerScalexBagliMi(ticket.id)) return reddet(409, RETRIGGER_SCALEX_MESAJI);
+        const istek = rt.istekDogrula(req.body, ticket);
+        if (!istek.ok) return reddet(400, istek.message);
+        const pl = ticket.pendingLaunch;
+        Object.assign(denetim, {
+          mod: istek.mod,
+          ocoNumber: istek.ocoNumber || null,
+          eskiOcoNumber: pl.extraVars?.oco_number || null,
+          note: istek.not,
+        });
+        const server = getServerById(ticket.awxServerId);
+        if (!server) return reddet(409, sunucuYokHatasi(ticket.awxServerId).message);
 
-      // 3) SAHIPLEN: TIMEOUT -> LAUNCHING. Kaybeden (cift tik / ikinci admin) hicbir sey yapmaz.
-      claimed = await smartStore.claimTimeoutForRetrigger(ticket.id);
-      if (!claimed) {
-        return reddet(409, 'Talep bu sırada durum değiştirdi (başka biri tetiklemiş olabilir); sayfayı yenileyin.');
-      }
-      if (smart.durum !== 'onayli') {
-        require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'smart_talep_yeniden_tetikle', { ticketId: ticket.id, mod: istek.mod, smartStatusCode: smart.statusCode });
-      }
-      const ocoStore = require('../oco/store.cjs');
-      const ocoRecordId = pl.ocoRecordId ?? null;
+        // 1) SMART: reddedildiyse ya da okunamadiysa tetiklenmez (fail-closed).
+        let smart;
+        try {
+          smart = rt.smartKarari({
+            status: await require('../smart/client.cjs').checkTicketStatus(ticket.externalTicketId),
+          });
+        } catch (e) {
+          smart = rt.smartKarari({ hata: e.message });
+        }
+        Object.assign(denetim, {
+          smartDurum: smart.durum,
+          smartStatusCode: smart.statusCode,
+          smartStateName: smart.stateName,
+        });
+        if (smart.engel) return reddet(409, smart.message, { smart });
 
-      // 4a) YENI OCO PENCERESI HENUZ ACILMADI: pencere basina AWX zamanlamasi. Portal'da da
-      // OCO kaydi olur (ekranda gorunur, iptal edilince AWX schedule'i silinir): bagli kayit varsa
-      // o guncellenir, yoksa / guncellenemezse yeni AWX_SCHEDULED kaydi acilir.
-      if (pencere && pencere.phase === 'before') {
-        const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not, zamanlandi: pencere.windowStartText });
-        const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, pl.detail, {
-          name: `PORTAL_OCO_${istek.ocoNumber}_${ticket.awxTemplateId}_${Date.now()}`,
-          runAt: pencere.windowStart,
+        // 2) OCO: yeni numara verildiyse pencere AYNI kurallarla (change-gates) degerlendirilir.
+        let extraVars = { ...(pl.extraVars || {}) };
+        let pencere = null;
+        let order = null;
+        if (istek.mod === 'oco') {
+          const ocoClient = require('../oco/client.cjs');
+          const ocoWindow = require('../oco/window.cjs');
+          try {
+            order = await ocoClient.getChangeOrder(istek.ocoNumber);
+          } catch (e) {
+            return reddet(ocoClient.httpStatus(e), e.message);
+          }
+          const pi = ocoWindow.extractPlannedInterruption(order.payload);
+          if (!pi?.startDate) {
+            return reddet(
+              400,
+              `OCO ${istek.ocoNumber} kaydında planlanan kesinti tarihi yok; işlem yapılmadı.`,
+            );
+          }
+          pencere = ocoWindow.evaluateWindow({ startDate: pi.startDate, endDate: pi.endDate });
+          if (!pencere.ok) return reddet(400, pencere.message);
+          if (pencere.phase === 'expired') {
+            return reddet(
+              400,
+              `OCO ${istek.ocoNumber} kesinti penceresi (${pencere.windowEndText}) kapanmış; başka bir OCO girin.`,
+            );
+          }
+          extraVars = rt.yeniOcoDegiskenleri(extraVars, istek.ocoNumber, pencere);
+        }
+
+        // 3) SAHIPLEN: TIMEOUT -> LAUNCHING. Kaybeden (cift tik / ikinci admin) hicbir sey yapmaz.
+        claimed = await smartStore.claimTimeoutForRetrigger(ticket.id);
+        if (!claimed) {
+          return reddet(
+            409,
+            'Talep bu sırada durum değiştirdi (başka biri tetiklemiş olabilir); sayfayı yenileyin.',
+          );
+        }
+        if (smart.durum !== 'onayli') {
+          require('./admin-smart-atla.cjs').atlamayiDenetle(req, 'smart_talep_yeniden_tetikle', {
+            ticketId: ticket.id,
+            mod: istek.mod,
+            smartStatusCode: smart.statusCode,
+          });
+        }
+        const ocoStore = require('../oco/store.cjs');
+        const ocoRecordId = pl.ocoRecordId ?? null;
+
+        // 4a) YENI OCO PENCERESI HENUZ ACILMADI: pencere basina AWX zamanlamasi. Portal'da da
+        // OCO kaydi olur (ekranda gorunur, iptal edilince AWX schedule'i silinir): bagli kayit varsa
+        // o guncellenir, yoksa / guncellenemezse yeni AWX_SCHEDULED kaydi acilir.
+        if (pencere?.phase === 'before') {
+          const metin = rt.sonucMetni({
+            admin,
+            mod: istek.mod,
+            ocoNumber: istek.ocoNumber,
+            smartDurum: smart.durum,
+            not: istek.not,
+            zamanlandi: pencere.windowStartText,
+          });
+          const sched = await createOcoAwxSchedule(server, ticket.awxTemplateId, pl.detail, {
+            name: `PORTAL_OCO_${istek.ocoNumber}_${ticket.awxTemplateId}_${Date.now()}`,
+            runAt: pencere.windowStart,
+            extraVars,
+            resolvedLaunchOptions: pl.resolvedLaunchOptions,
+            requester: await retriggerTalepSahibi(pl.username),
+          });
+          basladi = true;
+          Object.assign(sonuc, {
+            status: 'SCHEDULED',
+            awxScheduleId: sched.scheduleId,
+            runAtText: pencere.windowStartText,
+          });
+          let ocoKayit = null;
+          try {
+            const kayitAlanlari = {
+              status: 'AWX_SCHEDULED',
+              awxScheduleId: sched.scheduleId,
+              ocoNumber: istek.ocoNumber,
+              runAt: pencere.windowStart,
+              windowEnd: pencere.windowEnd,
+              message: metin,
+            };
+            if (ocoRecordId && (await ocoStore.markRetriggered(ocoRecordId, kayitAlanlari))) {
+              ocoKayit = ocoRecordId;
+            } else {
+              const rec = await ocoStore.createAwxScheduled({
+                username: ticket.username,
+                awxServerId: server.id,
+                awxTemplateId: ticket.awxTemplateId,
+                ocoNumber: istek.ocoNumber,
+                ocoSubject: order?.result?.OcoWfIdSubject || order?.result?.Subject || null,
+                runAt: pencere.windowStart,
+                windowEnd: pencere.windowEnd,
+                awxScheduleId: sched.scheduleId,
+                pendingLaunch: {
+                  ...pl,
+                  ocoRecordId: undefined,
+                  extraVars,
+                  ocoNumber: istek.ocoNumber,
+                  ocoWindowStartIso: pencere.windowStart.toISOString(),
+                  ocoWindowEndIso: pencere.windowEnd.toISOString(),
+                },
+                ownerGroups: null,
+              });
+              ocoKayit = rec.id;
+            }
+          } catch (e) {
+            console.warn(
+              `[Smart] ticket #${ticket.id} yeniden tetikleme: OCO kaydi yazilamadi (AWX schedule ${sched.scheduleId} KURULDU):`,
+              e.message,
+            );
+          }
+          denetle('selfservice_smart_ticket_retrigger', {
+            sonuc: 'SCHEDULED',
+            awxScheduleId: sched.scheduleId,
+            runAt: pencere.windowStartText,
+            ocoKayit,
+          });
+          await retriggerBiletiYaz(smartStore, ticket.id, {
+            status: 'SCHEDULED',
+            smartStateName: smart.stateName || ticket.smartStateName,
+            errorMessage: metin,
+          });
+          return res.json({
+            ok: true,
+            status: 'SCHEDULED',
+            scheduled: true,
+            runAtText: pencere.windowStartText,
+            awxScheduleId: sched.scheduleId,
+            ocoKayit,
+            message: metin,
+          });
+        }
+
+        // 4b) HEMEN CALISTIR (OCO'suz talep, yeni OCO penceresi acik ya da pencere disi).
+        const outcome = await performSsLaunch(server, ticket.awxTemplateId, {
+          detail: pl.detail,
           extraVars,
           resolvedLaunchOptions: pl.resolvedLaunchOptions,
-          requester: await retriggerTalepSahibi(pl.username),
+          specFields: pl.specFields,
+          overrides: pl.overrides,
+          username: pl.username,
+          templateName: pl.templateName,
+          req: null,
+          yutmaKorumasi: pl.yutmaKorumasi === true,
         });
         basladi = true;
-        Object.assign(sonuc, { status: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAtText: pencere.windowStartText });
+        const jobId = outcome?.jobId ?? null;
+        Object.assign(sonuc, { status: 'LAUNCHED', jobId });
+        const metin = rt.sonucMetni({
+          admin,
+          mod: istek.mod,
+          ocoNumber: istek.ocoNumber,
+          smartDurum: smart.durum,
+          not: istek.not,
+        });
         let ocoKayit = null;
-        try {
-          const kayitAlanlari = {
-            status: 'AWX_SCHEDULED', awxScheduleId: sched.scheduleId, ocoNumber: istek.ocoNumber,
-            runAt: pencere.windowStart, windowEnd: pencere.windowEnd, message: metin,
-          };
-          if (ocoRecordId && (await ocoStore.markRetriggered(ocoRecordId, kayitAlanlari))) {
-            ocoKayit = ocoRecordId;
-          } else {
-            const rec = await ocoStore.createAwxScheduled({
-              username: ticket.username, awxServerId: server.id, awxTemplateId: ticket.awxTemplateId,
-              ocoNumber: istek.ocoNumber, ocoSubject: order?.result?.OcoWfIdSubject || order?.result?.Subject || null,
-              runAt: pencere.windowStart, windowEnd: pencere.windowEnd, awxScheduleId: sched.scheduleId,
-              pendingLaunch: {
-                ...pl, ocoRecordId: undefined, extraVars, ocoNumber: istek.ocoNumber,
-                ocoWindowStartIso: pencere.windowStart.toISOString(), ocoWindowEndIso: pencere.windowEnd.toISOString(),
-              },
-              ownerGroups: null,
+        if (ocoRecordId) {
+          try {
+            const yazildi = await ocoStore.markRetriggered(ocoRecordId, {
+              status: 'LAUNCHED',
+              awxJobId: jobId,
+              ocoNumber: istek.ocoNumber || null,
+              windowEnd: pencere ? pencere.windowEnd : null,
+              message: metin,
             });
-            ocoKayit = rec.id;
+            ocoKayit = yazildi ? ocoRecordId : null;
+            if (!yazildi)
+              console.warn(
+                `[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilmadi (kayit FAILED degil).`,
+              );
+          } catch (e) {
+            console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilamadi:`, e.message);
           }
-        } catch (e) {
-          console.warn(`[Smart] ticket #${ticket.id} yeniden tetikleme: OCO kaydi yazilamadi (AWX schedule ${sched.scheduleId} KURULDU):`, e.message);
         }
-        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'SCHEDULED', awxScheduleId: sched.scheduleId, runAt: pencere.windowStartText, ocoKayit });
+        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'LAUNCHED', jobId, ocoKayit });
         await retriggerBiletiYaz(smartStore, ticket.id, {
-          status: 'SCHEDULED', smartStateName: smart.stateName || ticket.smartStateName, errorMessage: metin,
+          status: 'LAUNCHED',
+          smartStateName: smart.stateName || ticket.smartStateName,
+          awxJobId: jobId,
+          errorMessage: metin,
         });
-        return res.json({ ok: true, status: 'SCHEDULED', scheduled: true, runAtText: pencere.windowStartText, awxScheduleId: sched.scheduleId, ocoKayit, message: metin });
-      }
-
-      // 4b) HEMEN CALISTIR (OCO'suz talep, yeni OCO penceresi acik ya da pencere disi).
-      const outcome = await performSsLaunch(server, ticket.awxTemplateId, {
-        detail: pl.detail,
-        extraVars,
-        resolvedLaunchOptions: pl.resolvedLaunchOptions,
-        specFields: pl.specFields,
-        overrides: pl.overrides,
-        username: pl.username,
-        templateName: pl.templateName,
-        req: null,
-        yutmaKorumasi: pl.yutmaKorumasi === true,
-      });
-      basladi = true;
-      const jobId = outcome?.jobId ?? null;
-      Object.assign(sonuc, { status: 'LAUNCHED', jobId });
-      const metin = rt.sonucMetni({ admin, mod: istek.mod, ocoNumber: istek.ocoNumber, smartDurum: smart.durum, not: istek.not });
-      let ocoKayit = null;
-      if (ocoRecordId) {
-        try {
-          const yazildi = await ocoStore.markRetriggered(ocoRecordId, {
-            status: 'LAUNCHED', awxJobId: jobId, ocoNumber: istek.ocoNumber || null,
-            windowEnd: pencere ? pencere.windowEnd : null, message: metin,
-          });
-          ocoKayit = yazildi ? ocoRecordId : null;
-          if (!yazildi) console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilmadi (kayit FAILED degil).`);
-        } catch (e) {
-          console.warn(`[OCO] #${ocoRecordId} yeniden tetikleme sonucu yazilamadi:`, e.message);
-        }
-      }
-      denetle('selfservice_smart_ticket_retrigger', { sonuc: 'LAUNCHED', jobId, ocoKayit });
-      await retriggerBiletiYaz(smartStore, ticket.id, {
-        status: 'LAUNCHED', smartStateName: smart.stateName || ticket.smartStateName, awxJobId: jobId, errorMessage: metin,
-      });
-      return res.json({ ok: true, status: 'LAUNCHED', jobId, awxServerId: ticket.awxServerId, ocoKayit, message: metin });
-    } catch (err) {
-      if (basladi) {
-        // Is AWX'te kosuyor / zamanli; yalniz bilet kaydi yazilamadi. Gercek sonuc + uyari doner.
-        console.warn(`[Smart] ticket #${denetim.ticketId} yeniden tetiklendi ama bilet yazilamadi:`, err.message);
-        denetle('selfservice_smart_ticket_retrigger', { ...sonuc, sonuc: sonuc.status, biletYazilamadi: true, hata: String(err.message).slice(0, 500) });
         return res.json({
-          ok: true, warning: true, ...sonuc, scheduled: sonuc.status === 'SCHEDULED',
-          message: `İş AWX'te ${sonuc.status === 'SCHEDULED' ? (String(sonuc.runAtText) + " tarihine zamanlandı") : ("başlatıldı (job #" + sonuc.jobId + ")")} ancak talep kaydı güncellenemedi (${err.message}); kayıt "başlatılıyor" durumunda kalabilir.`,
+          ok: true,
+          status: 'LAUNCHED',
+          jobId,
+          awxServerId: ticket.awxServerId,
+          ocoKayit,
+          message: metin,
         });
+      } catch (err) {
+        if (basladi) {
+          // Is AWX'te kosuyor / zamanli; yalniz bilet kaydi yazilamadi. Gercek sonuc + uyari doner.
+          console.warn(
+            `[Smart] ticket #${denetim.ticketId} yeniden tetiklendi ama bilet yazilamadi:`,
+            err.message,
+          );
+          denetle('selfservice_smart_ticket_retrigger', {
+            ...sonuc,
+            sonuc: sonuc.status,
+            biletYazilamadi: true,
+            hata: String(err.message).slice(0, 500),
+          });
+          return res.json({
+            ok: true,
+            warning: true,
+            ...sonuc,
+            scheduled: sonuc.status === 'SCHEDULED',
+            message: `İş AWX'te ${sonuc.status === 'SCHEDULED' ? String(sonuc.runAtText) + ' tarihine zamanlandı' : 'başlatıldı (job #' + sonuc.jobId + ')'} ancak talep kaydı güncellenemedi (${err.message}); kayıt "başlatılıyor" durumunda kalabilir.`,
+          });
+        }
+        if (claimed) {
+          // Sahiplenildi ama AWX cagrisi hata verdi: bilet LAUNCHING'de asili kalmasin.
+          await smartStore
+            .markState(claimed.id, {
+              status: 'ERROR',
+              smartStateName: claimed.smartStateName,
+              errorMessage:
+                `Admin ${admin} yeniden tetikledi ama AWX çağrısı başarısız: ${err.message}`.slice(
+                  0,
+                  2000,
+                ),
+              resolved: true,
+              expected: 'LAUNCHING',
+            })
+            .catch((e) => console.warn('[Smart] yeniden tetikleme ERROR yazilamadi:', e.message));
+          denetle('selfservice_smart_ticket_retrigger', {
+            sonuc: 'ERROR',
+            hata: String(err.message).slice(0, 500),
+          });
+        } else {
+          denetle('selfservice_smart_ticket_retrigger_denied', {
+            sonuc: 'HATA',
+            hata: String(err.message).slice(0, 500),
+          });
+        }
+        res
+          .status(err.status && err.status >= 400 && err.status < 600 ? err.status : 500)
+          .json({ ok: false, message: err.message });
       }
-      if (claimed) {
-        // Sahiplenildi ama AWX cagrisi hata verdi: bilet LAUNCHING'de asili kalmasin.
-        await smartStore.markState(claimed.id, {
-          status: 'ERROR', smartStateName: claimed.smartStateName,
-          errorMessage: `Admin ${admin} yeniden tetikledi ama AWX çağrısı başarısız: ${err.message}`.slice(0, 2000),
-          resolved: true, expected: 'LAUNCHING',
-        }).catch((e) => console.warn('[Smart] yeniden tetikleme ERROR yazilamadi:', e.message));
-        denetle('selfservice_smart_ticket_retrigger', { sonuc: 'ERROR', hata: String(err.message).slice(0, 500) });
-      } else {
-        denetle('selfservice_smart_ticket_retrigger_denied', { sonuc: 'HATA', hata: String(err.message).slice(0, 500) });
-      }
-      res.status(err.status && err.status >= 400 && err.status < 600 ? err.status : 500).json({ ok: false, message: err.message });
-    }
-  });
+    },
+  );
 
   // GET /api/ansible/ss/job-status/:serverId/:jobId — Job durumu (tum kullanicilar)
   app.get('/api/ansible/ss/job-status/:serverId/:jobId', requireAuth, async (req, res) => {
     const server = getServerById(req.params.serverId);
     // Gecmisteki eski is kapatilmis bir sunucudaysa "bulunamadi" degil "devre disi" yazar.
-    if (!server) return res.status(404).json({ ok: false, message: sunucuYokHatasi(req.params.serverId).message });
+    if (!server)
+      return res
+        .status(404)
+        .json({ ok: false, message: sunucuYokHatasi(req.params.serverId).message });
 
     // Tek `dbx` — fonksiyon boyunca IDOR kontrolunde VE terminal-durum finalize
     // blogunda ayni degisken kullanilir (onceden ikinci kullanim ayri bir ic
@@ -5809,7 +6249,9 @@ function initAnsibleRunner(app) {
       if (wasIsi) {
         const wasUser = req.session?.user || req.user || {};
         if (gecmisOkunamadi) {
-          return res.status(503).json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
+          return res
+            .status(503)
+            .json({ ok: false, message: 'İş sahipliği doğrulanamadı, lütfen tekrar deneyin.' });
         }
         if (!gecmisVar && wasUser.role !== 'Admin') {
           return res.status(403).json({ ok: false, message: 'Bu iş size ait değil.' });
@@ -6012,7 +6454,12 @@ function clearTokenCache() {
 // sunucu/tur basina ok/error kaydi. Durum ekrani bu kaydi aynen gosterir.
 const LONGJOB_LIST_KINDS = [
   { kind: 'job', path: '/api/v2/jobs/', templateField: 'job_template', uiSegment: 'playbook' },
-  { kind: 'workflow', path: '/api/v2/workflow_jobs/', templateField: 'workflow_job_template', uiSegment: 'workflow' },
+  {
+    kind: 'workflow',
+    path: '/api/v2/workflow_jobs/',
+    templateField: 'workflow_job_template',
+    uiSegment: 'workflow',
+  },
 ];
 const LONGJOB_PAGE_SIZE = 200;
 const LONGJOB_MAX_PAGES = 10; // tur basina 2.000 is; asilirsa `truncated` + uyari
@@ -6036,7 +6483,7 @@ async function listAwxPages(server, token, startPath, maxPages) {
   let pages = 0;
   while (next && pages < maxPages) {
     const data = await awxRequestToServer(server, token, 'GET', next);
-    for (const r of (data?.results) || []) {
+    for (const r of data?.results || []) {
       // Sayfalar arasinda kayma olursa (yeni is eklendi) ayni is iki kez gelmesin.
       // TERSI (one dusen bir is bitti -> bir is HIC gorunmez) burada FARK EDILEMEZ: AWX
       // sayfalamasi ofset tabanli. Bu yuzden long-job-cancel "listede yok" sonucunu
@@ -6052,7 +6499,7 @@ async function listAwxPages(server, token, startPath, maxPages) {
 }
 
 function toLongJobCandidate(server, spec, j) {
-  const sf = (j?.summary_fields) || {};
+  const sf = j?.summary_fields || {};
   const tpl = sf[spec.templateField] || {};
   return {
     serverId: server.id,
@@ -6142,7 +6589,13 @@ async function listLongJobCandidatesAcrossServers({
           if (c.status === 'running') out.running++;
           else out.queued++;
         }
-        out.kinds[spec.kind] = { ok: true, error: null, count: r.results.length, pages: r.pages, truncated: r.truncated };
+        out.kinds[spec.kind] = {
+          ok: true,
+          error: null,
+          count: r.results.length,
+          pages: r.pages,
+          truncated: r.truncated,
+        };
         out.complete[spec.kind] = !r.truncated;
         if (r.truncated) {
           out.truncated = true;
@@ -6152,8 +6605,16 @@ async function listLongJobCandidatesAcrossServers({
           );
         }
       } catch (err) {
-        out.kinds[spec.kind] = { ok: false, error: err.message, count: 0, pages: 0, truncated: false };
-        errors.push(`${spec.kind === 'workflow' ? 'workflow' : 'job'} listesi alınamadı: ${err.message}`);
+        out.kinds[spec.kind] = {
+          ok: false,
+          error: err.message,
+          count: 0,
+          pages: 0,
+          truncated: false,
+        };
+        errors.push(
+          `${spec.kind === 'workflow' ? 'workflow' : 'job'} listesi alınamadı: ${err.message}`,
+        );
       }
     }
     out.ok = LONGJOB_LIST_KINDS.every((s) => out.kinds[s.kind]?.ok);
@@ -6165,7 +6626,10 @@ async function listLongJobCandidatesAcrossServers({
     servers.map((server) =>
       sonTarihli(
         scanOne(server).catch((err) =>
-          failedServerScan(server, `Tarama beklenmedik hata verdi — bu sunucu bu turda TARANMADI: ${(err?.message) || err}`),
+          failedServerScan(
+            server,
+            `Tarama beklenmedik hata verdi — bu sunucu bu turda TARANMADI: ${err?.message || err}`,
+          ),
         ),
         deadlineMs,
         () =>
@@ -6180,7 +6644,10 @@ async function listLongJobCandidatesAcrossServers({
   for (const r of results) {
     for (const j of r.jobs) jobs.push(j);
     if (!r.ok || r.truncated) {
-      console.error(`[LongJobScan] ${r.serverName}: tarama eksik:`, redactAwxSecrets(r.error || 'bilinmeyen hata'));
+      console.error(
+        `[LongJobScan] ${r.serverName}: tarama eksik:`,
+        redactAwxSecrets(r.error || 'bilinmeyen hata'),
+      );
     }
   }
   return { jobs, servers: results.map(({ jobs: _j, ...rest }) => rest) };
@@ -6202,7 +6669,11 @@ async function listCancelableTemplatesForServer(server) {
   const req = (p) => awxRequestToServer(server, token, 'GET', p);
   const [jobTpls, wfTpls] = await Promise.all([
     fetchAllTemplatePages(req, server.url, '/api/v2/job_templates/?page_size=100&order_by=name'),
-    fetchAllTemplatePages(req, server.url, '/api/v2/workflow_job_templates/?page_size=100&order_by=name'),
+    fetchAllTemplatePages(
+      req,
+      server.url,
+      '/api/v2/workflow_job_templates/?page_size=100&order_by=name',
+    ),
   ]);
   return [
     ...jobTpls.map((t) => ({ id: t.id, name: t.name, kind: 'job' })),
@@ -6230,23 +6701,35 @@ async function getTemplateCapabilitiesOnServer(serverId, templateId, kind = 'job
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const viaToken = !!(typeof opts?.authToken === 'string' && opts.authToken);
   const token = viaToken ? opts.authToken : await getTokenForServer(server);
   const seg = kind === 'workflow' ? 'workflow_job_templates' : 'job_templates';
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/${seg}/${id}/`);
   const caps = t?.summary_fields?.user_capabilities;
   const ownToken =
-    !viaToken && !server.token && !!(server.user && server.password) && !(server.clientId && server.clientSecret);
+    !viaToken &&
+    !server.token &&
+    !!(server.user && server.password) &&
+    !(server.clientId && server.clientSecret);
   return {
-    name: (t?.name) || '',
+    name: t?.name || '',
     tokenScope: ownToken ? 'write' : 'unknown',
-    tokenSource: (() => { if (viaToken) return 'cancel_token'; if (server.token) return 'static'; if (server.clientId && server.clientSecret) return 'oauth2'; return 'password'; })(),
-    capabilities:
-      (() => { if (caps && typeof caps === 'object') return {
-            edit: typeof caps.edit === 'boolean' ? caps.edit : undefined,
-            start: typeof caps.start === 'boolean' ? caps.start : undefined,
-          }; return null; })(),
+    tokenSource: (() => {
+      if (viaToken) return 'cancel_token';
+      if (server.token) return 'static';
+      if (server.clientId && server.clientSecret) return 'oauth2';
+      return 'password';
+    })(),
+    capabilities: (() => {
+      if (caps && typeof caps === 'object')
+        return {
+          edit: typeof caps.edit === 'boolean' ? caps.edit : undefined,
+          start: typeof caps.start === 'boolean' ? caps.start : undefined,
+        };
+      return null;
+    })(),
   };
 }
 
@@ -6263,7 +6746,8 @@ async function getTemplateLaunchSettingsOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
   if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
@@ -6293,7 +6777,8 @@ async function getTemplateDefaultLimitOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
   if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
@@ -6306,11 +6791,16 @@ async function getTemplateDefaultLimitOnServer(serverId, templateId) {
  * almak icin. Hata FIRLATIR (cagiran sonraki turda yeniden dener).
  * @returns {Promise<Array<{ id: number, status: string, finished: (string|null) }>>}
  */
-async function listTemplateJobsOnServer(serverId, templateId, { finishedAfter = null, pageSize = 50 } = {}) {
+async function listTemplateJobsOnServer(
+  serverId,
+  templateId,
+  { finishedAfter = null, pageSize = 50 } = {},
+) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const q = new URLSearchParams({
     order_by: '-id',
     page_size: String(Math.max(1, Math.min(200, Number(pageSize) || 50))),
@@ -6318,7 +6808,12 @@ async function listTemplateJobsOnServer(serverId, templateId, { finishedAfter = 
   });
   if (finishedAfter) q.set('finished__gt', String(finishedAfter));
   const token = await getTokenForServer(server);
-  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/jobs/?${q}`);
+  const data = await awxRequestToServer(
+    server,
+    token,
+    'GET',
+    `/api/v2/job_templates/${id}/jobs/?${q}`,
+  );
   const liste = data && Array.isArray(data.results) ? data.results : [];
   return liste
     .filter((j) => j && Number.isInteger(j.id) && j.id > 0)
@@ -6338,7 +6833,8 @@ async function getTemplateSummaryOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
   if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
@@ -6346,7 +6842,8 @@ async function getTemplateSummaryOnServer(serverId, templateId) {
     id,
     name: typeof t.name === 'string' ? t.name : '',
     playbook: typeof t.playbook === 'string' ? t.playbook : '',
-    askVariablesOnLaunch: typeof t.ask_variables_on_launch === 'boolean' ? t.ask_variables_on_launch : undefined,
+    askVariablesOnLaunch:
+      typeof t.ask_variables_on_launch === 'boolean' ? t.ask_variables_on_launch : undefined,
   };
 }
 
@@ -6363,18 +6860,28 @@ async function getTemplateVariableDefaultsOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
   const out = {};
-  const ham = String((t?.extra_vars) || '').trim();
+  const ham = String(t?.extra_vars || '').trim();
   if (ham) {
     let obj = null;
-    try { obj = JSON.parse(ham); } catch { obj = require('../smart/metadata.cjs').parseSimpleYaml(ham); }
+    try {
+      obj = JSON.parse(ham);
+    } catch {
+      obj = require('../smart/metadata.cjs').parseSimpleYaml(ham);
+    }
     if (obj && typeof obj === 'object' && !Array.isArray(obj)) Object.assign(out, obj);
   }
-  const spec = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/survey_spec/`).catch(() => null);
-  for (const f of (Array.isArray(spec?.spec) ? spec.spec : [])) {
+  const spec = await awxRequestToServer(
+    server,
+    token,
+    'GET',
+    `/api/v2/job_templates/${id}/survey_spec/`,
+  ).catch(() => null);
+  for (const f of Array.isArray(spec?.spec) ? spec.spec : []) {
     if (!f?.variable || f.type === 'password') continue;
     if (f.default === undefined || f.default === null || f.default === '') continue;
     out[f.variable] = f.default;
@@ -6412,12 +6919,22 @@ async function getSurveySpecOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
-  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/survey_spec/`);
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('AWX survey_spec yanıtı nesne değil.');
+  const data = await awxRequestToServer(
+    server,
+    token,
+    'GET',
+    `/api/v2/job_templates/${id}/survey_spec/`,
+  );
+  if (!data || typeof data !== 'object' || Array.isArray(data))
+    throw new Error('AWX survey_spec yanıtı nesne değil.');
   // name / description: Self Servis Tasima survey yazimi kaynagin kendi degerlerini korur.
-  const ek = { name: typeof data.name === 'string' ? data.name : '', description: typeof data.description === 'string' ? data.description : '' };
+  const ek = {
+    name: typeof data.name === 'string' ? data.name : '',
+    description: typeof data.description === 'string' ? data.description : '',
+  };
   if (data.spec === undefined) return { spec: [], ...ek };
   if (!Array.isArray(data.spec)) throw new Error('AWX survey_spec.spec alanı liste değil.');
   return { spec: data.spec, ...ek };
@@ -6434,7 +6951,8 @@ async function getTemplateDetailOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   const t = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/`);
   if (!t || typeof t !== 'object') throw new Error('AWX template yanıtı nesne değil.');
@@ -6449,17 +6967,20 @@ async function writeSurveySpecOnServer(serverId, templateId, spec, opts = {}) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const token = await getTokenForServer(server);
-  const istek = (method, pathname, body) => awxRequestToServer(server, token, method, pathname, body);
+  const istek = (method, pathname, body) =>
+    awxRequestToServer(server, token, method, pathname, body);
   return require('./ss-tasima.cjs').surveyYaz(istek, templateId, spec, opts);
 }
 
 /** Yalniz KAPATMA desteklenir (Survey Tasarimcisi kullanan servis icin); geri okuyup dogrular. */
 async function setSurveyEnabledOnServer(serverId, templateId, enabled) {
-  if (enabled !== false) throw Object.assign(new Error('Yalnız survey kapatma desteklenir.'), { status: 400 });
+  if (enabled !== false)
+    throw Object.assign(new Error('Yalnız survey kapatma desteklenir.'), { status: 400 });
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const token = await getTokenForServer(server);
-  const istek = (method, pathname, body) => awxRequestToServer(server, token, method, pathname, body);
+  const istek = (method, pathname, body) =>
+    awxRequestToServer(server, token, method, pathname, body);
   return require('./ss-tasima.cjs').surveyKapat(istek, templateId);
 }
 
@@ -6468,15 +6989,16 @@ async function getJobOnServer(serverId, jobId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(jobId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz job ID.'), { status: 400 });
   const token = await getTokenForServer(server);
   try {
     const j = await awxRequestToServer(server, token, 'GET', `/api/v2/jobs/${id}/`);
     return {
       id,
-      status: String((j?.status) || ''),
+      status: String(j?.status || ''),
       jobTemplate: j?.job_template != null ? Number(j.job_template) : null,
-      finished: (j?.finished) || null,
+      finished: j?.finished || null,
     };
   } catch (err) {
     if (err?.status === 404) return { id, status: 'missing', jobTemplate: null, finished: null };
@@ -6489,9 +7011,15 @@ async function listTemplateSchedulesOnServer(serverId, templateId) {
   const server = getServerById(serverId);
   if (!server) throw sunucuYokHatasi(serverId);
   const id = Number(templateId);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0)
+    throw Object.assign(new Error('Geçersiz template ID.'), { status: 400 });
   const token = await getTokenForServer(server);
-  const data = await awxRequestToServer(server, token, 'GET', `/api/v2/job_templates/${id}/schedules/?enabled=true&page_size=100`);
+  const data = await awxRequestToServer(
+    server,
+    token,
+    'GET',
+    `/api/v2/job_templates/${id}/schedules/?enabled=true&page_size=100`,
+  );
   const liste = Array.isArray(data?.results) ? data.results : [];
   return liste.map((x) => ({ id: Number(x.id), name: String(x.name || '') }));
 }
@@ -6530,7 +7058,7 @@ function redactAwxSecrets(text) {
     /* modul yuklenemezse diger sirlar ve genel kaliplar yine uygulanir */
   }
   for (const v of secrets) s = s.split(v).join('***');
-  return s.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***');
+  return s.replace(/(Bearer\s+)[\w.~+/=-]+/gi, '$1***');
 }
 
 module.exports = {

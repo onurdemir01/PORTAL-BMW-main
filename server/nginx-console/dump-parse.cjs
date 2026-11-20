@@ -50,20 +50,38 @@ function parseDumpFrom(readLine, opts = {}) {
     } else if (line === '@@LOADED') {
       out.loaded = [];
       let l;
-      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') { const v = l.replace(/\r$/, '').trim(); if (v) out.loaded.push(v); }
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        const v = l.replace(/\r$/, '').trim();
+        if (v) out.loaded.push(v);
+      }
     } else if (line === '@@SSLDIR') {
       let l;
       while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
         const f = l.replace(/\r$/, '').split('\t');
-        if (f.length >= 3) out.sslFiles.push({ size: Number(f[0]) || 0, mtime: f[1], path: f.slice(2).join('\t') });
+        if (f.length >= 3)
+          out.sslFiles.push({ size: Number(f[0]) || 0, mtime: f[1], path: f.slice(2).join('\t') });
       }
     } else if (line === '@@TREE') {
       let l;
       while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
         const f = l.replace(/\r$/, '').split('\t');
         // 5 alan (2026-09-19, sahip eklendi) ya da eski 4 alan; yol her zaman SON alan
-        if (f.length >= 5) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: f[3] === '?' ? null : f[3], path: f.slice(4).join('\t') });
-        else if (f.length === 4) out.tree.push({ size: Number(f[0]) || 0, mtime: f[1], sha256: f[2], owner: null, path: f[3] });
+        if (f.length >= 5)
+          out.tree.push({
+            size: Number(f[0]) || 0,
+            mtime: f[1],
+            sha256: f[2],
+            owner: f[3] === '?' ? null : f[3],
+            path: f.slice(4).join('\t'),
+          });
+        else if (f.length === 4)
+          out.tree.push({
+            size: Number(f[0]) || 0,
+            mtime: f[1],
+            sha256: f[2],
+            owner: null,
+            path: f[3],
+          });
       }
     } else if (line === '@@SPAPKG') {
       out.pkgs = [];
@@ -80,11 +98,19 @@ function parseDumpFrom(readLine, opts = {}) {
       const p = parts.join(' ');
       const buf = [];
       let l;
-      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') { if (!skipContent) buf.push(l); }
+      while ((l = readLine()) !== null && l.replace(/\r$/, '') !== '@@END') {
+        if (!skipContent) buf.push(l);
+      }
       if (!skipContent) out.files.set(p, { sha256, size, content: buf.join('\n') });
     } else if (line.startsWith('@@CERTUSE ')) {
       const f = line.slice(10).split('\t');
-      out.certUses.push({ conf: f[0] || '', serverName: f[1] || '', cert: f[2] || '', key: f[3] || '', keyState: f[4] || '' });
+      out.certUses.push({
+        conf: f[0] || '',
+        serverName: f[1] || '',
+        cert: f[2] || '',
+        key: f[3] || '',
+        keyState: f[4] || '',
+      });
     } else if (line.startsWith('@@CERT ')) {
       const p = line.slice(7).trim();
       const rec = { path: p, exists: false };
@@ -119,7 +145,10 @@ function pkgSatiri(satir) {
   const [ns, app, durumHam, version, icerik, config, dosya, vz, tanimli, bayat] = f;
   if (!PKG_ALAN.test(ns) || !PKG_ALAN.test(app)) return null;
   if (!PKG_DURUM.has(durumHam)) return null;
-  const durum = durumHam === 'var' && (bosIse(icerik) == null || bosIse(config) == null) ? 'okunamadi' : durumHam;
+  const durum =
+    durumHam === 'var' && (bosIse(icerik) == null || bosIse(config) == null)
+      ? 'okunamadi'
+      : durumHam;
   return {
     ns,
     app,
@@ -159,11 +188,19 @@ function parseDumpFileSync(filePath, opts = {}) {
     for (;;) {
       if (qi < queue.length) return queue[qi++];
       if (eof) {
-        if (tail !== '') { const son = tail; tail = ''; return son; }
+        if (tail !== '') {
+          const son = tail;
+          tail = '';
+          return son;
+        }
         return null;
       }
       const n = fs.readSync(fd, buf, 0, CHUNK, null);
-      if (n === 0) { eof = true; tail += decoder.end(); continue; }
+      if (n === 0) {
+        eof = true;
+        tail += decoder.end();
+        continue;
+      }
       const parcalar = (tail + decoder.write(buf.subarray(0, n))).split('\n');
       tail = parcalar.pop();
       queue = parcalar;
@@ -206,7 +243,12 @@ function normalizeCert(rec) {
     fingerprint: rec.fingerprint || null,
     sigalg: rec.sigalg || null,
     keybits: Number(rec.keybits) || null,
-    san: rec.san ? String(rec.san).split(',').map((x) => x.trim()).filter(Boolean) : [],
+    san: rec.san
+      ? String(rec.san)
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : [],
     chain,
     chainSubjects,
     selfSigned: !!(rec.subject && rec.issuer && rec.subject === rec.issuer),
@@ -233,10 +275,17 @@ function buildTree(entries, prefix) {
     let node = root;
     for (let k = 0; k < rel.length - 1; k++) {
       const seg = rel[k];
-      if (!node.dirs.has(seg)) node.dirs.set(seg, { name: seg, path: node.path + '/' + seg, dirs: new Map(), files: [] });
+      if (!node.dirs.has(seg))
+        node.dirs.set(seg, { name: seg, path: node.path + '/' + seg, dirs: new Map(), files: [] });
       node = node.dirs.get(seg);
     }
-    node.files.push({ name: rel[rel.length - 1], path: e.path, size: e.size, mtime: e.mtime, sha256: e.sha256 });
+    node.files.push({
+      name: rel[rel.length - 1],
+      path: e.path,
+      size: e.size,
+      mtime: e.mtime,
+      sha256: e.sha256,
+    });
   }
   const toJson = (nd) => ({
     name: nd.name,
@@ -260,7 +309,13 @@ function aggregateCerts(dumps, now = Date.now()) {
     const usesByCert = new Map();
     for (const u of Array.isArray(d.certUses) ? d.certUses : []) {
       if (!usesByCert.has(u.cert)) usesByCert.set(u.cert, []);
-      usesByCert.get(u.cert).push({ conf: u.conf, serverName: u.serverName, key: u.key, keyState: u.keyState, loaded: loadedSet ? loadedSet.has(u.conf) : null });
+      usesByCert.get(u.cert).push({
+        conf: u.conf,
+        serverName: u.serverName,
+        key: u.key,
+        keyState: u.keyState,
+        loaded: loadedSet ? loadedSet.has(u.conf) : null,
+      });
     }
     for (const [p, c] of d.certs instanceof Map ? d.certs : new Map()) {
       const fp = c.exists && c.fingerprint ? c.fingerprint : `missing:${d.host}:${p}`;
@@ -295,16 +350,24 @@ function aggregateCerts(dumps, now = Date.now()) {
     hostCount: new Set(r.hosts.map((h) => h.host)).size,
     useCount: r.hosts.reduce((a, h) => a + h.uses.length, 0),
     // yalniz nginx'in YUKLEDIGI conf'lardaki kullanim (loaded bilinmiyorsa = useCount)
-    loadedUseCount: r.hosts.reduce((a, h) => a + h.uses.filter((u) => u.loaded !== false).length, 0),
+    loadedUseCount: r.hosts.reduce(
+      (a, h) => a + h.uses.filter((u) => u.loaded !== false).length,
+      0,
+    ),
   }));
   // Once suresi en yakin dolacak olan
-  list.sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || String(a.cn).localeCompare(String(b.cn)));
+  list.sort(
+    (a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || String(a.cn).localeCompare(String(b.cn)),
+  );
   return list;
 }
 
 /** Yedek/eski kopya kalibi: deployment yedegi <conf>_<job_no>, .bak/.old/.orig/~, .console_backup/ */
-const BACKUP_EXT_PARCA = "\\.(bak|old|orig|save|backup|disabled|off)(\\.[0-9]+)?$";
-const BACKUP_RE = new RegExp(`(\\/\\.console_backup\\/|_[0-9]{2,}$|${BACKUP_EXT_PARCA}|~$|\\.rpm(new|save)$)`, "i");
+const BACKUP_EXT_PARCA = '\\.(bak|old|orig|save|backup|disabled|off)(\\.[0-9]+)?$';
+const BACKUP_RE = new RegExp(
+  `(\\/\\.console_backup\\/|_[0-9]{2,}$|${BACKUP_EXT_PARCA}|~$|\\.rpm(new|save)$)`,
+  'i',
+);
 
 /**
  * "Kullanilmayan" (2026-09-22): kullanici "sertifika hicbir konfigurasyonda kullanilmiyor ama
@@ -316,7 +379,19 @@ const BACKUP_RE = new RegExp(`(\\/\\.console_backup\\/|_[0-9]{2,}$|${BACKUP_EXT_
 function orphansOf(summary, now = Date.now()) {
   const loaded = Array.isArray(summary.loaded) ? new Set(summary.loaded) : null;
   const known = !!loaded && (summary.nginxT?.status !== 'fail' || loaded.size > 0);
-  const out = { host: summary.host, known, reason: (() => { if (known) return null; if (Array.isArray(summary.loaded)) return 'nginx -T basarisiz (yuklenen liste alinamadi)'; return 'eski dokum: yuklenen dosya listesi yok - "Yenile" ile yeni dokum alin'; })(), unloaded: [], backups: [], certs: [], ssl: [] };
+  const out = {
+    host: summary.host,
+    known,
+    reason: (() => {
+      if (known) return null;
+      if (Array.isArray(summary.loaded)) return 'nginx -T basarisiz (yuklenen liste alinamadi)';
+      return 'eski dokum: yuklenen dosya listesi yok - "Yenile" ile yeni dokum alin';
+    })(),
+    unloaded: [],
+    backups: [],
+    certs: [],
+    ssl: [],
+  };
   if (!known) return out;
   const isKey = (p) => /(\.key$|private)/i.test(p);
   for (const f of summary.tree || []) {
@@ -345,7 +420,15 @@ function orphansOf(summary, now = Date.now()) {
       }
     }
     if (loadedUses.length > 0) continue;
-    out.certs.push({ path: c.path, exists: c.exists, cn: c.cn, issuerCn: c.issuerCn, notAfter: c.notAfter, daysLeft: daysLeft(c.notAfter, now), usedBy: uses.map((u) => u.conf) });
+    out.certs.push({
+      path: c.path,
+      exists: c.exists,
+      cn: c.cn,
+      issuerCn: c.issuerCn,
+      notAfter: c.notAfter,
+      daysLeft: daysLeft(c.notAfter, now),
+      usedBy: uses.map((u) => u.conf),
+    });
   }
   for (const f of summary.sslFiles || []) {
     if (referenced.has(f.path)) continue;
@@ -354,4 +437,15 @@ function orphansOf(summary, now = Date.now()) {
   return out;
 }
 
-module.exports = { pkgSatiri, parseDump, parseDumpFileSync, buildTree, aggregateCerts, daysLeft, cnOf, parseOpensslDate, orphansOf, BACKUP_RE };
+module.exports = {
+  pkgSatiri,
+  parseDump,
+  parseDumpFileSync,
+  buildTree,
+  aggregateCerts,
+  daysLeft,
+  cnOf,
+  parseOpensslDate,
+  orphansOf,
+  BACKUP_RE,
+};

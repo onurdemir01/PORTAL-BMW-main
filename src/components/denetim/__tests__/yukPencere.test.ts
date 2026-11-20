@@ -35,9 +35,15 @@ const olcum = (o: Partial<SpaYukOlcumu>): SpaYukOlcumu => ({
 describe('kismiEtiket', () => {
   it('kısa pencere: "son N günde istek yok (7 gün ölçülemedi)"', () => {
     expect(kismiEtiket(olcum({}))).toBe('son 2 günde istek yok (7 gün ölçülemedi)');
-    expect(kismiEtiket(olcum({ pencereSaat: 167 }))).toBe('son 6 günde istek yok (7 gün ölçülemedi)');
-    expect(kismiEtiket(olcum({ pencereSaat: 5 }))).toBe('son 5 saatte istek yok (7 gün ölçülemedi)');
-    expect(kismiEtiket(olcum({ pencereSaat: 0 }))).toBe('bugünkü kayıtta istek yok (7 gün ölçülemedi)');
+    expect(kismiEtiket(olcum({ pencereSaat: 167 }))).toBe(
+      'son 6 günde istek yok (7 gün ölçülemedi)',
+    );
+    expect(kismiEtiket(olcum({ pencereSaat: 5 }))).toBe(
+      'son 5 saatte istek yok (7 gün ölçülemedi)',
+    );
+    expect(kismiEtiket(olcum({ pencereSaat: 0 }))).toBe(
+      'bugünkü kayıtta istek yok (7 gün ölçülemedi)',
+    );
   });
 
   it('pencere bilinmiyorsa süre UYDURULMAZ', () => {
@@ -47,11 +53,18 @@ describe('kismiEtiket', () => {
   });
 
   it('diğer nedenler: okunamayan / satırsız sunucu, sampled', () => {
-    expect(kismiEtiket(olcum({ pencereSaat: 192, kismi: ['okunamayan-sunucu'], unknownHosts: 1 }))).toBe(
-      'istek yok (1 sunucu ölçülemedi)',
-    );
     expect(
-      kismiEtiket(olcum({ pencereSaat: 192, kismi: ['satirsiz-sunucu', 'okunamayan-sunucu'], unknownHosts: 1, missingHosts: 2 })),
+      kismiEtiket(olcum({ pencereSaat: 192, kismi: ['okunamayan-sunucu'], unknownHosts: 1 })),
+    ).toBe('istek yok (1 sunucu ölçülemedi)');
+    expect(
+      kismiEtiket(
+        olcum({
+          pencereSaat: 192,
+          kismi: ['satirsiz-sunucu', 'okunamayan-sunucu'],
+          unknownHosts: 1,
+          missingHosts: 2,
+        }),
+      ),
     ).toBe('istek yok (3 sunucu ölçülemedi)');
     expect(kismiEtiket(olcum({ pencereSaat: 192, kismi: ['sampled'], sampled: true }))).toBe(
       'istek yok (7 günün tamamı okunamadı)',
@@ -89,8 +102,14 @@ describe('yolYukOzeti (Production Taşımaları uygulama özeti)', () => {
 
   it('ölçülmeyen yol + idle yol -> unknown (satirsiz-sunucu), "yük almıyor" denmez', () => {
     for (const sira of [
-      [{ traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] }, { traffic: idle, hosts: ['GBRVPP07'] }],
-      [{ traffic: idle, hosts: ['GBRVPP07'] }, { traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] }],
+      [
+        { traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] },
+        { traffic: idle, hosts: ['GBRVPP07'] },
+      ],
+      [
+        { traffic: idle, hosts: ['GBRVPP07'] },
+        { traffic: null, hosts: ['GBRVPP08', 'GBRVPP09'] },
+      ],
     ]) {
       const t = yolYukOzeti(sira)!;
       expect(t.state).toBe('unknown');

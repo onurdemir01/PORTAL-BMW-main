@@ -47,13 +47,11 @@ async function uygulama(fn) {
 test('NR1 403 / 404 JSON reddi 409 olur; mesaj, ayrinti ve cagiranin kodu korunur', async () => {
   const u = await uygulama((app) => {
     app.get('/yasak', (req, res) =>
-      res
-        .status(403)
-        .json({
-          ok: false,
-          message: 'Bu namespace icin yetkiniz yok',
-          restriction: { kaynak: 'ns' },
-        }),
+      res.status(403).json({
+        ok: false,
+        message: 'Bu namespace icin yetkiniz yok',
+        restriction: { kaynak: 'ns' },
+      }),
     );
     app.get('/yok', (req, res) =>
       res.status(404).json({ ok: false, message: 'Kayit bulunamadi.' }),

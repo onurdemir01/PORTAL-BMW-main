@@ -1,9 +1,15 @@
 // src/components/admin/tabs/UserManagementTab.tsx
-import React, { useCallback, useEffect, useState } from "react";
-import { roleApi } from "@/api/adminApi";
-import { useToast } from "@/hooks/useToast";
-import { PencilSquareIcon, TrashIcon, PlusIcon, ShieldCheckIcon, UserIcon } from "@heroicons/react/24/outline";
-import { Select } from "@/components/ui/Form";
+import React, { useCallback, useEffect, useState } from 'react';
+import { roleApi } from '@/api/adminApi';
+import { useToast } from '@/hooks/useToast';
+import {
+  PencilSquareIcon,
+  TrashIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  UserIcon,
+} from '@heroicons/react/24/outline';
+import { Select } from '@/components/ui/Form';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import OturumListesi from '@/components/oturum/OturumListesi';
 import LoadError from '@/components/common/LoadError';
@@ -14,12 +20,12 @@ export default function UserManagementTab() {
   const { toast } = useToast();
   const [roles, setRoles] = useState<RoleMap>({});
   const [loading, setLoading] = useState(true);
-  const [addUser, setAddUser] = useState("");
-  const [addRole, setAddRole] = useState<"Admin" | "User">("Admin");
+  const [addUser, setAddUser] = useState('');
+  const [addRole, setAddRole] = useState<'Admin' | 'User'>('Admin');
   const [saving, setSaving] = useState(false);
   // Oturumlari incelenen kullanici (Faz D) ve arama kutusu.
-  const [oturumKullanici, setOturumKullanici] = useState("");
-  const [oturumArama, setOturumArama] = useState("");
+  const [oturumKullanici, setOturumKullanici] = useState('');
+  const [oturumArama, setOturumArama] = useState('');
 
   // Liste OKUNAMADIYSA bu ekranda KALIR. Eskiden uc saniyelik bir bildirim cikiyor, altinda
   // "Henuz manuel rol atamasi yok" yazisi duruyordu: okunamayan liste bos liste gibi gorunuyordu.
@@ -30,7 +36,7 @@ export default function UserManagementTab() {
         .list()
         .then(setRoles)
         .catch((e: unknown) =>
-          setYuklemeHatasi(e instanceof Error && e.message ? e.message : "İstek başarısız."),
+          setYuklemeHatasi(e instanceof Error && e.message ? e.message : 'İstek başarısız.'),
         )
         .finally(() => setLoading(false)),
     [],
@@ -51,8 +57,11 @@ export default function UserManagementTab() {
     try {
       const { sessionsRevoked } = await roleApi.set(u, addRole);
       setRoles((r) => ({ ...r, [u]: addRole }));
-      setAddUser("");
-      toast.success(`${u} kullanıcısına ${addRole} rolü atandı.` + (sessionsRevoked > 0 ? ` ${sessionsRevoked} aktif oturum sonlandırıldı.` : ""));
+      setAddUser('');
+      toast.success(
+        `${u} kullanıcısına ${addRole} rolü atandı.` +
+          (sessionsRevoked > 0 ? ` ${sessionsRevoked} aktif oturum sonlandırıldı.` : ''),
+      );
     } catch (e: unknown) {
       toast.error((e as Error).message);
     } finally {
@@ -60,11 +69,14 @@ export default function UserManagementTab() {
     }
   }
 
-  async function handleChange(username: string, role: "Admin" | "User") {
+  async function handleChange(username: string, role: 'Admin' | 'User') {
     try {
       const { sessionsRevoked } = await roleApi.set(username, role);
       setRoles((r) => ({ ...r, [username]: role }));
-      toast.success(`${username}: ${role}` + (sessionsRevoked > 0 ? ` — ${sessionsRevoked} aktif oturum sonlandırıldı.` : ""));
+      toast.success(
+        `${username}: ${role}` +
+          (sessionsRevoked > 0 ? ` — ${sessionsRevoked} aktif oturum sonlandırıldı.` : ''),
+      );
     } catch (e: unknown) {
       toast.error((e as Error).message);
     }
@@ -73,8 +85,15 @@ export default function UserManagementTab() {
   async function handleRemove(username: string) {
     try {
       const { sessionsRevoked } = await roleApi.remove(username);
-      setRoles((r) => { const n = { ...r }; delete n[username]; return n; });
-      toast.success(`${username} rolü sıfırlandı (LDAP/varsayılan geçerli).` + (sessionsRevoked > 0 ? ` ${sessionsRevoked} aktif oturum sonlandırıldı.` : ""));
+      setRoles((r) => {
+        const n = { ...r };
+        delete n[username];
+        return n;
+      });
+      toast.success(
+        `${username} rolü sıfırlandı (LDAP/varsayılan geçerli).` +
+          (sessionsRevoked > 0 ? ` ${sessionsRevoked} aktif oturum sonlandırıldı.` : ''),
+      );
     } catch (e: unknown) {
       toast.error((e as Error).message);
     }
@@ -87,32 +106,36 @@ export default function UserManagementTab() {
       <div>
         <h3 className="text-sm font-semibold text-gray-800 mb-1">Kullanıcı Rol Yönetimi</h3>
         <p className="text-xs text-gray-500">
-          Belirli LDAP kullanıcılarına manuel rol atayın. LDAP grup üyeliğinden bağımsız, her login'de geçerlidir.
-          Override silinince kullanıcı LDAP grubuna döner.
+          Belirli LDAP kullanıcılarına manuel rol atayın. LDAP grup üyeliğinden bağımsız, her
+          login'de geçerlidir. Override silinince kullanıcı LDAP grubuna döner.
         </p>
       </div>
 
       {/* Add new override */}
       <div className="flex gap-2 items-end">
         <div className="flex-1">
-          <label htmlFor="rol-kullanici" className="block text-xs font-medium text-gray-600 mb-1">Kullanıcı adı (sAMAccountName)</label>
+          <label htmlFor="rol-kullanici" className="block text-xs font-medium text-gray-600 mb-1">
+            Kullanıcı adı (sAMAccountName)
+          </label>
           <input
             id="rol-kullanici"
             type="text"
             value={addUser}
             onChange={(e) => setAddUser(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             placeholder="ahmet.yilmaz"
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label htmlFor="rol-secimi" className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
+          <label htmlFor="rol-secimi" className="block text-xs font-medium text-gray-600 mb-1">
+            Rol
+          </label>
           <Select
             id="rol-secimi"
             aria-label="Atanacak rol"
             value={addRole}
-            onChange={(e) => setAddRole(e.target.value as "Admin" | "User")}
+            onChange={(e) => setAddRole(e.target.value as 'Admin' | 'User')}
           >
             <option value="Admin">Admin</option>
             <option value="User">User</option>
@@ -149,9 +172,15 @@ export default function UserManagementTab() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Kullanıcı</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Manuel Rol</th>
-                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-right">İşlem</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">
+                  Kullanıcı
+                </th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">
+                  Manuel Rol
+                </th>
+                <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-right">
+                  İşlem
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -159,30 +188,35 @@ export default function UserManagementTab() {
                 <tr key={username} className="hover:bg-gray-50/50">
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{username}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      role === "Admin"
-                        ? "bg-blue-50 text-blue-700"
-                        : "bg-gray-100 text-gray-600"
-                    }`}>
-                      {role === "Admin"
-                        ? <ShieldCheckIcon className="h-3 w-3" />
-                        : <UserIcon className="h-3 w-3" />}
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        role === 'Admin' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {role === 'Admin' ? (
+                        <ShieldCheckIcon className="h-3 w-3" />
+                      ) : (
+                        <UserIcon className="h-3 w-3" />
+                      )}
                       {role}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => { setOturumArama(username); setOturumKullanici(username); }}
+                        onClick={() => {
+                          setOturumArama(username);
+                          setOturumKullanici(username);
+                        }}
                         className="px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Bu kullanıcının açık oturumları"
                       >
                         Oturumlar
                       </button>
                       <button
-                        onClick={() => handleChange(username, role === "Admin" ? "User" : "Admin")}
+                        onClick={() => handleChange(username, role === 'Admin' ? 'User' : 'Admin')}
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title={`${role === "Admin" ? "User" : "Admin"} yap`}
+                        title={`${role === 'Admin' ? 'User' : 'Admin'} yap`}
                       >
                         <PencilSquareIcon className="h-4 w-4" />
                       </button>
@@ -219,10 +253,18 @@ export default function UserManagementTab() {
         </div>
         <form
           className="flex gap-2 items-end"
-          onSubmit={(e) => { e.preventDefault(); setOturumKullanici(oturumArama.trim().toLowerCase()); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setOturumKullanici(oturumArama.trim().toLowerCase());
+          }}
         >
           <div className="flex-1">
-            <label htmlFor="oturum-kullanici" className="block text-xs font-medium text-gray-600 mb-1">Kullanıcı adı</label>
+            <label
+              htmlFor="oturum-kullanici"
+              className="block text-xs font-medium text-gray-600 mb-1"
+            >
+              Kullanıcı adı
+            </label>
             <input
               id="oturum-kullanici"
               type="text"
@@ -232,9 +274,13 @@ export default function UserManagementTab() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <button type="submit" disabled={!oturumArama.trim()} className="btn-secondary">Oturumları göster</button>
+          <button type="submit" disabled={!oturumArama.trim()} className="btn-secondary">
+            Oturumları göster
+          </button>
         </form>
-        {oturumKullanici && <OturumListesi key={oturumKullanici} adminKullanici={oturumKullanici} />}
+        {oturumKullanici && (
+          <OturumListesi key={oturumKullanici} adminKullanici={oturumKullanici} />
+        )}
       </div>
     </div>
   );

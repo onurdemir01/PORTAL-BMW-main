@@ -211,10 +211,12 @@ export default function KurallarTab() {
               (reboot riski, retire adayı…) bulgu koduna bakar; seviye değişse de onlar değişmez.
             </p>
             <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
-              <b style={{ color: 'var(--text-secondary)' }}>Non-Production tavanı:</b> DEV / TEST / QA (ve diğer
-              prod dışı) sunucularda <b style={{ color: 'var(--text-secondary)' }}>kritik</b> bulgular{' '}
-              <b style={{ color: 'var(--text-secondary)' }}>uyarı</b> olarak sayılır; bulgu gizlenmez, &quot;non-prod ·
-              prod&apos;da Kritik&quot; diye işaretlenir. Ortamı bilinmeyen sunucuda tavan uygulanmaz.
+              <b style={{ color: 'var(--text-secondary)' }}>Non-Production tavanı:</b> DEV / TEST /
+              QA (ve diğer prod dışı) sunucularda{' '}
+              <b style={{ color: 'var(--text-secondary)' }}>kritik</b> bulgular{' '}
+              <b style={{ color: 'var(--text-secondary)' }}>uyarı</b> olarak sayılır; bulgu
+              gizlenmez, &quot;non-prod · prod&apos;da Kritik&quot; diye işaretlenir. Ortamı
+              bilinmeyen sunucuda tavan uygulanmaz.
             </p>
           </div>
           <button
@@ -653,8 +655,9 @@ function LimitlerBolumu({
         </h2>
         <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
           Sunucu listesi alan ekranların tek seferde kabul ettiği en fazla sunucu (Toplu Auto-Start
-          / Toplu Restart: tek toplu işte en fazla JVM; “Toplu iş başına JVM”: Toplu Auto-Start’ta bir AWX
-          işine konan en fazla JVM). Üst sınır, işin AWX’e taşıdığı veri ve süre yüzünden sabittir.
+          / Toplu Restart: tek toplu işte en fazla JVM; “Toplu iş başına JVM”: Toplu Auto-Start’ta
+          bir AWX işine konan en fazla JVM). Üst sınır, işin AWX’e taşıdığı veri ve süre yüzünden
+          sabittir.
         </p>
       </div>
       <div className="overflow-x-auto">

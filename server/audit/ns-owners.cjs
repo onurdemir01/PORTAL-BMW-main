@@ -78,7 +78,10 @@ function yasli(o, at, hatali) {
   return o;
 }
 
-const L = (s) => String(s || '').trim().toLowerCase();
+const L = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase();
 
 /** Namespace yedegi etiketi (uygulama tablosundaki ile ayni yazim). */
 const KAYNAK_NAMESPACE = 'NAMESPACE';
@@ -104,7 +107,7 @@ function indexOwners(rows) {
 const appKey = (ns, app) => L(ns) + '/' + L(app);
 
 /** Satir uygulamanin KENDI sahibini mi tasiyor (namespace yedegi / bos degil)? */
-const uygulamaSahibiMi = (o) => !!(o && o.group && !YEDEK_KAYNAK.has(o.kaynak));
+const uygulamaSahibiMi = (o) => !!(o?.group && !YEDEK_KAYNAK.has(o.kaynak));
 
 /**
  * Uygulama satirlarindan harita: "ns/app"(lower) -> {group, email, kaynak, status, message,
@@ -120,10 +123,13 @@ function indexAppOwners(rows) {
     const o = {
       group: String(r.owner_group_name || '').trim() || null,
       email: String(r.owner_email || '').trim() || null,
-      kaynak: String(r.kaynak || '').trim().toUpperCase(),
+      kaynak: String(r.kaynak || '')
+        .trim()
+        .toUpperCase(),
       status: String(r.lookup_status || '').trim() || 'BILINMIYOR',
       message: String(r.lookup_message || '').trim(),
-      configurationId: r.configuration_id == null ? null : String(r.configuration_id).trim() || null,
+      configurationId:
+        r.configuration_id == null ? null : String(r.configuration_id).trim() || null,
       cluster: String(r.cluster || '').trim() || null,
     };
     const k = ns + '/' + app;
@@ -263,8 +269,8 @@ function ownersFor(byNs, namespaces) {
  *              "bilinmiyor" degil, "veri yok" (yedek kaynak hic okunmadi).
  */
 function ownersForApp(owners, app, namespaces) {
-  const byNs = (owners && owners.byNs) || new Map();
-  const appReady = !!(owners && owners.appReady && owners.byApp);
+  const byNs = owners?.byNs || new Map();
+  const appReady = !!(owners?.appReady && owners.byApp);
   if (!appReady || !L(app)) {
     // Uygulama tablosu yok (ya da uygulama adi yok): birebir eski davranis.
     return { ...ownersFor(byNs, namespaces), veriYokNs: [], kaynaklar: [], nsSahibi: [], appReady };
@@ -300,7 +306,11 @@ function ownersForApp(owners, app, namespaces) {
     // YEDEK: namespace sahibi (namespace tablosu daha guncel; o yoksa uygulama satirinin
     // kendi yazdigi namespace sahibi).
     const n = byNs.get(ns);
-    const yedek = (() => { if (n && n.group) return n; if (a && a.group) return a; return null; })();
+    const yedek = (() => {
+      if (n?.group) return n;
+      if (a?.group) return a;
+      return null;
+    })();
     if (!yedek) {
       const liste = nsOkunamadi ? veriYokNs : unknownNs;
       if (!liste.includes(ns)) liste.push(ns);

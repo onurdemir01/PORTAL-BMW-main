@@ -51,7 +51,9 @@ after(async () => {
 const runner = require('../runner.cjs');
 
 test('getJobOutputOnServer(): basarisiz bir job icin GERCEK duz-metin stdout doner (eski hata: her zaman JSON.parse edip bos donuyordu)', async () => {
-  responses.set('9001', { stdout: 'TASK [restart aware] ****\nfatal: [host1]: FAILED! => changed=0\n' });
+  responses.set('9001', {
+    stdout: 'TASK [restart aware] ****\nfatal: [host1]: FAILED! => changed=0\n',
+  });
   const { output } = await runner.getJobOutputOnServer(0, 9001);
   assert.match(output, /fatal: \[host1\]/);
 });

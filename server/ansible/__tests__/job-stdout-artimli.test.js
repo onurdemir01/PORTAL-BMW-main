@@ -13,6 +13,7 @@
 // naif bir birlestirme ciktiyi SESSIZCE IKIYE KATLARDI. Bindirme dogrulamasi
 // olmadan bu iyilestirme bir veri bozulmasi kaynagi olurdu.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -35,13 +36,15 @@ function sahteAwx() {
     const sl = Number(u.searchParams.get('start_line') || 0);
     durum.istekler.push(sl);
     const govde = durum.startLineDesteksiz
-      ? durum.satirlar.join('\n')                 // parametreyi YOK SAYAR
+      ? durum.satirlar.join('\n') // parametreyi YOK SAYAR
       : durum.satirlar.slice(sl).join('\n');
     durum.indirilenBayt += Buffer.byteLength(govde, 'utf8');
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end(govde);
   });
-  return new Promise((r) => srv.listen(0, '127.0.0.1', () => r({ srv, durum, port: srv.address().port })));
+  return new Promise((r) =>
+    srv.listen(0, '127.0.0.1', () => r({ srv, durum, port: srv.address().port })),
+  );
 }
 
 /**
@@ -54,7 +57,10 @@ function gercekGetJobOutput(port) {
   const i = RUNNER_SRC.indexOf('function fetchAwxPlainText');
   const j = RUNNER_SRC.indexOf('function isAwxStdoutTooLarge');
   const g = RUNNER_SRC.indexOf('async function getJobOutputOnServer');
-  const gs = RUNNER_SRC.indexOf('\n}', RUNNER_SRC.indexOf('return { output, artimliKullanildi: false };', g));
+  const gs = RUNNER_SRC.indexOf(
+    '\n}',
+    RUNNER_SRC.indexOf('return { output, artimliKullanildi: false };', g),
+  );
   assert.ok(k > 0 && i > k && j > i && g > j && gs > g, 'kaynak cikarimi bozuldu — desen degismis');
 
   const govde =
@@ -66,11 +72,26 @@ function gercekGetJobOutput(port) {
 
   const { tlsSecenekleri, tlsHatasiAcikla } = require('../../util/tls-guven.cjs');
   return new Function(
-    'http', 'https', 'URL', 'stdoutCache', 'tlsSecenekleri', 'tlsHatasiAcikla',
-    'getServerById', 'getTokenForServer', 'mapApiPath', 'collectJobEventsStdout', 'awxRequestToServer', 'console',
+    'http',
+    'https',
+    'URL',
+    'stdoutCache',
+    'tlsSecenekleri',
+    'tlsHatasiAcikla',
+    'getServerById',
+    'getTokenForServer',
+    'mapApiPath',
+    'collectJobEventsStdout',
+    'awxRequestToServer',
+    'console',
     govde,
   )(
-    http, require('node:https'), URL, onbellek, tlsSecenekleri, tlsHatasiAcikla,
+    http,
+    require('node:https'),
+    URL,
+    onbellek,
+    tlsSecenekleri,
+    tlsHatasiAcikla,
     () => ({ id: 1, url: `http://127.0.0.1:${port}` }),
     async () => 'tok',
     (_s, p) => p,
@@ -115,8 +136,8 @@ test('JS3 birlestir: BINDIRME TUTMAZSA reddeder (cikti IKIYE KATLANMAZ)', () => 
 test('JS4 onbellek: FIFO tahliye en ESKIYI atar, DOKUNULANI korur', () => {
   onbellek._sifirla();
   for (let i = 0; i < onbellek.MAX_ENTRIES; i++) onbellek.yaz(1, i, 'x', 1);
-  onbellek.al(1, 0);                       // en eskiye DOKUN → tazelenmeli
-  onbellek.yaz(1, 9999, 'x', 1);           // tavani as
+  onbellek.al(1, 0); // en eskiye DOKUN → tazelenmeli
+  onbellek.yaz(1, 9999, 'x', 1); // tavani as
   assert.ok(onbellek.al(1, 0), 'dokunulan satir tahliye edildi — Map.set sirayi tazelemez');
   assert.equal(onbellek.al(1, 1), null, 'en eski satir atilmadi');
   assert.ok(onbellek._durum().boyut <= onbellek.MAX_ENTRIES);
@@ -139,7 +160,8 @@ test('JS6 DIFERANSIYEL: 20 artimli yoklama, metin TAM CEKIMLE birebir ayni', asy
   try {
     let beklenen = '';
     for (let tur = 0; tur < 20; tur++) {
-      for (let n = 0; n < 10; n++) durum.satirlar.push(`TASK [adim ${tur}-${n}] ${'*'.repeat(120)}`);
+      for (let n = 0; n < 10; n++)
+        durum.satirlar.push(`TASK [adim ${tur}-${n}] ${'*'.repeat(120)}`);
       beklenen = durum.satirlar.join('\n');
       const { output } = await getir(1, 7, { artimli: true });
       assert.equal(output, beklenen, `tur ${tur}: artimli metin tam cekimden SAPTI`);
@@ -156,7 +178,8 @@ test('JS7 OLCUM: artimli yol tam cekimin cok altinda bayt indirir', async () => 
     const getir = gercekGetJobOutput(port);
     try {
       for (let tur = 0; tur < 20; tur++) {
-        for (let n = 0; n < 10; n++) durum.satirlar.push(`TASK [adim ${tur}-${n}] ${'*'.repeat(120)}`);
+        for (let n = 0; n < 10; n++)
+          durum.satirlar.push(`TASK [adim ${tur}-${n}] ${'*'.repeat(120)}`);
         await getir(1, 7, { artimli });
       }
       return durum.indirilenBayt;
@@ -210,7 +233,7 @@ test('JS10 ss/job-status: TERMINAL durumda TAM cekim yapilir (arsiv otoritesi)',
   assert.ok(dilim.length > 0, 'dilim bos');
   assert.match(dilim, /artimli:\s*!bittiMi/, 'artimli, terminal durumdan bagimsiz veriliyor');
   assert.match(dilim, /stdoutCache\.sil\(/, 'is bitince onbellek satiri birakilmiyor');
-  assert.doesNotMatch(dilim, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'olu dal');
+  assert.doesNotMatch(dilim, esnek(/if\s*\(\s*(false|0|null|undefined)\s*\)/), 'olu dal');
 });
 
 test('JS11 arsivlenen metin ARTIMLARDAN turemez — arsiv terminal cekimden gelir', () => {
@@ -233,13 +256,16 @@ test('JS13 DEGISMEZ: artimli reddedildikten sonra onbellek TAM CEKIMLE tazelenir
   const getir = gercekGetJobOutput(port);
   try {
     durum.satirlar.push('a', 'b', 'c');
-    await getir(1, 7, { artimli: true });               // tam cekim → onbellek dolar
-    onbellek.yaz(1, 7, 'BOZUK\nMETIN', 2);              // capayi kasitli boz
+    await getir(1, 7, { artimli: true }); // tam cekim → onbellek dolar
+    onbellek.yaz(1, 7, 'BOZUK\nMETIN', 2); // capayi kasitli boz
     durum.satirlar.push('d');
     const { output } = await getir(1, 7, { artimli: true });
     assert.equal(output, durum.satirlar.join('\n'), 'red sonrasi cikti bozuldu');
     const k = onbellek.al(1, 7);
-    assert.ok(k && k.text === durum.satirlar.join('\n'), 'onbellek tam cekimle tazelenmedi — artim kalici olarak olur');
+    assert.ok(
+      k && k.text === durum.satirlar.join('\n'),
+      'onbellek tam cekimle tazelenmedi — artim kalici olarak olur',
+    );
   } finally {
     srv.close();
   }
@@ -248,11 +274,18 @@ test('JS13 DEGISMEZ: artimli reddedildikten sonra onbellek TAM CEKIMLE tazelenir
 test('JS12 event yedeginden gelen metin ONBELLEGE KONMAZ (farkli satir bolumlemesi)', () => {
   const kod = RUNNER_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const g = kod.indexOf('async function getJobOutputOnServer');
-  const dilim = kod.slice(g, kod.indexOf('\n}', kod.indexOf('return { output, artimliKullanildi: false };', g)));
+  const dilim = kod.slice(
+    g,
+    kod.indexOf('\n}', kod.indexOf('return { output, artimliKullanildi: false };', g)),
+  );
   const ev = dilim.indexOf('collectJobEventsStdout');
   assert.ok(ev > 0, 'event yedegi bulunamadi');
   const sonrasi = dilim.slice(ev);
-  assert.match(sonrasi, /return \{ output, artimliKullanildi: false \};/, 'event yolu erken donmuyor');
+  assert.match(
+    sonrasi,
+    /return \{ output, artimliKullanildi: false \};/,
+    'event yolu erken donmuyor',
+  );
   assert.ok(
     sonrasi.indexOf('return') < sonrasi.indexOf('stdoutCache.yaz'),
     'event metni onbellege yaziliyor — sonraki artim bindirmesi tutmaz',

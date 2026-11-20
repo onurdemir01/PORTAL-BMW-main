@@ -19,16 +19,27 @@
 import React, { useMemo, useState } from 'react';
 import { GuncellemeRozeti } from '@/components/common/GuncellemeRozeti';
 import {
-  ArrowDownTrayIcon, ArrowPathIcon, MagnifyingGlassIcon, ShieldExclamationIcon,
-  InformationCircleIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon,
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  ShieldExclamationIcon,
+  InformationCircleIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
+  CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import { nginxConsoleApi, type NginxRateLimitResult, type NginxRateLimitHost } from '@/api/nginxConsoleApi';
+import {
+  nginxConsoleApi,
+  type NginxRateLimitResult,
+  type NginxRateLimitHost,
+} from '@/api/nginxConsoleApi';
 import { useAsyncEffect } from '@/hooks/useAsyncEffect';
 import { LoadingLogo } from '@/components/common/LoadingLogo';
 import { TableEmptyRow } from '@/components/common/EmptyState';
 import { toast } from '@/hooks/useToast';
 
-const SM = 'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
+const SM =
+  'inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium leading-none rounded-lg border whitespace-nowrap disabled:opacity-40';
 
 // SIRALAMA (2026-09-26, kullanici istegi). Varsayilan "sorun" cunku bu bir ENVANTER degil
 // bir DENETIM ekrani: once bakilmasi gereken sunucu ustte olmali.
@@ -80,9 +91,14 @@ function sayiKarsilastir(a: number | null, b: number | null): number {
   if (b == null) return -1;
   return a - b;
 }
-const btn = (primary = false): React.CSSProperties => (primary
-  ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
-  : { borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' });
+const btn = (primary = false): React.CSSProperties =>
+  primary
+    ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: 'var(--accent-fg, #fff)' }
+    : {
+        borderColor: 'var(--border)',
+        background: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+      };
 
 const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string; bg: string }> = {
   standart: { label: 'standart', color: 'var(--status-success)', bg: 'var(--status-success-bg)' },
@@ -94,9 +110,21 @@ const DURUM: Record<NginxRateLimitHost['durum'], { label: string; color: string;
   bilinmiyor: { label: 'ölçülmedi', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' },
   // SUNUCUNUN KENDI DURUMU (2026-09-26): bunlar bir limit bulgusu DEGIL, olcumun
   // neden yapilamadiginin sebebidir. 'eksik' ile ayni renkte gosterilmezler.
-  kurulumyok: { label: 'nginx kurulu değil', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
-  calismiyor: { label: 'nginx çalışmıyor', color: 'var(--status-warning)', bg: 'var(--status-warning-bg)' },
-  configbozuk: { label: 'konfigürasyon geçersiz', color: 'var(--status-danger)', bg: 'var(--status-danger-bg)' },
+  kurulumyok: {
+    label: 'nginx kurulu değil',
+    color: 'var(--status-danger)',
+    bg: 'var(--status-danger-bg)',
+  },
+  calismiyor: {
+    label: 'nginx çalışmıyor',
+    color: 'var(--status-warning)',
+    bg: 'var(--status-warning-bg)',
+  },
+  configbozuk: {
+    label: 'konfigürasyon geçersiz',
+    color: 'var(--status-danger)',
+    bg: 'var(--status-danger-bg)',
+  },
 };
 
 export function RateLimitTab() {
@@ -107,19 +135,41 @@ export function RateLimitTab() {
   const [scanDate, setScanDate] = useState('');
   const [q, setQ] = useState('');
   const [env, setEnv] = useState('all');
-  const [durum, setDurum] = useState<'all' | 'standart' | 'farkli' | 'eksik' | 'kapali' | 'bilinmiyor' | 'kurulumyok' | 'calismiyor' | 'configbozuk'>('all');
+  const [durum, setDurum] = useState<
+    | 'all'
+    | 'standart'
+    | 'farkli'
+    | 'eksik'
+    | 'kapali'
+    | 'bilinmiyor'
+    | 'kurulumyok'
+    | 'calismiyor'
+    | 'configbozuk'
+  >('all');
   const [sira, setSira] = useState<Sira>('sorun');
   const [acik, setAcik] = useState<string | null>(null);
 
-  useAsyncEffect(async (alive) => {
-    setLoading(true); setErr('');
-    try {
-      const r = await nginxConsoleApi.rateLimit(scanDate || undefined);
-      if (!alive()) return;
-      if (!r.ok && !r.tableMissing) { setErr(r.message || 'Rate limit verisi alınamadı.'); setData(null); return; }
-      setData(r);
-    } catch (e: unknown) { if (alive()) setErr(e instanceof Error ? e.message : String(e)); } finally { if (alive()) setLoading(false); }
-  }, [scanDate, tick]);
+  useAsyncEffect(
+    async (alive) => {
+      setLoading(true);
+      setErr('');
+      try {
+        const r = await nginxConsoleApi.rateLimit(scanDate || undefined);
+        if (!alive()) return;
+        if (!r.ok && !r.tableMissing) {
+          setErr(r.message || 'Rate limit verisi alınamadı.');
+          setData(null);
+          return;
+        }
+        setData(r);
+      } catch (e: unknown) {
+        if (alive()) setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (alive()) setLoading(false);
+      }
+    },
+    [scanDate, tick],
+  );
 
   const hosts = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -127,9 +177,11 @@ export function RateLimitTab() {
       if (durum !== 'all' && h.durum !== durum) return false;
       if (env !== 'all' && h.env !== env) return false;
       if (!needle) return true;
-      return h.host.toLowerCase().includes(needle)
-        || (h.requestRate || '').includes(needle)
-        || (h.serverRate || '').includes(needle);
+      return (
+        h.host.toLowerCase().includes(needle) ||
+        (h.requestRate || '').includes(needle) ||
+        (h.serverRate || '').includes(needle)
+      );
     });
     // Kopyada siralariz: data.hosts yanitin kendisi, yerinde sort etmek sonraki
     // render'larda sirayi kalici olarak bozardi.
@@ -167,7 +219,18 @@ export function RateLimitTab() {
 
   if (loading && !data) return <LoadingLogo compact />;
   if (err) {
-    return <div className="text-sm rounded-xl px-3 py-2 border" style={{ color: 'var(--status-danger)', background: 'var(--status-danger-bg)', borderColor: 'var(--status-danger)' }}>{err}</div>;
+    return (
+      <div
+        className="text-sm rounded-xl px-3 py-2 border"
+        style={{
+          color: 'var(--status-danger)',
+          background: 'var(--status-danger-bg)',
+          borderColor: 'var(--status-danger)',
+        }}
+      >
+        {err}
+      </div>
+    );
   }
 
   return (
@@ -175,21 +238,37 @@ export function RateLimitTab() {
       {data?.directivesMissing && (
         <div
           className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-          style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}
+          style={{
+            color: 'var(--status-warning)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
         >
           <span>{data.message}</span>
         </div>
       )}
       {data?.kapaliMessage && (
-        <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-          style={{ color: 'var(--status-info)', background: 'var(--status-info-bg)', borderColor: 'var(--status-info)' }}>
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+          style={{
+            color: 'var(--status-info)',
+            background: 'var(--status-info-bg)',
+            borderColor: 'var(--status-info)',
+          }}
+        >
           <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{data.kapaliMessage}</span>
         </div>
       )}
       {data?.tableMissing && (
-        <div className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
-          style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)', borderColor: 'var(--status-warning)' }}>
+        <div
+          className="text-[12px] rounded-lg px-3 py-2 border flex items-start gap-2"
+          style={{
+            color: 'var(--status-warning)',
+            background: 'var(--status-warning-bg)',
+            borderColor: 'var(--status-warning)',
+          }}
+        >
           <InformationCircleIcon className="h-4 w-4 mt-0.5 shrink-0" />
           <span>{data.message}</span>
         </div>
@@ -197,16 +276,30 @@ export function RateLimitTab() {
 
       {/* ESTATE STANDARDI: uc tanim da http seviyesinde, her location miras alir. */}
       {data?.catalog && (
-        <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-          <div className="text-[11px] uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
-            Estate standardı — <code>{data.catalog.file}</code> · http seviyesinde tanımlanır ve uygulanır, tüm server/location miras alır
+        <section
+          className="rounded-xl border p-3"
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+        >
+          <div
+            className="text-[11px] uppercase tracking-wide mb-2"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Estate standardı — <code>{data.catalog.file}</code> · http seviyesinde tanımlanır ve
+            uygulanır, tüm server/location miras alır
           </div>
           <div className="grid sm:grid-cols-3 gap-2">
             {data.catalog.zones.map((z) => (
-              <div key={z.key} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}>
-                <div className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>{z.label}</div>
+              <div
+                key={z.key}
+                className="rounded-lg border px-3 py-2"
+                style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)' }}
+              >
+                <div className="text-[12px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {z.label}
+                </div>
                 <div className="text-[11px] tabular-nums" style={{ color: 'var(--accent)' }}>
-                  {z.rate || `${z.conn} bağlantı`}{z.burst != null ? ` · burst ${z.burst}${z.nodelay ? ' nodelay' : ''}` : ''}
+                  {z.rate || `${z.conn} bağlantı`}
+                  {z.burst != null ? ` · burst ${z.burst}${z.nodelay ? ' nodelay' : ''}` : ''}
                 </div>
                 <div className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
                   zone <code>{z.key}</code> · {z.variable} · {z.size}
@@ -225,20 +318,37 @@ export function RateLimitTab() {
           <Kpi title="Eksik" value={s.eksik} tone={s.eksik > 0 ? 'danger' : undefined} />
           {s.kapali > 0 && <Kpi title="Kapalı (bilerek)" value={s.kapali} tone="info" />}
           {s.bilinmiyor > 0 && <Kpi title="Ölçülmedi" value={s.bilinmiyor} />}
-          {s.kurulumyok > 0 && <Kpi title="nginx kurulu değil" value={s.kurulumyok} tone="danger" />}
+          {s.kurulumyok > 0 && (
+            <Kpi title="nginx kurulu değil" value={s.kurulumyok} tone="danger" />
+          )}
           {s.calismiyor > 0 && <Kpi title="nginx çalışmıyor" value={s.calismiyor} tone="warn" />}
-          {s.configbozuk > 0 && <Kpi title="Konfigürasyon geçersiz" value={s.configbozuk} tone="danger" />}
-          <Kpi title="Dosya yüklü değil" value={s.dosyaYuklenmemis} tone={s.dosyaYuklenmemis > 0 ? 'danger' : undefined} />
+          {s.configbozuk > 0 && (
+            <Kpi title="Konfigürasyon geçersiz" value={s.configbozuk} tone="danger" />
+          )}
+          <Kpi
+            title="Dosya yüklü değil"
+            value={s.dosyaYuklenmemis}
+            tone={s.dosyaYuklenmemis > 0 ? 'danger' : undefined}
+          />
         </div>
       )}
 
       {/* FILO TEK TIP MI: kac farkli limit kombinasyonu kosuyor. */}
       {s && s.rates.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-          <span style={{ color: 'var(--text-muted)' }}>filodaki limit kombinasyonları (IP / sunucu adı):</span>
+          <span style={{ color: 'var(--text-muted)' }}>
+            filodaki limit kombinasyonları (IP / sunucu adı):
+          </span>
           {s.rates.map((r) => (
-            <span key={r.combo} className="px-2 py-0.5 rounded-md border tabular-nums"
-              style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>
+            <span
+              key={r.combo}
+              className="px-2 py-0.5 rounded-md border tabular-nums"
+              style={{
+                borderColor: 'var(--border-subtle)',
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-secondary)',
+              }}
+            >
               {r.combo} <b>{r.hosts}</b> sunucu
             </span>
           ))}
@@ -247,25 +357,70 @@ export function RateLimitTab() {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
-          <MagnifyingGlassIcon className="h-4 w-4 absolute left-2 top-1.5" style={{ color: 'var(--text-muted)' }} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Sunucu ya da oran ara" placeholder="sunucu ya da oran ara"
+          <MagnifyingGlassIcon
+            className="h-4 w-4 absolute left-2 top-1.5"
+            style={{ color: 'var(--text-muted)' }}
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Sunucu ya da oran ara"
+            placeholder="sunucu ya da oran ara"
             className="h-7 pl-7 pr-2 text-[12px] rounded-lg border w-64"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }} />
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
+          />
         </div>
-        <select value={env} onChange={(e) => setEnv(e.target.value)} aria-label="Ortam" className="h-7 text-[12px] rounded-lg border px-1.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+        <select
+          value={env}
+          onChange={(e) => setEnv(e.target.value)}
+          aria-label="Ortam"
+          className="h-7 text-[12px] rounded-lg border px-1.5"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+          }}
+        >
           <option value="all">tüm ortamlar</option>
-          {envler.map((e) => <option key={e} value={e}>{e}</option>)}
-        </select>
-        <select value={sira} onChange={(e) => setSira(e.target.value as Sira)} aria-label="Sıralama" className="h-7 text-[12px] rounded-lg border px-1.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-          title="Sıralama">
-          {(Object.keys(SIRA_ETIKET) as Sira[]).map((k) => (
-            <option key={k} value={k}>sırala: {SIRA_ETIKET[k]}</option>
+          {envler.map((e) => (
+            <option key={e} value={e}>
+              {e}
+            </option>
           ))}
         </select>
-        <select value={durum} onChange={(e) => setDurum(e.target.value as typeof durum)} aria-label="Durum" className="h-7 text-[12px] rounded-lg border px-1.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+        <select
+          value={sira}
+          onChange={(e) => setSira(e.target.value as Sira)}
+          aria-label="Sıralama"
+          className="h-7 text-[12px] rounded-lg border px-1.5"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+          }}
+          title="Sıralama"
+        >
+          {(Object.keys(SIRA_ETIKET) as Sira[]).map((k) => (
+            <option key={k} value={k}>
+              sırala: {SIRA_ETIKET[k]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={durum}
+          onChange={(e) => setDurum(e.target.value as typeof durum)}
+          aria-label="Durum"
+          className="h-7 text-[12px] rounded-lg border px-1.5"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+          }}
+        >
           <option value="all">tüm durumlar</option>
           <option value="eksik">yalnız eksik</option>
           <option value="kapali">yalnız bilerek kapalı</option>
@@ -277,81 +432,166 @@ export function RateLimitTab() {
           <option value="configbozuk">yalnız konfigürasyonu geçersizler</option>
         </select>
         {(data?.availableDates || []).length > 1 && (
-          <select value={scanDate} onChange={(e) => setScanDate(e.target.value)} className="h-7 text-[12px] rounded-lg border px-1.5"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}>
+          <select
+            value={scanDate}
+            onChange={(e) => setScanDate(e.target.value)}
+            className="h-7 text-[12px] rounded-lg border px-1.5"
+            style={{
+              borderColor: 'var(--border)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+            }}
+          >
             <option value="">son tarama ({data?.scanDate})</option>
-            {(data?.availableDates || []).map((d) => <option key={d} value={d}>{d}</option>)}
+            {(data?.availableDates || []).map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
           </select>
         )}
         <span className="flex-1" />
-        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{hosts.length} / {data?.hosts?.length ?? 0} sunucu</span>
+        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {hosts.length} / {data?.hosts?.length ?? 0} sunucu
+        </span>
         <button type="button" className={SM} style={btn()} onClick={() => setTick((n) => n + 1)}>
           <ArrowPathIcon className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Yenile
         </button>
-        <button type="button" className={SM} style={btn(true)} disabled={!data?.hosts?.length} onClick={indir}>
+        <button
+          type="button"
+          className={SM}
+          style={btn(true)}
+          disabled={!data?.hosts?.length}
+          onClick={indir}
+        >
           <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Rapor indir (CSV)
         </button>
       </div>
 
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+      >
         <div className="overflow-x-auto" style={{ maxHeight: '58vh' }}>
           <table className="w-full text-sm">
             <thead className="sticky top-0" style={{ background: 'var(--bg-elevated)' }}>
-              <tr className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              <tr
+                className="text-[11px] uppercase tracking-wide"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 <th className="w-6" />
                 <th className="text-left font-medium px-3 py-2">Sunucu</th>
                 <th className="text-left font-medium px-3 py-2">Ortam</th>
-                <th className="text-left font-medium px-3 py-2">IP istek limiti/kullanıcı başına</th>
+                <th className="text-left font-medium px-3 py-2">
+                  IP istek limiti/kullanıcı başına
+                </th>
                 <th className="text-left font-medium px-3 py-2">Sunucu limiti</th>
-                <th className="text-right font-medium px-3 py-2">Concurrent bağlantı limiti/kullanıcı başına</th>
+                <th className="text-right font-medium px-3 py-2">
+                  Concurrent bağlantı limiti/kullanıcı başına
+                </th>
                 <th className="text-left font-medium px-3 py-2">Durum</th>
               </tr>
             </thead>
             <tbody>
               {hosts.length === 0 && (
-                <TableEmptyRow colSpan={7}
-                  title={(data?.hosts?.length ?? 0) === 0 ? 'Rate limit verisi yok' : 'Süzgece uyan sunucu yok'}
-                  description={(data?.hosts?.length ?? 0) === 0
-                    ? 'nginx_audit job\'ı henüz koşmamış olabilir. Bu, "limit yok" anlamına GELMEZ.'
-                    : 'Arama, ortam ya da durum süzgecini gevşetin.'} />
+                <TableEmptyRow
+                  colSpan={7}
+                  title={
+                    (data?.hosts?.length ?? 0) === 0
+                      ? 'Rate limit verisi yok'
+                      : 'Süzgece uyan sunucu yok'
+                  }
+                  description={
+                    (data?.hosts?.length ?? 0) === 0
+                      ? 'nginx_audit job\'ı henüz koşmamış olabilir. Bu, "limit yok" anlamına GELMEZ.'
+                      : 'Arama, ortam ya da durum süzgecini gevşetin.'
+                  }
+                />
               )}
               {hosts.map((h) => {
                 const d = DURUM[h.durum];
                 const open = acik === h.host;
                 return (
                   <React.Fragment key={h.host}>
-                    <tr className="border-t cursor-pointer" style={{ borderColor: 'var(--border-subtle)' }}
-                      onClick={() => setAcik(open ? null : h.host)}>
+                    <tr
+                      className="border-t cursor-pointer"
+                      style={{ borderColor: 'var(--border-subtle)' }}
+                      onClick={() => setAcik(open ? null : h.host)}
+                    >
                       <td className="pl-2">
-                        {open ? <ChevronDownIcon className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
-                          : <ChevronRightIcon className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />}
+                        {open ? (
+                          <ChevronDownIcon
+                            className="h-4 w-4"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
+                        ) : (
+                          <ChevronRightIcon
+                            className="h-4 w-4"
+                            style={{ color: 'var(--text-muted)' }}
+                          />
+                        )}
                       </td>
-                      <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--text-primary)' }}>
+                      <td
+                        className="px-3 py-1.5 font-medium"
+                        style={{ color: 'var(--text-primary)' }}
+                      >
                         {h.host}
                         {h.calisiyor === false && h.durum !== 'kurulumyok' && (
-                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded"
-                            style={{ color: 'var(--status-warning)', background: 'var(--status-warning-bg)' }}
-                            title={h.hostDurumMsg || 'nginx ayakta degil: buradaki degerler DOSYADA yazan degerler, su an uygulanmiyor.'}>
+                          <span
+                            className="ml-2 text-[10px] px-1.5 py-0.5 rounded"
+                            style={{
+                              color: 'var(--status-warning)',
+                              background: 'var(--status-warning-bg)',
+                            }}
+                            title={
+                              h.hostDurumMsg ||
+                              'nginx ayakta degil: buradaki degerler DOSYADA yazan degerler, su an uygulanmiyor.'
+                            }
+                          >
                             durdurulmus
                           </span>
                         )}
                         {!h.fileLoaded && h.durum !== 'kurulumyok' && h.durum !== 'kapali' && (
-                          <span className="ml-2 text-[10px]" style={{ color: 'var(--status-danger)' }}
-                            title="nginx -T çıktısında rate_limits.conf görünmüyor — dosya yüklenmemiş olabilir">
+                          <span
+                            className="ml-2 text-[10px]"
+                            style={{ color: 'var(--status-danger)' }}
+                            title="nginx -T çıktısında rate_limits.conf görünmüyor — dosya yüklenmemiş olabilir"
+                          >
                             rate_limits.conf yok
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>{h.env}</td>
-                      <td className="px-3 py-1.5 text-[11px] tabular-nums">{h.requestRate || '—'}</td>
-                      <td className="px-3 py-1.5 text-[11px] tabular-nums">{h.serverRate || '—'}</td>
-                      <td className="px-3 py-1.5 text-[11px] tabular-nums text-right">{h.connLimit ?? '—'}</td>
+                      <td
+                        className="px-3 py-1.5 text-[11px]"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {h.env}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] tabular-nums">
+                        {h.requestRate || '—'}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] tabular-nums">
+                        {h.serverRate || '—'}
+                      </td>
+                      <td className="px-3 py-1.5 text-[11px] tabular-nums text-right">
+                        {h.connLimit ?? '—'}
+                      </td>
                       <td className="px-3 py-1.5">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-                          style={{ color: d.color, background: d.bg, border: `1px solid ${d.color}` }}>
-                          {h.durum === 'standart' ? <CheckCircleIcon className="h-3.5 w-3.5" />
-                            : h.durum === 'kapali' ? <InformationCircleIcon className="h-3.5 w-3.5" />
-                            : <ShieldExclamationIcon className="h-3.5 w-3.5" />}
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                          style={{
+                            color: d.color,
+                            background: d.bg,
+                            border: `1px solid ${d.color}`,
+                          }}
+                        >
+                          {h.durum === 'standart' ? (
+                            <CheckCircleIcon className="h-3.5 w-3.5" />
+                          ) : h.durum === 'kapali' ? (
+                            <InformationCircleIcon className="h-3.5 w-3.5" />
+                          ) : (
+                            <ShieldExclamationIcon className="h-3.5 w-3.5" />
+                          )}
                           {d.label}
                         </span>
                       </td>
@@ -360,24 +600,54 @@ export function RateLimitTab() {
                       <tr style={{ background: 'var(--bg-elevated)' }}>
                         <td colSpan={7} className="px-4 py-3">
                           {h.durum === 'kapali' && (
-                            <div className="mb-2 text-[12px]" style={{ color: 'var(--status-info)' }}>
-                              nginx.conf'ta <code>#include {data?.catalog?.file || '/usr/nginx/conf/rate_limits.conf'};</code> satırı yorumlu:
-                              rate limit bu sunucuda bilerek kapatılmış, eksik sayılmaz. Yeniden açmak için
-                              configuration_delivery'de <code>rate_limit_enabled = true</code>.
+                            <div
+                              className="mb-2 text-[12px]"
+                              style={{ color: 'var(--status-info)' }}
+                            >
+                              nginx.conf'ta{' '}
+                              <code>
+                                #include {data?.catalog?.file || '/usr/nginx/conf/rate_limits.conf'}
+                                ;
+                              </code>{' '}
+                              satırı yorumlu: rate limit bu sunucuda bilerek kapatılmış, eksik
+                              sayılmaz. Yeniden açmak için configuration_delivery'de{' '}
+                              <code>rate_limit_enabled = true</code>.
                             </div>
                           )}
                           {(h.eksikler.length > 0 || h.farklar.length > 0) && (
                             <ul className="mb-2 space-y-0.5 text-[12px]">
-                              {h.eksikler.map((x, i) => <li key={`e${i}`} style={{ color: 'var(--status-danger)' }}>• {x}</li>)}
-                              {h.farklar.map((x, i) => <li key={`f${i}`} style={{ color: 'var(--status-warning)' }}>• {x}</li>)}
+                              {h.eksikler.map((x, i) => (
+                                <li key={`e${i}`} style={{ color: 'var(--status-danger)' }}>
+                                  • {x}
+                                </li>
+                              ))}
+                              {h.farklar.map((x, i) => (
+                                <li key={`f${i}`} style={{ color: 'var(--status-warning)' }}>
+                                  • {x}
+                                </li>
+                              ))}
                             </ul>
                           )}
-                          <div className="text-[11px] uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
+                          <div
+                            className="text-[11px] uppercase tracking-wide mb-1"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
                             nginx -T çıktısındaki limit direktifleri
                           </div>
-                          <pre className="text-[11.5px] leading-relaxed rounded-lg px-3 py-2 overflow-auto"
-                            style={{ background: 'var(--bg-surface)', color: 'var(--text-primary)', maxHeight: '30vh', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-                            {h.detay.length === 0 ? '(limit direktifi bulunamadı)' : h.detay.map((x) => `${x.context} · ${x.directive} ${x.value}`).join('\n')}
+                          <pre
+                            className="text-[11.5px] leading-relaxed rounded-lg px-3 py-2 overflow-auto"
+                            style={{
+                              background: 'var(--bg-surface)',
+                              color: 'var(--text-primary)',
+                              maxHeight: '30vh',
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            }}
+                          >
+                            {h.detay.length === 0
+                              ? '(limit direktifi bulunamadı)'
+                              : h.detay
+                                  .map((x) => `${x.context} · ${x.directive} ${x.value}`)
+                                  .join('\n')}
                           </pre>
                         </td>
                       </tr>
@@ -391,25 +661,49 @@ export function RateLimitTab() {
       </div>
 
       <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-        Kaynak: <code>dbo.Nginx_Audit_Settings</code> — <b>nginx_audit</b> job'ı her sunucuda <code>nginx -T</code> koşar,
-        yani burada gördüğünüz <b>çalışan</b> konfigürasyondur, diskteki dosya değil.
-        <b> Eksik</b> = zone hiç yok <i>ya da</i> tanımlı ama <code>limit_req</code>/<code>limit_conn</code> ile uygulanmıyor.
-        <b> Kapalı (bilerek)</b> = nginx.conf'ta <code>rate_limits.conf</code> include satırı yorumlu ve hiçbir estate zone'u yok; bir seçimdir, bulgu değil.
+        Kaynak: <code>dbo.Nginx_Audit_Settings</code> — <b>nginx_audit</b> job'ı her sunucuda{' '}
+        <code>nginx -T</code> koşar, yani burada gördüğünüz <b>çalışan</b> konfigürasyondur,
+        diskteki dosya değil.
+        <b> Eksik</b> = zone hiç yok <i>ya da</i> tanımlı ama <code>limit_req</code>/
+        <code>limit_conn</code> ile uygulanmıyor.
+        <b> Kapalı (bilerek)</b> = nginx.conf'ta <code>rate_limits.conf</code> include satırı
+        yorumlu ve hiçbir estate zone'u yok; bir seçimdir, bulgu değil.
         <GuncellemeRozeti etiket="tarama" tarih={data?.scanDate || '—'} />
       </p>
     </div>
   );
 }
 
-function Kpi({ title, value, tone }: { title: string; value: number; tone?: 'ok' | 'danger' | 'warn' | 'info' }) {
-  const color = tone === 'danger' ? 'var(--status-danger)'
-    : tone === 'warn' ? 'var(--status-warning)'
-    : tone === 'info' ? 'var(--status-info)'
-    : tone === 'ok' ? 'var(--status-success)' : 'var(--text-primary)';
+function Kpi({
+  title,
+  value,
+  tone,
+}: {
+  title: string;
+  value: number;
+  tone?: 'ok' | 'danger' | 'warn' | 'info';
+}) {
+  const color =
+    tone === 'danger'
+      ? 'var(--status-danger)'
+      : tone === 'warn'
+        ? 'var(--status-warning)'
+        : tone === 'info'
+          ? 'var(--status-info)'
+          : tone === 'ok'
+            ? 'var(--status-success)'
+            : 'var(--text-primary)';
   return (
-    <section className="rounded-xl border p-3" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-      <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>{title}</div>
-      <div className="text-2xl font-semibold tabular-nums mt-0.5" style={{ color }}>{value}</div>
+    <section
+      className="rounded-xl border p-3"
+      style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}
+    >
+      <div className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+        {title}
+      </div>
+      <div className="text-2xl font-semibold tabular-nums mt-0.5" style={{ color }}>
+        {value}
+      </div>
     </section>
   );
 }

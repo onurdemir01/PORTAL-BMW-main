@@ -16,19 +16,32 @@ const SRC = fs.readFileSync(
   path.join(__dirname, '..', 'components/self_service/RequestsSidePanel.tsx'),
   'utf8',
 );
-const code = SRC.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const code = SRC.split('\n')
+  .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+  .join('\n');
 
 test('JO1 job ciktisi pencere acikken periyodik yeniden cekiliyor', () => {
   // Bir useEffect icinde setInterval + ssJobStatus olmali.
   const effects = [...code.matchAll(/useEffect\(\(\) => \{([\s\S]*?)\n  \}, \[([^\]]*)\]\);/g)];
   const live = effects.find((m) => /setInterval/.test(m[1]) && /ssJobStatus/.test(m[1]));
-  assert.ok(live, 'setInterval ile ssJobStatus cagiran bir useEffect yok — cikti tek sefer cekilir, akmaz');
+  assert.ok(
+    live,
+    'setInterval ile ssJobStatus cagiran bir useEffect yok — cikti tek sefer cekilir, akmaz',
+  );
   // Pencere kimligine bagli olmali ki acilinca baslayip kapaninca dursun.
   assert.match(live[2], /jobOutputOpenId/, 'efekt jobOutputOpenId degisimine bagli degil');
   assert.match(live[1], /clearInterval/, 'temizleme yok — kapaninca sorgu devam eder');
   // Terminal durumda (successful/failed/error/canceled) durmali.
-  assert.match(live[1], /successful/, 'terminal durum kontrolu yok — biten job sonsuza dek sorgulanir');
+  assert.match(
+    live[1],
+    /successful/,
+    'terminal durum kontrolu yok — biten job sonsuza dek sorgulanir',
+  );
   assert.match(live[1], /canceled/, 'canceled terminal sayilmiyor');
   // Cikti onbellege yazilmali (terminal bunu okur).
-  assert.match(live[1], /setJobOutputCache/, 'yeni cikti onbellege yazilmiyor — terminal guncellenmez');
+  assert.match(
+    live[1],
+    /setJobOutputCache/,
+    'yeni cikti onbellege yazilmiyor — terminal guncellenmez',
+  );
 });

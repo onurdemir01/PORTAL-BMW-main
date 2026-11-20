@@ -10,6 +10,7 @@
 //   EE2 sablondaki deger config.cjs'ten gecince gercekten SINIRSIZ (null) olur
 // Mutasyon: satira "15" geri konursa EE1 ve EE2 kirmizi olur.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -36,9 +37,17 @@ function yorum(index) {
 
 test('EE1 .env.example: Smart zaman asimi bos (sinirsiz), yorum kodla uyumlu', () => {
   const { deger, index } = satir();
-  assert.equal(deger, '', `sablon ${ANAHTAR}=${deger} - turetilen her kurulum ${deger} dk sinirla calisir`);
+  assert.equal(
+    deger,
+    '',
+    `sablon ${ANAHTAR}=${deger} - turetilen her kurulum ${deger} dk sinirla calisir`,
+  );
   const y = yorum(index);
-  assert.doesNotMatch(y, /15 dakika kullanilir/i, 'yorum kodun eski varsayilanini anlatiyor');
+  assert.doesNotMatch(
+    y,
+    esnek(/15 dakika kullanilir/i),
+    'yorum kodun eski varsayilanini anlatiyor',
+  );
   assert.match(y, /SINIRI YOK|sinirsiz/i, 'yorum bos degerin SINIRSIZ demek oldugunu soylemiyor');
 });
 

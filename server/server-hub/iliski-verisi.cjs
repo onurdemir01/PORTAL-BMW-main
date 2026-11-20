@@ -29,8 +29,12 @@ const dizi = (v) => (Array.isArray(v) ? v : []);
 const sayi = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 const iso = (t) => {
   if (t == null) return null;
-  const d =
-    (() => { if (t instanceof Date) return t; return new Date(String(t).replace(' ', 'T') + (/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(String(t)) ? '' : 'Z')); })();
+  const d = (() => {
+    if (t instanceof Date) return t;
+    return new Date(
+      String(t).replace(' ', 'T') + (/(?:[zZ]|[+-]\d\d:?\d\d)$/.test(String(t)) ? '' : 'Z'),
+    );
+  })();
   return Number.isFinite(d.getTime()) ? d.toISOString() : null;
 };
 
@@ -76,15 +80,12 @@ function webProjeksiyon(w) {
   return {
     durum: w.durum || null,
     ps_gorunur: w.ps_gorunur === true,
-    ipler:
-      w.ipler && w.ipler.durum === 'OLCULDU'
-        ? dizi(w.ipler.liste).map((x) => String(x.ip || ''))
-        : null,
+    ipler: w.ipler?.durum === 'OLCULDU' ? dizi(w.ipler.liste).map((x) => String(x.ip || '')) : null,
     kurulumlar: dizi(w.kurulumlar).map((k) => ({
       urun: k.urun === 'IHS' ? 'IHS' : 'RHA',
       calisiyor: typeof k.calisiyor === 'boolean' ? k.calisiyor : null,
       hata_sayisi: dizi(k.hatalar).length,
-      mod_cluster: !!(k.mod_cluster && k.mod_cluster.yuklu),
+      mod_cluster: !!k.mod_cluster?.yuklu,
       vhostlar: dizi(k.vhostlar).map((v) => {
         const l = dizi(v.loglar)[0] || null;
         return {
@@ -114,15 +115,15 @@ function webProjeksiyon(w) {
             : null,
         };
       }),
-      ana_hedefler: dizi(k.ana && k.ana.hedefler).map((h) => ({
+      ana_hedefler: dizi(k.ana?.hedefler).map((h) => ({
         tur: h.tur,
         sema: h.sema,
         host: String(h.host || ''),
         port: sayi(h.port),
         yol: h.yol || '',
       })),
-      jk_global: dizi(k.jk && k.jk.mount_global).map((m) => String(m.worker || '')),
-      workers: dizi(k.jk && k.jk.workers && k.jk.workers.workerlar).map((x) => ({
+      jk_global: dizi(k.jk?.mount_global).map((m) => String(m.worker || '')),
+      workers: dizi(k.jk?.workers?.workerlar).map((x) => ({
         ad: String(x.ad || ''),
         tur: String(x.tur || ''),
         host: String(x.host || ''),
@@ -134,7 +135,7 @@ function webProjeksiyon(w) {
         uyeler: dizi(b.uyeler).map((u) => ({ host: String(u.host || ''), port: sayi(u.port) })),
       })),
       was:
-        k.was && k.was.durum === 'OKUNDU'
+        k.was?.durum === 'OKUNDU'
           ? {
               clusterlar: dizi(k.was.clusterlar).map((c) => ({
                 ad: String(c.ad || ''),
@@ -252,7 +253,7 @@ async function iliskiVerisi() {
     }
   } catch (e) {
     out.okunamadi = true;
-    out.hata = (e && e.message) || 'okunamadı';
+    out.hata = e?.message || 'okunamadı';
   }
   try {
     const { query } = require('../inventory/mssql.cjs');
@@ -261,7 +262,7 @@ async function iliskiVerisi() {
       .map((x) => ({ host: kisaAd(x.host), ip: String(x.ip || '').trim() }))
       .filter((x) => x.host && x.ip);
   } catch (e) {
-    out.ipEnvanteri = { okunamadi: true, hata: (e && e.message) || 'okunamadı', satirlar: [] };
+    out.ipEnvanteri = { okunamadi: true, hata: e?.message || 'okunamadı', satirlar: [] };
   }
   return out;
 }

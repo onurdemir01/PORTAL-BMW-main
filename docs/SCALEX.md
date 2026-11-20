@@ -25,7 +25,7 @@ Ekran (src/components/scalex)
              ↓
         AWX (scalex_run / scalex_discovery şablonları)
              ↓
-        server/ansible/bmw_portal/scalex/scalex_app/*
+        server/ansible/playbooks/bmw_portal/scalex/scalex_app/*
         (playbook kaynağı — AWX'e kopyalanır; LogX ile aynı düzen)
 ```
 
@@ -87,9 +87,9 @@ grup üyeliği oturumdaki `user.groups`'tan okunur). Bu tablo LogX/OpsX/Telnet i
 ## Kurulum
 
 Ayrıntılı adımlar (AWX template alanları, survey'in API ile yüklenmesi, sık hatalar):
-**`server/ansible/bmw_portal/scalex/SCALEX_AWX_SETUP.md`**. Özet:
+**`server/ansible/playbooks/bmw_portal/scalex/SCALEX_AWX_SETUP.md`**. Özet:
 
-1. **AWX**: `server/ansible/bmw_portal/scalex/scalex_app/` klasörünü AWX projesinde
+1. **AWX**: `server/ansible/playbooks/bmw_portal/scalex/scalex_app/` klasörünü AWX projesinde
    AWX projenizde `global_variables/` ile **kardeş** bir klasöre kopyalayın
    (üretimde `bmw_portal/scalex/scalex_app/`); iki şablon oluşturun
    (`main.yml` ve `discovery.yml`). Her ikisinde de **Prompt on launch > Variables

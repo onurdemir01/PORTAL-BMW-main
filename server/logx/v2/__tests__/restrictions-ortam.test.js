@@ -8,6 +8,8 @@
 // son-ekinden (logx_env_suffix_map) gelir. Anahtar BUYUK harfe normalize edilir.
 'use strict';
 
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
+
 const { reddedildi } = require('./fixtures/nginx-red.cjs');
 
 const { test, before, after } = require('node:test');
@@ -398,7 +400,9 @@ test('O10 eylemde 503 -> 424, 501 -> 409 (asil mesajla); GET 503 aynen kalir', a
   const govde = { selected: [{ host: 'h1', path: '/a/X-T.ear/t.log' }] };
   try {
     legacy.transfer = async () => {
-      throw Object.assign(new Error('AWX yanit vermedi; log aktarimi baslatilamadi.'), { status: 503 });
+      throw Object.assign(new Error('AWX yanit vermedi; log aktarimi baslatilamadi.'), {
+        status: 503,
+      });
     };
     const r = await istek('POST', '/legacy/r2/transfer', yabanci, govde);
     assert.equal(r.status, 424, JSON.stringify(r.body));
@@ -427,14 +431,18 @@ test('O10 eylemde 503 -> 424, 501 -> 409 (asil mesajla); GET 503 aynen kalir', a
 });
 
 test('O11 cevirici LogX yonlendiricisinin ILK katmani ve eylem 5xx cevrimi acik', () => {
-  const kaynak = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.cjs'), 'utf8');
+  const kaynak = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'index.cjs'),
+    'utf8',
+  );
   const bas = kaynak.indexOf('function initLogXv2(app)');
   const ilk = kaynak.indexOf('router.use(', bas);
   assert.ok(bas > 0 && ilk > bas);
   assert.match(
     kaynak.slice(ilk, ilk + 140),
-    /^router\.use\(require\('\.\.\/\.\.\/util\/nginx-red\.cjs'\)\.nginxRedCevirici\(\{ onek: 'logx', eylem5xx: true \}\)\)/,
+    esnek(
+      /^router\.use\(require\('\.\.\/\.\.\/util\/nginx-red\.cjs'\)\.nginxRedCevirici\(\{ onek: 'logx', eylem5xx: true \}\)\)/,
+    ),
     'ilk ara katman cevirici degil ya da eylem 5xx cevrimi kapali',
   );
 });
-

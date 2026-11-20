@@ -3,10 +3,15 @@
 // önce eski sunucuda koşmuş işleri de gösterir (iş geçmişi eski sunucuda salt-okunur kalır).
 import type { AnsibleSsItem } from '@/api/ansibleApi';
 
-export function servisBaglari(item: Pick<AnsibleSsItem, 'awxServerId' | 'awxTemplateId' | 'oncekiBaglar'>): { awxServerId: number; awxTemplateId: number }[] {
+export function servisBaglari(
+  item: Pick<AnsibleSsItem, 'awxServerId' | 'awxTemplateId' | 'oncekiBaglar'>,
+): { awxServerId: number; awxTemplateId: number }[] {
   return [
     { awxServerId: Number(item.awxServerId), awxTemplateId: Number(item.awxTemplateId) },
-    ...(item.oncekiBaglar ?? []).map((b) => ({ awxServerId: Number(b.awxServerId), awxTemplateId: Number(b.awxTemplateId) })),
+    ...(item.oncekiBaglar ?? []).map((b) => ({
+      awxServerId: Number(b.awxServerId),
+      awxTemplateId: Number(b.awxTemplateId),
+    })),
   ];
 }
 
@@ -15,5 +20,7 @@ export function servisinIsiMi(
   item: Pick<AnsibleSsItem, 'awxServerId' | 'awxTemplateId' | 'oncekiBaglar'>,
   h: { template_id: number | string; awx_server_id: number | string },
 ): boolean {
-  return servisBaglari(item).some((b) => Number(h.template_id) === b.awxTemplateId && Number(h.awx_server_id) === b.awxServerId);
+  return servisBaglari(item).some(
+    (b) => Number(h.template_id) === b.awxTemplateId && Number(h.awx_server_id) === b.awxServerId,
+  );
 }

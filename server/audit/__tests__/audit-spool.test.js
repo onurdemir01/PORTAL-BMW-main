@@ -28,7 +28,8 @@ let dbBozuk = false;
 let sonrakiId = 1;
 const db = require('../../db/index.cjs');
 db.query = async (sql, params) => {
-  if (dbBozuk) throw new Error("The transaction log for database 'TBMWANS' is full due to 'LOG_BACKUP'");
+  if (dbBozuk)
+    throw new Error("The transaction log for database 'TBMWANS' is full due to 'LOG_BACKUP'");
   const s = String(sql).replace(/\s+/g, ' ');
   if (s.includes('SELECT TOP 1 entry_hash')) {
     return { rows: tablo.length ? [{ entry_hash: tablo[tablo.length - 1].entry_hash }] : [] };
@@ -36,8 +37,11 @@ db.query = async (sql, params) => {
   if (s.startsWith('INSERT INTO')) {
     tablo.push({
       id: sonrakiId++,
-      username: params[1], action: params[6], detail: params[8],
-      prev_hash: params[10], entry_hash: params[11],
+      username: params[1],
+      action: params[6],
+      detail: params[8],
+      prev_hash: params[10],
+      entry_hash: params[11],
     });
     return { rowCount: 1 };
   }
@@ -175,7 +179,11 @@ test('AS6 aktarim ortasinda DB duserse kalanlar spool`da KALIYOR', async () => {
   assert.equal(zincir.spoolDepth(), 2, 'kalan iki kayit KAYBOLDU');
   await zincir.drainSpool();
   assert.equal(tablo.length, 3, 'ikinci turda kalanlar aktarilmadi');
-  assert.deepEqual(tablo.map((x) => x.action), ['bir', 'iki', 'uc'], 'SIRA bozuldu');
+  assert.deepEqual(
+    tablo.map((x) => x.action),
+    ['bir', 'iki', 'uc'],
+    'SIRA bozuldu',
+  );
 });
 
 // AS7 — AKTARIM MUKERRER KAYIT URETMEZ.
@@ -208,5 +216,9 @@ test('AS7 aktarim sirasinda dusen yazim MUKERRER kayit uretmez', async () => {
 
   // DB donunce tam olarak iki kayit yazilmali.
   await zincir.drainSpool();
-  assert.deepEqual(tablo.map((x) => x.action), ['bir', 'iki'], 'kayitlar mukerrer ya da eksik');
+  assert.deepEqual(
+    tablo.map((x) => x.action),
+    ['bir', 'iki'],
+    'kayitlar mukerrer ya da eksik',
+  );
 });

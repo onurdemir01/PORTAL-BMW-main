@@ -45,12 +45,19 @@ const ALANLAR = {
 const CLI7 = (komut) => `jboss-cli.sh --connect --controller=$HOSTNAME --command="${komut}"`;
 const CLI8 = (komut) => `jboss-cli8.sh --connect --controller=$HOSTNAME:9998 --command="${komut}"`;
 const DEPLOYMENT_KONTROL = [
-  CLI7('/host=master/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)'),
-  CLI8('/host=primary/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)'),
+  CLI7(
+    '/host=master/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)',
+  ),
+  CLI8(
+    '/host=primary/server=<JVM>:read-children-resources(child-type=deployment,include-runtime=true,recursive=false)',
+  ),
 ];
-const DURUM_KONTROL = [CLI7('ls host=master/server-config=<JVM>'), CLI8('ls host=primary/server-config=<JVM>')];
+const DURUM_KONTROL = [
+  CLI7('ls host=master/server-config=<JVM>'),
+  CLI8('ls host=primary/server-config=<JVM>'),
+];
 const TRAFIK_KONTROL = [
-  "ls -lrt <ACCESS_LOG>*   # rotasyonla kac gunluk log var",
+  'ls -lrt <ACCESS_LOG>*   # rotasyonla kac gunluk log var',
   "zgrep -h -v -E 'hc\\.(jsp|html)' <ACCESS_LOG>* | tail -5   # hc disi son istekler",
   "zgrep -h -v -E 'hc\\.(jsp|html)' <ACCESS_LOG>* | awk '{ print $1, $6, $7 }' | sed 's/?.*//' | sort | uniq -c | sort -rn | head   # en cok tekrar eden istekler (istemci, metot, yol)",
 ];
@@ -64,7 +71,11 @@ const MADDELER = [
     ad: 'Son tarama yüklemesi',
     neTaranir: 'Sunucunun son taraması veritabanına yüklendi mi (yükleyicinin dışlama kaydı).',
     ciktilar: [
-      { kod: 'LOAD_EXCLUDED', kosul: 'Son tarama yüklenemedi; ekranda önceki yükleme gösterilir, eylem önerilmez.', seviye: 'warning' },
+      {
+        kod: 'LOAD_EXCLUDED',
+        kosul: 'Son tarama yüklenemedi; ekranda önceki yükleme gösterilir, eylem önerilmez.',
+        seviye: 'warning',
+      },
       { kod: null, kosul: 'Son tarama yüklendi.', seviye: 'ok' },
     ],
   },
@@ -74,7 +85,11 @@ const MADDELER = [
     ad: 'AWX envanterinde çift kayıt',
     neTaranir: 'Aynı makine AWX envanterinde birden çok adla geçiyor mu.',
     ciktilar: [
-      { kod: 'LOAD_DUPLICATE', kosul: 'Aynı makine AWX envanterinde iki farklı adla.', seviye: 'info' },
+      {
+        kod: 'LOAD_DUPLICATE',
+        kosul: 'Aynı makine AWX envanterinde iki farklı adla.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Makine envanterde tek adla.', seviye: 'ok' },
     ],
   },
@@ -82,9 +97,14 @@ const MADDELER = [
     id: 'tarama-butunlugu',
     alan: 'scan',
     ad: 'Tarama bütünlüğü',
-    neTaranir: 'Taramanın bir fazı zaman bütçesini (deadline) aştı mı ya da çıktı sigortası (fuse) devreye girdi mi.',
+    neTaranir:
+      'Taramanın bir fazı zaman bütçesini (deadline) aştı mı ya da çıktı sigortası (fuse) devreye girdi mi.',
     ciktilar: [
-      { kod: 'SCAN_PARTIAL', kosul: 'Tarama kısmi: bir faz zaman bütçesini aştı ya da çıktı sigortayla kesildi.', seviye: 'info' },
+      {
+        kod: 'SCAN_PARTIAL',
+        kosul: 'Tarama kısmi: bir faz zaman bütçesini aştı ya da çıktı sigortayla kesildi.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Tarama tam.', seviye: 'ok' },
     ],
   },
@@ -94,7 +114,12 @@ const MADDELER = [
     ad: 'Web ürünü varlığı',
     neTaranir: 'IHS / RHA / Nginx sunucuda kurulu mu.',
     ciktilar: [
-      { kod: 'WEB_PRESENCE_UNKNOWN', kosul: 'Ürünün kurulu olup olmadığı ölçülemedi (yetki / dzdo reddi) — “kurulu değil” sayılmaz.', seviye: 'info' },
+      {
+        kod: 'WEB_PRESENCE_UNKNOWN',
+        kosul:
+          'Ürünün kurulu olup olmadığı ölçülemedi (yetki / dzdo reddi) — “kurulu değil” sayılmaz.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Varlık ölçüldü.', seviye: 'ok' },
     ],
   },
@@ -104,8 +129,17 @@ const MADDELER = [
     ad: 'Ürün kapsamı (envanter ↔ tarama)',
     neTaranir: 'Envanterdeki (dbo.Inventory) ürünler ile taramanın gördüğü ürünler aynı mı.',
     ciktilar: [
-      { kod: 'PRODUCT_NOT_SCANNED', kosul: 'Envanterde ürün var ama tarama bu sunucuda göremedi (yetki ya da yol farkı olabilir).', seviye: 'warning' },
-      { kod: 'PRODUCT_NOT_IN_INVENTORY', kosul: 'Taramada ürün bulundu ama envanterde yok.', seviye: 'info' },
+      {
+        kod: 'PRODUCT_NOT_SCANNED',
+        kosul:
+          'Envanterde ürün var ama tarama bu sunucuda göremedi (yetki ya da yol farkı olabilir).',
+        seviye: 'warning',
+      },
+      {
+        kod: 'PRODUCT_NOT_IN_INVENTORY',
+        kosul: 'Taramada ürün bulundu ama envanterde yok.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Envanter ve tarama aynı ürünleri gösteriyor.', seviye: 'ok' },
     ],
   },
@@ -123,13 +157,31 @@ const MADDELER = [
     id: 'init-uyumu',
     alan: 'init',
     ad: 'Init script referans uyumu',
-    neTaranir: 'Init script dosyalarının özeti (sha) filo çoğunluğuyla karşılaştırılır; uyum ölçütü start.sh.',
+    neTaranir:
+      'Init script dosyalarının özeti (sha) filo çoğunluğuyla karşılaştırılır; uyum ölçütü start.sh.',
     ciktilar: [
-      { kod: 'INIT_DIFF', kosul: 'Ölçüt dosyası (start.sh) filo çoğunluğundan farklı.', seviye: 'warning' },
-      { kod: 'INIT_DIFF_OLCUT_DISI', kosul: 'Ölçüt dışı bir init dosyası çoğunluktan farklı (uyum sayımına girmez).', seviye: 'info' },
-      { kod: 'INIT_HOST_SPECIFIC', kosul: 'Sunucuya özel dosya (JBoss kurulumunu tarif eder) çoğunluktan farklı — beklenen durum.', seviye: 'info' },
+      {
+        kod: 'INIT_DIFF',
+        kosul: 'Ölçüt dosyası (start.sh) filo çoğunluğundan farklı.',
+        seviye: 'warning',
+      },
+      {
+        kod: 'INIT_DIFF_OLCUT_DISI',
+        kosul: 'Ölçüt dışı bir init dosyası çoğunluktan farklı (uyum sayımına girmez).',
+        seviye: 'info',
+      },
+      {
+        kod: 'INIT_HOST_SPECIFIC',
+        kosul:
+          'Sunucuya özel dosya (JBoss kurulumunu tarif eder) çoğunluktan farklı — beklenen durum.',
+        seviye: 'info',
+      },
       { kod: 'INIT_MISSING', kosul: 'Dosya sunucuda yok.', seviye: 'info' },
-      { kod: 'INIT_UNREADABLE', kosul: 'Dosya okunamadı (yetki / dzdo reddi) — var / yok / farklı olduğu bilinmiyor.', seviye: 'info' },
+      {
+        kod: 'INIT_UNREADABLE',
+        kosul: 'Dosya okunamadı (yetki / dzdo reddi) — var / yok / farklı olduğu bilinmiyor.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Dosya filo çoğunluğuyla aynı.', seviye: 'ok' },
     ],
   },
@@ -139,10 +191,22 @@ const MADDELER = [
     ad: 'JBoss CLI erişimi (JBoss 7 / 8)',
     neTaranir: 'jboss-cli ile host controller’a bağlanılıp JVM tanımları okunabiliyor mu.',
     ciktilar: [
-      { kod: 'CLI_DENIED', kosul: 'CLI dzdo yetki reddi aldı (dzdo kuralında jboss-cli yok).', seviye: 'warning' },
+      {
+        kod: 'CLI_DENIED',
+        kosul: 'CLI dzdo yetki reddi aldı (dzdo kuralında jboss-cli yok).',
+        seviye: 'warning',
+      },
       { kod: 'CLI_FAIL', kosul: 'CLI denendi, cevap vermedi.', seviye: 'info' },
-      { kod: 'CLI_SKIP', kosul: 'CLI hiç çalıştırılamadı (jboss-cli yok ya da host controller çalışmıyor).', seviye: 'info' },
-      { kod: 'JBOSS_KALINTI', kosul: 'JBoss dizini var ama kullanılan bir kurulum görünmüyor (kalıntı).', seviye: 'info' },
+      {
+        kod: 'CLI_SKIP',
+        kosul: 'CLI hiç çalıştırılamadı (jboss-cli yok ya da host controller çalışmıyor).',
+        seviye: 'info',
+      },
+      {
+        kod: 'JBOSS_KALINTI',
+        kosul: 'JBoss dizini var ama kullanılan bir kurulum görünmüyor (kalıntı).',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'CLI okundu.', seviye: 'ok' },
     ],
   },
@@ -152,7 +216,11 @@ const MADDELER = [
     ad: 'JBoss host controller durumu',
     neTaranir: 'Host controller’ın çalışma durumu (CLI).',
     ciktilar: [
-      { kod: 'HOST_RESTART', kosul: 'Host controller restart-required ya da reload-required.', seviye: 'warning' },
+      {
+        kod: 'HOST_RESTART',
+        kosul: 'Host controller restart-required ya da reload-required.',
+        seviye: 'warning',
+      },
       {
         kod: 'JBOSS_DOMAIN_DOWN',
         kosul:
@@ -166,11 +234,25 @@ const MADDELER = [
     id: 'jvm-envanteri',
     alan: 'jvm',
     ad: 'Tanımlı JVM envanteri',
-    neTaranir: 'JVM tanımları CLI ya da host XML’den okunabiliyor mu ve çalışan JVM’ler tanımda var mı.',
+    neTaranir:
+      'JVM tanımları CLI ya da host XML’den okunabiliyor mu ve çalışan JVM’ler tanımda var mı.',
     ciktilar: [
-      { kod: 'JVM_INVENTORY_UNMEASURED', kosul: 'CLI ve host XML okunamadı; liste yalnız ps’ten — durmuş JVM’ler listede olmayabilir.', seviye: 'warning' },
-      { kod: 'JVM_UNDEFINED_PROCESS', kosul: 'Tanım kaynağı okundu ama ps’te çalışan bir JVM tanımda yok.', seviye: 'warning' },
-      { kod: 'JVM_DATA_MISSING', kosul: 'Taramada JBoss var ama hiç JVM satırı gelmedi.', seviye: 'warning' },
+      {
+        kod: 'JVM_INVENTORY_UNMEASURED',
+        kosul:
+          'CLI ve host XML okunamadı; liste yalnız ps’ten — durmuş JVM’ler listede olmayabilir.',
+        seviye: 'warning',
+      },
+      {
+        kod: 'JVM_UNDEFINED_PROCESS',
+        kosul: 'Tanım kaynağı okundu ama ps’te çalışan bir JVM tanımda yok.',
+        seviye: 'warning',
+      },
+      {
+        kod: 'JVM_DATA_MISSING',
+        kosul: 'Taramada JBoss var ama hiç JVM satırı gelmedi.',
+        seviye: 'warning',
+      },
       { kod: null, kosul: 'Tanım listesi okundu ve çalışan JVM’ler tanımlı.', seviye: 'ok' },
     ],
   },
@@ -180,7 +262,12 @@ const MADDELER = [
     ad: 'JVM çalışma durumu ölçümü',
     neTaranir: 'JVM süreçleri ps ile görülebiliyor mu.',
     ciktilar: [
-      { kod: 'RUNNING_UNMEASURED', kosul: 'Süreç görünmüyor (hidepid / ps körlüğü) ya da şema okunamadı — kapalı sayılmaz, eylem önerilmez.', seviye: 'info' },
+      {
+        kod: 'RUNNING_UNMEASURED',
+        kosul:
+          'Süreç görünmüyor (hidepid / ps körlüğü) ya da şema okunamadı — kapalı sayılmaz, eylem önerilmez.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Çalışma durumu ölçüldü.', seviye: 'ok' },
     ],
   },
@@ -188,32 +275,65 @@ const MADDELER = [
     id: 'autostart',
     alan: 'jvm',
     ad: 'Auto-start ↔ çalışma durumu (reboot sonrası açılış)',
-    neTaranir: 'JVM’in şu anki çalışma durumu ile auto-start ayarı uyumlu mu: reboot sonrası aynı durum geri gelir mi.',
+    neTaranir:
+      'JVM’in şu anki çalışma durumu ile auto-start ayarı uyumlu mu: reboot sonrası aynı durum geri gelir mi.',
     ciktilar: [
-      { kod: 'REBOOT_RISK', kosul: 'JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz.', seviye: 'danger' },
+      {
+        kod: 'REBOOT_RISK',
+        kosul: 'JVM çalışıyor ama auto-start kapalı — reboot sonrası açılmaz.',
+        seviye: 'danger',
+      },
       {
         kod: 'STOPPED_AUTOSTART_ON',
         kosul: 'JVM kapalı ama auto-start açık — reboot’ta açılır.',
         seviye: 'danger',
         dogrulama: {
-          neden: 'Tarama JVM sürecini görmedi (kapalı) ama tanımda auto-start açık: reboot sonrası kendiliğinden açılır.',
-          eksik: 'JVM bilerek kapatılmış ve yeniden açılmaması gerekiyor olabilir (retire bekleyen uygulama); ya da tarama anında yeniden başlatılıyordu.',
-          kontrol: [...DURUM_KONTROL, 'ps -ef | grep -- "-D\\[Server:<JVM>\\]"   # süreç gerçekten yok mu'],
+          neden:
+            'Tarama JVM sürecini görmedi (kapalı) ama tanımda auto-start açık: reboot sonrası kendiliğinden açılır.',
+          eksik:
+            'JVM bilerek kapatılmış ve yeniden açılmaması gerekiyor olabilir (retire bekleyen uygulama); ya da tarama anında yeniden başlatılıyordu.',
+          kontrol: [
+            ...DURUM_KONTROL,
+            'ps -ef | grep -- "-D\\[Server:<JVM>\\]"   # süreç gerçekten yok mu',
+          ],
         },
       },
-      { kod: 'AUTOSTART_UNKNOWN', kosul: 'JVM çalışıyor, auto-start okunamadı (CLI / envanter) — “kapalı” sayılmaz.', seviye: 'info' },
-      { kod: null, kosul: 'Çalışıyor + auto-start açık ya da kapalı + auto-start kapalı.', seviye: 'ok' },
+      {
+        kod: 'AUTOSTART_UNKNOWN',
+        kosul: 'JVM çalışıyor, auto-start okunamadı (CLI / envanter) — “kapalı” sayılmaz.',
+        seviye: 'info',
+      },
+      {
+        kod: null,
+        kosul: 'Çalışıyor + auto-start açık ya da kapalı + auto-start kapalı.',
+        seviye: 'ok',
+      },
     ],
   },
   {
     id: 'jvm-envanter-tutarliligi',
     alan: 'jvm',
     ad: 'JVM envanteri ↔ tarama',
-    neTaranir: 'Middleware envanterinin (MWAppsInventory) çalışma durumu ve auto-start bilgisi taramayla aynı mı.',
+    neTaranir:
+      'Middleware envanterinin (MWAppsInventory) çalışma durumu ve auto-start bilgisi taramayla aynı mı.',
     ciktilar: [
-      { kod: 'INV_MISMATCH', kosul: 'Envanter çalışma durumu ya da auto-start’ta taramayla çelişiyor.', seviye: 'info' },
-      { kod: 'INV_JVM_COUNT', kosul: 'Numaralı / server-group eşleşmesinde envanterin JVM sayısı eşleşen tarama JVM sayısından farklı (bilgi notu, çelişki sayılmaz).', seviye: 'info' },
-      { kod: 'INV_ONLY_APP', kosul: 'Envanterdeki uygulamanın bu sunucunun taramasında JVM’i yok (ad, ad + numara ya da server-group eşleşmedi): satır “yalnız envanterde”, eylem önerilmez.', seviye: 'info' },
+      {
+        kod: 'INV_MISMATCH',
+        kosul: 'Envanter çalışma durumu ya da auto-start’ta taramayla çelişiyor.',
+        seviye: 'info',
+      },
+      {
+        kod: 'INV_JVM_COUNT',
+        kosul:
+          'Numaralı / server-group eşleşmesinde envanterin JVM sayısı eşleşen tarama JVM sayısından farklı (bilgi notu, çelişki sayılmaz).',
+        seviye: 'info',
+      },
+      {
+        kod: 'INV_ONLY_APP',
+        kosul:
+          'Envanterdeki uygulamanın bu sunucunun taramasında JVM’i yok (ad, ad + numara ya da server-group eşleşmedi): satır “yalnız envanterde”, eylem önerilmez.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'Envanter ve tarama tutarlı.', seviye: 'ok' },
     ],
   },
@@ -223,7 +343,12 @@ const MADDELER = [
     ad: 'JVM restart gerekliliği',
     neTaranir: 'Çalışan JVM’in server-state değeri (CLI).',
     ciktilar: [
-      { kod: 'RESTART_REQUIRED', kosul: 'JVM restart-required ya da reload-required: runtime’da etkin olmayan yapılandırma değişikliği var.', seviye: 'warning' },
+      {
+        kod: 'RESTART_REQUIRED',
+        kosul:
+          'JVM restart-required ya da reload-required: runtime’da etkin olmayan yapılandırma değişikliği var.',
+        seviye: 'warning',
+      },
       { kod: null, kosul: 'JVM running.', seviye: 'ok' },
     ],
   },
@@ -231,15 +356,19 @@ const MADDELER = [
     id: 'jvm-parametre',
     alan: 'jvm',
     ad: 'JVM parametreleri (yapılandırma ↔ çalışan süreç)',
-    neTaranir: 'Çalışan JVM sürecinin parametreleri ile tanımdaki (host.xml / CLI jvm-options) parametreler aynı mı.',
+    neTaranir:
+      'Çalışan JVM sürecinin parametreleri ile tanımdaki (host.xml / CLI jvm-options) parametreler aynı mı.',
     ciktilar: [
       {
         kod: 'JVM_PARAM_FARKI',
-        kosul: 'JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — bir sonraki restart’ta davranış değişir.',
+        kosul:
+          'JVM çalışıyor ama yapılandırılan parametreler çalışan süreçtekinden farklı — bir sonraki restart’ta davranış değişir.',
         seviye: 'danger',
         dogrulama: {
-          neden: 'Taramanın jvm_arg_diff alanı en az bir parametrede “running” ile “configured” değerini farklı buldu.',
-          eksik: 'Değişiklik bilerek yapılmış ve restart planlanmış olabilir; parametre başlatma betiğinden (start.sh) ekleniyor olabilir.',
+          neden:
+            'Taramanın jvm_arg_diff alanı en az bir parametrede “running” ile “configured” değerini farklı buldu.',
+          eksik:
+            'Değişiklik bilerek yapılmış ve restart planlanmış olabilir; parametre başlatma betiğinden (start.sh) ekleniyor olabilir.',
           kontrol: [
             CLI7(':read-attribute(name=local-host-name)') + '   # host controller adi (<HC>)',
             CLI7('/host=<HC>/server-config=<JVM>/jvm=<JVM>:read-resource'),
@@ -255,16 +384,22 @@ const MADDELER = [
     id: 'jvm-yuk',
     alan: 'jvm',
     ad: 'JVM yükü (web katmanı trafiği)',
-    neTaranir: 'JVM’e giden web katmanı access log istekleri, son 7 gün (hc.jsp / hc.html hariç); IHS / RHA / Nginx loglarında tekrar eden (sağlık kontrolü benzeri) istekler ayrı sayılır.',
+    neTaranir:
+      'JVM’e giden web katmanı access log istekleri, son 7 gün (hc.jsp / hc.html hariç); IHS / RHA / Nginx loglarında tekrar eden (sağlık kontrolü benzeri) istekler ayrı sayılır.',
     ciktilar: [
       {
         kod: 'RETIRE_CANDIDATE',
         kosul: 'JVM kapalı ve 7 gündür istek yok — retire adayı.',
         seviye: 'warning',
         dogrulama: {
-          neden: 'JVM süreci yok ve eşlenen web katmanı vhost’larının access log’unda son 7 günde (hc.jsp / hc.html hariç) istek yok.',
+          neden:
+            'JVM süreci yok ve eşlenen web katmanı vhost’larının access log’unda son 7 günde (hc.jsp / hc.html hariç) istek yok.',
           eksik: TRAFIK_EKSIK,
-          kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'CMDB / uygulama sahibi: uygulama kapatıldı mı, taşındı mı'],
+          kontrol: [
+            ...DURUM_KONTROL,
+            ...TRAFIK_KONTROL,
+            'CMDB / uygulama sahibi: uygulama kapatıldı mı, taşındı mı',
+          ],
         },
       },
       {
@@ -279,26 +414,45 @@ const MADDELER = [
       },
       {
         kod: 'ONLY_REPEAT_TRAFFIC',
-        kosul: 'Web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check; URI bulguda) — JVM kapalıysa retire adayı olabilir.',
+        kosul:
+          'Web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check; URI bulguda) — JVM kapalıysa retire adayı olabilir.',
         seviye: 'warning',
         dogrulama: {
-          neden: 'Eşlenen vhost’ların access log’undaki hc dışı isteklerin TAMAMI birkaç istemciden (LB / izleme), 7 günün saatlerinin çoğunda ve düzenli hızda gelen aynı GET/HEAD istekleri: gerçek kullanıcı isteği görülmedi.',
-          eksik: 'Tekrar eden istek bir izleme aracının iş URL’sini yoklaması ya da sistemden sisteme düzenli bir çağrı olabilir (o zaman uygulama kullanılıyordur). ' + TRAFIK_EKSIK,
-          kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'Tekrar eden isteğin istemci IP’sinin LB / izleme sistemine ait olduğunu doğrula', 'CMDB / uygulama sahibi onayı'],
+          neden:
+            'Eşlenen vhost’ların access log’undaki hc dışı isteklerin TAMAMI birkaç istemciden (LB / izleme), 7 günün saatlerinin çoğunda ve düzenli hızda gelen aynı GET/HEAD istekleri: gerçek kullanıcı isteği görülmedi.',
+          eksik:
+            'Tekrar eden istek bir izleme aracının iş URL’sini yoklaması ya da sistemden sisteme düzenli bir çağrı olabilir (o zaman uygulama kullanılıyordur). ' +
+            TRAFIK_EKSIK,
+          kontrol: [
+            ...DURUM_KONTROL,
+            ...TRAFIK_KONTROL,
+            'Tekrar eden isteğin istemci IP’sinin LB / izleme sistemine ait olduğunu doğrula',
+            'CMDB / uygulama sahibi onayı',
+          ],
         },
       },
-      { kod: 'TRAFFIC_UNATTRIBUTED', kosul: 'Web katmanında hiçbir JVM’e atfedilemeyen proxy trafiği var — retire önerilmez.', seviye: 'warning' },
+      {
+        kod: 'TRAFFIC_UNATTRIBUTED',
+        kosul: 'Web katmanında hiçbir JVM’e atfedilemeyen proxy trafiği var — retire önerilmez.',
+        seviye: 'warning',
+      },
       {
         kod: 'TRAFFIC_UNVERIFIED',
         kosul: 'JVM kapalı, trafik doğrulanamadı (log okunamadı ya da web sunucusu ölçülemedi).',
         seviye: 'info',
         dogrulama: {
-          neden: 'Eşlenen access log okunamadı ya da web sunucusu ölçülemedi: “istek yok” iddiası kurulmadı.',
-          eksik: 'Log başka kullanıcıya ait (izin), web sunucusu taranmadı, vhost başka bir sunucuda.',
+          neden:
+            'Eşlenen access log okunamadı ya da web sunucusu ölçülemedi: “istek yok” iddiası kurulmadı.',
+          eksik:
+            'Log başka kullanıcıya ait (izin), web sunucusu taranmadı, vhost başka bir sunucuda.',
           kontrol: TRAFIK_KONTROL,
         },
       },
-      { kod: 'STOPPED', kosul: 'JVM kapalı, auto-start kapalı, web katmanı eşlenemedi.', seviye: 'info' },
+      {
+        kod: 'STOPPED',
+        kosul: 'JVM kapalı, auto-start kapalı, web katmanı eşlenemedi.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'JVM istek alıyor.', seviye: 'ok' },
     ],
   },
@@ -306,10 +460,15 @@ const MADDELER = [
     id: 'web-sozdizimi',
     alan: 'web',
     ad: 'Web sunucu sözdizimi',
-    neTaranir: 'IHS / RHA için apachectl -t, Nginx için nginx -t; çalışan kurulumun argümanlarıyla.',
+    neTaranir:
+      'IHS / RHA için apachectl -t, Nginx için nginx -t; çalışan kurulumun argümanlarıyla.',
     ciktilar: [
       { kod: 'SYNTAX_FAIL', kosul: 'Sözdizimi hatası doğrulandı.', seviye: 'danger' },
-      { kod: 'SYNTAX_UNVERIFIED', kosul: 'Kontrol çalıştı ama erişim / ortam yüzünden doğrulanamadı (config hatası değil).', seviye: 'warning' },
+      {
+        kod: 'SYNTAX_UNVERIFIED',
+        kosul: 'Kontrol çalıştı ama erişim / ortam yüzünden doğrulanamadı (config hatası değil).',
+        seviye: 'warning',
+      },
       { kod: 'SYNTAX_UNKNOWN', kosul: 'Kontrol sonucu ölçülemedi.', seviye: 'info' },
       { kod: null, kosul: 'Sözdizimi doğru.', seviye: 'ok' },
     ],
@@ -320,7 +479,11 @@ const MADDELER = [
     ad: 'Web sunucu süreci',
     neTaranir: 'Vhost tanımı olan web ürününün süreci çalışıyor mu (ps).',
     ciktilar: [
-      { kod: 'NOT_RUNNING', kosul: 'Ürün süreç listesinde yok ama vhost tanımları var.', seviye: 'warning' },
+      {
+        kod: 'NOT_RUNNING',
+        kosul: 'Ürün süreç listesinde yok ama vhost tanımları var.',
+        seviye: 'warning',
+      },
       { kod: null, kosul: 'Ürün çalışıyor.', seviye: 'ok' },
     ],
   },
@@ -338,9 +501,14 @@ const MADDELER = [
     id: 'ip',
     alan: 'ip',
     ad: 'IP kullanımı',
-    neTaranir: 'Sunucudaki birincil olmayan IP’ler bir vhost ya da soket tarafından kullanılıyor mu.',
+    neTaranir:
+      'Sunucudaki birincil olmayan IP’ler bir vhost ya da soket tarafından kullanılıyor mu.',
     ciktilar: [
-      { kod: 'IP_UNUSED', kosul: 'IP hiçbir vhost / soket tarafından kullanılmıyor (boşta IP).', seviye: 'info' },
+      {
+        kod: 'IP_UNUSED',
+        kosul: 'IP hiçbir vhost / soket tarafından kullanılmıyor (boşta IP).',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'IP kullanılıyor.', seviye: 'ok' },
     ],
   },
@@ -348,10 +516,19 @@ const MADDELER = [
     id: 'sshd',
     alan: 'ssh',
     ad: 'sshd oturum sınırı',
-    neTaranir: 'sshd MaxSessions değeri ve açık oturum sayısı (Ansible delegate / forks tıkanması).',
+    neTaranir:
+      'sshd MaxSessions değeri ve açık oturum sayısı (Ansible delegate / forks tıkanması).',
     ciktilar: [
-      { kod: 'SSH_SESSIONS_NEAR', kosul: 'Açık oturum sayısı MaxSessions’ın %80’ine ulaştı.', seviye: 'warning' },
-      { kod: 'SSH_MAXSESSIONS_LOW', kosul: 'MaxSessions 10 ya da altı (varsayılan); öneri 64.', seviye: 'info' },
+      {
+        kod: 'SSH_SESSIONS_NEAR',
+        kosul: 'Açık oturum sayısı MaxSessions’ın %80’ine ulaştı.',
+        seviye: 'warning',
+      },
+      {
+        kod: 'SSH_MAXSESSIONS_LOW',
+        kosul: 'MaxSessions 10 ya da altı (varsayılan); öneri 64.',
+        seviye: 'info',
+      },
       { kod: null, kosul: 'MaxSessions 10’dan büyük ve sınırdan uzak.', seviye: 'ok' },
     ],
   },
@@ -361,7 +538,8 @@ const MADDELER = [
     id: 'ear-war',
     alan: 'ear',
     ad: 'EAR içeriği (WAR)',
-    neTaranir: '/vhosting ve /vhosting8 altındaki her EAR’ın içinde WAR (web modülü) var mı (Uygulama Envanteri taraması).',
+    neTaranir:
+      '/vhosting ve /vhosting8 altındaki her EAR’ın içinde WAR (web modülü) var mı (Uygulama Envanteri taraması).',
     ciktilar: [
       {
         kod: 'EAR_WAR_YOK',
@@ -370,7 +548,8 @@ const MADDELER = [
         seviye: 'warning',
         dogrulama: {
           neden: 'Uygulama Envanteri EAR’ı eksiksiz taradı (durum TAM) ve içinde .war bulmadı.',
-          eksik: 'Yalnız EJB / MDB / zamanlayıcı içeren EAR’lar bilerek WAR taşımaz; modül EAR dışında (paylaşılan dizinde) olabilir.',
+          eksik:
+            'Yalnız EJB / MDB / zamanlayıcı içeren EAR’lar bilerek WAR taşımaz; modül EAR dışında (paylaşılan dizinde) olabilir.',
           kontrol: [
             'ls -la /vhosting/<EAR> /vhosting8/<EAR>',
             'cat /vhosting/<EAR>/META-INF/application.xml   # <module> listesi (web / ejb / java)',
@@ -385,15 +564,19 @@ const MADDELER = [
     id: 'ear-kok',
     alan: 'ear',
     ad: 'Kökteki EAR dışı girdiler',
-    neTaranir: '/vhosting ve /vhosting8 kökünde .ear ile bitmeyen dosya / dizin / bağ (yok sayma listesi hariç).',
+    neTaranir:
+      '/vhosting ve /vhosting8 kökünde .ear ile bitmeyen dosya / dizin / bağ (yok sayma listesi hariç).',
     ciktilar: [
       {
         kod: 'KOK_EAR_DISI',
-        kosul: 'Kökte .ear ile bitmeyen girdi var (APP.ear.bak, ESKI.war, eski dizin …) — retire şüphesi.',
+        kosul:
+          'Kökte .ear ile bitmeyen girdi var (APP.ear.bak, ESKI.war, eski dizin …) — retire şüphesi.',
         seviye: 'info',
         dogrulama: {
-          neden: 'Uygulama dağıtım kökünde JBoss’un yüklemediği adla girdi var: yedek, eski sürüm ya da elle bırakılmış dosya olabilir.',
-          eksik: 'Girdi bir betik, paylaşılan kütüphane ya da yapılandırma dizini olabilir (o zaman yok sayma listesine eklenmeli).',
+          neden:
+            'Uygulama dağıtım kökünde JBoss’un yüklemediği adla girdi var: yedek, eski sürüm ya da elle bırakılmış dosya olabilir.',
+          eksik:
+            'Girdi bir betik, paylaşılan kütüphane ya da yapılandırma dizini olabilir (o zaman yok sayma listesine eklenmeli).',
           kontrol: [
             'ls -la /vhosting/<GIRDI>',
             'grep -rl "<GIRDI>" /usr/jboss/AppServer/domain/configuration /vhosting/scripts 2>/dev/null   # kullanan var mı',
@@ -408,7 +591,8 @@ const MADDELER = [
     id: 'ear-jvm',
     alan: 'ear',
     ad: 'EAR ↔ JVM eşlemesi (domain.xml / host.xml)',
-    neTaranir: 'Diskteki her EAR domain.xml’de bir deployment olarak tanımlı mı, bir server-group’a atanmış mı ve o grubun bu sunucuda JVM’i var mı (host.xml).',
+    neTaranir:
+      'Diskteki her EAR domain.xml’de bir deployment olarak tanımlı mı, bir server-group’a atanmış mı ve o grubun bu sunucuda JVM’i var mı (host.xml).',
     ciktilar: [
       {
         kod: 'EAR_JVM_YOK',
@@ -416,8 +600,10 @@ const MADDELER = [
           'EAR diskte var ama domain.xml / host.xml onu hiçbir JVM’e bağlamıyor ve dizini kullanan süreç / taramadan önceki 7 günde yazma görülmedi (ölçülemediyse ya da süreçlerin bir kısmı okunamadıysa metin bunu söyler).',
         seviye: 'warning',
         dogrulama: {
-          neden: 'Yapılandırma okundu ve EAR için deployment tanımı, server-group ataması ya da bu sunucuda JVM bulunmadı.',
-          eksik: 'Deployment adı diskteki dosya adından farklı ve yol göreli (relative-to) tanımlı olabilir; EAR başka bir JBoss kurulumundan yükleniyor olabilir.',
+          neden:
+            'Yapılandırma okundu ve EAR için deployment tanımı, server-group ataması ya da bu sunucuda JVM bulunmadı.',
+          eksik:
+            'Deployment adı diskteki dosya adından farklı ve yol göreli (relative-to) tanımlı olabilir; EAR başka bir JBoss kurulumundan yükleniyor olabilir.',
           kontrol: [
             "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml",
             "grep -n '<server ' /usr/jboss/AppServer/domain/configuration/host.xml",
@@ -431,8 +617,10 @@ const MADDELER = [
           'EAR hiçbir JVM’e bağlı değil ama dizin kullanımda: dizini gösteren süreç var (cwd / fd / maps / exe / root / komut satırı) ya da taramadan önceki 7 günde yazılmış — “JVM yok” uyarısı ve retire adayı üretilmez.',
         seviye: 'info',
         dogrulama: {
-          neden: 'Uygulama Envanteri taraması /proc’ta bu dizini kullanan süreç buldu ya da dizinde son 7 günde değişen dosya var (örnek: JBoss dışında çalışan Node.js uygulaması).',
-          eksik: 'Süreç yalnız bir yedekleme / izleme aracı olabilir; yazma bir log döndürme işinden gelebilir. Süreç başka kullanıcıya aitse tarayıcı onu göremeyebilir.',
+          neden:
+            'Uygulama Envanteri taraması /proc’ta bu dizini kullanan süreç buldu ya da dizinde son 7 günde değişen dosya var (örnek: JBoss dışında çalışan Node.js uygulaması).',
+          eksik:
+            'Süreç yalnız bir yedekleme / izleme aracı olabilir; yazma bir log döndürme işinden gelebilir. Süreç başka kullanıcıya aitse tarayıcı onu göremeyebilir.',
           kontrol: [
             'pgrep -af node; for p in $(pgrep -u was); do ls -l /proc/$p/cwd; done',
             'ls -la --time-style=long-iso /vhosting8/<EAR>/logs | tail -5',
@@ -442,14 +630,16 @@ const MADDELER = [
       },
       {
         kod: 'EAR_XML_OLCULEMEDI',
-        kosul: 'JBoss yapılandırması okunamadı — EAR’ların JVM eşlemesi yapılamadı (“JVM yok” sayılmaz).',
+        kosul:
+          'JBoss yapılandırması okunamadı — EAR’ların JVM eşlemesi yapılamadı (“JVM yok” sayılmaz).',
         seviye: 'info',
         dogrulama: {
-          neden: 'domain.xml / host.xml yok, okunamadı (izin), 5 MB üstü ya da DOCTYPE / ENTITY içerdiği için okunmadı.',
+          neden:
+            'domain.xml / host.xml yok, okunamadı (izin), 5 MB üstü ya da DOCTYPE / ENTITY içerdiği için okunmadı.',
           eksik: 'Kurulum standart yolların dışında olabilir (/usr/jboss*/AppServer[/jboss]).',
           kontrol: [
             'ls -la /usr/jboss/AppServer/domain/configuration /usr/jboss8/AppServer/domain/configuration',
-            "dzdo -u was head -c 300 /usr/jboss/AppServer/domain/configuration/domain.xml",
+            'dzdo -u was head -c 300 /usr/jboss/AppServer/domain/configuration/domain.xml',
           ],
         },
       },
@@ -471,7 +661,8 @@ const MADDELER = [
         seviye: 'danger',
         dogrulama: {
           neden: 'JBoss CLI çalışan JVM’in deployment listesini boş döndü.',
-          eksik: 'Uygulama yeniden dağıtılıyor olabilir (deploy sırasında liste kısa süre boştur); JVM bilerek boş bırakılmış olabilir.',
+          eksik:
+            'Uygulama yeniden dağıtılıyor olabilir (deploy sırasında liste kısa süre boştur); JVM bilerek boş bırakılmış olabilir.',
           kontrol: DEPLOYMENT_KONTROL,
         },
       },
@@ -482,7 +673,10 @@ const MADDELER = [
         dogrulama: {
           neden: 'Deployment’ın çalışma zamanı durumu FAILED (sunucu logunda hata nedeni).',
           eksik: 'Tarama anında yeniden başlatma sürüyor olabilir.',
-          kontrol: [...DEPLOYMENT_KONTROL, 'tail -200 /vhosting/<EAR>/../logs/server.log   # ya da JVM’in server.log’u'],
+          kontrol: [
+            ...DEPLOYMENT_KONTROL,
+            'tail -200 /vhosting/<EAR>/../logs/server.log   # ya da JVM’in server.log’u',
+          ],
         },
       },
       {
@@ -497,7 +691,8 @@ const MADDELER = [
       },
       {
         kod: 'DEPLOY_OLCULEMEDI',
-        kosul: 'Deployment durumu ölçülemedi (CLI yok, yanıt vermedi, zaman aşımı) — “deployment yok” sayılmaz.',
+        kosul:
+          'Deployment durumu ölçülemedi (CLI yok, yanıt vermedi, zaman aşımı) — “deployment yok” sayılmaz.',
         seviye: 'info',
         dogrulama: {
           neden: 'JBoss CLI bulunamadı, bağlanamadı, süre aşıldı ya da çıktı okunamadı.',
@@ -505,7 +700,11 @@ const MADDELER = [
           kontrol: [CLI7('ls host=master'), CLI8('ls host=primary')],
         },
       },
-      { kod: null, kosul: 'Çalışan JVM’lerin deployment’ları OK ve etkin (ya da kontrol kapalı).', seviye: 'ok' },
+      {
+        kod: null,
+        kosul: 'Çalışan JVM’lerin deployment’ları OK ve etkin (ya da kontrol kapalı).',
+        seviye: 'ok',
+      },
     ],
   },
   // CAPRAZ KONTROL (2026-11-06; kullanici: "portal genelindeki butun verilerden al incele carp
@@ -520,21 +719,31 @@ const MADDELER = [
     ciktilar: [
       {
         kod: 'KOPYA_TUTARSIZ',
-        kosul: 'Aynı ortamda aynı JVM’in kopyalarından biri kapalı ya da auto-start’ı öteki kopyalardan farklı.',
+        kosul:
+          'Aynı ortamda aynı JVM’in kopyalarından biri kapalı ya da auto-start’ı öteki kopyalardan farklı.',
         seviye: 'warning',
         dogrulama: {
-          neden: 'Eşlenik kopyalar aynı davranmalı: biri kapalıysa ya da reboot’ta farklı davranacaksa ya bu kopya bırakılmış (retire ediliyor) ya da bir arıza / unutulmuş ayar var.',
-          eksik: 'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; kopyalardan biri bakımda olabilir.',
-          kontrol: [...DURUM_KONTROL, 'Öteki kopyaların sunucusunda aynı komutu çalıştır; uygulama sahibine aktif / pasif mi diye sor', 'Server Hub › Kopya Durumu sekmesinde grubun bütün kopyaları tek satırda (çalışan x / y)'],
+          neden:
+            'Eşlenik kopyalar aynı davranmalı: biri kapalıysa ya da reboot’ta farklı davranacaksa ya bu kopya bırakılmış (retire ediliyor) ya da bir arıza / unutulmuş ayar var.',
+          eksik:
+            'Aktif / pasif (DR) kurgusunda bir kopyanın kapalı durması beklenen olabilir; kopyalardan biri bakımda olabilir.',
+          kontrol: [
+            ...DURUM_KONTROL,
+            'Öteki kopyaların sunucusunda aynı komutu çalıştır; uygulama sahibine aktif / pasif mi diye sor',
+            'Server Hub › Kopya Durumu sekmesinde grubun bütün kopyaları tek satırda (çalışan x / y)',
+          ],
         },
       },
       {
         kod: 'ORTAM_KALINTISI',
-        kosul: 'Uygulama prod’da çalışmıyor (kopyası yok, hepsi kapalı ya da Retirement ile durdurulmuş) ama DEV / TEST / QA kopyası çalışıyor.',
+        kosul:
+          'Uygulama prod’da çalışmıyor (kopyası yok, hepsi kapalı ya da Retirement ile durdurulmuş) ama DEV / TEST / QA kopyası çalışıyor.',
         seviye: 'warning',
         dogrulama: {
-          neden: 'Prod’da yaşamayan bir uygulamanın test kopyası genelde unutulmuş kalıntıdır; prod OpenShift’e taşındıysa JBoss test kopyası da gereksizdir.',
-          eksik: 'Uygulama henüz prod’a çıkmamış (geliştirme sürüyor) ya da yalnız test ortamında kullanılan bir araç olabilir; prod kopyası Server Hub’ın taramadığı bir sunucuda olabilir.',
+          neden:
+            'Prod’da yaşamayan bir uygulamanın test kopyası genelde unutulmuş kalıntıdır; prod OpenShift’e taşındıysa JBoss test kopyası da gereksizdir.',
+          eksik:
+            'Uygulama henüz prod’a çıkmamış (geliştirme sürüyor) ya da yalnız test ortamında kullanılan bir araç olabilir; prod kopyası Server Hub’ın taramadığı bir sunucuda olabilir.',
           kontrol: [
             ...DURUM_KONTROL,
             'Uygulama Envanteri ve Denetim > Uygulama Ortamları’nda taban adı ara',
@@ -544,11 +753,14 @@ const MADDELER = [
       },
       {
         kod: 'OCP_KOPYASI',
-        kosul: 'Aynı taban ad OpenShift envanterinde aynı ortamda (namespace son eki) var; Dynatrace isteği yazılır.',
+        kosul:
+          'Aynı taban ad OpenShift envanterinde aynı ortamda (namespace son eki) var; Dynatrace isteği yazılır.',
         seviye: 'info',
         dogrulama: {
-          neden: 'Uygulama OpenShift’e taşınmış olabilir: JBoss kopyası kapalı ya da trafiksizken OpenShift kopyası istek alıyorsa JBoss tarafı retire adayıdır.',
-          eksik: 'Ad eşleşmesi yalnız normalize adla (küçük harf, ayırıcılar atılır) yapılır; aynı adlı farklı uygulama olabilir. Geçiş sürüyorsa iki taraf bir süre birlikte çalışır.',
+          neden:
+            'Uygulama OpenShift’e taşınmış olabilir: JBoss kopyası kapalı ya da trafiksizken OpenShift kopyası istek alıyorsa JBoss tarafı retire adayıdır.',
+          eksik:
+            'Ad eşleşmesi yalnız normalize adla (küçük harf, ayırıcılar atılır) yapılır; aynı adlı farklı uygulama olabilir. Geçiş sürüyorsa iki taraf bir süre birlikte çalışır.',
           kontrol: [
             'oc get deploy,dc -n <NAMESPACE>   # uygulama gerçekten orada mı',
             'Nginx Hub > SPA Keşfi / Dynatrace: OpenShift kopyasının isteği',
@@ -558,11 +770,14 @@ const MADDELER = [
       },
       {
         kod: 'RETIRE_KAYDI_CELISKI',
-        kosul: 'Retirement hedefi STOP edildi ya da silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
+        kosul:
+          'Retirement hedefi STOP edildi ya da silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
         seviye: 'danger',
         dogrulama: {
-          neden: 'STOP adımı auto-start’ı kapatır, JVM’i durdurur ve paketi .<smart>.old yapar; tarama bunun tersini görüyor: uygulama elle geri açılmış ya da adım yarım kalmış.',
-          eksik: 'Geri alma (rollback) Retirement dışında elle yapılmış olabilir; kayıt güncellenmemiş olabilir.',
+          neden:
+            'STOP adımı auto-start’ı kapatır, JVM’i durdurur ve paketi .<smart>.old yapar; tarama bunun tersini görüyor: uygulama elle geri açılmış ya da adım yarım kalmış.',
+          eksik:
+            'Geri alma (rollback) Retirement dışında elle yapılmış olabilir; kayıt güncellenmemiş olabilir.',
           kontrol: [
             ...DURUM_KONTROL,
             'ls -la /vhosting /vhosting8 | grep -i <EAR>   # özgün ad mı, .old mu',
@@ -572,20 +787,29 @@ const MADDELER = [
       },
       {
         kod: 'RETIRE_DOGRULAMA_BEKLIYOR',
-        kosul: 'Retirement hedefi STOP edildi ya da silindi; tarama çelişki gösteriyor ama STOP’tan (silme kontrolünde silmeden) önce alınmış ya da kayıtta STOP zamanı yok: çelişki kurulmaz, bir sonraki tarama doğrular.',
+        kosul:
+          'Retirement hedefi STOP edildi ya da silindi; tarama çelişki gösteriyor ama STOP’tan (silme kontrolünde silmeden) önce alınmış ya da kayıtta STOP zamanı yok: çelişki kurulmaz, bir sonraki tarama doğrular.',
         seviye: 'info',
       },
       {
         kod: 'RETIRE_AYNI_GUN_DOGRULA',
-        kosul: 'Retirement hedefi STOP edildi ya da silindi; aynı günün Server Hub taraması JVM’i çalışıyor ya da auto-start’ı açık gösteriyor ama tarama yalnız gün taşıdığı için STOP’tan önce mi sonra mı bilinmiyor: kritik denmez, yeniden tarama (ertesi günün taraması) kesinleştirir.',
+        kosul:
+          'Retirement hedefi STOP edildi ya da silindi; aynı günün Server Hub taraması JVM’i çalışıyor ya da auto-start’ı açık gösteriyor ama tarama yalnız gün taşıdığı için STOP’tan önce mi sonra mı bilinmiyor: kritik denmez, yeniden tarama (ertesi günün taraması) kesinleştirir.',
         seviye: 'warning',
         dogrulama: {
-          neden: 'STOP’u doğrulamak için hemen yapılan tarama da bu durumdadır: JVM gerçekten çalışıyorsa STOP yarım kalmıştır.',
-          eksik: 'Tarama STOP’tan birkaç saat önce yapılmışsa uyarı ertesi günün taramasıyla kalkar.',
+          neden:
+            'STOP’u doğrulamak için hemen yapılan tarama da bu durumdadır: JVM gerçekten çalışıyorsa STOP yarım kalmıştır.',
+          eksik:
+            'Tarama STOP’tan birkaç saat önce yapılmışsa uyarı ertesi günün taramasıyla kalkar.',
           kontrol: [...DURUM_KONTROL, 'Retirement > kayıt: hedefin iş geçmişi ve son AWX işi'],
         },
       },
-      { kod: null, kosul: 'Kopyalar ve ortamlar tutarlı; Retirement kaydıyla çelişki yok (ya da kaynak okunamadı: bulgu üretilmez).', seviye: 'ok' },
+      {
+        kod: null,
+        kosul:
+          'Kopyalar ve ortamlar tutarlı; Retirement kaydıyla çelişki yok (ya da kaynak okunamadı: bulgu üretilmez).',
+        seviye: 'ok',
+      },
     ],
   },
 ];
@@ -595,7 +819,13 @@ const KODLAR = new Map();
 for (const m of MADDELER)
   for (const c of m.ciktilar)
     if (c.kod)
-      KODLAR.set(c.kod, { seviye: c.seviye, madde: m.id, alan: m.alan, kosul: c.kosul, dogrulama: c.dogrulama || null });
+      KODLAR.set(c.kod, {
+        seviye: c.seviye,
+        madde: m.id,
+        alan: m.alan,
+        kosul: c.kosul,
+        dogrulama: c.dogrulama || null,
+      });
 
 // ── RETIREMENT ETIKET KURALLARI (2026-11-06) ────────────────────────────────────────────────
 // Kullanici: "Kesin olarak retire edilecek teknoloji de retirement tagi olsun supheli olan da";
@@ -611,7 +841,8 @@ const ETIKET_KURALLARI = [
     kosul: 'JVM kapalı, auto-start açık ve web katmanında 7 gündür istek yok.',
     varsayilan: 'KESIN',
     dogrulama: {
-      neden: 'Uygulama ayakta değil, reboot’ta açılacak şekilde bırakılmış ve kimse istek göndermiyor.',
+      neden:
+        'Uygulama ayakta değil, reboot’ta açılacak şekilde bırakılmış ve kimse istek göndermiyor.',
       eksik: TRAFIK_EKSIK,
       kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'CMDB / uygulama sahibi onayı'],
     },
@@ -623,16 +854,22 @@ const ETIKET_KURALLARI = [
     kosul: 'JVM kapalı, auto-start kapalı ama web katmanına (IHS) istek gelmeye devam ediyor.',
     varsayilan: 'SUPHELI',
     dogrulama: {
-      neden: 'Uygulama bilerek kapatılmış görünüyor ama web katmanı hâlâ istek alıyor: istemciler hata alıyor olabilir.',
-      eksik: 'İstekler yalnız izleme / tarayıcı botu olabilir; vhost başka bir JVM’e de yönlendiriyor olabilir.',
-      kontrol: [...TRAFIK_KONTROL, 'Vhost’un proxy hedeflerini kontrol et: başka JVM’e de gidiyor mu'],
+      neden:
+        'Uygulama bilerek kapatılmış görünüyor ama web katmanı hâlâ istek alıyor: istemciler hata alıyor olabilir.',
+      eksik:
+        'İstekler yalnız izleme / tarayıcı botu olabilir; vhost başka bir JVM’e de yönlendiriyor olabilir.',
+      kontrol: [
+        ...TRAFIK_KONTROL,
+        'Vhost’un proxy hedeflerini kontrol et: başka JVM’e de gidiyor mu',
+      ],
     },
   },
   {
     kural: 'R3',
     tur: 'EAR',
     ad: 'EAR var, WAR yok',
-    kosul: 'EAR tam tarandı ve içinde hiç WAR yok; JVM’e bağlı olmayan EAR’ın dizini kullanımdaysa (süreç / taramadan önceki 7 günde yazma) aday değildir.',
+    kosul:
+      'EAR tam tarandı ve içinde hiç WAR yok; JVM’e bağlı olmayan EAR’ın dizini kullanımdaysa (süreç / taramadan önceki 7 günde yazma) aday değildir.',
     varsayilan: 'SUPHELI',
     dogrulama: null, // EAR_WAR_YOK ile ayni
     kod: 'EAR_WAR_YOK',
@@ -660,12 +897,18 @@ const ETIKET_KURALLARI = [
     kural: 'R6',
     tur: 'JVM',
     ad: 'Deployment adı diskteki EAR’la uyuşmuyor',
-    kosul: 'Çalışan JVM’deki bir deployment’ın adı /vhosting(8) altındaki hiçbir EAR’la eşleşmiyor (Faz 2).',
+    kosul:
+      'Çalışan JVM’deki bir deployment’ın adı /vhosting(8) altındaki hiçbir EAR’la eşleşmiyor (Faz 2).',
     varsayilan: 'SUPHELI',
     dogrulama: {
-      neden: 'JVM diskte karşılığı olmayan bir içerik çalıştırıyor: eski / yönetilen içerik ya da elle dağıtılmış paket olabilir.',
-      eksik: 'Deployment doğrudan .war olarak ya da /vhosting dışından dağıtılmış olabilir (o zaman yanlış alarm).',
-      kontrol: [...DEPLOYMENT_KONTROL, "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml"],
+      neden:
+        'JVM diskte karşılığı olmayan bir içerik çalıştırıyor: eski / yönetilen içerik ya da elle dağıtılmış paket olabilir.',
+      eksik:
+        'Deployment doğrudan .war olarak ya da /vhosting dışından dağıtılmış olabilir (o zaman yanlış alarm).',
+      kontrol: [
+        ...DEPLOYMENT_KONTROL,
+        "grep -n '<deployment ' /usr/jboss/AppServer/domain/configuration/domain.xml",
+      ],
     },
   },
   // R7-R12 (2026-11-06; kullanici: auto-start ile calisma durumu uyusmuyorsa "bunlar da risktir,
@@ -678,9 +921,15 @@ const ETIKET_KURALLARI = [
     kosul: 'JVM çalışıyor ama auto-start kapalı: reboot’ta açılmayacak şekilde bırakılmış.',
     varsayilan: 'SUPHELI',
     dogrulama: {
-      neden: 'Auto-start’ın kapatılması çoğu zaman uygulamayı bırakmanın ilk adımıdır; JVM hâlâ ayakta çünkü kimse durdurmadı.',
-      eksik: 'Auto-start bilerek kapalı tutuluyor olabilir (elle açılan uygulama, bakım); auto-start ayarı yanlışlıkla kapanmış olabilir (o zaman risk, retire değil).',
-      kontrol: [...DURUM_KONTROL, ...TRAFIK_KONTROL, 'Uygulama sahibine sor: reboot sonrası açılması gerekiyor mu'],
+      neden:
+        'Auto-start’ın kapatılması çoğu zaman uygulamayı bırakmanın ilk adımıdır; JVM hâlâ ayakta çünkü kimse durdurmadı.',
+      eksik:
+        'Auto-start bilerek kapalı tutuluyor olabilir (elle açılan uygulama, bakım); auto-start ayarı yanlışlıkla kapanmış olabilir (o zaman risk, retire değil).',
+      kontrol: [
+        ...DURUM_KONTROL,
+        ...TRAFIK_KONTROL,
+        'Uygulama sahibine sor: reboot sonrası açılması gerekiyor mu',
+      ],
     },
     kod: 'REBOOT_RISK',
   },
@@ -688,7 +937,8 @@ const ETIKET_KURALLARI = [
     kural: 'R8',
     tur: 'JVM',
     ad: 'Kapalı + auto-start açık',
-    kosul: 'JVM kapalı ama auto-start açık (trafik ne olursa olsun; R1 bunun trafiksiz, daha güçlü hâli).',
+    kosul:
+      'JVM kapalı ama auto-start açık (trafik ne olursa olsun; R1 bunun trafiksiz, daha güçlü hâli).',
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'STOPPED_AUTOSTART_ON',
@@ -715,7 +965,8 @@ const ETIKET_KURALLARI = [
     kural: 'R11',
     tur: 'JVM',
     ad: 'OpenShift’e taşınmış olabilir',
-    kosul: 'Aynı uygulama OpenShift’te aynı ortamda var; JBoss kopyası kapalı ya da trafiksiz, ya da OpenShift kopyası istek alıyor.',
+    kosul:
+      'Aynı uygulama OpenShift’te aynı ortamda var; JBoss kopyası kapalı ya da trafiksiz, ya da OpenShift kopyası istek alıyor.',
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'OCP_KOPYASI',
@@ -724,7 +975,8 @@ const ETIKET_KURALLARI = [
     kural: 'R12',
     tur: 'JVM',
     ad: 'Retirement kaydıyla çelişiyor',
-    kosul: 'Retirement hedefi STOP edildi / silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
+    kosul:
+      'Retirement hedefi STOP edildi / silindi ama JVM çalışıyor, auto-start açık ya da paket özgün adıyla diskte.',
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'RETIRE_KAYDI_CELISKI',
@@ -735,7 +987,8 @@ const ETIKET_KURALLARI = [
     kural: 'R13',
     tur: 'JVM',
     ad: 'Kapalı + yalnız tekrar eden istek',
-    kosul: 'JVM kapalı ve web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check, hc.html / hc.jsp dışında bir URI).',
+    kosul:
+      'JVM kapalı ve web katmanına 7 gündür yalnız tekrar eden istek geliyor (olası health check, hc.html / hc.jsp dışında bir URI).',
     varsayilan: 'SUPHELI',
     dogrulama: null,
     kod: 'ONLY_REPEAT_TRAFFIC',

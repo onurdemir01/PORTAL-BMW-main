@@ -6,7 +6,10 @@
 // `RESULT\t<eylem>\t<PLAN|FAIL|...>\t<mesaj>` ile bildirir (server_hub_fix_result.blok/.line).
 // Ekranda gorulen blok, gercekte yorumlanacak blogun ta kendisidir (tek awk, VHOST_AWK).
 
-export interface BlokSatiri { no: number; metin: string }
+export interface BlokSatiri {
+  no: number;
+  metin: string;
+}
 export type PlanSonucu = 'PLAN' | 'OK' | 'SKIP' | 'FAIL' | 'BILINMIYOR';
 
 /** `BLOK\t<no>\t<metin>` listesi -> satirlar. Bicimi bozuk satir ATLANMAZ, metin olarak tasinir. */
@@ -15,7 +18,9 @@ export function blokAyristir(blok: unknown): BlokSatiri[] {
   return blok.map((x) => {
     const p = String(x ?? '').split('\t');
     const no = Number(p[1]);
-    return p[0] === 'BLOK' && Number.isInteger(no) ? { no, metin: p.slice(2).join('\t') } : { no: 0, metin: String(x ?? '') };
+    return p[0] === 'BLOK' && Number.isInteger(no)
+      ? { no, metin: p.slice(2).join('\t') }
+      : { no: 0, metin: String(x ?? '') };
   });
 }
 
@@ -23,15 +28,22 @@ export function blokAyristir(blok: unknown): BlokSatiri[] {
 export function sonucAyristir(line: unknown): { durum: PlanSonucu; mesaj: string } {
   const p = String(line ?? '').split('\t');
   const d = p[0] === 'RESULT' ? String(p[2] || '').toUpperCase() : '';
-  const durum: PlanSonucu = d === 'PLAN' || d === 'OK' || d === 'SKIP' || d === 'FAIL' ? d : 'BILINMIYOR';
+  const durum: PlanSonucu =
+    d === 'PLAN' || d === 'OK' || d === 'SKIP' || d === 'FAIL' ? d : 'BILINMIYOR';
   return { durum, mesaj: p[0] === 'RESULT' ? p.slice(3).join(' ') : 'plan sonucu okunamadı' };
 }
 
 // MOD_JK BAGLANTILARI (2026-10-08, SALT OKUNUR). IHS'te vhost mod-jk.conf ya da httpd.conf'ta, worker'lar
 // conf/worker.properties'te. Blok kapatilinca blogun DISINDAKI JkMount'lar ve worker tanimlari aktif kalir;
 // web adimi onlara DOKUNMAZ - burada yalniz gorunur. Satir: `JK\t<tur>\t<dosya>\t<no>\t<metin>`.
-export type JkTur = 'GLOBAL' | 'PAYLASILAN' | 'WORKER' | 'LIST' | 'LB' | 'OKUNAMADI' | 'NOT' | 'BILINMIYOR';
-export interface JkSatiri { tur: JkTur; dosya: string; no: number; metin: string }
+export type JkTur =
+  'GLOBAL' | 'PAYLASILAN' | 'WORKER' | 'LIST' | 'LB' | 'OKUNAMADI' | 'NOT' | 'BILINMIYOR';
+export interface JkSatiri {
+  tur: JkTur;
+  dosya: string;
+  no: number;
+  metin: string;
+}
 const JK_TUR = new Set(['GLOBAL', 'PAYLASILAN', 'WORKER', 'LIST', 'LB', 'OKUNAMADI', 'NOT']);
 
 /** Bicimi bozuk satir ATLANMAZ: tur BILINMIYOR olarak metniyle tasinir. */
@@ -39,14 +51,20 @@ export function jkAyristir(jk: unknown): JkSatiri[] {
   if (!Array.isArray(jk)) return [];
   return jk.map((x) => {
     const p = String(x ?? '').split('\t');
-    if (p[0] !== 'JK' || !JK_TUR.has(p[1])) return { tur: 'BILINMIYOR' as JkTur, dosya: '', no: 0, metin: String(x ?? '') };
-    return { tur: p[1] as JkTur, dosya: p[2] === '-' ? '' : p[2] || '', no: Number(p[3]) || 0, metin: p.slice(4).join('\t') };
+    if (p[0] !== 'JK' || !JK_TUR.has(p[1]))
+      return { tur: 'BILINMIYOR' as JkTur, dosya: '', no: 0, metin: String(x ?? '') };
+    return {
+      tur: p[1] as JkTur,
+      dosya: p[2] === '-' ? '' : p[2] || '',
+      no: Number(p[3]) || 0,
+      metin: p.slice(4).join('\t'),
+    };
   });
 }
 
 export const JK_ETIKET: Record<JkTur, string> = {
   GLOBAL: 'blok dışı JkMount — blok kapanınca da AKTİF',
-  PAYLASILAN: 'başka vhost aynı worker\'ı kullanıyor — worker silinemez',
+  PAYLASILAN: "başka vhost aynı worker'ı kullanıyor — worker silinemez",
   WORKER: 'worker tanımı',
   LIST: 'worker.list',
   LB: 'load balancer üyeliği',
@@ -70,14 +88,21 @@ export function kipAyristir(kip: unknown): { kip: Kip; hedef?: string } {
 
 /** Ayni ServerName'li birden cok blok (ornegin :80 ve :443) ayri gruplar olur: satir numarasi ardisik
  *  degilse yeni blok. Boylece iki blok "ayni sey iki kez yazilmis" gibi gorunmez. */
-export interface BlokGrubu { bas: number; son: number; satirlar: BlokSatiri[] }
+export interface BlokGrubu {
+  bas: number;
+  son: number;
+  satirlar: BlokSatiri[];
+}
 export function bloklaraBol(satirlar: BlokSatiri[]): BlokGrubu[] {
   const out: BlokGrubu[] = [];
   for (const s of satirlar) {
     const g = out[out.length - 1];
-    if (g && s.no > 0 && g.son > 0 && s.no === g.son + 1) { g.satirlar.push(s); g.son = s.no; }
-    else if (g && (s.no === 0 || g.son === 0)) { g.satirlar.push(s); }
-    else out.push({ bas: s.no, son: s.no, satirlar: [s] });
+    if (g && s.no > 0 && g.son > 0 && s.no === g.son + 1) {
+      g.satirlar.push(s);
+      g.son = s.no;
+    } else if (g && (s.no === 0 || g.son === 0)) {
+      g.satirlar.push(s);
+    } else out.push({ bas: s.no, son: s.no, satirlar: [s] });
   }
   return out;
 }
@@ -93,13 +118,20 @@ export function sonraMetni(metin: string, kip: Kip): string | null {
 // MOD_JK DEGISIKLIKLERI (2026-10-08, kullanici: "STOP adiminda direkt yine yorum satirina alalim").
 // Betik planda, gercekte yazacagi AYNI awk'tan `JKDEG\t<dosya>\t<no>\t<once>\t<sonra>` basar:
 // once bos = EKLENEN satir (worker.list'in yeni hali), sonra bos = KALKAN satir (geri almada).
-export interface JkDeg { dosya: string; no: number; once: string; sonra: string }
+export interface JkDeg {
+  dosya: string;
+  no: number;
+  once: string;
+  sonra: string;
+}
 export function jkDegAyristir(x: unknown): JkDeg[] {
   if (!Array.isArray(x)) return [];
   return x.flatMap((y) => {
     const p = String(y ?? '').split('\t');
     if (p[0] !== 'JKDEG' || p.length < 5) return [];
-    return [{ dosya: p[1] || '', no: Number(p[2]) || 0, once: p[3] || '', sonra: p.slice(4).join('\t') }];
+    return [
+      { dosya: p[1] || '', no: Number(p[2]) || 0, once: p[3] || '', sonra: p.slice(4).join('\t') },
+    ];
   });
 }
 

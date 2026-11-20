@@ -23,8 +23,16 @@ const MAX_ROWS_AUTO = Number(process.env.EXTERNAL_INDEX_MAX_ROWS || 1000000);
 const WANTED = [
   { table: 'Nginx_Audit_Hosts', name: 'IX_Nginx_Audit_Hosts_scan', cols: 'scan_date, host' },
   { table: 'Nginx_Audit_Servers', name: 'IX_Nginx_Audit_Servers_scan', cols: 'scan_date, host' },
-  { table: 'Nginx_Audit_Locations', name: 'IX_Nginx_Audit_Locations_scan', cols: 'scan_date, host' },
-  { table: 'Nginx_Audit_Upstreams', name: 'IX_Nginx_Audit_Upstreams_scan', cols: 'scan_date, host' },
+  {
+    table: 'Nginx_Audit_Locations',
+    name: 'IX_Nginx_Audit_Locations_scan',
+    cols: 'scan_date, host',
+  },
+  {
+    table: 'Nginx_Audit_Upstreams',
+    name: 'IX_Nginx_Audit_Upstreams_scan',
+    cols: 'scan_date, host',
+  },
   { table: 'Nginx_Audit_Settings', name: 'IX_Nginx_Audit_Settings_scan', cols: 'scan_date, host' },
   { table: 'Nginx_Audit_Files', name: 'IX_Nginx_Audit_Files_scan', cols: 'scan_date, host' },
   { table: 'Nginx_Config_Audit', name: 'IX_Nginx_Config_Audit_scan', cols: 'scan_date, kind, env' },
@@ -32,7 +40,11 @@ const WANTED = [
   { table: 'Nginx_Legacy_Audit', name: 'IX_Nginx_Legacy_Audit_scan', cols: 'scan_date' },
   { table: 'Nginx_Legacy_Findings', name: 'IX_Nginx_Legacy_Findings_scan', cols: 'scan_date' },
   { table: 'NginxRateLimitInventory', name: 'IX_NginxRateLimitInventory_scan', cols: 'scan_date' },
-  { table: 'DeployScriptsInventory', name: 'IX_DeployScriptsInventory_scan', cols: 'scan_date, host' },
+  {
+    table: 'DeployScriptsInventory',
+    name: 'IX_DeployScriptsInventory_scan',
+    cols: 'scan_date, host',
+  },
 ];
 
 /** Eksik indeksleri sirayla yaratir. Hata bir tabloyu atlatir, digerlerini durdurmaz.
@@ -44,40 +56,65 @@ async function ensureExternalIndexes(pool, log = console) {
   const ddlPool = async () => {
     if (ddl) return ddl;
     const sql = require('mssql');
-    const cfg = { ...require('./portal-mssql.cjs').getConfig(), requestTimeout: 30 * 60 * 1000, pool: { max: 1, min: 0, idleTimeoutMillis: 5000 } };
+    const cfg = {
+      ...require('./portal-mssql.cjs').getConfig(),
+      requestTimeout: 30 * 60 * 1000,
+      pool: { max: 1, min: 0, idleTimeoutMillis: 5000 },
+    };
     ddl = await new sql.ConnectionPool(cfg).connect();
     return ddl;
   };
   try {
-  for (const w of WANTED) {
-    try {
-      const r = await pool.request().query(
-        `SELECT
+    for (const w of WANTED) {
+      try {
+        const r = await pool.request().query(
+          `SELECT
            (SELECT COUNT(*) FROM sys.tables t WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo')) AS has_table,
            (SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id
              WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo') AND i.name = '${w.name}') AS has_index,
            (SELECT COUNT(*) FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id
              WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo') AND c.name = 'scan_date') AS has_col`,
-      );
-      const row = r.recordset?.[0] || {};
-      if (!row.has_table || row.has_index || !row.has_col) continue;
-      // BUYUK TABLODA YARATMA (2026-09-22): milyon satirlik Nginx_Audit_Settings'te CREATE INDEX
-      // GB'larca transaction log yazdi; log doluyken (9002) yarim kaldi, AG failover'ina kadar giden
-      // zincirin parcasi oldu. Esigin ustunde yalniz loglanir; indeksi DBA ile koordine edip
-      // (log backup sonrasi / tablo kucultulunce) elle acmak gerekir.
-      const cnt = await pool.request().query(`SELECT SUM(p.rows) AS n FROM sys.partitions p JOIN sys.tables t ON t.object_id = p.object_id WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo') AND p.index_id IN (0, 1)`);
-      const rows = Number(cnt.recordset?.[0]?.n || 0);
-      if (rows > MAX_ROWS_AUTO) { log.warn(`[DB] Indeks ATLANDI (buyuk tablo, ${rows} satir > ${MAX_ROWS_AUTO}): dbo.${w.table} — DBA ile koordine edip elle: CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`); continue; }
-      const t0 = Date.now();
-      await (await ddlPool()).request().query(`CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`);
-      done.push(w.name);
-      log.log(`[DB] Indeks olusturuldu: dbo.${w.table} (${w.cols}) ${Math.round((Date.now() - t0) / 1000)} sn`);
-    } catch (err) {
-      log.warn(`[DB] Indeks olusturulamadi (${w.table}):`, err.message);
+        );
+        const row = r.recordset?.[0] || {};
+        if (!row.has_table || row.has_index || !row.has_col) continue;
+        // BUYUK TABLODA YARATMA (2026-09-22): milyon satirlik Nginx_Audit_Settings'te CREATE INDEX
+        // GB'larca transaction log yazdi; log doluyken (9002) yarim kaldi, AG failover'ina kadar giden
+        // zincirin parcasi oldu. Esigin ustunde yalniz loglanir; indeksi DBA ile koordine edip
+        // (log backup sonrasi / tablo kucultulunce) elle acmak gerekir.
+        const cnt = await pool
+          .request()
+          .query(
+            `SELECT SUM(p.rows) AS n FROM sys.partitions p JOIN sys.tables t ON t.object_id = p.object_id WHERE t.name = '${w.table}' AND t.schema_id = SCHEMA_ID('dbo') AND p.index_id IN (0, 1)`,
+          );
+        const rows = Number(cnt.recordset?.[0]?.n || 0);
+        if (rows > MAX_ROWS_AUTO) {
+          log.warn(
+            `[DB] Indeks ATLANDI (buyuk tablo, ${rows} satir > ${MAX_ROWS_AUTO}): dbo.${w.table} — DBA ile koordine edip elle: CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`,
+          );
+          continue;
+        }
+        const t0 = Date.now();
+        await (
+          await ddlPool()
+        )
+          .request()
+          .query(`CREATE INDEX ${w.name} ON dbo.${w.table} (${w.cols})`);
+        done.push(w.name);
+        log.log(
+          `[DB] Indeks olusturuldu: dbo.${w.table} (${w.cols}) ${Math.round((Date.now() - t0) / 1000)} sn`,
+        );
+      } catch (err) {
+        log.warn(`[DB] Indeks olusturulamadi (${w.table}):`, err.message);
+      }
     }
-  }
   } finally {
-    if (ddl) { try { await ddl.close(); } catch { /* */ } }
+    if (ddl) {
+      try {
+        await ddl.close();
+      } catch {
+        /* */
+      }
+    }
   }
   return done;
 }

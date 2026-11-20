@@ -6,6 +6,8 @@
 // bos oldugundan /node-change prod kiraciyi 403'te durdurur, uc testi bu kapiya kor kalirdi.
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -66,13 +68,22 @@ test('SA2 token sifreli saklanir, API ve denetime donmez; bos token korunur', ()
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.smart.integrationKeySet, true);
     assert.ok(!JSON.stringify(r.body).includes(TOKEN), 'PUT yaniti token dondurdu');
-    assert.ok(String(h.d.cryptoSmart.integrationKey).startsWith('enc:v1:'), 'token sifresiz saklandi');
+    assert.ok(
+      String(h.d.cryptoSmart.integrationKey).startsWith('enc:v1:'),
+      'token sifresiz saklandi',
+    );
     r = await h.istek('GET', '/smart-config', K.admin);
     assert.equal(r.body.smart.integrationKeySet, true);
     assert.ok(!('integrationKey' in r.body.smart));
-    assert.ok(!JSON.stringify(r.body).includes(h.d.cryptoSmart.integrationKey), 'GET sifreli degeri dondurdu');
+    assert.ok(
+      !JSON.stringify(r.body).includes(h.d.cryptoSmart.integrationKey),
+      'GET sifreli degeri dondurdu',
+    );
     assert.ok(!JSON.stringify(h.d.audits).includes(TOKEN), 'token denetime yazildi');
-    assert.ok(!JSON.stringify(h.d.audits).includes(h.d.cryptoSmart.integrationKey), 'sifreli token denetime yazildi');
+    assert.ok(
+      !JSON.stringify(h.d.audits).includes(h.d.cryptoSmart.integrationKey),
+      'sifreli token denetime yazildi',
+    );
     assert.ok(!h.d.logs.join('\n').includes(TOKEN), 'token loga yazildi');
     const saklanan = h.d.cryptoSmart.integrationKey;
     r = await put(h, { ...KENDI, integrationKey: '' });
@@ -96,7 +107,10 @@ test('SA2b token bekleyen pakete inmez: createTicket alir, pending_launch_json t
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(h.d.smartCreated[0].integrationKey, TOKEN, 'bilet token ile acilmadi');
     const t = h.d.smartTickets[0];
-    assert.ok(!t.pending_launch_json.includes(TOKEN), 'cozulmus token pending_launch_json a yazildi');
+    assert.ok(
+      !t.pending_launch_json.includes(TOKEN),
+      'cozulmus token pending_launch_json a yazildi',
+    );
     const paket = JSON.parse(t.pending_launch_json);
     assert.deepEqual(paket.overrides, {}, 'bekleyen pakette smartApproval kaldi');
     assert.equal(paket.launchOncesi, 'crypto_hub_node');
@@ -126,10 +140,22 @@ test('SA2d Flow Key degisince eski token silinir; ayni flow ve kismi govde korur
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(h.d.cryptoSmart.integrationKey, '', 'eski token yeni flow a yapisti');
     assert.equal(r.body.smart.integrationKeySet, false);
-    assert.equal(denetimDetay(h, 'crypto_hub_smart_config_save').integrationKeySet, true, 'ilk kayit');
-    assert.equal(JSON.parse(h.d.audits.filter((a) => a.action === 'crypto_hub_smart_config_save').at(-1).opts.detail).integrationKeyDegisti, true);
+    assert.equal(
+      denetimDetay(h, 'crypto_hub_smart_config_save').integrationKeySet,
+      true,
+      'ilk kayit',
+    );
+    assert.equal(
+      JSON.parse(
+        h.d.audits.filter((a) => a.action === 'crypto_hub_smart_config_save').at(-1).opts.detail,
+      ).integrationKeyDegisti,
+      true,
+    );
     await put(h, { flowKey: 'FLOW_IKI', integrationKey: TOKEN });
-    assert.ok(h.d.cryptoSmart.integrationKey.startsWith('enc:v1:'), 'flow ile birlikte gelen token yazilmadi');
+    assert.ok(
+      h.d.cryptoSmart.integrationKey.startsWith('enc:v1:'),
+      'flow ile birlikte gelen token yazilmadi',
+    );
   }));
 
 test('SA3 sifreleme anahtari yoksa token reddedilir, duz metin yazilmaz', () =>
@@ -163,7 +189,10 @@ test('SA4 gecersiz desen bildirilir ve hicbir sey yazilmaz', () =>
       assert.deepEqual(r.body.reddedilen, [alan]);
       assert.equal(JSON.stringify(h.d.cryptoSmart), yedek, `reddedilen govde yazdi: ${alan}`);
     }
-    assert.ok(!aksiyonlar(h).includes('crypto_hub_smart_kapatildi'), 'reddedilen kayit denetime kapatma yazdi');
+    assert.ok(
+      !aksiyonlar(h).includes('crypto_hub_smart_kapatildi'),
+      'reddedilen kayit denetime kapatma yazdi',
+    );
   }));
 
 test('SA5 kismi govde enabled degistirmez; yalniz gercek boolean degistirir', () =>
@@ -246,8 +275,14 @@ test('SA7 dort hucreli blok tablosu + yalniz yorum sablon', () =>
     // Gecersiz flow key DB'den gelirse yarim sayilir.
     assert.equal(h.SA.blokDurumu({ flowKey: 'bos luk', metadataFields: SABLON }), 'yarim');
     // Kendi flow'un yalniz yorum sablonu cryptoNodeMetadata'dan da gecmez.
-    assert.throws(() => h.NODE.cryptoNodeMetadata(YORUM, {}, {}, {}, { kaynak: 'crypto' }), /Crypto Hub Smart şablonu boş/);
-    assert.throws(() => h.NODE.cryptoNodeMetadata(YORUM, {}, {}, {}, {}), /OpsX OpenShift Smart şablonu boş/);
+    assert.throws(
+      () => h.NODE.cryptoNodeMetadata(YORUM, {}, {}, {}, { kaynak: 'crypto' }),
+      /Crypto Hub Smart şablonu boş/,
+    );
+    assert.throws(
+      () => h.NODE.cryptoNodeMetadata(YORUM, {}, {}, {}, {}),
+      /OpsX OpenShift Smart şablonu boş/,
+    );
   }));
 
 test('SA8 production kiracida enabled:false Smart yolunda kalir (resolver birimi, tum kiracilar)', () =>
@@ -256,7 +291,8 @@ test('SA8 production kiracida enabled:false Smart yolunda kalir (resolver birimi
     const sayac = { kapali: 0, onay: 0 };
     for (const t of CRYPTO_TENANTS) {
       const k = await h.SA.cryptoSmartCoz(t);
-      if (t.production !== false) assert.equal(k.mod, 'onay', `${t.key}: production kiracida Smart kapandi`);
+      if (t.production !== false)
+        assert.equal(k.mod, 'onay', `${t.key}: production kiracida Smart kapandi`);
       else assert.equal(k.mod, 'kapali', `${t.key}: test kiracisinda ayar etkisiz`);
       sayac[k.mod] += 1;
     }
@@ -269,12 +305,32 @@ test('SA8 production kiracida enabled:false Smart yolunda kalir (resolver birimi
     assert.equal(K0(tenantOf(T), {}), false);
     assert.equal(K0(tenantOf(T), null), false);
     assert.equal(K0(null, kapali), false);
-    assert.equal(K0({ production: undefined, key: 'x' }, kapali), false, 'production tanimsiz kiraci kapali sayildi');
-    assert.equal(K0({ production: 0, key: 'x' }, kapali), false, 'production falsy kiraci kapali sayildi');
+    assert.equal(
+      K0({ production: undefined, key: 'x' }, kapali),
+      false,
+      'production tanimsiz kiraci kapali sayildi',
+    );
+    assert.equal(
+      K0({ production: 0, key: 'x' }, kapali),
+      false,
+      'production falsy kiraci kapali sayildi',
+    );
     // Listede `production` yanlis yazilsa bile etiket kapiyi tutar.
-    assert.equal(K0({ production: false, key: 'metaco_das_prod' }, kapali), false, 'prod anahtari gecti');
-    assert.equal(K0({ production: false, key: 'x', cluster: 'giocpank3rdwyprod1' }, kapali), false, 'prod cluster gecti');
-    assert.equal(K0({ production: false, key: 'x', env: 'prod' }, kapali), false, 'prod ortam gecti');
+    assert.equal(
+      K0({ production: false, key: 'metaco_das_prod' }, kapali),
+      false,
+      'prod anahtari gecti',
+    );
+    assert.equal(
+      K0({ production: false, key: 'x', cluster: 'giocpank3rdwyprod1' }, kapali),
+      false,
+      'prod cluster gecti',
+    );
+    assert.equal(
+      K0({ production: false, key: 'x', env: 'prod' }, kapali),
+      false,
+      'prod ortam gecti',
+    );
   }));
 
 test('SA8b production kiraci acik benzetiminde enabled:false yine bilet acar, is baslatmaz', () =>
@@ -286,7 +342,12 @@ test('SA8b production kiraci acik benzetiminde enabled:false yine bilet acar, is
       h.d.cryptoSmart = { enabled: false, flowKey: '', metadataFields: '' };
       h.okumaVer({}, Date.now(), 'metaco_das_prod');
       h.d.oco = H.ocoPencere(-10, 120);
-      const r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM, ocoNumber: '22502813' }));
+      const r = await h.istek(
+        'POST',
+        '/node-change',
+        K.nodecu,
+        GOVDE({ tenant: 'metaco_das_prod', onayMetni: G_EVM, ocoNumber: '22502813' }),
+      );
       assert.equal(r.status, 200, JSON.stringify(r.body));
       assert.equal(r.body.pendingApproval, true);
       assert.equal(h.d.smartCreated.length, 1, 'production kiracida bilet acilmadi');
@@ -309,8 +370,15 @@ test("SA9 OpsX'in enabled:false'u Crypto Hub'i acmaz; Crypto ayari yokken eski d
     assert.equal(r.body.pendingApproval, true);
     assert.equal(h.d.smartCreated[0].flowKey, 'FLOW_OPENSHIFT');
     assert.equal(h.d.ssLaunches.length, 0);
-    assert.equal(h.d.smartCreated[0].integrationKey, 'RFF', 'OpsX blogunda OpsX token i kullanilmadi');
-    assert.match(h.d.smartCreated[0].metadata.ACIKLAMA, /OpsX OpenShift onay akışı ortak kullanılır/);
+    assert.equal(
+      h.d.smartCreated[0].integrationKey,
+      'RFF',
+      'OpsX blogunda OpsX token i kullanilmadi',
+    );
+    assert.match(
+      h.d.smartCreated[0].metadata.ACIKLAMA,
+      /OpsX OpenShift onay akışı ortak kullanılır/,
+    );
     assert.ok(h.d.sira.includes('sablon:55'), 'OpsX bloğunda OpsX template i okunmadi');
   }));
 
@@ -320,7 +388,10 @@ test('SA10 kendi blok: token Crypto nun, yoksa sistem token i (OpsX in degil); b
     h.d.opsxCfg.openshift.extraVars = 'job_type: rollout';
     h.d.opsxCfg.openshift.ocClusterKey = 'opsx_cluster_adi';
     h.d.sablonVarsayilan = { kaynak_isareti: 'ops' };
-    await put(h, { flowKey: 'FLOW_CRYPTO', metadataFields: `${SABLON}\nVAR: {{ extraVars.kaynak_isareti }}\nCL: {{ extraVars.oc_cluster }}` });
+    await put(h, {
+      flowKey: 'FLOW_CRYPTO',
+      metadataFields: `${SABLON}\nVAR: {{ extraVars.kaynak_isareti }}\nCL: {{ extraVars.oc_cluster }}`,
+    });
     let r = await h.istek('POST', '/node-change', K.nodecu, GOVDE());
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const s = h.d.smartCreated[0];
@@ -329,9 +400,12 @@ test('SA10 kendi blok: token Crypto nun, yoksa sistem token i (OpsX in degil); b
     assert.equal(s.metadata.KONU, T);
     assert.equal(s.metadata.VAR, 'ops');
     assert.equal(s.metadata.CL, 'metaco_das', 'kendi blokta OpsX anahtar adi kullanildi');
-    assert.doesNotMatch(s.metadata.ACIKLAMA, /OpsX OpenShift onay akışı/);
+    assert.doesNotMatch(s.metadata.ACIKLAMA, esnek(/OpsX OpenShift onay akışı/));
     assert.match(s.metadata.ACIKLAMA, /NODE DEĞİŞİKLİĞİ \(rollout\/restart değil\)/);
-    assert.ok(h.d.sira.includes('sablon:77') && !h.d.sira.includes('sablon:55'), 'kendi blokta OpsX template i okundu');
+    assert.ok(
+      h.d.sira.includes('sablon:77') && !h.d.sira.includes('sablon:55'),
+      'kendi blokta OpsX template i okundu',
+    );
     // Kendi token: bilete cozulmus gider.
     await put(h, { integrationKey: TOKEN });
     r = await h.istek('POST', '/node-change', K.nodecu, GOVDE({ grup: G_BTC }));
@@ -365,12 +439,19 @@ test('SA10b kendi blokta sablon hatasi OpsX ipucu vermez; onizleme kaynak ve mod
 test('SA11 denetim: kaydet + kapatma/acma deltasi davranissal', () =>
   ile(async (h) => {
     await put(h, { enabled: false });
-    assert.deepEqual(denetimDetay(h, 'crypto_hub_smart_config_save').enabled, { onceki: true, yeni: false });
+    assert.deepEqual(denetimDetay(h, 'crypto_hub_smart_config_save').enabled, {
+      onceki: true,
+      yeni: false,
+    });
     assert.deepEqual(denetimDetay(h, 'crypto_hub_smart_kapatildi'), { onceki: true, yeni: false });
     assert.ok(!aksiyonlar(h).includes('crypto_hub_smart_acildi'));
     h.d.audits.length = 0;
     await put(h, { flowKey: '' });
-    assert.deepEqual(aksiyonlar(h), ['crypto_hub_smart_config_save'], 'enabled degismeden delta yazildi');
+    assert.deepEqual(
+      aksiyonlar(h),
+      ['crypto_hub_smart_config_save'],
+      'enabled degismeden delta yazildi',
+    );
     h.d.audits.length = 0;
     await put(h, { enabled: true });
     assert.deepEqual(denetimDetay(h, 'crypto_hub_smart_acildi'), { onceki: false, yeni: true });
@@ -380,14 +461,15 @@ test('SA11 denetim: kaydet + kapatma/acma deltasi davranissal', () =>
 test('SA12 taslak onizleme: gercek cryptoNodeMetadata, Smart a gitmez, yazmaz', () =>
   ile(async (h) => {
     h.d.sablonVarsayilan = { kaynak_isareti: 'ops' };
-    const o = (metadataFields) => h.istek('POST', '/smart-config/onizle', K.admin, { metadataFields });
+    const o = (metadataFields) =>
+      h.istek('POST', '/smart-config/onizle', K.admin, { metadataFields });
     let r = await o(`${SABLON}\nVAR: {{ extraVars.kaynak_isareti }}\nCOK: {{ extraVars.choise }}`);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(r.body.metadata.KONU, 'metaco_das_test');
     assert.equal(r.body.metadata.VAR, 'ops');
     assert.equal(r.body.metadata.COK, 'true', 'gercek metaGorunum kullanilmadi');
     assert.match(r.body.metadata.ACIKLAMA, /NODE DEĞİŞİKLİĞİ/);
-    assert.doesNotMatch(r.body.metadata.ACIKLAMA, /OpsX OpenShift onay akışı/);
+    assert.doesNotMatch(r.body.metadata.ACIKLAMA, esnek(/OpsX OpenShift onay akışı/));
     assert.equal(h.d.smartCreated.length, 0);
     assert.equal(h.d.cryptoSmart, null, 'onizleme kayit yazdi');
     r = await o('');
@@ -464,7 +546,13 @@ test('SA14 kapi kaynagi: govdeden alan okunmaz, NODE_ENV kullanilmaz, admin atla
     assert.doesNotMatch(AYAR + NODE, /admin-smart-atla|adminSmartAtliyor/);
     // Davranis: Smart acikken govdedeki hicbir alan modu cevirmez.
     h.okumaVer();
-    const r = await h.istek('POST', '/node-change', K.nodecu, { ...GOVDE(), production: false, smartMod: 'kapali', enabled: false, onaysiz: true });
+    const r = await h.istek('POST', '/node-change', K.nodecu, {
+      ...GOVDE(),
+      production: false,
+      smartMod: 'kapali',
+      enabled: false,
+      onaysiz: true,
+    });
     assert.equal(r.body.pendingApproval, true);
     assert.equal(h.d.ssLaunches.length, 0);
     // NODE_ENV=production test kiracisini kapatmaz, prod kiraciyi acmaz.
@@ -483,7 +571,10 @@ test('SA14 kapi kaynagi: govdeden alan okunmaz, NODE_ENV kullanilmaz, admin atla
 // ── Dogrudan yol ─────────────────────────────────────────────────────────────────────
 const ps = (h, id) => h.d.rows.find((x) => x.id === id).plan_sha;
 const isBitir = (h, jobId, lines, status = 'successful') =>
-  h.d.jobs.set(jobId, { status, artifacts: { crypto_hub_ops_result: { tenant: T, action: 'node_change', lines } } });
+  h.d.jobs.set(jobId, {
+    status,
+    artifacts: { crypto_hub_ops_result: { tenant: T, action: 'node_change', lines } },
+  });
 
 test('DY1 Smart kapali test kiracisi: is baslar, bilet yok, deger korunur, kilit tarama ile kapanir', () =>
   ile(async (h) => {
@@ -507,7 +598,9 @@ test('DY1 Smart kapali test kiracisi: is baslar, bilet yok, deger korunur, kilit
     assert.deepEqual(l.specFields, [{ variable: 'crypto_hub_node_yeni_b64', type: 'password' }]);
     assert.deepEqual(l.detail, { ask_limit_on_launch: false });
     assert.ok(l.gizliler.includes(H.YENI.evm), 'hata metni temizligi icin deger gizlilere girmedi');
-    const zarf = JSON.parse(Buffer.from(l.extraVars.crypto_hub_node_yeni_b64, 'base64').toString('utf8'));
+    const zarf = JSON.parse(
+      Buffer.from(l.extraVars.crypto_hub_node_yeni_b64, 'base64').toString('utf8'),
+    );
     assert.equal(zarf.degerler.rpc, H.YENI.evm, 'isin extra_vars i gercek degeri tasimiyor');
     assert.equal(l.extraVars.crypto_hub_node_talep, b.talepId);
     assert.equal(l.extraVars.zorunlu_alan, 'varsayilan', 'prefill sonucu launch a gitmedi');
@@ -564,7 +657,10 @@ test('DY1b denetim AWX baslatmadan once yazilir; satir once sahiplenilir', () =>
     };
     const r = await h.istek('POST', '/node-change', K.nodecu, DG());
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.ok(launchAnindaDenetim.includes('crypto_hub_node_onaysiz_calisti'), 'denetim AWX ten sonra');
+    assert.ok(
+      launchAnindaDenetim.includes('crypto_hub_node_onaysiz_calisti'),
+      'denetim AWX ten sonra',
+    );
     assert.ok(!launchAnindaDenetim.includes('crypto_hub_node_change_talep'));
     assert.equal(launchAnindaDurum, 'CALISIYOR');
     assert.equal(launchAnindaSecret, null, 'launch aninda deger hala kolonda');
@@ -574,7 +670,21 @@ test('DY2 job yok: 90 dk TAKILDI; sinir icinde acik; AWX okunamazsa sinirda kapa
   ile(async (h) => {
     const once = (dk) => new Date(Date.now() - dk * 60000);
     const satir = (o) => {
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'CALISIYOR', smart_ticket_id: null, external_ticket_id: null, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', plan_sha: 'a', ...o };
+      const r = {
+        id: h.d.nextId++,
+        tenant_key: T,
+        grup: G_EVM,
+        kilit: `k${h.d.nextId}`,
+        durum: 'CALISIYOR',
+        smart_ticket_id: null,
+        external_ticket_id: null,
+        awx_server_id: null,
+        awx_job_id: null,
+        kapandi_at: null,
+        username: 'u',
+        plan_sha: 'a',
+        ...o,
+      };
       h.d.rows.push(r);
       return r;
     };
@@ -604,7 +714,10 @@ test('DY3 CAS kaybi baslatmaz; tarama satiri kapattiysa is baslamaz', () =>
     assert.equal(r.status, 409, JSON.stringify(r.body));
     assert.equal(r.body.blocked, 'crypto_node_dogrudan_sahiplenme');
     assert.equal(h.d.ssLaunches.length, 0, 'CAS kaybinda is baslatildi');
-    assert.ok(!aksiyonlar(h).includes('crypto_hub_node_onaysiz_calisti'), 'baslamayan is onaysiz calisti yazildi');
+    assert.ok(
+      !aksiyonlar(h).includes('crypto_hub_node_onaysiz_calisti'),
+      'baslamayan is onaysiz calisti yazildi',
+    );
     h.d.casKayip = false;
     // Gercek yaris: preflight sirasinda tarama satiri kapatir, CAS durum kosuluna takilir.
     h.d.preflightKanca = () => {
@@ -672,7 +785,11 @@ test('DY4 belirsiz launch hatasi satiri acik birakir; kesin hata kapatir', () =>
       Object.assign(new Error('AWX HTTP 500'), { status: 500 }),
       new Error('AWX isteği zaman aşımına uğradı.'),
       Object.assign(new Error('AWX HTTP 408'), { status: 408 }),
-      Object.assign(new Error('yutuldu'), { status: 409, code: 'awx_prompt_on_launch_disabled', iptalEdildi: false }),
+      Object.assign(new Error('yutuldu'), {
+        status: 409,
+        code: 'awx_prompt_on_launch_disabled',
+        iptalEdildi: false,
+      }),
       Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
       Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' }),
       Object.assign(new Error('AWX yanıtı JSON değil (502): <html>'), { httpStatus: 502 }),
@@ -691,9 +808,19 @@ test('DY4 belirsiz launch hatasi satiri acik birakir; kesin hata kapatir', () =>
     }
     const kesinler = [
       Object.assign(new Error(`AWX HTTP 400: gecersiz ${H.YENI.evm}`), { status: 400 }),
-      Object.assign(new Error('AWX sunucusu bulunamadı.'), { status: 404, code: 'awx_server_missing' }),
-      Object.assign(new Error('yutuldu'), { status: 409, code: 'awx_prompt_on_launch_disabled', iptalEdildi: true }),
-      Object.assign(new Error('AWX başlatıcısı hazır değil.'), { status: 503, code: 'ss_launch_hazir_degil' }),
+      Object.assign(new Error('AWX sunucusu bulunamadı.'), {
+        status: 404,
+        code: 'awx_server_missing',
+      }),
+      Object.assign(new Error('yutuldu'), {
+        status: 409,
+        code: 'awx_prompt_on_launch_disabled',
+        iptalEdildi: true,
+      }),
+      Object.assign(new Error('AWX başlatıcısı hazır değil.'), {
+        status: 503,
+        code: 'ss_launch_hazir_degil',
+      }),
       Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:443'), { code: 'ECONNREFUSED' }),
       Object.assign(new Error('getaddrinfo ENOTFOUND awx'), { code: 'ENOTFOUND' }),
       Object.assign(new Error('AWX yanıtı JSON değil (403): <html>'), { httpStatus: 403 }),
@@ -706,9 +833,14 @@ test('DY4 belirsiz launch hatasi satiri acik birakir; kesin hata kapatir', () =>
       assert.equal(r.status, 409, `${e.message}: ${JSON.stringify(r.body)}`);
       assert.equal(r.body.blocked, 'crypto_node_dogrudan_hata');
       assert.ok(!r.body.message.includes(SIR), 'hata metni degeri tasidi');
-      if (e.postOncesi) assert.ok(!/OAuth2|sir/.test(r.body.message), 'token ucu yaniti kullaniciya gitti');
+      if (e.postOncesi)
+        assert.ok(!/OAuth2|sir/.test(r.body.message), 'token ucu yaniti kullaniciya gitti');
       const row = h.d.rows[0];
-      if (e.postOncesi) assert.ok(!String(row.sonuc_json).includes('OAuth2'), 'token ucu yaniti sonuc_json a yazildi');
+      if (e.postOncesi)
+        assert.ok(
+          !String(row.sonuc_json).includes('OAuth2'),
+          'token ucu yaniti sonuc_json a yazildi',
+        );
       assert.equal(row.durum, 'HATA');
       assert.equal(row.sonuc_kod, 'DOGRUDAN_HATA');
       assert.ok(row.kapandi_at);
@@ -761,7 +893,9 @@ test('DY6 /kapat ticket siz CALISIYOR icin dogru metin; kilit acilmaz', () =>
     const r = await h.istek('POST', '/node-change', K.nodecu, DG());
     assert.equal(r.status, 424);
     const row = h.d.rows[0];
-    const k = await h.istek('POST', `/node-change/${row.id}/kapat`, K.admin, { gerekce: 'Takili gorunuyor, kilit acilsin lutfen' });
+    const k = await h.istek('POST', `/node-change/${row.id}/kapat`, K.admin, {
+      gerekce: 'Takili gorunuyor, kilit acilsin lutfen',
+    });
     assert.equal(k.status, 409);
     assert.match(k.body.message, /Smart onayı olmadan başlatıldı/);
     assert.doesNotMatch(k.body.message, /bağlanmadı/);
@@ -784,7 +918,21 @@ test('DY8 ACILIYOR 10 dk: onaysiz satir bilet aramaz, Smart metni yazmaz', () =>
   ile(async (h) => {
     const eski = new Date(Date.now() - 11 * 60000);
     const yeni = (o) => {
-      const r = { id: h.d.nextId++, tenant_key: T, grup: G_EVM, kilit: `k${h.d.nextId}`, durum: 'ACILIYOR', smart_ticket_id: null, external_ticket_id: null, awx_server_id: null, awx_job_id: null, kapandi_at: null, username: 'u', created_at: eski, ...o };
+      const r = {
+        id: h.d.nextId++,
+        tenant_key: T,
+        grup: G_EVM,
+        kilit: `k${h.d.nextId}`,
+        durum: 'ACILIYOR',
+        smart_ticket_id: null,
+        external_ticket_id: null,
+        awx_server_id: null,
+        awx_job_id: null,
+        kapandi_at: null,
+        username: 'u',
+        created_at: eski,
+        ...o,
+      };
       h.d.rows.push(r);
       return r;
     };
@@ -792,9 +940,13 @@ test('DY8 ACILIYOR 10 dk: onaysiz satir bilet aramaz, Smart metni yazmaz', () =>
     const smart = yeni({});
     await h.NODE.nodeSonuclariniTara();
     assert.equal(onaysiz.sonuc_kod, 'ACILIS_KESILDI');
-    assert.doesNotMatch(JSON.parse(onaysiz.sonuc_json).not, /Smart'ta kayıt/);
+    assert.doesNotMatch(JSON.parse(onaysiz.sonuc_json).not, esnek(/Smart'ta kayıt/));
     assert.match(JSON.parse(smart.sonuc_json).not, /Smart'ta kayıt açılmış olabilir/);
-    assert.equal(h.d.logs.filter((s) => /smart_tickets WHERE pending_launch_json/.test(s)).length, 1, 'onaysiz satir icin bilet arandi');
+    assert.equal(
+      h.d.logs.filter((s) => /smart_tickets WHERE pending_launch_json/.test(s)).length,
+      1,
+      'onaysiz satir icin bilet arandi',
+    );
   }));
 
 test('DY9 /ops node_change i Smart kapali iken de tanimaz; sifreleme kapisi dogrudan yolda da gecerli', () =>
@@ -822,19 +974,36 @@ test('DY10 Ankara/Istanbul onerisi test kiracisinda yok; dogrudan yanit dis alan
   ile(async (h) => {
     dogrudanAc(h);
     const r = await h.istek('POST', '/node-change', K.nodecu, DG());
-    assert.deepEqual(Object.keys(r.body).sort(), ['awxServerId', 'jobId', 'message', 'ok', 'onaysiz', 'pendingApproval', 'talepId']);
+    assert.deepEqual(Object.keys(r.body).sort(), [
+      'awxServerId',
+      'jobId',
+      'message',
+      'ok',
+      'onaysiz',
+      'pendingApproval',
+      'talepId',
+    ]);
   }));
 
 test('DY11 kesinRet tablosu', () =>
   ile(async (h) => {
     const k = h.NODE.kesinRet;
-    for (const st of [400, 401, 403, 404, 409, 429]) assert.equal(k({ status: st }), true, String(st));
-    for (const st of [408, 500, 502, 503, 504, undefined, 200]) assert.equal(k({ status: st }), false, String(st));
+    for (const st of [400, 401, 403, 404, 409, 429])
+      assert.equal(k({ status: st }), true, String(st));
+    for (const st of [408, 500, 502, 503, 504, undefined, 200])
+      assert.equal(k({ status: st }), false, String(st));
     assert.equal(k(null), false);
     assert.equal(k({ code: 'ss_launch_hazir_degil', status: 503 }), true);
-    assert.equal(k({ code: 'awx_prompt_on_launch_disabled', status: 409, iptalEdildi: false }), false);
-    assert.equal(k({ code: 'awx_prompt_on_launch_disabled', status: 409, iptalEdildi: true }), true);
-    for (const c of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH']) assert.equal(k({ code: c }), true, c);
+    assert.equal(
+      k({ code: 'awx_prompt_on_launch_disabled', status: 409, iptalEdildi: false }),
+      false,
+    );
+    assert.equal(
+      k({ code: 'awx_prompt_on_launch_disabled', status: 409, iptalEdildi: true }),
+      true,
+    );
+    for (const c of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH'])
+      assert.equal(k({ code: c }), true, c);
     for (const c of ['ECONNRESET', 'ETIMEDOUT', 'EPIPE']) assert.equal(k({ code: c }), false, c);
     assert.equal(k({ httpStatus: 403 }), true);
     assert.equal(k({ httpStatus: 408 }), false);
@@ -851,7 +1020,11 @@ test('DY11b runner is baslamadi bilgisini kaybetmez: token hatasi postOncesi, JS
     'launch oncesi token hatasi isaretlenmiyor',
   );
   const istek = r.slice(r.indexOf('function awxRequestToServer('), r.indexOf('// Kirpma sonrasi'));
-  assert.match(istek, /AWX yanıtı JSON değil[^\n]*\n\s*\{ httpStatus: res\.statusCode \}/, 'JSON olmayan yanit kodu kayboldu');
+  assert.match(
+    istek,
+    /AWX yanıtı JSON değil[^\n]*\n\s*\),\n\s*\{ httpStatus: res\.statusCode \}/,
+    'JSON olmayan yanit kodu kayboldu',
+  );
 });
 
 test('DY13 ekranin gordugu mod kapi acmaz, yalniz durdurur', () =>
@@ -888,13 +1061,18 @@ test('DY14 yutma korumasi isi iptal edemedi: job baglanir, metin dogru, sonuc ok
       kayitlar.push(j);
       return gercekKaydet(s, j, k);
     };
-    h.d.ssHata = Object.assign(new Error('yutuldu'), { status: 409, code: 'awx_prompt_on_launch_disabled', jobId: 4242, iptalEdildi: false });
+    h.d.ssHata = Object.assign(new Error('yutuldu'), {
+      status: 409,
+      code: 'awx_prompt_on_launch_disabled',
+      jobId: 4242,
+      iptalEdildi: false,
+    });
     const r = await h.istek('POST', '/node-change', K.nodecu, DG());
     assert.equal(r.status, 424, JSON.stringify(r.body));
     assert.equal(r.body.blocked, 'crypto_node_dogrudan_belirsiz');
     assert.equal(r.body.jobId, 4242);
     assert.match(r.body.message, /iş #4242 iptal edilemedi/);
-    assert.doesNotMatch(r.body.message, /yanıtı alınamadı/);
+    assert.doesNotMatch(r.body.message, esnek(/yanıtı alınamadı/));
     const row = h.d.rows[0];
     assert.equal(row.durum, 'CALISIYOR');
     assert.equal(row.awx_job_id, 4242, 'kosan is satira baglanmadi');
@@ -910,5 +1088,8 @@ test('DY14 yutma korumasi isi iptal edemedi: job baglanir, metin dogru, sonuc ok
 
 test('DY12 kopru runner baslatilmadan fail-closed (gercek runner)', async () => {
   const { performSsLaunchOnServer } = require('../../ansible/runner.cjs');
-  await assert.rejects(performSsLaunchOnServer(1, 77, {}), (e) => e.code === 'ss_launch_hazir_degil' && e.status === 503);
+  await assert.rejects(
+    performSsLaunchOnServer(1, 77, {}),
+    (e) => e.code === 'ss_launch_hazir_degil' && e.status === 503,
+  );
 });

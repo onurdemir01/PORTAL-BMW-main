@@ -19,6 +19,10 @@ test('sbom generator validates SPDX license policy and produces CycloneDX 1.5', 
   assert.equal(isLicenseAllowed('MPL-2.0', false), false);
   assert.equal(isLicenseAllowed('MPL-2.0', true), true);
   assert.equal(isLicenseAllowed('GPL-3.0-only', true), false);
+  // LGPL yalniz gelistirme (eslint-plugin-sonarjs, is #52); calisma zamani paketinde YASAK.
+  assert.equal(isLicenseAllowed('LGPL-3.0-only', true), true);
+  assert.equal(isLicenseAllowed('LGPL-3.0-only', false), false);
+  assert.equal(isLicenseAllowed('LGPL-2.1-only', true), false, 'yalniz LGPL-3.0-only acildi');
   assert.equal(isLicenseAllowed('(MIT OR GPL-3.0)', false), true);
   assert.equal(isLicenseAllowed('(MIT AND GPL-3.0)', true), false);
 

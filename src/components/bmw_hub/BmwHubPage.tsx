@@ -21,8 +21,23 @@ import {
   ExclamationTriangleIcon,
   UserIcon,
 } from '@heroicons/react/24/outline';
-import { bmwHubApi, type BmwIs, type BmwIsGirdi, type BmwNot, type BmwOzet, type BmwDurum, type BmwOncelik } from '@/api/bmwHubApi';
-import { DURUMLAR, ONCELIKLER, SINIR, VARSAYILAN_KATEGORI, topluAyristir, gecikmisMi } from '../../../shared/bmwHub.cjs';
+import {
+  bmwHubApi,
+  type BmwIs,
+  type BmwIsGirdi,
+  type BmwNot,
+  type BmwOzet,
+  type BmwDurum,
+  type BmwOncelik,
+} from '@/api/bmwHubApi';
+import {
+  DURUMLAR,
+  ONCELIKLER,
+  SINIR,
+  VARSAYILAN_KATEGORI,
+  topluAyristir,
+  gecikmisMi,
+} from '../../../shared/bmwHub.cjs';
 import SectionHeader from '@/components/common/SectionHeader';
 import Button from '@/components/common/Button';
 import LoadError from '@/components/common/LoadError';
@@ -37,9 +52,15 @@ import { fmtDateTime, fmtRelative } from '@/utils/datetime';
 type Gorunum = 'acik' | 'benim' | 'gecikmis' | 'sahipsiz' | 'kapali' | 'hepsi';
 type Duzen = 'liste' | 'pano';
 
-const DURUM_AD: Record<string, string> = Object.fromEntries(DURUMLAR.map((d: { key: string; label: string }) => [d.key, d.label]));
-const ONCELIK_AD: Record<string, string> = Object.fromEntries(ONCELIKLER.map((o: { key: string; label: string }) => [o.key, o.label]));
-const ACIK_DURUMLAR = new Set(DURUMLAR.filter((d: { acikMi: boolean }) => d.acikMi).map((d: { key: string }) => d.key));
+const DURUM_AD: Record<string, string> = Object.fromEntries(
+  DURUMLAR.map((d: { key: string; label: string }) => [d.key, d.label]),
+);
+const ONCELIK_AD: Record<string, string> = Object.fromEntries(
+  ONCELIKLER.map((o: { key: string; label: string }) => [o.key, o.label]),
+);
+const ACIK_DURUMLAR = new Set(
+  DURUMLAR.filter((d: { acikMi: boolean }) => d.acikMi).map((d: { key: string }) => d.key),
+);
 
 const GORUNUMLER: { key: Gorunum; label: string }[] = [
   { key: 'acik', label: 'Açık işler' },
@@ -78,8 +99,15 @@ function DurumHap({ durum }: { durum: string }) {
 
 function OncelikIsaret({ oncelik }: { oncelik: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[12px] whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-      <span className="inline-block w-2 h-2 rounded-full" style={{ background: ONCELIK_TON[oncelik] || ONCELIK_TON.orta }} aria-hidden />
+    <span
+      className="inline-flex items-center gap-1.5 text-[12px] whitespace-nowrap"
+      style={{ color: 'var(--text-secondary)' }}
+    >
+      <span
+        className="inline-block w-2 h-2 rounded-full"
+        style={{ background: ONCELIK_TON[oncelik] || ONCELIK_TON.orta }}
+        aria-hidden
+      />
       {ONCELIK_AD[oncelik] || oncelik}
     </span>
   );
@@ -88,7 +116,9 @@ function OncelikIsaret({ oncelik }: { oncelik: string }) {
 /** "3 gün kaldı" / "2 gün gecikti" / "bugün". `bugun` sunucunun İstanbul günüdür. */
 function kalanMetni(sonTarih: string, bugun: string): string {
   if (!sonTarih) return '';
-  const fark = Math.round((Date.parse(`${sonTarih}T00:00:00Z`) - Date.parse(`${bugun}T00:00:00Z`)) / 86400000);
+  const fark = Math.round(
+    (Date.parse(`${sonTarih}T00:00:00Z`) - Date.parse(`${bugun}T00:00:00Z`)) / 86400000,
+  );
   if (fark === 0) return 'bugün';
   if (fark > 0) return `${fark} gün kaldı`;
   return `${-fark} gün gecikti`;
@@ -106,11 +136,20 @@ function SonTarih({ is, bugun }: { is: BmwIs; bugun: string }) {
   const acik = ACIK_DURUMLAR.has(is.durum);
   return (
     <div className="leading-tight">
-      <div className="tabular-nums text-[13px]" style={{ color: gec ? 'var(--status-danger)' : 'var(--text-primary)', fontWeight: gec ? 600 : 400 }}>
+      <div
+        className="tabular-nums text-[13px]"
+        style={{
+          color: gec ? 'var(--status-danger)' : 'var(--text-primary)',
+          fontWeight: gec ? 600 : 400,
+        }}
+      >
         {trGun(is.sonTarih)}
       </div>
       {acik && (
-        <div className="text-[11px]" style={{ color: gec ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+        <div
+          className="text-[11px]"
+          style={{ color: gec ? 'var(--status-danger)' : 'var(--text-muted)' }}
+        >
           {kalanMetni(is.sonTarih, bugun)}
         </div>
       )}
@@ -118,7 +157,19 @@ function SonTarih({ is, bugun }: { is: BmwIs; bugun: string }) {
   );
 }
 
-function OzetKutu({ label, value, aktif, ton, onClick }: { label: string; value: number; aktif: boolean; ton?: string; onClick: () => void }) {
+function OzetKutu({
+  label,
+  value,
+  aktif,
+  ton,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  aktif: boolean;
+  ton?: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -127,15 +178,34 @@ function OzetKutu({ label, value, aktif, ton, onClick }: { label: string; value:
       className="card px-4 py-3 text-left transition-shadow focus-visible:outline focus-visible:outline-2"
       style={{ borderTop: `3px solid ${aktif ? 'var(--bh-hue)' : 'transparent'}` }}
     >
-      <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{label}</div>
-      <div className="mt-1 tabular-nums" style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 500, color: ton || 'var(--text-primary)' }}>
+      <div className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
+        {label}
+      </div>
+      <div
+        className="mt-1 tabular-nums"
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontSize: '1.6rem',
+          fontWeight: 500,
+          color: ton || 'var(--text-primary)',
+        }}
+      >
         {value}
       </div>
     </button>
   );
 }
 
-const BOS_GIRDI: BmwIsGirdi = { baslik: '', aciklama: '', durum: 'acik', oncelik: 'orta', kategori: VARSAYILAN_KATEGORI, sahip: '', beklenen: '', sonTarih: '' };
+const BOS_GIRDI: BmwIsGirdi = {
+  baslik: '',
+  aciklama: '',
+  durum: 'acik',
+  oncelik: 'orta',
+  kategori: VARSAYILAN_KATEGORI,
+  sahip: '',
+  beklenen: '',
+  sonTarih: '',
+};
 
 function IsFormu({
   deger,
@@ -148,34 +218,63 @@ function IsFormu({
   kisiler: string[];
   benimAdim: string;
 }) {
-  const alan = (k: keyof BmwIsGirdi) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const v = e.target.value;
-    setDeger((d) => ({ ...d, [k]: v }));
-  };
+  const alan =
+    (k: keyof BmwIsGirdi) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const v = e.target.value;
+      setDeger((d) => ({ ...d, [k]: v }));
+    };
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <Field label="Başlık" htmlFor="bmw-baslik" required className="md:col-span-2">
-        <TextInput id="bmw-baslik" value={deger.baslik || ''} onChange={alan('baslik')} maxLength={SINIR.baslik} placeholder="Örn. JBoss restart playbook'una prod onayı eklensin" autoFocus />
+        <TextInput
+          id="bmw-baslik"
+          value={deger.baslik || ''}
+          onChange={alan('baslik')}
+          maxLength={SINIR.baslik}
+          placeholder="Örn. JBoss restart playbook'una prod onayı eklensin"
+          autoFocus
+        />
       </Field>
       <Field label="Durum" htmlFor="bmw-durum">
         <Select id="bmw-durum" value={deger.durum || 'acik'} onChange={alan('durum')}>
           {DURUMLAR.map((d: { key: string; label: string }) => (
-            <option key={d.key} value={d.key}>{d.label}</option>
+            <option key={d.key} value={d.key}>
+              {d.label}
+            </option>
           ))}
         </Select>
       </Field>
       <Field label="Öncelik" htmlFor="bmw-oncelik">
         <Select id="bmw-oncelik" value={deger.oncelik || 'orta'} onChange={alan('oncelik')}>
           {ONCELIKLER.map((o: { key: string; label: string }) => (
-            <option key={o.key} value={o.key}>{o.label}</option>
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
           ))}
         </Select>
       </Field>
-      <Field label="Sahip" htmlFor="bmw-sahip" hint="İşi üstlenen kişi. Boş bırakılırsa iş 'sahipsiz' görünür.">
+      <Field
+        label="Sahip"
+        htmlFor="bmw-sahip"
+        hint="İşi üstlenen kişi. Boş bırakılırsa iş 'sahipsiz' görünür."
+      >
         <div className="flex gap-2">
-          <TextInput id="bmw-sahip" list="bmw-kisiler" value={deger.sahip || ''} onChange={alan('sahip')} maxLength={SINIR.kisi} placeholder="Ad Soyad" />
+          <TextInput
+            id="bmw-sahip"
+            list="bmw-kisiler"
+            value={deger.sahip || ''}
+            onChange={alan('sahip')}
+            maxLength={SINIR.kisi}
+            placeholder="Ad Soyad"
+          />
           {benimAdim && deger.sahip !== benimAdim && (
-            <Button type="button" size="sm" variant="secondary" onClick={() => setDeger((d) => ({ ...d, sahip: benimAdim }))}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setDeger((d) => ({ ...d, sahip: benimAdim }))}
+            >
               Ben üstleneyim
             </Button>
           )}
@@ -187,27 +286,75 @@ function IsFormu({
         </datalist>
       </Field>
       <Field label="Son tarih" htmlFor="bmw-tarih">
-        <TextInput id="bmw-tarih" type="date" value={deger.sonTarih || ''} onChange={alan('sonTarih')} />
+        <TextInput
+          id="bmw-tarih"
+          type="date"
+          value={deger.sonTarih || ''}
+          onChange={alan('sonTarih')}
+        />
       </Field>
       <Field label="Kategori" htmlFor="bmw-kategori">
-        <TextInput id="bmw-kategori" list="bmw-kategoriler" value={deger.kategori || ''} onChange={alan('kategori')} maxLength={SINIR.kategori} placeholder={VARSAYILAN_KATEGORI} />
+        <TextInput
+          id="bmw-kategori"
+          list="bmw-kategoriler"
+          value={deger.kategori || ''}
+          onChange={alan('kategori')}
+          maxLength={SINIR.kategori}
+          placeholder={VARSAYILAN_KATEGORI}
+        />
         <datalist id="bmw-kategoriler">
-          {['Otomasyon', 'Portal', 'Ansible / AWX', 'OpenShift', 'JBoss', 'WebSphere', 'Nginx', 'Diğer'].map((k) => (
+          {[
+            'Otomasyon',
+            'Portal',
+            'Ansible / AWX',
+            'OpenShift',
+            'JBoss',
+            'WebSphere',
+            'Nginx',
+            'Diğer',
+          ].map((k) => (
             <option key={k} value={k} />
           ))}
         </datalist>
       </Field>
-      <Field label="Ne bekleniyor" htmlFor="bmw-beklenen" hint="Kimden ya da neyin gelmesi bekleniyor (örn. 'DBA'den log yedeği', 'Smart onayı').">
-        <TextInput id="bmw-beklenen" value={deger.beklenen || ''} onChange={alan('beklenen')} maxLength={SINIR.beklenen} />
+      <Field
+        label="Ne bekleniyor"
+        htmlFor="bmw-beklenen"
+        hint="Kimden ya da neyin gelmesi bekleniyor (örn. 'DBA'den log yedeği', 'Smart onayı')."
+      >
+        <TextInput
+          id="bmw-beklenen"
+          value={deger.beklenen || ''}
+          onChange={alan('beklenen')}
+          maxLength={SINIR.beklenen}
+        />
       </Field>
       <Field label="Açıklama" htmlFor="bmw-aciklama" className="md:col-span-2">
-        <Textarea id="bmw-aciklama" rows={5} value={deger.aciklama || ''} onChange={alan('aciklama')} maxLength={SINIR.aciklama} />
+        <Textarea
+          id="bmw-aciklama"
+          rows={5}
+          value={deger.aciklama || ''}
+          onChange={alan('aciklama')}
+          maxLength={SINIR.aciklama}
+        />
       </Field>
     </div>
   );
 }
 
-function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open: boolean; onClose: () => void; onKaydedildi: () => void; kisiler: string[]; benimAdim: string }) {
+function YeniIsModal({
+  open,
+  onClose,
+  onKaydedildi,
+  kisiler,
+  benimAdim,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onKaydedildi: () => void;
+  kisiler: string[];
+  benimAdim: string;
+}) {
   const [deger, setDeger] = useState<BmwIsGirdi>(BOS_GIRDI);
   const [kaydediyor, setKaydediyor] = useState(false);
   const kaydet = async () => {
@@ -239,8 +386,12 @@ function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open
       dismissOnBackdrop={false}
       footer={
         <>
-          <Button variant="primary" onClick={kaydet} loading={kaydediyor}>İşi ekle</Button>
-          <Button variant="ghost" onClick={onClose}>İptal</Button>
+          <Button variant="primary" onClick={kaydet} loading={kaydediyor}>
+            İşi ekle
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            İptal
+          </Button>
         </>
       }
     >
@@ -252,14 +403,25 @@ function YeniIsModal({ open, onClose, onKaydedildi, kisiler, benimAdim }: { open
 const TOPLU_ORNEK = [
   '# Her satır bir iş. Alanlar | ile ayrılır; yalnız başlık zorunlu, sondakiler atlanabilir.',
   '# Başlık | Sahip | Son tarih | Öncelik | Durum | Ne bekleniyor | Açıklama',
-  'Application Hub: JVM parametre toplama playbook\'u | Onur Demir | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak',
-  'TBMWANS parolası vault\'a taşınsın | | 2026-12-01 | orta | beklemede | DBA onayı',
+  "Application Hub: JVM parametre toplama playbook'u | Onur Demir | 20.11.2026 | yüksek | devam | | JBoss ps argümanlarından okunacak",
+  "TBMWANS parolası vault'a taşınsın | | 2026-12-01 | orta | beklemede | DBA onayı",
 ].join('\n');
 
-function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: () => void; onKaydedildi: () => void }) {
+function TopluModal({
+  open,
+  onClose,
+  onKaydedildi,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onKaydedildi: () => void;
+}) {
   const [metin, setMetin] = useState('');
   const [kaydediyor, setKaydediyor] = useState(false);
-  const sonuc = useMemo(() => topluAyristir(metin) as { satir: number; deger: BmwIsGirdi; hatalar: string[] }[], [metin]);
+  const sonuc = useMemo(
+    () => topluAyristir(metin) as { satir: number; deger: BmwIsGirdi; hatalar: string[] }[],
+    [metin],
+  );
   const hatali = sonuc.filter((s) => s.hatalar.length).length;
   const fazla = sonuc.length > SINIR.toplu;
   const ekle = async () => {
@@ -287,12 +449,27 @@ function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: (
       dismissOnBackdrop={false}
       footer={
         <>
-          <Button variant="primary" onClick={ekle} loading={kaydediyor} disabled={!sonuc.length || hatali > 0 || fazla}>
+          <Button
+            variant="primary"
+            onClick={ekle}
+            loading={kaydediyor}
+            disabled={!sonuc.length || hatali > 0 || fazla}
+          >
             {sonuc.length ? `${sonuc.length} işi ekle` : 'İşleri ekle'}
           </Button>
-          <Button variant="ghost" onClick={onClose}>İptal</Button>
-          {hatali > 0 && <span className="text-[13px]" style={{ color: 'var(--status-danger)' }}>{hatali} satırda hata var.</span>}
-          {fazla && <span className="text-[13px]" style={{ color: 'var(--status-danger)' }}>Bir seferde en çok {SINIR.toplu} iş eklenebilir.</span>}
+          <Button variant="ghost" onClick={onClose}>
+            İptal
+          </Button>
+          {hatali > 0 && (
+            <span className="text-[13px]" style={{ color: 'var(--status-danger)' }}>
+              {hatali} satırda hata var.
+            </span>
+          )}
+          {fazla && (
+            <span className="text-[13px]" style={{ color: 'var(--status-danger)' }}>
+              Bir seferde en çok {SINIR.toplu} iş eklenebilir.
+            </span>
+          )}
         </>
       }
     >
@@ -307,9 +484,17 @@ function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: (
             className="font-mono text-[12px]"
             spellCheck={false}
           />
-          <div className="flex flex-wrap items-center gap-2 text-[12px]" style={{ color: 'var(--text-muted)' }}>
-            <span>Tarih: 2026-11-20 ya da 20.11.2026 · Öncelik: yüksek / orta / düşük · Durum: açık / devam / beklemede / tamam / iptal</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setMetin(TOPLU_ORNEK)}>Örneği doldur</Button>
+          <div
+            className="flex flex-wrap items-center gap-2 text-[12px]"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <span>
+              Tarih: 2026-11-20 ya da 20.11.2026 · Öncelik: yüksek / orta / düşük · Durum: açık /
+              devam / beklemede / tamam / iptal
+            </span>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setMetin(TOPLU_ORNEK)}>
+              Örneği doldur
+            </Button>
           </div>
         </div>
         <div className="overflow-x-auto rounded border" style={{ borderColor: 'var(--border)' }}>
@@ -326,19 +511,33 @@ function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: (
             <tbody>
               {!sonuc.length && <TableEmptyRow colSpan={5} title="Önizleme burada görünür." />}
               {sonuc.map((s) => (
-                <tr key={s.satir} className="border-t align-top" style={{ borderColor: 'var(--border-subtle)' }}>
-                  <td className="px-2 py-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>{s.satir}</td>
+                <tr
+                  key={s.satir}
+                  className="border-t align-top"
+                  style={{ borderColor: 'var(--border-subtle)' }}
+                >
+                  <td className="px-2 py-1.5 tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                    {s.satir}
+                  </td>
                   <td className="px-2 py-1.5" style={{ color: 'var(--text-primary)' }}>
                     {s.deger.baslik || <em style={{ color: 'var(--text-muted)' }}>başlık yok</em>}
                     {s.hatalar.map((h) => (
-                      <div key={h} className="mt-0.5 flex items-start gap-1" style={{ color: 'var(--status-danger)' }}>
+                      <div
+                        key={h}
+                        className="mt-0.5 flex items-start gap-1"
+                        style={{ color: 'var(--status-danger)' }}
+                      >
                         <ExclamationTriangleIcon className="w-3.5 h-3.5 mt-px flex-shrink-0" />
                         {h}
                       </div>
                     ))}
                   </td>
-                  <td className="px-2 py-1.5">{s.deger.sahip || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                  <td className="px-2 py-1.5 tabular-nums">{s.deger.sonTarih ? trGun(s.deger.sonTarih) : '—'}</td>
+                  <td className="px-2 py-1.5">
+                    {s.deger.sahip || <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                  </td>
+                  <td className="px-2 py-1.5 tabular-nums">
+                    {s.deger.sonTarih ? trGun(s.deger.sonTarih) : '—'}
+                  </td>
                   <td className="px-2 py-1.5 space-x-2 whitespace-nowrap">
                     <OncelikIsaret oncelik={s.deger.oncelik || 'orta'} />
                     <DurumHap durum={s.deger.durum || 'acik'} />
@@ -353,7 +552,14 @@ function TopluModal({ open, onClose, onKaydedildi }: { open: boolean; onClose: (
   );
 }
 
-const NOT_TUR_AD: Record<string, string> = { not: 'Not', olusturma: 'Açılış', durum: 'Durum', sahip: 'Sahip', tarih: 'Son tarih', oncelik: 'Öncelik' };
+const NOT_TUR_AD: Record<string, string> = {
+  not: 'Not',
+  olusturma: 'Açılış',
+  durum: 'Durum',
+  sahip: 'Sahip',
+  tarih: 'Son tarih',
+  oncelik: 'Öncelik',
+};
 
 function IsDetayModal({
   isId,
@@ -413,7 +619,8 @@ function IsDetayModal({
     if (!is) return {} as BmwIsGirdi;
     const d: BmwIsGirdi = {};
     (Object.keys(deger) as (keyof BmwIsGirdi)[]).forEach((k) => {
-      if ((deger[k] ?? '') !== ((is as unknown as Record<string, string>)[k] ?? '')) (d as Record<string, unknown>)[k] = deger[k];
+      if ((deger[k] ?? '') !== ((is as unknown as Record<string, string>)[k] ?? ''))
+        (d as Record<string, unknown>)[k] = deger[k];
     });
     return d;
   }, [deger, is]);
@@ -468,32 +675,59 @@ function IsDetayModal({
       open={!!isId}
       onClose={onClose}
       title={is ? is.baslik : 'İş'}
-      subtitle={is ? `${is.acanAd} açtı · ${fmtDateTime(is.olusturma)}${is.kapanis ? ` · kapanış ${fmtDateTime(is.kapanis)}` : ''}` : undefined}
+      subtitle={
+        is
+          ? `${is.acanAd} açtı · ${fmtDateTime(is.olusturma)}${is.kapanis ? ` · kapanış ${fmtDateTime(is.kapanis)}` : ''}`
+          : undefined
+      }
       icon={ClipboardDocumentCheckIcon}
       size="wide"
       dismissOnBackdrop={!kirli}
       footer={
         is ? (
           <>
-            <Button variant="primary" onClick={kaydet} loading={kaydediyor} disabled={!kirli}>Değişiklikleri kaydet</Button>
-            <Button variant="ghost" onClick={onClose}>{kirli ? 'İptal' : 'Kapat'}</Button>
+            <Button variant="primary" onClick={kaydet} loading={kaydediyor} disabled={!kirli}>
+              Değişiklikleri kaydet
+            </Button>
+            <Button variant="ghost" onClick={onClose}>
+              {kirli ? 'İptal' : 'Kapat'}
+            </Button>
             <span className="flex-1" />
             {silOnay ? (
-              <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: 'var(--status-danger)' }}>
+              <span
+                className="inline-flex items-center gap-2 text-[13px]"
+                style={{ color: 'var(--status-danger)' }}
+              >
                 İş ve geçmişi kalıcı olarak silinsin mi? Geri alınamaz.
-                <Button variant="danger" size="sm" onClick={sil}>Evet, sil</Button>
-                <Button variant="ghost" size="sm" onClick={() => setSilOnay(false)}>İptal</Button>
+                <Button variant="danger" size="sm" onClick={sil}>
+                  Evet, sil
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSilOnay(false)}>
+                  İptal
+                </Button>
               </span>
             ) : (
-              <Button variant="ghost" size="sm" icon={<TrashIcon className="w-4 h-4" />} onClick={() => setSilOnay(true)}>Sil</Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<TrashIcon className="w-4 h-4" />}
+                onClick={() => setSilOnay(true)}
+              >
+                Sil
+              </Button>
             )}
           </>
         ) : undefined
       }
     >
       {hata ? (
-        <LoadError title="İş okunamadı" message={hata} onRetry={() => isId && yukle(isId)} compact />
-      ) : !is || yukleniyor && !is ? (
+        <LoadError
+          title="İş okunamadı"
+          message={hata}
+          onRetry={() => isId && yukle(isId)}
+          compact
+        />
+      ) : !is || (yukleniyor && !is) ? (
         <div className="h-40 skeleton rounded" />
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6">
@@ -502,7 +736,12 @@ function IsDetayModal({
               <DurumHap durum={is.durum} />
               <OncelikIsaret oncelik={is.oncelik} />
               {is.sonTarih && (
-                <span className="text-[12px]" style={{ color: gecikmisMi(is, bugun) ? 'var(--status-danger)' : 'var(--text-muted)' }}>
+                <span
+                  className="text-[12px]"
+                  style={{
+                    color: gecikmisMi(is, bugun) ? 'var(--status-danger)' : 'var(--text-muted)',
+                  }}
+                >
                   Son tarih {trGun(is.sonTarih)} · {kalanMetni(is.sonTarih, bugun)}
                 </span>
               )}
@@ -510,7 +749,10 @@ function IsDetayModal({
             <IsFormu deger={deger} setDeger={setDeger} kisiler={kisiler} benimAdim={benimAdim} />
           </div>
           <div className="space-y-3">
-            <h3 className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-primary)' }}>
+            <h3
+              className="text-[13px] font-semibold flex items-center gap-1.5"
+              style={{ color: 'var(--text-primary)' }}
+            >
               <ChatBubbleLeftEllipsisIcon className="w-4 h-4" /> Notlar ve geçmiş
             </h3>
             <div className="space-y-2">
@@ -522,18 +764,42 @@ function IsDetayModal({
                 maxLength={SINIR.not}
                 placeholder="Gelişme, karar ya da engel yazın…"
               />
-              <Button size="sm" variant="secondary" onClick={notEkle} loading={notYaziyor} disabled={!notMetni.trim()}>Not ekle</Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={notEkle}
+                loading={notYaziyor}
+                disabled={!notMetni.trim()}
+              >
+                Not ekle
+              </Button>
             </div>
             <ol className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
               {notlar.map((n) => (
-                <li key={n.id} className="rounded px-3 py-2" style={{ background: n.tur === 'not' ? 'var(--bg-inset)' : 'transparent', border: '1px solid var(--border-subtle)' }}>
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                <li
+                  key={n.id}
+                  className="rounded px-3 py-2"
+                  style={{
+                    background: n.tur === 'not' ? 'var(--bg-inset)' : 'transparent',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div
+                    className="flex flex-wrap items-baseline justify-between gap-2 text-[11px]"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
                     <span>
-                      <strong style={{ color: 'var(--text-secondary)' }}>{n.yazanAd}</strong> · {NOT_TUR_AD[n.tur] || n.tur}
+                      <strong style={{ color: 'var(--text-secondary)' }}>{n.yazanAd}</strong> ·{' '}
+                      {NOT_TUR_AD[n.tur] || n.tur}
                     </span>
                     <span title={fmtDateTime(n.olusturma)}>{fmtRelative(n.olusturma)}</span>
                   </div>
-                  <p className="mt-1 text-[13px] whitespace-pre-wrap break-words" style={{ color: n.tur === 'not' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                  <p
+                    className="mt-1 text-[13px] whitespace-pre-wrap break-words"
+                    style={{
+                      color: n.tur === 'not' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
                     {n.metin}
                   </p>
                 </li>
@@ -547,7 +813,8 @@ function IsDetayModal({
 }
 
 // Panoda "Açık işler" görünümü Tamamlandı sütununu boş bırakmasın: son 14 günde bitenler de gelir.
-const yeniBitti = (i: BmwIs) => i.durum === 'tamam' && !!i.kapanis && Date.now() - Date.parse(i.kapanis) < 14 * 86400000;
+const yeniBitti = (i: BmwIs) =>
+  i.durum === 'tamam' && !!i.kapanis && Date.now() - Date.parse(i.kapanis) < 14 * 86400000;
 
 function PanoKart({ is, bugun, onAc }: { is: BmwIs; bugun: string; onAc: () => void }) {
   const gec = gecikmisMi(is, bugun);
@@ -558,19 +825,33 @@ function PanoKart({ is, bugun, onAc }: { is: BmwIs; bugun: string; onAc: () => v
       className="card w-full text-left px-3 py-2.5 space-y-1.5 card-hover focus-visible:outline focus-visible:outline-2"
       style={{ borderLeft: `3px solid ${ONCELIK_TON[is.oncelik] || ONCELIK_TON.orta}` }}
     >
-      <div className="text-[13px] font-medium leading-snug" style={{ color: 'var(--text-primary)' }}>{is.baslik}</div>
+      <div
+        className="text-[13px] font-medium leading-snug"
+        style={{ color: 'var(--text-primary)' }}
+      >
+        {is.baslik}
+      </div>
       {is.beklenen && (
-        <div className="text-[11px] flex items-start gap-1" style={{ color: 'var(--status-warning-text)' }}>
+        <div
+          className="text-[11px] flex items-start gap-1"
+          style={{ color: 'var(--status-warning-text)' }}
+        >
           <ClockIcon className="w-3.5 h-3.5 flex-shrink-0 mt-px" /> {is.beklenen}
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+      <div
+        className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+        style={{ color: 'var(--text-muted)' }}
+      >
         <span className="inline-flex items-center gap-1">
           <UserIcon className="w-3.5 h-3.5" />
           {is.sahip || <em>sahipsiz</em>}
         </span>
         {is.sonTarih && (
-          <span className="tabular-nums" style={{ color: gec ? 'var(--status-danger)' : undefined, fontWeight: gec ? 600 : 400 }}>
+          <span
+            className="tabular-nums"
+            style={{ color: gec ? 'var(--status-danger)' : undefined, fontWeight: gec ? 600 : 400 }}
+          >
             {trGun(is.sonTarih)}
           </span>
         )}
@@ -583,7 +864,8 @@ function AcikIsler() {
   const { user } = useAuth();
   const benimAdim = (user?.displayName || user?.username || '').trim();
   const [params, setParams] = useSearchParams();
-  const gorunum = (GORUNUMLER.find((g) => g.key === params.get('gorunum'))?.key || 'acik') as Gorunum;
+  const gorunum = (GORUNUMLER.find((g) => g.key === params.get('gorunum'))?.key ||
+    'acik') as Gorunum;
   const duzen = (params.get('duzen') === 'pano' ? 'pano' : 'liste') as Duzen;
   const seciliId = params.get('is');
 
@@ -643,7 +925,13 @@ function AcikIsler() {
     return [...s].sort((a, b) => a.localeCompare(b, 'tr'));
   }, [isler, benimAdim]);
 
-  const sahipler = useMemo(() => [...new Set(isler.map((i) => i.sahip).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')), [isler]);
+  const sahipler = useMemo(
+    () =>
+      [...new Set(isler.map((i) => i.sahip).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, 'tr'),
+      ),
+    [isler],
+  );
 
   const benimMi = useCallback(
     (i: BmwIs) => {
@@ -659,18 +947,28 @@ function AcikIsler() {
       .filter((i) => {
         const acik = ACIK_DURUMLAR.has(i.durum);
         switch (gorunum) {
-          case 'acik': return acik || (duzen === 'pano' && yeniBitti(i));
-          case 'benim': return acik && benimMi(i);
-          case 'gecikmis': return gecikmisMi(i, bugun);
-          case 'sahipsiz': return acik && !i.sahip;
-          case 'kapali': return !acik;
-          default: return true;
+          case 'acik':
+            return acik || (duzen === 'pano' && yeniBitti(i));
+          case 'benim':
+            return acik && benimMi(i);
+          case 'gecikmis':
+            return gecikmisMi(i, bugun);
+          case 'sahipsiz':
+            return acik && !i.sahip;
+          case 'kapali':
+            return !acik;
+          default:
+            return true;
         }
       })
       .filter((i) => !sahipSuz || i.sahip === sahipSuz)
       .filter((i) => !oncelikSuz || i.oncelik === oncelikSuz)
-      .filter((i) =>
-        !q || [i.baslik, i.aciklama, i.sahip, i.acanAd, i.beklenen, i.kategori].some((x) => (x || '').toLocaleLowerCase('tr').includes(q)),
+      .filter(
+        (i) =>
+          !q ||
+          [i.baslik, i.aciklama, i.sahip, i.acanAd, i.beklenen, i.kategori].some((x) =>
+            (x || '').toLocaleLowerCase('tr').includes(q),
+          ),
       )
       .sort((a, b) => {
         // Açık işler önce gecikene, sonra en yakın son tarihe; tarihsizler sonda. Kapananlar en yeni üstte.
@@ -678,7 +976,8 @@ function AcikIsler() {
         const ga = gecikmisMi(a, bugun) ? 0 : 1;
         const gb = gecikmisMi(b, bugun) ? 0 : 1;
         if (ga !== gb) return ga - gb;
-        if (a.sonTarih && b.sonTarih && a.sonTarih !== b.sonTarih) return a.sonTarih.localeCompare(b.sonTarih);
+        if (a.sonTarih && b.sonTarih && a.sonTarih !== b.sonTarih)
+          return a.sonTarih.localeCompare(b.sonTarih);
         if (!!a.sonTarih !== !!b.sonTarih) return a.sonTarih ? -1 : 1;
         const po = { yuksek: 0, orta: 1, dusuk: 2 } as Record<string, number>;
         if (po[a.oncelik] !== po[b.oncelik]) return po[a.oncelik] - po[b.oncelik];
@@ -701,31 +1000,71 @@ function AcikIsler() {
     }
   };
 
-  const benimSayi = useMemo(() => isler.filter((i) => ACIK_DURUMLAR.has(i.durum) && benimMi(i)).length, [isler, benimMi]);
+  const benimSayi = useMemo(
+    () => isler.filter((i) => ACIK_DURUMLAR.has(i.durum) && benimMi(i)).length,
+    [isler, benimMi],
+  );
 
-  const panoKolonlari = DURUMLAR.filter((d: { key: string }) => d.key !== "iptal") as { key: BmwDurum; label: string }[];
+  const panoKolonlari = DURUMLAR.filter((d: { key: string }) => d.key !== 'iptal') as {
+    key: BmwDurum;
+    label: string;
+  }[];
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="ghost" icon={<ArrowPathIcon className={`w-4 h-4 ${yukleniyor ? 'animate-spin' : ''}`} />} onClick={yukle} disabled={yukleniyor}>
-              Yenile
-            </Button>
-            <Button variant="secondary" icon={<QueueListIcon className="w-4 h-4" />} onClick={() => { setTopluNo((n) => n + 1); setTopluAcik(true); }}>
-              Toplu ekle
-            </Button>
-            <Button variant="primary" icon={<PlusIcon className="w-4 h-4" />} onClick={() => { setYeniNo((n) => n + 1); setYeniAcik(true); }}>
-              Yeni iş
-            </Button>
+        <Button
+          variant="ghost"
+          icon={<ArrowPathIcon className={`w-4 h-4 ${yukleniyor ? 'animate-spin' : ''}`} />}
+          onClick={yukle}
+          disabled={yukleniyor}
+        >
+          Yenile
+        </Button>
+        <Button
+          variant="secondary"
+          icon={<QueueListIcon className="w-4 h-4" />}
+          onClick={() => {
+            setTopluNo((n) => n + 1);
+            setTopluAcik(true);
+          }}
+        >
+          Toplu ekle
+        </Button>
+        <Button
+          variant="primary"
+          icon={<PlusIcon className="w-4 h-4" />}
+          onClick={() => {
+            setYeniNo((n) => n + 1);
+            setYeniAcik(true);
+          }}
+        >
+          Yeni iş
+        </Button>
       </div>
 
       {hata && !isler.length ? (
-        <LoadError title="BMW Hub yüklenemedi" message={hata} onRetry={yukle} retrying={yukleniyor} />
+        <LoadError
+          title="BMW Hub yüklenemedi"
+          message={hata}
+          onRetry={yukle}
+          retrying={yukleniyor}
+        />
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <OzetKutu label="Açık" value={ozet?.acik ?? 0} aktif={gorunum === 'acik'} onClick={() => paramDegis('gorunum', null)} />
-            <OzetKutu label="Benim işlerim" value={benimSayi} aktif={gorunum === 'benim'} onClick={() => paramDegis('gorunum', 'benim')} />
+            <OzetKutu
+              label="Açık"
+              value={ozet?.acik ?? 0}
+              aktif={gorunum === 'acik'}
+              onClick={() => paramDegis('gorunum', null)}
+            />
+            <OzetKutu
+              label="Benim işlerim"
+              value={benimSayi}
+              aktif={gorunum === 'benim'}
+              onClick={() => paramDegis('gorunum', 'benim')}
+            />
             <OzetKutu
               label="Geciken"
               value={ozet?.gecikmis ?? 0}
@@ -733,9 +1072,26 @@ function AcikIsler() {
               ton={ozet?.gecikmis ? 'var(--status-danger)' : undefined}
               onClick={() => paramDegis('gorunum', 'gecikmis')}
             />
-            <OzetKutu label="7 gün içinde" value={ozet?.buHafta ?? 0} aktif={false} ton={ozet?.buHafta ? 'var(--status-warning-text)' : undefined} onClick={() => paramDegis('gorunum', null)} />
-            <OzetKutu label="Sahipsiz" value={ozet?.sahipsiz ?? 0} aktif={gorunum === 'sahipsiz'} onClick={() => paramDegis('gorunum', 'sahipsiz')} />
-            <OzetKutu label="Son 30 günde biten" value={ozet?.tamamlanan30 ?? 0} aktif={gorunum === 'kapali'} ton="var(--status-success)" onClick={() => paramDegis('gorunum', 'kapali')} />
+            <OzetKutu
+              label="7 gün içinde"
+              value={ozet?.buHafta ?? 0}
+              aktif={false}
+              ton={ozet?.buHafta ? 'var(--status-warning-text)' : undefined}
+              onClick={() => paramDegis('gorunum', null)}
+            />
+            <OzetKutu
+              label="Sahipsiz"
+              value={ozet?.sahipsiz ?? 0}
+              aktif={gorunum === 'sahipsiz'}
+              onClick={() => paramDegis('gorunum', 'sahipsiz')}
+            />
+            <OzetKutu
+              label="Son 30 günde biten"
+              value={ozet?.tamamlanan30 ?? 0}
+              aktif={gorunum === 'kapali'}
+              ton="var(--status-success)"
+              onClick={() => paramDegis('gorunum', 'kapali')}
+            />
           </div>
 
           {hata && (
@@ -750,7 +1106,12 @@ function AcikIsler() {
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <div role="tablist" aria-label="Görünüm" className="inline-flex rounded border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+            <div
+              role="tablist"
+              aria-label="Görünüm"
+              className="inline-flex rounded border overflow-hidden"
+              style={{ borderColor: 'var(--border)' }}
+            >
               {GORUNUMLER.map((g) => (
                 <button
                   key={g.key}
@@ -769,27 +1130,56 @@ function AcikIsler() {
               ))}
             </div>
             <div className="relative min-w-[14rem] flex-1 max-w-sm">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
-              <TextInput sizeVariant="sm" aria-label="İşlerde ara" value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Başlık, kişi, açıklamada ara" className="pl-9" />
+              <MagnifyingGlassIcon
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: 'var(--text-muted)' }}
+              />
+              <TextInput
+                sizeVariant="sm"
+                aria-label="İşlerde ara"
+                value={ara}
+                onChange={(e) => setAra(e.target.value)}
+                placeholder="Başlık, kişi, açıklamada ara"
+                className="pl-9"
+              />
             </div>
             <div className="w-44">
-              <Select sizeVariant="sm" aria-label="Sahibe göre" value={sahipSuz} onChange={(e) => setSahipSuz(e.target.value)}>
+              <Select
+                sizeVariant="sm"
+                aria-label="Sahibe göre"
+                value={sahipSuz}
+                onChange={(e) => setSahipSuz(e.target.value)}
+              >
                 <option value="">Tüm sahipler</option>
                 {sahipler.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
               </Select>
             </div>
             <div className="w-36">
-              <Select sizeVariant="sm" aria-label="Önceliğe göre" value={oncelikSuz} onChange={(e) => setOncelikSuz(e.target.value)}>
+              <Select
+                sizeVariant="sm"
+                aria-label="Önceliğe göre"
+                value={oncelikSuz}
+                onChange={(e) => setOncelikSuz(e.target.value)}
+              >
                 <option value="">Tüm öncelikler</option>
                 {ONCELIKLER.map((o: { key: string; label: string }) => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
                 ))}
               </Select>
             </div>
             <span className="flex-1" />
-            <div role="group" aria-label="Düzen" className="inline-flex rounded border overflow-hidden" style={{ borderColor: 'var(--border)' }}>
+            <div
+              role="group"
+              aria-label="Düzen"
+              className="inline-flex rounded border overflow-hidden"
+              style={{ borderColor: 'var(--border)' }}
+            >
               {(
                 [
                   { k: 'liste', label: 'Liste', Ikon: QueueListIcon },
@@ -801,7 +1191,11 @@ function AcikIsler() {
                   aria-pressed={duzen === k}
                   onClick={() => paramDegis('duzen', k === 'liste' ? null : k)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] focus-visible:outline focus-visible:outline-2"
-                  style={{ background: duzen === k ? 'var(--bh-hue-soft)' : 'var(--bg-surface)', color: 'var(--text-primary)', fontWeight: duzen === k ? 600 : 400 }}
+                  style={{
+                    background: duzen === k ? 'var(--bh-hue-soft)' : 'var(--bg-surface)',
+                    color: 'var(--text-primary)',
+                    fontWeight: duzen === k ? 600 : 400,
+                  }}
                 >
                   <Ikon className="w-4 h-4" /> {label}
                 </button>
@@ -813,7 +1207,13 @@ function AcikIsler() {
             <div className="card overflow-x-auto p-0">
               <table className="w-full text-[13px]">
                 <thead>
-                  <tr className="text-left" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <tr
+                    className="text-left"
+                    style={{
+                      color: 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                  >
                     <th className="px-4 py-2.5 font-semibold">İş</th>
                     <th className="px-3 py-2.5 font-semibold">Durum</th>
                     <th className="px-3 py-2.5 font-semibold">Öncelik</th>
@@ -826,14 +1226,20 @@ function AcikIsler() {
                 <tbody>
                   {yukleniyor && !isler.length && (
                     <tr>
-                      <td colSpan={7} className="p-4"><div className="h-24 skeleton rounded" /></td>
+                      <td colSpan={7} className="p-4">
+                        <div className="h-24 skeleton rounded" />
+                      </td>
                     </tr>
                   )}
                   {!yukleniyor && !suzulmus.length && (
                     <TableEmptyRow
                       colSpan={7}
                       title={isler.length ? 'Bu görünümde iş yok.' : 'Henüz iş girilmemiş.'}
-                      description={isler.length ? 'Görünümü ya da süzgeçleri değiştirin.' : '"Yeni iş" ya da "Toplu ekle" ile başlayın.'}
+                      description={
+                        isler.length
+                          ? 'Görünümü ya da süzgeçleri değiştirin.'
+                          : '"Yeni iş" ya da "Toplu ekle" ile başlayın.'
+                      }
                     />
                   )}
                   {suzulmus.map((i) => (
@@ -855,36 +1261,66 @@ function AcikIsler() {
                         >
                           {i.baslik}
                         </button>
-                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                        <div
+                          className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]"
+                          style={{ color: 'var(--text-muted)' }}
+                        >
                           <span>{i.kategori}</span>
                           {i.beklenen && (
-                            <span className="inline-flex items-center gap-1" style={{ color: 'var(--status-warning-text)' }}>
+                            <span
+                              className="inline-flex items-center gap-1"
+                              style={{ color: 'var(--status-warning-text)' }}
+                            >
                               <ClockIcon className="w-3.5 h-3.5" /> Bekleniyor: {i.beklenen}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                        <label className="sr-only" htmlFor={`bmw-d-${i.id}`}>Durum</label>
+                        <label className="sr-only" htmlFor={`bmw-d-${i.id}`}>
+                          Durum
+                        </label>
                         <select
                           id={`bmw-d-${i.id}`}
                           value={i.durum}
                           onChange={(e) => hizliDurum(i, e.target.value as BmwDurum)}
                           className="rounded-full px-2 py-0.5 text-[11px] font-semibold cursor-pointer focus-visible:outline focus-visible:outline-2"
-                          style={{ color: (DURUM_TON[i.durum] || DURUM_TON.acik).fg, background: (DURUM_TON[i.durum] || DURUM_TON.acik).bg, border: `1px solid ${(DURUM_TON[i.durum] || DURUM_TON.acik).fg}` }}
+                          style={{
+                            color: (DURUM_TON[i.durum] || DURUM_TON.acik).fg,
+                            background: (DURUM_TON[i.durum] || DURUM_TON.acik).bg,
+                            border: `1px solid ${(DURUM_TON[i.durum] || DURUM_TON.acik).fg}`,
+                          }}
                         >
                           {DURUMLAR.map((d: { key: string; label: string }) => (
-                            <option key={d.key} value={d.key}>{d.label}</option>
+                            <option key={d.key} value={d.key}>
+                              {d.label}
+                            </option>
                           ))}
                         </select>
                       </td>
-                      <td className="px-3 py-2.5"><OncelikIsaret oncelik={i.oncelik as BmwOncelik} /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: i.sahip ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      <td className="px-3 py-2.5">
+                        <OncelikIsaret oncelik={i.oncelik as BmwOncelik} />
+                      </td>
+                      <td
+                        className="px-3 py-2.5 whitespace-nowrap"
+                        style={{ color: i.sahip ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                      >
                         {i.sahip || <em>sahipsiz</em>}
                       </td>
-                      <td className="px-3 py-2.5"><SonTarih is={i} bugun={bugun} /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{i.acanAd}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-[12px]" style={{ color: 'var(--text-muted)' }} title={fmtDateTime(i.guncelleme)}>
+                      <td className="px-3 py-2.5">
+                        <SonTarih is={i} bugun={bugun} />
+                      </td>
+                      <td
+                        className="px-3 py-2.5 whitespace-nowrap"
+                        style={{ color: 'var(--text-secondary)' }}
+                      >
+                        {i.acanAd}
+                      </td>
+                      <td
+                        className="px-3 py-2.5 whitespace-nowrap text-[12px]"
+                        style={{ color: 'var(--text-muted)' }}
+                        title={fmtDateTime(i.guncelleme)}
+                      >
                         {fmtRelative(i.guncelleme)}
                         {i.guncelleyenAd && <div>{i.guncelleyenAd}</div>}
                       </td>
@@ -898,16 +1334,36 @@ function AcikIsler() {
               {panoKolonlari.map((k) => {
                 const kart = suzulmus.filter((i) => i.durum === k.key);
                 return (
-                  <section key={k.key} className="rounded p-2 space-y-2" style={{ background: 'var(--bg-inset)' }} aria-label={k.label}>
+                  <section
+                    key={k.key}
+                    className="rounded p-2 space-y-2"
+                    style={{ background: 'var(--bg-inset)' }}
+                    aria-label={k.label}
+                  >
                     <header className="flex items-center justify-between px-1">
                       <DurumHap durum={k.key} />
-                      <span className="text-[12px] tabular-nums" style={{ color: 'var(--text-muted)' }}>{kart.length}</span>
+                      <span
+                        className="text-[12px] tabular-nums"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        {kart.length}
+                      </span>
                     </header>
                     {kart.map((i) => (
-                      <PanoKart key={i.id} is={i} bugun={bugun} onAc={() => paramDegis('is', i.id)} />
+                      <PanoKart
+                        key={i.id}
+                        is={i}
+                        bugun={bugun}
+                        onAc={() => paramDegis('is', i.id)}
+                      />
                     ))}
                     {!kart.length && (
-                      <p className="px-1 py-4 text-center text-[12px]" style={{ color: 'var(--text-muted)' }}>Bu sütunda iş yok.</p>
+                      <p
+                        className="px-1 py-4 text-center text-[12px]"
+                        style={{ color: 'var(--text-muted)' }}
+                      >
+                        Bu sütunda iş yok.
+                      </p>
                     )}
                   </section>
                 );
@@ -917,9 +1373,29 @@ function AcikIsler() {
         </>
       )}
 
-      <YeniIsModal key={`yeni-${yeniNo}`} open={yeniAcik} onClose={() => setYeniAcik(false)} onKaydedildi={yukle} kisiler={kisiler} benimAdim={benimAdim} />
-      <TopluModal key={`toplu-${topluNo}`} open={topluAcik} onClose={() => setTopluAcik(false)} onKaydedildi={yukle} />
-      <IsDetayModal key={seciliId || 'yok'} isId={seciliId} onClose={() => paramDegis('is', null)} onDegisti={yukle} kisiler={kisiler} benimAdim={benimAdim} bugun={bugun} />
+      <YeniIsModal
+        key={`yeni-${yeniNo}`}
+        open={yeniAcik}
+        onClose={() => setYeniAcik(false)}
+        onKaydedildi={yukle}
+        kisiler={kisiler}
+        benimAdim={benimAdim}
+      />
+      <TopluModal
+        key={`toplu-${topluNo}`}
+        open={topluAcik}
+        onClose={() => setTopluAcik(false)}
+        onKaydedildi={yukle}
+      />
+      <IsDetayModal
+        key={seciliId || 'yok'}
+        isId={seciliId}
+        onClose={() => paramDegis('is', null)}
+        onDegisti={yukle}
+        kisiler={kisiler}
+        benimAdim={benimAdim}
+        bugun={bugun}
+      />
     </div>
   );
 }
@@ -933,7 +1409,10 @@ function AcikIsler() {
 export default function BmwHubPage() {
   return (
     <div className="space-y-5">
-      <SectionHeader title="BMW Hub" subtitle="Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor." />
+      <SectionHeader
+        title="BMW Hub"
+        subtitle="Ekibin açık işleri ve otomasyon talepleri: kim açtı, kim üstlendi, ne zamana, ne bekleniyor."
+      />
       <AcikIsler />
     </div>
   );

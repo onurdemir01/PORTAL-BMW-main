@@ -39,7 +39,7 @@ const ALLOWED_MIME = {
 
 const SLOTS = {
   favicon: { blobName: 'branding:favicon', maxBytes: 512 * 1024 },
-  logo:    { blobName: 'branding:logo',    maxBytes: 1024 * 1024 },
+  logo: { blobName: 'branding:logo', maxBytes: 1024 * 1024 },
 };
 
 // Favicon icin: logo yuklenmemisken sunulan varsayilan. Kendi yazdigimiz sabit
@@ -56,27 +56,27 @@ const SLOTS = {
 // Zaten 16-32px'te bir wordmark okunmaz — bulut + veri mozaigi dogru secim.
 const DEFAULT_FAVICON_SVG = Buffer.from(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
-  `<defs>` +
-  `<linearGradient id="t" x1="0" y1="0" x2="1" y2="1">` +
-  `<stop offset="0" stop-color="#00204a"/><stop offset=".45" stop-color="#002351"/>` +
-  `<stop offset="1" stop-color="#000c22"/></linearGradient>` +
-  `<linearGradient id="a" x1="0" y1="1" x2="1" y2="0">` +
-  `<stop offset="0" stop-color="#00dba4"/><stop offset=".45" stop-color="#00f4d1"/>` +
-  `<stop offset="1" stop-color="#0085fd"/></linearGradient>` +
-  `</defs>` +
-  `<rect width="64" height="64" rx="13.5" fill="url(#t)"/>` +
-  `<rect x="5.5" y="35" width="7.2" height="7.2" rx="1.6" fill="url(#a)"/>` +
-  `<rect x="14.8" y="36.6" width="4.7" height="4.7" rx="1.3" fill="url(#a)" opacity=".92"/>` +
-  `<rect x="7.4" y="44.8" width="5.8" height="5.8" rx="1.6" fill="url(#a)" opacity=".85"/>` +
-  `<rect x="15.6" y="46" width="3.4" height="3.4" rx=".94" fill="url(#a)" opacity=".75"/>` +
-  `<rect x="22" y="40" width="2.6" height="2.6" rx=".72" fill="url(#a)" opacity=".65"/>` +
-  `<rect x="6" y="53.4" width="3.6" height="3.6" rx="1" fill="url(#a)" opacity=".6"/>` +
-  `<rect x="13.4" y="53.2" width="2.3" height="2.3" rx=".64" fill="url(#a)" opacity=".5"/>` +
-  `<g transform="translate(14.5 2.5) scale(2)">` +
-  `<path d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 ` +
-  `5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" fill="none" stroke="url(#a)" ` +
-  `stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`,
-  'utf-8'
+    `<defs>` +
+    `<linearGradient id="t" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="#00204a"/><stop offset=".45" stop-color="#002351"/>` +
+    `<stop offset="1" stop-color="#000c22"/></linearGradient>` +
+    `<linearGradient id="a" x1="0" y1="1" x2="1" y2="0">` +
+    `<stop offset="0" stop-color="#00dba4"/><stop offset=".45" stop-color="#00f4d1"/>` +
+    `<stop offset="1" stop-color="#0085fd"/></linearGradient>` +
+    `</defs>` +
+    `<rect width="64" height="64" rx="13.5" fill="url(#t)"/>` +
+    `<rect x="5.5" y="35" width="7.2" height="7.2" rx="1.6" fill="url(#a)"/>` +
+    `<rect x="14.8" y="36.6" width="4.7" height="4.7" rx="1.3" fill="url(#a)" opacity=".92"/>` +
+    `<rect x="7.4" y="44.8" width="5.8" height="5.8" rx="1.6" fill="url(#a)" opacity=".85"/>` +
+    `<rect x="15.6" y="46" width="3.4" height="3.4" rx=".94" fill="url(#a)" opacity=".75"/>` +
+    `<rect x="22" y="40" width="2.6" height="2.6" rx=".72" fill="url(#a)" opacity=".65"/>` +
+    `<rect x="6" y="53.4" width="3.6" height="3.6" rx="1" fill="url(#a)" opacity=".6"/>` +
+    `<rect x="13.4" y="53.2" width="2.3" height="2.3" rx=".64" fill="url(#a)" opacity=".5"/>` +
+    `<g transform="translate(14.5 2.5) scale(2)">` +
+    `<path d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 ` +
+    `5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" fill="none" stroke="url(#a)" ` +
+    `stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/></g></svg>`,
+  'utf-8',
 );
 const DEFAULT_FAVICON_ETAG = `"${crypto.createHash('sha256').update(DEFAULT_FAVICON_SVG).digest('hex').slice(0, 16)}"`;
 
@@ -150,7 +150,7 @@ function db() {
 async function loadFromDb(blobName) {
   const { rows } = await db().query(
     `SELECT data, updated_at FROM portal_config_blobs WHERE name = $1`,
-    [blobName]
+    [blobName],
   );
   if (!rows.length) return null;
   let parsed;
@@ -208,7 +208,10 @@ function initBranding(app) {
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
       res.set('ETag', DEFAULT_FAVICON_ETAG);
-      res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
+      res.set(
+        'Cache-Control',
+        req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate',
+      );
       if (req.headers['if-none-match'] === DEFAULT_FAVICON_ETAG) return res.status(304).end();
       // Kendi yazdigimiz sabit SVG — kullanici yuklemesi degil, script icermez.
       return res.send(DEFAULT_FAVICON_SVG);
@@ -224,7 +227,10 @@ function initBranding(app) {
     // degisir, dolayisiyla uzun sureli/immutable onbellek GUVENLI ve sekme ikonunun
     // her acilista yeniden istenmesini (ve eski kopyanin bir an gorunmesini) onler.
     // ?v YOKSA eski davranis korunur: onbellekte tut ama her seferinde dogrula.
-    res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
+    res.set(
+      'Cache-Control',
+      req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate',
+    );
 
     if (req.headers['if-none-match'] === fav.etag) return res.status(304).end();
     return res.send(fav.buf);
@@ -250,7 +256,10 @@ function initBranding(app) {
     // Favicon ile AYNI kural: ?v=<surum> ile gelindiyse adres zaten icerige bagli,
     // uzun sureli onbellek GUVENLI ve logonun her acilista yeniden istenmesini
     // (dolayisiyla bir an gomulu varsayilanin gorunmesini) onler.
-    res.set('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate');
+    res.set(
+      'Cache-Control',
+      req.query.v ? 'public, max-age=31536000, immutable' : 'no-cache, must-revalidate',
+    );
     if (req.headers['if-none-match'] === logo.etag) return res.status(304).end();
     return res.send(logo.buf);
   });
@@ -275,21 +284,30 @@ function initBranding(app) {
     if (req.session?.user?.role !== 'Admin') return res.status(403).json({ ok: false });
     try {
       const [fav, logo] = await Promise.all([getSlot('favicon'), getSlot('logo')]);
-      const toInfo = (x) => x ? {
-        mime: x.mime,
-        sizeBytes: x.buf.length,
-        updatedAt: x.updatedAt,
-        updatedBy: x.updatedBy,
-        // Onizleme icin data URL — admin ekraninda gosterilir.
-        dataUrl: `data:${x.mime};base64,${x.buf.toString('base64')}`,
-      } : null;
+      const toInfo = (x) =>
+        x
+          ? {
+              mime: x.mime,
+              sizeBytes: x.buf.length,
+              updatedAt: x.updatedAt,
+              updatedBy: x.updatedBy,
+              // Onizleme icin data URL — admin ekraninda gosterilir.
+              dataUrl: `data:${x.mime};base64,${x.buf.toString('base64')}`,
+            }
+          : null;
       res.json({
         ok: true,
         favicon: toInfo(fav),
         logo: toInfo(logo),
         limits: {
-          favicon: { maxBytes: SLOTS.favicon.maxBytes, allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon') },
-          logo:    { maxBytes: SLOTS.logo.maxBytes,    allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon') },
+          favicon: {
+            maxBytes: SLOTS.favicon.maxBytes,
+            allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon'),
+          },
+          logo: {
+            maxBytes: SLOTS.logo.maxBytes,
+            allowedMime: Object.keys(ALLOWED_MIME).filter((m) => m !== 'image/vnd.microsoft.icon'),
+          },
         },
       });
     } catch (err) {
@@ -318,7 +336,8 @@ function initBranding(app) {
     if (!ALLOWED_MIME[mime]) {
       return res.status(400).json({
         ok: false,
-        error: 'Desteklenmeyen format. PNG (önerilen), ICO veya JPEG yükleyin. SVG güvenlik, WEBP ise tarayıcı uyumsuzluğu nedeniyle kabul edilmez.',
+        error:
+          'Desteklenmeyen format. PNG (önerilen), ICO veya JPEG yükleyin. SVG güvenlik, WEBP ise tarayıcı uyumsuzluğu nedeniyle kabul edilmez.',
       });
     }
 
@@ -338,7 +357,9 @@ function initBranding(app) {
       });
     }
     if (!magicMatches(mime, buf)) {
-      return res.status(400).json({ ok: false, error: 'Dosya içeriği belirtilen formatla uyuşmuyor.' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Dosya içeriği belirtilen formatla uyuşmuyor.' });
     }
 
     const payload = JSON.stringify({
@@ -351,13 +372,13 @@ function initBranding(app) {
     try {
       const upd = await db().query(
         `UPDATE portal_config_blobs SET data = $1, updated_at = GETUTCDATE() WHERE name = $2`,
-        [payload, SLOTS[slot].blobName]
+        [payload, SLOTS[slot].blobName],
       );
       if (!upd.rowCount) {
-        await db().query(
-          `INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`,
-          [SLOTS[slot].blobName, payload]
-        );
+        await db().query(`INSERT INTO portal_config_blobs (name, data) VALUES ($1, $2)`, [
+          SLOTS[slot].blobName,
+          payload,
+        ]);
       }
       cache[slot] = null; // bir sonraki istekte DB'den tazelenir
       // HEMEN tazele: `faviconVersion()`/`logoState()` ILK HTML'e gomulur. Tazelemeyi
@@ -369,9 +390,13 @@ function initBranding(app) {
         require('../audit/index.cjs').auditPortal(req, `branding_${slot}_update`, {
           detail: `mime=${mime} size=${buf.length}`,
         });
-      } catch { /* yoksay */ }
+      } catch {
+        /* yoksay */
+      }
 
-      console.log(`[Branding] ${req.session.user.username} -> ${slot} guncellendi (${mime}, ${buf.length} bayt).`);
+      console.log(
+        `[Branding] ${req.session.user.username} -> ${slot} guncellendi (${mime}, ${buf.length} bayt).`,
+      );
       res.json({ ok: true, mime, sizeBytes: buf.length });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -386,10 +411,12 @@ function initBranding(app) {
     try {
       await db().query(`DELETE FROM portal_config_blobs WHERE name = $1`, [SLOTS[slot].blobName]);
       cache[slot] = null;
-      await getSlot(slot).catch(() => {});   // surum bilgisi hemen varsayilana donsun
+      await getSlot(slot).catch(() => {}); // surum bilgisi hemen varsayilana donsun
       try {
         require('../audit/index.cjs').auditPortal(req, `branding_${slot}_reset`, { detail: '' });
-      } catch { /* yoksay */ }
+      } catch {
+        /* yoksay */
+      }
       console.log(`[Branding] ${req.session.user.username} -> ${slot} varsayilana dondu.`);
       res.json({ ok: true });
     } catch (err) {

@@ -21,7 +21,9 @@ function get(port, path, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
       let body = '';
-      res.on('data', (c) => { body += c; });
+      res.on('data', (c) => {
+        body += c;
+      });
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
     });
     req.on('error', reject);
@@ -46,7 +48,9 @@ test('?v YOKSA eski davranis: her seferinde dogrula', async () => {
     assert.strictEqual(r.status, 200);
     assert.match(r.headers['cache-control'], /no-cache/);
     assert.ok(r.headers.etag, 'ETag gonderilmeli');
-  } finally { srv.close(); }
+  } finally {
+    srv.close();
+  }
 });
 
 test('?v VARSA uzun sureli/immutable onbellek - tarayici bir daha istemez', async () => {
@@ -59,7 +63,9 @@ test('?v VARSA uzun sureli/immutable onbellek - tarayici bir daha istemez', asyn
     assert.strictEqual(r.status, 200);
     assert.match(r.headers['cache-control'], /immutable/);
     assert.match(r.headers['cache-control'], /max-age=31536000/);
-  } finally { srv.close(); }
+  } finally {
+    srv.close();
+  }
 });
 
 test('ETag hala calisiyor (304)', async () => {
@@ -72,7 +78,9 @@ test('ETag hala calisiyor (304)', async () => {
       'if-none-match': first.headers.etag,
     });
     assert.strictEqual(again.status, 304);
-  } finally { srv.close(); }
+  } finally {
+    srv.close();
+  }
 });
 
 test('guvenlik basliklari korundu', async () => {
@@ -83,5 +91,7 @@ test('guvenlik basliklari korundu', async () => {
     const r = await get(srv.address().port, '/api/branding/favicon?v=x');
     assert.strictEqual(r.headers['x-content-type-options'], 'nosniff');
     assert.match(r.headers['content-security-policy'], /default-src 'none'/);
-  } finally { srv.close(); }
+  } finally {
+    srv.close();
+  }
 });

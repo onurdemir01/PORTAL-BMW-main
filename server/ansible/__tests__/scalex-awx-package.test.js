@@ -1,12 +1,13 @@
 // server/ansible/__tests__/scalex-awx-package.test.js
 //
-// `server/ansible/bmw_portal/scalex/` altindaki AWX paketi ile PORTALIN sozlesmesini
+// `server/ansible/playbooks/bmw_portal/scalex/` altindaki AWX paketi ile PORTALIN sozlesmesini
 // kilitler. Paket AWX'e ELLE kopyalaniyor; uyusmazlik aksi halde ancak URETIMDE,
 // "sonuc bulunamadi" ya da "400 variables_needed_to_start" olarak ortaya cikar.
 //
 // Testlerin cogu DAVRANIS kosturur: gercek `scalex_runner.sh` sahte bir `oc` ile
 // calistirilir ve ciktisi portalin GERCEK ayristiricisindan (`result.cjs`) gecirilir.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -141,8 +142,16 @@ test('S5b playbook da sabit platform/ortam beyaz listesi TASIMAMALI', () => {
   // (02_select_targets.yml); sabit liste yalnizca bayatlar ve isi dusurur.
   for (const f of ['tasks/01_prepare.yml', 'tasks/discovery/01_prepare.yml']) {
     const src = read(path.join(APP, f));
-    assert.doesNotMatch(src, /oc_platform in \[/, `${f}: sabit platform beyaz listesi geri gelmis`);
-    assert.doesNotMatch(src, /oc_environment in \[/, `${f}: sabit ortam beyaz listesi geri gelmis`);
+    assert.doesNotMatch(
+      src,
+      esnek(/oc_platform in \[/),
+      `${f}: sabit platform beyaz listesi geri gelmis`,
+    );
+    assert.doesNotMatch(
+      src,
+      esnek(/oc_environment in \[/),
+      `${f}: sabit ortam beyaz listesi geri gelmis`,
+    );
     // Bicim kontrolu KALMALI — deger `oc` komut satirina gidiyor.
     assert.match(src, /oc_platform is match/, `${f}: platform bicim kontrolu kaybolmus`);
     assert.match(src, /oc_environment is match/, `${f}: ortam bicim kontrolu kaybolmus`);
@@ -216,9 +225,11 @@ test("S6 kesif survey'i portalin `/discover` anahtarlariyla uyumlu", () => {
   // bir ic fonksiyonun icinde uretiliyordu ve bu bekci onu HIC GORMUYORDU (sozluk
   // metninde gecmiyordu). `/discover` okumalari paralellesince sozluge tasindi.
   const YALNIZ_PORTAL = new Set(['scalex_live_probe_apps']);
-  const kesifGorevleri = ['10_discover.yml', '10_discover_batch.yml', '10_discover_parallel.yml'].map((f) =>
-    read(path.join(APP, 'tasks', 'discovery', f)),
-  );
+  const kesifGorevleri = [
+    '10_discover.yml',
+    '10_discover_batch.yml',
+    '10_discover_parallel.yml',
+  ].map((f) => read(path.join(APP, 'tasks', 'discovery', f)));
   for (const k of YALNIZ_PORTAL) {
     assert.ok(block.includes(`${k}:`), `${k} artik gonderilmiyor — muafiyet listesinde olu satir`);
     for (const [n, metin] of kesifGorevleri.entries()) {
@@ -424,9 +435,20 @@ test('P5 durum kaydi yeni onekle yazilir ama ESKI onek OKUNMAYA devam eder', () 
 // kuruyoruz: elle yazilmis bir bos-alan dizisinde bir `|` eksigi ya da fazlasi
 // testi sessizce yanlis yere yesile dondururdu.
 const ALAN = [
-  'kind', 'name', 'specReplicas', 'statusReplicas', 'readyReplicas',
-  'suspend', 'schedule', 'desired', 'current', 'numberReady',
-  'image', 'cronImage', 'argo', 'managedBy',
+  'kind',
+  'name',
+  'specReplicas',
+  'statusReplicas',
+  'readyReplicas',
+  'suspend',
+  'schedule',
+  'desired',
+  'current',
+  'numberReady',
+  'image',
+  'cronImage',
+  'argo',
+  'managedBy',
 ];
 function ustkumeSatiri(o) {
   return ALAN.map((a) => String(o[a] ?? '')).join('|');
@@ -437,27 +459,70 @@ function ustkumeSatiri(o) {
 // satirlari tek tipli cagrida da Kind'e gore suzse test bunu goremezdi.
 const NESNELER = {
   'deployments.apps': [
-    { kind: 'Deployment', name: 'odeme-api', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'registry.gar/odeme:1.4.2', argo: 'odeme-prod-app' },
-    { kind: 'Deployment', name: 'batch-worker', specReplicas: 0, statusReplicas: 0, readyReplicas: 0, image: 'registry.gar/batch:2.0', managedBy: 'argo cd' },
+    {
+      kind: 'Deployment',
+      name: 'odeme-api',
+      specReplicas: 3,
+      statusReplicas: 3,
+      readyReplicas: 3,
+      image: 'registry.gar/odeme:1.4.2',
+      argo: 'odeme-prod-app',
+    },
+    {
+      kind: 'Deployment',
+      name: 'batch-worker',
+      specReplicas: 0,
+      statusReplicas: 0,
+      readyReplicas: 0,
+      image: 'registry.gar/batch:2.0',
+      managedBy: 'argo cd',
+    },
   ],
   // BU UC TIP UZUN SURE "exit 1" DONUYORDU: sahte oc yalnizca deploy cevapladigi
   // icin StatefulSet/DeploymentConfig/Rollout kesfi TAMAMEN silinse bile hicbir
   // test kizarmiyordu.
   'statefulsets.apps': [
-    { kind: 'StatefulSet', name: 'kafka', specReplicas: 3, statusReplicas: 3, readyReplicas: 3, image: 'registry.gar/kafka:3.6' },
+    {
+      kind: 'StatefulSet',
+      name: 'kafka',
+      specReplicas: 3,
+      statusReplicas: 3,
+      readyReplicas: 3,
+      image: 'registry.gar/kafka:3.6',
+    },
   ],
   // ENVANTERDE YOK ama OKUNABILIR. Bu celiski BILEREK: `oc api-resources` KISMI
   // donebiliyor ve o an envantere bakip tipi dusurmek, GERCEKTEN VAR OLAN is
   // yuklerini sessizce kaybetmek olurdu. Betik bu tipi atif kuramadigi icin
   // TEKIL cekmeli ve yine de listelemeli (D5 bunu kilitliyor).
   'deploymentconfigs.apps.openshift.io': [
-    { kind: 'DeploymentConfig', name: 'eski-app', specReplicas: 2, statusReplicas: 2, readyReplicas: 2, image: 'registry.gar/eski:1.0' },
+    {
+      kind: 'DeploymentConfig',
+      name: 'eski-app',
+      specReplicas: 2,
+      statusReplicas: 2,
+      readyReplicas: 2,
+      image: 'registry.gar/eski:1.0',
+    },
   ],
   'daemonsets.apps': [
-    { kind: 'DaemonSet', name: 'log-agent', desired: 12, current: 12, numberReady: 11, image: 'registry.gar/agent:2.1' },
+    {
+      kind: 'DaemonSet',
+      name: 'log-agent',
+      desired: 12,
+      current: 12,
+      numberReady: 11,
+      image: 'registry.gar/agent:2.1',
+    },
   ],
   'cronjobs.batch': [
-    { kind: 'CronJob', name: 'gece-batch', suspend: 'true', schedule: '0 2 * * *', cronImage: 'registry.gar/batch:9' },
+    {
+      kind: 'CronJob',
+      name: 'gece-batch',
+      suspend: 'true',
+      schedule: '0 2 * * *',
+      cronImage: 'registry.gar/batch:9',
+    },
   ],
 };
 
@@ -482,8 +547,14 @@ function printfSatirlari(satirlar, girinti) {
 function stubGetDali() {
   return Object.entries(NESNELER)
     .map(([res, objeler]) => {
-      const coklu = printfSatirlari(objeler.map((o) => ustkumeSatiri(o)), '              ');
-      const tekil = printfSatirlari(objeler.map((o) => ustkumeSatiri({ ...o, kind: '' })), '              ');
+      const coklu = printfSatirlari(
+        objeler.map((o) => ustkumeSatiri(o)),
+        '              ',
+      );
+      const tekil = printfSatirlari(
+        objeler.map((o) => ustkumeSatiri({ ...o, kind: '' })),
+        '              ',
+      );
       return [
         `            ${res})`,
         '              if [ "$COKLU" = "yes" ]; then',
@@ -1048,7 +1119,7 @@ test('P7 bos CC bir ALICI olarak gonderilmez', () => {
 test('P8 rapor ScaleX kimligini tasiyor (eski "Chaos Scale" kalmamis)', () => {
   for (const f of ['tasks/20_build_report.yml', 'tasks/30_send_mail.yml']) {
     const src = read(path.join(APP, f));
-    assert.doesNotMatch(src, /Chaos Scale|CHAOS-SCALE/i, `${f}: eski urun adi duruyor`);
+    assert.doesNotMatch(src, esnek(/Chaos Scale|CHAOS-SCALE/i), `${f}: eski urun adi duruyor`);
   }
 });
 
@@ -1868,9 +1939,7 @@ test('B5 `{.kind}` bos gelirse tekil cagrilara DUSULUR ve SOYLENIR', () => {
   const { items, cagrilar } = kesifCagrilari({
     mutate: (stub) => stub.replace(/if \[ "\$COKLU" = "yes" \]; then/g, 'if false; then'),
   });
-  const uyari = items.find(
-    (i) => i.step === 'SCAN' && /reason=unattributed_rows/.test(i.detail),
-  );
+  const uyari = items.find((i) => i.step === 'SCAN' && /reason=unattributed_rows/.test(i.detail));
   assert.ok(
     uyari,
     `atif kayinca geri dusus SESSIZ — portal \`problems[]\` ile gosteremez. SCAN satirlari: ${JSON.stringify(items.filter((i) => i.step === 'SCAN').map((i) => i.detail))}`,
@@ -2023,12 +2092,18 @@ test('SD4 "tarandi ama bos" isareti ORTAK degere konmamis', () => {
 test('H1 kesif `--raw` ve `api-resources` CAGIRMIYOR; soguk yol sicak kadar ucuz', () => {
   // `oc version --client` YEREL (ikili secimi, `resolve_oc_binary`): aga cikmaz,
   // butceye sayilmaz.
-  const agda = (r) => ({ ...r, cagrilar: r.cagrilar.filter((c) => !/^version --client\b/.test(c)) });
+  const agda = (r) => ({
+    ...r,
+    cagrilar: r.cagrilar.filter((c) => !/^version --client\b/.test(c)),
+  });
   const soguk = agda(kesifCagrilari({ mutate: crdliStub }));
   const sicak = agda(kesifCagrilari({ mutate: crdliStub, extraKinds: 'kafkas.kafka.strimzi.io' }));
   const bicim = (r) => `${r.cagrilar.length} cagri:\n  ${r.cagrilar.join('\n  ')}`;
 
-  for (const [ad, r] of [['soguk', soguk], ['sicak', sicak]]) {
+  for (const [ad, r] of [
+    ['soguk', soguk],
+    ['sicak', sicak],
+  ]) {
     assert.equal(
       r.cagrilar.filter((c) => /^get --raw\b/.test(c)).length,
       0,
@@ -2062,16 +2137,22 @@ test('H2 API`si olmayan tip birlesik cagriyi tekil cagrilara DUSURMEZ', () => {
     mutate: (stub) =>
       stub.replace(/^ {12}rollout\|rollouts\|rollouts\.argoproj\.io\)\n[\s\S]*?_RC=1 ;;\n/m, ''),
   });
-  const getler = cagrilar.filter(
-    (c) => /^get /.test(c) && !/^get (hpa|pdb|cm)\b/.test(c),
+  const getler = cagrilar.filter((c) => /^get /.test(c) && !/^get (hpa|pdb|cm)\b/.test(c));
+  assert.equal(
+    getler.length,
+    2,
+    `yok tip icin ${getler.length} is yuku cagrisi (2 olmali):\n  ${getler.join('\n  ')}`,
   );
-  assert.equal(getler.length, 2, `yok tip icin ${getler.length} is yuku cagrisi (2 olmali):\n  ${getler.join('\n  ')}`);
   assert.ok(!getler[1].includes('rollouts'), `ikinci deneme yok tipi hala istiyor: ${getler[1]}`);
   const r = items.find((i) => i.step === 'WORKLOAD_KIND' && /kind=rollout\b/.test(i.detail));
   assert.ok(r, 'yok tip icin rapor satiri yok');
   assert.match(r.detail, /reason=api_absent/, 'yok tip "yetki yok" diye raporlandi');
   // Bu bir GERI DUSUS degil: uyari basilmaz.
-  assert.equal(items.filter((i) => i.step === 'SCAN').length, 0, 'API yoklugu geri dusus diye raporlanmis');
+  assert.equal(
+    items.filter((i) => i.step === 'SCAN').length,
+    0,
+    'API yoklugu geri dusus diye raporlanmis',
+  );
 });
 
 // ── H3: TEKRAR EDEN VE ALTYAPI TIPLERI SUZULUR ──────────────────────────────
@@ -2157,7 +2238,11 @@ test('H3b `capabilities` `apps` grubunun tiplerini ekstra diye YAYINLAMAZ', () =
     .split('\n')
     .filter((l) => l.includes(';CAP_KIND;'))
     .map((l) => /kind=([^\s;]+)/.exec(l)?.[1]);
-  assert.deepEqual(kinds, ['kafkas.kafka.strimzi.io'], `yayinlanan ekstra tipler: ${JSON.stringify(kinds)}`);
+  assert.deepEqual(
+    kinds,
+    ['kafkas.kafka.strimzi.io'],
+    `yayinlanan ekstra tipler: ${JSON.stringify(kinds)}`,
+  );
 });
 
 // ── H4: NAMESPACE OKUMALARI VE ILK TARAMA AYNI ANDA ─────────────────────────
@@ -2183,7 +2268,10 @@ test('H4 hpa/pdb/cm okumalari ve birlesik tarama CAKISTIRILIYOR', () => {
   const son = iz.indexOf('HPA_END');
   const wl = iz.indexOf('WL');
   assert.ok(bas >= 0 && son > bas && wl >= 0, `iz eksik: ${JSON.stringify(iz)}`);
-  assert.ok(wl < son, `birlesik tarama HPA okumasi bittikten SONRA kosmus (seri): ${JSON.stringify(iz)}`);
+  assert.ok(
+    wl < son,
+    `birlesik tarama HPA okumasi bittikten SONRA kosmus (seri): ${JSON.stringify(iz)}`,
+  );
   // KORLUK PANZEHIRI: paralellik sonucu BOZMAMALI — HPA bilgisi satira islenmis.
   const odeme = items.find((i) => i.step === 'WORKLOAD' && i.app === 'odeme-api');
   assert.match(odeme.detail, /\bhpa=yes\b/, 'paralel okumada HPA bilgisi kaybolmus');
@@ -2201,12 +2289,15 @@ test('H5 ikinci namespace ilkinin durum kayitlarini KULLANMAZ', () => {
     mutate: (stub) =>
       stub.replace(
         "        printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n'",
-        "        [ \"$4\" = ns-a ] && printf 'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n'",
+        '        [ "$4" = ns-a ] && printf \'scalex-state-odeme-api|odeme-api|deploy|3|scaled_down|2026-09-01T08:00:00Z|Hakan Isci|31337\\n\'',
       ),
   });
   const odeme = (ns) =>
     items.find(
-      (i) => i.step === 'WORKLOAD' && i.app === 'odeme-api' && new RegExp(`namespace=${ns}\\b`).test(i.detail),
+      (i) =>
+        i.step === 'WORKLOAD' &&
+        i.app === 'odeme-api' &&
+        new RegExp(`namespace=${ns}\\b`).test(i.detail),
     );
   assert.match(odeme('ns-a').detail, /state_phase=scaled_down/, 'ns-a kendi kaydini okuyamamis');
   assert.match(
@@ -2232,10 +2323,17 @@ test('H7 kesifte curl yalnizca login dusunce kosar (teshis korunur)', () => {
   const calistir = (loginRc, curlRc) => {
     fs.writeFileSync(
       path.join(dir, 'oc'),
-      OC_STUB.replace('  login|project) exit 0 ;;', `  login) exit ${loginRc} ;;\n  project) exit 0 ;;`),
+      OC_STUB.replace(
+        '  login|project) exit 0 ;;',
+        `  login) exit ${loginRc} ;;\n  project) exit 0 ;;`,
+      ),
       { mode: 0o755 },
     );
-    fs.writeFileSync(path.join(dir, 'curl'), `#!/bin/bash\necho x >> ${JSON.stringify(izCurl)}\nexit ${curlRc}\n`, { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(dir, 'curl'),
+      `#!/bin/bash\necho x >> ${JSON.stringify(izCurl)}\nexit ${curlRc}\n`,
+      { mode: 0o755 },
+    );
     fs.rmSync(izCurl, { force: true });
     const out = execFileSync('bash', [RUNNER], {
       encoding: 'utf8',
@@ -2257,14 +2355,27 @@ test('H7 kesifte curl yalnizca login dusunce kosar (teshis korunur)', () => {
         JOB_ID: '1',
       },
     });
-    return { out, curl: fs.existsSync(izCurl) ? fs.readFileSync(izCurl, 'utf8').split('\n').filter(Boolean).length : 0 };
+    return {
+      out,
+      curl: fs.existsSync(izCurl)
+        ? fs.readFileSync(izCurl, 'utf8').split('\n').filter(Boolean).length
+        : 0,
+    };
   };
   const basarili = calistir(0, 0);
-  assert.equal(basarili.curl, 0, 'basarili kesifte curl kosuyor — login zaten erisilebilirligi kanitliyor');
+  assert.equal(
+    basarili.curl,
+    0,
+    'basarili kesifte curl kosuyor — login zaten erisilebilirligi kanitliyor',
+  );
   const ulasilamaz = calistir(1, 7);
   assert.match(ulasilamaz.out, /;API;FAIL;/, 'login dustugunde API teshisi yapilmiyor');
   const kimlik = calistir(1, 0);
-  assert.match(kimlik.out, /;LOGIN;FAIL;/, 'API erisilebilirken login hatasi LOGIN diye raporlanmiyor');
+  assert.match(
+    kimlik.out,
+    /;LOGIN;FAIL;/,
+    'API erisilebilirken login hatasi LOGIN diye raporlanmiyor',
+  );
   assert.doesNotMatch(kimlik.out, /;API;FAIL;/);
 });
 
@@ -2329,7 +2440,11 @@ test('E2 her is yuku satiri KENDI namespace`ini tasiyor', () => {
   // UNIQUE(env,tenant,cluster,namespace,kind) — namespace olmadan B'nin eksigi
   // A'nin satirina yazilirdi.
   for (const k of items.filter((i) => i.step === 'WORKLOAD_KIND')) {
-    assert.match(k.detail, /\bnamespace=(ns-a|ns-b)\b/, `tip raporu namespace tasimiyor: ${k.detail}`);
+    assert.match(
+      k.detail,
+      /\bnamespace=(ns-a|ns-b)\b/,
+      `tip raporu namespace tasimiyor: ${k.detail}`,
+    );
   }
 });
 
@@ -2362,11 +2477,19 @@ test('E3 iki namespace`teki AYNI ad tek satira COKMEZ', () => {
 test('E4 erisilemez bir namespace DIGERLERINI dusurmez', () => {
   const { items } = kesifCagrilari({
     nsList: 'ns-a,yok-ns,ns-b',
-    mutate: (stub) => stub.replace('  login|project) exit 0 ;;', '  login) exit 0 ;;\n  project) case "$2" in yok-ns) exit 1 ;; *) exit 0 ;; esac ;;'),
+    mutate: (stub) =>
+      stub.replace(
+        '  login|project) exit 0 ;;',
+        '  login) exit 0 ;;\n  project) case "$2" in yok-ns) exit 1 ;; *) exit 0 ;; esac ;;',
+      ),
   });
   const fail = items.find((i) => i.step === 'NAMESPACE' && i.status === 'FAIL');
   assert.ok(fail, 'erisilemez namespace icin FAIL satiri yok — sessizce atlanmis');
-  assert.match(fail.detail, /namespace=yok-ns\b/, 'FAIL satiri hangi namespace oldugunu soylemiyor');
+  assert.match(
+    fail.detail,
+    /namespace=yok-ns\b/,
+    'FAIL satiri hangi namespace oldugunu soylemiyor',
+  );
 
   const nsler = new Set(
     items

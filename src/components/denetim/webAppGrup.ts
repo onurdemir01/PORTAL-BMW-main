@@ -29,7 +29,13 @@ export interface WebAppGrup {
 }
 
 const vhostAnahtari = (w: WebAppVhost) =>
-  [w.host, w.ip, w.port, (w.serverName || '').trim().toLowerCase(), w.confFile].map((x) => String(x ?? '').trim().toUpperCase()).join('|');
+  [w.host, w.ip, w.port, (w.serverName || '').trim().toLowerCase(), w.confFile]
+    .map((x) =>
+      String(x ?? '')
+        .trim()
+        .toUpperCase(),
+    )
+    .join('|');
 
 export function grupla(rows: WebAppRow[]): WebAppGrup[] {
   const gruplar = new Map<string, WebAppGrup>();

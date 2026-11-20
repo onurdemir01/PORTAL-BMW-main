@@ -33,24 +33,39 @@ function sahteHavuz(ayar = {}) {
       this.dinleyici = {};
       this.kapandi = false;
       this.pool = {
-        max: cfg.pool && cfg.pool.max, min: cfg.pool && cfg.pool.min,
-        numUsed: () => 3, numFree: () => 2, numPendingAcquires: () => 1,
+        max: cfg.pool && cfg.pool.max,
+        min: cfg.pool && cfg.pool.min,
+        numUsed: () => 3,
+        numFree: () => 2,
+        numPendingAcquires: () => 1,
       };
       kurulan.push(this);
     }
     connect() {
       const hata = typeof ayar.hata === 'function' ? ayar.hata() : ayar.hata;
-      return new Promise((res, rej) => setTimeout(() => (hata ? rej(new Error('baglanamadi')) : res(this)), ayar.gecikme || 5));
+      return new Promise((res, rej) =>
+        setTimeout(() => (hata ? rej(new Error('baglanamadi')) : res(this)), ayar.gecikme || 5),
+      );
     }
-    on(ad, fn) { this.dinleyici[ad] = fn; }
-    close() { this.kapandi = true; return Promise.resolve(); }
+    on(ad, fn) {
+      this.dinleyici[ad] = fn;
+    }
+    close() {
+      this.kapandi = true;
+      return Promise.resolve();
+    }
     request() {
       const self = this;
       return {
         input() {},
         query(q) {
           self.sonSorgu = q;
-          return new Promise((res) => setTimeout(() => res({ recordset: [{ a: 1 }, { a: 2 }], rowsAffected: [2] }), ayar.sorguMs || 1));
+          return new Promise((res) =>
+            setTimeout(
+              () => res({ recordset: [{ a: 1 }, { a: 2 }], rowsAffected: [2] }),
+              ayar.sorguMs || 1,
+            ),
+          );
         },
       };
     }
@@ -61,13 +76,19 @@ function sahteHavuz(ayar = {}) {
 beforeEach(() => {
   eskiEnv = { ...process.env };
   Object.assign(process.env, {
-    MSSQL_SERVER: 'sunucu', MSSQL_DATABASE: 'db', MSSQL_USER: 'u', MSSQL_PASSWORD: 'p',
-    MSSQL_RO_USER: 'ro', MSSQL_RO_PASSWORD: 'p',
+    MSSQL_SERVER: 'sunucu',
+    MSSQL_DATABASE: 'db',
+    MSSQL_USER: 'u',
+    MSSQL_PASSWORD: 'p',
+    MSSQL_RO_USER: 'ro',
+    MSSQL_RO_PASSWORD: 'p',
   });
   delete process.env.SLOW_QUERY_MS;
   delete process.env.TBMWANS_DB_POOL_MIN;
   uyarilar = [];
-  origWarn = console.warn; origErr = console.error; origLog = console.log;
+  origWarn = console.warn;
+  origErr = console.error;
+  origLog = console.log;
   console.warn = (...a) => uyarilar.push(a.join(' '));
   console.error = () => {};
   console.log = () => {};
@@ -78,7 +99,9 @@ afterEach(() => {
   sql.ConnectionPool = ORIG_POOL;
   Date.now = ORIG_NOW;
   process.env = eskiEnv;
-  console.warn = origWarn; console.error = origErr; console.log = origLog;
+  console.warn = origWarn;
+  console.error = origErr;
+  console.log = origLog;
   taze();
 });
 
@@ -88,13 +111,28 @@ const yavas = () => uyarilar.filter((u) => u.startsWith('[SlowQuery]'));
 test('Y1 esik altinda sessiz, ustunde tek satir; SQL bosluklari daraltilir ve 150 karakter', () => {
   const m = require(METRICS);
   assert.equal(m.slowQueryThresholdMs(), 500, 'varsayilan esik 500 ms olmali');
-  assert.equal(m.reportQueryTiming({ pool: 'x', waitNs: 100_000_000n, queryNs: 300_000_000n, sqlText: 'SELECT 1' }), false);
+  assert.equal(
+    m.reportQueryTiming({
+      pool: 'x',
+      waitNs: 100_000_000n,
+      queryNs: 300_000_000n,
+      sqlText: 'SELECT 1',
+    }),
+    false,
+  );
   assert.equal(yavas().length, 0);
 
   const uzun = 'SELECT   a,\n\t b\r\n FROM t WHERE ' + 'x'.repeat(400);
-  assert.equal(m.reportQueryTiming({
-    pool: 'portal', waitNs: 200_000_000n, queryNs: 400_000_000n, result: { recordset: [1, 2, 3] }, sqlText: uzun,
-  }), true);
+  assert.equal(
+    m.reportQueryTiming({
+      pool: 'portal',
+      waitNs: 200_000_000n,
+      queryNs: 400_000_000n,
+      result: { recordset: [1, 2, 3] },
+      sqlText: uzun,
+    }),
+    true,
+  );
   const s = yavas();
   assert.equal(s.length, 1);
   assert.match(s[0], /pool=portal wait=200\.0ms query=400\.0ms loopLag=\d+ms rows=3 /);
@@ -107,10 +145,16 @@ test('Y1 esik altinda sessiz, ustunde tek satir; SQL bosluklari daraltilir ve 15
 test('Y2 SLOW_QUERY_MS env esigi; gecersiz deger varsayilana duser', () => {
   const m = require(METRICS);
   process.env.SLOW_QUERY_MS = '50';
-  assert.equal(m.reportQueryTiming({ pool: 'x', waitNs: 0n, queryNs: 60_000_000n, sqlText: 'q' }), true);
+  assert.equal(
+    m.reportQueryTiming({ pool: 'x', waitNs: 0n, queryNs: 60_000_000n, sqlText: 'q' }),
+    true,
+  );
   process.env.SLOW_QUERY_MS = 'abc';
   assert.equal(m.slowQueryThresholdMs(), 500);
-  assert.equal(m.reportQueryTiming({ pool: 'x', waitNs: 0n, queryNs: 60_000_000n, sqlText: 'q' }), false);
+  assert.equal(
+    m.reportQueryTiming({ pool: 'x', waitNs: 0n, queryNs: 60_000_000n, sqlText: 'q' }),
+    false,
+  );
 });
 
 test('Y3 Portal adapter: bekleme/sorgu ayri olculur, parametre DEGERI gunluge yazilmaz', async () => {
@@ -121,7 +165,10 @@ test('Y3 Portal adapter: bekleme/sorgu ayri olculur, parametre DEGERI gunluge ya
   assert.equal(r.rows.length, 2);
   const s = yavas();
   assert.equal(s.length, 1, s.join('\n'));
-  assert.match(s[0], /^\[SlowQuery\] pool=portal wait=\d+\.\dms query=\d+\.\dms loopLag=\d+ms rows=2 sql="SELECT \* FROM t WHERE parola = @p1 AND n = @p2"$/);
+  assert.match(
+    s[0],
+    /^\[SlowQuery\] pool=portal wait=\d+\.\dms query=\d+\.\dms loopLag=\d+ms rows=2 sql="SELECT \* FROM t WHERE parola = @p1 AND n = @p2"$/,
+  );
   assert.doesNotMatch(s[0], /GIZLI-DEGER-123/);
   assert.doesNotMatch(s[0].match(/sql="([^"]*)"/)[1], /42/);
 });
@@ -155,7 +202,9 @@ test('Y5 TBMWANS query/queryLong olculur; input degerleri gunluge yazilmaz', asy
   process.env.SLOW_QUERY_MS = '0';
   sahteHavuz();
   const inv = require(INV);
-  await inv.query('SELECT  *\n FROM Inventory WHERE h=@h', [{ name: 'h', type: sql.NVarChar, value: 'GIZLI-HOST' }]);
+  await inv.query('SELECT  *\n FROM Inventory WHERE h=@h', [
+    { name: 'h', type: sql.NVarChar, value: 'GIZLI-HOST' },
+  ]);
   await inv.queryLong('SELECT 2', []);
   const s = yavas();
   assert.equal(s.length, 2, s.join('\n'));
@@ -183,7 +232,12 @@ test('Y7 sorgu hatasi aynen iletilir ve gunluk satiri status=error tasir', async
   const m = require(METRICS);
   process.env.SLOW_QUERY_MS = '0';
   await assert.rejects(
-    m.timeQuery('p', 0n, 'SELECT x', () => new Promise((_, rej) => setTimeout(() => rej(new Error('boom')), 2))),
+    m.timeQuery(
+      'p',
+      0n,
+      'SELECT x',
+      () => new Promise((_, rej) => setTimeout(() => rej(new Error('boom')), 2)),
+    ),
     /boom/,
   );
   assert.match(yavas()[0], /rows=- status=error/);
@@ -217,16 +271,22 @@ test('A1 TBMWANS ana ve salt-okunur havuz: min env (varsayilan 2), idle 300000',
   const kurulan = sahteHavuz();
   await require(INV).getPool();
   await require(RO).getReadOnlyPool();
-  assert.deepEqual(kurulan.map((p) => p.config.pool), [
-    { max: 20, min: 2, idleTimeoutMillis: 300000 },
-    { max: 10, min: 2, idleTimeoutMillis: 300000 },
-  ]);
+  assert.deepEqual(
+    kurulan.map((p) => p.config.pool),
+    [
+      { max: 20, min: 2, idleTimeoutMillis: 300000 },
+      { max: 10, min: 2, idleTimeoutMillis: 300000 },
+    ],
+  );
   taze();
   process.env.TBMWANS_DB_POOL_MIN = '5';
   const k2 = sahteHavuz();
   await require(INV).getPool();
   await require(RO).getReadOnlyPool();
-  assert.deepEqual(k2.map((p) => p.config.pool.min), [5, 5]);
+  assert.deepEqual(
+    k2.map((p) => p.config.pool.min),
+    [5, 5],
+  );
 });
 
 // -- (4) Tek-ucus ----------
@@ -290,7 +350,7 @@ test('T4 uzun-sorgu havuzu da tek-ucus', async () => {
 test('Y8 uzun havuz kurulamazsa ana havuza dusulur ve etiket tbmwans(long-fallback)', async () => {
   process.env.SLOW_QUERY_MS = '0';
   let n = 0;
-  sahteHavuz({ hata: () => (n++ === 1) });
+  sahteHavuz({ hata: () => n++ === 1 });
   const inv = require(INV);
   await inv.queryLong('SELECT 3', []);
   const s = yavas();
@@ -302,7 +362,14 @@ function sahteIstek({ baseUrl, routePath, originalUrl, method = 'GET' }) {
   const EventEmitter = require('node:events');
   const res = new EventEmitter();
   res.statusCode = 200;
-  const req = { method, baseUrl, originalUrl, url: originalUrl, route: routePath ? { path: routePath } : undefined, query: { token: 'GIZLI' } };
+  const req = {
+    method,
+    baseUrl,
+    originalUrl,
+    url: originalUrl,
+    route: routePath ? { path: routePath } : undefined,
+    query: { token: 'GIZLI' },
+  };
   return { req, res };
 }
 const yavasHttp = () => uyarilar.filter((u) => u.startsWith('[SlowHttp]'));
@@ -310,13 +377,20 @@ const yavasHttp = () => uyarilar.filter((u) => u.startsWith('[SlowHttp]'));
 test('SH1 yavas istek: rota KALIBI yazilir; ham URL / query string / deger yazilmaz', async () => {
   const m = require(METRICS);
   process.env.SLOW_HTTP_MS = '0';
-  const { req, res } = sahteIstek({ baseUrl: '/api/oco', routePath: '/calendar', originalUrl: '/api/oco/calendar?token=GIZLI&group=6203' });
+  const { req, res } = sahteIstek({
+    baseUrl: '/api/oco',
+    routePath: '/calendar',
+    originalUrl: '/api/oco/calendar?token=GIZLI&group=6203',
+  });
   await new Promise((r) => m.middleware(req, res, r));
   await new Promise((r) => setTimeout(r, 3));
   res.emit('finish');
   const s = yavasHttp();
   assert.equal(s.length, 1, uyarilar.join('\n'));
-  assert.match(s[0], /^\[SlowHttp\] method=GET route=\/api\/oco\/calendar status=200 ms=\d+ loopLag=\d+ms$/);
+  assert.match(
+    s[0],
+    /^\[SlowHttp\] method=GET route=\/api\/oco\/calendar status=200 ms=\d+ loopLag=\d+ms$/,
+  );
   assert.doesNotMatch(s[0], /GIZLI|\?|6203/);
 });
 
@@ -330,7 +404,11 @@ test('SH2 rota eslesmediyse yalniz baseUrl; esik altinda sessiz', async () => {
   assert.match(yavasHttp()[0], / route=\/api status=/);
   assert.doesNotMatch(yavasHttp()[0], /GIZLI/);
   process.env.SLOW_HTTP_MS = '60000';
-  const b = sahteIstek({ baseUrl: '/api/oco', routePath: '/calendar', originalUrl: '/api/oco/calendar' });
+  const b = sahteIstek({
+    baseUrl: '/api/oco',
+    routePath: '/calendar',
+    originalUrl: '/api/oco/calendar',
+  });
   m.middleware(b.req, b.res, () => {});
   b.res.emit('finish');
   assert.equal(yavasHttp().length, 1, 'esik altindaki istek yazildi');

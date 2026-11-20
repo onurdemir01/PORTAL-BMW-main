@@ -69,7 +69,14 @@ const VERI: NginxInventoryResult = {
     { service: 'cso', hosts: 1, envs: ['production'], hostnames: ['GBNGXP01'] },
   ],
   versions: { nginx: dist, os: dist, kernel: dist, architecture: dist, metadata: dist },
-  resources: { cpu: dist, memory: dist, diskNginx: dist, diskWebLog: dist, configCount: dist, serviceCount: dist },
+  resources: {
+    cpu: dist,
+    memory: dist,
+    diskNginx: dist,
+    diskWebLog: dist,
+    configCount: dist,
+    serviceCount: dist,
+  },
   other: { domain: dist, subnet: dist, nginxUser: dist },
   hosts: [
     host({ hostname: 'GBNGXP01', services: 'glomo,cso', nginx_version: '1.24.0', ip: '10.1.1.1' }),
@@ -121,6 +128,8 @@ describe('NginxEnvanteri — service ayrintisi', () => {
   it('son guncelleme tarihi rozetle gosterilir', async () => {
     render(<NginxEnvanteri />);
     expect(await screen.findByText('2026-10-14 06:30:00')).toBeTruthy();
-    expect(screen.getByText('2026-10-14 06:30:00').parentElement?.textContent).toMatch(/son güncelleme/);
+    expect(screen.getByText('2026-10-14 06:30:00').parentElement?.textContent).toMatch(
+      /son güncelleme/,
+    );
   });
 });

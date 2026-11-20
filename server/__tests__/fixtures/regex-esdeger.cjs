@@ -21,14 +21,38 @@ function kaynak(goreli) {
 }
 
 /**
- * `onek` metninden HEMEN sonra gelen regex literalini RegExp olarak dondurur. `onek` metinde tam bir
- * kez gecmeli: belirsiz bir capa sessizce baska bir deseni sinamasin.
+ * Capayi kaynakta arayan desen: bicimden bagimsiz. Karakterler arasinda bosluk / satir sonu olabilir
+ * (Prettier zinciri ve argumanlari satirlara boler) ve dizgi tirnagi ' ya da " olabilir. Capanin
+ * KENDISI ayni kalir; yalniz yazim farki yok sayilir (2026-11-20, tum repo bir kez bicimlendi).
  */
+function capaDeseni(onek) {
+  const parcalar = [...onek.replace(/\s+/g, '')].map((c) =>
+    c === "'" || c === '"' ? `['"]` : c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
+  );
+  return new RegExp(parcalar.join('\\s*'), 'g');
+}
+
+/**
+ * `onek` metninden HEMEN sonra (aradaki bosluk / satir sonu haric) gelen regex literalini RegExp
+ * olarak dondurur. `onek` metinde tam bir kez gecmeli: belirsiz bir capa sessizce baska bir deseni
+ * sinamasin.
+ */
+function capaBul(metin, onek) {
+  // Once birebir (girinti / satir sonu capayi ayirt ediyorsa korunur), yoksa bicimden bagimsiz.
+  const birebir = [];
+  for (let i = metin.indexOf(onek); i >= 0; i = metin.indexOf(onek, i + 1))
+    birebir.push({ index: i, uzunluk: onek.length });
+  const bulunan = birebir.length
+    ? birebir
+    : [...metin.matchAll(capaDeseni(onek))].map((m) => ({ index: m.index, uzunluk: m[0].length }));
+  assert.ok(bulunan.length > 0, `kaynakta yok: ${JSON.stringify(onek)}`);
+  assert.equal(bulunan.length, 1, `capa birden cok geciyor: ${JSON.stringify(onek)}`);
+  return bulunan[0].index + bulunan[0].uzunluk;
+}
+
 function literalAl(metin, onek) {
-  const i = metin.indexOf(onek);
-  assert.ok(i >= 0, `kaynakta yok: ${JSON.stringify(onek)}`);
-  assert.equal(metin.indexOf(onek, i + 1), -1, `capa birden cok geciyor: ${JSON.stringify(onek)}`);
-  const bas = i + onek.length;
+  let bas = capaBul(metin, onek);
+  while (/\s/.test(metin[bas] || '')) bas += 1;
   assert.equal(metin[bas], '/', `capadan sonra regex literali yok: ${JSON.stringify(onek)}`);
   let sinif = false;
   let k = bas + 1;

@@ -35,7 +35,7 @@ Portal'a özgüdür ve aynı istemci dosya şemasını yazar.
 | Yük araçları (k6 + wrk arac setleri: sabit arşiv özetleri, hazırlama, geri çekme, etkin set kapısı, sonuçlandırma) | `server/nginx-loadtest/araclar.cjs` |
 | Sonuç dizini okuma / analiz | `server/nginx-loadtest/sonuc.cjs`, `server/nginx-loadtest/analiz.cjs` |
 | Koşu silme (kurallar, SQL, engel metinleri) | `server/nginx-loadtest/sil.cjs` (uçlar `index.cjs`), ekran `yukTesti/KosuSilOnayi.tsx` |
-| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`, `yuk_cpu_kaydedici.sh`; `README.md`); Portal aynası `server/ansible/bmw_portal/nginx_loadtest/` |
+| Playbook | Ansible deposu `bmw_portal/nginx_loadtest/nginx_loadtest.yml` (+ `files/`: `kos.sh`, `yuk_k6.js`, `cpu_kaydedici.sh`, `on_kontrol.sh`, `durdur.sh`, `wrk_kos.sh`, `yuk_wrk.lua`, `arac_hazirla.sh`, `yuk_cpu_kaydedici.sh`; `README.md`); Portal aynası `server/ansible/playbooks/bmw_portal/nginx_loadtest/` |
 | Tablolar | `nginx_loadtest_senaryolar`, `_kosular`, `_adimlar`, `_kilitleri`, `_araclar`, `_kuyruk`, `_kuyruk_ogeler`, `_sablonlar` — bkz. [DATABASE.md](DATABASE.md) |
 | Bekçiler | `server/nginx-loadtest/__tests__/` (dogrula, kilit, kapi, poller, sonuc, analiz, araclar, coklu, sil) |
 

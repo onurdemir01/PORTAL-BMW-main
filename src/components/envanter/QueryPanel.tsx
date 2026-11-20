@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
   PlayIcon,
   TrashIcon,
@@ -8,10 +8,10 @@ import {
   CheckCircleIcon,
   QuestionMarkCircleIcon,
   ArrowDownTrayIcon,
-} from "@heroicons/react/24/outline";
-import { inventoryApi, type SavedQuery, type QueryResult } from "@/api/inventoryApi";
-import DynamicTable from "./DynamicTable";
-import QueryHelpPanel from "./QueryHelpPanel";
+} from '@heroicons/react/24/outline';
+import { inventoryApi, type SavedQuery, type QueryResult } from '@/api/inventoryApi';
+import DynamicTable from './DynamicTable';
+import QueryHelpPanel from './QueryHelpPanel';
 import { downloadCsv as csvIndir } from '@/utils/csv';
 
 interface Props {
@@ -27,18 +27,22 @@ interface Props {
 // Ayirici ";" - Turkce Excel ";" bekler, "," tek sutuna yigar (denetim CSV'leriyle ayni).
 function downloadResultCsv(columns: string[], rows: Record<string, unknown>[], name: string) {
   // Dosya adi kayitli sorgunun adi; dosya sistemi icin guvenli hale getirilir.
-  const safe = (name || "custom_sql").replace(/[^\w.-]+/g, "_").slice(0, 60);
-  csvIndir(safe, columns, rows.map((r) => columns.map((c) => r[c])));
+  const safe = (name || 'custom_sql').replace(/[^\w.-]+/g, '_').slice(0, 60);
+  csvIndir(
+    safe,
+    columns,
+    rows.map((r) => columns.map((c) => r[c])),
+  );
 }
 
 const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange }) => {
-  const [sql, setSql] = useState("SELECT TOP 100 * FROM Inventory");
+  const [sql, setSql] = useState('SELECT TOP 100 * FROM Inventory');
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
-  const [saveName, setSaveName] = useState("");
-  const [saveDesc, setSaveDesc] = useState("");
+  const [saveName, setSaveName] = useState('');
+  const [saveDesc, setSaveDesc] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
@@ -59,7 +63,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
     setFilters({});
     try {
       const r = await inventoryApi.runQuery(sql);
-      if (!r.ok) throw new Error((r as unknown as { error: string }).error || "Sorgu hatası");
+      if (!r.ok) throw new Error((r as unknown as { error: string }).error || 'Sorgu hatası');
       setResult(r);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -70,19 +74,23 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
 
   async function save() {
     if (!saveName.trim()) return;
-    await inventoryApi.runQuery(sql, { save: true, queryName: saveName.trim(), description: saveDesc.trim() });
+    await inventoryApi.runQuery(sql, {
+      save: true,
+      queryName: saveName.trim(),
+      description: saveDesc.trim(),
+    });
     const r = await inventoryApi.savedQueries();
     setSavedQueries(r.queries || []);
-    setSaveName("");
-    setSaveDesc("");
-    flash("Sorgu kaydedildi.");
+    setSaveName('');
+    setSaveDesc('');
+    flash('Sorgu kaydedildi.');
     onQueriesChange?.();
   }
 
   async function deleteSaved(name: string) {
     await inventoryApi.deleteSavedQuery(name);
     setSavedQueries((q) => q.filter((x) => x.name !== name));
-    flash("Sorgu silindi.");
+    flash('Sorgu silindi.');
     onQueriesChange?.();
   }
 
@@ -90,9 +98,9 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
     const r = await inventoryApi.publishQuery(name);
     if (r.ok) {
       setSavedQueries((prev) =>
-        prev.map((q) => q.name === name ? { ...q, isPublished: !q.isPublished } : q)
+        prev.map((q) => (q.name === name ? { ...q, isPublished: !q.isPublished } : q)),
       );
-      flash("Sorgu durumu güncellendi.");
+      flash('Sorgu durumu güncellendi.');
       onQueriesChange?.();
     }
   }
@@ -100,9 +108,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
   async function setDefault(name: string) {
     const r = await inventoryApi.setDefaultQuery(name);
     if (r.ok) {
-      setSavedQueries((prev) =>
-        prev.map((q) => ({ ...q, isDefault: q.name === name }))
-      );
+      setSavedQueries((prev) => prev.map((q) => ({ ...q, isDefault: q.name === name })));
       flash(`"${name}" varsayılan sorgu yapıldı.`);
       onQueriesChange?.();
     }
@@ -136,7 +142,9 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
       {/* Saved queries list */}
       {savedQueries.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Kayıtlı Sorgular</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Kayıtlı Sorgular
+          </p>
           <div className="space-y-1.5">
             {savedQueries.map((q) => (
               <div
@@ -147,7 +155,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
                 <button
                   className="text-xs text-gray-800 font-medium hover:text-[#1C69D4] transition text-left flex-1 min-w-0"
                   onClick={() => setSql(q.sql)}
-                  title={q.description || "Yükle"}
+                  title={q.description || 'Yükle'}
                 >
                   {q.isDefault && <StarIcon className="w-3 h-3 inline mr-1 text-amber-500" />}
                   {q.name}
@@ -168,9 +176,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
                       Varsayılan
                     </span>
                   )}
-                  {q.publishedBy && (
-                    <span className="text-xs text-gray-400">{q.publishedBy}</span>
-                  )}
+                  {q.publishedBy && <span className="text-xs text-gray-400">{q.publishedBy}</span>}
                 </div>
 
                 {/* Admin actions */}
@@ -178,11 +184,11 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => publish(q.name)}
-                      title={q.isPublished ? "Canlıdan Kaldır" : "Canlıya At"}
+                      title={q.isPublished ? 'Canlıdan Kaldır' : 'Canlıya At'}
                       className={`p-1 rounded-lg transition ${
                         q.isPublished
-                          ? "text-green-600 hover:bg-green-50"
-                          : "text-gray-400 hover:text-green-600 hover:bg-green-50"
+                          ? 'text-green-600 hover:bg-green-50'
+                          : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
                       }`}
                     >
                       <ArrowUpCircleIcon className="w-3.5 h-3.5" />
@@ -192,8 +198,8 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
                       title="Varsayılan Yap"
                       className={`p-1 rounded-lg transition ${
                         q.isDefault
-                          ? "text-amber-500 hover:bg-amber-50"
-                          : "text-gray-400 hover:text-amber-500 hover:bg-amber-50"
+                          ? 'text-amber-500 hover:bg-amber-50'
+                          : 'text-gray-400 hover:text-amber-500 hover:bg-amber-50'
                       }`}
                     >
                       <StarIcon className="w-3.5 h-3.5" />
@@ -246,7 +252,7 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
           className="flex items-center gap-1.5 px-4 py-2 bg-[#1C69D4] text-white text-sm rounded-xl hover:bg-blue-700 disabled:opacity-50 transition"
         >
           <PlayIcon className="w-4 h-4" />
-          {loading ? "Çalışıyor..." : "Çalıştır"}
+          {loading ? 'Çalışıyor...' : 'Çalıştır'}
         </button>
 
         <input
@@ -273,7 +279,11 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
         </button>
 
         <button
-          onClick={() => { setSql(""); setResult(null); setError(null); }}
+          onClick={() => {
+            setSql('');
+            setResult(null);
+            setError(null);
+          }}
           className="px-3 py-2 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 transition"
         >
           Temizle
@@ -292,13 +302,19 @@ const QueryPanel: React.FC<Props> = ({ onClose, isAdmin = false, onQueriesChange
             <p className="text-xs text-gray-500">
               {result.rowCount} kayıt döndü.
               {result.truncated && (
-                <span className="ml-2 text-amber-700" title="Sunucu tek sorguda en fazla bu kadar satır döner; sorguya WHERE ya da TOP ekleyerek daraltın">
-                  Üst sınıra ({result.limit ?? result.rowCount}) ulaşıldı — daha fazla satır olabilir.
+                <span
+                  className="ml-2 text-amber-700"
+                  title="Sunucu tek sorguda en fazla bu kadar satır döner; sorguya WHERE ya da TOP ekleyerek daraltın"
+                >
+                  Üst sınıra ({result.limit ?? result.rowCount}) ulaşıldı — daha fazla satır
+                  olabilir.
                 </span>
               )}
             </p>
             <button
-              onClick={() => downloadResultCsv(visibleCols, result.rows, saveName.trim() || "custom_sql")}
+              onClick={() =>
+                downloadResultCsv(visibleCols, result.rows, saveName.trim() || 'custom_sql')
+              }
               disabled={result.rows.length === 0}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition"
               title="Sorgu sonucunun tamamını CSV olarak indir"

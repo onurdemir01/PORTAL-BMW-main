@@ -53,7 +53,11 @@ function bashSurumu(bash) {
  */
 function bashBul() {
   if (!WINDOWS) {
-    const adaylar = [process.env.KABUK_TEST_BASH, '/opt/homebrew/bin/bash', '/usr/local/bin/bash'].filter(Boolean);
+    const adaylar = [
+      process.env.KABUK_TEST_BASH,
+      '/opt/homebrew/bin/bash',
+      '/usr/local/bin/bash',
+    ].filter(Boolean);
     for (const aday of adaylar) {
       if (fs.existsSync(aday) && bashSurumu(aday) >= 4) return aday;
     }
@@ -147,4 +151,13 @@ function bekle(saniye) {
   Atomics.wait(paylasimli, 0, 0, Math.round(saniye * 1000));
 }
 
-module.exports = { WINDOWS, BASH, BASH_SURUM, posixYol, posixListe, kabukPath, PS_ARGV_KOMUTU, bekle };
+module.exports = {
+  WINDOWS,
+  BASH,
+  BASH_SURUM,
+  posixYol,
+  posixListe,
+  kabukPath,
+  PS_ARGV_KOMUTU,
+  bekle,
+};
