@@ -5,6 +5,8 @@
 // NODE_PROD_ACIK bos oldugundan uc testi 403 kapisina kor kalirdi.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -226,7 +228,7 @@ test('O11 bilet paketi: pencere alanlari var, onayZamanAsimiDk yok; deger ve num
     assert.equal(p.sonBaslamaIso, new Date(h.d.oco.sonMs - 30 * DK).toISOString());
     assert.ok(!('onayZamanAsimiDk' in p), 'pencereli bilette sure kurali kaldi');
     assert.ok(!('onayZamanAsimiDk' in r.body));
-    assert.doesNotMatch(r.body.message, /24 saat/);
+    assert.doesNotMatch(r.body.message, esnek(/24 saat/));
     // AWX'e giden paket
     assert.equal(p.extraVars.crypto_hub_node_yeni_b64, '');
     for (const k of Object.keys(p.extraVars))
@@ -346,7 +348,7 @@ test('O15 son baslama gecince TIMEOUT: onay gelmisse is baslamaz, mesaj dogrusun
     assert.equal(b.status, 'TIMEOUT');
     assert.equal(h.d.ssLaunches.length, 0, 'son baslamadan sonra is basladi');
     assert.match(b.error, /Smart onayı alınmıştı/);
-    assert.doesNotMatch(b.error, /onayı gelmedi/);
+    assert.doesNotMatch(b.error, esnek(/onayı gelmedi/));
     const g = await h.istek('GET', `/node-change/${r.body.talepId}`, K.nodecu);
     assert.equal(g.body.talep.durum, 'ZAMAN_ASIMI');
     assert.equal(g.body.talep.sonuc.smart.onayGeldi, true);
@@ -365,7 +367,7 @@ test('O16 onay gorulmeden TIMEOUT: "gelmedi" diye kesin konusmaz, sonradan gelen
     assert.equal(h.d.smartTickets[0].status, 'TIMEOUT');
     assert.match(h.d.smartTickets[0].error, /Portal Smart onayı görmedi/);
     assert.match(h.d.smartTickets[0].error, /Onay bu sırada verilmiş olabilir/);
-    assert.doesNotMatch(h.d.smartTickets[0].error, /onayı gelmedi/);
+    assert.doesNotMatch(h.d.smartTickets[0].error, esnek(/onayı gelmedi/));
     onayla(h);
     await h.pollerTuru();
     assert.equal(h.d.ssLaunches.length, 0);
@@ -426,10 +428,13 @@ test('O19 runner: crypto bileti createOcoAwxSchedule a ulasamaz', () => {
   assert.equal(dilim.split('createOcoAwxSchedule(').length, 2, 'ikinci schedule cagrisi eklendi');
   assert.match(
     dilim.slice(sched, sched + 200),
-    /extraVars, resolvedLaunchOptions/,
+    esnek(/extraVars, resolvedLaunchOptions/),
     'schedule launchExtraVars almamali',
   );
-  assert.doesNotMatch(dilim, /launchExtraVars, resolvedLaunchOptions/);
+  // Schedule cagrisinin KENDI argumanlari (kapanan parantezine kadar) launchExtraVars tasimaz.
+  // (Dilimin tamami degil: normal launch `extraVars: launchExtraVars, resolvedLaunchOptions` alir.)
+  const schedCagri = dilim.slice(sched, dilim.indexOf(');', sched));
+  assert.doesNotMatch(schedCagri, /launchExtraVars/);
 });
 
 test('O20 Smart kapali + before: red, satir yok; pencere acilinca tekrar acin der', () =>

@@ -11,6 +11,7 @@
 // DA6 bekcisi yalnizca SUNUCU tarafini (TUNABLES <-> SYSTEM_CONFIG_KEYS <->
 // HOT_RELOADABLE_KEYS) olcuyordu — ekran tarafi hic bakilmiyordu.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -138,7 +139,7 @@ test('S13 kaydetme sonrasi restart bandi PUT yanitina bagli', () => {
   const kodSatirlari = kodOnly(fs.readFileSync(HOOK, 'utf8'));
   assert.doesNotMatch(
     kodSatirlari,
-    /^\s*setRestartNeeded\(true\);\s*$/m,
+    esnek(/^\s*setRestartNeeded\(true\);\s*$/m),
     'restart bandi KOSULSUZ aciliyor — sicak ayarlarda yanlis uyari',
   );
   assert.match(

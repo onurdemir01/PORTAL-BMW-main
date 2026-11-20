@@ -7,6 +7,8 @@
 // da ona yazilmaz).
 'use strict';
 
+const { esnek, iceriyor, konum, parcaDeseni } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -73,7 +75,7 @@ const uc = IDX.slice(
 test("TS4 toplu uc: kapilar HER hedefte ve HEPSI launch'tan ONCE; tek launch, tum hedefler ayni is no", () => {
   assert.match(IDX, /router\.post\('\/:id\/stop-toplu'/);
   const dongu = uc.indexOf('for (const t of hedefler) {');
-  const launch = uc.indexOf('await launch(req, `Retirement: ${confirmed');
+  const launch = konum(uc, 'await launch(req, `Retirement: ${confirmed');
   assert.ok(dongu > 0 && launch > dongu, 'kapi dongusu yok ya da launch dongunun icinde/oncesinde');
   for (const k of [
     "if (confirmed && t.status !== 'planned')",
@@ -84,7 +86,11 @@ test("TS4 toplu uc: kapilar HER hedefte ve HEPSI launch'tan ONCE; tek launch, tu
     assert.ok(i > dongu && i < launch, `kapi hedef dongusunde degil: ${k}`);
   }
   assert.equal(
-    uc.split('await launch(req, `Retirement: ${confirmed').length - 1,
+    [
+      ...uc.matchAll(
+        new RegExp(parcaDeseni('await launch(req, `Retirement: ${confirmed').source, 'g'),
+      ),
+    ].length,
     1,
     'STOP isi birden fazla kez baslatiliyor',
   );
@@ -102,8 +108,8 @@ test('TS5 toplu uc: farkli ortam ve ayni sunucu reddedilir; cokluda rt_hedefler,
     uc,
     /new Set\(hedefler\.map\(\(h\) => String\(h\.host\)\.toUpperCase\(\)\)\)\.size !== hedefler\.length/,
   );
-  assert.match(uc, /coklu\s*\? \{ rt_hedefler: hedefler\.map/);
-  assert.match(uc, /: \{ target_host: t\.host, application: t\.appName/);
+  assert.match(uc, esnek(/coklu\s*\? \{ rt_hedefler: hedefler\.map/));
+  assert.match(uc, esnek(/: \{ target_host: t\.host, application: t\.appName/));
   // SCC karari is basina BIR kez (mail playbook'ta tek)
   assert.equal(uc.split('const notifyScc =').length - 1, 1);
 });

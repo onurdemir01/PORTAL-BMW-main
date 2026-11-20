@@ -19,6 +19,8 @@
 // openSmartTicket'i kosar; yalniz Smart istemcisi / deposu sahtedir.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -227,7 +229,9 @@ test('OY3 guncellenmis kayit: bilet KAYDIN guncel penceresini ve numarasini tasi
   const geriCagri = RUNNER_SRC.slice(bas, RUNNER_SRC.indexOf('});', bas));
   assert.match(
     geriCagri,
-    /launchOrRequestApproval\(server, rec\.awxTemplateId, require\('\.\.\/oco\/kayit-plani\.cjs'\)\.ocoKaydiPlani\(rec\),/,
+    esnek(
+      /launchOrRequestApproval\(server, rec\.awxTemplateId, require\('\.\.\/oco\/kayit-plani\.cjs'\)\.ocoKaydiPlani\(rec\),/,
+    ),
   );
   assert.doesNotMatch(geriCagri, /rec\.pendingLaunch/);
 });

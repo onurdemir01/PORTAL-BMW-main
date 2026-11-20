@@ -8,6 +8,8 @@
 // son-ekinden (logx_env_suffix_map) gelir. Anahtar BUYUK harfe normalize edilir.
 'use strict';
 
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
+
 const { reddedildi } = require('./fixtures/nginx-red.cjs');
 
 const { test, before, after } = require('node:test');
@@ -438,7 +440,9 @@ test('O11 cevirici LogX yonlendiricisinin ILK katmani ve eylem 5xx cevrimi acik'
   assert.ok(bas > 0 && ilk > bas);
   assert.match(
     kaynak.slice(ilk, ilk + 140),
-    /^router\.use\(require\('\.\.\/\.\.\/util\/nginx-red\.cjs'\)\.nginxRedCevirici\(\{ onek: 'logx', eylem5xx: true \}\)\)/,
+    esnek(
+      /^router\.use\(require\('\.\.\/\.\.\/util\/nginx-red\.cjs'\)\.nginxRedCevirici\(\{ onek: 'logx', eylem5xx: true \}\)\)/,
+    ),
     'ilk ara katman cevirici degil ya da eylem 5xx cevrimi kapali',
   );
 });

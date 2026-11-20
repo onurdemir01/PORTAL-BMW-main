@@ -33,6 +33,7 @@
 //   YPL23 sunucu ayarli on kontrol iptali kilidi birakmaz (onk_srv), ayarsiz on kontrol birakir
 //   YPL24 durdurma isinin sonucu sonuc.durdur_geri_alma'ya yazilir; suren is, AWX okunamayan is ve is yoksa
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -407,7 +408,7 @@ test('YPL2 kosu: dizin sunucuda kurulur, adimlar ve gecerlilik yazilir', async (
     assert.equal(D.okunanDizin, '/sw/BMW_PORTAL_DEV/nginx_loadtest/17');
     assert.doesNotMatch(
       D.son.nedenler.join(),
-      /başka bir dizin/,
+      esnek(/başka bir dizin/),
       'sondaki / farki dizin farki sayildi',
     );
   } finally {

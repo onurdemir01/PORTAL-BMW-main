@@ -18,6 +18,7 @@
 //   GH10 HTTP: AYNI hatali sifre AD'ye yalnizca BIR kez gider (AD kilit esigi bilinmeden
 //        hesaplari korur), sayaca yazilmaz; dogru sifre hemen calisir
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -124,7 +125,7 @@ test('GH2 LDAP erisilemez + yerel eslesme yok -> 503', async () => {
   const r = await giris('ayse', 'dogru');
   assert.equal(r.status, 503);
   assert.equal(r.body.code, 'ldap_erisilemez');
-  assert.doesNotMatch(r.body.error, /şifre hatalı/);
+  assert.doesNotMatch(r.body.error, esnek(/şifre hatalı/));
   // Yerel hesap yine calisir (mevcut davranis).
   const y = await giris('yereladmin', 'Guclu-Admin-456!');
   assert.equal(y.status, 200);

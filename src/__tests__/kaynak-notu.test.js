@@ -9,6 +9,7 @@
 // EN KRITIK BEKCI KN4'TUR: notun YANLIS bir is adi soylemesi, notu hic
 // yazmamaktan KOTUDUR — kullanici olmayan bir job'i arar.
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -25,7 +26,7 @@ test('KN1 ortak bilesen katalogu PROP olarak alir (modul sahipligi)', () => {
   // `nginx_console` klasorune hapseden sey buydu.
   assert.doesNotMatch(
     s,
-    /const SOURCES\s*[:=]/,
+    esnek(/const SOURCES\s*[:=]/),
     'katalog yine bilesene gomulmus — baska modul kullanamaz',
   );
 });

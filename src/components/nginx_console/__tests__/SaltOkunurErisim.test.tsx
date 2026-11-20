@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { render } from '@/test/test-utils';
 import { InstancesTab } from '@/components/nginx_console/NimTabs';
 import type { NcHost } from '@/api/nginxConsoleApi';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const HOST = {
   host: 'GBNGXP40',
@@ -59,7 +60,9 @@ describe('Nginx Hub salt okunur erisim', () => {
     const s = readFileSync(join(__dirname, '..', 'NginxConsolePage.tsx'), 'utf8');
     expect(s).toContain('onRefreshHosts={isAdmin ? refreshHosts : undefined}');
     expect(s).toMatch(
-      /\{isAdmin && <div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/,
+      esnek(
+        /\{isAdmin && \(?\s*<div className="flex items-center gap-1\.5 flex-wrap">\s*<button disabled=\{busy \|\| checked\.size === 0\} onClick=\{\(\) => refresh\(/,
+      ),
     );
   });
 });

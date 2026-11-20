@@ -13,6 +13,7 @@
 // naif bir birlestirme ciktiyi SESSIZCE IKIYE KATLARDI. Bindirme dogrulamasi
 // olmadan bu iyilestirme bir veri bozulmasi kaynagi olurdu.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -232,7 +233,7 @@ test('JS10 ss/job-status: TERMINAL durumda TAM cekim yapilir (arsiv otoritesi)',
   assert.ok(dilim.length > 0, 'dilim bos');
   assert.match(dilim, /artimli:\s*!bittiMi/, 'artimli, terminal durumdan bagimsiz veriliyor');
   assert.match(dilim, /stdoutCache\.sil\(/, 'is bitince onbellek satiri birakilmiyor');
-  assert.doesNotMatch(dilim, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'olu dal');
+  assert.doesNotMatch(dilim, esnek(/if\s*\(\s*(false|0|null|undefined)\s*\)/), 'olu dal');
 });
 
 test('JS11 arsivlenen metin ARTIMLARDAN turemez — arsiv terminal cekimden gelir', () => {

@@ -9,6 +9,7 @@
 //   DL10-12  HTTP uclari (runner.cjs'teki GERCEK govde, sahte store ile kosturulur)
 // DB / gercek Smart API gerektirmez.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -443,7 +444,7 @@ test('DL9b poller kurali KENDISI hesaplamaz, deadline.cjs i cagirir (ikinci kopy
   assert.match(kod, /talepSonTarihi\(ticket, cfg\)/, 'poller son tarih yardimcisini cagirmiyor');
   assert.doesNotMatch(
     kod,
-    /Math\.max\(/,
+    esnek(/Math\.max\(/),
     'poller kuralin bir KOPYASINI tasiyor - iki hesap ayrisabilir',
   );
 });

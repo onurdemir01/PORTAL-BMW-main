@@ -9,6 +9,8 @@
 // Bekci: gecmis tablosu + arsivleme, taze onbellek, okuma basarisizsa kaydetme kilidi.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -58,7 +60,10 @@ test("SH2 admin ekrani DB'deki GUNCEL hali okur (onbellek tazelenir), okuma hata
   assert.match(src, /_ssCustomLoadedAt = Date\.now\(\)/, 'onbellek yas damgasi yok');
   assert.doesNotMatch(
     src,
-    /custom\/:serverId\/:templateId', requireAuth, requireAdmin, async \(req, res\) => \{\s*const server = getServerById\(req\.params\.serverId\);\s*if \(!server\) return res\.status\(404\)/,
+    // Yalniz GET (ekranin okudugu uc); POST kendi dogrulamasini yapar.
+    esnek(
+      /app\.get\('\/api\/ansible\/ss\/custom\/:serverId\/:templateId', requireAuth, requireAdmin, async \(req, res\) => \{\s*const server = getServerById\(req\.params\.serverId\);\s*if \(!server\) return res\.status\(404\)/,
+    ),
     'GET custom 404 donuyor - nginx HTML sayfasina cevirir, ekran bos acilir',
   );
 });
@@ -74,6 +79,10 @@ test('SH3 ekran: ayarlar okunamadiysa Kaydet KILITLI; gecmis paneli + geri yukle
   assert.match(modal, /ansibleApi\.customizationHistory\(/, 'gecmis listesi cekilmiyor');
   assert.match(modal, /ansibleApi\.restoreCustomization\(/, 'geri yukleme yok');
   // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
-  assert.match(modal, /await onayla\(\{ baslik: 'Sürümü geri yükle'/, 'geri yukleme onaysiz');
-  assert.doesNotMatch(modal, /window\.confirm\(/, 'tarayici onayi geri gelmis');
+  assert.match(
+    modal,
+    esnek(/await onayla\(\{ baslik: 'Sürümü geri yükle'/),
+    'geri yukleme onaysiz',
+  );
+  assert.doesNotMatch(modal, esnek(/window\.confirm\(/), 'tarayici onayi geri gelmis');
 });

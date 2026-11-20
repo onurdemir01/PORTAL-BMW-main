@@ -2,6 +2,7 @@
 // Gercek DB yok: saf fonksiyonlar (ust sinir hesabi, uyari yuzdesi, gunde-bir uyari secimi,
 // Teams karti) ve kaynak kod sozlesmesi (parti parti UPDATE/DELETE, env belgeleri).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -163,7 +164,7 @@ test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
     kaynak,
     /res\.json\(\{ ok: true, usage, config: configForClient\(\), state: stateForClient\(\) \}\)/,
   );
-  assert.doesNotMatch(kaynak, /res\.(json|send)\([^)]*getConfig\(\)/);
+  assert.doesNotMatch(kaynak, esnek(/res\.(json|send)\([^)]*getConfig\(\)/));
   const panel = fs.readFileSync(
     path.join(
       __dirname,
@@ -184,5 +185,5 @@ test('HK9 configForClient: webhook adresi gitmez, yalniz tanimli mi', () => {
 test('HK10 DB doluluk rota ve durum hatalarinda ham e.message istemciye donmez', () => {
   const kaynak = fs.readFileSync(path.join(__dirname, '..', 'housekeeping.cjs'), 'utf8');
   assert.doesNotMatch(kaynak, /state\.lastError\s*=\s*e\.message/);
-  assert.doesNotMatch(kaynak, /res\.status\(500\)\.json\(\{[^}]*message:\s*e\.message/);
+  assert.doesNotMatch(kaynak, esnek(/res\.status\(500\)\.json\(\{[^}]*message:\s*e\.message/));
 });

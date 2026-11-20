@@ -7,6 +7,7 @@
 //   GY4 sessionOrIpKey ignores spoofed x-portal-user unless trusted header auth verifies it
 //   GY5 /api/nobetci/today/avatar returns Cache-Control: private, max-age=300
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -81,7 +82,7 @@ test('GY2b globalErrorMiddleware Express yanitinda correlationId doner', async (
 
 test('GY3 server/index.cjs sabit proxy IP icermez ve yardimci modulu kullanir', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'index.cjs'), 'utf8');
-  assert.doesNotMatch(src, /'trust proxy',\s*'loopback,\s*\d+\./);
+  assert.doesNotMatch(src, esnek(/'trust proxy',\s*'loopback,\s*\d+\./));
   assert.match(src, /resolveTrustProxy\(process\.env\.TRUST_PROXY\)/);
   assert.match(src, /globalErrorMiddleware\(/);
 });
@@ -119,11 +120,11 @@ test('GY4 sessionOrIpKey sahte x-portal-user basligini yoksayar', () => {
 
 test('GY5 /api/nobetci/today/avatar Cache-Control private olarak doner', () => {
   const src = fs.readFileSync(path.join(ROOT, 'server', 'nobetci', 'index.cjs'), 'utf8');
-  const idx = src.indexOf('app.get("/api/nobetci/today/avatar"');
+  const idx = konum(src, 'app.get("/api/nobetci/today/avatar"');
   assert.ok(idx > -1, '/api/nobetci/today/avatar route bulunamadi');
   const snippet = src.slice(idx, idx + 450);
   assert.match(snippet, /private,\s*max-age=300/);
-  assert.doesNotMatch(snippet, /public,\s*max-age=300/);
+  assert.doesNotMatch(snippet, esnek(/public,\s*max-age=300/));
 });
 
 // 2026-11-14 gerilemesi: varsayilan 'loopback' yapilmisti. Uretimde nginx Node'a makinenin

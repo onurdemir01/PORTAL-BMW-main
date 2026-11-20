@@ -1,6 +1,7 @@
 // server/nginx-console/__tests__/drift.test.js — "Tutarlilik" (2026-09-22): ayni servis+ortam
 // sunuculari arasinda dosya bazinda sha farki (GLOMO eski sunuculari vb.).
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -210,7 +211,7 @@ test('DR5 her sekmede KAYNAK satiri: hangi AWX isi besliyor, veri ne zamanki, na
     'utf8',
   );
   assert.ok(
-    /<SourceNote source=\{SOURCE_OF\[tab\]\}/.test(page),
+    esnek(/<SourceNote source=\{SOURCE_OF\[tab\]\}/).test(page),
     'kaynak satiri her sekmede cizilmeli',
   );
   // 'spa' sekmesi 2026-10-08'de 'spadiscovery' ile BIRLESTI (NginxSpaBirlesik); kaynak

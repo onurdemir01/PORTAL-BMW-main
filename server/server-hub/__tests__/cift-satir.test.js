@@ -11,6 +11,7 @@
 //   CS7 loader bilgi satiri DUPLICATE_ROWS_DROPPED sunucuyu LOAD_EXCLUDED yapmaz
 //   CS8 sayi 0a inince bir kez loglanir; CS9 loadJvmAgir ORDER BY id; CS10 ekranda cift satir bandi
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test: nodeTest, beforeEach } = require('node:test');
 const test = (ad, fn) => nodeTest(ad, { timeout: 10000 }, fn);
@@ -345,7 +346,7 @@ test('CS9 loadJvmAgir: id varsa ORDER BY t.[id] (Map son = en buyuk id), yoksa s
     sorgular.length = 0;
     await SH.loadJvmAgir('GBSTPQ01');
     jq = sorgular.filter((q) => /FROM dbo\.Server_Hub_Jvms t/.test(q)).pop();
-    assert.doesNotMatch(jq, /ORDER BY/);
+    assert.doesNotMatch(jq, esnek(/ORDER BY/));
   } finally {
     KOLONLAR.Server_Hub_Jvms.pop();
   }

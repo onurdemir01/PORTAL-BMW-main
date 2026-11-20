@@ -6,6 +6,8 @@
 // yazamaz; ortak kapi atlayinca Smart bileti ACILMAZ ama OCO kapisi calismaya devam eder.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -101,10 +103,10 @@ test('AS4 genel /prefs ucu korunan tercihi YAZAMAZ; yalniz admin ucu (korunanaIz
   const auth = fs.readFileSync(path.join(__dirname, '..', '..', 'auth', 'index.cjs'), 'utf8');
   assert.match(
     auth,
-    /router\.put\("\/smart-atla", requireAdmin,/,
+    esnek(/router\.put\("\/smart-atla", requireAdmin,/),
     'tercih ucu admin korumali degil',
   );
-  assert.match(auth, /\{ korunanaIzin: true \}/);
+  assert.match(auth, esnek(/\{ korunanaIzin: true \}/));
 });
 
 test('AS5 diger kapilar da ayni karari kullanir: OpsX production, admin test araci, OCO zamanlamasi', () => {

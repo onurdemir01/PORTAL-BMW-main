@@ -12,6 +12,7 @@
 // OC4 Donusum: ekranin kullandigi alanlar tasinir, servisin ~150 alani TASINMAZ.
 // OC5 Uc sozlesmesi: yapilandirilmamis servis BOS LISTE degil, 503 + notConfigured doner.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -251,7 +252,7 @@ test('OC7: 400 mesaji OCO NUMARASINI degil, cagrilan ADRESI gosterir', () => {
   // "Numarayi kontrol edin" YANLIS YERE BAKTIRIYORDU: 6203 kullanicinin girdigi bir sey degil.
   assert.doesNotMatch(
     err.message,
-    /[Nn]umaray[ıi] kontrol/,
+    esnek(/[Nn]umaray[ıi] kontrol/),
     'kullanici duzeltemeyecegi bir sey icin yonlendiriliyor',
   );
   // WCF hata sayfasinin CSS'i EKRANA DOKULMEZ; yalniz baslik tasinir.

@@ -15,6 +15,7 @@
 //   PK8 dagitim betikleri: calisma zamani paketinde --omit=dev, kaynak agacta build sonrasi prune
 //   PK9 Jenkinsfile: Guvenlik asamasi var, Paket asamasi uretici ile
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -294,7 +295,11 @@ test('PK9 Jenkinsfile: Guvenlik asamasi ve uretici ile Paket', () => {
     "Guvenlik Testler'den once",
   );
   assert.match(j, /npm run paket -- --cikti .* --zip .* --derleme-yok/);
-  assert.doesNotMatch(j, /cp -r dist server scripts deploy/, 'eski elle paketleme geri gelmis');
+  assert.doesNotMatch(
+    j,
+    esnek(/cp -r dist server scripts deploy/),
+    'eski elle paketleme geri gelmis',
+  );
 });
 
 test('PK-YER cikti repo disinda ya da yalniz build/ altinda (kurumsal Jenkins isi; paket kendini kopyalamaz)', () => {

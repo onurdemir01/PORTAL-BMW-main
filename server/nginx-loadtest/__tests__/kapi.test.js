@@ -78,6 +78,7 @@
 //          satiri kisa adla listede; kisa ad Test + FQDN Production makine uygun degil
 //   YKP100 paylasilan IP: elle ip_belirsiz, host secici sunucu, bir sahip uretim -> hedef_uretim
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -2143,7 +2144,7 @@ test("YKP13 kurulum: modul kaydi, tablolar + indeksler, sekme ve kayit seed'leri
     assert.match(tablo(t), kolon, `${t}: ${kolon} kolonu yok`);
   assert.doesNotMatch(
     kur,
-    /Tablo hic dagitilmadi: ALTER yok/,
+    esnek(/Tablo hic dagitilmadi: ALTER yok/),
     'eski "ALTER yok" yorumu kaldi (ozellik itildi)',
   );
   const alterSql = (kolon) => {

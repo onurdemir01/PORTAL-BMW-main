@@ -25,6 +25,7 @@
 // alindi: docs/GUVENLIK-0-ZAFIYET.md guvenlik duzeltmesi istisnasi (en dusuk duzelten surum, ayni
 // yayimci + SLSA provenance, tarball farki yalniz Object.create(null) duzeltmesi, yeni alt paket yok).
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -260,7 +261,7 @@ test('GT9 guvenlik kapisi tam agaca bakar; Jenkins tam kurulumu kullanir', () =>
   assert.match(jenkins, /sh 'node --version && npm run kur'/);
   assert.doesNotMatch(
     jenkins,
-    /\bnpm ci\b/,
+    esnek(/\bnpm ci\b/),
     'Jenkins kokte npm ci calistiriyor (gelistirme araclari kurulmaz)',
   );
   // Dependabot tam manifesti izler.

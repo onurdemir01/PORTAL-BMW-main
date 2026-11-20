@@ -4,6 +4,7 @@
 // dustu. Imza, kurumsal derlemenin ilk adiminda kodun main'in birebir kopyasi oldugunu dogrular.
 // Testler gercek git depolarinda kosar: imza git indeksinden uretilir.
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -187,7 +188,7 @@ test('TS4 imzaDogrula: birebir 0; yarim kopyanin her bicimi 1 ve dosyasiyla soyl
     for (const d of T.KURUMA_GITMEYEN)
       assert.ok(mesaj.includes(d.replace(/\/$/, '')), `silinecek dizin soylenmeli: ${d}`);
     assert.match(mesaj, /Teslim imzasi/, 'tazeleme penceresi soylenmeli');
-    assert.doesNotMatch(mesaj, /eksik|fazla \(/);
+    assert.doesNotMatch(mesaj, esnek(/eksik|fazla \(/));
     git(d, 'checkout', 'HEAD', '--', 'package.json');
 
     // Eksik dosya ve main'de olmayan (silinmis ama kalmis) dosya.
@@ -200,7 +201,7 @@ test('TS4 imzaDogrula: birebir 0; yarim kopyanin her bicimi 1 ve dosyasiyla soyl
     assert.match(m2, /2 fark/);
     assert.match(m2, /eksik \(main'de var, burada yok\) \(1\): scripts\/paket\.cjs/);
     assert.match(m2, /fazla \(main'de yok, burada var\) \(1\): scripts\/eski-betik\.cjs/);
-    assert.doesNotMatch(m2, /icerigi farkli/);
+    assert.doesNotMatch(m2, esnek(/icerigi farkli/));
     git(d, 'reset', '-q', '--hard');
     git(d, 'clean', '-q', '-fd', '-e', 'kalite/');
     assert.equal(T.imzaDogrula(d, toplayici().g), 0, 'temizlikten sonra birebir degil');
@@ -340,8 +341,8 @@ test('TS7 imza tazeleme is akisi: her main push, yalniz imza, zorla push yok, he
   );
   assert.match(dongu, /git add kalite\/teslim\.json\n/);
   assert.match(dongu, /\[skip ci\]/);
-  assert.doesNotMatch(kod, /git add (-A|\.|--all)/);
-  assert.doesNotMatch(kod, /push[^\n]*--force|pull --rebase/);
+  assert.doesNotMatch(kod, esnek(/git add (-A|\.|--all)/));
+  assert.doesNotMatch(kod, esnek(/push[^\n]*--force|pull --rebase/));
   assert.doesNotMatch(kod, /continue-on-error|\|\|\s*true/);
   const pkg = JSON.parse(fs.readFileSync(path.join(KOK, 'package.json'), 'utf8'));
   assert.equal(pkg.scripts['teslim:yaz'], 'node scripts/teslim.cjs --yaz');

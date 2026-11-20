@@ -10,6 +10,7 @@
 //   ES13 eslenik listesi: tur, birebir ortam, sayfa + toplam; eski cagri bicimi
 //   ES14 tarih farki alt / ust siniri birlikte; kosu listesi plan anahtarini tasir (plan 1 / plan 2 etiketi)
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -56,7 +57,7 @@ test('ES7 uygulama sorgusu', async () => {
     /UPPER\(LTRIM\(RTRIM\(h\.ortam\)\)\) IN \(SELECT value FROM OPENJSON/,
     'ortam BIREBIR (LIKE degil)',
   );
-  assert.doesNotMatch(c.sql, /u\.jboss =/, 'gecersiz nesil suzgeci yok sayilir');
+  assert.doesNotMatch(c.sql, esnek(/u\.jboss =/), 'gecersiz nesil suzgeci yok sayilir');
   assert.equal(c.params[0], 0);
   assert.ok(c.params.includes('%odeme%'));
   assert.ok(c.params.includes('["PROD"]'), 'ortam normalize');
@@ -182,7 +183,7 @@ test('ES10 kesilme yok: TOP yok, toplam var', async () => {
   const w = await sorgu.warlar({});
   assert.equal(w.toplam, 300000);
   for (const c of db.cagrilar)
-    assert.doesNotMatch(c.sql, /TOP \(\d{4,}\)/, 'sessiz TOP kesmesi yok');
+    assert.doesNotMatch(c.sql, esnek(/TOP \(\d{4,}\)/), 'sessiz TOP kesmesi yok');
   const kc = db.cagrilar.find((c) => /GROUP BY s\.ad, s\.surum/.test(c.sql));
   assert.match(kc.sql, /HAVING COUNT\(DISTINCT k\.host\) >= \$\d+/);
   await sorgu.kutuphaneler({ limit: 100, offset: 200 });
@@ -268,7 +269,11 @@ test('ES12 acilir liste degerleri', async () => {
     farkli: 2,
   });
   const c = db.cagrilar.find((x) => /AS deger/.test(x.sql));
-  assert.doesNotMatch(c.sql, /h\.ortam\)\)\) IN \(SELECT/, 'kolonun kendi suzgeci uygulanmaz');
+  assert.doesNotMatch(
+    c.sql,
+    esnek(/h\.ortam\)\)\) IN \(SELECT/),
+    'kolonun kendi suzgeci uygulanmaz',
+  );
   assert.match(c.sql, /u\.jboss = \$\d+/, 'oteki suzgecler uygulanir');
   assert.match(c.sql, /TOP \(200\)/);
   await sorgu.degerler({ gorunum: 'uygulamalar', kolon: 'logback' });

@@ -7,6 +7,7 @@
 // "Geri yukle" izi siler ve seed satirini seed degerleriyle yeniden ekler. Silmeden once ekran
 // anahtari kullanan Portal ozelligini gosterir (server/ansible/playbook-kullanim.cjs).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -364,8 +365,8 @@ test('PK8 runner.cjs uclari modulden baglar; eski liste / silme ucu ikinci kez t
     src,
     /require\('\.\/playbook-kayit-rotalari\.cjs'\)\.kaydet\(app, \{ requireAuth, requireAdmin \}\)/,
   );
-  assert.doesNotMatch(src, /app\.delete\('\/api\/ansible\/playbooks\/:id'/);
-  assert.doesNotMatch(src, /app\.get\('\/api\/ansible\/playbooks',/);
+  assert.doesNotMatch(src, esnek(/app\.delete\('\/api\/ansible\/playbooks\/:id'/));
+  assert.doesNotMatch(src, esnek(/app\.get\('\/api\/ansible\/playbooks',/));
 });
 
 test("PK9 iz tablosu TABLES icinde (seed'den once kurulur), anahtar birincil anahtar", () => {

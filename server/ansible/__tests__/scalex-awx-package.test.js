@@ -7,6 +7,7 @@
 // Testlerin cogu DAVRANIS kosturur: gercek `scalex_runner.sh` sahte bir `oc` ile
 // calistirilir ve ciktisi portalin GERCEK ayristiricisindan (`result.cjs`) gecirilir.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -141,8 +142,16 @@ test('S5b playbook da sabit platform/ortam beyaz listesi TASIMAMALI', () => {
   // (02_select_targets.yml); sabit liste yalnizca bayatlar ve isi dusurur.
   for (const f of ['tasks/01_prepare.yml', 'tasks/discovery/01_prepare.yml']) {
     const src = read(path.join(APP, f));
-    assert.doesNotMatch(src, /oc_platform in \[/, `${f}: sabit platform beyaz listesi geri gelmis`);
-    assert.doesNotMatch(src, /oc_environment in \[/, `${f}: sabit ortam beyaz listesi geri gelmis`);
+    assert.doesNotMatch(
+      src,
+      esnek(/oc_platform in \[/),
+      `${f}: sabit platform beyaz listesi geri gelmis`,
+    );
+    assert.doesNotMatch(
+      src,
+      esnek(/oc_environment in \[/),
+      `${f}: sabit ortam beyaz listesi geri gelmis`,
+    );
     // Bicim kontrolu KALMALI — deger `oc` komut satirina gidiyor.
     assert.match(src, /oc_platform is match/, `${f}: platform bicim kontrolu kaybolmus`);
     assert.match(src, /oc_environment is match/, `${f}: ortam bicim kontrolu kaybolmus`);
@@ -1110,7 +1119,7 @@ test('P7 bos CC bir ALICI olarak gonderilmez', () => {
 test('P8 rapor ScaleX kimligini tasiyor (eski "Chaos Scale" kalmamis)', () => {
   for (const f of ['tasks/20_build_report.yml', 'tasks/30_send_mail.yml']) {
     const src = read(path.join(APP, f));
-    assert.doesNotMatch(src, /Chaos Scale|CHAOS-SCALE/i, `${f}: eski urun adi duruyor`);
+    assert.doesNotMatch(src, esnek(/Chaos Scale|CHAOS-SCALE/i), `${f}: eski urun adi duruyor`);
   }
 });
 

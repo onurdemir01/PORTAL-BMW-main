@@ -9,6 +9,8 @@
 //   BR4 kodlama ayristirma: buyuk/kucuk harf, bosluk, liste; "brx" gibi benzer adlar br sayilmaz
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -78,7 +80,7 @@ test('BR3 service.cjs: ara katman express.json ve tum route lardan ONCE', () => 
     'app.use(compression());',
     'app.use("/api", (req, res, next) => {',
   ]) {
-    const j = src.indexOf(sonra);
+    const j = konum(src, sonra);
     assert.ok(j > i, `${sonra} brotliGovdeReddi'den once geliyor`);
   }
 });

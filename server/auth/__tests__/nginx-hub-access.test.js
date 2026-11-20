@@ -8,6 +8,7 @@
 // Varsayilan bir tur ONCE 1'di; kapatirken sayfaya zaten erisimi olanlar bos ekran gormesin
 // diye tek seferlik migration onlara tum sekmeleri acar — o migration da burada kilitlidir.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -257,8 +258,8 @@ test('NH-A4 istemci: sekmeler canSee ile süzülür, içerik de kapalı, boş du
 
   const admin = read('src/components/admin/AdminPage.tsx');
   assert.ok(
-    admin.includes("{ id: 'nginxaccess', label: 'Nginx Hub Erişimi'") &&
-      admin.includes("{activeTab === 'nginxaccess' && <NginxAccessTab />}"),
+    iceriyor(admin, "{ id: 'nginxaccess', label: 'Nginx Hub Erişimi'") &&
+      iceriyor(admin, "{activeTab === 'nginxaccess' && <NginxAccessTab />}"),
     'admin sekmesi bağlı değil',
   );
   const tab = read('src/components/admin/tabs/NginxAccessTab.tsx');

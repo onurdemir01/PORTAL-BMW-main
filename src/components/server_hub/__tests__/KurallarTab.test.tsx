@@ -22,6 +22,7 @@ import path from 'node:path';
 import KurallarTab from '@/components/server_hub/KurallarTab';
 import { LimitNotu, sunucuAdlari, limitAsildi } from '@/components/server_hub/sunucuLimiti';
 import type { ShKurallar } from '@/api/serverHubApi';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const mockKurallar = vi.hoisted(() => vi.fn());
 const mockSeviye = vi.hoisted(() => vi.fn());
@@ -320,7 +321,12 @@ describe('KT7 girdi ekranlarında tek seferde sunucu sayısı', () => {
     expect(
       (
         sh.match(
-          /<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} ortam=\{f\.ortamTavani\} prod=\{f\.prodSeverity\} \/>/g,
+          new RegExp(
+            esnek(
+              /<SeviyeDegistiIsareti d=\{f\.defaultSeverity\} ortam=\{f\.ortamTavani\} prod=\{f\.prodSeverity\} \/>/,
+            ).source,
+            'g',
+          ),
         ) || []
       ).length,
     ).toBe(2);

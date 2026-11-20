@@ -13,6 +13,8 @@
 //   ST12 oncekiBaglariEkle
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -325,10 +327,13 @@ test('ST5 ortak dogrulayici eski /ss/custom mesajlarini aynen verir', () => {
   assert.equal(d.fieldOverrides[0].choicesSource, undefined);
   // Route artik ortak dogrulayiciyi cagiriyor; satir-ici kopya geri gelmedi.
   const src = fs.readFileSync(path.join(__dirname, '..', 'runner.cjs'), 'utf8');
-  assert.match(src, /require\('\.\/ss-ozellestirme-dogrulama\.cjs'\)\.dogrula\(specFields, data\)/);
+  assert.match(
+    src,
+    esnek(/require\('\.\/ss-ozellestirme-dogrulama\.cjs'\)\.dogrula\(specFields, data\)/),
+  );
   assert.doesNotMatch(
     src,
-    /const seenNames = new Set\(\);/,
+    esnek(/const seenNames = new Set\(\);/),
     'satir-ici dogrulama kopyasi geri geldi',
   );
 });

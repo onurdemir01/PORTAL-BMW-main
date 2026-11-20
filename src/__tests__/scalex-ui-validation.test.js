@@ -2,6 +2,7 @@
 // dogrulamasi. Bu depodaki diger UI bekcileriyle ayni yontem: kaynak metni uzerinde
 // yapisal denetim (React calistirici yok, ama bu sinif hatalarin cogu yapisal).
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -208,13 +209,13 @@ test('U11 iki mod kartinin sinif dizesi AYNI', () => {
   // yakalanmasi mumkun degil.
   const cards = [
     ...OPERATION.matchAll(
-      /onClick=\{\(\) => setMode\("(dry_run|apply)"\)\}[^`]*?className=\{`([^`]+)`\}/g,
+      /onClick=\{\(\) => setMode\(["'](dry_run|apply)["']\)\}[^`]*?className=\{`([^`]+)`\}/g,
     ),
   ];
   assert.equal(cards.length, 2, 'iki mod karti bulunamadi');
   const norm = (s) =>
     s
-      .replace(/mode === "\w+"/, 'MODE')
+      .replace(/mode === ["']\w+["']/, 'MODE')
       .replace(/\s+/g, ' ')
       .trim();
   assert.equal(
@@ -997,7 +998,7 @@ test('Y4 BAKILAMAYAN tip kullaniciya OZET, yoneticiye TAM LISTE', () => {
   );
   assert.doesNotMatch(
     code,
-    /\{unreadableKinds\.length > 0 &&/,
+    esnek(/\{unreadableKinds\.length > 0 &&/),
     'ozet `askable` yerine tum bakilamayan tiplere baglanmis',
   );
   // TAM KAYNAK ADI kullanici ekraninda da korunur: kullanici ayrintiyi acarsa
@@ -1046,10 +1047,14 @@ test('Y7 ayni ad farkli tipte oldugunda secim IZIN VERILIR; her cluster kendi ti
   const page = codeOnly(PAGE);
   // Yeni sozlesme: UI name-only secer; cluster basina kind haritasi AWX'e gider.
   // Playbook ayni cluster icindeki belirsizligi `auto` taramasiyla cozer.
-  assert.doesNotMatch(code, /const kindBlocked = isKindBlocked\(w\)/, 'eski tip kilidi hala var');
   assert.doesNotMatch(
     code,
-    /farklı bir tip seçildi/,
+    esnek(/const kindBlocked = isKindBlocked\(w\)/),
+    'eski tip kilidi hala var',
+  );
+  assert.doesNotMatch(
+    code,
+    esnek(/farklı bir tip seçildi/),
     'kullanici artik farkli tip yuzunden engellenmiyor',
   );
   assert.match(
@@ -1069,7 +1074,7 @@ test('Z1 secim kimligi KOSULSUZ AD — geri donuste secim kaybolmaz', () => {
   // diyen tutarsizliga yol aciyordu.
   assert.doesNotMatch(
     code,
-    /ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/,
+    esnek(/ambiguousNames\.has\(w\.name\) \? `\$\{w\.name\}/),
     'secim kimligi hala KOSULLU',
   );
   assert.match(

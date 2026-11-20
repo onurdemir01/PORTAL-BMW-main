@@ -11,6 +11,8 @@
 // tarafta); sorun sessiz olmasiydi.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -44,7 +46,7 @@ test('sinir MSSQL parametre tavaninin ALTINDA', () => {
 });
 
 test('istemci tipi kesme bilgisini TASIYOR', () => {
-  assert.match(API, /truncated\?: number; maxItems\?: number;/);
+  assert.match(API, esnek(/truncated\?: number; maxItems\?: number;/));
 });
 
 test('arayuz kesmeyi GORUNUR kiliyor', () => {
@@ -62,7 +64,7 @@ test('mutasyonlar admin kapisindan geciyor, salt-okunur sorgular MUAF', () => {
   // /ip-check ve /openshift-check POST ama gercek bir MUTASYON DEGIL — muafiyet
   // BILINCLI. Muafiyetin yanlislikla baska uclara genislemesine karsi bekci.
   const m = SRC.match(
-    /if \(req\.path === "([^"]+)" \|\| req\.path === "([^"]+)" \|\| req\.path === "([^"]+)"\) return next\(\);/,
+    /if \(\s*req\.path === ["']([^"']+)["'] \|\|\s*req\.path === ["']([^"']+)["'] \|\|\s*req\.path === ["']([^"']+)["']\s*\)\s*return next\(\);/,
   );
   assert.ok(m, 'admin-gate muafiyeti bulunamadi');
   assert.deepEqual([m[1], m[2], m[3]].sort(), [

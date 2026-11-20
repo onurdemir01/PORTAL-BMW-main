@@ -1,5 +1,6 @@
 // server/audit/__tests__/response-cache.test.js — Denetim yanit onbellegi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createResponseCache } = require('../response-cache.cjs');
@@ -310,7 +311,7 @@ test('SWR2 yenileme basarisizsa bayat giris korunur; fresh=1 bayati atlar; stale
       'bayat giris silinmemeli',
     );
     assert.equal(uyarilar.length, 1);
-    assert.doesNotMatch(uyarilar[0], /db yok/, 'hata govdesi loglanmamali');
+    assert.doesNotMatch(uyarilar[0], esnek(/db yok/), 'hata govdesi loglanmamali');
     mod = 'ok';
     const f = run('/k?fresh=1');
     assert.equal(f.headers['X-Portal-Cache'], 'BYPASS');

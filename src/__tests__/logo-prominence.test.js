@@ -15,6 +15,8 @@
 //     28px'te motif bulanik bir kirmizi kareye donusuyordu.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -101,15 +103,15 @@ test('FAVICON ayni isareti kullanir ve METIN icermez', () => {
 test('AYIRICI: marka blogu araclardan gorsel olarak ayrisiyor', () => {
   assert.match(
     MASTHEAD,
-    /aria-hidden="true" className="hidden sm:block h-8 w-px"/,
+    esnek(/aria-hidden="true" className="hidden sm:block h-8 w-px"/),
     'dikey ayirici yok — logo kalabalikta kayboluyor',
   );
-  assert.match(MASTHEAD, /background: "var\(--masthead-border\)"/);
+  assert.match(MASTHEAD, esnek(/background: "var\(--masthead-border\)"/));
 });
 
 test('marka metni token okuyor (masthead artik temayi izliyor)', () => {
-  assert.match(MASTHEAD, /color: "var\(--nav-text\)"/);
-  assert.match(MASTHEAD, /color: "var\(--nav-text-muted\)"/);
+  assert.match(MASTHEAD, esnek(/color: "var\(--nav-text\)"/));
+  assert.match(MASTHEAD, esnek(/color: "var\(--nav-text-muted\)"/));
 });
 
 test('giris ekrani KOYU kalir, yalnizca tonlari PF6 notrlerine tasindi', () => {

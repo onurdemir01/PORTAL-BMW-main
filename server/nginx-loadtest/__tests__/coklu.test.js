@@ -27,6 +27,7 @@
 //   CK13 senaryo K/B ya da senaryo_id farki 'senaryo' koduyla karsilastirilamaz, kararVer cagrilmaz; bilinmeyen id gecer
 //   CK14 ortak kombo varsa kararVer'in secimi korunur (etiketleme yok); router uctan uca h2 + gzip aday
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -958,7 +959,7 @@ test('CK12 kip / ae: ka vs yeni, br vs gzip vs identity kendi kombosundan okunur
   assert.deepEqual(a3.refKombinasyon, { senaryo: 'K', kip: 'yeni', ae: 'br' });
   // Ilk neden ref'in etiketini aday diye yazmaz.
   assert.match(a2.kararNedenleri[0], /senaryo=K \(referans kip=yeni ae=br, aday kip=ka ae=br\)$/);
-  assert.doesNotMatch(a3.kararNedenleri[0], /senaryo=K kip=yeni ae=br/);
+  assert.doesNotMatch(a3.kararNedenleri[0], esnek(/senaryo=K kip=yeni ae=br/));
   // Meta: Fark metninin alanlari; dizin tasinmaz; eski kosuda kip / ae kombodan.
   assert.deepEqual(
     [r.ref.kip, r.ref.ae, r.ref.sunucuAyar],

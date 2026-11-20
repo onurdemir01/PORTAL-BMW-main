@@ -14,6 +14,7 @@
 // gercegi anlatmiyordu ve portalin KIMLIK DOGRULAMASIZ tek yazma ucu,
 // calismayan bir ozellik icin acik duruyordu.
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -51,7 +52,7 @@ test('OI2 auth`suz yukleme ucu VARSAYILAN OLARAK kapali', () => {
     /if\s*\(\s*process\.env\.LOGX_V2_INGEST_ENABLED\s*===\s*'1'\s*\)/,
     'uc kosulsuz mount ediliyor — kimlik dogrulamasiz yazma yolu acik',
   );
-  assert.doesNotMatch(once, /if\s*\(\s*(true|1)\s*\)/, 'kosul sabit dogru');
+  assert.doesNotMatch(once, esnek(/if\s*\(\s*(true|1)\s*\)/), 'kosul sabit dogru');
 });
 
 test('OI3 uc `requireAuth`tan ONCE kaldigi icin KOSULU da ondan once olmali', () => {

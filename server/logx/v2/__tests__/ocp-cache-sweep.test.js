@@ -9,6 +9,7 @@
 //      silinmis bir namespace, eski uygulamalari sonsuza dek listelemeye devam ediyordu.
 // Cozum: olcut ad listesi degil, TUR BASLANGIC ZAMANI. Bu testler o sozlesmeyi korur.
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -46,7 +47,7 @@ test('putNamespaces(): silme taramasi PARAMETRE LISTESI degil ZAMAN DAMGASI kull
 
     const sweep = sweepOf(calls, 'ocp_namespace_cache');
     assert.ok(sweep, 'silme taramasi calismali');
-    assert.doesNotMatch(sweep.sql, /NOT IN/i, 'ad listesi ile filtreleme kalmamali');
+    assert.doesNotMatch(sweep.sql, esnek(/NOT IN/i), 'ad listesi ile filtreleme kalmamali');
     assert.match(sweep.sql, /fetched_at < \$4/, 'olcut tur baslangic zamani olmali');
     assert.equal(sweep.params.length, 4, `parametre sayisi namespace adedinden BAGIMSIZ olmali`);
     assert.equal(sweep.params[3], '2026-01-01T00:00:00.000Z', 'zaman DB sunucusundan alinmali');

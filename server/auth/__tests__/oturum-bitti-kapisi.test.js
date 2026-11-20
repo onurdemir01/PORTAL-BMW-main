@@ -2,6 +2,7 @@
 // giris ekranina dusurmesini saglar; ust servisten yansiyan 401'ler (AWX
 // token'i dusmesi gibi) kullaniciyi portaldan ATMAMALIDIR.
 const test = require('node:test');
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -17,9 +18,9 @@ function kodOnly(src) {
 
 /** Fail-closed dilim: sinir bulunamazsa testi DUSUR, sessizce bos dilim dondurme. */
 function dilim(src, bas, son) {
-  const i = src.indexOf(bas);
+  const i = konum(src, bas);
   assert.ok(i >= 0, `dilim baslangici bulunamadi: ${bas}`);
-  const j = src.indexOf(son, i + bas.length);
+  const j = konum(src, son, i + 1);
   assert.ok(j > i, `dilim sonu bulunamadi: ${son}`);
   return src.slice(i, j);
 }
@@ -102,7 +103,7 @@ test('OB4 — server/auth icindeki HER oturum 401i oturumYokdan gecer', () => {
   assert.match(d, /res\.status\(status\)\.json\(/, 'giris hatasi yaniti bulunamadi');
   assert.doesNotMatch(
     d,
-    /oturumYok\(/,
+    esnek(/oturumYok\(/),
     'giris hatasi imzalanmis — yanlis parola "oturum bitti" sayilir',
   );
 });
@@ -112,7 +113,7 @@ test('OB5 — imza capraz kokende OKUNABILIR olsun diye expose edilir', () => {
   // Dilim, CORS ara katmaninin `origin === allowedOrigin` DALIDIR: baslik orada
   // degil de disarida/olu bir dalda durursa bekci ateslenmeli.
   const cors = dilim(src, 'Access-Control-Allow-Origin', 'req.method === "OPTIONS"');
-  assert.doesNotMatch(cors, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'CORS dali olu');
+  assert.doesNotMatch(cors, esnek(/if\s*\(\s*(false|0|null|undefined)\s*\)/), 'CORS dali olu');
   assert.match(
     cors,
     /Access-Control-Expose-Headers[^)]*X-Portal-Session/,

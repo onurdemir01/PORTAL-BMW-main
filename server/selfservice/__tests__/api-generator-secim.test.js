@@ -24,6 +24,8 @@
 //   AG14 ayrinti rotasi ayni korumada; panel secimin saginda
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -155,12 +157,14 @@ test('AG4 diger alan ayarlari (acma / kapatma listeleri dahil) oldugu gibi kalir
 
 test('AG5 runner: survey ekrani, sablon detayi ve launch AYNI etkin ayarlari kullanir', () => {
   const survey = SRC.slice(
-    SRC.indexOf("app.get('/api/ansible/survey/:serverId/:templateId'"),
-    SRC.indexOf("app.get('/api/ansible/template-detail/"),
+    konum(SRC, "app.get('/api/ansible/survey/:serverId/:templateId'"),
+    konum(SRC, "app.get('/api/ansible/template-detail/"),
   );
   assert.match(
     survey,
-    /const etkinOv = require\('\.\.\/selfservice\/api-generator-secim\.cjs'\)\.etkinOverrides\(detail, overrides\)/,
+    esnek(
+      /const etkinOv = require\('\.\.\/selfservice\/api-generator-secim\.cjs'\)\.etkinOverrides\(detail, overrides\)/,
+    ),
   );
   assert.match(survey, /mapSurveySpec\(spec\.spec, etkinOv,/);
   assert.match(
@@ -168,12 +172,12 @@ test('AG5 runner: survey ekrani, sablon detayi ve launch AYNI etkin ayarlari kul
     /const customFields = Array\.isArray\(etkinOv\.customSurveyFields\)\s*\?\s*etkinOv\.customSurveyFields/,
   );
   const detay = SRC.slice(
-    SRC.indexOf("app.get('/api/ansible/template-detail/"),
-    SRC.indexOf("app.get('/api/ansible/template-detail/") + 3000,
+    konum(SRC, "app.get('/api/ansible/template-detail/"),
+    konum(SRC, "app.get('/api/ansible/template-detail/") + 3000,
   );
   assert.match(
     detay,
-    /etkinOverrides\(\s*detail,\s*readCustom\(server\.id, req\.params\.templateId\),?\s*\)/,
+    esnek(/etkinOverrides\(\s*detail,\s*readCustom\(server\.id, req\.params\.templateId\),?\s*\)/),
   );
   const plan = SRC.slice(
     SRC.indexOf('async function resolveSsLaunchPlan'),
@@ -555,7 +559,9 @@ test('AG10 Survey Tasarimcisi: chosen_api alani da kodla bagli; gercek resolveCu
   );
   assert.match(
     modal,
-    /setKodlaBagliAdlar\(new Set\(\(specRes\.fields \|\| \[\]\)\.filter\(\(f\) => f\.kodlaBagli\)/,
+    esnek(
+      /setKodlaBagliAdlar\(new Set\(\(specRes\.fields \|\| \[\]\)\.filter\(\(f\) => f\.kodlaBagli\)/,
+    ),
   );
   assert.match(modal, /data-testid="kodla-bagli-tasarimci-alani"/);
 });
@@ -1065,17 +1071,19 @@ test('AG15 details SQL hatti (sahte mssql): zone kolonu varsa ortak kullanicilar
 });
 
 test('AG14 rota + istemci: ayrinti ayni korumada, deger sorguda; panel secimin saginda, ayrinti yalniz kaynak isterse', () => {
-  const rota = SRC.slice(SRC.indexOf("app.get('/api/ansible/ss/choices/:source/details'"));
+  const rota = SRC.slice(konum(SRC, "app.get('/api/ansible/ss/choices/:source/details'"));
   assert.match(
     rota,
     /^app\.get\('\/api\/ansible\/ss\/choices\/:source\/details', requireAuth, async/,
   );
   assert.match(
     rota.slice(0, 700),
-    /choiceSources\.loadChoiceDetails\(req\.params\.source, params, String\(req\.query\.value \?\? ''\)\)/,
+    esnek(
+      /choiceSources\.loadChoiceDetails\(req\.params\.source, params, String\(req\.query\.value \?\? ''\)\)/,
+    ),
   );
   assert.match(rota.slice(0, 700), /if \(k !== 'value'\) params\[k\]/);
-  assert.ok(SRC.indexOf("app.get('/api/ansible/ss/choices/:source', requireAuth") > 0);
+  assert.ok(konum(SRC, "app.get('/api/ansible/ss/choices/:source', requireAuth") > 0);
   const kok = path.join(__dirname, '..', '..', '..', 'src');
   const api = fs.readFileSync(path.join(kok, 'api', 'ansibleApi.ts'), 'utf8');
   assert.match(api, /\/ss\/choices\/\$\{encodeURIComponent\(source\)\}\/details\?/);

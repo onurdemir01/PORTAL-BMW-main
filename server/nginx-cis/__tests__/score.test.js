@@ -2,6 +2,7 @@
 // Kullanici istekleri: (1) gercek CIS maddeleri, (2) istedigim maddeyi ISTISNAYA alip SKORDAN
 // DUSURMEK, (3) KENDI REFERANS degerimi kullandirmak, (4) skorun job ile canli tazelenmesi.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -167,7 +168,7 @@ test('CIS6 uc/sekme/is sozlesmesi: rescan job, istisna/override uclari, sekme, p
   // 2026-09-23'ten beri sekme icerigi GORUNURLUK KAPISIYLA birlikte ciziliyor:
   // `{tab === 'cis' && canSee('tab:nginx:cis') && <CisTab ...`
   assert.ok(
-    /tab === 'cis' &&[^\n]*<CisTab/.test(page) && page.includes("label: 'CIS'"),
+    /tab === 'cis' &&[^}]*<CisTab/.test(page) && page.includes("label: 'CIS'"),
     'CIS sekmesi',
   );
   assert.ok(
@@ -252,7 +253,7 @@ test('CIS7 siralama ve madde detayi: maddeler DOGAL numara sirasinda, her madded
     'madde detay penceresi',
   );
   assert.ok(
-    /\[\.\.\.detail\.items\]\.sort\(\(a, b\) => cmpItemId/.test(tab),
+    esnek(/\[\.\.\.detail\.items\]\.sort\(\(a, b\) => cmpItemId/).test(tab),
     'sunucu detayinda maddeler dogal sirali',
   );
 });

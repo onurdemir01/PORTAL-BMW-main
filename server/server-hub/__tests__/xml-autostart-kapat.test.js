@@ -16,6 +16,7 @@
 //       serbest); is bitince acilir; launch suresince ikinci istek await'ten once 409; katman xmlRezervasyon
 //   XK7 (inceleme F4) /host: katman JBOSS_DOMAIN_DOWN'u bilgiye indirince sunucu durumu / sayaclar ayni bulgulardan
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test: nodeTest, beforeEach } = require('node:test');
 const test = (ad, fn) => nodeTest(ad, { timeout: 15000 }, fn);
@@ -534,7 +535,7 @@ test('XK4 uctan uca: plan -> uygula -> /host false + JBOSS_DOMAIN_DOWN bilgi; ik
     assert.equal(f.autoStartAcik, 0);
     // kosan8 calisiyor (auto-start true): domain'de hepsi false DEGIL -> uyari kalir, metin yeni sayiyi soyler
     assert.equal(f.severity, 'warning');
-    assert.doesNotMatch(f.text, /auto-start açık: reboot/);
+    assert.doesNotMatch(f.text, esnek(/auto-start açık: reboot/));
     // Bulgular sekmesi (/findings) da ayni katman
     const fl = (await (await al(`${kok}/findings`)).json()).findings.find(
       (x) => x.host === APP && x.code === 'JBOSS_DOMAIN_DOWN',

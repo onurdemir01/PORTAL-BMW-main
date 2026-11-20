@@ -52,6 +52,7 @@ import RebootKontroluPage from '@/components/bmw_hub/RebootKontroluPage';
 import RetirementPage from '@/components/bmw_hub/RetirementPage';
 import { IpSorguPage, OcpSorguPage } from '@/components/bmw_hub/BmwHubSayfalari';
 import TasinanSekme from '@/routes/TasinanSekme';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const KOK = path.join(__dirname, '..', '..', '..', '..');
 const oku = (rel: string) => fs.readFileSync(path.join(KOK, rel), 'utf8');
@@ -238,7 +239,9 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
   it('BS6 menü kaydı, rotalar, sunucu tohumu ve eski yer imleri', () => {
     // Reboot Kontrolu ve Retirement Acik Isler'in hemen altinda (kullanici, 2026-11-13).
     expect(oku('src/config/elements.ts')).toMatch(
-      /itemIds: \['BmwHub', 'RebootKontrolu', 'Retirement', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'\]/,
+      esnek(
+        /itemIds: \['BmwHub', 'RebootKontrolu', 'Retirement', 'Envanter', 'Denetim', 'Nöbet', 'OcoTakvimi', 'IpSorgu', 'OcpSorgu', 'YukTesti'\]/,
+      ),
     );
     const app = oku('src/App.tsx');
     const setup = oku('server/db/mssql-setup.cjs');
@@ -258,12 +261,17 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
       );
     }
     expect(app).toMatch(
-      /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/,
+      esnek(
+        /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/,
+      ),
     );
     // /bmw-hub yonlendirmesi bu testteki ESKI_SEKMELER / YENI_YOLLAR ile birebir.
-    expect(app).toContain(
-      `<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>`,
-    );
+    expect(
+      iceriyor(
+        app,
+        `<TasinanSekme param="sekme" deger={['ip', 'ocp', 'reboot', 'retirement']} hedef={{ ip: '/ip-sorgu', ocp: '/ocp-sorgu', reboot: '/reboot-kontrolu', retirement: '/retirement' }}><BmwHubPage /></TasinanSekme>`,
+      ),
+    ).toBe(true);
     expect(ESKI_SEKMELER).toEqual(Object.keys(YENI_YOLLAR));
     // Yeni sayfalarin kitlesi BmwHub ile ayni (yalniz Admin); sira tasimasi acilista BMW Hub grubundan sonra calisir.
     for (const [id, etiket, yol] of [
@@ -276,27 +284,35 @@ describe('BMW Hub — menüdeki sorgu ve yük testi sayfaları', () => {
         ),
       );
     }
-    expect(setup).toMatch(/element_key: 'BmwHub',[\s\S]{0,200}roles: \['Admin'\],/);
-    expect(setup).toMatch(/await moveToBmwHub\(pool\);\s*await placeBmwHubFlowPages\(pool\);/);
+    expect(setup).toMatch(esnek(/element_key: 'BmwHub',[\s\S]{0,200}roles: \['Admin'\],/));
+    expect(setup).toMatch(
+      esnek(/await moveToBmwHub\(pool\);\s*await placeBmwHubFlowPages\(pool\);/),
+    );
     const ss = oku('src/components/SelfServicePage.tsx');
-    expect(ss).not.toMatch(/<IpCheckSection|<OpenshiftCheckSection/);
-    expect(ss).toMatch(/'ip-sorgu': '\/ip-sorgu'/);
-    expect(ss).toMatch(/'openshift-sorgu': '\/ocp-sorgu'/);
+    expect(ss).not.toMatch(esnek(/<IpCheckSection|<OpenshiftCheckSection/));
+    expect(ss).toMatch(esnek(/'ip-sorgu': '\/ip-sorgu'/));
+    expect(ss).toMatch(esnek(/'openshift-sorgu': '\/ocp-sorgu'/));
     // Sunucu: sorgu uclari yeni sayfa izniyle, yuk testi uclari YukTesti ya da eski sekme izniyle acilir.
     expect(oku('server/selfservice/index.cjs')).toMatch(
-      /\["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"\]/,
+      esnek(/\["IpSorgu", "OcpSorgu", "BmwHub", "Self Service"\]/),
     );
     const yt = oku('server/nginx-loadtest/index.cjs');
-    expect(yt).toMatch(/if \(await canSee\(user, 'YukTesti'\)\) return next\(\);/);
+    expect(yt).toMatch(esnek(/if \(await canSee\(user, 'YukTesti'\)\) return next\(\);/));
     expect(yt).toMatch(
-      /\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/,
+      esnek(
+        /\(await canSee\(user, 'NginxConsole'\)\) && \(await canSee\(user, 'tab:nginx:yuktesti'\)\)/,
+      ),
     );
     // Reboot Kontrolu / Retirement uclari: eski ServerHub kapisi + yeni sayfa anahtari (davranis: ek-sayfa-kapisi.test.js).
     expect(oku('server/retirement/index.cjs')).toMatch(
-      /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{ anahtar: 'Retirement', ana, canSee: gor\.canSee \}\)\);/,
+      esnek(
+        /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{ anahtar: 'Retirement', ana, canSee: gor\.canSee \}\)\);/,
+      ),
     );
     expect(oku('server/server-hub/index.cjs')).toMatch(
-      /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(\s*require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{\s*anahtar: 'RebootKontrolu',\s*ana,\s*canSee: gor\.canSee,\s*eslesir: rebootKontroluUcu,/,
+      esnek(
+        /const ana = gor\.requireVisiblePrefix\('ServerHub'\);\s*router\.use\(\s*require\('\.\.\/auth\/ek-sayfa-kapisi\.cjs'\)\.ekSayfaKapisi\(\{\s*anahtar: 'RebootKontrolu',\s*ana,\s*canSee: gor\.canSee,\s*eslesir: rebootKontroluUcu,/,
+      ),
     );
   });
 });

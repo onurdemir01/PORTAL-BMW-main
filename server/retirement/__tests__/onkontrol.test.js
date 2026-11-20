@@ -7,6 +7,8 @@
 // YALNIZ son on kontrolun izin listesiyle kosar; liste yoksa onay acilmaz.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -78,12 +80,12 @@ test('OK4 onayli STOP hedef basina onaylanan listeyi gonderir; on kontrol eski l
   );
   assert.match(
     ep,
-    /rt_hedefler: hedefler\.map\(\(h\) => \(\{[^}]*\.\.\.izinOf\(h\) \}\)\)/,
+    esnek(/rt_hedefler: hedefler\.map\(\(h\) => \(\{[^}]*\.\.\.izinOf\(h\) \}\)\)/),
     'toplu iste hedef basina izin gitmiyor',
   );
   assert.match(
     ep,
-    /app_path: t\.appPath \|\| '', \.\.\.izinOf\(t\) \}/,
+    esnek(/app_path: t\.appPath \|\| '', \.\.\.izinOf\(t\) \}/),
     'tek hedefte izin gitmiyor',
   );
   assert.match(
@@ -98,7 +100,9 @@ test('OK5 on kontrol sonucu (job-status ve tazele) ayrintiyi ve izin listesini y
   assert.match(js, /const \{ detailJson, izinJson \} = planKaydi\(result, jobId\);/);
   assert.match(
     js,
-    /detail_json = \$3, stop_izin_json = \$4, updated_at = GETUTCDATE\(\) WHERE id = \$5`, \[karar\.plan \? 'planned' : 'failed', msg\.slice\(0, 1000\), detailJson, karar\.plan \? izinJson : null, tid\]/,
+    esnek(
+      /detail_json = \$3, stop_izin_json = \$4, updated_at = GETUTCDATE\(\) WHERE id = \$5`, \[karar\.plan \? 'planned' : 'failed', msg\.slice\(0, 1000\), detailJson, karar\.plan \? izinJson : null, tid\]/,
+    ),
   );
   const tz = dilim("router.post('/:id/targets/:tid/refresh-status'", '// ── GERI AL');
   assert.match(
@@ -115,8 +119,8 @@ test('OK6 zamanlanmis STOP launcher izin listesini hedef basina betige tasir', (
     ln,
     /const izinOf = \(h\) => \(kind === 'stop' \? \{ izinler: h\.izinler \|\| \[\] \} : \{\}\);/,
   );
-  assert.match(ln, /\.\.\.izinOf\(h\) \}\)\)/);
-  assert.match(ln, /\.\.\.izinOf\(t\) \}/);
+  assert.match(ln, esnek(/\.\.\.izinOf\(h\) \}\)\)/));
+  assert.match(ln, esnek(/\.\.\.izinOf\(t\) \}/));
 });
 
 test('OK7 hedef satiri izin listesini yalniz son on kontrol isine aitse dondurur', () => {

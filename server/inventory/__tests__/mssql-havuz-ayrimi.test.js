@@ -15,6 +15,7 @@
 // Bu, depodaki "calismayan kapi" sinifidir: ekran/gunluk kapinin kapali
 // oldugunu soylerken kapi hic ateslenmiyor.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -165,7 +166,11 @@ test('MV4 Custom SQL ucu salt-okunur havuzu TERCIH eder, paylasilana yalniz DUSE
     /^\s*if\s*\(\s*!pool\s*\)\s*\{/,
     'paylasilan havuza dusus `!pool` ile korunmuyor — salt-okunur kapi olur',
   );
-  assert.doesNotMatch(dusus, /if\s*\(\s*(true|1|false|0|null|undefined)\s*\)/, 'sabit kosullu dal');
+  assert.doesNotMatch(
+    dusus,
+    esnek(/if\s*\(\s*(true|1|false|0|null|undefined)\s*\)/),
+    'sabit kosullu dal',
+  );
 });
 
 test('MV5 salt-okunur modul yazma kimligini HIC okumaz', () => {

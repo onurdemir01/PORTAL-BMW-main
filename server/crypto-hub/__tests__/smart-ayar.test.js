@@ -6,6 +6,8 @@
 // bos oldugundan /node-change prod kiraciyi 403'te durdurur, uc testi bu kapiya kor kalirdi.
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -398,7 +400,7 @@ test('SA10 kendi blok: token Crypto nun, yoksa sistem token i (OpsX in degil); b
     assert.equal(s.metadata.KONU, T);
     assert.equal(s.metadata.VAR, 'ops');
     assert.equal(s.metadata.CL, 'metaco_das', 'kendi blokta OpsX anahtar adi kullanildi');
-    assert.doesNotMatch(s.metadata.ACIKLAMA, /OpsX OpenShift onay akışı/);
+    assert.doesNotMatch(s.metadata.ACIKLAMA, esnek(/OpsX OpenShift onay akışı/));
     assert.match(s.metadata.ACIKLAMA, /NODE DEĞİŞİKLİĞİ \(rollout\/restart değil\)/);
     assert.ok(
       h.d.sira.includes('sablon:77') && !h.d.sira.includes('sablon:55'),
@@ -467,7 +469,7 @@ test('SA12 taslak onizleme: gercek cryptoNodeMetadata, Smart a gitmez, yazmaz', 
     assert.equal(r.body.metadata.VAR, 'ops');
     assert.equal(r.body.metadata.COK, 'true', 'gercek metaGorunum kullanilmadi');
     assert.match(r.body.metadata.ACIKLAMA, /NODE DEĞİŞİKLİĞİ/);
-    assert.doesNotMatch(r.body.metadata.ACIKLAMA, /OpsX OpenShift onay akışı/);
+    assert.doesNotMatch(r.body.metadata.ACIKLAMA, esnek(/OpsX OpenShift onay akışı/));
     assert.equal(h.d.smartCreated.length, 0);
     assert.equal(h.d.cryptoSmart, null, 'onizleme kayit yazdi');
     r = await o('');
@@ -938,7 +940,7 @@ test('DY8 ACILIYOR 10 dk: onaysiz satir bilet aramaz, Smart metni yazmaz', () =>
     const smart = yeni({});
     await h.NODE.nodeSonuclariniTara();
     assert.equal(onaysiz.sonuc_kod, 'ACILIS_KESILDI');
-    assert.doesNotMatch(JSON.parse(onaysiz.sonuc_json).not, /Smart'ta kayıt/);
+    assert.doesNotMatch(JSON.parse(onaysiz.sonuc_json).not, esnek(/Smart'ta kayıt/));
     assert.match(JSON.parse(smart.sonuc_json).not, /Smart'ta kayıt açılmış olabilir/);
     assert.equal(
       h.d.logs.filter((s) => /smart_tickets WHERE pending_launch_json/.test(s)).length,
@@ -1020,7 +1022,7 @@ test('DY11b runner is baslamadi bilgisini kaybetmez: token hatasi postOncesi, JS
   const istek = r.slice(r.indexOf('function awxRequestToServer('), r.indexOf('// Kirpma sonrasi'));
   assert.match(
     istek,
-    /AWX yanıtı JSON değil[^\n]*\n\s*\{ httpStatus: res\.statusCode \}/,
+    /AWX yanıtı JSON değil[^\n]*\n\s*\),\n\s*\{ httpStatus: res\.statusCode \}/,
     'JSON olmayan yanit kodu kayboldu',
   );
 });
@@ -1070,7 +1072,7 @@ test('DY14 yutma korumasi isi iptal edemedi: job baglanir, metin dogru, sonuc ok
     assert.equal(r.body.blocked, 'crypto_node_dogrudan_belirsiz');
     assert.equal(r.body.jobId, 4242);
     assert.match(r.body.message, /iş #4242 iptal edilemedi/);
-    assert.doesNotMatch(r.body.message, /yanıtı alınamadı/);
+    assert.doesNotMatch(r.body.message, esnek(/yanıtı alınamadı/));
     const row = h.d.rows[0];
     assert.equal(row.durum, 'CALISIYOR');
     assert.equal(row.awx_job_id, 4242, 'kosan is satira baglanmadi');

@@ -69,7 +69,10 @@ const YAML_UC = [
 test('CR1 anahtar: deger (index + resources) gruplari ayni, kotu girdide hizli', () => {
   const noktalar = [
     [H.literalAl(INDEX, 'const m = l.match('), /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/],
-    [H.literalAl(RES, '\n    const k = '), /^(\s*-?\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/],
+    [
+      H.literalAl(RES, 'regex-dogrusal).\n    const k = '),
+      /^(\s*-?\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/,
+    ],
   ];
   for (const [yeni, eski] of noktalar) {
     H.esdeger({

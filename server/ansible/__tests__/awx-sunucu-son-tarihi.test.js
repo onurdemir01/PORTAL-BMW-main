@@ -11,6 +11,7 @@
 // damla damla veri gonderen bir sunucu onlari her parcada sifirlar. Ayrica
 // token alimi tek basina zincirleniyor (OAuth2 iki yol + /api/v2/tokens/).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -167,7 +168,7 @@ test('SN6 recent-jobs HER sunucuyu son tarihe bagliyor', () => {
     /servers\.map\(\(server\) =>\s*\n?\s*sonTarihli\(/,
     'sunucular son tarihe baglanmamis',
   );
-  assert.doesNotMatch(d, /if\s*\(\s*(false|0|null|undefined)\s*\)/, 'olu dal');
+  assert.doesNotMatch(d, esnek(/if\s*\(\s*(false|0|null|undefined)\s*\)/), 'olu dal');
 });
 
 test('SN7 son tarih ISTEMCININ YOKLAMA ARALIGINDAN kucuk', () => {

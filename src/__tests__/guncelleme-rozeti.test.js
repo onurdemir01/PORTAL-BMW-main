@@ -5,6 +5,7 @@
 //   GR1 rozet renkleri TOKEN'dan (iki temada ayni hafiflik; sabit renk koyu temada okunmaz)
 //   GR2 Nginx Hub'in tarih gosteren yerleri rozeti GERCEKTEN kullaniyor (import + render)
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -17,7 +18,7 @@ const oku = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 test('GR1 rozet renkleri token, sabit renk yok', () => {
   const s = oku('src/components/common/GuncellemeRozeti.tsx');
   const kod = s.replace(/^\s*\/\/.*$/gm, '');
-  assert.doesNotMatch(kod, /#[0-9a-fA-F]{3,8}\b|rgba?\(/, 'sabit renk var');
+  assert.doesNotMatch(kod, esnek(/#[0-9a-fA-F]{3,8}\b|rgba?\(/), 'sabit renk var');
   assert.match(kod, /background: 'var\(--accent-bg\)'/, 'hafif aksan zemini yok');
 });
 
@@ -43,7 +44,10 @@ test('GR2 Nginx Hub tarih yerleri rozeti kullaniyor', () => {
   // Eski soluk bicim geri gelmesin
   assert.doesNotMatch(
     oku('src/components/nginx_console/SourceNote.tsx'),
-    /<b[^>]*>son tarama \{scanDate\}<\/b>/,
+    esnek(/<b[^>]*>son tarama \{scanDate\}<\/b>/),
   );
-  assert.doesNotMatch(oku('src/components/denetim/NginxEnvanteri.tsx'), /son güncelleme\{' '\}/);
+  assert.doesNotMatch(
+    oku('src/components/denetim/NginxEnvanteri.tsx'),
+    esnek(/son güncelleme\{' '\}/),
+  );
 });

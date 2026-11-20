@@ -13,6 +13,7 @@
 // Bu testler yardimciyi GERCEKTEN kosturur (sahte HTTP sunucusuyla) ve cagri
 // yerlerinin onu kullandigini kilitler.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -223,7 +224,7 @@ test('BR8 OCP baglanti helperi akan govdeyi sinirsiz biriktirmiyor', () => {
   assert.match(helper, /maxBytes:\s*256 \* 1024/, 'OCP probe bayt tavani yok');
   assert.doesNotMatch(
     helper,
-    /httpRes\.on\('data',[\s\S]{0,160}data \+= c/,
+    esnek(/httpRes\.on\('data',[\s\S]{0,160}data \+= c/),
     'OCP probe govdeyi yeniden sinirsiz biriktiriyor',
   );
 });

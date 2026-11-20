@@ -5,6 +5,7 @@
 // da Admin ekranindan hic yetkilendirilemez. YTE-6: HAR dosyasi tarayicidan CIKMAZ - sunucuya giden govdede
 // dosya metni / adi yok, ayristirici ag cagrisi yapmaz.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -26,9 +27,10 @@ function blok(metin, bas, son, ad) {
 
 test('YTE-1 sayfa: Tab birlesimi, TABS, HUB_TABS, kaynak notu ve gorunurluk kapisi', () => {
   const page = oku(...NGINX, 'NginxConsolePage.tsx');
-  const tabTipi = page.split('\n').find((s) => s.startsWith('type Tab = '));
+  // Birlesim tek ya da cok satirda olabilir (Prettier): bildirim ';'e kadar okunur.
+  const tabTipi = blok(page, 'type Tab =', ';', 'Tab');
   assert.ok(tabTipi && tabTipi.includes("'yuktesti'"), 'Tab birlesiminde yuktesti yok');
-  const tabs = page.split('\n').find((s) => s.startsWith('const TABS: readonly Tab[] = ['));
+  const tabs = blok(page, 'const TABS: readonly Tab[] = [', '];', 'TABS');
   assert.ok(
     tabs && tabs.includes("'yuktesti'"),
     "TABS dizisinde yuktesti yok (?tab=yuktesti baglantisi Dashboard'a duser)",
@@ -41,14 +43,21 @@ test('YTE-1 sayfa: Tab birlesimi, TABS, HUB_TABS, kaynak notu ve gorunurluk kapi
   );
   assert.match(
     oku('src', 'App.tsx'),
-    /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi"><NginxConsolePage \/><\/TasinanSekme>/,
+    esnek(
+      /<TasinanSekme param="tab" deger="yuktesti" hedef="\/yuk-testi">\s*<NginxConsolePage \/>\s*<\/TasinanSekme>/,
+    ),
     'eski ?tab=yuktesti yonlenmiyor',
   );
   // Onek eslesmesi: kapi + isAdmin sart; sonradan eklenen prop'lar (kullaniciAdi, 2026-11) bekciyi bozmasin.
   assert.ok(
-    page.includes(
-      "{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin}",
-    ),
+    iceriyor(
+      page,
+      "{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && (<YukTestiTab isAdmin={isAdmin}",
+    ) ||
+      iceriyor(
+        page,
+        "{tab === 'yuktesti' && canSee('tab:nginx:yuktesti') && <YukTestiTab isAdmin={isAdmin}",
+      ),
     'sekme icerigi gorunurluk kapisindan gecmiyor ya da isAdmin verilmiyor',
   );
   assert.ok(
@@ -83,7 +92,7 @@ test('YTE-2 sunucu: NGINX_TAB_KEYS ve DB seed (varsayilan KAPALI, ebeveyn NginxC
 
 test('YTE-3 kaynak notu: kendi kaynak anahtari; var olan bir AWX isini sahiplenmez', () => {
   const note = oku(...NGINX, 'SourceNote.tsx');
-  const tip = note.split('\n').find((s) => s.startsWith('export type SourceKey = '));
+  const tip = blok(note, 'export type SourceKey =', ';', 'SourceKey');
   assert.ok(tip && tip.includes("'yuktesti'"), 'SourceKey birlesiminde yuktesti yok');
   const kaynaklar = blok(note, 'const SOURCES: Record<SourceKey', '\n};', 'SOURCES');
   const yuk = blok(kaynaklar, 'yuktesti: {', '},', 'yuktesti kaynagi');

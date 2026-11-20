@@ -4,6 +4,7 @@
 // Kurumsal AI kod incelemesi bulgu #9 (SQL string interpolasyonu), #14 (appendMessage
 // round-trip sayisi), #28 (ham OUTPUT INSERTED yerine RETURNING) icin regresyon kilidi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -23,7 +24,7 @@ test('createConversation(): RETURNING id kullanilir, ham OUTPUT INSERTED DEGIL',
   assert.match(captured.sql, /RETURNING id/i);
   assert.doesNotMatch(
     captured.sql,
-    /OUTPUT INSERTED/i,
+    esnek(/OUTPUT INSERTED/i),
     'adaptorun cevirdigi tasinabilir sozdizimi kullanilmali',
   );
   assert.equal(captured.params[0], 'jdoe', 'username lowercase saklanir');
@@ -54,7 +55,7 @@ test('usageSummary(): days SQL metnine gomulmez, baglanmis parametre olarak gece
     return { rows: [] };
   });
   await history.usageSummary(14);
-  assert.doesNotMatch(captured.sql, /-14,/, 'days degeri metne interpolasyonla gomulmemeli');
+  assert.doesNotMatch(captured.sql, esnek(/-14,/), 'days degeri metne interpolasyonla gomulmemeli');
   assert.match(captured.sql, /DATEADD\(day, -\$1,/i);
   assert.equal(captured.params[0], 14);
 });

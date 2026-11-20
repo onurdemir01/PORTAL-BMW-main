@@ -4,6 +4,7 @@
 // SORUNSUZ ancak son goruntu OLCULDU ve once ile farki yoksa. Duzeltme JVM/web baslatir ve durdurur;
 // onaysiz baslamaz.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -757,7 +758,7 @@ test('RC15 2026-11-15 "nasil bulduysan oyle birak": hala calisan yeni URUN porta
   assert.doesNotMatch(d.KALDI.neden.join(' '), /dokunulmadı/);
   assert.doesNotMatch(
     d.KALDI.neden.join(' '),
-    /otomasyon KAPATTI/,
+    esnek(/otomasyon KAPATTI/),
     'kapatilamayan urun "KAPATTI" diye yazildi',
   );
   // v3 B2 ("kapatip, kontrol edilecek yaz"): kapatilan urun fark kalmasa da SORUNSUZ sayilmaz -> kontrol
@@ -940,14 +941,14 @@ test("RC17 v4 kapi: bos once HICBIR urunu KORUMAZ (web + CTG/JBoss/WAS kapatilir
     n,
     /reboot sonrası çalışan her ürün \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) reboot öncesi haline \(kapalı\) döndürülür ve kontrol edilecek/,
   );
-  assert.doesNotMatch(n, /yalnız web|dokunulmadı/);
-  assert.doesNotMatch(n, /hiçbir şey açılıp kapatılmadı/);
+  assert.doesNotMatch(n, esnek(/yalnız web|dokunulmadı/));
+  assert.doesNotMatch(n, esnek(/hiçbir şey açılıp kapatılmadı/));
   const p = kontrolNedenleri(null, {
     son_goruntu: ['BOOT|b2||'],
     plan: ['BILGI|BOS|||x'],
     betik_surum: 4,
   }).join(' ');
-  assert.doesNotMatch(p, /hiçbir şey açılıp kapatılmadı/);
+  assert.doesNotMatch(p, esnek(/hiçbir şey açılıp kapatılmadı/));
 });
 
 test('RC18 v3 B2: otomasyonun KAPATTIGI URUN sunucuyu kontrol yapar (fark kalmasa da); JVM durdurma ve kapanmayan urun bu nedeni uretmez', () => {
@@ -1673,7 +1674,7 @@ test('RC26 v4 yoneticiOzeti: yuzdeler ve paydalar (sunucu / oge / otomasyon / il
   );
   assert.doesNotMatch(
     y.metin,
-    /sunucu kontrol bekliyor/,
+    esnek(/sunucu kontrol bekliyor/),
     'birakilan kontrol notlu sunucu "kontrol bekliyor" diye de sayildi',
   );
   assert.match(
@@ -1969,7 +1970,10 @@ test('RC28 inceleme Y7: "Bulundugu gibi birakildi" = kalan 0 + korunan calisan o
     /Karşılaştırılabilen 1 sunucudan 1 tanesi reboot öncesi haliyle bırakıldı \(%100\) \(bunlardan 1 tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var\)\./,
   );
   // kontrol notu olmayan birakilanda ek yazilmaz
-  assert.doesNotMatch(yoneticiOzeti({ T: TEMIZ }, ['T'], { T: onceR }).metin, /kontrol notu var/);
+  assert.doesNotMatch(
+    yoneticiOzeti({ T: TEMIZ }, ['T'], { T: onceR }).metin,
+    esnek(/kontrol notu var/),
+  );
 });
 
 test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI" notlu; surum 3 metni; BOOT\'suz once karsilastirilamaz; sayac esitligi', () => {
@@ -2048,7 +2052,7 @@ test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI"
     [v3.sunucu.birakilan, v3.sunucu.birakilanKontrolNotlu, v3.sunucu.kontrolBekleyen],
     [0, 0, 1],
   );
-  assert.doesNotMatch(v3.metin, /otomasyon fazladan çalışan ürünü kapattı/);
+  assert.doesNotMatch(v3.metin, esnek(/otomasyon fazladan çalışan ürünü kapattı/));
   // 2026-11-16: ayni kayit surum 3 ile -> betik eskiligi bu sunucuda etkisiz, bulundugu gibi birakildi (kontrol beklemez)
   const U3 = r([...v, 'URUN|RHA||'], [...v, 'URUN|RHA||'], [], { betik_surum: 3 });
   const u3 = yoneticiOzeti({ U3 }, ['U3'], { U3: onceR });
@@ -2060,7 +2064,7 @@ test('RC29 inceleme B1/B2/B4: kontrol notlu birakilan yalniz "otomasyon KAPATTI"
     n,
     /otomatik kapatılması gerekiyordu: CTG — AWX'teki betik eski \(sürüm 3\): bu koşudaki betik \(sürüm 3\) ürün kapatıp yeniden deniyordu, ancak reboot öncesi görüntüsü boş sunucuda yalnız web ürünlerini/,
   );
-  assert.doesNotMatch(n, /kapatma yoktu|YOKTU/);
+  assert.doesNotMatch(n, esnek(/kapatma yoktu|YOKTU/));
 });
 
 test('RC30 2026-11-16 uretim (104 sunucu "hepsi kontrol gerekli"): betik eski SUNUCU BAZINDA ve ETKIYE gore; surum 3 yalniz bos once + calisan CTG/JBoss/WAS', () => {

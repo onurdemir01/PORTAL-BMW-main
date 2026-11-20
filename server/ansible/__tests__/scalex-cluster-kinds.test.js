@@ -11,6 +11,7 @@
 // ifade DOSYADAN OKUNUP degerlendirilir. Testin icine kopyalanmis bir ifade,
 // dosya degistiginde sessizce eskir ve bekci kendi kopyasini korurdu.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -208,7 +209,7 @@ test('CK7 `default(x, true)` boolean bicimi kullanilmiyor', () => {
   assert.match(ifade, /\|\s*default\(/, 'geri dusus hic yok — eski portal kirilir');
   assert.doesNotMatch(
     ifade,
-    /\|\s*default\([^)]*,\s*(true|True|1)\s*\)/,
+    esnek(/\|\s*default\([^)]*,\s*(true|True|1)\s*\)/),
     'boolean `default` bicimi: kasitli bos deger birlesik listeye geri duser',
   );
 });

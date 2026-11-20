@@ -10,6 +10,7 @@
 //
 // Bu tur SUNUCUYA DOKUNMUYOR — yalnizca ekran. Bekciler de bunu kilitliyor.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -67,7 +68,7 @@ test('IG4 CSV EKRANDA GORULENI disa aktarir (ham listeyi degil)', () => {
   assert.ok(i > 0, 'CSV disa aktarma yok');
   const csv = d.slice(i, d.indexOf('return (', i));
   assert.match(csv, /suzulmus\.map/, 'CSV suzulmemis listeyi veriyor — ekranla tutarsiz');
-  assert.doesNotMatch(csv, /\brows\.map\(/, 'CSV ham listeyi veriyor');
+  assert.doesNotMatch(csv, esnek(/\brows\.map\(/), 'CSV ham listeyi veriyor');
 });
 
 test('IG5 200 satir KIRPMASI kullaniciya soylenir', () => {

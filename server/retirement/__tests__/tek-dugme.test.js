@@ -11,6 +11,8 @@
 //     listede ortam kirilimi
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -158,11 +160,11 @@ test('TD10 on kontrol web sunucularinda Server Hub taramasi baslatir; DUSERSE on
   // Yalniz WEB sunuculari (t.web), JBoss hedefi degil
   assert.match(
     blok,
-    /\(h\.web \|\| \[\]\)\.map\(\(w\) => String\(w\.host/,
+    esnek(/\(h\.web \|\| \[\]\)\.map\(\(w\) => String\(w\.host/),
     'tarama web sunucularini hedeflemiyor',
   );
   assert.match(blok, /\{ target_hosts: webHosts\.join\(','\) \}/);
-  assert.match(blok, /TRAFIK_REGISTRY_KEY\)/);
+  assert.match(blok, esnek(/TRAFIK_REGISTRY_KEY\)/));
   // Hata yutulmaz ama on kontrolu de dusurmez: try/catch + olay + yanitta sebep
   assert.match(
     blok,
@@ -171,7 +173,7 @@ test('TD10 on kontrol web sunucularinda Server Hub taramasi baslatir; DUSERSE on
   );
   assert.match(
     ep,
-    /res\.json\(\{ ok: true, \.\.\.r, planOnly: !confirmed, trafikTarama,/,
+    esnek(/res\.json\(\{ ok: true, \.\.\.r, planOnly: !confirmed, trafikTarama,/),
     'sonuc ekrana tasinmiyor',
   );
   // Tarama isi hedefe yazilmaz: job-status yalniz hedefin KENDI isini sonuclandirir
@@ -254,7 +256,7 @@ test('TD7 sertifika envanteri eslerse ONCELIK onda; Server Hub yalniz yedek', ()
 test('TD8 liste ortam kirilimi TEK sorgu (kayit basina sorgu yok) ve PROD ayrisir', () => {
   const ep = ucDilimi("router.get('/', async", "router.get('/:id'");
   assert.equal(
-    (ep.match(/FROM retirement_targets`\)/g) || []).length,
+    (ep.match(/FROM retirement_targets`,?\s*\)/g) || []).length,
     1,
     'ortam sorgusu yok ya da birden cok',
   );
@@ -305,12 +307,12 @@ test('TD12 Akis paneli web adimini KANITSIZ "bitti" gostermez', () => {
   const blok = ak.slice(ak.indexOf('const webDurum: Durum ='), ak.indexOf('const webBilgi'));
   assert.match(
     blok,
-    /sayi\('running'\) > 0 \|\| sayi\('restoring'\) > 0 \? 'suruyor'/,
+    esnek(/sayi\('running'\) > 0 \|\| sayi\('restoring'\) > 0 \? 'suruyor'/),
     "'running' is suruyor sayilmiyor",
   );
   assert.match(
     blok,
-    /!BILINEN\.has\(w\.status\)\) \? 'bilinmiyor'/,
+    esnek(/!BILINEN\.has\(w\.status\)\) \? 'bilinmiyor'/),
     "tanimadigi durum hala 'bitti'ye dusuyor",
   );
   const sira = ['running', 'failed', 'bilinmiyor', "'bitti'"].map((k) => blok.indexOf(k));
@@ -328,7 +330,9 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   );
   assert.match(
     ep,
-    /if \(!confirmed\) for \(const h of hedefler\) if \(\(h\.web \|\| \[\]\)\.length\) vhostPlanlar\[h\.id\] = await vhostPlanBaslat\(req, id, h\.id, h\.web\);/,
+    esnek(
+      /if \(!confirmed\) for \(const h of hedefler\) if \(\(h\.web \|\| \[\]\)\.length\) vhostPlanlar\[h\.id\] = await vhostPlanBaslat\(req, id, h\.id, h\.web\);/,
+    ),
     "vhost plani onayli STOP'ta da kosuyor ya da on kontrolde yok",
   );
   // Plan isleri ORTAK yardimcida (on kontrol + yeniden deneme onizlemesi ayni kod)
@@ -340,7 +344,7 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   assert.match(blok, /action: 'apache_retire_vhost'/, 'plan web adimiyla AYNI eylemi kullanmiyor');
   assert.match(blok, /plan_only: true/, 'plan DEGIL gercek kapatma baslatiliyor');
   assert.ok(!/plan_only: false/.test(blok), 'onizlemede vhost GERCEKTEN kapatilabiliyor');
-  assert.match(blok, /'server_hub_fix'\)/);
+  assert.match(blok, esnek(/'server_hub_fix'\)/));
   // Kullanici (2026-10-08): "satirlari 2 kere yazmis gibi" - ayni vhost iki kez planlanmaz.
   // 2026-10-23: tekillestirme web adimiyla ORTAK (webTekille - goreli/mutlak conf yazimi da ayni dosya).
   assert.match(
@@ -352,12 +356,16 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   // urun kapisini kaldiran mutasyonu GORMUYORDU (V2, ilk tur).
   assert.match(
     blok,
-    /if \(!APACHE_URUN\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/,
+    esnek(
+      /if \(!APACHE_URUN\.has\(String\(w\.product \|\| ''\)\.toUpperCase\(\)\)\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/,
+    ),
     'NGINX icin is baslatiliyor (urun kapisi yok)',
   );
   assert.match(
     blok,
-    /if \(!w\.confFile \|\| !w\.serverName\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/,
+    esnek(
+      /if \(!w\.confFile \|\| !w\.serverName\) \{ out\.push\(\{ \.\.\.kim, ok: false, elle: true/,
+    ),
     'conf/ServerName bilinmeyen vhost icin is baslatiliyor',
   );
   assert.match(
@@ -368,7 +376,7 @@ test('TD13 on kontrol KAPATILACAK vhost blogunu gosterir: ayni eylem PLAN kipind
   const js = ucDilimi("router.get('/:id/targets/:tid/job-status", 'router.');
   assert.match(
     js,
-    /extractStatsKey\(statusInfo\.artifacts, 'server_hub_fix_result'\)/,
+    esnek(/extractStatsKey\(statusInfo\.artifacts, 'server_hub_fix_result'\)/),
     'plan sonucu (blok) ekrana tasinmiyor',
   );
 });

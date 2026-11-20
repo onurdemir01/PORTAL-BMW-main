@@ -17,6 +17,7 @@
 // dogruluyordu — kalip dogruydu, URETILEN DEGER gecersizdi. Sekli test etmek
 // gecerliligi test etmek DEGILDIR. Bu test artik degerin kendisini ayristirir.
 'use strict';
+const { esnek, iceriyor, konum } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,7 +53,9 @@ test('terminal durum ucluleri BOSLUKLU', () => {
   const src = strip(
     fs.readFileSync(path.join(ROOT, 'components/common/AnsibleLogTerminal.tsx'), 'utf8'),
   );
-  const triples = [...src.matchAll(/of\("--term-[a-z]+",\s*"([^"]+)"/g)].map((m) => m[1]);
+  const triples = [...src.matchAll(/of\(\s*['"]--term-[a-z]+['"],\s*['"]([^'"]+)['"]/g)].map(
+    (m) => m[1],
+  );
   assert.ok(triples.length >= 5, `beklenenden az uclu bulundu: ${triples.length}`);
   for (const t of triples) {
     assert.ok(!t.includes(','), `virgullu uclu: "${t}" -> rgb(${t} / 0.33) GECERSIZ`);

@@ -8,6 +8,8 @@
 //   GD5 cok sayfali Hub grubunun basligi (BMW Hub) diger Hub cerceveleriyle ayni hizada
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -56,7 +58,10 @@ test('GD1 menu metni eski x konumunda', () => {
   );
   assert.match(bas, /width: calc\(100% - 1rem\)/, 'baslik kenar bosluguyla tasar');
   // Tek ogeli grup (Genel, Performance...) satir ici dolguyla: 8 + 12 = 20 px.
-  assert.match(oku('components/layout/PageNav.tsx'), /style=\{\{ paddingLeft: "0\.75rem" \}\}/);
+  assert.match(
+    oku('components/layout/PageNav.tsx'),
+    esnek(/style=\{\{ paddingLeft: "0\.75rem" \}\}/),
+  );
 });
 
 test('GD2 etkin oge aksan cizgisi icerde; Hub ogesine binmez', () => {
@@ -72,9 +77,14 @@ test('GD3 masthead arama kutusu: kisayol etiketi, dar ekranda ikon, gizleme sarm
   const M = oku('components/layout/Masthead.tsx');
   assert.match(
     M,
-    /<span className="hidden md:inline-flex">\s*<button type="button" className="pf-masthead-ara"/,
+    esnek(
+      /<span className="hidden md:inline-flex">\s*<button type="button" className="pf-masthead-ara"/,
+    ),
   );
-  assert.match(M, /<span className="inline-flex md:hidden">\s*<button className="pf-masthead-btn"/);
+  assert.match(
+    M,
+    esnek(/<span className="inline-flex md:hidden">\s*<button className="pf-masthead-btn"/),
+  );
   assert.match(M, /<kbd>\{kisayol\}<\/kbd>/);
   assert.equal(
     (M.match(/onClick=\{openSearch\}/g) || []).length,
@@ -87,7 +97,7 @@ test('GD3 masthead arama kutusu: kisayol etiketi, dar ekranda ikon, gizleme sarm
       assert.doesNotMatch(m[1], /\b(hidden|(sm|md|lg):)/, m[1]);
   }
   const ara = kural('.pf-masthead-ara');
-  assert.doesNotMatch(ara, /#[0-9a-f]{3,6}\b/i, 'sabit renk');
+  assert.doesNotMatch(ara, esnek(/#[0-9a-f]{3,6}\b/i), 'sabit renk');
 });
 
 // Ogeler arasina dikey bosluk eklenirse menu asagi kayar (20 oge x 2 px); alisilmis satirlar bozulur.

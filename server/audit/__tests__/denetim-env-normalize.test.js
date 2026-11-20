@@ -72,7 +72,7 @@ test('B5: denetim kaynak dosyalarinda HAM NUL bayti yok', () => {
 
 test('B5: ayirici hala U+0000 (davranis degismedi, yalnizca yazimi degisti)', () => {
   const ngx = fs.readFileSync(NGINX_LOC, 'utf8');
-  const m = ngx.match(/\.map\(\(x\) => String\(x \|\| ''\)\)\.join\('(.*?)'\);/);
+  const m = ngx.match(/\.map\(\(x\) => String\(x \|\| ''\)\)\s*\.join\('(.*?)'\)/);
   assert.ok(m, 'keyOf ayiricisi bulunamadi');
   assert.equal(m[1], '\\u0000', 'ayirici kacis dizisiyle yazilmali');
   assert.equal(

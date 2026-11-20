@@ -49,6 +49,7 @@ import {
 } from '../tabs/SelfServisTasimaPencereleri';
 import { servisinIsiMi } from '@/utils/ssBaglar';
 import type { SsTasimaSatiri } from '@/api/ssTasimaApi';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 function satir(ek: Partial<SsTasimaSatiri>): SsTasimaSatiri {
   return {
@@ -228,9 +229,9 @@ describe('Self Servis Taşıma', () => {
 
   it('UI3 sekme Otomasyon bölümünde', () => {
     const sayfa = readFileSync(join(__dirname, '..', 'AdminPage.tsx'), 'utf8');
-    expect(sayfa).toMatch(/\{ id: 'sstasima', label: 'Self Servis Taşıma'/);
-    expect(sayfa).toMatch(/ids: \['playbooks', 'sstasima', 'ansible'/);
-    expect(sayfa).toMatch(/\{activeTab === 'sstasima' && <SelfServisTasima \/>\}/);
+    expect(sayfa).toMatch(esnek(/\{ id: 'sstasima', label: 'Self Servis Taşıma'/));
+    expect(sayfa).toMatch(esnek(/ids: \['playbooks', 'sstasima', 'ansible'/));
+    expect(sayfa).toMatch(esnek(/\{activeTab === 'sstasima' && <SelfServisTasima \/>\}/));
   });
   it('UI4 hedef başka yere bağlıysa survey düğmesi yok, toplu survey atlar; toplu yol hash gönderir', async () => {
     const bagli = satir({

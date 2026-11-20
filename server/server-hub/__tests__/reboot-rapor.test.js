@@ -3,6 +3,7 @@
 // Kullanici: "ekip arkadasimin emeklerinin kaybolmasini istemiyorum; HTML raporunu Portal'da bir
 // butona tiklaninca goruntulenebilir yap." Tasarim patch-aggregate-report.py ile ayni, veri Portal'in.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -508,7 +509,7 @@ test('RR14 inceleme 2026-11-15: SKIP "eski betik" denmez; otomasyon ozeti durdur
   const ctg = sk.bulgu.find((b) => b.servis === 'CTG');
   assert.equal(ctg?.durum, 'NEW_URUN_KALAN');
   assert.match(ctg.aciklama, /kapatma anında zaten kapalıydı .*sonra yeniden kalktı/);
-  assert.doesNotMatch(ctg.aciklama, /eski betik/);
+  assert.doesNotMatch(ctg.aciklama, esnek(/eski betik/));
   // R2 #6: otomasyon ozeti - durdur OK / FAIL komut sayilir, SKIP sayilmaz
   const oz = sunucuDegerlendir(once, {
     son_olculdu: true,
@@ -651,8 +652,8 @@ test('RR15 v3: kapatilan urun WARNING (kontrol edilecek), AWX betigi eskiyse BET
     bos.bulgu[0].aciklama,
     /reboot sonrası çalışan her ürün \(Nginx\/Apache\/IHS\/CTG\/JBoss\/WAS\) reboot öncesi haline \(kapalı\) döndürülür, kapatılan ürün kontrol edilecek/,
   );
-  assert.doesNotMatch(bos.bulgu[0].aciklama, /yalnız web|dokunulmaz/);
-  assert.doesNotMatch(bos.bulgu[0].aciklama, /hiçbir şey açılıp kapatılmadı/);
+  assert.doesNotMatch(bos.bulgu[0].aciklama, esnek(/yalnız web|dokunulmaz/));
+  assert.doesNotMatch(bos.bulgu[0].aciklama, esnek(/hiçbir şey açılıp kapatılmadı/));
   // tek kaynak: raporun otomasyon sinifi reboot-check.cjs sonraDegerlendir ile ayni
   const { sonraDegerlendir } = require('../reboot-check.cjs');
   const sonraS = {
@@ -722,7 +723,7 @@ test('RR16 inceleme F1/F3: Sorunsuz / Kontrol gerekli / Sorun kaldi filtreleri S
   assert.match(h, /#f-sorunsuz:checked ~ table\.fl tr\.r:not\(\.d-sorunsuz\)\{display:none\}/);
   assert.doesNotMatch(
     h,
-    /:not\(\.s-(WARNING|PROBLEM)\)/,
+    esnek(/:not\(\.s-(WARNING|PROBLEM)\)/),
     '"Kontrol gerekli" / "Sorun kaldi" rapor bulgu sinifina bagli kaldi',
   );
   // G: olculemedi -> Sorun kaldi grubu; otomasyon basarisiz (dogrulanamadi), nedeni yazili
@@ -818,7 +819,7 @@ test('RR17 v4 once-bos UYARI DEGIL: notr "Karsilastirma disi" bulgu / sunucu son
     h,
     /<span class='pill neutral'[^>]*>Karşılaştırma dışı \(önce çalışan uygulama yoktu\)<\/span>/,
   );
-  assert.doesNotMatch(h, /Önce görüntüsü boş<\/span>/, 'eski uyari etiketi kaldi');
+  assert.doesNotMatch(h, esnek(/Önce görüntüsü boş<\/span>/), 'eski uyari etiketi kaldi');
   assert.match(h, /#f-kapsamdisi:checked ~ table\.fl tr\.r:not\(\.d-kapsam_disi\)\{display:none\}/);
   // Otomasyon Ozeti son durum satirinda ayri kutu
   assert.equal((h.match(/>1<\/span><span[^>]*>Karşılaştırma dışı</g) || []).length, 2);
@@ -830,7 +831,7 @@ test('RR17 v4 once-bos UYARI DEGIL: notr "Karsilastirma disi" bulgu / sunucu son
     yalniz,
     /Kritik sorun ve uyarı yok; 1 sunucu karşılaştırma dışı \(reboot öncesi çalışan uygulama yoktu\)\./,
   );
-  assert.doesNotMatch(yalniz, /sunucuda uyarı var/);
+  assert.doesNotMatch(yalniz, esnek(/sunucuda uyarı var/));
 });
 
 test('RR18 v4 sayi koprusu: Otomatik Duzeltme "N komut · M sunucu" + OK-ama-hedefte-degil; Otomasyon Ozeti ayni sayilari soyler', () => {
@@ -1076,7 +1077,7 @@ test('RR20 v4 inceleme Y2/Y5/Y6/Y11: urunle kalkan JVM otomatik; karsilastirma d
     ),
   );
   assert.match(kt, /<span class='pill neutral'[^>]*>Önce görüntüsü boş \(bilgi\)<\/span>/);
-  assert.doesNotMatch(kt, />Karşılaştırma dışı \(önce çalışan uygulama yoktu\)</);
+  assert.doesNotMatch(kt, esnek(/>Karşılaştırma dışı \(önce çalışan uygulama yoktu\)</));
   assert.equal(kutuSay(kt, 'Karşılaştırma dışı'), 0);
   // Y6: "Sorun kaldi" yalniz sorunlu; olculemeyen ayri kutu (paragrafla ayni tanim)
   const onceR = ['BOOT|b1||', 'SURUM|2||', 'URUN|RHA||'];
@@ -1246,7 +1247,7 @@ test('RR22 inceleme 2026-11-16 B1/B2: rapor betik-eski karari sonraDegerlendir i
   assert.ok(!(sd.X.neden || []).some((x) => /betiği eski/.test(x)));
   const h = raporHtml(k);
   assert.doesNotMatch(h, /class='betik-eski'/);
-  assert.doesNotMatch(h, /BETIK_ESKI|AWX&#39;teki reboot_check betiği eski/);
+  assert.doesNotMatch(h, esnek(/BETIK_ESKI|AWX&#39;teki reboot_check betiği eski/));
   // ayni sunucu goruntu_ok=true ise (ham once ayni) bant ve bulgu VAR -> fark yalniz once kaynagindan
   const k2 = {
     ...k,
@@ -1325,7 +1326,7 @@ test('RR23 ozet tam kilit; FAIL + kendiliginden duzelme; bilinmiyor; e-posta gor
   // lejant her kovayi panele baglar
   for (const kv of ['mudahalesiz', 'duzeltildi', 'yapilamadi'])
     assert.match(h, new RegExp(`<a class='lj' href='#d-${kv}'>`));
-  assert.doesNotMatch(h, /<a class='lj' href='#d-hatali'>/, 'sifir kova lejantta olmaz');
+  assert.doesNotMatch(h, esnek(/<a class='lj' href='#d-hatali'>/), 'sifir kova lejantta olmaz');
   // cubuk: her segment var olan bir panele gider, genislikler toplami 100
   const seg = [...h.matchAll(/<a class='seg' href='#(d-[a-z]+)'[^>]*style='width:([\d.]+)%/g)];
   assert.ok(seg.length >= 3);

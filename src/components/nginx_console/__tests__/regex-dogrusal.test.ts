@@ -68,7 +68,7 @@ describe('Sonar S8786 dogrusal desenler (NGINX Console)', () => {
   });
 
   it('NC3 nedenler arka_plan_yok kodu: grup ayni, kotu girdide hizli', () => {
-    const yeni = H.literalAl(NEDEN, "olduğundan yüksek çıkabilir.' },\n  { re: ");
+    const yeni = H.literalAl(NEDEN, "olduğundan yüksek çıkabilir.',\n  },\n  {\n    re: ");
     H.esdeger({
       eski: /^arka_plan_yok:(.+?)\(.*\)$/,
       yeni,

@@ -19,6 +19,7 @@
 //      kaynak onbellege alinmaz; durum ozeti indeks tasimaz
 //   C9 HIZ: 2000 sunucu / 24 bin JVM tek gecis indeksiyle 1,5 sn altinda
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -593,7 +594,7 @@ test('C7 bulgu metinleri: hangi kopya, hangi namespace, hangi kayit', () => {
     /— Dynatrace isteği ölçülemedi$/,
   );
   assert.match(ocpMetni({ ...o, kullanimOkunamadi: true, istek: null }), /Dynatrace okunamadı/);
-  assert.doesNotMatch(ocpMetni({ ...o, ad: { jboss: 'pay', ocp: 'pay' } }), /ad eşleşmesi/);
+  assert.doesNotMatch(ocpMetni({ ...o, ad: { jboss: 'pay', ocp: 'pay' } }), esnek(/ad eşleşmesi/));
   assert.equal(
     celiskiMetni({
       kayit: 12,

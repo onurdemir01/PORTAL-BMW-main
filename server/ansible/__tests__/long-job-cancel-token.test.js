@@ -47,6 +47,7 @@
 //   TK25 403 + isi token sahibi baslatmis: sebep Admin rolu DEGIL, token 'write' kapsami
 //   TK26 runner sozlesmesi: JSON olmayan (vekil HTML) hata govdesi token'i yansitsa da hata metnine sizmaz
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -530,7 +531,7 @@ test('TK3 gecersiz token (AWX 401) kaydedilmez ve "gecersiz" denir; AWX 500 -> "
     assert.match(fold(r2.json.message), /olculemedi/);
     assert.doesNotMatch(
       fold(r2.json.message),
-      /^Token gecersiz/,
+      esnek(/^Token gecersiz/),
       'AWX 500 "gecersiz" diye raporlandi',
     );
     assert.equal(db.blobs.has(tokenStore.BLOB_NAME), false);
@@ -641,7 +642,7 @@ test('TK6 token tanimli degilse eski davranis: servis kullanicisi; 403 karti tok
   assert.equal(s.jobs.find((j) => j.jobId === 900).decision, 'cancel_failed');
   const kart = teams.kartlar.find((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
   assert.ok(kart);
-  assert.doesNotMatch(fold(JSON.stringify(kart)), /token'iyla|IPTAL TOKEN/);
+  assert.doesNotMatch(fold(JSON.stringify(kart)), esnek(/token'iyla|IPTAL TOKEN/));
   const f = audits.find((a) => a.action === 'awx_long_job_cancel' && a.result === 'fail');
   assert.equal(JSON.parse(f.detail).via, 'service');
   assert.equal(ljc.getStatus().cancelTokens.tokens.length, 0);
@@ -1156,7 +1157,7 @@ test('TK18 token KAYDI okunamazsa (olculemedi) servis kullanicisina DUSULMEZ: ip
     assert.match(km, /DB erisimini kontrol edin/);
     assert.doesNotMatch(
       km,
-      /Admin rolu/,
+      esnek(/Admin rolu/),
       'kart yanlis duzeltme (servis kullanicisina Admin rolu) oneriyor',
     );
     const f = audits
@@ -1542,7 +1543,7 @@ test("TK25 403 + isi token sahibi baslatmis: sebep template Admin rolu DEGIL, to
   assert.match(r, /'write' kapsamli/);
   assert.doesNotMatch(
     r,
-    /token sahibi onurdemir3 bu template'te Admin degil/i,
+    esnek(/token sahibi onurdemir3 bu template'te Admin degil/i),
     'yanlis sebep: Admin rolu',
   );
   const kart = teams.kartlar.find((k) => fold(kartBaslik(k)).includes('IPTAL EDILEMEDI'));
@@ -1551,7 +1552,7 @@ test("TK25 403 + isi token sahibi baslatmis: sebep template Admin rolu DEGIL, to
   assert.match(km, /sebep template Admin rolu DEGIL/);
   assert.doesNotMatch(
     km,
-    /kullanicisina bu template'te Admin rolu verin/,
+    esnek(/kullanicisina bu template'te Admin rolu verin/),
     'kart yanlis duzeltme (Admin rolu) oneriyor',
   );
   const d = JSON.parse(

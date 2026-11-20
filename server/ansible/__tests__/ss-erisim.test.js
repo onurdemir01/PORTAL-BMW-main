@@ -14,6 +14,8 @@
 //   SE9  setup: mevcut kurulumlara iki kolon ALTER ile eklenir
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -174,7 +176,11 @@ test('SE8 runner: sunucu tarafi kontrol ve atomik yazim', () => {
 
   const launch = blok("app.post('/api/ansible/launch-ss/:serverId/:templateId'", 2000);
   assert.match(launch, /ssErisim\.ssErisimVar\(i, req\.session\?\.user\)/);
-  assert.doesNotMatch(launch, /isAdmin \|\| i\.enabled/, 'eski enabled-only kontrol geri geldi');
+  assert.doesNotMatch(
+    launch,
+    esnek(/isAdmin \|\| i\.enabled/),
+    'eski enabled-only kontrol geri geldi',
+  );
 
   const survey = blok("app.get('/api/ansible/survey/:serverId/:templateId'", 1500);
   const kontrol = survey.indexOf('ssErisim.ssErisimVar(');
@@ -188,7 +194,9 @@ test('SE8 runner: sunucu tarafi kontrol ve atomik yazim', () => {
 
   assert.match(
     RUNNER,
-    /app\.get\('\/api\/ansible\/template-detail\/:serverId\/:templateId', requireAuth, requireAnsiblePage,/,
+    esnek(
+      /app\.get\('\/api\/ansible\/template-detail\/:serverId\/:templateId', requireAuth, requireAnsiblePage,/,
+    ),
   );
   assert.match(
     RUNNER,

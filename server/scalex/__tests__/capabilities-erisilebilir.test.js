@@ -16,6 +16,7 @@
 //
 // Bu, depodaki "calismayan kapi" sinifi: makine var, tetikleyeni yok.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -84,7 +85,7 @@ test('CA4 `/discover` `mode`u dogrulayiciya GECIRIYOR', () => {
     /assertValidDiscoveryTargets\(\{[^}]*\bmode\b/,
     'mode gecirilmiyor — capabilities yine namespace isteyecek',
   );
-  assert.doesNotMatch(d, /if\s*\(\s*(true|false|0|null|undefined)\s*\)/, 'olu/sabit dal');
+  assert.doesNotMatch(d, esnek(/if\s*\(\s*(true|false|0|null|undefined)\s*\)/), 'olu/sabit dal');
 });
 
 test('CA5 istemci modu sunucunun KABUL LISTESIYLE ayni', () => {
@@ -120,7 +121,7 @@ test('CA7 bos-durum metni artik YANLIS yonlendirmiyor', () => {
   const ham = oku('src/components/admin/tabs/ScaleXAdminTab.tsx');
   assert.doesNotMatch(
     ham,
-    /Keşif ekranından bir tarama koştuğunuzda liste\s*\n?\s*kendiliğinden dolar/,
+    esnek(/Keşif ekranından bir tarama koştuğunuzda liste\s*\n?\s*kendiliğinden dolar/),
     'yanlis yonlendiren bos-durum metni geri gelmis',
   );
   assert.match(ham, /<strong>Tara<\/strong>/, 'kullaniciya nereye basacagi soylenmiyor');

@@ -17,6 +17,7 @@
 //   KR5 limitler uygulanir: Simdi tara, Acilis Hazirligi, Reboot Kontrolu ayardaki sayiyla; mesaj
 //       sayiyi ve nereden artirilacagini soyler
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -630,7 +631,7 @@ test('KR5 limitler uygulanir: Simdi tara, Acilis Hazirligi, Reboot Kontrolu', as
     r = await post(`${kok}/scan`, { hosts: H(2) });
     assert.doesNotMatch(
       String(r.body.message || ''),
-      /arası geçerli sunucu/,
+      esnek(/arası geçerli sunucu/),
       'sinir icindeki liste reddedildi',
     );
     r = await post(`${kok}/reboot-readiness`, { hosts: H(4).join(',') });
@@ -642,7 +643,7 @@ test('KR5 limitler uygulanir: Simdi tara, Acilis Hazirligi, Reboot Kontrolu', as
     assert.equal(r.status, 400);
     assert.match(r.body.message, /en fazla 2 sunucu/);
     r = await post(`${kok}/reboot-check`, { hosts: H(2) });
-    assert.doesNotMatch(String(r.body.message || ''), /arası geçerli sunucu/);
+    assert.doesNotMatch(String(r.body.message || ''), esnek(/arası geçerli sunucu/));
   });
   // ayar okunamazsa varsayilanlar (50 / 500 / 50)
   sifirla();

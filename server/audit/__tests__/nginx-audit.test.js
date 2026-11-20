@@ -2,6 +2,7 @@
 //
 // Denetim > "Nginx Audit" ekraninin hesabini kilitler (bes tablo -> host bazli gorunum).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -374,7 +375,7 @@ test('Nginx Audit yukleyicisi genis catch yerine siniflandirici helper kullanir'
   );
   assert.doesNotMatch(
     loader,
-    /\.catch\(\(\)\s*=>\s*\(\{\s*recordset:\s*\[\],\s*_missing:\s*true\s*\}\)\)/,
+    esnek(/\.catch\(\(\)\s*=>\s*\(\{\s*recordset:\s*\[\],\s*_missing:\s*true\s*\}\)\)/),
     'yukleyici butun DB hatalarini yeniden schema eksigi gibi gizliyor',
   );
 });
@@ -394,7 +395,7 @@ test('Nginx Audit butun tarihli tablolari ayni parameterized snapshot ile okur',
   assert.match(loader, /WHERE scan_date = @scanDate/, 'ortak snapshot filtresi bulunamadi');
   assert.doesNotMatch(
     loader,
-    /SELECT MAX\(scan_date\) FROM dbo\.Nginx_Audit_/,
+    esnek(/SELECT MAX\(scan_date\) FROM dbo\.Nginx_Audit_/),
     'tablo basina MAX eski detaylari yeni snapshot yanitina sizdirabilir',
   );
   assert.equal(

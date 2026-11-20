@@ -48,6 +48,7 @@
 //   LJ29 tarama hic bitmiyorsa (in-flight) tek Teams karti + denetim fail
 //   LJ30 durum teyidi 50 kayit sinirinda adil ilerler; butce disindaki kayit ac kalmaz
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -791,7 +792,7 @@ test('LJ10 uclarin TAMAMI requireAuth + requireAdmin: Admin degilse AWX e de DB 
   );
   assert.doesNotMatch(
     src,
-    /app\.(get|put|post)\('\/api\/ansible\/longjob-cancel/,
+    esnek(/app\.(get|put|post)\('\/api\/ansible\/longjob-cancel/),
     'runner.cjs te bekcisiz eski uc kaldi',
   );
 });
@@ -994,14 +995,14 @@ test('LJ15 tarama->is biter->POST yarisi ve iki Portal ornegi: gercek AWX 403 "z
   row = s.jobs.find((j) => j.jobId === 1953);
   assert.equal(row.decision, 'cancel_failed');
   assert.match(fold(row.reason), /OLCULEMEDI/);
-  assert.doesNotMatch(fold(row.reason), /CALISMAYA DEVAM/);
+  assert.doesNotMatch(fold(row.reason), esnek(/CALISMAYA DEVAM/));
   await cycle(db);
   await cycle(db);
   assert.equal(posts().length, 3, 'durumu olculemeyen 403 kalici sayildi');
   assert.equal(basarisizKartlar().length, 1);
   const baslik = fold(kartBaslik(basarisizKartlar()[0]));
   assert.match(baslik, /OLCULEMEDI/);
-  assert.doesNotMatch(baslik, /CALISMAYA DEVAM/);
+  assert.doesNotMatch(baslik, esnek(/CALISMAYA DEVAM/));
 
   // E) 403 + saniyeler once aktif listelenen isin detayi 404: "silinmis = bitti" DENMEZ
   sifirlaHepsi();
@@ -1442,7 +1443,7 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
   assert.match(kart, /'write' kapsami/);
   assert.doesNotMatch(
     kart,
-    /Admin rolu verin/,
+    esnek(/Admin rolu verin/),
     'Portal in kendi isi icin yanlis cozum (Admin rolu) onerildi',
   );
   assert.match(fold(s.jobs.find((j) => j.jobId === 2021).reason), /token'da 'write' kapsami yok/);
@@ -1455,7 +1456,7 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
     (e) => e,
   );
   assert.ok(err, 'kurgu: 403 hata vermedi');
-  assert.doesNotMatch(err.message, /Admin rol/);
+  assert.doesNotMatch(err.message, esnek(/Admin rol/));
   assert.match(err.message, /ÇALIŞMAYA DEVAM/);
   assert.equal(err.permanent, true);
   assert.equal(err.createdByPortal, true);
@@ -1466,7 +1467,7 @@ test('LJ26 403 ipucu tek nedene baglanmaz; ortak mesajda Admin ipucu yok; statik
   assert.equal(p[0].state, 'admin');
   assert.equal(p[0].tokenScope, 'unknown');
   assert.match(fold(p[0].message), /Token kapsami OLCULEMEDI/);
-  assert.doesNotMatch(fold(p[0].message), /tum islerini iptal edebilir/);
+  assert.doesNotMatch(fold(p[0].message), esnek(/tum islerini iptal edebilir/));
   assert.match(fold(ljc.permissionWarnings(p).join(' ')), /token kapsami olculemedi/);
 });
 
@@ -1496,8 +1497,8 @@ test('LJ27 workflow iptali alt isleri de keser: kart, denetim ve durum bunu soyl
     /ust workflow #2030 izin listesinde/,
   );
   const alakasiz = fold(s.jobs.find((j) => j.jobId === 2032).reason);
-  assert.doesNotMatch(alakasiz, /hicbir zaman/);
-  assert.doesNotMatch(alakasiz, /ust workflow/);
+  assert.doesNotMatch(alakasiz, esnek(/hicbir zaman/));
+  assert.doesNotMatch(alakasiz, esnek(/ust workflow/));
 });
 
 // ── LJ28 ─────────────────────────────────────────────────────────────────────

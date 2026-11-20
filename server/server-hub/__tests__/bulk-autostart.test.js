@@ -15,6 +15,8 @@
 // (SB*) satir bazinda tek JVM ucu.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -123,7 +125,9 @@ test('BA6: kontrollu toplu - ust sinir ayardan, ONCE plan (plan_only: true), uyg
   );
   assert.match(
     TOPLU,
-    /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/,
+    esnek(
+      /const planEskiMi = \(is\) => !is\.plan_bitis_at \|\| Date\.now\(\) - new Date\(is\.plan_bitis_at\)\.getTime\(\) > PLAN_YAS_MS;/,
+    ),
   );
 });
 
@@ -149,7 +153,7 @@ test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRA
   );
   assert.match(
     fonksiyon(TOPLU, 'planIlerlet'),
-    /parcala\(tazeOg\.filter\(\(o\) => o\.durum === 'ADAY'\), n\)/,
+    esnek(/parcala\(tazeOg\.filter\(\(o\) => o\.durum === 'ADAY'\), n\)/),
     'plan parcalanmiyor',
   );
   // belirsiz launch isareti olmazsa toplu is "durdur" yolu uretimde olu kalir
@@ -272,7 +276,7 @@ test('SB5 ekranda SATIR BAZINDA dugme var ve onay istiyor', () => {
   assert.match(UI, /jvmAutoStart\(j\)/, 'satir dugmesi yok');
   // Onay 2026-11-08'den beri portal ici pencereden (useOnay; eskiden window.confirm).
   assert.match(UI, /await onayla\(\{/, 'tek tikla onaysiz degisiklik yapiliyor');
-  assert.doesNotMatch(UI, /window\.confirm\(/, 'tarayici onayi geri gelmis');
+  assert.doesNotMatch(UI, esnek(/window\.confirm\(/), 'tarayici onayi geri gelmis');
   assert.match(UI, /Yalnız bu JVM etkilenir/, 'onay metni kapsami soylemiyor');
   // Islem bitince tarama TAZELENIR; yoksa eski deger kalir ve kullanici tekrar tiklar.
   assert.match(

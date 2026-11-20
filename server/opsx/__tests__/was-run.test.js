@@ -19,6 +19,8 @@
 //   W30 baska istegin sonucu OLCULEMEDI   W31 ackWarnings yalniz boolean true
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -1615,6 +1617,6 @@ test('WS3 WAS kodunda DELETE yok; her launch limit olarak bos metin verir', () =
   const cagrilar = [...src.matchAll(/runner\.launchJobOnServer\(([^;]*?)\);/g)].map((m) => m[1]);
   assert.ok(cagrilar.length >= 2, `launch cagrisi sayisi beklenmedik: ${cagrilar.length}`);
   for (const c of cagrilar) {
-    assert.match(c, /extraVars, '', user$/, `limit bos degil: ${c}`);
+    assert.match(c, esnek(/extraVars, '', user,?\s*$/), `limit bos degil: ${c}`);
   }
 });

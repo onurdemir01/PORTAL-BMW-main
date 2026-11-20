@@ -3,6 +3,8 @@
 //  birde e-posta ile de izin verebiliyor olayim").
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -22,7 +24,9 @@ test('VE1: e-posta kurali kullanici kuralindan SONRA, grup kuralindan ONCE', () 
   // Eslestirme kucuk harf uzerinden yapilmali; aksi halde "Ad.Soyad@..." eslesmez.
   assert.match(
     SRC,
-    /mailLower = \(\((?:user && user\.mail|user\?\.mail)\) \|\| ''\)\.trim\(\)\.toLowerCase\(\)/,
+    esnek(
+      /mailLower = \((?:\((?:user && user\.mail|user\?\.mail)\)|user\?\.mail) \|\| ''\)\.trim\(\)\.toLowerCase\(\)/,
+    ),
   );
   // Memo anahtari e-postayi da icermeli; yoksa iki kullanici ayni onbellegi paylasir.
   assert.match(SRC, /memoKey = `\$\{role\}\|\$\{usernameLower\}\|\$\{mailLower\}\|/);
@@ -83,9 +87,9 @@ test('VE5: sikilik Admin ekranindan yonetilebilir', () => {
   // gosterecegim." Oge zaten listede duruyordu ama SIKI bayragi ne gorunuyordu ne de
   // degistirilebiliyordu; ustelik "Admin her zaman gorur" ipucu siki ogede YANLISTI.
   const el = fs.readFileSync(path.join(__dirname, '..', 'elements.cjs'), 'utf8');
-  assert.match(el, /async function setElementStrict/);
+  assert.match(el, esnek(/async function setElementStrict/));
   // metadata'nin DIGER alanlari korunmali - strict yazarken ustune yazilmamali.
-  assert.match(el, /if \(strict\) meta\.strict = true; else delete meta\.strict;/);
+  assert.match(el, esnek(/if \(strict\) meta\.strict = true; else delete meta\.strict;/));
   assert.match(el, /strict: \(\(\) => \{/, 'listElements strict bayragini dondurmeli');
 
   const routes = fs.readFileSync(path.join(__dirname, '..', 'visibility-routes.cjs'), 'utf8');
@@ -177,7 +181,7 @@ test('VE7: kullanici adi BUYUK/KUCUK harf ayrimi yapmaz', () => {
   const rs = fs.readFileSync(path.join(__dirname, '..', 'role-store.cjs'), 'utf8');
   assert.match(
     rs,
-    /const uname = String\(username \|\| ''\)\.trim\(\)\.toLowerCase\(\);/,
+    esnek(/const uname = String\(username \|\| ''\)\.trim\(\)\.toLowerCase\(\);/),
     'setRoleOverride kullanici adini kucuk harfe cevirmeli',
   );
   // Okuma ve silme de collation'dan BAGIMSIZ olmali.

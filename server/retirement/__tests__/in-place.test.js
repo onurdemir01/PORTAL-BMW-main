@@ -10,6 +10,8 @@
 //   - GERI AL betige app_path gondermiyordu (betik in-place'te kurulumu app_path ile dogrular).
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -226,7 +228,9 @@ test('IN7 kayit acarken secim KURULUMU da icerir; in-place hedefte kurulumsuz se
   );
   assert.match(
     ep,
-    /if \(belirsiz\.length\)\s*return res\.status\(400\)\.json\(\{ ok: false, message: [\s\S]{0,200}hangi kurulumun retire edileceğini seçin/,
+    esnek(
+      /if \(belirsiz\.length\)\s*return res\.status\(400\)\.json\(\{ ok: false, message: [\s\S]{0,200}hangi kurulumun retire edileceğini seçin/,
+    ),
     'in-place hedefte kurulum belirtilmeden kayit acilabiliyor',
   );
   assert.ok(

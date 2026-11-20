@@ -18,6 +18,7 @@ const durum = vi.hoisted(() => vi.fn());
 vi.mock('@/api/ansibleApi', () => ({ ansibleApi: { smartTicketStatus: durum } }));
 import { useOnaySonrasiTakip } from '../useOnaySonrasiTakip';
 import SmartTalepSayaci from '@/components/common/SmartTalepSayaci';
+import { esnek, iceriyor } from '../../../../server/__tests__/fixtures/kod-deseni.cjs';
 
 const HIZLI = { ilkMs: 5, aralikMs: 5 };
 
@@ -74,8 +75,8 @@ describe('useOnaySonrasiTakip', () => {
   it('OS5 sihirbaz hook\'u kullanir, sonucu cizer ve "Yeni Islem" sifirlar', () => {
     const s = readFileSync(join(__dirname, '..', 'OpsXWizardPage.tsx'), 'utf8');
     expect(s).toMatch(/useOnaySonrasiTakip\(bekleyenTalep,/);
-    expect(s).toContain('pendingApproval: false, jobId, awxServerId');
-    expect(s).toContain('if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });');
+    expect(iceriyor(s, 'pendingApproval: false, jobId, awxServerId')).toBe(true);
+    expect(iceriyor(s, 'if (podDeleteMode) setPodDeleteJob({ awxServerId, jobId });')).toBe(true);
     expect(s).toContain('data-testid="opsx-talep-sonu"');
     const restart = s.slice(s.indexOf('function restart()'), s.indexOf('function restart()') + 800);
     expect(restart).toContain('talepSonuSifirla();');

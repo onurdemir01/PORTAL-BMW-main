@@ -7,6 +7,7 @@
 // uygulamayi kimsenin goremedigi bir durum, portalin isini yapamamasi demektir. Bu
 // yuzden uc BILINCLI istisna var ve bu bekci onlari da kilitler.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -132,7 +133,7 @@ test('OW-ISTEMCI stoppedByGroups tarayiciya gitmez; suzgec onu kullanmaya devam 
   const govde = rota.slice(i, rota.indexOf("router.post(\n    '/adopt'", i));
   assert.ok(i > 0 && govde.length > 500, '/stopped rotasi bulunamadi');
   assert.match(govde, /items: rows\.map\(state\.istemciSatiri\),/);
-  assert.doesNotMatch(govde, /items: rows,/);
+  assert.doesNotMatch(govde, esnek(/items: rows,/));
   assert.ok(
     govde.indexOf('filterStoppedByOwnership(allowed') <
       govde.indexOf('rows.map(state.istemciSatiri)'),

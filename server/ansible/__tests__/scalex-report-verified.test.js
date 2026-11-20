@@ -21,6 +21,7 @@
 // --syntax-check` bu sinifi GORMEZ: YAML gecerlidir, ifade ancak calisma aninda
 // derlenir (bkz. ocp-playbook-username.test.js ayni gerekce).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -119,7 +120,7 @@ test('RV1 acma uyarisi `applied=yes` makine belirteci tasiyor', () => {
   // `VERIFY;OK` BASILMAMALI: pod hazir degilken "dogrulandi" demek yalan olur.
   assert.doesNotMatch(
     warnLine,
-    /"VERIFY" "OK"/,
+    esnek(/"VERIFY" "OK"/),
     'acma uyari dalinda VERIFY;OK basiliyor — hazir olmayan seye dogrulandi deniyor',
   );
 });

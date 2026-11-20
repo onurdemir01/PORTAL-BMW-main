@@ -5,6 +5,7 @@
 //   YM4 tablo okunamazsa 424 (ortam listesine sessizce donmez)
 //   YM5 kablolama: kosu plani ve /hedefler listeyi Portal'dan okur; yazma uclari Admin; tablo kurulumda
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -102,7 +103,7 @@ test('YM5 kablolama', () => {
     idx.indexOf('const yukKapisi = (hedef)'),
   );
   assert.match(plan, /const izinli = \(await yukMakineleri\.oku\(db\(\)\)\)\.hostlar;/);
-  assert.doesNotMatch(idx, /dg\.yukHostlari\(\)/, 'liste hala yalniz ortamdan okunuyor');
+  assert.doesNotMatch(idx, esnek(/dg\.yukHostlari\(\)/), 'liste hala yalniz ortamdan okunuyor');
   for (const uc of ["router.post('/yuk-makineleri'", "router.delete('/yuk-makineleri/:host'"]) {
     const i = idx.indexOf(uc);
     assert.ok(i > 0, uc);

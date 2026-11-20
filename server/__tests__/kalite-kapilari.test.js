@@ -107,18 +107,31 @@ test('KK2 kapsam esigi: yalniz kaynak dosyalari, satir birlestirme, esik tek kay
   assert.equal(kapsam.esikOku(), ESIK.kapsam.satirMin);
 });
 
-test('KK3 bicim cirigi: bicimli dosya bicimli kalir, bicimsize dokunmak serbest', () => {
-  assert.equal(bicim.ihlalMi(true, false), true, 'bicimli dosya bozuldu ama gecti');
-  assert.equal(bicim.ihlalMi(null, false), true, 'yeni bicimsiz dosya gecti');
-  assert.equal(bicim.ihlalMi(false, false), false, 'eski bicimsiz dosyaya dokunmak engellendi');
-  assert.equal(bicim.ihlalMi(true, true), false);
-  assert.equal(bicim.ihlalMi(null, true), false);
+test('KK3 bicim kapisi: her JS/TS dosyasi bicimli, istisna yok (is #52)', () => {
+  assert.equal(bicim.ihlalMi(false), true, 'bicimsiz dosya gecti');
+  assert.equal(bicim.ihlalMi(undefined), true, 'bicimi olculemeyen dosya gecti');
+  assert.equal(bicim.ihlalMi(true), false);
+  // Tum agac: npm run lint (K2 ve CI) --tum'u kosar; Ansible agaci yalniz .prettierignore ile disarida.
+  const pkg = JSON.parse(oku('package.json'));
+  assert.match(pkg.scripts.lint, /&& node scripts\/bicim-kapisi\.cjs --tum$/);
+  assert.deepEqual(
+    oku('.prettierignore')
+      .split('\n')
+      .filter((l) => l.trim() && !l.startsWith('#')),
+    ['server/ansible/playbooks/'],
+    '.prettierignore yalniz Ansible agacini disarida birakir',
+  );
+  assert.match(
+    oku('.git-blame-ignore-revs'),
+    /^[0-9a-f]{40}$/m,
+    'toplu bicim commit i kayitli degil',
+  );
   assert.ok(
     bicim.KOD.test('src/a.tsx') && bicim.KOD.test('server/a.cjs') && !bicim.KOD.test('docs/a.md'),
   );
 });
 
-test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okunur', () => {
+test('KK3b bicim kapisi gercek depoda: bicimsiz eski dosya da, yeni dosya da, yeniden adlandirma da KIRMIZI', () => {
   // Saf ayristirici: R satiri eski + yeni yol tasir.
   assert.deepEqual(bicim.degisenler('M\0a.cjs\0R087\0x.test.cjs\0x.test.js\0A\0y.ts\0'), [
     { yol: 'a.cjs', eski: 'a.cjs' },
@@ -126,8 +139,8 @@ test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okun
     { yol: 'y.ts', eski: 'y.ts' },
   ]);
   assert.deepEqual(bicim.degisenler(''), []);
-  // Gercek git deposu: bicimsiz eski dosyanin yeniden adlandirilmasi serbest; yeni bicimsiz dosya ve
-  // bicimli dosyanin yeniden adlandirilirken bozulmasi KIRMIZI.
+  // Gercek git deposu: istisna yok. Bicimsiz eski dosyaya dokunmak (yeniden adlandirma dahil), yeni
+  // bicimsiz dosya ve bicimli dosyanin bozulmasi KIRMIZI; bicimli sahne yesil. --tum butun agaca bakar.
   const os = require('node:os');
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'bicim-ad-'));
   const g = (...a) =>
@@ -162,15 +175,39 @@ test('KK3b bicim cirigi yeniden adlandirmayi tanir: HEAD bicimi eski yoldan okun
     g('add', '-A');
     g('commit', '-q', '-m', 'ilk', '--no-verify');
     g('mv', 'eski.test.cjs', 'eski.test.js');
-    assert.equal(kapi(), 0, 'bicimsiz eski dosyanin yeniden adlandirilmasi engellendi');
+    assert.equal(kapi(), 1, 'bicimsiz eski dosyanin yeniden adlandirilmasi gecti (istisna yok)');
+    fs.writeFileSync(path.join(d, 'eski.test.js'), 'const a = 1;\n');
+    g('add', 'eski.test.js');
+    assert.equal(kapi(), 0, 'bicimlenmis yeniden adlandirma engellendi');
     fs.writeFileSync(path.join(d, 'yeni.test.js'), 'const   b=2\n');
     g('add', 'yeni.test.js');
     assert.equal(kapi(), 1, 'yeni bicimsiz dosya gecti');
     g('rm', '-q', '--cached', 'yeni.test.js');
+    fs.rmSync(path.join(d, 'yeni.test.js'));
     g('mv', 'bicimli.test.cjs', 'bicimli.test.js');
     fs.writeFileSync(path.join(d, 'bicimli.test.js'), 'const   a=1;\n');
     g('add', 'bicimli.test.js');
     assert.equal(kapi(), 1, 'bicimli dosya yeniden adlandirilirken bozuldu ama gecti');
+    // --tum: izlenen butun agac. Commit'lenmis bicimsiz dosya kancasiz gelse de (dogrudan main) KIRMIZI.
+    const tum = () => {
+      try {
+        execFileSync(process.execPath, [path.join(KOK, 'scripts', 'bicim-kapisi.cjs'), '--tum'], {
+          cwd: d,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        return 0;
+      } catch (e) {
+        return e.status;
+      }
+    };
+    fs.writeFileSync(path.join(d, 'bicimli.test.js'), 'const a = 1;\n');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'bicimli', '--no-verify');
+    assert.equal(tum(), 0, 'bicimli agac kirmizi');
+    fs.writeFileSync(path.join(d, 'kancasiz.cjs'), 'const   c=3\n');
+    g('add', 'kancasiz.cjs');
+    g('commit', '-q', '-m', 'kancasiz', '--no-verify');
+    assert.equal(tum(), 1, 'commitlenmis bicimsiz dosya --tum da gecti');
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -437,7 +474,7 @@ test('KK8 CI ve `npm run kapi` ayni kapilari kosturur; hicbir kapi yumusatilmami
   assert.equal(pkg.scripts['kapi:sonar'], 'node scripts/sonar-kapi.cjs');
   assert.match(
     pkg.scripts.lint,
-    /^eslint src\/ server\/ shared\/ scripts\/ --max-warnings 0$/,
+    /^eslint src\/ server\/ shared\/ scripts\/ --max-warnings 0 && node scripts\/bicim-kapisi\.cjs --tum$/,
     'lint kapsami daraldi ya da uyari serbest',
   );
   assert.ok(KAPILAR.filter((k) => k.hizli).length >= 6, 'hizli kapilar azaltildi');

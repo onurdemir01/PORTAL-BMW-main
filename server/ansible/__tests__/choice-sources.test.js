@@ -8,6 +8,8 @@
 // kaynaga bagli alani secim kutusu olarak sundugu.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -99,7 +101,9 @@ test('CS5 mapSurveySpec: kaynaga bagli alan secim kutusu olarak sunulur, choices
   // Coklu secim alani (AWX multiselect) kaynaga baglaninca coklu kalir; digerleri tekli secim.
   assert.match(
     body,
-    /type: (?:choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type|\(\(\) => \{ if \(choicesSource\) \{? if \(field\.type === 'multiselect'\) return 'multiselect'; return 'multiplechoice'; \}? return field\.type; \}\)\(\))/,
+    esnek(
+      /type: (?:choicesSource \? \(field\.type === 'multiselect' \? 'multiselect' : 'multiplechoice'\) : field\.type|\(\(\) => \{ if \(choicesSource\) \{? if \(field\.type === 'multiselect'\) return 'multiselect'; return 'multiplechoice'; \}? return field\.type; \}\)\(\))/,
+    ),
     'tip secim kutusuna cevrilmiyor',
   );
   assert.match(
@@ -267,12 +271,14 @@ test('CS10 admin ekrani: kaynak editoru METIN alanlarinda cikar (Survey Tasarimc
   );
   assert.match(
     modal,
-    /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/,
+    esnek(
+      /SOURCE_BINDABLE_CUSTOM\.has\(f\.type\) && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/,
+    ),
     'ozel alanda editor tip kumesine bagli degil',
   );
   assert.doesNotMatch(
     modal,
-    /isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/,
+    esnek(/isChoiceType && choiceSources\.length > 0 && \(\s*<ChoicesSourceEditor/),
     'editor hala yalnizca secim tiplerinde (Metin alanlarda cikmaz)',
   );
 });

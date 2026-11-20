@@ -7,6 +7,8 @@
 // onClose ref uzerinden okunur.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,7 +34,7 @@ test('MF1 odak efekti onClose kimligine BAGLI DEGIL (yalniz open)', () => {
   assert.match(code, /const onCloseRef = useRef\(onClose\)/, 'onClose ref tutulmuyor');
   assert.match(
     code,
-    /if \(e\.key === "Escape"\) \{ onCloseRef\.current\(\); return; \}/,
+    esnek(/if \(e\.key === "Escape"\) \{ onCloseRef\.current\(\); return; \}/),
     'ESC ref uzerinden cagirmiyor (eski onClose kapanir)',
   );
 });

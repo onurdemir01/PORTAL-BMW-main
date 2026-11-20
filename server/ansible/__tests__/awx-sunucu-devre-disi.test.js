@@ -12,6 +12,8 @@
 //   AD7 uclar: admin; son etkin sunucu kapatilmaz; ozet UPDATE'ten once; satir silinmez; restart'siz
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -96,7 +98,7 @@ test('AD2b Retirement ucus sahipligi guncel registry konumundan bagimsizdir', as
   );
   assert.doesNotMatch(
     sql,
-    /SELECT CASE WHEN EXISTS[\s\S]*THEN \(SELECT COUNT\(\*\) FROM retirement_targets/,
+    esnek(/SELECT CASE WHEN EXISTS[\s\S]*THEN \(SELECT COUNT\(\*\) FROM retirement_targets/),
     'ucustaki tum hedefler hala guncel registry sunucusuna mal ediliyor',
   );
 
@@ -326,7 +328,7 @@ test('AD7 uclar', () => {
   assert.match(s, /app\.get\('\/api\/ansible\/awx-servers\/yonetim', requireAuth, requireAdmin,/);
   assert.match(
     s,
-    /app\.get\('\/api\/ansible\/awx-servers\/:no\/bagimlilik', requireAuth, requireAdmin,/,
+    esnek(/app\.get\('\/api\/ansible\/awx-servers\/:no\/bagimlilik', requireAuth, requireAdmin,/),
   );
   assert.match(
     s,
@@ -353,7 +355,7 @@ test('AD7 uclar', () => {
     /if \(enabled && !yuklendi\) \{\s*return res\.status\(503\)/,
     'basarisiz etkinlestirme basari donuyor',
   );
-  assert.doesNotMatch(b, /DELETE FROM ansible_awx_servers/);
+  assert.doesNotMatch(b, esnek(/DELETE FROM ansible_awx_servers/));
   const y = s.indexOf("app.get('/api/ansible/awx-servers/yonetim'");
   assert.doesNotMatch(
     s.slice(y, y + 900),

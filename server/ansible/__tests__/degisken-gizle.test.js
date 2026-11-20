@@ -10,6 +10,7 @@
 //   DG7 runner: sablon listesi arindirilmis metni dondurur (sahte AWX, gercek HTTP)
 //   DG8 runner'da ham `extra_vars` yanita giden hicbir yerde arindirmasiz okunmaz (kaynak bekcisi)
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -75,7 +76,7 @@ test('DG2 adi masum ama degeri sir tasiyan degisken cikar', () => {
 test('DG3 cikti maske tasimaz ve sir degerinin hicbir parcasi kalmaz', () => {
   const ham = `a: 1\ndb_conn: "Server=x;PWD=${PAROLA}"\nawx_token: ${BELIRTEC}\nb: 2`;
   const { metin } = awxDegiskenleriniAyikla(ham);
-  assert.doesNotMatch(metin, /\*{2,}|•/);
+  assert.doesNotMatch(metin, esnek(/\*{2,}|•/));
   assert.ok(!metin.includes(PAROLA) && !metin.includes(BELIRTEC));
   assert.ok(!metin.includes('db_conn') && !metin.includes('awx_token'));
   assert.equal(metin, 'a: 1\nb: 2');
@@ -230,7 +231,9 @@ test('DG8 runner ham extra_vars`i arindirmadan yanita koymaz', () => {
         !/^\s*(\/\/|\*)/.test(s) && /\b(t|detail|tpl|template|sablon)\??\.extra_vars\b/.test(s),
     );
   // Sunucu ICI tek okuma: Smart metadata sablon baglami (tarayiciya donmez).
-  const IC = /const ham = String\(\((?:t && t\.extra_vars|t\?\.extra_vars)\) \|\| ''\)\.trim\(\);/;
+  // (Prettier gereksiz parantezi kaldirir: `String((t?.extra_vars) || '')` -> `String(t?.extra_vars || '')`.)
+  const IC =
+    /const ham = String\((?:\((?:t && t\.extra_vars|t\?\.extra_vars)\)|t\?\.extra_vars) \|\| ''\)\.trim\(\);/;
   const arindirmasiz = okuyan
     .filter(
       ([, s]) =>

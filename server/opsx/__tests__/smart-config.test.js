@@ -17,6 +17,8 @@
 //      "kaydettim" sanir, production reddedilmeye devam eder (en bastaki sorun).
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -229,7 +231,7 @@ test('SC9 metadata eslemesi UZUNLUK siniri tasir (govde sismesi)', async () => {
 
 test('SC10 ekran: dugme ADMINE OZEL, OCO yoklugu YAZILI, kod TEK kopya', () => {
   // Dugme admin kontrolu arkasinda olmali (kozmetik kapi; uclar ayrica requireAdmin).
-  assert.match(PAGE, /const admin = user\?\.role === "Admin"/, 'admin tespiti yok');
+  assert.match(PAGE, esnek(/const admin = user\?\.role === "Admin"/), 'admin tespiti yok');
   assert.match(PAGE, /\{admin && \(\s*\n?\s*<button/, 'dugme admin kontrolu arkasinda degil');
   assert.match(PAGE, /OpsXSmartConfigModal/, 'pencere sayfaya baglanmamis');
 

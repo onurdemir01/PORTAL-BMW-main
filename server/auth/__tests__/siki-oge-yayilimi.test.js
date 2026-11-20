@@ -15,6 +15,8 @@
 // yazildigi yanitta doner. Motorun anlambilimi DEGISMEDI.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -146,7 +148,7 @@ const VIS = fs.readFileSync(path.join(__dirname, '..', 'visibility.cjs'), 'utf8'
 test('AM1 decide(): Admin SIKI ogede de gecer', () => {
   assert.match(
     VIS,
-    /if \(role === 'Admin'\) \{ not\('admin muafiyeti'\); return true; \}/,
+    esnek(/if \(role === 'Admin'\) \{ not\('admin muafiyeti'\); return true; \}/),
     'admin muafiyeti hala sikilige bagli - yoneticiler kapida kalir',
   );
   assert.ok(
@@ -158,7 +160,7 @@ test('AM1 decide(): Admin SIKI ogede de gecer', () => {
 test('AM2 strict NON-ADMIN icin hala baglayici (yalniz istedigin kisiler korunuyor)', () => {
   assert.match(
     VIS,
-    /if \(strict\) \{ not\('SIKI oge ve eslesen kural YOK -> kapali'\); return false; \}/,
+    esnek(/if \(strict\) \{ not\('SIKI oge ve eslesen kural YOK -> kapali'\); return false; \}/),
     'strict tamamen islevsiz kalmis - "yalniz istedigim kisiler" kurali kaybolur',
   );
 });

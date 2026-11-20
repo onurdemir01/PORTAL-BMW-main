@@ -15,6 +15,7 @@
 //   AS4 kayitta playbook yolu bos: 409, BASLATILMAZ (eskiden kor baslatiliyordu)
 //   AS5 template hicbir yerde yok: hata "sunucu yok" der, "job template bulunamadi" DEMEZ
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -188,7 +189,7 @@ test('AS5 template hicbir yerde yok: "sunucu yok" denir, "template bulunamadi" d
       assert.equal(e.code, 'awx_server_missing');
       assert.match(e.message, /AWX sunucusu bulunamadı/);
       assert.match(e.message, /logx_legacy_discovery/);
-      assert.doesNotMatch(e.message, /job template bulunamadı/);
+      assert.doesNotMatch(e.message, esnek(/job template bulunamadı/));
       return true;
     },
   );

@@ -10,6 +10,8 @@
 // Uc, bagimliliklari enjekte edilerek kosulur (db / runner / onbellek sahte); MASKE GERCEK zincirdir.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -629,7 +631,7 @@ test('RC13 getJobStatusOnServer resultTraceback / jobExplanation doner (ekleme; 
   const f = dilim(RUNNER, 'async function getJobStatusOnServer', '\n}\n');
   assert.match(f, /resultTraceback: data\.result_traceback \|\| ''/);
   assert.match(f, /jobExplanation: data\.job_explanation \|\| ''/);
-  assert.match(f, /templateId: Number\.isInteger\(data\.job_template\)/);
+  assert.match(f, esnek(/templateId: Number\.isInteger\(data\.job_template\)/));
 });
 
 test('RC14 eski job-status ucu da AYNI maskeyle doner (yoksa yeni uctaki maske islevsiz)', () => {
@@ -805,7 +807,7 @@ test('RC18 olay islemesi bitmeden is bitmis sayilmaz: artimli okuma, onbellek si
   const f = dilim(RUNNER, 'async function getJobStatusOnServer', '\n}\n');
   assert.match(
     f,
-    /eventProcessingFinished: typeof data\.event_processing_finished === 'boolean'/,
+    esnek(/eventProcessingFinished: typeof data\.event_processing_finished === 'boolean'/),
     'runner alani dondurmuyor (uc hep bitmis sanar)',
   );
 });
@@ -943,7 +945,7 @@ test("RC22 SOZLESME: sunucunun 409 mesajlari istemcinin kaliciMesaj'inda cumle t
 
 test('RC23 eski job-status result / fixResult maskeli; is gecmisi is numarasi indeksi tanimli', () => {
   const js = dilim(IDX, "router.get('/:id/targets/:tid/job-status", '// ── POLLER');
-  assert.match(js, /result: maskeleDerin\(result\), fixResult: maskeleDerin\(fixResult\)/);
+  assert.match(js, esnek(/result: maskeleDerin\(result\), fixResult: maskeleDerin\(fixResult\)/));
   const d = M.maskeleDerin({
     line: 'PLAN\tpassword=GZ1',
     blok: ['ProxyPass / https://u:GZ2@h/', { token: 'GZ3', normal: 'ok' }],

@@ -3,6 +3,7 @@
 // incelemesi, review.md #23 — onceki iki turde ertelenmisti). Gercek AWX/DB gerektirmez;
 // server/ansible/runner.cjs mock'lanir.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,7 +53,7 @@ test('portal_logx_fetch_log: is HIZLI biterse (QUICK_CHECK_RETRIES icinde) pendi
     const text = await tool.exec({ hostname: 'host1', logFilePath: '/var/log/x.log' });
     assert.match(text, /host1:\/var\/log\/x\.log/);
     assert.match(text, /line1/);
-    assert.doesNotMatch(text, /henüz tamamlanmadı/);
+    assert.doesNotMatch(text, esnek(/henüz tamamlanmadı/));
   });
 });
 

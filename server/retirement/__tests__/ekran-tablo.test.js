@@ -27,6 +27,8 @@
 // gorsel yerlesim (tek satir, hiza) jsdom/AST ile olculmez, sartname §11. Davranis: vitest retirement-kayit (RK1-RK6).
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -228,7 +230,9 @@ test('RTU4 smBtn birincil dali --text-on-accent', () => {
   const stil = normalize(oku('retirementStil.ts'));
   assert.match(
     stil,
-    /export const smBtn = \(primary = false\): React\.CSSProperties => \(primary \? \{ background: 'var\(--accent\)', borderColor: 'var\(--accent\)', color: 'var\(--text-on-accent\)' \}/,
+    esnek(
+      /export const smBtn = \(primary = false\): React\.CSSProperties => \(?primary \? \{ background: 'var\(--accent\)', borderColor: 'var\(--accent\)', color: 'var\(--text-on-accent\)' \}/,
+    ),
   );
   assert.ok(
     !/const smBtn|const SM_BTN/.test(RT_RAW),
@@ -578,9 +582,14 @@ test('ISK1 is ciktisi eski jobStatus ucunu cagirmaz; uc istemciden sunucu / is n
     /retirementApi\.isCiktisi\(kayitId, tid, is\.adim, is\.web, ac\.signal\)/,
   );
   const api = fs.readFileSync(path.join(ROOT, 'src', 'api', 'retirementApi.ts'), 'utf8');
-  const m = api.match(/isCiktisi: \(([^)]*)\)[^\n]*\n\s*fetch\(`([^`]*)`/);
+  const m = api.match(/isCiktisi: \(([^)]*)\)[^\n]*\n\s*fetch\(\s*`([^`]*)`/);
   assert.ok(m, 'isCiktisi tanimi bulunamadi');
-  assert.equal(m[1], 'id: number, tid: number, adim: RtIsAdim, web?: number, signal?: AbortSignal');
+  // Parametreler bir ya da cok satirda olabilir (Prettier); kume ve sira ayni kalmali.
+  const params = m[1].replace(/\s+/g, ' ').replace(/,\s*$/, '').trim();
+  assert.equal(
+    params,
+    'id: number, tid: number, adim: RtIsAdim, web?: number, signal?: AbortSignal',
+  );
   assert.ok(
     !/jobId|serverId|awxServerId/.test(m[2]),
     `URL istemciden is / sunucu numarasi tasiyor: ${m[2]}`,
@@ -664,7 +673,9 @@ test('IPK8 CreateModal in-place uyarisi surum kutusundan hemen sonra, trafik / w
   );
   assert.match(
     oku('RetirementInPlace.tsx'),
-    /<UyariKutusu ton="uyari" vurgu baslik=\{<><Cip ton="uyari" cerceve>IN-PLACE<\/Cip>/,
+    esnek(
+      /<UyariKutusu ton="uyari" vurgu baslik=\{<>\s*<Cip ton="uyari" cerceve>\s*IN-PLACE\s*<\/Cip>/,
+    ),
     'in-place uyarisi digerlerinden ayrismiyor (vurgu + IN-PLACE cipi)',
   );
 });

@@ -16,6 +16,8 @@
 // DAVRANISI kilitler.
 'use strict';
 
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -172,7 +174,7 @@ test('CB5 smart-first yolu dogru gecisi kullanir ve sonucu DENETLER', () => {
     /const yazildi = await ocoStore\.markPendingApprovalAtRequest\(rec\.id/,
     'sonuc denetlenmiyor',
   );
-  assert.match(gates, /if \(!yazildi\) console\.warn/, 'yazilamazsa sessiz kaliyor');
+  assert.match(gates, esnek(/if \(!yazildi\) console\.warn/), 'yazilamazsa sessiz kaliyor');
   const fn = store.slice(
     store.indexOf('async function markPendingApprovalAtRequest'),
     store.indexOf('const BILET_KAYIT'),

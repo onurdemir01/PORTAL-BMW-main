@@ -5,6 +5,8 @@
 // GORULEN bir sorunu ya da sayimla OLCULEN bir tutarsizligi kilitler.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -71,7 +73,7 @@ test('G2/G3: Başlat DOLU birincil, Bilgi sade', () => {
   const src = stripComments(read('components/ansible/AnsiblePage.tsx'));
   assert.match(
     src,
-    /background: "var\(--accent\)", color: "var\(--text-on-accent\)"/,
+    esnek(/background: "var\(--accent\)", color: "var\(--text-on-accent\)"/),
     'Başlat dolu birincil degil',
   );
   assert.ok(!/background: "rgba\(79,142,255,0\.1\)"/.test(src), 'eski tint duruyor');
@@ -101,7 +103,7 @@ test('G5: bos panel yeni talebi GERCEKTEN ogrenebiliyor', () => {
     'eski talebi olan kullanicida yoklama duruyor',
   );
   assert.ok(!/if \(userPref === true\) return;/.test(src), 'daraltilmis panel (rozet) yoklanmiyor');
-  assert.match(src, /setInterval\(\(\) => \{[^}]*load\(\);/, 'periyodik yoklama yok');
+  assert.match(src, esnek(/setInterval\(\(\) => \{[^}]*load\(\);/), 'periyodik yoklama yok');
   assert.match(src, /addEventListener\(["']visibilitychange["']/, 'sekmeye donunce tazeleme yok');
   // 2) Ayni sekmede acilan talep icin ANLIK kanal olmali (panel Outlet DISINDA
   //    mount edildigi icin gezinmede yenilenmiyor).
@@ -214,7 +216,7 @@ test('G22: hover rengi token’dan', () => {
 // ── G25/G26: modal odagi ────────────────────────────────────────────────────
 test('G25: modal odak tuzagi var', () => {
   const src = read('components/common/Modal.tsx');
-  assert.match(src, /e\.key !== "Tab"/, 'Tab dongusu yok — odak modalin ARKASINA kaciyor');
+  assert.match(src, esnek(/e\.key !== "Tab"/), 'Tab dongusu yok — odak modalin ARKASINA kaciyor');
   assert.match(src, /panelRef/);
   assert.match(src, /tabIndex=\{-1\}/, 'odaklanabilir oge yoksa panelin kendisi odagi almali');
 });

@@ -9,6 +9,8 @@
 // yerlerde) ve onlar da yorumlari ELEYEREK bakiyor.
 'use strict';
 
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -157,8 +159,8 @@ test('S2b: SMART bileti GERCEK sunucu/template kimligiyle acilir (0 degil)', () 
   // Bosluk NORMALIZE edilir: prettier bu iki alani ayri satirlara boluyor, kural
   // aynen duruyor (bkz. bekci-korlugu-desenleri #2b).
   assert.match(norm(INDEX), /server: \{ id: runServerId \}, templateId: runTemplateId/);
-  assert.doesNotMatch(norm(INDEX), /server: \{ id: 0 \}/, 'sifir kimlik kalmamali');
-  assert.doesNotMatch(norm(INDEX), /templateId: 0\b/, 'sifir template kimligi kalmamali');
+  assert.doesNotMatch(norm(INDEX), esnek(/server: \{ id: 0 \}/), 'sifir kimlik kalmamali');
+  assert.doesNotMatch(norm(INDEX), esnek(/templateId: 0\b/), 'sifir template kimligi kalmamali');
 });
 
 // ── S5. /discover girdi dogrulamasi ─────────────────────────────────────────
@@ -230,7 +232,11 @@ test('S11: gecerli CC normalize edilir, bos deger bos kalir', () => {
 
 test('S11: route ham mailCc DEGIL, temizlenmis degeri kullanir', () => {
   assert.match(INDEX, /const mailCc = launch\.sanitizeMailCc\(req\.body\?\.mailCc\)/);
-  assert.doesNotMatch(INDEX, /const mailCc = String\(req\.body/, 'ham .trim() yolu kalmamali');
+  assert.doesNotMatch(
+    INDEX,
+    esnek(/const mailCc = String\(req\.body/),
+    'ham .trim() yolu kalmamali',
+  );
 });
 
 // ── S6. /adopt — uydurma kayit ──────────────────────────────────────────────
@@ -328,7 +334,7 @@ test('OCO: ScaleX pencere kapaliyken SESSIZCE ertelemiyor — kullaniciya soruyo
   // Eski hal: `ocoAction: 'later'` SABITI → 200 OK doner, hicbir sey olmaz.
   assert.doesNotMatch(
     INDEX,
-    /ocoAction: 'later',/,
+    esnek(/ocoAction: 'later',/),
     'hala sabit "later" — kullaniciya secim sunulmuyor',
   );
   assert.match(
@@ -384,7 +390,11 @@ test('LIMIT: /stopped kirpilmayi ve gizlenen kayit sayisini SOYLER', () => {
 test('LIMIT: /history NVARCHAR(MAX) alanlarini cekmez', () => {
   const hist = routeSlice(INDEX, 'get', '/history');
   const body = hist.slice(0, hist.indexOf('res.json'));
-  assert.doesNotMatch(body, /SELECT TOP 200 \*/, 'SELECT * result_json/error_message getirirdi');
+  assert.doesNotMatch(
+    body,
+    esnek(/SELECT TOP 200 \*/),
+    'SELECT * result_json/error_message getirirdi',
+  );
   assert.doesNotMatch(body, /result_json/);
   assert.doesNotMatch(body, /error_message/);
   assert.match(body, /SELECT TOP 200 id, request_key/);
@@ -412,7 +422,7 @@ test('GORUNURLUK: seed ELEMENT BAZINDA idempotent (yeni sayfa mevcut kurulumda g
     'seed, okudugu listeyi yazmiyor',
   );
   // Eski "tablo TAMAMEN bossa bas" davranisi bu blokta kalmamali.
-  assert.doesNotMatch(block, /if \(any\.recordset\.length\) return;/);
+  assert.doesNotMatch(block, esnek(/if \(any\.recordset\.length\) return;/));
 });
 
 test('GORUNURLUK: ScaleX varsayilan gorunurlukte ve OpsX/LogX ile AYNI rollerde', () => {
@@ -467,7 +477,7 @@ test("UI: onizleme satir anahtari CLUSTER icerir (ayni uygulama cok cluster'da o
 test('UI: geri almada bilinmeyen hedef "?" ile gecistirilmez', () => {
   const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
   assert.match(PREVIEW, /unknownTarget/);
-  assert.doesNotMatch(PREVIEW, /to \?\? "\?"/, 'anlamsiz "?" kalmamali');
+  assert.doesNotMatch(PREVIEW, esnek(/to \?\? "\?"/), 'anlamsiz "?" kalmamali');
 });
 
 test('UI: sinir asimi ONIZLEMEDE soylenir ve Calistir pasiflesir', () => {
@@ -485,7 +495,7 @@ test('UI: sinir asimi ONIZLEMEDE soylenir ve Calistir pasiflesir', () => {
 test('UI: buton neden pasif oldugunu SOYLER, OCO numarasi bosken calistirilamaz', () => {
   const PREVIEW = codeOnly(read('src/components/scalex/steps/PreviewStep.tsx'));
   assert.match(PREVIEW, /blockReason/);
-  assert.match(PREVIEW, /const ocoOk = g\.oco !== "require"/);
+  assert.match(PREVIEW, esnek(/const ocoOk = g\.oco !== "require"/));
 });
 
 test('UI: iptal hata verirse buton KILITLI KALMAZ', () => {
@@ -552,8 +562,8 @@ test('UI: secili durum ekran okuyucuya iletiliyor (renk tek basina yetmiyordu)',
   const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
   const SCOPE = codeOnly(read('src/components/scalex/steps/ScopeStep.tsx'));
   // Bu ekranda EN TEHLIKELI bilgi hangi modun secili oldugudur.
-  assert.match(OP, /aria-pressed=\{mode === "dry_run"\}/);
-  assert.match(OP, /aria-pressed=\{mode === "apply"\}/);
+  assert.match(OP, esnek(/aria-pressed=\{mode === "dry_run"\}/));
+  assert.match(OP, esnek(/aria-pressed=\{mode === "apply"\}/));
   assert.match(OP, /aria-pressed=\{active\}/, 'islem kartlari da');
   assert.match(SCOPE, /aria-pressed=\{env === e\}/);
   assert.match(SCOPE, /aria-pressed=\{tenant === t\}/);
@@ -563,9 +573,9 @@ test('UI: mod kartlarinin devre disi gorunumu islem kartlariyla AYNI', () => {
   // Ayni ekranda iki farkli "devre disi" gorunumu vardi: islem kartlari
   // `opacity-50 cursor-not-allowed` aliyor, mod kartlari yalnizca `disabled` idi.
   const OP = codeOnly(read('src/components/scalex/steps/OperationStep.tsx'));
-  const modeCards = [...OP.matchAll(/setMode\("(?:dry_run|apply)"\)\}[\s\S]{0,400}?`\}/g)].map(
-    (m) => m[0],
-  );
+  const modeCards = [
+    ...OP.matchAll(/setMode\(["'](?:dry_run|apply)["']\)\}[\s\S]{0,400}?`\}/g),
+  ].map((m) => m[0]);
   assert.equal(modeCards.length, 2, 'iki mod karti bulunamadi');
   for (const c of modeCards) assert.match(c, /opacity-50 cursor-not-allowed/);
 });

@@ -33,6 +33,7 @@
 //   TA20 / TA20b sonucu belirsiz oge (BELIRSIZ_IZ) JVM'i AWX isi bitene kadar kilitler, "calistirilmadi" kilitlemez,
 //        yeni toplu iste secim dogrulamasinda duser (inceleme B1); TA21 karisik sirali secimde uygulama host host (B2)
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test: nodeTest, beforeEach } = require('node:test');
 const test = (ad, fn) => nodeTest(ad, { timeout: 15000 }, fn);
@@ -1925,7 +1926,7 @@ test('TX1 host XML adaylari: domain kapali durmus + auto-start true ayri grup (h
   );
   const neden = Object.fromEntries(dislananlar.map((x) => [x.jvm, x.neden]));
   assert.match(neden.s1, /^GBFSTT01 taraması bayat/);
-  assert.doesNotMatch(neden.s1, /host XML/, 'bayat sunucu nedeni degismemeli');
+  assert.doesNotMatch(neden.s1, esnek(/host XML/), 'bayat sunucu nedeni degismemeli');
   assert.match(
     neden.t1,
     /^Domain kapalı; “Domain kapalı — auto-start host XML üzerinden kapat” bölümüne de alınmadı:.*tanım kaynağında yok/,

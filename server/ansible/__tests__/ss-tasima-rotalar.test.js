@@ -13,6 +13,7 @@
 //        bag / hash / ayni host / yarim yazim denetimi, Smart denemesi reddi, sunucu tarafi
 //        cakisma, geri almada kaynak sunucu / kayit kapatma, kirli onbellek, istemci kaydi
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -396,7 +397,8 @@ test('ST7 tasi: tek transaction, yalniz baglanti kolonlari, onbellek yazilir', a
       /WHERE awx_server_id = \$3 AND template_id = \$4;$/,
       'kaynak ayar satiri guncelleniyor',
     );
-  for (const sorgu of o.sorgular) assert.doesNotMatch(sorgu.sql, /DELETE FROM ansible_ss_items/);
+  for (const sorgu of o.sorgular)
+    assert.doesNotMatch(sorgu.sql, esnek(/DELETE FROM ansible_ss_items/));
   const sira = o.cagrilar.map((c) => c[0]);
   assert.ok(
     sira.includes('setCustomCache') && sira.includes('invalidate') && sira.includes('reloadItems'),
@@ -543,7 +545,8 @@ test('ST9 geri alma: bag, onay, engel; hedef ayar silinmez; survey yalniz hedefe
   assert.equal(o.items[0].awxTemplateId, 20);
   assert.equal(kayit.status, 'GERI_ALINDI');
   assert.ok(o.custom.has('3_30'), 'hedef ayar satiri silindi');
-  for (const q of o.sorgular) assert.doesNotMatch(q.sql, /DELETE FROM ansible_ss_customizations/);
+  for (const q of o.sorgular)
+    assert.doesNotMatch(q.sql, esnek(/DELETE FROM ansible_ss_customizations/));
   assert.match(T.GERI_AL_SQL, /WHERE id = \$5 AND awx_server_id = \$1 AND awx_template_id = \$2/);
 
   // Survey yazici yalniz hedef sunucuya

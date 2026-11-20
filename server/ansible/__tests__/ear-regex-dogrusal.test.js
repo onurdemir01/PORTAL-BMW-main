@@ -14,6 +14,7 @@
 //   EG4 kotu girdide (50k+ karakter) yeni desenler < 200 ms.
 //   EG5 desenlerde Python 3.6'da olmayan yapi yok (atomik grup / iyelik niceleyici 3.11+).
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -102,7 +103,7 @@ test('EG5 desenler Python 3.6 ile uyumlu (atomik grup / iyelik niceleyici yok)',
   ];
   assert.equal(satirlar.length, 3, 'uc desen satiri bulunamadi');
   for (const l of satirlar) {
-    assert.doesNotMatch(l, /\(\?>/, `atomik grup: ${l}`);
+    assert.doesNotMatch(l, esnek(/\(\?>/), `atomik grup: ${l}`);
     assert.doesNotMatch(l, /[*+?}]\+/, `iyelik niceleyici: ${l}`);
   }
 });

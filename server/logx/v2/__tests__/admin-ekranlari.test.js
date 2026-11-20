@@ -13,6 +13,7 @@
 //
 // BU TUR SUNUCUYA DOKUNMAZ (bekci AE7).
 'use strict';
+const { esnek } = require('../../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -117,7 +118,7 @@ test('AE6 OCO zamanlama paneli NE zamanlandigini gosterir', () => {
   // BOS LISTEDE SESSIZ KALMAMALI.
   assert.doesNotMatch(
     k,
-    /if \(!items\.length && !error\) return null;/,
+    esnek(/if \(!items\.length && !error\) return null;/),
     'bos listede panel hic cizilmiyor — "zamanlanmis isim var miydi" cevapsiz kalir',
   );
   // Bicimsiz kapsam panelin tamamini dusurmemeli.

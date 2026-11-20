@@ -17,6 +17,8 @@
 //      namespace, e-posta ve dosya yolu okunamiyor ve kopyalanamiyordu.
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -40,7 +42,7 @@ test('D2: hatalar KESER, digerleri sirasini bekler', () => {
   // Her bildirimi kesici yapmak, kullanicinin okudugu cumleyi "kaydedildi" gibi
   // onemsiz bir mesaj icin yarida birakmasi demektir.
   const src = read('components/common/Toast.tsx');
-  assert.match(src, /role=\{item\.type === "error" \? "alert" : "status"\}/);
+  assert.match(src, esnek(/role=\{item\.type === "error" \? "alert" : "status"\}/));
 });
 
 test('D2: bos kap tiklamayi ENGELLEMIYOR', () => {

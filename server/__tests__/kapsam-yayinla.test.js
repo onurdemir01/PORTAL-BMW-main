@@ -9,6 +9,7 @@
 //   KP7 --kurumsal: guncel rapor coverage/lcov.info'ya kopyalanir; bayat / yok rapor Sonar kosusunu
 //       dusurur, normal derlemeyi durdurmaz ve hicbir zaman kopyalanmaz
 'use strict';
+const { esnek } = require('./fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -198,7 +199,7 @@ test('KP5 SonarQube ayari ve tazeleme is akisi', () => {
   assert.match(akis, /npm run kapsam:yayinla/);
   assert.match(akis, /npm run kapsam:dogrula/);
   assert.match(akis, /git add kalite\/kapsam\n/, 'yalniz rapor commit edilmeli');
-  assert.doesNotMatch(akis, /git add (-A|\.|--all)/);
+  assert.doesNotMatch(akis, esnek(/git add (-A|\.|--all)/));
   assert.doesNotMatch(akis, /push[^\n]*--force/);
   assert.match(akis, /\n\s+contents: write\n/);
   // Rapor git disi olmamali (coverage/ disidir, kalite/ degil).

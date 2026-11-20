@@ -49,6 +49,7 @@
 //   YD-T5 cok IP'li dbo.Inventory hucresi IP sahibi aramasinda da gorunur (paylasilan VIP'in uretim sahibi -> 409)
 //   YD-T6 /hedefler yolu (hostlar yok): ad kalibi disi ama taranmis hedefin tarama / limit verisi okunur
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -272,7 +273,10 @@ test('YD4b ad listesi yok: son kapi ve playbook ad kuralina bakmaz, uretim adi /
     'utf8',
   );
   assert.doesNotMatch(pb, /yt_extra_load_hosts|yt_cpu_target_extra_hosts/);
-  assert.doesNotMatch(pb, /\(yuk_(hedef|yuk)_host \| string\) is match\(yt_re_nonprod_adi\)/);
+  assert.doesNotMatch(
+    pb,
+    esnek(/\(yuk_(hedef|yuk)_host \| string\) is match\(yt_re_nonprod_adi\)/),
+  );
   assert.match(pb, /yt_re_prod_adi: '\^\(GBRVP\|GBNG\[WX\]A\?P\)'/);
   assert.match(pb, /not \(\(yuk_yuk_host \| string\) is match\(yt_re_prod_adi\)\)/);
   assert.match(pb, /\(yuk_yuk_host \| string\) not in yt_edu_hostlari/);

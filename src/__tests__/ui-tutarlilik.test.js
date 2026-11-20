@@ -1,5 +1,6 @@
 // src/__tests__/ui-tutarlilik.test.js — UI tutarliligi (2026-11-08): onay penceresi, yardim dugmesi, giris kutusu dili.
 'use strict';
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -69,7 +70,7 @@ test('YD1 HelpModal acan sayfa yardim dugmesini YardimDugmesi`nden alir', () => 
     assert.match(s, /<YardimDugmesi\b/, `${f}: ortak yardim dugmesi yok`);
     assert.doesNotMatch(
       s,
-      /\bYardım\s*<\/button>|Bu sayfa nasıl kullanılır\?/,
+      esnek(/\bYardım\s*<\/button>|Bu sayfa nasıl kullanılır\?/),
       `${f}: eski yardim tetikleyicisi duruyor`,
     );
   }

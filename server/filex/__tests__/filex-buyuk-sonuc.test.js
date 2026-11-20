@@ -15,6 +15,7 @@
 //   FB5 kucuk is ve calisan is: tek okuma, davranis degismedi
 //   FB6 genis okuma surerken gelen yoklama 4 MB normal okumayi tekrarlamaz
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -190,7 +191,7 @@ test('FB3 genis tavani da asan is: 422 + acik mesaj, sonraki yoklama AWX`e GITME
   assert.match(ilk.body.message, /AWX iş #103/);
   assert.doesNotMatch(
     ilk.body.message,
-    /tekrar deneyin/i,
+    esnek(/tekrar deneyin/i),
     'kalici durumda "tekrar deneyin" denmemeli',
   );
 

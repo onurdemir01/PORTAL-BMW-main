@@ -8,6 +8,7 @@
 //   YT5 rota SIRASI (statik): Smart engeli ve OCO penceresi SAHIPLENMEDEN once; sahiplenme
 //       AWX cagrisindan once; rota requireAdmin ile korunur
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -167,16 +168,18 @@ test('YT4 yeni OCO degiskenleri kaynagi degistirmez', () => {
 
 test('YT5 rota sirasi ve yetki (statik)', () => {
   const kod = fs.readFileSync(path.join(__dirname, '../../ansible/runner.cjs'), 'utf8');
-  const bas = kod.indexOf("app.post('/api/ansible/ss/smart-ticket/:id/retrigger'");
+  const bas = konum(kod, "app.post('/api/ansible/ss/smart-ticket/:id/retrigger'");
   assert.ok(bas > 0, 'rota yok');
-  const govde = kod.slice(bas, kod.indexOf('app.get(', bas + 10));
-  assert.match(govde.slice(0, 200), /requireAuth, requireAdmin/);
+  const govde = kod.slice(bas, konum(kod, 'app.get(', bas + 10));
+  assert.match(govde.slice(0, 200), esnek(/requireAuth, requireAdmin/));
   assert.match(
     kod,
-    /app\.get\('\/api\/ansible\/ss\/smart-ticket\/:id\/retrigger-check', requireAuth, requireAdmin/,
+    esnek(
+      /app\.get\('\/api\/ansible\/ss\/smart-ticket\/:id\/retrigger-check', requireAuth, requireAdmin/,
+    ),
   );
   const i = (s) => {
-    const n = govde.indexOf(s);
+    const n = konum(govde, s);
     assert.ok(n > 0, `bulunamadi: ${s}`);
     return n;
   };

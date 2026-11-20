@@ -16,6 +16,7 @@
 //       varsayilan KAPALI ve yalnizca HTTPS isteginde; gercek createApp'te HER yanitta
 //   OS5 oturum ayarlari kaydetmeden once dogrulanir; sicak yuklenir ve ekranda gorunur
 'use strict';
+const { esnek, iceriyor, konum } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -250,9 +251,9 @@ test('OS3b mod: enforce 403 (oturum 401 DEGIL), log gecirir, off gecirir', () =>
 
 test('OS4 koken kontrolu tum /api route`larindan once baglanir', () => {
   const s = fs.readFileSync(path.join(ROOT, 'server/service.cjs'), 'utf8');
-  const i = s.indexOf('app.use("/api", originKontrolu());');
+  const i = konum(s, 'app.use("/api", originKontrolu());');
   assert.ok(i > 0, 'koken kontrolu baglanmamis');
-  const route = /app\.(get|post|put|delete|use)\("\/api\/(?!health)/g;
+  const route = /app\.(get|post|put|delete|use)\(\s*['"]\/api\/(?!health)/g;
   let m;
   while ((m = route.exec(s))) {
     if (m.index < i && !s.slice(m.index, m.index + 40).includes('Limiter')) {
@@ -370,9 +371,10 @@ test('OS5 oturum ayarlari dogrulanir; beyaz listede, sicak ve ekranda', () => {
     );
   }
   const sc = fs.readFileSync(path.join(ROOT, 'server/admin/system-config.cjs'), 'utf8');
-  const put = sc.slice(sc.indexOf('app.put("/api/admin/system-config"'));
+  const put = sc.slice(konum(sc, 'app.put("/api/admin/system-config"'));
   assert.ok(
-    put.indexOf('oturumAyariHatasi(key, strValue)') < put.indexOf('await setEnvOverride('),
+    konum(put, 'oturumAyariHatasi(key, strValue)') >= 0 &&
+      konum(put, 'oturumAyariHatasi(key, strValue)') < konum(put, 'await setEnvOverride('),
     'dogrulama kayittan once degil',
   );
 });
@@ -420,7 +422,7 @@ test('OS7 production`da silme cerezi Secure tasir; iki ad da silinir', async () 
     /oturumCerezi\.cerezleriSil\(res, COOKIE_NAME\)/,
     'logout cerezi ortak yardimciyla silmiyor',
   );
-  assert.doesNotMatch(idx, /res\.clearCookie\(/, 'initAuth`ta niteliksiz clearCookie kaldi');
+  assert.doesNotMatch(idx, esnek(/res\.clearCookie\(/), 'initAuth`ta niteliksiz clearCookie kaldi');
 });
 
 test('OS8 guvenlik basliklari', async () => {

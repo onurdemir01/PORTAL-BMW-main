@@ -16,6 +16,7 @@
 // Bu bekci iki seyi birden kilitler: (1) kullanici GECIRILIYOR, (2) gecirilemedigi
 // durumda bu VERIDE gorunur oluyor.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -309,7 +310,7 @@ test('RA8 performSsLaunch: req yoksa tetikleyen USERNAME uzerinden cozulur', () 
   // Hatanin kendisi: dogrudan `req?.session?.user` ile withRequesterVars cagrisi.
   assert.doesNotMatch(
     fn,
-    /withRequesterVars\(\s*extraVars\s*,\s*req\?\.session\?\.user\s*\)/,
+    esnek(/withRequesterVars\(\s*extraVars\s*,\s*req\?\.session\?\.user\s*\)/),
     'withRequesterVars dogrudan req.session.user aliyor — poller yolunda req null, atif sabit kisiye duser',
   );
   // Kimlik username uzerinden cozuluyor mu (e-posta dahil; bkz. RA5 mantigi).

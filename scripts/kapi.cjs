@@ -28,7 +28,7 @@ const KAPILAR = [
   },
   {
     id: 'K2',
-    ad: 'lint (0 uyari)',
+    ad: 'lint (0 uyari) + bicim (tum agac)',
     komut: ['npm', 'run', '-s', 'lint'],
     ci: 'npm run lint',
     hizli: true,

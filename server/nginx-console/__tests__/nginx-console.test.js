@@ -3,6 +3,7 @@
 // birlestirme (ayni parmak izi = tek satir, host/kullanim listesi), kalan gun.
 // NH5-NH7: yol beyaz listesi, kayitlar (paths/seed/nav/route), push betigi sozlesmesi.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -525,7 +526,9 @@ test('GS12 uc nokta CLUSTER BASINA en yeni taramayi okur; match_by yoksa da cali
   // Tek MAX(scan_date) bugun login'i dusen cluster'in dunku verisini ekrandan siliyordu.
   assert.doesNotMatch(
     src,
-    /FROM dbo\.BMW_Spa_Discovery WHERE scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.BMW_Spa_Discovery\)/,
+    esnek(
+      /FROM dbo\.BMW_Spa_Discovery WHERE scan_date = \(SELECT MAX\(scan_date\) FROM dbo\.BMW_Spa_Discovery\)/,
+    ),
     'tek global MAX(scan_date) geri gelmis',
   );
   assert.match(

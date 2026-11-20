@@ -9,6 +9,8 @@
 // ayri bir karar; bu dosya o kalemi KAPSAMAZ ve kapsiyormus gibi de yapmaz.
 'use strict';
 
+const { esnek } = require('./fixtures/kod-deseni.cjs');
+
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -98,7 +100,9 @@ test('DB1b ayrinti onbellegi GIRIS SAYISINI sinirliyor, suresi dolan siliniyor, 
   const govde = dilim(CS, 'async function loadChoiceDetails(', '\n}\n');
   assert.match(
     govde,
-    /while \(detailCache\.size >= DETAIL_MAX_ENTRIES\) detailCache\.delete\(detailCache\.keys\(\)\.next\(\)\.value\)/,
+    esnek(
+      /while \(detailCache\.size >= DETAIL_MAX_ENTRIES\) detailCache\.delete\(detailCache\.keys\(\)\.next\(\)\.value\)/,
+    ),
     'dolunca en eski atilmiyor',
   );
   // OKUMA DALI ile SINIRLI dilim: yazimdan onceki FIFO silmesi de `detailCache.delete(key)` -

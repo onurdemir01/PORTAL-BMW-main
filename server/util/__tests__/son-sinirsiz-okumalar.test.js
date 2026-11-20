@@ -14,6 +14,7 @@
 // Bu testler GERCEK kod yolunu sahte bir HTTP katmaniyla kosturur: kaynak
 // taramasi bu sinifi goremez — kapinin VAR olmasi yetmez, CALISMASI gerekir.
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -125,7 +126,7 @@ test('SS5 UC Teams yolunun HICBIRINDE `res.text()` KALMADI', () => {
       .readFileSync(path.join(ROOT, f), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
-    assert.doesNotMatch(kod, /await\s+res\.text\(\)/, `${f}: sinirsiz .text() geri geldi`);
+    assert.doesNotMatch(kod, esnek(/await\s+res\.text\(\)/), `${f}: sinirsiz .text() geri geldi`);
     assert.match(kod, /readBodyPreview\(/, `${f}: sinirli okuma kullanilmiyor`);
   }
 });

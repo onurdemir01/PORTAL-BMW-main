@@ -15,6 +15,8 @@
 // Metin server/util/guard-text.cjs normalize() ile duzlestirilir (prettier'den bagimsiz).
 'use strict';
 
+const { esnek } = require('../../server/__tests__/fixtures/kod-deseni.cjs');
+
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -115,7 +117,7 @@ test('UI2 JVM secimi RADYO ve TEK anahtar; onSubmit TEK hedef verir', () => {
   // Secim TEK metin anahtari; dizi/Set ile coklu secim yok.
   assert.match(JVM, /const \[selectedKey, setSelectedKey\] = useState\(''\)/);
   assert.doesNotMatch(JVM, /useState<\s*(Set|string\[\]|WasTarget\[\]|Record)/);
-  assert.doesNotMatch(JVM, /setSelectedKey\(\s*\(/, 'secim bir onceki secime EKLENMEMELI');
+  assert.doesNotMatch(JVM, esnek(/setSelectedKey\(\s*\(/), 'secim bir onceki secime EKLENMEMELI');
   assert.match(JVM, /onChange=\{\(\) => \{ setSelectedKey\(k\); setOperation\(null\); \}\}/);
   // Secilemeyen (olculemeyen / coklu surec / kimliksiz) satirin radyosu kapali.
   assert.match(JVM, /disabled=\{busy \|\| !t\.selectable\}/);
@@ -154,7 +156,7 @@ test('UI4 onay: JVM adi ELLE yazilir, onay kutusu ve uyari kabulu ayrica', () =>
     /const \[typed, setTyped\] = useState\(''\)/,
     'alan BOS baslamali (on doldurma yok)',
   );
-  assert.doesNotMatch(CONFIRM, /useState\(target\.server\)/);
+  assert.doesNotMatch(CONFIRM, esnek(/useState\(target\.server\)/));
   assert.match(CONFIRM, /const nameOk = typed === target\.server;/);
   assert.match(
     CONFIRM,
@@ -163,7 +165,9 @@ test('UI4 onay: JVM adi ELLE yazilir, onay kutusu ve uyari kabulu ayrica', () =>
   assert.match(CONFIRM, /disabled=\{!canSubmit\}/);
   assert.match(
     CONFIRM,
-    /onConfirm\(\{ confirmed: consent, confirmText: typed, ackWarnings: warnings\.length > 0 && ack \}\)/,
+    esnek(
+      /onConfirm\(\{ confirmed: consent, confirmText: typed, ackWarnings: warnings\.length > 0 && ack \}\)/,
+    ),
   );
 });
 

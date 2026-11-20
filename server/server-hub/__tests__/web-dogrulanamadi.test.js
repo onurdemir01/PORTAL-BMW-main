@@ -10,6 +10,7 @@
 //   WD4 tanimlanmamis cikti eski genel metni korur; detay her zaman sonda
 //   WD5 bosta IP BILGI (uyari degil): sunucuyu 'warning'e cekmez, ozet sayisi yerinde; ekran tonu bilgi
 'use strict';
+const { esnek } = require('../../__tests__/fixtures/kod-deseni.cjs');
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
@@ -94,7 +95,7 @@ test('WD3 calisma durumu: calismiyor (olculdu) ve olculemedi (hidepid) ayri', ()
   assert.match(kor.text, /— ürünün çalışıp çalışmadığı ölçülemedi \(süreç listesi görünmüyor\); /);
   assert.doesNotMatch(
     kor.text,
-    /çalışmıyor \(süreç yok\)/,
+    esnek(/çalışmıyor \(süreç yok\)/),
     'gorulmeyen surec "calismiyor" sayildi',
   );
 });
@@ -144,6 +145,6 @@ test('WD5 bosta IP bilgi: sunucuyu warning e cekmez, sayi yerinde; ekran tonu bi
     'utf8',
   );
   assert.match(ui, /title="Boşta IP"[\s\S]{0,200}tone=\{s\.ips\.unused \? 'info' : 'ok'\}/);
-  assert.doesNotMatch(ui, /value: s\.ips\.unused, color: SEV\.warning\.color/);
-  assert.doesNotMatch(ui, /h\.unusedIps \? \{ color: SEV\.warning\.color/);
+  assert.doesNotMatch(ui, esnek(/value: s\.ips\.unused, color: SEV\.warning\.color/));
+  assert.doesNotMatch(ui, esnek(/h\.unusedIps \? \{ color: SEV\.warning\.color/));
 });
