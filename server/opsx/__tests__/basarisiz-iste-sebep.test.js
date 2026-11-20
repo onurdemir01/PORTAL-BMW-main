@@ -28,6 +28,7 @@ const PB_DIR = path.join(
   '..',
   '..',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'opsx_openshift_dump',
 );

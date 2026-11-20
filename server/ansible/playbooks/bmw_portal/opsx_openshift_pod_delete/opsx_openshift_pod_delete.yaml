@@ -1,5 +1,5 @@
 ---
-# server/ansible/bmw_portal/opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml —
+# server/ansible/playbooks/bmw_portal/opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml —
 # OpsX Openshift: seçilen POD'ları siler (OpenShift yeniden ayağa kaldırır = restart),
 # HANGİ gerçek cluster'a ait olurlarsa olsunlar. (2026-09-18, kullanıcı: "Çalışan
 # podlarımı silmek (restart etmek) istiyorum" seçeneği.)

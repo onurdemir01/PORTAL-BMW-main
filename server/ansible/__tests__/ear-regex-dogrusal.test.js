@@ -22,7 +22,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { adaylar } = require('./fixtures/python-bul.cjs');
 
-const FILES = path.join(__dirname, '..', 'bmw_portal', 'ear_envanter', 'files');
+const FILES = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'ear_envanter', 'files');
 const EAR = path.join(FILES, 'ear_tara.py');
 const WEB = path.join(FILES, 'web_tara.py');
 const BETIK = path.join(__dirname, 'fixtures', 'ear_regex_esdeger.py');

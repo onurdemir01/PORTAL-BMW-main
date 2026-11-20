@@ -25,6 +25,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { aracYolu } = require('./arac-yolu.cjs');
+const { KURUMA_GITMEYEN } = require('./teslim.cjs');
 
 const KOK = path.join(__dirname, '..');
 const IMAJ = 'sonarqube:26.11.0.134175-community';
@@ -52,13 +53,20 @@ function incelemeBul(hotspot, satirMetni, liste) {
   );
 }
 
+/**
+ * Kurumsal depoda BULUNMAYAN dizinler (scripts/teslim.cjs KURUMA_GITMEYEN; aktarimda silinir, CI provasi
+ * kurum agacini boyle kurar). Taklit kurumun tarayacagi agaci tarar: bu dizinler kurumda yoktur, bu
+ * yuzden taramada da yoktur. Kurumun desenleri gevsetilmez; liste teslim listesinin aynisidir (KK12).
+ */
+const KURUM_AGACINDA_YOK = KURUMA_GITMEYEN.map((d) => `${d}**`);
+
 /** kalite/kurumsal-sonar.json -> kurumun komut satiri anahtarlari (-D...). Saf islev. */
 function kurumsalArgumanlar(k, lcov = KURUMSAL_LCOV) {
   return [
     `-Dsonar.sources=${k.sources}`,
     `-Dsonar.tests=${k.tests}`,
     `-Dsonar.test.inclusions=${k.testInclusions.join(',')}`,
-    `-Dsonar.exclusions=${k.exclusions.join(',')}`,
+    `-Dsonar.exclusions=${[...k.exclusions, ...KURUM_AGACINDA_YOK].join(',')}`,
     `-Dsonar.coverage.exclusions=${k.coverageExclusions.join(',')}`,
     `-Dsonar.javascript.lcov.reportPaths=${lcov}`,
   ];
@@ -393,6 +401,7 @@ module.exports = {
   incelemeBul,
   incelemeler,
   kurumsalArgumanlar,
+  KURUM_AGACINDA_YOK,
   IMAJ,
   KURUMSAL_PROJE,
   KURUMSAL_LCOV,

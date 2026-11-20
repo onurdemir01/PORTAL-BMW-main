@@ -405,15 +405,20 @@ test('KJ8 prova: komutlar groovy sirasiyla temiz agacta; paket, sure ve dusen ad
     assert.equal(r.kod, 0, r.hata.join('\n'));
     const ozet = s.kayit.map((k) => [k.komut, ...k.args].join(' '));
     const agac = s.kayit[0].args[3];
+    const nodeAd = path.basename(process.execPath);
     assert.deepEqual(ozet, [
       `git worktree add --detach ${agac} HEAD`,
-      `${path.basename(process.execPath)} scripts/teslim.cjs --yaz`,
+      `${nodeAd} scripts/teslim.cjs --yaz`,
+      // Is #52: prova kurumsal depodaki agacta kosar (kuruma gitmeyenler silinir).
+      'git rm -r -q --ignore-unmatch -- .github/ .claude/ .agent/ sunum/ server/ansible/playbooks/',
       'npm install',
       'npm run kurumsal:derle',
+      `${nodeAd} -e ${PROVA.MODUL_YUKLE}`,
       `git worktree remove --force ${agac}`,
     ]);
     assert.equal(s.kayit[0].cwd, KOK);
-    for (const k of s.kayit.slice(1, 4)) {
+    assert.equal(s.kayit[5].cwd, path.join(agac, CIKTI), 'moduller paketin icinde yuklenmeli');
+    for (const k of s.kayit.slice(1, 5)) {
       assert.equal(k.cwd, agac, `${k.args.join(' ')} temiz agacta kosmadi`);
       assert.equal(k.env.BUILD_NOTE, undefined, 'Sonar kosusu tetiklenmemeli');
     }
@@ -432,8 +437,10 @@ test('KJ8 prova: komutlar groovy sirasiyla temiz agacta; paket, sure ve dusen ad
   const dusmeler = [
     ['worktree add', 'temiz agac'],
     ['teslim.cjs', 'teslim imzasi'],
+    ['--ignore-unmatch', 'kurum agaci (kuruma gitmeyenler silinir)'],
     ['npm install', 'groovy "install"'],
     ['kurumsal:derle', 'groovy "run kurumsal:derle"'],
+    ['server/index.cjs', 'calisma zamani modulleri'],
   ];
   for (const [i, [dus, adim]] of dusmeler.entries()) {
     const s = sahte({ dus });

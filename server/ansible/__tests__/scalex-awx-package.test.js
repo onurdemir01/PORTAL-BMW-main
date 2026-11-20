@@ -1,6 +1,6 @@
 // server/ansible/__tests__/scalex-awx-package.test.js
 //
-// `server/ansible/bmw_portal/scalex/` altindaki AWX paketi ile PORTALIN sozlesmesini
+// `server/ansible/playbooks/bmw_portal/scalex/` altindaki AWX paketi ile PORTALIN sozlesmesini
 // kilitler. Paket AWX'e ELLE kopyalaniyor; uyusmazlik aksi halde ancak URETIMDE,
 // "sonuc bulunamadi" ya da "400 variables_needed_to_start" olarak ortaya cikar.
 //

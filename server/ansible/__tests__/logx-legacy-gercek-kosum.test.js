@@ -55,7 +55,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { ansiblePythonu } = require('./fixtures/python-bul.cjs');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'logx', 'legacy');
 const KESIF = path.join(DIR, 'logx_legacy_discovery.yml');
 const AKTARIM = path.join(DIR, 'logx_legacy_transfer.yml');
 

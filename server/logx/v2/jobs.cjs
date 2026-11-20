@@ -411,7 +411,7 @@ function extractPlaybookRevision(rawArtifacts) {
 /**
  * "AWX'teki kopya bayat mi?" — bu soruyu kullanicinin sormasina gerek kalmasin.
  *
- * NEDEN VAR: `server/ansible/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
+ * NEDEN VAR: `server/ansible/playbooks/bmw_portal/` klasoru AWX projesine ELLE kopyalanir.
  * Kopyalanmadiginda AWX ESKI surumu kosar ve portalda gorunen hata repodaki
  * (coktan duzeltilmis) koda ait olur. 2026-09-07'de bu dongude dort tur donuldu;
  * son turda #3297277'nin sebebi zaten duzeltilmisti ama AWX'teki kopya bayatti.
@@ -431,7 +431,7 @@ function buildPlaybookStalenessWarning(live) {
 
   const kopyala =
     `Aşağıdaki hata güncel koda ait olmayabilir — ` +
-    `\`server/ansible/bmw_portal/\` klasörünü AWX projesine yeniden kopyalayıp işi tekrarlayın.`;
+    `\`server/ansible/playbooks/bmw_portal/\` klasörünü AWX projesine yeniden kopyalayıp işi tekrarlayın.`;
   if (!actual) {
     return (
       `AWX'teki playbook kopyası sürüm damgası taşımıyor, yani repodaki sürümden ` +

@@ -29,7 +29,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { pythonBul, ansiblePythonu } = require('./fixtures/python-bul.cjs');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'ear_envanter');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'ear_envanter');
 const PLAYBOOK = path.join(DIR, 'ear_envanter.yml');
 const METIN = fs.readFileSync(PLAYBOOK, 'utf8');
 const KOD = METIN.split('\n')

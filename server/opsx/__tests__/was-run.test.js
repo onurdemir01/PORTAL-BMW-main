@@ -75,7 +75,7 @@ function reset() {
       enabled: 1,
       awx_template_id: 101,
       awx_server_id: 1,
-      playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_discover.yml',
+      playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/opsx_was_discover.yml',
       env_var_name: 'OPSX_WAS_DISCOVER_TEMPLATE_ID',
     },
     opsx_was_operation: {
@@ -83,7 +83,7 @@ function reset() {
       enabled: 1,
       awx_template_id: 102,
       awx_server_id: 1,
-      playbook_path: 'server/ansible/bmw_portal/opsx_was/opsx_was_operation.yml',
+      playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/opsx_was_operation.yml',
       env_var_name: 'OPSX_WAS_OPERATION_TEMPLATE_ID',
     },
   };
@@ -1154,7 +1154,7 @@ test('WS2 registry anahtarlari, seed satirlari ve paths ayni sozlesmeyi soyluyor
     const i = setup.indexOf(`key_name: '${key}'`);
     assert.ok(i > 0, `${key} seed satiri yok`);
     const blok = setup.slice(i, setup.indexOf('}', i));
-    assert.match(blok, new RegExp(`playbook_path: 'server/ansible/bmw_portal/opsx_was/${file.replace('.', '\\.')}'`));
+    assert.match(blok, new RegExp(`playbook_path: 'server/ansible/playbooks/bmw_portal/opsx_was/${file.replace('.', '\\.')}'`));
     assert.match(blok, new RegExp(`env_var_name: '${env}'`));
   }
   assert.match(setup, /name: 'opsx_was_locks'/);

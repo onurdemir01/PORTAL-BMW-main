@@ -47,7 +47,7 @@ const TARGETS = [
       },
       {
         id: 'tes-haric',
-        find: 'if (KURUMA_GITMEYEN.some((h) => yol.startsWith(h))) continue;',
+        find: 'if (IMZA_DISI.some((h) => yol.startsWith(h))) continue;',
         replace: '',
         desc: 'include kalite/ and non-delivered dirs (.github, sunum, ...) in the signature',
       },

@@ -31,7 +31,7 @@ const fail = (title, detail, fix) => results.push({ level: 'fail', title, detail
 
 // ── 1. ScaleX AWX paketi: surum ucluSU ve ozet ──────────────────────────────
 function checkScalexPackage() {
-  const APP = 'server/ansible/bmw_portal/scalex/scalex_app';
+  const APP = 'server/ansible/playbooks/bmw_portal/scalex/scalex_app';
   let version, runnerVersion, expected, manifest;
   try {
     version = read(`${APP}/VERSION`).trim();
@@ -83,13 +83,13 @@ function checkManualCopies(scalexVersion) {
     'AWX kopyasi ELLE dogrulanmali: scalex_app',
     `Portal paket surumu ${scalexVersion} bekliyor.`,
     'AWX projesindeki bmw_portal/scalex/scalex_app/VERSION dosyasi da ' +
-      `"${scalexVersion}" olmali. Degilse server/ansible/bmw_portal/scalex/scalex_app/ ` +
+      `"${scalexVersion}" olmali. Degilse server/ansible/playbooks/bmw_portal/scalex/scalex_app/ ` +
       'klasorunu oldugu gibi kopyalayin. (Uyusmazlikta ekran tahmin etmez, soyler.)',
   );
   warn(
     'AWX kopyasi ELLE dogrulanmali: ocp_telnet_control.yml',
     'Repo kopyasi REFERANS; portal onu calistirmaz.',
-    'server/ansible/bmw_portal/telnet_openshift/telnet_openshift.yaml icerigini AWX projesindeki ' +
+    'server/ansible/playbooks/bmw_portal/telnet_openshift/telnet_openshift.yaml icerigini AWX projesindeki ' +
       'bmw_openshift_jobs/ocp_telnet_control.yml dosyasina kopyalayin. ' +
       'Kopyalanmazsa "pod hazir degil" durumu yine KAPALI olarak raporlanir.',
   );
@@ -97,7 +97,7 @@ function checkManualCopies(scalexVersion) {
 
 // ── 2b. OCP playbook surum damgalari ────────────────────────────────────────
 //
-// NEDEN VAR: `server/ansible/bmw_portal/logx/ocp/` klasoru AWX'e ELLE kopyalanir.
+// NEDEN VAR: `server/ansible/playbooks/bmw_portal/logx/ocp/` klasoru AWX'e ELLE kopyalanir.
 // Kopyalanmadiginda AWX ESKI surumu kosar ve portalda gorunen hata repodaki
 // (coktan duzeltilmis) koda ait olur. 2026-09-07'de bu dongude dort tur donuldu.
 //
@@ -150,7 +150,7 @@ function checkPlaybookRevisions() {
   warn(
     'AWX kopyasi ELLE dogrulanmali: logx/ocp/',
     'Portal, AWX isinin yayinladigi damgayi yukaridakiyle karsilastirir.',
-    'server/ansible/bmw_portal/logx/ocp/ klasorunu AWX projesindeki bmw_portal/logx/ocp/ ' +
+    'server/ansible/playbooks/bmw_portal/logx/ocp/ klasorunu AWX projesindeki bmw_portal/logx/ocp/ ' +
       'altina kopyalayin. Kopyalanmazsa isler kosar ama portal "AWX\'teki kopya eski" uyarisi ' +
       'gosterir — ve gosterdiginde HAKLIDIR.',
   );

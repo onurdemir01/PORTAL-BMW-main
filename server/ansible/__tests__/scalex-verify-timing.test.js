@@ -24,7 +24,7 @@ const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const RUNNER = path.join(
-  ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
+  ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh',
 );
 
 /**
@@ -153,7 +153,7 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
     'server/scalex/config.cjs': { izin: new Set(['300', '30', '3600', '86400', '20']), enAz: 6 },
     'src/components/scalex/steps/OperationStep.tsx': { izin: new Set(['300', '30', '3600']), enAz: 3 },
     'src/hooks/useScaleXLimits.ts': { izin: new Set(['300', '30', '3600']), enAz: 0 },
-    'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml': {
+    'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml': {
       izin: new Set(['300', '86400']), enAz: 4,
     },
   };
@@ -187,7 +187,7 @@ test('VT1 sure sabiti TUTAN HER YERDE 300 (tarama, elle regex degil)', () => {
   // S10 tarafindan kilitleniyor — burada yalnizca VARSAYILANLAR.)
   const survey = JSON.parse(
     fs.readFileSync(
-      path.join(ROOT, 'server/ansible/bmw_portal/scalex/awx/scalex_run.survey.json'), 'utf8',
+      path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/awx/scalex_run.survey.json'), 'utf8',
     ),
   );
   const soru = (v) => survey.spec.find((q) => q.variable === v);
@@ -380,7 +380,7 @@ function prepareWith(timeout) {
         '    awx_job_id: "1"',
         '  tasks:',
         '    - block:',
-        `        - ansible.builtin.include_tasks: ${path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml')}`,
+        `        - ansible.builtin.include_tasks: ${path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml')}`,
         '      rescue:',
         '        - ansible.builtin.debug: { msg: "PREPARE_FAILED: {{ ansible_failed_result.msg | default(\'?\') }}" }',
       ].join('\n'),
@@ -428,7 +428,7 @@ test('VT8b gecersiz sure REDDEDILIYOR ve sebep DOGRU yazi', { skip: !HAS_ANSIBLE
 // gorevini TAMAMEN SILMEK onu kirmiyordu: gorev yoksa 300 zaten gecer.
 test('VT8d dogrulama gorevi VAR ve uc butce degiskenini de kontrol ediyor', () => {
   const src = fs.readFileSync(
-    path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'), 'utf8',
+    path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/01_prepare.yml'), 'utf8',
   );
   assert.match(src, /- name: "Validate verification budget"/, 'dogrulama gorevi YOK');
   const blok = src.slice(src.indexOf('- name: "Validate verification budget"'));

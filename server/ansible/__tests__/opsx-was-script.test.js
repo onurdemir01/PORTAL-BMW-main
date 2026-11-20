@@ -38,7 +38,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BASH, BASH_SURUM, posixYol } = require('./fixtures/kabuk.cjs');
 
-const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'bmw_portal', 'opsx_was');
+const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');
 
 // `timeout` node'un gozuyle degil betigin kabugunun gozuyle olculur (Windows'ta ayni adli

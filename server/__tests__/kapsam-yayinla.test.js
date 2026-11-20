@@ -68,7 +68,7 @@ test('KP2 kaynakMi sonar.sources ile ayni', () => {
     'src/test/setup.ts',
     'src/vite-env.d.ts',
     'scripts/a.cjs',
-    'server/ansible/bmw_portal/x/files/a.py',
+    'server/ansible/playbooks/bmw_portal/x/files/a.py',
     'server/data/a.json',
   ])
     assert.equal(kaynakMi(y), false, y);

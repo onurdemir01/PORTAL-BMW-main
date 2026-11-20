@@ -167,7 +167,7 @@ test('YD4b ad listesi yok: son kapi ve playbook ad kuralina bakmaz, uretim adi /
   }
   assert.ok(dg.ekstraDegiskenleriDenetle(evOrnek({ yuk_hedef_host: 'GBJWLT01', yuk_yuk_host: 'GBJWLT01' })).includes('yuk_yuk_host'));
   // Playbook ayni kurali uygular: ek liste yok, ad kurali yok, uretim adi ve EDU listesi var.
-  const pb = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'nginx_loadtest', 'nginx_loadtest.yml'), 'utf8');
+  const pb = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'nginx_loadtest.yml'), 'utf8');
   assert.doesNotMatch(pb, /yt_extra_load_hosts|yt_cpu_target_extra_hosts/);
   assert.doesNotMatch(pb, /\(yuk_(hedef|yuk)_host \| string\) is match\(yt_re_nonprod_adi\)/);
   assert.match(pb, /yt_re_prod_adi: '\^\(GBRVP\|GBNG\[WX\]A\?P\)'/);

@@ -6,11 +6,14 @@
 // her kirilma (eksik npm betigi, yanlis paket yeri, derleme hatasi, 15 dk zaman asimi) ancak orada
 // gorunuyordu. Prova ayni komutlari, ayni sirayla, kurumsal klona benzeyen temiz bir agacta kosturur:
 //   1. git worktree (commit'lenmis HEAD): node_modules yok, git indeksi var;
-//   2. teslim imzasi o agactan yazilir (main'de .github/workflows/teslim-imzasi.yml'in yaptigi);
+//   2. teslim imzasi o agactan yazilir (main'de .github/workflows/teslim-imzasi.yml'in yaptigi), sonra
+//      kuruma gitmeyen dizinler (scripts/teslim.cjs KURUMA_GITMEYEN: .github, sunum, Ansible ...) agactan
+//      ve indeksten silinir: prova kurumsal depodaki agacta kosar (is #52);
 //   3. `npm install` (kurumun `jf npm install`i), sonra groovy'de install'dan sonraki her komut
 //      `npm <komut>` olarak (kutuphanenin NPMPipeline'i boyle cagirir);
-//   4. groovy'nin sikistirdigi dizinde calisma zamani paketi var mi; sure kurumun 15 dk'lik tek
-//      zaman asiminin altinda mi (pay birakilir: kurumsal pod'lar yavas olabilir).
+//   4. groovy'nin sikistirdigi dizinde calisma zamani paketi var mi; paketin icinde server/index.cjs'in
+//      yukledigi her modul yuklenebiliyor mu (Ansible'siz agacta eksik dosya burada duser); sure kurumun
+//      15 dk'lik tek zaman asiminin altinda mi (pay birakilir: kurumsal pod'lar yavas olabilir).
 // Ortam farklari (kayit defteri, JFrog'un .npmrc'si) provada yoktur; onlar kurum talebindedir.
 'use strict';
 
@@ -19,6 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { CIKTI } = require('./kurumsal-derle.cjs');
+const { KURUMA_GITMEYEN } = require('./teslim.cjs');
 const { aracYolu, kabukIcin } = require('./arac-yolu.cjs');
 
 const KOK = path.join(__dirname, '..');
@@ -33,6 +37,16 @@ const PAKET_ICERIGI = [
   'server',
   'deploy/release.sh',
 ];
+
+// Paketin icinde kosar: sunucunun giris dosyasinin yukledigi her modul (dinlemeye baslamadan).
+const MODUL_YUKLE = [
+  "const fs = require('node:fs'), path = require('node:path');",
+  "const giris = fs.readFileSync('server/index.cjs', 'utf8');",
+  "const adlar = [...new Set([...giris.matchAll(/require\\('(\\.\\/[^']+)'\\)/g)].map((m) => m[1]))];",
+  "for (const m of adlar) require(path.resolve('server', m));",
+  'console.log(`[prova] calisma zamani: server/index.cjs ${adlar.length} modul yuklendi`);',
+  'process.exit(0);',
+].join('\n');
 
 /** Satir yorumlari (`//` sonrasi) atilir; satir satir (dogrusal, Sonar S8786). */
 const yorumsuz = (metin) =>
@@ -125,6 +139,8 @@ function prova({
   try {
     if (!adim('temiz agac', 'git', ['worktree', 'add', '--detach', agac, 'HEAD'], kok)) return 1;
     if (!adim('teslim imzasi', process.execPath, ['scripts/teslim.cjs', '--yaz'], agac)) return 1;
+    const silinecek = ['rm', '-r', '-q', '--ignore-unmatch', '--', ...KURUMA_GITMEYEN];
+    if (!adim('kurum agaci (kuruma gitmeyenler silinir)', 'git', silinecek, agac)) return 1;
     for (const k of g.komutlar) {
       if (!adim(`groovy "${k}"`, 'npm', k.split(/\s+/), agac)) return 1;
     }
@@ -134,6 +150,8 @@ function prova({
       for (const e of eksik) hata(`  - ${e}`);
       return 1;
     }
+    const paket = path.join(agac, CIKTI);
+    if (!adim('calisma zamani modulleri', process.execPath, ['-e', MODUL_YUKLE], paket)) return 1;
     const dk = (simdi() - bas) / 60000;
     if (dk > SURE_SINIRI_DK) {
       hata(
@@ -171,6 +189,7 @@ module.exports = {
   GROOVY,
   SURE_SINIRI_DK,
   PAKET_ICERIGI,
+  MODUL_YUKLE,
   ayristir,
   groovyOku,
   paketDenetle,

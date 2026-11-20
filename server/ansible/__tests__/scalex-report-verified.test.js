@@ -30,7 +30,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const SCALEX_APP = path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app');
+const SCALEX_APP = path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app');
 const REPORT = path.join(SCALEX_APP, 'tasks', '20_build_report.yml');
 const RUNNER = path.join(SCALEX_APP, 'files', 'scalex_runner.sh');
 

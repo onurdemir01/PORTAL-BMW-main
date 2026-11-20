@@ -6,7 +6,7 @@ kurumsal AWX proje reposuna **olduğu gibi kopyalanacak** şekilde düzenlenmiş
 Portal bu dosyaları **çalıştırmaz** — burada referans olarak dururlar ki portal
 sözleşmesi (`extra_vars` adları, `set_stats` anahtarları) ile playbook aynı depoda,
 aynı commit'te ve aynı testlerle birlikte doğrulanabilsin. LogX'te de aynı düzen
-`server/ansible/bmw_portal/logx/` altında var.
+`server/ansible/playbooks/bmw_portal/logx/` altında var.
 
 > Sözleşme testleri: `server/ansible/__tests__/scalex-awx-package.test.cjs`.
 > Bu testler gerçek `scalex_runner.sh`'i sahte bir `oc` ile çalıştırıp çıktısını

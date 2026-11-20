@@ -109,7 +109,7 @@ test('RP4 sunucu ayari: ae, static, kanit onceligi, static seviye kanittan', () 
   assert.equal(ks('gzip', 6, null).gzipStatikSeviye, 6, 'kanitta yoksa secilen');
   assert.equal(rapor.STATIK_VARSAYILAN_SEVIYE, 9);
   assert.deepEqual(['evet', 'hayir', 'ok', null], [true, false, { durum: 'ok' }, undefined].map(rapor.diskKanitMetni));
-  const betik = fs.readFileSync(path.join(__dirname, '../../ansible/bmw_portal/nginx_loadtest/files/hazirlik.sh'), 'utf8');
+  const betik = fs.readFileSync(path.join(__dirname, '../../ansible/playbooks/bmw_portal/nginx_loadtest/files/hazirlik.sh'), 'utf8');
   assert.ok(betik.includes(`dosya_seviye="\${SEVIYE:-${rapor.STATIK_VARSAYILAN_SEVIYE}}"`), 'hazirlik.sh seviyesiz static varsayilani degisti');
   assert.ok(betik.includes('dosya_seviye\\t%s'), 'hazirlik.sh dosya_seviye yazmiyor');
   assert.ok(betik.includes('disk_kanit\\t%s'), 'hazirlik.sh disk_kanit yazmiyor');

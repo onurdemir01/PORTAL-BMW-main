@@ -19,8 +19,8 @@ const { spawnSync } = require('node:child_process');
 const express = require('express');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const BETIK = path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'files', 'app_hub_ocp.sh');
-const PLAYBOOK = process.env.APP_HUB_PLAYBOOK || path.join(ROOT, 'server', 'ansible', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
+const BETIK = path.join(ROOT, 'server', 'ansible', 'playbooks', 'bmw_portal', 'app_hub', 'files', 'app_hub_ocp.sh');
+const PLAYBOOK = process.env.APP_HUB_PLAYBOOK || path.join(ROOT, 'server', 'ansible', 'playbooks', 'bmw_portal', 'app_hub', 'app_hub_ocp.yml');
 
 function sahte(yol, exp) {
   const m = new Module(yol, null);

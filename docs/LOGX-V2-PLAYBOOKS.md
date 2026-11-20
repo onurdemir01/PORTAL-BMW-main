@@ -1,7 +1,7 @@
 # LogX v2 — Ansible Playbook Kurulum Rehberi (Basit)
 
 LogX v2 (güvenli log indirme) 4 tane Ansible playbook kullanır. Bu playbook'lar
-portal reposunda **yalnızca referans** olarak durur (`server/ansible/bmw_portal/logx/{legacy,ocp}/logx_*.yml`);
+portal reposunda **yalnızca referans** olarak durur (`server/ansible/playbooks/bmw_portal/logx/{legacy,ocp}/logx_*.yml`);
 gerçek çalışacak kopyalar **ayrı Ansible projesine** deploy edilir ve **AWX'te job
 template** olarak tanımlanır. Portal bu template'leri sadece "başlat + durumunu izle"
 şeklinde kullanır.
@@ -38,7 +38,7 @@ altındaki `log`, `logs` ve numaralı log dizinleri (`log1`, `log2`, `logs1`, `l
 `log4j`, `logs_old` gibi benzer adlar bilerek taranmaz. Desen playbook'taki
 `legacy_log_dir_regex` değişkenindedir ve sonuç artifact'ında (`log_dir_regex`) yayınlanır;
 alan gelmiyorsa AWX'teki kopya eskidir ve portal bunu dosya seçim ekranında söyler.
-Ayrıntı: `server/ansible/bmw_portal/logx/legacy/README.md`.
+Ayrıntı: `server/ansible/playbooks/bmw_portal/logx/legacy/README.md`.
 
 **Legacy aktarımın geçici alanı (2026-10-13):** loglar `was` ile okunur, teslim dizinine bağlanan
 kullanıcı yazar; arada bir ara dizin gerekir. Bu dizin eskiden tek ve sabitti
@@ -199,5 +199,5 @@ Bunların her biri üretimde ya da doğrulamada bir kez yaşandı; hepsi **YAML 
 **Her değişiklikten sonra:**
 
 ```bash
-ansible-playbook --syntax-check server/ansible/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml
+ansible-playbook --syntax-check server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_app_discovery.yml
 ```

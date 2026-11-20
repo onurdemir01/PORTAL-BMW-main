@@ -74,19 +74,33 @@ test('TS1 imza: git blob sha (git hash-object ile ayni), kuruma gitmeyenler hari
       'scripts/paket.cjs',
     ]);
     for (const yol of Object.keys(i)) assert.equal(i[yol], git(d, 'hash-object', yol), yol);
-    assert.deepEqual(T.KURUMA_GITMEYEN, ['kalite/', '.github/', '.claude/', '.agent/', 'sunum/']);
+    assert.deepEqual(T.KURUMA_GITMEYEN, [
+      '.github/',
+      '.claude/',
+      '.agent/',
+      'sunum/',
+      'server/ansible/playbooks/',
+    ]);
+    assert.deepEqual(T.IMZA_DISI, ['kalite/', ...T.KURUMA_GITMEYEN]);
     assert.equal(T.IMZA, 'kalite/teslim.json');
-    assert.ok(T.IMZA.startsWith(T.KURUMA_GITMEYEN[0]), 'imza kendini kapsamamali');
+    assert.ok(T.IMZA.startsWith(T.IMZA_DISI[0]), 'imza kendini kapsamamali');
+    assert.ok(
+      !T.KURUMA_GITMEYEN.includes('kalite/'),
+      'kalite/ kuruma GIDER (imza + kapsam raporu)',
+    );
     // Derlenen / calisan hicbir sey kuruma gitmeyenlere giremez.
     for (const yol of [
       'src/a.ts',
       'server/a.cjs',
+      'server/ansible/paths.cjs',
+      'server/ansible/runner.cjs',
+      'server/ansible/playbook-revisions.json',
       'shared/a.cjs',
       'scripts/a.cjs',
       'package.json',
       'deploy/a.sh',
     ])
-      assert.ok(!T.KURUMA_GITMEYEN.some((h) => yol.startsWith(h)), `${yol} kuruma gitmeyenlerde`);
+      assert.ok(!T.IMZA_DISI.some((h) => yol.startsWith(h)), `${yol} kuruma gitmeyenlerde`);
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
   }
@@ -170,6 +184,8 @@ test('TS4 imzaDogrula: birebir 0; yarim kopyanin her bicimi 1 ve dosyasiyla soyl
     assert.match(mesaj, /BIREBIR KOPYASI DEGIL: 1 fark/);
     assert.match(mesaj, /icerigi farkli \(1\): package\.json/);
     assert.match(mesaj, /git rm -r -q \./, 'aktarim yontemi soylenmeli');
+    for (const d of T.KURUMA_GITMEYEN)
+      assert.ok(mesaj.includes(d.replace(/\/$/, '')), `silinecek dizin soylenmeli: ${d}`);
     assert.match(mesaj, /Teslim imzasi/, 'tazeleme penceresi soylenmeli');
     assert.doesNotMatch(mesaj, /eksik|fazla \(/);
     git(d, 'checkout', 'HEAD', '--', 'package.json');
@@ -193,23 +209,26 @@ test('TS4 imzaDogrula: birebir 0; yarim kopyanin her bicimi 1 ve dosyasiyla soyl
   }
 });
 
-test('TS4b kurumsal is #50: kuruma gitmeyen dizinler eksik ya da farkli olsa da BIREBIR', () => {
+test('TS4b kurumsal is #50 / #52: kuruma gitmeyen dizinler eksik ya da farkli olsa da BIREBIR', () => {
   const d = depo({
     ...ANA,
     '.github/workflows/ci.yml': 'on: push\n',
     '.claude/agents/a.md': 'a\n',
     '.agent/rules/k.md': 'k\n',
     'sunum/deck.pptx': 'ikili\n',
+    'server/ansible/playbooks/bmw_portal/x/x.yml': '- hosts: all\n',
   });
   try {
     T.imzaYaz(d);
     const kayit = JSON.parse(fs.readFileSync(path.join(d, T.IMZA), 'utf8'));
     assert.deepEqual(Object.keys(kayit.dosyalar).sort(), Object.keys(T.imza(d)).sort());
     assert.ok(
-      !Object.keys(kayit.dosyalar).some((y) => /^(\.github|\.claude|\.agent|sunum)\//.test(y)),
+      !Object.keys(kayit.dosyalar).some((y) =>
+        /^(\.github|\.claude|\.agent|sunum|server\/ansible\/playbooks)\//.test(y),
+      ),
     );
-    // Kurumsal dalda yoklar (is #50):
-    git(d, 'rm', '-q', '-r', '--cached', '.github', '.claude', '.agent', 'sunum');
+    // Kurumsal dalda yoklar (is #50, #52):
+    git(d, 'rm', '-q', '-r', '--cached', '.github', '.claude', '.agent', 'sunum', 'server/ansible');
     assert.equal(T.imzaDogrula(d, toplayici().g), 0, 'eksik kuruma-gitmeyen dosya fark sayildi');
     // Kurumsal dalda farkli ya da fazlalar:
     yazDosya(d, '.github/workflows/ci.yml', 'on: pull_request\n');
@@ -294,6 +313,15 @@ test('TS6 main: --yaz ve --dogrula; bilinmeyen arguman 2', () => {
   }
 });
 
+test('TS9 Ansible klasorunde calisma zamani modulu yok (kuruma gitmeyen dizin Node kodu tasimaz)', () => {
+  const yollar = git(KOK, 'ls-files', '--', 'server/ansible/playbooks').split('\n').filter(Boolean);
+  assert.ok(yollar.length > 50, 'Ansible agaci bos ya da tasinmis');
+  const kod = yollar.filter((y) => /\.(cjs|mjs|ts|tsx)$/.test(y) || y.endsWith('package.json'));
+  assert.deepEqual(kod, [], 'calisma zamani kodu kuruma gitmeyen dizinde');
+  // Calisma zamaninin okudugu tek Ansible dosyasi liste disinda kalir.
+  assert.ok(!T.IMZA_DISI.some((h) => 'server/ansible/playbook-revisions.json'.startsWith(h)));
+});
+
 test('TS7 imza tazeleme is akisi: her main push, yalniz imza, zorla push yok, her denemede yeniden uretim', () => {
   const akis = fs.readFileSync(path.join(KOK, '.github', 'workflows', 'teslim-imzasi.yml'), 'utf8');
   const kod = akis
@@ -332,7 +360,7 @@ test('TS8 repodaki imza bicimi: kuruma gitmeyenler yok, her deger 40 haneli sha,
   assert.match(kayit.kaynak, /^[0-9a-f]{40}$/);
   assert.ok(yollar.length > 100, 'imza bos');
   assert.ok(
-    !yollar.some((y) => T.KURUMA_GITMEYEN.some((h) => y.startsWith(h))),
+    !yollar.some((y) => T.IMZA_DISI.some((h) => y.startsWith(h))),
     'imza kuruma gitmeyenleri icermemeli',
   );
   assert.ok(Object.values(kayit.dosyalar).every((s) => /^[0-9a-f]{40}$/.test(s)));

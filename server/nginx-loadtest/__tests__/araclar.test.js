@@ -498,7 +498,7 @@ test('AR4 sonuclandirma: DONE / FAILED / CANCELED / OKUNAMADI, kaynak onayi, esk
   }
   assert.match(ar.OZET_FARKLI_NOTU, /NGINX_LOADTEST_K6_ARSIV_SHA256 \/ NGINX_LOADTEST_WRK_KAYNAK_SHA256/);
   // Ayna playbook'taki iki "ozet farkli" fail_msg'i hala bu metinlerle duruyor mu (metin kayarsa not sessizce kaybolur).
-  const yml = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../ansible/bmw_portal/nginx_loadtest/nginx_loadtest.yml'), 'utf8');
+  const yml = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../ansible/playbooks/bmw_portal/nginx_loadtest/nginx_loadtest.yml'), 'utf8');
   assert.ok(yml.includes("Portal'in sabit arsiv ozetiyle (NGINX_LOADTEST_K6_ARSIV_SHA256) farkli; hicbir sey indirilmedi ya da derlenmedi"), 'k6 checksums fail_msg degisti');
   assert.ok(yml.includes('fail_msg: "arsiv ozeti sabit degerden farkli (k6 '), 'arsiv yeniden denetim fail_msg degisti');
   // Uzun hata: not kesilmez, toplam <= 1000.

@@ -30,7 +30,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DIR = path.join(__dirname, '..', 'bmw_portal', 'logx', 'legacy');
+const DIR = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'logx', 'legacy');
 const DOSYALAR = ['logx_legacy_transfer.yml', 'logx_legacy_discovery.yml'];
 const metin = (f) => fs.readFileSync(path.join(DIR, f), 'utf8').replace(/\r\n/g, '\n');
 const WAS = /^\s+become_user: "\{\{ logx_legacy_user \| default\('was'\) \}\}"$/m;

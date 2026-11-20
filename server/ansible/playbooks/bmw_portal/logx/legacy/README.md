@@ -13,7 +13,7 @@ yazıldığını merak ediyorsanız önce buraya bakın.
 
 ## Kopyalar ve yayın
 
-- Dizin iki depoda **byte-aynı** tutulur: Portal `server/ansible/bmw_portal/logx/legacy/` ve
+- Dizin iki depoda **byte-aynı** tutulur: Portal `server/ansible/playbooks/bmw_portal/logx/legacy/` ve
   Ansible deposu `bmw_portal/logx/legacy/`. AWX, Ansible deposundaki kopyayı koşturur.
 - İlk sürümde bu dosyalar "referans/teslim" amacıyla yazılmıştı (prod playbook'u yazacak kişiye
   extra_vars ve JSON çıktı sözleşmesini anlatmak için; LogX v2 uygulama planı, Bölüm H). Bugün

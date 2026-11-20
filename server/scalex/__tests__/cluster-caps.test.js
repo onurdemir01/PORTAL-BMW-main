@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const RUNNER = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'scalex', 'scalex_app', 'files', 'scalex_runner.sh'),
+  path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', 'scalex', 'scalex_app', 'files', 'scalex_runner.sh'),
   'utf8',
 ).replace(/\r\n/g, '\n');
 // SATIR SONU NORMALIZASYONU (2026-09-26): bu bekciler kaynakta LF arar, ama depo

@@ -20,7 +20,7 @@ const path = require('node:path');
 const launch = require('../launch.cjs');
 const IX = fs.readFileSync(path.join(__dirname, '..', 'index.cjs'), 'utf8');
 const RUNPHASE = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'scalex', 'scalex_app', 'tasks', '10_run_phase.yml'),
+  path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', 'scalex', 'scalex_app', 'tasks', '10_run_phase.yml'),
   'utf8',
 );
 

@@ -100,7 +100,7 @@ test('SU2 temiz kosu: gorunum CPU degerine dokunmaz, reload yok', async () => {
 // -- SU-H (h2_sozlesme.md 8.3): HTTP/2 kosusu uctan uca. Istemci dosyalari yuk_k6.js'in KENDI ozet_hesapla /
 // handleSummary'siyle (Portal aynasi; YUK_K6 ile baska kopya) 32 kolonlu yazilir; k6 modulleri sahte (A2 deseni).
 const { pathToFileURL } = require('node:url');
-const YUK_K6 = process.env.YUK_K6 || path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
+const YUK_K6 = process.env.YUK_K6 || path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
 let k6Sira = 0;
 async function k6Yukle(env) {
   globalThis.__k6 = {

@@ -21,7 +21,7 @@ test('OCP_OPERATIONS: poddelete acik ve etiketi kullanicinin istedigi metin', ()
 
 test('playbook bmw_portal/opsx_openshift_pod_delete altinda ve PLAYBOOKS ile kayitli', () => {
   assert.equal(PLAYBOOKS.opsxOpenshiftPodDelete, 'opsx_openshift_pod_delete/opsx_openshift_pod_delete.yaml');
-  const abs = path.join(__dirname, '..', '..', 'ansible', 'bmw_portal', PLAYBOOKS.opsxOpenshiftPodDelete);
+  const abs = path.join(__dirname, '..', '..', 'ansible', 'playbooks', 'bmw_portal', PLAYBOOKS.opsxOpenshiftPodDelete);
   assert.ok(fs.existsSync(abs), `playbook dosyasi yok: ${abs}`);
   const text = fs.readFileSync(abs, 'utf8');
   // Sozlesme: onay olmadan calismaz, sonuc opsx_pod_delete_result ile doner, --force ile siler

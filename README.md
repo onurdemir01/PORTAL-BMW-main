@@ -34,7 +34,7 @@ Node.js + Express backend, React 19 + TypeScript + Vite frontend'den oluşan por
 | [docs/SCALEX.md](docs/SCALEX.md) | **ScaleX** — OCP replica durdurma/geri alma/ölçekleme; kapılar, yetki, tuzaklar |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Operasyon ve yönetişim runbook'u |
 | [docs/LOGX-V2-PLAYBOOKS.md](docs/LOGX-V2-PLAYBOOKS.md) | LogX v2 Ansible playbook kurulum rehberi |
-| [docs/AWX-KOPYALAMA-HARITASI.md](docs/AWX-KOPYALAMA-HARITASI.md) | `server/ansible/bmw_portal/` ağacının AWX projesine birebir kopyalanması ve nedeni |
+| [docs/AWX-KOPYALAMA-HARITASI.md](docs/AWX-KOPYALAMA-HARITASI.md) | `server/ansible/playbooks/bmw_portal/` ağacının AWX projesine birebir kopyalanması ve nedeni |
 | [docs/KALITE-KAPILARI.md](docs/KALITE-KAPILARI.md) | **Zorunlu kalite kapıları** ve repo hijyeni (herkes ve her ajan için) |
 | [docs/STANDARTLAR.md](docs/STANDARTLAR.md) | Mühendislik standartları ve mimari karar kayıtları (ADR) |
 | [deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy](deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORTAL.groovy) | **Kurumsal Jenkins işi**: kurulum → test + kapsam → derleme → paket (kurumsal Sonar kapsamı buradan gelir) |

@@ -4621,7 +4621,7 @@
       {
         "tur": "playbook",
         "ad": "OpsX WAS restart/stop/start (Portal tetikler) -> bmw_portal/opsx_was/opsx_was_operation.yml + update_wasapp_status.py",
-        "dosya": "server/ansible/bmw_portal/opsx_was/files/update_wasapp_status.py:47",
+        "dosya": "server/ansible/playbooks/bmw_portal/opsx_was/files/update_wasapp_status.py:47",
         "nasil": "tek satır UPDATE status (yalnız ölçülmüş running/stopped)",
         "ne_zaman": "kullanıcı OpsX WAS işlemi yaptığında"
       }

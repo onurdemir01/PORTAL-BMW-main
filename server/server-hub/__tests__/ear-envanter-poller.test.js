@@ -37,6 +37,7 @@ const PLAYBOOK = path.join(
   '..',
   '..',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'ear_envanter.yml',

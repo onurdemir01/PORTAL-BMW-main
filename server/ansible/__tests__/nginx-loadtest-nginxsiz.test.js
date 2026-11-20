@@ -35,7 +35,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { BASH, posixYol, kabukPath } = require('./fixtures/kabuk.cjs');
 
-const DIR = process.env.NGINX_LOADTEST_AYNA || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest');
+const DIR = process.env.NGINX_LOADTEST_AYNA || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest');
 const oku = (rel) => fs.readFileSync(path.join(DIR, ...rel.split('/')), 'utf8');
 
 function playlar() {

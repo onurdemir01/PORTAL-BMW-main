@@ -38,6 +38,7 @@ const TARAYICI = path.join(
   '..',
   '..',
   'ansible',
+  'playbooks',
   'bmw_portal',
   'ear_envanter',
   'files',

@@ -52,7 +52,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { adaylar } = require('./fixtures/python-bul.cjs');
 
-const BETIK = path.join(__dirname, '..', 'bmw_portal', 'ear_envanter', 'files', 'ear_tara.py');
+const BETIK = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'ear_envanter', 'files', 'ear_tara.py');
 const KAYNAK = fs.readFileSync(BETIK, 'utf8');
 
 function pythonuBul() {

@@ -19,7 +19,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
-const RUNNER = path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/files/scalex_runner.sh');
+const RUNNER = path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/files/scalex_runner.sh');
 
 /**
  * `discover_state`i SAHTE bir `oc` ile calistirir ve hem uretilen satirlari hem de
@@ -179,7 +179,7 @@ test('LP5 yoklama uygulamasi basina TEK `oc get` (replica uclusu tek jsonpath)',
 // dogru yazilip degisken hic gecirilmezse yoklama HIC kosmaz ve hicbir sey patlamaz.
 test('LP6 `scalex_live_probe_apps` playbook`tan betige gecuriliyor', () => {
   const task = fs.readFileSync(
-    path.join(ROOT, 'server/ansible/bmw_portal/scalex/scalex_app/tasks/discovery/10_discover.yml'),
+    path.join(ROOT, 'server/ansible/playbooks/bmw_portal/scalex/scalex_app/tasks/discovery/10_discover.yml'),
     'utf8',
   );
   assert.match(

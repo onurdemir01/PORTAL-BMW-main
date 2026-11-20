@@ -364,7 +364,7 @@ async function resolveOpenshiftTargets(env, tenant, pairs, user, { tumPodlarIzin
 // AYNI sorunu cozen, production'da kanitlanmis mekanizmasi burada YENIDEN KULLANILIR
 // (sifirdan yazilmaz): cluster basina bastion+metadata (api_url/vault anahtari) DB'den
 // cozulur, playbook'un `ocp_clusters[]`/`terminal_hosts[]` ile fan-out yapabilmesi icin
-// extra_vars kurulur — bkz. server/ansible/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
+// extra_vars kurulur — bkz. server/ansible/playbooks/bmw_portal/logx/ocp/logx_ocp_discover_fetch.yml.
 async function resolveOcpClusterFanout(envKey, tenantKey, clusterNames) {
   const adminData = require('../logx/v2/admin.cjs');
   const { buildOcpExtraVars } = require('../logx/v2/ocp.cjs');

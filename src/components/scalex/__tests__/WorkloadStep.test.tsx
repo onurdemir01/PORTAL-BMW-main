@@ -576,7 +576,7 @@ describe('WorkloadStep - discovery', () => {
     });
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      'cp -r server/ansible/bmw_portal/ <AWX_PROJECT_DIR>/',
+      'cp -r server/ansible/playbooks/bmw_portal/ <AWX_PROJECT_DIR>/',
     );
   });
 });

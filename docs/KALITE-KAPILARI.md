@@ -70,18 +70,24 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
   1. `git pull`
   2. `git rm -r -q .`: izlenen bütün dosyalar silinir. Kopyalarken "üzerine yaz / atla" sorusu çıkmaz ve main'de silinmiş dosyalar geride kalmaz.
   3. GitHub'dan main ZIP'i indirilir; `PORTAL-BMW-main-main` klasörünün **içeriği** klonun köküne kopyalanır. ZIP, GitHub Actions'taki "Teslim imzası" ve "Kapsam raporu" işleri bittikten sonra indirilir.
-  4. `git add -A`. Node varsa `node scripts/teslim.cjs --dogrula` çalıştırılır; `BIREBIR` yazmalı.
-  5. Commit (kurumun PBI biçimiyle), push, iş yeniden koşturulur.
+  4. Kuruma gitmeyen dizinler silinir: `.github`, `.claude`, `.agent`, `sunum`, `server/ansible/playbooks`.
+  5. `git add -A`. Node varsa `node scripts/teslim.cjs --dogrula` çalıştırılır; `BIREBIR` yazmalı.
+  6. Commit (kurumun PBI biçimiyle), push, iş yeniden koşturulur.
   - **Neden:** 2026-11-18'deki iş #48'de dal, main'in yarım bir kopyasıydı. Aynı commit'te gelen iki dosyadan `scripts/kurumsal-derle.cjs` gelmiş, `package.json` satırı gelmemişti; iş `npm error Missing script` ile düştü. Var olan dosyaların üzerine kopyalama bu tür karışık ağaç üretir.
-  - **Kuruma gitmeyenler:** `.github/`, `.claude/`, `.agent/` (GitHub CI ve ajan talimatları) ve `sunum/` (tanıtım sunumu). Kurumsal derlemede kullanılmazlar ve kurumsal depoya gitmezler. İmza onları iki yönde de yok sayar: kopyalansalar da kopyalanmasalar da ilk adım geçer (iş #50).
+  - **Kuruma gitmeyenler:** liste tek yerde, [`scripts/teslim.cjs`](../scripts/teslim.cjs) `KURUMA_GITMEYEN`. Kurumsal derlemede kullanılmazlar ve kurumsal depoya gitmezler. İmza onları iki yönde de yok sayar: kopyalansalar da kopyalanmasalar da ilk adım geçer.
+    - `.github/`, `.claude/`, `.agent/`: GitHub CI ve ajan talimatları (iş #50).
+    - `sunum/`: tanıtım sunumu (iş #50).
+    - `server/ansible/playbooks/`: Ansible playbook'ları; AWX aynası `bmw_portal/` ve tanı playbook'ları (iş #52). Portal bunları çalıştırmaz, AWX çalıştırır; AWX'e kopyalama [AWX-KOPYALAMA-HARITASI.md](AWX-KOPYALAMA-HARITASI.md). Kurumsal Sonar 14 hotspot'un 11'ini ve 6 Python bulgusunu burada buluyordu. Çalışma zamanı yalnız `server/ansible/playbook-revisions.json`'u okur; o bu dizinin dışındadır.
   - **Teslim imzası:** [`kalite/teslim.json`](../kalite/teslim.json), main'deki her izlenen dosyanın git blob sha'sı (`kalite/` ve kuruma gitmeyenler hariç). [`.github/workflows/teslim-imzasi.yml`](../.github/workflows/teslim-imzasi.yml) her main push'undan sonra tazeler; elle düzenlenmez. `kurumsal:derle`'nin ilk adımı ([`scripts/teslim.cjs`](../scripts/teslim.cjs) `--dogrula`) kodu bununla karşılaştırır. Fark varsa iş orada durur ve farkı dosya dosya söyler: içeriği farklı, eksik, fazla.
   - **Tazeleme penceresi:** main'e push'tan sonra yaklaşık bir dakika imza eskidir. O arada indirilen ZIP ilk adımda düşer; mesaj nedenini söyler, ZIP yeniden indirilir.
   - **Sınır:** `package.json`'ın kendisi eskiyse `kurumsal:derle` hiç çalışmaz (iş #48). Onu yalnız bu aktarım yöntemi önler.
 - **Prova (K14):** [`scripts/kurumsal-prova.cjs`](../scripts/kurumsal-prova.cjs) kurumsal işi CI'da tekrarlar. Kurumsal klon gibi temiz bir git ağacında, groovy'deki Node sürümüyle:
   - imzayı yazar;
+  - kuruma gitmeyen dizinleri ağaçtan ve indeksten siler (kurumsal depodaki ağaç);
   - `npm install` çalıştırır (kurumun `jf npm install`'ı);
   - groovy'nin geri kalan komutlarını aynen `npm <komut>` olarak koşturur;
   - `compress` dizininde çalışma zamanı paketinin eksiksiz olduğunu denetler;
+  - paketin içinde `server/index.cjs`'in yüklediği her modülü yükler (Ansible'sız ağaçta eksik dosya burada düşer);
   - toplam süre 10 dakikayı geçerse kırmızı olur (kurumun sınırı 15 dakika).
 
   Kayıt defteri ve JFrog'un `.npmrc`'si gibi kurum ortamı farkları provada yoktur.
@@ -89,7 +95,7 @@ Kurumsal iş tanımının kaynağı [`deploy/jenkins/DVL_JAVASCRIPT_GAR_BMW_PORT
 - **Kurumsal Sonar (iş #49):** kütüphanenin `scanOnSonar` adımı `sonar.sources=.`, `sonar.tests=.`, `sonar.test.inclusions=**/*.test.js,**/*.test.tsx` ve kendi `sonar.exclusions` listesini komut satırından verir; `sonar-project.properties`'teki karşılıkları ezilir (diğer anahtarları, ör. CPD dışlaması, okunur).
   - **Sonuç:** test olarak yalnız `*.test.js` ve `*.test.tsx` sayılır. 2026-11-18'e kadar Node testleri `*.test.cjs` idi; 511 test dosyası üretim kodu sayıldı. Kapsam %50'ye indi, testlerdeki sahte parolalar güvenlik bulgusu oldu.
   - **Kural:** Node testleri `*.test.js`. Klasördeki `package.json` (`"type": "commonjs"`; `server/` ve Node testi olan `src/**/__tests__/`) onları CommonJS yapar. `npm test` eski adı (`.test.cjs`) görünce durur; bekçi KK11.
-  - **Taklit (K15):** CI `sonar` işi, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json), iş #49 logundan) ayrı bir projeye de tarar ve aynı "Portal Katı" kapısını uygular. Kurumun göreceği kapsam ve bulgular merge'den önce görünür. Liste yalnız genel desenleri taşır (başka uygulamaların adları yazılmaz); bekçi KK12 dondurur.
+  - **Taklit (K15):** CI `sonar` işi, kurumun sınıflandırmasıyla ([`kalite/kurumsal-sonar.json`](../kalite/kurumsal-sonar.json), iş #49 logundan) ayrı bir projeye de tarar ve aynı "Portal Katı" kapısını uygular. Kuruma gitmeyen dizinler kurumsal depoda olmadığı için taklitte de taranmaz (teslim listesinin aynısı). Kurumun göreceği kapsam ve bulgular merge'den önce görünür. Liste yalnız genel desenleri taşır (başka uygulamaların adları yazılmaz); bekçi KK12 dondurur.
   - **Sınır:** taklit SonarQube Community ile koşar; kurumun Enterprise'a özgü JS güvenlik (taint) ve kurumsal sır analizi taklitte yoktur.
   - **Kurum talebi:** `scanOnSonar`'ın `sonar-project.properties`'e uyması (`.ai-workspace/kurum-talep.md`). Gelse de ad kuralı kalır.
 - **Kapsam:** (`kurumsal:derle` içinde) testler bu işte koşturulmaz; npm komutlarının hepsi tek bir 15 dakikalık zaman aşımı içinde. CI her main push'unda gerçek testlerle `kalite/kapsam/` raporunu üretir. `npm run kapsam:kurumsal` bu raporu, kurumsal Sonar adımının aradığı `coverage/lcov.info`'ya koyar.

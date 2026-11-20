@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const AGAC = path.join(__dirname, '..', 'bmw_portal');
+const AGAC = path.join(__dirname, '..', 'playbooks', 'bmw_portal');
 
 // bash 5.0 / 5.1 / 5.2 ile gelenler. 4.4'te OLANLAR (mapfile, ${x@Q}, ${x@E}, ${x@P}, ${x@A},
 // ${x@a}, declare -A, ${x,,}) burada YOK.

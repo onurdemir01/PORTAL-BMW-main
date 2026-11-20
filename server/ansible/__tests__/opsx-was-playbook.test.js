@@ -30,7 +30,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { normalize } = require('../../util/guard-text.cjs');
 
-const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'bmw_portal', 'opsx_was');
+const DIR = process.env.OPSX_WAS_DIR || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'opsx_was');
 const KESIF = path.join(DIR, 'opsx_was_discover.yml');
 const ISLEM = path.join(DIR, 'opsx_was_operation.yml');
 const BETIK = path.join(DIR, 'files', 'opsx_was.sh');

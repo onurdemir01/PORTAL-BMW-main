@@ -1,6 +1,6 @@
 // server/ansible/__tests__/nginx-loadtest-ayna.test.js - Nginx Hub Yuk Testi playbook aynasi ve kaydi.
 //
-// NEDEN: server/ansible/bmw_portal/nginx_loadtest/ AWX'in kosturdugu Ansible deposundaki
+// NEDEN: server/ansible/playbooks/bmw_portal/nginx_loadtest/ AWX'in kosturdugu Ansible deposundaki
 // bmw_portal/nginx_loadtest/ ile BAYT BAYT ayni olmali. nginx_console aynasi bir kez sessizce ayristi:
 // Portal testleri AWX'in kosturmadigi bir dosyayi dogruluyordu. Ansible deposu CI'da yok, bu yuzden
 // iki katman var:
@@ -41,12 +41,12 @@ const path = require('node:path');
 const Module = require('node:module');
 const { PLAYBOOKS, abs } = require('../paths.cjs');
 
-const AYNA = path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest');
+const AYNA = path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest');
 const DIR = process.env.NGINX_LOADTEST_AYNA || AYNA;
 
 // Ayna degistiginde: dosyalari Ansible deposuyla ESLE, sonra bu listeyi guncelle (sha256sum).
 const BEKLENEN = {
-  'README.md': '90463e2878b8b04ab2771a88ee9dbf7448168a51cbaee38a1ebc1e9d626eb364',
+  'README.md': 'db5cd71d90c09cbc55d46c3ab7c512d42fb2a3bcc6976d73dacd927e502033e8',
   'files/arac_hazirla.sh': 'ef1a342b21bcad90fa0b858769ad41a9a1e788422ee39dac8b174205ea55772b',
   'files/cpu_kaydedici.sh': '4986b83511035f2ffc989cac727b5cb2184114fd1abdc08a94c30106f5b5f32d',
   'files/durdur.sh': '087f8976083058175bceb4ee7a1fd9982d3072ca126f3ebd4bc96f0b627460cd',

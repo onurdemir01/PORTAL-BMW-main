@@ -23,10 +23,10 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const BETIK =
-  process.env.YUK_K6 || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
+  process.env.YUK_K6 || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'files', 'yuk_k6.js');
 const KAYNAK = fs.readFileSync(BETIK, 'utf8');
 const WRK_KOS =
-  process.env.WRK_KOS || path.join(__dirname, '..', 'bmw_portal', 'nginx_loadtest', 'files', 'wrk_kos.sh');
+  process.env.WRK_KOS || path.join(__dirname, '..', 'playbooks', 'bmw_portal', 'nginx_loadtest', 'files', 'wrk_kos.sh');
 let GECICI;
 let SENARYO;
 let KOTU;

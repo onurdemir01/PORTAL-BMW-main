@@ -224,7 +224,16 @@ test('KK12 kurumsal Sonar taklidi (K15): kurumun siniflandirmasi birebir, kod di
     '-Dsonar.tests=.',
     '-Dsonar.test.inclusions=**/*.test.js,**/*.test.tsx',
   ]);
-  assert.equal(a[3], `-Dsonar.exclusions=${k.exclusions.join(',')}`);
+  // Ek dislama YALNIZ kurumsal depoda bulunmayan dizinler (teslim listesinin aynisi; is #52).
+  const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
+  assert.deepEqual(
+    sonar.KURUM_AGACINDA_YOK,
+    KURUMA_GITMEYEN.map((d) => `${d}**`),
+  );
+  assert.equal(
+    a[3],
+    `-Dsonar.exclusions=${[...k.exclusions, ...sonar.KURUM_AGACINDA_YOK].join(',')}`,
+  );
   assert.equal(a[4], `-Dsonar.coverage.exclusions=${k.coverageExclusions.join(',')}`);
   assert.equal(a[5], `-Dsonar.javascript.lcov.reportPaths=${sonar.KURUMSAL_LCOV}`);
   assert.equal(sonar.KURUMSAL_PROJE, 'bmw-portal-kurumsal');
