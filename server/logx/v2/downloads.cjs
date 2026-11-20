@@ -88,18 +88,35 @@ async function listTokenizedPaths(requestId) {
 // Fallback staging dizini IKI FARKLI baglamda kullanilir; ikisini karistirmak eski
 // hatanin (yazilan yer ile aranan yerin uyusmamasi) kaynagiydi:
 //
-//   remoteFallbackDir() → playbook'a `fallback_dir` olarak gider ve UZAK host'ta (bastion)
-//     olusturulur. Varsayilani /tmp olmalidir: portalin kendi dizin yolu uzak makinede
-//     yaratilamayabilir ve rescue yolu da coker.
+//   remoteFallbackDir() → playbook'a `fallback_dir` olarak gider ve UZAK host'ta (bastion /
+//     legacy sunucu) olusturulur. Mutlak yol olmali (playbook `^/` ister).
 //   localFallbackDir()  → portalin KENDI diskinde ingest (fetch-back) ile yazilan yer.
 //
 // LOGX_STAGING_FALLBACK_DIR set edilirse ikisi de onu kullanir (paylasilan mount senaryosu).
 // stagingRoots() her ikisini birden tarar; boylece dosya hangisindeyse bulunur.
-// /tmp bilerek (SonarQube "herkese yazilabilir dizin" incelemesi, kalite/sonar-inceleme.json):
-// yol UZAK AWX hostunda yaratilir, dosya adi tahmin edilemez belirtecle olusur ve
-// LOGX_STAGING_FALLBACK_DIR ile degistirilir.
+//
+// VARSAYILAN YOK (2026-11-20, kurumsal is #52): eskiden kodda sabit `/tmp/logx-v2-fallback` vardi.
+// Herkese yazilabilir bir dizin (Sonar javascript:S5443) ve kurumsal Sonar'da kimse inceleyemedigi
+// icin guvenlik inceleme notu E idi. Uzak hostta hangi dizinin kullanilacagi bir isletim karari:
+// ayar zorunlu (.env ya da Admin > Sistem, env-overrides.cjs). Ayar yoksa LogX transferi AWX'e
+// gitmeden acik hatayla durur (uzakFallbackDiziniZorunlu).
 function remoteFallbackDir() {
-  return process.env.LOGX_STAGING_FALLBACK_DIR || '/tmp/logx-v2-fallback';
+  return String(process.env.LOGX_STAGING_FALLBACK_DIR || '').trim();
+}
+
+/** Is baslatmadan once: uzak yedek dizini ayarli ve mutlak mi? Degilse 503 + acik ileti. */
+function uzakFallbackDiziniZorunlu() {
+  const dizin = remoteFallbackDir();
+  if (dizin.startsWith('/') && dizin.length > 1) return dizin;
+  throw Object.assign(
+    new Error(
+      dizin
+        ? `LOGX_STAGING_FALLBACK_DIR mutlak bir yol olmali ('/' ile baslar); verilen: '${dizin}'.`
+        : 'LogX yedek teslim dizini ayarli degil (LOGX_STAGING_FALLBACK_DIR). Admin > Sistem > ' +
+            'Ortam degiskenlerinden ya da .env\'den uzak hostta yazilabilir mutlak bir dizin verin.',
+    ),
+    { status: 503, code: 'logx_fallback_dir_unset' },
+  );
 }
 function localFallbackDir() {
   return process.env.LOGX_STAGING_FALLBACK_DIR || path.join(process.cwd(), 'data', 'logx-v2-fallback');
@@ -163,11 +180,14 @@ function stagingRoots() {
   return [
     process.env.LOGX_V2_STAGING_LEGACY_DIR || '/sw/BMW_PORTAL/logs/legacy',
     process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    // Fallback iki yerde olabilir (uzak /tmp paylasimli mount ise, ya da ingest ile
-    // portalin kendi diskine yazildiysa) — ikisi de taranir.
+    // Fallback iki yerde olabilir (uzak dizin paylasimli mount ise, ya da ingest ile
+    // portalin kendi diskine yazildiysa) — ikisi de taranir. Ayarsiz uzak dizin kok OLMAZ:
+    // path.resolve('') calisma dizinini dondururdu ve her dosya "staging altinda" sayilirdi.
     remoteFallbackDir(),
     localFallbackDir(),
-  ].map((r) => path.resolve(r));
+  ]
+    .filter(Boolean)
+    .map((r) => path.resolve(r));
 }
 
 // Bir staged dosyayi diskten guvenle siler — path staging kok dizinlerinden biri altinda
@@ -252,5 +272,5 @@ async function cleanupExpiredDownloads() {
 module.exports = {
   issueDownloadToken, getDownloadByToken, getLatestDownloadForRequest, handleDownloadRoute,
   deleteStagedFile, cleanupExpiredDownloads, resolveStagedFile, isUnderStagingRoot, stagingRoots,
-  listDownloadsForRequest, listTokenizedPaths, remoteFallbackDir, localFallbackDir,
+  listDownloadsForRequest, listTokenizedPaths, remoteFallbackDir, uzakFallbackDiziniZorunlu, localFallbackDir,
 };

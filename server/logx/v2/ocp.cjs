@@ -501,7 +501,7 @@ async function discoverFetch(requestRow, targets) {
     namespace: first.namespace,
     app_name: first.appName,
     staging_dir: process.env.LOGX_V2_STAGING_OCP_DIR || '/sw/BMW_PORTAL/logs/ocp',
-    fallback_dir: require('./downloads.cjs').remoteFallbackDir(),
+    fallback_dir: require('./downloads.cjs').uzakFallbackDiziniZorunlu(),
   });
 
   await requests.updateRequest(requestRow.request_id, {

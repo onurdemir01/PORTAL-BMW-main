@@ -26,6 +26,77 @@ const requests = require('../requests.cjs');
 
 // ── legacy.cjs transfer() — Anti-TOCTOU ────────────────────────────────────────
 
+// Uzak yedek teslim dizini zorunlu ayar (2026-11-20, kurumsal is #52): transfer testleri onu verir.
+const YEDEK = '/var/lib/logx-yedek';
+/** Testin suresince LOGX_STAGING_FALLBACK_DIR'i ayarlar (undefined: siler); test bitince eski degeri geri koyar. */
+function yedekDizinAyarla(t, deger) {
+  const eski = process.env.LOGX_STAGING_FALLBACK_DIR;
+  if (deger === undefined) delete process.env.LOGX_STAGING_FALLBACK_DIR;
+  else process.env.LOGX_STAGING_FALLBACK_DIR = deger;
+  t.after(() => {
+    if (eski === undefined) delete process.env.LOGX_STAGING_FALLBACK_DIR;
+    else process.env.LOGX_STAGING_FALLBACK_DIR = eski;
+  });
+}
+
+test('legacy.transfer(): uzak yedek dizini ayarli degilse ya da goreliyse HICBIR job launch edilmez (503)', async (t) => {
+  const requestRow = {
+    request_id: 'req-yedek',
+    discovery_result_json: JSON.stringify({
+      overall_status: 'success',
+      hosts: [
+        { host: 'GBJBOT22', status: 'ok', files: [{ path: '/vhosting8/APP-T.ear/logs/a.log' }] },
+      ],
+    }),
+  };
+  let launched = 0;
+  t.mock.method(jobs, 'launchJob', async () => {
+    launched++;
+    return { id: 1 };
+  });
+  t.mock.method(require('../requests.cjs'), 'updateRequest', async () => null);
+  const secim = [{ host: 'GBJBOT22', path: '/vhosting8/APP-T.ear/logs/a.log' }];
+  for (const [deger, ileti] of [
+    [undefined, /ayarli degil \(LOGX_STAGING_FALLBACK_DIR\)/],
+    ['   ', /ayarli degil/],
+    ['logx-yedek', /mutlak bir yol olmali/],
+    ['/', /mutlak bir yol olmali/],
+  ]) {
+    yedekDizinAyarla(t, deger);
+    await assert.rejects(legacy.transfer(requestRow, secim), (e) => {
+      assert.equal(e.status, 503, String(deger));
+      assert.equal(e.code, 'logx_fallback_dir_unset');
+      assert.match(e.message, ileti);
+      return true;
+    });
+  }
+  assert.equal(launched, 0, 'ayarsiz yedek diziniyle AWX isi baslatildi');
+  // Kodda sabit /tmp varsayilani YOK (Sonar S5443; kurumsal is #52).
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(__dirname, '..', 'downloads.cjs'), 'utf8'),
+    /'\/tmp/,
+  );
+  // Ayarli ve mutlaksa playbook'a aynen gider.
+  yedekDizinAyarla(t, ' /var/lib/logx-yedek ');
+  let ek = null;
+  t.mock.method(jobs, 'launchJob', async (_r, _j, extraVars) => {
+    ek = extraVars;
+    return { id: 2 };
+  });
+  await legacy.transfer(requestRow, secim);
+  assert.equal(ek.fallback_dir, '/var/lib/logx-yedek');
+});
+
+test('downloads.stagingRoots(): ayarsiz uzak yedek dizini kok sayilmaz (calisma dizini staging olmaz)', (t) => {
+  yedekDizinAyarla(t, undefined);
+  const kokler = downloads.stagingRoots();
+  assert.ok(!kokler.includes(path.resolve('')), 'calisma dizini staging koku oldu');
+  assert.equal(downloads.remoteFallbackDir(), '');
+  assert.ok(!downloads.isUnderStagingRoot(path.join(process.cwd(), 'package.json')));
+  yedekDizinAyarla(t, YEDEK);
+  assert.ok(downloads.stagingRoots().includes(path.resolve(YEDEK)));
+});
+
 test('legacy.transfer(): keşif sonucuyla eşleşmeyen bir path reddedilir, HİÇBİR job launch edilmez', async (t) => {
   const launchMock = t.mock.method(jobs, 'launchJob', async () => {
     throw new Error('launchJob ÇAĞRILMAMALIYDI');
@@ -74,6 +145,7 @@ test('legacy.transfer(): boş seçim reddedilir', async () => {
 });
 
 test('legacy.transfer(): keşif sonucuyla BİREBİR eşleşen path kabul edilir ve job doğru extra_vars ile launch edilir', async (t) => {
+  yedekDizinAyarla(t, YEDEK);
   const discoveryResult = {
     overall_status: 'success',
     hosts: [
@@ -535,6 +607,7 @@ test('legacy.transfer(): 0 byte dosya reddedilir, HICBIR job launch edilmez', as
 });
 
 test('legacy.transfer(): boyutu BILINMEYEN dosya engellenmez (eski kesif ciktisi kirilmaz)', async (t) => {
+  yedekDizinAyarla(t, YEDEK);
   // `size` alani gelmiyorsa bunu "bos" saymak, calisan bir akisi kirardi: eski kesif
   // sonuclari boyut tasimiyor olabilir. Bilinmeyen boyut GECER.
   let launched = 0;

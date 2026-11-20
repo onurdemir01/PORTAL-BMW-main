@@ -277,7 +277,7 @@ Varsayılan tenant etiketi `OCP_CATALOG_DEFAULT_TENANT` env'i ile değiştirileb
 
 | Fonksiyon (`server/logx/v2/downloads.cjs`) | Anlamı |
 |---|---|
-| `remoteFallbackDir()` | Playbook'a `fallback_dir` olarak gider, **uzak host'ta (bastion)** yaratılır. Varsayılan `/tmp/logx-v2-fallback` — portalın kendi yolu uzak makinede yaratılamayabilir. |
+| `remoteFallbackDir()` | Playbook'a `fallback_dir` olarak gider, **uzak host'ta (bastion)** yaratılır. **Varsayılanı yok** (2026-11-20, kurumsal iş #52: kodda sabit `/tmp` herkese yazılabilir dizin hotspot'uydu). `LOGX_STAGING_FALLBACK_DIR` zorunlu ve mutlak; yoksa transfer AWX'e gitmeden `uzakFallbackDiziniZorunlu()` ile 503 alır. |
 | `localFallbackDir()` | Portalın **kendi diskinde** ingest (fetch-back) ile yazılan yer (`data/logx-v2-fallback`). |
 
 `LOGX_STAGING_FALLBACK_DIR` set edilirse ikisi de onu kullanır (paylaşılan mount senaryosu).

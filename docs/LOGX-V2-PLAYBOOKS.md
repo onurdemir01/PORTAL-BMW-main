@@ -84,7 +84,8 @@ AWX_LOGX_OCP_APP_DISCOVERY_TEMPLATE_ID=
 # Portalın okuyabildiği (NFS) staging dizinleri — playbook zip'i buraya bırakır:
 LOGX_V2_STAGING_LEGACY_DIR=/sw/BMW_PORTAL/logs/legacy
 LOGX_V2_STAGING_OCP_DIR=/sw/BMW_PORTAL/logs/ocp
-# NFS erişilemezse portal sunucusunda kullanılacak yerel yedek dizin:
+# ZORUNLU: NFS erişilemezse arşivin bırakıldığı yedek dizin (uzak hostta yaratılır, mutlak yol).
+# Kodda varsayılan yok (2026-11-20); verilmezse LogX transferi açık hatayla başlamaz.
 LOGX_STAGING_FALLBACK_DIR=/tmp/logx-v2-fallback
 ```
 

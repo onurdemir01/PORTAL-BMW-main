@@ -211,6 +211,13 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
 }
 
 function initLogXv2(app) {
+  // Uzak yedek teslim dizininin kodda varsayilani yok (kurumsal is #52): eksikse acilista soylenir,
+  // ilk transfer de acik hatayla durur (downloads.uzakFallbackDiziniZorunlu).
+  if (!require('./downloads.cjs').remoteFallbackDir())
+    console.warn(
+      '[LogX v2] UYARI: LOGX_STAGING_FALLBACK_DIR ayarli degil; LogX transferleri baslamaz ' +
+        '(Admin > Sistem ya da .env: uzak hostta yazilabilir mutlak dizin).',
+    );
   // Maskeleme kurallarini DB'den yukle (basarisizsa masker sabit setiyle devam eder).
   require('../masker.cjs')
     .loadMaskRules()
