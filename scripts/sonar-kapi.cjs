@@ -176,7 +176,7 @@ async function kimlik(host, ci) {
     );
   }
   if (!parola) throw new Error('SONAR_TOKEN ya da SONAR_ADMIN_PASSWORD gerekli (CI disinda)');
-  const yetki = `Basic ${Buffer.from(`admin:${parola}`).toString('base64')}`;
+  const yetki = `Basic ${Buffer.from('admin:' + parola).toString('base64')}`;
   const t = await istemci(host, yetki)(
     '/api/user_tokens/generate',
     { name: `kapi-${Date.now()}` },

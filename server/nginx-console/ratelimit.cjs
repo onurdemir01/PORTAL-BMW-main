@@ -127,7 +127,7 @@ async function hamSatirlar({ query, sql, effectiveDate }) {
 }
 
 const rx = {
-  zone: /zone=([A-Za-z0-9_.\-]+)(?::([0-9]+[kmg]?))?/i,
+  zone: /zone=([\w.-]+)(?::([0-9]+[kmg]?))?/i,
   rate: /rate=([0-9]+r\/[sm])/i,
   burst: /burst=([0-9]+)/i,
   firstWord: /^\s*(\S+)/,

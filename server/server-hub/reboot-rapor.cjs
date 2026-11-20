@@ -266,7 +266,7 @@ function sunucuDegerlendir(onceSat, s, ...ek) {
         bulgu.push({
           durum: 'NEW_URUN_KALAN',
           servis: servisAdi(k),
-          aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : !etki.kapatmaz(urun) ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : `kapatma komutu çalışmadı — AWX'teki betik eski (${etki.etiket}); güncel betikle yeniden çalıştırın`}.`,
+          aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : !etki.kapatmaz(urun) ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : "kapatma komutu çalışmadı — AWX'teki betik eski (" + etki.etiket + '); güncel betikle yeniden çalıştırın'}.`,
           onceSonra: 'yoktu → çalışıyor',
         });
       else if (!once && jvm && sonV)
@@ -546,15 +546,15 @@ const TON = {
 };
 const ISLEM_ADI = { baslat: 'açma', durdur: 'kapatma' };
 const islemEtiketi = (x) =>
-  `${x.jvm ? JVM_ADI[x.urun] || `${x.urun} JVM` : URUN_ADI[x.urun] || x.urun} ${ISLEM_ADI[x.islem] || x.islem}`;
+  `${x.jvm ? JVM_ADI[x.urun] || '' + x.urun + ' JVM' : URUN_ADI[x.urun] || x.urun} ${ISLEM_ADI[x.islem] || x.islem}`;
 const komutMetni = (y) => {
-  const n = `${y.ad ? `${JVM_ADI[y.urun] || `${y.urun} JVM`} ${y.ad}` : URUN_ADI[y.urun] || y.urun} ${ISLEM_ADI[y.islem] || y.islem}`;
+  const n = `${y.ad ? '' + (JVM_ADI[y.urun] || '' + y.urun + ' JVM') + ' ' + y.ad : URUN_ADI[y.urun] || y.urun} ${ISLEM_ADI[y.islem] || y.islem}`;
   if (y.sonuc === 'FAIL') return `<span class='k-bad'>${e(n)} — hata</span>`;
   if (!y.hedefte) return `<span class='k-warn'>${e(n)} — son kontrolde hedefte değil</span>`;
   return `<span class='k-ok'>${e(n)} ✓</span>`;
 };
 const sayiLink = (id, n, etiket) =>
-  `<a class='sayi' href='#${id}' aria-label='${e(`${etiket}: ${n} — ayrıntıyı aç`)}'>${n}</a>`;
+  `<a class='sayi' href='#${id}' aria-label='${e('' + etiket + ': ' + n + ' — ayrıntıyı aç')}'>${n}</a>`;
 
 /**
  * Ozet (2026-11-17 v2, kullanici: "Dikkat gerektiren kismi soldaki 'Otomasyonla eski haline getirildi' maddesine bagli degil mi? ...
@@ -578,7 +578,7 @@ function ozetBolumu(sev, betikNotu) {
   const bar = SEVIYE_SIRA.filter((k) => s[k])
     .map(
       (k) =>
-        `<a class='seg' href='#d-${k}' title='${e(`${KOVA[k].ad}: ${s[k]} sunucu`)}' style='width:${(s[k] * 100) / (sev.toplam || 1)}%;background:${TON[KOVA[k].ton][0]}'></a>`,
+        `<a class='seg' href='#d-${k}' title='${e('' + KOVA[k].ad + ': ' + s[k] + ' sunucu')}' style='width:${(s[k] * 100) / (sev.toplam || 1)}%;background:${TON[KOVA[k].ton][0]}'></a>`,
     )
     .join('');
   const lejant = SEVIYE_SIRA.filter((k) => s[k])
@@ -595,7 +595,7 @@ function ozetBolumu(sev, betikNotu) {
   const bas = (ikon, ton, baslik) =>
     `<div class='yol-bas'><span class='yol-ikon' style='background:${TON[ton][1]};color:${TON[ton][0]}'>${ikon}</span>${e(baslik)}</div>`;
   const sayi = (k, n, ton) =>
-    `<div class='yol-sayi' style='color:${n ? TON[ton][0] : 'var(--soluk)'}'>${n ? sayiLink(`d-${k}`, n, KOVA[k].ad) : '0'}</div>`;
+    `<div class='yol-sayi' style='color:${n ? TON[ton][0] : 'var(--soluk)'}'>${n ? sayiLink('d-' + k, n, KOVA[k].ad) : '0'}</div>`;
   // (1) mudahale gerekmedi
   const etiketler = [];
   if (sev.etiketSay.izlenenYok)
@@ -619,7 +619,7 @@ function ozetBolumu(sev, betikNotu) {
     `<div class='yol-pay'>${oto ? 'sunucuda açma/kapatma yapıldı' : 'hiçbir sunucuda gerekmedi'}</div>`,
     oto
       ? [
-          `<div class='mini-bar' role='img' aria-label='${e(`${s.duzeltildi} eski haline getirildi, ${s.hatali} getirilemedi`)}'><span style='width:${(s.duzeltildi * 100) / oto}%;background:#13603a'></span><span style='width:${(s.hatali * 100) / oto}%;background:#b42318'></span></div>`,
+          `<div class='mini-bar' role='img' aria-label='${e('' + s.duzeltildi + ' eski haline getirildi, ' + s.hatali + ' getirilemedi')}'><span style='width:${(s.duzeltildi * 100) / oto}%;background:#13603a'></span><span style='width:${(s.hatali * 100) / oto}%;background:#b42318'></span></div>`,
           "<table class='sonuc' cellpadding='0' cellspacing='0'>",
           `<tr><td><span class='s-ikon' style='color:#13603a'>✓</span> Eski haline getirildi</td><td class='r' style='color:#13603a'>${s.duzeltildi ? sayiLink('d-duzeltildi', s.duzeltildi, KOVA.duzeltildi.ad) : '0'}</td></tr>`,
           `<tr><td><span class='s-ikon' style='color:#b42318'>✗</span> Eski haline getirilemedi</td><td class='r' style='color:#b42318'>${s.hatali ? sayiLink('d-hatali', s.hatali, KOVA.hatali.ad) : '0'}</td></tr>`,
@@ -638,7 +638,7 @@ function ozetBolumu(sev, betikNotu) {
     "<td class='yol' style='border-top-color:#a8431b'>",
     bas('!', 'bad2', 'Otomasyon işlem yapamadı'),
     sayi('yapilamadi', s.yapilamadi, 'bad2'),
-    `<div class='yol-pay'>${s.yapilamadi ? `${yuzde(s.yapilamadi, sev.toplam)} · reboot öncesi hale döndüğü doğrulanamadı` : 'böyle sunucu yok'}</div>`,
+    `<div class='yol-pay'>${s.yapilamadi ? '' + yuzde(s.yapilamadi, sev.toplam) + ' · reboot öncesi hale döndüğü doğrulanamadı' : 'böyle sunucu yok'}</div>`,
     kirilim ? `<table class='sonuc' cellpadding='0' cellspacing='0'>${kirilim}</table>` : '',
     '</td>',
   ].join('');
@@ -651,7 +651,7 @@ function ozetBolumu(sev, betikNotu) {
         ...sev.islemler.map((x, i) => {
           const tam = x.hedefte === x.komut;
           return (
-            `<tr><td>${e(islemEtiketi(x))}</td><td class='r'>${sayiLink(`d-op-${i}`, x.sunucular.length, islemEtiketi(x))}</td><td class='r'>${x.komut}</td>` +
+            `<tr><td>${e(islemEtiketi(x))}</td><td class='r'>${sayiLink('d-op-' + i, x.sunucular.length, islemEtiketi(x))}</td><td class='r'>${x.komut}</td>` +
             `<td class='r'><span class='${tam ? 'k-ok' : 'k-bad'}'>${x.hedefte} / ${x.komut}</span></td></tr>`
           );
         }),
@@ -667,7 +667,7 @@ function ozetBolumu(sev, betikNotu) {
     `<span class='hero-alt'><b>${basarili}</b> / ${sev.toplam} sunucu reboot öncesi haliyle çalışıyor</span></div>`,
     "<div class='hero-r'>",
     `<p class='hukum'>${hukum}</p>`,
-    `<div class='bar' role='img' aria-label='${e(SEVIYE_SIRA.map((k) => `${KOVA[k].ad} ${s[k]}`).join(', '))}'>${bar || "<span class='seg bos'></span>"}</div>`,
+    `<div class='bar' role='img' aria-label='${e(SEVIYE_SIRA.map((k) => '' + KOVA[k].ad + ' ' + s[k]).join(', '))}'>${bar || "<span class='seg bos'></span>"}</div>`,
     `<div class='lejant'>${lejant}</div>`,
     '</div></div>',
     "<h3 class='bolum'>Reboot sonrası ne oldu?</h3>",
@@ -753,12 +753,20 @@ function raporHtml(k, opt = {}) {
     '<h1>Patch Reboot | Durum Raporu</h1>',
   ];
   const ust = (faz) =>
-    `<div class='muted'>${e(faz)} &nbsp;·&nbsp; Kayıt: <b>#${e(k?.id)}</b>${k?.not ? ` &nbsp;·&nbsp; ${e(k.not)}` : ''} &nbsp;·&nbsp; ${hostlar.length} sunucu &nbsp;·&nbsp; ${e(k?.olusturan || '')}</div>`;
+    `<div class='muted'>${e(faz)} &nbsp;·&nbsp; Kayıt: <b>#${e(k?.id)}</b>${k?.not ? ' &nbsp;·&nbsp; ' + e(k.not) : ''} &nbsp;·&nbsp; ${hostlar.length} sunucu &nbsp;·&nbsp; ${e(k?.olusturan || '')}</div>`;
   const kutular = (ogeler) =>
     `<table role='presentation' class='summary' cellpadding='0' cellspacing='0'><tr>${ogeler
       .map(
         ([l, v, fg, bg]) =>
-          `<td style='text-align:center;border:1px solid #e6e9ef;background:${bg};padding:13px 5px'><span style='display:block;font-size:24px;font-weight:bold;color:${fg}'>${v}</span><span style='font-size:12px;color:#596579'>${e(l)}</span></td>`,
+          "<td style='text-align:center;border:1px solid #e6e9ef;background:" +
+          bg +
+          ";padding:13px 5px'><span style='display:block;font-size:24px;font-weight:bold;color:" +
+          fg +
+          "'>" +
+          v +
+          "</span><span style='font-size:12px;color:#596579'>" +
+          e(l) +
+          '</span></td>',
       )
       .join('')}</tr></table>`;
 
@@ -980,7 +988,7 @@ function raporHtml(k, opt = {}) {
               ? 'Komut başarısız'
               : 'Gerek kalmadı';
         p.push(
-          `<tr class='${sinif(x.d)}'><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servisAdi(x.ad ? `${x.urun}|${x.ad}` : x.urun))}</td><td>${x.islem === 'baslat' ? 'Başlat' : x.islem === 'durdur' ? 'Durdur' : e(x.islem)}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`,
+          `<tr class='${sinif(x.d)}'><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servisAdi(x.ad ? '' + x.urun + '|' + x.ad : x.urun))}</td><td>${x.islem === 'baslat' ? 'Başlat' : x.islem === 'durdur' ? 'Durdur' : e(x.islem)}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`,
         );
       }
       p.push('</table>');

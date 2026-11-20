@@ -131,7 +131,7 @@ function prova({
       shell: process.platform === 'win32' && komut === 'npm',
     });
     if (r.error || r.status !== 0) {
-      hata(`[prova] DUSTU: ${ad} (cikis ${r.status ?? 1}${r.error ? `, ${r.error.message}` : ''})`);
+      hata(`[prova] DUSTU: ${ad} (cikis ${r.status ?? 1}${r.error ? ', ' + r.error.message : ''})`);
       return false;
     }
     return true;

@@ -686,6 +686,14 @@ async function kilitBirakIs(db, serverId, jobId, sonuc) {
 // Bastion zaten maskeliyor (crypto_hub_ops.sh), ama AWX'in hangi revizyonu kosturdugu
 // bilinmiyor (K-5): Portal da maskeler. Secret belgesindeki data / stringData altindaki HER
 // deger, env'de sir adli `name:` sonrasindaki `value:` ve sir adli anahtarlar '****' olur.
+// `anahtar: deger` satiri (istege bagli liste tiresiyle). Deger: bosluksuz baslayip biten metin
+// (DEGERLI); yalniz bosluk varsa son satir-ici bosluk karakteri (BOS). Eski tembel `(.+?)\s*$` ile ayni
+// gruplar, dogrusal (Sonar S8786); iki desen sirayla denenir ve ayni anda ikisi eslesemez. Esdegerlik:
+// __tests__/regex-dogrusal CR1.
+const MANIFEST_KV_DEGERLI = /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?)\s*$/;
+const MANIFEST_KV_BOS =
+  /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*((?![\n\r\u2028\u2029])\s)[\n\r\u2028\u2029]*$/;
+
 function maskeleManifest(lines, sirRe) {
   const s = (Array.isArray(lines) ? lines : []).map((x) => String(x == null ? '' : x));
   const sinirlar = [0];
@@ -769,12 +777,7 @@ function maskeleManifest(lines, sirRe) {
         continue;
       }
     }
-    // Deger: bosluksuz baslayip biten metin; yalniz bosluk varsa son satir-ici bosluk karakteri (eski
-    // tembel `(.+?)\s*$` ile ayni gruplar, dogrusal; Sonar S8786 - esdegerlik: __tests__/regex-dogrusal).
-    const k =
-      /^(\s*(?:-\s*)?)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/.exec(
-        l,
-      );
+    const k = MANIFEST_KV_DEGERLI.exec(l) || MANIFEST_KV_BOS.exec(l);
     if (sirRe?.test(k?.[2])) {
       const d = k[3];
       if (d === '|' || d === '>' || d === '|-' || d === '>-') {

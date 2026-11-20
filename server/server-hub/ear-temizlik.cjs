@@ -174,7 +174,7 @@ function kullanimEngeli(h, kok, ad, now) {
   const kk = kullanimKaniti(k, h.ear?.taranma, now);
   if (kk.aktif) return `${ENGEL_KULLANIM} (${kk.metin})`;
   if (kk.olculemedi)
-    return `${OLCULEMEDI_EKI}${kk.neden ? ` (${kk.neden})` : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
+    return `${OLCULEMEDI_EKI}${kk.neden ? ' (' + kk.neden + ')' : ''}; silmek için yeni tarayıcıyla yeniden taranmalı`;
   return null;
 }
 
@@ -1175,7 +1175,7 @@ async function topluSil(req, body) {
     throw hata(409, `Onay için tam "${beklenen}" yazılmalı.`, 'onay_metni');
   await eskit();
   const { rows } = await db().query(
-    `SELECT * FROM server_hub_ear_temizlik WHERE id IN (${ogeler.map((_, i) => `$${i + 1}`).join(', ')}) ORDER BY id`,
+    `SELECT * FROM server_hub_ear_temizlik WHERE id IN (${ogeler.map((_, i) => '$' + (i + 1)).join(', ')}) ORDER BY id`,
     ogeler.map((x) => x.id),
   );
   const kayitlar = new Map((rows || []).map((r) => [Number(r.id), r]));

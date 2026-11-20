@@ -581,7 +581,7 @@ async function legacyIstegiHazirla(
     ...(cleanServerConfigMap ? { server_config_map: cleanServerConfigMap } : {}),
   };
 
-  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ` jboss_version=${jbossVersion}` : ''}`;
+  const logSummary = `app=${String(application).trim()} limit=${limitValue} op=${operation}${jbossVersion ? ' jboss_version=' + jbossVersion : ''}`;
   return { requested, seciliEnvler, limitValue, extraVars, logSummary };
 }
 

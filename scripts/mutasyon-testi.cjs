@@ -126,26 +126,26 @@ const TARGETS = [
       },
       {
         id: 'dg-obj-test',
-        find: 'SIR_ANAHTARI.test(k) || icindeSirVar(v)',
-        replace: 'SIR_ANAHTARI.test(k) && icindeSirVar(v)',
+        find: 'sirAnahtariMi(k) || icindeSirVar(v)',
+        replace: 'sirAnahtariMi(k) && icindeSirVar(v)',
         desc: 'require both secret key AND value in nested obj',
       },
       {
         id: 'dg-top-test',
-        find: 'if (SIR_ANAHTARI.test(k) || icindeSirVar(v)) gizlenen.push(k);',
-        replace: 'if (SIR_ANAHTARI.test(k)) gizlenen.push(k);',
+        find: 'if (sirAnahtariMi(k) || icindeSirVar(v)) gizlenen.push(k);',
+        replace: 'if (sirAnahtariMi(k)) gizlenen.push(k);',
         desc: 'skip nested secret scan in nesnedenAyikla',
       },
       {
         id: 'dg-top-drop-key',
-        find: 'if (SIR_ANAHTARI.test(k) || icindeSirVar(v)) gizlenen.push(k);',
+        find: 'if (sirAnahtariMi(k) || icindeSirVar(v)) gizlenen.push(k);',
         replace: 'if (icindeSirVar(v)) gizlenen.push(k);',
         desc: 'skip key-name check in nesnedenAyikla',
       },
       {
         id: 'dg-yaml-block',
-        find: 'if (SIR_ANAHTARI.test(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);',
-        replace: 'if (SIR_ANAHTARI.test(b.anahtar)) gizlenen.push(b.anahtar);',
+        find: 'if (sirAnahtariMi(b.anahtar) || icAnahtar || degerSirMi(govde)) gizlenen.push(b.anahtar);',
+        replace: 'if (sirAnahtariMi(b.anahtar)) gizlenen.push(b.anahtar);',
         desc: 'skip YAML nested key & value scan',
       },
       {

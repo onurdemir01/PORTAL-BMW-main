@@ -272,7 +272,7 @@ async function loadLatest() {
         ? [`t.[id] AS [${CIFT.ID_KOLON}]`]
         : [];
     return query(
-      `SELECT ${[...cols.map((c) => `t.[${c}]`), ...ek, ...idEk].join(', ')} FROM ${table} t
+      `SELECT ${[...cols.map((c) => 't.[' + c + ']'), ...ek, ...idEk].join(', ')} FROM ${table} t
        JOIN (SELECT host, MAX(scan_date) AS d FROM dbo.Server_Hub_Hosts GROUP BY host) m
          ON m.host = t.host AND m.d = t.scan_date`,
     ).then((r) => r.recordset || []);
@@ -1398,7 +1398,7 @@ function initServerHub(app) {
           message:
             redler.length === 1
               ? redler[0]
-              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${redler.length > 5 ? ` · +${redler.length - 5}` : ''}`,
+              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${redler.length > 5 ? ' · +' + (redler.length - 5) : ''}`,
         });
       const birakanlar = confirmed ? jvms.map((jvm) => _autoStart.rezervasyon(host, gen, jvm)) : [];
       let r;

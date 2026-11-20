@@ -205,7 +205,7 @@ async function portalIsiMi(s, jobId) {
 /** "AWX'ten alindi" notu: kim baslatti, hangi workflow, hangi is (ekranda ve raporda gorunur). */
 function notMetni(st, jobId) {
   return M(
-    `AWX'ten alındı: iş #${jobId}${st.workflowJobId ? `, workflow #${st.workflowJobId}` : ''}${st.launchedBy ? `, başlatan ${st.launchedBy}` : ''}`,
+    `AWX'ten alındı: iş #${jobId}${st.workflowJobId ? ', workflow #' + st.workflowJobId : ''}${st.launchedBy ? ', başlatan ' + st.launchedBy : ''}`,
     500,
   );
 }

@@ -7058,7 +7058,7 @@ function redactAwxSecrets(text) {
     /* modul yuklenemezse diger sirlar ve genel kaliplar yine uygulanir */
   }
   for (const v of secrets) s = s.split(v).join('***');
-  return s.replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1***');
+  return s.replace(/(Bearer\s+)[\w.~+/=-]+/gi, '$1***');
 }
 
 module.exports = {

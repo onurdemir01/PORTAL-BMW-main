@@ -168,25 +168,52 @@ function writeLine(line) {
 //   4) Cookie / Set-Cookie oturum degerleri (`__Host-portal.sid`, `connect.sid`, vb.)
 //   5) Query string / KV / JSON gizli alanlar (password, pwd, token, secret, api_key, sig vb.)
 const URL_KIMLIK = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s/:@]+):([^\s/@]+)@/gi;
-const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}/gi;
+const AUTH_SCHEME = /\b(Bearer|Basic)\s+[\w.~+/=-]{6,}/gi;
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
 const COOKIE_HDR_RE = /\b(Set-Cookie|Cookie)\s*:\s*([^\r\n]+)/gi;
 const SID_KV_RE = /\b(__Host-portal\.sid|connect\.sid)=([^;\s,&]+)/gi;
-const SECRET_KV_RE =
-  /([?&"']?\b(?:password|passwd|pwd|parola|sifre|secret|token|access_token|refresh_token|api[_-]?key|apikey|client_secret|authorization|sig)\b["']?\s*(?:=|:)\s*["']?)([^"'\s&;,}]{1,})/gi;
+// 5) iki adimda: gizli alan ADI (sozcuk sinirli) bulunur, ayirici ve DEGER tam ad bitiminde aranir.
+const GIZLI_AD_RE =
+  /\b(?:password|passwd|pwd|parola|sifre|secret|token|access_token|refresh_token|api[_-]?key|client_secret|authorization|sig)\b/gi;
+const GIZLI_DEGER_RE = /["']?\s*[=:]\s*["']?([^"'\s&;,}]+)/y;
+
+/**
+ * `ad=deger` / `"ad": "deger"` / `?ad=deger` icindeki degeri `***` yapar. Zaten maskeli deger
+ * (`***`, `[MASKED]`) ve tek basina sema adi (Bearer / Basic) dokunulmadan kalir. Tarama soldan saga,
+ * eslesmenin sonundan devam eder (`replace(/g)` gibi); ayirici / deger yoksa aramaya adin bir sonraki
+ * karakterinden devam edilir. Tek desenli eski yazimla birebir ayni cikti: __tests__/log-kimlik-maskesi LM3.
+ */
+function gizliAlanMaskele(metin) {
+  let out = '';
+  let yazilan = 0;
+  GIZLI_AD_RE.lastIndex = 0;
+  for (let ad = GIZLI_AD_RE.exec(metin); ad; ad = GIZLI_AD_RE.exec(metin)) {
+    GIZLI_DEGER_RE.lastIndex = ad.index + ad[0].length;
+    const d = GIZLI_DEGER_RE.exec(metin);
+    if (d) {
+      const son = GIZLI_DEGER_RE.lastIndex;
+      const deger = d[1];
+      const dokunma = deger === '***' || deger === '[MASKED]' || /^(?:Bearer|Basic)$/i.test(deger);
+      out += dokunma ? metin.slice(yazilan, son) : `${metin.slice(yazilan, son - deger.length)}***`;
+      yazilan = son;
+      GIZLI_AD_RE.lastIndex = son;
+    } else {
+      GIZLI_AD_RE.lastIndex = ad.index + 1;
+    }
+  }
+  return out + metin.slice(yazilan);
+}
 
 function kimlikMaskele(metin) {
   if (typeof metin !== 'string') return metin;
-  return metin
-    .replace(URL_KIMLIK, '$1$2:***@')
-    .replace(COOKIE_HDR_RE, '$1: [MASKED]')
-    .replace(SID_KV_RE, '$1=[MASKED]')
-    .replace(AUTH_SCHEME, '$1 ***')
-    .replace(JWT_RE, 'eyJ***')
-    .replace(SECRET_KV_RE, (m, prefix, val) => {
-      if (val === '***' || val === '[MASKED]' || /^(?:Bearer|Basic)$/i.test(val)) return m;
-      return `${prefix}***`;
-    });
+  return gizliAlanMaskele(
+    metin
+      .replace(URL_KIMLIK, '$1$2:***@')
+      .replace(COOKIE_HDR_RE, '$1: [MASKED]')
+      .replace(SID_KV_RE, '$1=[MASKED]')
+      .replace(AUTH_SCHEME, '$1 ***')
+      .replace(JWT_RE, 'eyJ***'),
+  );
 }
 
 // `console.*` argumanlarini tek bir satira cevirir. `util.format` kullanilmaz:
@@ -295,6 +322,7 @@ module.exports = {
   stamp,
   formatArgs,
   kimlikMaskele,
+  gizliAlanMaskele,
   numEnv,
   DEFAULT_MAX_BYTES,
   DEFAULT_KEEP,

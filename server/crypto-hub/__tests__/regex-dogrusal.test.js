@@ -6,6 +6,10 @@
 //       `\S(?:.*\S)?` (bosluksuz baslar / biter, satir sonu gecmez) VEYA deger yalniz bosluksa eskinin
 //       geri izleyip sectigi SON satir-ici bosluk karakteri: `[^\S<satir sonu>](?=<satir sonu>*$)`.
 //       resources'ta onek `\s*-?\s*` -> `\s*(?:-\s*)?` (ayni grup 1, `\s*\s*` takasi yok).
+//       2026-11-20 (Sonar S5843 karmasiklik 22 > 20, S5869): iki kol iki desen oldu, kod onlari sirayla
+//       dener (DEGERLI || BOS). Iki kol ayni satirda birlikte eslesemez (biri bosluk disi karakter ister,
+//       digeri yalniz bosluk); ':' konumu onekten bagimsiz oldugu icin gruplar tek desenle ayni.
+//       `[^\S<satir sonu>]` -> `(?!<satir sonu>)\s` (ayni 21 karakter; Sonar sinifta kopya goruyordu).
 //   CR2 resources blok anahtari: tembel `[^:#]*?` ile `\s*` takasi -> `(?:[^:#]*[^\s:#])?` (anahtar
 //       bosluksuz biter; ':' oncesi bosluk `\s*`a kalir: tek gecerli bolme).
 //   CR3 resources `#` yorum kirpma: girdi `(.*)$` grubu (satir sonu icermez) -> `#.*$` == `#.*`.
@@ -18,6 +22,7 @@
 'use strict';
 
 const { test } = require('node:test');
+const assert = require('node:assert/strict');
 const H = require('../../__tests__/fixtures/regex-esdeger.cjs');
 
 const INDEX = H.kaynak('server/crypto-hub/index.cjs');
@@ -67,26 +72,50 @@ const YAML_UC = [
 ];
 
 test('CR1 anahtar: deger (index + resources) gruplari ayni, kotu girdide hizli', () => {
+  // Kodun yaptigi gibi: once DEGERLI, eslesmezse BOS.
+  const sirayla = (a, b) => (s) => {
+    const m = a.exec(s) || b.exec(s);
+    return m ? { g: [...m], i: m.index } : null;
+  };
+  const tekDesen = (re) => (s) => {
+    const m = re.exec(s);
+    return m ? { g: [...m], i: m.index } : null;
+  };
+  assert.match(INDEX, /const m = l\.match\(KV_DEGERLI\) \|\| l\.match\(KV_BOS\);/);
+  assert.match(RES, /const k = MANIFEST_KV_DEGERLI\.exec\(l\) \|\| MANIFEST_KV_BOS\.exec\(l\);/);
   const noktalar = [
-    [H.literalAl(INDEX, 'const m = l.match('), /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/],
     [
-      H.literalAl(RES, 'regex-dogrusal).\n    const k = '),
+      [H.literalAl(INDEX, 'const KV_DEGERLI = '), H.literalAl(INDEX, 'const KV_BOS = ')],
+      /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/,
+    ],
+    [
+      [
+        H.literalAl(RES, 'const MANIFEST_KV_DEGERLI = '),
+        H.literalAl(RES, 'const MANIFEST_KV_BOS ='),
+      ],
       /^(\s*-?\s*)([A-Za-z0-9_.-]+)\s*:\s*(.+?)\s*$/,
     ],
   ];
-  for (const [yeni, eski] of noktalar) {
+  for (const [[degerli, bos], eski] of noktalar) {
+    const yeni = sirayla(degerli, bos);
     H.esdeger({
-      eski,
+      eski: tekDesen(eski),
       yeni,
+      kip: 'fn',
       tokenlar: YAML,
       el: YAML_UC,
       onek: KV_ONEK,
       adet: 6000,
       enAzEslesen: 600,
     });
-    H.hizli(yeni, `k: a${' '.repeat(50000)}b\nc`);
-    H.hizli(yeni, `k:${' \t'.repeat(25000)}`);
-    H.hizli(yeni, `${' '.repeat(50000)}k`);
+    for (const kotu of [
+      `k: a${' '.repeat(50000)}b\nc`,
+      `k:${' \t'.repeat(25000)}`,
+      `k:${' '.repeat(50000)}x\ny`,
+      `k:${'\n'.repeat(50000)}`,
+      `${' '.repeat(50000)}k`,
+    ])
+      H.hizli(yeni, kotu, { kip: 'fn' });
   }
 });
 

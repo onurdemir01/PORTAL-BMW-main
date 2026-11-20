@@ -160,7 +160,7 @@ function jvmAutoStartKapisi(j, { host, jvm, gen, enable }) {
   if (j.autoStart === hedef)
     return {
       status: 400,
-      message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
+      message: `${jvm} zaten auto-start ${enable ? 'AÇIK' : 'KAPALI'} görünüyor${j.autoStartDogrulama ? ' (iş #' + j.autoStartDogrulama.jobId + ' ile doğrulandı)' : ''} — iş açılmadı.`,
     };
   // CALISAN JVM'DE KAPAT (2026-11-14, A2): server_hub_fix.sh calisan JVM'in auto-start'ini FORCE olmadan
   // KAPATMAZ (FAIL "su an CALISIYOR"); Portal force gondermez. Calisma durumu OLCULEMEYEN JVM
@@ -215,7 +215,7 @@ function xmlKapatKapisi(j, { host, jvm, gen }) {
   if (j.autoStart === 'false')
     return {
       status: 400,
-      message: `${jvm} zaten auto-start KAPALI görünüyor${j.autoStartDogrulama ? ` (iş #${j.autoStartDogrulama.jobId} ile doğrulandı)` : ''} — iş açılmadı.`,
+      message: `${jvm} zaten auto-start KAPALI görünüyor${j.autoStartDogrulama ? ' (iş #' + j.autoStartDogrulama.jobId + ' ile doğrulandı)' : ''} — iş açılmadı.`,
     };
   if (j.autoStart !== 'true')
     return {

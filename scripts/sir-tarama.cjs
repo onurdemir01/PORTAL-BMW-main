@@ -29,8 +29,18 @@ const TEST_DISI_KESIN = [
 ];
 
 // Deger yer tutucu mu (sahte / sablon / degisken acilimi)? Genel desenlerde yanlis pozitifi keser.
-const YER_TUTUCU =
-  /^(?:\*+|x+|\.{3}|<[^>]*>|\$.*|\{\{.*\}\}|%[A-Za-z_]+%|changeme|example|ornek|dummy|placeholder|secret|password|parola|sifre|redacted|gizli)$/i;
+// Biri tum degerle eslesirse yer tutucudur.
+const YER_TUTUCU = [
+  /^\*+$/, // ****
+  /^x+$/i, // xxxx
+  /^\.{3}$/, // ...
+  /^<[^>]*>$/, // <parola>
+  /^\$.*$/, // $DEGISKEN, ${DEGISKEN}
+  /^\{\{.*\}\}$/, // {{ jinja }}
+  /^%[a-z_]+%$/i, // %WINDOWS_DEGISKENI%
+  /^(?:changeme|example|ornek|dummy|placeholder|secret|password|parola|sifre|redacted|gizli)$/i,
+];
+const yerTutucuMu = (v) => YER_TUTUCU.some((d) => d.test(v));
 
 // Sir gibi gorunen deger: rakam ve harf birlikte ya da 16+ karakter. 'user_pass' gibi
 // tanimlayicilar (ornegin `token ? 'token' : 'user_pass'`) bu yuzden bulgu sayilmaz.
@@ -65,7 +75,7 @@ function satirTara(satir, { test = false } = {}) {
   for (const [ad, re] of TEST_DISI_KESIN) if (re.test(satir)) out.push(ad);
   for (const [ad, re] of GENEL) {
     const m = re.exec(satir);
-    if (m && !YER_TUTUCU.test(m[1]) && SIR_GIBI(m[1])) out.push(ad);
+    if (m && !yerTutucuMu(m[1]) && SIR_GIBI(m[1])) out.push(ad);
   }
   return out;
 }
@@ -121,7 +131,7 @@ function rapor(bulgular, baglam) {
     `[sir-tarama] KIRMIZI (${baglam}): ${bulgular.length} bulgu. Degerler yazdirilmaz.`,
   );
   for (const b of bulgular.slice(0, 50))
-    console.error(`  - ${b.dosya}${b.satir ? `:${b.satir}` : ''}  ${b.ad}`);
+    console.error(`  - ${b.dosya}${b.satir ? ':' + b.satir : ''}  ${b.ad}`);
   console.error(
     '  Sir ise: commit etme, degeri dondur (rotate). Yer tutucu ise: ${DEGISKEN} / <...> / *** kullan.',
   );
@@ -166,4 +176,4 @@ function main(argv) {
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
-module.exports = { satirTara, dosyaYasak, farkAyristir, farkTara, YER_TUTUCU };
+module.exports = { satirTara, dosyaYasak, farkAyristir, farkTara, yerTutucuMu };

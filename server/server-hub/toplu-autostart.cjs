@@ -649,7 +649,7 @@ function prodOnayYok(prodlar) {
   const l = [...prodlar];
   return hata(
     400,
-    `Production / ortamı bilinmeyen ${l.length} sunucu seçimde (${l.slice(0, 5).join(', ')}${l.length > 5 ? ` +${l.length - 5}` : ''}) — host XML ile kapatma için açık prod onayı gerekli (prodOnay).`,
+    `Production / ortamı bilinmeyen ${l.length} sunucu seçimde (${l.slice(0, 5).join(', ')}${l.length > 5 ? ' +' + (l.length - 5) : ''}) — host XML ile kapatma için açık prod onayı gerekli (prodOnay).`,
     'prod_onay',
   );
 }
@@ -719,7 +719,7 @@ async function olustur(req, secim, { prodOnay = false } = {}) {
           ekMetni,
         );
         const b = p.length - 12;
-        return `(${Array.from({ length: 12 }, (_, n) => `$${b + n + 1}`).join(', ')}, '${SECIM}')`;
+        return `(${Array.from({ length: 12 }, (_, n) => '$' + (b + n + 1)).join(', ')}, '${SECIM}')`;
       });
       await db().query(
         `INSERT INTO server_hub_toplu_ogeler (is_id, sira, host, env, gen, jvm, eylem, hedef, tarama_degeri, calisiyor, tarama_scan_date, ek, durum) VALUES ${v.join(', ')}`,
@@ -837,7 +837,7 @@ async function secimDogrula(is, og) {
     if (!c || c.action !== o.eylem) {
       const d = disK.get(k);
       return {
-        neden: `artık aday değil${d ? ` (${d.neden})` : c ? ' (eylem değişti)' : ' (tarama değişti)'}`,
+        neden: `artık aday değil${d ? ' (' + d.neden + ')' : c ? ' (eylem değişti)' : ' (tarama değişti)'}`,
       };
     }
     // Taze degerlendirmede prod (ya da ortami bilinmeyen) cikan host XML ogesi olusturmadaki prod onayi olmadan gecemez.
@@ -1276,7 +1276,7 @@ async function planIlerlet(is, og, iptalMi) {
       else
         await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', {
           neden: M(
-            `plan okunamadı (iş #${o0.plan_job_id} ${st.status}${result ? '' : `; set_stats yok — AWX'teki server_hub_fix.yml ${xml ? XML : LISTE_EYLEMI} kipini tanımıyor olabilir (playbook güncel mi?)`})`,
+            `plan okunamadı (iş #${o0.plan_job_id} ${st.status}${result ? '' : "; set_stats yok — AWX'teki server_hub_fix.yml " + (xml ? XML : LISTE_EYLEMI) + ' kipini tanımıyor olabilir (playbook güncel mi?)'})`,
             1000,
           ),
         });
@@ -1323,7 +1323,7 @@ async function planIlerlet(is, og, iptalMi) {
       const r = await _d.launch(
         sozdeIstek(is.olusturan),
         FIX_KEY,
-        `Server Hub: toplu auto-start #${is.id} plan${xml ? ` (host XML, JBoss ${gen})` : ''} @ ${host} (${parca.length} JVM)`,
+        `Server Hub: toplu auto-start #${is.id} plan${xml ? ' (host XML, JBoss ' + gen + ')' : ''} @ ${host} (${parca.length} JVM)`,
         isDegiskenleri(host, parca, true),
         {
           op: 'toplu_autostart_plan',
@@ -1557,7 +1557,7 @@ async function uygulaIlerlet(is, og) {
         r = await _d.launch(
           sozdeIstek(is.onaylayan || is.olusturan),
           FIX_KEY,
-          `Server Hub: toplu auto-start #${is.id}${xml ? ` (host XML, JBoss ${gen})` : ''} @ ${host} (${items.length} JVM)`,
+          `Server Hub: toplu auto-start #${is.id}${xml ? ' (host XML, JBoss ' + gen + ')' : ''} @ ${host} (${items.length} JVM)`,
           isDegiskenleri(host, tazeListe, false),
           {
             op: 'toplu_autostart_uygula',

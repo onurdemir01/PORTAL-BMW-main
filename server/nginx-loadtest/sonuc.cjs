@@ -51,6 +51,7 @@ const { Transform, Writable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { StringDecoder } = require('node:string_decoder');
 const { varsayilanSira } = require('../util/siralama.cjs');
+const { pyOndalikBicimi, pyTamsayiBicimi } = require('./py-bicim.cjs');
 
 const VARSAYILAN_MAX_BAYT = 200 * 1024 * 1024;
 // Bir kosu dizininde beklenen: TUR basina 2-4 istemci dosyasi (<= 15 TUR) + ~10 kaydedici dosyasi.
@@ -198,13 +199,6 @@ const AYLAR = Object.freeze({
 });
 const ZAMAN_RE =
   /^([0-9]{2})\/([A-Za-z]{3})\/([0-9]{4}):([0-9]{2}):([0-9]{2}):([0-9]{2}) ([+-])([0-9]{2})([0-9]{2})$/;
-// Python float() dizgi soz dizimi (alt cizgi ayiracli rakamlar dahil); inf/nan sonlu olmadigi icin
-// `sayi` zaten None dondurur, burada kabul edilmeleri gerekmez.
-const PY_DIGITS = '[0-9](?:_?[0-9])*';
-const PY_FLOAT_RE = new RegExp(
-  `^[+-]?(?:${PY_DIGITS}(?:\\.(?:${PY_DIGITS})?)?|\\.${PY_DIGITS})(?:[eE][+-]?${PY_DIGITS})?$`,
-);
-const PY_INT_RE = /^[+-]?[0-9](?:_?[0-9])*$/;
 
 function okunamadi(mesaj, neden) {
   const e = new Error(mesaj);
@@ -224,7 +218,7 @@ function sayi(x) {
   const s = String(x).trim();
   const k = s.toLowerCase();
   if (s === '' || k === 'nan' || k === '-' || k === 'none' || k === 'null') return null;
-  if (!PY_FLOAT_RE.test(s)) return null;
+  if (!pyOndalikBicimi(s)) return null;
   const v = Number(s.replace(/_/g, ''));
   return Number.isFinite(v) ? v : null;
 }
@@ -232,7 +226,7 @@ function sayi(x) {
 /** Python int(str): ValueError yerine null. */
 function tamSayi(s) {
   const t = String(s).trim();
-  if (!PY_INT_RE.test(t)) return null;
+  if (!pyTamsayiBicimi(t)) return null;
   const v = Number(t.replace(/_/g, ''));
   return Number.isFinite(v) ? v : null;
 }
@@ -240,7 +234,7 @@ function tamSayi(s) {
 /** Python float(str) (sonlu olmayan reddedilir: siralama anahtari olarak NaN kullanilamaz). */
 function ondalik(s) {
   const t = String(s).trim();
-  if (!PY_FLOAT_RE.test(t)) return null;
+  if (!pyOndalikBicimi(t)) return null;
   const v = Number(t.replace(/_/g, ''));
   return Number.isFinite(v) ? v : null;
 }

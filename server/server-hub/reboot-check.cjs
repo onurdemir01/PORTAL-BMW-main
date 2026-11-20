@@ -902,7 +902,7 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
       : []),
   ];
   p.push(
-    `Kayıttaki ${sn.toplam} sunucunun ${sn.olculen} tanesinde reboot sonrası son durum ölçüldü${kapsamEk.length ? `, ${kapsamEk.join(', ')}` : ''}.`,
+    `Kayıttaki ${sn.toplam} sunucunun ${sn.olculen} tanesinde reboot sonrası son durum ölçüldü${kapsamEk.length ? ', ' + kapsamEk.join(', ') : ''}.`,
   );
   if (sn.onceBos) {
     const ek = [
@@ -910,7 +910,7 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
       ...(sn.onceBosSorunlu ? [`${sn.onceBosSorunlu} tanesinde sorun kaldı`] : []),
     ];
     p.push(
-      `${sn.onceBos} sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı${ek.length ? ` (bunlardan ${ek.join(', ')})` : ''}.`,
+      `${sn.onceBos} sunucu reboot öncesi izlenen uygulama çalıştırmadığı için karşılaştırma dışı kaldı${ek.length ? ' (bunlardan ' + ek.join(', ') + ')' : ''}.`,
     );
   }
   if (sn.karsilastirilabilir) {
@@ -925,22 +925,22 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
       ? ` (bunlardan ${sn.birakilanKontrolNotlu} tanesinde otomasyon fazladan çalışan ürünü kapattı; kontrol notu var)`
       : '';
     p.push(
-      `Karşılaştırılabilen ${sn.karsilastirilabilir} sunucudan ${sn.birakilan} tanesi reboot öncesi haliyle bırakıldı (${o.birakildi.metin})${notlu}${ek.length ? `; ${ek.join(', ')}` : ''}.`,
+      `Karşılaştırılabilen ${sn.karsilastirilabilir} sunucudan ${sn.birakilan} tanesi reboot öncesi haliyle bırakıldı (${o.birakildi.metin})${notlu}${ek.length ? '; ' + ek.join(', ') : ''}.`,
     );
   } else p.push('Karşılaştırılabilen (önce görüntüsü dolu ve son durumu ölçülen) sunucu yok.');
   if (oge.hedef)
     p.push(
-      `Karşılaştırılabilen sunucularda öğe bazında (ürün + JVM) reboot öncesi hale dönüş ${o.donus.metin} (${oge.dogru} / ${oge.hedef}); reboot öncesi çalışan öğe sayısı ${oge.once}${oge.korunan ? `; reboot öncesi çalışmayan ${oge.korunan} öğe kapatma güvenli olmadığı için dokunulmadı (kontrol bekliyor)` : ''}.`,
+      `Karşılaştırılabilen sunucularda öğe bazında (ürün + JVM) reboot öncesi hale dönüş ${o.donus.metin} (${oge.dogru} / ${oge.hedef}); reboot öncesi çalışan öğe sayısı ${oge.once}${oge.korunan ? '; reboot öncesi çalışmayan ' + oge.korunan + ' öğe kapatma güvenli olmadığı için dokunulmadı (kontrol bekliyor)' : ''}.`,
     );
   if (oge.ilkSapan)
     p.push(
-      `Bu sunucularda reboot sonrası ilk kontrolde ${oge.ilkSapan} öğe reboot öncesinden farklıydı (${oge.ilkDown} kapalı, ${oge.ilkNew} fazladan çalışan); ${oge.otomatik} tanesini otomasyon düzeltti, ${oge.kendiliginden} tanesi kendiliğinden düzeldi (${o.kapanan.metin} kapatıldı)${oge.halaSapan ? `, ${oge.halaSapan} öğe hâlâ farklı` : ''}.`,
+      `Bu sunucularda reboot sonrası ilk kontrolde ${oge.ilkSapan} öğe reboot öncesinden farklıydı (${oge.ilkDown} kapalı, ${oge.ilkNew} fazladan çalışan); ${oge.otomatik} tanesini otomasyon düzeltti, ${oge.kendiliginden} tanesi kendiliğinden düzeldi (${o.kapanan.metin} kapatıldı)${oge.halaSapan ? ', ' + oge.halaSapan + ' öğe hâlâ farklı' : ''}.`,
     );
   else if (oge.hedef)
     p.push('Bu sunucularda reboot sonrası ilk kontrolde reboot öncesinden farklı öğe yoktu.');
   if (mudahale)
     p.push(
-      `Otomasyon son durumu ölçülen sunucularda ${mudahale} açma/kapatma komutu çalıştırdı; ${komutOlculen.basarili} tanesinin hedefi son kontrolde doğrulandı (${o.otomasyon.metin})${dogrulanamayan ? `; ölçülemeyen sunucularda çalışan ${dogrulanamayan} komutun sonucu doğrulanamadı` : ''}.`,
+      `Otomasyon son durumu ölçülen sunucularda ${mudahale} açma/kapatma komutu çalıştırdı; ${komutOlculen.basarili} tanesinin hedefi son kontrolde doğrulandı (${o.otomasyon.metin})${dogrulanamayan ? '; ölçülemeyen sunucularda çalışan ' + dogrulanamayan + ' komutun sonucu doğrulanamadı' : ''}.`,
     );
   else if (dogrulanamayan)
     p.push(
@@ -948,11 +948,11 @@ function yoneticiOzeti(sunucular, hedefler, onceSat = null, deg = null) {
     );
   if (komut.ok + komut.fail)
     p.push(
-      `Komut başarı oranı (dönüş kodu) ${o.komut.metin} (${komut.ok} / ${o.komut.payda})${komut.skip ? `; ${komut.skip} öğede komuta gerek kalmadı` : ''}.`,
+      `Komut başarı oranı (dönüş kodu) ${o.komut.metin} (${komut.ok} / ${o.komut.payda})${komut.skip ? '; ' + komut.skip + ' öğede komuta gerek kalmadı' : ''}.`,
     );
   else
     p.push(
-      `Otomasyonun müdahalesine gerek olmadı${komut.skip ? ` (${komut.skip} öğede komut gerekmedi)` : ''}.`,
+      `Otomasyonun müdahalesine gerek olmadı${komut.skip ? ' (' + komut.skip + ' öğede komut gerekmedi)' : ''}.`,
     );
   return { sunucu: sn, oge, komut, komutOlculen, oran: o, metin: p.join(' ') };
 }

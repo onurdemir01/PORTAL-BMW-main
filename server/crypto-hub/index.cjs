@@ -88,13 +88,18 @@ const OPS = {
 const SIR_ANAHTARI =
   /(pass|passwd|password|pwd|secret|token|apikey|api_key|accesskey|access_key|credential|keystore|truststore|private[_-]?key)/i;
 
+// `anahtar: deger` satiri (dogrusal; eski tembel `(.+?)\s*$` ile ayni gruplar - Sonar S8786). Iki desen
+// sirayla denenir: deger bosluk disi bir karakter iceriyorsa yalniz DEGERLI eslesebilir (bosluksuz
+// baslayip biten metin), yalniz bosluktan olusuyorsa yalniz BOS (son satir-ici bosluk karakteri).
+// Esdegerlik: __tests__/regex-dogrusal CR1.
+const KV_DEGERLI = /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?)\s*$/;
+const KV_BOS = /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*((?![\n\r\u2028\u2029])\s)[\n\r\u2028\u2029]*$/;
+
 /** `anahtar: deger` satirlarinda sir gorunen degerleri yildizlar. Yorumlara dokunmaz. */
 function maskValues(lines) {
   return (lines || []).map((raw) => {
     const l = String(raw == null ? '' : raw);
-    const m = l.match(
-      /^(\s*)([A-Za-z0-9_.-]+)\s*:\s*(\S(?:.*\S)?|[^\S\n\r\u2028\u2029](?=[\n\r\u2028\u2029]*$))\s*$/,
-    );
+    const m = l.match(KV_DEGERLI) || l.match(KV_BOS);
     if (!m) return l;
     const [, girinti, anahtar, deger] = m;
     if (!SIR_ANAHTARI.test(anahtar)) return l;

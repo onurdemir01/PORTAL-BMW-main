@@ -561,7 +561,7 @@ function kopyaMetni(j, k) {
   // "x/y kopya calisiyor" (2026-11-14; kullanici: "prod'da toplam 5 makinede sadece birinde acik").
   if (typeof k.calisanSayisi === 'number')
     parca.push(
-      `${k.calisanSayisi}/${k.toplamSayisi || k.kopyaSayisi} kopya çalışıyor${k.bilinmeyenSayisi ? ` (${k.bilinmeyenSayisi} bilinmiyor)` : ''}`,
+      `${k.calisanSayisi}/${k.toplamSayisi || k.kopyaSayisi} kopya çalışıyor${k.bilinmeyenSayisi ? ' (' + k.bilinmeyenSayisi + ' bilinmiyor)' : ''}`,
     );
   if (k.nedenler.includes('calisma')) parca.push('bu kopya kapalı, aynı ortamda çalışan kopya var');
   if (k.nedenler.includes('autostart'))

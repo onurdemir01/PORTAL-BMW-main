@@ -14,9 +14,9 @@ const KURUM_JS = {
   'sonarjs/no-unenclosed-multiline-block': 'error', // S2681
   'sonarjs/no-same-line-conditional': 'error', // S3972
   'sonarjs/no-nested-conditional': 'off', // S3358 — PR-1 icinde duzeltilip acilir
-  'sonarjs/no-nested-template-literals': 'off', // S4624 — PR-1 icinde duzeltilip acilir
-  'sonarjs/duplicates-in-character-class': 'off', // S5869 — PR-1 icinde duzeltilip acilir
-  'sonarjs/regex-complexity': ['off', { threshold: 20 }], // S5843 (kurum esigi 20) — PR-1 icinde duzeltilip acilir
+  'sonarjs/no-nested-template-literals': 'error', // S4624
+  'sonarjs/duplicates-in-character-class': 'error', // S5869
+  'sonarjs/regex-complexity': ['error', { threshold: 20 }], // S5843 (kurum esigi 20)
   'sonarjs/no-invariant-returns': 'error', // S3516
   'sonarjs/no-unused-collection': 'error', // S4030
   'sonarjs/no-unused-vars': 'error', // S1481

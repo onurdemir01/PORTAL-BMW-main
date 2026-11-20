@@ -95,7 +95,7 @@ function domainKapaliOzeti(gen, nj) {
     ? 'JVM tanımı okunamadı'
     : hepsiKapali
       ? `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`
-      : `${durmus} JVM durmuş${autoStartAcik ? ` (${autoStartAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)` : ''}${kosan}`;
+      : `${durmus} JVM durmuş${autoStartAcik ? ' (' + autoStartAcik + " tanesinde host XML'de auto-start açık: reboot'ta açılabilir)" : ''}${kosan}`;
   return {
     durmus,
     autoStartAcik,
@@ -1794,8 +1794,8 @@ function assess(data, opts = {}) {
           'jvm',
           'INV_ONLY_APP',
           taramaJvmYok
-            ? `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
-            : `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? `, durum ${j.invStatus}` : ''}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
+            ? `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? ', durum ' + j.invStatus : ''}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
+            : `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? ', durum ' + j.invStatus : ''}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
         );
         continue;
       }

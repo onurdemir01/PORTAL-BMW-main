@@ -20,9 +20,11 @@ const { timeQuery } = require('../metrics.cjs');
 // adlarini yakalayamiyordu (kurumsal AI kod incelemesi, review.md #20) — su an hicbir gercek
 // db.query( cagri noktasi bu bicimleri kullanmiyor (dogrulandi, tek RETURNING kullanimi
 // history.cjs'teki duz `RETURNING id`), yani onleyici bir sertlestirme, aktif bug degil.
-// Yeni regex noktali virgul HARIC her karakteri yakalar.
+// Yeni regex noktali virgul HARIC her karakteri yakalar: RETURNING'den sonraki ilk bosluktan ';' ya da
+// sona kadar. Kolon metni yalniz trim() edilmis haliyle kullanilir; eski tembel `\s+([^;]+?)\s*` ile ayni
+// eslesme ve ayni kolonlar, dogrusal (Sonar S8786; esdegerlik: __tests__/regex-dogrusal DR1).
 function handleReturning(sql) {
-  const m = sql.match(/\bRETURNING\b\s+([^\s;](?:[^;]*[^\s;])?|\s(?=(?:;\s*)?$))\s*(?:;\s*)?$/i);
+  const m = sql.match(/\bRETURNING\b\s([^;]+)(?:;\s*)?$/i);
   if (!m) return sql;
 
   const rawCols = m[1].trim();

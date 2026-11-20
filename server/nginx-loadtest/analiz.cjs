@@ -111,6 +111,8 @@
 // null = olculmedi (hicbir zaman 0 yerine gecmez). Fonksiyonlar saftir: G/C yok, saat yok.
 'use strict';
 
+const { pyOndalikBicimi } = require('./py-bicim.cjs');
+
 const EPS = 1e-9;
 const LOG_ESIK_GECERSIZ = 0.02;
 const HATA_ESIK = 0.001;
@@ -389,12 +391,9 @@ const FARK_ALANLARI = Object.freeze([
 // Python uyumlu ilkel islemler
 // ---------------------------------------------------------------------------------------------
 
-const PY_FLOAT_RE =
-  /^[+-]?(?:[0-9](?:_?[0-9])*(?:\.(?:[0-9](?:_?[0-9])*)?)?|\.[0-9](?:_?[0-9])*)(?:[eE][+-]?[0-9](?:_?[0-9])*)?$/;
-
 /**
  * karsilastir.py `sayi`: bos, nan, -, none, null -> null; sonlu olmayan -> null. JS sayisi da kabul
- * eder (DB satiri). sonuc.cjs'teki kopyasiyla esdegerligi testte kilitlidir (modul bagimliligi yok).
+ * eder (DB satiri). Soz dizimi sonuc.cjs ile ortak (py-bicim.cjs); esdegerlik testte kilitli (AN9).
  */
 function sayi(x) {
   if (x === null || x === undefined) return null;
@@ -402,7 +401,7 @@ function sayi(x) {
   const s = String(x).trim();
   const k = s.toLowerCase();
   if (s === '' || k === 'nan' || k === '-' || k === 'none' || k === 'null') return null;
-  if (!PY_FLOAT_RE.test(s)) return null;
+  if (!pyOndalikBicimi(s)) return null;
   const v = Number(s.replace(/_/g, ''));
   return Number.isFinite(v) ? v : null;
 }

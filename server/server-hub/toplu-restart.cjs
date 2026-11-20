@@ -636,7 +636,7 @@ async function olustur(req, secim) {
         // env / tarama tarihi / ek (grup, fark, onceki loaded_at / surec baslangici) secimDogrula'da yazilir.
         p.push(isId, i + j + 1, c.host, null, c.gen, c.jvm, 'restart', 1, null, ekYaz({}));
         const b = p.length - 10;
-        return `(${Array.from({ length: 10 }, (_, n) => `$${b + n + 1}`).join(', ')}, '${SECIM}')`;
+        return `(${Array.from({ length: 10 }, (_, n) => '$' + (b + n + 1)).join(', ')}, '${SECIM}')`;
       });
       await db().query(
         `INSERT INTO server_hub_toplu_ogeler (is_id, sira, host, env, gen, jvm, eylem, calisiyor, tarama_scan_date, ek, durum) VALUES ${v.join(', ')}`,
@@ -744,7 +744,7 @@ async function secimDogrula(is, og) {
     const c = byK.get(k);
     if (!c) {
       const d = disK.get(k);
-      return { neden: `artık aday değil${d ? ` (${d.neden})` : ' (tarama değişti)'}` };
+      return { neden: `artık aday değil${d ? ' (' + d.neden + ')' : ' (tarama değişti)'}` };
     }
     // Baska bir toplu isin (restart ya da auto-start) ogesi ya da suren tek satir auto-start isi olan JVM gecemez.
     const kilit =
@@ -965,7 +965,7 @@ async function taramaBaslat(is, hostlar, op) {
   return _d.launch(
     sozdeIstek(is.onaylayan || is.olusturan),
     SCAN_KEY,
-    `Server Hub: toplu restart #${is.id} ${op === 'toplu_restart_onizleme' ? 'önizleme' : 'doğrulama'} taraması (${hostlar.length === 1 ? hostlar[0] : `${hostlar.length} sunucu`})`,
+    `Server Hub: toplu restart #${is.id} ${op === 'toplu_restart_onizleme' ? 'önizleme' : 'doğrulama'} taraması (${hostlar.length === 1 ? hostlar[0] : '' + hostlar.length + ' sunucu'})`,
     { target_hosts: hostlar.join(',') },
     { op, id: is.id, hosts: hostlar },
   );
