@@ -20,7 +20,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const { varsayilanSira } = require('../util/siralama.cjs');
+const { varsayilanSira, kucukBuyuk } = require('../util/siralama.cjs');
 
 const db = () => require('../db/index.cjs');
 const alim = () => require('./ear-envanter-alim.cjs');
@@ -51,11 +51,6 @@ const ortamOf = (v) =>
     .toUpperCase();
 const kopyaAnahtari = (k) => `${k.host}|${k.kok}|${k.ad}`;
 const iz32 = (v) => crypto.createHash('sha256').update(v).digest('hex').slice(0, 32);
-const kucukBuyuk = (a, b) => {
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
-};
 
 function hata(status, message, code) {
   return Object.assign(new Error(message), { status, code });

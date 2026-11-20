@@ -80,6 +80,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { kucukBuyuk } = require('../util/siralama.cjs');
 const {
   LISTE_EYLEMI,
   XML_KAPAT_EYLEMI,
@@ -337,12 +338,7 @@ function adaylariTuret(a, opts = {}) {
       adaylar.push(satir);
     }
   }
-  const sira = (x, y) =>
-    x.host < y.host
-      ? -1
-      : x.host > y.host
-        ? 1
-        : x.gen - y.gen || (x.jvm < y.jvm ? -1 : x.jvm > y.jvm ? 1 : 0);
+  const sira = (x, y) => kucukBuyuk(x.host, y.host) || x.gen - y.gen || kucukBuyuk(x.jvm, y.jvm);
   adaylar.sort(sira);
   dislananlar.sort(sira);
   xmlAdaylar.sort(sira);
@@ -606,8 +602,9 @@ function secimiDuzle(secim, enCok) {
     const k = ogeAnahtari(host, gen, jvm);
     if (gorulen.has(k)) throw hata(400, `Aynı JVM iki kez seçilmiş: ${host}/${jvm}`);
     gorulen.add(k);
-    const action =
-      eylem === 'ac' ? 'jboss_autostart_on' : eylem === 'kapat' ? 'jboss_autostart_off' : XML;
+    let action = XML;
+    if (eylem === 'ac') action = 'jboss_autostart_on';
+    else if (eylem === 'kapat') action = 'jboss_autostart_off';
     out.push({ host, jvm, gen, eylem, action });
   }
   // Tek kip: CLI (ac/kapat) ve host XML ogeleri ayni toplu iste olmaz (bkz. baslik, DOMAIN KAPALI - HOST XML).
@@ -836,9 +833,10 @@ async function secimDogrula(is, og) {
     const c = byK.get(k);
     if (!c || c.action !== o.eylem) {
       const d = disK.get(k);
-      return {
-        neden: `artık aday değil${d ? ' (' + d.neden + ')' : c ? ' (eylem değişti)' : ' (tarama değişti)'}`,
-      };
+      let neden = ' (tarama değişti)';
+      if (d) neden = ` (${d.neden})`;
+      else if (c) neden = ' (eylem değişti)';
+      return { neden: `artık aday değil${neden}` };
     }
     // Taze degerlendirmede prod (ya da ortami bilinmeyen) cikan host XML ogesi olusturmadaki prod onayi olmadan gecemez.
     if (xmlMi(c) && c.prod && ekOku(o).prodOnay !== true)
@@ -1273,13 +1271,15 @@ async function planIlerlet(is, og, iptalMi) {
           ),
           sonuc_satiri: M(satir, 1000),
         });
-      else
+      else {
+        const kipAdi = xml ? XML : LISTE_EYLEMI;
+        const statsEki = result
+          ? ''
+          : `; set_stats yok — AWX'teki server_hub_fix.yml ${kipAdi} kipini tanımıyor olabilir (playbook güncel mi?)`;
         await ogeDurum(o.id, ['PLANLANIYOR'], 'DUSTU', {
-          neden: M(
-            `plan okunamadı (iş #${o0.plan_job_id} ${st.status}${result ? '' : "; set_stats yok — AWX'teki server_hub_fix.yml " + (xml ? XML : LISTE_EYLEMI) + ' kipini tanımıyor olabilir (playbook güncel mi?)'})`,
-            1000,
-          ),
+          neden: M(`plan okunamadı (iş #${o0.plan_job_id} ${st.status}${statsEki})`, 1000),
         });
+      }
     }
   }
   if (iptalMi) return;
@@ -1621,7 +1621,8 @@ async function uygulaBitir(is) {
   // YARIM_KALDI oge (is numarasi yazilamadi; AWX'e gitmis olabilir) da kirmizidir: yesil "Tamamlandi" onu gizlemez.
   const og = await ogeler(is.id);
   const kirmizi = s.fail_sayisi > 0 || og.some((o) => o.durum === 'YARIM_KALDI');
-  const durum = iptalMi ? 'IPTAL' : kirmizi ? 'BITTI_HATALI' : 'BITTI';
+  let durum = kirmizi ? 'BITTI_HATALI' : 'BITTI';
+  if (iptalMi) durum = 'IPTAL';
   const r = await db().query(
     `UPDATE server_hub_toplu_isler SET durum = $2, bitis_at = SYSUTCDATETIME(), kira_id = NULL, kira_bitis = NULL
       WHERE id = $1 AND durum IN ('CALISIYOR', 'IPTAL_ISTENDI', 'PLANLANIYOR') AND kira_id = $3`,

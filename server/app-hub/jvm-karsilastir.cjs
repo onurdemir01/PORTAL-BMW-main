@@ -263,8 +263,9 @@ function grupKarsilastir(uyeler) {
     );
   const kesikler = haritalar.filter((x) => x.kesik != null);
   if (kesikler.length) {
+    const kesikListesi = kesikler.map((x) => `${x.u.etiket}: +${x.kesik}`).join(', ');
     uyarilar.push(
-      `${kesikler.length} JVM'in argüman metni taramada kesilmiş (${kesikler.map((x) => '' + x.u.etiket + ': +' + x.kesik).join(', ')}); kesilen kısımdaki argümanlar karşılaştırılamadı.`,
+      `${kesikler.length} JVM'in argüman metni taramada kesilmiş (${kesikListesi}); kesilen kısımdaki argümanlar karşılaştırılamadı.`,
     );
   }
   for (const x of haritalar) {
@@ -512,8 +513,9 @@ function uygulamaKarsilastir(istenen, detay, secim) {
     } else {
       durum = 'BULUNAMADI';
       const ortamAd = ortamSec === 'TUMU' ? 'hiçbir ortamda' : `${ortamSec} ortamında`;
+      const nesilAd = nesilSec === 'hepsi' ? '' : `JBoss ${nesilSec} `;
       neden = (detay.sunucular || []).length
-        ? `${ortamAd} ${nesilSec === 'hepsi' ? '' : 'JBoss ' + nesilSec + ' '}JVM'i yok.`
+        ? `${ortamAd} ${nesilAd}JVM'i yok.`
         : 'Sunucu kaydı yok.';
     }
   } else {

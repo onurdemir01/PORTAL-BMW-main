@@ -45,7 +45,8 @@ function kopyaOf(c, karar) {
   const { h, j } = c;
   const fresh = taze(h);
   const olculdu = j.runningKnown !== false;
-  const durum = !fresh || !olculdu ? 'bilinmiyor' : j.running ? 'calisiyor' : 'kapali';
+  let durum = 'bilinmiyor';
+  if (fresh && olculdu) durum = j.running ? 'calisiyor' : 'kapali';
   const ocp = j.capraz?.ocp ? j.capraz.ocp.eslesme || [] : [];
   return {
     host: h.host,

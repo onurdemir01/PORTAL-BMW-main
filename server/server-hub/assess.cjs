@@ -91,11 +91,13 @@ function domainKapaliOzeti(gen, nj) {
   const autoStartAcik = liste.filter((j) => j.running !== true && j.autoStart === 'true').length;
   const hepsiKapali = liste.length > 0 && liste.every((j) => j.autoStart === 'false');
   const kosan = liste.length > durmus ? `, ${liste.length - durmus} JVM süreci görünüyor` : '';
-  const jvmMetni = !liste.length
-    ? 'JVM tanımı okunamadı'
-    : hepsiKapali
-      ? `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`
-      : `${durmus} JVM durmuş${autoStartAcik ? ' (' + autoStartAcik + " tanesinde host XML'de auto-start açık: reboot'ta açılabilir)" : ''}${kosan}`;
+  const acikEki = autoStartAcik
+    ? ` (${autoStartAcik} tanesinde host XML'de auto-start açık: reboot'ta açılabilir)`
+    : '';
+  let jvmMetni = `${durmus} JVM durmuş${acikEki}${kosan}`;
+  if (!liste.length) jvmMetni = 'JVM tanımı okunamadı';
+  else if (hepsiKapali)
+    jvmMetni = `${durmus} JVM durmuş, hepsinde host XML'de auto-start kapalı: reboot'ta açılacak JVM yok${kosan}`;
   return {
     durmus,
     autoStartAcik,
@@ -383,13 +385,10 @@ function envanterEslestir(apps, jvms) {
     for (const j of taranan) {
       if (alinan.has(j)) continue;
       const g = L(j.group);
-      const tur = sayiRe.test(L(j.name))
-        ? 'ad-sayi'
-        : g && (g === ad || g === `${ad}_group` || g === `${ad}-group`)
-          ? 'grup'
-          : g && x.domainler.has(g) && domainSayisi.get(g) === 1
-            ? 'domain'
-            : null;
+      let tur = null;
+      if (sayiRe.test(L(j.name))) tur = 'ad-sayi';
+      else if (g && (g === ad || g === `${ad}_group` || g === `${ad}-group`)) tur = 'grup';
+      else if (g && x.domainler.has(g) && domainSayisi.get(g) === 1) tur = 'domain';
       if (!tur) continue;
       const o = talep.get(j);
       // Daha uzun ad daha ozgul; esitlikte once gelen eslesme turu (ad-sayi > grup > domain).
@@ -1789,13 +1788,14 @@ function assess(data, opts = {}) {
         if (cx0?.retirement.length) j.retirement = cx0.retirement;
         // Taramadan HIC JVM satiri gelmediyse (JVM_DATA_MISSING) "eslesmedi" denmez: olculemedi.
         const taramaJvmYok = !h.jvms.some((x) => x.source === 'cli');
+        const envanterDurumu = j.invStatus ? `, durum ${j.invStatus}` : '';
         add(
           'info',
           'jvm',
           'INV_ONLY_APP',
           taramaJvmYok
-            ? `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? ', durum ' + j.invStatus : ''}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
-            : `${j.name}: yalnız envanterde (MWAppsInventory${j.invStatus ? ', durum ' + j.invStatus : ''}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
+            ? `${j.name}: yalnız envanterde (MWAppsInventory${envanterDurumu}) — bu sunucunun taramasından JVM satırı gelmedi, eşleşme ölçülemedi; eylem önerilmez`
+            : `${j.name}: yalnız envanterde (MWAppsInventory${envanterDurumu}) — bu sunucunun taramasında uygulamanın JVM'i bulunamadı (ad, ad + numara ya da server-group eşleşmedi); eylem önerilmez`,
         );
         continue;
       }
@@ -2248,11 +2248,9 @@ function assess(data, opts = {}) {
             );
           } else {
             const nedenEki = kk.neden ? ` (${kk.neden})` : '';
-            const ek = kk.olculemedi
-              ? ` — ${OLCULEMEDI_EKI}${nedenEki}`
-              : kk.kor
-                ? ` — dizin kullanımı görülmedi ama ${kk.kor}`
-                : '';
+            let ek = '';
+            if (kk.olculemedi) ek = ` — ${OLCULEMEDI_EKI}${nedenEki}`;
+            else if (kk.kor) ek = ` — dizin kullanımı görülmedi ama ${kk.kor}`;
             add('warning', 'ear', 'EAR_JVM_YOK', `${yer}: ${metin}${ek}`, null, {
               ear: { ...konu, neden: x.neden || 'TANIM_YOK' },
             });

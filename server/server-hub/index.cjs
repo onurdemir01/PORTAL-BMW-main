@@ -1392,14 +1392,16 @@ function initServerHub(app) {
         const k = xmlKapatKapisi(tj ? _autoStart.uygulaJvm(h, tj) : tj, { host, jvm, gen });
         if (k) redler.push(k.message);
       }
-      if (redler.length)
+      if (redler.length) {
+        const fazlasi = redler.length > 5 ? ` · +${redler.length - 5}` : '';
         return res.status(400).json({
           ok: false,
           message:
             redler.length === 1
               ? redler[0]
-              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${redler.length > 5 ? ' · +' + (redler.length - 5) : ''}`,
+              : `${redler.length} JVM reddedildi (iş açılmadı): ${redler.slice(0, 5).join(' · ')}${fazlasi}`,
         });
+      }
       const birakanlar = confirmed ? jvms.map((jvm) => _autoStart.rezervasyon(host, gen, jvm)) : [];
       let r;
       try {

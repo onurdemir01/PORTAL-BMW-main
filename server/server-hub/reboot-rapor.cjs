@@ -92,6 +92,24 @@ const servisAdi = (anahtar) => {
  * ayni kaynak, onceGirdisi - goruntu_ok + BOOT); ARGUMAN hic verilmezse onceSat (eski cagiran / testler). Acikca undefined
  * verilirse (once goruntusu alinamamis) undefined kalir - varsayilan parametre bunu yutardi.
  */
+/** Urunle birlikte kapanmasi gereken JVM hala calisiyor: kapatma komutunun sonucuna gore ek. */
+function urunKalanEki(durdurK) {
+  if (durdurK === 'FAIL') return ' (ürün kapatma komutu BAŞARISIZ)';
+  if (durdurK === 'SKIP') return ' (kapatma anında ürün kapalıydı, sonra yeniden kalktı)';
+  return durdurK ? '' : ' (ürün kapatma komutu çalışmadı)';
+}
+
+/** Otomatik kapatilmasi gereken servis hala calisiyor: neden (kapatma komutu sonucu, betik surumu). */
+function kalanNedeni(durdurK, etki, urun) {
+  if (durdurK === 'FAIL') return 'kapatma komutu BAŞARISIZ döndü';
+  if (durdurK === 'OK') return 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor';
+  if (durdurK === 'SKIP')
+    return 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı';
+  if (!etki.kapatmaz(urun))
+    return 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)';
+  return `kapatma komutu çalışmadı — AWX'teki betik eski (${etki.etiket}); güncel betikle yeniden çalıştırın`;
+}
+
 function sunucuDegerlendir(onceSat, s, ...ek) {
   const etkiOnce = ek.length ? ek[0] : onceSat;
   const bulgu = [];
@@ -251,7 +269,7 @@ function sunucuDegerlendir(onceSat, s, ...ek) {
         bulgu.push({
           durum: 'NEW_URUN',
           servis: servisAdi(k),
-          aciklama: `Ürün reboot öncesi çalışmıyordu; ürünle birlikte kapanması gerekirken hâlâ çalışıyor${durdurK === 'FAIL' ? ' (ürün kapatma komutu BAŞARISIZ)' : durdurK === 'SKIP' ? ' (kapatma anında ürün kapalıydı, sonra yeniden kalktı)' : durdurK ? '' : ' (ürün kapatma komutu çalışmadı)'}.`,
+          aciklama: `Ürün reboot öncesi çalışmıyordu; ürünle birlikte kapanması gerekirken hâlâ çalışıyor${urunKalanEki(durdurK)}.`,
           onceSonra: 'yoktu → çalışıyor',
         });
       else if (!once && !jvm && sonV && korur(urun))
@@ -266,7 +284,7 @@ function sunucuDegerlendir(onceSat, s, ...ek) {
         bulgu.push({
           durum: 'NEW_URUN_KALAN',
           servis: servisAdi(k),
-          aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${durdurK === 'FAIL' ? 'kapatma komutu BAŞARISIZ döndü' : durdurK === 'OK' ? 'kapatma komutu başarılı döndü ama süreç hâlâ çalışıyor' : durdurK === 'SKIP' ? 'kapatma anında zaten kapalıydı (komut gerekmedi), sonra yeniden kalktı' : !etki.kapatmaz(urun) ? 'kapatma komutu çalışmadı (plandan sonra kalkmış olabilir; yeniden çalıştırın)' : "kapatma komutu çalışmadı — AWX'teki betik eski (" + etki.etiket + '); güncel betikle yeniden çalıştırın'}.`,
+          aciklama: `Reboot öncesi çalışmıyordu; otomatik kapatılması gerekirken hâlâ çalışıyor — ${kalanNedeni(durdurK, etki, urun)}.`,
           onceSonra: 'yoktu → çalışıyor',
         });
       else if (!once && jvm && sonV)
@@ -545,16 +563,22 @@ const TON = {
   mavi: ['#1f5fbf', '#e8effb'],
 };
 const ISLEM_ADI = { baslat: 'açma', durdur: 'kapatma' };
-const islemEtiketi = (x) =>
-  `${x.jvm ? JVM_ADI[x.urun] || '' + x.urun + ' JVM' : URUN_ADI[x.urun] || x.urun} ${ISLEM_ADI[x.islem] || x.islem}`;
+const jvmAdi = (urun) => JVM_ADI[urun] || `${urun} JVM`;
+const islemEtiketi = (x) => {
+  const ad = x.jvm ? jvmAdi(x.urun) : URUN_ADI[x.urun] || x.urun;
+  return `${ad} ${ISLEM_ADI[x.islem] || x.islem}`;
+};
 const komutMetni = (y) => {
-  const n = `${y.ad ? '' + (JVM_ADI[y.urun] || '' + y.urun + ' JVM') + ' ' + y.ad : URUN_ADI[y.urun] || y.urun} ${ISLEM_ADI[y.islem] || y.islem}`;
+  const ad = y.ad ? `${jvmAdi(y.urun)} ${y.ad}` : URUN_ADI[y.urun] || y.urun;
+  const n = `${ad} ${ISLEM_ADI[y.islem] || y.islem}`;
   if (y.sonuc === 'FAIL') return `<span class='k-bad'>${e(n)} — hata</span>`;
   if (!y.hedefte) return `<span class='k-warn'>${e(n)} — son kontrolde hedefte değil</span>`;
   return `<span class='k-ok'>${e(n)} ✓</span>`;
 };
-const sayiLink = (id, n, etiket) =>
-  `<a class='sayi' href='#${id}' aria-label='${e('' + etiket + ': ' + n + ' — ayrıntıyı aç')}'>${n}</a>`;
+const sayiLink = (id, n, etiket) => {
+  const aciklama = `${etiket}: ${n} — ayrıntıyı aç`;
+  return `<a class='sayi' href='#${id}' aria-label='${e(aciklama)}'>${n}</a>`;
+};
 
 /**
  * Ozet (2026-11-17 v2, kullanici: "Dikkat gerektiren kismi soldaki 'Otomasyonla eski haline getirildi' maddesine bagli degil mi? ...
@@ -576,10 +600,10 @@ function ozetBolumu(sev, betikNotu) {
   const dikkat = s.kontrol + s.yapilamadi + s.hatali;
   const oto = s.duzeltildi + s.hatali;
   const bar = SEVIYE_SIRA.filter((k) => s[k])
-    .map(
-      (k) =>
-        `<a class='seg' href='#d-${k}' title='${e('' + KOVA[k].ad + ': ' + s[k] + ' sunucu')}' style='width:${(s[k] * 100) / (sev.toplam || 1)}%;background:${TON[KOVA[k].ton][0]}'></a>`,
-    )
+    .map((k) => {
+      const baslik = `${KOVA[k].ad}: ${s[k]} sunucu`;
+      return `<a class='seg' href='#d-${k}' title='${e(baslik)}' style='width:${(s[k] * 100) / (sev.toplam || 1)}%;background:${TON[KOVA[k].ton][0]}'></a>`;
+    })
     .join('');
   const lejant = SEVIYE_SIRA.filter((k) => s[k])
     .map(
@@ -587,15 +611,17 @@ function ozetBolumu(sev, betikNotu) {
         `<a class='lj' href='#d-${k}'><span class='lj-n' style='background:${TON[KOVA[k].ton][0]}'></span>${e(KOVA[k].ad)} <b>${s[k]}</b></a>`,
     )
     .join('');
-  const hukum = !sev.toplam
-    ? 'Karşılaştırma için sunucu verisi yok.'
-    : dikkat
+  let hukum = 'Karşılaştırma için sunucu verisi yok.';
+  if (sev.toplam)
+    hukum = dikkat
       ? `${sev.toplam} sunucunun <b>${basarili}</b> tanesi reboot sonrası reboot öncesi haliyle çalışıyor; <b class='h-bad'>${dikkat} sunucu dikkat istiyor</b>.`
       : `${sev.toplam} sunucunun <b>tamamı</b> reboot sonrası reboot öncesi haliyle çalışıyor.`;
   const bas = (ikon, ton, baslik) =>
     `<div class='yol-bas'><span class='yol-ikon' style='background:${TON[ton][1]};color:${TON[ton][0]}'>${ikon}</span>${e(baslik)}</div>`;
-  const sayi = (k, n, ton) =>
-    `<div class='yol-sayi' style='color:${n ? TON[ton][0] : 'var(--soluk)'}'>${n ? sayiLink('d-' + k, n, KOVA[k].ad) : '0'}</div>`;
+  const sayi = (k, n, ton) => {
+    const icerik = n ? sayiLink(`d-${k}`, n, KOVA[k].ad) : '0';
+    return `<div class='yol-sayi' style='color:${n ? TON[ton][0] : 'var(--soluk)'}'>${icerik}</div>`;
+  };
   // (1) mudahale gerekmedi
   const etiketler = [];
   if (sev.etiketSay.izlenenYok)
@@ -612,6 +638,7 @@ function ozetBolumu(sev, betikNotu) {
     '</td>',
   ].join('');
   // (2) otomasyon devreye girdi: iki sonuc ayni kartta
+  const miniBarEtiketi = `${s.duzeltildi} eski haline getirildi, ${s.hatali} getirilemedi`;
   const yol2 = [
     "<td class='yol' style='border-top-color:#1f5fbf'>",
     bas('⚙', 'mavi', 'Otomasyon devreye girdi'),
@@ -619,7 +646,7 @@ function ozetBolumu(sev, betikNotu) {
     `<div class='yol-pay'>${oto ? 'sunucuda açma/kapatma yapıldı' : 'hiçbir sunucuda gerekmedi'}</div>`,
     oto
       ? [
-          `<div class='mini-bar' role='img' aria-label='${e('' + s.duzeltildi + ' eski haline getirildi, ' + s.hatali + ' getirilemedi')}'><span style='width:${(s.duzeltildi * 100) / oto}%;background:#13603a'></span><span style='width:${(s.hatali * 100) / oto}%;background:#b42318'></span></div>`,
+          `<div class='mini-bar' role='img' aria-label='${e(miniBarEtiketi)}'><span style='width:${(s.duzeltildi * 100) / oto}%;background:#13603a'></span><span style='width:${(s.hatali * 100) / oto}%;background:#b42318'></span></div>`,
           "<table class='sonuc' cellpadding='0' cellspacing='0'>",
           `<tr><td><span class='s-ikon' style='color:#13603a'>✓</span> Eski haline getirildi</td><td class='r' style='color:#13603a'>${s.duzeltildi ? sayiLink('d-duzeltildi', s.duzeltildi, KOVA.duzeltildi.ad) : '0'}</td></tr>`,
           `<tr><td><span class='s-ikon' style='color:#b42318'>✗</span> Eski haline getirilemedi</td><td class='r' style='color:#b42318'>${s.hatali ? sayiLink('d-hatali', s.hatali, KOVA.hatali.ad) : '0'}</td></tr>`,
@@ -634,11 +661,14 @@ function ozetBolumu(sev, betikNotu) {
     .filter(([n]) => sev.yapilamadiNeden[n])
     .map(([n, ad]) => `<tr><td>${e(ad)}</td><td class='r'>${sev.yapilamadiNeden[n]}</td></tr>`)
     .join('');
+  const yapilamadiPayi = s.yapilamadi
+    ? `${yuzde(s.yapilamadi, sev.toplam)} · reboot öncesi hale döndüğü doğrulanamadı`
+    : 'böyle sunucu yok';
   const yol3 = [
     "<td class='yol' style='border-top-color:#a8431b'>",
     bas('!', 'bad2', 'Otomasyon işlem yapamadı'),
     sayi('yapilamadi', s.yapilamadi, 'bad2'),
-    `<div class='yol-pay'>${s.yapilamadi ? '' + yuzde(s.yapilamadi, sev.toplam) + ' · reboot öncesi hale döndüğü doğrulanamadı' : 'böyle sunucu yok'}</div>`,
+    `<div class='yol-pay'>${yapilamadiPayi}</div>`,
     kirilim ? `<table class='sonuc' cellpadding='0' cellspacing='0'>${kirilim}</table>` : '',
     '</td>',
   ].join('');
@@ -658,6 +688,7 @@ function ozetBolumu(sev, betikNotu) {
         '</table>',
       ].join('')
     : "<p class='sessiz'>Hiçbir sunucuda açma/kapatma işlemine gerek olmadı.</p>";
+  const barEtiketi = SEVIYE_SIRA.map((k) => `${KOVA[k].ad} ${s[k]}`).join(', ');
   return [
     "<section id='ozet' class='ozet' aria-label='Yönetici Özeti'>",
     betikNotu ? `<p class='uyari-bant'>${e(betikNotu)}</p>` : '',
@@ -667,7 +698,7 @@ function ozetBolumu(sev, betikNotu) {
     `<span class='hero-alt'><b>${basarili}</b> / ${sev.toplam} sunucu reboot öncesi haliyle çalışıyor</span></div>`,
     "<div class='hero-r'>",
     `<p class='hukum'>${hukum}</p>`,
-    `<div class='bar' role='img' aria-label='${e(SEVIYE_SIRA.map((k) => '' + KOVA[k].ad + ' ' + s[k]).join(', '))}'>${bar || "<span class='seg bos'></span>"}</div>`,
+    `<div class='bar' role='img' aria-label='${e(barEtiketi)}'>${bar || "<span class='seg bos'></span>"}</div>`,
     `<div class='lejant'>${lejant}</div>`,
     '</div></div>',
     "<h3 class='bolum'>Reboot sonrası ne oldu?</h3>",
@@ -688,9 +719,10 @@ function kovaPaneli(sev, k) {
   const [fg] = TON[KOVA[k].ton];
   const satirlar = hostlar.map((h) => {
     const x = sev.sunucu[h];
+    const islemYok = x.bilinmiyor ? 'bilinmiyor (sonuç gelmedi)' : 'işlem yok';
     const isl = x.komutlar.length
       ? x.komutlar.map(komutMetni).join('<br>')
-      : `<span class='sessiz'>${x.bilinmiyor ? 'bilinmiyor (sonuç gelmedi)' : 'işlem yok'}</span>`;
+      : `<span class='sessiz'>${islemYok}</span>`;
     const neden =
       [
         ...x.etiket.map((t) => `<span class='etiket'>${e(t)}</span>`),
@@ -742,6 +774,20 @@ const DURUMLAR_NOTU =
  * reboot_checks satiri -> tam HTML belge. opt.eposta (2026-11-17, dogrulama bulgusu): e-posta istemcisi :target panellerini
  * acamaz; e-posta / yazdirma gorunumunde TUM ayrinti panelleri acik gelir, "Ozete don" ve gorunum baglantilari gizlenir.
  */
+/** Otomatik Duzeltme tablosu: komut sonucunun rozeti. */
+function komutSonucuGorunumu(sonuc) {
+  if (sonuc === 'OK') return { css: 'ok', etiket: 'Komut başarılı' };
+  if (sonuc === 'FAIL') return { css: 'problem', etiket: 'Komut başarısız' };
+  return { css: 'info', etiket: 'Gerek kalmadı' };
+}
+
+/** Otomatik Duzeltme tablosu: islem sutunu (HTML; bilinmeyen islem kacislanir). */
+function islemBasligi(islem) {
+  if (islem === 'baslat') return 'Başlat';
+  if (islem === 'durdur') return 'Durdur';
+  return e(islem);
+}
+
 function raporHtml(k, opt = {}) {
   const onceS = k?.once?.sonuc?.sunucular || {};
   const sonraS = k?.sonra?.sonuc?.sunucular || null;
@@ -907,11 +953,11 @@ function raporHtml(k, opt = {}) {
       (calisan && o.not ? `<span style='color:#a12631'>${e(o.not)}</span>` : '') ||
       o.teknoloji
         .filter((t) => t.calistirildi === calisan)
-        .map((t) =>
-          calisan
-            ? `<span style='color:${t.sonuc === 'hata' ? '#a12631' : '#20633f'}'>${e(t.ad)}: ${e(t.ozet)}</span>`
-            : `<span style='color:#596579'>${e(t.ad)} (${e(t.ozet)})</span>`,
-        )
+        .map((t) => {
+          if (!calisan) return `<span style='color:#596579'>${e(t.ad)} (${e(t.ozet)})</span>`;
+          const renk = t.sonuc === 'hata' ? '#a12631' : '#20633f';
+          return `<span style='color:${renk}'>${e(t.ad)}: ${e(t.ozet)}</span>`;
+        })
         .join('<br>') ||
       "<span class='muted'>—</span>";
     p.push(
@@ -980,15 +1026,10 @@ function raporHtml(k, opt = {}) {
         (a, b) =>
           (a.sonuc === 'FAIL' ? 0 : 1) - (b.sonuc === 'FAIL' ? 0 : 1) || a.h.localeCompare(b.h),
       )) {
-        const css = x.sonuc === 'OK' ? 'ok' : x.sonuc === 'FAIL' ? 'problem' : 'info';
-        const etiket =
-          x.sonuc === 'OK'
-            ? 'Komut başarılı'
-            : x.sonuc === 'FAIL'
-              ? 'Komut başarısız'
-              : 'Gerek kalmadı';
+        const { css, etiket } = komutSonucuGorunumu(x.sonuc);
+        const servis = servisAdi(x.ad ? `${x.urun}|${x.ad}` : x.urun);
         p.push(
-          `<tr class='${sinif(x.d)}'><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servisAdi(x.ad ? '' + x.urun + '|' + x.ad : x.urun))}</td><td>${x.islem === 'baslat' ? 'Başlat' : x.islem === 'durdur' ? 'Durdur' : e(x.islem)}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`,
+          `<tr class='${sinif(x.d)}'><td class='host'>${e(kisaHost(x.h))}</td><td>${e(servis)}</td><td>${islemBasligi(x.islem)}</td><td>${pill(css, etiket)}<div class='minor'>${e(x.mesaj)}</div></td></tr>`,
         );
       }
       p.push('</table>');

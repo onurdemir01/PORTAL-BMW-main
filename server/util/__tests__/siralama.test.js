@@ -4,13 +4,15 @@
 //   SR2 sayilar varsayilan sirada kalir (10, 9): sayisal siraya bilerek gecilmez
 //   SR3 MANDAL: sunucuda karsilastiricisiz `.sort()` sayisi artmaz (kalanlar tipli dizi ya da metin
 //       dizisi: tipli dizide varsayilan sira SAYISALDIR, SonarQube bunlari isaretlemez)
+//   SR4 kucukBuyuk: yerinde `a < b ? -1 : a > b ? 1 : 0` ile her cift icin ayni sonuc (sayi sayisal kalir,
+//       NaN / undefined 0); metin dizisinde varsayilanSira ile ayni sira
 'use strict';
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { varsayilanSira } = require('../siralama.cjs');
+const { varsayilanSira, kucukBuyuk } = require('../siralama.cjs');
 
 // Belirlenimci sozde rastgele (her kosuda ayni diziler).
 function rastgele(tohum) {
@@ -98,4 +100,19 @@ test('SR3 karsilastiricisiz .sort() sayisi tavani asmaz', () => {
     `karsilastiricisiz .sort() ${bulunan.length} > ${TAVAN}:\n${bulunan.join('\n')}`,
   );
   assert.ok(bulunan.length >= TAVAN - 5, `tavan bayat (${bulunan.length}); TAVAN'i dusurun`);
+});
+
+test('SR4 kucukBuyuk yerinde yazilan karsilastiriciyla ayni, metinde varsayilan sira', () => {
+  const yerinde = (a, b) => (a < b ? -1 : a > b ? 1 : 0); // eski yazim (S3358)
+  for (const a of HAVUZ) for (const b of HAVUZ) assert.equal(kucukBuyuk(a, b), yerinde(a, b));
+  assert.equal(kucukBuyuk(9, 10), -1);
+  const r = rastgele(20261120);
+  const metinler = HAVUZ.filter((x) => typeof x === 'string');
+  for (let n = 0; n < 500; n++) {
+    const dizi = Array.from(
+      { length: Math.floor(r() * 12) },
+      () => metinler[Math.floor(r() * metinler.length)],
+    );
+    assert.deepEqual([...dizi].sort(kucukBuyuk), [...dizi].sort(), JSON.stringify(dizi));
+  }
 });

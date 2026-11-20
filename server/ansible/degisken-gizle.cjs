@@ -111,8 +111,9 @@ function yamldanAyikla(metin) {
  * @returns {{ metin: string, gizlenen: string[] }}
  */
 function awxDegiskenleriniAyikla(ham) {
-  const metin =
-    typeof ham === 'string' ? ham : ham && typeof ham === 'object' ? JSON.stringify(ham) : '';
+  let metin = '';
+  if (typeof ham === 'string') metin = ham;
+  else if (ham && typeof ham === 'object') metin = JSON.stringify(ham);
   if (!metin.trim()) return { metin: '', gizlenen: [] };
   if (metin.trim().startsWith('{')) {
     let obj = null;

@@ -54,7 +54,8 @@ async function detayOku(tip, ad) {
       F.filoOkumalari(ad).catch(() => []),
       F.sonKosuDurumu().catch(() => null),
     ]);
-    d.canli = Array.isArray(canli) ? F.birlestir(canli, saatlik) : saatlik.length ? saatlik : canli;
+    if (Array.isArray(canli)) d.canli = F.birlestir(canli, saatlik);
+    else d.canli = saatlik.length ? saatlik : canli;
     d.filo = { sonKosu, aralikDk: require('./filo-poller.cjs').ayar().aralikDk };
   }
   return d;

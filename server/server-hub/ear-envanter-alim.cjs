@@ -587,8 +587,11 @@ function kullanimOzeti(k) {
   const durum = D(k.durum, KULLANIM_DURUMLARI, 'OLCULEMEDI');
   const son = tamsayi(k.son_yazma);
   const okunamayan = tamsayi(k.okunamayan);
+  // Surec goruldu: VAR. Surec listesi bosken betik VAR dediyse kanit yok: olculemedi.
+  let ozetDurum = durum === 'VAR' ? 'OLCULEMEDI' : durum;
+  if (surecler.length) ozetDurum = 'VAR';
   return {
-    durum: surecler.length ? 'VAR' : durum === 'VAR' ? 'OLCULEMEDI' : durum,
+    durum: ozetDurum,
     surecler,
     son_yazma: son != null && son > 0 ? son : null,
     okunamayan: okunamayan != null && okunamayan > 0 ? Math.min(okunamayan, SINIR_OKUNAMAYAN) : 0,

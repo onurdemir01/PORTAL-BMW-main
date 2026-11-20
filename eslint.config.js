@@ -13,7 +13,7 @@ import sonarjs from 'eslint-plugin-sonarjs';
 const KURUM_JS = {
   'sonarjs/no-unenclosed-multiline-block': 'error', // S2681
   'sonarjs/no-same-line-conditional': 'error', // S3972
-  'sonarjs/no-nested-conditional': 'off', // S3358 — PR-1 icinde duzeltilip acilir
+  'sonarjs/no-nested-conditional': 'error', // S3358
   'sonarjs/no-nested-template-literals': 'error', // S4624
   'sonarjs/duplicates-in-character-class': 'error', // S5869
   'sonarjs/regex-complexity': ['error', { threshold: 20 }], // S5843 (kurum esigi 20)

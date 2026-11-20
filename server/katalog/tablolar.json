@@ -154,7 +154,7 @@
       {
         "tur": "portal",
         "ad": "Crypto Hub (uygulama/node)",
-        "dosya": "server/crypto-hub/index.cjs:1497",
+        "dosya": "server/crypto-hub/index.cjs:1502",
         "nasil": "per-run INSERT (ayrıca node.cjs:1583)",
         "ne_zaman": "Kullanıcı işlemi"
       },
@@ -182,7 +182,7 @@
       {
         "tur": "portal",
         "ad": "App Hub (OCP canlı, JVM parametresi), FileX, Envanter yenile",
-        "dosya": "server/app-hub/index.cjs:163",
+        "dosya": "server/app-hub/index.cjs:164",
         "nasil": "per-run INSERT (app-hub/jvm-param.cjs:174, filex/index.cjs:270, inventory/index.cjs:1933)",
         "ne_zaman": "Kullanıcı işlemi"
       }
@@ -556,7 +556,7 @@
       },
       {
         "ad": "Saatlik tarama yürütücüsü",
-        "dosya": "server/app-hub/filo-poller.cjs:373"
+        "dosya": "server/app-hub/filo-poller.cjs:369"
       }
     ],
     "saklama": "14 gün (server/app-hub/filo-poller.cjs:397)",
@@ -875,14 +875,14 @@
       {
         "tur": "portal",
         "ad": "Toplu Auto-Start uçları ve yürütücüsü",
-        "dosya": "server/server-hub/toplu-autostart.cjs:427",
+        "dosya": "server/server-hub/toplu-autostart.cjs:423",
         "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:785)",
         "ne_zaman": "Admin toplu iş açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
       },
       {
         "tur": "portal",
         "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
-        "dosya": "server/server-hub/toplu-restart.cjs:511",
+        "dosya": "server/server-hub/toplu-restart.cjs:507",
         "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:1048)",
         "ne_zaman": "Admin toplu restart açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
       }
@@ -890,11 +890,11 @@
     "okuyanlar": [
       {
         "ad": "Toplu Auto-Start sekmesi (durum, liste)",
-        "dosya": "server/server-hub/toplu-autostart.cjs:191"
+        "dosya": "server/server-hub/toplu-autostart.cjs:192"
       },
       {
         "ad": "Toplu Restart sekmesi (durum, liste)",
-        "dosya": "server/server-hub/toplu-restart.cjs:300"
+        "dosya": "server/server-hub/toplu-restart.cjs:301"
       }
     ],
     "saklama": "Silinmez (denetim izi; satır sayısı toplu iş başına bir).",
@@ -911,14 +911,14 @@
       {
         "tur": "portal",
         "ad": "Toplu Auto-Start uçları ve yürütücüsü",
-        "dosya": "server/server-hub/toplu-autostart.cjs:450",
+        "dosya": "server/server-hub/toplu-autostart.cjs:446",
         "nasil": "toplu iş açılınca INSERT; plan / uygulama sonucu UPDATE (:792)",
         "ne_zaman": "Toplu iş açılınca; yürütücü 10 sn'de bir"
       },
       {
         "tur": "portal",
         "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
-        "dosya": "server/server-hub/toplu-restart.cjs:544",
+        "dosya": "server/server-hub/toplu-restart.cjs:540",
         "nasil": "toplu iş açılınca INSERT (ek JSON: grup, uygulama, maskeli fark, önceki loaded_at / süreç başlangıcı); önizleme / restart / doğrulama taraması sonucu UPDATE (:1060)",
         "ne_zaman": "Toplu restart açılınca; yürütücü 10 sn'de bir"
       }
@@ -926,11 +926,11 @@
     "okuyanlar": [
       {
         "ad": "Toplu Auto-Start sekmesi ve tek JVM kilidi (/jvm-autostart, /fix 409)",
-        "dosya": "server/server-hub/toplu-autostart.cjs:327"
+        "dosya": "server/server-hub/toplu-autostart.cjs:328"
       },
       {
         "ad": "Toplu Restart sekmesi ve JVM kilidi (auto-start uçları restart süren JVM'de 409)",
-        "dosya": "server/server-hub/toplu-restart.cjs:426"
+        "dosya": "server/server-hub/toplu-restart.cjs:422"
       }
     ],
     "saklama": "Silinmez (toplu iş başına en çok limit:toplu_autostart / limit:toplu_restart satır).",
@@ -3175,7 +3175,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml (Server Hub — Uygulama Envanteri) ham dosyaları; Portal /sw'den alıp yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1336",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1339",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Haftalık zamanlayıcı (ear-envanter-poller.cjs) veya elle / AWX'ten başlatılan koşu"
       }
@@ -3240,14 +3240,14 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1343",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1346",
         "nasil": "yoksa INSERT (tekilleştirme)",
         "ne_zaman": "Koşu alımında"
       },
       {
         "tur": "portal",
         "ad": "Sürüm izi eşleme",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:477",
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:472",
         "nasil": "UPDATE surum_izi",
         "ne_zaman": "Alım sonrası"
       }
@@ -3255,7 +3255,7 @@
     "okuyanlar": [
       {
         "ad": "Eşlenik/benzer uygulama analizi",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:509"
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:504"
       }
     ],
     "saklama": "Hiçbir WAR/uygulama kullanmıyorsa silinir (ear-envanter-saklama.cjs:70)",
@@ -3304,7 +3304,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1351",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1354",
         "nasil": "yeni set için INSERT",
         "ne_zaman": "Koşu alımında"
       }
@@ -3316,7 +3316,7 @@
       },
       {
         "ad": "Eşlenik analizi",
-        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:461"
+        "dosya": "server/server-hub/ear-envanter-eslenik.cjs:456"
       }
     ],
     "saklama": "Seti silinince silinir (ear-envanter-saklama.cjs:77)",
@@ -3333,7 +3333,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1342",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1345",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3362,7 +3362,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1344",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1347",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3387,14 +3387,14 @@
       {
         "tur": "portal",
         "ad": "POST /api/server-hub/reboot-check (once isi)",
-        "dosya": "server/server-hub/reboot-check.cjs:224",
+        "dosya": "server/server-hub/reboot-check.cjs:226",
         "nasil": "kontrol basina INSERT, sonuc UPDATE (:121)",
         "ne_zaman": "Kullanici reboot kontrolu baslatinca"
       },
       {
         "tur": "portal",
         "ad": "POST /reboot-check/:id/sonra",
-        "dosya": "server/server-hub/reboot-check.cjs:270",
+        "dosya": "server/server-hub/reboot-check.cjs:272",
         "nasil": "UPDATE (sonra isi, sonuc :134)",
         "ne_zaman": "Reboot sonrasi kullanici eylemi"
       }
@@ -4068,7 +4068,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub ekrani (surumler/arsiv)",
-        "dosya": "server/crypto-hub/index.cjs:617"
+        "dosya": "server/crypto-hub/index.cjs:622"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS, varsayilan 90) - crypto_hub_loader.py:24,109",
@@ -4093,7 +4093,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Surumler",
-        "dosya": "server/crypto-hub/index.cjs:599"
+        "dosya": "server/crypto-hub/index.cjs:604"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4118,7 +4118,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Durum",
-        "dosya": "server/crypto-hub/index.cjs:582"
+        "dosya": "server/crypto-hub/index.cjs:587"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4143,7 +4143,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub ekrani (uyarilar)",
-        "dosya": "server/crypto-hub/index.cjs:607"
+        "dosya": "server/crypto-hub/index.cjs:612"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -4168,7 +4168,7 @@
     "okuyanlar": [
       {
         "ad": "Crypto Hub > Durum/Surumler",
-        "dosya": "server/crypto-hub/index.cjs:591"
+        "dosya": "server/crypto-hub/index.cjs:596"
       }
     ],
     "saklama": "90 gun (CH_RETENTION_DAYS)",
@@ -6147,7 +6147,7 @@
       },
       {
         "ad": "Server Hub değerlendirme (boşta IP)",
-        "dosya": "server/server-hub/assess.cjs:681",
+        "dosya": "server/server-hub/assess.cjs:680",
         "uzerinden": "server/server-hub/index.cjs"
       },
       {
@@ -6255,7 +6255,7 @@
       },
       {
         "ad": "Server Hub değerlendirme",
-        "dosya": "server/server-hub/assess.cjs:437",
+        "dosya": "server/server-hub/assess.cjs:436",
         "uzerinden": "server/server-hub/index.cjs"
       }
     ],

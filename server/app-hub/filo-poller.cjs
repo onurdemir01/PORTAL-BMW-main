@@ -250,11 +250,7 @@ async function al(r, st) {
     return;
   }
   // Tarama zamani: AWX isinin basladigi an (yoksa kosu acilisi). Alim zamani DEGIL (bkz. filo.kosuyuAl).
-  const zaman = st.started
-    ? new Date(st.started)
-    : r.baslangic
-      ? new Date(r.baslangic)
-      : new Date();
+  const zaman = new Date(st.started || r.baslangic || Date.now());
   const sonuc = await filo().kosuyuAl(
     r.id,
     raw,

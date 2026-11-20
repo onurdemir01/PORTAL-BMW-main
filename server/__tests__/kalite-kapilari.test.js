@@ -21,6 +21,7 @@ const kapsam = require('../../scripts/kapsam-esik.cjs');
 const bicim = require('../../scripts/bicim-kapisi.cjs');
 const sonar = require('../../scripts/sonar-kapi.cjs');
 const { KAPILAR, CI_EK } = require('../../scripts/kapi.cjs');
+const { KURUMA_GITMEYEN } = require('../../scripts/teslim.cjs');
 
 test('KK1 sir taramasi: gercek desen yakalanir, yer tutucu ve tanimlayici gecer', () => {
   const yakalanir = [
@@ -572,4 +573,51 @@ test('KK10 Sonar inceleme kayitlari gerekceli ve bayat degil', () => {
     null,
     'dosya farkli ama eslesti',
   );
+});
+
+// Kurumun SonarQube 2025.4.3'undeki HTML eklentisi (sonar-html, 2025 surumu) "yorumlanmis kod" kuralini
+// (Web:AvoidCommentedOutCodeCheck) analyzer-commons CodeRecognizer ile uygular: yorumun TAMAMI tek satir
+// sayilir; `>` ile bitme 0.9 (her `-->` yorumu), bosluklar silinince `="` / `='` 0.7, `/>` `</` `<%` `%>`
+// 0.8 (her eslesme ayri); olasiliklar 1 - (1 - p)^n ile birlesir, esik `> 0.9`. Is #52'de index.html:12
+// yalniz yorumdaki `rel="icon"` yuzunden bulgu oldu. Yeni eklenti (2026-07) daha secici; kurum eskisini
+// kullaniyor, bekci de onu taklit eder.
+function kurumHtmlYorumuKodMu(yorum) {
+  if (/copyright/i.test(yorum) || yorum.startsWith('<!--[if') || yorum.startsWith('<!--#'))
+    return false;
+  if (['@thymesVar', '@elvariable'].some((a) => yorum.includes(a))) return false;
+  const bosluksuz = yorum.replace(/\s+/g, '');
+  const say = (parcalar) => parcalar.reduce((n, p) => n + bosluksuz.split(p).length - 1, 0);
+  const sonKarakter = /[^\s*/]/.exec([...yorum].reverse().join(''));
+  const dedektorler = [
+    [0.7, say(['="', "='"])],
+    [0.8, say(['/>', '</', '<%', '%>'])],
+    [0.9, sonKarakter && sonKarakter[0] === '>' ? 1 : 0],
+  ];
+  let olasilik = 0;
+  for (const [p, n] of dedektorler) if (n) olasilik = 1 - (1 - olasilik) * (1 - p) ** n;
+  return olasilik - 0.9 > 0;
+}
+
+test("KK13 kuruma giden HTML yorumlari kurum Sonar'inin yorumlanmis kod sezgisine takilmaz", () => {
+  // Sezginin kendisi (mutasyon): is #52'deki yorum bicimi yakalanir, duz yorum gecer.
+  assert.equal(kurumHtmlYorumuKodMu('<!-- birden fazla rel="icon" verildiginde -->'), true);
+  assert.equal(kurumHtmlYorumuKodMu('<!-- <link rel="icon" /> -->'), true);
+  assert.equal(
+    kurumHtmlYorumuKodMu("<!-- Sekme logosu: Admin > Marka; icon link'i tek -->"),
+    false,
+  );
+  assert.equal(kurumHtmlYorumuKodMu('<!--[if IE]><p class="x"></p><![endif]-->'), false);
+  const dosyalar = execFileSync('git', ['ls-files', '-z'], { cwd: KOK, encoding: 'utf8' })
+    .split('\0')
+    .filter((f) => /\.(html?|xhtml|jsp|shtml|twig|erb|cshtml|vue)$/i.test(f))
+    .filter((f) => !KURUMA_GITMEYEN.some((d) => f.startsWith(d)));
+  assert.ok(dosyalar.includes('index.html'), 'index.html taranmadi');
+  const bulgular = [];
+  for (const f of dosyalar) {
+    const metin = oku(f);
+    for (const m of metin.matchAll(/<!--[\s\S]*?-->/g))
+      if (kurumHtmlYorumuKodMu(m[0]))
+        bulgular.push(`${f}:${metin.slice(0, m.index).split('\n').length}`);
+  }
+  assert.deepEqual(bulgular, [], 'yorumdaki ="  /> </ kurumda "yorumlanmis kod" sayilir');
 });

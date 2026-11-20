@@ -163,9 +163,11 @@ function katalogDurumu(katalog, canli, simdi = new Date()) {
   const tablolar = katalog.map((g) => {
     const h = haritalar[g.db];
     const t = h ? h.get(anahtar('dbo', String(g.tablo).replace(/^dbo\./i, ''))) : null;
+    let durum = 'bilinmiyor';
+    if (h) durum = t ? 'var' : 'yok';
     return {
       ...g,
-      durum: !h ? 'bilinmiyor' : t ? 'var' : 'yok',
+      durum,
       satir: t ? t.satir : null,
       mb: t ? t.mb : null,
     };

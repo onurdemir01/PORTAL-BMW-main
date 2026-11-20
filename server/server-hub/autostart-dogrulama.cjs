@@ -47,12 +47,11 @@ const AUTOSTART_EYLEMLERI = new Set(['jboss_autostart_on', 'jboss_autostart_off'
 const XML_KAPAT_EYLEMI = 'jboss_autostart_xml_off';
 const XML_KAPAT_MAX = 200;
 /** Eylemin yazdigi auto-start degeri ('true' | 'false'); auto-start eylemi degilse null. */
-const hedefOf = (action) =>
-  action === 'jboss_autostart_on'
-    ? 'true'
-    : action === 'jboss_autostart_off' || action === XML_KAPAT_EYLEMI
-      ? 'false'
-      : null;
+const hedefOf = (action) => {
+  if (action === 'jboss_autostart_on') return 'true';
+  if (action === 'jboss_autostart_off' || action === XML_KAPAT_EYLEMI) return 'false';
+  return null;
+};
 
 /** RESULT\t<action>\t<OK|SKIP|FAIL|PLAN>\t<mesaj> -> { action, durum, mesaj } ya da null. */
 function sonucSatiri(line) {

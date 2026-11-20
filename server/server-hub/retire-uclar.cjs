@@ -14,6 +14,7 @@
 
 const { ETIKET_KURALLARI } = require('./kural-katalogu.cjs');
 const { etiketle, ozetle } = require('./retire-etiket.cjs');
+const { kucukBuyuk } = require('../util/siralama.cjs');
 
 function kurallarListesi(ayar) {
   return ETIKET_KURALLARI.map((k) => {
@@ -37,9 +38,7 @@ function kurallarListesi(ayar) {
 function kontrolImzasi(kontroller) {
   if (kontroller === null || kontroller === undefined) return 'null';
   if (!(kontroller instanceof Map)) return JSON.stringify(kontroller);
-  return JSON.stringify(
-    [...kontroller.entries()].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)),
-  );
+  return JSON.stringify([...kontroller.entries()].sort((x, y) => kucukBuyuk(x[0], y[0])));
 }
 
 /**

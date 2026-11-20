@@ -1144,13 +1144,15 @@ async function topluOnKontrol(req, body) {
     // AWX'e ulasilamadi: 5xx ya da durum kodu olmayan belirsiz launch (ag kopmasi) -> 5xx (HTTP'de 424).
     const awxHatasi = (e) => !!e && (Number(e.status) >= 500 || !!e.launchBelirsiz);
     const awx = hatalar.every(awxHatasi);
-    const e = awx
-      ? hata(
-          Number(hatalar[0].status) >= 500 ? Number(hatalar[0].status) : 502,
-          `Hiçbir ön kontrol başlatılamadı (AWX: ${M(hatalar[0].message, 200)}).`,
-          'toplu_awx',
-        )
-      : hata(409, 'Hiçbir ön kontrol başlatılamadı.', 'toplu_hicbiri');
+    let e;
+    if (awx) {
+      const durum = Number(hatalar[0].status);
+      e = hata(
+        durum >= 500 ? durum : 502,
+        `Hiçbir ön kontrol başlatılamadı (AWX: ${M(hatalar[0].message, 200)}).`,
+        'toplu_awx',
+      );
+    } else e = hata(409, 'Hiçbir ön kontrol başlatılamadı.', 'toplu_hicbiri');
     throw Object.assign(e, { ek });
   }
   return ek;

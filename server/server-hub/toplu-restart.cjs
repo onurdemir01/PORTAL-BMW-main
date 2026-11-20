@@ -59,6 +59,7 @@
 
 const crypto = require('node:crypto');
 const { maskJvmArgDiff } = require('./mask.cjs');
+const { kucukBuyuk } = require('../util/siralama.cjs');
 
 const TUR = 'RESTART';
 const SCAN_KEY = 'server_hub_scan';
@@ -312,12 +313,7 @@ function adaylariTuret(a, agir) {
       adaylar.push(satir);
     }
   }
-  const sira = (x, y) =>
-    x.host < y.host
-      ? -1
-      : x.host > y.host
-        ? 1
-        : x.gen - y.gen || (x.jvm < y.jvm ? -1 : x.jvm > y.jvm ? 1 : 0);
+  const sira = (x, y) => kucukBuyuk(x.host, y.host) || x.gen - y.gen || kucukBuyuk(x.jvm, y.jvm);
   adaylar.sort(sira);
   dislananlar.sort(sira);
   return { adaylar, dislananlar };
@@ -962,10 +958,12 @@ function taramaSonucu(st) {
 }
 
 async function taramaBaslat(is, hostlar, op) {
+  const tur = op === 'toplu_restart_onizleme' ? 'önizleme' : 'doğrulama';
+  const hedef = hostlar.length === 1 ? hostlar[0] : `${hostlar.length} sunucu`;
   return _d.launch(
     sozdeIstek(is.onaylayan || is.olusturan),
     SCAN_KEY,
-    `Server Hub: toplu restart #${is.id} ${op === 'toplu_restart_onizleme' ? 'önizleme' : 'doğrulama'} taraması (${hostlar.length === 1 ? hostlar[0] : '' + hostlar.length + ' sunucu'})`,
+    `Server Hub: toplu restart #${is.id} ${tur} taraması (${hedef})`,
     { target_hosts: hostlar.join(',') },
     { op, id: is.id, hosts: hostlar },
   );
@@ -1548,7 +1546,8 @@ async function uygulaBitir(is) {
   const s = await isOku(is.id);
   const og = await ogeler(is.id);
   const kirmizi = s.fail_sayisi > 0 || og.some((o) => o.durum === 'YARIM_KALDI');
-  const durum = iptalMi ? 'IPTAL' : kirmizi ? 'BITTI_HATALI' : 'BITTI';
+  let durum = kirmizi ? 'BITTI_HATALI' : 'BITTI';
+  if (iptalMi) durum = 'IPTAL';
   const r = await db().query(
     `UPDATE server_hub_toplu_isler SET durum = $2, bitis_at = SYSUTCDATETIME(), kira_id = NULL, kira_bitis = NULL
       WHERE id = $1 AND durum IN ('CALISIYOR', 'IPTAL_ISTENDI', 'PLANLANIYOR') AND kira_id = $3`,

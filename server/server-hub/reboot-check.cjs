@@ -163,7 +163,9 @@ function onceNesilCevir(once, diger) {
     const q = l.split('|');
     if (q[0] !== 'JVM' || !/^JBOSS[78]$/.test(q[1])) return l;
     const h = evDizini(q[3]);
-    const g = h && harita.has(h) ? harita.get(h) : /jboss8|vhosting8/.test(h) ? 'JBOSS8' : q[1];
+    let g = q[1];
+    if (h && harita.has(h)) g = harita.get(h);
+    else if (/jboss8|vhosting8/.test(h)) g = 'JBOSS8';
     if (g === 'JBOSS7') j7 = true;
     return [q[0], g, ...q.slice(2)].join('|');
   });
@@ -467,9 +469,8 @@ function hedefBaglami(once, r) {
   const isl = sonucSatirlari(r);
   const olculdu = !!r?.son_olculdu;
   const onceVar = Array.isArray(once) && bootVar(once);
-  const cev = onceVar
-    ? onceNesilCevir(once, olculdu ? r?.son_goruntu : r?.goruntu)
-    : { satirlar: [], belirsiz: [] };
+  const sonGoruntu = olculdu ? r?.son_goruntu : r?.goruntu;
+  const cev = onceVar ? onceNesilCevir(once, sonGoruntu) : { satirlar: [], belirsiz: [] };
   const kapi = onceVar ? kapatmaKapisi(once) : '';
   const o = onceKume(cev.satirlar);
   const ilk = sonKume(r?.goruntu, o.urun);
@@ -572,7 +573,10 @@ function otomasyonOzeti(once, r) {
       : 'komut çalışmadı — fark kaldı';
   };
   // Inceleme F2: komut OK dondu ama son goruntu alinamadi -> "acilamadi" denmez; dogrulanamadi (yine hata sinifi).
-  const durumu = (x) => (x.sonuc === 'OK' && !s ? 'olcmedi' : basarili(x) ? 'ok' : 'hata');
+  const durumu = (x) => {
+    if (x.sonuc === 'OK' && !s) return 'olcmedi';
+    return basarili(x) ? 'ok' : 'hata';
+  };
   const METIN = {
     baslat: {
       ok: 'açıldı ✓',

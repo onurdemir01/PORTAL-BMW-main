@@ -2656,6 +2656,9 @@ function initDenetim(app) {
         if (k in counts) counts[k] += 1;
         if (crRisk(c, sc)) crlfHosts.push(c.host);
       }
+      let deviatingCount = counts.deviation;
+      if (sc.perServer)
+        deviatingCount = majority ? variants.slice(1).reduce((a, v) => a + v.count, 0) : 0;
       return {
         key: sc.key,
         label: sc.label,
@@ -2677,11 +2680,7 @@ function initDenetim(app) {
         formatOnlyCount: sc.perServer ? 0 : counts.format,
         crlfCount: crlfHosts.length,
         crlfHosts: crlfHosts.toSorted(varsayilanSira),
-        deviatingCount: sc.perServer
-          ? majority
-            ? variants.slice(1).reduce((a, v) => a + v.count, 0)
-            : 0
-          : counts.deviation,
+        deviatingCount,
         variants,
       };
     });
