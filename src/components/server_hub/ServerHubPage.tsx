@@ -900,7 +900,8 @@ function CiftSatirBandi({
 }: {
   c: { toplam: number; tablolar: Record<string, number> } | null | undefined;
 }) {
-  if (!c || !(c.toplam > 0)) return null;
+  const ciftVar = c != null && c.toplam > 0;
+  if (!ciftVar) return null;
   const ayrinti = Object.entries(c.tablolar || {})
     .map(([t, n]) => `${t.replace(/^Server_Hub_/, '')} ${n}`)
     .join(', ');

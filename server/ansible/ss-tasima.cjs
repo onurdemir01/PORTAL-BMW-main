@@ -332,7 +332,7 @@ function surveyKarari(kaynakModu, hedefModu, hedefDetail, hedefSpec, fark) {
   const hedefSoru = surveyNormalize(hedefSpec).length;
   if (kaynakModu === 'AWX') {
     if (hedefSoru === 0) return { cip: 'SURVEY_BOS', eylem: 'yaz', olculemedi: false, uyarilar };
-    if (fark?.kritikVar || !hedefDetail || hedefDetail.survey_enabled !== true)
+    if (fark?.kritikVar || hedefDetail?.survey_enabled !== true)
       return { cip: 'SURVEY_FARKLI', eylem: 'yaz', olculemedi: false, uyarilar };
     return { cip: null, eylem: null, olculemedi: false, uyarilar };
   }
@@ -693,7 +693,7 @@ function planHash({ itemId, from, fromT, to, toT, kaynakData, hedefSurveyHash, h
 // olmadan kalici olmaz (AWX tuzagi), bu yuzden once spec.
 // ---------------------------------------------------------------------------
 function parolaTemizle(spec) {
-  return specListesi(spec).map((f) => (f && f.type === 'password' ? { ...f, default: '' } : f));
+  return specListesi(spec).map((f) => (f?.type === 'password' ? { ...f, default: '' } : f));
 }
 
 /**
@@ -706,13 +706,13 @@ function parolaTemizle(spec) {
 function parolaHazirla(spec, hedefOnceki) {
   const eski = new Map(
     specListesi(hedefOnceki)
-      .filter((f) => f && f.type === 'password' && f.variable)
+      .filter((f) => f?.type === 'password' && f.variable)
       .map((f) => [String(f.variable), f]),
   );
   const korunan = [];
   const elle = [];
   const out = specListesi(spec).map((f) => {
-    if (!f || f.type !== 'password') return f;
+    if (f?.type !== 'password') return f;
     const h = eski.get(String(f.variable));
     if (h && typeof h.default === 'string' && h.default !== '') {
       korunan.push(String(f.variable));
@@ -739,7 +739,7 @@ async function surveyYaz(
   try {
     hedefOnceki = specListesi(await istek('GET', `/api/v2/job_templates/${id}/survey_spec/`));
   } catch (err) {
-    if (!(err && err.status === 404)) throw err;
+    if (!(err?.status === 404)) throw err;
   }
   const { spec: temiz, korunan, elle } = parolaHazirla(spec, hedefOnceki);
   await istek('POST', `/api/v2/job_templates/${id}/survey_spec/`, {
@@ -1030,7 +1030,7 @@ function oncekiBaglariEkle(items, gocler) {
       l.push({ awxServerId: sn, awxTemplateId: tn });
   };
   for (const g of Array.isArray(gocler) ? gocler : []) {
-    if (!g || g.item_id == null) continue;
+    if (g?.item_id == null) continue;
     const id = String(g.item_id);
     if (g.status === 'TASINDI' || g.status === 'GERI_ALINDI')
       ekle(id, g.from_server, g.from_template);

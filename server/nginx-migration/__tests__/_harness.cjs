@@ -154,14 +154,12 @@ stub('db/index.cjs', {
 });
 stub('auth/index.cjs', {
   requireAuth: (req, res, next) =>
-    req.session && req.session.user
-      ? next()
-      : res.status(401).json({ ok: false, error: 'Oturum yok' }),
+    req.session?.user ? next() : res.status(401).json({ ok: false, error: 'Oturum yok' }),
   requireAdmin: (req, res, next) =>
-    req.session && req.session.user && req.session.user.role === 'Admin'
+    req.session?.user?.role === 'Admin'
       ? next()
       : res.status(403).json({ ok: false, error: 'Admin' }),
-  getRequestUser: (req) => (req.session && req.session.user) || null,
+  getRequestUser: (req) => req.session?.user || null,
 });
 stub('inventory/mssql.cjs', { query: async () => ({ recordset: [] }), sql: {} });
 h.GROUPS = [

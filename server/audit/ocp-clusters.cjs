@@ -28,7 +28,7 @@ function envClustersFromApps(apps, envs) {
       if (!m) continue; // ilgilenilmeyen ortam
       // Bir uygulamanin ayni cluster'da BIRDEN FAZLA namespace'i olabilir; cluster
       // basina uygulama sayilirken TEKILLESTIRILIR, aksi halde sayi sisirdi.
-      for (const c of new Set((hits || []).map((h) => h && h.cluster).filter(Boolean))) {
+      for (const c of new Set((hits || []).map((h) => h?.cluster).filter(Boolean))) {
         m.set(c, (m.get(c) || 0) + 1);
       }
     }
@@ -57,8 +57,8 @@ function envClustersResmi(apps, envs, resmi, gorulen) {
   const kumeler = {};
   const kaynak = {};
   for (const e of envs) {
-    const liste = resmi && resmi[e];
-    if (!liste || !liste.length) {
+    const liste = resmi?.[e];
+    if (!liste?.length) {
       kumeler[e] = veri[e];
       kaynak[e] = 'veri';
       continue;

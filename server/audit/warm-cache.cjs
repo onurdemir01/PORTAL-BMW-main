@@ -75,7 +75,7 @@ function createWarmCache({
         try {
           tk = await belirtecOku();
         } catch (e) {
-          log.warn(`[warm:${name}] belirtec okunamadi:`, e && e.message);
+          log.warn(`[warm:${name}] belirtec okunamadi:`, e?.message);
         }
       }
       const t0 = now();
@@ -113,7 +113,7 @@ function createWarmCache({
     return p;
   }
 
-  const azamiYas = (v) => (typeof maxAgeMs === 'function' ? maxAgeMs(v && v.payload) : maxAgeMs);
+  const azamiYas = (v) => (typeof maxAgeMs === 'function' ? maxAgeMs(v?.payload) : maxAgeMs);
 
   /** Belirtecli tur: gerekirse hesaplar, gerekmezse mevcut degeri doner. Belirtec yoksa run(). */
   function kontrol() {
@@ -132,11 +132,11 @@ function createWarmCache({
         if (yas >= azami) {
           log.warn(
             `[warm:${name}] belirtec okunamadi, azami yas asildi, hesaplaniyor:`,
-            e && e.message,
+            e?.message,
           );
           return baslat();
         }
-        log.warn(`[warm:${name}] belirtec okunamadi, hesap atlandi:`, e && e.message);
+        log.warn(`[warm:${name}] belirtec okunamadi, hesap atlandi:`, e?.message);
         return value;
       }
       if (t === value.token && yas < azami) {
@@ -183,7 +183,7 @@ function createWarmCache({
     if (now() - kontrolAt > ttlMs) {
       Promise.resolve()
         .then(kontrol)
-        .catch((e) => log.warn(`[warm:${name}] arka plan yenileme hatasi:`, e && e.message));
+        .catch((e) => log.warn(`[warm:${name}] arka plan yenileme hatasi:`, e?.message));
     }
     return decorate(value);
   }
@@ -191,12 +191,10 @@ function createWarmCache({
   function warm(delayMs = 45000) {
     const araMs = token ? checkMs : ttlMs;
     setTimeout(() => {
-      baslat().catch((e) => log.warn(`[warm:${name}] isitma hatasi:`, e && e.message));
+      baslat().catch((e) => log.warn(`[warm:${name}] isitma hatasi:`, e?.message));
       setInterval(
         () =>
-          kontrol().catch((e) =>
-            log.warn(`[warm:${name}] periyodik yenileme hatasi:`, e && e.message),
-          ),
+          kontrol().catch((e) => log.warn(`[warm:${name}] periyodik yenileme hatasi:`, e?.message)),
         araMs,
       ).unref?.();
     }, delayMs).unref?.();

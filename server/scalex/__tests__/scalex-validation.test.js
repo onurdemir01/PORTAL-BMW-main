@@ -1452,7 +1452,7 @@ test('J2 sapma tazeleme GERCEKTEN bir uctan cagriliyor', () => {
   );
   assert.match(
     codeOnly(INDEX),
-    /parsed\.mode === 'state'/,
+    /parsed\??\.mode === 'state'/,
     'tazeleme `state` kesfinin bitisine bagli olmali',
   );
 });
@@ -2043,7 +2043,7 @@ test('P1 isin GERCEK SONUCU denetime yaziliyor', () => {
   // olmali. Sonra yazilsaydi dry_run calistirmalari hic iz birakmazdi.
   const fin = code.slice(code.indexOf('async function finalizeOperation'));
   assert.ok(
-    fin.indexOf('scalex_finalize') < fin.indexOf("parsed.mode !== 'apply'"),
+    fin.indexOf('scalex_finalize') < fin.search(/parsed\??\.mode !== 'apply'/),
     'sonuc izi `apply` kontrolunden SONRA — dry_run calistirmalari iz birakmaz',
   );
 });

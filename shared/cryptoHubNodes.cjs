@@ -51,7 +51,7 @@ function nodeAcikMi(tenant) {
 
 /** Ekranda ve Smart biletinde gorunen lokasyon. Ankara yalniz prod_ank ortami. */
 function lokasyon(tenant) {
-  return tenant && tenant.env === 'prod_ank' ? 'Ankara' : 'İstanbul';
+  return tenant?.env === 'prod_ank' ? 'Ankara' : 'İstanbul';
 }
 
 // Istanbul -> Ankara es kiracisi (D4). GAR prod'da Ankara kiracisi yok -> oneri yok.

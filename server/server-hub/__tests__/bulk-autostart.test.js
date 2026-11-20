@@ -164,7 +164,7 @@ test('BA7: kontrollu toplu - parca basina TEK is, virgullu hedef YOK, isler SIRA
   );
   assert.match(
     fonksiyon(TOPLU, 'uygulaIlerlet'),
-    /e\.launchBelirsiz === true[\s\S]*topluDurdur\(is,/,
+    /e\??\.launchBelirsiz === true[\s\S]*topluDurdur\(is,/,
     'belirsiz launch toplu isi durdurmuyor',
   );
 });

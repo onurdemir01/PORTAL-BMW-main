@@ -2693,7 +2693,7 @@ function initAnsibleRunner(app) {
         if (['successful', 'failed', 'error', 'canceled'].includes(jobStatus.status)) break;
         attempts++;
       }
-      if (!jobStatus || jobStatus.status !== 'successful') {
+      if (jobStatus?.status !== 'successful') {
         return res.status(502).json({
           ok: false,
           message: `AWX job ${jobStatus?.status || 'timeout'}`,
@@ -5990,7 +5990,7 @@ function initAnsibleRunner(app) {
         // 4a) YENI OCO PENCERESI HENUZ ACILMADI: pencere basina AWX zamanlamasi. Portal'da da
         // OCO kaydi olur (ekranda gorunur, iptal edilince AWX schedule'i silinir): bagli kayit varsa
         // o guncellenir, yoksa / guncellenemezse yeni AWX_SCHEDULED kaydi acilir.
-        if (pencere && pencere.phase === 'before') {
+        if (pencere?.phase === 'before') {
           const metin = rt.sonucMetni({
             admin,
             mod: istek.mod,

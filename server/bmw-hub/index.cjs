@@ -82,7 +82,7 @@ function ozetle(isler, bugun) {
   const otuzOnce = Date.now() - 30 * 86400 * 1000;
   for (const is of isler) {
     const d = K.DURUMLAR.find((x) => x.key === is.durum);
-    if (d && d.acikMi) {
+    if (d?.acikMi) {
       o.acik += 1;
       if (!is.sahip) o.sahipsiz += 1;
       if (K.gecikmisMi(is, bugun)) o.gecikmis += 1;
@@ -96,7 +96,7 @@ function ozetle(isler, bugun) {
 
 const DURUM_AD = Object.fromEntries(K.DURUMLAR.map((d) => [d.key, d.label]));
 const ONCELIK_AD = Object.fromEntries(K.ONCELIKLER.map((o) => [o.key, o.label]));
-const kapaliMi = (durum) => !(K.DURUMLAR.find((d) => d.key === durum) || {}).acikMi;
+const kapaliMi = (durum) => !K.DURUMLAR.find((d) => d.key === durum)?.acikMi;
 
 async function notYaz(isId, tur, metin, k) {
   await db.query(
@@ -167,7 +167,7 @@ const KOLON = {
 };
 
 const dbHatasi = (res, e, ne) => {
-  console.warn(`[BmwHub] ${ne}: ${e && e.message}`);
+  console.warn(`[BmwHub] ${ne}: ${e?.message}`);
   return res
     .status(500)
     .json({ ok: false, error: `${ne}. Portal veritabanına ulaşılamıyor olabilir.` });
@@ -241,7 +241,7 @@ function createRouter() {
   // TOPLU EKLEME: ya hepsi ya hicbiri. Hatali bir satir varsa HICBIRI yazilmaz; ekran zaten
   // ayni ayristiriciyla onizleme gosterir, buraya hatali gelmesi beklenmez.
   router.post('/toplu', async (req, res) => {
-    const sonuc = K.topluAyristir(req.body && req.body.metin);
+    const sonuc = K.topluAyristir(req.body?.metin);
     if (!sonuc.length) return res.status(400).json({ ok: false, error: 'Eklenecek satır yok.' });
     if (sonuc.length > K.SINIR.toplu)
       return res
@@ -269,9 +269,7 @@ function createRouter() {
           /* geri alma da dustuyse asagidaki mesaj sayiyi soyler */
         }
       }
-      console.warn(
-        `[BmwHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e && e.message}`,
-      );
+      console.warn(`[BmwHub] toplu ekleme ${eklenen.length}. satirdan sonra dustu: ${e?.message}`);
       return res.status(500).json({
         ok: false,
         error:
@@ -334,7 +332,7 @@ function createRouter() {
   });
 
   router.post('/isler/:id/notlar', async (req, res) => {
-    const metin = String((req.body && req.body.metin) || '').trim();
+    const metin = String(req.body?.metin || '').trim();
     if (!metin) return res.status(400).json({ ok: false, error: 'Not boş olamaz.' });
     if (metin.length > K.SINIR.not)
       return res

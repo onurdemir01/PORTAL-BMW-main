@@ -131,9 +131,7 @@ async function mevcutBoyutlar(srcKey) {
   } catch {
     kolonlar = null;
   }
-  const dims = src.dims.filter(
-    (d) => !d.istegeBagli || (kolonlar && kolonlar.has(d.col.toLowerCase())),
-  );
+  const dims = src.dims.filter((d) => !d.istegeBagli || kolonlar?.has(d.col.toLowerCase()));
   const eksik = src.dims.filter((d) => d.istegeBagli && !dims.includes(d)).map((d) => d.label);
   return { dims, eksik };
 }

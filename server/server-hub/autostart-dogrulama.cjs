@@ -108,16 +108,16 @@ function ogeSonuclari(items, result) {
  * son yuklemede disarida kalan sunucuda auto-start degistirilmez. Donus: null ya da { status, message }.
  */
 function sunucuYazmaKapisi(a, h, host) {
-  if ((a && a.schemaUnknown === true) || (h && h.schemaUnknown === true))
+  if (a?.schemaUnknown === true || h?.schemaUnknown === true)
     return {
       status: 400,
       message:
         'Server Hub şeması (sys.columns) okunamadı — eylem önerilmez; auto-start değiştirilemez, iş açılmadı. Sayfayı yenileyin.',
     };
-  if (!h || h.fresh !== true)
+  if (h?.fresh !== true)
     return {
       status: 400,
-      message: `${host} taraması bayat (bayat kanıt: ${(h && h.scanDate) || '?'}${h && h.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
+      message: `${host} taraması bayat (bayat kanıt: ${h?.scanDate || '?'}${h?.loadExcluded ? ', son yükleme dışlandı' : ''}) — auto-start değiştirilemez, iş açılmadı. Önce sunucuyu yeniden tarayın.`,
     };
   return null;
 }
@@ -252,7 +252,7 @@ function kur({ simdi = Date.now } = {}) {
       jvm: String(jvm || ''),
       action,
       hedef: action === 'jboss_autostart_on' ? 'true' : 'false',
-      scanDate: (h && h.scanDate) || null,
+      scanDate: h?.scanDate || null,
       loadedAt: h && sayiMi(h.loadedAt) ? h.loadedAt : null,
       at: simdi(),
     });
@@ -267,7 +267,7 @@ function kur({ simdi = Date.now } = {}) {
     topluIsler.set(`${Number(serverId)}:${Number(jobId)}`, {
       host: String(host || '').toUpperCase(),
       items: liste.map((x) => ({ gen: Number(x.gen), jvm: String(x.jvm || ''), action: x.action })),
-      scanDate: (h && h.scanDate) || null,
+      scanDate: h?.scanDate || null,
       loadedAt: h && sayiMi(h.loadedAt) ? h.loadedAt : null,
       at: simdi(),
     });
@@ -300,7 +300,7 @@ function kur({ simdi = Date.now } = {}) {
     if (!m) return { kayitli: false };
     isler.delete(k);
     const r = result && typeof result === 'object' ? result : null;
-    const s = sonucSatiri(r && r.line);
+    const s = sonucSatiri(r?.line);
     const tamam =
       status === 'successful' &&
       !!r &&
@@ -361,11 +361,11 @@ function kur({ simdi = Date.now } = {}) {
    * sekmesi "acik" derken Bulgular "AC" dugmesi gosteriyor, tik 400 "zaten" donuyordu.
    */
   function uygulaBulgu(h, f) {
-    if (f && f.code === 'JBOSS_DOMAIN_DOWN') return domainBulgusu(h, f);
-    if (!f || !f.fix || !AUTOSTART_EYLEMLERI.has(f.fix.action) || dogrulanan.size === 0) return f;
+    if (f?.code === 'JBOSS_DOMAIN_DOWN') return domainBulgusu(h, f);
+    if (!f?.fix || !AUTOSTART_EYLEMLERI.has(f.fix.action) || dogrulanan.size === 0) return f;
     const d = gecerli(h, { gen: f.fix.gen, name: f.fix.jvm });
     const hedef = f.fix.action === 'jboss_autostart_on' ? 'true' : 'false';
-    if (!d || d.autoStart !== hedef) return f;
+    if (d?.autoStart !== hedef) return f;
     return {
       ...f,
       fix: null,
@@ -383,7 +383,7 @@ function kur({ simdi = Date.now } = {}) {
   function domainBulgusu(h, f) {
     if (dogrulanan.size === 0 || !h || !Array.isArray(h.jvms)) return f;
     const nj = h.jvms
-      .filter((j) => j && j.domainKapali === true && Number(j.gen) === Number(f.gen))
+      .filter((j) => j?.domainKapali === true && Number(j.gen) === Number(f.gen))
       .map((j) => uygulaJvm(h, j));
     const son = nj
       .map((j) => j.autoStartDogrulama)

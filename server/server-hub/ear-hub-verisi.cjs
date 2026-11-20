@@ -93,12 +93,12 @@ async function earSonDurum() {
         warSayisi: r.war_sayisi == null ? null : Number(r.war_sayisi),
         xml,
         // Tarayici surum 4: JVM_YOK EAR'in dizin kullanimi (xml_eslesme.kullanim); null = olculmedi (eski tarama).
-        kullanim: xml && xml.kullanim && typeof xml.kullanim === 'object' ? xml.kullanim : null,
+        kullanim: xml?.kullanim && typeof xml.kullanim === 'object' ? xml.kullanim : null,
       });
     }
     return { okunamadi: false, hostlar: [...hostlar.values()] };
   } catch (err) {
-    return { okunamadi: true, hata: (err && err.message) || 'okunamadı', hostlar: [] };
+    return { okunamadi: true, hata: err?.message || 'okunamadı', hostlar: [] };
   }
 }
 

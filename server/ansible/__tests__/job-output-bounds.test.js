@@ -287,7 +287,7 @@ test('JO7 `tooLarge` reddi YASI BEKLEMEDEN "bilinmiyor" isaretleniyor', () => {
   const dal = src.slice(i, i + 900);
   assert.match(
     dal,
-    /e\s*&&\s*e\.tooLarge/,
+    /e\s*&&\s*e\.tooLarge|e\?\.tooLarge/,
     '`tooLarge` dali yok — dev yanit her turda yeniden indirilir',
   );
   // Kapi yas kontrolunden ONCE gelmeli; sonra gelseydi hic ates almazdi.

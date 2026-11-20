@@ -150,7 +150,7 @@ async function query(pgSql, params = [], opts = {}) {
       err.code === 'ECONNRESET' ||
       err.message?.includes('Connection not yet open') ||
       err.message?.includes('pool');
-    if (isTransient && !(opts && opts.tekrar === false)) {
+    if (isTransient && !(opts?.tekrar === false)) {
       console.warn('[db] Transient connection error, retrying once:', err.message);
       await new Promise((r) => setTimeout(r, 300));
       return _execQuery(pgSql, params, { retry: true });

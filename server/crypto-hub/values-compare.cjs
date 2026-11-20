@@ -63,7 +63,7 @@ function karsilastir(files, sirRe) {
   // OKUNAMAYAN DOSYA KARSILASTIRMAYA GIRMEZ ve "fark yok" DEMEK DEGILDIR: ayri raporlanir.
   const okunan = hepsi.filter((f) => f && !f.error);
   const okunamayan = hepsi
-    .filter((f) => f && f.error)
+    .filter((f) => f?.error)
     .map((f) => ({ path: f.path, cluster: clusterAdi(f.path), error: f.error }));
 
   const haritalar = okunan.map((f) => anahtarla(f.lines));
@@ -75,7 +75,7 @@ function karsilastir(files, sirRe) {
     // BIR DOSYADA HIC OLMAYAN anahtar "ayni" SAYILMAZ: eksiklik de bir farktir.
     const ayni = ham.every((v) => v !== null) && new Set(varOlanlar).size === 1;
     const leaf = a.split('.').pop();
-    const sirli = !!(sirRe && sirRe.test(leaf));
+    const sirli = !!sirRe?.test(leaf);
     return {
       anahtar: a,
       // GOSTERILEN deger maskeli olabilir; `ayni` YUKARIDA HAM degerlerden hesaplandi.
@@ -133,8 +133,8 @@ function uygula(lines, secimler) {
   const atlanan = [];
 
   for (const sec of istek) {
-    const anahtar = String((sec && sec.anahtar) || '').trim();
-    const deger = String(sec && sec.deger != null ? sec.deger : '');
+    const anahtar = String(sec?.anahtar || '').trim();
+    const deger = String(sec?.deger != null ? sec.deger : '');
     if (!anahtar) continue;
 
     // Hedef satiri YOL uzerinden bul: ayni adli baska bir anahtar (ornegin iki ayri blokta
@@ -168,8 +168,7 @@ function uygula(lines, secimler) {
     }
     const eski = cikti[bulundu];
     const ad = eski.match(/^\s*(-\s*)?([A-Za-z0-9_.\-/]+)\s*:/);
-    cikti[bulundu] =
-      `${girinti}${(ad && ad[1]) || ''}${(ad && ad[2]) || anahtar.split('.').pop()}: ${deger}`;
+    cikti[bulundu] = `${girinti}${ad?.[1] || ''}${ad?.[2] || anahtar.split('.').pop()}: ${deger}`;
     degisen.push({ anahtar, eski: eski.trim(), yeni: cikti[bulundu].trim() });
   }
 

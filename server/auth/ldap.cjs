@@ -583,8 +583,6 @@ async function findLdapUserByUsername(username) {
   }
 }
 
-const _cache = new Map();
-
 // Harf duyarsiz esitlik; BOS deger hicbir seyle eslesmez (asagidaki ?? / || notuna bak).
 function ayniAd(a, b) {
   return !!a && String(a).toLowerCase() === String(b || '').toLowerCase();
@@ -604,7 +602,6 @@ async function authenticate(username, password, lookup) {
       // module.exports uzerinden cagrilir (dogrudan yerel referans degil) — testlerin
       // gercek bir LDAP baglantisi kurmadan authenticateLdap'i mock'layabilmesi icin.
       const result = await module.exports.authenticateLdap(username, password, lookup);
-      _cache.set(username.toLowerCase(), { ...result, ts: Date.now() });
       return result;
     } catch (ldapErr) {
       const msg = ldapErr.message || '';
@@ -718,18 +715,12 @@ function authenticateLocal(username, password) {
   throw new Error('Kullanıcı adı veya şifre hatalı');
 }
 
-function clearCache(username) {
-  if (username) _cache.delete(username.toLowerCase());
-  else _cache.clear();
-}
-
 module.exports = {
   authenticate,
   searchLdapUsers,
   searchLdapGroups,
   authenticateLocal,
   isConfigured,
-  clearCache,
   findLdapUserByEmail,
   findLdapUserByUsername,
   // test-only (ayrica authenticate() ic-cagrisi da bunun uzerinden gecer — bkz. yukarida):

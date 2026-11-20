@@ -109,11 +109,7 @@ function telnetTemplateName(namespaces) {
 // de goruldugu icin jobs.cjs ayni deseni tasiyor).
 function extractTelnetResult(rawArtifacts) {
   const a = rawArtifacts || {};
-  const candidates = [
-    a.telnet_result,
-    a.data && a.data.telnet_result,
-    a.ansible_stats && a.ansible_stats.data && a.ansible_stats.data.telnet_result,
-  ];
+  const candidates = [a.telnet_result, a.data?.telnet_result, a.ansible_stats?.data?.telnet_result];
   for (const c of candidates) {
     if (c && typeof c === 'object') return normalizeTelnetResult(c);
   }
@@ -154,19 +150,19 @@ const RC_HINTS = new Map([
 
 // Metinden taninan durumlar; `rc`den daha guclu bir isarettir cunku sebebi soyler.
 const DETAIL_HINTS = [
-  [
-    /unable to upgrade connection|container not found|not found/i,
-    'test pod’u ayaga kalkmadi ya da kayboldu — port hakkinda bir sey soylenemez',
-  ],
-  [/pod olusturulamadi/i, 'test pod’u olusturulamadi (kota/SCC/imaj cekme olabilir)'],
-  [/hazir olmadi/i, 'test pod’u 60 saniyede hazir olmadi'],
+  {
+    re: /unable to upgrade connection|container not found|not found/i,
+    ipucu: 'test pod’u ayaga kalkmadi ya da kayboldu — port hakkinda bir sey soylenemez',
+  },
+  { re: /pod olusturulamadi/i, ipucu: 'test pod’u olusturulamadi (kota/SCC/imaj cekme olabilir)' },
+  { re: /hazir olmadi/i, ipucu: 'test pod’u 60 saniyede hazir olmadi' },
 ];
 
 // Saf fonksiyon — birim testleri icin disa acilir.
 function explainTelnetRow({ state, rc, detail }) {
   const text = String(detail || '');
-  for (const [re, hint] of DETAIL_HINTS) {
-    if (re.test(text)) return hint;
+  for (const { re, ipucu } of DETAIL_HINTS) {
+    if (re.test(text)) return ipucu;
   }
   // `open` icin aciklamaya gerek yok: sonucun kendisi zaten net.
   if (state === 'open') return '';
@@ -518,7 +514,7 @@ function initTelnet(app) {
             const karar = await ocpRestrictions
               .evaluate('ocp_namespace', resourceKey, user)
               .catch(() => null);
-            if (!karar || !karar.allowed) {
+            if (!karar?.allowed) {
               const message = karar
                 ? ocpRestrictions.denyMessage(
                     await ocpRestrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows),

@@ -121,7 +121,7 @@ const maskeleDerin = (v) => require('../retirement/is-ciktisi.cjs').maskeleDerin
 function cModulu(ad) {
   const tam = path.join(__dirname, ad);
   const c = require.cache[tam];
-  return c && c.exports ? c.exports : require(tam);
+  return c?.exports ? c.exports : require(tam);
 }
 
 function pollSaniye(env = process.env) {
@@ -149,7 +149,7 @@ const metinListesi = (v, adet, uzunluk) =>
 
 /** Satirin kanonik parametreleri (metin ya da nesne) -> nesne ya da null. */
 function parametrelerOf(kosu) {
-  let p = kosu && kosu.parametreler;
+  let p = kosu?.parametreler;
   if (typeof p === 'string') {
     try {
       p = JSON.parse(p);
@@ -170,28 +170,28 @@ function butceSnOf(kosu) {
 /** Sunucu ayarli isin geri alma sonucu YOK mu (Play 7 kosmamis olabilir)? Ayarsiz satirda false. */
 function geriAlmaBilinmiyor(kosu, stats) {
   const p = parametrelerOf(kosu);
-  if (!p || !p.sunucuAyar) return false;
-  const sa = stats && stats.sunucu_ayar;
+  if (!p?.sunucuAyar) return false;
+  const sa = stats?.sunucu_ayar;
   return !(sa && typeof sa === 'object' && typeof sa.geri_alma === 'string' && sa.geri_alma.trim());
 }
 
 /** Satirin kilit bag turu: sunucu ayarli on kontrol 'onk_srv' (iptalde kilit birakilmaz); kosuyuBaslat ile ayni kural. */
 function bagTuruOf(kosu) {
   const p = parametrelerOf(kosu);
-  return kosu.islem === 'on_kontrol' && p && p.sunucuAyar ? 'onk_srv' : kosu.islem;
+  return kosu.islem === 'on_kontrol' && p?.sunucuAyar ? 'onk_srv' : kosu.islem;
 }
 
 /** Satirin protokolu (parametreler.protokol); alani olmayan eski satir h1. */
 function protokolOf(kosu) {
   const p = parametrelerOf(kosu);
-  return p && p.protokol === 'h2' ? 'h2' : 'h1';
+  return p?.protokol === 'h2' ? 'h2' : 'h1';
 }
 
 /** Satirin yasi (sn): COALESCE(started_at, created_at)'ten bu yana; DB saati, yoksa yerel saat. */
 function calismaYasiSn(kosu) {
-  const db0 = SAYI(kosu && kosu.calisma_yas_sn);
+  const db0 = SAYI(kosu?.calisma_yas_sn);
   if (db0 !== null) return db0;
-  const t = bitisZamani(kosu && kosu.started_at) || bitisZamani(kosu && kosu.created_at);
+  const t = bitisZamani(kosu?.started_at) || bitisZamani(kosu?.created_at);
   return t ? (Date.now() - t.getTime()) / 1000 : null;
 }
 
@@ -236,8 +236,7 @@ function statsNormalle(ham, kosu) {
 
 /** On kontrol isinin sonucu (yuk uretmez; /sw okunmaz). */
 function onKontrolKarari(st, stats, uyusmazlik) {
-  const ok =
-    stats && stats.on_kontrol && typeof stats.on_kontrol === 'object' ? stats.on_kontrol : null;
+  const ok = stats?.on_kontrol && typeof stats.on_kontrol === 'object' ? stats.on_kontrol : null;
   if (st.status === 'canceled') return { durum: 'CANCELED', sonuc: stats, onKontrolOzet: ok };
   if (!stats) {
     const neden = uyusmazlik
@@ -347,7 +346,7 @@ async function ciktiArsivle(sid, jid) {
     `SELECT 1 AS x FROM ansible_job_output WHERE awx_server_id = $1 AND job_id = $2`,
     [sid, jid],
   );
-  if (ex.rows && ex.rows.length) return false;
+  if (ex.rows?.length) return false;
   // Biten iste son metin artimlardan turemez: onbellek birakilir, AWX'ten tam cekilir.
   require('../ansible/job-stdout-cache.cjs').sil(sid, jid);
   const { output } = await runner().getJobOutputOnServer(sid, jid);
@@ -359,7 +358,7 @@ async function ciktiArsivle(sid, jid) {
       [sid, jid, m],
     );
   } catch (e) {
-    if (!/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message)))
+    if (!/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e?.message)))
       throw e;
   }
   return true;
@@ -417,11 +416,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
   }
   const ekNedenler = [];
   const kosuBolumu = stats.kosu && typeof stats.kosu === 'object' ? stats.kosu : null;
-  if (
-    kosuBolumu &&
-    kosuBolumu.sw_dizin &&
-    String(kosuBolumu.sw_dizin).replace(/(?<!\/)\/+$/, '') !== dizin
-  ) {
+  if (kosuBolumu?.sw_dizin && String(kosuBolumu.sw_dizin).replace(/(?<!\/)\/+$/, '') !== dizin) {
     ekNedenler.push(
       `playbook başka bir dizin bildirdi (${String(kosuBolumu.sw_dizin).slice(0, 200)}); Portal ${dizin} dizinini okudu`,
     );
@@ -481,7 +476,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
         : null;
     // 2026-11-04: sunucu ayarli kosuda hazirlik kaniti denetlenir; ayarsiz satirda secenek YOK (analiz BIREBIR eskisi).
     const param = parametrelerOf(kosu);
-    const srv = param && param.sunucuAyar ? { sunucuAyar: param.sunucuAyar, ae: param.ae } : {};
+    const srv = param?.sunucuAyar ? { sunucuAyar: param.sunucuAyar, ae: param.ae } : {};
     analiz = analizNormalle(
       await cModulu('analiz.cjs').kosuAnaliz(veri, {
         adim: `R${id}`,
@@ -496,7 +491,7 @@ async function kosuKarari(kosu, st, stats, uyusmazlik, { deneme = OKUMA_DENEME_S
       }),
     );
   } catch (e) {
-    okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e && e.message).slice(0, 400)}`;
+    okumaHatasi = `sonuç dizini okunamadı/çözümlenemedi: ${maskele(e?.message).slice(0, 400)}`;
   }
   // Gecici okuma hatasi (NFS, yarim kopya): satir FINALIZING kalir, sonraki tur yeniden dener.
   if (!analiz && deneme < OKUMA_DENEME_SINIRI) return { yenidenDenenecek: true, okumaHatasi };
@@ -586,7 +581,7 @@ async function sonYaz(kosu, st, k) {
       sonucJson,
       k.onKontrolOzet ? jsonKisa(k.onKontrolOzet, 64 * 1024) : null,
       k.swDizin ?? null,
-      bitisZamani(st && st.finished),
+      bitisZamani(st?.finished),
       k.hedefNginx === 1 || k.hedefNginx === 0 ? k.hedefNginx : null,
     ],
   );
@@ -618,7 +613,7 @@ async function geriAlmaTemizligi(kosu, sid, jid) {
   } catch (e) {
     console.warn(
       `[NginxYukTesti poller] kosu ${kosu.id} icin otomatik durdurma baslatilamadi:`,
-      maskele(e && e.message),
+      maskele(e?.message),
     );
   }
   if (is && kosu.kilit_id)
@@ -697,8 +692,7 @@ async function kosuyuSonuclandir(kosu) {
     );
     if (!al.rowCount) return { terminal: true, atlandi: true };
     // Sayac okunamazsa (adaptor OUTPUT dondurmediyse) tek deneme + son karar: eski davranis.
-    const deneme =
-      TAM(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi) ?? OKUMA_DENEME_SINIRI;
+    const deneme = TAM(al.rows?.[0]?.sonuclandirma_denemesi) ?? OKUMA_DENEME_SINIRI;
     const { stats, uyusmazlik } = statsNormalle(
       require('../scalex/result.cjs').extractStatsKey(st.artifacts, STATS_ANAHTARI),
       kosu,
@@ -710,7 +704,7 @@ async function kosuyuSonuclandir(kosu) {
     } catch (e) {
       console.warn(
         `[NginxYukTesti poller] kosu ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`,
-        maskele(e && e.message),
+        maskele(e?.message),
       );
     }
     if (!st.missing) {
@@ -719,7 +713,7 @@ async function kosuyuSonuclandir(kosu) {
       } catch (e) {
         console.warn(
           `[NginxYukTesti poller] is #${jid} ciktisi arsivlenemedi:`,
-          maskele(e && e.message),
+          maskele(e?.message),
         );
       }
     }
@@ -794,9 +788,7 @@ async function durdurSonuclari() {
       { ...k, islem: 'durdur' },
     );
     const sa =
-      stats && stats.sunucu_ayar && typeof stats.sunucu_ayar === 'object'
-        ? stats.sunucu_ayar
-        : null;
+      stats?.sunucu_ayar && typeof stats.sunucu_ayar === 'object' ? stats.sunucu_ayar : null;
     let durdurGeriAlma;
     if (sa && typeof sa.geri_alma === 'string' && sa.geri_alma.trim()) {
       durdurGeriAlma = {
@@ -871,7 +863,7 @@ async function kilitSupur() {
 async function tick() {
   let kapanan = 0;
   const b = await bayatKuyruk().catch((e) => {
-    console.warn('[NginxYukTesti poller] bayat kuyruk temizlenemedi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti poller] bayat kuyruk temizlenemedi:', maskele(e?.message));
     return 0;
   });
   const { rows } = await db().query(
@@ -884,27 +876,24 @@ async function tick() {
       if (o.terminal && !o.atlandi) kapanan += 1;
     } catch (e) {
       // OKUNAMADI != BASARISIZ: satir oldugu gibi kalir, sonraki tur yeniden bakar.
-      console.warn(
-        `[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`,
-        maskele(e && e.message),
-      );
+      console.warn(`[NginxYukTesti poller] kosu ${k.id} durumu okunamadi:`, maskele(e?.message));
     }
   }
   await durdurSonuclari().catch((e) => {
-    console.warn('[NginxYukTesti poller] durdurma sonuclari okunamadi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti poller] durdurma sonuclari okunamadi:', maskele(e?.message));
   });
   // Arac hazirlama isleri (tur 4): ayri tablo, ayri karar; hata yalniz uyari.
   const arac = await require('./araclar.cjs')
     .araclariSonuclandir()
     .catch((e) => {
-      console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e && e.message));
+      console.warn('[NginxYukTesti poller] arac sonuclandirmasi:', maskele(e?.message));
       return { bayat: 0, kapanan: 0 };
     });
   const s = await kilitSupur().catch((e) => {
-    console.warn('[NginxYukTesti poller] kilit supurmesi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti poller] kilit supurmesi:', maskele(e?.message));
     return 0;
   });
-  const aracKapanan = (arac && arac.kapanan) || 0;
+  const aracKapanan = arac?.kapanan || 0;
   if (b || kapanan || s || aracKapanan)
     console.log(
       `[NginxYukTesti poller] bayat=${b} sonuclanan=${kapanan} arac=${aracKapanan} birakilan-kilit=${s}`,
@@ -919,7 +908,7 @@ function startPoller() {
     if (_ticking) return;
     _ticking = true;
     tick()
-      .catch((e) => console.warn('[NginxYukTesti poller] tick hatasi:', maskele(e && e.message)))
+      .catch((e) => console.warn('[NginxYukTesti poller] tick hatasi:', maskele(e?.message)))
       .finally(() => {
         _ticking = false;
       });
@@ -937,10 +926,10 @@ function tetikle(kosuId) {
       `SELECT ${SONUCLANDIRMA_KOLONLARI} FROM nginx_loadtest_kosular WHERE id = $1`,
       [id],
     );
-    const k = rows && rows[0];
+    const k = rows?.[0];
     if (k && AKTIF.includes(k.durum)) await kosuyuSonuclandir(k);
   })().catch((e) =>
-    console.warn(`[NginxYukTesti poller] kosu ${id} tetiklenemedi:`, maskele(e && e.message)),
+    console.warn(`[NginxYukTesti poller] kosu ${id} tetiklenemedi:`, maskele(e?.message)),
   );
 }
 

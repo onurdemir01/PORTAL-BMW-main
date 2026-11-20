@@ -185,12 +185,12 @@ const DENETLENEN_RET = new Set([409, 424]);
 
 /** Tek hata yaniti. Beklenmeyen hata da 424: 500 govdesi kurumsal gecitte HTML'e doner. */
 function hataYaniti(req, res, e, eylem, hedef) {
-  let status = Number.isInteger(e && e.status) ? e.status : 424;
+  let status = Number.isInteger(e?.status) ? e.status : 424;
   if (status >= 500) status = 424;
-  const code = (e && e.code) || (status === 424 ? 'beklenmeyen' : 'gecersiz_istek');
+  const code = e?.code || (status === 424 ? 'beklenmeyen' : 'gecersiz_istek');
   if (!(e && Number.isInteger(e.status)))
-    console.warn('[NginxYukTesti] beklenmeyen hata:', maskele(e && e.message));
-  const body = { ok: false, code, message: maskele((e && e.message) || 'Beklenmeyen hata.') };
+    console.warn('[NginxYukTesti] beklenmeyen hata:', maskele(e?.message));
+  const body = { ok: false, code, message: maskele(e?.message || 'Beklenmeyen hata.') };
   for (const k of [
     'uyarilar',
     'engeller',
@@ -212,19 +212,19 @@ function hataYaniti(req, res, e, eylem, hedef) {
     'silinemeyenler',
     'yetkisiz',
   ])
-    if (e && e[k] !== undefined) body[k] = e[k];
+    if (e?.[k] !== undefined) body[k] = e[k];
   // Reddedilen baslatma denemesi de denetime yazilir (uretim hedefi, izinsiz yuk makinesi ...).
   if (eylem && DENETLENEN_RET.has(status)) {
     try {
       require('../audit/index.cjs').auditPortal(req, eylem, {
         result: 'fail',
-        targetHost: (hedef && hedef.host) || null,
-        targetIp: (hedef && hedef.ip) || null,
+        targetHost: hedef?.host || null,
+        targetIp: hedef?.ip || null,
         // Gecerli JSON, en cok 2000 karakter (uzun mesaj kisaltilir; kod ve kosu no kalir) - baslat.cjs.
         detail: baslat.denetimAyrintisi({
           code,
           message: body.message,
-          ...(hedef && hedef.kosuId ? { kosuId: hedef.kosuId } : {}),
+          ...(hedef?.kosuId ? { kosuId: hedef.kosuId } : {}),
         }),
       });
     } catch {
@@ -238,7 +238,7 @@ async function dbOku(fn) {
   try {
     return await fn(db());
   } catch (e) {
-    throw hata(424, 'db_okunamadi', `Portal veritabanı okunamadı: ${maskele(e && e.message)}`);
+    throw hata(424, 'db_okunamadi', `Portal veritabanı okunamadı: ${maskele(e?.message)}`);
   }
 }
 
@@ -255,7 +255,7 @@ async function birKezTekrarla(ad, fn) {
     } catch (e2) {
       console.warn(
         `[NginxYukTesti] ${ad} yazilamadi (2 deneme):`,
-        maskele((e2 && e2.message) || (e1 && e1.message)),
+        maskele(e2?.message || e1?.message),
       );
       return false;
     }
@@ -269,10 +269,7 @@ function kilitleriBirak(anahtarlar, lockId) {
   return kilit
     .releaseLocks(db(), anahtarlar, lockId)
     .catch((e) =>
-      console.warn(
-        '[NginxYukTesti] kilit birakilamadi (TTL ile dusecek):',
-        maskele(e && e.message),
-      ),
+      console.warn('[NginxYukTesti] kilit birakilamadi (TTL ile dusecek):', maskele(e?.message)),
     );
 }
 
@@ -295,7 +292,7 @@ function senaryoApi(r) {
 
 /** Satirin hedef_nginx kolonu: true | false | null (eski satir / serbest / olculmedi). */
 function nginxOf(r) {
-  if (!r || r.hedef_nginx == null || (r.hedef_turu || 'sunucu') !== 'sunucu') return null;
+  if (r?.hedef_nginx == null || (r.hedef_turu || 'sunucu') !== 'sunucu') return null;
   return r.hedef_nginx === true || Number(r.hedef_nginx) === 1;
 }
 
@@ -375,12 +372,12 @@ const RAPOR_KOLONLARI = `${COKLU_KOLONLARI}, k.started_at, k.finished_at, k.gece
 
 /** Satirin motoru: liste kopyasi (kosular.motor), yoksa kanonik parametreler.motor, yoksa k6 (eski satir). */
 function motorOf(x) {
-  return (x && x.motor) || (jsonOku(x && x.parametreler) || {}).motor || 'k6';
+  return x?.motor || jsonOku(x?.parametreler)?.motor || 'k6';
 }
 
 /** Satirin protokolu: liste kolonu (protokol), yoksa kanonik parametreler.protokol, yoksa h1 (eski satir). */
 function protokolOf(x) {
-  const v = (x && x.protokol) || (jsonOku(x && x.parametreler) || {}).protokol;
+  const v = x?.protokol || jsonOku(x?.parametreler)?.protokol;
   return v === 'h2' ? 'h2' : 'h1';
 }
 
@@ -394,7 +391,7 @@ function metinDizisi(v) {
 function sunucuAyariOf(
   k,
   sonucOzet = jsonOku(k.sonuc),
-  analizOzeti = sonucOzet && sonucOzet.portal_analiz && typeof sonucOzet.portal_analiz === 'object'
+  analizOzeti = sonucOzet?.portal_analiz && typeof sonucOzet.portal_analiz === 'object'
     ? sonucOzet.portal_analiz.ozet
     : null,
 ) {
@@ -569,12 +566,12 @@ async function sonNginxDurumu(host) {
         WHERE hedef_host = $1 AND islem = 'on_kontrol' AND durum = 'DONE' AND hedef_nginx IS NOT NULL ORDER BY id DESC`,
       [host],
     );
-    const r = rows && rows[0];
+    const r = rows?.[0];
     return r ? r.hedef_nginx === true || Number(r.hedef_nginx) === 1 : null;
   } catch (e) {
     console.warn(
       '[NginxYukTesti] son nginx tespiti okunamadi (engellenmedi):',
-      maskele(e && e.message),
+      maskele(e?.message),
     );
     return null;
   }
@@ -590,8 +587,7 @@ async function hedefKaynaklari({ query, sql, izinli, taze = false }) {
   const o = _hedefOnbellek;
   if (
     !taze &&
-    o &&
-    o.anahtar === anahtar &&
+    o?.anahtar === anahtar &&
     (o.deger === null || Date.now() - o.at < HEDEF_ONBELLEK_MS)
   ) {
     return o.deger || o.soz;
@@ -638,7 +634,7 @@ async function sonNginxDurumlari() {
   } catch (e) {
     console.warn(
       '[NginxYukTesti] son nginx tespitleri okunamadi (ipucu yok):',
-      maskele(e && e.message),
+      maskele(e?.message),
     );
     return new Map();
   }
@@ -680,7 +676,7 @@ async function kosuyuBaslat(
   if (beklenenAracId != null && Number(beklenenAracId) !== aracId)
     throw hata(409, 'on_kontrol_eski', araclar.MESAJ.onKontrolEski);
   const hedefTuru = plan.hedefTuru === 'serbest' ? 'serbest' : 'sunucu';
-  const motor = plan.parametreler && plan.parametreler.motor === 'wrk' ? 'wrk' : 'k6';
+  const motor = plan.parametreler?.motor === 'wrk' ? 'wrk' : 'k6';
   const anahtarlar = kilit.kilitAnahtarlari({
     hedef: plan.hedefHost,
     hedefIp: plan.hedefIp,
@@ -709,10 +705,7 @@ async function kosuyuBaslat(
       },
     });
   } catch (e) {
-    console.warn(
-      '[NginxYukTesti] kilit alinamadi (DB) - is baslatilmadi:',
-      maskele(e && e.message),
-    );
+    console.warn('[NginxYukTesti] kilit alinamadi (DB) - is baslatilmadi:', maskele(e?.message));
     // Onceki anahtarlar alinmis olabilir (G|global alindi, T|... satiri hata atti): birakilmazsa G
     // TTL boyunca var olmayan bir isi gosterirdi.
     await kilitleriBirak(anahtarlar, lockId);
@@ -762,7 +755,7 @@ async function kosuyuBaslat(
         })(),
       ],
     );
-    kosuId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
+    kosuId = Number(ins.rows?.[0]?.id);
     if (!(kosuId > 0)) {
       if (onKontrolKosuId != null && ins.rows && !ins.rows.length)
         throw Object.assign(new Error('on kontrol silindi'), { onKontrolSilindi: true });
@@ -770,7 +763,7 @@ async function kosuyuBaslat(
     }
   } catch (e) {
     await kilitleriBirak(anahtarlar, lockId);
-    if (e && e.onKontrolSilindi)
+    if (e?.onKontrolSilindi)
       throw hata(
         409,
         'on_kontrol_eski',
@@ -779,7 +772,7 @@ async function kosuyuBaslat(
     throw hata(
       424,
       'db_okunamadi',
-      `Koşu kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`,
+      `Koşu kaydı yazılamadı; iş başlatılmadı: ${maskele(e?.message)}`,
     );
   }
   const adim = `R${kosuId}`;
@@ -791,13 +784,13 @@ async function kosuyuBaslat(
     } catch (e) {
       await kilitleriBirak(anahtarlar, lockId);
       await kosuBasarisiz(kosuId, adim, {
-        hata: `kuyruk öğesine yazılamadı: ${maskele(e && e.message).slice(0, 500)}`,
+        hata: `kuyruk öğesine yazılamadı: ${maskele(e?.message).slice(0, 500)}`,
       });
       throw Object.assign(
         hata(
           409,
           'kuyruk_yazilamadi',
-          `Kuyruk öğesine yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`,
+          `Kuyruk öğesine yazılamadı; iş başlatılmadı: ${maskele(e?.message)}`,
         ),
         { kosuYazilamadi: kosuId },
       );
@@ -865,7 +858,7 @@ async function kosuyuBaslat(
       },
     });
   } catch (e) {
-    if (e && e.jobId != null) {
+    if (e?.jobId != null) {
       // AWX degiskenleri yuttu, is baslatildi ve iptali denendi: kilit O ISE baglanir, is
       // terminale ulasinca supurme kurala gore birakir / tutar (iptal edilemediyse yuk kilitli kalir).
       await kilit
@@ -875,19 +868,19 @@ async function kosuyuBaslat(
           bagTuru,
         })
         .catch(() => {});
-    } else if (!(e && e.belirsiz)) {
+    } else if (!e?.belirsiz) {
       await kilitleriBirak(anahtarlar, lockId);
     }
     await kosuBasarisiz(
       kosuId,
       adim,
       {
-        hata: maskele(e && e.message).slice(0, 1000),
-        code: (e && e.code) || null,
-        belirsiz: !!(e && e.belirsiz),
+        hata: maskele(e?.message).slice(0, 1000),
+        code: e?.code || null,
+        belirsiz: !!e?.belirsiz,
       },
-      e && e.jobId != null ? e.jobId : null,
-      e && e.jobId != null ? e.awxServerId : null,
+      e?.jobId != null ? e.jobId : null,
+      e?.jobId != null ? e.awxServerId : null,
     );
     throw Object.assign(e, { kosuId });
   }
@@ -899,10 +892,7 @@ async function kosuyuBaslat(
     });
   } catch (e) {
     // Kilit tam TTL ile alindi; baglanamamasi yalniz erken birakmayi geciktirir.
-    console.warn(
-      '[NginxYukTesti] kilit isle baglanamadi (TTL ile dusecek):',
-      maskele(e && e.message),
-    );
+    console.warn('[NginxYukTesti] kilit isle baglanamadi (TTL ile dusecek):', maskele(e?.message));
   }
   const swDizin = islem === 'kosu' ? dg.kosuDizini(kok, kosuId) : null;
   // Is numarasi HER ZAMAN yazilir (WHERE awx_job_id IS NULL); durum yalniz QUEUED ise RUNNING olur.
@@ -922,11 +912,11 @@ async function kosuyuBaslat(
     const { rows } = await db().query(`SELECT durum FROM nginx_loadtest_kosular WHERE id = $1`, [
       kosuId,
     ]);
-    sonDurum = rows && rows[0] ? rows[0].durum : null;
+    sonDurum = rows?.[0] ? rows[0].durum : null;
   } catch (e) {
     console.warn(
       `[NginxYukTesti] kosu ${kosuId} durumu baslatmadan sonra okunamadi:`,
-      maskele(e && e.message),
+      maskele(e?.message),
     );
   }
   if (sonDurum === 'CANCELED' || sonDurum === 'FAILED') {
@@ -938,7 +928,7 @@ async function kosuyuBaslat(
     } catch (e) {
       console.warn(
         `[NginxYukTesti] AWX is #${is.jobId} iptal edilemedi (kilit TTL ile dusecek):`,
-        maskele(e && e.message),
+        maskele(e?.message),
       );
     }
   }
@@ -1147,7 +1137,8 @@ async function durdurIsiBaslat(req, k, ayrinti = {}) {
   );
   const s = jsonOku(k.sonuc);
   if (s && typeof s === 'object' && s.durdur_geri_alma) {
-    const { durdur_geri_alma: _, ...kalan } = s;
+    const kalan = { ...s };
+    delete kalan.durdur_geri_alma;
     await birKezTekrarla('durdur sonucu', () =>
       db().query(`UPDATE nginx_loadtest_kosular SET sonuc = $2 WHERE id = $1`, [
         id,
@@ -1191,7 +1182,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
       try {
         sonuc.iptal = await runner.cancelJobOnServer(sid, jid);
       } catch (e) {
-        sonuc.iptalHatasi = maskele(e && e.message).slice(0, 500);
+        sonuc.iptalHatasi = maskele(e?.message).slice(0, 500);
       }
     }
     const iptalOldu = !!(sonuc.iptal && (sonuc.iptal.canceled || sonuc.iptal.alreadyTerminal));
@@ -1200,7 +1191,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
     // her zaman serbest (CANCELED / FAILED kosuda da: kalan surec temizligi).
     // Sunucu ayarli on kontrol da durdurma isi ister: AWX iptali temizlik play'ini kosturmaz ve hedefteki konf
     // degistirilmis kalirdi (geri alma durdur kipinde hedefteki yedege gore calisir).
-    const srvOnKontrol = k.islem === 'on_kontrol' && !!(jsonOku(k.parametreler) || {}).sunucuAyar;
+    const srvOnKontrol = k.islem === 'on_kontrol' && !!jsonOku(k.parametreler)?.sunucuAyar;
     if (k.islem === 'kosu' || srvOnKontrol) {
       try {
         sonuc.durdurIsi = await durdurIsiBaslat(req, k, {
@@ -1208,7 +1199,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
           iptalHatasi: sonuc.iptalHatasi,
         });
       } catch (e) {
-        sonuc.durdurHatasi = maskele(e && e.message).slice(0, 500);
+        sonuc.durdurHatasi = maskele(e?.message).slice(0, 500);
       }
     }
     await dbOku((d) =>
@@ -1239,7 +1230,7 @@ async function kosuyuDurdur(req, id, yer = {}) {
         } catch (e) {
           console.warn(
             `[NginxYukTesti] kosu ${id} kilitleri durdur isine baglanamadi (TTL ile dusecek):`,
-            maskele(e && e.message),
+            maskele(e?.message),
           );
         }
       }
@@ -1329,7 +1320,7 @@ async function kuyrukYetkisi(kullaniciAdi) {
     `SELECT role FROM user_role_overrides WHERE LOWER(username) = $1 AND is_active = 1`,
     [ad],
   );
-  const rol = rows && rows[0] ? rows[0].role : null;
+  const rol = rows?.[0] ? rows[0].role : null;
   if (rol != null && rol !== 'Admin')
     return {
       ok: false,
@@ -1360,7 +1351,7 @@ const kuyrukIslem = {
  */
 async function ogeOnKontrolUyarilari(okId, kullaniciAdi, onayHedefi, no, parametreler) {
   const ok = await kosuOku(okId);
-  if (!ok || ok.islem !== 'on_kontrol')
+  if (ok?.islem !== 'on_kontrol')
     throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} bulunamadı.`, { oge: no });
   if (!ayniKullanici(ok.created_by, kullaniciAdi))
     throw hata(409, 'on_kontrol_eski', `Öğe ${no}: ön kontrol #${okId} size ait değil.`, {
@@ -1428,7 +1419,7 @@ async function mevcutKosular(idler) {
   } catch (e) {
     console.warn(
       '[NginxYukTesti] kuyruk kosulari okunamadi (silindi bilgisi yok):',
-      maskele(e && e.message),
+      maskele(e?.message),
     );
     return null;
   }
@@ -1447,7 +1438,7 @@ async function duraklatmaBilgisi(k) {
     const { rows: kr } = await dbOku((d) =>
       d.query(kuyruk.SQL.hedefKilitli, [kuyruk.hedefKilitAnahtari(k)]),
     );
-    let hedefMesgul = Number(kr[0] && kr[0].n) > 0;
+    let hedefMesgul = Number(kr[0]?.n) > 0;
     let geriAlmaSorunu = null;
     const sonId =
       k.hedef_turu === 'serbest'
@@ -1463,7 +1454,7 @@ async function duraklatmaBilgisi(k) {
   } catch (e) {
     console.warn(
       `[NginxYukTesti kuyruk] kuyruk ${k.id} hedef durumu okunamadi (mesgul sayildi):`,
-      maskele(e && e.message),
+      maskele(e?.message),
     );
     return { calisanVar: false, hedefMesgul: true, geriAlmaSorunu: null };
   }
@@ -1600,7 +1591,7 @@ function yonlendiriciKur() {
         yl = await yukMakineleri.oku(db());
       } catch (e) {
         yl = { hostlar: [], kaynak: null, kayitlar: [] };
-        yukHostHatasi = maskele(e && e.message);
+        yukHostHatasi = maskele(e?.message);
       }
       const izinli = yl.hostlar;
       // TEK HEDEF MODELI (2026-11-13): aday = dbo.Inventory'deki her makine (kurala uyanlar) + nginx envanterindeki her
@@ -1611,7 +1602,7 @@ function yonlendiriciKur() {
         query,
         sql,
         izinli,
-        taze: req.query && req.query.yenile === '1',
+        taze: req.query?.yenile === '1',
       });
       const sonNginx = await sonNginxDurumlari();
       const ipucu = (h) => {
@@ -1765,7 +1756,7 @@ function yonlendiriciKur() {
       // Sunucu: /hedefler satiriyla AYNI alanlar; uygun:false da 200 (ekran on kontrol dugmesini kapatir). TEK HEDEF
       // MODELI: ipler (aday IP'ler) ve nginx ipuclari (envanter + son on kontrol) da gelir.
       const h = sinif.host;
-      const kaynaklar = [...((k.ipSahipleri && k.ipSahipleri.get(h)) || [])].sort(varsayilanSira);
+      const kaynaklar = [...(k.ipSahipleri?.get(h) || [])].sort(varsayilanSira);
       let ipuclari = { nginxEnvanter: null, urunler: [] };
       try {
         const a = (await dg.hedefAdaylariOku({ query, sql, hostlar: [h] })).get(h);
@@ -1877,7 +1868,7 @@ function yonlendiriciKur() {
           ],
         ),
       );
-      const id = Number(rows[0] && rows[0].id);
+      const id = Number(rows[0]?.id);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_senaryo_ekle', {
           detail: baslat.denetimAyrintisi({
@@ -1967,7 +1958,7 @@ function yonlendiriciKur() {
         res,
         e,
         'nginx_loadtest_on_kontrol',
-        g ? { host: g.hedefHost, ip: g.hedefIp, kosuId: e && e.kosuId } : null,
+        g ? { host: g.hedefHost, ip: g.hedefIp, kosuId: e?.kosuId } : null,
       );
     }
   });
@@ -1999,7 +1990,7 @@ function yonlendiriciKur() {
         res,
         e,
         'nginx_loadtest_baslat',
-        ok ? { host: ok.hedef_host, ip: ok.hedef_ip, kosuId: e && e.kosuId } : null,
+        ok ? { host: ok.hedef_host, ip: ok.hedef_ip, kosuId: e?.kosuId } : null,
       );
     }
   });
@@ -2117,8 +2108,8 @@ function yonlendiriciKur() {
             [Number(k.on_kontrol_kosu_id)],
           ),
         );
-        okOzet = jsonOku(rows[0] && rows[0].on_kontrol_ozet);
-        planUyarilari = metinDizisi(rows[0] && rows[0].plan_uyarilari);
+        okOzet = jsonOku(rows[0]?.on_kontrol_ozet);
+        planUyarilari = metinDizisi(rows[0]?.plan_uyarilari);
       }
       const tur = k.hedef_turu || 'sunucu';
       const motor = motorOf(k);
@@ -2131,7 +2122,7 @@ function yonlendiriciKur() {
         } catch (e) {
           console.warn(
             `[NginxYukTesti] kosu ${id} arac seti ${aracId} okunamadi:`,
-            maskele(e && e.message),
+            maskele(e?.message),
           );
         }
       }
@@ -2158,15 +2149,13 @@ function yonlendiriciKur() {
         : null;
       // Izinli ag ekran icin env'den SU AN hesaplanir (DB okumaz); playbook'un esledigi girdi onKontrol.serbest_ag.
       const serbestAg =
-        tur === 'serbest'
-          ? (dg.serbestAgBul(k.hedef_ip, dg.serbestAglar()) || {}).metin || null
-          : null;
+        tur === 'serbest' ? dg.serbestAgBul(k.hedef_ip, dg.serbestAglar())?.metin || null : null;
       const sonucOzet = jsonOku(k.sonuc);
       const adimSatirlari = adimlar.map((r) =>
         adimApi(r, { motor, hedefTuru: tur, protokol: protokolOf(k) }),
       );
       const analizOzeti =
-        sonucOzet && sonucOzet.portal_analiz && typeof sonucOzet.portal_analiz === 'object'
+        sonucOzet?.portal_analiz && typeof sonucOzet.portal_analiz === 'object'
           ? sonucOzet.portal_analiz.ozet
           : null;
       res.json({
@@ -2188,7 +2177,7 @@ function yonlendiriciKur() {
           sonucOzeti: gorunum.sonucOzeti(
             adimSatirlari,
             analizOzeti,
-            sonucOzet && sonucOzet.portal_analiz ? sonucOzet.portal_analiz.uyarilar : [],
+            sonucOzet?.portal_analiz ? sonucOzet.portal_analiz.uyarilar : [],
           ),
           sunucuAyari: sunucuAyariOf(k, sonucOzet, analizOzeti),
           swDizin: k.sw_dizin ?? null,
@@ -2240,7 +2229,7 @@ function yonlendiriciKur() {
       const runner = require('../ansible/runner.cjs');
       const parcala = (metin) => {
         // `since`: istemcinin elindeki MASKELI metnin uzunlugu. Gecersiz / metinden uzunsa tamami.
-        const since = dg.tamSayi(req.query && req.query.since);
+        const since = dg.tamSayi(req.query?.since);
         const ofs = since !== null && since >= 0 && since <= metin.length ? since : 0;
         return { output: metin.slice(ofs), outputOffset: ofs, outputLength: metin.length };
       };
@@ -2277,13 +2266,12 @@ function yonlendiriciKur() {
             ...temel,
           });
         }
-        throw hata(424, 'awx_okunamadi', `AWX işi okunamadı (#${jid}): ${maskele(e && e.message)}`);
+        throw hata(424, 'awx_okunamadi', `AWX işi okunamadı (#${jid}): ${maskele(e?.message)}`);
       }
       // BAGLAMA: kosu satirindaki is bu modulun playbook'u olmali (ayni numarali baska is gosterilmez).
       const beklenen = String(
-        (require('../ansible/template-preflight.cjs').BEKLENEN_PLAYBOOK || {})[
-          baslat.KAYIT_ANAHTARI
-        ] || baslat.BEKLENEN_PLAYBOOK_ADI,
+        require('../ansible/template-preflight.cjs').BEKLENEN_PLAYBOOK?.[baslat.KAYIT_ANAHTARI] ||
+          baslat.BEKLENEN_PLAYBOOK_ADI,
       ).toLowerCase();
       const gercek = String(st.playbook || '')
         .split('/')
@@ -2311,7 +2299,7 @@ function yonlendiriciKur() {
         throw hata(
           424,
           'awx_okunamadi',
-          `AWX iş #${jid} çıktısı okunamadı: ${maskele(e && e.message)}`,
+          `AWX iş #${jid} çıktısı okunamadı: ${maskele(e?.message)}`,
         );
       }
       // Bitmis is: arsiv + /sw okuma + analiz poller'da (uzun surebilir; yoklamayi bekletmez).
@@ -2377,8 +2365,8 @@ function yonlendiriciKur() {
       poller.tetikle(id);
       try {
         require('../audit/index.cjs').auditPortal(req, 'nginx_loadtest_yeniden_oku', {
-          targetHost: (k && k.hedef_host) || null,
-          targetIp: (k && k.hedef_ip) || null,
+          targetHost: k?.hedef_host || null,
+          targetIp: k?.hedef_ip || null,
           detail: baslat.denetimAyrintisi({
             kosuId: id,
             oncekiDurum: k ? k.durum : null,
@@ -2503,7 +2491,7 @@ function yonlendiriciKur() {
         [r, 'referans'],
         [a, 'aday'],
       ]) {
-        if (!x || x.islem !== 'kosu')
+        if (x?.islem !== 'kosu')
           throw hata(409, 'kosu_yok', `${ad} koşu bulunamadı (ön kontrol karşılaştırılmaz).`);
       }
       const adimlarOf = async (id) =>
@@ -2518,8 +2506,8 @@ function yonlendiriciKur() {
       const aa = await adimlarOf(aday);
       // Motor / hedef turu / is parcacigi / hiz tavani satirdan: k6 ile wrk, farkli is parcacigi ve
       // farkli tavan_rps (wrk) ve farkli protokol VERI_YOK; serbest taraf CPU'suz karar yolu (analiz.kararVer, sozlesme 10.2).
-      const parcacik = (x) => (jsonOku(x.parametreler) || {}).is_parcacigi ?? null;
-      const tavan = (x) => (jsonOku(x.parametreler) || {}).tavan_rps ?? null;
+      const parcacik = (x) => jsonOku(x.parametreler)?.is_parcacigi ?? null;
+      const tavan = (x) => jsonOku(x.parametreler)?.tavan_rps ?? null;
       let karar;
       try {
         const analiz = poller.cModulu('analiz.cjs');
@@ -2541,11 +2529,7 @@ function yonlendiriciKur() {
           ...(nginxOf(a) === false ? { adayNginx: false } : {}),
         });
       } catch (e) {
-        throw hata(
-          424,
-          'analiz_okunamadi',
-          `Karşılaştırma hesaplanamadı: ${maskele(e && e.message)}`,
-        );
+        throw hata(424, 'analiz_okunamadi', `Karşılaştırma hesaplanamadı: ${maskele(e?.message)}`);
       }
       const ozet = (x) => ({
         id: Number(x.id),
@@ -2682,11 +2666,7 @@ function yonlendiriciKur() {
           },
         });
       } catch (e) {
-        throw hata(
-          424,
-          'analiz_okunamadi',
-          `Karşılaştırma hesaplanamadı: ${maskele(e && e.message)}`,
-        );
+        throw hata(424, 'analiz_okunamadi', `Karşılaştırma hesaplanamadı: ${maskele(e?.message)}`);
       }
       res.json({ ok: true, ...sonuc });
     } catch (e) {
@@ -2800,7 +2780,7 @@ function yonlendiriciKur() {
         const motor = motorOf(r);
         const protokol = protokolOf(r);
         const parametreler = jsonOku(r.parametreler);
-        const pa = (jsonOku(r.sonuc) || {}).portal_analiz;
+        const pa = jsonOku(r.sonuc)?.portal_analiz;
         const ad = adimlarOf.get(id);
         return {
           meta: coklu.kosuMeta(r, { motor, protokol, parametreler }),
@@ -2945,7 +2925,7 @@ function yonlendiriciKur() {
         throw hata(
           424,
           'db_okunamadi',
-          `Kayıtlar silinemedi (Portal veritabanı): ${maskele(e && e.message)}. Silme tek işlemdir; tamamlanmadıysa hiçbir kayıt silinmez. Bağlantı işlem sırasında koptuysa silinmiş olabilir: listeyi yenileyip kontrol edin.`,
+          `Kayıtlar silinemedi (Portal veritabanı): ${maskele(e?.message)}. Silme tek işlemdir; tamamlanmadıysa hiçbir kayıt silinmez. Bağlantı işlem sırasında koptuysa silinmiş olabilir: listeyi yenileyip kontrol edin.`,
         );
       }
       if (silinen.length !== ids.length) {
@@ -3190,10 +3170,10 @@ function kuyrukUclari(router) {
           JSON.stringify(onayli),
           kullaniciAdi,
         ]);
-        id = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
+        id = Number(ins.rows?.[0]?.id);
         if (!(id > 0)) throw new Error('kuyruk numarası dönmedi');
       } catch (e) {
-        throw hata(424, 'db_okunamadi', `Kuyruk yazılamadı: ${maskele(e && e.message)}`);
+        throw hata(424, 'db_okunamadi', `Kuyruk yazılamadı: ${maskele(e?.message)}`);
       }
       try {
         for (const [i, o] of ogeler.entries()) {
@@ -3213,13 +3193,13 @@ function kuyrukUclari(router) {
         await db()
           .query(kuyruk.SQL.kuyrukYarim, [
             id,
-            `oluşturma yarım kaldı: ${maskele(e && e.message).slice(0, 400)}`,
+            `oluşturma yarım kaldı: ${maskele(e?.message).slice(0, 400)}`,
           ])
           .catch(() => {});
         throw hata(
           424,
           'db_okunamadi',
-          `Kuyruk öğeleri yazılamadı; kuyruk başlatılmadı: ${maskele(e && e.message)}`,
+          `Kuyruk öğeleri yazılamadı; kuyruk başlatılmadı: ${maskele(e?.message)}`,
         );
       }
       try {
@@ -3296,8 +3276,8 @@ function kuyrukUclari(router) {
           durduruldu = true;
         } catch (e) {
           // Bu arada bitmis is: durdurulacak bir sey kalmadi, hata degil.
-          if (!(e && e.code === 'kosu_bitti'))
-            durdurHatasi = maskele((e && e.message) || 'Durdurulamadı.').slice(0, 500);
+          if (!(e?.code === 'kosu_bitti'))
+            durdurHatasi = maskele(e?.message || 'Durdurulamadı.').slice(0, 500);
         }
       }
       try {
@@ -3454,8 +3434,7 @@ function kuyrukUclari(router) {
       const b = req.body && typeof req.body === 'object' ? req.body : {};
       const liste = Array.isArray(b.sira) ? b.sira.map(sayi) : null;
       if (
-        !liste ||
-        !liste.length ||
+        !liste?.length ||
         liste.some((x) => !x) ||
         new Set(liste).size !== liste.length ||
         liste.length > kuyruk.MAX_OGE
@@ -3472,7 +3451,7 @@ function kuyrukUclari(router) {
         );
       }
       const taban =
-        Number(((await dbOku((d) => d.query(kuyruk.SIRA_TABAN_SQL, [id]))).rows[0] || {}).m) || 0;
+        Number((await dbOku((d) => d.query(kuyruk.SIRA_TABAN_SQL, [id]))).rows[0]?.m) || 0;
       const r = await dbOku((d) => d.query(kuyruk.siraSql(liste.length), [id, ...liste, taban]));
       if (r.rowCount !== liste.length)
         throw hata(
@@ -3519,7 +3498,7 @@ function sablonUclari(router) {
     } catch (e) {
       if (sablon.tekilIhlali(e))
         throw hata(409, 'sablon_var', `"${ad}" adında kayıtlı test zaten var.`);
-      throw hata(424, 'db_okunamadi', `Kayıtlı test yazılamadı: ${maskele(e && e.message)}`);
+      throw hata(424, 'db_okunamadi', `Kayıtlı test yazılamadı: ${maskele(e?.message)}`);
     }
   };
   const denetim = (req, eylem, ayrinti) => {
@@ -3550,7 +3529,7 @@ function sablonUclari(router) {
       const { rows } = await yaz(s.ad, (d) =>
         d.query(sablon.SQL.ekle, [s.ad, s.govdeJson, kim(req)]),
       );
-      const id = Number(rows[0] && rows[0].id);
+      const id = Number(rows[0]?.id);
       denetim(req, 'nginx_loadtest_sablon_ekle', { id, ad: s.ad, senaryoId: s.govde.senaryoId });
       res.json({ ok: true, id });
     } catch (e) {

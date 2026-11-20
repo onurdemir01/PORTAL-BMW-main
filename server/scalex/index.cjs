@@ -405,7 +405,7 @@ function istemciyeUlasan(status, body) {
 // AYAR OKUNAMADIYSA asil sebep odur ("Template ID girilmemis" gibi); "SMART hazir degil"
 // demek kullaniciyi yanlis ekrana gonderirdi. Hata oldugu gibi yukari cikar.
 function engelKarari(req, policy, gateCfg, iz) {
-  if (gateCfg && gateCfg.hata) throw gateCfg.hata;
+  if (gateCfg?.hata) throw gateCfg.hata;
   auditPortal(req, 'scalex_gate_decision', {
     result: 'fail',
     detail: JSON.stringify({
@@ -516,9 +516,9 @@ async function runScaleXGates({
 
   // Buradan sonrasi GERCEK sablon kimligi ister (SMART bileti ve zamanlama kaydi ona
   // baglanir). Okunamadiysa is BASLATILMAZ — hata oldugu gibi yukari cikar.
-  if (!gateCfg || gateCfg.serverId == null || gateCfg.templateId == null) {
+  if (gateCfg?.serverId == null || gateCfg.templateId == null) {
     throw (
-      (gateCfg && gateCfg.hata) ||
+      gateCfg?.hata ||
       Object.assign(new Error('ScaleX kapı ayarı okunamadı; iş güvenlik gereği başlatılmadı.'), {
         status: 409,
         code: 'scalex_not_configured',
@@ -1362,7 +1362,7 @@ function initScaleX(app) {
       //   `scalex_extra_kinds`   -> tek birlesik liste (ESKI paketler icin)
       // "Onbellek yok"u "CRD yok" saymak, olceklenebilir operator nesnelerini SESSIZCE
       // listeden dusurmek olurdu; guvenilir kayit YOKSA bos gecilir ve betik tam tarar.
-      const extraKinds = bulunan && bulunan.length ? bulunan.join(',') : '';
+      const extraKinds = bulunan?.length ? bulunan.join(',') : '';
 
       const extraVars = {
         scalex_clusters_override: launch.buildScaleXClusterCatalog({
@@ -1640,7 +1640,7 @@ function initScaleX(app) {
       // yaptirmak, o cagriyi unutan/sekmesini kapatan her kullanicida sapmanin SESSIZCE
       // guncellenmemesi demekti — ki bu ozelligin ilk halinde tam olarak boyle oldu:
       // `refreshDrift` yazildi, test edildi ve HICBIR YERDEN CAGRILMADI.
-      if (status.finished && parsed && parsed.mode === 'state') {
+      if (status.finished && parsed?.mode === 'state') {
         try {
           await state.refreshDrift({
             env: parsed.environment,
@@ -1687,7 +1687,7 @@ function initScaleX(app) {
         // kaydinin 2000 karakterlik `detail` sinirini zaten asardi.
         if (status.finished) {
           auditPortal(req, 'scalex_discovery_result', {
-            result: parsed && parsed.overallStatus === 'error' ? 'fail' : 'ok',
+            result: parsed?.overallStatus === 'error' ? 'fail' : 'ok',
             detail: JSON.stringify({
               serverId,
               jobId,
@@ -1698,8 +1698,8 @@ function initScaleX(app) {
               clusters: parsed ? parsed.clusters : [],
               failedClusters: parsed ? parsed.failedClusters : [],
               counts: parsed ? parsed.counts : null,
-              workloads: parsed && parsed.workloads ? parsed.workloads.length : undefined,
-              states: parsed && parsed.states ? parsed.states.length : undefined,
+              workloads: parsed?.workloads ? parsed.workloads.length : undefined,
+              states: parsed?.states ? parsed.states.length : undefined,
             }),
           });
         }
@@ -1709,7 +1709,7 @@ function initScaleX(app) {
         // tekrar tekrar aciliyor, hangi namespace'te neyin eksik oldugu hicbir yerde
         // toplu durmuyordu. `refreshDrift` ile AYNI gerekce: istemciye ikinci bir cagri
         // yaptirmak, sekmesini kapatan her kullanicida kaydin sessizce dusmesi demekti.
-        if (status.finished && parsed && parsed.mode === 'workloads') {
+        if (status.finished && parsed?.mode === 'workloads') {
           try {
             // SATIR BASINA NAMESPACE: tablo `UNIQUE(env,tenant,cluster,namespace,kind)`.
             // Tek bir `parsed.namespace` gecmek, cok namespace'li bir iste B
@@ -1792,7 +1792,7 @@ function initScaleX(app) {
         // DARALTILMIS KESIF YAZILMAZ: `putApps` gorulmeyen uygulamalari is_deleted=1
         // yapar; 1 uygulamalik bir kesfi yazmak kalan 49'u silerdi.
         const kapsam = DISCOVERY_SCOPE_CACHE.get(`${serverId}:${jobId}`);
-        if (status.finished && parsed && parsed.mode === 'workloads' && kapsam && kapsam.full) {
+        if (status.finished && parsed?.mode === 'workloads' && kapsam?.full) {
           try {
             // ── ANAHTAR (CLUSTER, NAMESPACE) ─────────────────────────────────
             //
@@ -2234,7 +2234,7 @@ function initScaleX(app) {
         // Portal katalogu gonderdigi halde playbook DOSYAYA dustuyse AWX template'inde
         // "Prompt on launch > Variables" kapali demektir — kullanici bunu bilmeli.
         catalogWarning:
-          parsed && parsed.catalogSource === 'file'
+          parsed?.catalogSource === 'file'
             ? 'Playbook cluster kataloğunu portaldan DEĞİL kendi dosyasından okudu — AWX template ayarını kontrol edin (Prompt on launch > Variables).'
             : null,
       });
@@ -2607,7 +2607,7 @@ function initScaleX(app) {
       .map((x) => String(x).trim())
       .filter(Boolean);
   const zamanlamaGorunumu = (rec) => {
-    const ev = (rec.pendingLaunch && rec.pendingLaunch.extraVars) || {};
+    const ev = rec.pendingLaunch?.extraVars || {};
     return {
       id: rec.id,
       username: rec.username,
@@ -3313,7 +3313,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
     // ham `rows`/`targets` buraya KONMAZ. Denetime OZET, ham cikti `result_json`a.
     auditPortal(null, 'scalex_finalize', {
       username: op.username,
-      result: parsed && parsed.overallStatus === 'FAIL' ? 'fail' : 'ok',
+      result: parsed?.overallStatus === 'FAIL' ? 'fail' : 'ok',
       detail: JSON.stringify({
         serverId,
         jobId,
@@ -3327,7 +3327,7 @@ async function finalizeOperation({ serverId, jobId, status, parsed }) {
       }),
     });
 
-    if (!parsed || parsed.mode !== 'apply') return;
+    if (parsed?.mode !== 'apply') return;
     const idByCluster = new Map(rows.map((r) => [r.cluster_name, r.id]));
     // Aynaya NE YAZILDIGI da ayri bir iz — asagida bkz. `scalex_mirror_update`.
     const mirror = { stopped: [], restored: [], unlocked: [] };

@@ -122,7 +122,6 @@ async function resolveByKey(keyName) {
   };
 }
 
-const isAdmin = (req) => req.session?.user?.role === 'Admin';
 const { adminOkumaKapisi } = require('../auth/admin-okuma-kapisi.cjs');
 /** Admin olmayana acik salt okunur uclar: skor ozeti ve sunucu ayrintisi. */
 const CIS_ADMIN_DISI_OKUMA = [/^\/overview\/?$/, /^\/host\/[^/]+\/?$/];

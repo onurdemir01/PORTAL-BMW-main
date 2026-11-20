@@ -115,8 +115,7 @@ function paketJson(kok) {
   delete p.devDependencies;
   delete p['lint-staged'];
   const scripts = {};
-  for (const ad of CALISMA_SCRIPTLERI)
-    if (kok.scripts && kok.scripts[ad]) scripts[ad] = kok.scripts[ad];
+  for (const ad of CALISMA_SCRIPTLERI) if (kok.scripts?.[ad]) scripts[ad] = kok.scripts[ad];
   // `npm run build`: DERLEME DEGIL, hazir dist'in dogrulamasi (Jenkins, release.sh, run.sh cagirir).
   scripts.build = 'node scripts/dist-dogrula.cjs';
   scripts.test = 'node scripts/paket-duman.cjs';
@@ -165,9 +164,7 @@ function kilitBudama(kilit, pkg) {
       ...(g.dependencies || {}),
       ...(g.optionalDependencies || {}),
       ...Object.fromEntries(
-        Object.entries(g.peerDependencies || {}).filter(
-          ([ad]) => !(peerOps[ad] && peerOps[ad].optional),
-        ),
+        Object.entries(g.peerDependencies || {}).filter(([ad]) => !peerOps[ad]?.optional),
       ),
     };
     for (const ad of Object.keys(baglar)) {
@@ -367,7 +364,7 @@ function main() {
   if (yasak.length)
     hatalar.push(`pakette olmamasi gereken dosya:\n  ${yasak.slice(0, 20).join('\n  ')}`);
   const surumFarki = Object.entries(kilit.packages)
-    .filter(([k, v]) => k && (kokKilit.packages[k] || {}).version !== v.version)
+    .filter(([k, v]) => k && kokKilit.packages[k]?.version !== v.version)
     .map(([k]) => k);
   if (surumFarki.length) hatalar.push(`budanmis kilitte surum farki: ${surumFarki.join(', ')}`);
   for (const ad of Object.keys(pkg.dependencies || {})) {

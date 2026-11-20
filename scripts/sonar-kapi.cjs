@@ -79,7 +79,7 @@ function kosullar(e) {
 
 /** project_status yaniti -> { tamam, satirlar[] }. Saf islev. */
 function durumOzeti(ps) {
-  const p = (ps && ps.projectStatus) || {};
+  const p = ps?.projectStatus || {};
   const satirlar = (p.conditions || []).map(
     (c) =>
       `  ${c.status === 'OK' ? 'TAMAM  ' : 'KIRMIZI'} ${c.metricKey} = ${c.actualValue ?? '-'} (esik ${c.comparator} ${c.errorThreshold})`,
@@ -108,10 +108,7 @@ function istemci(host, yetki) {
     try {
       r = await istek();
     } catch (e) {
-      if (
-        !['UND_ERR_SOCKET', 'ECONNRESET', 'UND_ERR_CLOSED'].includes(e && e.cause && e.cause.code)
-      )
-        throw e;
+      if (!['UND_ERR_SOCKET', 'ECONNRESET', 'UND_ERR_CLOSED'].includes(e?.cause?.code)) throw e;
       await bekle(500);
       r = await istek();
     }
@@ -389,8 +386,8 @@ if (require.main === module)
       process.exitCode = rc;
     },
     (err) => {
-      const neden = err && err.cause ? ` (${err.cause.code || err.cause.message})` : '';
-      console.error(`[sonar-kapi] HATA: ${err && err.message}${neden}`);
+      const neden = err?.cause ? ` (${err.cause.code || err.cause.message})` : '';
+      console.error(`[sonar-kapi] HATA: ${err?.message}${neden}`);
       process.exitCode = 1;
     },
   );

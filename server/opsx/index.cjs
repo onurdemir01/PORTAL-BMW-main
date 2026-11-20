@@ -626,7 +626,7 @@ async function opsxIsiBaslat({
       req.session?.user,
     );
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     if (e && typeof e === 'object' && !(st >= 400 && st < 500)) e.launchBelirsiz = true;
     throw e;
   }
@@ -733,11 +733,11 @@ async function legacyLimitKontrol() {
   } catch (e) {
     throw hataVer(
       503,
-      `AWX şablonunun "Limit" ayarı okunamadı (${e && e.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
+      `AWX şablonunun "Limit" ayarı okunamadı (${e?.message}) — limit yutulursa restart tüm envanterde çalışırdı; başlatılmadı.`,
       'limit_olculemedi',
     );
   }
-  if (!st || st.askLimitOnLaunch !== true)
+  if (st?.askLimitOnLaunch !== true)
     throw hataVer(
       409,
       `"${keyName}" AWX şablonunda Limit "Prompt on launch" kapalı — AWX limit'i yutar ve restart tüm envanterde çalışırdı; toplu restart başlatılmaz. Yönetici şablonda Limit'i "Prompt on launch" yapmalı.`,

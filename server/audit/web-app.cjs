@@ -133,7 +133,7 @@ function matchWebForApp({ app, appHost, domain }, certByHost) {
   for (const cand of candidates) {
     if (!cand.host) continue;
     const list = certByHost.get(cand.host.toUpperCase());
-    if (!list || !list.length) continue;
+    if (!list?.length) continue;
     if (!hostOnly) hostOnly = { how: cand.how, host: cand.host, count: list.length };
     const denenecek = [
       ...adVaryantlari(needleFull).map((n, i) => [i ? `tam ad, ${n}` : 'tam ad', n]),
@@ -185,7 +185,7 @@ const U = (s) =>
 function topolojiOf(domain, appHost, m) {
   const t = tierOf(domain, appHost);
   if (t !== 'bilinmiyor') return { tier: t, kaynak: 'domain' };
-  const web = (m && m.web) || [];
+  const web = m?.web || [];
   if (web.length)
     return {
       tier: web.some((w) => U(w.host) !== U(appHost)) ? '3-tier' : '2-tier',
@@ -232,7 +232,7 @@ function nasilAciklama({ app, appHost, domain, m, topoloji }) {
   const how = String(m?.how || '');
   const hub = /^Server Hub/.test(how);
   const form = (/server_name \(([^)]*)\)/.exec(how) || [])[1];
-  const web = (m && m.web) || [];
+  const web = m?.web || [];
   const hostlar = [...new Set(web.map((w) => U(w.host)))];
   for (const h of hostlar) {
     const kaynaklar = new Set();
@@ -315,7 +315,7 @@ async function tekCozum(ad, sunucular) {
   );
   try {
     let ips;
-    if (sunucular && sunucular.length) {
+    if (sunucular?.length) {
       const r = new dns.Resolver({ timeout: DNS_SURE_MS, tries: 1 });
       r.setServers(sunucular);
       ips = await Promise.race([r.resolve4(ad), zaman]);
@@ -350,10 +350,10 @@ async function dnsCozumle(
   const isler = [];
   const sonuc = {};
   for (const x of istekler || []) {
-    const ad = String((x && x.ad) || '')
+    const ad = String(x?.ad || '')
       .trim()
       .toLowerCase();
-    const bolge = x && x.bolge && bolgeler[x.bolge] ? x.bolge : null;
+    const bolge = x?.bolge && bolgeler[x.bolge] ? x.bolge : null;
     const anahtar = `${bolge || '-'}|${ad}`;
     if (!ad || sonuc[anahtar]) continue;
     sonuc[anahtar] = {};
@@ -596,7 +596,7 @@ async function webAppHesapla(key) {
 
   return {
     certMissing,
-    hubHata: hub.hata && hub.hata.length ? hub.hata.join('; ') : null,
+    hubHata: hub.hata?.length ? hub.hata.join('; ') : null,
     total,
     eslesen,
     hesaplandi: new Date().toISOString(),

@@ -30,10 +30,10 @@ const BAYAT_GRAFIK_MS = 15 * 60 * 1000;
  */
 function taramaImzasi(a) {
   let enYeni = 0;
-  const hosts = (a && a.hosts) || [];
+  const hosts = a?.hosts || [];
   for (const h of hosts)
     if (typeof h.loadedAt === 'number' && h.loadedAt > enYeni) enYeni = h.loadedAt;
-  return `${(a && a.latestScan) || ''}|${hosts.length}|${enYeni}`;
+  return `${a?.latestScan || ''}|${hosts.length}|${enYeni}`;
 }
 const ANAHTAR_RE = /^(sunucu|jvm|was|web|vhost|ip|dns|app):[^\s]{1,390}$/;
 
@@ -94,15 +94,14 @@ function iliskiHesabiKur({
     const veriBayat = fresh === true || !durum.veri || simdi() - durum.veriAt > VERI_MS;
     if (durum.grafik && durum.a === a && !veriBayat) return { a, ...durum };
     if (
-      opts &&
-      opts.bayatOlur === true &&
+      opts?.bayatOlur === true &&
       fresh !== true &&
       durum.grafik &&
       simdi() - durum.kurulduAt < BAYAT_GRAFIK_MS &&
       durum.imza === taramaImzasi(a)
     ) {
       kur(a, veriBayat).catch((e) =>
-        console.warn('[ServerHub] iliski arka plan tazelemesi dustu:', e && e.message),
+        console.warn('[ServerHub] iliski arka plan tazelemesi dustu:', e?.message),
       );
       return { ...durum, bayat: true };
     }
@@ -206,21 +205,18 @@ function mount(
         kenarDurum,
         sureMs: h.sureMs,
         kaynaklar: {
-          uygulamaEnvanteri:
-            h.veri && h.veri.okunamadi
-              ? { okunamadi: true, hata: h.veri.hata || '' }
-              : { okunamadi: false, host: vh.length },
-          fazA: vh.filter((v) => v.jboss && v.jboss.some((k) => k.faz)).length,
+          uygulamaEnvanteri: h.veri?.okunamadi
+            ? { okunamadi: true, hata: h.veri.hata || '' }
+            : { okunamadi: false, host: vh.length },
+          fazA: vh.filter((v) => v.jboss?.some((k) => k.faz)).length,
           fazW: vh.filter((v) => v.web).length,
-          baglanti: vh.filter((v) => v.baglanti && v.baglanti.durum === 'OLCULDU').length,
-          ipEnvanteri:
-            h.veri && h.veri.ipEnvanteri && h.veri.ipEnvanteri.okunamadi
-              ? { okunamadi: true }
-              : {
-                  okunamadi: false,
-                  satir: ((h.veri && h.veri.ipEnvanteri && h.veri.ipEnvanteri.satirlar) || [])
-                    .length,
-                },
+          baglanti: vh.filter((v) => v.baglanti?.durum === 'OLCULDU').length,
+          ipEnvanteri: h.veri?.ipEnvanteri?.okunamadi
+            ? { okunamadi: true }
+            : {
+                okunamadi: false,
+                satir: (h.veri?.ipEnvanteri?.satirlar || []).length,
+              },
         },
       });
     } catch (e) {
@@ -254,10 +250,7 @@ function mount(
           .status(409)
           .json({ ok: false, message: 'Varlık artık grafikte yok (son taramada görülmedi).' });
       const dogrulamalar = {};
-      for (const k of [
-        anahtar,
-        ...v.kenarlar.map((e) => e.karsi && e.karsi.anahtar).filter(Boolean),
-      ]) {
+      for (const k of [anahtar, ...v.kenarlar.map((e) => e.karsi?.anahtar).filter(Boolean)]) {
         const l = h.dogrulamalar.get(k);
         if (l) dogrulamalar[k] = l;
       }
@@ -398,7 +391,7 @@ function mount(
     try {
       const h = await hesap(false);
       if (!h.grafik) return okunamadi(res);
-      const g = h.kararlar.gruplar && h.kararlar.gruplar.get(anahtar);
+      const g = h.kararlar.gruplar?.get(anahtar);
       if (!g)
         return res.status(409).json({
           ok: false,
@@ -417,7 +410,7 @@ function mount(
           message: `Yalnız "Retire adayı" grup doğrulanabilir (bu grup: ${g.kararMetni}).`,
         });
       }
-      const kim = (req.session && req.session.user && req.session.user.username) || 'bilinmiyor';
+      const kim = req.session?.user?.username || 'bilinmiyor';
       await kontrol.kontrolYaz({
         anahtar,
         sonuc: b.sonuc,

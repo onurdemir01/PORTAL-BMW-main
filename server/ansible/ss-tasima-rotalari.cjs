@@ -261,7 +261,7 @@ function kaydet(app, deps) {
     try {
       return { ok: true, deger: await sinirli(fn()) };
     } catch (err) {
-      if (bos404 !== undefined && err && err.status === 404) return { ok: true, deger: bos404 };
+      if (bos404 !== undefined && err?.status === 404) return { ok: true, deger: bos404 };
       return { ok: false, deger: null, hata: mesajOf(err, ad) };
     }
   }
@@ -695,7 +695,7 @@ function kaydet(app, deps) {
     ]);
     const kaynakAd = kD.ok && kD.deger ? String(kD.deger.name || '') : '';
     const toAd = hD.ok && hD.deger ? String(hD.deger.name || '') : '';
-    const adla = kaynakAd && toAd && kaynakAd.trim() === toAd.trim();
+    const adla = kaynakAd?.trim() === toAd?.trim();
     // Plan'daki cakisma burada da uygulanir (dogrudan API ile ENGEL satiri tasinmasin).
     let cakisma;
     try {
@@ -768,8 +768,7 @@ function kaydet(app, deps) {
       const tasinmis = tumu.filter((i) => {
         const k = kayitlar.get(String(i.id));
         return (
-          k &&
-          k.status === 'TASINDI' &&
+          k?.status === 'TASINDI' &&
           k.fromServer === from &&
           k.toServer === to &&
           Number(i.awxServerId) === to
@@ -802,7 +801,7 @@ function kaydet(app, deps) {
       const elle = {};
       for (const i of adaylar) {
         const k = kayitlar.get(String(i.id));
-        if (k && k.status === 'HAZIRLIK' && k.eslesme === 'elle' && k.toServer === to)
+        if (k?.status === 'HAZIRLIK' && k.eslesme === 'elle' && k.toServer === to)
           elle[i.id] = k.toTemplate;
       }
       const eslesmeler = T.eslestir(
@@ -935,7 +934,7 @@ function kaydet(app, deps) {
       }
       const acik = kayitlar.find((k) => k.status === 'HAZIRLIK' || k.status === 'TASINDI') || null;
       const istemciKayitlari = kayitlar.map(T.istemciKaydi);
-      if (acik && acik.status === 'TASINDI') {
+      if (acik?.status === 'TASINDI') {
         // Kart hedefte degilse kayit tutarsiz: ekran 'tasindi' demesin, kaydi kapatma yolunu gostersin.
         const tutarsiz =
           Number(item.awxServerId) !== acik.toServer ||
@@ -1490,8 +1489,7 @@ function kaydet(app, deps) {
   async function geriAlOnizleme(itemId) {
     const item = kartGetir(itemId);
     const kayit = await acikKayit(item.id);
-    if (!kayit || kayit.status !== 'TASINDI')
-      throw hata(409, 'Bu servis için açık bir taşıma yok.', {});
+    if (kayit?.status !== 'TASINDI') throw hata(409, 'Bu servis için açık bir taşıma yok.', {});
     const bagUygun =
       Number(item.awxServerId) === kayit.toServer &&
       Number(item.awxTemplateId) === kayit.toTemplate;
@@ -1617,7 +1615,7 @@ function kaydet(app, deps) {
             String(o.item.id),
           ],
         );
-        if (!r || r.rowCount !== 1)
+        if (r?.rowCount !== 1)
           throw hata(409, 'Taşıma kaydı siz bakarken değişti; raporu yenileyin.', {});
         denetle(req, 'ss_migration_record_close', {
           itemId: o.item.id,

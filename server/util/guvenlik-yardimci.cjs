@@ -22,25 +22,29 @@ const crypto = require('node:crypto');
  * (login rate limit, audit client_ip). One trusted hop keeps an unconfigured production
  * install working; set TRUST_PROXY to the proxy address to pin it (defense in depth against
  * requests that bypass nginx).
+ *
+ * DONUS: `{ deger }`. Deger Express'in kabul ettigi turlerden biridir (atlama sayisi, true / false,
+ * 'loopback' ya da adres listesi); tur bilerek degisir, donus nesnesi her dalda ayni bicimdedir (Sonar
+ * S3800, kurumsal is #52). Kullanim: app.set('trust proxy', resolveTrustProxy(env).deger).
  */
 function resolveTrustProxy(raw, opts = {}) {
   const isProd =
     typeof opts.isProd === 'boolean' ? opts.isProd : process.env.NODE_ENV === 'production';
   const s = String(raw ?? '').trim();
-  if (!s) return isProd ? 1 : 'loopback';
+  if (!s) return { deger: isProd ? 1 : 'loopback' };
   const low = s.toLowerCase();
-  if (low === 'true') return true;
-  if (low === 'false') return false;
+  if (low === 'true') return { deger: true };
+  if (low === 'false') return { deger: false };
   if (/^\d+$/.test(s)) {
     const hops = Number(s);
-    if (Number.isInteger(hops) && hops >= 0 && hops <= 16) return hops;
+    if (Number.isInteger(hops) && hops >= 0 && hops <= 16) return { deger: hops };
   }
   const tokens = s
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
-  if (!tokens.length) return isProd ? 1 : 'loopback';
-  return tokens.length === 1 ? tokens[0] : tokens.join(', ');
+  if (!tokens.length) return { deger: isProd ? 1 : 'loopback' };
+  return { deger: tokens.length === 1 ? tokens[0] : tokens.join(', ') };
 }
 
 /**
@@ -52,13 +56,13 @@ function formatGlobalError(err, opts = {}) {
   const isProd =
     typeof opts.isProd === 'boolean' ? opts.isProd : process.env.NODE_ENV === 'production';
   const correlationId = opts.correlationId || crypto.randomUUID();
-  const status = Number(err && err.status) || 500;
+  const status = Number(err?.status) || 500;
   const body = {
     ok: false,
     error: 'Sunucu hatas\u0131',
     correlationId,
   };
-  if (!isProd && err && err.message) {
+  if (!isProd && err?.message) {
     body.detail = String(err.message);
   }
   return { status, body, correlationId };

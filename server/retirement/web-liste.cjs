@@ -33,8 +33,8 @@ function urunAilesi(p) {
 
 /** Girdinin conf dosyasinin kanonik (mutlak) yolu: IHS goreli ad -> /usr/IBMIHS/conf/<ad>; digerleri oldugu gibi. */
 function webConfKanonik(w) {
-  const c = String((w && w.confFile) || '');
-  if (!c || c.includes('/') || urunAilesi(w && w.product) !== 'IHS') return c;
+  const c = String(w?.confFile || '');
+  if (!c || c.includes('/') || urunAilesi(w?.product) !== 'IHS') return c;
   return `${IHS_KOK}/conf/${c}`;
 }
 
@@ -45,7 +45,7 @@ function webAnahtar(w) {
 /** Ayni FIZIKSEL dosya + ServerName + urun ailesi icin ayni anahtar (goreli/mutlak IHS yazimi esit;
  *  IHS ile RHA etiketli girdiler ayri - kesifteki "RHA birlesmez" kuraliyla tutarli). */
 function webKanonikAnahtar(w) {
-  return `${webAnahtar({ ...w, confFile: webConfKanonik(w) })}|${urunAilesi(w && w.product)}`;
+  return `${webAnahtar({ ...w, confFile: webConfKanonik(w) })}|${urunAilesi(w?.product)}`;
 }
 
 const kosmadi = (w) => !!w && (w.status == null || w.status === 'pending') && w.jobId == null;
@@ -111,7 +111,7 @@ function webTekille(liste) {
 function webYenidenDeneHazirla(liste) {
   const YENIDEN = new Set(['failed', 'skip']);
   const kaynak = Array.isArray(liste) ? liste : [];
-  const suren = new Set(kaynak.filter((w) => w && w.status === 'running').map(webKanonikAnahtar));
+  const suren = new Set(kaynak.filter((w) => w?.status === 'running').map(webKanonikAnahtar));
   const gorulen = new Set();
   const out = [];
   const secilen = [];

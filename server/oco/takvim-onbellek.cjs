@@ -101,7 +101,7 @@ function createTakvimOnbellek({
       if (yas <= tazeSure(g.value)) return { value: g.value, cache: 'hit' };
       if (yas <= enEskiMs) {
         cek(anahtar, g).catch((e) =>
-          log.warn(`[OCO] takvim arka plan yenilemesi basarisiz: ${e && e.message}`),
+          log.warn(`[OCO] takvim arka plan yenilemesi basarisiz: ${e?.message}`),
         );
         return { value: g.value, cache: 'stale' };
       }
@@ -136,7 +136,7 @@ function createTakvimOnbellek({
     try {
       await cek(anahtar, g);
     } catch (e) {
-      log.warn(`[OCO] takvim isitma basarisiz: ${e && e.message}`);
+      log.warn(`[OCO] takvim isitma basarisiz: ${e?.message}`);
     }
     return true;
   }

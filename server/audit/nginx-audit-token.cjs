@@ -33,11 +33,11 @@ async function nginxAuditToken(query) {
   const [c, f] = await Promise.all([
     query(CEKIRDEK_SQL),
     query(FILES_SQL).then(
-      (r) => parca(r && r.recordset && r.recordset[0] && r.recordset[0].f_id),
+      (r) => parca(r?.recordset?.[0]?.f_id),
       () => 'yok',
     ),
   ]);
-  const r = (c && c.recordset && c.recordset[0]) || {};
+  const r = c?.recordset?.[0] || {};
   return [r.d, r.h_id, r.sv_id, r.l_id, r.u_id, r.st_id].map(parca).join(',') + ',' + f;
 }
 
@@ -47,7 +47,7 @@ async function migrationToken(query) {
     nginxAuditToken(query),
     ...MIGRATION_TARIH_TABLOLARI.map((t) =>
       query(`SELECT CONVERT(varchar(10), MAX(scan_date), 23) AS d FROM ${t}`).then(
-        (r) => parca(r && r.recordset && r.recordset[0] && r.recordset[0].d),
+        (r) => parca(r?.recordset?.[0]?.d),
         () => 'yok',
       ),
     ),

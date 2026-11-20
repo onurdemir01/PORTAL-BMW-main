@@ -77,8 +77,8 @@ async function limitDenetimi() {
 function hostlarOf(stats, ortamlar) {
   const gorulen = new Set();
   const out = [];
-  for (const h of Array.isArray(stats && stats.hostlar) ? stats.hostlar : []) {
-    const ad = String((h && h.host) || '')
+  for (const h of Array.isArray(stats?.hostlar) ? stats.hostlar : []) {
+    const ad = String(h?.host || '')
       .trim()
       .toUpperCase();
     if (!alim.HOST_RE.test(ad) || gorulen.has(ad)) continue;
@@ -129,7 +129,7 @@ async function isiAl(s, jobId, ortamlar) {
     `SELECT TOP 1 kosu_id FROM ear_envanter_partileri WHERE awx_server_id = $1 AND awx_job_id = $2`,
     [s.serverId, jobId],
   );
-  if (bilinen.rows && bilinen.rows.length) {
+  if (bilinen.rows?.length) {
     _bakildi.add(anahtar);
     return { atlandi: 'portal_bilinen' };
   }
@@ -176,7 +176,7 @@ async function isiAl(s, jobId, ortamlar) {
     { tekrar: false },
   );
   _bakildi.add(anahtar);
-  const id = r.rows && r.rows[0] ? r.rows[0].id : null;
+  const id = r.rows?.[0] ? r.rows[0].id : null;
   if (id == null) return { atlandi: 'zaten_alindi' };
   console.log(
     `[EarEnvanter] AWX isi ${jobId} kosu ${id} olarak alindi (${hostlar.length} sunucu, ${kip})`,
@@ -204,7 +204,7 @@ async function awxIsleriniAl({ simdi = Date.now(), zorla = false } = {}) {
       const r = await isiAl(s, j.id, ortamlar);
       if (r.alindi) alinan.push(r.alindi);
     } catch (e) {
-      console.warn(`[EarEnvanter] AWX isi ${j.id} alinamadi:`, maskele(e && e.message));
+      console.warn(`[EarEnvanter] AWX isi ${j.id} alinamadi:`, maskele(e?.message));
     }
   }
   return { alinan };

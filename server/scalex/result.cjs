@@ -195,7 +195,7 @@ function extractDiscoveryResult(rawArtifacts) {
     failedClusters: Array.isArray(raw.failed_clusters) ? raw.failed_clusters : [],
     counts: { ok: toInt(counts.ok), warn: toInt(counts.warn), fail: toInt(counts.fail) },
     // PDB namespace duzeyinde bildirilir (hangi workload'u kapsadigi ucuza kanitlanamaz).
-    pdbWarning: (items.find((i) => String(i.step) === 'PDB') || {}).detail || null,
+    pdbWarning: items.find((i) => String(i.step) === 'PDB')?.detail || null,
     problems: items
       .filter((i) => normalizeStatus(i.status) === 'FAIL' || normalizeStatus(i.status) === 'WARN')
       .map((i) => ({
@@ -220,7 +220,7 @@ function extractDiscoveryResult(rawArtifacts) {
   // GERI DUSUS SART: `namespace=` alanini basmayan ESKI bir paket kosuyorsa ust
   // duzey deger dogrudur (o paket zaten tek namespace tariyordu).
   const satirNs = (d) =>
-    d && d.namespace && d.namespace !== '-' ? String(d.namespace) : base.namespace;
+    d?.namespace && d.namespace !== '-' ? String(d.namespace) : base.namespace;
 
   // ── SURE OLCUMU ────────────────────────────────────────────────────────────
   //

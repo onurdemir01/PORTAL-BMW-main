@@ -73,7 +73,7 @@ function kuyrukSorgusu(D, sql, params = []) {
   kuyrukTablolariKur(D);
   const ad = m[1];
   D.kuyrukSorgular.push({ ad, q, params });
-  if (D.kuyrukHata && D.kuyrukHata.ad === ad) {
+  if (D.kuyrukHata?.ad === ad) {
     const h = D.kuyrukHata;
     D.kuyrukHata = null;
     throw h.hata;
@@ -86,7 +86,7 @@ function kuyrukSorgusu(D, sql, params = []) {
   const kuyrukBizde = (o, kira) => {
     // ${KUYRUK_BIZDE}: kuyruk CALISIYOR ve kira bizde - metinde varsa uygulanir.
     const k = K(o.kuyruk_id);
-    if (var_(q, "q.durum = 'CALISIYOR'") && !(k && k.durum === 'CALISIYOR')) return false;
+    if (var_(q, "q.durum = 'CALISIYOR'") && !(k?.durum === 'CALISIYOR')) return false;
     const yuruyen = inListesi(q, 'q.durum');
     if (yuruyen && !(k && yuruyen.includes(k.durum))) return false;
     if (var_(q, 'q.duraklat_at IS NULL') && !(k && k.duraklat_at == null)) return false;
@@ -134,8 +134,7 @@ function kuyrukSorgusu(D, sql, params = []) {
     case 'kuyrukBasla': {
       const r = K(params[0]);
       const ok =
-        r &&
-        r.durum === 'BEKLIYOR' &&
+        r?.durum === 'BEKLIYOR' &&
         r.hazir === 1 &&
         (!var_(q, 'kira_id = $2') || r.kira_id === params[1]) &&
         (!var_(q, 'duraklat_at IS NULL') || r.duraklat_at == null) &&
@@ -159,8 +158,7 @@ function kuyrukSorgusu(D, sql, params = []) {
     case 'kuyrukBitti': {
       const r = K(params[0]);
       const ok =
-        r &&
-        r.durum === 'CALISIYOR' &&
+        r?.durum === 'CALISIYOR' &&
         r.kira_id === params[1] &&
         !D.ogeler.some((o) => o.kuyruk_id === r.id && ['BEKLIYOR', 'CALISIYOR'].includes(o.durum));
       if (ok) Object.assign(r, { durum: 'BITTI', bitis_at: D.simdi });
@@ -177,8 +175,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, neden, govde, etiket] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'BEKLIYOR' &&
+        o?.durum === 'BEKLIYOR' &&
         (!var_(q, 'govde = $3') || o.govde === govde) &&
         (!var_(q, 'etiket = $4') || o.etiket === etiket);
       if (ok) Object.assign(o, { durum: 'ATLANDI', neden, deneme_id: null, bitis_at: D.simdi });
@@ -246,8 +243,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, token, neden, artis] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'CALISIYOR' &&
+        o?.durum === 'CALISIYOR' &&
         o.asama === 'on_kontrol' &&
         o.on_kontrol_kosu_id == null &&
         o.kosu_id == null &&
@@ -267,8 +263,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, okId, token, kira] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'CALISIYOR' &&
+        o?.durum === 'CALISIYOR' &&
         o.asama === 'on_kontrol' &&
         o.on_kontrol_kosu_id === okId &&
         o.kosu_id == null &&
@@ -280,8 +275,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, token, neden, artis] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'CALISIYOR' &&
+        o?.durum === 'CALISIYOR' &&
         o.asama === 'kosu' &&
         o.kosu_id == null &&
         tokenTutar(o, token) &&
@@ -294,8 +288,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, okId, neden] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'CALISIYOR' &&
+        o?.durum === 'CALISIYOR' &&
         o.asama === 'on_kontrol' &&
         o.on_kontrol_kosu_id === okId &&
         o.kosu_id == null &&
@@ -314,8 +307,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       const [id, kosuId, neden] = params;
       const o = O(id);
       const ok =
-        o &&
-        o.durum === 'CALISIYOR' &&
+        o?.durum === 'CALISIYOR' &&
         o.asama === 'kosu' &&
         (!var_(q, 'kosu_id = $2') || o.kosu_id === kosuId) &&
         kuyrukBizde(o);
@@ -501,7 +493,7 @@ function kuyrukSorgusu(D, sql, params = []) {
     }
     case 'dinlenmeyeGec': {
       const r = K(params[0]);
-      const ok = r && r.durum === 'CALISIYOR';
+      const ok = r?.durum === 'CALISIYOR';
       if (ok)
         Object.assign(r, { durum: 'DINLENME', dinlenme_kosu_id: params[1], dinlenme_bitis: null });
       return bir(ok);
@@ -509,16 +501,13 @@ function kuyrukSorgusu(D, sql, params = []) {
     case 'dinlenmeBaslat': {
       const r = K(params[0]);
       const ok =
-        r &&
-        r.durum === 'DINLENME' &&
-        (!var_(q, 'dinlenme_bitis IS NULL') || r.dinlenme_bitis == null);
+        r?.durum === 'DINLENME' && (!var_(q, 'dinlenme_bitis IS NULL') || r.dinlenme_bitis == null);
       if (ok) r.dinlenme_bitis = D.simdi + r.bekleme_dk * birimMs(q, 'bekleme_dk');
       return bir(ok);
     }
     case 'dinlenmeBitti': {
       const r = K(params[0]);
-      const ok =
-        r && r.durum === 'DINLENME' && r.dinlenme_bitis != null && r.dinlenme_bitis <= D.simdi;
+      const ok = r?.durum === 'DINLENME' && r.dinlenme_bitis != null && r.dinlenme_bitis <= D.simdi;
       if (ok)
         Object.assign(r, { durum: 'CALISIYOR', dinlenme_kosu_id: null, dinlenme_bitis: null });
       return bir(ok);
@@ -553,8 +542,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       };
       const r = D.kilitler ? D.kilitler.get(params[0]) : null;
       const n =
-        r &&
-        r.held &&
+        r?.held &&
         t(r) != null &&
         t(r) >= D.simdi - 12 * 3600000 &&
         (t(r) >= D.simdi || r.awx_job_id != null)
@@ -646,13 +634,13 @@ function kuyrukSorgusu(D, sql, params = []) {
     }
     case 'kuyrukHazir': {
       const r = K(params[0]);
-      const ok = r && r.hazir === 0;
+      const ok = r?.hazir === 0;
       if (ok) Object.assign(r, { hazir: 1, baslangic_at: r.baslangic_at ?? D.simdi });
       return bir(ok);
     }
     case 'kuyrukYarim': {
       const r = K(params[0]);
-      const ok = r && r.hazir === 0;
+      const ok = r?.hazir === 0;
       if (ok) Object.assign(r, { durum: 'HATALI', son_hata: params[1] });
       return bir(ok);
     }
@@ -718,7 +706,7 @@ function kuyrukSorgusu(D, sql, params = []) {
     }
     case 'ogeCikar': {
       const o = O(params[1]);
-      const ok = o && o.kuyruk_id === Number(params[0]) && o.durum === 'BEKLIYOR';
+      const ok = o?.kuyruk_id === Number(params[0]) && o.durum === 'BEKLIYOR';
       if (ok) Object.assign(o, { durum: 'IPTAL', neden: params[2], bitis_at: D.simdi });
       return bir(ok);
     }
@@ -733,7 +721,7 @@ function kuyrukSorgusu(D, sql, params = []) {
       let n = 0;
       idler.forEach((oid, i) => {
         const o = O(oid);
-        if (o && o.kuyruk_id === id && o.durum === 'BEKLIYOR') {
+        if (o?.kuyruk_id === id && o.durum === 'BEKLIYOR') {
           o.sira = taban + i + 1;
           n += 1;
         }

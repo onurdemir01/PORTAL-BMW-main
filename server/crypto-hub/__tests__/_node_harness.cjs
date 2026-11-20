@@ -102,7 +102,7 @@ function satirlar(o = {}) {
       o.replicas == null ? 1 : o.replicas,
       1,
       4,
-      (o.gitops && o.gitops[b]) || 'hayir',
+      o.gitops?.[b] || 'hayir',
       'hmz',
       b === 'processor' ? 'var' : '-',
     );
@@ -575,7 +575,7 @@ async function kur(o = {}) {
         next();
       },
       requireAdmin(req, res, next) {
-        if (!(req.session && req.session.user && req.session.user.role === 'Admin')) {
+        if (!(req.session?.user?.role === 'Admin')) {
           return res.status(403).json({ ok: false });
         }
         next();
@@ -589,7 +589,7 @@ async function kur(o = {}) {
         return (user.yetkiler || []).includes(key);
       },
     },
-    'auth/utils.cjs': { getRequestUser: (req) => (req.session && req.session.user) || null },
+    'auth/utils.cjs': { getRequestUser: (req) => req.session?.user || null },
     'ansible/playbook-registry.cjs': {
       async getByKey(key) {
         if (key === 'crypto_hub_ops')
@@ -797,10 +797,9 @@ async function kur(o = {}) {
       SMART_TOKEN_RE: GERCEK_OPSX_CFG.SMART_TOKEN_RE,
       SMART_METADATA_MAX: GERCEK_OPSX_CFG.SMART_METADATA_MAX,
     },
-    'opsx/index.cjs': { extractStatsKey: (a, k) => (a && a[k]) || null },
+    'opsx/index.cjs': { extractStatsKey: (a, k) => a?.[k] || null },
     'audit/index.cjs': {
-      auditPortal: (req, action, opts) =>
-        d.audits.push({ action, opts, user: req && req.session && req.session.user }),
+      auditPortal: (req, action, opts) => d.audits.push({ action, opts, user: req?.session?.user }),
     },
     'inventory/mssql.cjs': {
       sql: { NVarChar: () => 'nvarchar' },

@@ -124,12 +124,12 @@ function kur(deps) {
   _d = deps || null;
 }
 
-const hostRe = () => (_d && _d.HOST_RE) || HOST_RE_VARSAYILAN;
+const hostRe = () => _d?.HOST_RE || HOST_RE_VARSAYILAN;
 const autoStart = () => (_d && typeof _d.autoStart === 'function' ? _d.autoStart() : null);
 
 function denetim(req, detail) {
   try {
-    if (_d && _d.audit) _d.audit(req, detail);
+    if (_d?.audit) _d.audit(req, detail);
   } catch {
     // denetim kaydi yazilamadi: islem yine tamam
   }
@@ -146,7 +146,7 @@ function sozdeIstek(kim) {
 
 const ekOku = (o) => {
   try {
-    const x = JSON.parse((o && o.ek) || '{}');
+    const x = JSON.parse(o?.ek || '{}');
     return x && typeof x === 'object' ? x : {};
   } catch {
     return {};
@@ -165,7 +165,7 @@ function farkOzeti(ham) {
   if (!/^reason=/.test(govde))
     for (const oge of govde.split('; ')) {
       const a = oge.split(' ')[0];
-      if (a && a.startsWith('-') && !anahtarlar.includes(a)) anahtarlar.push(a);
+      if (a?.startsWith('-') && !anahtarlar.includes(a)) anahtarlar.push(a);
     }
   return { metin: m.length > DIFF_MAX ? `${m.slice(0, DIFF_MAX - 1)}…` : m, anahtarlar };
 }
@@ -196,9 +196,7 @@ const agirFark = (agir, h, gen, jvm) => {
 // ── ADAYLAR ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Envanter (MWAppsInventory) bu JVM'le eslesti mi (assess hit.invStatus / invJvmCount yazar)? */
-const envanterdeMi = (j) =>
-  Object.prototype.hasOwnProperty.call(j, 'invStatus') ||
-  Object.prototype.hasOwnProperty.call(j, 'invJvmCount');
+const envanterdeMi = (j) => Object.hasOwn(j, 'invStatus') || Object.hasOwn(j, 'invJvmCount');
 
 /**
  * Filo adlandirma kurali (assess.cjs envOf ile AYNI desen): kisa adin ortam harfi P ise PROD. Envanter ortami
@@ -223,10 +221,10 @@ const farkliCalisiyor = (j) =>
  * durur ("OpsX'ten tek tek"); OpsX topluRestartBaslat ayni kontrolu envanter ortamiyla yeniden yapar.
  */
 function restartKapisi(a, h, j) {
-  if ((a && a.schemaUnknown === true) || (h && h.schemaUnknown === true))
+  if (a?.schemaUnknown === true || h?.schemaUnknown === true)
     return 'Server Hub şeması (sys.columns) okunamadı — eylem önerilmez.';
-  if (!h || h.fresh !== true)
-    return `tarama bayat (${(h && h.scanDate) || '?'}${h && h.loadExcluded ? ', son yükleme dışlandı' : ''}) — önce sunucuyu yeniden tarayın.`;
+  if (h?.fresh !== true)
+    return `tarama bayat (${h?.scanDate || '?'}${h?.loadExcluded ? ', son yükleme dışlandı' : ''}) — önce sunucuyu yeniden tarayın.`;
   if (!j) return 'JVM taramada yok.';
   if (j.source === 'cli' && j.cfgSrc === 'UNAVAILABLE')
     return 'tanım kaynağında yok (ps’te tanımsız süreç) — restart edilmez.';
@@ -256,7 +254,7 @@ function adaylariTuret(a, agir) {
   const as = autoStart();
   const adaylar = [];
   const dislananlar = [];
-  for (const h of (a && a.hosts) || []) {
+  for (const h of a?.hosts || []) {
     if (h.taramadanDustu) continue;
     // Ayni sunucuda ayni (gen, JVM adi) iki kayit: hangisinin restart edilecegi belirsiz, aday olmaz.
     const tekrar = new Map();
@@ -363,7 +361,7 @@ async function aktifIs() {
     `SELECT TOP 1 * FROM server_hub_toplu_isler WHERE tur = $1 AND durum IN (${IN(AKTIF)}) ORDER BY id DESC`,
     [TUR],
   );
-  return (rows && rows[0]) || null;
+  return rows?.[0] || null;
 }
 
 async function isOku(id) {
@@ -371,7 +369,7 @@ async function isOku(id) {
     `SELECT * FROM server_hub_toplu_isler WHERE id = $1 AND tur = $2`,
     [id, TUR],
   );
-  return (rows && rows[0]) || null;
+  return rows?.[0] || null;
 }
 
 async function ogeler(isId) {
@@ -425,8 +423,8 @@ function ogeSatiri(r) {
     planJobId: r.plan_job_id || null,
     awxServerId: r.awx_server_id == null ? null : r.awx_server_id,
     restartJobId: r.awx_job_id || null,
-    taramaJobId: (ek.taramaJob && ek.taramaJob.jobId) || null,
-    startState: (ek.restart && ek.restart.startState) || null,
+    taramaJobId: ek.taramaJob?.jobId || null,
+    startState: ek.restart?.startState || null,
     baslamaAt: iso(r.baslama_at),
     bitisAt: iso(r.bitis_at),
   };
@@ -507,7 +505,7 @@ async function topluKilidi(host, gen, jvm, { haricIs = null, yetimler = null } =
         ORDER BY o.is_id DESC`,
       p,
     );
-    const r = rows && rows[0];
+    const r = rows?.[0];
     if (r)
       return `${jvm} toplu restart işi #${r.is_id} içinde (${r.durum}) — o iş bitene ya da iptal edilene kadar bu JVM'e iş açılmaz (iş açılmadı). Server Hub › Toplu Restart sekmesinden izleyin.`;
     const H = String(host || '').toUpperCase();
@@ -517,7 +515,7 @@ async function topluKilidi(host, gen, jvm, { haricIs = null, yetimler = null } =
     if (!y) return null;
     return `${jvm} için toplu restart işi #${y.is_id} öğesinin sonucu bilinmiyor (${yetimMetni(y)}) — AWX işi bitene kadar bu JVM'e iş açılmaz (iş açılmadı).`;
   } catch (e) {
-    console.warn('[TopluRestart] kilit okunamadi:', e && e.message);
+    console.warn('[TopluRestart] kilit okunamadi:', e?.message);
     return null;
   }
 }
@@ -574,11 +572,11 @@ function secimiDuzle(secim, enCok) {
   const gorulen = new Set();
   const out = [];
   for (const x of secim) {
-    const host = String((x && x.host) || '')
+    const host = String(x?.host || '')
       .trim()
       .toUpperCase();
-    const jvm = String((x && x.jvm) || '').trim();
-    const gen = Number(x && x.gen);
+    const jvm = String(x?.jvm || '').trim();
+    const gen = Number(x?.gen);
     if (!hostRe().test(host)) throw hata(400, `Geçersiz sunucu adı: ${M(host, 64) || '(boş)'}`);
     if (!JVM_RE.test(jvm)) throw hata(400, `Geçersiz JVM adı: ${M(jvm, 64) || '(boş)'}`);
     if (gen !== 7 && gen !== 8) throw hata(400, `Geçersiz JBoss sürümü (gen): ${host}/${jvm}`);
@@ -619,9 +617,9 @@ async function olustur(req, secim) {
        VALUES ($1, 'PLANLANIYOR', $2, $3, $4, $5, DATEADD(second, ${KIRA_SN}, SYSUTCDATETIME())) RETURNING id`,
       [TUR, kim, enCok, sirali.length, OLUSTURULUYOR],
     );
-    isId = r.rows && r.rows[0] && r.rows[0].id;
+    isId = r.rows?.[0]?.id;
   } catch (e) {
-    if (/UX_shti_aktif|duplicate key|UNIQUE/i.test(String(e && e.message)))
+    if (/UX_shti_aktif|duplicate key|UNIQUE/i.test(String(e?.message)))
       throw hata(
         409,
         'Başka bir toplu restart işi az önce açıldı — sayfayı yenileyin.',
@@ -653,7 +651,7 @@ async function olustur(req, secim) {
     await db()
       .query(
         `UPDATE server_hub_toplu_isler SET durum = 'PLAN_HATA', hata = $2, bitis_at = SYSUTCDATETIME() WHERE id = $1`,
-        [isId, M(`Öğeler yazılamadı: ${e && e.message}`, 1000)],
+        [isId, M(`Öğeler yazılamadı: ${e?.message}`, 1000)],
       )
       .catch(() => {});
     await db()
@@ -662,7 +660,7 @@ async function olustur(req, secim) {
         [isId],
       )
       .catch(() => {});
-    throw hata(500, `Toplu iş öğeleri yazılamadı: ${e && e.message}`);
+    throw hata(500, `Toplu iş öğeleri yazılamadı: ${e?.message}`);
   }
   const hostlar = [...new Set(sirali.map((c) => c.host))];
   denetim(req, {
@@ -696,7 +694,7 @@ async function sinirliParalel(liste, n, fn) {
  * ne: hatanin turu (kullaniciya giden metin).
  */
 async function secimOkunamadi(is, liste, e, ne = 'Taze değerlendirme okunamadı') {
-  const msg = M(e && e.message, 300) || 'bilinmeyen hata';
+  const msg = M(e?.message, 300) || 'bilinmeyen hata';
   console.warn(`[TopluRestart] is #${is.id} secim dogrulanamadi:`, msg);
   if (sureAsti(is.created_at, SECIM_ZAMAN_ASIMI_MS)) {
     _secimSonraki.delete(is.id);
@@ -916,7 +914,7 @@ async function isDurumu(serverId, jobId) {
   try {
     return await runner().getJobStatusOnServer(serverId, jobId);
   } catch (e) {
-    console.warn(`[TopluRestart] is #${jobId} okunamadi:`, e && e.message);
+    console.warn(`[TopluRestart] is #${jobId} okunamadi:`, e?.message);
     return null;
   }
 }
@@ -960,7 +958,7 @@ function yuklemeKaniti(result, h, host, onceki) {
 }
 
 function taramaSonucu(st) {
-  return opsx().extractStatsKey(st && st.artifacts, 'server_hub_scan_result') || null;
+  return opsx().extractStatsKey(st?.artifacts, 'server_hub_scan_result') || null;
 }
 
 async function taramaBaslat(is, hostlar, op) {
@@ -1037,7 +1035,7 @@ async function onizlemeIsle(is, liste, st) {
     try {
       uygulama = await uygulamaAdi(o.host, o.gen, o.jvm);
     } catch (e) {
-      await dus(`envanter okunamadı (${M(e && e.message, 200)})`);
+      await dus(`envanter okunamadı (${M(e?.message, 200)})`);
       continue;
     }
     if (!uygulama) {
@@ -1141,7 +1139,7 @@ async function planIlerlet(is, og, iptalMi) {
       for (const host of parca)
         await db().query(
           `UPDATE server_hub_toplu_ogeler SET durum = 'DUSTU', neden = $3, bitis_at = SYSUTCDATETIME() WHERE is_id = $1 AND host = $2 AND durum = 'PLANLANIYOR'`,
-          [is.id, host, M(`önizleme başlatılamadı: ${e && e.message}`, 1000)],
+          [is.id, host, M(`önizleme başlatılamadı: ${e?.message}`, 1000)],
         );
     }
   }
@@ -1302,7 +1300,7 @@ async function restartIsle(is, o) {
   } catch (e) {
     await ogeDurum(o.id, ['CALISIYOR'], 'FAIL', {
       neden: M(
-        `restart işi #${o.awx_job_id} bitti (${startState || 'sonuç yok'}) ama doğrulama taraması başlatılamadı: ${e && e.message} — sunucuyu elle tarayın`,
+        `restart işi #${o.awx_job_id} bitti (${startState || 'sonuç yok'}) ama doğrulama taraması başlatılamadı: ${e?.message} — sunucuyu elle tarayın`,
         1000,
       ),
       ek: ekYaz(ek),
@@ -1320,7 +1318,7 @@ async function taramaIsle(is, o) {
   const ek = ekOku(o);
   const tj = ek.taramaJob || {};
   const st = await isDurumu(tj.serverId, tj.jobId);
-  const started = ek.restart && ek.restart.startState === 'STARTED';
+  const started = ek.restart?.startState === 'STARTED';
   if (!st || !IS_TERMINAL.has(st.status)) {
     if (sureAsti(ek.taramaBaslama || o.baslama_at, TARAMA_ZAMAN_ASIMI_MS)) {
       await ogeDurum(o.id, ['TARANIYOR'], 'FAIL', {
@@ -1338,7 +1336,7 @@ async function taramaIsle(is, o) {
   if (yk) {
     await ogeDurum(o.id, ['TARANIYOR'], 'FAIL', {
       neden: M(
-        `restart işi #${o.awx_job_id} (${(ek.restart && ek.restart.startState) || 'sonuç yok'}) bitti ama doğrulama taraması #${tj.jobId} sunucuyu yüklemedi: ${yk} — sunucuyu yeniden tarayın`,
+        `restart işi #${o.awx_job_id} (${ek.restart?.startState || 'sonuç yok'}) bitti ama doğrulama taraması #${tj.jobId} sunucuyu yüklemedi: ${yk} — sunucuyu yeniden tarayın`,
         1000,
       ),
     });
@@ -1366,7 +1364,7 @@ async function taramaIsle(is, o) {
   if (ps0 != null && ps1 != null && ps1 === ps0) {
     await ogeDurum(o.id, ['TARANIYOR'], 'FAIL', {
       neden: M(
-        `süreç başlangıç zamanı değişmedi — JVM restart edilmemiş görünüyor (iş #${o.awx_job_id} ${(ek.restart && ek.restart.startState) || 'sonuç yok'}); AWX çıktısına bakın`,
+        `süreç başlangıç zamanı değişmedi — JVM restart edilmemiş görünüyor (iş #${o.awx_job_id} ${ek.restart?.startState || 'sonuç yok'}); AWX çıktısına bakın`,
         1000,
       ),
       ek: ekYaz(ek),
@@ -1497,9 +1495,9 @@ async function uygulaIlerlet(is, og) {
       jvm: o.jvm,
     });
   } catch (e) {
-    const code = e && e.code;
-    const mesaj = M(e && e.message, 900);
-    if (e && e.launchBelirsiz === true) {
+    const code = e?.code;
+    const mesaj = M(e?.message, 900);
+    if (e?.launchBelirsiz === true) {
       // AWX launch istegi belirsiz hatayla dondu (zaman asimi / 5xx / baglanti): is AWX'te olusmus olabilir.
       // "Dokunulmadi" DENMEZ; oge YARIM_KALDI, toplu is durur (kopya dahil siradaki JVM baslatilmaz).
       if (
@@ -1657,7 +1655,7 @@ async function tick() {
       if (bitti) await uygulaBitir(is);
       else await sayimYaz(is.id);
     } catch (e) {
-      console.warn(`[TopluRestart] is #${is.id} ilerletilemedi:`, e && e.message);
+      console.warn(`[TopluRestart] is #${is.id} ilerletilemedi:`, e?.message);
     }
   }
 }
@@ -1668,7 +1666,7 @@ function startPoller() {
     if (_ticking) return;
     _ticking = true;
     tick()
-      .catch((e) => console.warn('[TopluRestart] tick hatasi:', e && e.message))
+      .catch((e) => console.warn('[TopluRestart] tick hatasi:', e?.message))
       .finally(() => {
         _ticking = false;
       });
@@ -1690,7 +1688,7 @@ function mount(router, deps) {
     if (status >= 500) {
       console.error(
         `[TopluRestart] ${req.method} ${req.originalUrl || req.path} ${status}:`,
-        err && err.message,
+        err?.message,
       );
       if (req.method !== 'GET' && req.method !== 'HEAD')
         return res.status(424).json({
@@ -1770,7 +1768,7 @@ function mount(router, deps) {
 
   router.post('/toplu-restart', async (req, res) => {
     try {
-      res.json({ ok: true, ...(await olustur(req, req.body && req.body.secim)) });
+      res.json({ ok: true, ...(await olustur(req, req.body?.secim)) });
     } catch (err) {
       gonder(req, res, err);
     }

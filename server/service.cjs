@@ -19,7 +19,7 @@ function sessionOrIpKey(req) {
   const oturum = oturumHizAnahtari(req);
   if (oturum) return oturum;
   const hdrUser = trustedHeaderUser(req);
-  if (hdrUser && hdrUser.username) return `usr:${String(hdrUser.username).slice(0, 64)}`;
+  if (hdrUser?.username) return `usr:${String(hdrUser.username).slice(0, 64)}`;
   return ipKeyGenerator(req.ip || req.socket?.remoteAddress || 'unknown');
 }
 

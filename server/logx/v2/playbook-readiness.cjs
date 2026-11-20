@@ -47,7 +47,7 @@ async function getRows(keys = LOGX_KEYS) {
           tpl = await runner.getTemplateSummaryOnServer(serverId, templateId);
           foundOnAwx = true;
         } catch (e) {
-          foundOnAwx = e && e.status === 404 ? false : null;
+          foundOnAwx = e?.status === 404 ? false : null;
         }
       }
       return {

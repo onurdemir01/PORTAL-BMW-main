@@ -190,7 +190,7 @@ async function acquireLocks(db, keys, { lockId, holder, desc, isJobTerminal, ttl
     let row = null;
     if (!ok) {
       row = await readLock(db, key);
-      if (row && row.awx_job_id != null && row.awx_server_id != null && isJobTerminal) {
+      if (row?.awx_job_id != null && row.awx_server_id != null && isJobTerminal) {
         const js = await boundJobState(isJobTerminal, row);
         if (js.terminal && bagliIsKarari(row.bag_turu, js.status) === 'tut') {
           await isinKilitleriniCoz(db, Number(row.awx_server_id), Number(row.awx_job_id));
@@ -328,7 +328,7 @@ function doluKilitMesaji(busyKey, busy) {
     return `${busyKey.slice(2)} yük makinesi meşgul`;
   })();
   const kim = (() => {
-    if (busy && busy.holder)
+    if (busy?.holder)
       return ` (${busy.holder}${busy.target_desc ? ': ' + busy.target_desc : ''}${busy.awx_job_id != null ? ', AWX iş #' + busy.awx_job_id : ''})`;
     return '';
   })();

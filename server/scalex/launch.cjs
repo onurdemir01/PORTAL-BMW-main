@@ -671,7 +671,7 @@ function smartKarari(smart) {
     };
   if (smart.adminSkip === true)
     return { smart: 'skip', status: 'admin_skip', missing: [], blocked: null, skipRule: null };
-  if (smart.skipRule && smart.skipRule.field)
+  if (smart.skipRule?.field)
     return {
       smart: 'skip',
       status: 'skipped_by_rule',

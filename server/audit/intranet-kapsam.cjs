@@ -24,7 +24,7 @@ const sirala = (a, b) => sortTr(a.application, b.application) || sortTr(a.namesp
 
 /** Rapor satir uretebildi mi (kesif tablosu var, satir dizisi geldi). */
 function raporHazir(rapor) {
-  return !!(rapor && rapor.ok && !rapor.notScanned && Array.isArray(rapor.rows));
+  return !!(rapor?.ok && !rapor.notScanned && Array.isArray(rapor.rows));
 }
 
 /** Raporun hucreye cevrilemedigi durumun nedeni (ekranda yazilir). */
@@ -111,10 +111,8 @@ function intranetHucresi(rapor, env, ownerOf, cap = 300) {
       intranetMissingCount: yok.length,
       intranetMissing: yok.slice(0, cap).map((r) => r.application),
       // Ayri kovalar: "kurulmamis" SAYILMAZ.
-      intranetOlculemediCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'olculemedi')
-        .length,
-      intranetSunucuYokCount: rows.filter((r) => r.kurulum && r.kurulum.durum === 'sunucu-yok')
-        .length,
+      intranetOlculemediCount: rows.filter((r) => r.kurulum?.durum === 'olculemedi').length,
+      intranetSunucuYokCount: rows.filter((r) => r.kurulum?.durum === 'sunucu-yok').length,
       intranetOnlyOnServerCount: fazla.length,
       intranetOnlyOnServer: fazla.slice(0, cap).map((f) => `${f.namespace}/${f.application}`),
       intranetHosts: taranan,

@@ -225,7 +225,7 @@ async function changes({ limit = 200, host, pathLike, source, since, hosts } = {
     params.push(host);
     where.push(`host = $${params.length}`);
   }
-  if (hosts && hosts.length) {
+  if (hosts?.length) {
     params.push(hosts.join(','));
     where.push(`host IN (SELECT value FROM STRING_SPLIT($${params.length}, ','))`);
   }

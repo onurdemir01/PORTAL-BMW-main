@@ -149,7 +149,7 @@ async function finalizeIfNeeded(requestRow, jobBefore, jobAfter) {
       const art = jobAfter.artifacts || {};
       const files = (() => {
         if (Array.isArray(art.staged_files) && art.staged_files.length)
-          return art.staged_files.filter((f) => f && f.staged_path);
+          return art.staged_files.filter((f) => f?.staged_path);
         if (art.staged_path)
           return [
             {
@@ -756,7 +756,7 @@ function initLogXv2(app) {
         const karar = await restrictions
           .evaluate('ocp_namespace', resourceKey, currentUser(req))
           .catch(() => null);
-        if (!karar || !karar.allowed) {
+        if (!karar?.allowed) {
           const restriction = karar
             ? await restrictions.redAyrintisi('ocp_namespace', resourceKey, karar.rows)
             : undefined;

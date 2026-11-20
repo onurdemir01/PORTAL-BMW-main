@@ -66,7 +66,7 @@ const numOrNull = (v) => (v === '' || v == null || !Number.isFinite(Number(v)) ?
  * @returns {{ok: boolean, reason: string}}
  */
 function surveyQuestionAcceptsFalse(q) {
-  const type = String((q && q.type) || '').toLowerCase();
+  const type = String(q?.type || '').toLowerCase();
   if (type === 'multiplechoice') {
     const ch = choiceList(q);
     if (ch.includes(NEW_FLEET_OFF)) return { ok: true, reason: '' };
@@ -113,7 +113,7 @@ function surveyQuestionSideEffects(q) {
     out.push(
       `UYARI: nginx_ops survey'indeki new_fleet sorusunun varsayılanı '${String(raw).trim()}'. new_fleet göndermeyen diğer tüm prod nginx_ops işleri (Self Servis, AWX arayüzü) bu varsayılanı alır ve yeni filoyu ATLAR: yeni tanımlar yeni filoya yazılmaz, silinenler orada kalır. Varsayılan boş ya da true olmalı.`,
     );
-  } else if (q && q.required === true && def === '') {
+  } else if (q?.required === true && def === '') {
     out.push(
       "UYARI: nginx_ops survey'indeki new_fleet sorusu ZORUNLU ve varsayılanı yok. new_fleet göndermeyen diğer nginx_ops işleri (Self Servis, AWX arayüzü) AWX'te 400 (value missing) ile reddedilebilir. Soru zorunlu olmamalı (varsayılan boş ya da true).",
     );
@@ -171,10 +171,8 @@ function assessNewFleetGuard({ template, templateError = null, survey = null }) 
     );
   }
   const spec =
-    surveyOn && survey && survey.measured === true && Array.isArray(survey.spec)
-      ? survey.spec
-      : null;
-  const q = spec ? spec.find((x) => x && x.variable === NEW_FLEET_VAR) : null;
+    surveyOn && survey?.measured === true && Array.isArray(survey.spec) ? survey.spec : null;
+  const q = spec ? spec.find((x) => x?.variable === NEW_FLEET_VAR) : null;
   // Soru VARSA Prompt on launch acik olsa bile AWX survey dogrulamasini uygular: 'false'
   // kabul edilmiyorsa launch 400 alir. Acik mesaj burada verilir.
   if (q) {
@@ -200,7 +198,7 @@ function assessNewFleetGuard({ template, templateError = null, survey = null }) 
     return block(
       false,
       'survey_unreadable',
-      `Durum ÖLÇÜLEMEDİ: Prompt on launch kapalı ve survey okunamadı (${(survey && survey.error) || 'bilinmiyor'}). İş BAŞLATILMADI.`,
+      `Durum ÖLÇÜLEMEDİ: Prompt on launch kapalı ve survey okunamadı (${survey?.error || 'bilinmiyor'}). İş BAŞLATILMADI.`,
     );
   }
   return block(
@@ -267,7 +265,7 @@ function ignoredMessage({ jobId, outcome, awxStatus = null, error = '' }) {
 async function readNewFleetContract(serverId, templateId, { runner }) {
   const redact = (s) =>
     runner && typeof runner.redactSecrets === 'function' ? runner.redactSecrets(s) : String(s);
-  const why = (e) => redact((e && e.message) || String(e));
+  const why = (e) => redact(e?.message || String(e));
   let template = null;
   let templateError = null;
   try {
@@ -280,7 +278,7 @@ async function readNewFleetContract(serverId, templateId, { runner }) {
     templateError = why(e);
   }
   let survey = null;
-  if (template && template.surveyEnabled === true) {
+  if (template?.surveyEnabled === true) {
     try {
       const s = await runner.getSurveySpecOnServer(serverId, templateId);
       survey =

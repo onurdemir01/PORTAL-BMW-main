@@ -144,7 +144,7 @@ async function main() {
   // uzerinden yapilandirilir. Tanimsizsa uretimde TEK ATLAMA (1), gelistirmede 'loopback':
   // nginx Node'a makinenin loopback OLMAYAN adresinden baglanir; 'loopback' varsayilani
   // uretimde oturum cerezinin hic verilmemesi demekti (server/util/guvenlik-yardimci.cjs).
-  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY));
+  app.set('trust proxy', resolveTrustProxy(process.env.TRUST_PROXY).deger);
   if (process.env.NODE_ENV === 'production' && !String(process.env.TRUST_PROXY || '').trim()) {
     console.warn(
       "[Guvenlik] TRUST_PROXY tanimli degil: tek atlama (1) varsayiliyor. nginx'i atlayan " +
@@ -452,7 +452,7 @@ async function main() {
 
           const boot = {};
           const logo = branding.logoState();
-          if (logo && logo.hasLogo) {
+          if (logo?.hasLogo) {
             // Surumlu adres: icerik degismedikce tarayici HIC istek atmaz, dolayisiyla
             // boyanacak eski/yeni ikili de olusmaz (favicon ile ayni gerekce).
             boot.logoUrl = `/api/branding/logo?v=${encodeURIComponent(logo.version)}`;
@@ -465,7 +465,7 @@ async function main() {
             const p = await readThemePrefCached(username);
             const t = p ? p.theme : null;
             if (t === 'light' || t === 'dark') boot.theme = t;
-            if (p && p.renk === 'cvd') boot.renk = 'cvd';
+            if (p?.renk === 'cvd') boot.renk = 'cvd';
           }
 
           html = html.replace(

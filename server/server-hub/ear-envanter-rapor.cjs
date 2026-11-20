@@ -347,7 +347,7 @@ function hostZipGirisleri({
     { ad: 'sunucu.csv', veri: csv(KOLONLAR.sunucular, sunucuSatiri ? [sunucuSatiri] : []) },
   ];
   const gorulen = new Set();
-  for (const u of (yuk && yuk.uygulamalar) || []) {
+  for (const u of yuk?.uygulamalar || []) {
     const taban = `uygulamalar/${guvenliParca(String(u.kok || '').replace(/^\/+/, ''))}/${guvenliParca(u.ad)}`;
     let dizin = taban;
     for (let i = 2; gorulen.has(dizin); i++) dizin = `${taban}_${i}`;

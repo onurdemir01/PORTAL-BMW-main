@@ -988,13 +988,13 @@ async function loadChoices(sourceName, params) {
   }
   const p = {};
   for (const def of src.params) {
-    const v = String((params || {})[def.name] ?? '').trim();
+    const v = String(params?.[def.name] ?? '').trim();
     if (def.required && !v) return [];
     p[def.name] = v;
   }
   // Sabit secenekler: istekte varsa o, yoksa kaynak varsayilani.
   for (const def of src.options || []) {
-    const v = String((params || {})[def.name] ?? '').trim();
+    const v = String(params?.[def.name] ?? '').trim();
     p[def.name] = v || String(def.default ?? '');
   }
   const key = cacheKey(sourceName, p);
@@ -1043,9 +1043,9 @@ async function loadChoiceDetails(sourceName, params, value) {
     });
   }
   const p = {};
-  for (const def of src.params) p[def.name] = String((params || {})[def.name] ?? '').trim();
+  for (const def of src.params) p[def.name] = String(params?.[def.name] ?? '').trim();
   for (const def of src.options || []) {
-    p[def.name] = String((params || {})[def.name] ?? '').trim() || String(def.default ?? '');
+    p[def.name] = String(params?.[def.name] ?? '').trim() || String(def.default ?? '');
   }
   const key = `${cacheKey(sourceName, p)}|${secilen}`;
   const varolan = detailCache.get(key);

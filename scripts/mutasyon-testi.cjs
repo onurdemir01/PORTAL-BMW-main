@@ -82,7 +82,7 @@ const TARGETS = [
       },
       {
         id: 'ah-platform',
-        find: "params.platform !== 'app-hub-ocp'\n  )\n    return null;",
+        find: "params?.platform !== 'app-hub-ocp'\n  )\n    return null;",
         replace: 'false\n  )\n    return null;',
         desc: 'skip platform ownership check',
       },

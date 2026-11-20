@@ -94,7 +94,7 @@ async function assertAppAllowed(app, user) {
   try {
     await restrictions.assertAllowed('legacy_app', app, user);
   } catch (err) {
-    if (err && err.status === 403) throw err;
+    if (err?.status === 403) throw err;
     console.warn('[OpsX WAS] erisim kisiti dogrulanamadi - istek reddedildi:', err?.message);
     throw httpError(
       503,

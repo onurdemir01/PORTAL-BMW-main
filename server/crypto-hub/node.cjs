@@ -978,7 +978,7 @@ function okumaKaydet(tenantKey, parsed, at, meta = {}) {
     serverId: meta.serverId ?? null,
     username: meta.username || null,
     parsed,
-    eksik: !parsed.end || parsed.end.durum !== 'ok' || parsed.end.islem !== 'node_env_get',
+    eksik: parsed.end?.durum !== 'ok' || parsed.end.islem !== 'node_env_get',
   });
   return true;
 }
@@ -1304,7 +1304,7 @@ async function satiriIlerlet(db, row, yol = 'tarama', simdi = Date.now()) {
   const takildi = sinirAsildi && !pencereBilinmiyor;
   const takildiKapat = async (neden, t) => {
     let iptal = false;
-    if (t && t.status === 'PENDING') {
+    if (t?.status === 'PENDING') {
       try {
         iptal = !!(await require('../smart/store.cjs').cancelTicket(
           Number(row.smart_ticket_id),
@@ -2290,7 +2290,7 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
         ...(oco ? [oco.ocoNumber, oco.windowStart, oco.windowEnd] : []),
       ],
     );
-    talepId = Number(r?.rows?.[0] && r.rows[0].id);
+    talepId = Number(r?.rows?.[0]?.id);
     if (!Number.isInteger(talepId) || talepId <= 0) throw new Error('talep numarası dönmedi');
   } catch (e) {
     if (/2627|2601|duplicate|UNIQUE/i.test(String(e?.number ?? '') + String(e?.message))) {
@@ -2416,14 +2416,14 @@ async function talepAc(req, { nodeYetkisi, kullanici, onizleme }) {
       },
     });
   } catch (e) {
-    if (e && e.blocked === 'crypto_node_smart_sablon') {
+    if (e?.blocked === 'crypto_node_smart_sablon') {
       await kapat('HATA', 'SMART_SABLON', bosSonuc({ hata: kirp(e.message, 500) }));
       return {
         status: 400,
         body: { ok: false, blocked: 'crypto_node_smart_sablon', message: e.message },
       };
     }
-    if (e && e.code === 'smart_ticket_store_failed') {
+    if (e?.code === 'smart_ticket_store_failed') {
       // Bilet dis sistemde ACIK: satir BEKLIYOR + dis numara ile kalir ki ikinci talep acilmasin;
       // tarama 24 sa sonra YETIM_BILET ile kapatir.
       try {
@@ -2564,7 +2564,7 @@ function kesinRet(e) {
   )
     return true;
   // Yutma korumasi: is acildi; iptal edilemediyse kosuyor olabilir.
-  if (e && e.code === 'awx_prompt_on_launch_disabled') return e.iptalEdildi !== false;
+  if (e?.code === 'awx_prompt_on_launch_disabled') return e.iptalEdildi !== false;
   // httpStatus: JSON olmayan (vekil HTML) yanit; status tasimaz.
   const st = Number(e && (e.status ?? e.httpStatus));
   return st >= 400 && st < 500 && st !== 408;

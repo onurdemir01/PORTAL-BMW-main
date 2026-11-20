@@ -70,7 +70,7 @@ function eslenikAnahtarSaglayici(kosu) {
         (() => {
           if (op === 'bos') return v == null;
           if (op === 'dolu') return v != null;
-          return kararlar && kararlar.includes(v);
+          return kararlar?.includes(v);
         })()
       )
         out.push(anahtar);
@@ -117,7 +117,7 @@ async function uygulamaEkleri(satirlar, kosu) {
       ...Object.fromEntries(
         kolonlar.WAR_TEK.map((t) => [
           t,
-          e && e[t].size ? [...e[t]].sort(varsayilanSira).join(', ') : null,
+          e?.[t].size ? [...e[t]].sort(varsayilanSira).join(', ') : null,
         ]),
       ),
       eslenik_ortam_ici: k ? k.ortam_ici : null,
@@ -155,7 +155,7 @@ async function uygulamalar({ kosu, q, ortam, jboss, durum, servlet, f, s, limit,
     [k, ...kos.params, ...sy.params],
   );
   const satirlar = await uygulamaEkleri(rows || [], k);
-  return { satirlar, toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar, toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** WAR listesi (sutun suzgeci + sayfa). limit verilmezse tum satirlar. */
@@ -176,7 +176,7 @@ async function warlar({ kosu, q, f, s, limit, offset } = {}) {
       ${sy.sql}`,
     [k, ...kos.params, ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** Her hostun son satiri (veri tasimasa da) + son verisinin kosusu + neden metni. */
@@ -239,7 +239,7 @@ async function kutuphaneler({ kosu, q, f, s, limit, offset } = {}) {
       ${sy.sql}`,
     [kosuNo(kosu), ...kos.params, ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /** Bir kutuphane surumunu kullanan uygulamalar (sayfa + toplam; limit yoksa hepsi). */
@@ -258,7 +258,7 @@ async function kutuphaneKullananlar({ kosu, ad, surum, limit, offset }) {
       ${sy.sql}`,
     [kosuNo(kosu), String(ad || '').slice(0, 200), String(surum ?? '').slice(0, 100), ...sy.params],
   );
-  return { satirlar: rows || [], toplam: rows && rows[0] ? Number(rows[0].toplam) : 0 };
+  return { satirlar: rows || [], toplam: rows?.[0] ? Number(rows[0].toplam) : 0 };
 }
 
 /**
@@ -267,7 +267,7 @@ async function kutuphaneKullananlar({ kosu, ad, surum, limit, offset }) {
  */
 async function degerler({ gorunum, kolon, kosu, q, f, ara }) {
   const kol = kolonlar.kolonOf(gorunum, kolon);
-  if (!kol || !kol.secim)
+  if (!kol?.secim)
     throw Object.assign(new Error('Bu kolon için değer listesi yok.'), {
       status: 400,
       code: 'gecersiz_kolon',
@@ -322,7 +322,7 @@ async function degerler({ gorunum, kolon, kosu, q, f, ara }) {
       deger: r.deger == null ? null : r.deger,
       sayi: Number(r.sayi),
     })),
-    farkli: rows && rows[0] ? Number(rows[0].farkli) : 0,
+    farkli: rows?.[0] ? Number(rows[0].farkli) : 0,
   };
 }
 
@@ -334,7 +334,7 @@ async function uygulamaDetay({ kosu, host, uygNo }) {
       WHERE u.kosu_id = $1 AND u.host = $2 AND u.uyg_no = $3`,
     [kosu, host, uygNo],
   );
-  const u = a.rows && a.rows[0];
+  const u = a.rows?.[0];
   if (!u) return null;
   const w = await db().query(
     `SELECT * FROM ear_envanter_warlari WHERE kosu_id = $1 AND host = $2 AND uyg_no = $3 ORDER BY war_no`,
@@ -485,7 +485,7 @@ async function kosuDetay(id, { hostlarla = true } = {}) {
             hata, zamanlayici_anahtari, created_at, finished_at FROM ear_envanter_kosulari WHERE id = $1`,
     [id],
   );
-  const kosu = k.rows && k.rows[0];
+  const kosu = k.rows?.[0];
   if (!kosu) return null;
   const p = await db().query(
     `SELECT parti_no, host_sayisi, durum, awx_server_id, awx_job_id, awx_durum, baslatma_denemesi, alim_denemesi, hata,
@@ -513,7 +513,7 @@ async function sayilar() {
             (SELECT COUNT(*) FROM ear_envanter_warlari w JOIN son ON son.host = w.host AND son.kosu_id = w.kosu_id) AS war`,
     [0],
   );
-  const r = (rows && rows[0]) || {};
+  const r = rows?.[0] || {};
   return {
     host: Number(r.host || 0),
     uygulama: Number(r.uygulama || 0),

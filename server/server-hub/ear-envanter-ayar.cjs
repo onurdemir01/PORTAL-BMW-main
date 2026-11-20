@@ -456,8 +456,7 @@ const trGun = (d) => new Date(d.getTime() + TR_OFSET_MS).toISOString().slice(0, 
 
 /** Ayar degerleri -> plan nesnesi. */
 function planOf(deger, p) {
-  const al = (k) =>
-    deger && deger[`${p}_${k}`] != null ? deger[`${p}_${k}`] : PLAN_VARSAYILAN[p][k];
+  const al = (k) => (deger?.[`${p}_${k}`] != null ? deger[`${p}_${k}`] : PLAN_VARSAYILAN[p][k]);
   const [ss, dd] = String(al('saat')).split(':').map(Number);
   const [by, ba, bg] = String(al('baslangic')).split('-').map(Number);
   return {

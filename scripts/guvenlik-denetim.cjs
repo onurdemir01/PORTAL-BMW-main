@@ -118,7 +118,7 @@ function gercekDuzeltme(fixAvailable, kilitPaketleri) {
   if (fixAvailable === false || fixAvailable == null) return false;
   if (fixAvailable === true) return true;
   const kurulu = parseSemver(
-    String((kilitPaketleri[`node_modules/${fixAvailable.name}`] || {}).version || ''),
+    String(kilitPaketleri[`node_modules/${fixAvailable.name}`]?.version || ''),
   );
   const oneri = parseSemver(String(fixAvailable.version || ''));
   if (!kurulu || !oneri) return true; // bilinemiyorsa siki tarafta kal
@@ -148,7 +148,7 @@ function kokDuzeltmeVar(ad, zafiyetler, kilitPaketleri, gorulen = new Set()) {
 function karar(audit, kilitPaketleri) {
   const dusuren = [];
   const bilgi = [];
-  for (const [ad, v] of Object.entries((audit && audit.vulnerabilities) || {})) {
+  for (const [ad, v] of Object.entries(audit?.vulnerabilities || {})) {
     const yollar = Array.isArray(v.nodes) && v.nodes.length ? v.nodes : [`node_modules/${ad}`];
     const calisma = yollar.some((y) => kilitPaketleri[y] && !kilitPaketleri[y].dev);
     const duzeltmeVar = kokDuzeltmeVar(ad, audit.vulnerabilities, kilitPaketleri);

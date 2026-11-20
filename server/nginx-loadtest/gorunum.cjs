@@ -27,7 +27,7 @@ const MAX_RELOAD = 50;
 const TUR_RE = /^[A-Za-z0-9_-]{1,120}$/;
 const YUK_DOYMA_ONEKI = 'doyma:yuk_cpu_bosta_';
 const yukDoyduMu = (a) =>
-  Array.isArray(a && a.nedenler) &&
+  Array.isArray(a?.nedenler) &&
   a.nedenler.some((n) => typeof n === 'string' && n.startsWith(YUK_DOYMA_ONEKI));
 
 const sonlu = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
@@ -293,7 +293,7 @@ function agBostaGorunumu(x) {
  *    kodlamada ise uyari; identity: sikistirilmis yanit varsa uyari. wrk / eski k6: olculmedi.
  */
 function kipDogrulama(a, { motor = 'k6', hedefTuru = 'sunucu', protokol = 'h1' } = {}) {
-  const ham = a && a.ham && typeof a.ham === 'object' && !Array.isArray(a.ham) ? a.ham : {};
+  const ham = a?.ham && typeof a.ham === 'object' && !Array.isArray(a.ham) ? a.ham : {};
   const uyarilar = [];
   const p = {
     istenen: protokol === 'h2' ? 'h2' : 'h1',
@@ -414,14 +414,14 @@ function adimGorunumu(a, secenek = {}) {
     reloadlar,
     yukCpuBosta: ham ? sonlu(ham.yuk_cpu_bosta) : null,
     // B1: yeni playbook (kayit bekleniyordu) ama bu adimda olcum yok; eski kosu false.
-    yukCpuOlculemedi: !!(ham && ham.yuk_cpu_olculemedi === true),
+    yukCpuOlculemedi: !!(ham?.yuk_cpu_olculemedi === true),
     yukDoydu: yukDoyduMu(a),
     // 2026-11-03 (bilgi): bellek (eski kosu null) ve kip dogrulamasi (istenen / gerceklesen).
-    bellek: bellekGorunumu(ham && ham.bellek),
+    bellek: bellekGorunumu(ham?.bellek),
     kipDogrulama: kipDogrulama(a, secenek),
     // 2026-11-03 (bilgi): bant genisligi ve bellek ayrisimi (eski kosu null).
-    ag: agGorunumu(ham && ham.ag),
-    bellekDetay: bellekDetayGorunumu(ham && ham.bellek_detay),
+    ag: agGorunumu(ham?.ag),
+    bellekDetay: bellekDetayGorunumu(ham?.bellek_detay),
   };
 }
 
@@ -484,10 +484,10 @@ function sonucOzeti(adimlar, analizOzeti, kosuUyarilari = []) {
     hataVar: (t429 ?? 0) > 0 || (t5xx ?? 0) > 0 || (enHata ?? 0) > 0,
     cpuOlculemeyenAdim: liste.filter((a) => a.cpuOlculemedi).length,
     yukDoyduAdim: liste.filter(yukDoyduMu).length,
-    konfDegisti: kesitler ? kesitler.some((k) => k && k.konf_degisti === true) : null,
+    konfDegisti: kesitler ? kesitler.some((k) => k?.konf_degisti === true) : null,
     reloadlar: reloadlar.slice(0, MAX_RELOAD),
     // 2026-11-03 (bilgi): bosta NIC tabani ve olasi bellek sizintisi (eski kosu null).
-    agBosta: agBostaGorunumu(oz && oz.ag_bosta),
+    agBosta: agBostaGorunumu(oz?.ag_bosta),
     bellekSizinti: bellekSizinti(liste, kosuUyarilari),
   };
 }
@@ -533,10 +533,7 @@ function sunucuAyari(p, sonucOzet, analizOzeti, satir = {}) {
     geriAlma = { durum: 'hata', metin: GERI_ALMA_SONUCU_YOK };
   }
   const liste = (v) => (Array.isArray(v) ? v.map((x) => String(x).slice(0, 300)) : []);
-  const uyarilar = [...new Set([...liste(k && k.uyarilar), ...liste(st && st.uyarilar)])].slice(
-    0,
-    20,
-  );
+  const uyarilar = [...new Set([...liste(k?.uyarilar), ...liste(st?.uyarilar)])].slice(0, 20);
   return {
     http2: p.protokol === 'h2',
     ae: p.ae ?? null,

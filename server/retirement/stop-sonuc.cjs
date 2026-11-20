@@ -193,7 +193,7 @@ function onKontrolSonucu(kind, jobStatus, result, jobId, onceki = null) {
  *  onay kimligini tasiyor; `jobId` verilirse ayni is, `maxYasDk` verilirse sonuc o kadar dakikadan taze. */
 function onKontrolGecerli(json, kind, { jobId = null, maxYasDk = null, now = new Date() } = {}) {
   const o = onKontrolOku(json);
-  if (!o || o.durum !== 'ok' || o.kullanildi) return null;
+  if (o?.durum !== 'ok' || o.kullanildi) return null;
   const iz = Array.isArray(o.izinler) ? o.izinler.map((x) => String(x)).filter(Boolean) : [];
   if (!onayVar(iz, kind)) return null;
   if (jobId != null && Number(o.jobId) !== Number(jobId)) return null;

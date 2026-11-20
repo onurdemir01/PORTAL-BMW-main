@@ -102,7 +102,7 @@ function sablonApi(r) {
 
 /** UX_nls_ad ihlali: on kontrolden sonra ayni adla baska kayit yazildi. */
 function tekilIhlali(e) {
-  return /2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message));
+  return /2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e?.message));
 }
 
 module.exports = { AD_MAX, GOVDE_MAX_BAYT, SQL, sablonGovdesi, sablonApi, tekilIhlali };

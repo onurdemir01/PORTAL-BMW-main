@@ -233,6 +233,6 @@ function ipucuYaz(h, hata) {
   );
   process.exit(hatali === 0 ? 0 : 1);
 })().catch((e) => {
-  console.error(`[tls] HATA: ${e && e.message}`);
+  console.error(`[tls] HATA: ${e?.message}`);
   process.exit(1);
 });

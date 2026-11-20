@@ -8,7 +8,7 @@
 // hala TEK cagridir, yalniz kendi icinde 4 alt-router'i sirayla mount eder.
 const express = require('express');
 const session = require('express-session');
-const { authenticate, clearCache } = require('./ldap.cjs');
+const { authenticate } = require('./ldap.cjs');
 const { getRequestUser, getRequestRole, oturumYok } = require('./utils.cjs');
 const roleStore = require('./role-store.cjs');
 const { initPresenceRoutes, removePresence } = require('./presence-routes.cjs');
@@ -262,7 +262,6 @@ function initAuth(app) {
     }
     req.session.destroy(() => {
       if (username) {
-        clearCache(username);
         removePresence(username);
       }
       oturumCerezi.cerezleriSil(res, COOKIE_NAME);

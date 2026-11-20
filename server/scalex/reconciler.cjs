@@ -436,7 +436,7 @@ async function tick() {
     const jobId = Number(j.awx_job_id);
     try {
       const status = await runner.getJobStatusOnServer(serverId, jobId);
-      if (!status || !status.finished) continue;
+      if (!status?.finished) continue;
       const parsed = result.extractScaleXResult(status.artifacts);
       await finalizeOperation({ serverId, jobId, status, parsed });
       finalized++;
@@ -449,7 +449,7 @@ async function tick() {
       // AWX yaniti tavani asiyorsa bir sonraki turda da asacak. Yasi dolana kadar
       // beklemek, ayni dev yaniti her turda yeniden indirmeye calismak demekti:
       // OOM'u cozup yerine sonu gelmez bir indirme dongusu birakirdik.
-      if (e && e.tooLarge) {
+      if (e?.tooLarge) {
         await markStale(
           serverId,
           jobId,

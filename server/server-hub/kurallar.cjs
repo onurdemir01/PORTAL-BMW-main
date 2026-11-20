@@ -19,7 +19,7 @@ const { varsayilanSira } = require('../util/siralama.cjs');
 /** Son degerlendirmeden kod -> { bulgu, sunucu }. Taramadan dusen sunucu sayilmaz. */
 function sayimlar(a) {
   const out = new Map();
-  for (const h of (a && a.hosts) || []) {
+  for (const h of a?.hosts || []) {
     if (h.taramadanDustu) continue;
     for (const f of h.findings || []) {
       if (!out.has(f.code)) out.set(f.code, { bulgu: 0, sunucu: new Set() });
@@ -137,14 +137,14 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
     }
   });
 
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const kim = (req) => req.session?.user?.username || 'unknown';
 
   router.put('/kurallar/seviye/:kod', async (req, res) => {
     try {
       const r = await ayarlar.seviyeYaz({
         kod: req.params.kod,
-        seviye: req.body && req.body.seviye,
-        aciklama: req.body && req.body.aciklama,
+        seviye: req.body?.seviye,
+        aciklama: req.body?.aciklama,
         kim: kim(req),
       });
       onbellekSil();
@@ -165,8 +165,8 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
     try {
       const r = await ayarlar.limitYaz({
         ad: req.params.ad,
-        deger: req.body && req.body.deger,
-        aciklama: req.body && req.body.aciklama,
+        deger: req.body?.deger,
+        aciklama: req.body?.aciklama,
         kim: kim(req),
       });
       if (!r.degismedi)
@@ -182,8 +182,8 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
     try {
       const r = await ayarlar.etiketYaz({
         kural: req.params.kural,
-        seviye: req.body && req.body.seviye,
-        aciklama: req.body && req.body.aciklama,
+        seviye: req.body?.seviye,
+        aciklama: req.body?.aciklama,
         kim: kim(req),
       });
       if (!r.degismedi)
@@ -203,8 +203,8 @@ function mount(router, { ayarlar, getAssessment, onbellekSil, audit }) {
   router.put('/kurallar/kok-yoksay', async (req, res) => {
     try {
       const r = await ayarlar.kokYoksayYaz({
-        liste: req.body && req.body.liste,
-        aciklama: req.body && req.body.aciklama,
+        liste: req.body?.liste,
+        aciklama: req.body?.aciklama,
         kim: kim(req),
       });
       onbellekSil();

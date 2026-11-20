@@ -131,7 +131,7 @@ async function webHedefleri() {
   } catch (e) {
     throw hata(
       424,
-      `Server Hub sunucu listesi okunamadı: ${M(maskele(e && e.message), 200)}`,
+      `Server Hub sunucu listesi okunamadı: ${M(maskele(e?.message), 200)}`,
       'web_listesi_okunamadi',
     );
   }
@@ -228,7 +228,7 @@ function hedefleriDuzle(liste) {
   const harita = new Map();
   let gecersiz = 0;
   for (const x of liste || []) {
-    const h = String((x && x.host) || '')
+    const h = String(x?.host || '')
       .trim()
       .toUpperCase();
     if (!alim.HOST_RE.test(h)) {
@@ -236,7 +236,7 @@ function hedefleriDuzle(liste) {
       continue;
     }
     if (!harita.has(h)) harita.set(h, new Set());
-    const o = String((x && x.ortam) || '').trim();
+    const o = String(x?.ortam || '').trim();
     if (o) harita.get(h).add(o);
   }
   const hedefler = [...harita.keys()]
@@ -352,11 +352,11 @@ async function kosuOlustur({
           host_sayisi: x.host_sayisi,
         })),
       ),
-      esAnahtarlar && esAnahtarlar.length ? JSON.stringify(esAnahtarlar) : null,
+      esAnahtarlar?.length ? JSON.stringify(esAnahtarlar) : null,
     ],
     { tekrar: false },
   );
-  const id = r.rows && r.rows[0] ? r.rows[0].id : null;
+  const id = r.rows?.[0] ? r.rows[0].id : null;
   if (id == null) {
     if (zamanlayiciAnahtari) return null;
     throw hata(
@@ -378,7 +378,7 @@ async function kosuOku(id) {
   const { rows } = await db().query(`SELECT * FROM ear_envanter_kosulari WHERE id = $1`, [
     Number(id),
   ]);
-  return rows && rows[0] ? rows[0] : null;
+  return rows?.[0] ? rows[0] : null;
 }
 
 // ── PARTI BASLATMA ──────────────────────────────────────────────────────────────────────────────
@@ -422,7 +422,7 @@ async function siradakiPartiyiBaslat(kosu, req = null) {
     `SELECT TOP 1 * FROM ear_envanter_partileri WHERE kosu_id = $1 AND durum = 'BEKLIYOR' ORDER BY parti_no`,
     [kosu.id],
   );
-  const parti = rows && rows[0];
+  const parti = rows?.[0];
   if (!parti) return null;
   if (!_launch) return { bekliyor: true, neden: 'AWX başlatıcı hazır değil' };
   const al = await db().query(
@@ -454,8 +454,8 @@ async function siradakiPartiyiBaslat(kosu, req = null) {
       },
     );
   } catch (e) {
-    const mesaj = M(maskele(e && e.message), 1000) || 'AWX işi başlatılamadı';
-    const yapilandirma = YAPILANDIRMA_KODLARI.has(Number(e && e.status));
+    const mesaj = M(maskele(e?.message), 1000) || 'AWX işi başlatılamadı';
+    const yapilandirma = YAPILANDIRMA_KODLARI.has(Number(e?.status));
     if (yapilandirma) {
       await db().query(
         `UPDATE ear_envanter_partileri SET durum = 'BEKLIYOR', hata = $2 WHERE id = $1 AND durum = 'CALISIYOR'`,
@@ -521,7 +521,7 @@ async function launchSonucunuBagla(kosu, parti, sonuc) {
   let uzlasma = (() => {
     if (jobId == null) return `${neden}; AWX job kimliği yok, iptal doğrulanamadı`;
     if (iptalEdildi) return `${neden}; AWX iptali istendi`;
-    return `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi && iptalHatasi.message), 300) || 'bilinmeyen hata'}`;
+    return `${neden}; AWX iptali başarısız: ${M(maskele(iptalHatasi?.message), 300) || 'bilinmeyen hata'}`;
   })();
   let uzlasmaKaydi = false;
   try {
@@ -544,7 +544,7 @@ async function launchSonucunuBagla(kosu, parti, sonuc) {
       uzlasmaKaydi = cakisma.rowCount === 1;
     }
   } catch (e) {
-    console.error('[EarEnvanter] launch uzlasma kaydi yazilamadi:', maskele(e && e.message));
+    console.error('[EarEnvanter] launch uzlasma kaydi yazilamadi:', maskele(e?.message));
   }
   console.error(
     `[EarEnvanter] kosu ${kosu.id} parti ${parti.parti_no} launch uzlasmasi${uzlasmaKaydi ? '' : ' KAYDEDILEMEDI'}:`,
@@ -579,7 +579,7 @@ function statsHaritasi(stats, kosu, parti) {
       uyusmazlik: `set_stats başka bir koşuya ait (${M(stats.kosu_no, 12)}/${M(stats.parti_no, 8)})`,
     };
   for (const h of Array.isArray(stats.hostlar) ? stats.hostlar : []) {
-    const ad = String((h && h.host) || '').toUpperCase();
+    const ad = String(h?.host || '').toUpperCase();
     if (alim.HOST_RE.test(ad)) harita.set(ad, h);
   }
   return { harita, uyusmazlik: null };
@@ -648,11 +648,11 @@ async function hostuAl(kosu, parti, hedef, statsHost, dizin, isNotu) {
 /** ALINIYOR'a alinmis partiyi isler: her host sirayla (bellekte tek host). */
 async function partiyiAl(kosu, parti, st) {
   const { extractStatsKey } = require('../scalex/result.cjs');
-  const stats = st && st.artifacts ? extractStatsKey(st.artifacts, STATS_ANAHTARI) : null;
+  const stats = st?.artifacts ? extractStatsKey(st.artifacts, STATS_ANAHTARI) : null;
   const { harita, uyusmazlik } = statsHaritasi(stats, kosu, parti);
   const dizin = parametreler(kosu).dizin || alim.earDizin();
   const isNotu = (() => {
-    if (st && st.status && st.status !== 'successful')
+    if (st?.status && st.status !== 'successful')
       return `AWX işi ${st.status}${st.jobExplanation ? ': ' + M(maskele(st.jobExplanation), 300) : ''}`;
     return null;
   })();
@@ -675,7 +675,7 @@ async function partiyiAl(kosu, parti, st) {
           ortam: hedef.ortam,
           durum: 'OKUNAMADI',
           playbookDurum: kayit.host.playbook_durum,
-          hata: `DB'ye yazılamadı: ${M(maskele(e && e.message), 300)}`,
+          hata: `DB'ye yazılamadı: ${M(maskele(e?.message), 300)}`,
           hamBayt: kayit.host.ham_bayt,
         }),
       );
@@ -684,12 +684,12 @@ async function partiyiAl(kosu, parti, st) {
   const notlar = [
     isNotu,
     uyusmazlik,
-    !stats && st && st.status === 'successful' ? 'set_stats (ear_envanter_result) yok' : null,
+    !stats && st?.status === 'successful' ? 'set_stats (ear_envanter_result) yok' : null,
   ].filter(Boolean);
   await db().query(
     `UPDATE ear_envanter_partileri SET durum = 'BITTI', finished_at = SYSUTCDATETIME(), awx_durum = $2, hata = $3
       WHERE id = $1 AND durum = 'ALINIYOR'`,
-    [parti.id, M(st && st.status, 16) || null, M(notlar.join(' · '), 1000) || null],
+    [parti.id, M(st?.status, 16) || null, M(notlar.join(' · '), 1000) || null],
   );
   return { veri, toplam: hostlarOf(parti).length };
 }
@@ -731,13 +731,13 @@ async function partiyiKontrolEt(kosu, parti) {
     );
   } catch (e) {
     const yas = await yasDk(parti.started_at);
-    if (Number(e && e.status) === 404 && yas != null && yas >= KAYIP_IS_DK)
+    if (Number(e?.status) === 404 && yas != null && yas >= KAYIP_IS_DK)
       return alimaAl(kosu, parti, {
         status: 'unknown',
         artifacts: {},
         jobExplanation: 'AWX işi bulunamadı (404)',
       });
-    return { bekliyor: true, okunamadi: M(maskele(e && e.message), 200) };
+    return { bekliyor: true, okunamadi: M(maskele(e?.message), 200) };
   }
   if (!TERMINAL.has(st.status)) {
     if (st.status && st.status !== parti.awx_durum)
@@ -820,7 +820,7 @@ async function sayim(kosuId) {
       WHERE k.id = $1 GROUP BY k.beklenen`,
     [kosuId],
   );
-  const r = (rows && rows[0]) || {};
+  const r = rows?.[0] || {};
   const beklenen = Number(r.beklenen || 0);
   const tam = Number(r.tam || 0);
   const kokYok = Number(r.kok_yok || 0);
@@ -889,10 +889,7 @@ async function kosuIptal(kosuId, kim) {
       await runner().cancelJobOnServer(Number(p.awx_server_id) || 0, Number(p.awx_job_id));
       iptalEdilen.push(Number(p.awx_job_id));
     } catch (e) {
-      console.warn(
-        `[EarEnvanter] AWX isi ${p.awx_job_id} iptal edilemedi:`,
-        maskele(e && e.message),
-      );
+      console.warn(`[EarEnvanter] AWX isi ${p.awx_job_id} iptal edilemedi:`, maskele(e?.message));
     }
   }
   return { ...b, awxIptal: iptalEdilen };
@@ -920,7 +917,7 @@ async function kosuyuIlerlet(kosu) {
     `SELECT COUNT(*) AS n FROM ear_envanter_partileri WHERE kosu_id = $1 AND durum IN ('BEKLIYOR', 'CALISIYOR', 'ALINIYOR')`,
     [kosu.id],
   );
-  if (Number(acik.rows && acik.rows[0] && acik.rows[0].n) === 0) {
+  if (Number(acik.rows?.[0]?.n) === 0) {
     const s = await kosuBitir(kosu.id);
     if (s.kapandi)
       console.log(
@@ -983,8 +980,8 @@ async function zamanlayiciyiKontrolEt(simdi = new Date()) {
       }
     } catch (e) {
       _bekle.set(z.anahtar, simdi.getTime() + BEKLEME_MS);
-      console.warn(`[EarEnvanter] plan kosusu acilamadi (${z.anahtar}):`, maskele(e && e.message));
-      son = { hata: M(e && e.message, 200), anahtar: z.anahtar };
+      console.warn(`[EarEnvanter] plan kosusu acilamadi (${z.anahtar}):`, maskele(e?.message));
+      son = { hata: M(e?.message, 200), anahtar: z.anahtar };
     }
   }
   return son;
@@ -992,12 +989,12 @@ async function zamanlayiciyiKontrolEt(simdi = new Date()) {
 
 async function tick(simdi = new Date()) {
   await zamanlayiciyiKontrolEt(simdi).catch((e) =>
-    console.warn('[EarEnvanter] zamanlayici:', maskele(e && e.message)),
+    console.warn('[EarEnvanter] zamanlayici:', maskele(e?.message)),
   );
   // AWX'ten elle baslatilan bitmis isler kosu olarak acilir; asagidaki tur ayni anda alir.
   await require('./ear-envanter-awx.cjs')
     .awxIsleriniAl({ simdi: simdi.getTime() })
-    .catch((e) => console.warn('[EarEnvanter] AWX isleri:', maskele(e && e.message)));
+    .catch((e) => console.warn('[EarEnvanter] AWX isleri:', maskele(e?.message)));
   const { rows } = await db().query(
     `SELECT TOP 5 * FROM ear_envanter_kosulari k
       WHERE k.durum = 'CALISIYOR'
@@ -1008,14 +1005,14 @@ async function tick(simdi = new Date()) {
     try {
       await kosuyuIlerlet(k);
     } catch (e) {
-      console.warn(`[EarEnvanter] kosu ${k.id} ilerletilemedi:`, maskele(e && e.message));
+      console.warn(`[EarEnvanter] kosu ${k.id} ilerletilemedi:`, maskele(e?.message));
     }
   }
   if (Date.now() - _sonSaklama > SAKLAMA_ARALIK_MS) {
     _sonSaklama = Date.now();
     await require('./ear-envanter-saklama.cjs')
       .saklama()
-      .catch((e) => console.warn('[EarEnvanter] saklama:', maskele(e && e.message)));
+      .catch((e) => console.warn('[EarEnvanter] saklama:', maskele(e?.message)));
   }
 }
 
@@ -1025,7 +1022,7 @@ function startPoller() {
     if (_ticking) return;
     _ticking = true;
     tick()
-      .catch((e) => console.warn('[EarEnvanter] tick hatasi:', maskele(e && e.message)))
+      .catch((e) => console.warn('[EarEnvanter] tick hatasi:', maskele(e?.message)))
       .finally(() => {
         _ticking = false;
       });

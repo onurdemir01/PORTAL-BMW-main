@@ -50,7 +50,7 @@ function tekillestir(tablo, satirlar) {
     return v == null || !Number.isFinite(n) ? null : n;
   };
   const temizle = (r) => {
-    if (r && Object.prototype.hasOwnProperty.call(r, ID_KOLON)) delete r[ID_KOLON];
+    if (r && Object.hasOwn(r, ID_KOLON)) delete r[ID_KOLON];
     return r;
   };
   if (!kolonlar) return { satirlar: liste.map(temizle), atilan: 0 };
@@ -58,9 +58,8 @@ function tekillestir(tablo, satirlar) {
   const kalan = [];
   const kalanId = [];
   let atilan = 0;
-  for (let i = 0; i < liste.length; i += 1) {
-    const r = liste[i];
-    const k = kolonlar.map((c) => anahtarDegeri(r && r[c])).join('\u0001');
+  for (const r of liste) {
+    const k = kolonlar.map((c) => anahtarDegeri(r?.[c])).join('\u0001');
     const id = idAl(r);
     if (!yer.has(k)) {
       yer.set(k, kalan.length);

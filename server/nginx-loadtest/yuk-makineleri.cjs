@@ -53,7 +53,7 @@ async function oku(db) {
     throw hata(
       424,
       'yuk_makineleri_okunamadi',
-      `Yük makinesi listesi Portal veritabanından okunamadı: ${e && e.message}`,
+      `Yük makinesi listesi Portal veritabanından okunamadı: ${e?.message}`,
     );
   }
   if (k.length) return { hostlar: k.map((x) => x.host), kaynak: 'portal', kayitlar: k };

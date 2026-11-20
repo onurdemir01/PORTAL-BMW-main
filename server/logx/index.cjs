@@ -172,7 +172,7 @@ function initLogX(app) {
     }
 
     const row = await playbookRegistry.getByKey(key).catch(() => null);
-    if (!row || !row.enabled || row.handler !== 'host_target') {
+    if (!row?.enabled || row.handler !== 'host_target') {
       return res.status(404).json({ ok: false, error: 'Playbook bulunamadı veya kullanılamıyor.' });
     }
     const templateId = playbookRegistry.getEffectiveTemplateId(row);
@@ -199,7 +199,7 @@ function initLogX(app) {
         attempts++;
       }
 
-      if (!jobStatus || jobStatus.status !== 'successful') {
+      if (jobStatus?.status !== 'successful') {
         return res.status(502).json({
           ok: false,
           error: `AWX job ${jobStatus?.status || 'timeout'}`,

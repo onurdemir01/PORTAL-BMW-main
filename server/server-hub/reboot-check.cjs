@@ -1137,8 +1137,7 @@ function sunucuSeviyesi(sunucular, hedefler, onceSat = null, deg = null) {
 /** Goruntu yeni bicimde ve alinmis mi: BOOT satiri olmayan (eski bicim / bos) goruntuyle duzeltme YAPILMAZ. */
 const goruntuTamam = (r) =>
   !!(
-    r &&
-    r.goruntu_ok &&
+    r?.goruntu_ok &&
     Array.isArray(r.goruntu) &&
     r.goruntu.some((l) => String(l).startsWith('BOOT|'))
   );
@@ -1290,7 +1289,7 @@ function mount(router, { launch, HOST_RE, limit }) {
     // tetiklenir, BEKLENMEZ (liste yavaslamasin; alinan kayit bir sonraki yenilemede gorunur).
     require('./reboot-check-awx.cjs')
       .awxIsleriniAl()
-      .catch((e) => console.warn('[RebootCheck] AWX isleri:', e && e.message));
+      .catch((e) => console.warn('[RebootCheck] AWX isleri:', e?.message));
     try {
       const { rows } = await db().query(
         `SELECT TOP 50 id, hosts_json, notes, status, created_by, created_at, once_job_id, once_server_id, once_at,

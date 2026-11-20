@@ -139,7 +139,7 @@ function parseReqZone(value) {
   const z = rx.zone.exec(v);
   return {
     name: z ? z[1] : null,
-    size: z && z[2] ? z[2] : null,
+    size: z?.[2] ? z[2] : null,
     rate: (rx.rate.exec(v) || [])[1] || null,
     variable: (rx.firstWord.exec(v) || [])[1] || null,
   };
@@ -277,9 +277,7 @@ async function loadRateLimits({ scanDate, suz } = {}) {
       const ham = String(r.value || '')
         .trim()
         .toLowerCase();
-      const iv = Object.prototype.hasOwnProperty.call(INCLUDE_ALIASES, ham)
-        ? INCLUDE_ALIASES[ham]
-        : ham;
+      const iv = Object.hasOwn(INCLUDE_ALIASES, ham) ? INCLUDE_ALIASES[ham] : ham;
       h.include = INCLUDE_VALUES.has(iv) ? iv : null;
       if (r.matches === false || r.matches === 0) h.mismatch += 1;
       continue;
@@ -459,7 +457,7 @@ function emptySummary() {
 
 /** Bilerek kapali sunucu varsa bilgi metni (uyari degil); yoksa undefined. */
 function kapaliMesaji(s) {
-  if (!s || !s.kapali) return undefined;
+  if (!s?.kapali) return undefined;
   const hepsi = s.kapali === s.hosts;
   return (
     `${hepsi ? 'Tüm sunucularda' : s.kapali + ' sunucuda'} rate limit bilerek kapatılmış: ` +

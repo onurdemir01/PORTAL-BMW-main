@@ -95,7 +95,7 @@ function brotliRedliFetch(asil, HeadersSinifi) {
   if (typeof asil !== 'function' || asil[TELAFI_ISARETI]) return asil;
   const sarilmis = async function fetchBrotliRedli(input, init) {
     const kaynak =
-      (init && init.headers) ||
+      init?.headers ||
       (input && typeof input === 'object' && 'headers' in input ? input.headers : undefined);
     const basliklar = new HeadersSinifi(kaynak || undefined);
     if (!basliklar.has('accept-encoding')) basliklar.set('accept-encoding', 'gzip, deflate');
@@ -165,7 +165,7 @@ function dnsNulKorumasi(dns) {
     s[TELAFI_ISARETI] = asil;
     dns[ad] = s;
     geri.push(() => (dns[ad] = asil));
-    const p = dns.promises && dns.promises[ad];
+    const p = dns.promises?.[ad];
     if (typeof p === 'function' && !p[TELAFI_ISARETI]) {
       const sp = function (host, ...rest) {
         if (typeof host === 'string' && host.includes(NUL)) return Promise.reject(nulHatasi(host));

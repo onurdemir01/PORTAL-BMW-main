@@ -63,20 +63,20 @@ function durumKodu(s) {
 }
 
 function hataYaniti(res, e) {
-  const status = durumKodu(e && e.status);
+  const status = durumKodu(e?.status);
   const message =
     status === 500
       ? 'Uygulama Envanteri isteği işlenemedi.'
-      : String((e && e.message) || 'hata').slice(0, 600);
-  if (status === 500) console.warn('[EarEnvanter] istek hatasi:', e && e.message);
-  res.status(status).json({ ok: false, message, code: (e && e.code) || null });
+      : String(e?.message || 'hata').slice(0, 600);
+  if (status === 500) console.warn('[EarEnvanter] istek hatasi:', e?.message);
+  res.status(status).json({ ok: false, message, code: e?.code || null });
 }
 
 const tam = (v) => {
   const n = Number(v);
   return Number.isInteger(n) && n >= 0 ? n : null;
 };
-const kullanici = (req) => (req.session && req.session.user) || {};
+const kullanici = (req) => req.session?.user || {};
 
 function hostParam(v) {
   const h = String(v || '')
@@ -668,7 +668,7 @@ function mount(router, { launch, audit } = {}) {
       denetim(req, { islem: 'csv', gorunum, satir: n, beklenen: ilk.toplam });
       res.end();
     } catch (e) {
-      console.warn('[EarEnvanter] csv akisi kesildi:', gorunum, e && e.message);
+      console.warn('[EarEnvanter] csv akisi kesildi:', gorunum, e?.message);
       res.destroy(e);
     }
   }
@@ -733,7 +733,7 @@ function mount(router, { launch, audit } = {}) {
           const sunucu = (await sorgu.hostlar({ kosu })).find((r) => r.host === host) || null;
           return rapor.hostZipGirisleri({
             host,
-            ortam: sunucu && sunucu.ortam,
+            ortam: sunucu?.ortam,
             kosu,
             yuk,
             uygulamaSatirlari: uyg,
@@ -770,7 +770,7 @@ function mount(router, { launch, audit } = {}) {
 
   router.put('/ear/ayar/:anahtar', async (req, res) => {
     try {
-      const r = await ayar.yaz(req.params.anahtar, (req.body || {}).deger, kullanici(req).username);
+      const r = await ayar.yaz(req.params.anahtar, req.body?.deger, kullanici(req).username);
       denetim(req, { islem: 'ayar', ...r });
       res.json({ ok: true, ...r });
     } catch (e) {

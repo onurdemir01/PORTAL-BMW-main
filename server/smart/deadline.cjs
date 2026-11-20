@@ -106,7 +106,7 @@ function talepSonTarihiAlanlari(ticket, cfg) {
  */
 function pencereBekliyorMu(ticket, simdiMs = Date.now()) {
   const pl = ticket?.pendingLaunch;
-  if (!pl || pl.pencereBekle !== true) return false;
+  if (pl?.pencereBekle !== true) return false;
   const bas = new Date(pl.ocoWindowStartIso).getTime();
   return Number.isFinite(bas) && simdiMs < bas;
 }

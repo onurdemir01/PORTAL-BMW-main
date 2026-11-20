@@ -106,7 +106,7 @@ async function listApps({ env, tenant, clusterNames, namespace, user }) {
   }
 
   const clustersOf = (name) => {
-    const c = cat.clusters && cat.clusters[name];
+    const c = cat.clusters?.[name];
     return Array.isArray(c) && c.length ? c : clusterNames;
   };
   const keys = [];

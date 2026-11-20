@@ -285,7 +285,7 @@ function checkNodeVersion() {
 
   const bad = [];
   for (const [key, meta] of Object.entries(lock.packages || {})) {
-    const range = meta && meta.engines && meta.engines.node;
+    const range = meta?.engines?.node;
     if (!range || !key.startsWith('node_modules/')) continue;
     if (satisfies(running, range)) continue;
     const name = key.slice('node_modules/'.length);

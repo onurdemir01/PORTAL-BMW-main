@@ -110,7 +110,7 @@ async function record({ env, tenant, namespace, timing, awxJobId, job, playbookT
 
   let written = 0;
   for (const t of rows) {
-    const cluster = S(t && t.cluster, 64);
+    const cluster = S(t?.cluster, 64);
     if (!cluster) continue; // cluster'i olmayan bir olcumun anlami yok
     try {
       await db.query(

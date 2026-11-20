@@ -133,7 +133,7 @@ if (require.main === module)
       process.exitCode = rc;
     },
     (e) => {
-      console.error(`[bicim] HATA: ${e && e.message}`);
+      console.error(`[bicim] HATA: ${e?.message}`);
       process.exitCode = 1;
     },
   );

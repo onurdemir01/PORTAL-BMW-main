@@ -298,8 +298,8 @@ function validateRequest(
 
 /** launchJobOnServer -> istemci/DB sekli. Ayni sekil OpsX/SS ile: { id, status }. */
 function jobShape(launched, awxServerId) {
-  const id = launched && launched.jobId != null ? Number(launched.jobId) : null;
-  return { id, status: (launched && launched.status) || 'pending', awxServerId };
+  const id = launched?.jobId != null ? Number(launched.jobId) : null;
+  return { id, status: launched?.status || 'pending', awxServerId };
 }
 
 /**
@@ -310,7 +310,7 @@ function jobShape(launched, awxServerId) {
 function jobTemplateAllowed(statusInfo, cfg) {
   const t = statusInfo ? statusInfo.templateId : undefined;
   if (!Number.isInteger(t) || t <= 0) return null;
-  const allowed = [cfg && cfg.templateId, cfg && cfg.deleteTemplateId].filter(
+  const allowed = [cfg?.templateId, cfg?.deleteTemplateId].filter(
     (x) => Number.isInteger(x) && x > 0,
   );
   return allowed.includes(t);
@@ -478,7 +478,7 @@ function initNginxMigration(app) {
               AND delete_requested_at > DATEADD(day, -3, GETUTCDATE())`,
         );
         const cfg = live.rows.length ? await readConfig() : null;
-        if (cfg && cfg.awxServerId) {
+        if (cfg?.awxServerId) {
           const runner = require('../ansible/runner.cjs');
           await Promise.allSettled(
             live.rows.map(async (r) => {
@@ -642,7 +642,7 @@ function initNginxMigration(app) {
       await db.query(
         `INSERT INTO ansible_job_history (username, awx_server_id, template_id, template_name, job_id, status, params) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          (user && user.username) || 'portal',
+          user?.username || 'portal',
           serverId,
           templateId,
           `Nginx tarama: ${label || (clean.length ? clean.join(',') : 'tüm filo')}`,
@@ -1013,7 +1013,7 @@ function initNginxMigration(app) {
 
   // -- Eylem: eski sunucudaki location (+ upstream) tanimini kaldir (23:00'e zamanlanir) --
   router.post('/delete', async (req, res) => {
-    if (ESKI_FILO_KAPALI.has(String((req.body && req.body.group) || ''))) {
+    if (ESKI_FILO_KAPALI.has(String(req.body?.group || ''))) {
       return res.status(409).json({
         ok: false,
         code: 'eski_filo_kapali',
@@ -1116,12 +1116,12 @@ function initNginxMigration(app) {
         } else {
           try {
             const c = await runner.cancelJobOnServer(cfg.awxServerId, job.id);
-            if (c && c.canceled) outcome = 'canceled';
+            if (c?.canceled) outcome = 'canceled';
             else if (c && c.alreadyTerminal && c.stateVerified === true) {
               outcome = 'terminal';
               awxStatus = c.awxStatus || null;
               stateVerified = true;
-            } else if (c && c.alreadyTerminal) {
+            } else if (c?.alreadyTerminal) {
               // runner: iptal 405/409 + durum OKUNAMADI -> alreadyTerminal:true, stateVerified:false
               // (alan hic yoksa da DOGRULANMAMIS sayilir).
               // 405 tek basina "bitti" demek DEGIL (araya giren vekil POST'u reddedebilir): is
@@ -1132,7 +1132,7 @@ function initNginxMigration(app) {
             }
           } catch (e) {
             outcome = 'cancel_failed';
-            error = redact((e && e.message) || String(e));
+            error = redact(e?.message || String(e));
           }
         }
         const canceled = outcome === 'canceled';

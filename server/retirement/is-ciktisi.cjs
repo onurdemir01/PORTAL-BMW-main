@@ -195,7 +195,7 @@ function hedefIcerir(params, t) {
 function gecmisSatirlari(gecmis, jobId, t, aile) {
   return (Array.isArray(gecmis) ? gecmis : []).filter(
     (r) =>
-      sayi(r && r.job_id) === jobId && aileOf(r.template_name) === aile && hedefIcerir(r.params, t),
+      sayi(r?.job_id) === jobId && aileOf(r.template_name) === aile && hedefIcerir(r.params, t),
   );
 }
 
@@ -279,7 +279,7 @@ function webSunucusu(w, jobId) {
     : { id: null, belirsiz: true, satir: null };
 }
 const kaynakOf = (satir) => {
-  if (!satir || !satir.username) return null;
+  if (!satir?.username) return null;
   if (satir.username === ZAMANLAYICI_KULLANICI) return 'zamanlayici';
   return 'elle';
 };
@@ -374,7 +374,7 @@ function hedefIsKayitlari(t, gecmis) {
   const webler = jsonNesne(t.web_result_json);
   if (Array.isArray(webler))
     webler.forEach((w, i) => {
-      const jobId = sayi(w && w.jobId);
+      const jobId = sayi(w?.jobId);
       if (!jobId) return;
       ekle('web', jobId, WEB_DURUMU[String(w.status)] || 'bilinmiyor', {
         web: i,
@@ -464,7 +464,7 @@ function hedefIsleri(t, gecmis, { sunucuVar } = {}) {
 // AWX arayuzunde isin adresi: AAP 2.5 (API /api/controller/v2, gateway arayuzu) /execution/jobs/...,
 // klasik AWX / AAP <= 2.4 /#/jobs/... . Sunucu yoksa null.
 function awxIsAdresi(server, jobId) {
-  if (!server || !server.url) return null;
+  if (!server?.url) return null;
   const kok = String(server.url).replace(/(?<!\/)\/+$/, '');
   return /\/api\/controller\//.test(`${server.apiBase || ''}/`)
     ? `${kok}/execution/jobs/playbook/${jobId}/output`
@@ -498,7 +498,7 @@ function mount(router, deps = {}) {
           ok: false,
           code: 'olculemedi',
           kalici: false,
-          message: `İş çıktısı okunamadı: ${maskele(e && e.message)}`,
+          message: `İş çıktısı okunamadı: ${maskele(e?.message)}`,
         });
     }),
   );
@@ -601,11 +601,10 @@ async function isCiktisi(req, res, d) {
   try {
     info = await runner.getJobStatusOnServer(sid, jobId);
   } catch (e) {
-    if (e && e.code === 'awx_server_missing')
-      return arsivden('awx_server_missing', maskele(e.message));
+    if (e?.code === 'awx_server_missing') return arsivden('awx_server_missing', maskele(e.message));
     if (e && Number(e.status) === 404)
       return arsivden('awx_job_missing', `AWX iş #${jobId} artık yok (temizlenmiş olabilir).`);
-    return red(424, 'awx_okunamadi', `AWX işi okunamadı (#${jobId}): ${maskele(e && e.message)}`);
+    return red(424, 'awx_okunamadi', `AWX işi okunamadı (#${jobId}): ${maskele(e?.message)}`);
   }
   // BAGLAMA: isin playbook'u adimin playbook'u olmali; gecmiste template varsa o da tutmali.
   const beklenen = String(d.beklenenPlaybook()[ADIM_ANAHTARI[adim]] || '').toLowerCase();
@@ -636,11 +635,7 @@ async function isCiktisi(req, res, d) {
   try {
     ({ output: ham } = await runner.getJobOutputOnServer(sid, jobId, { artimli: !bitti }));
   } catch (e) {
-    return red(
-      424,
-      'awx_okunamadi',
-      `AWX iş #${jobId} çıktısı okunamadı: ${maskele(e && e.message)}`,
-    );
+    return red(424, 'awx_okunamadi', `AWX iş #${jobId} çıktısı okunamadı: ${maskele(e?.message)}`);
   }
   ham = String(ham ?? '');
   const output = maskele(ham);

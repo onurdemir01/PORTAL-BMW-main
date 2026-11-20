@@ -194,7 +194,7 @@ function assertAlternatifAyniIs(
 // ile AYNI. Yalniz bayrak ACIKCA false ise reddedilir; okunamadi/bilinmiyor gecer.
 function assertTemplateAcceptsExtraVars(tpl, templateId, extraVars, label) {
   if (!extraVars || typeof extraVars !== 'object' || Object.keys(extraVars).length === 0) return;
-  if (!tpl || tpl.askVariablesOnLaunch !== false) return;
+  if (tpl?.askVariablesOnLaunch !== false) return;
   throw require('../../ansible/template-preflight.cjs').promptKapaliHatasi({
     templateId,
     templateName: tpl.name,

@@ -46,7 +46,7 @@ function kopyaOf(c, karar) {
   const fresh = taze(h);
   const olculdu = j.runningKnown !== false;
   const durum = !fresh || !olculdu ? 'bilinmiyor' : j.running ? 'calisiyor' : 'kapali';
-  const ocp = j.capraz && j.capraz.ocp ? j.capraz.ocp.eslesme || [] : [];
+  const ocp = j.capraz?.ocp ? j.capraz.ocp.eslesme || [] : [];
   return {
     host: h.host,
     // Son bilinen calisma (bayat sunucuda da yazilir); sayim `durum`dan yapilir.
@@ -104,8 +104,8 @@ function kopyaDurumu(hosts) {
       unknown,
       // Siralama orani: bilinmiyor paydaya girmez; hic olculmeyen grup null (en sona).
       oran: olculen ? running / olculen : null,
-      calismaTutarsiz: !!(karar && karar.calismaTutarsiz),
-      autoStartTutarsiz: !!(karar && karar.autoStartTutarsiz),
+      calismaTutarsiz: !!karar?.calismaTutarsiz,
+      autoStartTutarsiz: !!karar?.autoStartTutarsiz,
       tutarsiz: !!(karar && (karar.calismaTutarsiz || karar.autoStartTutarsiz)),
       autoStartUyumsuz: copies.filter((k) => k.sapma.includes('autostart')).length,
       autoStartAcik: karar ? karar.autoStartAcik : 0,
@@ -183,9 +183,7 @@ function mount(router, { getAssessment }) {
         ...r,
       });
     } catch (err) {
-      res
-        .status(424)
-        .json({ ok: false, message: (err && err.message) || 'Kopya durumu hesaplanamadı.' });
+      res.status(424).json({ ok: false, message: err?.message || 'Kopya durumu hesaplanamadı.' });
     }
   });
 }

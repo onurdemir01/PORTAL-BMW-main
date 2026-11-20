@@ -10,7 +10,7 @@
 // Skor = gecen / (gecen + kalan) * 100, yalniz "scored" ve skora giren maddeler uzerinden.
 'use strict';
 
-const { ITEMS, BY_ID, normVal, sameVal, cmpItemId } = require('./catalog.cjs');
+const { ITEMS, sameVal, cmpItemId } = require('./catalog.cjs');
 
 const U = (s) =>
   String(s || '')

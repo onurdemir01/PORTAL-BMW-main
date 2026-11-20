@@ -1,0 +1,9 @@
+{
+  "//": "Yalniz ESLint'in tip bilgili kurallari icin (eslint.config.js KURUM_JS_TIPLI). Tip denetimi DEGIL: hata uretmez.",
+  "compilerOptions": {
+    "allowJs": true, "checkJs": false, "noEmit": true, "strict": false,
+    "target": "es2022", "module": "node16", "moduleResolution": "node16",
+    "skipLibCheck": true, "types": ["node"]
+  },
+  "include": ["server/**/*.cjs", "src/**/*.cjs", "shared/**/*.cjs", "scripts/**/*.cjs"]
+}

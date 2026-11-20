@@ -533,7 +533,7 @@ function senaryoGovdesi(b) {
  */
 const ADIM_EK_SN = 20;
 function adimSayisi(p) {
-  const d = p && p.motor === 'wrk' ? p.baglantilar : p && p.hizlar;
+  const d = p?.motor === 'wrk' ? p.baglantilar : p?.hizlar;
   return Array.isArray(d) ? d.length : 0;
 }
 function butceSn(p) {
@@ -890,8 +890,7 @@ function hostOrtami(host, k) {
       adEnv,
     );
   }
-  const satirlar =
-    k && k.invTum && typeof k.invTum.get === 'function' ? k.invTum.get(host) || [] : [];
+  const satirlar = k?.invTum && typeof k.invTum.get === 'function' ? k.invTum.get(host) || [] : [];
   if (!satirlar.length) {
     return ret(
       'hedef_envanterde_yok',
@@ -1134,7 +1133,7 @@ function onKontrolDegerlendir(
   const serbest = hedefTuru === 'serbest';
   // TEK HEDEF MODELI (2026-11-13): playbook hedefte nginx'i olcer (set_stats on_kontrol.hedef_nginx true | false | null).
   // Alan YOKSA (eski playbook: yalniz nginx hedefe kosabilirdi) cikti BIREBIR eskisi; null = belirlenemedi (ENGEL).
-  const nginxAlani = !serbest && Object.prototype.hasOwnProperty.call(ok, 'hedef_nginx');
+  const nginxAlani = !serbest && Object.hasOwn(ok, 'hedef_nginx');
   const nginxsiz = nginxAlani && ok.hedef_nginx === false;
   const belirsiz = nginxAlani && ok.hedef_nginx !== true && ok.hedef_nginx !== false;
   if (serbest) {
@@ -1178,15 +1177,15 @@ function onKontrolDegerlendir(
   // CPU kaydedici /web_log'u okuyamazsa sunucu tarafi olcum yok: playbook bunu ENGEL sayar.
   if (!serbest && !nginxsiz && HAYIR(ok.log_dizini_okunur))
     engeller.push('log dizini /web_log okunamıyor');
-  if (nginxsiz && kp && kp.sunucuAyar) engeller.push(NGINX_YOK_AYAR_ENGELI);
-  else if (!serbest && kp && kp.sunucuAyar && ok.srv_hazirlik !== 'ok') {
+  if (nginxsiz && kp?.sunucuAyar) engeller.push(NGINX_YOK_AYAR_ENGELI);
+  else if (!serbest && kp?.sunucuAyar && ok.srv_hazirlik !== 'ok') {
     engeller.push(
       ok.srv_hazirlik === 'fail'
         ? 'sunucu ayarı uygulanamadı (iş çıktısına bakın)'
         : 'sunucu ayarı ön kontrolde doğrulanmadı (playbook sunucu ayarını desteklemiyor olabilir; Ansible deposunu güncelleyin)',
     );
   }
-  if (!serbest && !(kp && kp.sunucuAyar) && ok.hazirlik_yedek === true) {
+  if (!serbest && !kp?.sunucuAyar && ok.hazirlik_yedek === true) {
     engeller.push(
       'hedefte önceki bir koşudan geri alınmamış sunucu ayarı vardı (değişmiş konfigürasyon ölçülürdü); bu ön kontrol geri almayı denedi, ön kontrolü yeniden çalıştırın',
     );
@@ -1210,9 +1209,9 @@ function onKontrolDegerlendir(
   if (!(toplam > 0)) engeller.push('ön kontrolde hiçbir yol denenmedi');
   else if (iki === null) uyarilar.push('200 dönen yol sayısı ölçülemedi');
   else if (iki < toplam) uyarilar.push(`${toplam - iki}/${toplam} yol 200 dönmedi`);
-  const statik = SAYI(ok.sikistirma && ok.sikistirma.statik);
+  const statik = SAYI(ok.sikistirma?.statik);
   // Sunucu ayarli kosuda dizinin durumu kosu oncesi kurulur: bu uyari gece kuyrugunda "yeni uyari" diye ogeyi atlatmasin.
-  if (statik > 0 && !(kp && kp.sunucuAyar))
+  if (statik > 0 && !kp?.sunucuAyar)
     uyarilar.push(`hedefte ön-sıkıştırılmış dosyalar var (${statik} yol)`);
   if (!serbest && !nginxsiz) {
     const df = SAYI(ok.web_log_df);
@@ -1524,8 +1523,8 @@ function ekstraDegiskenler({
     yuk_wrk_sha256: arac ? String(arac.wrkSha256 ?? '') : '',
     yuk_protokol: p.protokol === 'h2' ? 'h2' : 'h1',
     yuk_srv_ayar: srv ? '1' : '0',
-    yuk_srv_seviye: srv && srv.seviye != null ? String(srv.seviye) : '',
-    yuk_srv_static: srv && srv.static ? '1' : '0',
+    yuk_srv_seviye: srv?.seviye != null ? String(srv.seviye) : '',
+    yuk_srv_static: srv?.static ? '1' : '0',
     yuk_srv_dizin: srv ? String(srv.dizin) : '',
   };
 }
@@ -1631,7 +1630,7 @@ function ekstraDegiskenleriDenetle(ev, { simdiSn = Math.floor(Date.now() / 1000)
         'yuk_baglantilar',
         serbest ? SINIRLAR.serbestMaxBaglanti : SINIRLAR.maxBaglanti,
       );
-      if (!b || new Set(b).size !== b.length) ihlal.push('yuk_baglantilar');
+      if (new Set(b).size !== b?.length) ihlal.push('yuk_baglantilar');
       const t = sayi('yuk_is_parcacigi');
       if (
         t === null ||
@@ -1740,7 +1739,7 @@ function inListesi(onek, degerler, sql) {
 }
 
 const okunamadi = (kaynak, e) =>
-  Object.assign(new Error(`${kaynak} okunamadı: ${(e && e.message) || e}`), {
+  Object.assign(new Error(`${kaynak} okunamadı: ${e?.message || e}`), {
     status: 424,
     code: 'envanter_okunamadi',
   });
@@ -1818,7 +1817,7 @@ function parcala(liste, n = 500) {
  * Host adi sahipAdi ile kisaltilir: FQDN satiri kisa adin satirlarina katilir (atilmaz).
  */
 function invSatiriEkle({ inv, invTum, invIp }, x) {
-  const h = sahipAdi(x && x.host);
+  const h = sahipAdi(x?.host);
   if (!h) return;
   const env = x.env == null ? null : String(x.env);
   inv.set(h, env);
@@ -1889,7 +1888,7 @@ async function kaynaklariOku({
   const tabloVar = async (ad) => {
     try {
       const r = await query(`SELECT OBJECT_ID('${ad}') AS oid`);
-      return !!(r.recordset && r.recordset[0] && r.recordset[0].oid);
+      return !!r.recordset?.[0]?.oid;
     } catch (e) {
       throw okunamadi(ad, e);
     }
@@ -2251,7 +2250,7 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
     );
     kolonlar = new Set(
       (r.recordset || [])
-        .map((c) => String(c && c.name != null ? c.name : '').toLowerCase())
+        .map((c) => String(c?.name != null ? c.name : '').toLowerCase())
         .filter(Boolean),
     );
   } catch (e) {
@@ -2272,7 +2271,7 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
             il.params,
           )
         ).recordset || []
-      ).filter((x) => hs.includes(sahipAdi(x && x.host)));
+      ).filter((x) => hs.includes(sahipAdi(x?.host)));
     } else {
       satirlar =
         (await query(`SELECT ${sec} FROM dbo.Inventory WHERE host IS NOT NULL`)).recordset || [];
@@ -2285,7 +2284,7 @@ async function hedefAdaylariOku({ query, sql = null, k = null, hostlar = null })
   const nginxKolonu = urunKolonlari.some((u) => u.urun === 'NGINX');
   for (const x of satirlar) {
     // FQDN satiri (gbx01.bmw.local) kisa adin adayidir (atilmaz; IP yolu ve ortam kurali da kisa adla calisir).
-    const h = sahipAdi(x && x.host);
+    const h = sahipAdi(x?.host);
     if (!h) continue;
     if (!adaylar.has(h)) adaylar.set(h, { nginxEnvanter: nginxKolonu ? false : null, urunler: [] });
     const a = adaylar.get(h);
@@ -2499,10 +2498,10 @@ function hostBasligiDegerlendir(vhost, k, { hedefTuru = 'sunucu', yukHost = null
   const birlesim = new Set();
   const guncel = new Set();
   for (const r of k.taramaAdlari) {
-    const h = sahipAdi(r && r.host);
+    const h = sahipAdi(r?.host);
     if (!h) continue;
     if (
-      !String((r && r.server_name) ?? '')
+      !String(r?.server_name ?? '')
         .split(/\s+/)
         .some((ad) => serverNameEslesir(ad, vhost))
     )

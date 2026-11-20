@@ -96,7 +96,7 @@ function validateRecovery({
     return { ok: false, reason: 'Portal iş geçmişi beklenen Retirement eylemini kanıtlamıyor.' };
 
   const vars = parseParams(history?.params);
-  if (!vars || vars.plan_only !== false)
+  if (vars?.plan_only !== false)
     return {
       ok: false,
       reason: 'Gerçek işlem parametreleri kanıtlanamadı (plan_only=false gerekli).',

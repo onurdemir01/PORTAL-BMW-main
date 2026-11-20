@@ -5,7 +5,6 @@
 
 const express = require('express');
 const roleStore = require('./role-store.cjs');
-const { clearCache } = require('./ldap.cjs');
 const sessionPolicy = require('./session-policy.cjs');
 
 // Faz D: rol nedeniyle kapanan oturumlar denetime sebebiyle yazilir.
@@ -54,8 +53,6 @@ function initRolesRoutes(app, { requireAdmin }) {
     } catch (err) {
       return res.status(500).json({ ok: false, error: 'Rol kaydedilemedi: ' + err.message });
     }
-    // Cache'i temizle ki sonraki login'de yeni rol gecerli olsun
-    clearCache(target);
     const store = require('./mssql-session-store.cjs');
     // YUKSELTME (Admin) oturumu DUSURMEZ, yerinde yansir (2026-10-02): eskiden her rol
     // degisikligi kullaniciyi atiyordu — "sik atiyor" sikayetinin bir kaynagi. Hem acik
@@ -83,7 +80,6 @@ function initRolesRoutes(app, { requireAdmin }) {
   router.delete('/:username', requireAdmin, async (req, res) => {
     const target = req.params.username.toLowerCase();
     await roleStore.removeRoleOverride(target);
-    clearCache(target);
     // Override kaldirilinca rol LDAP'a doner — yukari mi asagi mi bilinemez: guvenli
     // yon, oturumlari sonlandirmak.
     sessionPolicy.rolKaydiniSil(target);

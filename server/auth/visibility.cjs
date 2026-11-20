@@ -429,7 +429,7 @@ function requireVisible(elementKey) {
       if (!ok) return res.status(403).json({ ok: false, error: 'Bu kaynağa erişiminiz kapalı.' });
       return next();
     } catch (err) {
-      if (user && user.role === 'Admin') {
+      if (user?.role === 'Admin') {
         console.warn(
           `[visibility] motor okunamadi, Admin muafiyeti ile devam (${elementKey}):`,
           err.message,

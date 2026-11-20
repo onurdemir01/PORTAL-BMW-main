@@ -67,7 +67,7 @@ function parseExportLines(raw) {
     if (!t) continue;
     try {
       const obj = JSON.parse(t);
-      if (obj && obj.result) results.push(obj.result);
+      if (obj?.result) results.push(obj.result);
     } catch {
       /* JSON olmayan satir atlanir */
     }

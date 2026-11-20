@@ -31,7 +31,7 @@ const L = (s) =>
 const adlar = (v) =>
   [v.server_name, ...String(v.aliases || '').split(/[\s,]+/)].map(L).filter(Boolean);
 const gecerliAd = (a) =>
-  a && a.includes('.') && !a.includes('*') && !a.startsWith('~') && a !== 'localhost';
+  a?.includes('.') && !a.includes('*') && !a.startsWith('~') && a !== 'localhost';
 const OZEL_IP_YOK = new Set(['', '*', '0.0.0.0', '_default_', '[::]', '::']);
 const ipOf = (listen) => {
   const ilk =

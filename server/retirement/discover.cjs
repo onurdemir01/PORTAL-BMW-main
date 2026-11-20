@@ -308,7 +308,7 @@ function hedefSunucusu(hh, vhostHost, ipMap) {
   if (h === 'localhost' || h === '::1' || h === '0.0.0.0' || /^127\./.test(h)) return U(vhostHost);
   if (/^[0-9.]+$/.test(h)) {
     const o = ipMap.get(h);
-    return o && o.size === 1 ? [...o][0] : null;
+    return o?.size === 1 ? [...o][0] : null;
   }
   return U(h.split('.')[0]);
 }
@@ -692,7 +692,7 @@ function buildTargets(base, invRows, certRows, jvmRows, vhostRows, ipRows = []) 
     // SOZLESME v3 (D1-C15, D1-C28): running=0 tek basina "kapali" DEGIL. running_src
     // UNMEASURED (hidepid / ps korlugu) ise calisma durumu BILINMIYOR; NULL (eski satir ya da
     // kolon henuz yok) bilinen sayilir.
-    const runningSrc = j && j.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
+    const runningSrc = j?.running_src != null && j.running_src !== '' ? U(j.running_src) : null;
     // SURUM -> WEB URUNU KESIN (2026-10-27, kullanici: "Jboss7'ler icin web process'imiz kesin olarak sadece IBM
     // Apache, Jboss8'ler icin ... sadece Redhat Apache"). Yanlis aileden gelen vhost (bag turu ad/ajp/mc ne olursa
     // olsun) baska kurulumun onudur: listelenmez, otomatik kapatilmaz; sayisi webHow'da soylenir. Urunu bilinmeyen
@@ -803,7 +803,7 @@ async function discover(base, db) {
   )
     .then((r) => (r.recordset || []).map((c) => String(c.name).toLowerCase()))
     .catch((e) => {
-      hubError = `sema okunamadi: ${String((e && e.message) || e || 'okunamadi')}`;
+      hubError = `sema okunamadi: ${String(e?.message || e || 'okunamadi')}`;
       console.warn('[Retirement] Server_Hub_Jvms kolonlari okunamadi:', hubError);
       return null;
     });
@@ -819,8 +819,8 @@ async function discover(base, db) {
       ? 'v.repeat_7d, v.repeat_uris'
       : 'NULL AS repeat_7d, NULL AS repeat_uris';
   const jvmSel = ['host', 'jvm', 'gen', 'running', 'auto_start', 'scan_date', 'ports']
-    .concat(jvmCols && jvmCols.includes('running_src') ? ['running_src'] : [])
-    .concat(jvmCols && jvmCols.includes('cfg_ports') ? ['cfg_ports'] : [])
+    .concat(jvmCols?.includes('running_src') ? ['running_src'] : [])
+    .concat(jvmCols?.includes('cfg_ports') ? ['cfg_ports'] : [])
     .map((c) => `t.${c}`)
     .join(', ');
   const [inv, certs, jvms, vhosts, ips] = await Promise.all([
@@ -844,7 +844,7 @@ async function discover(base, db) {
           .then((r) => r.recordset || [])
           .catch((e) => {
             // OLCULEMEDI != YOK: Server Hub okunamadiysa bu "tarama yok" degil; ozet bunu tasir.
-            hubError = String((e && e.message) || e || 'okunamadi');
+            hubError = String(e?.message || e || 'okunamadi');
             console.warn('[Retirement] Server_Hub_Jvms okunamadi:', hubError);
             return [];
           }),
@@ -858,7 +858,7 @@ async function discover(base, db) {
                ON m.host = v.host AND m.d = v.scan_date`)
       .then((r) => r.recordset || [])
       .catch((e) => {
-        trafikError = String((e && e.message) || e || 'okunamadi');
+        trafikError = String(e?.message || e || 'okunamadi');
         console.warn('[Retirement] Server_Hub_Vhosts okunamadi:', trafikError);
         return [];
       }),

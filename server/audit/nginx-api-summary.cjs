@@ -58,7 +58,7 @@ function summarize(recordset, serverRows, etiketler) {
   const svcOf = servicesOfHosts(serverRows);
   const { etkinListe } = require('./nginx-host-labels.cjs');
   const etiketOf = (host) =>
-    etiketler && etiketler.get ? etiketler.get(String(host).toUpperCase()) || null : null;
+    etiketler?.get ? etiketler.get(String(host).toUpperCase()) || null : null;
   const raw = (recordset || []).map((r) => {
     const host = String(r.host || '').trim();
     return {

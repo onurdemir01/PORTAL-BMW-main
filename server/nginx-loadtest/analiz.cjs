@@ -750,7 +750,7 @@ function nicPencere(ornekler, a, b) {
 
 /** ag kesitinin bilgi alanlari (ag_*.txt): arayuz, secim, hiz_mbps (> 0 sayi ya da null). */
 function agKesitBilgisi(k) {
-  const b = k && k.bilgi ? k.bilgi : {};
+  const b = k?.bilgi ? k.bilgi : {};
   const hiz = sayi(b.hiz_mbps);
   return {
     arayuz: typeof b.arayuz === 'string' && b.arayuz ? b.arayuz.slice(0, 32) : null,
@@ -761,7 +761,7 @@ function agKesitBilgisi(k) {
 
 /** 2026-11-04 (inceleme B4): kaydedicinin kendi CPU maliyeti (ag_*.txt bitiste; >= 0 sayi ya da null). */
 function kaydediciSayi(k, ad) {
-  const v = sayi(k && k.bilgi ? k.bilgi[ad] : null);
+  const v = sayi(k?.bilgi ? k.bilgi[ad] : null);
   return v !== null && v >= 0 ? v : null;
 }
 
@@ -856,7 +856,7 @@ function isciDegisti(ctx, kesitAdi, a, b) {
 function bdetayOlc(ctx, kesitAdi, w0, w1, zaman, ofs) {
   if (!kesitAdi || w0 === null || w1 === null || !(w1 > w0)) return null;
   const k = ctx.bdetayKesitler.find((x) => x.anahtar === kesitAdi);
-  if (!k || !k.ornekler.length) return null;
+  if (!k?.ornekler.length) return null;
   const ic = k.ornekler.filter((x) => w0 <= x.t && x.t <= w1);
   if (!ic.length) return null;
   const bg = dolu(ic, 'bg');
@@ -1771,8 +1771,8 @@ function kararVer(refAdimlar, adayAdimlar, secenek = {}) {
   const adayTavan = isParcacigiDegeri(s.adayTavanRps, 'adayTavanRps');
   const ref = kosulariHazirla(refAdimlar);
   const ady = kosulariHazirla(adayAdimlar);
-  const refAd = (ref.find((r) => r.adim) || {}).adim || 'referans';
-  const adyAd = (ady.find((r) => r.adim) || {}).adim || 'aday';
+  const refAd = ref.find((r) => r.adim)?.adim || 'referans';
+  const adyAd = ady.find((r) => r.adim)?.adim || 'aday';
   const kombo = komboSec(ref, ady);
   const rG = hizGruplari(ref, kombo);
   const aG = hizGruplari(ady, kombo);
@@ -2035,7 +2035,7 @@ function farkDurumu(olcu, rg, ag, secenek = {}) {
     if (r === null && a === null) return sonuc('yok');
     // kararVer gibi: sunucu tarafi 429 / 5xx (istemci sayaci 0 olsa da) gecersiz_nedeni'nde gorunur.
     const nedenler = Array.isArray(ag.kosular)
-      ? ag.kosular.map((k) => k && k.gecersiz_nedeni)
+      ? ag.kosular.map((k) => k?.gecersiz_nedeni)
       : ag.gecersizler || [];
     const sunucuHata = nedenler.some(
       (n) => typeof n === 'string' && (n.includes('429(') || n.includes('5xx(')),
@@ -2097,11 +2097,9 @@ function adimHazirla(veri, { serbest = false, motor = 'k6', genelCpu = false } =
   // Sunucu logu / sunucu_ kesitleri / bellek / bdetay yok sayilir: serbest hedef ve nginx'siz sunucu hedefi.
   const logsuz = serbest || genelCpu;
   const istemci = new Map();
-  for (const x of veri.istemci || [])
-    if (x && x.satir && x.satir.tur) istemci.set(x.satir.tur, x.satir);
+  for (const x of veri.istemci || []) if (x?.satir?.tur) istemci.set(x.satir.tur, x.satir);
   const hatali = new Map();
-  for (const x of veri.hataliIstemci || [])
-    if (x && x.satir && x.satir.tur) hatali.set(x.satir.tur, x.satir);
+  for (const x of veri.hataliIstemci || []) if (x?.satir?.tur) hatali.set(x.satir.tur, x.satir);
   const zaman = new Map();
   const zamanTum = [];
   const zamanN = new Map();
@@ -2139,10 +2137,10 @@ function adimHazirla(veri, { serbest = false, motor = 'k6', genelCpu = false } =
     istemciAg: veri.istemciAg instanceof Map ? veri.istemciAg : new Map(),
     agHedef:
       !serbest && Array.isArray(veri.agKesitler)
-        ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'hedef')
+        ? veri.agKesitler.filter((k) => k?.bilgi?.rol === 'hedef')
         : [],
     agYuk: Array.isArray(veri.agKesitler)
-      ? veri.agKesitler.filter((k) => k && k.bilgi && k.bilgi.rol === 'yuk')
+      ? veri.agKesitler.filter((k) => k?.bilgi?.rol === 'yuk')
       : [],
     agKesitler: Array.isArray(veri.agKesitler) ? veri.agKesitler : [],
     bdetayKesitler: !logsuz && Array.isArray(veri.bdetayKesitler) ? veri.bdetayKesitler : [],
@@ -2337,7 +2335,7 @@ function adimUyarilariniKat(uyarilar, adimlar) {
   const tekil = [];
   const gorulen = new Set();
   for (const a of adimlar) {
-    for (const u of a && a.ham && Array.isArray(a.ham.uyarilar) ? a.ham.uyarilar : []) {
+    for (const u of a?.ham && Array.isArray(a.ham.uyarilar) ? a.ham.uyarilar : []) {
       const s = `${a.tur}: ${u}`;
       if (gorulen.has(s)) continue;
       gorulen.add(s);
@@ -2391,7 +2389,7 @@ function sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae }) {
   const k = (Array.isArray(veri.hazirliklar) ? veri.hazirliklar : []).find(
     (x) => x && String(x.anahtar).startsWith(`${adim}_`),
   );
-  if (!k || !k.bilgi) return { durum: 'kanitsiz', sapmalar: ['yok'], uyarilar: [] };
+  if (!k?.bilgi) return { durum: 'kanitsiz', sapmalar: ['yok'], uyarilar: [] };
   const b = k.bilgi;
   const seviye = kanitTam(b.seviye);
   const gz = kanitTam(b.gz_uretilen);
@@ -2491,7 +2489,7 @@ function kosuAnaliz(
     const ap = arkaPlan(k.ornekler || [], dislama, clkAl(k));
     arka.set(k.anahtar, ap);
     if (ap === null) uyarilar.push(`arka_plan_yok:${k.anahtar}(kosu_disi_bosluk_bulunamadi)`);
-    for (const u of (k.bilgi && k.bilgi.uyari) || []) uyarilar.push(`kayit:${k.anahtar}:${u}`);
+    for (const u of k.bilgi?.uyari || []) uyarilar.push(`kayit:${k.anahtar}:${u}`);
     if (!k.anahtar.startsWith(adim + '_')) uyarilar.push(`kesit_baska_adimin:${k.anahtar}`);
   }
   let nproc = null;
@@ -2619,7 +2617,7 @@ function kosuAnaliz(
     }
   }
   const srvKanit = sunucuAyarKaniti(veri, { adim, sunucuAyar, protokol, ae });
-  if (srvKanit && srvKanit.durum === 'kanitsiz') {
+  if (srvKanit?.durum === 'kanitsiz') {
     gecerlilik = 'GECERSIZ';
     nedenler.unshift(`sunucu_ayari_kanitsiz(${srvKanit.sapmalar.join(',')})`);
   }
@@ -2651,7 +2649,7 @@ function kosuAnaliz(
     gruplar,
     reloadlar,
     ayristirma: ayr,
-    cpu_tlsli_pay: ayr && ayr.toplam ? ayr.tls / ayr.toplam : null,
+    cpu_tlsli_pay: ayr?.toplam ? ayr.tls / ayr.toplam : null,
     loglar:
       !ctx.logsuz && Array.isArray(veri.loglar)
         ? veri.loglar.map((l) => ({ dosya: l.dosya, satir: l.satir, atlanan: l.atlanan }))
@@ -2695,7 +2693,7 @@ function kosuAnaliz(
     const bosta = agBosta(
       ctx,
       baslar.length ? enKucuk(baslar) : null,
-      ilkH && ilkH.r._saatFarki !== undefined ? ilkH.r._saatFarki : null,
+      ilkH?.r._saatFarki !== undefined ? ilkH.r._saatFarki : null,
     );
     if (bosta) ozet.ag_bosta = bosta;
   }

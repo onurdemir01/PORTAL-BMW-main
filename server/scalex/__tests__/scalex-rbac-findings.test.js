@@ -169,7 +169,7 @@ test('RB7 kesif tamamlandiginda birikim GERCEKTEN cagriliyor', () => {
   const idx = norm(codeOnly(read('index.cjs')));
   assert.match(
     idx,
-    /if \(status\.finished && parsed && parsed\.mode === "workloads"\) \{[\s\S]{0,200}rbacFindings\.record\(/,
+    /if \(status\.finished && (?:parsed && parsed\.mode|parsed\?\.mode) === "workloads"\) \{[\s\S]{0,200}rbacFindings\.record\(/,
     'kesif bitince RBAC bulgulari kaydedilmiyor — birikim hic dolmaz',
   );
 });

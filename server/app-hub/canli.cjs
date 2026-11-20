@@ -33,11 +33,7 @@ const tam = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Nu
 /** AWX artifact'inden set_stats anahtari (uc bicim; opsx extractStatsKey ile ayni tolerans). */
 function statsOku(artifacts, key = STATS_KEY) {
   const a = artifacts || {};
-  for (const c of [
-    a[key],
-    a.data && a.data[key],
-    a.ansible_stats && a.ansible_stats.data && a.ansible_stats.data[key],
-  ]) {
+  for (const c of [a[key], a.data?.[key], a.ansible_stats?.data?.[key]]) {
     if (c && typeof c === 'object') return c;
   }
   return null;
@@ -209,7 +205,7 @@ function sonucuCoz(raw) {
       podOzet: canliPodOzeti(c),
     };
   });
-  return { genel: (raw && raw.overall_status) || null, hedefler: sonuc };
+  return { genel: raw?.overall_status || null, hedefler: sonuc };
 }
 
 function hedefAnahtarlari(hedefler) {
@@ -244,8 +240,7 @@ async function canliIsSahipligi(serverId, jobId) {
     !Number.isInteger(Number(row.template_id)) ||
     Number(row.template_id) <= 0 ||
     row.template_name !== TEMPLATE_NAME ||
-    !params ||
-    params.platform !== 'app-hub-ocp'
+    params?.platform !== 'app-hub-ocp'
   )
     return null;
   const hedefler = hedefAnahtarlari(params.app_hub_targets);

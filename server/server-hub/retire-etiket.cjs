@@ -70,8 +70,8 @@ function jvmKopyasi(h, j, adaylar) {
     taramaTarihi: h.scanDate || null,
     web: (j.vhosts || []).slice(0, 10).map((m) => ({
       host: m.host,
-      vhost: (m.v && m.v.serverName) || m.serverName || '',
-      trafik: (m.v && m.v.trafficState) || m.trafficState || null,
+      vhost: m.v?.serverName || m.serverName || '',
+      trafik: m.v?.trafficState || m.trafficState || null,
       istek7g: (() => {
         if (m.v) {
           if (m.v.req7d == null) return null;
@@ -80,11 +80,11 @@ function jvmKopyasi(h, j, adaylar) {
         if (m.req7d == null) return null;
         return m.req7d;
       })(),
-      log: (m.v && m.v.accessLog) || '',
+      log: m.v?.accessLog || '',
       tur: m.kind || null,
     })),
     kurallar: adaylar.map((a) => a.kural).sort(kuralSirasi),
-    engel: (adaylar.find((a) => a.engel) || {}).engel || null,
+    engel: adaylar.find((a) => a.engel)?.engel || null,
     // Retirement baglami (capraz.cjs): bu kopyanin acik / kapatilmis Retirement hedefleri.
     retirement: j.retirement || [],
   };
@@ -100,7 +100,7 @@ function earKopyasi(h, u, adaylar, jvmAdIndeksi) {
     warSayisi: u.warSayisi,
     xml: u.xml ? u.xml.durum : null,
     xmlNeden: u.xml ? u.xml.neden || null : null,
-    jvmler: ((u.xml && u.xml.jvmler) || []).map((x) => {
+    jvmler: (u.xml?.jvmler || []).map((x) => {
       const sj = jvmAdIndeksi.get(`${h.host}|${L(x.ad)}`);
       return {
         ad: x.ad,
@@ -136,7 +136,7 @@ function indeksle(hostlar, adaylarOf) {
       ekle(ix.jvm, `${h.env}|${L(j.name)}`, { h, j });
       if (!ix.jvmAd.has(`${h.host}|${L(j.name)}`)) ix.jvmAd.set(`${h.host}|${L(j.name)}`, j);
     }
-    if (h.ear && h.ear.durum === 'VAR')
+    if (h.ear?.durum === 'VAR')
       for (const u of h.ear.uygulamalar || [])
         ekle(ix.ear, `${h.env}|${U(u.ad)}|${nesilOfKok(u.kok)}`, { h, u });
     for (const a of adaylarOf(h)) {
@@ -168,7 +168,7 @@ function kopyalariTopla(konu, ix) {
           kok: a.kok,
           tip: a.tip || '?',
           hedef: a.hedef || null,
-          taranma: (h && h.ear && h.ear.taranma) || null,
+          taranma: h?.ear?.taranma || null,
           kurallar: [a.kural],
         });
     }
@@ -275,7 +275,7 @@ function kanitImzasi(konu, kopyalar, kurallar) {
  * @returns {{ etiketler: object[], ozet: object }}
  */
 function etiketle({ hosts, kurallar = {}, kontroller = new Map() }) {
-  const seviyeOf = (kural) => kurallar[kural] || (KURAL.get(kural) || {}).varsayilan || 'KAPALI';
+  const seviyeOf = (kural) => kurallar[kural] || KURAL.get(kural)?.varsayilan || 'KAPALI';
   const hostlar = (hosts || []).filter((h) => !h.taramadanDustu);
   const konular = new Map();
   // Yalniz etkin (KAPALI olmayan) kurallarin adaylari.

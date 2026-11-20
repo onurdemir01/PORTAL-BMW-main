@@ -322,7 +322,7 @@ function ozetlerGuncelMi(r, sabit) {
  * setin arsiv ozetleri su anki env sabitleriyle ayni (degilse set etkin olamaz). `geriCekildi`: Admin geri cekti.
  */
 function aracApi(r, sabit = sabitOzetler()) {
-  const a = (jsonOku(r.sonuc) || {}).araclar || {};
+  const a = jsonOku(r.sonuc)?.araclar || {};
   const m = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   return {
     id: Number(r.id),
@@ -371,7 +371,7 @@ async function etkinAracSeti(d = db(), sabit = sabitOzetler()) {
       ORDER BY id DESC`,
     [sabit.k6Arsiv, sabit.wrkKaynak],
   );
-  return (rows && rows[0]) || null;
+  return rows?.[0] || null;
 }
 
 /**
@@ -409,7 +409,7 @@ async function aracDurumu(d = db(), sabit = sabitOzetler()) {
       [sabit.k6Arsiv, sabit.wrkKaynak],
     )
   ).rows;
-  const eslesen = (es && es[0]) || null;
+  const eslesen = es?.[0] || null;
   if (eslesen)
     return eslesen.geri_cekme_at != null
       ? yok('araclar_geri_cekildi', MESAJ.geriCekildi)
@@ -419,7 +419,7 @@ async function aracDurumu(d = db(), sabit = sabitOzetler()) {
       `SELECT TOP 1 id FROM nginx_loadtest_araclar WHERE durum = 'DONE' ORDER BY id DESC`,
     )
   ).rows;
-  return so && so[0]
+  return so?.[0]
     ? yok('araclar_ozet_degisti', MESAJ.ozetDegisti)
     : yok('araclar_hazir_degil', MESAJ.hazirDegil);
 }
@@ -430,7 +430,7 @@ async function aracDurumuEkran(d) {
     const { etkin, ...geri } = await aracDurumu(d || db());
     return geri;
   } catch (e) {
-    console.warn('[NginxYukTesti] arac seti okunamadi (/hedefler):', maskele(e && e.message));
+    console.warn('[NginxYukTesti] arac seti okunamadi (/hedefler):', maskele(e?.message));
     return {
       hazir: false,
       aracId: null,
@@ -474,7 +474,7 @@ async function aracSetiOku(d, id) {
     `SELECT ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar WHERE id = $1`,
     [id],
   );
-  return (rows && rows[0]) || null;
+  return rows?.[0] || null;
 }
 
 // ── SONUCLANDIRMA (poller.tick her turda cagirir) ─────────────────────────────────────────
@@ -569,7 +569,7 @@ function aracKarari(st, stats, uyusmazlik, satir, deneme) {
   if (st.status === 'canceled')
     return {
       durum: 'CANCELED',
-      hata: hataMetni((stats && stats.hata) || st.jobExplanation || 'iş iptal edildi'),
+      hata: hataMetni(stats?.hata || st.jobExplanation || 'iş iptal edildi'),
       sonuc: stats,
     };
   if (!stats) {
@@ -604,7 +604,7 @@ async function aracSonYaz(satir, st, k) {
           const s = JSON.stringify(k.sonuc);
           return s.length <= SONUC_MAX_BAYT ? s : JSON.stringify({ kirpildi: true });
         })();
-  const bitis = bitisZamani(st && st.finished);
+  const bitis = bitisZamani(st?.finished);
   if (k.durum === 'DONE') {
     const a = k.a;
     await db().query(
@@ -725,7 +725,7 @@ async function araciSonuclandir(satir) {
     [id],
   );
   if (!al.rowCount) return { terminal: true, atlandi: true };
-  const d0 = Number(al.rows && al.rows[0] && al.rows[0].sonuclandirma_denemesi);
+  const d0 = Number(al.rows?.[0]?.sonuclandirma_denemesi);
   const deneme = Number.isInteger(d0) ? d0 : OKUMA_DENEME_SINIRI;
   try {
     if (kilit.bagliIsKarari('araclar', st.status) === 'birak')
@@ -734,7 +734,7 @@ async function araciSonuclandir(satir) {
   } catch (e) {
     console.warn(
       `[NginxYukTesti araclar] arac ${id} kilidi birakilamadi/cozulemedi (supurme/TTL halleder):`,
-      maskele(e && e.message),
+      maskele(e?.message),
     );
   }
   const ham = require('../scalex/result.cjs').extractStatsKey(st.artifacts, ARAC_STATS_ANAHTARI);
@@ -745,7 +745,7 @@ async function araciSonuclandir(satir) {
     } catch (e) {
       console.warn(
         `[NginxYukTesti araclar] is #${jid} ciktisi arsivlenemedi:`,
-        maskele(e && e.message),
+        maskele(e?.message),
       );
     }
   }
@@ -763,7 +763,7 @@ async function araciSonuclandir(satir) {
 async function araclariSonuclandir() {
   let kapanan = 0;
   const bayat = await aracBayatKuyruk().catch((e) => {
-    console.warn('[NginxYukTesti araclar] bayat kuyruk temizlenemedi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti araclar] bayat kuyruk temizlenemedi:', maskele(e?.message));
     return 0;
   });
   const esik = ARAC_IS_SURESI_SN + YOK_PAYI_SN;
@@ -778,10 +778,7 @@ async function araclariSonuclandir() {
       const o = await araciSonuclandir(r);
       if (o.terminal && !o.atlandi) kapanan += 1;
     } catch (e) {
-      console.warn(
-        `[NginxYukTesti araclar] arac ${r.id} durumu okunamadi:`,
-        maskele(e && e.message),
-      );
+      console.warn(`[NginxYukTesti araclar] arac ${r.id} durumu okunamadi:`, maskele(e?.message));
     }
   }
   return { bayat, kapanan };
@@ -790,17 +787,14 @@ async function araclariSonuclandir() {
 // ── UCLAR (index.cjs yonlendiricisi cagirir; Admin denetimi isleyicide) ───────────────────
 
 function kullaniciAdi(req) {
-  return String(((req && req.session && req.session.user) || {}).username || 'unknown').slice(
-    0,
-    100,
-  );
+  return String(req?.session?.user?.username || 'unknown').slice(0, 100);
 }
 
 async function dbOku(fn) {
   try {
     return await fn(db());
   } catch (e) {
-    throw hata(424, 'db_okunamadi', `Portal veritabanı okunamadı: ${maskele(e && e.message)}`);
+    throw hata(424, 'db_okunamadi', `Portal veritabanı okunamadı: ${maskele(e?.message)}`);
   }
 }
 
@@ -810,7 +804,7 @@ function kilitleriBirak(anahtarlar, lockId) {
     .catch((e) =>
       console.warn(
         '[NginxYukTesti araclar] kilit birakilamadi (TTL ile dusecek):',
-        maskele(e && e.message),
+        maskele(e?.message),
       ),
     );
 }
@@ -824,10 +818,7 @@ async function aracBasarisiz(aracId, metin, jobId = null, awxServerId = null) {
       [aracId, String(metin).slice(0, 1000), awxServerId, jobId],
     );
   } catch (e) {
-    console.warn(
-      `[NginxYukTesti araclar] arac ${aracId} FAILED yazilamadi:`,
-      maskele(e && e.message),
-    );
+    console.warn(`[NginxYukTesti araclar] arac ${aracId} FAILED yazilamadi:`, maskele(e?.message));
   }
 }
 
@@ -847,10 +838,10 @@ async function araclarYaniti(req, { isAdmin }) {
     const g = (
       await d.query(`SELECT TOP 10 ${ARAC_KOLONLARI} FROM nginx_loadtest_araclar ORDER BY id DESC`)
     ).rows;
-    return { durum: du, calisan: (c && c[0]) || null, gecmis: g || [] };
+    return { durum: du, calisan: c?.[0] || null, gecmis: g || [] };
   });
   const px = aracProxy();
-  const admin = !!(isAdmin && isAdmin(req));
+  const admin = !!isAdmin?.(req);
   const api = (r) => aracApi(r, sabit);
   return {
     ok: true,
@@ -937,7 +928,7 @@ async function araclariHazirla(req, govde) {
   } catch (e) {
     console.warn(
       '[NginxYukTesti araclar] kilit alinamadi (DB) - is baslatilmadi:',
-      maskele(e && e.message),
+      maskele(e?.message),
     );
     await kilitleriBirak(anahtarlar, lockId);
     throw hata(424, 'db_okunamadi', 'İş kilidi alınamadı; iş başlatılmadı, lütfen tekrar deneyin.');
@@ -956,7 +947,7 @@ async function araclariHazirla(req, govde) {
        VALUES ('QUEUED', $1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [host, k6v, WRK_SURUM, sabit.k6Arsiv, sabit.wrkKaynak, lockId, kim],
     );
-    aracId = Number(ins.rows && ins.rows[0] && ins.rows[0].id);
+    aracId = Number(ins.rows?.[0]?.id);
     if (!(aracId > 0)) throw new Error('araç seti numarası dönmedi');
     swDizin = `${kok}/araclar/${aracId}`;
     await db().query(`UPDATE nginx_loadtest_araclar SET sw_dizin = $2 WHERE id = $1`, [
@@ -965,11 +956,11 @@ async function araclariHazirla(req, govde) {
     ]);
   } catch (e) {
     await kilitleriBirak(anahtarlar, lockId);
-    if (aracId > 0) await aracBasarisiz(aracId, `kayıt tamamlanamadı: ${maskele(e && e.message)}`);
+    if (aracId > 0) await aracBasarisiz(aracId, `kayıt tamamlanamadı: ${maskele(e?.message)}`);
     throw hata(
       424,
       'db_okunamadi',
-      `Araç kaydı yazılamadı; iş başlatılmadı: ${maskele(e && e.message)}`,
+      `Araç kaydı yazılamadı; iş başlatılmadı: ${maskele(e?.message)}`,
     );
   }
   const simdiSn = Math.floor(Date.now() / 1000);
@@ -1017,7 +1008,7 @@ async function araclariHazirla(req, govde) {
       },
     });
   } catch (e) {
-    if (e && e.jobId != null) {
+    if (e?.jobId != null) {
       await kilit
         .bindLocks(db(), anahtarlar, lockId, {
           awxServerId: e.awxServerId,
@@ -1025,14 +1016,14 @@ async function araclariHazirla(req, govde) {
           bagTuru: 'araclar',
         })
         .catch(() => {});
-    } else if (!(e && e.belirsiz)) {
+    } else if (!e?.belirsiz) {
       await kilitleriBirak(anahtarlar, lockId);
     }
     await aracBasarisiz(
       aracId,
-      maskele(e && e.message),
-      e && e.jobId != null ? e.jobId : null,
-      e && e.jobId != null ? e.awxServerId : null,
+      maskele(e?.message),
+      e?.jobId != null ? e.jobId : null,
+      e?.jobId != null ? e.awxServerId : null,
     );
     throw Object.assign(e, { aracId });
   }
@@ -1045,7 +1036,7 @@ async function araclariHazirla(req, govde) {
   } catch (e) {
     console.warn(
       '[NginxYukTesti araclar] kilit isle baglanamadi (TTL ile dusecek):',
-      maskele(e && e.message),
+      maskele(e?.message),
     );
   }
   const yaz = async () =>
@@ -1064,7 +1055,7 @@ async function araclariHazirla(req, govde) {
     } catch (e2) {
       console.warn(
         '[NginxYukTesti araclar] arac satiri yazilamadi (2 deneme):',
-        maskele((e2 && e2.message) || (e1 && e1.message)),
+        maskele(e2?.message || e1?.message),
       );
     }
   }

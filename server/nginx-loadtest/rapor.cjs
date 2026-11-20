@@ -76,12 +76,12 @@ function sunucuAlanlari(parametreler, analizOzeti) {
     };
   }
   const k = nesne(nesne(analizOzeti) && analizOzeti.sunucu_ayar);
-  const seviye = sonlu(k && k.seviye) ?? sonlu(sa.seviye);
+  const seviye = sonlu(k?.seviye) ?? sonlu(sa.seviye);
   const statik = k && typeof k.static === 'boolean' ? k.static : sa.static === true;
   const br = parametreler.ae === 'br';
   const gzStatik = statik && !br;
   const brStatik = statik && br;
-  const dosyaSeviye = sonlu(k && k.dosya_seviye) ?? seviye ?? STATIK_VARSAYILAN_SEVIYE;
+  const dosyaSeviye = sonlu(k?.dosya_seviye) ?? seviye ?? STATIK_VARSAYILAN_SEVIYE;
   return {
     brotliSeviye: br ? (seviye ?? YOK) : YOK,
     gzipSeviye: parametreler.ae === 'gzip' ? (seviye ?? YOK) : YOK,
@@ -89,9 +89,9 @@ function sunucuAlanlari(parametreler, analizOzeti) {
     gzipStatik: gzStatik,
     brotliStatikSeviye: brStatik ? dosyaSeviye : YOK,
     brotliStatik: brStatik,
-    gzUretilen: sonlu(k && k.gz_uretilen),
-    brUretilen: sonlu(k && k.br_uretilen),
-    diskKanit: diskKanitMetni(k && k.disk_kanit),
+    gzUretilen: sonlu(k?.gz_uretilen),
+    brUretilen: sonlu(k?.br_uretilen),
+    diskKanit: diskKanitMetni(k?.disk_kanit),
   };
 }
 
@@ -102,7 +102,7 @@ const kosuGeneliNedenler = (liste) =>
   );
 
 function kipOzeti(satir) {
-  const d = satir.map((a) => (a.kipDogrulama && a.kipDogrulama.durum) || 'olculmedi');
+  const d = satir.map((a) => a.kipDogrulama?.durum || 'olculmedi');
   if (d.includes('uyari')) return 'uyari';
   if (d.includes('tamam')) return 'tamam';
   return 'olculmedi';
@@ -127,8 +127,8 @@ function raporSatiri(k, kombo, hiz, g, satir, ortak) {
   const al = (f, xs = kume) => xs.map(f);
   const ort = (alan) => ortalama(al((a) => a[alan]));
   const cpuVar = gecerli.length > 0;
-  const pss = ortalama(al((a) => a.bellekDetay && a.bellekDetay.pssOrtMb));
-  const rss = pss === null ? ortalama(al((a) => a.bellek && a.bellek.nginxRssOrtMb)) : null;
+  const pss = ortalama(al((a) => a.bellekDetay?.pssOrtMb));
+  const rss = pss === null ? ortalama(al((a) => a.bellek?.nginxRssOrtMb)) : null;
   const m = k.meta;
   const durumKodu = /^[A-Z]+/.exec(String(g.durum || ''));
   return {
@@ -149,7 +149,7 @@ function raporSatiri(k, kombo, hiz, g, satir, ortak) {
     p95: ort('p95'),
     p99: ort('p99'),
     hostCpu: ort('hostCpuOrt'),
-    bantBps: ortalama(al((a) => a.ag && a.ag.testAlinanBps)),
+    bantBps: ortalama(al((a) => a.ag?.testAlinanBps)),
     tarih: m.createdAt,
     sureSn: ortak.sureSn,
     durum: m.durum,
@@ -203,12 +203,12 @@ function raporSatiri(k, kombo, hiz, g, satir, ortak) {
       ),
     ),
     bellekSizinti: ortak.bellekSizinti,
-    testGonderilenBps: ortalama(al((a) => a.ag && a.ag.testGonderilenBps)),
-    nicOrtBps: ortalama(al((a) => a.ag && a.ag.hedef && a.ag.hedef.txOrtBps)),
-    nicMaxBps: enCok(al((a) => a.ag && a.ag.hedef && a.ag.hedef.txMaxBps)),
+    testGonderilenBps: ortalama(al((a) => a.ag?.testGonderilenBps)),
+    nicOrtBps: ortalama(al((a) => a.ag?.hedef?.txOrtBps)),
+    nicMaxBps: enCok(al((a) => a.ag?.hedef?.txMaxBps)),
     baytIstek: ort('baytIstek'),
     yukCpuBosta: ortalama(al((a) => a.yukCpuBosta, satir)),
-    yukBellekYuzde: ortalama(al((a) => a.bellek && a.bellek.yukBellekYuzde, satir)),
+    yukBellekYuzde: ortalama(al((a) => a.bellek?.yukBellekYuzde, satir)),
     yukDoydu: satir.some((a) => a.yukDoydu === true),
     gzUretilen: ortak.sunucu.gzUretilen,
     brUretilen: ortak.sunucu.brUretilen,

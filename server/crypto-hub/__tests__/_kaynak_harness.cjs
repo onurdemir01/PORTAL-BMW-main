@@ -48,7 +48,7 @@ async function kur(secenek = {}) {
         next();
       },
       requireAdmin(req, res, next) {
-        if (!(req.session && req.session.user && req.session.user.role === 'Admin')) {
+        if (!(req.session?.user?.role === 'Admin')) {
           return res.status(403).json({ ok: false });
         }
         next();
@@ -61,7 +61,7 @@ async function kur(secenek = {}) {
         return (user.apps || []).includes(String(key).split(':').pop());
       },
     },
-    'server/auth/utils.cjs': { getRequestUser: (req) => (req.session && req.session.user) || null },
+    'server/auth/utils.cjs': { getRequestUser: (req) => req.session?.user || null },
     'server/ansible/playbook-registry.cjs': {
       getByKey: async () => ({ enabled: true, awxServerId: 1 }),
       getEffectiveTemplateId: () => 77,
@@ -98,11 +98,11 @@ async function kur(secenek = {}) {
       },
     },
     'server/opsx/index.cjs': {
-      extractStatsKey: (artifacts, key) => (artifacts && artifacts[key]) || null,
+      extractStatsKey: (artifacts, key) => artifacts?.[key] || null,
     },
     'server/audit/index.cjs': {
       auditPortal: (req, action, opts) =>
-        durum.audits.push({ action, opts, user: req && req.session && req.session.user }),
+        durum.audits.push({ action, opts, user: req?.session?.user }),
     },
     'server/inventory/mssql.cjs': {
       sql: { NVarChar: () => 'nvarchar' },

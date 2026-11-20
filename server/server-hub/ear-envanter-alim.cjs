@@ -143,19 +143,19 @@ const ALT_DIZIN_RE = /^(kosu|awx)-\d{1,9}$/;
 
 /** Kosu satirindan alt dizin. AWX kosusunun is numarasi parametrelerde; yoksa yol KURULMAZ. */
 function kosuAltDizini(kosu) {
-  if (kosu && kosu.kaynak === 'AWX') {
+  if (kosu?.kaynak === 'AWX') {
     let p = {};
     try {
       p = typeof kosu.parametreler === 'string' ? JSON.parse(kosu.parametreler) : kosu.parametreler;
     } catch {
       p = {};
     }
-    const n = Number(p && p.awx_job_id);
+    const n = Number(p?.awx_job_id);
     if (!Number.isInteger(n) || n <= 0)
       throw kodluHata('GECERSIZ', 'AWX koşusunun iş numarası yok');
     return `awx-${n}`;
   }
-  return `kosu-${Number(kosu && kosu.id)}`;
+  return `kosu-${Number(kosu?.id)}`;
 }
 
 /** kosu: Portal kosu numarasi ya da kosuAltDizini() sonucu (kosu-<n> / awx-<n>). */
@@ -215,7 +215,7 @@ function paketCoz(buf) {
     throw kodluHata('BOZUK', 'paket JSON değil');
   }
   if (!p || typeof p !== 'object' || p.sema !== 1 || !Array.isArray(p.uygulamalar))
-    throw kodluHata('SEMA', `beklenmeyen paket şeması (${p && p.sema})`);
+    throw kodluHata('SEMA', `beklenmeyen paket şeması (${p?.sema})`);
   return p;
 }
 
@@ -354,8 +354,8 @@ function teknoloji(liste) {
   let jakarta = false;
   let javax = false;
   for (const k of Array.isArray(liste) ? liste : []) {
-    const ad = String((k && k[0]) || '').toLowerCase();
-    const surum = String((k && k[1]) || '');
+    const ad = String(k?.[0] || '').toLowerCase();
+    const surum = String(k?.[1] || '');
     if (ad.startsWith('jakarta.')) jakarta = true;
     if (ad.startsWith('javax.')) javax = true;
     if (!surumler.has(ad)) surumler.set(ad, new Set());
@@ -409,7 +409,7 @@ function kutuphaneSeti(liste) {
   const ham = Array.isArray(liste) ? liste : [];
   const satirlar = ham
     .slice(0, SINIR_KUTUPHANE)
-    .map((k) => [M(k && k[0], 200), M(k && k[1], 100), S(k && k[2])])
+    .map((k) => [M(k?.[0], 200), M(k?.[1], 100), S(k?.[2])])
     .sort((x, y) => {
       if (x[0] < y[0]) return -1;
       if (x[0] > y[0]) return 1;
@@ -750,8 +750,7 @@ function deploymentCoz(buf) {
       try {
         const v = dmrAyristir(govde.join('\n'));
         if (
-          v &&
-          v.outcome === 'success' &&
+          v?.outcome === 'success' &&
           v.result &&
           typeof v.result === 'object' &&
           !Array.isArray(v.result)
@@ -773,7 +772,7 @@ function deploymentCoz(buf) {
           if (liste.length > SINIR_DEP) out.kesik = true;
         } else {
           son.durum = 'HATA';
-          son.hata = M((v && v['failure-description']) || 'CLI basarisiz', 300);
+          son.hata = M(v?.['failure-description'] || 'CLI basarisiz', 300);
         }
       } catch (e) {
         son.durum = 'AYRISTIRILAMADI';

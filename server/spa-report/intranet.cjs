@@ -265,11 +265,11 @@ function buildIntranetRapor({
       // ekip ile AYNI SIRADA kaynak (SI51_AGILE ... / NAMESPACE); bos = kaynak bilinmiyor.
       ekipKaynak: o.kaynaklar,
       // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
-      ...(o.veriYokNs && o.veriYokNs.length ? { ekipVeriYok: true } : {}),
-      inUse: b && b.inUse && BEYAN.has(b.inUse) ? b.inUse : null,
-      inUseBy: (b && b.inUseBy) || null,
+      ...(o.veriYokNs?.length ? { ekipVeriYok: true } : {}),
+      inUse: b?.inUse && BEYAN.has(b.inUse) ? b.inUse : null,
+      inUseBy: b?.inUseBy || null,
       inUseAt: b ? iso(b.inUseAt) : null,
-      note: (b && b.note) || '',
+      note: b?.note || '',
     };
     r.kurulum = kurulumHesapla(r.env, ns, app, dIdx, sunucuListesi);
     r.degerlendirme = degerlendir(r);
@@ -335,11 +335,11 @@ function buildIntranetRapor({
   // Dynatrace verisinin gunu: satirlardaki en yeni olcum.
   let dynatraceTarihi = '';
   for (const r of rows) {
-    const g = (r.dynatrace && r.dynatrace.scanDate) || '';
+    const g = r.dynatrace?.scanDate || '';
     if (g > dynatraceTarihi) dynatraceTarihi = g;
   }
   // Taranamayan / eski verili cluster'lar: o cluster'daki intranet SPA'lar listede eksik ya da eski.
-  const sorunluCluster = ((coverage && coverage.clusters) || [])
+  const sorunluCluster = (coverage?.clusters || [])
     .filter((c) => c.stale || c.bucket === 'taranamadi')
     .map((c) => ({ cluster: c.cluster, durum: c.status, sebep: c.reason || '' }));
   return {
@@ -370,7 +370,7 @@ async function loadIntranet(fresh, deps) {
     return {
       ok: true,
       notScanned: true,
-      message: (sonuc && sonuc.message) || '',
+      message: sonuc?.message || '',
       rows: [],
       envs: [],
       sorunluCluster: [],
@@ -401,7 +401,7 @@ async function loadIntranet(fresh, deps) {
     hesaplandi: sonuc.hesaplandi || null,
     ownersReady: owners.ready !== false,
     // Dynatrace tablosu okunamadiysa HER satir 'olculemedi' (spa-discovery); ekran bandi soyler.
-    dynatraceOkunamadi: !!(sonuc.rpKapsam && sonuc.rpKapsam.dynatraceOkunamadi),
+    dynatraceOkunamadi: !!sonuc.rpKapsam?.dynatraceOkunamadi,
     ...buildIntranetRapor({
       apps: sonuc.apps,
       ownersByNs: owners.byNs,

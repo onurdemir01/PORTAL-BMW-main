@@ -42,13 +42,13 @@ async function dbSiniri(n) {
        SELECT TOP (${Math.max(2, Math.min(52, Number(n) || 12))}) id FROM ear_envanter_kosulari
         WHERE kapsam = 'FILO' AND durum <> 'CALISIYOR' ORDER BY id DESC) t`,
   );
-  const r = rows && rows[0];
+  const r = rows?.[0];
   if (!r || Number(r.adet) < Number(n) || r.sinir == null) return null;
   // Calisan kosu (olagan disi: cok eski) sinirin altinda kalmasin.
   const c = await db().query(
     `SELECT MIN(id) AS id FROM ear_envanter_kosulari WHERE durum = 'CALISIYOR'`,
   );
-  const calisan = c.rows && c.rows[0] && c.rows[0].id != null ? Number(c.rows[0].id) : null;
+  const calisan = c.rows?.[0]?.id != null ? Number(c.rows[0].id) : null;
   return calisan != null ? Math.min(Number(r.sinir), calisan) : Number(r.sinir);
 }
 
@@ -162,7 +162,7 @@ async function saklama() {
   } catch (e) {
     ham = { hata: e.message };
   }
-  if (dbSonuc.kosu || dbSonuc.set || (ham.silinen && ham.silinen.length))
+  if (dbSonuc.kosu || dbSonuc.set || ham.silinen?.length)
     console.log(
       `[EarEnvanter] saklama: kosu=${dbSonuc.kosu} set=${dbSonuc.set} ham=${(ham.silinen || []).length}`,
     );

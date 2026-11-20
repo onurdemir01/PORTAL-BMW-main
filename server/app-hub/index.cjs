@@ -50,7 +50,7 @@ async function detayOku(tip, ad) {
     // Saatlik filo taramasi (filo.cjs) + elle canli okuma: (cluster, namespace) basina DAHA YENI olan gosterilir.
     const F = require('./filo.cjs');
     const [canli, saatlik, sonKosu] = await Promise.all([
-      C.sonOkumalar(ad).catch((e) => ({ hata: String((e && e.message) || e) })),
+      C.sonOkumalar(ad).catch((e) => ({ hata: String(e?.message || e) })),
       F.filoOkumalari(ad).catch(() => []),
       F.sonKosuDurumu().catch(() => null),
     ]);
@@ -112,7 +112,7 @@ function createRouter() {
     try {
       res.json({ ok: true, ...(await V.ara(q)) });
     } catch (e) {
-      res.status(500).json({ ok: false, error: `Arama yapılamadı: ${(e && e.message) || e}` });
+      res.status(500).json({ ok: false, error: `Arama yapılamadı: ${e?.message || e}` });
     }
   });
 
@@ -137,10 +137,8 @@ function createRouter() {
         });
       res.json({ ok: true, uygulama: d, okundu: new Date().toISOString() });
     } catch (e) {
-      console.warn(`[AppHub] ${tip}/${ad} okunamadi: ${e && e.message}`);
-      res
-        .status(424)
-        .json({ ok: false, error: `Uygulama bilgisi okunamadı: ${(e && e.message) || e}` });
+      console.warn(`[AppHub] ${tip}/${ad} okunamadi: ${e?.message}`);
+      res.status(424).json({ ok: false, error: `Uygulama bilgisi okunamadı: ${e?.message || e}` });
     }
   });
 
@@ -160,11 +158,11 @@ function createRouter() {
       const d = await V.ocpDetay(ad);
       if (!d)
         return res.status(404).json({ ok: false, error: `${ad} OpenShift envanterinde yok.` });
-      kur = await C.hedefleriKur(ad, d.yerler, req.body && req.body.hedefler);
+      kur = await C.hedefleriKur(ad, d.yerler, req.body?.hedefler);
     } catch (e) {
       return res.status(e.status || 500).json({ ok: false, error: e.message });
     }
-    const u = (req.session && req.session.user) || {};
+    const u = req.session?.user || {};
     try {
       await require('../ansible/template-preflight.cjs').assertTemplateAcceptsExtraVars(
         serverId,
@@ -182,8 +180,8 @@ function createRouter() {
             serverId,
             templateId,
             C.TEMPLATE_NAME,
-            job && job.jobId,
-            (job && job.status) || 'pending',
+            job?.jobId,
+            job?.status || 'pending',
             JSON.stringify({
               platform: 'app-hub-ocp',
               app_hub_app: ad,
@@ -195,12 +193,12 @@ function createRouter() {
         console.warn('[AppHub] is gecmisi yazilamadi:', e.message);
       }
       console.log(
-        `[AppHub] ${u.username} -> ocp canli app=${ad} hedef=${kur.extraVars.app_hub_targets.length} template=${templateId} server=${serverId} job=${(job && job.jobId) || '?'}`,
+        `[AppHub] ${u.username} -> ocp canli app=${ad} hedef=${kur.extraVars.app_hub_targets.length} template=${templateId} server=${serverId} job=${job?.jobId || '?'}`,
       );
       res.json({
         ok: true,
         serverId,
-        jobId: (job && job.jobId) || null,
+        jobId: job?.jobId || null,
         hedefler: kur.extraVars.app_hub_targets,
         atlanan: kur.atlanan,
       });
@@ -224,7 +222,7 @@ function createRouter() {
     }
     try {
       const sahiplik = await C.canliIsSahipligi(serverId, jobId);
-      if (!sahiplik || sahiplik.app !== ad) {
+      if (sahiplik?.app !== ad) {
         return res.status(404).json({ ok: false, error: 'Bu Application Hub işi doğrulanamadı.' });
       }
       const st = await require('../ansible/runner.cjs').getJobStatusOnServer(serverId, jobId);
@@ -254,7 +252,7 @@ function createRouter() {
           .json({ ok: false, error: 'İş sonucu Application Hub isteğiyle eşleşmiyor.' });
       }
       const cozum = C.sonucuCoz(raw);
-      const u = (req.session && req.session.user) || {};
+      const u = req.session?.user || {};
       await C.sonucuKaydet(ad, cozum, {
         serverId,
         jobId,
@@ -270,7 +268,7 @@ function createRouter() {
         okumalar: await C.sonOkumalar(ad).catch(() => []),
       });
     } catch (e) {
-      res.status(502).json({ ok: false, error: `İş durumu okunamadı: ${(e && e.message) || e}` });
+      res.status(502).json({ ok: false, error: `İş durumu okunamadı: ${e?.message || e}` });
     }
   });
 

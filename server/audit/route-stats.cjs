@@ -359,7 +359,7 @@ function routeListesi(routeRows, env, kind, sec, spaRows) {
     if (!sec(r)) continue;
     const ns = L(r.namespace_name);
     const e = envOfNamespace(ns);
-    if (E && (!e || e.toUpperCase() !== E)) continue;
+    if (E && e?.toUpperCase() !== E) continue;
     const app = appFromAddress(r.route_address, ns) || L(r.route_name) || null;
     const cs = canliSinif(ix, r);
     if (kind !== 'all' && cs.kind !== kind) continue;

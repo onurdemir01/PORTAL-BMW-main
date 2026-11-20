@@ -271,7 +271,7 @@ function kuyrukGovdesi(b, { simdiMs = Date.now() } = {}) {
 
 /** Kosu oncesi dosya uretimi payi: yalniz static sunucu ayarinda (parametreler kanonik nesne). */
 function hazirlikPayiSn(p) {
-  return p && p.sunucuAyar && p.sunucuAyar.static ? HAZIRLIK_PAY_SN : 0;
+  return p?.sunucuAyar?.static ? HAZIRLIK_PAY_SN : 0;
 }
 
 /** Kosu satirina yazilan etiket: "[K<kuyruk>] <oge etiketi>" (en cok 120 karakter). */
@@ -457,18 +457,18 @@ const kisa = (s, n = 1000) => maskele(String(s ?? '')).slice(0, n);
  * kosuyuBaslat kilidi birakti, satir FAILED -> durumuna gore 'gecici' / 'atla' (kisa AWX kesintisi kuyrugu bitirmez).
  */
 function hataSinifi(e) {
-  const code = e && e.code;
+  const code = e?.code;
   if (code === 'kilit_dolu') return 'bekle';
   if (code === 'kuyruk_yazilamadi') return 'birak';
-  if (e && e.kosuId != null && (e.belirsiz || e.jobId != null)) return 'hatali';
-  const st = Number(e && e.status);
+  if (e?.kosuId != null && (e.belirsiz || e.jobId != null)) return 'hatali';
+  const st = Number(e?.status);
   if (st === 400 || st === 403 || st === 409) return 'atla';
   return 'gecici';
 }
 
 /** Hata kosu satiri tasiyor ama is kesin baslamadi mi (numara ogeden silinip yeniden denenebilir). */
 function numaraliBaslamadi(e) {
-  return !!(e && e.kosuId != null && !e.belirsiz && e.jobId == null);
+  return !!(e?.kosuId != null && !e.belirsiz && e.jobId == null);
 }
 
 /** Gecici denemeden sonra geri cekilme bitmedi mi (DB saatiyle kalan sn). */
@@ -516,7 +516,7 @@ async function kuyrukIsle(ctx, kuyrukId) {
   let gecis = 0;
   for (let i = 0; i < ADIM_SINIRI; i += 1) {
     const { rows } = await db.query(SQL.kuyrukOku, [kuyrukId]);
-    const k = rows && rows[0];
+    const k = rows?.[0];
     if (!k) return gecis;
     const sonuc = await kuyrukAdimi(ctx, k);
     if (sonuc !== 'devam') return gecis;
@@ -532,13 +532,13 @@ async function kuyrukAdimi(ctx, k) {
     return r.rowCount ? 'devam' : 'dur';
   }
   const { rows: cr } = await db.query(SQL.calisanOge, [k.id]);
-  const cur = cr && cr[0];
+  const cur = cr?.[0];
   if (cur) return ogeIlerlet(ctx, k, cur);
   if (k.durum === 'IPTAL' || k.durum === 'BITTI' || k.durum === 'HATALI') return 'dur';
   if (k.durum === 'DINLENME') return dinlenme(ctx, k);
   // CALISIYOR, calisan oge yok: siradaki.
   const { rows: sr } = await db.query(SQL.siradakiOge, [k.id]);
-  const next = sr && sr[0];
+  const next = sr?.[0];
   if (!next) {
     const r = await db.query(SQL.kuyrukBitti, [k.id, kira]);
     if (r.rowCount) console.log(`[NginxYukTesti kuyruk] kuyruk ${k.id} bitti`);
@@ -580,9 +580,9 @@ function sureYetmiyor(k, tahminSn) {
 
 async function yetkiKapisi(ctx, k) {
   const y = await ctx.islem.yetkiVarMi(k.created_by);
-  return y && y.ok
+  return y?.ok
     ? null
-    : `yetki: ${(y && y.neden) || 'kuyruğu oluşturan kullanıcının yetkisi doğrulanamadı'}`;
+    : `yetki: ${y?.neden || 'kuyruğu oluşturan kullanıcının yetkisi doğrulanamadı'}`;
 }
 
 /**
@@ -593,7 +593,7 @@ async function geciciHata(ctx, oge, e, geriAl) {
   const deneme = Number(oge.deneme || 0) + 1;
   const son = deneme >= GECICI_DENEME_SINIRI;
   const bekleSn = GERI_CEKILME_SN[Math.min(deneme, GERI_CEKILME_SN.length) - 1];
-  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e && e.message, 400)}${son ? '' : '; yeniden deneme ' + sureMetni(bekleSn) + ' sonra'}`;
+  const msg = `geçici hata (${deneme}/${GECICI_DENEME_SINIRI}): ${kisa(e?.message, 400)}${son ? '' : '; yeniden deneme ' + sureMetni(bekleSn) + ' sonra'}`;
   const durum = geriAl && oge.asama !== 'kosu' ? 'BEKLIYOR' : oge.durum;
   if (geriAl) await geriAl(msg, 1);
   else await ctx.db.query(SQL.ogeNeden, [oge.id, msg, 1, durum]);
@@ -627,7 +627,7 @@ async function ogeBaslat(ctx, k, oge) {
     plan = await islem.plan(ogePlanGirdisi(k, oge));
   } catch (e) {
     const s = hataSinifi(e);
-    if (s === 'atla' || s === 'hatali') return ogeAtla(db, oge, `kapı: ${kisa(e && e.message)}`);
+    if (s === 'atla' || s === 'hatali') return ogeAtla(db, oge, `kapı: ${kisa(e?.message)}`);
     return geciciHata(ctx, oge, e, null);
   }
   if (onayHedefiOf(plan) !== k.onay_hedefi) {
@@ -638,7 +638,7 @@ async function ogeBaslat(ctx, k, oge) {
     );
   }
   // Kosu butcesi yeniden olculdu (varsayilan degismis olabilir): sure kapisi bu degerle de.
-  const planButce = Number(plan.parametreler && plan.parametreler.butceSn);
+  const planButce = Number(plan.parametreler?.butceSn);
   const yetmez2 = sureYetmiyor(
     k,
     ON_KONTROL_PAY_SN + (planButce ? planButce + hazirlikPayiSn(plan.parametreler) : butce),
@@ -650,7 +650,7 @@ async function ogeBaslat(ctx, k, oge) {
     al = await db.query(SQL.ogeSahiplen, [oge.id, token, kira, oge.govde, oge.etiket]);
   } catch (e) {
     // UX_nlko_calisan: baska surec ayni kuyrukta bir ogeyi az once sahiplendi.
-    if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e && e.message)))
+    if (/2627|2601|duplicate|UNIQUE/i.test(String(e && (e.number ?? '')) + String(e?.message)))
       return 'dur';
     throw e;
   }
@@ -671,7 +671,7 @@ async function ogeBaslat(ctx, k, oge) {
     const s = hataSinifi(e);
     if (s === 'birak') return 'dur';
     if (s === 'bekle') {
-      await geriAl(`bekliyor: ${kisa(e && e.message, 400)}`, 0);
+      await geriAl(`bekliyor: ${kisa(e?.message, 400)}`, 0);
       return 'dur';
     }
     if (s === 'gecici') {
@@ -683,7 +683,7 @@ async function ogeBaslat(ctx, k, oge) {
     }
     // Kalici ret ya da is baslamis olabilir (belirsiz): oge kapanir (CALISIYOR -> ATLANDI / HATALI).
     const yeni = s === 'hatali' ? 'HATALI' : 'ATLANDI';
-    await ogeKapat(db, oge, 'CALISIYOR', yeni, `ön kontrol başlatılamadı: ${kisa(e && e.message)}`);
+    await ogeKapat(db, oge, 'CALISIYOR', yeni, `ön kontrol başlatılamadı: ${kisa(e?.message)}`);
     return 'devam';
   }
 }
@@ -859,7 +859,7 @@ async function ogeIlerlet(ctx, k, oge) {
     const s = hataSinifi(e);
     if (s === 'birak') return 'dur';
     if (s === 'bekle') {
-      await geriAl(`bekliyor: ${kisa(e && e.message, 400)}`, 0);
+      await geriAl(`bekliyor: ${kisa(e?.message, 400)}`, 0);
       return 'dur';
     }
     if (s === 'gecici') {
@@ -869,12 +869,11 @@ async function ogeIlerlet(ctx, k, oge) {
       return geciciHata(ctx, { ...oge, asama: 'kosu' }, e, geri);
     }
     if (s === 'hatali') {
-      await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu başlatılamadı: ${kisa(e && e.message)}`);
+      await ogeKapat(db, oge, 'CALISIYOR', 'HATALI', `koşu başlatılamadı: ${kisa(e?.message)}`);
       // Is AWX'te baslamis olabilir (belirsiz / is numarali): yuk surebilir, dinlenme kilit birakilinca baslar.
       return sonrasi(ctx, k, e.kosuId);
     }
-    const neden =
-      e && e.code === 'yeni_uyari' ? kisa(e.message) : `koşu kapısı: ${kisa(e && e.message)}`;
+    const neden = e?.code === 'yeni_uyari' ? kisa(e.message) : `koşu kapısı: ${kisa(e?.message)}`;
     await ogeKapat(db, oge, 'CALISIYOR', 'ATLANDI', neden);
     return 'devam';
   }
@@ -901,12 +900,12 @@ function hedefKilitAnahtari(k) {
  */
 async function kosuKilitliMi(db, kosuId) {
   const { rows } = await db.query(SQL.kosuKilidi, [kosuId]);
-  const r = rows && rows[0];
+  const r = rows?.[0];
   if (!r) return false;
   if (AKTIF_KOSU.has(r.durum)) return true;
   if (!r.kilit_id) return false;
   const { rows: kr } = await db.query(SQL.kilitTutuluyor, [String(r.kilit_id)]);
-  return Number(kr && kr[0] && kr[0].n) > 0;
+  return Number(kr?.[0]?.n) > 0;
 }
 
 async function dinlenme(ctx, k) {
@@ -937,7 +936,7 @@ async function tick(ctx) {
       toplam += await kuyrukIsle({ ...ctx, kira }, id);
       await db.query(SQL.hataSifirla, [id]);
     } catch (e) {
-      const m = kisa(e && e.message, 500);
+      const m = kisa(e?.message, 500);
       console.warn(
         `[NginxYukTesti kuyruk] kuyruk ${id} adimi hata verdi (sonraki tur yeniden):`,
         m,
@@ -976,7 +975,7 @@ function startKuyruk(islem) {
     if (_ticking) return;
     _ticking = true;
     tick({ db: require('../db/index.cjs'), islem, kira: SUREC_ID })
-      .catch((e) => console.warn('[NginxYukTesti kuyruk] tur hatasi:', kisa(e && e.message, 500)))
+      .catch((e) => console.warn('[NginxYukTesti kuyruk] tur hatasi:', kisa(e?.message, 500)))
       .finally(() => {
         _ticking = false;
       });

@@ -828,7 +828,7 @@ const ANSI_TEXT_TYPES = new Set(['char', 'varchar']);
  *   ifadesi; ansi: parametrenin VarChar (true) mi NVarChar (false) mi baglanmasi gerektigi.
  */
 function colExprFor(col, colTypes) {
-  const t = String((colTypes && colTypes.get && colTypes.get(col)) || '').toLowerCase();
+  const t = String(colTypes?.get?.(col) || '').toLowerCase();
   if (UNICODE_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: false };
   if (ANSI_TEXT_TYPES.has(t)) return { expr: quoteIdent(col), ansi: true };
   return { expr: `CAST(${quoteIdent(col)} AS NVARCHAR(MAX))`, ansi: false };
@@ -1030,7 +1030,7 @@ function initInventory(app) {
           },
           // Alias satiri hic yoksa (henuz bir gorunen ad girilmemis) varsayilan true —
           // setAlias() ile ayni varsayilan (bkz. dosya basi).
-          aliasActive: r.alias_active === false || r.alias_active === 0 ? false : true,
+          aliasActive: !(r.alias_active === false || r.alias_active === 0),
         })),
       });
     } catch (err) {
@@ -1671,7 +1671,7 @@ function initInventory(app) {
   // kod incelemesi, review.md #3).
   router.post('/query', async (req, res) => {
     const startedAt = Date.now();
-    const username = (getRequestUser(req) && getRequestUser(req).username) || 'system';
+    const username = getRequestUser(req)?.username || 'system';
     // actions.md #20 — TAM audit: genel auditMutations middleware'i (dosya basi) yalniz
     // 2xx yanitlarda ve yalniz URL+redakte-body yakalar; sorgu suresi/satir-sayisi/basarili-
     // basarisiz/hata-mesaji/kullanilan-tablolari YAKALAMAZ. Bu route kendi ozel audit girisini
@@ -1852,7 +1852,7 @@ function initInventory(app) {
     const queries = readSavedQueries();
     const idx = queries.findIndex((q) => q.name === name);
     if (idx < 0) return res.status(404).json({ ok: false, error: 'Sorgu bulunamadı.' });
-    const username = (getRequestUser(req) && getRequestUser(req).username) || '';
+    const username = getRequestUser(req)?.username || '';
     queries[idx].isPublished = !queries[idx].isPublished;
     if (queries[idx].isPublished) queries[idx].publishedBy = username;
     try {

@@ -538,7 +538,7 @@ async function veriImzasi() {
   const { rows } = await db().query(
     `SELECT COUNT(*) AS n, MAX(id) AS m FROM ear_envanter_hostlari WHERE veri_var = 1`,
   );
-  const r = (rows && rows[0]) || {};
+  const r = rows?.[0] || {};
   return `${Number(r.n || 0)}:${Number(r.m || 0)}`;
 }
 
@@ -548,7 +548,7 @@ async function analiz({ kosu } = {}) {
   if (k) return { ...analizEt(await kopyalariOku({ kosu: k }), { tumu: true }), imza: null };
   const imza = await veriImzasi();
   if (_onbellek.imza === imza && _onbellek.deger) return _onbellek.deger;
-  if (_ucus && _ucus.imza === imza) return _ucus.p;
+  if (_ucus?.imza === imza) return _ucus.p;
   const p = (async () => {
     const deger = { ...analizEt(await kopyalariOku({}), { tumu: true }), imza };
     _onbellek = { imza, deger };
@@ -558,7 +558,7 @@ async function analiz({ kosu } = {}) {
   try {
     return await p;
   } finally {
-    if (_ucus && _ucus.p === p) _ucus = null;
+    if (_ucus?.p === p) _ucus = null;
   }
 }
 

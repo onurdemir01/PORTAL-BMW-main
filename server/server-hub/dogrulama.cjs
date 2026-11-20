@@ -97,7 +97,7 @@ function dogrula(g, { veri = null } = {}) {
         Number.isFinite(sh) &&
         sh >= 0 &&
         (d.veri.shTrafik == null || ['ACTIVE', 'NO_RECENT_TRAFFIC'].includes(d.veri.shTrafik));
-      const wOlcul = l && l.durum === 'OLCULDU' && Number.isFinite(l.gercek_7g);
+      const wOlcul = l?.durum === 'OLCULDU' && Number.isFinite(l.gercek_7g);
       if (shOlcul && wOlcul) {
         const uyum = sh > 0 === l.gercek_7g > 0;
         ekle(
@@ -126,7 +126,7 @@ function dogrula(g, { veri = null } = {}) {
             .komsuKenarlar(ipD.anahtar)
             .some((e) => e.tur === 'ip_sahibi' && e.kaynak === `sunucu:${d.veri.host}`);
         const olculdu =
-          [...vh.values()].some((v) => v.host === d.veri.host && v.web && v.web.ipler) ||
+          [...vh.values()].some((v) => v.host === d.veri.host && v.web?.ipler) ||
           g.komsuKenarlar(`sunucu:${d.veri.host}`).some((e) => e.tur === 'ip_sahibi');
         if (sahip)
           ekle(out, d.anahtar, 'LISTEN_IP', 'UYUM', ['config', 'ip'], `${d.veri.ip} sunucuda`);
@@ -203,7 +203,7 @@ function dogrula(g, { veri = null } = {}) {
     } else if (d.tur === 'sunucu') {
       const v = vh.get(d.ad);
       const sh = d.veri.tarama ? Date.parse(d.veri.tarama) : Number.NaN;
-      const ear = v && v.taranma ? Date.parse(v.taranma) : Number.NaN;
+      const ear = v?.taranma ? Date.parse(v.taranma) : Number.NaN;
       if (Number.isFinite(sh) && Number.isFinite(ear)) {
         const fark = Math.round(Math.abs(sh - ear) / GUN_MS);
         ekle(
@@ -221,11 +221,11 @@ function dogrula(g, { veri = null } = {}) {
   }
 
   // IP_ENVANTERI: LB listesi bu sunucuya bir IP yaziyor; Faz W arayuz listesi olculmusse orada olmali.
-  const ipe = veri && veri.ipEnvanteri;
+  const ipe = veri?.ipEnvanteri;
   if (ipe && !ipe.okunamadi)
     for (const r of ipe.satirlar || []) {
       const v = vh.get(r.host);
-      if (!v || !v.web || !v.web.ipler) continue;
+      if (!v?.web?.ipler) continue;
       const var_ = v.web.ipler.includes(r.ip);
       ekle(
         out,

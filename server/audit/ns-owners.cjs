@@ -107,7 +107,7 @@ function indexOwners(rows) {
 const appKey = (ns, app) => L(ns) + '/' + L(app);
 
 /** Satir uygulamanin KENDI sahibini mi tasiyor (namespace yedegi / bos degil)? */
-const uygulamaSahibiMi = (o) => !!(o && o.group && !YEDEK_KAYNAK.has(o.kaynak));
+const uygulamaSahibiMi = (o) => !!(o?.group && !YEDEK_KAYNAK.has(o.kaynak));
 
 /**
  * Uygulama satirlarindan harita: "ns/app"(lower) -> {group, email, kaynak, status, message,
@@ -269,8 +269,8 @@ function ownersFor(byNs, namespaces) {
  *              "bilinmiyor" degil, "veri yok" (yedek kaynak hic okunmadi).
  */
 function ownersForApp(owners, app, namespaces) {
-  const byNs = (owners && owners.byNs) || new Map();
-  const appReady = !!(owners && owners.appReady && owners.byApp);
+  const byNs = owners?.byNs || new Map();
+  const appReady = !!(owners?.appReady && owners.byApp);
   if (!appReady || !L(app)) {
     // Uygulama tablosu yok (ya da uygulama adi yok): birebir eski davranis.
     return { ...ownersFor(byNs, namespaces), veriYokNs: [], kaynaklar: [], nsSahibi: [], appReady };
@@ -307,8 +307,8 @@ function ownersForApp(owners, app, namespaces) {
     // kendi yazdigi namespace sahibi).
     const n = byNs.get(ns);
     const yedek = (() => {
-      if (n && n.group) return n;
-      if (a && a.group) return a;
+      if (n?.group) return n;
+      if (a?.group) return a;
       return null;
     })();
     if (!yedek) {

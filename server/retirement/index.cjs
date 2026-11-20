@@ -290,7 +290,7 @@ async function webGeriAl(id, tid, username) {
   const reg = require('../ansible/playbook-registry.cjs');
   const row = await reg.getByKey('server_hub_fix').catch(() => null);
   const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-  const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+  const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
 
   for (const w of liste) {
     if (w.status !== 'ok') {
@@ -372,7 +372,7 @@ async function launch(req, templateName, extraVars, detail, key = REGISTRY_KEY) 
   const reg = require('../ansible/playbook-registry.cjs');
   const row = await reg.getByKey(key).catch(() => null);
   const templateId = row && row.enabled !== false ? reg.getEffectiveTemplateId(row) : null;
-  const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+  const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
   // UC AYRI SEBEP, UC AYRI METIN (2026-10-08 kullanici bulgusu: "template id kayitli olmasina
   // ragmen" tek tip mesaj aliyordu - sebep, satirin ANAHTARININ farkli olmasiydi). Hangi
   // kosulun tutmadigi soylenmezse admin dogru alana Template ID girmis gibi gorunur.
@@ -1326,7 +1326,7 @@ function initRetirement(app) {
             .json({ ok: false, ocoRequired: true, message: e.message });
         }
         const pi = ocoWindow.extractPlannedInterruption(order.payload);
-        if (!pi || !pi.startDate)
+        if (!pi?.startDate)
           return res.status(400).json({
             ok: false,
             message: `OCO ${rec.ocoNo} kaydinda planlanan kesinti tarihi yok — STOP baslatilmadi.`,
@@ -1988,7 +1988,7 @@ function initRetirement(app) {
       const registry = await reg.getByKey(key).catch(() => null);
       const templateId =
         registry && registry.enabled !== false ? reg.getEffectiveTemplateId(registry) : null;
-      const serverId = registry && registry.awxServerId != null ? Number(registry.awxServerId) : 0;
+      const serverId = registry?.awxServerId != null ? Number(registry.awxServerId) : 0;
       if (!templateId)
         return res.status(409).json({
           ok: false,
@@ -2104,7 +2104,7 @@ function initRetirement(app) {
 
       const reg = require('../ansible/playbook-registry.cjs');
       const pr = await reg.getByKey(TAZELE_KEY[adim.kind]).catch(() => null);
-      const serverId = pr && pr.awxServerId != null ? Number(pr.awxServerId) : 0;
+      const serverId = pr?.awxServerId != null ? Number(pr.awxServerId) : 0;
       const runner = require('../ansible/runner.cjs');
       let info;
       try {
@@ -2635,7 +2635,7 @@ function initRetirement(app) {
           web: 'server_hub_fix',
         };
         const row = await reg.getByKey(KEYS[kind] || DELETE_REGISTRY_KEY).catch(() => null);
-        const serverId = row && row.awxServerId != null ? Number(row.awxServerId) : 0;
+        const serverId = row?.awxServerId != null ? Number(row.awxServerId) : 0;
         const runner = require('../ansible/runner.cjs');
         // IS NUMARASI ADIMIN KENDI ALANINDAN gelir: poller `job_id` olarak secip veriyor.
         // `t.delete_job_id` SABIT YAZMAK, STOP ve GERI ALMA isleri icin HEP null okumak

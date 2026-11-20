@@ -17,14 +17,14 @@ const { etiketle, ozetle } = require('./retire-etiket.cjs');
 
 function kurallarListesi(ayar) {
   return ETIKET_KURALLARI.map((k) => {
-    const m = (ayar.kayitlar || {})[`etiket:${k.kural}`] || null;
+    const m = ayar.kayitlar?.[`etiket:${k.kural}`] || null;
     return {
       kural: k.kural,
       tur: k.tur,
       ad: k.ad,
       kosul: k.kosul,
       varsayilan: k.varsayilan,
-      gecerli: (ayar.etiketler || {})[k.kural] || k.varsayilan,
+      gecerli: ayar.etiketler?.[k.kural] || k.varsayilan,
       degistiren: m ? m.updatedBy : null,
       zaman: m ? m.updatedAt : null,
       aciklama: m ? m.aciklama : '',
@@ -69,7 +69,7 @@ function etiketHesabiKur({ getAssessment, ayarlar, kontrol, etiketleFn = etiketl
 }
 
 function mount(router, { getAssessment, ayarlar, kontrol, audit }) {
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const kim = (req) => req.session?.user?.username || 'unknown';
   const hesap = etiketHesabiKur({ getAssessment, ayarlar, kontrol });
 
   router.get('/retire-etiketleri', async (req, res) => {

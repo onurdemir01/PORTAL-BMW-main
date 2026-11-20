@@ -38,9 +38,7 @@ function computeDrift(hosts, dumps, opts = {}) {
   const minHosts = opts.minHosts || 2;
   const byGroup = new Map();
   for (const h of hosts) {
-    const svcs = (h.services && h.services.length ? h.services : [h.service])
-      .map(norm)
-      .filter(Boolean);
+    const svcs = (h.services?.length ? h.services : [h.service]).map(norm).filter(Boolean);
     const env = String(h.env || '—').toLowerCase();
     for (const s of svcs.length ? svcs : ['—']) {
       const key = `${s}|${env}`;

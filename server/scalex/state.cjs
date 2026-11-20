@@ -124,7 +124,8 @@ function normalizeRow(r) {
  * kullanicinin grup uyeliklerini listeyi goren herkese aciyordu.
  */
 function istemciSatiri(satir) {
-  const { stoppedByGroups: _gruplar, ...kalan } = satir;
+  const kalan = { ...satir };
+  delete kalan.stoppedByGroups;
   return kalan;
 }
 

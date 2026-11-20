@@ -169,7 +169,7 @@ async function zamanla(simdiMs = Date.now()) {
   _sablonYokLog = false;
   const anahtar = dilimAnahtari(simdiMs, a.aralikDk);
   const { rows } = await db().query(KOSU_AC_SQL, [anahtar, s.serverId], { tekrar: false });
-  const id = rows[0] && rows[0].id != null ? Number(rows[0].id) : null;
+  const id = rows[0]?.id != null ? Number(rows[0].id) : null;
   if (!id) return null;
   try {
     if (!a.yazici)
@@ -195,21 +195,21 @@ async function zamanla(simdiMs = Date.now()) {
         role: 'system',
       },
     );
-    const jobId = job && job.jobId ? Number(job.jobId) : null;
+    const jobId = job?.jobId ? Number(job.jobId) : null;
     if (!jobId) throw new Error('AWX iş numarası dönmedi.');
     await db().query(
       `UPDATE app_hub_ocp_filo_kosu SET durum = 'CALISIYOR', awx_job_id = $1, cluster_sayisi = $2 WHERE id = $3 AND durum = 'BASLATILIYOR'`,
       [jobId, kur.extraVars.ocp_clusters.length, id],
     );
     await isGecmisi(s, jobId, id, kur).catch((e) =>
-      console.warn('[AppHubFilo] is gecmisi yazilamadi:', maskele(e && e.message)),
+      console.warn('[AppHubFilo] is gecmisi yazilamadi:', maskele(e?.message)),
     );
     console.log(
       `[AppHubFilo] kosu ${id} basladi: job=${jobId} cluster=${kur.extraVars.ocp_clusters.length} atlanan=${kur.atlanan.length}`,
     );
   } catch (e) {
-    console.warn(`[AppHubFilo] kosu ${id} baslatilamadi:`, maskele(e && e.message));
-    await kosuHata(id, (e && e.message) || e, 'BASLATILIYOR');
+    console.warn(`[AppHubFilo] kosu ${id} baslatilamadi:`, maskele(e?.message));
+    await kosuHata(id, e?.message || e, 'BASLATILIYOR');
   }
   return id;
 }
@@ -286,7 +286,7 @@ async function isiIptalEt(r) {
   try {
     await require('../ansible/runner.cjs').cancelJobOnServer(r.awx_server_id || 0, r.awx_job_id);
   } catch (e) {
-    console.warn(`[AppHubFilo] kosu ${r.id} AWX isi iptal edilemedi:`, maskele(e && e.message));
+    console.warn(`[AppHubFilo] kosu ${r.id} AWX isi iptal edilemedi:`, maskele(e?.message));
   }
 }
 
@@ -298,7 +298,7 @@ async function gecmisiKapat(r, durum) {
         WHERE job_id = $2 AND awx_server_id = $3 AND status <> $1`,
       [durum, r.awx_job_id, r.awx_server_id || 0],
     )
-    .catch((e) => console.warn('[AppHubFilo] is gecmisi kapatilamadi:', maskele(e && e.message)));
+    .catch((e) => console.warn('[AppHubFilo] is gecmisi kapatilamadi:', maskele(e?.message)));
 }
 
 async function calisaniIlerlet(r) {
@@ -314,7 +314,7 @@ async function calisaniIlerlet(r) {
     if (r.yas <= IS_KAYIP_SN) throw e;
     await kosuHata(
       r.id,
-      `AWX işinin durumu ${Math.round(IS_KAYIP_SN / 3600)} saattir okunamıyor: ${(e && e.message) || e}`,
+      `AWX işinin durumu ${Math.round(IS_KAYIP_SN / 3600)} saattir okunamıyor: ${e?.message || e}`,
       'CALISIYOR',
     );
     return;
@@ -384,7 +384,7 @@ async function ilerlet() {
       } else if (r.durum === 'CALISIYOR') await calisaniIlerlet(r);
       else await alimiYenile(r);
     } catch (e) {
-      console.warn(`[AppHubFilo] kosu ${r.id} ilerletilemedi:`, maskele(e && e.message));
+      console.warn(`[AppHubFilo] kosu ${r.id} ilerletilemedi:`, maskele(e?.message));
     }
   }
 }
@@ -422,7 +422,7 @@ function dizinleriTemizle(simdiMs) {
       if (simdiMs - fs.statSync(yol).mtimeMs > DIZIN_SAKLAMA_MS)
         fs.rmSync(yol, { recursive: true, force: true });
     } catch (e) {
-      console.warn(`[AppHubFilo] ${ad} silinemedi:`, maskele(e && e.message));
+      console.warn(`[AppHubFilo] ${ad} silinemedi:`, maskele(e?.message));
     }
   }
 }
@@ -439,7 +439,7 @@ function startPoller() {
     if (_ticking) return;
     _ticking = true;
     tur()
-      .catch((e) => console.warn('[AppHubFilo] tur:', maskele(e && e.message)))
+      .catch((e) => console.warn('[AppHubFilo] tur:', maskele(e?.message)))
       .finally(() => {
         _ticking = false;
       });

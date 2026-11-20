@@ -88,7 +88,7 @@ function blokDurumu(blob) {
  * gevsetemez; etiket savunmasi `production` yanlis yazilirsa da kapiyi kapali tutar.
  */
 function smartKapaliMi(tenant, blob) {
-  if (!tenant || tenant.production !== false) return false;
+  if (tenant?.production !== false) return false;
   const { uretimEtiketi } = require('../opsx/prod-approval.cjs');
   if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster))
     return false;
@@ -100,7 +100,7 @@ function smartKapaliMi(tenant, blob) {
  * ters: production ya da uretim etiketli kiraci, blob ne derse desin her zaman true (fail-closed).
  */
 function ocoGerekliMi(tenant, blob) {
-  if (!tenant || tenant.production !== false) return true;
+  if (tenant?.production !== false) return true;
   const { uretimEtiketi } = require('../opsx/prod-approval.cjs');
   if (uretimEtiketi(tenant.key) || uretimEtiketi(tenant.env) || uretimEtiketi(tenant.cluster))
     return true;

@@ -499,14 +499,12 @@ sahte('db/index.cjs', {
 // ── OTURUM, GORUNURLUK, DENETIM ──────────────────────────────────────────────
 sahte('auth/index.cjs', {
   requireAuth: (req, res, next) =>
-    req.session && req.session.user
-      ? next()
-      : res.status(401).json({ ok: false, message: 'Oturum yok' }),
+    req.session?.user ? next() : res.status(401).json({ ok: false, message: 'Oturum yok' }),
   requireAdmin: (req, res, next) =>
     req.session?.user?.role === 'Admin'
       ? next()
       : res.status(403).json({ ok: false, message: 'Admin' }),
-  getRequestUser: (req) => (req.session && req.session.user) || null,
+  getRequestUser: (req) => req.session?.user || null,
 });
 // Gorunurluk motoru bu duzenegin konusu degil (kendi testleri var): gecirgen.
 sahte('auth/visibility.cjs', {
@@ -545,7 +543,7 @@ sahte('audit/index.cjs', {
 sahte('ansible/playbook-registry.cjs', {
   // GERCEK IMZA: `async` (await unutulursa her cagri 501'e duser — bkz. resolveByKey).
   getByKey: async (keyName) => sim.ayar.sablonlar[keyName] || null,
-  getEffectiveTemplateId: (row) => (row && row.awxTemplateId) || null,
+  getEffectiveTemplateId: (row) => row?.awxTemplateId || null,
 });
 // GERCEK `readCustom` DB okunamayinca FIRLATMAZ, bos nesne doner: "satir yok" ile
 // "okunamadi" ayni kurgudur (`ozellestirme: null`).
@@ -609,7 +607,7 @@ sahte('scalex/state.cjs', {
   },
   unlockRestore: async (t) => {
     const r = sim.kayit.ayna.get(aynaAnahtari(t));
-    if (!r || r.phase !== 'restoring') return false;
+    if (r?.phase !== 'restoring') return false;
     r.phase = 'scaled_down';
     return true;
   },
@@ -689,7 +687,7 @@ const NGINX_INTERCEPTED = new Set([403, 404, 500, 502, 503, 504]);
 sahte('oco/client.cjs', {
   NGINX_INTERCEPTED,
   httpStatus: (err) => {
-    const s = Number((err && err.status) || 400);
+    const s = Number(err?.status || 400);
     return NGINX_INTERCEPTED.has(s) ? 400 : s;
   },
   normalizeOcoNumber: (n) => String(n || '').trim(),
@@ -758,7 +756,7 @@ sahte('oco/store.cjs', {
     !!rec && (role === 'Admin' || rec.username === username || kesisiyor(rec.ownerGroups, groups)),
   update: async (id, { ocoNumber, runAt, windowEnd }) => {
     const r = ocoKaydi(id);
-    if (!r || r.status !== 'SCHEDULED') return null;
+    if (r?.status !== 'SCHEDULED') return null;
     Object.assign(r, {
       ocoNumber: ocoNumber ?? r.ocoNumber,
       runAt: runAt ?? r.runAt,
@@ -778,7 +776,7 @@ sahte('oco/store.cjs', {
   },
   markPendingApprovalAtRequest: async (id, { smartTicketId }) => {
     const r = ocoKaydi(id);
-    if (!r || r.status !== 'SCHEDULED') return false;
+    if (r?.status !== 'SCHEDULED') return false;
     Object.assign(r, { status: 'PENDING_APPROVAL', smartTicketId });
     return true;
   },
@@ -787,19 +785,19 @@ sahte('oco/store.cjs', {
   listScheduled: async () => sim.kayit.ocoKayitlari.filter((r) => r.status === 'SCHEDULED'),
   claimForLaunch: async (id) => {
     const r = ocoKaydi(id);
-    if (!r || r.status !== 'SCHEDULED') return null;
+    if (r?.status !== 'SCHEDULED') return null;
     r.status = 'LAUNCHING';
     return r;
   },
   markLaunched: async (id, awxJobId) => {
     const r = ocoKaydi(id);
-    if (!r || r.status !== 'LAUNCHING') return false;
+    if (r?.status !== 'LAUNCHING') return false;
     Object.assign(r, { status: 'LAUNCHED', awxJobId });
     return true;
   },
   markPendingApproval: async (id, { smartTicketId }) => {
     const r = ocoKaydi(id);
-    if (!r || r.status !== 'LAUNCHING') return false;
+    if (r?.status !== 'LAUNCHING') return false;
     Object.assign(r, { status: 'PENDING_APPROVAL', smartTicketId });
     return true;
   },
@@ -811,7 +809,7 @@ sahte('oco/store.cjs', {
   },
   markExpired: async (id) => {
     const r = ocoKaydi(id);
-    if (r && r.status === 'SCHEDULED') {
+    if (r?.status === 'SCHEDULED') {
       Object.assign(r, {
         status: 'EXPIRED',
         errorMessage: 'OCO kesinti penceresi tetikleme yapilmadan kapandi.',
@@ -892,7 +890,7 @@ sahte('smart/store.cjs', {
     const istenen = new Set((ids || []).map(Number));
     const out = new Map();
     for (const b of sim.kayit.biletler) {
-      const o = Number(b.pendingLaunch && b.pendingLaunch.ocoRecordId);
+      const o = Number(b.pendingLaunch?.ocoRecordId);
       if (istenen.has(o) && !out.has(o)) out.set(o, b);
     }
     return out;

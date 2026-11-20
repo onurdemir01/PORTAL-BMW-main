@@ -190,13 +190,13 @@ function ekOlculer(gorunum, kombo, hiz) {
   const gecerli = satir.filter((a) => GECERLI.has(a.gecerlilik));
   // p95 ile ayni kume: yuk makinesi doymus adim olcume girmez (analiz grupHesapla olcumKume).
   const olcum = gecerli.some((a) => a.yukDoydu) ? gecerli.filter((a) => !a.yukDoydu) : gecerli;
-  const pss = ortalama(olcum.map((a) => a.bellekDetay && a.bellekDetay.pssOrtMb));
-  const rss = pss === null ? ortalama(olcum.map((a) => a.bellek && a.bellek.nginxRssOrtMb)) : null;
-  const kipler = satir.map((a) => (a.kipDogrulama && a.kipDogrulama.durum) || 'olculmedi');
+  const pss = ortalama(olcum.map((a) => a.bellekDetay?.pssOrtMb));
+  const rss = pss === null ? ortalama(olcum.map((a) => a.bellek?.nginxRssOrtMb)) : null;
+  const kipler = satir.map((a) => a.kipDogrulama?.durum || 'olculmedi');
   return {
     // Kapasite CPU-ms/istek'ten turetilir: CPU kumesi gibi yalniz GECERLI adimlar (gorunum null'lari olculmedi).
     kapasite: ortalama(satir.filter((a) => a.gecerlilik === 'GECERLI').map((a) => a.kapasiteRps)),
-    bantBps: ortalama(olcum.map((a) => a.ag && a.ag.testAlinanBps)),
+    bantBps: ortalama(olcum.map((a) => a.ag?.testAlinanBps)),
     bellekMb: pss !== null ? pss : rss,
     bellekKaynak: (() => {
       if (pss !== null) return 'pss';
@@ -361,7 +361,7 @@ function cokluKarsilastir({ ref, adaylar, analiz, esikler = {} }) {
         nedenler: [
           {
             kod: 'hesaplanamadi',
-            metin: `Karşılaştırma hesaplanamadı: ${String((err && err.message) || err).slice(0, 200)}`,
+            metin: `Karşılaştırma hesaplanamadı: ${String(err?.message || err).slice(0, 200)}`,
           },
         ],
         karar: null,

@@ -146,7 +146,7 @@ async function sablonuCoz(env = process.env) {
   try {
     row = await reg.getByKey(KAYIT_ANAHTARI);
   } catch (e) {
-    throw hata(424, 'db_okunamadi', `Playbook Kayıtları okunamadı: ${maskele(e && e.message)}`);
+    throw hata(424, 'db_okunamadi', `Playbook Kayıtları okunamadı: ${maskele(e?.message)}`);
   }
   const templateId =
     row && row.enabled !== false ? Number(reg.getEffectiveTemplateId(row)) || null : null;
@@ -170,7 +170,7 @@ async function playbookDogrula(serverId, templateId) {
   await pf.assertRegistryPlaybook(serverId, templateId, KAYIT_ANAHTARI);
   // BEKLENEN_PLAYBOOK'ta anahtar yoksa assertRegistryPlaybook hicbir sey denetlemez (fail-open);
   // yuk testi icin dosya adi burada da sabit.
-  if (!(pf.BEKLENEN_PLAYBOOK && pf.BEKLENEN_PLAYBOOK[KAYIT_ANAHTARI])) {
+  if (!pf.BEKLENEN_PLAYBOOK?.[KAYIT_ANAHTARI]) {
     await pf.assertTemplatePlaybook(serverId, templateId, BEKLENEN_PLAYBOOK_ADI, {
       label: KAYIT_ANAHTARI,
     });
@@ -190,25 +190,25 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
       label: KAYIT_ANAHTARI,
     });
   } catch (e) {
-    if (e && e.status === 409) throw Object.assign(e, { belirsiz: false });
-    throw hata(424, 'awx_okunamadi', `AWX şablonu doğrulanamadı: ${maskele(e && e.message)}`, {
+    if (e?.status === 409) throw Object.assign(e, { belirsiz: false });
+    throw hata(424, 'awx_okunamadi', `AWX şablonu doğrulanamadı: ${maskele(e?.message)}`, {
       belirsiz: false,
     });
   }
   const runner = require('../ansible/runner.cjs');
-  const user = (req && req.session && req.session.user) || {};
+  const user = req?.session?.user || {};
   let result;
   try {
     // limit BILEREK '': AWX limit'i prompt kapaliysa sessizce yok sayar; hedefler add_host ile.
     result = await runner.launchJobOnServer(serverId, templateId, extraVars, '', user);
   } catch (e) {
-    const st = Number(e && e.status);
+    const st = Number(e?.status);
     const kesin = Number.isInteger(st) && st >= 400 && st < 500;
-    throw hata(424, 'awx_okunamadi', `AWX işi başlatılamadı: ${maskele(e && e.message)}`, {
+    throw hata(424, 'awx_okunamadi', `AWX işi başlatılamadı: ${maskele(e?.message)}`, {
       belirsiz: !kesin,
     });
   }
-  if (!result || result.jobId == null) {
+  if (result?.jobId == null) {
     throw hata(
       424,
       'awx_okunamadi',
@@ -222,10 +222,10 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
     try {
       await runner.cancelJobOnServer(serverId, result.jobId);
     } catch (e) {
-      iptal = `İPTAL EDİLEMEDİ (${maskele(e && e.message)}) - AWX'ten elle durdurun`;
+      iptal = `İPTAL EDİLEMEDİ (${maskele(e?.message)}) - AWX'ten elle durdurun`;
       console.warn(
         `[NginxYukTesti] yutulan degiskenli is #${result.jobId} iptal edilemedi:`,
-        maskele(e && e.message),
+        maskele(e?.message),
       );
     }
     const e = pf.promptKapaliHatasi({
@@ -252,7 +252,7 @@ async function isBaslat(req, { sablon, extraVars, sablonAdi, denetim }) {
     );
   } catch (e) {
     // Is ZATEN basladi; kayit hatasi geri cevirmez ama yutulmaz.
-    console.warn('[NginxYukTesti] job gecmisi yazilamadi:', maskele(e && e.message));
+    console.warn('[NginxYukTesti] job gecmisi yazilamadi:', maskele(e?.message));
   }
   try {
     const d = denetim || {};

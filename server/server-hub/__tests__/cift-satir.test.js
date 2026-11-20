@@ -362,7 +362,8 @@ test('CS10 ekran: ozet seridinde cift satir bandi (sessiz degil)', () => {
   );
   const api = fs.readFileSync(path.join(kok, 'src', 'api', 'serverHubApi.ts'), 'utf8');
   assert.match(sayfa, /<CiftSatirBandi c=\{data\.summary\?\.ciftSatir\} \/>/);
-  assert.match(sayfa, /if \(!c \|\| !\(c\.toplam > 0\)\) return null;/);
+  // Toplam 0 / tanimsiz / NaN iken bant cizilmez (ters karsilastirma yerine adli kosul; Sonar S1940).
+  assert.match(sayfa, /const ciftVar = c != null && c\.toplam > 0;\s*if \(!ciftVar\) return null;/);
   assert.match(api, /ciftSatir\?: \{ toplam: number; tablolar: Record<string, number> \};/);
 });
 

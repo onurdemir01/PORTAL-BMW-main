@@ -53,18 +53,18 @@ const kisa = (s, n = 300) => {
 
 /** Sunucu satiri -> hic bos kalmayan neden metni. */
 function nedenMetni(h) {
-  const durum = String((h && h.durum) || '');
-  const uyarilar = jsonDizi(h && h.uyarilar)
+  const durum = String(h?.durum || '');
+  const uyarilar = jsonDizi(h?.uyarilar)
     .map((x) => kisa(x, 200))
     .filter(Boolean);
-  const kokler = jsonDizi(h && h.kokler);
-  const uyg = Number((h && h.uygulama_sayisi) || 0);
-  const eksik = Number((h && h.eksik_uygulama) || 0);
+  const kokler = jsonDizi(h?.kokler);
+  const uyg = Number(h?.uygulama_sayisi || 0);
+  const eksik = Number(h?.eksik_uygulama || 0);
   if (durum === 'TAM')
     return uyg > 0 ? `başarılı · ${uyg} uygulama tam tarandı` : 'başarılı · kök var, uygulama yok';
   if (durum === 'KOK_YOK') {
     const yok = kokler
-      .filter((k) => k && k.durum === 'YOK')
+      .filter((k) => k?.durum === 'YOK')
       .map((k) => k.yol)
       .filter(Boolean);
     return yok.length
@@ -80,7 +80,7 @@ function nedenMetni(h) {
         : '';
       parca.push(`${eksik} uygulama eksik tarandı${ilk}${eksik > 1 ? ' …' : ''}`);
     }
-    const kokHata = kokler.filter((k) => k && k.durum === 'HATA');
+    const kokHata = kokler.filter((k) => k?.durum === 'HATA');
     for (const k of kokHata.slice(0, 2))
       parca.push(`${k.yol} okunamadı${k.hata ? ' (' + k.hata + ')' : ''}`);
     if (uyarilar.length)
@@ -92,7 +92,7 @@ function nedenMetni(h) {
     if (durum === 'ZAMAN_ASIMI') return HOST_ACIKLAMA.ZAMAN_ASIMI;
     return 'kısmi tarandı; ayrıntı kaydı yok';
   }
-  if (h && h.hata) return kisa(h.hata);
+  if (h?.hata) return kisa(h.hata);
   return HOST_ACIKLAMA[durum] || (durum ? `durum: ${durum}` : 'durum kaydı yok');
 }
 

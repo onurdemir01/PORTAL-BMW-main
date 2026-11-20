@@ -54,7 +54,7 @@ function gorunumDogrula(g) {
   if (!f || f.length > 30) throw hata(400, 'Süzgeç listesi geçersiz (en çok 30).');
   const temiz = f.map((x) => {
     if (!x || !ANAHTAR_RE.test(T(x.k)) || !ISLECLER.includes(T(x.op)))
-      throw hata(400, `Geçersiz süzgeç: ${T(x && x.k) || '?'} ${T(x && x.op) || '?'}`);
+      throw hata(400, `Geçersiz süzgeç: ${T(x?.k) || '?'} ${T(x?.op) || '?'}`);
     const v = x.v;
     if (v !== undefined) {
       const l = Array.isArray(v) ? v : [v];
@@ -145,7 +145,7 @@ async function yaz({ ekran, ad, gorunum, kim }) {
     )
     .catch((err) => {
       // Sinir asimi kullanicinin duzeltecegi bir girdi hatasidir (400); digerleri depo (424).
-      const m = String((err && err.message) || '');
+      const m = String(err?.message || '');
       throw hata(/ortak görünüm olabilir/.test(m) ? 400 : 424, m || 'Görünüm kaydedilemedi.');
     });
   return { ekran: e, ad: a, ...g };
@@ -161,7 +161,7 @@ async function sil({ ekran, ad }) {
       [e, a],
     ));
   } catch (err) {
-    throw hata(424, (err && err.message) || 'Görünüm silinemedi.');
+    throw hata(424, err?.message || 'Görünüm silinemedi.');
   }
   if (!(rows || []).length)
     throw hata(409, `${a} görünümü artık yok (başka biri silmiş olabilir).`);
@@ -169,7 +169,7 @@ async function sil({ ekran, ad }) {
 }
 
 function mount(router, { audit }) {
-  const kim = (req) => (req.session && req.session.user && req.session.user.username) || 'unknown';
+  const kim = (req) => req.session?.user?.username || 'unknown';
   const gonder = (res, err) =>
     res
       .status([400, 409, 424].includes(err.status) ? err.status : 424)

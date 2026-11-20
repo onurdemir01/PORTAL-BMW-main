@@ -87,10 +87,10 @@ function etkinOverrides(detail, overrides) {
   if (!apiGeneratorMi(detail)) return overrides;
   const base = overrides || {};
   const liste = Array.isArray(base.fieldOverrides) ? base.fieldOverrides : [];
-  const eski = liste.find((o) => o && o.fieldName === ALAN);
+  const eski = liste.find((o) => o?.fieldName === ALAN);
   const out = {
     ...base,
-    fieldOverrides: [...liste.filter((o) => !o || o.fieldName !== ALAN), kodBaglama(eski)],
+    fieldOverrides: [...liste.filter((o) => o?.fieldName !== ALAN), kodBaglama(eski)],
   };
   if (Array.isArray(base.customSurveyFields)) {
     out.customSurveyFields = base.customSurveyFields.map((f) =>

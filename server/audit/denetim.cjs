@@ -1712,7 +1712,7 @@ function initDenetim(app) {
         return res
           .status(400)
           .json({ ok: false, message: 'İstisna notu zorunlu (neden istisna?).' });
-      const by = (getRequestUser(req) || {}).username || null;
+      const by = getRequestUser(req)?.username || null;
       try {
         const ex = await db.query(`SELECT 1 FROM nginx_audit_exceptions WHERE host = $1`, [host]);
         if (ex.rows.length) {
@@ -1755,7 +1755,7 @@ function initDenetim(app) {
           return res.status(400).json({ ok: false, message: 'Geçersiz sunucu adı.' });
         const g = et.dogrula(req.body || {});
         if (g.hata) return res.status(400).json({ ok: false, message: g.hata });
-        const by = (getRequestUser(req) || {}).username || null;
+        const by = getRequestUser(req)?.username || null;
         try {
           await et.etiketYaz(db, host, g, by);
           responseCache.clear();
@@ -1784,7 +1784,7 @@ function initDenetim(app) {
           responseCache.clear();
           try {
             require('./index.cjs').auditPortal(req, 'nginx_host_label_clear', {
-              username: (getRequestUser(req) || {}).username,
+              username: getRequestUser(req)?.username,
               result: 'ok',
               detail: JSON.stringify({ host }),
             });
@@ -1810,7 +1810,7 @@ function initDenetim(app) {
         nginxAuditWarm.run().catch(() => {});
         try {
           require('./index.cjs').auditPortal(req, 'nginx_audit_exception_clear', {
-            username: (getRequestUser(req) || {}).username,
+            username: getRequestUser(req)?.username,
             result: 'ok',
             detail: JSON.stringify({ host }),
           });
@@ -2537,7 +2537,7 @@ function initDenetim(app) {
     const teamRefs = opts.teamRefs || null;
     // Ayrinti verisi ve ekip referansi YOKSA (eski veri ve Deployment Scripts): 2026-11-14
     // oncesi algoritma BIREBIR (kullanici karari) - eskiSapmaRaporu.
-    const dolu = (m) => !!(m && m.size);
+    const dolu = (m) => !!m?.size;
     if (!dolu(details) && !dolu(teamRefs)) {
       return eskiSapmaRaporu(raw, scripts, majorityOverride);
     }
@@ -2546,13 +2546,13 @@ function initDenetim(app) {
     const cellOf = (r, sc) => {
       const host = String(r.host).trim();
       const rawv = r[sc.key] ? String(r[sc.key]).trim() : '';
-      const d = details ? (details.get(host) || {})[sc.key] || null : null;
+      const d = details ? details.get(host)?.[sc.key] || null : null;
       return {
         host,
         raw: rawv || null,
-        norm: d && d.norm ? String(d.norm).trim() : null,
+        norm: d?.norm ? String(d.norm).trim() : null,
         hasCr: !!(d && (d.hasCr === true || d.hasCr === 1)),
-        state: d && d.state ? String(d.state).trim().toUpperCase() : null,
+        state: d?.state ? String(d.state).trim().toUpperCase() : null,
       };
     };
     const isUnreadable = (c) => c.state === 'UNREADABLE' || c.state === 'ERROR';
@@ -2574,10 +2574,10 @@ function initDenetim(app) {
         const c = cellOf(r, sc);
         if (c.raw && c.norm && !m.has(c.raw)) m.set(c.raw, c.norm);
       }
-      const t = teamRefs && teamRefs.get(sc.key);
-      if (t && t.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
-      const kr = asReference(majorityOverride && majorityOverride.get(sc.key));
-      if (kr && kr.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
+      const t = teamRefs?.get(sc.key);
+      if (t?.raw && t.norm && !m.has(t.raw)) m.set(t.raw, t.norm);
+      const kr = asReference(majorityOverride?.get(sc.key));
+      if (kr?.raw && kr.norm && !m.has(kr.raw)) m.set(kr.raw, kr.norm);
       return m;
     };
     const cellsOf = (sc) => {
@@ -2626,14 +2626,12 @@ function initDenetim(app) {
       const majority = variants[0] || null;
 
       let ref = null;
-      if (!sc.perServer && majorityOverride && majorityOverride.has(sc.key)) {
+      if (!sc.perServer && majorityOverride?.has(sc.key)) {
         // Ozel sunucular: GENEL envanterin referansi (yoksa null = olculemez, eski anlam).
         ref = asReference(majorityOverride.get(sc.key));
       } else if (!sc.perServer) {
         ref =
-          (teamRefs && teamRefs.get(sc.key) && teamRefs.get(sc.key).norm
-            ? { ...teamRefs.get(sc.key), source: 'ekip' }
-            : null) ||
+          (teamRefs?.get(sc.key)?.norm ? { ...teamRefs.get(sc.key), source: 'ekip' } : null) ||
           (majority ? { raw: majority.hash, norm: majority.norm, source: 'cogunluk' } : null);
       }
       refOf.set(sc.key, ref);
@@ -2975,7 +2973,7 @@ function initDenetim(app) {
       const ex = await query(
         `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS d, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS r`,
       );
-      const e = (ex.recordset && ex.recordset[0]) || {};
+      const e = ex.recordset?.[0] || {};
       out.detailExists = !!e.d;
       if (e.d) {
         const dr = await query(
@@ -3006,7 +3004,7 @@ function initDenetim(app) {
       out.details = new Map();
       out.teamRefs = new Map();
       out.detailAvailable = false;
-      out.error = (err && err.message) || String(err);
+      out.error = err?.message || String(err);
     }
     return out;
   }
@@ -3069,7 +3067,7 @@ function initDenetim(app) {
       const ex = await query(
         `SELECT OBJECT_ID('${INIT_DETAIL_TABLE}') AS hwd, OBJECT_ID('${INIT_REFERENCE_TABLE}') AS hwr`,
       );
-      const e = (ex.recordset && ex.recordset[0]) || {};
+      const e = ex.recordset?.[0] || {};
       const params = HOST_WIDE_SCRIPTS.map((sc, i) => ({
         name: `hw${i}`,
         type: sqlTypes.NVarChar,
@@ -3112,7 +3110,7 @@ function initDenetim(app) {
       out.details = new Map();
       out.teamRefs = new Map();
       out.detailAvailable = false;
-      out.error = (err && err.message) || String(err);
+      out.error = err?.message || String(err);
     }
     return out;
   }
@@ -3130,7 +3128,7 @@ function initDenetim(app) {
    *      load_date, scan_date ile scan_date); farkli anlamdaki iki zaman karsilastirilmaz.
    *   3. Degeri olan, sonra kok sirasi (/vhosting8 once).
    */
-  const olculdu = (c) => !!c.raw || !!(c.detail && c.detail.state);
+  const olculdu = (c) => !!c.raw || !!c.detail?.state;
   function hostWideSourceOrder(a, b) {
     if (olculdu(a) !== olculdu(b)) return olculdu(a) ? -1 : 1;
     if (a.date && b.date && a.dateSrc === b.dateSrc && a.date !== b.date) {
@@ -3145,8 +3143,8 @@ function initDenetim(app) {
     if (!other) return null;
     if (chosen.raw && other.raw) {
       if (chosen.raw === other.raw) return null;
-      const n1 = chosen.detail && chosen.detail.norm;
-      const n2 = other.detail && other.detail.norm;
+      const n1 = chosen.detail?.norm;
+      const n2 = other.detail?.norm;
       return n1 && n2 && n1 === n2 ? 'bicim' : 'icerik';
     }
     return chosen.raw || other.raw ? 'durum' : null;
@@ -3161,10 +3159,10 @@ function initDenetim(app) {
         const host = String(r.host).trim();
         // Anahtar buyuk harfle (B7): GBXX ile gbxx ayni sunucudur, tek satir.
         const anahtar = host.toUpperCase();
-        const detail = (src.details.get(`${t.root}|${anahtar}`) || {})[sc.key] || null;
+        const detail = src.details.get(`${t.root}|${anahtar}`)?.[sc.key] || null;
         const raw = r[sc.key] ? String(r[sc.key]).trim() : '';
         const loadDate = r.load_date ? String(r.load_date) : '';
-        const scanDate = (detail && detail.date) || '';
+        const scanDate = detail?.date || '';
         const date = loadDate || scanDate || null;
         let dateSrc = null;
         if (loadDate) dateSrc = 'load_date';
@@ -3214,7 +3212,7 @@ function initDenetim(app) {
         host: hr.host,
         durum,
         hash: m.chosen.raw,
-        norm: (m.chosen.detail && m.chosen.detail.norm) || null,
+        norm: m.chosen.detail?.norm || null,
         kaynak: m.chosen.root,
         tarih: m.chosen.date,
         kokler: m.roots,
@@ -3237,7 +3235,7 @@ function initDenetim(app) {
         detailAvailable: false,
         teamReferenceAvailable: false,
         missingColumns: [],
-        error: (err && err.message) || String(err),
+        error: err?.message || String(err),
       };
     }
     const files = [];
@@ -3296,7 +3294,7 @@ function initDenetim(app) {
   async function readInitAge(query, sqlTypes, table, root, haveLoadDate, detailExists) {
     const out = { loadedAt: null, ageMinutes: null, ageDays: null, ageSource: null };
     const al = (rec, source) => {
-      const r = (rec && rec.recordset && rec.recordset[0]) || {};
+      const r = rec?.recordset?.[0] || {};
       if (!r.t) return false;
       out.loadedAt = String(r.t);
       const m = Number(r.m);

@@ -242,10 +242,10 @@ function grupKarsilastir(uyeler) {
     oz: u.args && String(u.args).trim() ? argOzu(u.args) : null,
   }));
   const haritalar = ayrik
-    .filter((x) => x.oz && x.oz.h.size)
+    .filter((x) => x.oz?.h.size)
     .map((x) => ({ u: x.u, h: x.oz.h, kesik: x.oz.kesik, tekrarlar: x.oz.tekrarlar }));
   const olculen = haritalar.map((x) => x.u);
-  const olculemeyen = ayrik.filter((x) => !(x.oz && x.oz.h.size)).map((x) => x.u);
+  const olculemeyen = ayrik.filter((x) => !x.oz?.h.size).map((x) => x.u);
   const uyarilar = [];
   const bayat = uyeler.filter((u) => u.taze === false);
   if (olculemeyen.length)
@@ -427,10 +427,9 @@ function uygulamaKarsilastir(istenen, detay, secim) {
   }
   const uyarilar = [];
   const kaynaklar = detay.kaynaklar || {};
-  const shHata = kaynaklar.serverHub && kaynaklar.serverHub.hata;
-  if (kaynaklar.envanter && kaynaklar.envanter.hata)
-    uyarilar.push(`Envanter okunamadı: ${kaynaklar.envanter.hata}`);
-  if (kaynaklar.kesif && kaynaklar.kesif.hata)
+  const shHata = kaynaklar.serverHub?.hata;
+  if (kaynaklar.envanter?.hata) uyarilar.push(`Envanter okunamadı: ${kaynaklar.envanter.hata}`);
+  if (kaynaklar.kesif?.hata)
     uyarilar.push(
       `Keşif okunamadı (${kaynaklar.kesif.hata}); ortam yalnız envanter kaydından okundu.`,
     );
@@ -479,7 +478,7 @@ function uygulamaKarsilastir(istenen, detay, secim) {
           etiket: `${U(s.host)}/${j.ad}`,
           host: U(s.host),
           jvm: j.ad,
-          ip: (s.kapasite && s.kapasite.ip) || null,
+          ip: s.kapasite?.ip || null,
           args: a.args,
           kaynak: a.kaynak,
           calisiyor: j.calisiyor == null ? null : j.calisiyor,
@@ -597,7 +596,7 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
   router.post('/jvm-karsilastir', async (req, res) => {
     const g = girdiDogrula(req.body, AD_RE, tabanAdi);
     if (!g.ok) return res.status(400).json({ ok: false, error: g.error });
-    const fresh = !!(req.body && req.body.fresh === true);
+    const fresh = !!(req.body?.fresh === true);
     const secim = { ortam: g.ortam, nesil: g.nesil };
     const basla = Date.now();
     try {
@@ -611,7 +610,7 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
             ad,
             tabanAd: null,
             durum: 'OLCULEMEDI',
-            neden: `Okunamadı: ${String((e && e.message) || e).slice(0, 200)}`,
+            neden: `Okunamadı: ${String(e?.message || e).slice(0, 200)}`,
             sunucuSayisi: 0,
             jvmSayisi: 0,
             farkSayisi: 0,
@@ -625,7 +624,7 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
           );
         return r;
       });
-      const u = (req.session && req.session.user && req.session.user.username) || '?';
+      const u = req.session?.user?.username || '?';
       console.log(
         `[AppHub] ${u} -> jvm-karsilastir uygulama=${sonuclar.length} ortam=${g.ortam} nesil=${g.nesil} sure=${Date.now() - basla}ms`,
       );
@@ -638,9 +637,7 @@ function mount(router, { detayOku, sinirliParalel, AD_RE, tabanAdi }) {
         okundu: new Date().toISOString(),
       });
     } catch (e) {
-      res
-        .status(500)
-        .json({ ok: false, error: `Karşılaştırma yapılamadı: ${(e && e.message) || e}` });
+      res.status(500).json({ ok: false, error: `Karşılaştırma yapılamadı: ${e?.message || e}` });
     }
   });
 }

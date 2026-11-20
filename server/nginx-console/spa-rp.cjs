@@ -261,7 +261,7 @@ function rpEnvOf(host, RP) {
 
 /** Tablo durumu: 'var' | 'yok' | 'okunamadi'. Satir dizisi yoksa 'var' SAYILMAZ. */
 function tabloDurumu(kaynak, ad) {
-  const t = kaynak && kaynak.tablolar ? kaynak.tablolar[ad] : null;
+  const t = kaynak?.tablolar ? kaynak.tablolar[ad] : null;
   if (t === 'yok') return 'yok';
   if (t === 'var' && Array.isArray(kaynak[ad])) return 'var';
   return 'okunamadi';
@@ -563,7 +563,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
     if (keys) return adAday(keys, 'ad');
     const env = L(envOfHost(host));
     const c = appEnvIdx.get(`${app}|${env}`);
-    if (c && c.size === 1) return { keys: c, esles: 'zayif' };
+    if (c?.size === 1) return { keys: c, esles: 'zayif' };
     // AYNI AD birden cok namespace'te: tanim hangisine ait bilinmez. Baglanmaz, ama adaylar
     // 'tanimsiz' da DEGILDIR - o ortamda onlara ait olabilecek bir tanim BILINIYOR.
     if (c && c.size > 1) return { aday: c };
@@ -659,7 +659,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       bag = locBagla(r, host);
       d = { ...base, yol: 'include' };
     }
-    if (bag && bag.aday) {
+    if (bag?.aday) {
       belirsiz += 1;
       for (const key of bag.aday) belirsizAday.add(key);
       continue;
@@ -732,7 +732,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       rol: 'prod-yeni',
       env: 'PROD',
       // Eslesen trafik satirinin vhost'u (diskteki ad); eslesmediyse bos.
-      vhost: (trafik && trafik.vhost) || '',
+      vhost: trafik?.vhost || '',
       location: `${ns}/${app}`,
       status: bit(r.app_deployed) ? 'OK' : 'MISSING_APP',
       ...servisOf('', host, RP, dirEtiket(r) || ''),
@@ -1002,7 +1002,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
       return 'hata';
     })();
     const o = { host: h, env: rpEnvOf(h, RP), rol, taranan: taranan.has(h), trafik };
-    if (hs && hs.hata) o.trafikHata = hs.hata;
+    if (hs?.hata) o.trafikHata = hs.hata;
     if (rol === 'prod-yeni' && hs) o.hostKipi = hs.hk;
     // KOVA (7 gun): hicbir uygulamaya yazilmayan istekler; sifirdan buyukse yazilir.
     const kv = tIdx.kova.get(h);
@@ -1036,7 +1036,7 @@ function rpUygula({ rows, apps, inventory, kaynak }) {
 
 /** Ayrinti paneli icin bir uygulamanin tanimlari (sirali, JSON'a hazir). */
 function rpTanimlari(detay, ns, app) {
-  const m = detay && detay.get(`${L(ns)}|${L(app)}`);
+  const m = detay?.get(`${L(ns)}|${L(app)}`);
   if (!m) return [];
   const ROL = { 'prod-eski': 0, nonprod: 1, 'prod-yeni': 2 };
   return [...m.values()]

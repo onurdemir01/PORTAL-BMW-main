@@ -415,7 +415,7 @@ async function onKontrolTick(recordId = null) {
   for (const t of rows || []) {
     for (const [kind, alan] of Object.entries(ONKONTROL_ALANI)) {
       const o = onKontrolOku(t[alan]);
-      if (!o || o.durum !== 'running' || !o.jobId) continue;
+      if (o?.durum !== 'running' || !o.jobId) continue;
       let s;
       try {
         s = await _finalize(kind, { job_id: o.jobId, host: t.host });
@@ -423,7 +423,7 @@ async function onKontrolTick(recordId = null) {
         console.warn(`[Retirement poller] ${kind} on kontrolu #${o.jobId} okunamadi:`, e.message);
         continue;
       }
-      if (!s || !s.terminal) continue;
+      if (!s?.terminal) continue;
       const yeni = onKontrolSonucu(kind, s.awxStatus, s.sonuc, o.jobId, o);
       const u = await db.query(
         `UPDATE retirement_targets SET ${alan} = $1, updated_at = GETUTCDATE() WHERE id = $2 AND ${alan} = $3`,
@@ -505,9 +505,9 @@ async function finalizeAdim(adim, recordId = null) {
       console.warn(`[Retirement poller] is #${t.job_id} durumu okunamadi:`, e.message);
       continue;
     }
-    if (o && o.awxStatus)
+    if (o?.awxStatus)
       _awxDurum.set(Number(t.job_id), { status: String(o.awxStatus), at: Date.now() });
-    if (!o || !o.terminal) continue;
+    if (!o?.terminal) continue;
     _awxDurum.delete(Number(t.job_id));
     if (o.ok) {
       await db.query(
@@ -731,7 +731,7 @@ async function webSonucTick(recordId = null) {
         );
         continue;
       }
-      if (!s || !s.terminal) continue;
+      if (!s?.terminal) continue;
       w.status = (() => {
         if (s.ok) return 'ok';
         if (s.skip) return 'skip';

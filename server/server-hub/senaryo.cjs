@@ -237,9 +237,10 @@ function vhostTrafigi(d, t = TAZE) {
       metin: `${d.ad}: yalnız tekrar eden istek ölçümü bayat (${[shOlcul && sh > 0 && !t.sh ? 'Server Hub ' + (t.shTarih || '?') : '', wOk && !t.ue ? 'access log ' + (t.ueTarih || '?') : ''].filter(Boolean).join(', ')} taraması)`,
     };
   if (yalnizTekrar) {
-    const uriler = [
-      ...new Set([...(d.veri.shTekrarUri || []), ...((l && l.tekrar_uriler) || [])]),
-    ].slice(0, 3);
+    const uriler = [...new Set([...(d.veri.shTekrarUri || []), ...(l?.tekrar_uriler || [])])].slice(
+      0,
+      3,
+    );
     return {
       olcum: 'TEKRAR',
       uriler,
@@ -251,14 +252,14 @@ function vhostTrafigi(d, t = TAZE) {
       olcum: 'VAR',
       metin: `${d.ad}: ${shOlcul && sh > 0 ? 'Server Hub 7 gün ' + sh : ''}${shOlcul && sh > 0 && wSayi ? ', ' : ''}${wSayi ? 'access log ' + wSayi : ''} gerçek istek`,
     };
-  const wTam = l && l.durum === 'OLCULDU' && wSayi === 0;
-  const shSifir = shOlcul && sh === 0 && !(l && l.durum === 'KISMI');
+  const wTam = l?.durum === 'OLCULDU' && wSayi === 0;
+  const shSifir = shOlcul && sh === 0 && !(l?.durum === 'KISMI');
   if ((wTam && t.ue) || (shSifir && t.sh))
     return {
       olcum: 'YOK',
-      hc: (l && l.hc_7g) || d.veri.shHc24s || 0,
-      hcIstemci: (l && l.hc_istemcileri) || [],
-      metin: `${d.ad}: 7 gündür gerçek istek yok${l && l.hc_7g ? ' (yalnız ' + l.hc_7g + ' sağlık kontrolü)' : ''}`,
+      hc: l?.hc_7g || d.veri.shHc24s || 0,
+      hcIstemci: l?.hc_istemcileri || [],
+      metin: `${d.ad}: 7 gündür gerçek istek yok${l?.hc_7g ? ' (yalnız ' + l.hc_7g + ' sağlık kontrolü)' : ''}`,
     };
   if (wTam || shSifir)
     return {
@@ -286,7 +287,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
   /** Sunucunun kaynak tazeligi: Server Hub (assess fresh) ve Uygulama Envanteri tarama ani. */
   const tazelikOf = (host) => {
     const s = g.dugumler.get(`sunucu:${host}`);
-    const v = (s && s.veri) || {};
+    const v = s?.veri || {};
     const ueMs = v.ueTaranma ? Date.parse(v.ueTaranma) : Number.NaN;
     return {
       sh: !!s && s.kaynaklar.includes('server_hub') && v.taze !== false,
@@ -310,14 +311,14 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     );
     const vhostlar = [...new Set(guclu.map((e) => e.kaynak))]
       .map((k) => g.dugumler.get(k))
-      .filter((x) => x && x.tur === 'vhost');
+      .filter((x) => x?.tur === 'vhost');
     const trafikler = vhostlar.map((v) => ({ v, t: vhostTrafigi(v, tazelikOf(v.veri.host)) }));
     // KULLANIM KANITI celiskili eslemeden de toplanir: eslemesi tartismali olsa da gercek istek alan bir
     // vhost'un arkasindaki kopya "kullanilmiyor" sayilamaz (guvenli taraf). Retire kosullari celiskisiz kenarla.
     const celiskiliVhost = gelen
       .filter((e) => GUVEN[e.guven] >= GUVEN.GUCLU && e.durum === 'CELISKI')
       .map((e) => g.dugumler.get(e.kaynak))
-      .filter((x) => x && x.tur === 'vhost' && !vhostlar.includes(x));
+      .filter((x) => x?.tur === 'vhost' && !vhostlar.includes(x));
     const calisiyor = d.tur === 'jvm' ? d.veri.calisiyor : null;
     const host = d.veri.host;
 
@@ -327,9 +328,7 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
     const zayifVhost = gelen
       .filter((e) => GUVEN[e.guven] < GUVEN.GUCLU)
       .map((e) => g.dugumler.get(e.kaynak))
-      .filter(
-        (x) => x && x.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x),
-      );
+      .filter((x) => x?.tur === 'vhost' && !vhostlar.includes(x) && !celiskiliVhost.includes(x));
     const trafikVar = [
       ...trafikler,
       ...[...celiskiliVhost, ...new Set(zayifVhost)].map((v) => ({
@@ -464,8 +463,8 @@ function kararla({ g, dogrulamalar, hosts = [], simdi = Date.now }) {
       const dep = deploymentOf(ax.h, ax.j);
       if (dep && ['YOK', 'KAPALI', 'FAILED'].includes(dep))
         maddeler.push(madde('DEPLOY_SORUNU', `deployment ${dep}`, d.anahtar));
-      const ocp = ax.j.capraz && ax.j.capraz.ocp;
-      if (ocp && ocp.aday) maddeler.push(madde('OCP_TASINMIS', null, d.anahtar));
+      const ocp = ax.j.capraz?.ocp;
+      if (ocp?.aday) maddeler.push(madde('OCP_TASINMIS', null, d.anahtar));
       for (const r of ax.j.retirement || [])
         maddeler.push(
           madde(

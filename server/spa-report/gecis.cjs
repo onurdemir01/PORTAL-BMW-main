@@ -143,7 +143,7 @@ async function gocUygula() {
      COMMIT;`,
     [TALEP.ad, hedef, ...anahtarlar],
   );
-  const tasinan = (r && r.rows) || [];
+  const tasinan = r?.rows || [];
   if (!tasinan.length) return;
   console.log(`[glomo-gecis] ${TALEP.ad}: ${tasinan.length} uygulama Set ${hedef}'ye tasindi`);
   for (const x of tasinan) {
@@ -280,7 +280,7 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
           return db && db !== 'NAMESPACE' ? db : canliK || db;
         });
         // Namespace tablosu okunamadi + uygulama sahibi yok: ekran "veri yok" der.
-        const veriYok = !ekip.length && !!(o.veriYokNs && o.veriYokNs.length);
+        const veriYok = !ekip.length && !!o.veriYokNs?.length;
         return {
           ekip,
           ekipKaynak,
@@ -289,7 +289,7 @@ async function planYukle(loadReport, sahipYukle = sahipleriYukle) {
         };
       })(),
       locations: (() => {
-        if (c && c.locations.length) return c.locations;
+        if (c?.locations.length) return c.locations;
         if (s) return s.locations;
         return [];
       })(),

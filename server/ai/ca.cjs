@@ -76,7 +76,7 @@ function buildCombinedCa() {
 
   // ONBELLEK ISABETI: ayni yol + ayni dosya (mtime/boyut) ise yeniden kurma.
   const anahtar = cacheKey(caPath);
-  if (anahtar && _caCache && _caCache.key === anahtar) return _caCache.value;
+  if (anahtar && _caCache?.key === anahtar) return _caCache.value;
 
   const uniqueCertificates = new Map();
 
