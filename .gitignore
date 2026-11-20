@@ -60,5 +60,10 @@ coverage/
 # SonarQube tarayici calisma dizini (npm run kapi:sonar)
 .scannerwork/
 
+# Kurumsal Jenkins hattinin calisma alaninda actigi onbellek / yapilandirma dizinleri: izlenmeyen
+# dosya olarak kalinca paket manifesti agaci "kirli" gosteriyordu (kurumsal is #52).
+.npm-cache/
+.jfrog/
+
 # Kurumsal Jenkins isinin paket ciktisi (npm run paket -- --cikti build/...)
 /build

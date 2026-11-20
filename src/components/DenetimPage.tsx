@@ -1656,7 +1656,7 @@ function OcpCoverage() {
                           (k
                             ? `VAR: ${[...on].sort((a, b) => a.localeCompare(b)).join(', ')}` +
                               (eksik.length
-                                ? `\nYOK: ${eksik.sort((a, b) => a.localeCompare(b)).join(', ')}`
+                                ? `\nYOK: ${[...eksik].sort((a, b) => a.localeCompare(b)).join(', ')}`
                                 : '') +
                               `\n\n${hit?.map((h) => `${h.cluster} / ${h.namespace}`).join('\n')}`
                             : `Bu ortamda hiç yok (${n} cluster tarandı)`) +

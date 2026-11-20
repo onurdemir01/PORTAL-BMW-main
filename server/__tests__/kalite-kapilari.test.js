@@ -343,6 +343,8 @@ const TABAN = {
     security_hotspots_reviewed: ['LT', 100],
     software_quality_blocker_issues: ['GT', 0],
     software_quality_high_issues: ['GT', 0],
+    // Mutlak (2026-11-20, kurumsal is #52): kurum kod kokularini sayiyor; yerel tarama 0 koku gormeli.
+    code_smells: ['GT', 0],
   },
   bastirma: {
     NOSONAR: 0,
@@ -620,4 +622,51 @@ test("KK13 kuruma giden HTML yorumlari kurum Sonar'inin yorumlanmis kod sezgisin
         bulgular.push(`${f}:${metin.slice(0, m.index).split('\n').length}`);
   }
   assert.deepEqual(bulgular, [], 'yorumdaki ="  /> </ kurumda "yorumlanmis kod" sayilir');
+});
+
+test("KK14 K15 kurum profili: kurallar genel Sonar anahtari, ESLint taklidiyle esit, kapi hotspot'ta mutlak", () => {
+  const k = JSON.parse(oku('kalite/kurumsal-sonar.json'));
+  const kurallar = sonar.profilKurallari(k);
+  assert.ok(kurallar.length >= 25, `kurum profili kuculdu (${kurallar.length})`);
+  for (const r of kurallar) {
+    assert.match(r.kural, /^(?:javascript|typescript|python|docker|Web):[A-Za-z0-9]+$/, r.kural);
+    assert.match(r.params, /^(?:|[a-zA-Z]+=[^;=]+(?:;[a-zA-Z]+=[^;=]+)*)$/, r.kural);
+  }
+  assert.deepEqual(
+    kurallar.filter((r) => r.params).map((r) => `${r.kural} ${r.params}`),
+    ['javascript:S5843 threshold=20', 'python:S107 max=7', 'python:S3776 threshold=15'],
+  );
+  // Kurumun JS / TS bulgu verdigi her kural commit aninda da ESLint'te (eslint.config.js yorumu).
+  const eslint = oku('eslint.config.js');
+  for (const r of kurallar.filter((x) => x.dil === 'js' || x.dil === 'ts')) {
+    const anahtar = r.kural.split(':')[1];
+    assert.match(eslint, new RegExp(`//[^\n]*\\b${anahtar}\\b`), `${r.kural} ESLint'te yok`);
+  }
+  const e = JSON.parse(oku('kalite/esikler.json'));
+  assert.ok(sonar.kosullar(e).some((c) => c.metric === 'code_smells' && c.error === '0'));
+  const kod = oku('scripts/sonar-kapi.cjs');
+  assert.match(kod, /inceleme: false/, 'K15 inceleme kaydi uygulamamali');
+  assert.match(kod, /kurum profili kurulamadi/, 'eksik kural sessizce gecmemeli');
+  // SonarQube `security_hotspots`i kapi kosulu olarak almaz: K15 sayiyi kendisi denetler.
+  assert.match(kod, /if \(!tamam \|\| bekleyenHotspot\)/, 'K15 bekleyen hotspot mutlak 0 degil');
+});
+
+// Kurumsal is #52 docker:S6505 (kurulumda betik calistirma) ve S6470 (`COPY . .`) kodda kapandi; S6505
+// SonarQube 26.11 Community'de yok (kalite/kurumsal-sonar.json profil.yereldeYok), bu yuzden burada.
+test('KK15 Dockerfile: her npm kurulumu betiksiz, baglamin tamami kopyalanmaz', () => {
+  const satirlar = oku('Dockerfile')
+    .replace(/\\\n/g, ' ')
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l));
+  const kurulumlar = satirlar.filter((l) => /^\s*RUN\b.*\bnpm\s+(?:ci|install|i)\b/.test(l));
+  assert.ok(kurulumlar.length >= 2, 'Dockerfile npm kurulumu bulunamadi');
+  for (const l of kurulumlar) assert.match(l, /--ignore-scripts\b/, `betikli kurulum: ${l.trim()}`);
+  assert.ok(
+    satirlar.some((l) => /^\s*ENV\s+npm_config_ignore_scripts=true\b/.test(l)),
+    'npm_config_ignore_scripts ortam degiskeni yok',
+  );
+  assert.ok(
+    !satirlar.some((l) => /^\s*(?:COPY|ADD)\s+(?:--\S+\s+)*\.\s+\S+/.test(l)),
+    'COPY . . var',
+  );
 });

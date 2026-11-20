@@ -252,9 +252,9 @@ function isOcoGateApplicable(overrides, extraVars, gateVars) {
     // `gateVars`ta bulunur.
     const a = readEnvLabel(extraVars);
     const b = readEnvLabel(gateVars);
-    return (a && envs.has(a)) || (b && envs.has(b));
+    return Boolean(a && envs.has(a)) || Boolean(b && envs.has(b));
   }
-  return isProductionRequest(extraVars) || isProductionRequest(gateVars);
+  return Boolean(isProductionRequest(extraVars) || isProductionRequest(gateVars));
 }
 
 async function evaluateOcoGate({

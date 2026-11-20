@@ -5,6 +5,9 @@ Format [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) esas alınarak h
 ## [Unreleased]
 
 ### Added
+- K16 `main` geçmişi (`scripts/gecmis-denetim.cjs`, CI `verify`): `main`'e giden her first-parent commit birleşmiş bir PR'dan gelmeli, konu satırı 8–120 karakter; `commit-msg` kancası konu kuralını aynı yerden okur (bekçi GD1-GD5).
+- K15 kurum kural profili: "Portal Kurumsal" her dilde `kalite/kurumsal-sonar.json` `profil`den kurulur (kurumsal iş #52 bulguları + Sonar way bug / zafiyet / hotspot); K15 inceleme kaydı uygulamaz, inceleme bekleyen hotspot mutlak 0 (bekçi KK14). K13 / K15 kapısında kod kokusu mutlak (0).
+- ESLint'te kurumun Sonar kuralları (`eslint-plugin-sonarjs`, `KURUM_JS` / `KURUM_TS`); kurumsal iş #52'nin 1597 kod kokusu ve HTML yorum bulgusu kapandı (bekçi KK13: kurumun HTML "yorumlanmış kod" sezgisi).
 - `scripts/arac-yolu.cjs`: geliştirme betiklerinin çalıştırdığı dış araçlar (git, npm, npx, docker, zip, gitleaks, cygpath) PATH'te aranmaz; yalnız sabit sistem dizinlerinden ve Node'un kurulum dizininden mutlak yolla çalışır (Sonar S4036; bekçi AY1-AY3).
 - Kurumsal Sonar taklidi (K15): CI `sonar` işi, kurumun sınıflandırmasıyla (`kalite/kurumsal-sonar.json`) ayrı bir projeye de tarar ve aynı kapıyı uygular (`node scripts/sonar-kapi.cjs --ci --kurumsal`, bekçi KK12).
 - Kurumsal teslim imzası `kalite/teslim.json` (`scripts/teslim.cjs`, `.github/workflows/teslim-imzasi.yml`): main'deki her dosyanın git blob sha'sı, her main push'undan sonra tazelenir. `kurumsal:derle`'nin ilk adımı kodu bununla karşılaştırır ve yarım aktarımı dosya dosya söyler (bekçi TS1-TS8).

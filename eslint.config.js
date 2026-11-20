@@ -23,6 +23,7 @@ const KURUM_JS = {
   'prefer-object-has-own': 'error', // S6653
   'prefer-promise-reject-errors': 'error', // S6671
   'no-unneeded-ternary': 'error', // S6644
+  'sonarjs/publicly-writable-directories': 'error', // S5443 (hotspot)
 };
 // Tip bilgisi isteyen JS kurallari (tsconfig.eslint.json ile).
 const KURUM_JS_TIPLI = {
@@ -143,8 +144,23 @@ export default [
     rules: KURUM_JS_TIPLI,
   },
   {
+    // ES modulu betikler: ayni tip bilgili kurallar (kurumsal is #52'de iki .mjs S6582'si ESLint'ten kacmisti).
+    files: ['{server,src,shared,scripts}/**/*.mjs'],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: 'module',
+      parserOptions: { project: './tsconfig.eslint.json', tsconfigRootDir: import.meta.dirname },
+    },
+    plugins: { sonarjs, '@typescript-eslint': tsPlugin },
+    rules: KURUM_JS_TIPLI,
+  },
+  {
+    // Tip bilgisi: S4043 dizi oldugunu bilmeden yakalayamaz (is #52 typescript:S4043 ESLint'ten kacmisti).
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**'],
+    languageOptions: {
+      parserOptions: { project: './tsconfig.json', tsconfigRootDir: import.meta.dirname },
+    },
     plugins: { sonarjs },
     rules: KURUM_TS,
   },

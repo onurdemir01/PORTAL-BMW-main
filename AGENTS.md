@@ -12,6 +12,7 @@ Kurumsal güvenlik taramasından geçen her teslim **0 zafiyet** ile geçer; ist
 
 - Teslimden önce `npm run kapi` koşturulur; sonuç sayılarıyla raporlanır ("geçti" demek yetmez).
 - CI'da `verify` ve `sonar` yeşil olmadan merge yok; onay, onaylayıcı listesinden geçmiş bir inceleyiciden gelir.
+- `main`'e PR'sız commit gitmez: her değişiklik PR'dan geçer (K16 PR'sız commit'i ve 8–120 dışı konu satırını CI'da kırmızı yapar).
 - Kapılar yalnız sıkılaşır. Şunlar yasaktır:
   - eşik düşürmek;
   - bastırma ya da dışlama eklemek (`NOSONAR`, `eslint-disable`, `@ts-ignore`, `.skip`, `sonar.*.exclusions`);

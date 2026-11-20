@@ -19,14 +19,17 @@ function esnek(re) {
   const k = re.source;
   let out = '';
   let sinif = false;
-  for (let i = 0; i < k.length; i += 1) {
+  // Her dal kac karakter tukettigini `adim`a yazar (kacisli cift 2, niceleyici `{m,n}` tamami).
+  let i = 0;
+  while (i < k.length) {
     const c = k[i];
+    let adim = 1;
     if (c === '\\') {
       const ikili = k.slice(i, i + 2);
-      i += 1;
+      adim = 2;
       const n = ikili[1];
       // Ardindan niceleyici geliyorsa (`\(?`) belirtecin kendisi niceleniyor: araya bir sey girmez.
-      if (sinif || NICELEYICI.has(k[i + 1])) out += ikili;
+      if (sinif || NICELEYICI.has(k[i + 2])) out += ikili;
       else if (n === '(' || n === '{' || n === '[') out += `${ikili}\\s*`;
       else if (n === ')' || n === '}' || n === ']') out += `,?\\s*${ikili}`;
       else if (n === '.') out += `\\s*${ikili}`;
@@ -35,7 +38,7 @@ function esnek(re) {
       // Niceleyici ({0,200}): oldugu gibi.
       const son = k.indexOf('}', i);
       out += k.slice(i, son + 1);
-      i = son;
+      adim = son + 1 - i;
     } else if (sinif) {
       out += c;
       if (c === ']') sinif = false;
@@ -56,6 +59,7 @@ function esnek(re) {
     } else {
       out += c;
     }
+    i += adim;
   }
   return new RegExp(out, re.flags);
 }

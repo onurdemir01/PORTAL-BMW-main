@@ -26,17 +26,19 @@ import araclar from '../arac-yolu.cjs';
 
 const BURASI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const KOK = path.resolve(process.env.UI_TARAMA_KOK || BURASI);
-const arg = (ad, varsayilan = null) => {
+// Komut satiri: `--ad deger` -> deger (yoksa varsayilan); degersiz bayrak `--ad` -> bayrak() true.
+const sonrakiDeger = (ad) => {
   const i = process.argv.indexOf(ad);
-  if (i < 0) return varsayilan;
-  if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1];
-  return true;
+  const s = i < 0 ? undefined : process.argv[i + 1];
+  return s && !s.startsWith('--') ? s : null;
 };
+const deger = (ad, varsayilan = null) => sonrakiDeger(ad) ?? varsayilan;
+const bayrak = (ad) => process.argv.includes(ad) && sonrakiDeger(ad) === null;
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5198);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9334);
 const TABAN = `http://127.0.0.1:${VITE_PORT}`;
-const CIKTI = path.resolve(String(arg('--cikti', path.join(os.tmpdir(), 'ui-tarama-scalex'))));
-const ESKI = arg('--eski') === true;
+const CIKTI = path.resolve(deger('--cikti', path.join(os.tmpdir(), 'ui-tarama-scalex')));
+const ESKI = bayrak('--eski');
 
 // Ornekler HER ZAMAN bu depodan okunur (olculen agac eski olsa da sunucu yanitlari ayni kaynak).
 const ORNEK = JSON.parse(

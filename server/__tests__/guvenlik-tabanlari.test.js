@@ -201,7 +201,7 @@ test('GT7 prepare husky yokken kurulumu dusurmez', () => {
   // Baska bir hata (bozuk husky) YUTULMAZ.
   assert.match(
     oku('scripts', 'kanca-kur.mjs'),
-    /e\.code === 'ERR_MODULE_NOT_FOUND'\) process\.exit\(0\);\s*throw e;/,
+    /e\??\.code === 'ERR_MODULE_NOT_FOUND'\) process\.exit\(0\);\s*throw e;/,
   );
 });
 

@@ -10,6 +10,7 @@
       { "metrik": "duplicated_lines_density", "op": "GT", "esik": "3" },
       { "metrik": "bugs", "op": "GT", "esik": "0" },
       { "metrik": "vulnerabilities", "op": "GT", "esik": "0" },
+      { "metrik": "code_smells", "op": "GT", "esik": "0" },
       { "metrik": "software_quality_reliability_rating", "op": "GT", "esik": "1" },
       { "metrik": "software_quality_security_rating", "op": "GT", "esik": "1" },
       { "metrik": "sqale_rating", "op": "GT", "esik": "1" },

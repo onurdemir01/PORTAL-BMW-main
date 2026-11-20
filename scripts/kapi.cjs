@@ -102,6 +102,11 @@ const KAPILAR = [
 // Kapi listesinde olmayan ama CI'da ayrica kosan kapilar (fark araligi ister / ayri is).
 const CI_EK = [
   { id: 'K0', ad: 'sir taramasi (PR / push araligi)', ci: 'node scripts/sir-tarama.cjs --aralik' },
+  {
+    id: 'K16',
+    ad: "main gecmisi (PR'siz commit, konu satiri)",
+    ci: 'node scripts/gecmis-denetim.cjs --aralik',
+  },
   { id: 'K13', ad: 'SonarQube kalite kapisi', ci: 'node scripts/sonar-kapi.cjs' },
   { id: 'K14', ad: 'kurumsal is provasi', ci: 'npm run kurumsal:prova' },
   { id: 'K15', ad: 'kurumsal Sonar taklidi', ci: 'node scripts/sonar-kapi.cjs --ci --kurumsal' },

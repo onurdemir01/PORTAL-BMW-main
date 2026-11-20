@@ -25,18 +25,20 @@ import { sekme, DENETIM, sleep } from './lib.mjs';
 import araclar from '../arac-yolu.cjs';
 
 const KOK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const arg = (ad, varsayilan = null) => {
+// Komut satiri: `--ad deger` -> deger (yoksa varsayilan); degersiz bayrak `--ad` -> bayrak() true.
+const sonrakiDeger = (ad) => {
   const i = process.argv.indexOf(ad);
-  if (i < 0) return varsayilan;
-  if (process.argv[i + 1] && !process.argv[i + 1].startsWith('--')) return process.argv[i + 1];
-  return true;
+  const s = i < 0 ? undefined : process.argv[i + 1];
+  return s && !s.startsWith('--') ? s : null;
 };
+const deger = (ad, varsayilan = null) => sonrakiDeger(ad) ?? varsayilan;
+const bayrak = (ad) => process.argv.includes(ad) && sonrakiDeger(ad) === null;
 const VITE_PORT = Number(process.env.UI_TARAMA_VITE_PORT || 5199);
 const CDP_PORT = Number(process.env.UI_TARAMA_CDP_PORT || 9333);
 const TABAN = `http://127.0.0.1:${VITE_PORT}`;
-const CIKTI = path.resolve(String(arg('--cikti', path.join(os.tmpdir(), 'ui-tarama'))));
-const KATI = arg('--kati') === true;
-const TEK = arg('--sayfa');
+const CIKTI = path.resolve(deger('--cikti', path.join(os.tmpdir(), 'ui-tarama')));
+const KATI = bayrak('--kati');
+const TEK = deger('--sayfa');
 
 // Kapsam: sahibi baska ekipler olan agaclar (nginx-console, server-hub, crypto-hub) burada
 // yok; `--sayfa /server-hub` ile yine de taranabilir.
@@ -233,7 +235,7 @@ for (const mod of ['bos', 'hata']) {
       await t.kapat();
     }
     const sekmeli = SEKMELER[yol];
-    for (const sk of sekmeli && sekmeli.modlar.includes(mod) ? sekmeli.sekmeler : []) {
+    for (const sk of sekmeli?.modlar.includes(mod) ? sekmeli.sekmeler : []) {
       for (const tema of ['light', 'dark']) {
         const t = await sekme(CDP_PORT, TABAN);
         try {

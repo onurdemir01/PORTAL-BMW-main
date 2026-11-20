@@ -344,6 +344,13 @@ function main() {
 
   const commit = git('rev-parse', 'HEAD');
   const kirli = git('status', '--porcelain');
+  if (kirli) {
+    // Agac kirliyse neden goruluyor: manifest yalniz bayrak tutar, ilk yollar logda kalir.
+    const yollar = kirli.split('\n').filter(Boolean);
+    console.warn(
+      `[paket] KIRLI AGAC (${yollar.length} yol):\n  ${yollar.slice(0, 10).join('\n  ')}${yollar.length > 10 ? '\n  ...' : ''}`,
+    );
+  }
   manifestYaz(path.join(cikti, 'dist'), {
     surum: pkg.version,
     commit,

@@ -226,11 +226,6 @@ const cfgView = (cfg) =>
     : null;
 
 // ── Karar ────────────────────────────────────────────────────────────────────
-/**
- * Saf karar: bu job iptal edilmeli mi? (test edilebilir)
- * Calisan is `started`a, kuyruktaki is (yalniz cancelQueued acikken) `created`a gore olculur.
- * @returns {{cancel: boolean, reason?: string, decision: string, elapsedMinutes?: number, basis?: string}}
- */
 function isListed(cfg, job) {
   const kind = normKind(job.kind);
   return (cfg?.templates || []).some(
@@ -241,6 +236,17 @@ function isListed(cfg, job) {
   );
 }
 
+/**
+ * @typedef {{ cancel: false, reason: string, decision: 'disabled' | 'no_started' | 'not_listed' | 'queued_option_off' | 'no_created' }} KararOlcumsuz
+ * @typedef {{ cancel: false, reason: string, decision: 'below_threshold', elapsedMinutes: number, basis: 'created' | 'started' }} KararEsikAltinda
+ * @typedef {{ cancel: true, decision: 'cancel', elapsedMinutes: number, basis: 'created' | 'started' }} KararIptal
+ */
+/**
+ * Saf karar: bu job iptal edilmeli mi? (test edilebilir)
+ * Calisan is `started`a, kuyruktaki is (yalniz cancelQueued acikken) `created`a gore olculur.
+ * Sure yalniz olculen kararlarda (esik altinda / iptal) vardir; ayrimli birlesim bunu tipte soyler.
+ * @returns {KararOlcumsuz | KararEsikAltinda | KararIptal}
+ */
 function shouldCancel(cfg, job, nowMs = Date.now()) {
   if (!cfg?.enabled) return { cancel: false, reason: 'kapali', decision: 'disabled' };
   if (!job) return { cancel: false, reason: 'started yok', decision: 'no_started' };

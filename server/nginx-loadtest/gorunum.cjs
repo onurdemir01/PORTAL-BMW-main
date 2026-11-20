@@ -321,8 +321,9 @@ function kipDogrulama(a, { motor = 'k6', hedefTuru = 'sunucu', protokol = 'h1' }
   const b = { istenen: kip, yeniBaglantiYuzde: null, istekBaglanti: null, durum: 'olculmedi' };
   const yeniden = sonlu(ham.yeniden_baglanti_yuzde);
   if (hedefTuru !== 'serbest' && yeniden !== null && kip) {
-    b.yeniBaglantiYuzde = Math.min(100, Math.max(0, 100 - yeniden));
-    b.istekBaglanti = b.yeniBaglantiYuzde > 0 ? 100 / b.yeniBaglantiYuzde : null;
+    const yuzde = Math.min(100, Math.max(0, 100 - yeniden));
+    b.yeniBaglantiYuzde = yuzde;
+    b.istekBaglanti = yuzde > 0 ? 100 / yuzde : null;
     if (kip === 'yeni') {
       const mevcut = (Array.isArray(ham.uyarilar) ? ham.uyarilar : []).find(
         (u) => typeof u === 'string' && u.startsWith(YENI_UYARI_ONEKI),
@@ -331,8 +332,8 @@ function kipDogrulama(a, { motor = 'k6', hedefTuru = 'sunucu', protokol = 'h1' }
       if (fazla) uyarilar.push(mevcut || `${YENI_UYARI_ONEKI}${Math.round(yeniden)}`);
       b.durum = fazla ? 'uyari' : 'tamam';
     } else {
-      const fazla = b.yeniBaglantiYuzde > KIP_KA_YENI_ESIK;
-      if (fazla) uyarilar.push(`kip_ka_yeni_baglanti_%${Math.round(b.yeniBaglantiYuzde)}`);
+      const fazla = yuzde > KIP_KA_YENI_ESIK;
+      if (fazla) uyarilar.push(`kip_ka_yeni_baglanti_%${Math.round(yuzde)}`);
       b.durum = fazla ? 'uyari' : 'tamam';
     }
   }
