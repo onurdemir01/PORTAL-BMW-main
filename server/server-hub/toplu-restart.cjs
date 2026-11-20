@@ -160,13 +160,14 @@ function farkOzeti(ham) {
 /** Sunucularin agir fark kolonlari (maskelenmeden once ham), host basina Map. Okunamazsa bos Map. */
 async function farklariOku(hostlar) {
   const out = new Map();
-  if (!_d || typeof _d.loadJvmAgir !== 'function') return out;
-  const kol = typeof _d.loadJvmAgir.semaOku === 'function' ? _d.loadJvmAgir.semaOku() : undefined;
-  const liste = [...new Set(hostlar)];
-  for (let i = 0; i < liste.length; i += 10) {
-    const parca = liste.slice(i, i + 10);
-    const sonuc = await Promise.all(parca.map((h) => _d.loadJvmAgir(h, kol ? { kol } : undefined).catch(() => new Map())));
-    parca.forEach((h, k) => out.set(h, sonuc[k]));
+  if (_d && typeof _d.loadJvmAgir === 'function') {
+    const kol = typeof _d.loadJvmAgir.semaOku === 'function' ? _d.loadJvmAgir.semaOku() : undefined;
+    const liste = [...new Set(hostlar)];
+    for (let i = 0; i < liste.length; i += 10) {
+      const parca = liste.slice(i, i + 10);
+      const sonuc = await Promise.all(parca.map((h) => _d.loadJvmAgir(h, kol ? { kol } : undefined).catch(() => new Map())));
+      parca.forEach((h, k) => out.set(h, sonuc[k]));
+    }
   }
   return out;
 }
