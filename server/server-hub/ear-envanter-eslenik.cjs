@@ -427,10 +427,10 @@ function yapiFarki(a, b) {
   }
   for (const yol of B.keys()) if (!A.has(yol)) yalnizB.push(yol);
   return {
-    yalnizA: yalnizA.sort(varsayilanSira),
-    yalnizB: yalnizB.sort(varsayilanSira),
-    tipFarkli: tipFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
-    boyutFarkli: boyutFarkli.sort((x, y) => kucukBuyuk(x.yol, y.yol)),
+    yalnizA: yalnizA.toSorted(varsayilanSira),
+    yalnizB: yalnizB.toSorted(varsayilanSira),
+    tipFarkli: tipFarkli.toSorted((x, y) => kucukBuyuk(x.yol, y.yol)),
+    boyutFarkli: boyutFarkli.toSorted((x, y) => kucukBuyuk(x.yol, y.yol)),
   };
 }
 

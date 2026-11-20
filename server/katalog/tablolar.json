@@ -140,7 +140,7 @@
       {
         "tur": "portal",
         "ad": "Telnet",
-        "dosya": "server/telnet/index.cjs:642",
+        "dosya": "server/telnet/index.cjs:638",
         "nasil": "per-run INSERT",
         "ne_zaman": "Kullanıcı işlemi"
       },
@@ -182,7 +182,7 @@
       {
         "tur": "portal",
         "ad": "App Hub (OCP canlı, JVM parametresi), FileX, Envanter yenile",
-        "dosya": "server/app-hub/index.cjs:165",
+        "dosya": "server/app-hub/index.cjs:163",
         "nasil": "per-run INSERT (app-hub/jvm-param.cjs:174, filex/index.cjs:270, inventory/index.cjs:1933)",
         "ne_zaman": "Kullanıcı işlemi"
       }
@@ -230,14 +230,14 @@
       {
         "tur": "portal",
         "ad": "Retirement iş çıktısı",
-        "dosya": "server/retirement/is-ciktisi.cjs:661",
+        "dosya": "server/retirement/is-ciktisi.cjs:656",
         "nasil": "yoksa INSERT",
         "ne_zaman": "Retirement çıktısı alındığında"
       },
       {
         "tur": "portal",
         "ad": "Yük Testi poller çıktı arşivi (maskeli stdout)",
-        "dosya": "server/nginx-loadtest/poller.cjs:358",
+        "dosya": "server/nginx-loadtest/poller.cjs:357",
         "nasil": "yoksa INSERT (varlık kontrolü :266)",
         "ne_zaman": "Yük Testi koşusu bitince"
       }
@@ -249,7 +249,7 @@
       },
       {
         "ad": "Yük Testi koşu çıktısı",
-        "dosya": "server/nginx-loadtest/index.cjs:2258"
+        "dosya": "server/nginx-loadtest/index.cjs:2247"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -369,7 +369,7 @@
       },
       {
         "ad": "Self Servis taşıma ekranı",
-        "dosya": "server/ansible/ss-tasima-rotalari.cjs:1393"
+        "dosya": "server/ansible/ss-tasima-rotalari.cjs:1392"
       }
     ],
     "saklama": "anlik goruntu (şablon başına tek satır); önceki sürümler ansible_ss_customizations_history'de",
@@ -494,7 +494,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/app_hub/app_hub_ocp.yml (Application Hub — OpenShift Canlı Okuma) sonucu, Portal yazar",
-        "dosya": "server/app-hub/canli.cjs:410",
+        "dosya": "server/app-hub/canli.cjs:405",
         "nasil": "per-run INSERT (iş başına bir kez)",
         "ne_zaman": "Kullanıcı App Hub'da canlı okuma istediğinde"
       }
@@ -502,7 +502,7 @@
     "okuyanlar": [
       {
         "ad": "Application Hub uygulama detayı",
-        "dosya": "server/app-hub/canli.cjs:349"
+        "dosya": "server/app-hub/canli.cjs:344"
       }
     ],
     "saklama": "yok (sinirsiz buyur)",
@@ -875,14 +875,14 @@
       {
         "tur": "portal",
         "ad": "Toplu Auto-Start uçları ve yürütücüsü",
-        "dosya": "server/server-hub/toplu-autostart.cjs:428",
+        "dosya": "server/server-hub/toplu-autostart.cjs:427",
         "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:785)",
         "ne_zaman": "Admin toplu iş açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
       },
       {
         "tur": "portal",
         "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
-        "dosya": "server/server-hub/toplu-restart.cjs:513",
+        "dosya": "server/server-hub/toplu-restart.cjs:511",
         "nasil": "per-batch INSERT; durum, kira ve sayım UPDATE'leri (:1048)",
         "ne_zaman": "Admin toplu restart açınca / onaylayınca / iptal edince; yürütücü 10 sn'de bir"
       }
@@ -894,7 +894,7 @@
       },
       {
         "ad": "Toplu Restart sekmesi (durum, liste)",
-        "dosya": "server/server-hub/toplu-restart.cjs:302"
+        "dosya": "server/server-hub/toplu-restart.cjs:300"
       }
     ],
     "saklama": "Silinmez (denetim izi; satır sayısı toplu iş başına bir).",
@@ -911,14 +911,14 @@
       {
         "tur": "portal",
         "ad": "Toplu Auto-Start uçları ve yürütücüsü",
-        "dosya": "server/server-hub/toplu-autostart.cjs:451",
+        "dosya": "server/server-hub/toplu-autostart.cjs:450",
         "nasil": "toplu iş açılınca INSERT; plan / uygulama sonucu UPDATE (:792)",
         "ne_zaman": "Toplu iş açılınca; yürütücü 10 sn'de bir"
       },
       {
         "tur": "portal",
         "ad": "Toplu Restart uçları ve yürütücüsü (tur RESTART)",
-        "dosya": "server/server-hub/toplu-restart.cjs:546",
+        "dosya": "server/server-hub/toplu-restart.cjs:544",
         "nasil": "toplu iş açılınca INSERT (ek JSON: grup, uygulama, maskeli fark, önceki loaded_at / süreç başlangıcı); önizleme / restart / doğrulama taraması sonucu UPDATE (:1060)",
         "ne_zaman": "Toplu restart açılınca; yürütücü 10 sn'de bir"
       }
@@ -926,11 +926,11 @@
     "okuyanlar": [
       {
         "ad": "Toplu Auto-Start sekmesi ve tek JVM kilidi (/jvm-autostart, /fix 409)",
-        "dosya": "server/server-hub/toplu-autostart.cjs:328"
+        "dosya": "server/server-hub/toplu-autostart.cjs:327"
       },
       {
         "ad": "Toplu Restart sekmesi ve JVM kilidi (auto-start uçları restart süren JVM'de 409)",
-        "dosya": "server/server-hub/toplu-restart.cjs:428"
+        "dosya": "server/server-hub/toplu-restart.cjs:426"
       }
     ],
     "saklama": "Silinmez (toplu iş başına en çok limit:toplu_autostart / limit:toplu_restart satır).",
@@ -962,7 +962,7 @@
     "okuyanlar": [
       {
         "ad": "EAR Temizliği sekmesi (liste, kayıt ayrıntısı, aktif kayıt kilidi, toplu işlem)",
-        "dosya": "server/server-hub/ear-temizlik.cjs:1005"
+        "dosya": "server/server-hub/ear-temizlik.cjs:1004"
       }
     ],
     "saklama": "Silinmez (denetim izi; silme başına bir satır, ekranda son kayıtlar).",
@@ -1586,7 +1586,7 @@
       },
       {
         "ad": "Yuk Testi gece kuyrugu yetki kontrolu",
-        "dosya": "server/nginx-loadtest/index.cjs:1332"
+        "dosya": "server/nginx-loadtest/index.cjs:1323"
       }
     ],
     "saklama": "yok",
@@ -1987,7 +1987,7 @@
       {
         "tur": "portal",
         "ad": "Denetim > Nginx Audit: PUT/DELETE /api/denetim/nginx-audit/allowed (Admin)",
-        "dosya": "server/audit/denetim.cjs:1654",
+        "dosya": "server/audit/denetim.cjs:1655",
         "nasil": "tekil INSERT (varsa atla), DELETE by id (server/audit/denetim.cjs:1666)",
         "ne_zaman": "Admin elle ekler/siler"
       }
@@ -1995,11 +1995,11 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit sapma hesabi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1510"
+        "dosya": "server/audit/denetim.cjs:1511"
       },
       {
         "ad": "GET /api/denetim/nginx-audit/allowed",
-        "dosya": "server/audit/denetim.cjs:1623"
+        "dosya": "server/audit/denetim.cjs:1624"
       }
     ],
     "saklama": "yok (elle yonetilen kucuk liste)",
@@ -2016,7 +2016,7 @@
       {
         "tur": "portal",
         "ad": "PUT/DELETE /api/denetim/nginx-audit/exceptions/:host (Admin)",
-        "dosya": "server/audit/denetim.cjs:1696",
+        "dosya": "server/audit/denetim.cjs:1697",
         "nasil": "host basina upsert (UPDATE yoksa INSERT :1694), DELETE (:1773)",
         "ne_zaman": "Admin elle"
       },
@@ -2031,7 +2031,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Audit ozet/listesi (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1585"
+        "dosya": "server/audit/denetim.cjs:1586"
       }
     ],
     "saklama": "yok; kapanmis sunucunun satiri eski-sunucu temizliginde silinir",
@@ -2048,7 +2048,7 @@
       {
         "tur": "portal",
         "ad": "PUT/DELETE /api/nginx-cis/exceptions",
-        "dosya": "server/nginx-cis/index.cjs:239",
+        "dosya": "server/nginx-cis/index.cjs:238",
         "nasil": "upsert (item_id+host), DELETE by id (:192)",
         "ne_zaman": "Kullanici/Admin elle"
       },
@@ -2080,7 +2080,7 @@
       {
         "tur": "portal",
         "ad": "PUT/DELETE /api/nginx-cis/overrides",
-        "dosya": "server/nginx-cis/index.cjs:299",
+        "dosya": "server/nginx-cis/index.cjs:298",
         "nasil": "upsert (item_id+expected), DELETE by id (:227)",
         "ne_zaman": "Kullanici/Admin elle"
       }
@@ -2525,7 +2525,7 @@
       },
       {
         "ad": "App Hub OCP verisi",
-        "dosya": "server/app-hub/veri.cjs:567",
+        "dosya": "server/app-hub/veri.cjs:565",
         "uzerinden": "server/logx/v2/ocp-cache.cjs"
       },
       {
@@ -2599,7 +2599,7 @@
       },
       {
         "ad": "App Hub",
-        "dosya": "server/app-hub/veri.cjs:512"
+        "dosya": "server/app-hub/veri.cjs:510"
       },
       {
         "ad": "Self Service tenant secimi",
@@ -3041,7 +3041,7 @@
       {
         "tur": "portal",
         "ad": "ScaleX durdurma kaydi (state.cjs)",
-        "dosya": "server/scalex/state.cjs:138",
+        "dosya": "server/scalex/state.cjs:139",
         "nasil": "MERGE upsert; geri baslatilinca DELETE (:292)",
         "ne_zaman": "Durdur/baslat islemleri, uzlastirici"
       }
@@ -3053,11 +3053,11 @@
       },
       {
         "ad": "ScaleX uzlaştırıcı / tüm durdurulmuşlar taraması",
-        "dosya": "server/scalex/state.cjs:313"
+        "dosya": "server/scalex/state.cjs:314"
       },
       {
         "ad": "ScaleX geri başlatma ('restoring') taraması",
-        "dosya": "server/scalex/state.cjs:275"
+        "dosya": "server/scalex/state.cjs:276"
       }
     ],
     "saklama": "anlik goruntu (yalniz su an durdurulmus olanlar)",
@@ -3175,7 +3175,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml (Server Hub — Uygulama Envanteri) ham dosyaları; Portal /sw'den alıp yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1337",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1336",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Haftalık zamanlayıcı (ear-envanter-poller.cjs) veya elle / AWX'ten başlatılan koşu"
       }
@@ -3240,7 +3240,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1344",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1343",
         "nasil": "yoksa INSERT (tekilleştirme)",
         "ne_zaman": "Koşu alımında"
       },
@@ -3304,7 +3304,7 @@
       {
         "tur": "portal",
         "ad": "Uygulama Envanteri alımı",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1352",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1351",
         "nasil": "yeni set için INSERT",
         "ne_zaman": "Koşu alımında"
       }
@@ -3333,7 +3333,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1343",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1342",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3362,7 +3362,7 @@
       {
         "tur": "playbook",
         "ad": "bmw_portal/ear_envanter/ear_envanter.yml sonucu, Portal yazar",
-        "dosya": "server/server-hub/ear-envanter-alim.cjs:1345",
+        "dosya": "server/server-hub/ear-envanter-alim.cjs:1344",
         "nasil": "koşu+host başına delete+insert",
         "ne_zaman": "Tarama koşusu alımında"
       }
@@ -3672,7 +3672,7 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi poller sonuclandirma",
-        "dosya": "server/nginx-loadtest/poller.cjs:338",
+        "dosya": "server/nginx-loadtest/poller.cjs:337",
         "nasil": "kosu basina delete+insert (once DELETE :247)",
         "ne_zaman": "Poller her 30 sn (NGINX_LOADTEST_POLL_SN); AWX isi bitince"
       },
@@ -3694,11 +3694,11 @@
     "okuyanlar": [
       {
         "ad": "Yuk Testi kosu detayi / karsilastirma / rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:2108"
+        "dosya": "server/nginx-loadtest/index.cjs:2099"
       },
       {
         "ad": "Coklu karsilastirma ve rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:2653"
+        "dosya": "server/nginx-loadtest/index.cjs:2637"
       }
     ],
     "saklama": "housekeeping NGINX_LOADTEST_RETENTION_DAYS (varsayilan 365 gun), TOP(n) partileri",
@@ -3715,14 +3715,14 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi > Araclar: arac derleme baslat",
-        "dosya": "server/nginx-loadtest/araclar.cjs:952",
+        "dosya": "server/nginx-loadtest/araclar.cjs:943",
         "nasil": "is basina INSERT, durum UPDATE'leri (:460-:609)",
         "ne_zaman": "Admin arac seti derlettiginde; poller sonuclandirir"
       },
       {
         "tur": "portal",
         "ad": "Arac seti geri cekme",
-        "dosya": "server/nginx-loadtest/araclar.cjs:1093",
+        "dosya": "server/nginx-loadtest/araclar.cjs:1084",
         "nasil": "UPDATE geri_ceken/geri_cekme_at",
         "ne_zaman": "Admin elle"
       }
@@ -3734,7 +3734,7 @@
       },
       {
         "ad": "Araclar listesi",
-        "dosya": "server/nginx-loadtest/araclar.cjs:841"
+        "dosya": "server/nginx-loadtest/araclar.cjs:832"
       }
     ],
     "saklama": "yok (satir silinmez, kucuk tablo); housekeeping dokunmaz",
@@ -3784,21 +3784,21 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi: on kontrol / kosu baslat",
-        "dosya": "server/nginx-loadtest/index.cjs:735",
+        "dosya": "server/nginx-loadtest/index.cjs:728",
         "nasil": "kosu basina INSERT, sonra durum UPDATE'leri",
         "ne_zaman": "Kullanici kosu/on kontrol baslattiginda veya gece kuyrugu"
       },
       {
         "tur": "portal",
         "ad": "Yuk Testi poller",
-        "dosya": "server/nginx-loadtest/poller.cjs:577",
+        "dosya": "server/nginx-loadtest/poller.cjs:572",
         "nasil": "durum/sonuc UPDATE",
         "ne_zaman": "30 sn'de bir"
       },
       {
         "tur": "portal",
         "ad": "Durdur / iptal / etiket",
-        "dosya": "server/nginx-loadtest/index.cjs:1222",
+        "dosya": "server/nginx-loadtest/index.cjs:1213",
         "nasil": "UPDATE",
         "ne_zaman": "Kullanici eylemi"
       },
@@ -3820,7 +3820,7 @@
     "okuyanlar": [
       {
         "ad": "Yuk Testi kosu listesi / detay / coklu karsilastirma / rapor",
-        "dosya": "server/nginx-loadtest/index.cjs:2085"
+        "dosya": "server/nginx-loadtest/index.cjs:2076"
       },
       {
         "ad": "Gece kuyrugu",
@@ -3900,7 +3900,7 @@
       },
       {
         "ad": "Kuyruk detay ekrani",
-        "dosya": "server/nginx-loadtest/index.cjs:2718"
+        "dosya": "server/nginx-loadtest/index.cjs:2698"
       },
       {
         "ad": "Kosu silme korumasi",
@@ -3946,7 +3946,7 @@
       {
         "tur": "portal",
         "ad": "Yuk Testi senaryo yukle/duzenle/sil",
-        "dosya": "server/nginx-loadtest/index.cjs:1865",
+        "dosya": "server/nginx-loadtest/index.cjs:1856",
         "nasil": "INSERT, UPDATE (:1289), yumusak silme (:1308)",
         "ne_zaman": "Kullanici eylemi"
       }
@@ -3954,11 +3954,11 @@
     "okuyanlar": [
       {
         "ad": "Senaryo listesi",
-        "dosya": "server/nginx-loadtest/index.cjs:1235"
+        "dosya": "server/nginx-loadtest/index.cjs:1226"
       },
       {
         "ad": "Kosu detay/listeleri (JOIN)",
-        "dosya": "server/nginx-loadtest/index.cjs:411"
+        "dosya": "server/nginx-loadtest/index.cjs:408"
       }
     ],
     "saklama": "yok (yumusak silme)",
@@ -3987,7 +3987,7 @@
       },
       {
         "ad": "Kosu dogrulama",
-        "dosya": "server/nginx-loadtest/index.cjs:474",
+        "dosya": "server/nginx-loadtest/index.cjs:471",
         "uzerinden": "server/nginx-loadtest/yuk-makineleri.cjs"
       }
     ],
@@ -4200,7 +4200,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Deployment Scripts (/api/denetim/deploy-scripts)",
-        "dosya": "server/audit/denetim.cjs:2589"
+        "dosya": "server/audit/denetim.cjs:2590"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4225,7 +4225,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ham sha512; load_date varsa veri yasi",
-        "dosya": "server/audit/denetim.cjs:1969"
+        "dosya": "server/audit/denetim.cjs:1970"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4250,7 +4250,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (vhosting8)",
-        "dosya": "server/audit/denetim.cjs:1970"
+        "dosya": "server/audit/denetim.cjs:1971"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4275,7 +4275,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - norm/CR/durum ve veri yasi",
-        "dosya": "server/audit/denetim.cjs:1973"
+        "dosya": "server/audit/denetim.cjs:1974"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir); scan_date = kosunun zaman damgasi",
@@ -4300,7 +4300,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Init Script (/api/denetim/init-scripts) - ekip surumu",
-        "dosya": "server/audit/denetim.cjs:1959"
+        "dosya": "server/audit/denetim.cjs:1960"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir)",
@@ -4404,7 +4404,7 @@
       },
       {
         "ad": "Nginx Audit (ortam yedegi)",
-        "dosya": "server/audit/nginx-audit.cjs:61"
+        "dosya": "server/audit/nginx-audit.cjs:59"
       },
       {
         "ad": "Server Hub (urun kaynagi)",
@@ -4412,7 +4412,7 @@
       },
       {
         "ad": "Yuk Testi (hedef/yuk makinesi kapisi)",
-        "dosya": "server/nginx-loadtest/index.cjs:1607"
+        "dosya": "server/nginx-loadtest/index.cjs:1598"
       },
       {
         "ad": "Application Hub",
@@ -4510,7 +4510,7 @@
       },
       {
         "ad": "Yuk Testi IP dogrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:1960"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:1959"
       }
     ],
     "saklama": "anlik goruntu (her kosuda yeniden yazilir); dun/bugun farki DB'den degil rapor dosyalarindan",
@@ -5004,7 +5004,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit (sunucu sayfası, dosya karşılaştırması)",
-        "dosya": "server/audit/denetim.cjs:1492"
+        "dosya": "server/audit/denetim.cjs:1493"
       },
       {
         "ad": "Nginx Audit değişim belirteci (önbellek)",
@@ -5040,11 +5040,11 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2393"
+        "dosya": "server/audit/denetim.cjs:2394"
       },
       {
         "ad": "Denetim > Nginx Audit (GET /api/denetim/nginx-audit)",
-        "dosya": "server/audit/denetim.cjs:1526"
+        "dosya": "server/audit/denetim.cjs:1527"
       },
       {
         "ad": "Nginx sunucusu ölçülebilirlik durumu",
@@ -5093,7 +5093,7 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2327"
+        "dosya": "server/audit/denetim.cjs:2328"
       },
       {
         "ad": "Denetim > Nginx Audit",
@@ -5133,15 +5133,15 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2327"
+        "dosya": "server/audit/denetim.cjs:2328"
       },
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1528"
+        "dosya": "server/audit/denetim.cjs:1529"
       },
       {
         "ad": "Denetim > Nginx API Envanteri (servis sütunu)",
-        "dosya": "server/audit/denetim.cjs:2026"
+        "dosya": "server/audit/denetim.cjs:2027"
       },
       {
         "ad": "API envanteri özeti",
@@ -5154,7 +5154,7 @@
       },
       {
         "ad": "Nginx Hub > Yük Testi hedef doğrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:1771"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:1770"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5186,7 +5186,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1534"
+        "dosya": "server/audit/denetim.cjs:1535"
       },
       {
         "ad": "Nginx Audit sıcak önbellek / değişim belirteci",
@@ -5198,7 +5198,7 @@
       },
       {
         "ad": "Nginx Hub > Yük Testi ayar doğrulama",
-        "dosya": "server/nginx-loadtest/dogrula.cjs:1030"
+        "dosya": "server/nginx-loadtest/dogrula.cjs:1029"
       }
     ],
     "saklama": "DELETE TOP(5000); RETENTION_DAYS=1 (bugün + dün)",
@@ -5230,11 +5230,11 @@
     "okuyanlar": [
       {
         "ad": "Nginx Hub > Envanter > Upstream Envanteri (GET /api/denetim/nginx-upstreams)",
-        "dosya": "server/audit/denetim.cjs:2374"
+        "dosya": "server/audit/denetim.cjs:2375"
       },
       {
         "ad": "Denetim > Nginx Audit",
-        "dosya": "server/audit/denetim.cjs:1532"
+        "dosya": "server/audit/denetim.cjs:1533"
       },
       {
         "ad": "Production Taşımaları",
@@ -5449,7 +5449,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx Envanteri (GET /api/denetim/nginx-inventory)",
-        "dosya": "server/audit/denetim.cjs:2208"
+        "dosya": "server/audit/denetim.cjs:2209"
       },
       {
         "ad": "Self Servis seçenek kaynağı nginx-hosts / nginx-services",
@@ -5598,7 +5598,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx API Envanteri (GET /api/denetim/nginx-api, /nginx-api-locations)",
-        "dosya": "server/audit/denetim.cjs:1983"
+        "dosya": "server/audit/denetim.cjs:1984"
       },
       {
         "ad": "Self Servis seçenek kaynakları nginx-api-locations / nginx-api-gateway-confs",
@@ -5643,7 +5643,7 @@
       },
       {
         "ad": "Application Hub uygulama detayi",
-        "dosya": "server/app-hub/veri.cjs:551"
+        "dosya": "server/app-hub/veri.cjs:549"
       },
       {
         "ad": "Server Hub capraz veri",
@@ -5689,7 +5689,7 @@
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:545"
+        "dosya": "server/app-hub/veri.cjs:543"
       },
       {
         "ad": "Nginx Konsol > SPA Kesfi",
@@ -5789,7 +5789,7 @@
     "okuyanlar": [
       {
         "ad": "Denetim > Nginx SPA ve Denetim > OpenShift (ocp-coverage)",
-        "dosya": "server/audit/denetim.cjs:1895"
+        "dosya": "server/audit/denetim.cjs:1896"
       },
       {
         "ad": "Self Servis seçenek kaynakları ocp-namespaces / ocp-spa-applications",
@@ -5992,7 +5992,7 @@
       },
       {
         "ad": "Application Hub",
-        "dosya": "server/app-hub/veri.cjs:428"
+        "dosya": "server/app-hub/veri.cjs:427"
       },
       {
         "ad": "Envanter Degisim gecmisi (gunluk anlik kopya)",

@@ -28,7 +28,7 @@ const KURUM_JS = {
 const KURUM_JS_TIPLI = {
   '@typescript-eslint/prefer-optional-chain': 'error', // S6582
   '@typescript-eslint/prefer-for-of': 'error', // S4138
-  'sonarjs/no-misleading-array-reverse': 'off', // S4043 — PR-1 icinde duzeltilip acilir
+  'sonarjs/no-misleading-array-reverse': 'error', // S4043
   'sonarjs/function-return-type': 'error', // S3800
   'sonarjs/argument-type': 'error', // S3782
 };

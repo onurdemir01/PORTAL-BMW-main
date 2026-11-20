@@ -557,7 +557,7 @@ function ornekOkuyucu(ad, maxSatir = Infinity) {
       ornekler.push({ t, u, s: st, n, k, p: v.pidler, busy, tot: busy + idle + iowait });
     },
     // Array.prototype.sort kararlidir (Python sort gibi): ayni t'li ornekler yerini korur.
-    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+    bitir: () => ornekler.toSorted((a, b) => a.t - b.t),
   };
 }
 
@@ -618,7 +618,7 @@ function yukOrnekOkuyucu(ad, maxSatir = Infinity) {
         if (idx.has(k)) ornek[a] = tamSayi((r[idx.get(k)] || '').trim());
       ornekler.push(ornek);
     },
-    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+    bitir: () => ornekler.toSorted((a, b) => a.t - b.t),
   });
 }
 
@@ -665,7 +665,7 @@ function bellekOkuyucu(ad, maxSatir = Infinity) {
         ma: al('mem_available_kb'),
       });
     },
-    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+    bitir: () => ornekler.toSorted((a, b) => a.t - b.t),
   });
 }
 
@@ -811,7 +811,7 @@ function bdetayOkuyucu(ad, maxSatir = Infinity) {
         bg: al('baglanti'),
       });
     },
-    bitir: () => ornekler.sort((a, b) => a.t - b.t),
+    bitir: () => ornekler.toSorted((a, b) => a.t - b.t),
   });
 }
 

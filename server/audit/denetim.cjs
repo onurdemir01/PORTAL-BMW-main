@@ -1261,7 +1261,8 @@ function initDenetim(app) {
           bucket[v.net].push(v.name);
           if (n.has(k)) inNginx[v.net].push(v.name);
         }
-        const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase()));
+        // Bir kez sirali: liste (internetMissing) ve ayrintisi (missing.internet) ayni sirayi okur.
+        const internetMissing = bucket.internet.filter((a) => !n.has(a.toLowerCase())).sort(sortTr);
         // DEPLOY EDILMIS (H+A) / SERVISE TANIMLI / YUK ALIYOR (ikisi de) - uc ayri kume
         const nd = netDirs.get(e) || new Map();
         const dirsMeasured = nd.size > 0;
@@ -1327,7 +1328,7 @@ function initDenetim(app) {
           internetMultiService: multi,
           internetServiced: serviced,
           internetMissingCount: internetMissing.length,
-          internetMissing: internetMissing.sort(sortTr).slice(0, CAP),
+          internetMissing: internetMissing.slice(0, CAP),
           // Deploy (H+A, internet sunuculari) - 2026-09-18
           internetDirsMeasured: dirsMeasured,
           internetDeployed: deployed.length,
@@ -1355,11 +1356,11 @@ function initDenetim(app) {
               .map((a) => detailOf(e, a, { kind: 'noroute', inNginx: n.has(a.toLowerCase()) })),
             // deploy bakisi (2026-09-18): ekibin isi / bizim isimiz / 404 riski
             notDeployed: notDeployed
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) => detailOf(e, a, { kind: 'notdeployed', defined: n.has(a.toLowerCase()) })),
             deployedNotDefined: deployedNotDefined
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) =>
                 detailOf(e, a, {
@@ -1368,7 +1369,7 @@ function initDenetim(app) {
                 }),
               ),
             definedNotDeployed: definedNotDeployed
-              .sort(sortTr)
+              .toSorted(sortTr)
               .slice(0, CAP)
               .map((a) => detailOf(e, a, { kind: 'nopackage' })),
           },
@@ -1396,7 +1397,7 @@ function initDenetim(app) {
           // BULGU DARALDI: intranet uygulamasinin INTERNETE ACIK sunucuda tanimli
           // olmasi. Intranet sunucusunda olmasi artik NORMALDIR, bulgu degildir.
           intranetInNginx: inNginx.intranet.length,
-          intranetInNginxList: inNginx.intranet.sort(sortTr).slice(0, CAP),
+          intranetInNginxList: inNginx.intranet.toSorted(sortTr).slice(0, CAP),
           // Route tipi passthrough/reencrypt DISINDA olanlar (edge, tls yok).
           otherTotal: bucket.diger.length,
           otherInNginx: inNginx.diger.length,
@@ -1405,7 +1406,7 @@ function initDenetim(app) {
           unknownInNginx: inNginx.bilinmiyor.length,
           // nginx'te var ama OpenShift SPA listesinde yok.
           onlyNginxCount: onlyNginx.length,
-          onlyNginx: onlyNginx.sort(sortTr).slice(0, CAP),
+          onlyNginx: onlyNginx.toSorted(sortTr).slice(0, CAP),
           // Kapsam YALNIZCA internet kumesi uzerinden: intranet uygulamalarini paydaya
           // katmak, cikmasi zaten yasak olanlari "eksik" saymak olurdu.
           coverage:
@@ -2662,9 +2663,9 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length - unreadable.length,
         missing: absent.length,
-        missingHosts: absent.sort(varsayilanSira),
+        missingHosts: absent.toSorted(varsayilanSira),
         unreadable: unreadable.length,
-        unreadableHosts: unreadable.sort(varsayilanSira),
+        unreadableHosts: unreadable.toSorted(varsayilanSira),
         variantCount: variants.length,
         rawVariantCount: variants.reduce((a, v) => a + v.rawVariants.length, 0),
         majorityHash: majority ? majority.hash : null,
@@ -2675,7 +2676,7 @@ function initDenetim(app) {
         referenceCount: ref ? counts.ok + counts.format : 0,
         formatOnlyCount: sc.perServer ? 0 : counts.format,
         crlfCount: crlfHosts.length,
-        crlfHosts: crlfHosts.sort(varsayilanSira),
+        crlfHosts: crlfHosts.toSorted(varsayilanSira),
         deviatingCount: sc.perServer
           ? majority
             ? variants.slice(1).reduce((a, v) => a + v.count, 0)
@@ -2758,7 +2759,7 @@ function initDenetim(app) {
         hostWide: !!sc.hostWide,
         present: hostCount - absent.length,
         missing: absent.length,
-        missingHosts: absent.sort(varsayilanSira),
+        missingHosts: absent.toSorted(varsayilanSira),
         unreadable: 0,
         unreadableHosts: [],
         variantCount: variants.length,

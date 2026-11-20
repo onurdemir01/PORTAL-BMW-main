@@ -1480,7 +1480,7 @@ function komboSec(ref, ady) {
   const v = ad(varsayilan);
   if (rk.has(v) && ak.has(v)) return varsayilan;
   const ortak = [...rk.keys()].filter((k) => ak.has(k)).map((k) => rk.get(k));
-  if (ortak.length) return ortak.sort(komboSirasi)[0];
+  if (ortak.length) return ortak.toSorted(komboSirasi)[0];
   if (rk.has(v) || ak.has(v) || (!rk.size && !ak.size)) return varsayilan;
   return [...ak.values(), ...rk.values()].sort(komboSirasi)[0];
 }

@@ -539,7 +539,7 @@ function parseOpsLines(lines) {
     files: [...files.values()],
     routes,
     template,
-    backups: backups.sort((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
+    backups: backups.toSorted((a, b) => String(b.mtime).localeCompare(String(a.mtime))),
     tenantKey,
     configMaps,
     configMapData: [...configMapData.entries()].map(([key, value]) => ({ key, value })),

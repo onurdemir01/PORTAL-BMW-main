@@ -474,7 +474,9 @@ function portalDuzeniYaz(dizin, dosyalar, { sha = true, gz = true } = {}) {
     yazilan.push([hedefAd, crypto.createHash('sha256').update(bayt).digest('hex')]);
   }
   if (sha) {
-    const satirlar = yazilan.sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([ad, h]) => `${h}  ${ad}`);
+    const satirlar = yazilan
+      .toSorted((a, b) => (a[0] < b[0] ? -1 : 1))
+      .map(([ad, h]) => `${h}  ${ad}`);
     fs.writeFileSync(path.join(dizin, 'SHA256SUMS'), satirlar.join('\n') + '\n');
   }
   return dizin;

@@ -102,8 +102,8 @@ function xrayTabanKontrol(tamKilitPaketleri, kokKilitPaketleri = {}) {
   }
 
   return {
-    dusuren: dusuren.sort((a, b) => a.localeCompare(b)),
-    bilgi: bilgi.sort((a, b) => a.localeCompare(b)),
+    dusuren: dusuren.toSorted((a, b) => a.localeCompare(b)),
+    bilgi: bilgi.toSorted((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -157,8 +157,8 @@ function karar(audit, kilitPaketleri) {
     else bilgi.push(satir);
   }
   return {
-    dusuren: dusuren.sort((a, b) => a.localeCompare(b)),
-    bilgi: bilgi.sort((a, b) => a.localeCompare(b)),
+    dusuren: dusuren.toSorted((a, b) => a.localeCompare(b)),
+    bilgi: bilgi.toSorted((a, b) => a.localeCompare(b)),
   };
 }
 
